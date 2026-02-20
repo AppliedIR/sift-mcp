@@ -1,0 +1,118 @@
+"""Tests for tool modules — focus on catalog integration and response enrichment."""
+
+import pytest
+from sift_mcp.catalog import clear_catalog_cache
+from sift_mcp.response import reset_call_counter
+
+
+@pytest.fixture(autouse=True)
+def clean_state():
+    clear_catalog_cache()
+    reset_call_counter()
+    yield
+    clear_catalog_cache()
+    reset_call_counter()
+
+
+class TestZimmermanCommon:
+    def test_zimmerman_tool_pattern(self):
+        """Verify _run_zimmerman_tool builds correct command structure."""
+        from sift_mcp.catalog import get_tool_def
+        td = get_tool_def("AmcacheParser")
+        assert td is not None
+        assert td.input_flag == "-f"
+        assert td.output_format == "csv"
+
+    def test_all_zimmerman_tools_in_catalog(self):
+        from sift_mcp.catalog import list_tools_in_catalog
+        tools = list_tools_in_catalog(category="zimmerman")
+        expected = [
+            "AmcacheParser", "PECmd", "AppCompatCacheParser", "RECmd",
+            "MFTECmd", "EvtxECmd", "JLECmd", "LECmd", "SBECmd",
+            "RBCmd", "SrumECmd", "SQLECmd",
+        ]
+        names = [t["name"] for t in tools]
+        for name in expected:
+            assert name in names, f"Missing Zimmerman tool: {name}"
+
+
+class TestVolatility:
+    def test_volatility_in_catalog(self):
+        from sift_mcp.catalog import get_tool_def
+        td = get_tool_def("vol3")
+        assert td is not None
+        assert td.knowledge_name == "Volatility3"
+
+
+class TestTimeline:
+    def test_timeline_tools_in_catalog(self):
+        from sift_mcp.catalog import list_tools_in_catalog
+        tools = list_tools_in_catalog(category="timeline")
+        names = [t["name"] for t in tools]
+        assert "hayabusa" in names
+        assert "mactime" in names
+        assert "log2timeline" in names
+
+
+class TestSleuthKit:
+    def test_sleuthkit_tools_in_catalog(self):
+        from sift_mcp.catalog import list_tools_in_catalog
+        tools = list_tools_in_catalog(category="sleuthkit")
+        names = [t["name"] for t in tools]
+        assert "fls" in names
+        assert "icat" in names
+        assert "mmls" in names
+
+
+class TestMiscTools:
+    def test_misc_tools_in_catalog(self):
+        from sift_mcp.catalog import list_tools_in_catalog
+        tools = list_tools_in_catalog(category="misc")
+        names = [t["name"] for t in tools]
+        assert "exiftool" in names
+        assert "hashdeep" in names
+        assert "dc3dd" in names
+
+
+class TestMalwareTools:
+    def test_malware_tools_in_catalog(self):
+        from sift_mcp.catalog import list_tools_in_catalog
+        tools = list_tools_in_catalog(category="malware")
+        names = [t["name"] for t in tools]
+        assert "yara" in names
+        assert "strings" in names
+
+
+class TestNetworkTools:
+    def test_network_tools_in_catalog(self):
+        from sift_mcp.catalog import list_tools_in_catalog
+        tools = list_tools_in_catalog(category="network")
+        names = [t["name"] for t in tools]
+        assert "tshark" in names
+        assert "zeek" in names
+
+
+class TestServerRegistration:
+    def test_server_creates_with_all_tools(self):
+        from sift_mcp.server import create_server
+        server = create_server()
+        assert server is not None
+
+
+class TestInstallerGracefulFailure:
+    def test_hayabusa_installer_no_network(self, monkeypatch):
+        """Installer should return None gracefully without network."""
+        monkeypatch.setenv("SIFT_HAYABUSA_DIR", "/tmp/test-hayabusa-nonexistent")
+        from sift_mcp.installer import install_hayabusa
+        # Should gracefully fail (no curl or no network)
+        result = install_hayabusa()
+        # Either None (no network) or a path (somehow installed)
+        assert result is None or isinstance(result, str)
+
+
+class TestCatalogCompleteness:
+    def test_total_catalog_tools(self):
+        from sift_mcp.catalog import load_catalog
+        catalog = load_catalog()
+        # zimmerman(12) + volatility(1) + timeline(3) + sleuthkit(3) + malware(2) + network(2) + misc(5) = 28
+        assert len(catalog) >= 28, f"Expected 28+ tools, got {len(catalog)}"

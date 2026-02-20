@@ -118,4 +118,28 @@ def create_server() -> FastMCP:
             )
             return response
 
+    # --- Register tool-specific modules ---
+
+    from sift_mcp.tools.zimmerman import register_zimmerman_tools
+    from sift_mcp.tools.volatility import register_volatility_tools
+    from sift_mcp.tools.timeline import register_timeline_tools
+    from sift_mcp.tools.sleuthkit import register_sleuthkit_tools
+    from sift_mcp.tools.malware import register_malware_tools
+    from sift_mcp.tools.network import register_network_tools
+    from sift_mcp.tools.file_analysis import register_file_analysis_tools
+    from sift_mcp.tools.registry import register_registry_tools
+    from sift_mcp.tools.hashing import register_hashing_tools
+    from sift_mcp.tools.imaging import register_imaging_tools
+
+    register_zimmerman_tools(server, audit)
+    register_volatility_tools(server, audit)
+    register_timeline_tools(server, audit)
+    register_sleuthkit_tools(server, audit)
+    register_malware_tools(server, audit)
+    register_network_tools(server, audit)
+    register_file_analysis_tools(server, audit)
+    register_registry_tools(server, audit)
+    register_hashing_tools(server, audit)
+    register_imaging_tools(server, audit)
+
     return server

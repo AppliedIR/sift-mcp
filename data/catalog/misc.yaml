@@ -1,0 +1,48 @@
+category: misc
+
+tools:
+  - name: exiftool
+    binary: exiftool
+    input_style: positional
+    output_format: json
+    timeout_seconds: 300
+    interactive: false
+    description: "File metadata extraction"
+    fk_tool_name: ExifTool
+
+  - name: regripper
+    binary: rip.pl
+    input_style: flag
+    input_flag: "-r"
+    output_format: text
+    timeout_seconds: 600
+    interactive: false
+    description: "Registry hive parser with plugins"
+    fk_tool_name: RegRipper
+
+  - name: hashdeep
+    binary: hashdeep
+    input_style: positional
+    output_format: text
+    timeout_seconds: 1200
+    interactive: false
+    description: "Recursive file hashing with audit mode"
+    fk_tool_name: hashdeep
+
+  - name: dc3dd
+    binary: dc3dd
+    input_style: flag
+    output_format: text
+    timeout_seconds: 7200
+    interactive: false
+    description: "Forensic disk imaging with inline hashing"
+    fk_tool_name: dc3dd
+
+  - name: ewfacquire
+    binary: ewfacquire
+    input_style: positional
+    output_format: text
+    timeout_seconds: 7200
+    interactive: false
+    description: "E01/EWF format forensic imaging"
+    fk_tool_name: ewfacquire

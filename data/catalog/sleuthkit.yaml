@@ -1,0 +1,29 @@
+category: sleuthkit
+
+tools:
+  - name: fls
+    binary: fls
+    input_style: positional
+    output_format: text
+    timeout_seconds: 600
+    interactive: false
+    description: "List files and directories in a disk image"
+    fk_tool_name: fls
+
+  - name: icat
+    binary: icat
+    input_style: positional
+    output_format: text
+    timeout_seconds: 600
+    interactive: false
+    description: "Extract file by inode from disk image"
+    fk_tool_name: icat
+
+  - name: mmls
+    binary: mmls
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "Display partition table layout"
+    fk_tool_name: mmls

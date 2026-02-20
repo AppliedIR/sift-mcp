@@ -1,0 +1,22 @@
+category: network
+
+tools:
+  - name: tshark
+    binary: tshark
+    input_style: flag
+    input_flag: "-r"
+    output_format: text
+    timeout_seconds: 600
+    interactive: false
+    description: "Wireshark command-line PCAP analyzer"
+    fk_tool_name: tshark
+
+  - name: zeek
+    binary: zeek
+    input_style: flag
+    input_flag: "-r"
+    output_format: text
+    timeout_seconds: 1200
+    interactive: false
+    description: "Network protocol analyzer — generates structured logs"
+    fk_tool_name: Zeek
