@@ -6,6 +6,7 @@ No file locking needed — one writer per file.
 
 from __future__ import annotations
 
+import getpass
 import json
 import logging
 import os
@@ -17,6 +18,17 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def resolve_examiner() -> str:
+    """Resolve examiner identity: AIIR_EXAMINER > AIIR_ANALYST > OS username."""
+    examiner = os.environ.get("AIIR_EXAMINER") or os.environ.get("AIIR_ANALYST")
+    if not examiner:
+        try:
+            examiner = getpass.getuser()
+        except Exception:
+            examiner = "unknown"
+    return examiner.lower()
+
+
 class AuditWriter:
     """Writes audit entries to a per-MCP JSONL file."""
 
@@ -25,24 +37,28 @@ class AuditWriter:
         self._sequence = 0
         self._date_str = ""
 
+    @property
+    def examiner(self) -> str:
+        return resolve_examiner()
+
     def _get_audit_dir(self) -> Path | None:
         """Get the audit directory from AIIR_CASE_DIR env var."""
         case_dir = os.environ.get("AIIR_CASE_DIR")
         if not case_dir:
             return None
-        audit_dir = Path(case_dir) / ".audit"
+        audit_dir = Path(case_dir) / ".local" / "audit"
         audit_dir.mkdir(parents=True, exist_ok=True)
         return audit_dir
 
     def _next_evidence_id(self) -> str:
-        """Generate next evidence ID: {prefix}-{date}-{seq}."""
+        """Generate next evidence ID: {prefix}-{examiner}-{date}-{seq}."""
         today = datetime.now(timezone.utc).strftime("%Y%m%d")
         if today != self._date_str:
             self._date_str = today
             self._sequence = 0
         self._sequence += 1
         prefix = self.mcp_name.replace("-mcp", "").replace("-", "")
-        return f"{prefix}-{today}-{self._sequence:03d}"
+        return f"{prefix}-{self.examiner}-{today}-{self._sequence:03d}"
 
     def log(
         self,
@@ -63,6 +79,7 @@ class AuditWriter:
             "mcp": self.mcp_name,
             "tool": tool,
             "evidence_id": evidence_id,
+            "examiner": self.examiner,
             "case_id": case_id or os.environ.get("AIIR_ACTIVE_CASE", ""),
             "source": source,
             "params": params,

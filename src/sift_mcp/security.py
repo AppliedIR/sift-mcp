@@ -12,6 +12,11 @@ _DANGEROUS_FLAGS = {
 
 _DANGEROUS_PATTERNS = [";", "&&", "||", "`", "$(", "${"]
 
+# Per-tool overrides: flags that are dangerous globally but safe for specific tools
+_TOOL_ALLOWED_FLAGS: dict[str, set[str]] = {
+    "run_bulk_extractor": {"-e", "-x"},  # -e enables scanner, -x disables
+}
+
 
 def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]:
     """Validate extra_args to block dangerous flags and shell metacharacters.
@@ -21,10 +26,12 @@ def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]
     if not extra_args:
         return []
 
+    tool_allowed = _TOOL_ALLOWED_FLAGS.get(tool_name, set())
+
     sanitized = []
     for arg in extra_args:
         flag = arg.lower().split("=")[0]
-        if flag in _DANGEROUS_FLAGS:
+        if flag in _DANGEROUS_FLAGS and flag not in tool_allowed:
             raise ValueError(
                 f"Blocked dangerous flag '{arg}' in extra_args for {tool_name}"
             )

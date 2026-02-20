@@ -159,7 +159,7 @@ class TestBlklsWrapper:
         audit._next_evidence_id.return_value = "sift-20260220-001"
 
         register_sleuthkit_tools(server, audit)
-        result = tools["run_blkls"]("/evidence/disk.dd")
+        result = tools["run_blkls"]("/evidence/disk.dd", "/output/slack.bin")
 
         assert captured_cmd["cmd"] == ["/usr/bin/blkls", "/evidence/disk.dd"]
         assert captured_cmd["timeout"] == 3600
@@ -190,7 +190,7 @@ class TestBlklsWrapper:
         audit._next_evidence_id.return_value = "sift-20260220-002"
 
         register_sleuthkit_tools(server, audit)
-        tools["run_blkls"]("/evidence/disk.dd", partition_offset="2048")
+        tools["run_blkls"]("/evidence/disk.dd", "/output/slack.bin", partition_offset="2048")
 
         assert captured_cmd["cmd"] == ["/usr/bin/blkls", "-o", "2048", "/evidence/disk.dd"]
 
@@ -209,7 +209,7 @@ class TestBlklsWrapper:
 
         register_sleuthkit_tools(server, audit)
         with pytest.raises(ToolNotFoundError):
-            tools["run_blkls"]("/evidence/disk.dd")
+            tools["run_blkls"]("/evidence/disk.dd", "/output/slack.bin")
 
 
 class TestBulkExtractorWrapper:

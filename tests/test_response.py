@@ -142,7 +142,7 @@ class TestAudit:
         eid = writer.log(tool="test_tool", params={"x": 1}, result_summary={"ok": True})
 
         assert eid.startswith("sift-")
-        log_file = case_dir / ".audit" / "sift-mcp.jsonl"
+        log_file = case_dir / ".local" / "audit" / "sift-mcp.jsonl"
         assert log_file.exists()
         entry = json.loads(log_file.read_text().strip())
         assert entry["tool"] == "test_tool"

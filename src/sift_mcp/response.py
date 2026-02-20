@@ -13,6 +13,7 @@ import time
 from typing import Any
 
 from forensic_knowledge import loader
+from sift_mcp.audit import resolve_examiner
 
 # Rotating discipline reminders — deterministic based on call counter
 DISCIPLINE_REMINDERS = [
@@ -68,6 +69,7 @@ def build_response(
         "data": data,
         "output_format": output_format,
         "evidence_id": evidence_id,
+        "examiner": resolve_examiner(),
     }
 
     if error:
