@@ -46,7 +46,7 @@ class AuditWriter:
         case_dir = os.environ.get("AIIR_CASE_DIR")
         if not case_dir:
             return None
-        audit_dir = Path(case_dir) / ".local" / "audit"
+        audit_dir = Path(case_dir) / "examiners" / self.examiner / "audit"
         audit_dir.mkdir(parents=True, exist_ok=True)
         return audit_dir
 

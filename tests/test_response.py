@@ -137,12 +137,13 @@ class TestAudit:
         case_dir = tmp_path / "test-case"
         case_dir.mkdir()
         monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
 
         writer = AuditWriter()
         eid = writer.log(tool="test_tool", params={"x": 1}, result_summary={"ok": True})
 
         assert eid.startswith("sift-")
-        log_file = case_dir / ".local" / "audit" / "sift-mcp.jsonl"
+        log_file = case_dir / "examiners" / "tester" / "audit" / "sift-mcp.jsonl"
         assert log_file.exists()
         entry = json.loads(log_file.read_text().strip())
         assert entry["tool"] == "test_tool"
