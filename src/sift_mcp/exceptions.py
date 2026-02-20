@@ -1,0 +1,21 @@
+"""Sift-mcp exceptions."""
+
+
+class SiftError(Exception):
+    """Base exception for sift-mcp."""
+
+
+class ToolNotFoundError(SiftError):
+    """Tool binary not found on system."""
+
+
+class ToolNotInCatalogError(SiftError):
+    """Tool not in the approved catalog."""
+
+
+class ExecutionError(SiftError):
+    """Tool execution failed."""
+
+
+class TimeoutError(SiftError):
+    """Tool execution timed out."""

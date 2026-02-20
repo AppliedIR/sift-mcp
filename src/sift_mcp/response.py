@@ -1,0 +1,163 @@
+"""Response envelope builder with forensic-knowledge enrichment.
+
+Every sift-mcp tool response is wrapped in an envelope that includes:
+- Proactive artifact caveats and advisories
+- Corroboration suggestions
+- Field-level interpretation notes
+- Rotating discipline reminders
+"""
+
+from __future__ import annotations
+
+import time
+from typing import Any
+
+from forensic_knowledge import loader
+
+# Rotating discipline reminders — deterministic based on call counter
+DISCIPLINE_REMINDERS = [
+    "Evidence is sovereign — if evidence contradicts your theory, the theory is wrong",
+    "Absence of evidence ≠ evidence of absence — missing logs mean unknown, not 'didn't happen'",
+    "Correlation ≠ causation — temporal proximity does not prove relationship",
+    "Benign until proven malicious — most artifacts have innocent explanations",
+    "Show evidence for every claim — if you can't show it, you can't claim it",
+    "Stop at HITL checkpoints before: attribution, root cause, exclusion, scope changes",
+    "Query tools before writing conclusions — never guess when you can check",
+    "UNKNOWN from triage tools is neutral — not-in-database ≠ suspicious",
+    "Verify field meanings before interpreting values — check documentation, not assumptions",
+    "Consider alternative explanations — tunnel vision is an anti-pattern",
+]
+
+# Per-process call counter for deterministic reminder rotation
+_call_counter = 0
+
+
+def build_response(
+    *,
+    tool_name: str,
+    success: bool,
+    data: Any,
+    evidence_id: str,
+    output_format: str = "text",
+    elapsed_seconds: float | None = None,
+    exit_code: int | None = None,
+    command: list[str] | None = None,
+    error: str | None = None,
+    fk_tool_name: str | None = None,
+) -> dict:
+    """Build enriched response envelope with forensic-knowledge context.
+
+    Args:
+        tool_name: The MCP tool name (e.g., "run_amcacheparser")
+        success: Whether execution succeeded
+        data: Parsed tool output
+        evidence_id: Audit evidence ID
+        output_format: Format of data (text, parsed_csv, json, etc.)
+        elapsed_seconds: Execution time
+        exit_code: Process exit code
+        command: Command that was executed
+        error: Error message if failed
+        fk_tool_name: FK tool name override (e.g., "AmcacheParser")
+    """
+    global _call_counter
+    _call_counter += 1
+
+    response: dict[str, Any] = {
+        "success": success,
+        "tool": tool_name,
+        "data": data,
+        "output_format": output_format,
+        "evidence_id": evidence_id,
+    }
+
+    if error:
+        response["error"] = error
+
+    # Load forensic-knowledge context
+    fk_name = fk_tool_name or tool_name
+    corroboration, caveats, advisories, field_notes = _build_knowledge_context(fk_name)
+
+    if caveats:
+        response["caveats"] = caveats
+    if advisories:
+        response["advisories"] = advisories
+    if corroboration:
+        response["corroboration"] = corroboration
+    if field_notes:
+        response["field_notes"] = field_notes
+
+    # Discipline reminder (rotates)
+    response["discipline_reminder"] = DISCIPLINE_REMINDERS[
+        _call_counter % len(DISCIPLINE_REMINDERS)
+    ]
+
+    # Metadata
+    metadata: dict[str, Any] = {}
+    if elapsed_seconds is not None:
+        metadata["elapsed_seconds"] = round(elapsed_seconds, 2)
+    if exit_code is not None:
+        metadata["exit_code"] = exit_code
+        # Look up exit code meaning from FK
+        tool_info = loader.get_tool(fk_name)
+        if tool_info and exit_code in (tool_info.get("exit_code_hints") or {}):
+            metadata["exit_code_meaning"] = tool_info["exit_code_hints"][exit_code]
+    if command:
+        metadata["command"] = command
+    if metadata:
+        response["metadata"] = metadata
+
+    return response
+
+
+def _build_knowledge_context(
+    tool_name: str,
+) -> tuple[dict, list[str], list[str], dict[str, str]]:
+    """Load artifact + tool knowledge for response envelope.
+
+    Returns: (corroboration, caveats, advisories, field_notes)
+    """
+    tool_info = loader.get_tool(tool_name)
+    if not tool_info:
+        return {}, [], [], {}
+
+    caveats = list(tool_info.get("caveats", []))
+    advisories = list(tool_info.get("advisories", []))
+    corroboration: dict[str, list[str]] = {}
+    field_notes: dict[str, str] = {}
+
+    for artifact_name in tool_info.get("artifacts_parsed", []):
+        artifact = loader.get_artifact(artifact_name)
+        if not artifact:
+            continue
+
+        # Artifact caveats: what this data does NOT prove
+        for item in artifact.get("does_not_prove", []):
+            advisory = f"This artifact does NOT prove: {item}"
+            if advisory not in advisories:
+                advisories.append(advisory)
+
+        # Corroboration map
+        for key, val in artifact.get("corroborate_with", {}).items():
+            if key not in corroboration:
+                corroboration[key] = []
+            for ref in val:
+                if ref not in corroboration[key]:
+                    corroboration[key].append(ref)
+
+        # Timestamp field notes
+        for ts in artifact.get("timestamps", []):
+            field_notes[ts["field"]] = ts["meaning"]
+
+        # Common misinterpretations as advisories
+        for m in artifact.get("common_misinterpretations", []):
+            advisory = f"{m['claim']} → {m['correction']}"
+            if advisory not in advisories:
+                advisories.append(advisory)
+
+    return corroboration, caveats, advisories, field_notes
+
+
+def reset_call_counter() -> None:
+    """Reset the call counter (for testing)."""
+    global _call_counter
+    _call_counter = 0
