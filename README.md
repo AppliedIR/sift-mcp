@@ -85,7 +85,7 @@ Every successful tool response is wrapped in a structured envelope:
   "exit_code": 0,
   "output": "...",
   "output_truncated": false,
-  "evidence_id": "sift-20260220-001",
+  "evidence_id": "sift-steve-20260220-001",
   "artifact_caveats": [
     "Amcache entries indicate installation, not necessarily execution",
     "Timestamps reflect installation time, not last run"
@@ -101,7 +101,7 @@ Every successful tool response is wrapped in a structured envelope:
 
 | Field | Description |
 |-------|-------------|
-| `evidence_id` | Unique identifier (`sift-YYYYMMDD-NNN`) for referencing in case findings |
+| `evidence_id` | Unique identifier (`sift-{examiner}-YYYYMMDD-NNN`) for referencing in case findings |
 | `artifact_caveats` | Artifact-specific limitations from forensic-knowledge |
 | `corroboration` | Suggested cross-references from forensic-knowledge |
 | `field_notes` | Contextual interpretation guidance |
@@ -132,7 +132,8 @@ The catalog serves as a security boundary — `run_command` validates that the r
 | `SIFT_DEFAULT_TIMEOUT` | `300` | Default command timeout in seconds |
 | `SIFT_MAX_OUTPUT_BYTES` | `1048576` | Maximum output size before truncation (1MB) |
 | `AIIR_CASE_DIR` | (none) | Active case directory for audit trail |
-| `AIIR_ANALYST` | (none) | Analyst identity for audit entries |
+| `AIIR_EXAMINER` | (none) | Examiner identity for audit entries |
+| `AIIR_ANALYST` | (none) | Deprecated alias for `AIIR_EXAMINER` |
 
 ## Quick Start
 
@@ -164,10 +165,10 @@ python -c "from sift_mcp.server import create_server; s = create_server(); print
 
 ## Case Audit Trail
 
-When `AIIR_CASE_DIR` is set, every tool execution is logged to `.audit/sift.jsonl`:
+When `AIIR_CASE_DIR` is set, every tool execution is logged to `examiners/{examiner}/audit/sift-mcp.jsonl`:
 
 ```json
-{"ts": "2026-02-20T14:30:00Z", "tool": "run_command", "evidence_id": "sift-20260220-001", "arguments": {"tool_name": "AmcacheParser", "args": ["-f", "Amcache.hve"]}, "analyst": "analyst1", "os_user": "user"}
+{"ts": "2026-02-20T14:30:00Z", "tool": "run_command", "evidence_id": "sift-steve-20260220-001", "arguments": {"tool_name": "AmcacheParser", "args": ["-f", "Amcache.hve"]}, "examiner": "steve", "os_user": "user"}
 ```
 
 ## Project Structure
@@ -204,7 +205,7 @@ sift-mcp/
 │       ├── hashing.py          # hashdeep
 │       └── imaging.py          # dc3dd, ewfacquire
 ├── data/catalog/               # Tool catalog YAML files
-├── tests/                      # 76 tests across 10 files
+├── tests/                      # 83 tests across 10 files
 ├── pyproject.toml
 └── README.md
 ```
@@ -218,6 +219,29 @@ sift-mcp/
 # Run with coverage
 .venv/bin/pytest tests/ --cov=sift_mcp --cov-report=term-missing
 ```
+
+## Architecture
+
+```
+MCP Client ──► sift-mcp ──► SIFT Forensic Tools
+                  │          (Zimmerman, Volatility,
+                  │           Sleuth Kit, Hayabusa, ...)
+                  ▼
+            forensic-knowledge
+           (artifact enrichment)
+```
+
+## Responsible Use
+
+This tool is designed to assist trained forensic analysts, not replace them. Tool execution results require the same verification as any other forensic tool output.
+
+**Core principles:**
+
+- **Human authority is final.** Every finding and conclusion must be reviewed and approved by a qualified analyst before it becomes part of the case record.
+- **Evidence before claims.** All conclusions must reference actual evidence. Unsupported claims are structurally rejected by the platform.
+- **The analyst owns the work product.** AI assistance does not reduce the analyst's responsibility for accuracy, completeness, or defensibility of conclusions.
+- **AI output requires the same scrutiny as any other tool.** Treat AI-proposed findings the same way you would treat output from any forensic tool: verify, corroborate, and document.
+- **Absence of evidence is not evidence of absence.** The platform guards against premature exclusion and confirmation bias, but the human analyst is the last line of defense.
 
 ## Acknowledgments
 
