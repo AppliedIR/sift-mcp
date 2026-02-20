@@ -10,11 +10,17 @@ from sift_mcp.response import build_response
 from sift_mcp.security import sanitize_extra_args
 
 
+_BLOCKED_DEVICE_PREFIXES = ("/dev/sd", "/dev/hd", "/dev/nvme", "/dev/vd", "/dev/xvd")
+
+
 def register_imaging_tools(server, audit: AuditWriter):
 
     @server.tool()
     def run_dc3dd(source: str, destination: str, hash_algorithm: str = "sha256", extra_args: list[str] | None = None) -> dict:
         """Create forensic disk image with dc3dd (with inline hashing)."""
+        # Block writing to system device nodes
+        if any(destination.startswith(p) for p in _BLOCKED_DEVICE_PREFIXES):
+            raise ValueError(f"Destination '{destination}' is a block device — writing to raw devices is blocked for safety")
         binary_path = find_binary("dc3dd")
         if not binary_path:
             raise ToolNotFoundError("dc3dd not found.")

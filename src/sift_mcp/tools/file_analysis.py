@@ -72,12 +72,16 @@ def register_file_analysis_tools(server, audit: AuditWriter):
 
         evidence_id = audit._next_evidence_id()
         exec_result = execute(cmd, timeout=3600)
+
+        # Redact password from command before including in response
+        redacted_cmd = ["-p****" if arg.startswith("-p") and arg != "-p7zip" else arg for arg in cmd]
+
         response = build_response(
             tool_name="extract_archive", success=exec_result["exit_code"] == 0,
             data=exec_result.get("stdout", ""), evidence_id=evidence_id,
             output_format="text",
             elapsed_seconds=exec_result["elapsed_seconds"],
-            exit_code=exec_result["exit_code"], command=cmd, fk_tool_name="7z",
+            exit_code=exec_result["exit_code"], command=redacted_cmd, fk_tool_name="7z",
         )
         audit.log(tool="extract_archive",
                    params={"archive_path": archive_path, "output_dir": output_dir, "list_only": list_only},

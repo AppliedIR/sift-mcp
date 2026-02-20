@@ -17,6 +17,7 @@ from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
 from sift_mcp.parsers.csv_parser import parse_csv_file
 from sift_mcp.response import build_response
+from sift_mcp.security import sanitize_extra_args
 
 
 def _run_zimmerman_tool(
@@ -37,47 +38,60 @@ def _run_zimmerman_tool(
     if not binary_path:
         raise ToolNotFoundError(f"{td.binary} not found. Install Zimmerman tools on SIFT.")
 
-    # Use temp dir for CSV output if not specified
-    csv_dir = output_dir or tempfile.mkdtemp(prefix=f"sift_{tool_name.lower()}_")
-
-    cmd = [binary_path, td.input_flag, input_file, "--csv", csv_dir]
+    # Sanitize extra flags
     if extra_flags:
-        cmd.extend(extra_flags)
+        extra_flags = sanitize_extra_args(extra_flags, tool_name)
 
-    evidence_id = audit._next_evidence_id()
+    # Use temp dir for CSV output if not specified
+    _temp_cleanup = None
+    if output_dir:
+        csv_dir = output_dir
+    else:
+        _temp_cleanup = tempfile.TemporaryDirectory(prefix=f"sift_{tool_name.lower()}_")
+        csv_dir = _temp_cleanup.name
 
-    exec_result = execute(cmd, timeout=td.timeout_seconds)
+    try:
+        cmd = [binary_path, td.input_flag, input_file, "--csv", csv_dir]
+        if extra_flags:
+            cmd.extend(extra_flags)
 
-    # Find output CSV files
-    parsed_data: dict[str, Any] = {}
-    csv_files = sorted(Path(csv_dir).glob("*.csv"))
-    for csv_file in csv_files:
-        parsed_data[csv_file.stem] = parse_csv_file(str(csv_file), max_rows=max_rows)
+        evidence_id = audit._next_evidence_id()
 
-    response = build_response(
-        tool_name=f"run_{tool_name.lower()}",
-        success=exec_result["exit_code"] == 0,
-        data=parsed_data if parsed_data else exec_result.get("stdout", ""),
-        evidence_id=evidence_id,
-        output_format="parsed_csv" if parsed_data else "text",
-        elapsed_seconds=exec_result["elapsed_seconds"],
-        exit_code=exec_result["exit_code"],
-        command=cmd,
-        fk_tool_name=td.knowledge_name,
-    )
+        exec_result = execute(cmd, timeout=td.timeout_seconds)
 
-    if csv_files:
-        response["output_files"] = [str(f) for f in csv_files]
+        # Find output CSV files
+        parsed_data: dict[str, Any] = {}
+        csv_files = sorted(Path(csv_dir).glob("*.csv"))
+        for csv_file in csv_files:
+            parsed_data[csv_file.stem] = parse_csv_file(str(csv_file), max_rows=max_rows)
 
-    audit.log(
-        tool=f"run_{tool_name.lower()}",
-        params={"input_file": input_file, "output_dir": csv_dir},
-        result_summary={"exit_code": exec_result["exit_code"], "csv_files": len(csv_files)},
-        evidence_id=evidence_id,
-        elapsed_ms=exec_result["elapsed_seconds"] * 1000,
-    )
+        response = build_response(
+            tool_name=f"run_{tool_name.lower()}",
+            success=exec_result["exit_code"] == 0,
+            data=parsed_data if parsed_data else exec_result.get("stdout", ""),
+            evidence_id=evidence_id,
+            output_format="parsed_csv" if parsed_data else "text",
+            elapsed_seconds=exec_result["elapsed_seconds"],
+            exit_code=exec_result["exit_code"],
+            command=cmd,
+            fk_tool_name=td.knowledge_name,
+        )
 
-    return response
+        if csv_files:
+            response["output_files"] = [str(f) for f in csv_files]
+
+        audit.log(
+            tool=f"run_{tool_name.lower()}",
+            params={"input_file": input_file, "output_dir": csv_dir},
+            result_summary={"exit_code": exec_result["exit_code"], "csv_files": len(csv_files)},
+            evidence_id=evidence_id,
+            elapsed_ms=exec_result["elapsed_seconds"] * 1000,
+        )
+
+        return response
+    finally:
+        if _temp_cleanup:
+            _temp_cleanup.cleanup()
 
 
 def register_zimmerman_tools(server, audit: AuditWriter):
@@ -101,7 +115,7 @@ def register_zimmerman_tools(server, audit: AuditWriter):
     @server.tool()
     def run_recmd(input_file: str, output_dir: str = "", batch_file: str = "") -> dict:
         """Parse registry hive with RECmd. Use batch_file for targeted extraction."""
-        extra = ["--bn", batch_file] if batch_file else None
+        extra = sanitize_extra_args(["--bn", batch_file], "run_recmd") if batch_file else None
         return _run_zimmerman_tool("RECmd", input_file, audit, output_dir=output_dir or None, extra_flags=extra)
 
     @server.tool()
@@ -112,7 +126,7 @@ def register_zimmerman_tools(server, audit: AuditWriter):
     @server.tool()
     def run_evtxecmd(input_file: str, output_dir: str = "", maps_dir: str = "") -> dict:
         """Parse Windows Event Log (.evtx) files."""
-        extra = ["--maps", maps_dir] if maps_dir else None
+        extra = sanitize_extra_args(["--maps", maps_dir], "run_evtxecmd") if maps_dir else None
         return _run_zimmerman_tool("EvtxECmd", input_file, audit, output_dir=output_dir or None, extra_flags=extra)
 
     @server.tool()

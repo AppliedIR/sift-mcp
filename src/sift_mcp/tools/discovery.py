@@ -78,9 +78,7 @@ def suggest_tools(artifact_type: str, question: str = "") -> list[dict]:
     """Suggest tools based on artifact type, using FK knowledge."""
     suggestions = []
 
-    # Find tools that parse this artifact
-    tools_for_artifact = loader.get_artifacts_for_tool  # Not quite right, we need reverse
-    # Instead, look up the artifact and find related tools
+    # Look up the artifact and find related tools
     artifact = loader.get_artifact(artifact_type)
     if artifact:
         for tool_name in artifact.get("related_tools", []):

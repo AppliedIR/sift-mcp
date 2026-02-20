@@ -9,7 +9,7 @@ Every sift-mcp tool response is wrapped in an envelope that includes:
 
 from __future__ import annotations
 
-import time
+import itertools
 from typing import Any
 
 from forensic_knowledge import loader
@@ -29,8 +29,8 @@ DISCIPLINE_REMINDERS = [
     "Consider alternatives — after forming a hypothesis, search for contradicting evidence before corroborating evidence",
 ]
 
-# Per-process call counter for deterministic reminder rotation
-_call_counter = 0
+# Per-process call counter for deterministic reminder rotation (thread-safe)
+_call_counter = itertools.count(1)
 
 
 def build_response(
@@ -60,8 +60,7 @@ def build_response(
         error: Error message if failed
         fk_tool_name: FK tool name override (e.g., "AmcacheParser")
     """
-    global _call_counter
-    _call_counter += 1
+    call_num = next(_call_counter)
 
     response: dict[str, Any] = {
         "success": success,
@@ -90,7 +89,7 @@ def build_response(
 
     # Discipline reminder (rotates)
     response["discipline_reminder"] = DISCIPLINE_REMINDERS[
-        _call_counter % len(DISCIPLINE_REMINDERS)
+        call_num % len(DISCIPLINE_REMINDERS)
     ]
 
     # Metadata
@@ -162,4 +161,4 @@ def _build_knowledge_context(
 def reset_call_counter() -> None:
     """Reset the call counter (for testing)."""
     global _call_counter
-    _call_counter = 0
+    _call_counter = itertools.count(1)
