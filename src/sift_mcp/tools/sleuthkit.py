@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from sift_mcp.audit import AuditWriter
-from sift_mcp.catalog import get_tool_def
 from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
