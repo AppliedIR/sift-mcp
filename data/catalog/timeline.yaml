@@ -1,0 +1,39 @@
+category: timeline
+common_binary_dir: /usr/local/bin
+
+tools:
+  - name: hayabusa
+    binary: hayabusa
+    input_style: flag
+    input_flag: "-d"
+    output_format: json
+    timeout_seconds: 1800
+    interactive: false
+    description: "Sigma-based Windows event log analyzer"
+    fk_tool_name: Hayabusa
+    common_flags:
+      - flag: "-o"
+        description: "Output file path"
+        required: false
+      - flag: "--min-level"
+        description: "Minimum alert level (informational, low, medium, high, critical)"
+        required: false
+
+  - name: log2timeline
+    binary: log2timeline.py
+    input_style: positional
+    output_format: text
+    timeout_seconds: 7200
+    interactive: false
+    description: "Plaso super-timeline generator"
+    fk_tool_name: Plaso
+
+  - name: mactime
+    binary: mactime
+    input_style: flag
+    input_flag: "-b"
+    output_format: text
+    timeout_seconds: 600
+    interactive: false
+    description: "Bodyfile to timeline converter (Sleuth Kit)"
+    fk_tool_name: mactime

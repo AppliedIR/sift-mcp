@@ -1,0 +1,177 @@
+category: zimmerman
+common_binary_dir: /usr/local/bin
+
+tools:
+  - name: AmcacheParser
+    binary: AmcacheParser
+    input_style: flag
+    input_flag: "-f"
+    output_format: csv
+    timeout_seconds: 600
+    interactive: false
+    description: "Parse Amcache.hve registry hive"
+    fk_tool_name: AmcacheParser
+    common_flags:
+      - flag: "--csv"
+        description: "Output directory for CSV"
+        required: true
+
+  - name: PECmd
+    binary: PECmd
+    input_style: flag
+    input_flag: "-f"
+    output_format: csv
+    timeout_seconds: 300
+    interactive: false
+    description: "Parse Windows Prefetch files"
+    fk_tool_name: PECmd
+    common_flags:
+      - flag: "--csv"
+        description: "Output directory for CSV"
+        required: true
+
+  - name: AppCompatCacheParser
+    binary: AppCompatCacheParser
+    input_style: flag
+    input_flag: "-f"
+    output_format: csv
+    timeout_seconds: 300
+    interactive: false
+    description: "Parse ShimCache (AppCompatCache) from SYSTEM hive"
+    fk_tool_name: AppCompatCacheParser
+    common_flags:
+      - flag: "--csv"
+        description: "Output directory for CSV"
+        required: true
+
+  - name: RECmd
+    binary: RECmd
+    input_style: flag
+    input_flag: "-f"
+    output_format: csv
+    timeout_seconds: 600
+    interactive: false
+    description: "Registry Explorer command line — batch processing with --bn"
+    fk_tool_name: RECmd
+    common_flags:
+      - flag: "--bn"
+        description: "Batch file for targeted registry extraction"
+        required: false
+      - flag: "--csv"
+        description: "Output directory for CSV"
+        required: true
+
+  - name: MFTECmd
+    binary: MFTECmd
+    input_style: flag
+    input_flag: "-f"
+    output_format: csv
+    timeout_seconds: 1200
+    interactive: false
+    description: "Parse $MFT and $UsnJrnl"
+    fk_tool_name: MFTECmd
+    common_flags:
+      - flag: "--csv"
+        description: "Output directory for CSV"
+        required: true
+
+  - name: EvtxECmd
+    binary: EvtxECmd
+    input_style: flag
+    input_flag: "-f"
+    output_format: csv
+    timeout_seconds: 600
+    interactive: false
+    description: "Parse Windows Event Log (.evtx) files"
+    fk_tool_name: EvtxECmd
+    common_flags:
+      - flag: "--csv"
+        description: "Output directory for CSV"
+        required: true
+      - flag: "--maps"
+        description: "Path to EvtxECmd Maps directory"
+        required: false
+
+  - name: JLECmd
+    binary: JLECmd
+    input_style: flag
+    input_flag: "-f"
+    output_format: csv
+    timeout_seconds: 300
+    interactive: false
+    description: "Parse Jump List files"
+    fk_tool_name: JLECmd
+    common_flags:
+      - flag: "--csv"
+        description: "Output directory for CSV"
+        required: true
+
+  - name: LECmd
+    binary: LECmd
+    input_style: flag
+    input_flag: "-f"
+    output_format: csv
+    timeout_seconds: 300
+    interactive: false
+    description: "Parse Windows LNK (shortcut) files"
+    fk_tool_name: LECmd
+    common_flags:
+      - flag: "--csv"
+        description: "Output directory for CSV"
+        required: true
+
+  - name: SBECmd
+    binary: SBECmd
+    input_style: flag
+    input_flag: "-d"
+    output_format: csv
+    timeout_seconds: 300
+    interactive: false
+    description: "Parse ShellBags from registry hives"
+    fk_tool_name: SBECmd
+    common_flags:
+      - flag: "--csv"
+        description: "Output directory for CSV"
+        required: true
+
+  - name: RBCmd
+    binary: RBCmd
+    input_style: flag
+    input_flag: "-f"
+    output_format: csv
+    timeout_seconds: 300
+    interactive: false
+    description: "Parse Recycle Bin $I files"
+    fk_tool_name: RBCmd
+    common_flags:
+      - flag: "--csv"
+        description: "Output directory for CSV"
+        required: true
+
+  - name: SrumECmd
+    binary: SrumECmd
+    input_style: flag
+    input_flag: "-f"
+    output_format: csv
+    timeout_seconds: 600
+    interactive: false
+    description: "Parse SRUM database"
+    fk_tool_name: SrumECmd
+    common_flags:
+      - flag: "--csv"
+        description: "Output directory for CSV"
+        required: true
+
+  - name: SQLECmd
+    binary: SQLECmd
+    input_style: flag
+    input_flag: "-f"
+    output_format: csv
+    timeout_seconds: 600
+    interactive: false
+    description: "Parse SQLite databases (browser history, etc.)"
+    fk_tool_name: SQLECmd
+    common_flags:
+      - flag: "--csv"
+        description: "Output directory for CSV"
+        required: true
