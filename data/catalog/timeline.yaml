@@ -37,3 +37,12 @@ tools:
     interactive: false
     description: "Bodyfile to timeline converter (Sleuth Kit)"
     fk_tool_name: mactime
+
+  - name: psort
+    binary: psort.py
+    input_style: positional
+    output_format: text
+    timeout_seconds: 3600
+    interactive: false
+    description: "Filter and export Plaso storage to CSV"
+    fk_tool_name: psort

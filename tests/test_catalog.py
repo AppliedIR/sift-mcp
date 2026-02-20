@@ -43,7 +43,7 @@ class TestCatalogLoading:
 
     def test_list_tools_by_category(self):
         tools = list_tools_in_catalog(category="zimmerman")
-        assert len(tools) == 12
+        assert len(tools) == 13
         assert all(t["category"] == "zimmerman" for t in tools)
 
     def test_is_in_catalog(self):

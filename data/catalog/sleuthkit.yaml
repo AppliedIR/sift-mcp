@@ -27,3 +27,12 @@ tools:
     interactive: false
     description: "Display partition table layout"
     fk_tool_name: mmls
+
+  - name: blkls
+    binary: blkls
+    input_style: positional
+    output_format: text
+    timeout_seconds: 3600
+    interactive: false
+    description: "Extract unallocated disk clusters"
+    fk_tool_name: blkls

@@ -23,7 +23,7 @@ class TestListTools:
 
     def test_list_by_category(self):
         tools = list_available_tools(category="zimmerman")
-        assert len(tools) == 12
+        assert len(tools) == 13
         assert all(t["category"] == "zimmerman" for t in tools)
 
     def test_availability_field(self):

@@ -81,6 +81,41 @@ def register_sleuthkit_tools(server, audit: AuditWriter):
         return response
 
     @server.tool()
+    def run_blkls(image_file: str, partition_offset: str = "", extra_args: list[str] = []) -> dict:
+        """Extract unallocated clusters from a disk image for carving (blkls)."""
+        binary_path = find_binary("blkls")
+        if not binary_path:
+            raise ToolNotFoundError("blkls not found. Install Sleuth Kit.")
+
+        cmd = [binary_path]
+        if partition_offset:
+            cmd.extend(["-o", partition_offset])
+        cmd.extend(extra_args)
+        cmd.append(image_file)
+
+        evidence_id = audit._next_evidence_id()
+        exec_result = execute(cmd, timeout=3600)
+
+        response = build_response(
+            tool_name="run_blkls",
+            success=exec_result["exit_code"] == 0,
+            data=exec_result.get("stdout", ""),
+            evidence_id=evidence_id,
+            output_format="text",
+            elapsed_seconds=exec_result["elapsed_seconds"],
+            exit_code=exec_result["exit_code"],
+            command=cmd,
+            fk_tool_name="blkls",
+        )
+
+        audit.log(
+            tool="run_blkls", params={"image_file": image_file, "partition_offset": partition_offset},
+            result_summary={"exit_code": exec_result["exit_code"]},
+            evidence_id=evidence_id,
+        )
+        return response
+
+    @server.tool()
     def run_mmls(image_file: str, extra_args: list[str] = []) -> dict:
         """Display partition table layout of a disk image (mmls)."""
         binary_path = find_binary("mmls")

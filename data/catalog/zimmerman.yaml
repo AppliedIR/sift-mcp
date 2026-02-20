@@ -175,3 +175,13 @@ tools:
       - flag: "--csv"
         description: "Output directory for CSV"
         required: true
+
+  - name: bstrings
+    binary: bstrings
+    input_style: flag
+    input_flag: "-f"
+    output_format: text
+    timeout_seconds: 600
+    interactive: false
+    description: "Binary string extraction with regex support"
+    fk_tool_name: bstrings

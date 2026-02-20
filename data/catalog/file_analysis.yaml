@@ -1,0 +1,11 @@
+category: file_analysis
+
+tools:
+  - name: bulk_extractor
+    binary: bulk_extractor
+    input_style: positional
+    output_format: text
+    timeout_seconds: 7200
+    interactive: false
+    description: "Record carving from disk images and unallocated space"
+    fk_tool_name: bulk_extractor

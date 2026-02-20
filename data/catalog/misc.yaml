@@ -29,6 +29,15 @@ tools:
     description: "Recursive file hashing with audit mode"
     fk_tool_name: hashdeep
 
+  - name: 7z
+    binary: 7z
+    input_style: positional
+    output_format: text
+    timeout_seconds: 3600
+    interactive: false
+    description: "Multi-format archive extraction (7z, zip, gzip, bzip2, xz, tar, rar)"
+    fk_tool_name: 7z
+
   - name: dc3dd
     binary: dc3dd
     input_style: flag
@@ -46,3 +55,30 @@ tools:
     interactive: false
     description: "E01/EWF format forensic imaging"
     fk_tool_name: ewfacquire
+
+  - name: ewfmount
+    binary: ewfmount
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "Mount E01/EWF images as raw device"
+    fk_tool_name: ewfmount
+
+  - name: vshadowinfo
+    binary: vshadowinfo
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "List Volume Shadow Copy snapshots"
+    fk_tool_name: vshadowinfo
+
+  - name: vshadowmount
+    binary: vshadowmount
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "Mount VSS snapshots as raw devices"
+    fk_tool_name: vshadowmount
