@@ -7,19 +7,21 @@ from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
 from sift_mcp.response import build_response
+from sift_mcp.security import sanitize_extra_args
 
 
 def register_sleuthkit_tools(server, audit: AuditWriter):
     """Register Sleuth Kit tools."""
 
     @server.tool()
-    def run_fls(image_file: str, inode: str = "", extra_args: list[str] = []) -> dict:
+    def run_fls(image_file: str, inode: str = "", extra_args: list[str] | None = None) -> dict:
         """List files and directories in a disk image (fls). Supports deleted file recovery."""
         binary_path = find_binary("fls")
         if not binary_path:
             raise ToolNotFoundError("fls not found. Install Sleuth Kit.")
 
         cmd = [binary_path]
+        extra_args = sanitize_extra_args(extra_args or [], "fls")
         cmd.extend(extra_args)
         cmd.append(image_file)
         if inode:
@@ -48,18 +50,25 @@ def register_sleuthkit_tools(server, audit: AuditWriter):
         return response
 
     @server.tool()
-    def run_icat(image_file: str, inode: str, output_file: str = "", extra_args: list[str] = []) -> dict:
-        """Extract a file by inode number from a disk image (icat)."""
+    def run_icat(image_file: str, inode: str, output_file: str, extra_args: list[str] | None = None) -> dict:
+        """Extract a file by inode number from a disk image (icat).
+
+        output_file is required — icat produces binary output that must be saved to disk.
+        """
         binary_path = find_binary("icat")
         if not binary_path:
             raise ToolNotFoundError("icat not found. Install Sleuth Kit.")
 
+        if not output_file:
+            raise ValueError("output_file is required for icat (binary extraction tool)")
+
         cmd = [binary_path]
+        extra_args = sanitize_extra_args(extra_args or [], "icat")
         cmd.extend(extra_args)
         cmd.extend([image_file, inode])
 
         evidence_id = audit._next_evidence_id()
-        exec_result = execute(cmd, timeout=600, save_output=bool(output_file), save_dir=output_file or None)
+        exec_result = execute(cmd, timeout=600, save_output=True, save_dir=output_file)
 
         response = build_response(
             tool_name="run_icat",
@@ -80,27 +89,33 @@ def register_sleuthkit_tools(server, audit: AuditWriter):
         return response
 
     @server.tool()
-    def run_blkls(image_file: str, partition_offset: str = "", extra_args: list[str] = []) -> dict:
-        """Extract unallocated clusters from a disk image for carving (blkls)."""
+    def run_blkls(image_file: str, output_file: str, partition_offset: str = "", extra_args: list[str] | None = None) -> dict:
+        """Extract unallocated clusters from a disk image for carving (blkls).
+
+        output_file is required — blkls produces binary output that must be saved to disk.
+        """
         binary_path = find_binary("blkls")
         if not binary_path:
             raise ToolNotFoundError("blkls not found. Install Sleuth Kit.")
 
+        if not output_file:
+            raise ValueError("output_file is required for blkls (binary extraction tool)")
+
         cmd = [binary_path]
         if partition_offset:
             cmd.extend(["-o", partition_offset])
+        extra_args = sanitize_extra_args(extra_args or [], "blkls")
         cmd.extend(extra_args)
         cmd.append(image_file)
 
         evidence_id = audit._next_evidence_id()
-        exec_result = execute(cmd, timeout=3600)
+        exec_result = execute(cmd, timeout=3600, save_output=True, save_dir=output_file)
 
         response = build_response(
             tool_name="run_blkls",
             success=exec_result["exit_code"] == 0,
-            data=exec_result.get("stdout", ""),
+            data={"output_file": output_file} if exec_result["exit_code"] == 0 else exec_result.get("stderr", ""),
             evidence_id=evidence_id,
-            output_format="text",
             elapsed_seconds=exec_result["elapsed_seconds"],
             exit_code=exec_result["exit_code"],
             command=cmd,
@@ -115,13 +130,14 @@ def register_sleuthkit_tools(server, audit: AuditWriter):
         return response
 
     @server.tool()
-    def run_mmls(image_file: str, extra_args: list[str] = []) -> dict:
+    def run_mmls(image_file: str, extra_args: list[str] | None = None) -> dict:
         """Display partition table layout of a disk image (mmls)."""
         binary_path = find_binary("mmls")
         if not binary_path:
             raise ToolNotFoundError("mmls not found. Install Sleuth Kit.")
 
         cmd = [binary_path]
+        extra_args = sanitize_extra_args(extra_args or [], "mmls")
         cmd.extend(extra_args)
         cmd.append(image_file)
 

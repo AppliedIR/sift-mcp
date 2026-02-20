@@ -7,12 +7,13 @@ from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
 from sift_mcp.response import build_response
+from sift_mcp.security import sanitize_extra_args
 
 
 def register_hashing_tools(server, audit: AuditWriter):
 
     @server.tool()
-    def run_hashdeep(target: str, algorithm: str = "sha256", recursive: bool = True, extra_args: list[str] = []) -> dict:
+    def run_hashdeep(target: str, algorithm: str = "sha256", recursive: bool = True, extra_args: list[str] | None = None) -> dict:
         """Hash files with hashdeep. algorithm: md5, sha1, sha256."""
         binary_path = find_binary("hashdeep") or find_binary(f"{algorithm}deep")
         if not binary_path:
@@ -20,6 +21,7 @@ def register_hashing_tools(server, audit: AuditWriter):
         cmd = [binary_path]
         if recursive:
             cmd.append("-r")
+        extra_args = sanitize_extra_args(extra_args or [], "run_hashdeep")
         cmd.extend(extra_args)
         cmd.append(target)
         evidence_id = audit._next_evidence_id()

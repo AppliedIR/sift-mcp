@@ -7,16 +7,18 @@ from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
 from sift_mcp.response import build_response
+from sift_mcp.security import sanitize_extra_args
 
 
 def register_network_tools(server, audit: AuditWriter):
 
     @server.tool()
-    def run_tshark(pcap_file: str, display_filter: str = "", fields: list[str] = [], extra_args: list[str] = []) -> dict:
+    def run_tshark(pcap_file: str, display_filter: str = "", fields: list[str] | None = None, extra_args: list[str] | None = None) -> dict:
         """Analyze PCAP with tshark (Wireshark CLI). Use display_filter for filtering."""
         binary_path = find_binary("tshark")
         if not binary_path:
             raise ToolNotFoundError("tshark not found. Install Wireshark/tshark.")
+        fields = fields or []
         cmd = [binary_path, "-r", pcap_file]
         if display_filter:
             cmd.extend(["-Y", display_filter])
@@ -24,6 +26,7 @@ def register_network_tools(server, audit: AuditWriter):
             cmd.extend(["-e", f])
         if fields:
             cmd.extend(["-T", "fields"])
+        extra_args = sanitize_extra_args(extra_args or [], "tshark")
         cmd.extend(extra_args)
         evidence_id = audit._next_evidence_id()
         exec_result = execute(cmd, timeout=600)
@@ -38,12 +41,13 @@ def register_network_tools(server, audit: AuditWriter):
         return response
 
     @server.tool()
-    def run_zeek(pcap_file: str, scripts: list[str] = [], extra_args: list[str] = []) -> dict:
+    def run_zeek(pcap_file: str, extra_args: list[str] | None = None) -> dict:
         """Analyze PCAP with Zeek — generates protocol logs (conn, dns, http, ssl, etc.)."""
         binary_path = find_binary("zeek")
         if not binary_path:
             raise ToolNotFoundError("zeek not found.")
-        cmd = [binary_path, "-r", pcap_file] + scripts + extra_args
+        extra_args = sanitize_extra_args(extra_args or [], "zeek")
+        cmd = [binary_path, "-r", pcap_file] + extra_args
         evidence_id = audit._next_evidence_id()
         exec_result = execute(cmd, timeout=1200)
         response = build_response(

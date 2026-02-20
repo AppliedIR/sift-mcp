@@ -7,17 +7,19 @@ from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
 from sift_mcp.response import build_response
+from sift_mcp.security import sanitize_extra_args
 
 
 def register_imaging_tools(server, audit: AuditWriter):
 
     @server.tool()
-    def run_dc3dd(source: str, destination: str, hash_algorithm: str = "sha256", extra_args: list[str] = []) -> dict:
+    def run_dc3dd(source: str, destination: str, hash_algorithm: str = "sha256", extra_args: list[str] | None = None) -> dict:
         """Create forensic disk image with dc3dd (with inline hashing)."""
         binary_path = find_binary("dc3dd")
         if not binary_path:
             raise ToolNotFoundError("dc3dd not found.")
         cmd = [binary_path, f"if={source}", f"of={destination}", f"hash={hash_algorithm}", "log=/dev/stderr"]
+        extra_args = sanitize_extra_args(extra_args or [], "run_dc3dd")
         cmd.extend(extra_args)
         evidence_id = audit._next_evidence_id()
         exec_result = execute(cmd, timeout=7200)
@@ -33,11 +35,12 @@ def register_imaging_tools(server, audit: AuditWriter):
         return response
 
     @server.tool()
-    def run_ewfacquire(source: str, target_prefix: str, extra_args: list[str] = []) -> dict:
+    def run_ewfacquire(source: str, target_prefix: str, extra_args: list[str] | None = None) -> dict:
         """Create E01 forensic image with ewfacquire."""
         binary_path = find_binary("ewfacquire")
         if not binary_path:
             raise ToolNotFoundError("ewfacquire not found. Install libewf.")
+        extra_args = sanitize_extra_args(extra_args or [], "run_ewfacquire")
         cmd = [binary_path, "-t", target_prefix, "-u"] + extra_args + [source]
         evidence_id = audit._next_evidence_id()
         exec_result = execute(cmd, timeout=7200)

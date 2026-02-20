@@ -7,12 +7,13 @@ from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
 from sift_mcp.response import build_response
+from sift_mcp.security import sanitize_extra_args
 
 
 def register_registry_tools(server, audit: AuditWriter):
 
     @server.tool()
-    def run_regripper(hive_file: str, plugin: str = "", extra_args: list[str] = []) -> dict:
+    def run_regripper(hive_file: str, plugin: str = "", extra_args: list[str] | None = None) -> dict:
         """Run RegRipper against a registry hive. Specify plugin or run all."""
         binary_path = find_binary("rip.pl") or find_binary("regripper")
         if not binary_path:
@@ -22,6 +23,7 @@ def register_registry_tools(server, audit: AuditWriter):
             cmd.extend(["-p", plugin])
         else:
             cmd.append("-a")
+        extra_args = sanitize_extra_args(extra_args or [], "run_regripper")
         cmd.extend(extra_args)
         evidence_id = audit._next_evidence_id()
         exec_result = execute(cmd, timeout=600)

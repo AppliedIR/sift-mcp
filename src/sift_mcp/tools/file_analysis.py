@@ -8,16 +8,18 @@ from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
 from sift_mcp.parsers.json_parser import parse_json
 from sift_mcp.response import build_response
+from sift_mcp.security import sanitize_extra_args
 
 
 def register_file_analysis_tools(server, audit: AuditWriter):
 
     @server.tool()
-    def run_exiftool(target: str, extra_args: list[str] = []) -> dict:
+    def run_exiftool(target: str, extra_args: list[str] | None = None) -> dict:
         """Extract metadata from files using ExifTool."""
         binary_path = find_binary("exiftool")
         if not binary_path:
             raise ToolNotFoundError("exiftool not found.")
+        extra_args = sanitize_extra_args(extra_args or [], "run_exiftool")
         cmd = [binary_path, "-j"] + extra_args + [target]
         evidence_id = audit._next_evidence_id()
         exec_result = execute(cmd, timeout=300)
@@ -83,7 +85,7 @@ def register_file_analysis_tools(server, audit: AuditWriter):
         return response
 
     @server.tool()
-    def run_bulk_extractor(image_file: str, output_dir: str, extra_args: list[str] = []) -> dict:
+    def run_bulk_extractor(image_file: str, output_dir: str, extra_args: list[str] | None = None) -> dict:
         """Carve forensic records (emails, URLs, EXIF, network packets) from disk images or unallocated space (bulk_extractor).
 
         Args:
@@ -96,6 +98,7 @@ def register_file_analysis_tools(server, audit: AuditWriter):
             raise ToolNotFoundError("bulk_extractor not found. Install bulk-extractor.")
 
         cmd = [binary_path]
+        extra_args = sanitize_extra_args(extra_args or [], "run_bulk_extractor")
         cmd.extend(extra_args)
         cmd.extend(["-o", output_dir, image_file])
 

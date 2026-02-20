@@ -7,6 +7,7 @@ from sift_mcp.catalog import get_tool_def
 from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
+from sift_mcp.security import sanitize_extra_args
 from sift_mcp.parsers.json_parser import parse_json
 from sift_mcp.response import build_response
 
@@ -18,7 +19,7 @@ def register_volatility_tools(server, audit: AuditWriter):
     def run_volatility(
         memory_image: str,
         plugin: str,
-        extra_args: list[str] = [],
+        extra_args: list[str] | None = None,
         output_format: str = "json",
     ) -> dict:
         """Run a Volatility 3 plugin against a memory image.
@@ -39,6 +40,7 @@ def register_volatility_tools(server, audit: AuditWriter):
         if output_format == "json":
             cmd.extend(["-r", "json"])
         cmd.append(plugin)
+        extra_args = sanitize_extra_args(extra_args or [], "run_volatility")
         cmd.extend(extra_args)
 
         evidence_id = audit._next_evidence_id()

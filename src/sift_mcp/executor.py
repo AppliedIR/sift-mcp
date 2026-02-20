@@ -103,7 +103,13 @@ def _save_output(
     if not save_dir:
         return
 
-    out_dir = Path(save_dir)
+    out_dir = Path(save_dir).resolve()
+
+    # Block writes to system directories
+    _blocked_prefixes = ("/etc", "/usr", "/bin", "/sbin", "/lib", "/boot", "/proc", "/sys", "/dev")
+    if any(str(out_dir).startswith(p) for p in _blocked_prefixes):
+        raise ExecutionError(f"Refusing to write output to system directory: {out_dir}")
+
     out_dir.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

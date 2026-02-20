@@ -7,8 +7,8 @@ from sift_mcp.catalog import get_tool_def
 from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
-from sift_mcp.parsers.json_parser import parse_jsonl
 from sift_mcp.response import build_response
+from sift_mcp.security import sanitize_extra_args
 
 
 def register_timeline_tools(server, audit: AuditWriter):
@@ -19,7 +19,7 @@ def register_timeline_tools(server, audit: AuditWriter):
         evtx_dir: str,
         min_level: str = "medium",
         output_file: str = "",
-        extra_args: list[str] = [],
+        extra_args: list[str] | None = None,
     ) -> dict:
         """Run Hayabusa Sigma-based event log analyzer.
 
@@ -40,6 +40,7 @@ def register_timeline_tools(server, audit: AuditWriter):
         cmd = [binary_path, "csv-timeline", "-d", evtx_dir, "--min-level", min_level]
         if output_file:
             cmd.extend(["-o", output_file])
+        extra_args = sanitize_extra_args(extra_args or [], "run_hayabusa")
         cmd.extend(extra_args)
 
         evidence_id = audit._next_evidence_id()
@@ -68,7 +69,7 @@ def register_timeline_tools(server, audit: AuditWriter):
         return response
 
     @server.tool()
-    def run_mactime(body_file: str, date_range: str = "", extra_args: list[str] = []) -> dict:
+    def run_mactime(body_file: str, date_range: str = "", extra_args: list[str] | None = None) -> dict:
         """Convert bodyfile to timeline using mactime (Sleuth Kit).
 
         date_range: optional YYYY-MM-DD..YYYY-MM-DD filter.
@@ -84,6 +85,7 @@ def register_timeline_tools(server, audit: AuditWriter):
         cmd = [binary_path, "-b", body_file]
         if date_range:
             cmd.extend(["-d", date_range])
+        extra_args = sanitize_extra_args(extra_args or [], "run_mactime")
         cmd.extend(extra_args)
 
         evidence_id = audit._next_evidence_id()
