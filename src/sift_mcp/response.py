@@ -16,16 +16,16 @@ from forensic_knowledge import loader
 
 # Rotating discipline reminders — deterministic based on call counter
 DISCIPLINE_REMINDERS = [
-    "Evidence is sovereign — if evidence contradicts your theory, the theory is wrong",
-    "Absence of evidence ≠ evidence of absence — missing logs mean unknown, not 'didn't happen'",
-    "Correlation ≠ causation — temporal proximity does not prove relationship",
-    "Benign until proven malicious — most artifacts have innocent explanations",
-    "Show evidence for every claim — if you can't show it, you can't claim it",
-    "Stop at HITL checkpoints before: attribution, root cause, exclusion, scope changes",
-    "Query tools before writing conclusions — never guess when you can check",
-    "UNKNOWN from triage tools is neutral — not-in-database ≠ suspicious",
-    "Verify field meanings before interpreting values — check documentation, not assumptions",
-    "Consider alternative explanations — tunnel vision is an anti-pattern",
+    "Evidence is sovereign — if results conflict with your hypothesis, revise the hypothesis, never reinterpret evidence to fit",
+    "Absence of evidence ≠ evidence of absence — record the gap explicitly, check if logs were cleared or never enabled",
+    "Correlation ≠ causation — look for a mechanism connecting events, consider coincidence and common causes",
+    "Benign until proven malicious — check baseline expectations first, require positive evidence of malice",
+    "Show evidence for every claim — every sentence in a finding must trace back to a specific evidence_id",
+    "Stop at HITL checkpoints — stage as DRAFT and tell the examiner before: attribution, root cause, exclusion, scope",
+    "Query tools before conclusions — run the relevant tool first, cite the evidence_id, never guess when you can check",
+    "UNKNOWN from triage is neutral — investigate further with other tools, do not escalate based on UNKNOWN alone",
+    "Verify field meanings — cross-check values against documentation, flag anomalies, do not assume field semantics",
+    "Consider alternatives — after forming a hypothesis, search for contradicting evidence before corroborating evidence",
 ]
 
 # Per-process call counter for deterministic reminder rotation
