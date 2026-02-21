@@ -4,14 +4,22 @@ Catalog-gated forensic tool execution with knowledge-enriched response envelopes
 
 ## Architecture
 
-sift-mcp runs as a subprocess of [aiir-gateway](https://github.com/AppliedIR/aiir-gateway). LLM clients connect to the gateway over Streamable HTTP -- they never talk to sift-mcp directly.
+sift-mcp runs as a subprocess of [aiir-gateway](https://github.com/AppliedIR/aiir-gateway). The LLM client and aiir CLI both run on the SIFT workstation. The LLM client connects to the gateway over Streamable HTTP -- it never talks to sift-mcp directly.
 
 ```mermaid
 graph LR
-    C["LLM Client<br/>(Claude Code, Goose,<br/>Cursor, OpenCode, ...)"] -->|"Streamable HTTP<br/>port 4508"| GW[aiir-gateway]
-    GW -->|"subprocess<br/>(internal)"| SM[sift-mcp]
-    SM --> TOOLS["SIFT Forensic Tools"]
-    SM --> FK["forensic-knowledge<br/>(caveats, corroboration,<br/>discipline)"]
+    subgraph sift ["SIFT Workstation"]
+        C["LLM Client + aiir CLI"]
+        GW[aiir-gateway]
+        SM[sift-mcp]
+        TOOLS["SIFT Forensic Tools"]
+        FK["forensic-knowledge"]
+
+        C -->|"Streamable HTTP<br/>port 4508"| GW
+        GW -->|"subprocess"| SM
+        SM --> TOOLS
+        SM --> FK
+    end
 ```
 
 ### Execution Pipeline
