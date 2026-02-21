@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 # BaseHTTPMiddleware buffers responses and breaks SSE streaming.
 _PUBLIC_PATHS = {"/health", "/health/", "/mcp"}
 
+# Maximum length for bearer tokens (DoS protection against megabyte-sized headers)
+_MAX_TOKEN_LENGTH = 1024
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
     """Starlette middleware for API key authentication.
@@ -51,6 +54,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         token = auth_header[7:].strip()
 
+        # Length check: reject excessively long tokens before timing-safe comparison
+        if len(token) > _MAX_TOKEN_LENGTH:
+            logger.warning("Rejected oversized bearer token (%d bytes)", len(token))
+            return JSONResponse(
+                {"error": "Invalid API key"},
+                status_code=403,
+            )
+
         # Timing-safe key lookup: iterate ALL keys to prevent timing leaks
         matched_key = None
         for candidate in self.api_keys:
@@ -63,7 +74,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 status_code=403,
             )
 
-        key_info = self.api_keys[matched_key]
+        key_info = self.api_keys.get(matched_key, {})
+        if not isinstance(key_info, dict):
+            logger.error("API key config for matched key is not a dict, got %s", type(key_info).__name__)
+            return JSONResponse(
+                {"error": "Server configuration error"},
+                status_code=500,
+            )
         request.state.analyst = key_info.get("examiner", key_info.get("analyst", "unknown"))
         request.state.role = key_info.get("role", "examiner")
         return await call_next(request)

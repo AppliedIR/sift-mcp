@@ -72,7 +72,7 @@ async def call_tool(request: Request) -> JSONResponse:
 
     try:
         body = json.loads(raw_body)
-    except (json.JSONDecodeError, Exception):
+    except json.JSONDecodeError:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
 
     arguments = body.get("arguments", {})
@@ -102,10 +102,16 @@ async def call_tool(request: Request) -> JSONResponse:
             "backend": gateway._tool_map[tool_name],
             "result": serialized,
         })
-    except Exception as exc:
-        logger.error("Tool call failed: %s — %s", tool_name, exc)
+    except KeyError as exc:
+        logger.error("Tool call failed — tool not in map: %s — %s", tool_name, exc)
         return JSONResponse(
-            {"error": "Tool call failed", "tool": tool_name},
+            {"error": f"Tool not found: {tool_name}"},
+            status_code=404,
+        )
+    except Exception as exc:
+        logger.error("Tool call failed: %s — %s: %s", tool_name, type(exc).__name__, exc, exc_info=True)
+        return JSONResponse(
+            {"error": "Tool call failed", "tool": tool_name, "error_type": type(exc).__name__},
             status_code=500,
         )
 

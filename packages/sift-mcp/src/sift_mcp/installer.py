@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import platform
@@ -56,7 +57,6 @@ def install_hayabusa() -> str | None:
             logger.warning("Cannot reach GitHub API for Hayabusa install")
             return None
 
-        import json
         try:
             release = json.loads(result.stdout)
         except json.JSONDecodeError as e:

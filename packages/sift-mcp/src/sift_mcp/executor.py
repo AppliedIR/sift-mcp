@@ -112,7 +112,7 @@ def _save_output(
 
     # Block writes to system directories
     _blocked_prefixes = ("/etc", "/usr", "/bin", "/sbin", "/lib", "/boot", "/proc", "/sys", "/dev")
-    if any(str(out_dir).startswith(p) for p in _blocked_prefixes):
+    if any(str(out_dir) == p or str(out_dir).startswith(p + "/") for p in _blocked_prefixes):
         raise ExecutionError(f"Refusing to write output to system directory: {out_dir}")
 
     try:

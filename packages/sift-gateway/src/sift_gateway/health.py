@@ -1,11 +1,15 @@
 """Health check endpoint."""
 
+import asyncio
 import logging
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
+
+# Timeout (seconds) for individual backend health checks
+_HEALTH_CHECK_TIMEOUT = 10
 
 
 async def health_endpoint(request: Request) -> JSONResponse:
@@ -26,13 +30,15 @@ async def health_endpoint(request: Request) -> JSONResponse:
     backend_health = {}
     for name, backend in gateway.backends.items():
         try:
-            backend_health[name] = await backend.health_check()
-        except (RuntimeError, ConnectionError, OSError) as e:
-            logger.warning("Health check failed for backend %s: %s", name, e)
-            backend_health[name] = {"status": "error", "detail": str(e)}
-        except Exception as e:
-            logger.warning("Health check unexpected error for backend %s: %s", name, e)
-            backend_health[name] = {"status": "error"}
+            backend_health[name] = await asyncio.wait_for(
+                backend.health_check(), timeout=_HEALTH_CHECK_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Health check timed out for backend %s after %ds", name, _HEALTH_CHECK_TIMEOUT)
+            backend_health[name] = {"status": "error", "error": "health check timed out"}
+        except Exception as exc:
+            logger.warning("Health check failed for backend %s: %s: %s", name, type(exc).__name__, exc)
+            backend_health[name] = {"status": "error", "error": type(exc).__name__}
 
     tools_count = len(gateway._tool_map)
     all_ok = all(h.get("status") == "ok" for h in backend_health.values())

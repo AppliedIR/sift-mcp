@@ -67,4 +67,7 @@ def load_config(path: str) -> dict:
     if raw is None:
         return {}
 
+    if not isinstance(raw, dict):
+        raise ValueError(f"Config file must contain a YAML mapping, got {type(raw).__name__}: {path}")
+
     return _walk_and_interpolate(raw)

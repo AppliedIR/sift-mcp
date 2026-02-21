@@ -10,6 +10,7 @@ in the Starlette app.
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 from typing import Any, Sequence
 
@@ -22,6 +23,12 @@ from starlette.responses import JSONResponse
 from sift_gateway.rate_limit import check_rate_limit
 
 logger = logging.getLogger(__name__)
+
+# Maximum length for bearer tokens (DoS protection)
+_MAX_TOKEN_LENGTH = 1024
+
+# Maximum MCP request body size (10 MB)
+_MAX_REQUEST_BYTES = 10 * 1024 * 1024
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +69,16 @@ class MCPAuthASGIApp:
             await resp(scope, receive, send)
             return
 
+        # Request size validation via Content-Length header
+        content_length = _get_content_length(scope)
+        if content_length is not None and content_length > _MAX_REQUEST_BYTES:
+            resp = JSONResponse(
+                {"error": f"Request body too large (max {_MAX_REQUEST_BYTES} bytes)"},
+                status_code=413,
+            )
+            await resp(scope, receive, send)
+            return
+
         if not self.api_keys:
             # No keys configured — single-user / anonymous mode
             scope["state"]["analyst"] = "anonymous"
@@ -80,6 +97,16 @@ class MCPAuthASGIApp:
             await resp(scope, receive, send)
             return
 
+        # Length check: reject excessively long tokens before timing-safe comparison
+        if len(token) > _MAX_TOKEN_LENGTH:
+            logger.warning("MCP endpoint: rejected oversized bearer token (%d bytes)", len(token))
+            resp = JSONResponse(
+                {"error": "Invalid API key"},
+                status_code=403,
+            )
+            await resp(scope, receive, send)
+            return
+
         # Timing-safe key lookup: iterate ALL keys to prevent timing leaks
         matched_key = None
         for candidate in self.api_keys:
@@ -94,7 +121,16 @@ class MCPAuthASGIApp:
             await resp(scope, receive, send)
             return
 
-        key_info = self.api_keys[matched_key]
+        key_info = self.api_keys.get(matched_key, {})
+        if not isinstance(key_info, dict):
+            logger.error("MCP endpoint: API key config for matched key is not a dict")
+            resp = JSONResponse(
+                {"error": "Server configuration error"},
+                status_code=500,
+            )
+            await resp(scope, receive, send)
+            return
+
         scope["state"]["analyst"] = key_info.get(
             "examiner", key_info.get("analyst", "unknown")
         )
@@ -102,12 +138,28 @@ class MCPAuthASGIApp:
         await self.session_manager.handle_request(scope, receive, send)
 
 
+def _get_content_length(scope: dict) -> int | None:
+    """Extract Content-Length from raw ASGI scope headers. Returns None if absent or invalid."""
+    headers: list[tuple[bytes, bytes]] = scope.get("headers", [])
+    for name, value in headers:
+        if name.lower() == b"content-length":
+            try:
+                return int(value.decode("latin-1"))
+            except (ValueError, OverflowError, UnicodeDecodeError):
+                return None
+    return None
+
+
 def _extract_bearer_token(scope: dict) -> str | None:
     """Pull the bearer token from raw ASGI scope headers."""
     headers: list[tuple[bytes, bytes]] = scope.get("headers", [])
     for name, value in headers:
         if name.lower() == b"authorization":
-            decoded = value.decode("latin-1")
+            try:
+                decoded = value.decode("latin-1")
+            except (UnicodeDecodeError, AttributeError):
+                logger.warning("MCP endpoint: failed to decode authorization header")
+                return None
             if decoded.lower().startswith("bearer "):
                 return decoded[7:].strip()
     return None
@@ -160,7 +212,6 @@ def create_mcp_server(gateway: Any) -> Server:
             if isinstance(item, TextContent):
                 contents.append(item)
             elif hasattr(item, "model_dump"):
-                import json
                 contents.append(TextContent(type="text", text=json.dumps(item.model_dump())))
             else:
                 contents.append(TextContent(type="text", text=str(item)))

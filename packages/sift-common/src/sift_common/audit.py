@@ -140,8 +140,11 @@ class AuditWriter:
         self._write_entry(entry)
         return evidence_id
 
-    def _write_entry(self, entry: dict) -> None:
-        """Write a single audit entry to the JSONL file with fsync."""
+    def _write_entry(self, entry: dict) -> bool:
+        """Write a single audit entry to the JSONL file with fsync.
+
+        Returns True if the entry was written successfully, False otherwise.
+        """
         audit_dir = self._get_audit_dir()
         if not audit_dir:
             logger.debug(
@@ -149,20 +152,21 @@ class AuditWriter:
                 self.mcp_name,
                 entry.get("tool"),
             )
-            return
+            return False
         try:
             log_file = audit_dir / f"{self.mcp_name}.jsonl"
             with open(log_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, default=str) + "\n")
                 f.flush()
                 os.fsync(f.fileno())
+            return True
         except OSError as e:
             logger.warning(
-                "Failed to write audit entry for evidence_id=%s: %s — "
-                "this evidence_id was NOT durably recorded",
-                entry.get("evidence_id", "unknown"),
-                e,
+                "Failed to write audit entry for evidence_id=%s tool=%s: %s "
+                "(this evidence_id was NOT recorded to the audit trail)",
+                entry.get("evidence_id"), entry.get("tool"), e,
             )
+            return False
 
     def get_entries(
         self, since: str | None = None, case_id: str | None = None
@@ -175,20 +179,24 @@ class AuditWriter:
         if not log_file.exists():
             return []
         entries = []
-        with open(log_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if since and entry.get("ts", "") < since:
-                    continue
-                if case_id and entry.get("case_id", "") != case_id:
-                    continue
-                entries.append(entry)
+        try:
+            with open(log_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        logger.warning("Corrupt JSONL line in %s", log_file)
+                        continue
+                    if since and entry.get("ts", "") < since:
+                        continue
+                    if case_id and entry.get("case_id", "") != case_id:
+                        continue
+                    entries.append(entry)
+        except OSError as e:
+            logger.warning("Failed to read audit entries from %s: %s", log_file, e)
         return entries
 
     def reset_counter(self) -> None:

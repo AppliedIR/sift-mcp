@@ -96,7 +96,15 @@ def setup_logging(
             file_handler.setLevel(level)
             file_handler.setFormatter(_StructuredFormatter(service_name))
             pkg_logger.addHandler(file_handler)
-        except OSError:
-            pkg_logger.warning("Failed to set up file logging to ~/.aiir/logs/")
+        except OSError as exc:
+            pkg_logger.warning(
+                "Failed to set up file logging to ~/.aiir/logs/: %s: %s",
+                type(exc).__name__, exc,
+            )
+        except Exception as exc:
+            pkg_logger.warning(
+                "Unexpected error setting up file logging: %s: %s",
+                type(exc).__name__, exc,
+            )
 
     pkg_logger.propagate = False
