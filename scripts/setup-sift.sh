@@ -561,21 +561,29 @@ if [[ -z "$EXAMINER" ]]; then
     EXAMINER=$(whoami | tr '[:upper:]' '[:lower:]')
 fi
 
-# Save to config
+# Save to config (update existing examiner line or create fresh)
 mkdir -p "$HOME/.aiir"
-cat > "$HOME/.aiir/config.yaml" << EOF
-examiner: $EXAMINER
-EOF
+CONFIG_FILE="$HOME/.aiir/config.yaml"
+if [[ -f "$CONFIG_FILE" ]] && grep -q "^examiner:" "$CONFIG_FILE" 2>/dev/null; then
+    sed -i "s/^examiner:.*$/examiner: $EXAMINER/" "$CONFIG_FILE"
+else
+    echo "examiner: $EXAMINER" >> "$CONFIG_FILE"
+fi
 ok "Saved examiner identity: $EXAMINER"
 
-# Add AIIR_EXAMINER to shell profile
+# Add or update AIIR_EXAMINER in shell profile
 SHELL_RC=""
 if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC="$HOME/.bashrc";
 elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC="$HOME/.zshrc"; fi
 
-if [[ -n "$SHELL_RC" ]] && ! grep -q "AIIR_EXAMINER" "$SHELL_RC" 2>/dev/null; then
-    echo "export AIIR_EXAMINER=\"$EXAMINER\"" >> "$SHELL_RC"
-    ok "Added AIIR_EXAMINER to $SHELL_RC"
+if [[ -n "$SHELL_RC" ]]; then
+    if grep -q "AIIR_EXAMINER" "$SHELL_RC" 2>/dev/null; then
+        sed -i "s/^export AIIR_EXAMINER=.*$/export AIIR_EXAMINER=\"$EXAMINER\"/" "$SHELL_RC"
+        ok "Updated AIIR_EXAMINER in $SHELL_RC"
+    else
+        echo "export AIIR_EXAMINER=\"$EXAMINER\"" >> "$SHELL_RC"
+        ok "Added AIIR_EXAMINER to $SHELL_RC"
+    fi
 fi
 export AIIR_EXAMINER="$EXAMINER"
 
@@ -641,6 +649,9 @@ GATEWAY_PORT=4508
 # Generate gateway.yaml with all installed packages as backends
 info "Generating gateway configuration..."
 mkdir -p "$(dirname "$GATEWAY_CONFIG")"
+
+export _INST_OPENCTI_URL="${OPENCTI_URL:-}"
+export _INST_OPENCTI_TOKEN="${OPENCTI_TOKEN:-}"
 
 "$VENV_PYTHON" -c "
 import yaml, os
