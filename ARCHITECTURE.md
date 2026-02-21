@@ -26,7 +26,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 
 | Component | Runs on | Port | Protocol (to clients) | Protocol (internal) |
 |-----------|---------|------|-----------------------|---------------------|
-| aiir-gateway | SIFT | 4508 | Streamable HTTP MCP | stdio to backends |
+| sift-gateway | SIFT | 4508 | Streamable HTTP MCP | stdio to backends |
 | forensic-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | sift-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | forensic-rag-mcp | SIFT | — | (via gateway) | stdio subprocess |
@@ -34,20 +34,22 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | opencti-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | wintools-mcp | Windows | 4624 | Streamable HTTP MCP | — |
 | aiir CLI | SIFT | — | — (filesystem) | — |
+| sift-common | SIFT | — | — (internal package) | — |
 | forensic-knowledge | anywhere | — | — (pip package) | — |
 
 ### What each component does
 
 | Component | Purpose |
 |-----------|---------|
-| **aiir-gateway** | Aggregates SIFT-local MCPs. Starts each as a stdio subprocess. Exposes all their tools via `/mcp` (Streamable HTTP) and `/api/v1/tools` (REST). API key → examiner identity mapping for multi-user. |
+| **sift-gateway** | Aggregates SIFT-local MCPs. Starts each as a stdio subprocess. Exposes all their tools via `/mcp` (Streamable HTTP) and `/api/v1/tools` (REST). API key → examiner identity mapping for multi-user. |
 | **forensic-mcp** | Case management, findings, timeline, evidence, TODOs, audit, discipline rules, reports. The investigation state machine. 48 tools. |
 | **sift-mcp** | Catalog-gated forensic tool execution on Linux/SIFT. Zimmerman suite, Volatility, Sleuth Kit, Hayabusa, etc. FK-enriched response envelopes. 35 tools, 36 catalog entries. |
 | **forensic-rag-mcp** | Semantic search across Sigma rules, MITRE ATT&CK, Atomic Red Team, Splunk, KAPE, Velociraptor, LOLBAS, GTFOBins. |
 | **windows-triage-mcp** | Offline Windows baseline validation. Checks files, processes, services, scheduled tasks, registry, DLLs, pipes against known-good databases. |
 | **opencti-mcp** | Threat intelligence from OpenCTI. IOC lookup, threat actor search, malware search, MITRE technique search. |
-| **wintools-mcp** | Catalog-gated forensic tool execution on Windows. Zimmerman suite, Hayabusa. FK-enriched response envelopes. Denylist blocks dangerous binaries. 23 tools, 16 catalog entries. |
+| **wintools-mcp** | Catalog-gated forensic tool execution on Windows. Zimmerman suite, Hayabusa. FK-enriched response envelopes. Denylist blocks dangerous binaries. 23 tools, 22 catalog entries. |
 | **aiir CLI** | Human-only actions: approve/reject findings, review case status, manage evidence, execute forensic commands with audit trail, configure examiner identity. Not callable by AI. |
+| **sift-common** | Shared internal package. Canonical AuditWriter, operational logging (oplog), CSV/JSON/text output parsers. Used by all SIFT MCPs. |
 | **forensic-knowledge** | Pip-installable YAML data package. Tool guidance, artifact knowledge, discipline rules, playbooks, collection checklists. No runtime state. |
 
 ---
@@ -61,7 +63,7 @@ One SIFT workstation. The LLM client and aiir CLI both run on SIFT.
 ```
 ┌─────────────────────── SIFT Workstation ───────────────────────┐
 │                                                                │
-│  LLM Client ──streamable-http──► aiir-gateway :4508            │
+│  LLM Client ──streamable-http──► sift-gateway :4508            │
 │                                      │                         │
 │                                    stdio                       │
 │                                      │                         │
@@ -79,7 +81,7 @@ SIFT workstation + Windows forensic VM. The LLM client and aiir CLI run on SIFT.
 ```
 ┌─────────────────────── SIFT Workstation ───────────────────────┐
 │                                                                │
-│  LLM Client ──streamable-http──► aiir-gateway :4508 ──► MCPs  │
+│  LLM Client ──streamable-http──► sift-gateway :4508 ──► MCPs  │
 │                                                                │
 │  aiir CLI ──filesystem──► Case Directory                       │
 │                                                                │
@@ -98,12 +100,12 @@ LLM Client ──streamable-http──► wintools-mcp :4624
 
 ### Multi-examiner
 
-Multiple examiners share a case. Each examiner runs their own full stack (LLM client, aiir CLI, aiir-gateway, and all MCPs) on their own SIFT workstation. The case directory lives on shared storage (NFS or SMB) so all examiners read and write the same case.
+Multiple examiners share a case. Each examiner runs their own full stack (LLM client, aiir CLI, sift-gateway, and all MCPs) on their own SIFT workstation. The case directory lives on shared storage (NFS or SMB) so all examiners read and write the same case.
 
 ```
 ┌─ Examiner 1 — SIFT Workstation ─┐
 │ LLM Client + aiir CLI            │
-│ aiir-gateway :4508 ──► MCPs      │
+│ sift-gateway :4508 ──► MCPs      │
 │                                   │
 └───────────────────────────────────┘
         │
@@ -117,7 +119,7 @@ Multiple examiners share a case. Each examiner runs their own full stack (LLM cl
         │
 ┌─ Examiner 2 — SIFT Workstation ─┐
 │ LLM Client + aiir CLI            │
-│ aiir-gateway :4508 ──► MCPs      │
+│ sift-gateway :4508 ──► MCPs      │
 │                                   │
 └───────────────────────────────────┘
 ```
@@ -161,7 +163,7 @@ LLM Client
     │  MCP Streamable HTTP (POST /mcp, SSE responses)
     │
     ▼
-aiir-gateway :4508                     wintools-mcp :4624
+sift-gateway :4508                     wintools-mcp :4624
     │                                      │
     │  stdio (subprocess)                  │  subprocess.run(shell=False)
     │                                      │
@@ -230,14 +232,8 @@ Generated `.mcp.json` example:
 
 | Repo | GitHub | Purpose |
 |------|--------|---------|
+| [sift-mcp](https://github.com/AppliedIR/sift-mcp) | AppliedIR/sift-mcp | SIFT monorepo: forensic-mcp, sift-mcp, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, sift-common, SIFT installer, platform docs |
+| [wintools-mcp](https://github.com/AppliedIR/wintools-mcp) | AppliedIR/wintools-mcp | Windows tool execution MCP + Windows installer |
 | [aiir](https://github.com/AppliedIR/aiir) | AppliedIR/aiir | CLI + this architecture doc |
-| [forensic-mcp](https://github.com/AppliedIR/forensic-mcp) | AppliedIR/forensic-mcp | Case management MCP |
-| [sift-mcp](https://github.com/AppliedIR/sift-mcp) | AppliedIR/sift-mcp | SIFT tool execution MCP |
-| [wintools-mcp](https://github.com/AppliedIR/wintools-mcp) | AppliedIR/wintools-mcp | Windows tool execution MCP |
-| [forensic-knowledge](https://github.com/AppliedIR/forensic-knowledge) | AppliedIR/forensic-knowledge | Shared YAML data package |
-| [aiir-gateway](https://github.com/AppliedIR/aiir-gateway) | AppliedIR/aiir-gateway | HTTP gateway |
-| [forensic-rag-mcp](https://github.com/AppliedIR/forensic-rag-mcp) | AppliedIR/forensic-rag-mcp | Knowledge search MCP |
-| [windows-triage-mcp](https://github.com/AppliedIR/windows-triage-mcp) | AppliedIR/windows-triage-mcp | Windows baseline MCP |
-| [opencti-mcp](https://github.com/AppliedIR/opencti-mcp) | AppliedIR/opencti-mcp | Threat intelligence MCP |
 
 All repos are private under the AppliedIR GitHub org.

@@ -13,7 +13,7 @@
 #
 # Usage:
 #   ./setup-sift.sh                                    # Interactive (default: Recommended)
-#   ./setup-sift.sh --quick -y --examiner=steve        # Fully unattended quickstart
+#   ./setup-sift.sh --quick -y --examiner=steve --client=claude-code  # Unattended
 #   ./setup-sift.sh --recommended -y                   # Fully unattended recommended
 #   ./setup-sift.sh --full                             # Custom mode (interactive)
 #   ./setup-sift.sh --quick --manual-start             # No auto-start
@@ -846,33 +846,22 @@ if $REMOTE_MODE; then
     echo "Replace the IP with this machine's address if auto-detect is wrong."
 elif $AIIR_CLI_INSTALLED; then
     if [[ -n "$CLIENT_ARG" ]]; then
-        # --client=X: implies local, pass through
+        # --client=X: explicit client choice
         header "LLM Client Configuration"
         "$AIIR_CLI" setup client \
             --sift="http://127.0.0.1:$GATEWAY_PORT" \
             --client="$CLIENT_ARG" \
             --examiner="$EXAMINER" \
             -y && CLIENT_CONFIGURED=true || warn "Client configuration failed"
-    elif [[ "$MODE" == "minimal" ]]; then
-        # Quickstart: auto-configure Claude Code
-        header "LLM Client Configuration"
-        info "Auto-configuring Claude Code..."
-        "$AIIR_CLI" setup client \
-            --sift="http://127.0.0.1:$GATEWAY_PORT" \
-            --client=claude-code \
-            --examiner="$EXAMINER" \
-            -y && CLIENT_CONFIGURED=true || warn "Client configuration failed"
+    elif $AUTO_YES; then
+        # Non-interactive without --client: skip (require --client for unattended)
+        echo ""
+        info "No --client specified — skipping LLM client configuration"
+        echo "  Configure later: aiir setup client --sift=http://127.0.0.1:$GATEWAY_PORT"
     else
-        # Recommended / Custom: ask
+        # Interactive: always ask
         header "LLM Client Configuration"
-        if $AUTO_YES; then
-            info "Auto-configuring Claude Code..."
-            "$AIIR_CLI" setup client \
-                --sift="http://127.0.0.1:$GATEWAY_PORT" \
-                --client=claude-code \
-                --examiner="$EXAMINER" \
-                -y && CLIENT_CONFIGURED=true || warn "Client configuration failed"
-        elif prompt_yn "Working from this machine? Configure LLM client now?" "y"; then
+        if prompt_yn "Working from this machine? Configure LLM client now?" "y"; then
             "$AIIR_CLI" setup client \
                 --sift="http://127.0.0.1:$GATEWAY_PORT" \
                 --examiner="$EXAMINER" && CLIENT_CONFIGURED=true || warn "Client configuration failed"
@@ -952,5 +941,5 @@ if $INSTALL_TRIAGE && [[ "$MODE" != "custom" ]]; then
 fi
 
 echo ""
-echo -e "${BOLD}Documentation:${NC} $INSTALL_DIR/packages/forensic-mcp/AGENTS.md"
+echo -e "${BOLD}Documentation:${NC} $INSTALL_DIR/AGENTS.md"
 echo ""

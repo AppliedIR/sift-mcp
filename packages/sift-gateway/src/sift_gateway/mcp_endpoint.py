@@ -124,7 +124,7 @@ def create_mcp_server(gateway: Any) -> Server:
     collision-prefixed names).  ``@server.call_tool()`` routes to the
     correct backend, injecting analyst identity from the HTTP request.
     """
-    server = Server("aiir-gateway")
+    server = Server("sift-gateway")
 
     @server.list_tools()
     async def _list_tools() -> list[Tool]:

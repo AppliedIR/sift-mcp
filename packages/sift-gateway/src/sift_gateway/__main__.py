@@ -1,4 +1,4 @@
-"""Entry point for aiir-gateway."""
+"""Entry point for sift-gateway."""
 
 import argparse
 import uvicorn
@@ -9,7 +9,7 @@ from sift_gateway.server import Gateway
 
 
 def main():
-    setup_logging("aiir-gateway")
+    setup_logging("sift-gateway")
     parser = argparse.ArgumentParser(
         description="AIIR Gateway — MCP aggregation service"
     )

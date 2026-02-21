@@ -74,7 +74,7 @@ backends:
 
   # --- Remote HTTP backends ---
 
-  # Windows forensic workstation running its own gateway
+  # Windows forensic workstation running wintools-mcp
   wintools-mcp:
     type: http
     url: "http://windows-workstation:4624/mcp"

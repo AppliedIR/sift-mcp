@@ -12,15 +12,21 @@ graph LR
         CC["LLM Client<br/>(human interface)"]
         CLI["aiir CLI<br/>(human interface)"]
         GW["sift-gateway<br/>:4508"]
+        FM["forensic-mcp"]
         SM["sift-mcp"]
-        TOOLS["SIFT Forensic Tools"]
+        RAG["forensic-rag"]
+        WT["windows-triage"]
+        OC["opencti"]
         FK["forensic-knowledge"]
         CASE["Case Directory"]
 
         CC -->|"streamable-http"| GW
+        GW -->|stdio| FM
         GW -->|stdio| SM
-        SM --> TOOLS
-        SM --> FK
+        GW -->|stdio| RAG
+        GW -->|stdio| WT
+        GW -->|stdio| OC
+        FM --> CASE
         CLI --> CASE
     end
 ```
@@ -250,7 +256,7 @@ Case directories can reside on external or removable media. ext4 is preferred fo
 
 ## Responsible Use
 
-This project demonstrates the capabilities of AI-assisted incident response. While steps have been taken to enforce human-in-the-loop controls, it is ultimately the responsibility of each examiner to ensure that their findings are accurate and complete. Ultimate responsibility rests with the human. The AI, like a hex editor, is a tool to be used by properly trained incident response professionals. Users are responsible for ensuring their use complies with applicable laws, regulations, and organizational policies.
+This project demonstrates the capabilities of Artificial Intelligence Incident Response (AIIR). While steps have been taken to enforce human-in-the-loop controls, it is ultimately the responsibility of each examiner to ensure that their findings are accurate and complete. Ultimate responsibility rests with the human. The AI, like a hex editor, is a tool to be used by properly trained incident response professionals. Users are responsible for ensuring their use complies with applicable laws, regulations, and organizational policies.
 
 ## Acknowledgments
 

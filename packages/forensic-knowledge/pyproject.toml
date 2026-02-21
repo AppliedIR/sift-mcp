@@ -27,8 +27,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/AppliedIR/forensic-knowledge"
-Repository = "https://github.com/AppliedIR/forensic-knowledge"
+Homepage = "https://github.com/AppliedIR/sift-mcp/tree/main/packages/forensic-knowledge"
+Repository = "https://github.com/AppliedIR/sift-mcp"
 
 [project.optional-dependencies]
 dev = [
