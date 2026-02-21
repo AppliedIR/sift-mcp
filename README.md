@@ -238,7 +238,7 @@ This project demonstrates the capabilities of AI-assisted incident response. Whi
 
 ## Acknowledgments
 
-Architecture and direction by Steve Anson. Implementation by Claude Code (Anthropic).
+Architecture and direction by Steve Anson. Implementation by Claude Code (Anthropic). Design inspiration drawn from Lenny Zeltser's [REMnux MCP](https://github.com/REMnux/remnux-mcp-server).
 
 ## License
 

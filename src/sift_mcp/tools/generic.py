@@ -43,8 +43,12 @@ def run_command(
 
     # Resolve binary via find_binary to prevent absolute path bypass
     resolved = find_binary(binary)
-    if resolved:
-        command = [resolved] + command[1:]
+    if not resolved:
+        raise ToolNotInCatalogError(
+            f"Tool '{binary}' is in the catalog but not installed on this system. "
+            f"Use list_missing_tools() for installation guidance."
+        )
+    command = [resolved] + command[1:]
 
     # Sanitize any args after the binary
     sanitize_extra_args(command[1:], tool_name=binary)
