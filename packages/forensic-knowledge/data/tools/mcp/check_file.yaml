@@ -1,0 +1,34 @@
+name: check_file
+category: mcp
+description: "Check a Windows file path against a known-good baseline to determine if the file is expected on a clean system"
+platform: [any]
+platform_notes: "MCP server tool. Platform depends on where the MCP server is hosted, not on the analysis target."
+artifacts_parsed: []
+mcp_server: windows-triage-mcp
+
+caveats:
+  - "Baseline comparison only determines if a file path EXISTS in a clean Windows installation"
+  - "A file being in the baseline does not mean it is legitimate — malware can replace legitimate files"
+  - "A file NOT in the baseline is not necessarily malicious — user-installed software and updates add files"
+  - "The baseline is version-specific; files valid on one Windows version may not exist on another"
+  - "Path matching is case-insensitive but otherwise exact; variations in path format may cause misses"
+  - "Does not check file content, hash, or digital signature — only the path/name"
+
+output_notes:
+  format: structured_json
+  key_fields: [path, in_baseline, os_version, hash_match]
+
+advisories:
+  - "Use as a TRIAGE tool to quickly identify files that warrant deeper investigation"
+  - "Files in common malware staging locations (Temp, AppData, ProgramData, Public) that are NOT in the baseline deserve scrutiny"
+  - "Combine with hash lookups (check_hash) for stronger validation"
+  - "System files found outside their expected directories are suspicious regardless of baseline status"
+  - "Always verify results against the specific Windows version of the target system"
+
+investigation_sequence:
+  - "Check suspicious file paths against the Windows baseline for initial triage"
+  - "Remember that UNKNOWN results are neutral — not-in-database does not mean malicious"
+  - "Follow up baseline checks with hash lookups (check_hash) for stronger validation"
+  - "Check file digital signatures with sigcheck for authenticity verification"
+  - "Cross-reference file presence with Amcache and Prefetch for execution context"
+  - "Compare file paths across multiple analysis sources for consistency"

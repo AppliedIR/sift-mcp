@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "forensic-knowledge"
+version = "0.1.0"
+description = "Community-curated forensic artifact, tool, and discipline knowledge — YAML-backed, pip-installable"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "AppliedIncidentResponse.com"},
+]
+keywords = ["forensics", "incident-response", "dfir", "artifacts", "knowledge-base"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/AppliedIR/forensic-knowledge"
+Repository = "https://github.com/AppliedIR/forensic-knowledge"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/forensic_knowledge"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"data" = "forensic_knowledge/data"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "data/", "tests/", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src/forensic_knowledge"]
+branch = true

@@ -1,0 +1,56 @@
+name: Task Scheduler Event Log
+description: "Windows Task Scheduler operational event log recording task creation, execution, completion, and modification events"
+platform: windows
+
+locations:
+  - path: "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-TaskScheduler%4Operational.evtx"
+    os_versions: ["Windows Vista+", "Windows 10", "Windows 11"]
+    notes: "Disabled by default on some Windows versions. Must be enabled via Event Viewer or Group Policy for full logging."
+
+proves:
+  - "Scheduled tasks were created, modified, or deleted"
+  - "Scheduled tasks executed at specific times"
+  - "Task execution outcomes (success, failure, error codes)"
+  - "User context under which tasks ran"
+
+does_not_prove:
+  - "Who created the scheduled task (check Security log Event ID 4698 for that)"
+  - "What the task executable actually did during execution"
+  - "That a task was malicious (content analysis of the task action is required)"
+
+timestamps:
+  - field: "TimeCreated"
+    meaning: "Time the Task Scheduler event was generated"
+    common_misinterpretation: "Task creation time (Event ID 106) is when the task was registered, not when it was first scheduled to run"
+
+common_misinterpretations:
+  - claim: "All scheduled task activity is logged by default"
+    correction: "The Task Scheduler Operational log is disabled by default on many Windows versions. When disabled, only Security log events (4698/4699/4700/4701/4702) record task activity, and only if auditing is configured."
+  - claim: "Event ID 106 (task registered) proves who created the task"
+    correction: "The Operational log Event ID 106 records the task name but not the creating user. Security log Event ID 4698 includes the Subject (user) who created the task."
+  - claim: "Scheduled tasks always persist in the Tasks folder"
+    correction: "Attackers can create tasks that execute and self-delete, or tasks stored only in registry. Check both C:\\Windows\\System32\\Tasks and registry at HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache."
+  - claim: "Task Scheduler is only used for persistence"
+    correction: "Attackers use Task Scheduler for persistence (T1053.005), lateral movement (creating tasks on remote systems via schtasks), and privilege escalation."
+
+corroborate_with:
+  for_execution: [prefetch, event_logs_security, event_logs_sysmon]
+  for_presence: [scheduled_tasks, mft, usn_journal]
+  for_timeline: [event_logs_security, event_logs_system]
+
+related_tools: [EvtxECmd, Hayabusa]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_process_tree"
+    when: "Process execution event found — verify parent-child relationship against baseline"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "IP address, domain, or hash found in event — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious event pattern — search for detection rules and MITRE technique context"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "MITRE ATT&CK T1053.005 - Scheduled Task"

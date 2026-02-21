@@ -1,0 +1,56 @@
+name: Proc Filesystem
+description: "Virtual filesystem exposing kernel and process information — critical for live system analysis"
+platform: linux
+
+locations:
+  - path: "/proc/<pid>/"
+    os_versions: ["All Linux distributions"]
+    notes: "Per-process directories. Only exists on live systems. Key files: cmdline, exe, environ, maps, fd/, status, cwd."
+  - path: "/proc/net/"
+    os_versions: ["All Linux distributions"]
+    notes: "Network state: tcp, udp, unix sockets. Equivalent to netstat output."
+
+proves:
+  - "Running processes with full command lines (/proc/<pid>/cmdline)"
+  - "Executable paths including deleted binaries (/proc/<pid>/exe)"
+  - "Process environment variables (/proc/<pid>/environ)"
+  - "Open file descriptors and network connections (/proc/<pid>/fd/)"
+  - "Memory maps showing loaded libraries (/proc/<pid>/maps)"
+  - "Current working directory (/proc/<pid>/cwd)"
+  - "Active network connections (/proc/net/tcp, /proc/net/udp)"
+
+does_not_prove:
+  - "Historical process execution — only current state is visible"
+  - "Process state after the system is powered off"
+  - "Processes that have already exited"
+
+timestamps:
+  - field: "/proc/<pid>/stat start_time"
+    meaning: "Process start time relative to system boot"
+    common_misinterpretation: "Not absolute time — must be calculated from boot time"
+
+common_misinterpretations:
+  - claim: "/proc is persistent"
+    correction: "/proc is a virtual filesystem that only exists while the system is running. It cannot be collected as a disk artifact — it must be captured from a live system."
+  - claim: "A process with a deleted executable is always malicious"
+    correction: "Software updates frequently delete old binaries while processes still reference them. However, a deleted executable IS suspicious and warrants investigation."
+  - claim: "/proc/<pid>/exe always shows the real executable"
+    correction: "An attacker can write a malicious binary, start it, then delete the file. /proc/<pid>/exe will show '(deleted)' but the binary can still be recovered through this link."
+
+corroborate_with:
+  for_execution: [auth_log, syslog]
+  for_presence: [bash_history]
+  for_timeline: [auth_log, wtmp_utmp]
+
+related_tools: [Volatility3, strings, YARA, lsof]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Network connection destination identified — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious process or deleted binary — search for related techniques"
+
+references:
+  - "SANS FOR577 - Linux Incident Response and Threat Hunting"

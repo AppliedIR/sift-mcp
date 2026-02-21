@@ -1,0 +1,41 @@
+name: MemProcFS
+category: memory
+description: "Memory analysis framework that presents memory as a virtual filesystem for intuitive navigation"
+platform: [windows, linux]
+platform_notes: "Windows primary. Linux version available for analysis. Virtual filesystem approach differs from traditional Volatility-style analysis."
+artifacts_parsed: []
+
+caveats:
+  - "Virtual filesystem approach requires understanding the directory structure to find relevant data"
+  - "Not all Volatility plugins have equivalents in MemProcFS"
+  - "Live memory mounting provides convenience but may cause changes to the running system"
+  - "Requires Dokany (Windows) or FUSE (Linux) for filesystem mounting"
+  - "Analysis speed depends on image size and available RAM on the analysis system"
+  - "Some advanced analysis features require commercial LeechCore plugins"
+
+output_notes:
+  format: virtual_filesystem
+  key_fields: [process_list, modules, handles, network, registry]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Navigate the virtual filesystem as you would a regular file system — processes appear as directories"
+  - "Process memory can be read directly as files — useful for strings extraction and YARA scanning"
+  - "Supports both raw and crash dump memory formats"
+  - "Can analyze live memory in read-only mode on Windows"
+  - "Use alongside Volatility for cross-validation of findings"
+  - "Network connections, handles, and registry data accessible through dedicated virtual directories"
+
+quick_start: "memprocfs -device memory.raw"
+
+investigation_sequence:
+  - "Mount the memory image as a virtual file system for intuitive browsing"
+  - "Navigate the process tree to identify running processes and their properties"
+  - "Examine network connections through the virtual file system view"
+  - "Review loaded modules and handles for each process of interest"
+  - "Cross-reference findings with Volatility 3 analysis for corroboration"
+  - "Use the virtual file system to extract specific artifacts for detailed analysis"
+  - "Document significant findings with context from the memory analysis"

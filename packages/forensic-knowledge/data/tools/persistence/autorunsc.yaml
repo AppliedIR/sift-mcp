@@ -1,0 +1,66 @@
+name: autorunsc
+category: persistence
+description: "Sysinternals command-line tool to enumerate Windows auto-start extensibility points (ASEPs) for persistence detection"
+platform: [windows]
+platform_notes: "Windows only (Sysinternals). For offline registry persistence analysis on Linux, use RECmd with appropriate batch files."
+artifacts_parsed: [registry_run_keys, scheduled_tasks, registry_services, wmi_persistence]
+
+caveats:
+  - "Live system analysis only — cannot analyze offline images directly"
+  - "Requires elevated privileges for complete enumeration"
+  - "Not all persistence mechanisms are covered (e.g., DLL search order hijacking, COM object hijacking)"
+  - "VirusTotal integration requires accepting the EULA and sends file hashes"
+  - "Results reflect the current system state — previously cleared persistence is not visible"
+  - "Compare with offline registry analysis to detect persistence that was removed or tampered with"
+
+output_notes:
+  format: csv
+  key_fields: [Entry_Location, Entry, Enabled, Category, Profile, Description, Publisher, Image_Path, Launch_String, MD5, SHA1, SHA256, VirusTotal_Detection]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Use -a * for comprehensive enumeration of all auto-start locations"
+  - "Use -c for CSV output suitable for analysis and comparison"
+  - "Use -h to show file hashes for all auto-start entries"
+  - "Use -s to verify digital signatures — unsigned entries warrant investigation"
+  - "Use -v to check VirusTotal detection ratios"
+  - "Use -m to hide Microsoft-signed entries to focus on third-party and unsigned items"
+  - "Save baseline output and diff against current state to detect new persistence"
+  - "Combine with offline RECmd analysis for tamper detection"
+
+quick_start: "autorunsc.exe -a * -c -h -s > autoruns.csv"
+
+investigation_sequence:
+  - "Run autorunsc with -a * to scan all Auto-Start Extensibility Points (ASEPs) (via wintools-mcp)"
+  - "Use -c for CSV output and -h for file hashes for structured analysis"
+  - "Use -s to verify digital signatures for trust assessment"
+  - "Review ALL entries including Microsoft-signed items — legitimate binaries can be hijacked"
+  - "Use -m to hide Microsoft entries only for initial triage focus, then review full results"
+  - "Cross-reference unsigned or suspicious entries with sigcheck for deeper analysis"
+  - "Check file hashes against threat intelligence sources"
+  - "Use -z for offline analysis of mounted evidence images"
+  - "Correlate persistence mechanisms with other execution evidence (Prefetch, Amcache)"
+  - "Cross-MCP: Verify entries against Windows autorun baseline (windows-triage: check_autorun)"
+  - "Cross-MCP: Check unsigned entry hashes against threat intelligence (opencti: lookup_hash)"
+
+field_meanings:
+  Time: "Timestamp associated with the autorun entry"
+  "Entry Location": "Registry key or file system location of the ASEP"
+  Entry: "Name or identifier of the autorun entry"
+  Enabled: "Whether the autorun entry is currently enabled"
+  Category: "ASEP category (Logon, Services, Drivers, Scheduled Tasks, etc.)"
+  Profile: "User profile associated with the entry (if applicable)"
+  Description: "File description from PE version information"
+  Signer: "Digital signature signer name"
+  Company: "Company name from PE version information"
+  "Image Path": "Full path to the executable"
+  Version: "File version string"
+  "Launch String": "Full command line used to launch the entry"
+  MD5: "MD5 hash of the file"
+  "SHA-1": "SHA-1 hash of the file"
+  SHA-256: "SHA-256 hash of the file"
+  "PESHA-256": "SHA-256 hash of the PE image (excludes signature data)"
+  IMP: "Import hash (imphash) for behavioral similarity comparison"

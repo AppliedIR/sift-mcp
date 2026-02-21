@@ -1,0 +1,48 @@
+name: Amcache
+description: "Windows application compatibility cache in Amcache.hve"
+platform: windows
+
+locations:
+  - path: "C:\\Windows\\AppCompat\\Programs\\Amcache.hve"
+    os_versions: ["Windows 8+", "Windows 10", "Windows 11"]
+
+proves:
+  - "File was present on the system"
+  - "SHA1 hash of the file at time of metadata recording"
+
+does_not_prove:
+  - "File was executed"
+  - "File was executed at the recorded timestamp"
+
+timestamps:
+  - field: "FileKeyLastWriteTimestamp"
+    meaning: "When the Amcache registry key was last modified"
+    common_misinterpretation: "Often mistaken for execution time"
+
+common_misinterpretations:
+  - claim: "This program was executed based on Amcache"
+    correction: "Amcache proves presence, not execution. Corroborate with Prefetch, UserAssist, or BAM."
+
+corroborate_with:
+  for_execution: [prefetch, userassist, bam]
+  for_presence: [mft, shimcache]
+  for_timeline: [usn_journal, event_logs]
+
+related_tools: [AmcacheParser, RECmd]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_file"
+    when: "Executable path identified — verify against Windows baseline"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "File hash available — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious executable or pattern — search for related MITRE techniques and detection rules"
+  - mcp: "remnux"
+    tool: "analyze_file"
+    when: "Unknown executable — submit for static analysis"
+
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"

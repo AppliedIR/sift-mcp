@@ -1,0 +1,66 @@
+name: Zeek
+category: network
+description: "Network analysis framework that generates structured protocol logs from PCAP files or live traffic"
+platform: [linux, macos]
+platform_notes: "Not available as native Windows binary. On Windows, use WSL. Primary deployment is Linux."
+artifacts_parsed: []
+
+caveats:
+  - "Zeek generates LOG FILES, not alerts — it records what happened, not whether it was malicious"
+  - "Processing large PCAPs is resource-intensive; multi-GB captures may take significant time"
+  - "Zeek's protocol analysis is deep but not exhaustive; custom or obscure protocols may not be parsed"
+  - "Default output is TSV format in separate log files per protocol (conn.log, dns.log, http.log, etc.)"
+  - "Zeek does not decrypt encrypted traffic; TLS/SSL connections appear in ssl.log with metadata only"
+  - "File extraction (files.log) identifies transferred files by content type and can extract them"
+  - "Connection UIDs link related log entries across different log files"
+
+output_notes:
+  format: tsv_or_json
+  key_fields: [ts, uid, id.orig_h, id.orig_p, id.resp_h, id.resp_p, proto, service, duration, orig_bytes, resp_bytes]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Use 'zeek -r capture.pcap' to process a PCAP file; output logs appear in the current directory"
+  - "conn.log is the starting point — it contains a summary of every connection"
+  - "dns.log records all DNS queries and responses; critical for domain-based threat hunting"
+  - "http.log provides URL, user-agent, referrer, and response details for HTTP connections"
+  - "ssl.log shows TLS certificate details including subject, issuer, and JA3/JA3S hashes"
+  - "Use the UID field to correlate activity across log files (a single connection appears in multiple logs)"
+  - "Zeek scripts can be loaded for additional analysis: '@load policy/protocols/ssl/validate-certs'"
+  - "For JSON output, add '@load policy/tuning/json-logs' to the Zeek script or use -e flag"
+
+quick_start: "zeek -r capture.pcap"
+
+investigation_sequence:
+  - "Process the PCAP file with Zeek to generate protocol-level log files (via sift-mcp)"
+  - "Review conn.log first for a summary of all network connections"
+  - "Check dns.log for domain resolution activity and potential C2 domains"
+  - "Review http.log for web requests including URIs, user agents, and response codes"
+  - "Check ssl.log for TLS certificate information and potential anomalies"
+  - "Review files.log for extracted file metadata and MIME types"
+  - "Do not ignore any log type — each protocol log provides unique investigation context"
+  - "Cross-reference Zeek logs with tshark packet-level analysis for detailed inspection"
+  - "Correlate connection timestamps and IPs with host-based activity evidence"
+  - "Cross-MCP: Check connection destinations against threat intelligence (opencti: lookup_ioc)"
+  - "Cross-MCP: Search for network-based attack patterns (forensic-rag: search)"
+
+field_meanings:
+  ts: "Connection start timestamp"
+  uid: "Unique connection identifier for cross-referencing across Zeek logs"
+  "id.orig_h": "Originator (source) IP address"
+  "id.orig_p": "Originator (source) port number"
+  "id.resp_h": "Responder (destination) IP address"
+  "id.resp_p": "Responder (destination) port number"
+  proto: "Transport protocol (tcp, udp, icmp)"
+  service: "Confirmed application protocol(s), comma-separated"
+  duration: "Connection duration in seconds"
+  orig_bytes: "Payload bytes sent by the originator"
+  resp_bytes: "Payload bytes sent by the responder"
+  conn_state: "Connection state code (S0=attempt, S1=established, SF=normal close, REJ=rejected)"
+  missed_bytes: "Bytes missed due to content gaps"
+  history: "Connection state history string (S=SYN, H=SYN+ACK, A=ACK, D=data, F=FIN, R=RST)"
+  orig_pkts: "Packets sent by the originator"
+  resp_pkts: "Packets sent by the responder"

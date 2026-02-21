@@ -1,0 +1,49 @@
+name: RDP Bitmap Cache
+description: "Remote Desktop Protocol bitmap cache containing visual fragments of remote desktop sessions"
+platform: windows
+
+locations:
+  - path: "C:\\Users\\<user>\\AppData\\Local\\Microsoft\\Terminal Server Client\\Cache\\*.bmc"
+    os_versions: ["Windows Vista+"]
+    notes: "BMC files contain cached bitmap tiles. Multiple cache files may exist."
+  - path: "C:\\Users\\<user>\\AppData\\Local\\Microsoft\\Terminal Server Client\\Cache\\*.bin"
+    os_versions: ["Windows 7+"]
+    notes: "Binary cache format in newer Windows versions."
+
+proves:
+  - "Visual content of remote desktop sessions (screen fragments)"
+  - "That RDP sessions occurred from this machine"
+  - "Approximate content viewed during remote sessions"
+
+does_not_prove:
+  - "Complete screen captures — only cached bitmap tiles are preserved"
+  - "The destination of the RDP connection (pair with registry MRU)"
+  - "Exact timestamps of what was viewed when"
+  - "Whether the user initiated the session or was connected to remotely"
+
+timestamps:
+  - field: "Cache file modification time"
+    meaning: "Approximate time of last RDP session"
+    common_misinterpretation: "Individual tiles within the cache do not have timestamps"
+
+common_misinterpretations:
+  - claim: "RDP bitmap cache provides complete screenshots"
+    correction: "Cache contains small bitmap tiles (64x64 pixels typically). Tools like bmc-tools can reconstruct partial views, but completeness varies."
+  - claim: "Bitmap cache shows what someone did on the remote system"
+    correction: "The cache shows what was DISPLAYED on the initiating client. It proves what screens the user saw, not what they did."
+
+corroborate_with:
+  for_execution: [event_logs_rdp, event_logs_security]
+  for_presence: [registry_run_keys]
+  for_timeline: [event_logs_rdp, event_logs_security]
+
+related_tools: [bmc-tools]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "RDP session content visible — search for lateral movement techniques"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "MITRE ATT&CK T1021.001 - Remote Desktop Protocol"

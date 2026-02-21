@@ -1,0 +1,98 @@
+# AIIR Gateway configuration
+# Copy to gateway.yaml and customize for your environment.
+# Environment variables can be referenced as ${VAR_NAME}.
+
+gateway:
+  host: "127.0.0.1"
+  port: 4508
+  log_level: "INFO"
+
+# API key authentication
+# Each key maps to an examiner identity and role.
+# If this section is empty or missing, auth is disabled (single-user mode).
+api_keys:
+  aiir_gw_abc123:
+    examiner: "steve"
+    role: "lead"
+  aiir_gw_def456:
+    examiner: "jane"
+    role: "examiner"
+
+# Backend MCP servers
+# type: stdio — launches a subprocess, communicates via MCP stdio transport
+# type: http  — connects to a remote MCP server via Streamable HTTP
+
+backends:
+  # --- Local subprocess backends (stdio) ---
+
+  forensic-mcp:
+    type: stdio
+    command: "python"
+    args: ["-m", "forensic_mcp"]
+    env:
+      AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
+      AIIR_EXAMINER: "${AIIR_EXAMINER}"
+    enabled: true
+
+  sift-mcp:
+    type: stdio
+    command: "python"
+    args: ["-m", "sift_mcp"]
+    env:
+      AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
+      AIIR_EXAMINER: "${AIIR_EXAMINER}"
+    enabled: true
+
+  forensic-rag-mcp:
+    type: stdio
+    command: "python"
+    args: ["-m", "rag_mcp"]
+    env:
+      AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
+      AIIR_EXAMINER: "${AIIR_EXAMINER}"
+    enabled: true
+
+  windows-triage-mcp:
+    type: stdio
+    command: "python"
+    args: ["-m", "windows_triage"]
+    env:
+      AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
+      AIIR_EXAMINER: "${AIIR_EXAMINER}"
+    enabled: true
+
+  opencti-mcp:
+    type: stdio
+    command: "python"
+    args: ["-m", "opencti_mcp"]
+    env:
+      AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
+      AIIR_EXAMINER: "${AIIR_EXAMINER}"
+      OPENCTI_URL: "${OPENCTI_URL}"
+      OPENCTI_TOKEN: "${OPENCTI_TOKEN}"
+    enabled: true
+
+  # --- Remote HTTP backends ---
+
+  # Windows forensic workstation running its own gateway
+  wintools-mcp:
+    type: http
+    url: "http://windows-workstation:4624/mcp"
+    bearer_token: "${WINTOOLS_TOKEN}"
+    enabled: false
+
+  remnux-mcp:
+    type: http
+    url: "https://remnux.example.com/mcp"
+    bearer_token: "${REMNUX_TOKEN}"
+    enabled: false
+
+  microsoft-learn:
+    type: http
+    url: "https://learn.example.com/mcp"
+    enabled: false
+
+  zeltser-ir-writing:
+    type: http
+    url: "https://zeltser.example.com/mcp"
+    enabled: false

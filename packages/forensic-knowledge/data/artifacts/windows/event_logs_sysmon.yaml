@@ -1,0 +1,65 @@
+name: Sysmon Operational Event Log
+description: "System Monitor (Sysmon) event log providing detailed process, network, and file system telemetry"
+platform: windows
+
+locations:
+  - path: "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-Sysmon%4Operational.evtx"
+    os_versions: ["Windows 7+", "Windows 10", "Windows 11"]
+    notes: "Sysmon must be installed separately (Sysinternals). Event coverage depends entirely on the Sysmon configuration XML."
+
+proves:
+  - "Process creation with full command line, parent process, and hashes (Event ID 1)"
+  - "Network connections with source/destination IP and port (Event ID 3)"
+  - "Image (DLL) loads with hash (Event ID 7)"
+  - "Remote thread creation between processes (Event ID 8)"
+  - "File creation with hash (Event ID 11)"
+  - "Registry modifications with detail (Event ID 13)"
+  - "DNS queries with query name (Event ID 22)"
+  - "Process access events such as credential dumping indicators (Event ID 10)"
+
+does_not_prove:
+  - "File content that was read or written"
+  - "Full network payload or data transferred"
+  - "That any observed activity is malicious (requires analyst interpretation)"
+  - "Complete coverage (depends on Sysmon configuration filtering rules)"
+
+timestamps:
+  - field: "UtcTime"
+    meaning: "UTC timestamp when the event occurred"
+    common_misinterpretation: "Sysmon always records in UTC regardless of system time zone; analysts must convert for local time correlation"
+
+common_misinterpretations:
+  - claim: "Sysmon captures everything on the system"
+    correction: "Sysmon coverage is entirely determined by its configuration file. Overly broad configs cause performance issues; overly narrow configs miss events. Always review the active config."
+  - claim: "Sysmon is installed on all Windows systems"
+    correction: "Sysmon is a separate Sysinternals tool that must be explicitly installed and configured. It is NOT a default Windows component."
+  - claim: "Event ID 3 (network connection) captures all network activity"
+    correction: "Sysmon network events are often filtered in the config to reduce volume. Many configs exclude common system processes or well-known destinations."
+  - claim: "Sysmon is tamper-proof"
+    correction: "Sophisticated adversaries can unload the Sysmon driver, modify its config, or use direct syscalls to evade Sysmon hooks. Look for Sysmon Event IDs 4 (service state change) and 16 (config change) for tampering indicators."
+  - claim: "Event ID 1 is equivalent to Security Event ID 4688"
+    correction: "Sysmon Event ID 1 provides more detail by default (hashes, parent command line, current directory, LogonGuid) but 4688 ties into the Windows audit framework. They are complementary, not identical."
+
+corroborate_with:
+  for_execution: [prefetch, event_logs_security, amcache]
+  for_presence: [mft, usn_journal]
+  for_timeline: [event_logs_security, event_logs_powershell, event_logs_system]
+
+related_tools: [EvtxECmd, Hayabusa]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_process_tree"
+    when: "Process execution event found — verify parent-child relationship against baseline"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "IP address, domain, or hash found in event — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious event pattern — search for detection rules and MITRE technique context"
+
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "SANS FOR508 - Advanced Incident Response"
+  - "Microsoft Sysinternals - Sysmon Documentation"
+  - "SwiftOnSecurity - Sysmon Config"

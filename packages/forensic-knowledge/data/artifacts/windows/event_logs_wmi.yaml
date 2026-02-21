@@ -1,0 +1,52 @@
+name: WMI Operational Event Logs
+description: "Windows Management Instrumentation operational event log for tracking WMI-based execution and lateral movement"
+platform: windows
+
+locations:
+  - path: "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-WMI-Activity%4Operational.evtx"
+    os_versions: ["Windows Vista+"]
+    notes: "WMI operational events. Event IDs 5857 (provider load), 5858 (query errors), 5860-5861 (registration events)."
+
+proves:
+  - "WMI provider loading and execution (Event ID 5857)"
+  - "WMI query failures and errors (Event ID 5858)"
+  - "WMI subscription creation and modification (Event IDs 5860-5861)"
+  - "WMI process creation events"
+
+does_not_prove:
+  - "All WMI activity — only what the operational log captures"
+  - "WMI commands executed remotely (limited visibility without Sysmon)"
+  - "Whether WMI activity was malicious — WMI is heavily used by legitimate tools"
+
+timestamps:
+  - field: "TimeCreated"
+    meaning: "When the WMI event was logged"
+    common_misinterpretation: "WMI subscription events log at creation/trigger, not during payload execution"
+
+common_misinterpretations:
+  - claim: "WMI operational logs capture all remote WMI commands"
+    correction: "Remote WMI execution visibility requires Sysmon (Event ID 1) or process creation auditing (Event ID 4688). WMI operational logs capture provider-level events."
+  - claim: "WMI event subscriptions are always malicious"
+    correction: "SCCM, SCOM, and other management tools use WMI subscriptions legitimately. Look for unusual consumers and filters."
+
+corroborate_with:
+  for_execution: [event_logs_security, event_logs_sysmon, wmi_persistence]
+  for_presence: [prefetch, amcache]
+  for_timeline: [event_logs_security, event_logs_system]
+
+related_tools: [EvtxECmd, Hayabusa]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_process_tree"
+    when: "Process execution event found — verify parent-child relationship against baseline"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "IP address, domain, or hash found in event — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious event pattern — search for detection rules and MITRE technique context"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "MITRE ATT&CK T1047 - Windows Management Instrumentation"

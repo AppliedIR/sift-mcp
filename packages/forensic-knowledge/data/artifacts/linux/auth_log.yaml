@@ -1,0 +1,56 @@
+name: Authentication Log
+description: "System authentication log recording login attempts, sudo usage, SSH sessions, and PAM authentication events"
+platform: linux
+
+locations:
+  - path: "/var/log/auth.log"
+    os_versions: ["Debian", "Ubuntu"]
+    notes: "Primary authentication log on Debian-based systems. Rotated by logrotate."
+  - path: "/var/log/secure"
+    os_versions: ["RHEL", "CentOS", "Fedora"]
+    notes: "Equivalent file on Red Hat-based systems."
+
+proves:
+  - "User login attempts (success and failure) with source IP for remote sessions"
+  - "sudo command usage with the command executed"
+  - "SSH authentication events including key-based and password-based"
+  - "User account creation and modification (useradd, usermod, passwd)"
+  - "PAM module authentication decisions"
+  - "su (switch user) usage"
+
+does_not_prove:
+  - "What users did after authenticating"
+  - "Authentication events if logging was disabled or logs were tampered with"
+  - "Activities of users who gained access through application vulnerabilities"
+
+timestamps:
+  - field: "Syslog timestamp"
+    meaning: "When the authentication event occurred"
+    common_misinterpretation: "Syslog timestamps may not include the year (depends on rsyslog configuration). Check log rotation dates for year context."
+
+common_misinterpretations:
+  - claim: "auth.log captures all access to the system"
+    correction: "Only PAM-based authentication is logged. Application-level authentication (web apps, databases) uses separate logs."
+  - claim: "A successful SSH login means a user was present"
+    correction: "SSH keys, automated scripts, and compromised credentials all produce successful logins without user interaction."
+  - claim: "No failed logins means no brute force attempts"
+    correction: "Log rotation, log clearing, or rate-limiting tools (fail2ban) may hide failed attempt volumes."
+
+corroborate_with:
+  for_execution: [bash_history, syslog]
+  for_presence: [wtmp_utmp]
+  for_timeline: [wtmp_utmp, syslog, systemd_journal]
+
+related_tools: [EvtxECmd, grep, Hayabusa]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Source IP identified in authentication or connection event — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious authentication or system pattern — search for related techniques"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "SANS FOR577 - Linux Incident Response and Threat Hunting"

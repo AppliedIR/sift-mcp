@@ -1,0 +1,58 @@
+name: Windows Defender Event Log
+description: "Microsoft Defender Antivirus operational event log recording detection, remediation, and scan events"
+platform: windows
+
+locations:
+  - path: "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-Windows Defender%4Operational.evtx"
+    os_versions: ["Windows 8+", "Windows 10", "Windows 11"]
+    notes: "Enabled by default when Windows Defender is the active antivirus. May be absent if third-party AV replaced Defender."
+
+proves:
+  - "Malware or potentially unwanted programs were detected by Defender"
+  - "Detection name, severity, and category assigned by Defender"
+  - "File path and process that triggered the detection"
+  - "Remediation actions taken (quarantine, remove, allow)"
+  - "Whether real-time protection, scheduled scans, or on-demand scans triggered detection"
+
+does_not_prove:
+  - "That every piece of malware was detected (Defender may miss threats)"
+  - "That a detected file is definitively malicious (false positives occur)"
+  - "What the malware did before detection (only the detection event is logged)"
+  - "That undetected files are clean"
+
+timestamps:
+  - field: "TimeCreated"
+    meaning: "Time the Defender event was generated"
+    common_misinterpretation: "Detection time is when Defender identified the threat, which may be significantly after the malware was placed on the system (e.g., during a scheduled scan)"
+
+common_misinterpretations:
+  - claim: "No Defender alerts means the system is clean"
+    correction: "Attackers routinely bypass, disable, or tamper with Defender. Check for Event IDs 5001 (real-time protection disabled), 5010/5012 (scanning disabled), and 5100 (exclusion added)."
+  - claim: "Defender quarantine means the threat is neutralized"
+    correction: "Quarantine only isolates the specific file detected. The attacker may have deployed additional payloads, established persistence, or moved laterally before detection."
+  - claim: "Defender detection names are always accurate"
+    correction: "Generic detection names (Trojan:Win32/Generic, HackTool) provide limited information. Cross-reference hashes with threat intelligence for more specific attribution."
+  - claim: "If Defender was disabled, there are no useful Defender logs"
+    correction: "The events recording that Defender was disabled (5001, 5004, 5007) are themselves valuable indicators — attackers frequently disable Defender as an early action."
+
+corroborate_with:
+  for_execution: [prefetch, amcache, event_logs_sysmon]
+  for_presence: [mft, usn_journal, defender_quarantine]
+  for_timeline: [event_logs_security, event_logs_powershell]
+
+related_tools: [EvtxECmd, Hayabusa]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_process_tree"
+    when: "Process execution event found — verify parent-child relationship against baseline"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "IP address, domain, or hash found in event — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious event pattern — search for detection rules and MITRE technique context"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "MITRE ATT&CK T1562.001 - Disable or Modify Tools"

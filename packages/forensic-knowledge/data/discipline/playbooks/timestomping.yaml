@@ -1,0 +1,37 @@
+name: "Timestomping Investigation"
+description: "Investigate timestamp manipulation in NTFS file system metadata"
+mitre: ["T1070.006"]
+sources:
+  - "SANS FOR500 — Windows Forensic Analysis"
+  - "MITRE ATT&CK T1070.006 — Timestomping"
+triggers:
+  - "$STANDARD_INFORMATION timestamps earlier than $FILE_NAME timestamps in MFT"
+  - "Nanosecond precision of zero in timestamps (indicates programmatic modification)"
+  - "Timestamps predating the file system creation date"
+  - "Timestamps inconsistent with other artifact evidence"
+phases:
+  - phase: "Identify"
+    steps:
+      - "Parse MFT with MFTECmd (via sift-mcp or wintools-mcp) comparing $STANDARD_INFORMATION vs $FILE_NAME timestamps"
+      - "Flag entries where $SI Created timestamp is earlier than $FN Created timestamp"
+      - "Check for nanosecond fields of zero which indicate programmatic timestamp modification"
+  - phase: "Verify"
+    steps:
+      - "Check USN Journal for actual file creation and modification times"
+      - "Check Prefetch for execution timing of the timestomped files if they are executables"
+      - "Cross-reference with Amcache and Shimcache entries for the same files"
+  - phase: "Scope"
+    steps:
+      - "Search for other timestomped files using the same pattern — same target date, same nanosecond value"
+      - "Check if a timestomping tool is present in Prefetch (timestomp.exe, NirCmd, known frameworks)"
+      - "Determine scope of timestamp manipulation across the file system"
+  - phase: "Context"
+    steps:
+      - "Determine what the timestomped files are — executables, documents, scripts"
+      - "Check files against Windows baseline (windows-triage: check_file)"
+      - "Check file hashes against threat intelligence (opencti: lookup_hash)"
+  - phase: "Record"
+    steps:
+      - "Record finding including both $SI and $FN timestamps for affected files"
+      - "Note the discrepancy as evidence of deliberate timestamp manipulation"
+      - "Include all evidence IDs from each analysis phase"

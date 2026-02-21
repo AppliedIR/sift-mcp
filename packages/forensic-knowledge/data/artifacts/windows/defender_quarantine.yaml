@@ -1,0 +1,61 @@
+name: Windows Defender Quarantine
+description: "Files quarantined by Microsoft Defender Antivirus, preserved in an encoded format with detection metadata"
+platform: windows
+
+locations:
+  - path: "C:\\ProgramData\\Microsoft\\Windows Defender\\Quarantine\\"
+    os_versions: ["Windows 8+", "Windows 10", "Windows 11"]
+    notes: "Quarantined files stored in encoded format within ResourceData, Resources, and Entries subdirectories. Detection metadata stored in Entries."
+
+proves:
+  - "Defender detected and quarantined a specific file"
+  - "Original file path before quarantine"
+  - "Detection name and threat category assigned by Defender"
+  - "Time of quarantine action"
+  - "Original file content (recoverable from quarantine)"
+
+does_not_prove:
+  - "That the quarantined file was definitively malicious (false positives occur)"
+  - "That all malware on the system was detected and quarantined"
+  - "What the file did before it was quarantined (quarantine only preserves the file)"
+  - "How the file arrived on the system"
+
+timestamps:
+  - field: "Quarantine entry timestamp"
+    meaning: "Time the file was quarantined by Defender"
+    common_misinterpretation: "Quarantine time may differ significantly from when the file was first placed on the system — Defender may detect files during scheduled scans rather than at write time"
+
+common_misinterpretations:
+  - claim: "Quarantined files are permanently removed"
+    correction: "Quarantined files are preserved in encoded form and can be recovered for analysis. The original file is removed from its location, but the content is retained in the Quarantine directory."
+  - claim: "Quarantine metadata is not forensically useful"
+    correction: "The Entries directory contains detection metadata including the original file path, detection name, and detection timestamp — valuable for understanding what Defender found and where."
+  - claim: "Only the most recent quarantine entries are available"
+    correction: "Quarantine entries accumulate until manually cleared or until storage limits are reached. Historical quarantine entries provide a timeline of Defender detections."
+  - claim: "Recovering quarantined files requires Windows Defender"
+    correction: "Open-source tools can parse the quarantine format and extract the original files for analysis on any platform."
+
+corroborate_with:
+  for_execution: [event_logs_defender, prefetch, amcache]
+  for_presence: [mft, usn_journal]
+  for_timeline: [event_logs_defender, event_logs_sysmon]
+
+related_tools: [EvtxECmd, Hayabusa]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_file"
+    when: "Quarantined file path identified — check if file was restored or still present"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "Quarantined file hash available — check threat intelligence for broader campaign"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Detection name available — search for malware family context and related indicators"
+  - mcp: "remnux"
+    tool: "analyze_file"
+    when: "Recovered quarantine sample — submit for static analysis"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "MITRE ATT&CK T1562.001 - Disable or Modify Tools"

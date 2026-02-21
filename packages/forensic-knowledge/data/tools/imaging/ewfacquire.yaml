@@ -1,0 +1,44 @@
+name: ewfacquire
+category: imaging
+description: "Acquire forensic images in Expert Witness Format (E01/EWF) with compression, hashing, and case metadata"
+platform: [linux, macos]
+platform_notes: "Part of libewf. Primarily Linux. Not commonly available on Windows."
+artifacts_parsed: []
+
+caveats:
+  - "Forensic imaging must be performed on write-blocked source media to prevent evidence alteration"
+  - "E01 format supports compression (typically 50-70% size reduction) but adds processing time"
+  - "EWF images are split into segments (default 2GB chunks) with built-in integrity verification"
+  - "Case metadata (examiner name, case number, description) is embedded in the image header"
+  - "Requires libewf library to be installed; not available on all forensic distributions by default"
+  - "E01 images require EWF-aware tools for mounting and analysis (ewfmount, FTK, EnCase, etc.)"
+
+output_notes:
+  format: ewf_image
+  key_fields: [case_number, examiner_name, evidence_number, acquisition_hash, compression_method, segment_size]
+
+exit_code_hints:
+  0: "success with verification"
+  1: "error"
+
+advisories:
+  - "Always use a hardware write blocker when imaging physical media"
+  - "Use -t flag to specify the target filename (without extension)"
+  - "Use -C flag to set case number, -D for description, -E for examiner name, -N for evidence number"
+  - "Use -c flag to set compression level: 'none', 'fast', 'best' — 'fast' is a good balance"
+  - "Use -d flag to compute hash during acquisition: 'sha256' recommended"
+  - "Use ewfverify to verify image integrity after acquisition"
+  - "Use ewfmount to mount E01 images as raw devices for analysis with other tools"
+  - "E01 format is widely supported by commercial forensic tools (EnCase, FTK, X-Ways, Autopsy)"
+  - "Document the full acquisition process including hash values, timestamps, and any errors"
+
+quick_start: "ewfacquire -t output_name /dev/sdX"
+
+investigation_sequence:
+  - "Ensure source media is connected through a hardware write blocker"
+  - "Use -f encase6 format for broad tool compatibility"
+  - "Set case metadata with -C (case number), -D (description), -e (examiner), -E (evidence number)"
+  - "Use -S to set segment file size for manageable output (e.g., -S 4G)"
+  - "Use -d to specify hash digest type for verification"
+  - "Verify the image after acquisition using ewfverify"
+  - "Document all metadata fields and hash values for chain of custody"

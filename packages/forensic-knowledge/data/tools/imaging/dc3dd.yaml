@@ -1,0 +1,43 @@
+name: dc3dd
+category: imaging
+description: "Department of Defense forensic imaging tool — patched version of dd with hashing, verification, and split output"
+platform: [linux]
+platform_notes: "Linux/Unix only. Patched dd variant. Not available on Windows."
+artifacts_parsed: []
+
+caveats:
+  - "Forensic imaging must be performed on write-blocked source media to prevent evidence alteration"
+  - "Raw/dd format images are exact sector copies with no compression — image size equals source size"
+  - "Network transfer during imaging adds latency; local imaging is faster and more reliable"
+  - "Bad sectors are logged but may result in incomplete data at those locations"
+  - "Imaging a running system (live imaging) risks capturing inconsistent data"
+  - "The source device must not be mounted read-write during imaging"
+
+output_notes:
+  format: raw_image
+  key_fields: [input_hash, output_hash, bytes_copied, errors]
+
+exit_code_hints:
+  0: "success with matching hashes"
+  1: "error"
+
+advisories:
+  - "Always use a hardware write blocker when imaging physical media"
+  - "Use hash= parameter to compute hash during imaging (e.g., hash=sha256) — this is faster than hashing after"
+  - "Use hlog= to write hash values to a separate log file for documentation"
+  - "Use split= to split output into manageable chunks (e.g., split=4G for DVD-sized segments)"
+  - "Use log= to capture the imaging log including sector errors and progress"
+  - "Verify the image after acquisition by comparing source and destination hashes"
+  - "Document the imaging process: source device, write blocker used, command issued, hash values, and examiner"
+  - "For E01/EWF format images, use ewfacquire instead — E01 provides compression and case metadata"
+
+quick_start: "dc3dd if=/dev/sdX hof=image.dd hash=sha256 log=image.log"
+
+investigation_sequence:
+  - "Ensure source media is connected through a hardware write blocker"
+  - "Image the source device with inline hashing for acquisition verification"
+  - "Use hash= parameter for on-the-fly hash computation (md5, sha1, sha256)"
+  - "Use hlog= to write hash values to a separate log file for documentation"
+  - "Use log= to capture the full imaging log including any sector errors"
+  - "Verify the image after acquisition by comparing source and destination hashes"
+  - "Document the imaging process: source device, write blocker, command, hash values, and examiner"

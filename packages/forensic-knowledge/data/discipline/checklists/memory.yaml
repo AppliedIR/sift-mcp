@@ -1,0 +1,5 @@
+artifact_type: "Memory Image"
+files:
+  - "Full physical memory dump"
+tools: ["WinPmem", "DumpIt", "Magnet RAM Capture", "AVML (Linux)"]
+notes: "Capture memory BEFORE shutting down. Memory is volatile — power off destroys it."

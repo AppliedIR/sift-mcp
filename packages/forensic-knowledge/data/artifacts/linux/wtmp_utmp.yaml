@@ -1,0 +1,60 @@
+name: Login Records
+description: "Binary login/logout record files tracking user sessions, system boots, and runlevel changes"
+platform: linux
+
+locations:
+  - path: "/var/log/wtmp"
+    os_versions: ["All Linux distributions"]
+    notes: "Historical login records. Read with 'last' command. Rotated as wtmp.1, etc."
+  - path: "/var/run/utmp"
+    os_versions: ["All Linux distributions"]
+    notes: "Current login sessions. Read with 'who' or 'w' commands."
+  - path: "/var/log/btmp"
+    os_versions: ["All Linux distributions"]
+    notes: "Failed login attempts. Read with 'lastb' command. Requires root."
+  - path: "/var/log/lastlog"
+    os_versions: ["All Linux distributions"]
+    notes: "Last login time per user. Read with 'lastlog' command."
+
+proves:
+  - "User login and logout times with terminal/source information"
+  - "System boot and shutdown times"
+  - "Remote login source IP addresses"
+  - "Failed login attempts with source information (btmp)"
+  - "Currently logged-in users (utmp)"
+
+does_not_prove:
+  - "What users did during their sessions"
+  - "Logins if the binary log files were cleared or tampered with"
+  - "Application-level access (only system-level authentication)"
+
+timestamps:
+  - field: "Login/logout time"
+    meaning: "When the user session started or ended"
+    common_misinterpretation: "Timestamps are in local system time, not UTC (unless system is configured for UTC)"
+
+common_misinterpretations:
+  - claim: "wtmp is a text file"
+    correction: "wtmp is a BINARY file. Use 'last -f /path/to/wtmp' to read it. Do not attempt to cat or grep it."
+  - claim: "wtmp cannot be tampered with"
+    correction: "Tools exist to edit wtmp entries. A gap in expected login records or inconsistencies with auth.log may indicate tampering."
+  - claim: "btmp captures all failed authentication attempts"
+    correction: "btmp captures PAM-based failures. Application-level authentication failures are not included."
+
+corroborate_with:
+  for_execution: [auth_log, bash_history]
+  for_presence: []
+  for_timeline: [auth_log, syslog, systemd_journal]
+
+related_tools: [last, lastb, who, w]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Remote login source IP — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious login pattern — search for related techniques"
+
+references:
+  - "SANS FOR577 - Linux Incident Response and Threat Hunting"

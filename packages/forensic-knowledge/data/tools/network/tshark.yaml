@@ -1,0 +1,67 @@
+name: tshark
+category: network
+description: "Command-line network protocol analyzer (Wireshark CLI) for PCAP analysis and live capture"
+platform: [windows, linux, macos]
+platform_notes: "Available on all platforms via Wireshark install. Same flags and functionality."
+artifacts_parsed: []
+
+caveats:
+  - "PCAP analysis requires understanding of network protocols; misinterpretation is common"
+  - "Encrypted traffic (TLS/SSL) cannot be decoded without session keys or private keys"
+  - "Large PCAP files (multi-GB) require significant memory and processing time"
+  - "Display filters (-Y) and capture filters (-f) use different syntax"
+  - "Timestamp precision depends on the capture source; nanosecond precision is not always available"
+  - "Reassembled streams may span multiple packets; use -z follow to reconstruct conversations"
+  - "Some protocols require specific dissectors that may need to be enabled manually"
+
+output_notes:
+  format: text_or_json
+  key_fields: [frame.time, ip.src, ip.dst, tcp.srcport, tcp.dstport, protocol, info]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+  2: "error in capture filter"
+
+advisories:
+  - "Use -r to read from a PCAP file; use -T fields -e for structured field extraction"
+  - "Use -T json for machine-readable output suitable for further processing"
+  - "Use -z conv,tcp to get conversation statistics for identifying high-volume connections"
+  - "Use -z io,stat to get traffic volume over time for identifying beaconing patterns"
+  - "For C2 detection, look for periodic connections, unusual ports, DNS tunneling, and HTTP beaconing"
+  - "Export HTTP objects with --export-objects http,[directory] to extract transferred files"
+  - "Use -Y 'dns' to filter DNS traffic for domain-based IOC hunting"
+  - "Combine with Zeek for protocol-level logging when full packet analysis is not needed"
+
+quick_start: "tshark -r capture.pcap"
+
+investigation_sequence:
+  - "Open the PCAP file to review packet summary with default output (via sift-mcp)"
+  - "Use -Y display filters to focus on protocols or hosts of interest"
+  - "Use -T fields -e for structured field extraction of specific protocol fields"
+  - "Review all traffic types — even benign-looking protocols may carry malicious payloads"
+  - "Use -z conv,tcp for conversation statistics to identify high-volume or unusual connections"
+  - "Use -z io,stat for traffic volume over time to identify beaconing patterns"
+  - "Export HTTP objects (--export-objects http,dir/) to extract transferred files"
+  - "Cross-reference network indicators with DNS logs and Zeek protocol analysis"
+  - "Correlate connection timestamps with host-based activity timelines"
+  - "Cross-MCP: Check destination IPs and domains against threat intelligence (opencti: lookup_ioc)"
+  - "Cross-MCP: Search for C2 communication patterns (forensic-rag: search)"
+
+field_meanings:
+  frame.number: "Packet sequence number within the capture file"
+  frame.time: "Packet capture timestamp"
+  ip.src: "Source IP address"
+  ip.dst: "Destination IP address"
+  tcp.srcport: "Source TCP port number"
+  tcp.dstport: "Destination TCP port number"
+  udp.srcport: "Source UDP port number"
+  udp.dstport: "Destination UDP port number"
+  protocol: "Highest-layer protocol identified by the dissector"
+  frame.len: "Total frame length in bytes"
+  info: "Protocol-specific summary information"
+  http.host: "HTTP Host header value"
+  http.request.uri: "HTTP request URI path"
+  dns.qry.name: "DNS query domain name"
+  dns.a: "DNS A record response (IPv4 address)"
+  ssl.handshake.extensions_server_name: "TLS SNI (Server Name Indication) value"

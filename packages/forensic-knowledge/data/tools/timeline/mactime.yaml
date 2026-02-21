@@ -1,0 +1,53 @@
+name: mactime
+category: timeline
+description: "Convert bodyfile format (from fls, MFTECmd, etc.) into a human-readable chronological timeline"
+platform: [windows, linux, macos]
+platform_notes: "Perl script (part of The Sleuth Kit). On Windows, requires Perl runtime (Strawberry Perl). Pre-installed on SIFT."
+artifacts_parsed: []
+
+caveats:
+  - "mactime is a post-processing tool — it requires bodyfile input from another tool (fls, MFTECmd --body, etc.)"
+  - "Bodyfile format is pipe-delimited: MD5|name|inode|mode|UID|GID|size|atime|mtime|ctime|crtime"
+  - "Timestamp accuracy depends entirely on the source tool that generated the bodyfile"
+  - "Large bodyfiles (millions of entries) produce massive timelines; use date range filtering"
+  - "Does not deduplicate entries; the same file may appear multiple times for different timestamp types"
+
+output_notes:
+  format: csv
+  key_fields: [Date, Size, Type, Mode, UID, GID, Meta, File Name]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "The Type column indicates which timestamp triggered the entry: m(odified), a(ccessed), c(hanged), b(orn/created)"
+  - "Use -d flag for comma-delimited output suitable for spreadsheet import"
+  - "Use -z flag to specify timezone (e.g., -z UTC); default depends on system locale"
+  - "Date range filtering with YYYY-MM-DD..YYYY-MM-DD is essential for managing large timelines"
+  - "Combine bodyfiles from multiple sources (MFT, file system, etc.) for comprehensive timelines"
+  - "mactime is part of The Sleuth Kit and is the standard tool for bodyfile-to-timeline conversion"
+
+quick_start: "mactime -b bodyfile.txt > timeline.txt"
+
+investigation_sequence:
+  - "Generate a bodyfile using fls -r -m '/' image.dd > body.txt"
+  - "Run mactime against the bodyfile to produce a human-readable timeline"
+  - "Review all MACB timestamp types — each tells a different part of the file system story"
+  - "Use -d flag for comma-delimited output suitable for spreadsheet analysis"
+  - "Use date range filtering (-y YYYY-MM-DD) to focus on periods of interest while retaining the full bodyfile"
+  - "Cross-reference file system timeline with event log and application timelines for corroboration"
+  - "Look for clusters of activity that indicate attacker operations"
+
+field_meanings:
+  MD5: "MD5 hash of the file (often blank in bodyfile input)"
+  name: "Full file path"
+  inode: "Inode or MFT entry number"
+  mode_as_string: "File permission string (e.g., r/rrwxrwxrwx)"
+  UID: "User ID of the file owner"
+  GID: "Group ID of the file"
+  size: "File size in bytes"
+  atime: "Last access time (Unix epoch seconds)"
+  mtime: "Last modification time (Unix epoch seconds)"
+  ctime: "Last status change time (Unix epoch seconds)"
+  crtime: "File creation time (Unix epoch seconds, if supported by filesystem)"

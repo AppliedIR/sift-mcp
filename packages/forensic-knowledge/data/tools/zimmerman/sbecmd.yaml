@@ -1,0 +1,48 @@
+name: SBECmd
+category: zimmerman
+description: "Parse ShellBags from NTUSER.DAT and UsrClass.dat registry hives for folder access history"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+artifacts_parsed: [shellbags]
+
+caveats:
+  - "ShellBags record folder BROWSING via Explorer, not file access or execution"
+  - "ShellBag entries persist even after folders are deleted — they are a historical record"
+  - "Both NTUSER.DAT (Desktop/Explorer settings) and UsrClass.dat (BagMRU/Bags) contain ShellBag data"
+  - "Timestamps in ShellBags reflect the folder's MAC times as seen at browse time, not the browse time itself"
+  - "Registry key last write time is the closest approximation to when the folder was browsed"
+  - "Network and removable device paths in ShellBags reveal access to external resources"
+  - "ZIP file contents browsed in Explorer also generate ShellBag entries"
+
+output_notes:
+  format: csv
+  key_fields: [AbsolutePath, CreatedOn, ModifiedOn, AccessedOn, LastWriteTime, MFTEntry, ShellType, Value]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "ShellBags prove a USER BROWSED a folder in Explorer — this is intentional navigation, not automated access"
+  - "Deleted folder paths in ShellBags can reveal directory structures the user tried to remove"
+  - "USB device and network share paths prove the user navigated those locations interactively"
+  - "Use -d to specify the directory containing the hive files"
+  - "RECmd with ShellBag batch files provides an alternative parsing approach; results should be consistent"
+
+quick_start: "SBECmd.exe -d \"C:/Users/username\" --csv output/"
+
+investigation_sequence:
+  - "Parse ShellBags to identify folder access and browsing history"
+  - "Review all entries including folder paths accessed via Explorer"
+  - "Note that ShellBags persist after folder deletion — evidence of historical access"
+  - "Cross-reference with Jump Lists (JLECmd) and LNK files (LECmd)"
+  - "Look for evidence of access to removable media, network shares, or unusual directories"
+  - "Correlate MRU timestamps with other activity timelines"
+
+field_meanings:
+  AbsolutePath: "Full folder path as recorded in ShellBags"
+  ShellType: "Type of shell item (directory, drive, network, zip, etc.)"
+  LastRegistryWriteTimestamp: "Last time the ShellBag registry key was modified"
+  Value: "Raw ShellBag value data"
+  SlotModifiedDate: "Last modification timestamp from the ShellBag slot"
+  BagPath: "Registry path to the ShellBag entry"

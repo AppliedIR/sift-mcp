@@ -1,0 +1,26 @@
+false_positives:
+  "check_file/unknown_file":
+    description: "File flagged as UNKNOWN by windows-triage"
+    common_benign_causes:
+      - "Enterprise management agents (SCCM, Intune, Tanium)"
+      - "Antivirus/EDR software components"
+      - "User-installed applications"
+      - "Windows optional features or language packs"
+      - "Development tools and runtimes"
+    distinguishing_factors:
+      - "Check digital signature (sigcheck)"
+      - "Check file location (system dirs vs temp/user dirs)"
+      - "Check creation timestamp relative to OS install"
+      - "Cross-reference with software inventory"
+  "check_process_tree/unexpected_parent":
+    description: "Unexpected parent-child process relationship"
+    common_benign_causes:
+      - "Software updates running under system context"
+      - "Scheduled tasks with unusual execution chains"
+      - "Debugging or profiling sessions"
+      - "COM/DCOM activation creating indirect process trees"
+    distinguishing_factors:
+      - "Check if parent process is a known legitimate tool"
+      - "Check if execution time matches maintenance windows"
+      - "Check command-line arguments for suspicious patterns"
+      - "Review Event ID 4688 for full process creation context"

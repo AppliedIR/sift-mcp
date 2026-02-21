@@ -1,0 +1,39 @@
+name: "Email Compromise Investigation"
+description: "Investigate email account takeover, mailbox rule manipulation, and business email compromise"
+mitre: ["T1114", "T1534"]
+sources:
+  - "SANS FOR509 — Enterprise Cloud Forensics and Incident Response"
+  - "MITRE ATT&CK T1114 — Email Collection"
+  - "MITRE ATT&CK T1534 — Internal Spearphishing"
+  - "FBI IC3 — Business Email Compromise guidance"
+triggers:
+  - "New mailbox forwarding rules created"
+  - "Delegate access granted to mailbox"
+  - "Sign-in from unusual location or impossible travel detected"
+  - "Sent items containing fraudulent or phishing content"
+  - "OAuth application granted mail permissions"
+phases:
+  - phase: "Account"
+    steps:
+      - "Review sign-in logs for unauthorized access patterns"
+      - "Check for impossible travel — logins from geographically distant locations in short timeframes"
+      - "Identify all compromised accounts and the initial access method"
+  - phase: "Rules"
+    steps:
+      - "Check mailbox rules for forwarding rules, auto-delete rules, or move-to-folder rules that hide activity"
+      - "Check for delegated access grants — full access, send-as, send-on-behalf"
+      - "Check OAuth application permissions for mail.read, mail.send, or similar scopes"
+  - phase: "Content"
+    steps:
+      - "Review sent items for phishing emails or fraudulent messages"
+      - "Check for internal spearphishing — compromised account targeting other employees"
+      - "Search for related social engineering techniques (forensic-rag: search)"
+  - phase: "Impact"
+    steps:
+      - "Identify financial transactions initiated through compromised email accounts"
+      - "Determine scope of data exposure — what emails, attachments, or contacts were accessed"
+      - "Check if compromised account credentials were used for other services"
+  - phase: "Record"
+    steps:
+      - "Record finding with all evidence of compromise, rule changes, and impact"
+      - "HITL checkpoint — financial impact requires examiner decision on notification and containment"

@@ -1,0 +1,21 @@
+standards:
+  CONFIRMED:
+    level: 1
+    description: "Multiple independent sources agree. Directly observed in evidence."
+    min_sources: 2
+  INDICATED:
+    level: 2
+    description: "Strong evidence from at least one authoritative source. Consistent with other observations."
+    min_sources: 1
+  INFERRED:
+    level: 3
+    description: "Reasonable inference from available evidence. Not directly observed."
+    min_sources: 1
+  UNKNOWN:
+    level: 4
+    description: "Insufficient evidence to classify. Not-in-database is neutral, not suspicious."
+    min_sources: 0
+  CONTRADICTED:
+    level: 5
+    description: "Evidence directly contradicts the claim."
+    min_sources: 1

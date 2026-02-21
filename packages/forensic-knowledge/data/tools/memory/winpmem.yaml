@@ -1,0 +1,41 @@
+name: WinPmem
+category: memory
+description: "Windows physical memory acquisition tool for forensic imaging"
+platform: [windows]
+platform_notes: "Windows only. For Linux memory acquisition, use LiME (Linux Memory Extractor)."
+artifacts_parsed: []
+
+caveats:
+  - "Memory acquisition modifies the running system (driver loading, memory allocation for the tool itself)"
+  - "Requires loading a kernel driver — may be blocked by Secure Boot, Driver Signature Enforcement, or EDR"
+  - "AV/EDR products may quarantine the driver or block acquisition"
+  - "Raw format output only — no compression or case metadata (unlike AVML for Linux)"
+  - "Hash verification of the acquired image is essential"
+  - "Memory content changes between acquisition start and end — not an atomic snapshot"
+
+output_notes:
+  format: raw_memory
+  key_fields: [image_file, image_size_bytes, acquisition_time]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Acquire memory BEFORE any other volatile data collection to minimize changes"
+  - "Verify the tool's hash before deployment to ensure it hasn't been tampered with"
+  - "Use the output file directly with Volatility 3 for analysis"
+  - "Document: acquisition time, system uptime, tool version, and hash values"
+  - "If driver loading fails, try alternative tools (DumpIt, Belkasoft RAM Capturer)"
+  - "For Linux memory acquisition, use LiME instead"
+
+quick_start: "winpmem.exe -o memory.raw --format raw"
+
+investigation_sequence:
+  - "Acquire memory as early as possible — volatile data is lost on shutdown or reboot"
+  - "Use --format raw for broadest tool compatibility (Volatility, Rekall)"
+  - "Use -c snappy for faster compression than the default zlib"
+  - "Document acquisition time, system state, and examiner identity"
+  - "Verify the memory image size matches expected physical RAM"
+  - "Analyze the acquired image with Volatility 3 for process, network, and malware analysis"
+  - "Cross-reference memory findings with disk-based artifacts for corroboration"

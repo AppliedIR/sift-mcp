@@ -1,0 +1,62 @@
+name: PowerShell Operational Event Log
+description: "PowerShell operational event log recording script execution, module loading, and command invocation"
+platform: windows
+
+locations:
+  - path: "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-PowerShell%4Operational.evtx"
+    os_versions: ["Windows 7+", "Windows 10", "Windows 11"]
+    notes: "Script block logging (4104) requires PowerShell 5.0+ or explicit configuration on older versions. Module logging requires group policy enablement."
+  - path: "C:\\Windows\\System32\\winevt\\Logs\\Windows PowerShell.evtx"
+    os_versions: ["Windows 7+", "Windows 10", "Windows 11"]
+    notes: "Legacy PowerShell log; contains Event ID 400/403 (engine start/stop) and 600 (provider lifecycle)"
+
+proves:
+  - "PowerShell scripts and commands were executed"
+  - "Full script block content when script block logging is enabled (4104)"
+  - "Module and cmdlet invocation when module logging is enabled (4103)"
+  - "PowerShell engine start and stop events"
+
+does_not_prove:
+  - "That PowerShell output was captured (output is not logged by default)"
+  - "That a script was malicious (content analysis required)"
+  - "What network connections or file operations the script performed (use Sysmon for this)"
+
+timestamps:
+  - field: "TimeCreated"
+    meaning: "Time the PowerShell event was generated"
+    common_misinterpretation: "For script block logging, the timestamp is when the block was compiled, which is very close to execution time"
+
+common_misinterpretations:
+  - claim: "All PowerShell activity is logged by default"
+    correction: "Only basic engine start/stop events are logged by default. Script block logging (4104) and module logging (4103) must be explicitly enabled via group policy or registry."
+  - claim: "Event ID 4104 captures every command typed"
+    correction: "4104 logs script blocks — chunks of compiled PowerShell code. Interactive commands are logged, but large scripts may be split across multiple 4104 events with ScriptBlockId correlation."
+  - claim: "PowerShell transcript logging and event logging are the same"
+    correction: "Transcripts (Start-Transcript) write to text files and capture input/output. Event logging writes to the event log. They are separate mechanisms and must be enabled independently."
+  - claim: "Event IDs 4105/4106 show what the script did"
+    correction: "4105 (script block invocation start) and 4106 (script block invocation stop) show that execution began and ended, not the results or side effects."
+  - claim: "Attackers cannot evade PowerShell logging"
+    correction: "PowerShell logging can be bypassed via downgrade attacks (using PowerShell 2.0), CLM bypass, unmanaged PowerShell (P/Invoke), or AMSI bypass techniques."
+
+corroborate_with:
+  for_execution: [prefetch, event_logs_security, event_logs_sysmon]
+  for_presence: [mft, usn_journal]
+  for_timeline: [event_logs_security, event_logs_sysmon, srum]
+
+related_tools: [EvtxECmd, Hayabusa]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_process_tree"
+    when: "Process execution event found — verify parent-child relationship against baseline"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "IP address, domain, or hash found in event — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious event pattern — search for detection rules and MITRE technique context"
+
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "SANS FOR508 - Advanced Incident Response"
+  - "FireEye - Greater Visibility Through PowerShell Logging"

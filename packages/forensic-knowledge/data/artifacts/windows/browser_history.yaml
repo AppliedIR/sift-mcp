@@ -1,0 +1,73 @@
+name: Browser History
+description: "Web browser history databases recording URL visits, downloads, and search queries"
+platform: windows
+
+locations:
+  - path: "C:\\Users\\{username}\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\History"
+    os_versions: ["Windows 7+", "Windows 10", "Windows 11"]
+    notes: "SQLite database; additional profiles in 'Profile 1', 'Profile 2', etc."
+  - path: "C:\\Users\\{username}\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\History"
+    os_versions: ["Windows 10", "Windows 11"]
+    notes: "Chromium-based Edge; same SQLite schema as Chrome"
+  - path: "C:\\Users\\{username}\\AppData\\Roaming\\Mozilla\\Firefox\\Profiles\\{profile}\\places.sqlite"
+    os_versions: ["Windows 7+", "Windows 10", "Windows 11"]
+    notes: "Firefox history and bookmarks in places.sqlite; profile folder has random prefix"
+  - path: "C:\\Users\\{username}\\AppData\\Local\\Microsoft\\Windows\\WebCache\\WebCacheV01.dat"
+    os_versions: ["Windows 10", "Windows 11"]
+    notes: "Legacy Internet Explorer / older Edge ESE database; locked while browser is running"
+
+proves:
+  - "URLs were visited by the user's browser profile"
+  - "Visit timestamps and visit count per URL"
+  - "File downloads with source URL and local save path"
+  - "Search queries (embedded in search engine URLs)"
+  - "Typed URLs vs. linked/redirected navigation (visit source)"
+
+does_not_prove:
+  - "The user physically viewed the page (could be automated, redirect, or prefetch)"
+  - "What the user did on the page"
+  - "That downloaded files were opened or executed"
+  - "Activity in private/incognito browsing mode"
+  - "Which user was at the keyboard (only which OS user profile)"
+
+timestamps:
+  - field: "visit_time (Chrome/Edge)"
+    meaning: "WebKit timestamp (microseconds since 1601-01-01) of the page visit"
+    common_misinterpretation: "Chrome timestamps use WebKit epoch, not Unix epoch. Direct conversion is required."
+  - field: "last_visit_date (Firefox)"
+    meaning: "PRTime (microseconds since 1970-01-01 UTC) of the last visit"
+    common_misinterpretation: "Firefox uses microseconds, not milliseconds or seconds. Division by 1,000,000 gives Unix epoch seconds."
+  - field: "last_visit_time (Chrome/Edge)"
+    meaning: "Most recent visit to this URL"
+    common_misinterpretation: "Only the last visit time is stored in the urls table; full visit history is in the visits table"
+
+common_misinterpretations:
+  - claim: "Browser history shows everything the user visited"
+    correction: "Private/incognito browsing does not write to the history database. Users can also manually delete history entries. Browser extensions may also suppress history recording."
+  - claim: "A URL in history means the user intentionally navigated there"
+    correction: "History includes redirects, embedded frames, prefetched pages, and JavaScript-initiated navigation. Check the visit source/transition type to determine user intent."
+  - claim: "Clearing browser history removes all evidence"
+    correction: "Deleted SQLite records may be recoverable from unallocated database pages, WAL files, journal files, or volume shadow copies. Browser data may also appear in memory, pagefile, or network logs."
+  - claim: "Download history means the file was opened"
+    correction: "Download records prove the file was downloaded to disk, not that it was opened or executed. Correlate with Prefetch, UserAssist, or Zone.Identifier ADS for execution evidence."
+  - claim: "Browser history timestamps are in local time"
+    correction: "Chrome and Edge use WebKit timestamps (UTC). Firefox uses PRTime (UTC). Both require conversion and are stored in UTC, not local time."
+
+corroborate_with:
+  for_execution: [prefetch, amcache, userassist]
+  for_presence: [mft, usn_journal]
+  for_timeline: [event_logs_security, srum, event_logs_sysmon]
+
+related_tools: [BrowsingHistoryView, Hindsight, DB Browser for SQLite]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "URL, domain, or IP identified — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious network or browsing pattern — search for related techniques"
+
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "SANS FOR508 - Advanced Incident Response"

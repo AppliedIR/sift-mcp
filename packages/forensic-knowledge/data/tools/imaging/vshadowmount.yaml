@@ -1,0 +1,42 @@
+name: vshadowmount
+category: imaging
+description: "Mount Volume Shadow Copy (VSS) snapshots as raw device files via FUSE for forensic analysis"
+platform: [linux]
+platform_notes: "FUSE-based mount. Linux only. Mounts Windows Volume Shadow Copies on Linux."
+artifacts_parsed: [volume_shadow_copies]
+
+caveats:
+  - "Requires FUSE support and libvshadow installed on the system"
+  - "Must be run against a raw volume — use partition offset or ewfmount first for E01 images"
+  - "Each VSS snapshot appears as a separate device file (vss1, vss2, etc.) in the mount point"
+  - "Mounted snapshots are read-only — evidence integrity is preserved"
+  - "Must unmount with fusermount -u when finished"
+  - "VSS snapshots can be very large (full volume size) — they are differencing copies but appear as complete volumes"
+
+output_notes:
+  format: text
+  key_fields: [mount_point, snapshot_devices]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Run vshadowinfo first to identify available snapshot numbers and timestamps"
+  - "Typical workflow: vshadowmount /dev/volume /mnt/vss → mount -o ro,loop /mnt/vss/vss1 /mnt/snap1"
+  - "Mount each snapshot read-only and compare file contents against the live volume to identify changes"
+  - "VSS snapshots often contain pre-encryption versions of files in ransomware cases"
+  - "Use diff or timeline tools to compare snapshot contents against the active volume"
+  - "Unmount with: fusermount -u /mnt/vss"
+  - "Use -o offset flag when working with a full disk image instead of a raw volume"
+
+quick_start: "vshadowmount /dev/sdX /mnt/vss"
+
+investigation_sequence:
+  - "Mount all Volume Shadow Copy snapshots as virtual device files"
+  - "Snapshots appear as vss1, vss2, etc. in the mount point directory"
+  - "Mount individual snapshots read-only for file system analysis"
+  - "Compare file contents across snapshots to identify changes over time"
+  - "Look for files present in shadow copies but deleted from the current volume"
+  - "Cross-reference shadow copy content with MFT and USN Journal analysis"
+  - "Unmount with fusermount -u when analysis is complete"

@@ -1,0 +1,47 @@
+name: WxTCmd
+category: zimmerman
+description: "Parse Windows Timeline ActivitiesCache.db database for user activity tracking"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output."
+artifacts_parsed: [activitiescache]
+
+caveats:
+  - "Windows Timeline feature was introduced in Windows 10 1803 and removed in Windows 11 — not present on all systems"
+  - "ActivitiesCache.db is a SQLite database that may be locked if the user is logged in"
+  - "Activity data depends on user settings — users can disable Timeline or clear activity history"
+  - "Cloud-synced activities may not match local entries if sync was disabled"
+  - "Timestamps are in UTC but display may vary based on tool version"
+
+output_notes:
+  format: csv
+  key_fields: [ActivityType, AppId, DisplayText, StartTime, EndTime, LastModifiedTime, ExpirationTime, Payload]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "Focuses on user interaction timeline — valuable for understanding what the user was working on and when"
+  - "Activity types include application usage, file access, and clipboard operations"
+  - "ActivitiesCache.db location: C:\\Users\\<user>\\AppData\\Local\\ConnectedDevicesPlatform\\<random>\\ActivitiesCache.db"
+  - "Corroborate with Jump Lists, LNK files, and Shellbags for comprehensive user activity timeline"
+  - "Cloud-synced activities may exist even if the local database has been cleared"
+
+quick_start: "WxTCmd.exe -f ActivitiesCache.db --csv output/"
+
+investigation_sequence:
+  - "Parse ActivitiesCache.db to extract Windows Timeline data"
+  - "Review all activity entries including application usage and user interaction"
+  - "Note that Windows Timeline captures application focus time and activity duration"
+  - "Cross-reference activity timestamps with other user activity artifacts"
+  - "Check for activities involving cloud-connected applications for scope assessment"
+
+field_meanings:
+  ActivityType: "Type of activity recorded (5=open, 6=copy/paste, 16=app in use)"
+  StartTime: "When the activity began"
+  EndTime: "When the activity ended"
+  Duration: "Duration of the activity"
+  Executable: "Path to the application executable"
+  DisplayText: "User-visible description of the activity"
+  ContentUri: "URI or path of the content involved"
+  AppActivityId: "Application-specific activity identifier"

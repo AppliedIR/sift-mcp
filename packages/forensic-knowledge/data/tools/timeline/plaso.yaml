@@ -1,0 +1,62 @@
+name: Plaso (log2timeline)
+category: timeline
+description: "Super-timeline generation engine that extracts timestamps from multiple artifact types into a unified timeline"
+platform: [windows, linux, macos]
+platform_notes: "Python-based. Works identically on all platforms. Best supported on Linux (SIFT/REMnux)."
+artifacts_parsed: []
+
+caveats:
+  - "Processing a full disk image can take many hours depending on image size and artifact density"
+  - "Output is a Plaso storage file (.plaso) that must be post-processed with psort for readable output"
+  - "Parser selection significantly impacts processing time — use --parsers to limit scope"
+  - "Memory usage can be very high (8GB+) for large images; monitor system resources"
+  - "Timezone handling requires attention — timestamps are stored in UTC internally"
+  - "Not all parsers are equally mature; some produce noisy or redundant entries"
+  - "Plaso storage files can be very large (multiple GB) for full disk images"
+
+output_notes:
+  format: csv
+  key_fields: [datetime, timestamp_desc, source, sourcetype, type, filename, display_name, message, extra]
+
+exit_code_hints:
+  0: "success"
+  1: "error or partial failure"
+
+advisories:
+  - "log2timeline.py creates the Plaso storage file; psort.py converts it to CSV/JSON for analysis"
+  - "Use targeted parsers (--parsers) for faster results: 'prefetch,winevtx,mft,usnjrnl' covers key Windows artifacts"
+  - "The --storage-file flag specifies the output Plaso file; always name it descriptively"
+  - "Use psort with --output-time-zone to convert UTC timestamps to the relevant local timezone"
+  - "Filter psort output with --slice or date range flags to manage output volume"
+  - "Plaso excels at bringing together artifacts from many sources into a single chronological view"
+  - "Consider using Timesketch for interactive exploration of large Plaso timelines"
+
+quick_start: "log2timeline.py --storage-file timeline.plaso /path/to/evidence"
+
+investigation_sequence:
+  - "Run log2timeline.py against the evidence source to create a Plaso storage file"
+  - "Use psort.py to export the timeline to CSV or other formats for analysis"
+  - "Review all parsed sources — do not filter parsers unless investigating a specific artifact"
+  - "Use --partitions to select specific partitions if the image contains multiple volumes"
+  - "Process Volume Shadow Copies (--vss_stores all) for historical data recovery"
+  - "Cross-reference Plaso timeline events with Hayabusa detection results for context"
+  - "Use psort --slice to focus on specific time windows of interest while retaining the full dataset"
+
+field_meanings:
+  date: "Event date (MM/DD/YYYY) in l2tcsv format"
+  time: "Time of day in 24-hour format (HH:MM:SS)"
+  timezone: "Output timezone name or input file timezone"
+  MACB: "Modified/Accessed/Changed/Born indicator for Sleuthkit mactime compatibility"
+  source: "Short log category (LOG, WEBHIST, REG, FILE, etc.)"
+  sourcetype: "Detailed format description (e.g., Syslog, NTUSER.DAT Registry)"
+  type: "Timestamp classification (Last Accessed, Last Written, Creation Time, etc.)"
+  user: "Associated username if available"
+  host: "Associated hostname if available"
+  short: "Brief entry description for visualization tools"
+  desc: "Full description — interpreted results or actual log line content"
+  version: "Timestamp object version number"
+  filename: "Full path to the source file containing the entry"
+  inode: "Inode number of parsed file or contained file"
+  notes: "Additional notes, analysis hints, or URLs"
+  format: "Input parser/module name that processed the file"
+  extra: "Additional parsed information joined together"

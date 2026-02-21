@@ -1,0 +1,41 @@
+name: PhotoRec
+category: carving
+description: "File carving tool that recovers files by signature from disk images and raw devices"
+platform: [windows, linux, macos]
+platform_notes: "Available on all platforms. Part of TestDisk suite. Pre-installed on SIFT."
+artifacts_parsed: []
+
+caveats:
+  - "Carved files lose original filenames — sequential numbering is used instead"
+  - "Fragmented files may be partially recovered or corrupted"
+  - "Cannot recover directory structure or file metadata"
+  - "Large volumes generate massive output — ensure sufficient destination space"
+  - "File type detection is header/footer based — may misidentify some file types"
+  - "Duplicate files are common in carved output"
+
+output_notes:
+  format: recovered_files
+  key_fields: [file_count, file_types, output_directory]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Use /d to specify output directory — NEVER write to the source volume"
+  - "Select specific file types to reduce output volume and processing time"
+  - "Use on unallocated space or entire disk images for maximum recovery"
+  - "Pair with exiftool and hashdeep for metadata extraction and deduplication of recovered files"
+  - "For targeted recovery, use Sleuth Kit (icat) if inode/MFT entry is known"
+  - "Combine with bulk_extractor for keyword-based data recovery from unallocated space"
+
+quick_start: "photorec image.dd"
+
+investigation_sequence:
+  - "Run photorec against unallocated space or disk images to recover deleted files"
+  - "Select target file types appropriate for the investigation focus"
+  - "Review all recovered files — carving may produce partial or corrupt results"
+  - "Verify recovered file integrity by examining headers and content"
+  - "Cross-reference carved files with file system metadata from MFT and directory listings"
+  - "Submit recovered executables to malware analysis tools for assessment"
+  - "Document recovery results including source offset and file type for the evidence record"

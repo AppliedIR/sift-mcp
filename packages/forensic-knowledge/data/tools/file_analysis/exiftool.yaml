@@ -1,0 +1,59 @@
+name: ExifTool
+category: file_analysis
+description: "Extract, read, and modify metadata from files including documents, images, PDFs, executables, and archives"
+platform: [windows, linux, macos]
+platform_notes: "Perl-based. Works identically on all platforms."
+artifacts_parsed: []
+
+caveats:
+  - "Metadata can be modified or stripped by users; absence of metadata does not prove absence of origin"
+  - "EXIF GPS coordinates in images can reveal the location where a photo was taken"
+  - "Document metadata (Author, Company, LastSavedBy) reflects the application settings, which may differ from the actual author"
+  - "PDF metadata may include creation tool, modification history, and embedded JavaScript indicators"
+  - "PE executable metadata (CompanyName, FileVersion, OriginalFilename) can reveal signed binary masquerading"
+  - "Timestamps in metadata follow the creating application's convention (local time vs UTC varies)"
+  - "Some file formats store metadata in multiple locations; ExifTool reads all of them"
+
+output_notes:
+  format: text_or_json
+  key_fields: [FileName, FileSize, FileType, CreateDate, ModifyDate, Author, Creator, Producer, Software]
+
+exit_code_hints:
+  0: "success"
+  1: "error or unrecognized file"
+
+advisories:
+  - "Use -j flag for JSON output suitable for automated processing"
+  - "Use -r flag for recursive directory processing"
+  - "For PE files, compare OriginalFilename with the actual filename to detect renamed binaries"
+  - "For documents, Author and LastSavedBy fields can identify the user who created or last edited the file"
+  - "For images, GPS metadata (-gps:all) can provide geolocation evidence"
+  - "Timezone-aware fields are marked; always document which timestamps are UTC vs local"
+  - "Use -D flag to show tag ID numbers for precise identification of metadata fields"
+  - "ExifTool can identify file type by content regardless of extension — useful for renamed/disguised files"
+
+quick_start: "exiftool target_file"
+
+investigation_sequence:
+  - "Extract metadata from files to identify creation context, authorship, and modification history"
+  - "Use -G to show metadata group names for understanding where each tag originates"
+  - "Use -s for exact internal tag names needed for scripting and automation"
+  - "Use -csv or -json for structured output suitable for bulk analysis"
+  - "Check GPS coordinates in images for location intelligence"
+  - "Review document metadata for author names, software versions, and creation dates"
+  - "Compare file system timestamps with embedded metadata timestamps for anomaly detection"
+  - "Cross-reference author and software information with other investigation evidence"
+
+field_meanings:
+  FileName: "File name"
+  FileSize: "File size"
+  FileModifyDate: "File system modification timestamp"
+  MIMEType: "File MIME type"
+  CreateDate: "Embedded creation date from file metadata"
+  ModifyDate: "Embedded modification date from file metadata"
+  DateTimeOriginal: "Original creation date (primarily for images)"
+  Make: "Camera or device manufacturer (for images)"
+  Model: "Camera or device model (for images)"
+  Software: "Software used to create or modify the file"
+  Author: "Document author name"
+  GPSPosition: "GPS coordinates (composite of latitude and longitude)"

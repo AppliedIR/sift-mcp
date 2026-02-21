@@ -1,0 +1,100 @@
+name: Volatility 3
+category: volatility
+description: "Memory forensics framework for analyzing RAM dumps — supports Windows, Linux, and macOS memory images"
+platform: [windows, linux, macos]
+platform_notes: "Python-based. Works identically on all platforms. Analyzes memory images from Windows, Linux, and macOS regardless of host OS."
+artifacts_parsed: []
+
+plugins:
+  process_analysis:
+    - "windows.pslist — List running processes"
+    - "windows.pstree — Display process tree hierarchy"
+    - "windows.psscan — Scan for EPROCESS structures (finds hidden/terminated processes)"
+    - "windows.cmdline — Show process command-line arguments"
+    - "windows.dlllist — List loaded DLLs per process"
+    - "windows.handles — List open handles per process"
+    - "windows.vadinfo — Display Virtual Address Descriptor info"
+  code_injection:
+    - "windows.malfind — Find injected code and hollowed processes"
+    - "windows.hollowprocesses — Detect process hollowing"
+  network:
+    - "windows.netscan — Scan for network connections and listening ports"
+    - "windows.netstat — List active network connections"
+  persistence:
+    - "windows.svcscan — List Windows services"
+    - "windows.registry.printkey — Print registry key values"
+    - "windows.scheduled_tasks — List scheduled tasks (experimental)"
+  filesystem:
+    - "windows.filescan — Scan for FILE_OBJECT structures"
+    - "windows.dumpfiles — Extract files from memory"
+  credentials:
+    - "windows.hashdump — Dump password hashes (requires SYSTEM and SAM)"
+    - "windows.lsadump — Dump LSA secrets"
+    - "windows.cachedump — Dump cached domain credentials"
+
+caveats:
+  - "Requires a full physical memory dump; process dumps and hibernation files have limited plugin support"
+  - "Volatility 3 auto-detects OS version via ISF (Intermediate Symbol Format) symbol tables"
+  - "Symbol tables must be available for the exact OS build; missing symbols cause plugin failures"
+  - "Memory analysis is a point-in-time snapshot; processes that exited before acquisition are only found by scanning"
+  - "Large memory images (32GB+) require significant processing time and RAM on the analysis workstation"
+  - "Volatility 3 is NOT backward-compatible with Volatility 2 plugins or profiles"
+  - "Anti-forensics techniques (DKOM, pool tag manipulation) can hide artifacts from certain plugins"
+  - "Not all plugins are stable; check the Volatility 3 documentation for plugin maturity"
+
+output_notes:
+  format: json
+  key_fields: [PID, PPID, ImageFileName, Offset, CreateTime, ExitTime]
+
+exit_code_hints:
+  0: "success"
+  1: "error, unsatisfied requirement, or no results"
+
+advisories:
+  - "Always run pslist AND psscan — comparing results reveals HIDDEN PROCESSES (present in scan but absent from list)"
+  - "malfind detects injected code by checking VAD permissions (RWX) and PE headers — high false positive rate on some systems"
+  - "netscan can recover terminated connections that no longer appear in netstat"
+  - "Process tree analysis (pstree) is critical: unexpected parent-child relationships indicate injection or masquerading"
+  - "Use -o for offset if the memory image contains multiple operating system instances"
+  - "Output to JSON (-r json) for structured analysis; default is text table"
+  - "For Windows analysis, download ISF symbols from https://github.com/volatilityfoundation/volatility3#symbol-tables"
+
+quick_start: "vol -f memory_dump.raw windows.info"
+
+investigation_sequence:
+  - "Start with windows.info to identify the OS version and profile (via sift-mcp)"
+  - "Run windows.pslist and windows.pstree to enumerate running processes"
+  - "Run windows.netscan for network connection analysis"
+  - "Run windows.cmdline to see command-line arguments for all processes"
+  - "Run windows.malfind to detect injected code and suspicious memory regions"
+  - "Review all plugin output — do not skip plugins based on assumptions about the attack type"
+  - "Run windows.dlllist and windows.ldrmodules for loaded module analysis"
+  - "Run windows.handles for handle analysis on suspicious processes"
+  - "Cross-reference memory findings with disk-based artifacts for corroboration"
+  - "Check windows.svcscan for service-based persistence mechanisms"
+  - "Cross-MCP: Verify process trees from memory against baseline (windows-triage: check_process_tree)"
+  - "Cross-MCP: Check network IOCs from netscan output (opencti: lookup_ioc)"
+  - "Cross-MCP: Submit suspicious memory dumps for analysis (remnux: analyze_file)"
+
+field_meanings:
+  PID: "Process identifier"
+  PPID: "Parent process identifier"
+  ImageFileName: "Process executable name"
+  "Offset(V)": "Virtual memory offset of the process structure"
+  Threads: "Number of active threads in the process"
+  Handles: "Number of open handles"
+  SessionId: "Windows session ID (0=system/services, 1+=interactive)"
+  Wow64: "Whether the process is running in WoW64 (32-bit on 64-bit)"
+  CreateTime: "Process creation timestamp"
+  ExitTime: "Process exit timestamp (blank if still running)"
+  Proto: "Network protocol (TCP/UDP) in netscan output"
+  LocalAddr: "Local IP address in netscan output"
+  LocalPort: "Local port number in netscan output"
+  ForeignAddr: "Remote IP address in netscan output"
+  ForeignPort: "Remote port number in netscan output"
+  State: "Connection state (ESTABLISHED, LISTENING, CLOSE_WAIT, etc.) in netscan output"
+  Owner: "Process name owning the network connection"
+  "Start VPN": "Start virtual page number in malfind output"
+  Protection: "Memory protection flags (e.g., PAGE_EXECUTE_READWRITE) in malfind output"
+  CommitCharge: "Committed memory size in malfind output"
+  PrivateMemory: "Whether memory is private (not shared) in malfind output"

@@ -1,0 +1,60 @@
+name: BAM
+description: "Background Activity Moderator tracking application execution with user SID attribution"
+platform: windows
+
+locations:
+  - path: "SYSTEM\\CurrentControlSet\\Services\\bam\\State\\UserSettings\\{SID}"
+    os_versions: ["Windows 10 1709+", "Windows 11"]
+    notes: "Replaced by DAM (Desktop Activity Moderator) key on some builds; check both bam and dam paths"
+
+proves:
+  - "Application was executed"
+  - "Which user (SID) executed the application"
+  - "Full path of the executed binary"
+  - "Last execution timestamp for that user/binary combination"
+
+does_not_prove:
+  - "How many times the application was executed"
+  - "How long the application ran"
+  - "What the application did during execution"
+  - "That the application completed successfully"
+
+timestamps:
+  - field: "ExecutionTime"
+    meaning: "Last time the executable was run by the specified user SID"
+    common_misinterpretation: "This is the last execution only — no history of prior runs is maintained"
+
+common_misinterpretations:
+  - claim: "BAM records persist indefinitely"
+    correction: "BAM entries are typically cleared after approximately 7 days of inactivity or on reboot in some configurations. Do not assume historical completeness."
+  - claim: "BAM captures all execution"
+    correction: "BAM captures foreground and background execution but may miss very short-lived processes or processes that terminate immediately."
+  - claim: "BAM is available on all Windows 10 systems"
+    correction: "BAM was introduced in Windows 10 version 1709 (Fall Creators Update). Earlier Windows 10 builds do not have this artifact."
+  - claim: "DAM and BAM are the same thing"
+    correction: "DAM (Desktop Activity Moderator) replaced BAM in some builds. Check both SYSTEM\\CurrentControlSet\\Services\\bam and dam paths."
+
+corroborate_with:
+  for_execution: [prefetch, userassist, amcache]
+  for_presence: [mft, shimcache]
+  for_timeline: [prefetch, event_logs_security, srum]
+
+related_tools: [RECmd]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_file"
+    when: "Executable path identified — verify against Windows baseline"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "File hash available — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious executable or pattern — search for related MITRE techniques and detection rules"
+  - mcp: "remnux"
+    tool: "analyze_file"
+    when: "Unknown executable — submit for static analysis"
+
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "SANS FOR508 - Advanced Incident Response"

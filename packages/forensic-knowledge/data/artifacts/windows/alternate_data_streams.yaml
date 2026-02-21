@@ -1,0 +1,57 @@
+name: NTFS Alternate Data Streams
+description: "Additional named data streams attached to files and directories on NTFS, capable of storing hidden data alongside the default file content"
+platform: windows
+
+locations:
+  - path: "Any file or directory on an NTFS volume (filename:streamname:$DATA)"
+    os_versions: ["Windows XP+", "Windows 10", "Windows 11"]
+    notes: "ADS are a native NTFS feature. The default (unnamed) stream is the normal file content. Additional named streams can contain arbitrary data."
+
+proves:
+  - "Additional data streams are attached to a file or directory"
+  - "Size and content of alternate data streams"
+  - "Zone.Identifier ADS indicates the file was downloaded from the internet (Mark of the Web)"
+
+does_not_prove:
+  - "Who created the alternate data stream"
+  - "That an ADS contains malicious content (legitimate uses exist)"
+  - "That ADS content has been executed"
+  - "When the ADS was created (ADS inherit the parent file's timestamps)"
+
+timestamps:
+  - field: "Parent file timestamps"
+    meaning: "ADS do not have independent timestamps — they inherit the parent file's MFT timestamps"
+    common_misinterpretation: "Modifying an ADS may or may not update the parent file's timestamps depending on the method used. ADS creation/modification is not independently timestamped."
+
+common_misinterpretations:
+  - claim: "Alternate data streams are always malicious"
+    correction: "ADS have many legitimate uses: Zone.Identifier (Mark of the Web), thumbnails, summary information, and resource forks from macOS cross-platform transfers. Only a small percentage of ADS contain malicious content."
+  - claim: "Standard file listings show all data streams"
+    correction: "Standard dir commands and Windows Explorer do not display ADS. Use 'dir /r', streams.exe (Sysinternals), or forensic tools like fls to enumerate alternate data streams."
+  - claim: "ADS are preserved when files are copied"
+    correction: "ADS are preserved when copying within NTFS, but are typically stripped when copying to FAT32, exFAT, or uploading to web services. The Zone.Identifier ADS is notably stripped by some applications."
+  - claim: "ADS can only store small amounts of data"
+    correction: "ADS can store data limited only by available disk space. Entire executables can be stored in and executed from alternate data streams."
+
+corroborate_with:
+  for_execution: [event_logs_sysmon, prefetch]
+  for_presence: [mft, ntfs_i30, usn_journal]
+  for_timeline: [mft, usn_journal]
+
+related_tools: [fls, MFTECmd, streams.exe]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_file"
+    when: "File path identified — verify against Windows baseline"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "File hash available — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious file activity pattern — search for related techniques"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "MITRE ATT&CK T1564.004 - NTFS File Attributes"

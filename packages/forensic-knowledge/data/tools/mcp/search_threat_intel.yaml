@@ -1,0 +1,37 @@
+name: search_threat_intel
+category: mcp
+description: "Search OpenCTI threat intelligence platform for indicators, threat actors, malware families, TTPs, and CVEs"
+platform: [any]
+platform_notes: "MCP server tool. Platform depends on where the MCP server is hosted, not on the analysis target."
+artifacts_parsed: []
+mcp_server: opencti-mcp
+
+caveats:
+  - "Results depend on the data ingested into the OpenCTI instance — coverage varies by deployment"
+  - "Confidence scores reflect the source's assessment, not absolute certainty"
+  - "Threat intelligence has a shelf life — old indicators may no longer be active or relevant"
+  - "IOC lookups may return no results if the indicator is not in the OpenCTI database"
+  - "Attribution to threat actors should be treated as assessed, not confirmed, regardless of confidence level"
+  - "TLP markings on results must be respected — do not share beyond the permitted audience"
+
+output_notes:
+  format: structured_json
+  key_fields: [entity_type, name, description, confidence, created, labels, relationships]
+
+advisories:
+  - "Use for IOC enrichment: look up IPs, domains, hashes found during investigation for known associations"
+  - "Threat actor searches reveal known TTPs, tools, and targeting — useful for scoping an investigation"
+  - "Malware family searches provide behavioral indicators and associated infrastructure"
+  - "MITRE technique searches return related threat actors and malware, providing attribution context"
+  - "Use lookup_ioc for detailed IOC context; use search_threat_intel for broader exploration"
+  - "Combine threat intelligence with forensic evidence — intel provides context, artifacts provide proof"
+  - "Relationships between entities (uses, targets, indicates) reveal the threat landscape around a finding"
+
+investigation_sequence:
+  - "Look up IOCs (IPs, domains, hashes) discovered during forensic analysis for known associations"
+  - "Search for threat actors if attribution indicators are present"
+  - "Look up malware family names identified by detection tools for behavioral context"
+  - "Search for MITRE techniques observed in the investigation for related threat intelligence"
+  - "Review entity relationships to understand the threat landscape around findings"
+  - "Use intelligence context to guide further artifact collection and analysis priorities"
+  - "Document threat intelligence findings alongside forensic evidence for the investigation record"

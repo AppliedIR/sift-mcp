@@ -1,0 +1,64 @@
+name: Hayabusa
+category: timeline
+description: "Windows event log fast forensics timeline generator and threat hunting tool using Sigma-based detection rules"
+platform: [windows, linux, macos]
+platform_notes: "Rust binary with pre-built releases for each platform. Same flags and output. Analyzes Windows EVTX files regardless of host OS."
+artifacts_parsed: [event_logs_security, event_logs_system, event_logs_powershell, event_logs_sysmon]
+
+caveats:
+  - "Detection is rule-based (Sigma + Hayabusa rules) — only known attack patterns are detected"
+  - "False positives are common, especially at informational and low severity levels"
+  - "Rule updates are frequent; always update rules before analysis with 'hayabusa update-rules'"
+  - "Does not parse non-EVTX log sources; combine with other tools for complete timeline"
+  - "Large EVTX collections (10GB+) may require significant processing time"
+  - "Rule severity levels: critical, high, medium, low, informational — triage from the top down"
+  - "Custom or modified Sigma rules may not be included in the default rule set"
+
+output_notes:
+  format: csv_or_json
+  key_fields: [Timestamp, RuleTitle, Level, Computer, Channel, EventID, RecordID, Details, MitreTactics, MitreTechniques]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Hayabusa is a DETECTION tool, not a parser — it highlights suspicious events, not all events"
+  - "Start with 'csv-timeline' or 'json-timeline' commands for investigation output"
+  - "Use 'logon-summary' and 'pivot-keywords-list' for rapid triage"
+  - "The --min-level flag filters output by severity — use 'high' or 'critical' for initial triage"
+  - "MITRE ATT&CK mapping in output enables direct technique-based investigation"
+  - "Combine Hayabusa detection results with EvtxECmd full parsing for complete event context"
+  - "The 'metrics' command provides event ID statistics useful for identifying log gaps or anomalies"
+
+quick_start: "hayabusa csv-timeline -d evtx_directory/ -o output.csv"
+
+investigation_sequence:
+  - "Run csv-timeline to generate a detection-based timeline of all EVTX files (via sift-mcp or wintools-mcp)"
+  - "Review critical and high severity detections first for rapid triage"
+  - "Do not discard lower severity results — informational and low events frequently contain valuable context and supporting evidence for the investigation"
+  - "Use logon-summary for rapid authentication analysis"
+  - "Use pivot-keywords-list to identify accounts, IPs, and hostnames for lateral movement analysis"
+  - "Cross-reference detections with EvtxECmd full parsing for complete event context"
+  - "Map detected techniques to MITRE ATT&CK for structured threat analysis"
+  - "Cross-MCP: Search forensic-rag for detection context on flagged rules (forensic-rag: search)"
+  - "Cross-MCP: Check IOCs from alerts against threat intelligence (opencti: lookup_ioc)"
+
+field_meanings:
+  Timestamp: "Event creation time (YYYY-MM-DD HH:mm:ss.sss +hh:mm)"
+  RuleTitle: "Detection rule descriptive name from the Sigma/Hayabusa rule"
+  Level: "Alert severity: critical, high, medium, low, or informational"
+  Computer: "Source system hostname from the event record"
+  Channel: "Windows Event Log channel name (Security, System, etc.)"
+  EventID: "Windows Event ID number identifying the event type"
+  RecordID: "Unique record identifier within the event log file"
+  Details: "Rule-defined contextual data extracted from the event"
+  ExtraFieldInfo: "Additional supplementary data fields from the event"
+  AllFieldInfo: "Complete EventData/UserData section contents"
+  MitreTactics: "ATT&CK framework tactics (abbreviated: Exec, Persis, PrivEsc, Evas, CredAccess, Disc, LatMov, C2, Exfil, Impact)"
+  MitreTags: "ATT&CK technique IDs (e.g., T1059.001)"
+  OtherTags: "Non-MITRE tags from detection rules"
+  RuleFile: "Source detection rule filename"
+  RuleID: "Unique rule identifier (UUID)"
+  EvtxFile: "Source .evtx file path"
+  Provider: "Event log provider name"

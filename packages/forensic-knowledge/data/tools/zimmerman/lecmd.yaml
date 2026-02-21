@@ -1,0 +1,53 @@
+name: LECmd
+category: zimmerman
+description: "Parse Windows LNK (shortcut) files for target file metadata and MAC timestamps"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+artifacts_parsed: [lnk_files]
+
+caveats:
+  - "LNK files preserve timestamps of the TARGET file at the time the shortcut was created or last used"
+  - "Target timestamps in the LNK may differ from current file timestamps if the target was modified after the LNK was created"
+  - "LNK files can reference network paths (UNC), revealing access to remote resources"
+  - "Volume serial number and MAC address (NetBIOS) may be embedded in the LNK file"
+  - "LNK files persist in Recent folder even after the target file or application is deleted"
+  - "Malicious LNK files may contain embedded commands in the target path or arguments"
+
+output_notes:
+  format: csv
+  key_fields: [SourceFile, TargetCreated, TargetModified, TargetAccessed, TargetPath, Arguments, WorkingDirectory, VolumeSerialNumber, DriveType, MachineName]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "LNK files are strong evidence of FILE ACCESS — they prove a user opened, saved, or interacted with the target"
+  - "Check Arguments field for malicious command-line parameters in weaponized LNK files"
+  - "Embedded MAC addresses and volume serial numbers can link a LNK to a specific source machine or USB device"
+  - "Use -d to process a directory of LNK files; use --all for maximum detail"
+  - "LNK files on the Desktop, Start Menu, or Recent folder each have different forensic significance"
+
+quick_start: "LECmd.exe -d \"C:/Users/*/AppData/Roaming/Microsoft/Windows/Recent\" --csv output/"
+
+investigation_sequence:
+  - "Parse LNK shortcut files to identify file and folder access evidence"
+  - "Review all timestamp fields — target creation, modification, and access times"
+  - "Note the volume serial number and drive type for removable media identification"
+  - "Cross-reference with Jump Lists (JLECmd) and ShellBags (SBECmd)"
+  - "Check for LNK files pointing to external media or network shares"
+
+field_meanings:
+  SourceFile: "LNK shortcut file that was parsed"
+  SourceCreated: "Creation timestamp of the LNK file itself"
+  SourceModified: "Modification timestamp of the LNK file"
+  SourceAccessed: "Access timestamp of the LNK file"
+  TargetCreated: "Creation timestamp of the target file"
+  TargetModified: "Modification timestamp of the target file"
+  TargetAccessed: "Access timestamp of the target file"
+  LocalPath: "Full local path to the target file"
+  RelativePath: "Relative path to the target file"
+  WorkingDirectory: "Working directory set in the shortcut"
+  Arguments: "Command-line arguments stored in the shortcut"
+  VolumeSerialNumber: "Serial number of the volume containing the target"
+  DriveType: "Type of drive (Fixed, Removable, Network, etc.)"

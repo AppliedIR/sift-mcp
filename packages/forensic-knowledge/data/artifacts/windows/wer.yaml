@@ -1,0 +1,57 @@
+name: Windows Error Reporting
+description: "Windows Error Reporting crash dumps and reports that may contain malware artifacts and process memory"
+platform: windows
+
+locations:
+  - path: "C:\\ProgramData\\Microsoft\\Windows\\WER\\ReportArchive\\*"
+    os_versions: ["Windows 7+"]
+    notes: "Archived reports. May contain crash dumps with process memory at time of crash."
+  - path: "C:\\ProgramData\\Microsoft\\Windows\\WER\\ReportQueue\\*"
+    os_versions: ["Windows 7+"]
+    notes: "Reports queued for submission."
+  - path: "C:\\Users\\<user>\\AppData\\Local\\Microsoft\\Windows\\WER\\ReportArchive\\*"
+    os_versions: ["Windows 7+"]
+    notes: "Per-user reports."
+
+proves:
+  - "Process crashes with timestamps"
+  - "Crashing executable path and module information"
+  - "Process memory contents at crash time (in minidumps)"
+  - "Exception codes that may indicate exploitation"
+
+does_not_prove:
+  - "Whether a crash was caused by malware or exploitation (crashes have many causes)"
+  - "Complete process memory — minidumps contain partial memory only"
+  - "Programs that exited normally"
+
+timestamps:
+  - field: "Report creation time (filesystem)"
+    meaning: "When the crash occurred"
+    common_misinterpretation: "Report creation may be slightly after the actual crash event"
+
+common_misinterpretations:
+  - claim: "WER reports are only about Windows bugs"
+    correction: "WER captures crashes from ANY application, including malware. Exploit-triggered crashes leave reports containing IOCs."
+  - claim: "WER minidumps are too small to be useful"
+    correction: "Minidumps may contain strings, URLs, encryption keys, or other forensic artifacts from process memory."
+
+corroborate_with:
+  for_execution: [prefetch, amcache, event_logs_security]
+  for_presence: [mft]
+  for_timeline: [event_logs_system]
+
+related_tools: [strings, YARA]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_file"
+    when: "Crashing executable path — verify against Windows baseline"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "Crashing executable hash — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Crash in security-relevant process — search for exploitation techniques"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"

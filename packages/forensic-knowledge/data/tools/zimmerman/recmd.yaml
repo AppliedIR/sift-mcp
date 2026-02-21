@@ -1,0 +1,52 @@
+name: RECmd
+category: zimmerman
+description: "Registry Explorer command-line tool for batch processing registry hives with plugin support"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+artifacts_parsed: [userassist, bam, registry_run_keys, registry_services, shellbags]
+
+caveats:
+  - "Batch mode requires a BatchMC file (--bn) that defines which keys/values to extract"
+  - "Different registry hives contain different artifacts; ensure the correct hive is targeted"
+  - "Transaction log files (.LOG1, .LOG2) should be included for dirty hive recovery (--nl to skip)"
+  - "UserAssist values are ROT13 encoded in the registry; RECmd decodes them automatically"
+  - "BAM/DAM data is only available on Windows 10 1709+ (Fall Creators Update and later)"
+  - "Registry timestamps reflect last write time of the KEY, not the value"
+
+output_notes:
+  format: csv
+  key_fields: [HivePath, KeyPath, ValueName, ValueData, LastWriteTimestamp, Description, Category]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "Use Eric Zimmerman's RECmd batch files from https://github.com/EricZimmerman/RECmd for comprehensive extraction"
+  - "UserAssist tracks GUI program execution — absence does not mean a program was not run (CLI tools are not tracked)"
+  - "BAM entries prove EXECUTION with a timestamp — this is strong evidence on supported Windows versions"
+  - "Registry Run key entries prove PERSISTENCE CONFIGURATION, not execution"
+  - "Always process transaction logs unless you have a specific reason not to; dirty hives produce incomplete results"
+  - "The --sa flag dumps the entire hive; use batch mode for targeted forensic extraction"
+
+quick_start: "RECmd.exe -f NTUSER.DAT --bn BatchExamples/RECmd_Batch_MC.reb --csv output/"
+
+investigation_sequence:
+  - "Parse registry hives using batch files for structured extraction (via sift-mcp or wintools-mcp)"
+  - "Use appropriate batch files (--bn) for the hive type being analyzed"
+  - "Review all extracted values — registry contains extensive system and user configuration data"
+  - "Cross-reference NTUSER.DAT findings with SYSTEM and SOFTWARE hive data"
+  - "Correlate registry timestamps with other artifact timelines"
+  - "Check for recently modified keys in areas associated with persistence mechanisms"
+  - "Cross-MCP: Check persistence entries against baseline (windows-triage: check_autorun)"
+  - "Cross-MCP: Search for registry-based technique context (forensic-rag: search)"
+
+field_meanings:
+  HivePath: "Path to the registry hive being parsed"
+  Description: "Description from the batch file entry defining what was extracted"
+  KeyPath: "Full registry key path"
+  ValueName: "Name of the registry value"
+  ValueData: "Data contained in the registry value"
+  ValueType: "Registry value type (REG_SZ, REG_DWORD, REG_BINARY, etc.)"
+  LastWriteTimestamp: "Last time the registry key was modified"
+  Category: "Batch file category grouping for the extracted data"

@@ -1,0 +1,45 @@
+name: blkls
+category: sleuthkit
+description: "Extract unallocated disk clusters from a disk image for file carving and slack space analysis"
+platform: [windows, linux, macos]
+platform_notes: "C/C++ tools. Pre-installed on SIFT (Linux). Windows builds available. Same flags and output on all platforms."
+artifacts_parsed: []
+
+caveats:
+  - "Requires a raw or supported forensic disk image (E01, raw/dd, VMDK, etc.)"
+  - "Partition offset must be specified with -o if the image contains a partition table"
+  - "Output is raw binary data — redirect to a file for subsequent carving with tools like bulk_extractor or scalpel"
+  - "Unallocated space may contain fragments of deleted files, but data may be partially or fully overwritten"
+  - "On large volumes, output can be many gigabytes — ensure sufficient destination disk space"
+  - "File system type can be specified with -f (ntfs, ext4, fat, etc.) if auto-detection fails"
+
+output_notes:
+  format: raw_binary
+  key_fields: [unallocated_blocks]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Use mmls first to determine partition offsets if the image contains multiple partitions"
+  - "Default mode extracts unallocated data units — this is the most common use for carving"
+  - "Use -s flag to include slack space (space between end of file and end of allocated cluster)"
+  - "Use -e flag to extract every data unit (both allocated and unallocated)"
+  - "Redirect output to a file: blkls image.dd > unalloc.bin"
+  - "Pipe output directly to bulk_extractor or strings for analysis without storing intermediate files"
+  - "Use -A flag for only allocated data units (inverse of default behavior)"
+
+quick_start: "blkls image.dd > unallocated.bin"
+
+investigation_sequence:
+  - "Extract unallocated space from the disk image for carving analysis"
+  - "Use -s flag to extract slack space separately for targeted analysis"
+  - "Use -l flag to list block allocation details before extraction"
+  - "Pipe unallocated output to carving tools (photorec, bulk_extractor, foremost)"
+  - "Run strings and grep on unallocated data for keyword searches"
+  - "Cross-reference carved files with file system metadata from fls and MFT analysis"
+  - "Document the volume of unallocated space as part of the evidence inventory"
+
+field_meanings:
+  output: "Raw binary content of unallocated blocks written to stdout"

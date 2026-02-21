@@ -1,0 +1,49 @@
+name: JLECmd
+category: zimmerman
+description: "Parse Windows Jump List files (automatic and custom destinations)"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+artifacts_parsed: [jump_lists]
+
+caveats:
+  - "Jump Lists are per-user artifacts stored in the user's AppData directory"
+  - "AutomaticDestinations track recently/frequently accessed files per application"
+  - "CustomDestinations are application-defined and may contain pinned items"
+  - "The AppId in the filename maps to a specific application; lookup tables are required for identification"
+  - "Jump List entries persist even after the target file is deleted"
+  - "Windows limits the number of entries per Jump List; older entries are evicted"
+
+output_notes:
+  format: csv
+  key_fields: [SourceFile, AppId, AppIdDescription, TargetCreated, TargetModified, TargetAccessed, TargetPath, LocalPath, Arguments]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "Jump Lists prove a USER interacted with a file through a specific application"
+  - "Entries surviving after file deletion can reveal access to files the user attempted to hide"
+  - "Network paths in Jump Lists can reveal access to file shares and mapped drives"
+  - "Use -d to process an entire directory; use --all to include DestList entries with no LNK data"
+  - "Combine with LNK file analysis (LECmd) for corroborating evidence of file access"
+
+quick_start: "JLECmd.exe -d \"C:/Users/*/AppData/Roaming/Microsoft/Windows/Recent/AutomaticDestinations\" --csv output/"
+
+investigation_sequence:
+  - "Parse Jump List files to identify per-application file access history"
+  - "Review both AutomaticDestinations and CustomDestinations folders"
+  - "Correlate accessed files with user activity timelines"
+  - "Cross-reference with LNK files (LECmd) and ShellBags (SBECmd) for corroboration"
+  - "Note the application that generated each Jump List entry for attribution context"
+
+field_meanings:
+  SourceFile: "Jump List file that contained this entry"
+  SourceCreated: "Creation timestamp of the Jump List file"
+  SourceModified: "Modification timestamp of the Jump List file"
+  SourceAccessed: "Access timestamp of the Jump List file"
+  TargetCreated: "Creation timestamp of the target file"
+  TargetModified: "Modification timestamp of the target file"
+  TargetAccessed: "Access timestamp of the target file"
+  LocalPath: "Full local path of the accessed file"
+  Arguments: "Command-line arguments used when the file was opened"

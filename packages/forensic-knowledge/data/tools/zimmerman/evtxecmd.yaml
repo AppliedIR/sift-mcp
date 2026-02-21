@@ -1,0 +1,55 @@
+name: EvtxECmd
+category: zimmerman
+description: "Parse Windows Event Log files (.evtx) with map support for structured field extraction"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+artifacts_parsed: [event_logs_security, event_logs_system, event_logs_powershell, event_logs_sysmon]
+
+caveats:
+  - "Event logs can be cleared by administrators or attackers; check Event ID 1102 (Security) and 104 (System) for evidence of clearing"
+  - "Map files define how XML event data is extracted into structured fields; without maps, raw XML payload is preserved"
+  - "Corrupted or partially overwritten EVTX files may produce incomplete results"
+  - "Event log rotation means older events are lost when the log reaches its maximum size"
+  - "Timestamps are in UTC; local time conversion is the analyst's responsibility"
+  - "Not all Event IDs have maps; unmapped events still parse but key fields may be in PayloadData columns"
+
+output_notes:
+  format: csv_or_json
+  key_fields: [TimeCreated, EventId, Channel, Computer, UserId, MapDescription, PayloadData1-6, ExecutableInfo, SourceFile]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "Update maps regularly from https://github.com/EricZimmerman/evtx — new Event IDs are mapped frequently"
+  - "Use --inc and --exc flags to filter by Event ID for targeted analysis"
+  - "The --sd and --ed flags filter by date range to reduce output volume"
+  - "JSON output (--json) preserves full event structure; CSV is better for timeline integration"
+  - "For Sysmon logs, ensure Sysmon maps are present — they parse process creation, network, and file events"
+  - "Use -d to process an entire directory of EVTX files at once"
+
+quick_start: "EvtxECmd.exe -d evtx_directory/ --csv output/"
+
+investigation_sequence:
+  - "Parse all available EVTX log files, not just Security.evtx (via sift-mcp or wintools-mcp)"
+  - "Review all events across all severity levels — informational events provide critical context"
+  - "Use event log maps for structured field extraction"
+  - "Correlate event timestamps across multiple log channels for timeline construction"
+  - "Cross-reference with Hayabusa for detection-based analysis of the same logs"
+  - "Check for log gaps that may indicate evidence destruction"
+  - "Cross-MCP: Search for event ID context and detection rules (forensic-rag: search)"
+  - "Cross-MCP: Check IOCs found in events against threat intelligence (opencti: lookup_ioc)"
+
+field_meanings:
+  TimeCreated: "Event creation timestamp from the EVTX record"
+  EventId: "Windows Event ID number identifying the event type"
+  Level: "Event severity level (Information, Warning, Error, Critical)"
+  Provider: "Event log provider that generated the event"
+  Channel: "Event log channel (Security, System, Application, etc.)"
+  Computer: "Computer name that generated the event"
+  MapDescription: "Human-readable description from the event log map"
+  UserName: "User account associated with the event"
+  PayloadData1: "First mapped data field from the event XML payload"
+  PayloadData2: "Second mapped data field from the event XML payload"
+  PayloadData3: "Third mapped data field from the event XML payload"

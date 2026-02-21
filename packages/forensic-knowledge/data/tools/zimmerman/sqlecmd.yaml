@@ -1,0 +1,44 @@
+name: SQLECmd
+category: zimmerman
+description: "Parse SQLite databases using configurable maps for browser history, downloads, and other application data"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+artifacts_parsed: [browser_history]
+
+caveats:
+  - "Requires map files that define which tables and columns to extract from each database type"
+  - "Browser databases (Chrome, Firefox, Edge) use different schemas; correct maps are required"
+  - "WAL (Write-Ahead Log) files may contain more recent data not yet committed to the main database"
+  - "SQLite databases may be locked if copied from a live system without proper acquisition"
+  - "Browser history can be deleted by the user; check for gaps in chronological sequence"
+  - "Maps exist for many applications beyond browsers: Dropbox, Teams, Skype, and more"
+
+output_notes:
+  format: csv
+  key_fields: [URL, Title, VisitTime, VisitCount, DownloadPath, SourceDatabase, MapName]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "Browser history proves a USER visited specific URLs at specific times from a specific browser profile"
+  - "Download records can show file acquisition even if the downloaded file was later deleted"
+  - "Update maps from https://github.com/EricZimmerman/SQLECmd for latest application support"
+  - "Use -d to specify the directory containing SQLite databases and --csv for output"
+  - "Always collect WAL and SHM files alongside the main SQLite database for complete data"
+  - "Incognito/private browsing sessions are NOT recorded in the main history database"
+
+quick_start: "SQLECmd.exe -d evidence_directory/ --csv output/"
+
+investigation_sequence:
+  - "Parse SQLite databases using appropriate maps for structured extraction"
+  - "Review all extracted records — SQLite databases store diverse application data"
+  - "Use the appropriate map file for the database type (browser history, etc.)"
+  - "Cross-reference browser history with network artifacts and DNS logs"
+  - "Check for databases from non-standard locations that may indicate portable application usage"
+
+field_meanings:
+  MapName: "Name of the SQLECmd map used for parsing"
+  DatabasePath: "Path to the SQLite database that was parsed"
+  TableName: "Database table the record was extracted from"

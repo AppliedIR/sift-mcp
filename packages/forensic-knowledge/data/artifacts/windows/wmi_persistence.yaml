@@ -1,0 +1,71 @@
+name: WMI Event Subscription Persistence
+description: "WMI permanent event subscriptions used as a fileless persistence mechanism"
+platform: windows
+
+locations:
+  - path: "C:\\Windows\\System32\\wbem\\Repository\\OBJECTS.DATA"
+    os_versions: ["Windows XP+", "Windows 10", "Windows 11"]
+    notes: "WMI repository file; contains serialized WMI class instances including event subscriptions"
+  - path: "C:\\Windows\\System32\\wbem\\Repository\\INDEX.BTR"
+    os_versions: ["Windows Vista+", "Windows 10", "Windows 11"]
+    notes: "WMI repository index file"
+  - path: "C:\\Windows\\System32\\wbem\\Repository\\MAPPING*.MAP"
+    os_versions: ["Windows Vista+", "Windows 10", "Windows 11"]
+    notes: "WMI repository mapping files"
+
+proves:
+  - "WMI event subscription persistence mechanism exists"
+  - "Event filter (trigger condition — timer, process start, logon, etc.)"
+  - "Event consumer (action — script execution, command line, log entry)"
+  - "Binding between filter and consumer"
+  - "Consumer payload (script content, command to execute)"
+
+does_not_prove:
+  - "When the subscription was created (no reliable creation timestamp)"
+  - "Who created the subscription"
+  - "That the subscription has fired or will fire"
+  - "How many times the subscription has triggered"
+
+timestamps:
+  - field: "OBJECTS.DATA file modification time"
+    meaning: "Last time the WMI repository was modified"
+    common_misinterpretation: "This is the repository file timestamp, not the individual subscription creation time. Any WMI repository change updates this."
+
+common_misinterpretations:
+  - claim: "WMI persistence is rare"
+    correction: "WMI event subscriptions are a common and well-documented persistence technique used by APT groups, commodity malware, and red team tools. It is one of the most reliable persistence mechanisms."
+  - claim: "WMI subscriptions are easy to detect with standard tools"
+    correction: "WMI subscriptions do not appear in common autoruns locations. They require specific WMI queries (Get-WMIObject -Namespace root\\Subscription -Class __EventFilter) or specialized tools."
+  - claim: "Removing the subscription removes the threat"
+    correction: "The subscription may recreate itself if the malware has additional persistence mechanisms. Always identify and remove all associated components (filter, consumer, and binding) and the initial infection vector."
+  - claim: "WMI persistence only runs scripts"
+    correction: "WMI consumers include CommandLineEventConsumer (runs commands), ActiveScriptEventConsumer (runs VBScript/JScript), LogFileEventConsumer (writes to log), NTEventLogEventConsumer (writes to event log), and SMTPEventConsumer (sends email)."
+  - claim: "WMI event subscriptions survive only in OBJECTS.DATA"
+    correction: "On Windows 10+, WMI event subscriptions may also generate Sysmon Event ID 19/20/21 (WmiEventFilter/Consumer/ConsumerToFilter activity) and are logged in Microsoft-Windows-WMI-Activity/Operational.evtx."
+
+corroborate_with:
+  for_execution: [event_logs_sysmon, event_logs_powershell, prefetch]
+  for_presence: [mft, usn_journal]
+  for_timeline: [event_logs_security, event_logs_sysmon, event_logs_system]
+
+related_tools: [autoruns, wmi_persistence.py, Get-WMIObject]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_autorun"
+    when: "Persistence entry found — verify against known Windows autoruns"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "Binary hash from persistence entry — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious persistence mechanism — search for related techniques and detection rules"
+  - mcp: "remnux"
+    tool: "analyze_file"
+    when: "Unknown binary referenced by persistence entry — submit for static analysis"
+
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "SANS FOR508 - Advanced Incident Response"
+  - "MITRE ATT&CK T1546.003 - Event Triggered Execution: Windows Management Instrumentation Event Subscription"
+  - "FireEye - WMI Offense and Defense"

@@ -1,0 +1,53 @@
+name: PECmd
+category: zimmerman
+description: "Parse Windows Prefetch files (.pf) to determine program execution history"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+artifacts_parsed: [prefetch]
+
+caveats:
+  - "Requires Windows-specific decompression libraries. Fails on Linux/SIFT with 'Non-Windows platforms not supported' error. Use on Windows forensic workstation only."
+  - "Prefetch is disabled by default on SSDs in some Windows versions and on Windows Server"
+  - "Prefetch files are limited to 1024 entries on Win8+; oldest entries are overwritten"
+  - "Last run timestamps include up to 8 run times on Win8+, only 1 on WinXP/Vista/7"
+  - "Run count may reset if the Prefetch file was deleted and recreated"
+  - "File paths in Prefetch reflect the state at execution time, not current state"
+
+output_notes:
+  format: csv
+  key_fields: [ExecutableName, RunCount, LastRun, PreviousRun0-6, SourceFilename, Volume, FilesLoaded]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "Prefetch proves EXECUTION occurred — the run count and timestamps are strong evidence"
+  - "Files referenced in the Prefetch file were loaded during the first 10 seconds of execution only"
+  - "A Prefetch file named with a hash means the same executable was run from a different path if multiple hashes exist"
+  - "The -d flag processes an entire directory; the -f flag processes a single file"
+  - "Use --csv for timeline-friendly output and --json for detailed analysis"
+
+quick_start: "PECmd.exe -d \"C:/Windows/Prefetch\" --csv output/"
+
+investigation_sequence:
+  - "Parse all Prefetch files to identify program execution history (via wintools-mcp)"
+  - "Review all entries — Prefetch provides direct evidence of EXECUTION with timestamps"
+  - "Note the run count and last 8 execution timestamps for each program"
+  - "Review files loaded by each program — these appear in the file references"
+  - "Cross-reference with Amcache for file presence and ShimCache for additional context"
+  - "Look for Prefetch entries from unusual programs or paths"
+  - "Cross-MCP: Check executable hashes against threat intelligence (opencti: lookup_hash)"
+  - "Cross-MCP: Verify executables against Windows baseline (windows-triage: check_file)"
+  - "Cross-MCP: Submit suspicious executables for static analysis (remnux: analyze_file)"
+
+field_meanings:
+  ExecutableName: "Name of the executable from the Prefetch filename"
+  RunCount: "Number of times the program has been executed"
+  LastRun: "Most recent execution timestamp"
+  PreviousRun0: "Second most recent execution timestamp (Win8+)"
+  PreviousRun1: "Third most recent execution timestamp (Win8+)"
+  SourceFilename: "Name of the Prefetch file parsed"
+  Volume0Name: "Name of the primary volume accessed during execution"
+  Volume0Serial: "Serial number of the primary volume"
+  FilesLoaded: "List of files loaded during program execution"

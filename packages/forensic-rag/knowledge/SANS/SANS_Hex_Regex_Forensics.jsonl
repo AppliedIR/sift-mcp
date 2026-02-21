@@ -1,0 +1,83 @@
+{"text": "File headers are used to identify a file by examining the first 4 or 5 bytes of its hexadecimal content.", "metadata": {"source": "SANS_Hex_Regex", "title": "Hex File Headers Overview", "category": "reference", "platform": "windows"}}
+{"text": "ani file header: 52 49 46 46 (ASCII: RIFF)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - ANI", "category": "reference", "platform": "windows"}}
+{"text": "au file header: 2E 73 6E 64 (ASCII: snd)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - AU", "category": "reference", "platform": "windows"}}
+{"text": "bmp file header: 42 4D F8 A9 (ASCII: BM)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - BMP", "category": "reference", "platform": "windows"}}
+{"text": "bmp file header: 42 4D 62 25 (ASCII: BMp%)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - BMP Variant 2", "category": "reference", "platform": "windows"}}
+{"text": "bmp file header: 42 4D 76 03 (ASCII: BMv)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - BMP Variant 3", "category": "reference", "platform": "windows"}}
+{"text": "cab file header: 4D 53 43 46 (ASCII: MSCF)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - CAB", "category": "reference", "platform": "windows"}}
+{"text": "dll file header: 4D 5A 90 00 (ASCII: MZ)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - DLL", "category": "reference", "platform": "windows"}}
+{"text": "Excel file header: D0 CF 11 E0", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - Excel", "category": "reference", "platform": "windows"}}
+{"text": "exe file header: 4D 5A 50 00 (ASCII: MZP) - inno installer", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - EXE Inno", "category": "reference", "platform": "windows"}}
+{"text": "exe file header: 4D 5A 90 00 (ASCII: MZ)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - EXE", "category": "reference", "platform": "windows"}}
+{"text": "flv file header: 46 4C 56 01 (ASCII: FLV)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - FLV", "category": "reference", "platform": "windows"}}
+{"text": "gif file header: 47 49 46 38 39 61 (ASCII: GIF89a)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - GIF89a", "category": "reference", "platform": "windows"}}
+{"text": "gif file header: 47 49 46 38 37 61 (ASCII: GIF87a)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - GIF87a", "category": "reference", "platform": "windows"}}
+{"text": "gz file header: 1F 8B 08 08", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - GZ", "category": "reference", "platform": "windows"}}
+{"text": "ico file header: 00 00 01 00", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - ICO", "category": "reference", "platform": "windows"}}
+{"text": "jpeg file header: FF D8 FF E1", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - JPEG Variant 1", "category": "reference", "platform": "windows"}}
+{"text": "jpeg file header: FF D8 FF E0 (ASCII: JFIF)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - JPEG JFIF", "category": "reference", "platform": "windows"}}
+{"text": "jpeg file header: FF D8 FF FE (ASCII: JFIF)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - JPEG Variant 3", "category": "reference", "platform": "windows"}}
+{"text": "Linux bin file header: 7F 45 4C 46 (ASCII: ELF)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - Linux ELF", "category": "reference", "platform": "linux"}}
+{"text": "png file header: 89 50 4E 47 (ASCII: PNG)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - PNG", "category": "reference", "platform": "windows"}}
+{"text": "msi file header: D0 CF 11 E0", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - MSI", "category": "reference", "platform": "windows"}}
+{"text": "mp3 file header: 49 44 33 2E (ASCII: ID3)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - MP3 Variant 1", "category": "reference", "platform": "windows"}}
+{"text": "mp3 file header: 49 44 33 03 (ASCII: ID3)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - MP3 Variant 2", "category": "reference", "platform": "windows"}}
+{"text": "OFT file header: 4F 46 54 32 (ASCII: OFT2)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - OFT", "category": "reference", "platform": "windows"}}
+{"text": "PPT file header: D0 CF 11 E0", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - PPT", "category": "reference", "platform": "windows"}}
+{"text": "PDF file header: 25 50 44 46 (ASCII: %PDF)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - PDF", "category": "reference", "platform": "windows"}}
+{"text": "rar file header: 52 61 72 21 (ASCII: Rar!)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - RAR", "category": "reference", "platform": "windows"}}
+{"text": "sfw file header: 43 57 53 06/08 (ASCII: cws)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - SFW", "category": "reference", "platform": "windows"}}
+{"text": "tar file header: 1F 8B 08 00", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - TAR", "category": "reference", "platform": "windows"}}
+{"text": "tgz file header: 1F 9D 90 70", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - TGZ", "category": "reference", "platform": "windows"}}
+{"text": "Word file header: D0 CF 11 E0", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - Word", "category": "reference", "platform": "windows"}}
+{"text": "wmv file header: 30 26 B2 75", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - WMV", "category": "reference", "platform": "windows"}}
+{"text": "zip file header: 50 4B 03 04 (ASCII: PK)", "metadata": {"source": "SANS_Hex_Regex", "title": "File Header - ZIP", "category": "reference", "platform": "windows"}}
+{"text": "grep's strength is extracting information from text files. grep operates on one or multiple files when provided with a command line argument(s) that can also include wildcards.", "metadata": {"source": "SANS_Hex_Regex", "title": "grep Overview", "category": "reference", "platform": "linux"}}
+{"text": "grep example: grep \"John\" addressbook - Would return the lines that contained the \"John\" string in the addressbook text file", "metadata": {"source": "SANS_Hex_Regex", "title": "grep Example", "category": "reference", "platform": "linux"}}
+{"text": "grep -A: Print number of lines after the match", "metadata": {"source": "SANS_Hex_Regex", "title": "grep Flag -A", "category": "reference", "platform": "linux"}}
+{"text": "grep -B: Print number of lines before match", "metadata": {"source": "SANS_Hex_Regex", "title": "grep Flag -B", "category": "reference", "platform": "linux"}}
+{"text": "grep -c: Report number of occurrences", "metadata": {"source": "SANS_Hex_Regex", "title": "grep Flag -c", "category": "reference", "platform": "linux"}}
+{"text": "grep -f: Reads one or more patterns from a file. Patterns are terminated by a newline", "metadata": {"source": "SANS_Hex_Regex", "title": "grep Flag -f", "category": "reference", "platform": "linux"}}
+{"text": "grep -h: Suppress the file names on the output", "metadata": {"source": "SANS_Hex_Regex", "title": "grep Flag -h", "category": "reference", "platform": "linux"}}
+{"text": "grep -i: Ignore case", "metadata": {"source": "SANS_Hex_Regex", "title": "grep Flag -i", "category": "reference", "platform": "linux"}}
+{"text": "grep -l: Report matching files, not matching lines", "metadata": {"source": "SANS_Hex_Regex", "title": "grep Flag -l", "category": "reference", "platform": "linux"}}
+{"text": "grep -P: Interpret pattern as a Perl Regex", "metadata": {"source": "SANS_Hex_Regex", "title": "grep Flag -P", "category": "reference", "platform": "linux"}}
+{"text": "grep -v: Reverse operation: return the lines not matching the string", "metadata": {"source": "SANS_Hex_Regex", "title": "grep Flag -v", "category": "reference", "platform": "linux"}}
+{"text": "The egrep (extended grep) utility can be used to match several possible strings at the same time (in an OR mode): egrep \"John|Peter\" addressbook or grep \"John\\|Peter\" addressbook", "metadata": {"source": "SANS_Hex_Regex", "title": "egrep OR Matching", "category": "reference", "platform": "linux"}}
+{"text": "sort, as its name implies, will sort the output.", "metadata": {"source": "SANS_Hex_Regex", "title": "sort Overview", "category": "reference", "platform": "linux"}}
+{"text": "sort -d: Uses dictionary order. Only letters, digits and blanks.", "metadata": {"source": "SANS_Hex_Regex", "title": "sort Flag -d", "category": "reference", "platform": "linux"}}
+{"text": "sort -n: will sort the output assuming it is numerical (instead of string)", "metadata": {"source": "SANS_Hex_Regex", "title": "sort Flag -n", "category": "reference", "platform": "linux"}}
+{"text": "sort -u: will remove redundant line, 'uniquing' the results", "metadata": {"source": "SANS_Hex_Regex", "title": "sort Flag -u", "category": "reference", "platform": "linux"}}
+{"text": "awk is an extremely useful tool, especially for parsing data structured in columns. It is straightforward to use for simple purposes. Its basic use is to select some particular columns from the output: column 1 is referred to as $1, column 2 as $2, etc.", "metadata": {"source": "SANS_Hex_Regex", "title": "awk Overview", "category": "reference", "platform": "linux"}}
+{"text": "The space is the default awk separator. However if you want to be able to parse data separated by some other character, e.g. \":\", you can use the -F flag.", "metadata": {"source": "SANS_Hex_Regex", "title": "awk Separator", "category": "reference", "platform": "linux"}}
+{"text": "awk example: echo \"hello:goodbye\" | awk -F: '{print $2}' - Would return \"goodbye\" as an output", "metadata": {"source": "SANS_Hex_Regex", "title": "awk Example", "category": "reference", "platform": "linux"}}
+{"text": "sed is an excellent command for character substitution.", "metadata": {"source": "SANS_Hex_Regex", "title": "sed Overview", "category": "reference", "platform": "linux"}}
+{"text": "sed example: echo \"hallo\" | sed 's/a/e/' - The output would be: hello", "metadata": {"source": "SANS_Hex_Regex", "title": "sed Example Basic", "category": "reference", "platform": "linux"}}
+{"text": "sed global modifier: You can use the g modifier to substitute all instances: echo \"Hallo Janny\" | sed 's/a/e/g' - The output would be: Hello Jenny", "metadata": {"source": "SANS_Hex_Regex", "title": "sed Global Modifier", "category": "reference", "platform": "linux"}}
+{"text": "The uniq command reads the input and compares adjacent lines. If two or more adjacent lines are identical, all but one is removed.", "metadata": {"source": "SANS_Hex_Regex", "title": "uniq Overview", "category": "reference", "platform": "linux"}}
+{"text": "uniq -c: Prefix line with number of occurrences", "metadata": {"source": "SANS_Hex_Regex", "title": "uniq Flag -c", "category": "reference", "platform": "linux"}}
+{"text": "uniq -f: Avoid comparing the first N fields", "metadata": {"source": "SANS_Hex_Regex", "title": "uniq Flag -f", "category": "reference", "platform": "linux"}}
+{"text": "uniq -i: Ignore case", "metadata": {"source": "SANS_Hex_Regex", "title": "uniq Flag -i", "category": "reference", "platform": "linux"}}
+{"text": "uniq -s: Avoid comparing the first N characters", "metadata": {"source": "SANS_Hex_Regex", "title": "uniq Flag -s", "category": "reference", "platform": "linux"}}
+{"text": "uniq -u: Only print unique lines", "metadata": {"source": "SANS_Hex_Regex", "title": "uniq Flag -u", "category": "reference", "platform": "linux"}}
+{"text": "Returns the real date from epoch time: date -d @1284127201", "metadata": {"source": "SANS_Hex_Regex", "title": "date Epoch to Date", "category": "reference", "platform": "linux"}}
+{"text": "Return an epoch time of 1288756800: date +%s -d \"2010-11-03\"", "metadata": {"source": "SANS_Hex_Regex", "title": "date Date to Epoch", "category": "reference", "platform": "linux"}}
+{"text": "Return a 2 days old date: date --date=\"-2 days\" +\"%Y-%m-%d\"", "metadata": {"source": "SANS_Hex_Regex", "title": "date Relative Date", "category": "reference", "platform": "linux"}}
+{"text": "Return 20:00 hours: date -d @1288310401 +%k:%M", "metadata": {"source": "SANS_Hex_Regex", "title": "date Time Format", "category": "reference", "platform": "linux"}}
+{"text": "The Windows findstr has one interesting feature that differs from grep. If you need to search for multiple strings, you need to separate them with a space.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr Overview", "category": "reference", "platform": "windows"}}
+{"text": "findstr example: findstr \"WHITE GREEN\" textfile - To search for WHITE or GREEN in a text file", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr Example", "category": "reference", "platform": "windows"}}
+{"text": "To make the findstr search case insensitive, add the /I to print all variant of WHITE or GREEN.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr Case Insensitive", "category": "reference", "platform": "windows"}}
+{"text": "findstr /B: Matches pattern if at the beginning of a line.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr /B", "category": "reference", "platform": "windows"}}
+{"text": "findstr /E: Matches pattern if at the end of a line.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr /E", "category": "reference", "platform": "windows"}}
+{"text": "findstr /L: Uses search strings literally.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr /L", "category": "reference", "platform": "windows"}}
+{"text": "findstr /R: Uses search strings as regular expressions.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr /R", "category": "reference", "platform": "windows"}}
+{"text": "findstr /S: Searches for matching files in the current directory and all subdirectories.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr /S", "category": "reference", "platform": "windows"}}
+{"text": "findstr /I: Specifies that the search is not to be case-sensitive.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr /I", "category": "reference", "platform": "windows"}}
+{"text": "findstr /X: Prints lines that match exactly.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr /X", "category": "reference", "platform": "windows"}}
+{"text": "findstr /V: Prints only lines that do not contain a match.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr /V", "category": "reference", "platform": "windows"}}
+{"text": "findstr /N: Prints the line number before each line that matches.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr /N", "category": "reference", "platform": "windows"}}
+{"text": "findstr /M: Prints only the filename if a file contains a match.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr /M", "category": "reference", "platform": "windows"}}
+{"text": "findstr /O: Prints character offset before each matching line.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr /O", "category": "reference", "platform": "windows"}}
+{"text": "findstr /P: Skip files with non-printable characters.", "metadata": {"source": "SANS_Hex_Regex", "title": "Windows findstr /P", "category": "reference", "platform": "windows"}}
+{"text": "Forensic Analysts are on the front lines of computer investigations. This guide aims to support Forensic Analysts in their quest to uncover the truth.", "metadata": {"source": "SANS_Hex_Regex", "title": "Purpose Statement", "category": "reference", "platform": "windows"}}
+{"text": "The key to successful forensics is minimizing your data loss, accurate reporting, and a thorough investigation.", "metadata": {"source": "SANS_Hex_Regex", "title": "Forensics Key Principle", "category": "reference", "platform": "windows"}}

@@ -1,0 +1,59 @@
+name: MFTECmd
+category: zimmerman
+description: "Parse NTFS $MFT, $UsnJrnl, $J, $Boot, and $SDS files"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+artifacts_parsed: [mft, usn_journal]
+
+caveats:
+  - "The $MFT only reflects the CURRENT state of files; deleted file records may be overwritten"
+  - "$STANDARD_INFORMATION timestamps are easily modified by timestomping; check $FILE_NAME timestamps for comparison"
+  - "USN Journal ($J) has a fixed size and rolls over; older entries are lost"
+  - "USN Journal entries record the REASON for a change, not the content of the change"
+  - "Resident files (small files stored entirely in MFT) may not have separate $DATA runs"
+  - "MFT entry numbers can be reused after deletion; sequence numbers distinguish reuse"
+
+output_notes:
+  format: csv
+  key_fields: [EntryNumber, SequenceNumber, ParentPath, FileName, Created0x10, Modified0x10, Created0x30, Modified0x30, InUse, IsDirectory, FileSize]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "Compare $STANDARD_INFORMATION (0x10) and $FILE_NAME (0x30) timestamps — large discrepancies suggest TIMESTOMPING"
+  - "The USN Journal provides a sequential record of file system changes — invaluable for timeline analysis"
+  - "Use --body to output bodyfile format for mactime timeline generation"
+  - "Use --csv for MFT analysis and --csvf for USN Journal output"
+  - "ParentPath reconstruction requires the full $MFT; orphaned entries may show incomplete paths"
+  - "The --de flag can dump details for a specific MFT entry number"
+
+quick_start: "MFTECmd.exe -f '$MFT' --csv output/"
+
+investigation_sequence:
+  - "Parse the $MFT to extract complete file system metadata (via sift-mcp or wintools-mcp)"
+  - "For $J (USN Journal), use --csv to extract change journal records"
+  - "Review all entries including resident data for small file content recovery"
+  - "Compare $SI and $FN timestamps — discrepancies may indicate timestomping"
+  - "Cross-reference with other file system artifacts for timeline construction"
+  - "Use $SDS parsing for security descriptor analysis when investigating permissions"
+  - "Cross-MCP: Verify suspicious files against Windows baseline (windows-triage: check_file)"
+  - "Cross-MCP: Check for timestomping — compare $STANDARD_INFORMATION vs $FILE_NAME timestamps"
+
+field_meanings:
+  EntryNumber: "MFT entry (record) number"
+  SequenceNumber: "Sequence number — increments when entry is reused after deletion"
+  ParentEntryNumber: "MFT entry number of the parent directory"
+  FileName: "File or directory name"
+  Extension: "File extension"
+  FileSize: "File size in bytes"
+  IsDirectory: "Whether the entry represents a directory"
+  Created0x10: "$STANDARD_INFORMATION creation timestamp (user-modifiable)"
+  LastModified0x10: "$STANDARD_INFORMATION last modification timestamp (user-modifiable)"
+  LastRecordChange0x10: "$STANDARD_INFORMATION last MFT record change timestamp"
+  LastAccess0x10: "$STANDARD_INFORMATION last access timestamp (user-modifiable)"
+  Created0x30: "$FILE_NAME creation timestamp (reliable, not user-modifiable)"
+  LastModified0x30: "$FILE_NAME last modification timestamp (reliable)"
+  InUse: "Whether the MFT entry is currently allocated (active file)"
+  ReferenceCount: "Number of hard links to this file"

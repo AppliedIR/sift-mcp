@@ -1,0 +1,64 @@
+{"text": "oledump.py is a Python tool designed to analyze OLE2 files (aka Structured Storage, Compound File Binary Format).", "metadata": {"source": "SANS_oledump", "title": "oledump.py Overview", "category": "malware", "platform": "windows"}}
+{"text": "Prior to Office 2007 (.doc, .xls): Microsoft Office files are binary (OLE2). File system like structure: streams: data (cfr. files), storages: streams/storages (cfr. Folders)", "metadata": {"source": "SANS_oledump", "title": "Microsoft Office Files - Pre-2007", "category": "malware", "platform": "windows"}}
+{"text": "Office 2007+ (.docx, .xlsx, .docm, .xlsm): Office files are ZIP containers (OOXML) which may include binary files.", "metadata": {"source": "SANS_oledump", "title": "Microsoft Office Files - 2007+", "category": "malware", "platform": "windows"}}
+{"text": "VBA macros are always stored inside OLE2 files. For OOXML files, VBA macros are stored in vbaProject.bin inside the ZIP container.", "metadata": {"source": "SANS_oledump", "title": "VBA Macro Storage", "category": "malware", "platform": "windows"}}
+{"text": "Office file formats other than OLE2/OOXML are rarely used for VBA maldocs. RTF files for example cannot contain macros. But they are used for other exploits.", "metadata": {"source": "SANS_oledump", "title": "RTF Files and Macros", "category": "malware", "platform": "windows"}}
+{"text": "oledump.py [options] filename", "metadata": {"source": "SANS_oledump", "title": "Command Syntax", "category": "malware", "platform": "windows"}}
+{"text": "-m /-h Manual/help page", "metadata": {"source": "SANS_oledump", "title": "Option -m/-h", "category": "malware", "platform": "windows"}}
+{"text": "--version Show version", "metadata": {"source": "SANS_oledump", "title": "Option --version", "category": "malware", "platform": "windows"}}
+{"text": "-s [number] Select item for dumping", "metadata": {"source": "SANS_oledump", "title": "Option -s", "category": "malware", "platform": "windows"}}
+{"text": "-d dump", "metadata": {"source": "SANS_oledump", "title": "Option -d", "category": "malware", "platform": "windows"}}
+{"text": "-x hexdump", "metadata": {"source": "SANS_oledump", "title": "Option -x", "category": "malware", "platform": "windows"}}
+{"text": "-a ASCII dump", "metadata": {"source": "SANS_oledump", "title": "Option -a", "category": "malware", "platform": "windows"}}
+{"text": "-A ASCII dump and RLE", "metadata": {"source": "SANS_oledump", "title": "Option -A", "category": "malware", "platform": "windows"}}
+{"text": "-S Dump strings", "metadata": {"source": "SANS_oledump", "title": "Option -S", "category": "malware", "platform": "windows"}}
+{"text": "-T Do head & tail", "metadata": {"source": "SANS_oledump", "title": "Option -T", "category": "malware", "platform": "windows"}}
+{"text": "-v Decompress VBA", "metadata": {"source": "SANS_oledump", "title": "Option -v", "category": "malware", "platform": "windows"}}
+{"text": "-r Read raw file (with -v / -p)", "metadata": {"source": "SANS_oledump", "title": "Option -r", "category": "malware", "platform": "windows"}}
+{"text": "-t String translation", "metadata": {"source": "SANS_oledump", "title": "Option -t", "category": "malware", "platform": "windows"}}
+{"text": "-e Extract OLE embedded file", "metadata": {"source": "SANS_oledump", "title": "Option -e", "category": "malware", "platform": "windows"}}
+{"text": "-i Additional Info for item", "metadata": {"source": "SANS_oledump", "title": "Option -i", "category": "malware", "platform": "windows"}}
+{"text": "-p PLUGINS Load plugin", "metadata": {"source": "SANS_oledump", "title": "Option -p", "category": "malware", "platform": "windows"}}
+{"text": "-q Quiet", "metadata": {"source": "SANS_oledump", "title": "Option -q", "category": "malware", "platform": "windows"}}
+{"text": "-y [file] Load Yara File", "metadata": {"source": "SANS_oledump", "title": "Option -y", "category": "malware", "platform": "windows"}}
+{"text": "-D [name] Load decoder", "metadata": {"source": "SANS_oledump", "title": "Option -D", "category": "malware", "platform": "windows"}}
+{"text": "-M Print metadata", "metadata": {"source": "SANS_oledump", "title": "Option -M", "category": "malware", "platform": "windows"}}
+{"text": "-c Add calculated data like hashes to output", "metadata": {"source": "SANS_oledump", "title": "Option -c", "category": "malware", "platform": "windows"}}
+{"text": "-V verbose", "metadata": {"source": "SANS_oledump", "title": "Option -V", "category": "malware", "platform": "windows"}}
+{"text": "-C [n] Cut data", "metadata": {"source": "SANS_oledump", "title": "Option -C", "category": "malware", "platform": "windows"}}
+{"text": "--storages Include storages in report", "metadata": {"source": "SANS_oledump", "title": "Option --storages", "category": "malware", "platform": "windows"}}
+{"text": "-j Json output", "metadata": {"source": "SANS_oledump", "title": "Option -j", "category": "malware", "platform": "windows"}}
+{"text": "--password ZIP password (default: infected)", "metadata": {"source": "SANS_oledump", "title": "Option --password", "category": "malware", "platform": "windows"}}
+{"text": "Output Columns: # - stream number, ind: indicators, M - VBA Macro with Code, m - VBA Macro with attributes only, E - corrupt VBA code, ! - unusual VBA code, O - embedded object, . - Storage, R - Root entry", "metadata": {"source": "SANS_oledump", "title": "Output Column Indicators", "category": "malware", "platform": "windows"}}
+{"text": "Use the -i option for a first analysis. This will add counters for compressed and compiled VBA source code.", "metadata": {"source": "SANS_oledump", "title": "Tip - First Analysis", "category": "malware", "platform": "windows"}}
+{"text": "Next, look for streams that contains macros (\"M\") and select them: oledump.py -s 2 sample.xls", "metadata": {"source": "SANS_oledump", "title": "Tip - Select Macro Streams", "category": "malware", "platform": "windows"}}
+{"text": "First analysis of a new sample: oledump.py -i example.xls", "metadata": {"source": "SANS_oledump", "title": "Use Case - First Analysis", "category": "malware", "platform": "windows"}}
+{"text": "Viewing a stream: oledump.py -s 3 example.xls", "metadata": {"source": "SANS_oledump", "title": "Use Case - View Stream", "category": "malware", "platform": "windows"}}
+{"text": "Viewing compressed VBA source code from stream #7: oledump.py -s 7 -v example.xls", "metadata": {"source": "SANS_oledump", "title": "Use Case - View VBA Source", "category": "malware", "platform": "windows"}}
+{"text": "Extracting URLs from a downloader using the http heuristics plugin: oledump.py -p plugin_http_heuristics example.xls", "metadata": {"source": "SANS_oledump", "title": "Use Case - Extract URLs", "category": "malware", "platform": "windows"}}
+{"text": "Analyze Excel 4 macros: oledump.py -p plugin_biff --pluginoptions \"-x\" example.xls", "metadata": {"source": "SANS_oledump", "title": "Use Case - Excel 4 Macros", "category": "malware", "platform": "windows"}}
+{"text": "Extracting all VBA code from a document: oledump.py -s a -v example.xls", "metadata": {"source": "SANS_oledump", "title": "Use Case - Extract All VBA", "category": "malware", "platform": "windows"}}
+{"text": "Scanning a document with YARA rules: oledump.py -y sample.yara example.xls", "metadata": {"source": "SANS_oledump", "title": "Use Case - YARA Scanning", "category": "malware", "platform": "windows"}}
+{"text": "Using a decoder to brute force XOR key before matching Yara rules: oledump.py -y sample.yara -D decoder_xor1.py example.xls", "metadata": {"source": "SANS_oledump", "title": "Use Case - XOR Brute Force", "category": "malware", "platform": "windows"}}
+{"text": "oledump.py supports plugins: small Python scripts to extend the functionality of oledump.py. Several plugins are distributed together with oledump. Plugins are invoked with option -p.", "metadata": {"source": "SANS_oledump", "title": "Plugins Overview", "category": "malware", "platform": "windows"}}
+{"text": "plugin_biff: Parse BIFF format in .xls files (e.g. Excel 4 macros)", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_biff", "category": "malware", "platform": "windows"}}
+{"text": "plugin_clsid: display CLSID (if present)", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_clsid", "category": "malware", "platform": "windows"}}
+{"text": "plugin_dridex: identify/decode Dridex macros", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_dridex", "category": "malware", "platform": "windows"}}
+{"text": "plugin_hifo: Extract URLs from user forms", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_hifo", "category": "malware", "platform": "windows"}}
+{"text": "plugin_http_heuristics: Find obfuscated URLs", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_http_heuristics", "category": "malware", "platform": "windows"}}
+{"text": "plugin_jumplist: Analyze Windows jump lists", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_jumplist", "category": "malware", "platform": "windows"}}
+{"text": "plugin_linear: Linear cryptoanalysis", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_linear", "category": "malware", "platform": "windows"}}
+{"text": "plugin_msg: identify Outlook MSG files", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_msg", "category": "malware", "platform": "windows"}}
+{"text": "plugin_msg_summary: display summary (mail headers) for Outlook MSG file.", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_msg_summary", "category": "malware", "platform": "windows"}}
+{"text": "plugin_msi: Analyze MSI files (Windows Installer Package file)", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_msi", "category": "malware", "platform": "windows"}}
+{"text": "plugin_office_crypto: Detect encryption method used", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_office_crypto", "category": "malware", "platform": "windows"}}
+{"text": "plugin_ppt: Analyze VBA macros in PowerPoint documents", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_ppt", "category": "malware", "platform": "windows"}}
+{"text": "plugin_str_sub: de-obfuscate strings by removing padding characters.", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_str_sub", "category": "malware", "platform": "windows"}}
+{"text": "plugin_stream_o: Extract values from \"stream o\" (text boxes)", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_stream_o", "category": "malware", "platform": "windows"}}
+{"text": "plugin_stream_sample: sample plugin to start developing your own", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_stream_sample", "category": "malware", "platform": "windows"}}
+{"text": "plugin_vba: searched for string concatenation in VBA code", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_vba", "category": "malware", "platform": "windows"}}
+{"text": "plugin_vba_dco: Search for \"Declare\" statements and \"CreateObject\" calls", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_vba_dco", "category": "malware", "platform": "windows"}}
+{"text": "plugin_vba_routines: Search for \"Sub\" and \"Function\" in VBA code.", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_vba_routines", "category": "malware", "platform": "windows"}}
+{"text": "plugin_vba_summary: Summarizes VBA code (function names...)", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_vba_summary", "category": "malware", "platform": "windows"}}
+{"text": "plugin_vbaproject: Decrypt VBA Project password hash", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_vbaproject", "category": "malware", "platform": "windows"}}
+{"text": "plugin_version_vba: Identify the Office version used to create the document", "metadata": {"source": "SANS_oledump", "title": "Plugin - plugin_version_vba", "category": "malware", "platform": "windows"}}

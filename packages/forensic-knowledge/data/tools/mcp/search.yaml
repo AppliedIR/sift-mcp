@@ -1,0 +1,35 @@
+name: search
+category: mcp
+description: "Semantic search across forensic knowledge base including Sigma rules, MITRE ATT&CK, Atomic Red Team, and analysis guidance"
+platform: [any]
+platform_notes: "MCP server tool. Platform depends on where the MCP server is hosted, not on the analysis target."
+artifacts_parsed: []
+mcp_server: forensic-rag-mcp
+
+caveats:
+  - "Search results are ranked by semantic similarity — high relevance scores (0.85+) indicate strong matches"
+  - "Results depend on the quality and coverage of the indexed knowledge base"
+  - "Natural language queries work best; overly technical or abbreviated queries may reduce result quality"
+  - "The knowledge base is a curated subset of public forensic resources, not an exhaustive collection"
+  - "Results provide GUIDANCE and REFERENCE, not definitive answers — analyst judgment is still required"
+  - "MITRE technique IDs (T1003, T1059.001) can be used directly as search terms"
+
+output_notes:
+  format: structured_json
+  key_fields: [title, content, source, relevance_score, technique]
+
+advisories:
+  - "Use for rapid lookup of detection logic, artifact interpretation, and investigation procedures"
+  - "Sigma rules in results provide ready-to-use detection queries for SIEM platforms"
+  - "Atomic Red Team results describe how attacks are executed — useful for understanding what to look for"
+  - "Filter by source (sigma, mitre, atomic) to narrow results to specific knowledge types"
+  - "Filter by platform (windows, linux, macos) when investigating platform-specific artifacts"
+  - "Combine search results with artifact analysis for evidence-backed conclusions"
+
+investigation_sequence:
+  - "Search for detection logic related to observed attacker techniques"
+  - "Look up MITRE ATT&CK technique IDs found in Hayabusa or other detection tool output"
+  - "Search for Sigma rules to understand detection coverage for specific behaviors"
+  - "Query Atomic Red Team entries to understand how attacks are executed and what artifacts they leave"
+  - "Review all search results regardless of relevance score — lower-scored results may provide valuable context"
+  - "Use search results to identify additional artifacts and tools for corroboration"

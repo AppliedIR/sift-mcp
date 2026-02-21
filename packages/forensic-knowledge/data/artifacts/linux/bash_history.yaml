@@ -1,0 +1,62 @@
+name: Shell History
+description: "Shell command history files recording interactive commands entered by users"
+platform: linux
+
+locations:
+  - path: "/home/<user>/.bash_history"
+    os_versions: ["All Linux distributions"]
+    notes: "Bash shell history. Written on shell exit by default. HISTFILE can be changed."
+  - path: "/home/<user>/.zsh_history"
+    os_versions: ["Systems with Zsh"]
+    notes: "Zsh history. May include timestamps if EXTENDED_HISTORY is set."
+  - path: "/root/.bash_history"
+    os_versions: ["All Linux distributions"]
+    notes: "Root user shell history. Critical for investigating privileged access."
+
+proves:
+  - "Commands typed by the user in interactive shell sessions"
+  - "Chronological order of commands (most recent appended last)"
+  - "Full command text including arguments and flags"
+  - "Timestamps (if HISTTIMEFORMAT is set or using Zsh EXTENDED_HISTORY)"
+
+does_not_prove:
+  - "Command output or results"
+  - "Whether commands executed successfully"
+  - "Commands from non-interactive sessions (scripts, cron, remote exec)"
+  - "Commands if history was disabled (unset HISTFILE, HISTSIZE=0)"
+  - "Exact execution time (unless HISTTIMEFORMAT is configured)"
+
+timestamps:
+  - field: "File modification time"
+    meaning: "When the shell session ended (history written on exit)"
+    common_misinterpretation: "File modification time reflects the last shell exit, not individual command times"
+  - field: "Embedded timestamps (if enabled)"
+    meaning: "Per-command execution time"
+    common_misinterpretation: "Only present if HISTTIMEFORMAT was set before commands were run"
+
+common_misinterpretations:
+  - claim: "Bash history contains a complete record of all commands run on the system"
+    correction: "History can be cleared (history -c), disabled (unset HISTFILE), or limited (HISTSIZE). Non-interactive and scripted commands are not captured."
+  - claim: "History file timestamps indicate when each command was run"
+    correction: "By default, bash_history has no per-command timestamps. Only if HISTTIMEFORMAT is set do timestamps appear (as comments before each command)."
+  - claim: "Root bash_history always exists"
+    correction: "Attackers commonly clear or disable root history. A missing or empty .bash_history is itself suspicious."
+
+corroborate_with:
+  for_execution: [auth_log, syslog]
+  for_presence: []
+  for_timeline: [auth_log, wtmp_utmp, syslog]
+
+related_tools: [strings, grep]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "IP address, URL, or domain found in command history — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious command pattern — search for related techniques and LOLBins"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "SANS FOR577 - Linux Incident Response and Threat Hunting"

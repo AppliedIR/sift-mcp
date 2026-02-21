@@ -1,0 +1,63 @@
+name: Digital Signatures
+description: "Authenticode digital signatures embedded in Windows executables (PE files), scripts, and drivers, providing publisher identity and integrity verification"
+platform: windows
+
+locations:
+  - path: "Embedded in PE file's certificate table (part of the executable)"
+    os_versions: ["Windows XP+", "Windows 10", "Windows 11"]
+    notes: "Authenticode signatures are embedded in the PE file's security directory. Catalog-signed files reference external .cat files instead."
+  - path: "C:\\Windows\\System32\\CatRoot\\{catalog_guid}\\*.cat"
+    os_versions: ["Windows XP+", "Windows 10", "Windows 11"]
+    notes: "Catalog files containing hashes of Microsoft-signed OS files. Many Windows system files are catalog-signed rather than individually signed."
+
+proves:
+  - "Publisher identity at the time of signing (if signature is valid)"
+  - "File integrity has not been modified since signing (if signature is valid)"
+  - "Signing timestamp (when the file was signed)"
+  - "Certificate chain of trust"
+
+does_not_prove:
+  - "That a signed file is safe (legitimate signing certificates can be stolen or misused)"
+  - "That an unsigned file is malicious (many legitimate tools are unsigned)"
+  - "That the publisher is trustworthy (code signing certificates can be purchased by anyone)"
+  - "Current file integrity if the signature has been stripped or the file modified after signing"
+
+timestamps:
+  - field: "Signing Time (countersignature)"
+    meaning: "Timestamp from the countersigning authority indicating when the file was signed"
+    common_misinterpretation: "The signing timestamp proves when the file was signed, not when it was created, compiled, or placed on the system"
+
+common_misinterpretations:
+  - claim: "Signed files are always trustworthy"
+    correction: "Stolen code signing certificates are used by advanced threat actors. Certificates may also be issued to shell companies. Always verify the specific publisher identity, not just the presence of a signature."
+  - claim: "Unsigned Windows system files indicate tampering"
+    correction: "Many Windows system files are catalog-signed (verified via .cat files) rather than individually signed. A missing embedded signature does not necessarily indicate tampering."
+  - claim: "An expired certificate means the signature is invalid"
+    correction: "If the file has a valid countersignature (timestamp), the signature remains valid even after the certificate expires. The countersignature proves the file was signed while the certificate was active."
+  - claim: "Signature verification requires the original signing environment"
+    correction: "Signatures can be verified on any Windows system with sigcheck (Sysinternals) or on Linux with osslsigncode. The certificate chain can be validated against known root CAs."
+
+corroborate_with:
+  for_execution: [amcache, prefetch]
+  for_presence: [mft, usn_journal]
+  for_timeline: [amcache, event_logs_sysmon]
+
+related_tools: [sigcheck, osslsigncode, exiftool]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_file"
+    when: "Unsigned or invalid signature — verify file against Windows baseline"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "File hash from unsigned binary — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Signature anomaly — search for code signing abuse techniques"
+  - mcp: "remnux"
+    tool: "analyze_file"
+    when: "Unsigned or suspicious binary — submit for static analysis"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "MITRE ATT&CK T1553.002 - Code Signing"

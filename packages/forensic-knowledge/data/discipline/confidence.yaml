@@ -1,0 +1,13 @@
+levels:
+  HIGH:
+    criteria: "Multiple corroborating evidence sources. Observation is unambiguous."
+    min_evidence_ids: 2
+  MEDIUM:
+    criteria: "At least one evidence source. Observation is clear but interpretation has alternatives."
+    min_evidence_ids: 1
+  LOW:
+    criteria: "Limited evidence. Reasonable inference but significant uncertainty."
+    min_evidence_ids: 0
+  SPECULATIVE:
+    criteria: "Hypothesis based on experience or pattern recognition. No direct evidence."
+    min_evidence_ids: 0

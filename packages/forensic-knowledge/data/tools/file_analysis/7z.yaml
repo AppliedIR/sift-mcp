@@ -1,0 +1,46 @@
+name: 7z
+category: file_analysis
+description: "Multi-format archive extraction and listing — handles 7z, zip, gzip, bzip2, xz, tar, rar, and more"
+platform: [windows, linux, macos]
+platform_notes: "Available on all platforms. On Linux, may be installed as p7zip."
+artifacts_parsed: []
+
+caveats:
+  - "Extraction overwrites existing files by default — always extract to a dedicated output directory"
+  - "Password-protected archives require the -p flag; extraction fails silently on wrong password with some formats"
+  - "Symbolic links in archives can point outside the extraction directory (zip-slip) — review contents before extracting"
+  - "Timestamps on extracted files reflect the times stored in the archive, not extraction time"
+  - "Large archives (multi-GB) may require significant disk space and time to extract"
+  - "RAR5 format support depends on the p7zip build; older builds may only support RAR4"
+
+output_notes:
+  format: text
+  key_fields: [archive_name, file_count, compressed_size, uncompressed_size, method, date_time]
+
+exit_code_hints:
+  0: "no errors"
+  1: "warning (non-fatal, e.g. locked files)"
+  2: "fatal error"
+  7: "command line error"
+  8: "not enough memory"
+  255: "user stopped the process"
+
+advisories:
+  - "Use 'x' command to extract with full paths, 'e' to extract flat into one directory"
+  - "Use 'l' command to list archive contents before extracting — verify what you're unpacking"
+  - "Use -o flag to specify output directory: 7z x archive.7z -o/path/to/output"
+  - "Use -p flag for password-protected archives: 7z x archive.7z -pMyPassword"
+  - "For forensic work, always extract to a new directory to preserve original archive integrity"
+  - "After extraction, hash both the archive and extracted files for chain of custody"
+  - "Common forensic use: extracting compressed supertimelines, memory dumps, and triage packages"
+
+quick_start: "7z l archive.zip"
+
+investigation_sequence:
+  - "List archive contents with 'l' command before extraction to assess scope"
+  - "Extract archives with 'x' command to preserve directory structure"
+  - "Review all extracted files — archives may contain nested archives or hidden content"
+  - "Check for password-protected archives which may indicate concealment"
+  - "Verify extracted file hashes against known-good or known-bad indicators"
+  - "Submit suspicious extracted files to malware analysis tools"
+  - "Document archive metadata including creation tool and file listing"

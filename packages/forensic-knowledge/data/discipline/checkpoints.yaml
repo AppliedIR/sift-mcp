@@ -1,0 +1,25 @@
+checkpoints:
+  - action_type: "attribution"
+    description: "Attributing activity to a specific threat actor"
+    min_evidence_ids: 3
+    required_types: ["finding"]
+    human_approval: true
+    guidance: "Attribution requires multiple corroborating TTPs, infrastructure overlap, and temporal consistency. A single IOC match is insufficient."
+  - action_type: "root_cause"
+    description: "Declaring the root cause of an incident"
+    min_evidence_ids: 2
+    required_types: ["finding"]
+    human_approval: true
+    guidance: "Root cause must be supported by timeline evidence showing the initial entry point and propagation path."
+  - action_type: "exclusion"
+    description: "Ruling out a hypothesis or system as compromised"
+    min_evidence_ids: 1
+    required_types: []
+    human_approval: true
+    guidance: "Exclusion requires evidence of absence, not just absence of evidence. Document what was checked and what was NOT found."
+  - action_type: "clean_declaration"
+    description: "Declaring a system or environment clean/contained"
+    min_evidence_ids: 3
+    required_types: ["finding"]
+    human_approval: true
+    guidance: "Clean declarations are high-consequence. Verify across multiple artifact types: processes, persistence, network, file system."

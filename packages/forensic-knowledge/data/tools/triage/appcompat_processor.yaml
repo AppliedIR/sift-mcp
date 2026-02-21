@@ -1,0 +1,38 @@
+name: AppCompatProcessor
+category: triage
+description: "Cross-system ShimCache/AmCache correlation tool for identifying lateral movement and execution patterns"
+platform: [windows, linux, macos]
+platform_notes: "Python-based. Works on all platforms. Processes pre-parsed Amcache/ShimCache CSV files."
+artifacts_parsed: [shimcache, amcache]
+
+caveats:
+  - "Correlation quality depends on input data quality — garbage in, garbage out"
+  - "ShimCache (AppCompatCache) data quality varies significantly across Windows versions"
+  - "Cross-system time correlation requires synchronized timestamps across source systems"
+  - "Large datasets from many systems can be resource-intensive to process"
+  - "False positives in correlation from common system binaries present on all systems"
+
+output_notes:
+  format: csv
+  key_fields: [hostname, filename, filepath, last_modified, executed_flag, correlation_score]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Feed AppCompatCacheParser and AmcacheParser CSV output as input"
+  - "Use for lateral movement detection across multiple collected systems"
+  - "Focus on executables appearing on multiple systems in temporal sequence"
+  - "Filter out known-good Windows binaries to reduce noise"
+  - "Combine with network flow data and logon events for comprehensive lateral movement timeline"
+
+quick_start: "AppCompatProcessor.exe -f shimcache_output.csv --csv output/"
+
+investigation_sequence:
+  - "Process ShimCache data across multiple systems for enterprise-wide analysis"
+  - "Review all entries for file path anomalies and unusual binary locations"
+  - "Use timeline output for temporal analysis across multiple hosts"
+  - "Cross-reference results with individual AppCompatCacheParser output for per-host detail"
+  - "Correlate findings with network-based indicators for lateral movement detection"
+  - "Document any files appearing across multiple systems as potential indicators of spread"

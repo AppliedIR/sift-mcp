@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sift-gateway"
+version = "0.1.0"
+description = "HTTP gateway aggregating SIFT-local MCP servers behind one endpoint"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "AppliedIncidentResponse.com"},
+]
+dependencies = [
+    "mcp>=1.26",
+    "uvicorn>=0.30",
+    "starlette>=0.40",
+    "pyyaml>=6.0",
+    "httpx>=0.27",
+    "sift-common",
+]
+
+[project.scripts]
+sift-gateway = "sift_gateway.__main__:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "pytest-asyncio>=0.21"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sift_gateway"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

@@ -1,0 +1,46 @@
+name: bstrings
+category: zimmerman
+description: "Extract strings from binary files with regex pattern matching, Unicode support, and offset reporting"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+artifacts_parsed: []
+
+caveats:
+  - "Large files produce extensive output — use regex filters (-p) to focus on relevant strings"
+  - "Default minimum string length is 3 characters — adjust with -l for longer minimum"
+  - "Supports both ASCII and Unicode string extraction"
+  - "Pattern matching uses .NET regex syntax"
+  - "Output includes file offset for each string, useful for locating data in hex editors"
+
+output_notes:
+  format: text
+  key_fields: [offset, string_value, encoding]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "Use -f to specify the input file"
+  - "Use -p to apply regex pattern filters (e.g., -p 'http[s]?://' for URLs)"
+  - "Use -l to set minimum string length (e.g., -l 8 to skip short strings)"
+  - "Use -o to specify output directory for results"
+  - "Use -a to search for ASCII strings and -u for Unicode (both enabled by default)"
+  - "Particularly useful for malware analysis — extract C2 URLs, registry keys, and file paths from executables"
+  - "Compare against GNU strings for cross-validation on ambiguous binary data"
+  - "Use --ls to get string length statistics"
+
+quick_start: "bstrings.exe -f target_file -o output.txt"
+
+investigation_sequence:
+  - "Extract strings from binary files to identify embedded indicators"
+  - "Use regex patterns (-p) to search for specific patterns (URLs, IPs, file paths)"
+  - "Review all extracted strings — context matters more than individual matches"
+  - "Cross-reference identified IOCs with threat intelligence sources"
+  - "Use offset information to understand where strings appear in the binary"
+
+field_meanings:
+  Offset: "Byte offset within the file where the string was found"
+  String: "The extracted string value"
+  StringType: "Character encoding (ASCII, Unicode)"
+  PatternDescription: "Description of the regex pattern that matched, if applicable"

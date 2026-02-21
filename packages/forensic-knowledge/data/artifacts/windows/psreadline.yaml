@@ -1,0 +1,55 @@
+name: PSReadLine History
+description: "PowerShell command history persisted by the PSReadLine module, recording all commands entered in PowerShell sessions"
+platform: windows
+
+locations:
+  - path: "C:\\Users\\<user>\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt"
+    os_versions: ["Windows 10+"]
+    notes: "Plain text file. PSReadLine module included by default in PowerShell 5.0+."
+
+proves:
+  - "PowerShell commands typed by the user"
+  - "Chronological order of command execution"
+  - "Full command text including parameters and arguments"
+
+does_not_prove:
+  - "Command output or results"
+  - "Whether commands executed successfully"
+  - "Commands run via scripts (only interactive commands are logged)"
+  - "Commands from PowerShell ISE (separate history)"
+  - "Exact timestamps of each command (file has no per-line timestamps)"
+
+timestamps:
+  - field: "File modification time"
+    meaning: "When the last command was added to the history"
+    common_misinterpretation: "Individual commands do not have timestamps — the file is append-only text"
+
+common_misinterpretations:
+  - claim: "PSReadLine captures all PowerShell activity"
+    correction: "Only interactive console commands are captured. Scripted execution, remote sessions, and ISE commands may not appear."
+  - claim: "Deleting ConsoleHost_history.txt removes all evidence of PowerShell commands"
+    correction: "PowerShell activity is also logged in Event Logs (4104 ScriptBlock, 4103 Module), transcript files, and ETW traces."
+  - claim: "PSReadLine is always enabled"
+    correction: "PSReadLine can be disabled via PowerShell profile or policy. Check if the module is loaded."
+
+corroborate_with:
+  for_execution: [event_logs_powershell, powershell_transcripts]
+  for_presence: [prefetch, amcache]
+  for_timeline: [event_logs_security, event_logs_sysmon]
+
+related_tools: [strings, EvtxECmd]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_process_tree"
+    when: "Command references executable — verify process context"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "IP, URL, or domain in command history — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious command pattern — search for related techniques"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "MITRE ATT&CK T1059.001 - PowerShell"

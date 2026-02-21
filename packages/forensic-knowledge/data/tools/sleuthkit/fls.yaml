@@ -1,0 +1,54 @@
+name: fls
+category: sleuthkit
+description: "List files and directories in a disk image, including deleted entries, with MAC timestamps"
+platform: [windows, linux, macos]
+platform_notes: "C/C++ tools. Pre-installed on SIFT (Linux). Windows builds available. Same flags and output on all platforms."
+artifacts_parsed: [mft]
+
+caveats:
+  - "Requires a raw or supported forensic disk image (E01, raw/dd, VMDK, etc.)"
+  - "Partition offset must be specified with -o if the image contains a partition table"
+  - "Deleted files are shown with an asterisk (*) prefix but may have been partially or fully overwritten"
+  - "Does not recover file contents — use icat to extract files by inode/MFT entry"
+  - "Recursive listing (-r) on large volumes generates very large output"
+  - "File system type can be specified with -f (ntfs, ext4, fat, etc.) if auto-detection fails"
+
+output_notes:
+  format: csv
+  key_fields: [type, inode, name, deleted_flag]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Use -m flag to produce bodyfile output for mactime timeline generation"
+  - "Use -r for recursive directory listing; combine with -m for complete filesystem timeline"
+  - "Use -p to display full path names instead of just filenames"
+  - "Use -d to display only deleted entries — critical for data recovery investigations"
+  - "Pair with icat to extract specific files identified during analysis"
+  - "Use mmls first to determine partition offsets if the image contains multiple partitions"
+
+quick_start: "fls -r -p image.dd"
+
+investigation_sequence:
+  - "Use mmls first to identify partition offsets in the disk image"
+  - "Run fls with -r -p to recursively list all files with full paths"
+  - "Use -d flag to list only deleted entries for data recovery investigations"
+  - "Generate bodyfile output with -m '/' for timeline analysis with mactime"
+  - "Cross-reference deleted file entries with Recycle Bin analysis (RBCmd) and USN Journal"
+  - "Use icat to extract specific files identified during directory listing analysis"
+  - "Review all entries including deleted and reallocated — each provides file system context"
+
+field_meanings:
+  type: "File type indicator — first letter from directory entry (d=directory, r=regular, l=symlink), second from metadata"
+  inode: "Inode or MFT entry number for the file"
+  name: "File or directory name"
+  deleted_flag: "Asterisk (*) after type indicates the file has been deleted"
+  mtime: "Last modification time in long format (-l)"
+  atime: "Last access time in long format (-l)"
+  ctime: "Last status change time in long format (-l)"
+  crtime: "Creation time in long format (-l)"
+  size: "File size in bytes in long format (-l)"
+  uid: "User ID in long format (-l)"
+  gid: "Group ID in long format (-l)"

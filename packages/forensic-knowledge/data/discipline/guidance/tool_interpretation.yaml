@@ -1,0 +1,45 @@
+tools:
+  check_file:
+    tool: "windows-triage-mcp: check_file"
+    score_interpretation:
+      EXPECTED: "File matches known Windows baseline. Normal."
+      UNKNOWN: "File NOT in baseline database. This is NEUTRAL — it means not-in-database, not suspicious. Custom software, user files, and enterprise tools will all be UNKNOWN."
+      RENAMED: "Filename matches a known system file but path or hash differs. Investigate further."
+    common_false_positives:
+      - "Enterprise software agents (AV, management tools) flagged as UNKNOWN"
+      - "Windows updates changing file hashes before baseline is updated"
+      - "Legitimate portable tools in user directories"
+    caveats:
+      - "Baseline covers default Windows installations only"
+      - "Custom enterprise software will appear as UNKNOWN"
+      - "A file being EXPECTED does not rule out compromise (legitimate file can be abused)"
+  check_process_tree:
+    tool: "windows-triage-mcp: check_process_tree"
+    score_interpretation:
+      EXPECTED: "Parent-child relationship matches known baseline."
+      UNEXPECTED: "Unusual parent-child relationship. May indicate process injection, living-off-the-land, or unusual execution."
+    common_false_positives:
+      - "Software installers spawning unusual child processes"
+      - "Task scheduler creating atypical process trees"
+      - "Debugging tools with unusual parent processes"
+    caveats:
+      - "Process tree at time of collection, not runtime"
+      - "Parent PID reuse can create misleading relationships"
+  search:
+    tool: "forensic-rag-mcp: search"
+    score_interpretation:
+      "0.85+": "Excellent match — high confidence the result is directly relevant"
+      "0.75-0.84": "Good match — relevant but review context carefully"
+      "0.65-0.74": "Fair match — may be tangential, verify applicability"
+      "<0.65": "Weak match — likely not relevant to your query"
+    caveats:
+      - "Semantic search returns related content, not exact matches"
+      - "A high score indicates relevance, not confirmation of a hypothesis"
+      - "Results reflect the knowledge base content, not ground truth"
+  search_threat_intel:
+    tool: "opencti-mcp: search_threat_intel"
+    caveats:
+      - "Threat intelligence reflects KNOWN threats, not ALL threats"
+      - "Confidence scores reflect source reliability, not certainty of match"
+      - "Absence from threat intel does not mean clean"
+      - "IOC matching is necessary but not sufficient for attribution"

@@ -1,0 +1,63 @@
+name: PowerShell Transcript Logs
+description: "Text files recording PowerShell session input and output created by the Start-Transcript cmdlet or PowerShell transcription group policy"
+platform: windows
+
+locations:
+  - path: "C:\\Users\\<username>\\Documents\\PowerShell_transcript*.txt"
+    os_versions: ["Windows 7+", "Windows 10", "Windows 11"]
+    notes: "Default location for Start-Transcript output. Filename includes hostname, username, and timestamp."
+  - path: "Configured via Group Policy: Computer Configuration > Administrative Templates > Windows Components > Windows PowerShell > Turn on PowerShell Transcription"
+    os_versions: ["Windows 10+", "Windows 11"]
+    notes: "Group policy can specify a custom output directory and enable invocation headers. Often configured to write to a network share."
+
+proves:
+  - "Exact PowerShell commands typed by the user or script"
+  - "Command output and results (both stdout and some stderr)"
+  - "PowerShell session start and end times"
+  - "Username and hostname where the session ran"
+
+does_not_prove:
+  - "Commands from non-PowerShell tools (cmd.exe, bash, etc.)"
+  - "PowerShell activity when transcription was not enabled"
+  - "That the output was not tampered with (transcript files are plain text)"
+  - "Activity via unmanaged PowerShell runspaces (P/Invoke, C# hosted PowerShell)"
+
+timestamps:
+  - field: "Transcript Start Time"
+    meaning: "Time the PowerShell transcription session began"
+    common_misinterpretation: "This is the session start, not the time of each individual command within the session"
+  - field: "Command timestamps (with invocation headers)"
+    meaning: "Time each command was invoked when invocation headers are enabled via group policy"
+    common_misinterpretation: "Invocation headers must be explicitly enabled — without them, only the session start/end times are recorded"
+
+common_misinterpretations:
+  - claim: "Transcripts capture all PowerShell activity on a system"
+    correction: "Transcripts only capture sessions where Start-Transcript was active or where group policy transcription was enabled. Background jobs, remoting sessions, and constrained runspaces may not generate transcripts."
+  - claim: "Transcript logs are the same as Event Log script block logging"
+    correction: "Transcripts capture input AND output as text files. Script block logging (Event ID 4104) captures code blocks in the event log without output. They are complementary mechanisms."
+  - claim: "Transcript files cannot be tampered with"
+    correction: "Transcript files are plain text and can be edited or deleted by anyone with file system access. They should be treated as corroborating evidence, not as a sole source of truth."
+  - claim: "If no transcript files exist, PowerShell was not used"
+    correction: "Transcription must be explicitly enabled. By default, PowerShell does not create transcript files. Check event logs for PowerShell activity instead."
+
+corroborate_with:
+  for_execution: [event_logs_powershell, prefetch, event_logs_sysmon]
+  for_presence: [mft, usn_journal]
+  for_timeline: [event_logs_powershell, event_logs_security]
+
+related_tools: [EvtxECmd]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_process_tree"
+    when: "PowerShell execution context — verify spawning process"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "URL, IP, or domain found in transcript — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious PowerShell command — search for technique context and detection rules"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "SANS FOR500 - Windows Forensic Analysis"

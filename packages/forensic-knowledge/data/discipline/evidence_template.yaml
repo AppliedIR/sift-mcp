@@ -1,0 +1,8 @@
+template:
+  title: "string — concise description of the evidence"
+  evidence_ids: ["list of evidence_id strings from tool calls"]
+  observation: "string — factual description of what the data shows (no interpretation)"
+  interpretation: "string — what it might mean (labeled as interpretation)"
+  confidence: "HIGH | MEDIUM | LOW | SPECULATIVE"
+  confidence_justification: "string — why this confidence level, citing specific evidence"
+  type: "finding | attribution | conclusion | exclusion"

@@ -1,0 +1,43 @@
+name: AmcacheParser
+category: zimmerman
+description: "Parse Amcache.hve registry hive"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+artifacts_parsed: [amcache]
+
+caveats:
+  - "Different Windows versions store data in different registry paths"
+  - "Requires raw Amcache.hve file, not a live registry"
+
+output_notes:
+  format: csv
+  key_fields: [FileName, FullPath, SHA1, FileKeyLastWriteTimestamp]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "Results show file PRESENCE — see Amcache artifact knowledge for what this does and does not prove"
+
+quick_start: "AmcacheParser.exe -f Amcache.hve --csv output/"
+
+investigation_sequence:
+  - "Parse Amcache.hve to extract all file presence records (via sift-mcp or wintools-mcp)"
+  - "Review all entries including both associated and unassociated file entries"
+  - "Note that Amcache records indicate file PRESENCE on the system, not execution"
+  - "Cross-reference with Prefetch (PECmd) and UserAssist to confirm execution"
+  - "Check SHA1 hashes against known-bad indicators via threat intelligence sources"
+  - "Correlate FileKeyLastWriteTimestamp with other timeline events"
+  - "Cross-MCP: Check SHA1 hashes from Amcache against threat intelligence (opencti: lookup_hash)"
+  - "Cross-MCP: Verify file paths against Windows baseline (windows-triage: check_file)"
+
+field_meanings:
+  SHA1: "SHA1 hash of the file as recorded in Amcache"
+  FullPath: "Full file path as recorded in the Amcache registry"
+  FileKeyLastWriteTimestamp: "Last time the Amcache registry key for this file was modified"
+  FileReference: "MFT entry number and sequence number for the file"
+  ProductName: "Product name from the PE version information"
+  Publisher: "Publisher from the PE version information or digital signature"
+  IsPeFile: "Whether the file is a Portable Executable"
+  BinaryType: "32-bit or 64-bit PE binary classification"

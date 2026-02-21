@@ -1,0 +1,53 @@
+name: User Access Logging
+description: "Windows Server feature that logs client access to server roles and services"
+platform: windows
+
+locations:
+  - path: "C:\\Windows\\System32\\LogFiles\\SUM\\*.mdb"
+    os_versions: ["Windows Server 2012+"]
+    notes: "ESE database format. Contains Current.mdb and historical archives."
+
+proves:
+  - "Client IP addresses that accessed the server"
+  - "Server roles and services accessed"
+  - "First and last access timestamps per client"
+  - "Access counts per client per role"
+  - "Authenticated usernames"
+
+does_not_prove:
+  - "Specific actions taken by the client"
+  - "Data transferred during the access"
+  - "Whether the access was malicious"
+  - "Access to non-UAL-instrumented services"
+
+timestamps:
+  - field: "FirstSeen"
+    meaning: "First time the client accessed the service"
+    common_misinterpretation: "Per-role/per-year granularity — not per-session"
+  - field: "LastSeen"
+    meaning: "Most recent access by the client"
+    common_misinterpretation: "Updated at 24-hour intervals, not in real-time"
+
+common_misinterpretations:
+  - claim: "UAL is available on all Windows systems"
+    correction: "UAL is a Windows SERVER feature only (Server 2012+). Not present on client Windows (10/11)."
+  - claim: "UAL provides detailed session logs"
+    correction: "UAL provides aggregated access counts and first/last seen times, not detailed session-level logging."
+
+corroborate_with:
+  for_execution: [event_logs_security]
+  for_presence: []
+  for_timeline: [event_logs_security, event_logs_system]
+
+related_tools: [SrumECmd, KStrike]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Client IP identified — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Unusual access pattern — search for related techniques"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"

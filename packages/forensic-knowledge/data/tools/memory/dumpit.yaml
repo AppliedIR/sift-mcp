@@ -1,0 +1,40 @@
+name: DumpIt
+category: memory
+description: "One-click Windows memory acquisition tool by Comae Technologies"
+platform: [windows]
+platform_notes: "Windows only. Simple acquisition tool. For Linux, use LiME."
+artifacts_parsed: []
+
+caveats:
+  - "Running on a live system changes the system — memory contents are modified during acquisition"
+  - "May produce Comae proprietary format (DMP) or raw format depending on version"
+  - "Requires administrator privileges"
+  - "Large memory dumps (32GB+) require sufficient disk space on the destination"
+  - "AV/EDR may interfere with memory acquisition"
+  - "No built-in hashing — verify the output hash separately"
+
+output_notes:
+  format: raw_or_dmp
+  key_fields: [image_file, image_size_bytes]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Simplest memory acquisition tool — good for deployment to non-technical responders"
+  - "Verify output format compatibility with your analysis tool (Volatility, MemProcFS)"
+  - "Place DumpIt on a USB drive for field deployment"
+  - "Document acquisition time and system state before running"
+  - "Pair with WinPmem or Belkasoft RAM Capturer as backup acquisition methods"
+
+quick_start: "DumpIt.exe /Q"
+
+investigation_sequence:
+  - "Run DumpIt as Administrator for complete memory acquisition"
+  - "Use /Q for quiet mode to avoid interactive prompts during collection"
+  - "The tool creates a .dmp file and companion .txt metadata file"
+  - "Document acquisition time and verify the output file size matches expected RAM"
+  - "Transfer the memory dump to the analysis workstation securely"
+  - "Analyze with Volatility 3 — use windows.info to verify the memory image is valid"
+  - "Cross-reference memory findings with disk-based artifacts for corroboration"

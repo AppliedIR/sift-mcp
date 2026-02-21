@@ -1,0 +1,43 @@
+name: "Unusual Logon Investigation"
+description: "Investigate unexpected authentication events indicating unauthorized access or credential misuse"
+mitre: ["T1078", "T1021"]
+sources:
+  - "SANS FOR508 — Windows Enterprise Incident Response"
+  - "MITRE ATT&CK T1078 — Valid Accounts"
+  - "MITRE ATT&CK T1021 — Remote Services"
+triggers:
+  - "Logon from unusual source IP or at unusual time"
+  - "Type 10 (RDP) logon from unexpected system"
+  - "Service account used interactively"
+  - "Failed logon attempts followed by success from same source"
+  - "Logon type inconsistent with account purpose"
+phases:
+  - phase: "Identify"
+    steps:
+      - "Parse Security event logs with Hayabusa (via sift-mcp or wintools-mcp) filtering for logon events (4624, 4625, 4648)"
+      - "Filter by target account, source address, and logon type to isolate suspicious entries"
+      - "Record evidence IDs for all relevant log entries"
+  - phase: "Baseline"
+    steps:
+      - "Check the account's previous logon history on this system using EvtxECmd (via sift-mcp or wintools-mcp) filtered by account name"
+      - "Determine normal logon patterns — usual times, source systems, logon types"
+      - "If available, check same account on other systems to establish cross-system baseline"
+  - phase: "Context"
+    steps:
+      - "Check process execution around logon time using PECmd (via wintools-mcp) to identify what was run"
+      - "Check file creation around logon time using MFTECmd (via sift-mcp or wintools-mcp)"
+      - "Check for new services or tasks created using windows-triage (check_service, check_scheduled_task)"
+  - phase: "Lateral Check"
+    steps:
+      - "Determine if the same account accessed other systems during the investigation timeframe"
+      - "Check RDP activity in event logs (Event ID 1149, 4624 Type 10) and RDP bitmap cache artifacts"
+      - "Check network share access in Security logs (Event IDs 5140, 5145)"
+  - phase: "Corroborate"
+    steps:
+      - "Check source IP reputation and threat intelligence (opencti: lookup_ioc)"
+      - "Search for related techniques and detection context (forensic-rag: search)"
+      - "Verify process execution trees around logon time (windows-triage: check_process_tree)"
+  - phase: "Record"
+    steps:
+      - "Record finding with all evidence IDs from each phase"
+      - "HITL checkpoint — examiner determines whether logon is unauthorized access"

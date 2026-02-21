@@ -1,0 +1,52 @@
+name: Syslog
+description: "Central system log aggregating messages from kernel, services, and applications"
+platform: linux
+
+locations:
+  - path: "/var/log/syslog"
+    os_versions: ["Debian", "Ubuntu"]
+    notes: "Primary system log on Debian-based systems."
+  - path: "/var/log/messages"
+    os_versions: ["RHEL", "CentOS", "Fedora"]
+    notes: "Equivalent file on Red Hat-based systems."
+
+proves:
+  - "System events from kernel and services"
+  - "Service start/stop events"
+  - "Kernel messages (hardware, drivers, security modules)"
+  - "Application log messages sent to syslog facility"
+  - "Network events (DHCP, DNS resolver, firewall)"
+
+does_not_prove:
+  - "Application-specific events not routed to syslog"
+  - "Events if syslog daemon was stopped or logs were cleared"
+  - "Detailed application behavior (only what applications choose to log)"
+
+timestamps:
+  - field: "Syslog timestamp"
+    meaning: "When the message was received by syslog daemon"
+    common_misinterpretation: "May not include year or timezone in default format. Check rsyslog/syslog-ng configuration."
+
+common_misinterpretations:
+  - claim: "Syslog contains everything that happens on the system"
+    correction: "Syslog only contains messages explicitly sent to the syslog facility. Many applications use their own log files."
+  - claim: "Syslog timestamps are always accurate"
+    correction: "Syslog timestamps reflect the receiving daemon's time. If NTP is not configured, times may be inaccurate."
+
+corroborate_with:
+  for_execution: [auth_log, systemd_journal]
+  for_presence: []
+  for_timeline: [auth_log, wtmp_utmp, systemd_journal]
+
+related_tools: [grep, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Source IP identified in authentication or connection event — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious authentication or system pattern — search for related techniques"
+
+references:
+  - "SANS FOR577 - Linux Incident Response and Threat Hunting"

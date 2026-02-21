@@ -1,0 +1,54 @@
+name: Network Share Event Logs
+description: "Windows Security event log entries tracking access to network shares for lateral movement detection"
+platform: windows
+
+locations:
+  - path: "C:\\Windows\\System32\\winevt\\Logs\\Security.evtx"
+    os_versions: ["Windows Vista+"]
+    notes: "Requires 'Audit Object Access' policy. Key events: 5140 (share accessed), 5145 (detailed file share access), 5142/5143/5144 (share modifications)."
+
+proves:
+  - "Network share access by remote users/systems (Event ID 5140)"
+  - "Specific files accessed within shares (Event ID 5145)"
+  - "Source IP addresses and authenticated users"
+  - "Share access permissions granted"
+
+does_not_prove:
+  - "What was done with accessed files (copied, modified, deleted)"
+  - "Lateral movement intent — many share accesses are legitimate"
+  - "Access when auditing is not enabled"
+
+timestamps:
+  - field: "TimeCreated"
+    meaning: "When the share access event was logged"
+    common_misinterpretation: "Event time is when the access was logged, not necessarily when data transfer occurred"
+
+common_misinterpretations:
+  - claim: "Windows logs all network share access by default"
+    correction: "Object Access auditing must be enabled via Group Policy. Many organizations do not have detailed share auditing enabled."
+  - claim: "Event ID 5140 shows what files were accessed"
+    correction: "5140 only shows that a share was accessed. For per-file detail, you need Event ID 5145 with detailed file share auditing enabled."
+  - claim: "Admin shares (C$, ADMIN$) access is always suspicious"
+    correction: "SCCM, group policy, and other management tools routinely access admin shares. Look for unusual source systems and timing."
+
+corroborate_with:
+  for_execution: [event_logs_security, event_logs_sysmon]
+  for_presence: [mft, usn_journal]
+  for_timeline: [event_logs_security, event_logs_system]
+
+related_tools: [EvtxECmd, Hayabusa]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_process_tree"
+    when: "Process execution event found — verify parent-child relationship against baseline"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "IP address, domain, or hash found in event — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious event pattern — search for detection rules and MITRE technique context"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "MITRE ATT&CK T1021.002 - SMB/Windows Admin Shares"

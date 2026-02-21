@@ -1,0 +1,41 @@
+name: ewfmount
+category: imaging
+description: "Mount E01/EWF forensic images as raw device files via FUSE for transparent access by analysis tools"
+platform: [linux]
+platform_notes: "FUSE-based mount. Linux only."
+artifacts_parsed: []
+
+caveats:
+  - "Requires FUSE support and libewf installed on the system"
+  - "Mounted image appears as a raw device file (ewf1) inside the mount point directory"
+  - "The mount is read-only by default — the original evidence is not modified"
+  - "After mounting, you still need to mount the file system within (e.g., via mount -o ro,loop,offset=...)"
+  - "Must unmount with fusermount -u when finished to avoid stale mount points"
+  - "Requires root or FUSE group membership on most Linux distributions"
+
+output_notes:
+  format: text
+  key_fields: [mount_point, device_file]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Mount the E01 first, then use mmls on the resulting raw device to identify partitions"
+  - "Typical workflow: ewfmount image.E01 /mnt/ewf → mmls /mnt/ewf/ewf1 → mount -o ro,loop,offset=X /mnt/ewf/ewf1 /mnt/fs"
+  - "Always use read-only mounts to preserve evidence integrity"
+  - "Use ewfinfo to inspect E01 metadata (case number, examiner, notes) before mounting"
+  - "Supports split E01 files — point to the first segment (.E01) and the tool finds the rest"
+  - "Unmount with: fusermount -u /mnt/ewf"
+
+quick_start: "ewfmount image.E01 /mnt/ewf"
+
+investigation_sequence:
+  - "Mount the E01/EWF image to expose it as a virtual device file"
+  - "The virtual device appears as ewf1 in the mount point directory"
+  - "Use mmls on the virtual device to identify partition offsets"
+  - "Mount individual partitions with: mount -o loop,ro,offset=BYTES /mnt/ewf/ewf1 /mnt/partition"
+  - "Always mount partitions read-only (-o ro) to prevent evidence modification"
+  - "Use -X allow_other if multiple users need access to the mounted image"
+  - "Unmount with fusermount -u when analysis is complete"

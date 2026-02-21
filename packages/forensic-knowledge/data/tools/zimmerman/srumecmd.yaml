@@ -1,0 +1,54 @@
+name: SrumECmd
+category: zimmerman
+description: "Parse System Resource Usage Monitor (SRUM) database for application, network, and energy usage history"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+artifacts_parsed: [srum]
+
+caveats:
+  - "Requires Windows-specific ESE libraries. Fails on Linux/SIFT with 'Non-Windows platforms not supported' error. Use on Windows forensic workstation only."
+  - "SRUM data is stored in SRUDB.dat (ESE database) at C:\\Windows\\System32\\sru\\"
+  - "Requires both SRUDB.dat and the SOFTWARE registry hive for full application name resolution"
+  - "SRUM records data in hourly intervals; precise execution times are not available"
+  - "Data is retained for up to 30-60 days depending on Windows version and configuration"
+  - "Network usage includes bytes sent/received per application per network interface"
+  - "SRUM survived across reboots and is not easily tampered with by standard users"
+  - "Energy usage data can reveal application activity even when other artifacts are wiped"
+
+output_notes:
+  format: csv
+  key_fields: [Timestamp, AppId, ExePath, UserId, BytesSent, BytesReceived, ForegroundCycleTime, BackgroundCycleTime, NetworkAdapter]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "SRUM provides EXECUTION EVIDENCE with network usage data — a powerful combination for data exfiltration investigations"
+  - "Network usage per application can quantify data exfiltration volume"
+  - "SRUM persists after application uninstall, making it valuable for anti-forensics cases"
+  - "Application names require the SOFTWARE hive for resolution; without it, only SID-based AppIds are available"
+  - "Use --csv to specify the output directory"
+  - "Available on Windows 8+ (introduced with SRUM in Windows 8); most useful on Windows 10/11 where data is richer"
+
+quick_start: "SrumECmd.exe -f SRUDB.dat --csv output/"
+
+investigation_sequence:
+  - "Parse SRUM database to extract application resource usage data"
+  - "Review all entries across network usage, application timeline, and push notifications"
+  - "Note that SRUM retains data for up to 30-60 days of system activity"
+  - "Cross-reference application execution evidence with Prefetch and Amcache"
+  - "Correlate network bytes sent/received with connection timestamps for data exfiltration analysis"
+  - "Review energy usage data for application runtime duration evidence"
+
+field_meanings:
+  TimeStamp: "Timestamp of the SRUM record entry"
+  AppId: "Application identifier (full path or SID)"
+  UserId: "User SID associated with the activity"
+  BackgroundBytesRead: "Bytes read by the application in the background"
+  BackgroundBytesWritten: "Bytes written by the application in the background"
+  ForegroundBytesRead: "Bytes read by the application in the foreground"
+  ForegroundBytesWritten: "Bytes written by the application in the foreground"
+  BytesSent: "Network bytes sent by the application"
+  BytesRecvd: "Network bytes received by the application"
+  FaceTime: "Duration the application was in the foreground (in milliseconds)"

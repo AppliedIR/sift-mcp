@@ -1,0 +1,69 @@
+name: ShellBags
+description: "Windows ShellBags recording folder access, window positions, and view preferences per user"
+platform: windows
+
+locations:
+  - path: "NTUSER.DAT\\Software\\Microsoft\\Windows\\Shell\\BagMRU"
+    os_versions: ["Windows XP+", "Windows 10", "Windows 11"]
+    notes: "Stores the folder tree structure as a hierarchy of shell item ID lists"
+  - path: "NTUSER.DAT\\Software\\Microsoft\\Windows\\Shell\\Bags"
+    os_versions: ["Windows XP+", "Windows 10", "Windows 11"]
+    notes: "Stores view settings (icon size, sort order, window position) per folder"
+  - path: "UsrClass.dat\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\BagMRU"
+    os_versions: ["Windows 7+", "Windows 10", "Windows 11"]
+    notes: "Additional ShellBag data in user's UsrClass.dat hive; often contains more entries than NTUSER.DAT"
+  - path: "UsrClass.dat\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\Bags"
+    os_versions: ["Windows 7+", "Windows 10", "Windows 11"]
+    notes: "View settings in UsrClass.dat"
+
+proves:
+  - "User browsed to or interacted with a folder via Windows Explorer"
+  - "Folders that existed on the system, removable media, or network shares"
+  - "Folder access on USB devices, mapped network drives, and ZIP files"
+  - "User awareness of directory structure"
+
+does_not_prove:
+  - "That specific files within the folder were accessed or viewed"
+  - "What the user did in the folder"
+  - "Exact timing of folder access (ShellBag timestamps have caveats)"
+  - "That the folder currently exists"
+
+timestamps:
+  - field: "Registry Key LastWriteTime"
+    meaning: "Last time the ShellBag registry key was modified (folder was accessed or view settings changed)"
+    common_misinterpretation: "This updates when view settings change (resize window, change sort order), not only on folder access"
+  - field: "Embedded timestamps in shell item ID lists"
+    meaning: "Creation, modification, and access times of the folder as recorded in the shell item data"
+    common_misinterpretation: "These are snapshots from when the ShellBag was created/updated and may not reflect current folder timestamps"
+
+common_misinterpretations:
+  - claim: "ShellBags prove a user opened files in a folder"
+    correction: "ShellBags prove the user navigated to and viewed the folder in Windows Explorer. They do NOT prove any file within the folder was opened, copied, or modified."
+  - claim: "ShellBags are cleaned up when folders are deleted"
+    correction: "ShellBags persist even after the folder is deleted. They are essentially never cleaned up during normal operation, making them excellent historical evidence."
+  - claim: "ShellBags only exist in NTUSER.DAT"
+    correction: "Windows 7+ stores significant ShellBag data in UsrClass.dat. Both hives must be examined for complete analysis."
+  - claim: "ShellBag timestamps are reliable access times"
+    correction: "ShellBag timestamps update on folder navigation AND view setting changes. Resizing a window or changing sort order can update the timestamp without meaningful re-access."
+
+corroborate_with:
+  for_execution: [prefetch, userassist]
+  for_presence: [mft, usn_journal, lnk_files]
+  for_timeline: [lnk_files, jump_lists, mft]
+
+related_tools: [SBECmd]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_file"
+    when: "File path identified — verify against Windows baseline"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "File hash available — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious file activity pattern — search for related techniques"
+
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "SANS FOR508 - Advanced Incident Response"

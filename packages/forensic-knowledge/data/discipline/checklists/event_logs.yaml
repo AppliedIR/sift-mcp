@@ -1,0 +1,11 @@
+artifact_type: "Windows Event Logs"
+files:
+  - "C:\\Windows\\System32\\winevt\\Logs\\Security.evtx"
+  - "C:\\Windows\\System32\\winevt\\Logs\\System.evtx"
+  - "C:\\Windows\\System32\\winevt\\Logs\\Application.evtx"
+  - "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-PowerShell%4Operational.evtx"
+  - "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-Sysmon%4Operational.evtx"
+  - "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-TaskScheduler%4Operational.evtx"
+  - "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-TerminalServices-RemoteConnectionManager%4Operational.evtx"
+tools: ["KAPE", "wevtutil.exe (live)", "FTK Imager"]
+notes: "Collect ALL .evtx files if possible. Some detections require obscure log channels."

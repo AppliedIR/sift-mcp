@@ -1,0 +1,53 @@
+name: Windows Firewall Event Logs
+description: "Windows Firewall with Advanced Security event logs for network connection tracking and rule changes"
+platform: windows
+
+locations:
+  - path: "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-Windows Firewall With Advanced Security%4Firewall.evtx"
+    os_versions: ["Windows Vista+"]
+    notes: "Event IDs: 2003 (rule changed), 2004 (rule added), 2006 (rule deleted), 2033 (rule modification by group policy)."
+  - path: "C:\\Windows\\System32\\LogFiles\\Firewall\\pfirewall.log"
+    os_versions: ["Windows Vista+"]
+    notes: "Text-based firewall log (connection allow/drop). Must be enabled via Advanced Firewall settings. Not enabled by default."
+
+proves:
+  - "Firewall rule additions, modifications, and deletions"
+  - "Network connections allowed or blocked (when logging is enabled)"
+  - "Firewall policy changes"
+
+does_not_prove:
+  - "Network connections when firewall logging is not enabled"
+  - "Application-layer data (only IP/port level)"
+  - "Whether blocked connections were malicious"
+
+timestamps:
+  - field: "TimeCreated"
+    meaning: "When the firewall event occurred"
+    common_misinterpretation: "Connection log timestamps are when the firewall processed the packet, not when it was sent"
+
+common_misinterpretations:
+  - claim: "Windows Firewall logs all network connections by default"
+    correction: "Connection logging (pfirewall.log) must be explicitly enabled. Only rule change events are logged by default."
+  - claim: "Firewall logs can replace network capture"
+    correction: "Firewall logs provide connection-level metadata only (IP, port, action). No payload content is captured."
+
+corroborate_with:
+  for_execution: [event_logs_security, event_logs_sysmon]
+  for_presence: []
+  for_timeline: [event_logs_security, event_logs_system]
+
+related_tools: [EvtxECmd, Hayabusa, tshark]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_process_tree"
+    when: "Process execution event found — verify parent-child relationship against baseline"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "IP address, domain, or hash found in event — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious event pattern — search for detection rules and MITRE technique context"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"

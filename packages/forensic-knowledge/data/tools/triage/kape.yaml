@@ -1,0 +1,44 @@
+name: KAPE
+category: triage
+description: "Kroll Artifact Parser and Extractor — automated forensic artifact collection and processing tool"
+platform: [windows]
+platform_notes: "Windows only. Targets are Windows-specific. Modules can invoke other tools. No Linux equivalent (use tar/find for Linux collection)."
+artifacts_parsed: []
+
+caveats:
+  - "Collection scope depends on target selection — verify targets include all needed artifacts"
+  - "Running on a live system modifies the system (at minimum, file access timestamps and prefetch)"
+  - "Requires administrator privileges for most targets"
+  - "KAPE modules can execute arbitrary commands — review module configs before running"
+  - "Target definitions may not cover custom or unusual artifact locations"
+  - "Large collection targets (full disk triage) can take significant time and disk space"
+  - "KAPE is licensed software requiring agreement to Kroll's terms"
+
+output_notes:
+  format: mixed
+  key_fields: [collected_files, processed_output, execution_log]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Use --tsource for target source and --tdest for target destination"
+  - "Use --msource to specify module source and --mdest for module output"
+  - "Review the target and module documentation before running — understand what will be collected"
+  - "Combine Targets (collection) with Modules (processing) for automated triage"
+  - "Common targets: !BasicCollection, !SANS_Triage, KapeTriage"
+  - "KAPE modules can run Zimmerman tools, RegRipper, and other parsers automatically"
+  - "Always verify collection completeness by checking the log output"
+  - "For incident response, collect first, process later — prioritize getting artifacts off the system"
+
+quick_start: "kape.exe --tsource C: --tdest output/ --target !SANS_Triage"
+
+investigation_sequence:
+  - "Select appropriate target configuration for the investigation scope"
+  - "Use --tsource to specify the evidence source drive or directory"
+  - "Use --tdest to specify the output directory for collected artifacts"
+  - "Use --target to select predefined collection profiles (e.g., !SANS_Triage)"
+  - "Process collected artifacts with module configurations for automated parsing"
+  - "Review all collected artifacts — KAPE targets are comprehensive but not exhaustive"
+  - "Document collection parameters and target selections for the investigation record"

@@ -1,0 +1,37 @@
+name: "PowerShell Anomaly Investigation"
+description: "Investigate suspicious PowerShell activity including encoded commands, download cradles, and obfuscated scripts"
+mitre: ["T1059.001"]
+sources:
+  - "SANS FOR508 — Windows Enterprise Incident Response"
+  - "MITRE ATT&CK T1059.001 — PowerShell"
+  - "FireEye/Mandiant — Greater Visibility Through PowerShell Logging"
+triggers:
+  - "Encoded command parameter (-enc, -EncodedCommand) in process creation logs"
+  - "Download cradle patterns (IEX, Invoke-Expression, Net.WebClient, DownloadString)"
+  - "Script block logging alerts in PowerShell event logs"
+  - "Unusual script execution path or unsigned script"
+phases:
+  - phase: "Identify"
+    steps:
+      - "Parse PowerShell event logs with EvtxECmd (via sift-mcp or wintools-mcp) — Event IDs 4103 (module logging), 4104 (script block logging)"
+      - "Parse Security event logs for process creation with command line — Event ID 4688"
+      - "Check PowerShell transcripts if enabled (check PSReadLine history and transcript paths)"
+  - phase: "Decode"
+    steps:
+      - "If encoded command detected (-enc), decode Base64 content to reveal actual command"
+      - "Reassemble script block log entries if split across multiple Event ID 4104 entries"
+      - "De-obfuscate command if string concatenation, character codes, or variable substitution used"
+  - phase: "Analyze"
+    steps:
+      - "Search for known techniques matching the command pattern (forensic-rag: search)"
+      - "Check any download URLs found in the command (opencti: lookup_ioc)"
+      - "Check the spawning process to understand execution context (windows-triage: check_process_tree)"
+  - phase: "Impact"
+    steps:
+      - "Identify what the PowerShell command executed — file drops, registry changes, network connections"
+      - "Check for downloaded payloads in Prefetch, MFT, and Amcache"
+      - "Check for subsequent PowerShell executions that may form a chain"
+  - phase: "Record"
+    steps:
+      - "Record finding including decoded command content, execution context, and impact assessment"
+      - "Include all evidence IDs from each analysis phase"

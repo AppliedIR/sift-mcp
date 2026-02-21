@@ -1,0 +1,40 @@
+name: CyLR
+category: triage
+description: "Open-source forensic artifact collection tool for rapid triage of Windows, Linux, and macOS systems"
+platform: [windows, linux, macos]
+platform_notes: ".NET-based. Works on all platforms. Collection targets are OS-specific."
+artifacts_parsed: []
+
+caveats:
+  - "Collection scope is predefined — may not include all artifacts for every investigation type"
+  - "Requires administrative/root privileges for complete artifact collection"
+  - "Running on a live system modifies the system (timestamps, prefetch entries, etc.)"
+  - "Output is a ZIP archive — verify integrity after transfer"
+  - "Does not collect volatile data (RAM, network connections) — use separate tools for those"
+
+output_notes:
+  format: zip_archive
+  key_fields: [collected_files, collection_log]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Use -od to specify output directory for the collection archive"
+  - "Use -of to specify output filename"
+  - "Lighter and faster than KAPE — good for rapid deployment across many endpoints"
+  - "Custom collection paths can be specified via JSON configuration"
+  - "Pair with KAPE modules or Zimmerman tools for post-collection processing"
+  - "Verify collected artifacts against expected list to ensure completeness"
+
+quick_start: "CyLR.exe"
+
+investigation_sequence:
+  - "Run CyLR on the target system to collect standard forensic artifacts"
+  - "Use -od to specify output directory for the collection archive"
+  - "Use -c to specify custom artifact paths in addition to defaults"
+  - "Use -d to combine custom paths with default CyLR collection list"
+  - "Transfer the resulting ZIP archive to the analysis workstation"
+  - "Extract and process collected artifacts with appropriate parsing tools"
+  - "Document the collection scope, timestamp, and system identification"

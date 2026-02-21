@@ -1,0 +1,35 @@
+name: "DNS Anomaly Investigation"
+description: "Investigate DNS tunneling, domain generation algorithms, and unusual query patterns"
+mitre: ["T1071.004", "T1568.002"]
+sources:
+  - "SANS FOR572 — Advanced Network Forensics"
+  - "MITRE ATT&CK T1071.004 — DNS"
+  - "MITRE ATT&CK T1568.002 — Domain Generation Algorithms"
+triggers:
+  - "High-entropy domain queries suggesting DGA"
+  - "Excessive DNS query volume from single host"
+  - "Long subdomain labels suggesting DNS tunneling"
+  - "Unusual TXT record queries or responses"
+phases:
+  - phase: "Identify"
+    steps:
+      - "Analyze DNS logs or PCAP using tshark with DNS filter (via sift-mcp) — tshark -Y dns"
+      - "Parse Zeek dns.log for query patterns (via sift-mcp)"
+      - "Filter for unusual query patterns — long names, high frequency, non-standard types"
+  - phase: "Classify"
+    steps:
+      - "Check for DGA characteristics — random-looking labels, high character entropy, mathematical patterns"
+      - "Check for tunneling indicators — long subdomain labels (>30 chars), high volume TXT queries, encoded data in queries"
+      - "Compare against known benign high-volume DNS patterns (CDN, telemetry)"
+  - phase: "Threat Intel"
+    steps:
+      - "Check suspicious domains against threat intelligence (opencti: lookup_ioc)"
+      - "Search for DNS exfiltration and tunneling techniques (forensic-rag: search)"
+  - phase: "Source"
+    steps:
+      - "Identify which systems and processes are generating the anomalous queries"
+      - "Check if DNS queries correlate with process execution on endpoint using Sysmon Event ID 22"
+  - phase: "Record"
+    steps:
+      - "Record finding including DNS patterns, source systems, and threat intelligence results"
+      - "Include all evidence IDs from each analysis phase"

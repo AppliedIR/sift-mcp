@@ -1,0 +1,47 @@
+name: AppCompatCacheParser
+category: zimmerman
+description: "Parse Application Compatibility Cache (ShimCache) from SYSTEM registry hive"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+artifacts_parsed: [shimcache]
+
+caveats:
+  - "ShimCache only proves a file WAS PRESENT on disk, not that it was executed (Win8+)"
+  - "On Windows 7 and earlier, an InsertFlag may indicate execution, but is not definitive"
+  - "Cache entries are written to the registry at shutdown; a crash loses unwritten entries"
+  - "Requires the raw SYSTEM hive file or a mounted image; cannot parse live registry directly"
+  - "Entry order reflects the order of interaction, not chronological execution time"
+  - "Maximum of 1024 entries on Win8+; older entries are evicted"
+
+output_notes:
+  format: csv
+  key_fields: [Path, LastModifiedTimeUTC, CacheEntryPosition, Executed]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "ShimCache proves FILE PRESENCE, not execution on Win8+ — do NOT claim execution based solely on ShimCache"
+  - "CacheEntryPosition is significant: lower numbers indicate more recent interaction"
+  - "Correlate with Prefetch and Amcache for stronger evidence of execution"
+  - "The LastModifiedTime is the file's $STANDARD_INFORMATION modification time, not when ShimCache recorded it"
+
+quick_start: "AppCompatCacheParser.exe -f SYSTEM --csv output/"
+
+investigation_sequence:
+  - "Parse the SYSTEM hive to extract ShimCache entries (via sift-mcp or wintools-mcp)"
+  - "Review all entries including cache position — lower positions are more recent"
+  - "On Windows 10+, ShimCache entries indicate file PRESENCE, not execution"
+  - "Cross-reference with Amcache and Prefetch for corroboration"
+  - "Look for entries from unusual paths (temp directories, user profiles, removable media)"
+  - "Correlate timestamps with other artifacts for timeline construction"
+  - "Cross-MCP: Check file paths against Windows baseline (windows-triage: check_file)"
+  - "Cross-MCP: Search for shimcache interpretation context (forensic-rag: search)"
+
+field_meanings:
+  LastModifiedTimeUTC: "File last modification timestamp from the file system at cache time"
+  Path: "Full file path recorded in the ShimCache"
+  CacheEntryPosition: "Position in cache — lower numbers are more recently cached"
+  ControlSet: "Registry control set the entry was extracted from"
+  Executed: "Execution flag — only reliable on Windows XP/2003; always 'N/A' on Win10+"

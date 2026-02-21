@@ -1,0 +1,43 @@
+name: RegRipper
+category: registry
+description: "Extract and parse forensic artifacts from Windows registry hive files using Perl plugins"
+platform: [windows, linux, macos]
+platform_notes: "Perl-based. Primarily used on Linux (SIFT). Requires Perl runtime on Windows. Parses Windows registry hives regardless of host OS."
+artifacts_parsed: [registry_run_keys, registry_services]
+
+caveats:
+  - "Requires raw registry hive files (SYSTEM, SOFTWARE, NTUSER.DAT, SAM, SECURITY, UsrClass.dat)"
+  - "Plugin-based architecture means output depends on which plugins are run"
+  - "Some plugins are outdated and may not handle newer Windows 10/11 registry structures correctly"
+  - "Does not process registry transaction logs (.LOG1, .LOG2); dirty hives may produce incomplete results"
+  - "Output is text-based and varies in format between plugins — not consistently structured"
+  - "Plugin names must match the hive type; running a SOFTWARE plugin against NTUSER.DAT will fail silently"
+
+output_notes:
+  format: text
+  key_fields: [plugin_name, key_path, value_name, value_data, last_write_time]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Use -a flag to run all plugins for a given hive type; use -p for a specific plugin"
+  - "The -r flag specifies the registry hive file to process"
+  - "Key plugins: autorun (Run keys), services, userassist, appcompatcache, bam, networklist"
+  - "For comprehensive registry analysis, consider RECmd (Zimmerman) as an alternative with better structured output"
+  - "Always specify the correct hive with -a: 'rip -r SYSTEM -a' processes all SYSTEM plugins"
+  - "RegRipper plugins can be customized or extended for specific investigation needs"
+  - "Compare results with RECmd output for validation; discrepancies indicate plugin parsing differences"
+
+quick_start: "rip.exe -r hive_file -a"
+
+investigation_sequence:
+  - "Run RegRipper with -a to execute all applicable plugins against the hive"
+  - "Use appropriate hive-specific plugins for targeted analysis"
+  - "Review all plugin output — registry data spans system configuration, user activity, and application settings"
+  - "For timeline analysis, use -aT to run all TLN (timeline) plugins"
+  - "Merge hive transaction logs before parsing (use yarp or rla.exe) for complete data"
+  - "Cross-reference NTUSER.DAT findings with SYSTEM and SOFTWARE hive analysis"
+  - "Correlate registry timestamps with other artifact timelines for investigation context"
+  - "Check persistence-related keys (Run, RunOnce, Services) for unauthorized entries"

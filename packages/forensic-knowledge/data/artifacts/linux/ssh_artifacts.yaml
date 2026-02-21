@@ -1,0 +1,63 @@
+name: SSH Artifacts
+description: "SSH configuration and authentication artifacts including authorized keys, known hosts, and connection history"
+platform: linux
+
+locations:
+  - path: "/home/<user>/.ssh/authorized_keys"
+    os_versions: ["All Linux distributions"]
+    notes: "Public keys authorized for passwordless login. Critical for persistence detection."
+  - path: "/home/<user>/.ssh/known_hosts"
+    os_versions: ["All Linux distributions"]
+    notes: "Hosts previously connected to by this user. May be hashed."
+  - path: "/etc/ssh/sshd_config"
+    os_versions: ["All Linux distributions"]
+    notes: "SSH server configuration. Check for backdoor configurations (PermitRootLogin, AuthorizedKeysFile redirection)."
+  - path: "/home/<user>/.ssh/config"
+    os_versions: ["All Linux distributions"]
+    notes: "Per-user SSH client configuration. May reveal connection patterns."
+
+proves:
+  - "SSH keys authorized for login (authorized_keys)"
+  - "Remote hosts previously connected to (known_hosts)"
+  - "SSH server security configuration"
+  - "SSH tunnel configurations and proxy settings"
+
+does_not_prove:
+  - "Who added an authorized key (unless corroborated with auth.log)"
+  - "Active SSH sessions (check auth.log and ss/netstat)"
+  - "SSH key usage if the key was later removed"
+
+timestamps:
+  - field: "authorized_keys file modification time"
+    meaning: "When the authorized_keys file was last modified"
+    common_misinterpretation: "Modification time may reflect ANY edit, not specifically the addition of a malicious key"
+  - field: "known_hosts file modification time"
+    meaning: "When the user last connected to a new host"
+    common_misinterpretation: "Known hosts can be pre-populated by configuration management"
+
+common_misinterpretations:
+  - claim: "authorized_keys only contains keys the user personally added"
+    correction: "Configuration management tools, deployment scripts, and attackers can all modify authorized_keys. Check file ownership, permissions, and correlate with auth.log."
+  - claim: "known_hosts shows all SSH connections made by a user"
+    correction: "known_hosts is a trust cache, not a connection log. It only records the first connection to each host (or when a host key changes). Hashed entries obscure host information."
+  - claim: "Removing an authorized_keys entry prevents access"
+    correction: "Check for additional AuthorizedKeysFile locations in sshd_config, and check for backdoor user accounts."
+
+corroborate_with:
+  for_execution: [auth_log, bash_history]
+  for_presence: [wtmp_utmp]
+  for_timeline: [auth_log, syslog]
+
+related_tools: [grep, ssh-keygen]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "SSH connection source IP or known_hosts entry — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious SSH configuration or key — search for related techniques"
+
+references:
+  - "SANS FOR577 - Linux Incident Response and Threat Hunting"
+  - "MITRE ATT&CK T1098.004 - SSH Authorized Keys"

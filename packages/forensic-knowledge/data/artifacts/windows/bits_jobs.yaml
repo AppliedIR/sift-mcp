@@ -1,0 +1,61 @@
+name: BITS Jobs
+description: "Background Intelligent Transfer Service job database tracking file downloads and persistence mechanisms"
+platform: windows
+
+locations:
+  - path: "C:\\ProgramData\\Microsoft\\Network\\Downloader\\qmgr.db"
+    os_versions: ["Windows 10+"]
+    notes: "ESE database format. Legacy systems used qmgr0.dat and qmgr1.dat."
+  - path: "C:\\ProgramData\\Microsoft\\Network\\Downloader\\qmgr0.dat"
+    os_versions: ["Windows 7", "Windows 8"]
+    notes: "Legacy BITS queue format."
+
+proves:
+  - "File download URLs and destinations"
+  - "BITS job creation and completion times"
+  - "User or process that created the job"
+  - "BITS-based persistence (jobs configured to execute commands on completion)"
+
+does_not_prove:
+  - "File content or integrity of downloaded files"
+  - "Whether the downloaded file was executed"
+  - "BITS jobs that completed and were cleaned up before collection"
+
+timestamps:
+  - field: "CreationTime"
+    meaning: "When the BITS job was created"
+    common_misinterpretation: "Does not indicate when the download completed"
+  - field: "ModifiedTime"
+    meaning: "Last modification of the BITS job record"
+    common_misinterpretation: "May reflect automatic retry attempts, not user actions"
+
+common_misinterpretations:
+  - claim: "BITS is only used for Windows Update"
+    correction: "BITS is used by many applications (Chrome, SCCM) and is commonly abused by malware for stealthy downloads and persistence."
+  - claim: "BITS jobs are always visible in Task Manager"
+    correction: "BITS jobs run in the background and are not visible in standard Task Manager views. Use bitsadmin or PowerShell Get-BitsTransfer to list them."
+
+corroborate_with:
+  for_execution: [prefetch, amcache]
+  for_presence: [mft, usn_journal]
+  for_timeline: [event_logs_system, event_logs_security]
+
+related_tools: [bitsadmin, KAPE]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_autorun"
+    when: "Persistence entry found — verify against known Windows autoruns"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "Binary hash from persistence entry — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious persistence mechanism — search for related techniques and detection rules"
+  - mcp: "remnux"
+    tool: "analyze_file"
+    when: "Unknown binary referenced by persistence entry — submit for static analysis"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "MITRE ATT&CK T1197 - BITS Jobs"

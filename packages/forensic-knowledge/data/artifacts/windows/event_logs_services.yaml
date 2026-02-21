@@ -1,0 +1,55 @@
+name: Services Event Logs
+description: "Windows System event log entries for service installation and modification — key lateral movement indicator"
+platform: windows
+
+locations:
+  - path: "C:\\Windows\\System32\\winevt\\Logs\\System.evtx"
+    os_versions: ["Windows Vista+"]
+    notes: "Event ID 7045 (service installed), 7036 (service started/stopped), 7040 (service start type changed). Part of the System event log."
+
+proves:
+  - "New service installations with service name and binary path (Event ID 7045)"
+  - "Service start/stop events (Event ID 7036)"
+  - "Service configuration changes (Event ID 7040)"
+  - "Account under which the service runs"
+
+does_not_prove:
+  - "What the service binary actually does"
+  - "Whether the service was created locally or remotely"
+  - "Service modifications that don't trigger logging"
+
+timestamps:
+  - field: "TimeCreated"
+    meaning: "When the service event was logged"
+    common_misinterpretation: "Service installation time may differ from when the service binary was placed on disk"
+
+common_misinterpretations:
+  - claim: "Event ID 7045 proves remote service creation"
+    correction: "7045 logs ALL service installations — local and remote. Correlate with logon events and network share access for remote attribution."
+  - claim: "All malicious services use obvious names"
+    correction: "Sophisticated attackers use service names that mimic legitimate services. Focus on the binary path, not the service name."
+  - claim: "PsExec always leaves Event ID 7045"
+    correction: "PsExec creates a service (PSEXESVC by default), but attackers can specify custom service names with -r flag."
+
+corroborate_with:
+  for_execution: [event_logs_security, registry_services, event_logs_sysmon]
+  for_presence: [prefetch, amcache, mft]
+  for_timeline: [event_logs_security, event_logs_system]
+
+related_tools: [EvtxECmd, Hayabusa, autorunsc]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_process_tree"
+    when: "Process execution event found — verify parent-child relationship against baseline"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "IP address, domain, or hash found in event — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious event pattern — search for detection rules and MITRE technique context"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "MITRE ATT&CK T1543.003 - Windows Service"
+  - "MITRE ATT&CK T1021.002 - SMB/Windows Admin Shares"

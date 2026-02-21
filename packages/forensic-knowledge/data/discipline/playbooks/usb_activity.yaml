@@ -1,0 +1,37 @@
+name: "USB Activity Investigation"
+description: "Investigate USB device connections and removable media activity for data theft or malware delivery"
+mitre: ["T1052.001", "T1091"]
+sources:
+  - "SANS FOR500 — Windows Forensic Analysis"
+  - "MITRE ATT&CK T1052.001 — Exfiltration Over USB"
+  - "MITRE ATT&CK T1091 — Replication Through Removable Media"
+triggers:
+  - "New USB device appears in registry during investigation timeframe"
+  - "File operations to removable drive paths detected"
+  - "USB connection coincides with suspicious user activity"
+  - "Unknown USB device connected to sensitive system"
+phases:
+  - phase: "Identify Devices"
+    steps:
+      - "Parse USB artifacts from registry using RECmd (via sift-mcp or wintools-mcp) — USBSTOR, MountPoints2, MountedDevices"
+      - "Check SetupAPI logs for device installation events"
+      - "Extract device serial numbers, vendor IDs, and product IDs"
+  - phase: "Timeline"
+    steps:
+      - "Correlate USB first and last connection times with investigation timeframe"
+      - "Check event logs for USB-related events using EvtxECmd (via sift-mcp or wintools-mcp)"
+      - "Determine connection duration and pattern (one-time vs repeated)"
+  - phase: "File Operations"
+    steps:
+      - "Check LNK files for removable drive paths using LECmd (via sift-mcp or wintools-mcp)"
+      - "Check Jump Lists for recent file access on removable media using JLECmd (via sift-mcp or wintools-mcp)"
+      - "Check MFT for file copy operations to or from removable drive letters"
+  - phase: "Context"
+    steps:
+      - "Determine if USB activity is routine for this user or anomalous"
+      - "Check if same USB device was connected to other systems in the environment"
+      - "Search for relevant threat context (forensic-rag: search)"
+  - phase: "Record"
+    steps:
+      - "Record finding including device serial, connection times, and files accessed"
+      - "Include all evidence IDs from each analysis phase"

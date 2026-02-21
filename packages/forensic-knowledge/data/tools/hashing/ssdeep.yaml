@@ -1,0 +1,48 @@
+name: ssdeep
+category: hashing
+description: "Context-triggered piecewise hashing (fuzzy hashing) for identifying similar files"
+platform: [windows, linux, macos]
+platform_notes: "Available on all platforms. Pre-installed on SIFT. Windows builds available."
+artifacts_parsed: []
+
+caveats:
+  - "Fuzzy hash similarity scores (0-100) require interpretation — low scores don't mean files are unrelated"
+  - "Comparison requires matching block sizes — files of vastly different sizes cannot be meaningfully compared"
+  - "Not suitable for files smaller than 4KB due to insufficient entropy"
+  - "False positives occur with files that share common templates or headers"
+  - "Not a replacement for cryptographic hashes (SHA256) — use both for different purposes"
+  - "Similarity threshold varies by use case — 50%+ often indicates related files, but context matters"
+
+output_notes:
+  format: text
+  key_fields: [fuzzy_hash, filename, match_score]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Use -r for recursive directory hashing and -m for matching against a hash database"
+  - "Use -p for pretty matching output showing percentage similarity"
+  - "Ideal for identifying malware variants, repackaged tools, and related document versions"
+  - "Combine with YARA and cryptographic hashes for multi-layered file identification"
+  - "Build a fuzzy hash database of known malware for ongoing comparison"
+  - "Particularly useful for identifying slightly modified malware that evades exact hash matching"
+
+quick_start: "ssdeep -r /evidence/mount > fuzzy_hashes.txt"
+
+investigation_sequence:
+  - "Compute fuzzy hashes for files across the evidence to enable similarity comparison"
+  - "Use -d (directory mode) to compare all files against each other for similarity clustering"
+  - "Use -m to match files against a set of known fuzzy hashes"
+  - "Set a similarity threshold with -t to control match sensitivity (0-100, higher is stricter)"
+  - "Review all matches — even moderate similarity scores may indicate related malware variants"
+  - "Cross-reference similar files with traditional hash lookups and YARA scanning"
+  - "Use fuzzy hash similarity to identify polymorphic or slightly modified malware copies"
+
+field_meanings:
+  blocksize: "Block size used for the piecewise hash computation"
+  hash_part1: "First fuzzy hash component"
+  hash_part2: "Second fuzzy hash component"
+  filename: "Full path to the hashed file"
+  match_score: "Similarity percentage (0-100) when comparing two fuzzy hashes"

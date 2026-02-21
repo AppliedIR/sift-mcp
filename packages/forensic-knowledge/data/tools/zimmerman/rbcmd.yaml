@@ -1,0 +1,43 @@
+name: RBCmd
+category: zimmerman
+description: "Parse Windows Recycle Bin $I files to recover original file paths and deletion timestamps"
+platform: [windows, linux, macos]
+platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+artifacts_parsed: [recycle_bin]
+
+caveats:
+  - "Each deleted file produces a $I (metadata) and $R (content) file pair in the Recycle Bin"
+  - "The $I file contains the original path, file size, and deletion timestamp"
+  - "Recycle Bin contents can be permanently deleted by the user, removing both $I and $R files"
+  - "Files deleted via Shift+Delete, command line, or programmatically bypass the Recycle Bin entirely"
+  - "Each user has a separate Recycle Bin folder identified by their SID"
+  - "Recycle Bin format differs between Windows versions (INFO2 on XP vs $I/$R on Vista+)"
+
+output_notes:
+  format: csv
+  key_fields: [SourceName, FileSize, DeletedOn, OriginalPath]
+
+exit_code_hints:
+  0: "success"
+  1: "error or no data found"
+
+advisories:
+  - "Recycle Bin analysis reveals what a user DELETED and when — useful for anti-forensics detection"
+  - "The SID in the Recycle Bin path maps to a specific user account"
+  - "If $R files exist, the deleted file contents can be recovered"
+  - "Use -d to process an entire Recycle Bin directory"
+  - "Absence of Recycle Bin entries for a user who was active may indicate deliberate cleanup"
+
+quick_start: "RBCmd.exe -d 'C:/$Recycle.Bin' --csv output/"
+
+investigation_sequence:
+  - "Parse Recycle Bin $I files to identify deleted file evidence"
+  - "Review all entries including deletion timestamps and original file paths"
+  - "Note the original file size and path for each deleted item"
+  - "Cross-reference with $MFT for file system context and USN Journal for change history"
+  - "Check for recently deleted files that may indicate evidence destruction"
+
+field_meanings:
+  DeletedOn: "Timestamp when the file was moved to the Recycle Bin"
+  FileSize: "Original file size before deletion"
+  FileName: "Original full file path before deletion"

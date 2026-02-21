@@ -1,0 +1,48 @@
+name: mmls
+category: sleuthkit
+description: "Display partition table layout of a disk image, showing partition offsets, sizes, and types"
+platform: [windows, linux, macos]
+platform_notes: "C/C++ tools. Pre-installed on SIFT (Linux). Windows builds available. Same flags and output on all platforms."
+artifacts_parsed: []
+
+caveats:
+  - "Supports GPT, MBR (DOS), BSD, Sun, and Mac partition schemes"
+  - "Partition offsets are reported in sectors — multiply by sector size (usually 512) for byte offset"
+  - "The sector offset from mmls is used as the -o parameter for fls, icat, and other TSK tools"
+  - "Hidden or unallocated space between partitions may contain evidence"
+  - "Encrypted partitions (BitLocker, LUKS) will be identified but cannot be read without decryption"
+  - "Virtual disk formats may require conversion to raw before mmls can parse them"
+
+output_notes:
+  format: text_table
+  key_fields: [Slot, Start, End, Length, Description]
+
+exit_code_hints:
+  0: "success"
+  1: "error or unrecognized partition scheme"
+
+advisories:
+  - "Run mmls FIRST on any disk image to understand the partition layout before further analysis"
+  - "The Start column provides the sector offset needed for -o flags in fls, icat, and fsstat"
+  - "Unallocated slots may contain deleted partitions or hidden data"
+  - "Use -t flag to force a specific partition table type if auto-detection fails"
+  - "Compare partition layout with expected configuration to detect partition manipulation"
+  - "Use -B flag to output in bytes instead of sectors for clarity"
+
+quick_start: "mmls image.dd"
+
+investigation_sequence:
+  - "Run mmls to display the partition layout of the disk image"
+  - "Identify all partitions including unallocated gaps between partitions"
+  - "Note partition start sectors — these are needed as offsets for fls, icat, and other tools"
+  - "Use -B flag to include partition sizes in bytes for easier interpretation"
+  - "Use -r to recurse into DOS partitions and find nested partition tables"
+  - "Use -t to specify partition type if auto-detection fails (dos, gpt, mac, sun, bsd)"
+  - "Document all partition information as part of the evidence inventory"
+
+field_meanings:
+  Slot: "Partition table entry position (##:## format for nested tables)"
+  Start: "Starting sector of the partition"
+  End: "Ending sector of the partition"
+  Length: "Size of the partition in sectors"
+  Description: "Partition type and characteristics (NTFS, Linux, Unallocated, etc.)"

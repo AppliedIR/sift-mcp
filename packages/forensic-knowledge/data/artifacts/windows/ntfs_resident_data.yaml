@@ -1,0 +1,56 @@
+name: MFT Resident Data
+description: "Small file contents stored directly within the MFT entry's $DATA attribute rather than in separate disk clusters, recoverable even after file deletion if the MFT entry is intact"
+platform: windows
+
+locations:
+  - path: "$MFT $DATA attribute (for files smaller than approximately 700-900 bytes)"
+    os_versions: ["Windows XP+", "Windows 10", "Windows 11"]
+    notes: "When a file's content fits within the remaining space of its MFT entry (typically under 700 bytes), NTFS stores the data directly in the MFT record. The exact threshold depends on the number of attributes in the MFT entry."
+
+proves:
+  - "Complete content of small files was stored in the MFT entry"
+  - "Content of deleted small files when the MFT entry has not been reallocated"
+  - "That the file was small enough to be stored resident (under ~700-900 bytes)"
+
+does_not_prove:
+  - "Content of files that were non-resident (too large for MFT storage)"
+  - "That the resident content represents the final version of the file (it could have been modified while non-resident)"
+  - "Who created or modified the file content"
+
+timestamps:
+  - field: "MFT entry timestamps"
+    meaning: "Standard $STANDARD_INFORMATION and $FILE_NAME timestamps for the file"
+    common_misinterpretation: "Timestamps apply to the file as a whole, not specifically to when the resident data was written"
+
+common_misinterpretations:
+  - claim: "File content is always lost when a file is deleted"
+    correction: "For resident files, the content is stored directly in the MFT entry. Since MFT entries are not zeroed on deletion (only marked as free), the content may persist indefinitely until the entry is reallocated."
+  - claim: "Resident data is only available in undeleted files"
+    correction: "MFT entries for deleted files frequently retain their resident $DATA attribute. MFTECmd can recover this content from both active and deleted MFT entries."
+  - claim: "Only very small files are stored resident"
+    correction: "The threshold varies but is typically 700-900 bytes. This includes many script files, batch files, small configuration files, and other artifacts commonly used by attackers."
+  - claim: "Resident data extraction requires commercial tools"
+    correction: "MFTECmd, icat (Sleuth Kit), and other open-source tools can extract resident data from MFT entries."
+
+corroborate_with:
+  for_execution: [prefetch, amcache]
+  for_presence: [ntfs_i30, usn_journal, ntfs_logfile]
+  for_timeline: [mft, usn_journal]
+
+related_tools: [MFTECmd, icat, fls]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_file"
+    when: "File path identified — verify against Windows baseline"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "File hash available — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious file activity pattern — search for related techniques"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "Brian Carrier - File System Forensic Analysis"

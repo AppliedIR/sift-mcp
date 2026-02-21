@@ -1,0 +1,141 @@
+{"text": "UDP Header: Source Port (bytes 0-1), Destination Port (bytes 2-3), Length (bytes 4-5), Checksum (bytes 6-7)", "metadata": {"source": "SANS_TCPIP", "title": "UDP Header Structure", "category": "network", "platform": "linux"}}
+{"text": "UDP Length: number of bytes including UDP header. Minimum value is 8", "metadata": {"source": "SANS_TCPIP", "title": "UDP Length Field", "category": "network", "platform": "linux"}}
+{"text": "UDP Checksum includes pseudo-header (IPs, length, protocol), UDP header and payload", "metadata": {"source": "SANS_TCPIP", "title": "UDP Checksum", "category": "network", "platform": "linux"}}
+{"text": "Common UDP Ports: 7 echo, 19 chargen, 53 domain, 67 DHCPs, 68 DHCPc, 69 tftp, 123 ntp", "metadata": {"source": "SANS_TCPIP", "title": "Common UDP Ports 1-123", "category": "network", "platform": "linux"}}
+{"text": "Common UDP Ports: 137 netbios-ns, 138 netbios, 161 snmp, 162 snmp-trap, 500 isakmp, 514 syslog, 520 Rip", "metadata": {"source": "SANS_TCPIP", "title": "Common UDP Ports 137-520", "category": "network", "platform": "linux"}}
+{"text": "Common UDP Ports: 546 DHCPv6c, 547 DHCPv6s, 1900 SSDP, 5353 mDNS", "metadata": {"source": "SANS_TCPIP", "title": "Common UDP Ports 546-5353", "category": "network", "platform": "linux"}}
+{"text": "ARP Header: Hardware Addr. Type (bytes 0-1), Protocol Addr. Type (bytes 2-3), HW Addr Len (byte 4), Prot. Addr Len (byte 5), Opcode (bytes 6-7)", "metadata": {"source": "SANS_TCPIP", "title": "ARP Header Structure", "category": "network", "platform": "linux"}}
+{"text": "ARP Header: Source Hardware Addr (bytes 8-13), Source Protocol Addr (bytes 14-17), Target HW Addr (bytes 18-23), Target Protocol Address (bytes 24-27)", "metadata": {"source": "SANS_TCPIP", "title": "ARP Header Addresses", "category": "network", "platform": "linux"}}
+{"text": "ARP Hardware Type: 1 - Ethernet", "metadata": {"source": "SANS_TCPIP", "title": "ARP Hardware Type", "category": "network", "platform": "linux"}}
+{"text": "ARP Protocol Type: 0x0800 - IPv4", "metadata": {"source": "SANS_TCPIP", "title": "ARP Protocol Type", "category": "network", "platform": "linux"}}
+{"text": "ARP Address Length: 4=IPv4, 6=Ethernet", "metadata": {"source": "SANS_TCPIP", "title": "ARP Address Length", "category": "network", "platform": "linux"}}
+{"text": "ARP Opcode: 1-request, 2-response", "metadata": {"source": "SANS_TCPIP", "title": "ARP Opcode", "category": "network", "platform": "linux"}}
+{"text": "tcpdump [-aAenStvxX] [-F filterfile] [-i int] [-c n] [-r pcapfile] [-s snaplen] [-w pcapfile] ['bpf filter']", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump Command Syntax", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -A: display payload", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -A Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -c n: display first n packets", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -c Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -D: list interfaces", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -D Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -e: display data link header", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -e Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -F: read filter expression from file", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -F Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -i: listen on specified interface", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -i Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -n: do not resolve IP addresses / ports", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -n Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -r: read packets from file", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -r Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -s: set snap length in bytes", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -s Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -S: display absolute TCP sequence numbers", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -S Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -t: do not print timestamp", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -t Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -tttt: print date and time", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -tttt Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -v: verbose (multiple v: more verbose)", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -v Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -w: write packets to file", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -w Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -x: display in hex", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -x Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -xx: display link layer in hex", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -xx Option", "category": "network", "platform": "linux"}}
+{"text": "tcpdump -X: display in hex + ASCII", "metadata": {"source": "SANS_TCPIP", "title": "tcpdump -X Option", "category": "network", "platform": "linux"}}
+{"text": "AH: Authentication Header (RFC 2402)", "metadata": {"source": "SANS_TCPIP", "title": "AH Acronym", "category": "network", "platform": "linux"}}
+{"text": "ARP: Address Resolution Protocol (RFC 826)", "metadata": {"source": "SANS_TCPIP", "title": "ARP Acronym", "category": "network", "platform": "linux"}}
+{"text": "BGP: Border Gateway Protocol (RFC 1771)", "metadata": {"source": "SANS_TCPIP", "title": "BGP Acronym", "category": "network", "platform": "linux"}}
+{"text": "CWR: Congestion Window Reduced (RFC 2481)", "metadata": {"source": "SANS_TCPIP", "title": "CWR Acronym", "category": "network", "platform": "linux"}}
+{"text": "DF: Do not fragment flag (RFC 791)", "metadata": {"source": "SANS_TCPIP", "title": "DF Acronym", "category": "network", "platform": "linux"}}
+{"text": "DHCP: Dynamic Host Configuration Protocol (RFC 2131)", "metadata": {"source": "SANS_TCPIP", "title": "DHCP Acronym", "category": "network", "platform": "linux"}}
+{"text": "DNS: Domain Name System (RFC 1035)", "metadata": {"source": "SANS_TCPIP", "title": "DNS Acronym", "category": "network", "platform": "linux"}}
+{"text": "ECN: Explicit Congestion Notification (RFC 3168)", "metadata": {"source": "SANS_TCPIP", "title": "ECN Acronym", "category": "network", "platform": "linux"}}
+{"text": "ESP: Encapsulating Security Payload (RFC 2406)", "metadata": {"source": "SANS_TCPIP", "title": "ESP Acronym", "category": "network", "platform": "linux"}}
+{"text": "FTP: File Transfer Protocol (RFC 959)", "metadata": {"source": "SANS_TCPIP", "title": "FTP Acronym", "category": "network", "platform": "linux"}}
+{"text": "GRE: Generic Route Encapsulation (RFC 2784)", "metadata": {"source": "SANS_TCPIP", "title": "GRE Acronym", "category": "network", "platform": "linux"}}
+{"text": "HTTP: Hypertext Transfer Protocol (RFC 1945)", "metadata": {"source": "SANS_TCPIP", "title": "HTTP Acronym", "category": "network", "platform": "linux"}}
+{"text": "ICMP: Internet Control Message Protocol (RFC 792)", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Acronym", "category": "network", "platform": "linux"}}
+{"text": "IGMP: Internet Group Management Protocol (RFC 2236)", "metadata": {"source": "SANS_TCPIP", "title": "IGMP Acronym", "category": "network", "platform": "linux"}}
+{"text": "IMAP: Internet Message Access Protocol (RFC 2060)", "metadata": {"source": "SANS_TCPIP", "title": "IMAP Acronym", "category": "network", "platform": "linux"}}
+{"text": "IP: Internet Protocol (RFC 791)", "metadata": {"source": "SANS_TCPIP", "title": "IP Acronym", "category": "network", "platform": "linux"}}
+{"text": "ISAKMP: Internet Sec. Assoc. & Key Mngm Proto. (RFC 7296)", "metadata": {"source": "SANS_TCPIP", "title": "ISAKMP Acronym", "category": "network", "platform": "linux"}}
+{"text": "L2TP: Layer 2 Tunneling Protocol (RFC 2661)", "metadata": {"source": "SANS_TCPIP", "title": "L2TP Acronym", "category": "network", "platform": "linux"}}
+{"text": "OSPF: Open Shortest Path First (RFC 1583)", "metadata": {"source": "SANS_TCPIP", "title": "OSPF Acronym", "category": "network", "platform": "linux"}}
+{"text": "POP3: Post Office Protocol v3 (RFC 1460)", "metadata": {"source": "SANS_TCPIP", "title": "POP3 Acronym", "category": "network", "platform": "linux"}}
+{"text": "RFC: Request for Comments", "metadata": {"source": "SANS_TCPIP", "title": "RFC Acronym", "category": "network", "platform": "linux"}}
+{"text": "SMTP: Simple Mail Transfer Protocol (RFC 821)", "metadata": {"source": "SANS_TCPIP", "title": "SMTP Acronym", "category": "network", "platform": "linux"}}
+{"text": "SSH: Secure Shell (RFC 4253)", "metadata": {"source": "SANS_TCPIP", "title": "SSH Acronym", "category": "network", "platform": "linux"}}
+{"text": "SSL: Secure Sockets Layer (RFC 6101)", "metadata": {"source": "SANS_TCPIP", "title": "SSL Acronym", "category": "network", "platform": "linux"}}
+{"text": "TCP: Transmission Control Protocol (RFC793)", "metadata": {"source": "SANS_TCPIP", "title": "TCP Acronym", "category": "network", "platform": "linux"}}
+{"text": "TLS: Transport Layer Security (RFC 5246)", "metadata": {"source": "SANS_TCPIP", "title": "TLS Acronym", "category": "network", "platform": "linux"}}
+{"text": "TFTP: Trivial File Transfer Protocol (RFC 1350)", "metadata": {"source": "SANS_TCPIP", "title": "TFTP Acronym", "category": "network", "platform": "linux"}}
+{"text": "TOS: Type of Service (RFC 2474)", "metadata": {"source": "SANS_TCPIP", "title": "TOS Acronym", "category": "network", "platform": "linux"}}
+{"text": "UDP: User Datagram Protocol (RFC 768)", "metadata": {"source": "SANS_TCPIP", "title": "UDP Acronym", "category": "network", "platform": "linux"}}
+{"text": "DNS Header: Query ID (bytes 0-1), Flags (bytes 2-3), Query Count (bytes 4-5), Answer Count (bytes 6-7), Authority Rec. # (bytes 8-9), Addtl. Record # (bytes 10-11)", "metadata": {"source": "SANS_TCPIP", "title": "DNS Header Structure", "category": "network", "platform": "linux"}}
+{"text": "DNS Header contains: Questions, Answers, Authority Records, Additional Records", "metadata": {"source": "SANS_TCPIP", "title": "DNS Header Sections", "category": "network", "platform": "linux"}}
+{"text": "DNS Flags Byte Offset 2: QR, OPCODE (4 bits), AA, TC, RD", "metadata": {"source": "SANS_TCPIP", "title": "DNS Flags Byte 2", "category": "network", "platform": "linux"}}
+{"text": "DNS Flags Byte Offset 3: RA, Z, AD, CD, RCODE (4 bits)", "metadata": {"source": "SANS_TCPIP", "title": "DNS Flags Byte 3", "category": "network", "platform": "linux"}}
+{"text": "DNS QR: Query (0) or Response (1) (udp[10]&0x80)", "metadata": {"source": "SANS_TCPIP", "title": "DNS QR Flag", "category": "network", "platform": "linux"}}
+{"text": "DNS Opcode: 0 Query, 1 Inverse Query, 2 Status, 3 unassigned, 4 Notify, 5 Update", "metadata": {"source": "SANS_TCPIP", "title": "DNS Opcode Values", "category": "network", "platform": "linux"}}
+{"text": "DNS AA: Authoritative Answer", "metadata": {"source": "SANS_TCPIP", "title": "DNS AA Flag", "category": "network", "platform": "linux"}}
+{"text": "DNS TC: Truncated response", "metadata": {"source": "SANS_TCPIP", "title": "DNS TC Flag", "category": "network", "platform": "linux"}}
+{"text": "DNS RD: Recursion Desired", "metadata": {"source": "SANS_TCPIP", "title": "DNS RD Flag", "category": "network", "platform": "linux"}}
+{"text": "DNS RA: Recursion Available", "metadata": {"source": "SANS_TCPIP", "title": "DNS RA Flag", "category": "network", "platform": "linux"}}
+{"text": "DNS Z: Reserved (set to 0)", "metadata": {"source": "SANS_TCPIP", "title": "DNS Z Flag", "category": "network", "platform": "linux"}}
+{"text": "DNS AD: Authentic Data (DNSSEC)", "metadata": {"source": "SANS_TCPIP", "title": "DNS AD Flag", "category": "network", "platform": "linux"}}
+{"text": "DNS CD: Checking Disabled (DNSSEC)", "metadata": {"source": "SANS_TCPIP", "title": "DNS CD Flag", "category": "network", "platform": "linux"}}
+{"text": "DNS Response Codes (rcode): 0 No Error, 1 Format Error, 2 Server Failure, 3 NXDomain, 4 Not implemented, 5 refused", "metadata": {"source": "SANS_TCPIP", "title": "DNS Response Codes", "category": "network", "platform": "linux"}}
+{"text": "DNS Resource Record Types: 1 A (IPv4), 2 NS, 5 CNAME, 6 SOA, 12 PTR, 15 MX, 16 TXT", "metadata": {"source": "SANS_TCPIP", "title": "DNS Record Types 1-16", "category": "network", "platform": "linux"}}
+{"text": "DNS Resource Record Types: 24 SIG, 25 KEY, 28 AAAA, 33 SRV, 43 DS, 46 RRSIG, 48 DNSKEY, 251/252 I/AXFR", "metadata": {"source": "SANS_TCPIP", "title": "DNS Record Types 24-252", "category": "network", "platform": "linux"}}
+{"text": "ICMP Header: Type (byte 0), Code (byte 1), Checksum (bytes 2-3), Additional information depending on type/code (bytes 4+)", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Header Structure", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 0 Code 0: Echo Reply", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Echo Reply", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 0: Network Unreachable", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Network Unreachable", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 1: Host Unreachable", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Host Unreachable", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 2: Protocol Unreachable", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Protocol Unreachable", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 3: Port Unreachable", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Port Unreachable", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 4: Fragmentation Required", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Fragmentation Required", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 5: Source Route Failed", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Source Route Failed", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 6: Dest. Network Unknown", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Dest Network Unknown", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 7: Destination Host Unknown", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Dest Host Unknown", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 8: Source Host Isolated", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Source Host Isolated", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 9: Net Administratively Prohibited", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Net Admin Prohibited", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 10: Host Administratively Prohibited", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Host Admin Prohibited", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 11: Network unreachable for TOS", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Net Unreachable TOS", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 12: Host unreachable for TOS", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Host Unreachable TOS", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 3 Code 13: Communication Admin. Prohibited", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Comm Admin Prohibited", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 4 Code 0: Source quench", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Source Quench", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 5 Code 0: Network Redirect", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Network Redirect", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 5 Code 1: Host Redirect", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Host Redirect", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 5 Code 2: ToS & Network Redirect", "metadata": {"source": "SANS_TCPIP", "title": "ICMP TOS Network Redirect", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 5 Code 3: ToS & Host Redirect", "metadata": {"source": "SANS_TCPIP", "title": "ICMP TOS Host Redirect", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 8 Code 0: Echo [Echo Request]", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Echo Request", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 9 Code 0: Router Advertisement", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Router Advertisement", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 11 Code 0: Time to live exceeded in transit", "metadata": {"source": "SANS_TCPIP", "title": "ICMP TTL Exceeded", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 11 Code 1: Fragment Reassembly time exceeded", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Fragment Reassembly Exceeded", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 12 Code 0: Parameter Prob. Pointer indicated the error", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Parameter Problem Pointer", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 12 Code 1: Missing a required option", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Missing Required Option", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 12 Code 2: Bad length", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Bad Length", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 13 Code 0: Timestamp", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Timestamp", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 14 Code 0: Timestamp Reply", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Timestamp Reply", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 15 Code 0: Information Request", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Information Request", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 16 Code 0: Information Reply", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Information Reply", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 17 Code 0: Address Mask Request", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Address Mask Request", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 18 Code 0: Address Mask Reply", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Address Mask Reply", "category": "network", "platform": "linux"}}
+{"text": "ICMP Type 30 Code 0: Traceroute", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Traceroute", "category": "network", "platform": "linux"}}
+{"text": "ICMP Echo Request/Reply (Ping) Header: Type (byte 0), Code (byte 1), Checksum (bytes 2-3), ICMP ID (bytes 4-5), ICMP Sequence (bytes 6-7)", "metadata": {"source": "SANS_TCPIP", "title": "ICMP Ping Header Structure", "category": "network", "platform": "linux"}}
+{"text": "IPv4 Header: Ver (4 bits), IHL (4 bits), TOS (byte 1), Total Length (bytes 2-3)", "metadata": {"source": "SANS_TCPIP", "title": "IPv4 Header Bytes 0-3", "category": "network", "platform": "linux"}}
+{"text": "IPv4 Header: IP Identification (bytes 4-5), X/D/M Flags and Offset (bytes 6-7)", "metadata": {"source": "SANS_TCPIP", "title": "IPv4 Header Bytes 4-7", "category": "network", "platform": "linux"}}
+{"text": "IPv4 Header: TTL (byte 8), Protocol (byte 9), Checksum (bytes 10-11)", "metadata": {"source": "SANS_TCPIP", "title": "IPv4 Header Bytes 8-11", "category": "network", "platform": "linux"}}
+{"text": "IPv4 Header: Source Address (bytes 12-15), Destination Address (bytes 16-19), Options (bytes 20+, optional)", "metadata": {"source": "SANS_TCPIP", "title": "IPv4 Header Bytes 12-20+", "category": "network", "platform": "linux"}}
+{"text": "IPv4 Version: 4 ip[0]&0xf0", "metadata": {"source": "SANS_TCPIP", "title": "IPv4 Version Field", "category": "network", "platform": "linux"}}
+{"text": "IPv4 Header Length: IP header length in double-words (4 bytes). Minimum 5 (20 bytes)", "metadata": {"source": "SANS_TCPIP", "title": "IPv4 Header Length Field", "category": "network", "platform": "linux"}}
+{"text": "IPv4 ToS/Differentiated Services Byte ip[1]: Diff. Svc. Code Point (6 bits), ECN (2 bits)", "metadata": {"source": "SANS_TCPIP", "title": "IPv4 TOS Field", "category": "network", "platform": "linux"}}
+{"text": "IPv4 Total Length: includes header ip[2:2]", "metadata": {"source": "SANS_TCPIP", "title": "IPv4 Total Length Field", "category": "network", "platform": "linux"}}
+{"text": "IPv4 Flags ip[6]: X (Reserved), D (Do Not Frag), M (More Fragments), O (Offset bits)", "metadata": {"source": "SANS_TCPIP", "title": "IPv4 Flags Field", "category": "network", "platform": "linux"}}
+{"text": "IPv4 Fragment Offset: position of this ip datagram's payload in original packet (multiply by 8)", "metadata": {"source": "SANS_TCPIP", "title": "IPv4 Fragment Offset", "category": "network", "platform": "linux"}}
+{"text": "IPv4 Protocol ip[9]: 1 ICMP, 2 IGMP, 6 TCP, 17 UDP, 41 IPv6, 47 GRE, 50 ESP, 51 AH, 115 L2TP", "metadata": {"source": "SANS_TCPIP", "title": "IPv4 Protocol Numbers", "category": "network", "platform": "linux"}}
+{"text": "IPv4 Checksum: IP Header Only", "metadata": {"source": "SANS_TCPIP", "title": "IPv4 Checksum", "category": "network", "platform": "linux"}}
+{"text": "IPv4 Options: up to 40 bytes, 4 byte padded ip[20..]: 0 End of Options List, 1 No Operation, 7 Record Route, 68 Timestamp, 131 Loose source route, 137 Strict Source Route", "metadata": {"source": "SANS_TCPIP", "title": "IPv4 Options", "category": "network", "platform": "linux"}}
+{"text": "TCP Header: Source Port (bytes 0-1), Dest. Port (bytes 2-3)", "metadata": {"source": "SANS_TCPIP", "title": "TCP Header Bytes 0-3", "category": "network", "platform": "linux"}}
+{"text": "TCP Header: Sequence Number (bytes 4-7)", "metadata": {"source": "SANS_TCPIP", "title": "TCP Header Bytes 4-7", "category": "network", "platform": "linux"}}
+{"text": "TCP Header: Acknowledgement Number (bytes 8-11)", "metadata": {"source": "SANS_TCPIP", "title": "TCP Header Bytes 8-11", "category": "network", "platform": "linux"}}
+{"text": "TCP Header: HL (4 bits), R (4 bits), Flags (byte 13), Window Size (bytes 14-15)", "metadata": {"source": "SANS_TCPIP", "title": "TCP Header Bytes 12-15", "category": "network", "platform": "linux"}}
+{"text": "TCP Header: Checksum (bytes 16-17), Urgent Pointer (bytes 18-19), Options (bytes 20+, up to 40 bytes)", "metadata": {"source": "SANS_TCPIP", "title": "TCP Header Bytes 16-20+", "category": "network", "platform": "linux"}}
+{"text": "Common TCP Ports: 20 ftp-data, 21 ftp, 22 ssh, 23 telnet, 25 smtp, 43 whois, 53 dns", "metadata": {"source": "SANS_TCPIP", "title": "Common TCP Ports 20-53", "category": "network", "platform": "linux"}}
+{"text": "Common TCP Ports: 80 http, 88 kerberos, 110 pop3, 113 authd, 119 nntp, 143 imap, 179 bgp", "metadata": {"source": "SANS_TCPIP", "title": "Common TCP Ports 80-179", "category": "network", "platform": "linux"}}
+{"text": "Common TCP Ports: 443 https, 445 MS SMB, 465 SMTPS, 1433 MS SQL, 3128 Squid, 3306 Mysql, 3389 MS Term.", "metadata": {"source": "SANS_TCPIP", "title": "Common TCP Ports 443-3389", "category": "network", "platform": "linux"}}
+{"text": "TCP Sequence Number tcp[4:4]: increments with each byte", "metadata": {"source": "SANS_TCPIP", "title": "TCP Sequence Number", "category": "network", "platform": "linux"}}
+{"text": "TCP Ack. Number tcp[8:4]: next expected sequence number", "metadata": {"source": "SANS_TCPIP", "title": "TCP Acknowledgement Number", "category": "network", "platform": "linux"}}
+{"text": "TCP Header Length tcp[12]>>4: TCP Header Length / Offset; minimum 5. Number of 32 bit dwords (4 bytes)", "metadata": {"source": "SANS_TCPIP", "title": "TCP Header Length", "category": "network", "platform": "linux"}}
+{"text": "TCP Reserved tcp[12]&0x0f: Set to 0", "metadata": {"source": "SANS_TCPIP", "title": "TCP Reserved Field", "category": "network", "platform": "linux"}}
+{"text": "TCP Flags tcp[13]: CWR, ECE, URG, ACK, PUSH, RES, SYN, FIN", "metadata": {"source": "SANS_TCPIP", "title": "TCP Flags", "category": "network", "platform": "linux"}}
+{"text": "TCP Window Size tcp[14:2]: recv. Window size", "metadata": {"source": "SANS_TCPIP", "title": "TCP Window Size", "category": "network", "platform": "linux"}}
+{"text": "TCP Checksum tcp[16:2]: Covers pseudo-header + TCP Header + TCP Payload", "metadata": {"source": "SANS_TCPIP", "title": "TCP Checksum", "category": "network", "platform": "linux"}}
+{"text": "TCP Urgent Point tcp[18:2]: Offset pointer to urgent data", "metadata": {"source": "SANS_TCPIP", "title": "TCP Urgent Pointer", "category": "network", "platform": "linux"}}
+{"text": "TCP Options tcp[20..]: 0 End of List, 1 No Operation, 2 Max. Segment Size, 3 Window Scale, 4 Selective Ack OK, 8 Timestamp, 29 TCP Auth Option, 30 Multipath TCP", "metadata": {"source": "SANS_TCPIP", "title": "TCP Options", "category": "network", "platform": "linux"}}

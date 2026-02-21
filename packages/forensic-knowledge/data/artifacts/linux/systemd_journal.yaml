@@ -1,0 +1,56 @@
+name: Systemd Journal
+description: "Binary structured logging system that captures kernel, service, and application logs with rich metadata"
+platform: linux
+
+locations:
+  - path: "/var/log/journal/<machine-id>/*.journal"
+    os_versions: ["Systems with systemd"]
+    notes: "Persistent journal (if configured). Machine-ID based directory."
+  - path: "/run/log/journal/<machine-id>/*.journal"
+    os_versions: ["Systems with systemd"]
+    notes: "Volatile journal (default on some systems). Lost on reboot."
+
+proves:
+  - "Service unit start/stop/failure events with structured fields"
+  - "Kernel messages with process and cgroup context"
+  - "Coredump information for crashed processes"
+  - "Boot/shutdown sequences"
+  - "User session tracking via systemd-logind"
+  - "Full command lines for service executions"
+
+does_not_prove:
+  - "Events before systemd journal was started (very early boot)"
+  - "Application events not sent to journal/syslog"
+  - "Journal entries if journal files were deleted or corrupted"
+
+timestamps:
+  - field: "__REALTIME_TIMESTAMP"
+    meaning: "Real-time clock when the entry was created"
+    common_misinterpretation: "Stored in microseconds since epoch. journalctl displays in local time by default."
+  - field: "__MONOTONIC_TIMESTAMP"
+    meaning: "Monotonic clock relative to boot — useful for boot-relative timing"
+    common_misinterpretation: "Not calendar time — only useful for relative ordering within a single boot"
+
+common_misinterpretations:
+  - claim: "journalctl shows all logs on the system"
+    correction: "Journal persistence must be configured. On some systems, journals are volatile (in /run/) and lost on reboot. Check /etc/systemd/journald.conf for Storage setting."
+  - claim: "Journal and syslog are the same thing"
+    correction: "Journal captures structured data. Syslog may receive forwarded journal entries, but loses structured fields. Both may exist simultaneously."
+
+corroborate_with:
+  for_execution: [auth_log, syslog]
+  for_presence: [crontab]
+  for_timeline: [auth_log, syslog, wtmp_utmp]
+
+related_tools: [journalctl, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Source IP identified in authentication or connection event — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious authentication or system pattern — search for related techniques"
+
+references:
+  - "SANS FOR577 - Linux Incident Response and Threat Hunting"

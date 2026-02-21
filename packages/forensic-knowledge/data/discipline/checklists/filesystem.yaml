@@ -1,0 +1,10 @@
+artifact_type: "Filesystem Artifacts"
+files:
+  - "$MFT (Master File Table)"
+  - "$UsnJrnl:$J (USN Journal)"
+  - "$LogFile (NTFS transaction log)"
+  - "Prefetch files (C:\\Windows\\Prefetch\\*.pf)"
+  - "Amcache.hve (C:\\Windows\\AppCompat\\Programs\\Amcache.hve)"
+  - "SRUM (C:\\Windows\\System32\\sru\\SRUDB.dat)"
+tools: ["KAPE", "FTK Imager", "icat (Sleuth Kit)"]
+notes: "MFT and USN Journal provide file creation/modification history even for deleted files."

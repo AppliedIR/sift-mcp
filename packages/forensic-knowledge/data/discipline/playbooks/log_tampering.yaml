@@ -1,0 +1,38 @@
+name: "Log Tampering Investigation"
+description: "Investigate event log clearing, suspicious gaps, and anti-forensic activity targeting log integrity"
+mitre: ["T1070.001", "T1070"]
+sources:
+  - "SANS FOR508 — Windows Enterprise Incident Response"
+  - "MITRE ATT&CK T1070.001 — Clear Windows Event Logs"
+  - "MITRE ATT&CK T1070 — Indicator Removal"
+triggers:
+  - "Event ID 1102 detected (Security log cleared)"
+  - "Event ID 104 detected (System log cleared)"
+  - "Gaps in event log sequence numbers"
+  - "Missing expected log entries for known activity period"
+phases:
+  - phase: "Identify"
+    steps:
+      - "Parse event logs with Hayabusa (via sift-mcp or wintools-mcp) for log clearing events — Event IDs 1102, 104"
+      - "Check for time gaps in event sequence numbers across all log channels"
+      - "Compare expected log volume against actual for the investigation timeframe"
+  - phase: "Timeline"
+    steps:
+      - "Establish exactly when logs were cleared using the clearing event timestamps"
+      - "Determine what timeframe is now missing or incomplete"
+      - "Check if clearing coincides with other suspicious activity"
+  - phase: "Alternative Sources"
+    steps:
+      - "Check USN Journal for file system activity during the gap using MFTECmd (via sift-mcp or wintools-mcp)"
+      - "Check Sysmon logs which are stored in a separate event log channel"
+      - "Check PowerShell transcripts and PSReadLine history for command activity"
+      - "Check network logs and PCAP for activity during the gap period"
+  - phase: "Attribution"
+    steps:
+      - "Determine which account cleared the logs from Event ID 1102 subject fields"
+      - "Check what that account did before and after clearing — logon events, process execution"
+      - "Verify account against baseline (windows-triage: check_file)"
+  - phase: "Record"
+    steps:
+      - "Document the gap, alternative sources consulted, and evidence of anti-forensic activity"
+      - "HITL checkpoint — evidence destruction may affect legal proceedings and investigation scope"

@@ -1,0 +1,62 @@
+name: Registry Services
+description: "Windows service configuration stored in the SYSTEM registry hive"
+platform: windows
+
+locations:
+  - path: "SYSTEM\\CurrentControlSet\\Services"
+    os_versions: ["Windows XP+", "Windows 10", "Windows 11"]
+    notes: "CurrentControlSet is a pointer to ControlSet001 or ControlSet002; always use CurrentControlSet on live systems"
+
+proves:
+  - "Service was registered on the system"
+  - "Service binary path (ImagePath value)"
+  - "Service start type (0=Boot, 1=System, 2=Automatic, 3=Manual, 4=Disabled)"
+  - "Service type (kernel driver, user-mode service, etc.)"
+  - "Service account (ObjectName — LocalSystem, NetworkService, or specific account)"
+  - "Service description and display name"
+
+does_not_prove:
+  - "Service was actually running (only that it was registered)"
+  - "Who created or modified the service"
+  - "That the service binary is malicious"
+  - "When the service was first installed (only last modification time)"
+
+timestamps:
+  - field: "Registry Key LastWriteTime"
+    meaning: "Last time the service's registry key or any of its values were modified"
+    common_misinterpretation: "Often assumed to be installation time, but any configuration change (start type change, description update) resets this timestamp"
+
+common_misinterpretations:
+  - claim: "Services key LastWriteTime is the installation time"
+    correction: "The LastWriteTime updates on any modification to the key or its values. Windows Update, group policy changes, and configuration modifications all reset this timestamp."
+  - claim: "All services under SYSTEM\\Services are Windows services"
+    correction: "The Services key contains both services AND kernel-mode drivers. Type values distinguish them: Type 1/2 = kernel drivers, Type 16/32 = Win32 services."
+  - claim: "A suspicious ImagePath means the service is running"
+    correction: "The service may be registered but set to Disabled (Start=4) or Manual (Start=3) and never started. Check System Event Log 7036 for actual state changes."
+  - claim: "Service binary paths are always straightforward"
+    correction: "ImagePath can contain command-line arguments, environment variables, or relative paths. Attackers may use service binary path hijacking by inserting spaces in unquoted paths."
+
+corroborate_with:
+  for_execution: [event_logs_system, event_logs_security, event_logs_sysmon]
+  for_presence: [mft, amcache, shimcache]
+  for_timeline: [event_logs_system, usn_journal, prefetch]
+
+related_tools: [RECmd, autoruns]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_service"
+    when: "Persistence entry found — verify against known Windows autoruns"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "Binary hash from persistence entry — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious persistence mechanism — search for related techniques and detection rules"
+  - mcp: "remnux"
+    tool: "analyze_file"
+    when: "Unknown binary referenced by persistence entry — submit for static analysis"
+
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "MITRE ATT&CK T1543.003 - Create or Modify System Process: Windows Service"

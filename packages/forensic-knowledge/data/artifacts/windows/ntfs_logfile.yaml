@@ -1,0 +1,58 @@
+name: NTFS $LogFile
+description: "NTFS transaction journal recording metadata changes to the file system, used for crash recovery and forensic reconstruction of recent file operations"
+platform: windows
+
+locations:
+  - path: "$LogFile (root of each NTFS volume)"
+    os_versions: ["Windows XP+", "Windows 10", "Windows 11"]
+    notes: "Located at the root of every NTFS volume. Fixed size (typically 64MB) and circular — oldest entries are overwritten. Not directly accessible on a live system."
+
+proves:
+  - "File system metadata operations occurred (create, delete, rename, attribute changes)"
+  - "Sequence of recent NTFS transactions"
+  - "That specific files were created, renamed, or deleted in the recent past"
+  - "MFT record modifications including timestamp changes"
+
+does_not_prove:
+  - "File content (only metadata transactions are logged)"
+  - "Who performed the operation (no user attribution in the log)"
+  - "Operations older than the log's circular buffer allows (typically hours to days depending on activity)"
+  - "That a file was executed (only that metadata was modified)"
+
+timestamps:
+  - field: "LSN (Log Sequence Number)"
+    meaning: "Monotonically increasing sequence number for each transaction — provides relative ordering"
+    common_misinterpretation: "LSNs are not timestamps. Use surrounding MFT timestamps or USN journal entries to establish actual times."
+
+common_misinterpretations:
+  - claim: "$LogFile provides a complete history of all file operations"
+    correction: "$LogFile is a circular buffer with limited capacity (typically 64MB). On active systems, it may only contain hours to a few days of history. The USN Journal provides longer-term change tracking."
+  - claim: "$LogFile records file content changes"
+    correction: "$LogFile records only NTFS metadata transactions (MFT entry modifications), not file data content."
+  - claim: "$LogFile cannot be parsed on Linux"
+    correction: "Tools like NTFS Log Tracker and LogFileParser can parse $LogFile entries extracted from forensic images."
+  - claim: "Timestomping cannot be detected via $LogFile"
+    correction: "$LogFile records the MFT entry modifications that occur during timestomping, potentially revealing the original and modified timestamps in the transaction records."
+
+corroborate_with:
+  for_execution: [prefetch, amcache]
+  for_presence: [mft, usn_journal, ntfs_i30]
+  for_timeline: [usn_journal, mft]
+
+related_tools: [MFTECmd, NTFS Log Tracker]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_file"
+    when: "File path identified — verify against Windows baseline"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "File hash available — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious file activity pattern — search for related techniques"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "Brian Carrier - File System Forensic Analysis"

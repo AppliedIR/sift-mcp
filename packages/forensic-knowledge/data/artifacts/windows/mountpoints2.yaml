@@ -1,0 +1,47 @@
+name: MountPoints2
+description: "Registry key tracking mounted volumes and devices including USB drives, network shares, and removable media"
+platform: windows
+
+locations:
+  - path: "NTUSER.DAT\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2"
+    os_versions: ["Windows XP+"]
+    notes: "Per-user registry hive. Contains GUIDs for each mounted volume."
+
+proves:
+  - "Devices and volumes mounted by the user"
+  - "Network shares accessed by the user (UNC paths)"
+  - "USB device volume GUIDs"
+  - "First and last connection times (from key last-write timestamps)"
+
+does_not_prove:
+  - "What files were accessed on the mounted volume"
+  - "How long the device was connected"
+  - "The specific USB device model (correlate with USBSTOR for that)"
+  - "Whether data was copied to/from the device"
+
+timestamps:
+  - field: "Registry key last write time"
+    meaning: "Last time the specific mount point was used"
+    common_misinterpretation: "May be updated by system operations other than user-initiated mounts"
+
+common_misinterpretations:
+  - claim: "MountPoints2 only tracks USB devices"
+    correction: "MountPoints2 tracks ALL mounted volumes including network shares, mapped drives, and removable media."
+  - claim: "The registry key timestamp indicates when the device was first connected"
+    correction: "The last-write timestamp indicates the LAST connection/modification. For first connection, correlate with USBSTOR and Setupapi logs."
+
+corroborate_with:
+  for_execution: [event_logs_security]
+  for_presence: [shellbags, lnk_files, jump_lists]
+  for_timeline: [usn_journal, event_logs_system]
+
+related_tools: [RECmd, RegRipper]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Removable device or network share mounted — search for exfiltration techniques"
+
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "SANS FOR508 - Advanced Incident Response"

@@ -1,0 +1,40 @@
+name: "Suspicious Autorun Investigation"
+description: "Investigate unexpected persistence mechanisms including registry autoruns, services, and scheduled tasks"
+mitre: ["T1547", "T1053", "T1543"]
+sources:
+  - "SANS FOR508 — Windows Enterprise Incident Response"
+  - "MITRE ATT&CK T1547 — Boot or Logon Autostart Execution"
+  - "MITRE ATT&CK T1053 — Scheduled Task/Job"
+  - "MITRE ATT&CK T1543 — Create or Modify System Process"
+triggers:
+  - "Unknown entry in Run/RunOnce registry keys"
+  - "New service installed (Event ID 7045)"
+  - "New or modified scheduled task"
+  - "WMI event subscription detected"
+  - "Suspicious BITS job persistence"
+phases:
+  - phase: "Identify"
+    steps:
+      - "Parse registry for Run keys, services, and WMI subscriptions using RECmd (via sift-mcp or wintools-mcp)"
+      - "Check scheduled tasks output using EvtxECmd (via sift-mcp or wintools-mcp) for task creation events"
+      - "Run autorunsc (via wintools-mcp) for comprehensive persistence enumeration if available"
+  - phase: "Validate"
+    steps:
+      - "Check each persistence entry against baseline (windows-triage: check_autorun, check_service, check_scheduled_task)"
+      - "Verify binary paths referenced by persistence entries (windows-triage: check_file)"
+      - "Flag entries pointing to unusual paths (Temp, AppData, Recycle Bin, ProgramData)"
+  - phase: "Analyze Binary"
+    steps:
+      - "Check binary digital signatures using sigcheck (via wintools-mcp)"
+      - "Check binary entropy using densityscout (via wintools-mcp)"
+      - "Check binary hash against threat intelligence (opencti: lookup_hash)"
+      - "Submit suspicious binaries for static analysis (remnux: analyze_file)"
+  - phase: "Timeline"
+    steps:
+      - "Determine when persistence was created — registry key timestamps, service install time, task creation time"
+      - "Correlate persistence creation time with other activity using MFTECmd (via sift-mcp or wintools-mcp)"
+      - "Check USN Journal for file operations around persistence creation time"
+  - phase: "Record"
+    steps:
+      - "Record finding including persistence mechanism type, binary details, and creation timeline"
+      - "Include all evidence IDs from analysis phases"

@@ -1,0 +1,36 @@
+name: "Data Staging Investigation"
+description: "Investigate data collection and staging activity indicating preparation for exfiltration"
+mitre: ["T1074", "T1560"]
+sources:
+  - "SANS FOR508 — Windows Enterprise Incident Response"
+  - "MITRE ATT&CK T1074 — Data Staged"
+  - "MITRE ATT&CK T1560 — Archive Collected Data"
+triggers:
+  - "Large archive file creation in temp or staging directory"
+  - "Archive tool (rar, 7z, zip) executed from unusual location"
+  - "Compression tool execution detected in Prefetch"
+  - "Unusual volume of file access in short timeframe"
+phases:
+  - phase: "Identify"
+    steps:
+      - "Check Prefetch for archive tool execution using PECmd (via wintools-mcp) — look for 7z.exe, rar.exe, WinRAR.exe, compact.exe"
+      - "Check MFT for large file creation in temp or staging paths using MFTECmd (via sift-mcp or wintools-mcp)"
+      - "Check USN Journal for file rename and creation operations around staging time"
+  - phase: "Content"
+    steps:
+      - "Check Shellbags for folder access patterns using RECmd (via sift-mcp or wintools-mcp)"
+      - "Check Jump Lists for recent file access using JLECmd (via sift-mcp or wintools-mcp)"
+      - "Determine what data was accessed before the staging activity"
+  - phase: "Exfiltration"
+    steps:
+      - "Check network connections around staging time using tshark or zeek (via sift-mcp) if PCAP available"
+      - "Check for cloud upload activity in browser history using Hindsight (via sift-mcp)"
+      - "Check for large outbound data transfers in SRUM using SrumECmd (via sift-mcp or wintools-mcp)"
+  - phase: "USB Check"
+    steps:
+      - "Check USB device connections around staging time — MountPoints2 in registry via RECmd (via sift-mcp or wintools-mcp)"
+      - "Check USBSTOR registry entries for device serial numbers and connection times"
+  - phase: "Record"
+    steps:
+      - "Record finding including timeline from data access through staging through potential exfiltration"
+      - "Include all evidence IDs from each analysis phase"

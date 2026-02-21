@@ -1,0 +1,42 @@
+name: Hindsight
+category: browser
+description: "Parse Chromium-based browser data (Chrome, Edge, Brave, Opera) for forensic analysis"
+platform: [windows, linux, macos]
+platform_notes: "Python-based. Works on all platforms. Analyzes Chromium browser databases regardless of host OS."
+artifacts_parsed: [browser_history]
+
+caveats:
+  - "Chromium database format changes between versions — older Hindsight versions may not parse newer databases"
+  - "Encrypted data (cookies, passwords) requires platform-specific decryption (DPAPI on Windows)"
+  - "Browser profiles contain separate databases — ensure all profiles are analyzed"
+  - "Browser history can be cleared by users or by the browser itself (e.g., incognito mode leaves no history)"
+  - "Timestamps are WebKit format (microseconds since 1601-01-01) — tool converts automatically"
+  - "Synced browser data may not match local data if sync was disabled or delayed"
+
+output_notes:
+  format: xlsx_or_sqlite
+  key_fields: [url, title, visit_time, visit_type, from_url, download_path, cookie_name, cache_entry]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Use -i to specify input directory containing the browser profile"
+  - "Use -o to specify output file (XLSX or SQLite)"
+  - "Analyzes: history, downloads, cookies, autofill, bookmarks, local storage, preferences, cache"
+  - "Browser profile locations vary by OS — check both user profile and AppData directories"
+  - "For Edge analysis, use the Chromium profile path (not legacy Edge)"
+  - "Combine with SQLECmd for additional SQLite database parsing"
+
+quick_start: "hindsight.py -i '/path/to/Chrome/User Data/Default' -o case_output"
+
+investigation_sequence:
+  - "Point Hindsight at the Chrome/Brave profile Default directory"
+  - "Use -f xlsx for Excel output or -f jsonl for structured processing"
+  - "Review all artifact categories — browsing history, downloads, cache, bookmarks, autofill, cookies"
+  - "Cross-reference browsing history timestamps with other user activity artifacts"
+  - "Check download history for suspicious file acquisitions"
+  - "Review cached content for evidence of accessed resources"
+  - "Correlate browser activity with network logs (tshark, Zeek) for complete picture"
+  - "Check local storage and cookies for session tokens and authentication evidence"

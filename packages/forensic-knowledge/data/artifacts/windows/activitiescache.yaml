@@ -1,0 +1,58 @@
+name: ActivitiesCache
+description: "Windows Timeline database tracking user activities including application usage, file access, and clipboard operations"
+platform: windows
+
+locations:
+  - path: "C:\\Users\\<user>\\AppData\\Local\\ConnectedDevicesPlatform\\<guid>\\ActivitiesCache.db"
+    os_versions: ["Windows 10 1803+"]
+    notes: "Feature removed in Windows 11 — database may exist but not be updated. GUID varies per user."
+
+proves:
+  - "Application usage with timestamps"
+  - "File and document access patterns"
+  - "User activity timeline with start and end times"
+  - "Activity duration for time-spent analysis"
+  - "Cloud-synced activities may persist even after local deletion"
+
+does_not_prove:
+  - "Complete user activity — only activities tracked by the Timeline feature"
+  - "Activity content — tracks that a document was opened, not what was done in it"
+  - "Activities with Timeline disabled or cleared"
+
+timestamps:
+  - field: "StartTime"
+    meaning: "When the activity began"
+    common_misinterpretation: "May be in UTC but displayed differently by some tools"
+  - field: "EndTime"
+    meaning: "When the activity ended"
+    common_misinterpretation: "A null EndTime may indicate the activity was still running or was interrupted"
+  - field: "LastModifiedTime"
+    meaning: "When the activity record was last updated"
+    common_misinterpretation: "Not necessarily when the user last interacted — may reflect sync updates"
+
+common_misinterpretations:
+  - claim: "Windows Timeline is available on all Windows 10 systems"
+    correction: "Timeline was introduced in 1803 and deprecated in Windows 11. It may be disabled by policy or user preference."
+  - claim: "ActivitiesCache.db contains a complete record of user activity"
+    correction: "Only activities from Timeline-integrated applications are tracked. Many applications do not integrate with Timeline."
+  - claim: "Clearing Timeline history removes all traces"
+    correction: "Cloud-synced copies may persist in Microsoft accounts, and database recovery may retrieve deleted records."
+
+corroborate_with:
+  for_execution: [prefetch, amcache, userassist]
+  for_presence: [jump_lists, lnk_files, shellbags]
+  for_timeline: [event_logs_security, bam, srum]
+
+related_tools: [WxTCmd, SQLECmd]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_file"
+    when: "Application path identified — verify against Windows baseline"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious application activity — search for related techniques"
+
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "SANS FOR508 - Advanced Incident Response"

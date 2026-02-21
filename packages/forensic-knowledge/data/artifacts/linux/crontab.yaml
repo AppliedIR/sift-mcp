@@ -1,0 +1,62 @@
+name: Cron Jobs
+description: "Scheduled task definitions for automated command execution — common persistence mechanism on Linux"
+platform: linux
+
+locations:
+  - path: "/var/spool/cron/crontabs/<user>"
+    os_versions: ["Debian", "Ubuntu"]
+    notes: "Per-user crontabs. Debian-based path."
+  - path: "/var/spool/cron/<user>"
+    os_versions: ["RHEL", "CentOS", "Fedora"]
+    notes: "Per-user crontabs. Red Hat-based path."
+  - path: "/etc/crontab"
+    os_versions: ["All Linux distributions"]
+    notes: "System-wide crontab."
+  - path: "/etc/cron.d/*"
+    os_versions: ["All Linux distributions"]
+    notes: "System cron job drop-in directory."
+  - path: "/etc/cron.daily/*, /etc/cron.hourly/*, /etc/cron.weekly/*, /etc/cron.monthly/*"
+    os_versions: ["All Linux distributions"]
+    notes: "Periodic execution directories."
+
+proves:
+  - "Scheduled commands and their execution schedule"
+  - "User context for each scheduled job"
+  - "Persistence mechanisms (commands that run on reboot or periodically)"
+
+does_not_prove:
+  - "Whether the cron job actually executed (check syslog for CRON entries)"
+  - "Cron jobs that were added and removed before collection"
+  - "at/batch jobs (separate mechanism)"
+
+timestamps:
+  - field: "File modification time"
+    meaning: "When the crontab was last modified"
+    common_misinterpretation: "Does not indicate when jobs last executed"
+
+common_misinterpretations:
+  - claim: "Checking /etc/crontab is sufficient for finding malicious cron jobs"
+    correction: "Per-user crontabs in /var/spool/cron/ are often overlooked. Also check /etc/cron.d/ and anacron."
+  - claim: "Cron jobs always appear in syslog"
+    correction: "Cron logging can be disabled or redirected. Verify cron daemon configuration."
+  - claim: "Cron is the only scheduled execution mechanism"
+    correction: "systemd timers, at/batch, and anacron also provide scheduled execution."
+
+corroborate_with:
+  for_execution: [syslog, auth_log]
+  for_presence: [bash_history]
+  for_timeline: [syslog, systemd_journal]
+
+related_tools: [grep, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "URL or IP in cron command — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious cron entry — search for persistence techniques"
+
+references:
+  - "SANS FOR577 - Linux Incident Response and Threat Hunting"
+  - "MITRE ATT&CK T1053.003 - Cron"

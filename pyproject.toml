@@ -1,54 +1,23 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
-name = "sift-mcp"
+name = "sift-mcp-workspace"
 version = "0.1.0"
-description = "SIFT workstation MCP: forensic tool execution with proactive artifact knowledge"
+description = "AIIR forensic investigation platform — SIFT workstation monorepo"
 requires-python = ">=3.10"
-license = {text = "MIT"}
-authors = [
-    {name = "AppliedIncidentResponse.com"},
-]
-keywords = ["mcp", "forensics", "incident-response", "sift", "dfir"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Information Technology",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Topic :: Security",
-]
-dependencies = [
-    "mcp>=1.0",
-    "pyyaml>=6.0",
-    "forensic-knowledge",
-]
-
-[project.urls]
-Homepage = "https://github.com/AppliedIR/sift-mcp"
-Repository = "https://github.com/AppliedIR/sift-mcp"
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0",
-    "pytest-cov>=4.0",
-    "pytest-asyncio>=0.21",
-]
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/sift_mcp"]
-
-[tool.hatch.build.targets.sdist]
-include = ["src/", "data/", "tests/", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.coverage.run]
-source = ["src/sift_mcp"]
+source = [
+    "packages/forensic-mcp/src",
+    "packages/sift-mcp/src",
+    "packages/sift-common/src",
+    "packages/forensic-knowledge/src",
+    "packages/sift-gateway/src",
+    "packages/forensic-rag/src",
+    "packages/windows-triage/src",
+    "packages/opencti/src",
+]
 branch = true

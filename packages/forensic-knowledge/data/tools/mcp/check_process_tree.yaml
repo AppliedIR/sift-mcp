@@ -1,0 +1,35 @@
+name: check_process_tree
+category: mcp
+description: "Validate a Windows process parent-child relationship against expected baselines to detect anomalous process spawning"
+platform: [any]
+platform_notes: "MCP server tool. Platform depends on where the MCP server is hosted, not on the analysis target."
+artifacts_parsed: []
+mcp_server: windows-triage-mcp
+
+caveats:
+  - "Baselines define EXPECTED parent-child relationships; legitimate software may have valid but unusual process trees"
+  - "Process masquerading (naming a malicious process svchost.exe) is a common evasion technique"
+  - "Parent PID spoofing can make a process appear to have a different parent than the actual spawner"
+  - "Some legitimate processes have multiple valid parents depending on how they were launched"
+  - "The baseline cannot cover all legitimate third-party software parent-child combinations"
+  - "Child processes of services.exe that are not registered services are suspicious"
+
+output_notes:
+  format: structured_json
+  key_fields: [process_name, parent_name, expected, notes]
+
+advisories:
+  - "Key relationships to verify: svchost.exe should have services.exe as parent; cmd.exe/powershell.exe parents reveal execution context"
+  - "Processes spawned by unexpected parents (e.g., Word spawning PowerShell) are strong indicators of malicious activity"
+  - "Multiple instances of svchost.exe are normal; svchost.exe NOT under services.exe is suspicious"
+  - "csrss.exe, lsass.exe, and smss.exe should only have system-level parents — user-spawned instances are critical findings"
+  - "Combine with process path validation — the correct name from the wrong path is equally suspicious"
+  - "Process tree analysis is most effective when combined with command-line argument inspection"
+
+investigation_sequence:
+  - "Validate observed parent-child relationships against the expected baseline"
+  - "Focus on critical system processes (svchost, csrss, lsass, smss) — unexpected parents are high-priority findings"
+  - "Check for processes spawned by productivity applications (Word, Excel) which may indicate document-based attacks"
+  - "Verify process executable paths alongside parent-child relationships"
+  - "Cross-reference process tree findings with command-line arguments from Volatility cmdline or event logs"
+  - "Correlate suspicious process relationships with network connection analysis"

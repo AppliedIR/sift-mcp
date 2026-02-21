@@ -1,0 +1,66 @@
+name: RDP Event Logs
+description: "Remote Desktop Protocol event logs recording inbound and outbound RDP connection activity across multiple event log channels"
+platform: windows
+
+locations:
+  - path: "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-TerminalServices-LocalSessionManager%4Operational.evtx"
+    os_versions: ["Windows Vista+", "Windows 10", "Windows 11"]
+    notes: "Records session connect (21), reconnect (25), and disconnect (24) events with source IP addresses"
+  - path: "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-TerminalServices-RemoteConnectionManager%4Operational.evtx"
+    os_versions: ["Windows Vista+", "Windows 10", "Windows 11"]
+    notes: "Records initial connection attempts (1149) with source IP and username before authentication"
+  - path: "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-RemoteDesktopServices-RdpCoreTS%4Operational.evtx"
+    os_versions: ["Windows 10", "Windows 11"]
+    notes: "Records connection details including client IP (131) — available on newer Windows versions"
+  - path: "C:\\Windows\\System32\\winevt\\Logs\\Security.evtx"
+    os_versions: ["Windows Vista+", "Windows 10", "Windows 11"]
+    notes: "Event IDs 4624 (logon type 10 for RDP) and 4625 (failed logon) record RDP authentication"
+
+proves:
+  - "RDP connections were established from specific source IP addresses"
+  - "User accounts used for RDP authentication"
+  - "Session start, reconnect, and disconnect times"
+  - "Failed RDP authentication attempts"
+
+does_not_prove:
+  - "What the user did during the RDP session (screen content is not logged)"
+  - "That the account owner was the actual person connecting (credentials may be stolen)"
+  - "Data transferred during the session"
+
+timestamps:
+  - field: "TimeCreated"
+    meaning: "Time the RDP event was generated on the destination host"
+    common_misinterpretation: "Connection events on the destination reflect destination system time, not source system time. Clock skew between systems can cause apparent timeline discrepancies."
+
+common_misinterpretations:
+  - claim: "Security Event ID 4624 type 10 captures all RDP connections"
+    correction: "Type 10 is standard RDP. Type 7 (reconnect to existing session) is also RDP activity. NLA (Network Level Authentication) may generate type 3 events before the type 10 event."
+  - claim: "RDP connections always come from the IP shown in event logs"
+    correction: "Attackers may tunnel RDP through SSH, VPN, or port forwarding. The source IP may be a localhost or jump box address rather than the true origin."
+  - claim: "Absence of RDP events means no remote access occurred"
+    correction: "Event logs may have been cleared, or alternative remote access tools (PSExec, WinRM, VNC, TeamViewer) may have been used instead of RDP."
+  - claim: "Event ID 1149 means successful authentication"
+    correction: "Event ID 1149 (RemoteConnectionManager) records the connection attempt before authentication. A 1149 without a corresponding 4624 may indicate a failed attempt."
+
+corroborate_with:
+  for_execution: [event_logs_security, event_logs_sysmon]
+  for_presence: [registry_run_keys, mft]
+  for_timeline: [event_logs_security, event_logs_system, bam]
+
+related_tools: [EvtxECmd, Hayabusa]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_process_tree"
+    when: "Process execution event found — verify parent-child relationship against baseline"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "IP address, domain, or hash found in event — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious event pattern — search for detection rules and MITRE technique context"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "MITRE ATT&CK T1021.001 - Remote Desktop Protocol"

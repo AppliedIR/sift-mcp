@@ -1,0 +1,56 @@
+name: Volume Shadow Copies
+description: "Point-in-time snapshots of NTFS volumes created by the Volume Shadow Copy Service (VSS), preserving previous versions of files and system state"
+platform: windows
+
+locations:
+  - path: "System Volume Information (root of each NTFS volume)"
+    os_versions: ["Windows Vista+", "Windows 10", "Windows 11", "Windows Server 2008+"]
+    notes: "VSS data stored in System Volume Information directory. Shadow copies are managed by the VSS service and not directly accessible as files."
+
+proves:
+  - "Previous versions of files existed at specific points in time"
+  - "Files that were later deleted or encrypted were present in earlier snapshots"
+  - "System state at the time each snapshot was created"
+  - "Registry hive contents at snapshot creation time"
+
+does_not_prove:
+  - "That the current version of a file was modified maliciously (snapshots show state, not intent)"
+  - "Why a shadow copy was deleted (vssadmin delete shadows has legitimate and malicious uses)"
+  - "Complete file history between snapshots (only discrete points in time are captured)"
+
+timestamps:
+  - field: "Snapshot Creation Time"
+    meaning: "Time the VSS snapshot was created by the system or backup application"
+    common_misinterpretation: "This is not the modification time of files within the snapshot — files retain their original timestamps"
+
+common_misinterpretations:
+  - claim: "Shadow copies are always available for recovery"
+    correction: "VSS has limited allocated storage. Oldest snapshots are automatically deleted when space is exhausted. Attackers and ransomware commonly delete all shadow copies via 'vssadmin delete shadows /all /quiet'."
+  - claim: "Shadow copies capture every file change"
+    correction: "VSS uses copy-on-write — it captures the state of blocks before they are overwritten, not every individual file modification. Snapshots are periodic, not continuous."
+  - claim: "Absence of shadow copies means they were never created"
+    correction: "Shadow copies may have been deleted by attackers, ransomware, or legitimate maintenance. Check for vssadmin execution in Security/Sysmon logs. Note: Event ID 8224 indicates VSS writer timeout, not deletion."
+  - claim: "Shadow copies cannot be accessed from a forensic image"
+    correction: "Tools like vshadowmount and vshadowinfo can mount and enumerate VSS snapshots from forensic images on Linux/SIFT."
+
+corroborate_with:
+  for_execution: [event_logs_system, scheduled_tasks]
+  for_presence: [mft, usn_journal]
+  for_timeline: [usn_journal, event_logs_system]
+
+related_tools: [vshadowinfo, vshadowmount, vssadmin]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_file"
+    when: "File path identified — verify against Windows baseline"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "File hash available — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious file activity pattern — search for related techniques"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "SANS FOR500 - Windows Forensic Analysis"

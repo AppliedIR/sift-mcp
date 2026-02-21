@@ -1,0 +1,40 @@
+name: vshadowinfo
+category: imaging
+description: "List Volume Shadow Copy (VSS) snapshots within a disk image or volume, showing snapshot metadata and timestamps"
+platform: [linux]
+platform_notes: "Part of libvshadow. Linux only. Analyzes Windows Volume Shadow Copies from Linux."
+artifacts_parsed: [volume_shadow_copies]
+
+caveats:
+  - "Requires libvshadow installed on the system"
+  - "Must be run against a raw volume (not a full disk image with partition table) — use partition offset or mount the volume first"
+  - "VSS is only available on NTFS volumes from Windows Vista and later"
+  - "Number of available snapshots varies — Windows may retain only the most recent depending on allocated shadow storage"
+  - "VSS snapshots may have been deleted by attackers using vssadmin delete shadows"
+
+output_notes:
+  format: text
+  key_fields: [snapshot_count, snapshot_identifier, creation_time]
+
+exit_code_hints:
+  0: "success"
+  1: "error"
+
+advisories:
+  - "Run vshadowinfo first to identify available snapshots before mounting with vshadowmount"
+  - "Each snapshot represents a point-in-time view of the volume — critical for recovering deleted or modified files"
+  - "Compare snapshot timestamps against incident timeline to identify pre-compromise baselines"
+  - "Attackers frequently delete shadow copies — absence of expected snapshots is itself an indicator"
+  - "Use -o offset flag when working with a full disk image instead of a raw volume"
+  - "Snapshot identifiers (GUIDs) correlate with VSS events in the System event log"
+
+quick_start: "vshadowinfo /dev/sdX"
+
+investigation_sequence:
+  - "Run vshadowinfo to list all Volume Shadow Copy snapshots in the volume"
+  - "Note snapshot creation timestamps — these represent system restore points or backup events"
+  - "Use vshadowmount to mount snapshots for file system analysis"
+  - "Compare files across shadow copies and the current volume for change detection"
+  - "Shadow copies may contain files deleted from the live volume"
+  - "Cross-reference snapshot timestamps with system event logs for context"
+  - "Document all discovered shadow copies as part of the evidence inventory"

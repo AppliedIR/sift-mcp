@@ -1,0 +1,40 @@
+name: "Suspicious Execution Investigation"
+description: "Investigate unknown or unexpected program execution from forensic artifacts"
+mitre: ["T1204", "T1059"]
+sources:
+  - "SANS FOR508 — Windows Enterprise Incident Response"
+  - "MITRE ATT&CK T1204 — User Execution"
+  - "MITRE ATT&CK T1059 — Command and Scripting Interpreter"
+triggers:
+  - "Prefetch file for unrecognized executable"
+  - "Amcache entry with no corresponding installer record"
+  - "Execution from unusual path (Temp, AppData, Recycle Bin, Downloads)"
+  - "Shimcache entry for unknown binary"
+phases:
+  - phase: "Identify"
+    steps:
+      - "Parse Prefetch with PECmd (via wintools-mcp) — note run count, timestamps, and loaded files/directories"
+      - "Check Amcache with AmcacheParser (via sift-mcp or wintools-mcp) for file presence records and SHA1 hashes"
+      - "Check Shimcache with AppCompatCacheParser (via sift-mcp or wintools-mcp) for additional execution evidence"
+  - phase: "Validate"
+    steps:
+      - "Check executable against Windows baseline (windows-triage: check_file)"
+      - "Check filename for anomalies such as typosquatting or masquerading (windows-triage: analyze_filename)"
+      - "Check if the executable is a known Living-off-the-Land binary (windows-triage: check_lolbin)"
+  - phase: "Threat Intel"
+    steps:
+      - "Check executable hash against threat intelligence (opencti: lookup_hash)"
+      - "Search for technique context and detection rules (forensic-rag: search)"
+  - phase: "Analysis"
+    steps:
+      - "If suspicious, submit to REMnux for static analysis (remnux: analyze_file)"
+      - "Check parent process if Sysmon data available (windows-triage: check_process_tree)"
+      - "Check capabilities with capa (via sift-mcp or wintools-mcp) for behavioral indicators"
+  - phase: "Scope"
+    steps:
+      - "Search for same executable on other systems if multi-system investigation"
+      - "Check for lateral delivery mechanism — was the file copied via SMB, RDP, PsExec?"
+  - phase: "Record"
+    steps:
+      - "Record finding — be precise about evidence type: Prefetch proves execution, Amcache proves presence, Shimcache proves presence"
+      - "Include all evidence IDs and note artifact interpretation boundaries"

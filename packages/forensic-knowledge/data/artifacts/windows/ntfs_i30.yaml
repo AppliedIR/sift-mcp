@@ -1,0 +1,61 @@
+name: NTFS $I30 Directory Index
+description: "NTFS directory index entries ($I30 attribute) containing file name, size, and timestamps for files within a directory, including residual entries for deleted files"
+platform: windows
+
+locations:
+  - path: "$I30 attribute of every NTFS directory MFT entry"
+    os_versions: ["Windows XP+", "Windows 10", "Windows 11"]
+    notes: "Every directory on NTFS has an $INDEX_ROOT and optionally $INDEX_ALLOCATION ($I30) attributes. Slack space in index records may retain entries for deleted files."
+
+proves:
+  - "A file or subdirectory existed within a specific directory"
+  - "File name, size, and timestamps at the time of index entry creation or update"
+  - "Deleted files previously present in a directory (via index slack space)"
+  - "Evidence of timestomping when $I30 timestamps differ from $STANDARD_INFORMATION timestamps"
+
+does_not_prove:
+  - "File content"
+  - "File was executed"
+  - "Who created or placed the file in the directory"
+  - "That all deleted files will be recoverable from index slack (entries may be overwritten)"
+
+timestamps:
+  - field: "$I30 Created"
+    meaning: "File creation time as recorded in the directory index entry"
+    common_misinterpretation: "These timestamps come from the $FILE_NAME attribute and are not easily modified by user-mode APIs — useful for detecting timestomping"
+  - field: "$I30 Modified"
+    meaning: "File modification time in the directory index entry"
+    common_misinterpretation: "Updated on rename/move operations, not on every content modification"
+
+common_misinterpretations:
+  - claim: "Directory index entries are deleted when files are removed"
+    correction: "$I30 entries are removed from the B-tree index but may persist in slack space within the index allocation. This slack space is a valuable source for recovering evidence of deleted files."
+  - claim: "$I30 timestamps always match MFT timestamps"
+    correction: "$I30 entries contain $FILE_NAME timestamps which are updated differently from $STANDARD_INFORMATION timestamps. Discrepancies between $I30 and $SI timestamps can reveal timestomping."
+  - claim: "Small directories don't have useful $I30 data"
+    correction: "Even small directories with only $INDEX_ROOT (resident) can contain residual entries in unused space after file deletion."
+  - claim: "$I30 analysis requires specialized commercial tools"
+    correction: "MFTECmd can parse $I30 entries, and INDXParse.py provides open-source $I30 parsing capabilities."
+
+corroborate_with:
+  for_execution: [prefetch, amcache]
+  for_presence: [mft, usn_journal, ntfs_logfile]
+  for_timeline: [mft, usn_journal]
+
+related_tools: [MFTECmd, INDXParse.py, fls]
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_file"
+    when: "File path identified — verify against Windows baseline"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "File hash available — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious file activity pattern — search for related techniques"
+
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "SANS FOR500 - Windows Forensic Analysis"
+  - "Brian Carrier - File System Forensic Analysis"

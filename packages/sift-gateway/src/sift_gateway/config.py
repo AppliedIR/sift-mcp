@@ -1,0 +1,60 @@
+"""YAML config loading with environment variable interpolation."""
+
+import os
+import re
+from pathlib import Path
+
+import yaml
+
+
+_ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _interpolate_env(value: str) -> str:
+    """Replace ${VAR} patterns with environment variable values.
+
+    If a referenced variable is not set, the placeholder is left as-is.
+    """
+
+    def _replace(match: re.Match) -> str:
+        var_name = match.group(1)
+        return os.environ.get(var_name, match.group(0))
+
+    return _ENV_VAR_PATTERN.sub(_replace, value)
+
+
+def _walk_and_interpolate(obj):
+    """Recursively walk a parsed YAML structure and interpolate strings."""
+    if isinstance(obj, str):
+        return _interpolate_env(obj)
+    if isinstance(obj, dict):
+        return {k: _walk_and_interpolate(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_walk_and_interpolate(item) for item in obj]
+    return obj
+
+
+def load_config(path: str) -> dict:
+    """Load a YAML config file with env var interpolation.
+
+    Args:
+        path: Path to the YAML config file.
+
+    Returns:
+        Parsed and interpolated config dict.
+
+    Raises:
+        FileNotFoundError: If the config file does not exist.
+        yaml.YAMLError: If the file is not valid YAML.
+    """
+    config_path = Path(path)
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config file not found: {path}")
+
+    with open(config_path) as f:
+        raw = yaml.safe_load(f)
+
+    if raw is None:
+        return {}
+
+    return _walk_and_interpolate(raw)

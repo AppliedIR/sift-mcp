@@ -1,0 +1,51 @@
+name: hashdeep
+category: hashing
+description: "Compute and audit file hashes (MD5, SHA1, SHA256) recursively with matching and verification modes"
+platform: [windows, linux, macos]
+platform_notes: "Available on all platforms. Same flags and output."
+artifacts_parsed: []
+
+caveats:
+  - "Hashing large volumes of data is time-consuming; plan for processing time on large evidence sets"
+  - "Hash values are sensitive to any byte change; file corruption or partial acquisition produces different hashes"
+  - "MD5 and SHA1 have known collision vulnerabilities; use SHA256 for evidence integrity verification"
+  - "Hashing does not examine file content or behavior — it only provides a unique identifier"
+  - "Known-good hash sets (NSRL) can be very large and require pre-processing for efficient matching"
+  - "Memory-mapped hashing may not work correctly on network shares or certain file systems"
+
+output_notes:
+  format: csv
+  key_fields: [file_size, md5, sha1, sha256, filename]
+
+exit_code_hints:
+  0: "success or all files matched"
+  1: "error or audit mismatch found"
+
+advisories:
+  - "Use -r flag for recursive directory hashing"
+  - "Use -c flag to specify hash algorithms: -c md5,sha1,sha256"
+  - "Audit mode (-a) compares computed hashes against a known hash set — use for NSRL filtering or integrity verification"
+  - "Negative matching (-m flag with -M mode) excludes known-good files, leaving only unknown files for analysis"
+  - "Always hash evidence at acquisition AND before analysis to verify integrity has been maintained"
+  - "Output includes file size alongside hashes, which helps identify files that are identical in size but different in content"
+  - "For NSRL (National Software Reference Library) filtering, download the RDS hash set and use audit mode"
+  - "The md5deep, sha1deep, and sha256deep variants compute single hash types for simpler workflows"
+
+quick_start: "hashdeep -r /evidence/mount > hashes.txt"
+
+investigation_sequence:
+  - "Recursively hash all files in the evidence mount to establish a baseline"
+  - "Use -c to select hash algorithms (md5, sha1, sha256) appropriate for the investigation"
+  - "Use -k to load known-good hash sets for audit comparison"
+  - "Use -a (audit mode) to verify evidence against a previously computed baseline"
+  - "Use -x (negative matching) to identify files NOT in a known-good set"
+  - "Cross-reference file hashes with threat intelligence sources for known-bad indicators"
+  - "Document hash values as part of evidence integrity verification"
+  - "Use piecewise hashing (-p) for large files when sector-level comparison is needed"
+
+field_meanings:
+  size: "File size in bytes"
+  md5: "MD5 hash of the file (if computed)"
+  sha1: "SHA-1 hash of the file (if computed)"
+  sha256: "SHA-256 hash of the file (if computed)"
+  filename: "Full path to the hashed file"

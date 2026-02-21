@@ -1,0 +1,11 @@
+artifact_type: "Windows Registry"
+files:
+  - "C:\\Windows\\System32\\config\\SYSTEM"
+  - "C:\\Windows\\System32\\config\\SOFTWARE"
+  - "C:\\Windows\\System32\\config\\SAM"
+  - "C:\\Windows\\System32\\config\\SECURITY"
+  - "C:\\Windows\\System32\\config\\DEFAULT"
+  - "C:\\Users\\<user>\\NTUSER.DAT"
+  - "C:\\Users\\<user>\\AppData\\Local\\Microsoft\\Windows\\UsrClass.dat"
+tools: ["KAPE", "FTK Imager", "reg.exe (live)"]
+notes: "Registry transaction logs (.LOG1, .LOG2) should also be collected for dirty hive recovery."

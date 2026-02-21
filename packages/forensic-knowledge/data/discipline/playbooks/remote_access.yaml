@@ -1,0 +1,38 @@
+name: "Remote Access Investigation"
+description: "Investigate unexpected remote access including RDP, PsExec, WMI, and WinRM connections"
+mitre: ["T1021", "T1570"]
+sources:
+  - "SANS FOR508 — Windows Enterprise Incident Response"
+  - "MITRE ATT&CK T1021 — Remote Services"
+  - "MITRE ATT&CK T1570 — Lateral Tool Transfer"
+triggers:
+  - "RDP connection from unexpected source system"
+  - "PsExec service installation (Event ID 7045 with PSEXESVC)"
+  - "WMI remote execution events (Event IDs 5857-5861)"
+  - "WinRM connections from non-administrative workstations"
+phases:
+  - phase: "Identify Method"
+    steps:
+      - "Check for PsExec service install — Event ID 7045 with service name PSEXESVC using Hayabusa (via sift-mcp or wintools-mcp)"
+      - "Check for RDP logons — Event ID 4624 Type 10, Event ID 1149 in TerminalServices-RemoteConnectionManager"
+      - "Check for WMI events — Event IDs 5857-5861 using EvtxECmd (via sift-mcp or wintools-mcp)"
+      - "Check for WinRM connections in Windows Remote Management event logs"
+  - phase: "Source Analysis"
+    steps:
+      - "Identify the source system for each remote access event"
+      - "Determine if the source system is a known compromised or suspicious host"
+      - "Check source IP against threat intelligence (opencti: lookup_ioc)"
+  - phase: "Execution Context"
+    steps:
+      - "Check what was executed after remote access using PECmd (via wintools-mcp)"
+      - "Verify process execution trees around remote access time (windows-triage: check_process_tree)"
+      - "Check for tools transferred to the system using MFTECmd (via sift-mcp or wintools-mcp)"
+  - phase: "Scope"
+    steps:
+      - "Map all systems accessed via the same remote access method"
+      - "Identify all accounts used for remote access across systems"
+      - "Build the lateral movement chain — source to destination with timestamps"
+  - phase: "Record"
+    steps:
+      - "Record finding including method, source, destination, account, and subsequent activity"
+      - "Include all evidence IDs from each analysis phase"
