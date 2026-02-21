@@ -46,6 +46,12 @@ def get_tool_help(tool_name: str) -> dict:
         result["caveats"] = fk.get("caveats", [])
         result["advisories"] = fk.get("advisories", [])
         result["artifacts_parsed"] = fk.get("artifacts_parsed", [])
+        if fk.get("quick_start"):
+            result["quick_start"] = fk["quick_start"]
+        if fk.get("investigation_sequence"):
+            result["investigation_sequence"] = fk["investigation_sequence"]
+        if fk.get("field_meanings"):
+            result["field_meanings"] = fk["field_meanings"]
 
     return result
 
