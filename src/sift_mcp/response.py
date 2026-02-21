@@ -76,7 +76,7 @@ def build_response(
 
     # Load forensic-knowledge context
     fk_name = fk_tool_name or tool_name
-    corroboration, caveats, advisories, field_notes, field_meanings = _build_knowledge_context(fk_name)
+    corroboration, caveats, advisories, field_notes, field_meanings, cross_mcp_checks = _build_knowledge_context(fk_name)
 
     if caveats:
         response["caveats"] = caveats
@@ -88,6 +88,8 @@ def build_response(
         response["field_notes"] = field_notes
     if field_meanings:
         response["field_meanings"] = field_meanings
+    if cross_mcp_checks:
+        response["cross_mcp_checks"] = cross_mcp_checks
 
     # Discipline reminder (rotates)
     response["discipline_reminder"] = DISCIPLINE_REMINDERS[
@@ -114,20 +116,21 @@ def build_response(
 
 def _build_knowledge_context(
     tool_name: str,
-) -> tuple[dict, list[str], list[str], dict[str, str], dict[str, str]]:
+) -> tuple[dict, list[str], list[str], dict[str, str], dict[str, str], list[dict]]:
     """Load artifact + tool knowledge for response envelope.
 
-    Returns: (corroboration, caveats, advisories, field_notes, field_meanings)
+    Returns: (corroboration, caveats, advisories, field_notes, field_meanings, cross_mcp_checks)
     """
     tool_info = loader.get_tool(tool_name)
     if not tool_info:
-        return {}, [], [], {}, {}
+        return {}, [], [], {}, {}, []
 
     caveats = list(tool_info.get("caveats", []))
     advisories = list(tool_info.get("advisories", []))
     corroboration: dict[str, list[str]] = {}
     field_notes: dict[str, str] = {}
     field_meanings: dict[str, str] = dict(tool_info.get("field_meanings", {}))
+    cross_mcp: list[dict] = []
 
     for artifact_name in tool_info.get("artifacts_parsed", []):
         artifact = loader.get_artifact(artifact_name)
@@ -158,7 +161,12 @@ def _build_knowledge_context(
             if advisory not in advisories:
                 advisories.append(advisory)
 
-    return corroboration, caveats, advisories, field_notes, field_meanings
+        # Cross-MCP checks
+        for check in artifact.get("cross_mcp_checks", []):
+            if check not in cross_mcp:
+                cross_mcp.append(check)
+
+    return corroboration, caveats, advisories, field_notes, field_meanings, cross_mcp
 
 
 def reset_call_counter() -> None:

@@ -2,9 +2,29 @@
 
 from __future__ import annotations
 
+import itertools
+
+from sift_mcp.audit import resolve_examiner, AuditWriter
 from sift_mcp.catalog import list_tools_in_catalog, get_tool_def
 from sift_mcp.environment import find_binary, get_environment_info
 from forensic_knowledge import loader
+from sift_mcp.response import DISCIPLINE_REMINDERS
+
+# Alias mapping — common artifact names to FK artifact YAML names
+ARTIFACT_ALIASES: dict[str, list[str]] = {
+    "evtx": ["event_logs_security", "event_logs_system", "event_logs_sysmon", "event_logs_powershell"],
+    "evt": ["event_logs_security", "event_logs_system"],
+    "event_log": ["event_logs_security", "event_logs_system", "event_logs_sysmon"],
+    "event_logs": ["event_logs_security", "event_logs_system", "event_logs_sysmon"],
+    "registry": ["registry_run_keys", "registry_services", "shellbags", "shimcache"],
+    "mft": ["mft"],
+    "prefetch": ["prefetch"],
+    "usn": ["usn_journal"],
+    "userassist": ["userassist"],
+    "amcache": ["amcache"],
+}
+
+_suggest_counter = itertools.count(1)
 
 
 def list_available_tools(category: str | None = None) -> list[dict]:
@@ -80,18 +100,34 @@ def check_tools(tool_names: list[str] | None = None) -> dict:
     return results
 
 
-def suggest_tools(artifact_type: str, question: str = "") -> list[dict]:
-    """Suggest tools based on artifact type, using FK knowledge."""
-    suggestions = []
+def suggest_tools(artifact_type: str, question: str = "") -> dict:
+    """Suggest tools based on artifact type, using FK knowledge.
 
-    # Look up the artifact and find related tools
-    artifact = loader.get_artifact(artifact_type)
-    if artifact:
+    Returns an enriched envelope with suggestions, advisories, corroboration,
+    cross-MCP checks, and discipline reminders.
+    """
+    # Resolve aliases
+    artifact_names = ARTIFACT_ALIASES.get(artifact_type.lower(), [artifact_type])
+
+    suggestions: list[dict] = []
+    all_advisories: list[str] = []
+    all_corroboration: dict[str, list[str]] = {}
+    all_cross_mcp: list[dict] = []
+
+    for art_name in artifact_names:
+        artifact = loader.get_artifact(art_name)
+        if not artifact:
+            continue
+
         for tool_name in artifact.get("related_tools", []):
+            # Avoid duplicates across aliases
+            if any(s.get("tool") == tool_name for s in suggestions):
+                continue
             td = get_tool_def(tool_name)
             fk = loader.get_tool(tool_name)
             entry = {
                 "tool": tool_name,
+                "artifact": art_name,
                 "available": find_binary(td.binary) is not None if td else False,
                 "description": fk.get("description", "") if fk else "",
                 "what_it_reveals": artifact.get("proves", []),
@@ -99,18 +135,37 @@ def suggest_tools(artifact_type: str, question: str = "") -> list[dict]:
             }
             suggestions.append(entry)
 
-        # Add corroboration suggestions
-        corr = artifact.get("corroborate_with", {})
-        if corr:
-            suggestions.append({
-                "type": "corroboration",
-                "to_confirm_execution": corr.get("for_execution", []),
-                "to_confirm_presence": corr.get("for_presence", []),
-                "to_build_timeline": corr.get("for_timeline", []),
-            })
+        # Advisories from does_not_prove
+        for item in artifact.get("does_not_prove", []):
+            advisory = f"This artifact does NOT prove: {item}"
+            if advisory not in all_advisories:
+                all_advisories.append(advisory)
+
+        # Corroboration map
+        for key, val in artifact.get("corroborate_with", {}).items():
+            if key not in all_corroboration:
+                all_corroboration[key] = []
+            for ref in val:
+                if ref not in all_corroboration[key]:
+                    all_corroboration[key].append(ref)
+
+        # Cross-MCP checks
+        for check in artifact.get("cross_mcp_checks", []):
+            if check not in all_cross_mcp:
+                all_cross_mcp.append(check)
 
     if not suggestions:
-        return [{"info": f"No tools found for artifact type '{artifact_type}'",
-                 "available_artifacts": [a["name"] for a in loader.list_artifacts()]}]
+        return {
+            "suggestions": [],
+            "info": f"No tools found for artifact type '{artifact_type}'",
+            "available_artifacts": [a["name"] for a in loader.list_artifacts()],
+        }
 
-    return suggestions
+    call_num = next(_suggest_counter)
+    return {
+        "suggestions": suggestions,
+        "advisories": all_advisories,
+        "corroboration": all_corroboration,
+        "cross_mcp_checks": all_cross_mcp,
+        "discipline_reminder": DISCIPLINE_REMINDERS[call_num % len(DISCIPLINE_REMINDERS)],
+    }

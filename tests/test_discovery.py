@@ -3,6 +3,7 @@
 import pytest
 from sift_mcp.tools.discovery import (
     list_available_tools, get_tool_help, check_tools, suggest_tools,
+    ARTIFACT_ALIASES,
 )
 from sift_mcp.catalog import clear_catalog_cache
 
@@ -58,18 +59,62 @@ class TestCheckTools:
 
 class TestSuggestTools:
     def test_suggest_for_amcache(self):
-        suggestions = suggest_tools("amcache")
-        assert len(suggestions) >= 1
-        # Should include AmcacheParser
-        tool_names = [s.get("tool", "") for s in suggestions]
+        result = suggest_tools("amcache")
+        assert isinstance(result, dict)
+        assert "suggestions" in result
+        assert len(result["suggestions"]) >= 1
+        tool_names = [s.get("tool", "") for s in result["suggestions"]]
         assert "AmcacheParser" in tool_names
 
     def test_suggest_includes_corroboration(self):
-        suggestions = suggest_tools("amcache")
-        corr = [s for s in suggestions if s.get("type") == "corroboration"]
-        assert len(corr) == 1
-        assert "to_confirm_execution" in corr[0]
+        result = suggest_tools("amcache")
+        assert "corroboration" in result
+        assert "for_execution" in result["corroboration"]
 
     def test_suggest_unknown_artifact(self):
         result = suggest_tools("nonexistent_artifact")
-        assert result[0].get("info") is not None
+        assert isinstance(result, dict)
+        assert result.get("info") is not None or len(result.get("suggestions", [])) == 0
+
+    def test_suggest_includes_discipline_reminder(self):
+        result = suggest_tools("prefetch")
+        assert "discipline_reminder" in result
+
+    def test_suggest_includes_advisories(self):
+        result = suggest_tools("prefetch")
+        assert "advisories" in result
+        assert len(result["advisories"]) >= 1
+
+    def test_suggest_includes_cross_mcp_checks(self):
+        result = suggest_tools("prefetch")
+        assert "cross_mcp_checks" in result
+        assert len(result["cross_mcp_checks"]) >= 1
+
+    def test_alias_evtx(self):
+        result = suggest_tools("evtx")
+        assert isinstance(result, dict)
+        assert len(result["suggestions"]) >= 1
+
+    def test_alias_registry(self):
+        result = suggest_tools("registry")
+        assert isinstance(result, dict)
+        assert len(result["suggestions"]) >= 1
+
+    def test_alias_event_logs(self):
+        result = suggest_tools("event_logs")
+        assert isinstance(result, dict)
+        assert len(result["suggestions"]) >= 1
+
+
+class TestArtifactAliases:
+    def test_aliases_defined(self):
+        assert len(ARTIFACT_ALIASES) >= 8
+        assert "evtx" in ARTIFACT_ALIASES
+        assert "registry" in ARTIFACT_ALIASES
+
+    def test_aliases_resolve_to_valid_artifacts(self):
+        from forensic_knowledge import loader
+        for alias, targets in ARTIFACT_ALIASES.items():
+            for target in targets:
+                art = loader.get_artifact(target)
+                assert art is not None, f"Alias '{alias}' target '{target}' not found in FK"

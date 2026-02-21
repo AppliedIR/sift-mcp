@@ -41,7 +41,7 @@ def create_server() -> FastMCP:
         return _check(tool_names=tool_names or None)
 
     @server.tool()
-    def suggest_tools(artifact_type: str, question: str = "") -> list[dict]:
+    def suggest_tools(artifact_type: str, question: str = "") -> dict:
         """Suggest tools for analyzing a specific artifact type. Uses forensic-knowledge."""
         from sift_mcp.tools.discovery import suggest_tools as _suggest
         result = _suggest(artifact_type, question)

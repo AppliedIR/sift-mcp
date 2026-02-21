@@ -89,6 +89,25 @@ class TestKnowledgeEnrichment:
         assert "field_notes" in resp
         assert "FileKeyLastWriteTimestamp" in resp["field_notes"]
 
+    def test_cross_mcp_checks_included(self):
+        """Response envelope should include cross_mcp_checks when artifact has them."""
+        resp = build_response(
+            tool_name="run_amcacheparser",
+            success=True,
+            data={},
+            evidence_id="sift-20260220-030",
+            fk_tool_name="AmcacheParser",
+        )
+        # AmcacheParser parses amcache artifact, which should have cross_mcp_checks
+        assert "cross_mcp_checks" in resp
+        checks = resp["cross_mcp_checks"]
+        assert len(checks) >= 1
+        # Each check has mcp, tool, when
+        for check in checks:
+            assert "mcp" in check
+            assert "tool" in check
+            assert "when" in check
+
     def test_unknown_tool_no_enrichment(self):
         resp = build_response(
             tool_name="unknown_tool",
