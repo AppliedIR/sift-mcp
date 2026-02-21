@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 #
-# setup-sift.sh — AIIR SIFT Platform Installer
+# setup-sift.sh -- AIIR SIFT Platform Installer
 #
 # Installs the AIIR SIFT platform from the sift-mcp monorepo. Clones one
 # repository, creates a single virtual environment, and installs selected
 # packages in dependency order.
 #
 # Three install tiers:
-#   Quickstart   — Core platform (~3 min)
-#   Recommended  — Adds RAG search + Windows triage (~30 min)
-#   Custom       — Choose individual packages (+ OpenCTI)
+#   Quickstart   -- Core platform (~3 min)
+#   Recommended  -- Adds RAG search + Windows triage (~30 min)
+#   Custom       -- Choose individual packages (+ OpenCTI)
 #
 # Usage:
 #   ./setup-sift.sh                                    # Interactive (default: Recommended)
@@ -52,9 +52,9 @@ for arg in "$@"; do
             echo "Usage: setup-sift.sh [OPTIONS]"
             echo ""
             echo "Tiers (pick one):"
-            echo "  --quick         Quickstart — core platform (~3 min)"
+            echo "  --quick         Quickstart -- core platform (~3 min)"
             echo "  --recommended   Adds RAG search + Windows triage (~30 min)"
-            echo "  --full          Custom — choose individual packages"
+            echo "  --full          Custom -- choose individual packages"
             echo ""
             echo "Options:"
             echo "  -y, --yes            Accept all defaults (unattended)"
@@ -121,7 +121,7 @@ prompt_yn() {
 
 echo ""
 echo -e "${BOLD}============================================================${NC}"
-echo -e "${BOLD}  AIIR — SIFT Platform Installer${NC}"
+echo -e "${BOLD}  AIIR -- SIFT Platform Installer${NC}"
 echo -e "${BOLD}  Applied Incident Investigation and Response${NC}"
 echo -e "${BOLD}============================================================${NC}"
 echo ""
@@ -136,9 +136,9 @@ if [[ -z "$MODE" ]]; then
     if $AUTO_YES; then
         MODE="recommended"
     else
-        echo "  1. Quickstart    — forensic-mcp, sift-mcp, gateway (~3 min)"
-        echo "  2. Recommended   — Adds RAG search + Windows triage (~30 min)"
-        echo "  3. Custom        — Choose individual packages"
+        echo "  1. Quickstart    -- forensic-mcp, sift-mcp, gateway (~3 min)"
+        echo "  2. Recommended   -- Adds RAG search + Windows triage (~30 min)"
+        echo "  3. Custom        -- Choose individual packages"
         echo ""
         CHOICE=$(prompt "Choose" "2")
         case "$CHOICE" in
@@ -211,11 +211,13 @@ else
     exit 1
 fi
 
-# Network
-if git ls-remote https://github.com/AppliedIR/sift-mcp.git HEAD &>/dev/null 2>&1; then
+# Network (test with a public endpoint -- AppliedIR repos may be private)
+if curl -sf --max-time 10 "https://github.com" &>/dev/null; then
+    ok "Network access to GitHub"
+elif git ls-remote https://github.com/AppliedIR/sift-mcp.git HEAD &>/dev/null 2>&1; then
     ok "Network access to GitHub"
 else
-    warn "Cannot reach GitHub — installation requires network access"
+    warn "Cannot reach GitHub -- installation requires network access"
     exit 1
 fi
 
@@ -240,17 +242,17 @@ case "$MODE" in
         header "Select Packages"
 
         echo -e "  ${BOLD}Always installed:${NC}"
-        echo -e "    forensic-knowledge   — Forensic tool + artifact knowledge base"
-        echo -e "    sift-common          — Shared audit, logging, output utilities"
-        echo -e "    forensic-mcp         — Case management, findings, discipline"
-        echo -e "    sift-mcp             — Forensic tool execution on SIFT"
-        echo -e "    sift-gateway         — HTTP gateway for all MCPs"
+        echo -e "    forensic-knowledge   -- Forensic tool + artifact knowledge base"
+        echo -e "    sift-common          -- Shared audit, logging, output utilities"
+        echo -e "    forensic-mcp         -- Case management, findings, discipline"
+        echo -e "    sift-mcp             -- Forensic tool execution on SIFT"
+        echo -e "    sift-gateway         -- HTTP gateway for all MCPs"
         echo ""
 
         echo -e "  ${BOLD}Optional packages:${NC}"
-        prompt_yn "    Install forensic-rag (knowledge search — Sigma, MITRE, KAPE)?" "y" && INSTALL_RAG=true
+        prompt_yn "    Install forensic-rag (knowledge search -- Sigma, MITRE, KAPE)?" "y" && INSTALL_RAG=true
         prompt_yn "    Install windows-triage (Windows baseline validation)?" "y" && INSTALL_TRIAGE=true
-        prompt_yn "    Install opencti (threat intelligence — needs OpenCTI server)?" "n" && INSTALL_OPENCTI=true
+        prompt_yn "    Install opencti (threat intelligence -- needs OpenCTI server)?" "n" && INSTALL_OPENCTI=true
         echo ""
         ;;
 esac
@@ -286,9 +288,12 @@ INSTALL_ERRORS=0
 # --- Clone or update the monorepo ---
 
 if [[ -d "$INSTALL_DIR/.git" ]]; then
-    info "Repository exists at $INSTALL_DIR — pulling latest..."
-    (cd "$INSTALL_DIR" && git pull --quiet) || warn "Could not update repository"
-    ok "Repository updated"
+    info "Repository exists at $INSTALL_DIR -- pulling latest..."
+    if (cd "$INSTALL_DIR" && git pull --quiet); then
+        ok "Repository updated"
+    else
+        warn "Could not update repository -- continuing with existing code"
+    fi
 elif [[ -d "$INSTALL_DIR" ]] && [[ ! -d "$INSTALL_DIR/.git" ]]; then
     # Directory exists but is not a git repo
     err "$INSTALL_DIR exists but is not a git repository"
@@ -296,7 +301,11 @@ elif [[ -d "$INSTALL_DIR" ]] && [[ ! -d "$INSTALL_DIR/.git" ]]; then
     exit 1
 else
     info "Cloning sift-mcp monorepo..."
-    git clone --quiet "$REPO_URL" "$INSTALL_DIR"
+    if ! git clone --quiet "$REPO_URL" "$INSTALL_DIR"; then
+        err "Failed to clone sift-mcp repository"
+        echo "  Check network access and try again"
+        exit 1
+    fi
     ok "Repository cloned to $INSTALL_DIR"
 fi
 
@@ -307,9 +316,17 @@ info "Creating virtual environment..."
 VENV_DIR="$INSTALL_DIR/.venv"
 
 if [[ ! -d "$VENV_DIR" ]]; then
-    $PYTHON -m venv "$VENV_DIR"
+    if ! $PYTHON -m venv "$VENV_DIR"; then
+        err "Failed to create virtual environment at $VENV_DIR"
+        echo "  Ensure python3-venv is installed: sudo apt install python3-venv"
+        exit 1
+    fi
 fi
-"$VENV_DIR/bin/pip" install --progress-bar off --upgrade pip >/dev/null 2>&1
+if [[ ! -f "$VENV_DIR/bin/python" ]]; then
+    err "Virtual environment created but python not found at $VENV_DIR/bin/python"
+    exit 1
+fi
+"$VENV_DIR/bin/pip" install --progress-bar off --upgrade pip >/dev/null 2>&1 || true
 ok "Virtual environment ready at $VENV_DIR"
 
 VENV_PIP="$VENV_DIR/bin/pip"
@@ -317,62 +334,54 @@ VENV_PYTHON="$VENV_DIR/bin/python"
 
 # --- Install packages in dependency order ---
 
+# Helper: install a package with error handling
+install_pkg() {
+    local name="$1" path="$2"
+    echo ""
+    info "Installing $name..."
+    if ! $VENV_PIP install --progress-bar off -e "$path" >/dev/null; then
+        err "Failed to install $name"
+        echo "  Check pip output: $VENV_PIP install -e $path"
+        return 1
+    fi
+    ok "$name"
+}
+
 # 1. forensic-knowledge (leaf dependency, no deps on other AIIR packages)
-echo ""
-info "Installing forensic-knowledge..."
-$VENV_PIP install --progress-bar off -e "$INSTALL_DIR/packages/forensic-knowledge" >/dev/null
+install_pkg "forensic-knowledge" "$INSTALL_DIR/packages/forensic-knowledge" || exit 1
 if ! "$VENV_PYTHON" -c "import forensic_knowledge" 2>/dev/null; then
-    err "forensic-knowledge not importable — cannot proceed"
+    err "forensic-knowledge not importable -- cannot proceed"
     exit 1
 fi
-ok "forensic-knowledge"
 
-# 2. sift-common (depends on nothing AIIR-specific)
-echo ""
-info "Installing sift-common..."
-$VENV_PIP install --progress-bar off -e "$INSTALL_DIR/packages/sift-common" >/dev/null
-ok "sift-common"
-
-# 3. forensic-mcp (depends on FK + sift-common)
-echo ""
-info "Installing forensic-mcp..."
-$VENV_PIP install --progress-bar off -e "$INSTALL_DIR/packages/forensic-mcp" >/dev/null
-ok "forensic-mcp"
-
-# 4. sift-mcp (depends on FK + sift-common)
-echo ""
-info "Installing sift-mcp..."
-$VENV_PIP install --progress-bar off -e "$INSTALL_DIR/packages/sift-mcp" >/dev/null
-ok "sift-mcp"
-
-# 5. sift-gateway (depends on sift-common)
-echo ""
-info "Installing sift-gateway..."
-$VENV_PIP install --progress-bar off -e "$INSTALL_DIR/packages/sift-gateway" >/dev/null
-ok "sift-gateway"
+# 2-5. Core packages (in dependency order)
+install_pkg "sift-common"    "$INSTALL_DIR/packages/sift-common"    || exit 1
+install_pkg "forensic-mcp"   "$INSTALL_DIR/packages/forensic-mcp"   || exit 1
+install_pkg "sift-mcp"       "$INSTALL_DIR/packages/sift-mcp"       || exit 1
+install_pkg "sift-gateway"   "$INSTALL_DIR/packages/sift-gateway"   || exit 1
 
 # 6. Optional: forensic-rag
 if $INSTALL_RAG; then
-    echo ""
-    info "Installing forensic-rag..."
-    $VENV_PIP install --progress-bar off -e "$INSTALL_DIR/packages/forensic-rag" >/dev/null
-    ok "forensic-rag"
+    install_pkg "forensic-rag" "$INSTALL_DIR/packages/forensic-rag" || {
+        warn "forensic-rag install failed -- continuing without it"
+        INSTALL_RAG=false
+    }
 fi
 
 # 7. Optional: windows-triage
 if $INSTALL_TRIAGE; then
-    echo ""
-    info "Installing windows-triage..."
-    $VENV_PIP install --progress-bar off -e "$INSTALL_DIR/packages/windows-triage" >/dev/null
-    ok "windows-triage"
+    install_pkg "windows-triage" "$INSTALL_DIR/packages/windows-triage" || {
+        warn "windows-triage install failed -- continuing without it"
+        INSTALL_TRIAGE=false
+    }
 fi
 
 # 8. Optional: opencti
 if $INSTALL_OPENCTI; then
-    echo ""
-    info "Installing opencti..."
-    $VENV_PIP install --progress-bar off -e "$INSTALL_DIR/packages/opencti" >/dev/null
-    ok "opencti"
+    install_pkg "opencti" "$INSTALL_DIR/packages/opencti" || {
+        warn "opencti install failed -- continuing without it"
+        INSTALL_OPENCTI=false
+    }
 fi
 
 # --- Smoke tests ---
@@ -408,7 +417,7 @@ else
 fi
 
 if (( INSTALL_ERRORS > 0 )); then
-    warn "$INSTALL_ERRORS component(s) failed import — check output above"
+    warn "$INSTALL_ERRORS component(s) failed import -- check output above"
 fi
 
 # --- Add venv to PATH ---
@@ -449,7 +458,7 @@ if $INSTALL_RAG; then
         if prompt_yn "Build index now?" "y"; then
             info "Building forensic-rag index (this may take a few minutes)..."
             (cd "$INSTALL_DIR/packages/forensic-rag" && "$VENV_PYTHON" -m rag_mcp.build) && \
-                ok "Index built" || warn "Index build failed — you can retry later"
+                ok "Index built" || warn "Index build failed -- you can retry later"
         else
             info "Skipping index build."
         fi
@@ -491,7 +500,7 @@ if $INSTALL_TRIAGE; then
             info "Initializing databases and importing..."
             (cd "$WT_DIR" && "$VENV_PYTHON" scripts/init_databases.py && \
                 "$VENV_PYTHON" scripts/import_all.py --skip-registry) && \
-                ok "Databases imported" || warn "Database import had issues — see output above"
+                ok "Databases imported" || warn "Database import had issues -- see output above"
         else
             info "Skipping database setup."
         fi
@@ -531,7 +540,7 @@ print('OK' if tools else 'FAIL')
 " 2>/dev/null | grep -q "OK"; then
             ok "OpenCTI connection verified"
         else
-            warn "Could not connect to OpenCTI — check URL and token"
+            warn "Could not connect to OpenCTI -- check URL and token"
         fi
     else
         info "Skipping. Set OPENCTI_URL and OPENCTI_TOKEN in gateway.yaml later."
@@ -558,7 +567,10 @@ fi
 EXAMINER=$(echo "$EXAMINER" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
 
 if [[ -z "$EXAMINER" ]]; then
-    EXAMINER=$(whoami | tr '[:upper:]' '[:lower:]')
+    EXAMINER=$(whoami | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
+fi
+if [[ -z "$EXAMINER" ]]; then
+    EXAMINER="examiner"
 fi
 
 # Save to config (update existing examiner line or create fresh)
@@ -600,16 +612,22 @@ install_aiir_cli() {
     local cli_dir="$1"
 
     if [[ -d "$cli_dir/.git" ]]; then
-        info "aiir CLI repo exists at $cli_dir — pulling latest..."
-        (cd "$cli_dir" && git pull --quiet) || warn "Could not update aiir CLI"
+        info "aiir CLI repo exists at $cli_dir -- pulling latest..."
+        (cd "$cli_dir" && git pull --quiet) || warn "Could not update aiir CLI -- continuing with existing code"
     else
         info "Cloning aiir CLI..."
         mkdir -p "$(dirname "$cli_dir")"
-        git clone --quiet "https://github.com/AppliedIR/aiir.git" "$cli_dir"
+        if ! git clone --quiet "https://github.com/AppliedIR/aiir.git" "$cli_dir"; then
+            warn "Failed to clone aiir CLI"
+            return 1
+        fi
     fi
 
     info "Installing aiir CLI..."
-    $VENV_PIP install --progress-bar off -e "$cli_dir" >/dev/null
+    if ! $VENV_PIP install --progress-bar off -e "$cli_dir" >/dev/null; then
+        warn "Failed to install aiir CLI"
+        return 1
+    fi
 
     if "$VENV_PYTHON" -c "import aiir_cli" 2>/dev/null; then
         AIIR_CLI="$VENV_DIR/bin/aiir"
@@ -646,7 +664,11 @@ header "Phase 7: Gateway Setup"
 GATEWAY_CONFIG="$INSTALL_DIR/config/gateway.yaml"
 GATEWAY_PORT=4508
 
-# Generate gateway.yaml with all installed packages as backends
+# Preserve existing config on re-run (delete gateway.yaml to regenerate)
+if [[ -f "$GATEWAY_CONFIG" ]]; then
+    info "Existing gateway config found -- preserving: $GATEWAY_CONFIG"
+    echo "  Delete $GATEWAY_CONFIG and re-run to regenerate"
+else
 info "Generating gateway configuration..."
 mkdir -p "$(dirname "$GATEWAY_CONFIG")"
 
@@ -710,8 +732,9 @@ with open('$GATEWAY_CONFIG', 'w') as f:
 
 chmod 600 "$GATEWAY_CONFIG"
 ok "Generated: $GATEWAY_CONFIG"
+fi  # end config preservation
 
-# Generate startup script
+# Generate startup script (always regenerate -- contains paths)
 GATEWAY_START="$INSTALL_DIR/start-gateway.sh"
 cat > "$GATEWAY_START" << SCRIPT
 #!/usr/bin/env bash
@@ -721,21 +744,27 @@ exec "$VENV_DIR/bin/python" -m sift_gateway --config "$GATEWAY_CONFIG"
 SCRIPT
 chmod +x "$GATEWAY_START"
 
-# Start gateway to verify it works
-info "Starting gateway on port $GATEWAY_PORT..."
-"$VENV_DIR/bin/python" -m sift_gateway --config "$GATEWAY_CONFIG" &
-GATEWAY_PID=$!
-sleep 2
-
-if kill -0 "$GATEWAY_PID" 2>/dev/null; then
-    if curl -sf "http://127.0.0.1:$GATEWAY_PORT/health" &>/dev/null; then
-        ok "Gateway running on port $GATEWAY_PORT"
-    else
-        warn "Gateway started but health check failed"
-    fi
+# Check for existing process on the gateway port
+GATEWAY_PID=""
+if curl -sf "http://127.0.0.1:$GATEWAY_PORT/health" &>/dev/null; then
+    ok "Gateway already running on port $GATEWAY_PORT"
 else
-    warn "Gateway failed to start — check $GATEWAY_CONFIG"
-    GATEWAY_PID=""
+    # Start gateway to verify it works
+    info "Starting gateway on port $GATEWAY_PORT..."
+    "$VENV_DIR/bin/python" -m sift_gateway --config "$GATEWAY_CONFIG" &
+    GATEWAY_PID=$!
+    sleep 2
+
+    if kill -0 "$GATEWAY_PID" 2>/dev/null; then
+        if curl -sf "http://127.0.0.1:$GATEWAY_PORT/health" &>/dev/null; then
+            ok "Gateway running on port $GATEWAY_PORT"
+        else
+            warn "Gateway started but health check failed"
+        fi
+    else
+        warn "Gateway failed to start -- check $GATEWAY_CONFIG"
+        GATEWAY_PID=""
+    fi
 fi
 
 # Determine auto-start behavior
@@ -752,11 +781,13 @@ elif [[ "$MODE" == "custom" ]]; then
 fi
 
 if $AUTOSTART; then
-    # Install systemd user service
-    SYSTEMD_DIR="$HOME/.config/systemd/user"
-    mkdir -p "$SYSTEMD_DIR"
+    # Check if systemd user sessions are available
+    if command -v systemctl &>/dev/null && systemctl --user status &>/dev/null 2>&1; then
+        # Install systemd user service
+        SYSTEMD_DIR="$HOME/.config/systemd/user"
+        mkdir -p "$SYSTEMD_DIR"
 
-    cat > "$SYSTEMD_DIR/aiir-gateway.service" << SERVICE
+        cat > "$SYSTEMD_DIR/aiir-gateway.service" << SERVICE
 [Unit]
 Description=AIIR SIFT Gateway
 After=network.target
@@ -771,28 +802,35 @@ RestartSec=5
 WantedBy=default.target
 SERVICE
 
-    # Stop the test process — systemd will manage it now
-    if [[ -n "${GATEWAY_PID:-}" ]]; then
-        kill "$GATEWAY_PID" 2>/dev/null || true
-        wait "$GATEWAY_PID" 2>/dev/null || true
-    fi
+        # Stop the test process -- systemd will manage it now
+        if [[ -n "${GATEWAY_PID:-}" ]]; then
+            kill "$GATEWAY_PID" 2>/dev/null || true
+            wait "$GATEWAY_PID" 2>/dev/null || true
+        fi
 
-    systemctl --user daemon-reload
-    systemctl --user enable aiir-gateway.service 2>/dev/null && \
-        ok "Systemd service enabled (auto-start at login)"
-    systemctl --user start aiir-gateway.service 2>/dev/null && \
-        ok "Gateway started via systemd" || \
-        warn "Could not start via systemd — use $GATEWAY_START manually"
+        systemctl --user daemon-reload 2>/dev/null
+        systemctl --user enable aiir-gateway.service 2>/dev/null && \
+            ok "Systemd service enabled (auto-start at login)"
+        systemctl --user start aiir-gateway.service 2>/dev/null && \
+            ok "Gateway started via systemd" || \
+            warn "Could not start via systemd -- use $GATEWAY_START manually"
 
-    # Enable lingering so service runs without active login session
-    if command -v loginctl &>/dev/null; then
-        loginctl enable-linger "$(whoami)" 2>/dev/null && \
-            ok "Linger enabled (gateway runs without active login)" || true
+        # Enable lingering so service runs without active login session
+        if command -v loginctl &>/dev/null; then
+            loginctl enable-linger "$(whoami)" 2>/dev/null && \
+                ok "Linger enabled (gateway runs without active login)" || true
+        fi
+    else
+        warn "systemd user sessions not available (WSL or container?)"
+        ok "Use startup script: $GATEWAY_START"
+        if [[ -n "${GATEWAY_PID:-}" ]]; then
+            info "Gateway is running now (PID $GATEWAY_PID) -- will stop on logout"
+        fi
     fi
 else
     ok "Manual start: $GATEWAY_START"
     if [[ -n "${GATEWAY_PID:-}" ]]; then
-        info "Gateway is running now (PID $GATEWAY_PID) — will stop on logout"
+        info "Gateway is running now (PID $GATEWAY_PID) -- will stop on logout"
     fi
 fi
 
@@ -833,7 +871,7 @@ if [[ "$MODE" == "custom" ]]; then
                 if curl -sf "http://$WIN_HOST:$WIN_PORT/health" &>/dev/null; then
                     ok "Connected to wintools-mcp at $WIN_HOST:$WIN_PORT"
                 else
-                    warn "Cannot reach $WIN_HOST:$WIN_PORT — ensure wintools-mcp is running"
+                    warn "Cannot reach $WIN_HOST:$WIN_PORT -- ensure wintools-mcp is running"
                 fi
             fi
         fi
@@ -867,7 +905,7 @@ elif $AIIR_CLI_INSTALLED; then
     elif $AUTO_YES; then
         # Non-interactive without --client: skip (require --client for unattended)
         echo ""
-        info "No --client specified — skipping LLM client configuration"
+        info "No --client specified -- skipping LLM client configuration"
         echo "  Configure later: aiir setup client --sift=http://127.0.0.1:$GATEWAY_PORT"
     else
         # Interactive: always ask
@@ -889,7 +927,7 @@ else
     # No aiir CLI available
     if ! $REMOTE_MODE; then
         echo ""
-        info "aiir CLI not installed — skipping client configuration"
+        info "aiir CLI not installed -- skipping client configuration"
         echo "  Install aiir CLI, then run: aiir setup client --sift=http://127.0.0.1:$GATEWAY_PORT"
     fi
 fi
