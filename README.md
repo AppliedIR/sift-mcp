@@ -9,16 +9,19 @@ sift-mcp runs as a subprocess of [aiir-gateway](https://github.com/AppliedIR/aii
 ```mermaid
 graph LR
     subgraph sift ["SIFT Workstation"]
-        C["LLM Client + aiir CLI"]
-        GW[aiir-gateway]
-        SM[sift-mcp]
+        CC["LLM Client<br/>(human interface)"]
+        CLI["aiir CLI<br/>(human interface)"]
+        GW["aiir-gateway<br/>:4508"]
+        SM["sift-mcp"]
         TOOLS["SIFT Forensic Tools"]
         FK["forensic-knowledge"]
+        CASE["Case Directory"]
 
-        C -->|"Streamable HTTP<br/>port 4508"| GW
-        GW -->|"subprocess"| SM
+        CC -->|"streamable-http"| GW
+        GW -->|stdio| SM
         SM --> TOOLS
         SM --> FK
+        CLI --> CASE
     end
 ```
 
@@ -221,9 +224,17 @@ Or add manually:
 | `AIIR_CASE_DIR` | (none) | Active case directory -- enables audit trail |
 | `AIIR_EXAMINER` | (none) | Examiner identity for evidence IDs and audit |
 
+## Security Considerations
+
+All AIIR components are assumed to run on a private forensic network, protected by firewalls, and not exposed to incoming connections from the Internet or potentially hostile systems. The design assumes dedicated, isolated systems are used throughout.
+
+Any data loaded into the system or its component VMs, computers, or instances runs the risk of being exposed to the underlying AI. Only place data on these systems that you are willing to send to your AI provider.
+
+While outgoing connections to the Internet are used for some optional components (OpenCTI, MS Learn MCP, Zeltser IR Writing MCP), no incoming connections from external systems should be allowed.
+
 ## Responsible Use
 
-This project is intended for authorized security testing, incident response, and educational purposes. Users are responsible for ensuring their use complies with applicable laws, regulations, and organizational policies. Do not use these tools against systems or data you are not authorized to access.
+This project demonstrates the capabilities of AI-assisted incident response. While steps have been taken to enforce human-in-the-loop controls, it is ultimately the responsibility of each examiner to ensure that their findings are accurate and complete. Ultimate responsibility rests with the human. The AI, like a hex editor, is a tool to be used by properly trained incident response professionals. Users are responsible for ensuring their use complies with applicable laws, regulations, and organizational policies.
 
 ## Acknowledgments
 
