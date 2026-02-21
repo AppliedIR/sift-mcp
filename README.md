@@ -236,23 +236,16 @@ graph LR
     ENRICH --> RESP["Response<br/>Envelope"]
 ```
 
-### Connection Modes
+### Connection
+
+LLM clients connect via the gateway, which manages sift-mcp as a stdio subprocess.
 
 ```mermaid
 graph LR
-    subgraph direct ["Direct (stdio)"]
-        C1[LLM Client] -->|stdio| SM1[sift-mcp]
-    end
-
-    subgraph gateway ["Via Gateway (streamable-http)"]
-        C2[LLM Client] -->|HTTP| GW[aiir-gateway :4508]
-        GW -->|stdio| SM2[sift-mcp]
-    end
-
-    SM1 --> TOOLS["SIFT Forensic Tools<br/>(Zimmerman, Volatility,<br/>Sleuth Kit, Hayabusa, ...)"]
-    SM2 --> TOOLS
-    SM1 --> FK[forensic-knowledge]
-    SM2 --> FK
+    C[LLM Client] -->|streamable-http| GW[aiir-gateway :4508]
+    GW -->|stdio| SM[sift-mcp]
+    SM --> TOOLS["SIFT Forensic Tools<br/>(Zimmerman, Volatility,<br/>Sleuth Kit, Hayabusa, ...)"]
+    SM --> FK[forensic-knowledge]
 ```
 
 ### Tool Categories
