@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -6,9 +7,34 @@ dist/
 build/
 .eggs/
 *.egg
+
+# Virtual environment
+.venv/
+venv/
+
+# Testing
+.mypy_cache/
 .pytest_cache/
 .coverage
 htmlcov/
-.mypy_cache/
-.venv/
-venv/
+
+# Credentials and secrets
+.env
+.env.*
+
+# Audit logs (generated at runtime)
+*.jsonl
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
