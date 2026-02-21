@@ -4,14 +4,14 @@ Catalog-gated forensic tool execution with knowledge-enriched response envelopes
 
 ## Architecture
 
-sift-mcp runs as a subprocess of [aiir-gateway](https://github.com/AppliedIR/aiir-gateway). The LLM client and aiir CLI are the two human-facing tools. They always run on the same machine, which can be the SIFT workstation or a separate computer. The LLM client connects to the gateway over Streamable HTTP. It never talks to sift-mcp directly.
+This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, and opencti. The sift-mcp tool execution package runs as a subprocess of the sift-gateway. The LLM client and aiir CLI are the two human-facing tools. They always run on the same machine, which can be the SIFT workstation or a separate computer. The LLM client connects to the gateway over Streamable HTTP. It never talks to sift-mcp directly.
 
 ```mermaid
 graph LR
     subgraph sift ["SIFT Workstation"]
         CC["LLM Client<br/>(human interface)"]
         CLI["aiir CLI<br/>(human interface)"]
-        GW["aiir-gateway<br/>:4508"]
+        GW["sift-gateway<br/>:4508"]
         SM["sift-mcp"]
         TOOLS["SIFT Forensic Tools"]
         FK["forensic-knowledge"]
@@ -134,7 +134,7 @@ graph LR
 
 ## Response Envelope
 
-Every tool response is wrapped in a structured envelope enriched by [forensic-knowledge](https://github.com/AppliedIR/forensic-knowledge). This ensures the LLM always receives artifact caveats, corroboration suggestions, and discipline reminders alongside tool output.
+Every tool response is wrapped in a structured envelope enriched by forensic-knowledge (in `packages/forensic-knowledge/`). This ensures the LLM always receives artifact caveats, corroboration suggestions, and discipline reminders alongside tool output.
 
 ```json
 {
@@ -191,11 +191,19 @@ The catalog is the security boundary. Only binaries listed in YAML catalog files
 ## Quick Start
 
 ```bash
-git clone https://github.com/AppliedIR/aiir.git && cd aiir
+git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 ./scripts/setup-sift.sh
 ```
 
-The installer handles sift-mcp, the gateway, and all other SIFT components. Configure your LLM client to connect to the gateway:
+The installer handles all SIFT packages (forensic-mcp, sift-mcp, sift-gateway, forensic-rag, windows-triage, opencti), the aiir CLI, and LLM client configuration. Three tiers:
+
+```bash
+./scripts/setup-sift.sh                            # interactive wizard
+./scripts/setup-sift.sh --quick -y --examiner=steve # core platform only
+./scripts/setup-sift.sh --recommended -y            # adds RAG + triage
+```
+
+Then configure your LLM client to connect to the gateway:
 
 ```bash
 aiir setup client
