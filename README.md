@@ -222,13 +222,57 @@ sift-mcp/
 
 ## Architecture
 
+### Execution Pipeline
+
+Every tool execution flows through the same pipeline: catalog validation, subprocess execution, output processing, and forensic-knowledge enrichment.
+
+```mermaid
+graph LR
+    REQ["run_command()<br/>or wrapper tool"] --> CAT{"Catalog<br/>Check"}
+    CAT -->|"not found"| REJECT[Rejected]
+    CAT -->|"found"| EXEC["subprocess.run()<br/>(shell=False)"]
+    EXEC --> PARSE["Output<br/>Processing"]
+    PARSE --> ENRICH["FK Enrichment<br/>(caveats, corroboration,<br/>discipline reminder)"]
+    ENRICH --> RESP["Response<br/>Envelope"]
 ```
-MCP Client ──► sift-mcp ──► SIFT Forensic Tools
-                  │          (Zimmerman, Volatility,
-                  │           Sleuth Kit, Hayabusa, ...)
-                  ▼
-            forensic-knowledge
-           (artifact enrichment)
+
+### Connection Modes
+
+```mermaid
+graph LR
+    subgraph direct ["Direct (stdio)"]
+        C1[LLM Client] -->|stdio| SM1[sift-mcp]
+    end
+
+    subgraph gateway ["Via Gateway (streamable-http)"]
+        C2[LLM Client] -->|HTTP| GW[aiir-gateway :4508]
+        GW -->|stdio| SM2[sift-mcp]
+    end
+
+    SM1 --> TOOLS["SIFT Forensic Tools<br/>(Zimmerman, Volatility,<br/>Sleuth Kit, Hayabusa, ...)"]
+    SM2 --> TOOLS
+    SM1 --> FK[forensic-knowledge]
+    SM2 --> FK
+```
+
+### Tool Categories
+
+```mermaid
+graph TB
+    SM[sift-mcp]
+
+    subgraph tools ["Forensic Tools"]
+        ZIM["Zimmerman Suite<br/>(12 tools)"]
+        VOL["Volatility 3<br/>(memory forensics)"]
+        TL["Timeline<br/>(hayabusa, mactime, plaso)"]
+        TSK["Sleuth Kit<br/>(fls, icat, mmls)"]
+        MAL["Malware<br/>(yara, strings)"]
+        NET["Network<br/>(tshark, zeek)"]
+        REG["Registry<br/>(regripper)"]
+        IMG["Imaging<br/>(dc3dd, ewfacquire)"]
+    end
+
+    SM --> tools
 ```
 
 ## Responsible Use
