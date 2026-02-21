@@ -4,7 +4,7 @@ Catalog-gated forensic tool execution with knowledge-enriched response envelopes
 
 ## Architecture
 
-sift-mcp runs as a subprocess of [aiir-gateway](https://github.com/AppliedIR/aiir-gateway). The LLM client and aiir CLI both run on the SIFT workstation. The LLM client connects to the gateway over Streamable HTTP -- it never talks to sift-mcp directly.
+sift-mcp runs as a subprocess of [aiir-gateway](https://github.com/AppliedIR/aiir-gateway). The LLM client and aiir CLI are the two human-facing tools. They always run on the same machine, which can be the SIFT workstation or a separate computer. The LLM client connects to the gateway over Streamable HTTP. It never talks to sift-mcp directly.
 
 ```mermaid
 graph LR
