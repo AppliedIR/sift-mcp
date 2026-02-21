@@ -201,32 +201,7 @@ git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 ./scripts/setup-sift.sh
 ```
 
-The installer handles all SIFT packages (forensic-mcp, sift-mcp, sift-gateway, forensic-rag, windows-triage, opencti), the aiir CLI, and LLM client configuration. Three tiers:
-
-```bash
-./scripts/setup-sift.sh                                                # interactive wizard
-./scripts/setup-sift.sh --quick -y --examiner=steve --client=claude-code  # unattended
-./scripts/setup-sift.sh --recommended -y --client=cursor               # adds RAG + triage
-```
-
-Then configure your LLM client to connect to the gateway:
-
-```bash
-aiir setup client
-```
-
-Or add manually:
-
-```json
-{
-  "mcpServers": {
-    "aiir": {
-      "type": "streamable-http",
-      "url": "http://localhost:4508/mcp"
-    }
-  }
-}
-```
+The interactive installer handles all SIFT packages (forensic-mcp, sift-mcp, sift-gateway, forensic-rag, windows-triage, opencti), the aiir CLI, and LLM client configuration.
 
 ## Configuration
 
