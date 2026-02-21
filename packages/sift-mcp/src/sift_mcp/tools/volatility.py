@@ -7,7 +7,7 @@ from sift_mcp.catalog import get_tool_def
 from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
-from sift_mcp.security import sanitize_extra_args
+from sift_mcp.security import sanitize_extra_args, validate_input_path
 from sift_mcp.parsers.json_parser import parse_json
 from sift_mcp.response import build_response
 
@@ -28,6 +28,7 @@ def register_volatility_tools(server, audit: AuditWriter):
         windows.malfind, windows.cmdline, windows.handles, windows.dlllist,
         windows.hivelist, windows.hashdump, windows.filescan.
         """
+        validate_input_path(memory_image)
         td = get_tool_def("vol3")
         if not td:
             raise ValueError("Volatility not in catalog")

@@ -17,7 +17,7 @@ from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
 from sift_mcp.parsers.csv_parser import parse_csv_file
 from sift_mcp.response import build_response
-from sift_mcp.security import sanitize_extra_args
+from sift_mcp.security import sanitize_extra_args, validate_input_path
 
 
 def _run_zimmerman_tool(
@@ -30,6 +30,7 @@ def _run_zimmerman_tool(
     max_rows: int = 1000,
 ) -> dict:
     """Common pattern for Zimmerman CSV-output tools."""
+    validate_input_path(input_file)
     td = get_tool_def(tool_name)
     if not td:
         raise ValueError(f"Tool '{tool_name}' not in catalog")

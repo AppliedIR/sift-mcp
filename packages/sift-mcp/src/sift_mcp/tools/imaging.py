@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from sift_mcp.audit import AuditWriter
+from sift_mcp.catalog import get_tool_def
 from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
 from sift_mcp.response import build_response
-from sift_mcp.security import sanitize_extra_args
+from sift_mcp.security import sanitize_extra_args, validate_input_path
 
 
 _BLOCKED_DEVICE_PREFIXES = ("/dev/sd", "/dev/hd", "/dev/nvme", "/dev/vd", "/dev/xvd")
@@ -18,10 +19,14 @@ def register_imaging_tools(server, audit: AuditWriter):
     @server.tool()
     def run_dc3dd(source: str, destination: str, hash_algorithm: str = "sha256", extra_args: list[str] | None = None) -> dict:
         """Create forensic disk image with dc3dd (with inline hashing)."""
+        validate_input_path(source)
         # Block writing to system device nodes
         if any(destination.startswith(p) for p in _BLOCKED_DEVICE_PREFIXES):
             raise ValueError(f"Destination '{destination}' is a block device — writing to raw devices is blocked for safety")
-        binary_path = find_binary("dc3dd")
+        td = get_tool_def("dc3dd")
+        if not td:
+            raise ValueError("dc3dd not in catalog")
+        binary_path = find_binary(td.binary)
         if not binary_path:
             raise ToolNotFoundError("dc3dd not found.")
         cmd = [binary_path, f"if={source}", f"of={destination}", f"hash={hash_algorithm}", "log=/dev/stderr"]
@@ -43,7 +48,11 @@ def register_imaging_tools(server, audit: AuditWriter):
     @server.tool()
     def run_ewfacquire(source: str, target_prefix: str, extra_args: list[str] | None = None) -> dict:
         """Create E01 forensic image with ewfacquire."""
-        binary_path = find_binary("ewfacquire")
+        validate_input_path(source)
+        td = get_tool_def("ewfacquire")
+        if not td:
+            raise ValueError("ewfacquire not in catalog")
+        binary_path = find_binary(td.binary)
         if not binary_path:
             raise ToolNotFoundError("ewfacquire not found. Install libewf.")
         extra_args = sanitize_extra_args(extra_args or [], "run_ewfacquire")

@@ -6,7 +6,7 @@ from sift_mcp.catalog import is_in_catalog, get_tool_def
 from sift_mcp.environment import find_binary
 from sift_mcp.executor import execute
 from sift_mcp.exceptions import ToolNotInCatalogError
-from sift_mcp.security import sanitize_extra_args
+from sift_mcp.security import sanitize_extra_args, validate_input_path
 
 
 def run_command(
@@ -40,6 +40,11 @@ def run_command(
             f"Binary '{binary}' is not in the approved tool catalog. "
             f"Only catalog-approved tools can be executed via sift-mcp."
         )
+
+    # Validate any arguments that look like file paths
+    for arg in command[1:]:
+        if arg.startswith("/") and not arg.startswith("--"):
+            validate_input_path(arg)
 
     # Resolve binary via find_binary to prevent absolute path bypass
     resolved = find_binary(binary)

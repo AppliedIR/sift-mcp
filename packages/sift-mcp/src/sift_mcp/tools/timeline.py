@@ -8,7 +8,7 @@ from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
 from sift_mcp.executor import execute
 from sift_mcp.response import build_response
-from sift_mcp.security import sanitize_extra_args
+from sift_mcp.security import sanitize_extra_args, validate_input_path
 
 
 def register_timeline_tools(server, audit: AuditWriter):
@@ -25,6 +25,7 @@ def register_timeline_tools(server, audit: AuditWriter):
 
         min_level: informational, low, medium, high, critical
         """
+        validate_input_path(evtx_dir)
         td = get_tool_def("hayabusa")
         if not td:
             raise ValueError("Hayabusa not in catalog")
@@ -74,6 +75,7 @@ def register_timeline_tools(server, audit: AuditWriter):
 
         date_range: optional YYYY-MM-DD..YYYY-MM-DD filter.
         """
+        validate_input_path(body_file)
         td = get_tool_def("mactime")
         if not td:
             raise ValueError("mactime not in catalog")
