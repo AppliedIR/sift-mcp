@@ -6,9 +6,12 @@ parses CSV output, and returns an enriched response envelope.
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from sift_mcp.audit import AuditWriter
 from sift_mcp.catalog import get_tool_def
@@ -62,9 +65,17 @@ def _run_zimmerman_tool(
 
         # Find output CSV files
         parsed_data: dict[str, Any] = {}
-        csv_files = sorted(Path(csv_dir).glob("*.csv"))
+        try:
+            csv_files = sorted(Path(csv_dir).glob("*.csv"))
+        except OSError as e:
+            logger.warning("Failed to list CSV output in %s: %s", csv_dir, e)
+            csv_files = []
         for csv_file in csv_files:
-            parsed_data[csv_file.stem] = parse_csv_file(str(csv_file), max_rows=max_rows)
+            try:
+                parsed_data[csv_file.stem] = parse_csv_file(str(csv_file), max_rows=max_rows)
+            except (OSError, FileNotFoundError) as e:
+                logger.warning("Failed to parse CSV file %s: %s", csv_file, e)
+                parsed_data[csv_file.stem] = {"error": str(e), "rows": [], "total_rows": 0}
 
         response = build_response(
             tool_name=f"run_{tool_name.lower()}",

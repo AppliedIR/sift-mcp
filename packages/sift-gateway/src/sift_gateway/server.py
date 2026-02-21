@@ -1,5 +1,6 @@
 """Gateway class: backend management, tool aggregation, Starlette app."""
 
+import asyncio
 import contextlib
 import logging
 from starlette.applications import Starlette
@@ -59,10 +60,14 @@ class Gateway:
         """Start all enabled backends and build the tool map."""
         for name, backend in self.backends.items():
             try:
-                await backend.start()
+                await asyncio.wait_for(backend.start(), timeout=30.0)
                 logger.info("Started backend: %s", name)
+            except asyncio.TimeoutError:
+                logger.error("Backend %s start timed out after 30s", name)
+            except (ConnectionError, OSError) as exc:
+                logger.error("Failed to start backend %s (connection): %s", name, exc)
             except Exception as exc:
-                logger.error("Failed to start backend %s: %s", name, exc)
+                logger.error("Failed to start backend %s: %s: %s", name, type(exc).__name__, exc)
 
         await self._build_tool_map()
 
@@ -70,10 +75,14 @@ class Gateway:
         """Stop all backends."""
         for name, backend in self.backends.items():
             try:
-                await backend.stop()
+                await asyncio.wait_for(backend.stop(), timeout=10.0)
                 logger.info("Stopped backend: %s", name)
+            except asyncio.TimeoutError:
+                logger.error("Backend %s stop timed out after 10s", name)
+            except (ConnectionError, OSError) as exc:
+                logger.error("Error stopping backend %s (connection): %s", name, exc)
             except Exception as exc:
-                logger.error("Error stopping backend %s: %s", name, exc)
+                logger.error("Error stopping backend %s: %s: %s", name, type(exc).__name__, exc)
         self._tool_map.clear()
 
     async def _build_tool_map(self) -> None:
@@ -88,9 +97,11 @@ class Gateway:
             if not backend._started:
                 continue
             try:
-                tools = await backend.list_tools()
+                tools = await asyncio.wait_for(backend.list_tools(), timeout=15.0)
                 for tool in tools:
                     raw_map.setdefault(tool.name, []).append(name)
+            except asyncio.TimeoutError:
+                logger.error("Timeout listing tools for backend %s", name)
             except Exception as exc:
                 logger.error("Failed to list tools for %s: %s", name, exc)
 
@@ -192,7 +203,11 @@ class Gateway:
                 arguments = {**arguments, "analyst_override": analyst}
 
         logger.info("Routing tool %s -> backend %s (analyst=%s)", actual_name, backend_name, analyst)
-        return await backend.call_tool(actual_name, arguments)
+        try:
+            return await asyncio.wait_for(backend.call_tool(actual_name, arguments), timeout=300.0)
+        except asyncio.TimeoutError:
+            logger.error("Tool call %s on backend %s timed out after 300s", actual_name, backend_name)
+            raise RuntimeError(f"Tool call {actual_name} timed out after 300s")
 
     def create_app(self) -> Starlette:
         """Build a Starlette application with all routes and middleware.

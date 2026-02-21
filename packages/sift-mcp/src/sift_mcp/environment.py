@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def is_wsl() -> bool:
@@ -13,15 +16,19 @@ def is_wsl() -> bool:
     try:
         with open("/proc/version", "r") as f:
             return "microsoft" in f.read().lower()
-    except (FileNotFoundError, PermissionError):
+    except (FileNotFoundError, PermissionError, OSError) as e:
+        logger.debug("Cannot read /proc/version for WSL detection: %s", e)
         return False
 
 
 def get_sift_version() -> str | None:
     """Detect SIFT workstation version if installed."""
     version_file = Path("/etc/sift-version")
-    if version_file.exists():
-        return version_file.read_text().strip()
+    try:
+        if version_file.exists():
+            return version_file.read_text().strip()
+    except OSError as e:
+        logger.debug("Cannot read SIFT version file: %s", e)
     # Check cast package
     try:
         result = subprocess.run(
@@ -29,8 +36,10 @@ def get_sift_version() -> str | None:
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        logger.debug("SIFT cast version check failed: %s", e)
+    except OSError as e:
+        logger.debug("SIFT cast version check OS error: %s", e)
     return None
 
 

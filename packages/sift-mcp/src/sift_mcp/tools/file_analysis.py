@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import logging
+from pathlib import Path
+
 from sift_mcp.audit import AuditWriter
+
+logger = logging.getLogger(__name__)
 from sift_mcp.catalog import get_tool_def
 from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
@@ -34,8 +40,8 @@ def register_file_analysis_tools(server, audit: AuditWriter):
             try:
                 data = parse_json(data)
                 fmt = "json"
-            except Exception:
-                pass
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                logger.debug("ExifTool JSON parse fallback to text: %s", e)
         response = build_response(
             tool_name="run_exiftool", success=exec_result["exit_code"] == 0,
             data=data, evidence_id=evidence_id, output_format=fmt,
@@ -74,6 +80,12 @@ def register_file_analysis_tools(server, audit: AuditWriter):
         else:
             if not output_dir:
                 raise ValueError("output_dir is required for extraction. Specify where to extract.")
+            # Validate output_dir is writable
+            out_path = Path(output_dir)
+            try:
+                out_path.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                raise ValueError(f"Cannot create output directory {output_dir}: {e}")
             cmd = [binary_path, "x", archive_path, f"-o{output_dir}", "-y"]
 
         if password:

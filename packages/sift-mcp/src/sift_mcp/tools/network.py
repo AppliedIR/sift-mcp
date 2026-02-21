@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from sift_mcp.audit import AuditWriter
+
+logger = logging.getLogger(__name__)
 from sift_mcp.catalog import get_tool_def
 from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError

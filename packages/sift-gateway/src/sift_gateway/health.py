@@ -27,7 +27,11 @@ async def health_endpoint(request: Request) -> JSONResponse:
     for name, backend in gateway.backends.items():
         try:
             backend_health[name] = await backend.health_check()
-        except Exception:
+        except (RuntimeError, ConnectionError, OSError) as e:
+            logger.warning("Health check failed for backend %s: %s", name, e)
+            backend_health[name] = {"status": "error", "detail": str(e)}
+        except Exception as e:
+            logger.warning("Health check unexpected error for backend %s: %s", name, e)
             backend_health[name] = {"status": "error"}
 
     tools_count = len(gateway._tool_map)

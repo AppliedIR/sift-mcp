@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import itertools
+import logging
 
 from sift_mcp.audit import resolve_examiner, AuditWriter
+
+logger = logging.getLogger(__name__)
 from sift_mcp.catalog import list_tools_in_catalog, get_tool_def
 from sift_mcp.environment import find_binary, get_environment_info
 from forensic_knowledge import loader
@@ -61,7 +64,11 @@ def get_tool_help(tool_name: str) -> dict:
     }
 
     # Add FK knowledge
-    fk = loader.get_tool(td.knowledge_name)
+    try:
+        fk = loader.get_tool(td.knowledge_name)
+    except Exception as e:
+        logger.debug("FK lookup failed for %s: %s", td.knowledge_name, e)
+        fk = None
     if fk:
         result["caveats"] = fk.get("caveats", [])
         result["advisories"] = fk.get("advisories", [])
@@ -115,7 +122,11 @@ def suggest_tools(artifact_type: str, question: str = "") -> dict:
     all_cross_mcp: list[dict] = []
 
     for art_name in artifact_names:
-        artifact = loader.get_artifact(art_name)
+        try:
+            artifact = loader.get_artifact(art_name)
+        except Exception as e:
+            logger.debug("FK artifact lookup failed for %s: %s", art_name, e)
+            continue
         if not artifact:
             continue
 
@@ -124,7 +135,11 @@ def suggest_tools(artifact_type: str, question: str = "") -> dict:
             if any(s.get("tool") == tool_name for s in suggestions):
                 continue
             td = get_tool_def(tool_name)
-            fk = loader.get_tool(tool_name)
+            try:
+                fk = loader.get_tool(tool_name)
+            except Exception as e:
+                logger.debug("FK tool lookup failed for %s: %s", tool_name, e)
+                fk = None
             entry = {
                 "tool": tool_name,
                 "artifact": art_name,
@@ -155,10 +170,15 @@ def suggest_tools(artifact_type: str, question: str = "") -> dict:
                 all_cross_mcp.append(check)
 
     if not suggestions:
+        try:
+            available = [a["name"] for a in loader.list_artifacts()]
+        except Exception as e:
+            logger.debug("FK list_artifacts failed: %s", e)
+            available = []
         return {
             "suggestions": [],
             "info": f"No tools found for artifact type '{artifact_type}'",
-            "available_artifacts": [a["name"] for a in loader.list_artifacts()],
+            "available_artifacts": available,
         }
 
     call_num = next(_suggest_counter)

@@ -6,12 +6,15 @@ Interpretive knowledge (caveats, advisories) comes from forensic-knowledge.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 _CATALOG_DIR: Path | None = None
 _catalog_cache: dict[str, Any] = {}
@@ -66,15 +69,32 @@ def load_catalog() -> dict[str, ToolDefinition]:
         return _catalog_cache
 
     catalog_dir = _find_catalog_dir()
-    for yaml_file in sorted(catalog_dir.glob("*.yaml")):
-        with open(yaml_file, "r", encoding="utf-8") as f:
-            doc = yaml.safe_load(f)
+    try:
+        yaml_files = sorted(catalog_dir.glob("*.yaml"))
+    except PermissionError as e:
+        logger.warning("Permission denied reading catalog directory %s: %s", catalog_dir, e)
+        return _catalog_cache
+
+    for yaml_file in yaml_files:
+        try:
+            with open(yaml_file, "r", encoding="utf-8") as f:
+                doc = yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            logger.warning("Failed to parse catalog YAML %s: %s", yaml_file, e)
+            continue
+        except OSError as e:
+            logger.warning("Failed to read catalog file %s: %s", yaml_file, e)
+            continue
+
         if not doc:
             continue
 
         category = doc.get("category", yaml_file.stem)
         for tool_entry in doc.get("tools", []):
-            name = tool_entry["name"]
+            name = tool_entry.get("name")
+            if not name:
+                logger.warning("Tool entry in %s missing 'name' field, skipping", yaml_file)
+                continue
             td = ToolDefinition(
                 name=name,
                 binary=tool_entry.get("binary", name),

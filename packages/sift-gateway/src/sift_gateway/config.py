@@ -1,10 +1,13 @@
 """YAML config loading with environment variable interpolation."""
 
+import logging
 import os
 import re
 from pathlib import Path
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 _ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -51,8 +54,15 @@ def load_config(path: str) -> dict:
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
 
-    with open(config_path) as f:
-        raw = yaml.safe_load(f)
+    try:
+        with open(config_path) as f:
+            raw = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        logger.error("Invalid YAML in config file %s: %s", path, e)
+        raise
+    except OSError as e:
+        logger.error("Cannot read config file %s: %s", path, e)
+        raise
 
     if raw is None:
         return {}

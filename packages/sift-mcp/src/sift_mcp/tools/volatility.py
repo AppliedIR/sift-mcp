@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import logging
+
 from sift_mcp.audit import AuditWriter
+
+logger = logging.getLogger(__name__)
 from sift_mcp.catalog import get_tool_def
 from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
@@ -54,8 +59,8 @@ def register_volatility_tools(server, audit: AuditWriter):
             try:
                 data = parse_json(data)
                 parsed_format = "json"
-            except Exception:
-                pass  # Fall back to text
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                logger.debug("Volatility JSON parse fallback to text: %s", e)
 
         response = build_response(
             tool_name="run_volatility",

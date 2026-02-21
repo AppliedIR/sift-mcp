@@ -117,6 +117,22 @@ def create_server() -> FastMCP:
                 evidence_id=evidence_id,
             )
             return response
+        except (ValueError, OSError, RuntimeError) as e:
+            logger.warning("run_command unexpected error: %s: %s", type(e).__name__, e)
+            response = build_response(
+                tool_name="run_command",
+                success=False,
+                data=None,
+                evidence_id=evidence_id,
+                error=str(e),
+            )
+            audit.log(
+                tool="run_command",
+                params={"command": command, "purpose": purpose},
+                result_summary={"error": str(e)},
+                evidence_id=evidence_id,
+            )
+            return response
 
     # --- Register tool-specific modules ---
 

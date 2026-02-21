@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -103,29 +104,49 @@ def _save_output(
     if not save_dir:
         return
 
-    out_dir = Path(save_dir).resolve()
+    try:
+        out_dir = Path(save_dir).resolve()
+    except OSError as e:
+        logger.warning("Cannot resolve save_dir path %s: %s", save_dir, e)
+        return
 
     # Block writes to system directories
     _blocked_prefixes = ("/etc", "/usr", "/bin", "/sbin", "/lib", "/boot", "/proc", "/sys", "/dev")
     if any(str(out_dir).startswith(p) for p in _blocked_prefixes):
         raise ExecutionError(f"Refusing to write output to system directory: {out_dir}")
 
-    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.warning("Cannot create output directory %s: %s", out_dir, e)
+        return
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     safe_cmd = "".join(c if c.isalnum() or c in "-_" else "_" for c in cmd_list[0])[:40]
     prefix = f"{ts}_{safe_cmd}"
 
     if stdout:
-        stdout_path = out_dir / f"{prefix}_stdout.txt"
-        stdout_bytes = stdout.encode("utf-8")
-        stdout_path.write_bytes(stdout_bytes)
-        response["output_file"] = str(stdout_path)
-        response["output_sha256"] = hashlib.sha256(stdout_bytes).hexdigest()
+        try:
+            stdout_path = out_dir / f"{prefix}_stdout.txt"
+            stdout_bytes = stdout.encode("utf-8", errors="replace")
+            with open(stdout_path, "wb") as f:
+                f.write(stdout_bytes)
+                f.flush()
+                os.fsync(f.fileno())
+            response["output_file"] = str(stdout_path)
+            response["output_sha256"] = hashlib.sha256(stdout_bytes).hexdigest()
+        except OSError as e:
+            logger.warning("Failed to save stdout to %s: %s", stdout_path, e)
 
     if stderr:
-        stderr_path = out_dir / f"{prefix}_stderr.txt"
-        stderr_bytes = stderr.encode("utf-8")
-        stderr_path.write_bytes(stderr_bytes)
-        response["stderr_file"] = str(stderr_path)
-        response["stderr_sha256"] = hashlib.sha256(stderr_bytes).hexdigest()
+        try:
+            stderr_path = out_dir / f"{prefix}_stderr.txt"
+            stderr_bytes = stderr.encode("utf-8", errors="replace")
+            with open(stderr_path, "wb") as f:
+                f.write(stderr_bytes)
+                f.flush()
+                os.fsync(f.fileno())
+            response["stderr_file"] = str(stderr_path)
+            response["stderr_sha256"] = hashlib.sha256(stderr_bytes).hexdigest()
+        except OSError as e:
+            logger.warning("Failed to save stderr to %s: %s", stderr_path, e)

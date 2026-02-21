@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
 from sift_mcp.audit import AuditWriter
+
+logger = logging.getLogger(__name__)
 from sift_mcp.catalog import get_tool_def
 from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
@@ -33,8 +37,12 @@ def register_timeline_tools(server, audit: AuditWriter):
         binary_path = find_binary(td.binary)
         if not binary_path:
             # Try installer
-            from sift_mcp.installer import install_hayabusa
-            binary_path = install_hayabusa()
+            try:
+                from sift_mcp.installer import install_hayabusa
+                binary_path = install_hayabusa()
+            except Exception as e:
+                logger.warning("Hayabusa auto-install failed: %s", e)
+                binary_path = None
             if not binary_path:
                 raise ToolNotFoundError("Hayabusa not found and auto-install failed.")
 

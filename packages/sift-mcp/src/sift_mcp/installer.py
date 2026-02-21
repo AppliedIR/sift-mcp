@@ -57,7 +57,11 @@ def install_hayabusa() -> str | None:
             return None
 
         import json
-        release = json.loads(result.stdout)
+        try:
+            release = json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            logger.warning("GitHub API response is not valid JSON: %s", e)
+            return None
         assets = release.get("assets", [])
 
         # Find Linux musl binary
@@ -132,18 +136,29 @@ def install_hayabusa() -> str | None:
 
         # Extract
         if target_name.endswith(".zip"):
-            subprocess.run(
+            extract_result = subprocess.run(
                 ["unzip", "-o", str(archive_path), "-d", str(install_dir)],
                 capture_output=True, timeout=60,
             )
+            if extract_result.returncode != 0:
+                logger.warning("unzip failed for %s: exit code %d", archive_path, extract_result.returncode)
+                return None
         elif ".tar" in target_name:
-            subprocess.run(
+            extract_result = subprocess.run(
                 ["tar", "xf", str(archive_path), "-C", str(install_dir)],
                 capture_output=True, timeout=60,
             )
+            if extract_result.returncode != 0:
+                logger.warning("tar extract failed for %s: exit code %d", archive_path, extract_result.returncode)
+                return None
 
         # Find the binary
-        for candidate in install_dir.rglob("hayabusa*"):
+        try:
+            candidates = list(install_dir.rglob("hayabusa*"))
+        except OSError as e:
+            logger.warning("Failed to search for hayabusa binary in %s: %s", install_dir, e)
+            candidates = []
+        for candidate in candidates:
             if candidate.is_file() and os.access(candidate, os.X_OK):
                 return str(candidate)
 

@@ -118,7 +118,11 @@ async def list_backends(request: Request) -> JSONResponse:
     for name, backend in gateway.backends.items():
         try:
             health = await backend.health_check()
-        except Exception:
+        except (RuntimeError, ConnectionError, OSError) as e:
+            logger.warning("Health check failed for backend %s: %s", name, e)
+            health = {"status": "error", "detail": str(e)}
+        except Exception as e:
+            logger.warning("Health check unexpected error for backend %s: %s", name, e)
             health = {"status": "error"}
 
         backends.append({

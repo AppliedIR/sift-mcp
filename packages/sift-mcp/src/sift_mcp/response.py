@@ -10,10 +10,13 @@ Every sift-mcp tool response is wrapped in an envelope that includes:
 from __future__ import annotations
 
 import itertools
+import logging
 from typing import Any
 
 from forensic_knowledge import loader
 from sift_mcp.audit import resolve_examiner
+
+logger = logging.getLogger(__name__)
 
 # Rotating discipline reminders — deterministic based on call counter
 DISCIPLINE_REMINDERS = [
@@ -76,7 +79,11 @@ def build_response(
 
     # Load forensic-knowledge context
     fk_name = fk_tool_name or tool_name
-    corroboration, caveats, advisories, field_notes, field_meanings, cross_mcp_checks = _build_knowledge_context(fk_name)
+    try:
+        corroboration, caveats, advisories, field_notes, field_meanings, cross_mcp_checks = _build_knowledge_context(fk_name)
+    except Exception as e:
+        logger.warning("FK knowledge context unavailable for %s: %s", fk_name, e)
+        corroboration, caveats, advisories, field_notes, field_meanings, cross_mcp_checks = {}, [], [], {}, {}, []
 
     if caveats:
         response["caveats"] = caveats
@@ -103,9 +110,13 @@ def build_response(
     if exit_code is not None:
         metadata["exit_code"] = exit_code
         # Look up exit code meaning from FK
-        tool_info = loader.get_tool(fk_name)
-        if tool_info and exit_code in (tool_info.get("exit_code_hints") or {}):
-            metadata["exit_code_meaning"] = tool_info["exit_code_hints"][exit_code]
+        try:
+            tool_info = loader.get_tool(fk_name)
+            exit_hints = tool_info.get("exit_code_hints") or {} if tool_info else {}
+            if exit_code in exit_hints:
+                metadata["exit_code_meaning"] = exit_hints[exit_code]
+        except Exception as e:
+            logger.debug("FK exit_code_hints lookup failed for %s: %s", fk_name, e)
     if command:
         metadata["command"] = command
     if metadata:
@@ -121,7 +132,12 @@ def _build_knowledge_context(
 
     Returns: (corroboration, caveats, advisories, field_notes, field_meanings, cross_mcp_checks)
     """
-    tool_info = loader.get_tool(tool_name)
+    try:
+        tool_info = loader.get_tool(tool_name)
+    except Exception as e:
+        logger.debug("FK loader.get_tool(%s) failed: %s", tool_name, e)
+        return {}, [], [], {}, {}, []
+
     if not tool_info:
         return {}, [], [], {}, {}, []
 
@@ -133,7 +149,11 @@ def _build_knowledge_context(
     cross_mcp: list[dict] = []
 
     for artifact_name in tool_info.get("artifacts_parsed", []):
-        artifact = loader.get_artifact(artifact_name)
+        try:
+            artifact = loader.get_artifact(artifact_name)
+        except Exception as e:
+            logger.debug("FK loader.get_artifact(%s) failed: %s", artifact_name, e)
+            continue
         if not artifact:
             continue
 

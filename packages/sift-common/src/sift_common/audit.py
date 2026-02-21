@@ -56,7 +56,11 @@ class AuditWriter:
             logger.warning("AIIR_CASE_DIR=%s is not a directory, skipping audit", case_dir)
             return None
         audit_dir = path / "examiners" / self.examiner / "audit"
-        audit_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            audit_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logger.warning("Cannot create audit directory %s: %s", audit_dir, e)
+            return None
         return audit_dir
 
     def _next_evidence_id(self) -> str:
@@ -101,8 +105,8 @@ class AuditWriter:
                             pass
                 except json.JSONDecodeError:
                     continue
-        except Exception:
-            pass
+        except OSError as e:
+            logger.warning("Failed to read audit log %s for sequence resume: %s", log_file, e)
         return max_seq
 
     def log(
@@ -153,7 +157,12 @@ class AuditWriter:
                 f.flush()
                 os.fsync(f.fileno())
         except OSError as e:
-            logger.warning("Failed to write audit entry: %s", e)
+            logger.warning(
+                "Failed to write audit entry for evidence_id=%s: %s — "
+                "this evidence_id was NOT durably recorded",
+                entry.get("evidence_id", "unknown"),
+                e,
+            )
 
     def get_entries(
         self, since: str | None = None, case_id: str | None = None

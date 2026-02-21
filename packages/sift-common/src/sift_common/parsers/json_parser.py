@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def parse_json(text: str, *, max_entries: int = 1000) -> dict[str, Any]:
@@ -18,7 +21,16 @@ def parse_json(text: str, *, max_entries: int = 1000) -> dict[str, Any]:
     if not text.strip():
         return {"data": None, "total_entries": 0, "truncated": False}
 
-    parsed = json.loads(text)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as e:
+        logger.warning("JSON parse error at position %d: %s", e.pos or 0, e)
+        return {
+            "data": None,
+            "total_entries": 0,
+            "truncated": False,
+            "parse_error": f"Invalid JSON: {e}",
+        }
 
     if isinstance(parsed, list):
         total = len(parsed)

@@ -142,7 +142,17 @@ def create_mcp_server(gateway: Any) -> Server:
         except LookupError:
             pass
 
-        result = await gateway.call_tool(name, arguments, analyst=analyst)
+        try:
+            result = await gateway.call_tool(name, arguments, analyst=analyst)
+        except KeyError as e:
+            logger.warning("MCP call_tool unknown tool: %s", e)
+            return [TextContent(type="text", text=f"Error: unknown tool {name}")]
+        except (RuntimeError, ConnectionError, OSError) as e:
+            logger.error("MCP call_tool backend error for %s: %s", name, e)
+            return [TextContent(type="text", text=f"Error: backend failure for {name}: {e}")]
+        except Exception as e:
+            logger.error("MCP call_tool unexpected error for %s: %s: %s", name, type(e).__name__, e)
+            return [TextContent(type="text", text=f"Error: {type(e).__name__}: {e}")]
 
         # Normalise to list of TextContent for the MCP protocol
         contents: list[TextContent] = []
