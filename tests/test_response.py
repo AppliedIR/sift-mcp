@@ -156,3 +156,50 @@ class TestAudit:
         writer = AuditWriter()
         eid = writer.log(tool="test", params={}, result_summary={})
         assert eid.startswith("sift-")  # Still returns an ID
+
+    def test_canonical_fields(self, tmp_path, monkeypatch):
+        from sift_mcp.audit import AuditWriter
+        import json
+
+        case_dir = tmp_path / "test-case"
+        case_dir.mkdir()
+        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+
+        writer = AuditWriter()
+        writer.log(tool="run_command", params={"cmd": "ls"}, result_summary={"ok": True})
+
+        log_file = case_dir / "examiners" / "tester" / "audit" / "sift-mcp.jsonl"
+        entry = json.loads(log_file.read_text().strip())
+        assert entry["mcp"] == "sift-mcp"
+        assert entry["source"] == "mcp_server"
+        assert "case_id" in entry
+        assert "result_summary" in entry
+        assert "params" in entry
+
+    def test_thread_safe_sequence(self, tmp_path, monkeypatch):
+        from sift_mcp.audit import AuditWriter
+        import threading
+
+        case_dir = tmp_path / "test-case"
+        case_dir.mkdir()
+        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+
+        writer = AuditWriter()
+        ids = []
+        lock = threading.Lock()
+
+        def log_one():
+            eid = writer.log(tool="test", params={}, result_summary={})
+            with lock:
+                ids.append(eid)
+
+        threads = [threading.Thread(target=log_one) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(ids) == 10
+        assert len(set(ids)) == 10
