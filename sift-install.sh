@@ -967,13 +967,16 @@ echo "  $STEP. Configure your LLM client:  aiir setup client"
 STEP=$((STEP + 1))
 echo "  $STEP. Verify installation:         aiir setup test"
 
-if $INSTALL_RAG; then
+if $INSTALL_RAG || $INSTALL_TRIAGE; then
     echo ""
     echo "Deferred setup:"
-    echo "  RAG index:   $VENV_PYTHON -m rag_mcp.build"
+fi
+if $INSTALL_RAG; then
+    echo "  RAG index:   ~/.aiir/venv/bin/python -m rag_mcp.build"
 fi
 if $INSTALL_TRIAGE; then
-    echo "  Triage DBs:  see $INSTALL_DIR/packages/windows-triage/SETUP.md"
+    echo "  Triage DBs:  Bundled baselines are ready to use. Optional 12GB registry"
+    echo "               database: see packages/windows-triage/ in the source repo."
 fi
 
 echo ""
