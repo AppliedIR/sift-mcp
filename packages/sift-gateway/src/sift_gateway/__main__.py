@@ -3,6 +3,7 @@
 import argparse
 import logging
 import sys
+from pathlib import Path
 
 import uvicorn
 import yaml
@@ -56,7 +57,28 @@ def main():
         print(f"ERROR: Config 'gateway' key must be a mapping, got {type(gw_config).__name__}", file=sys.stderr)
         sys.exit(1)
 
-    host = args.host or gw_config.get("host", "127.0.0.1")
+    # TLS configuration
+    tls_config = gw_config.get("tls", {})
+    ssl_kwargs = {}
+    if tls_config:
+        certfile = tls_config.get("certfile")
+        keyfile = tls_config.get("keyfile")
+        if not certfile or not keyfile:
+            logger.error("TLS config requires both 'certfile' and 'keyfile'")
+            print("ERROR: TLS config requires both 'certfile' and 'keyfile'", file=sys.stderr)
+            sys.exit(1)
+        if not Path(certfile).is_file():
+            logger.error("TLS certificate file not found: %s", certfile)
+            print(f"ERROR: TLS certificate file not found: {certfile}", file=sys.stderr)
+            sys.exit(1)
+        if not Path(keyfile).is_file():
+            logger.error("TLS key file not found: %s", keyfile)
+            print(f"ERROR: TLS key file not found: {keyfile}", file=sys.stderr)
+            sys.exit(1)
+        ssl_kwargs["ssl_certfile"] = certfile
+        ssl_kwargs["ssl_keyfile"] = keyfile
+
+    host = args.host or gw_config.get("host", "0.0.0.0" if ssl_kwargs else "127.0.0.1")
     port = args.port or gw_config.get("port", 4508)
     if not isinstance(port, int):
         logger.error("Config 'gateway.port' must be an integer, got %r", port)
@@ -65,7 +87,11 @@ def main():
 
     gateway = Gateway(config)
     app = gateway.create_app()
-    uvicorn.run(app, host=host, port=port, log_level=gw_config.get("log_level", "info").lower())
+    uvicorn.run(
+        app, host=host, port=port,
+        log_level=gw_config.get("log_level", "info").lower(),
+        **ssl_kwargs,
+    )
 
 
 if __name__ == "__main__":

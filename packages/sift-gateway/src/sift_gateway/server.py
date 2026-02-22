@@ -12,21 +12,15 @@ from sift_gateway.backends import create_backend, MCPBackend
 from sift_gateway.auth import AuthMiddleware
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import (
+    ANALYST_TOOLS,
     MCPAuthASGIApp,
+    create_backend_mcp_server,
     create_mcp_server,
     create_session_manager,
 )
 from sift_gateway.rest import rest_routes
 
 logger = logging.getLogger(__name__)
-
-# Tools that accept analyst_override for identity injection.
-# Defined at module level to avoid per-call allocation.
-_ANALYST_TOOLS: frozenset[str] = frozenset({
-    "record_action", "record_finding", "record_timeline_event",
-    "add_todo", "update_todo", "complete_todo",
-    "log_reasoning", "log_external_action",
-})
 
 
 class Gateway:
@@ -196,7 +190,7 @@ class Gateway:
         # Role-based filtering (e.g., restricting certain tools by role) is
         # deferred — currently all authenticated users can call any tool.
         if examiner:
-            if actual_name in _ANALYST_TOOLS:
+            if actual_name in ANALYST_TOOLS:
                 arguments = {**arguments, "analyst_override": examiner}
 
         logger.info("Routing tool %s -> backend %s (examiner=%s)", actual_name, backend_name, examiner)
@@ -211,26 +205,44 @@ class Gateway:
 
         The app manages the gateway lifecycle via lifespan events.
         Includes both REST and Streamable HTTP MCP surfaces.
+
+        Each backend gets a dedicated MCP endpoint at ``/mcp/{name}``
+        alongside the aggregate endpoint at ``/mcp``.
         """
         gateway = self
         api_keys = self.config.get("api_keys", {})
 
-        # Build MCP endpoint components
+        # Build aggregate MCP endpoint components
         mcp_server = create_mcp_server(gateway)
         session_manager = create_session_manager(mcp_server)
         mcp_asgi_app = MCPAuthASGIApp(session_manager, api_keys=api_keys)
 
+        # Build per-backend MCP endpoints
+        backend_session_managers = []
+        per_backend_routes = []
+        for name in self.backends:
+            b_server = create_backend_mcp_server(gateway, name)
+            b_sm = create_session_manager(b_server)
+            b_asgi = MCPAuthASGIApp(b_sm, api_keys=api_keys)
+            backend_session_managers.append(b_sm)
+            per_backend_routes.append(Mount(f"/mcp/{name}", app=b_asgi))
+
         @contextlib.asynccontextmanager
         async def lifespan(app):
-            """Start backends → MCP session manager → yield → stop."""
+            """Start backends → all MCP session managers → yield → stop."""
             await gateway.start()
-            async with session_manager.run():
+            async with contextlib.AsyncExitStack() as stack:
+                await stack.enter_async_context(session_manager.run())
+                for b_sm in backend_session_managers:
+                    await stack.enter_async_context(b_sm.run())
                 yield
             await gateway.stop()
 
         routes = []
         routes.extend(health_routes())
         routes.extend(rest_routes())
+        # Per-backend routes BEFORE aggregate (Starlette matches first)
+        routes.extend(per_backend_routes)
         routes.append(Mount("/mcp", app=mcp_asgi_app))
 
         app = Starlette(

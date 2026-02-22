@@ -33,7 +33,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Public paths skip auth
-        if request.url.path in _PUBLIC_PATHS:
+        # /mcp and /mcp/* are handled by MCPAuthASGIApp (ASGI-level auth)
+        if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/mcp"):
             request.state.examiner = None
             request.state.role = None
             return await call_next(request)

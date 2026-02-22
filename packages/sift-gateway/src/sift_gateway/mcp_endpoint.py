@@ -24,6 +24,13 @@ from sift_gateway.rate_limit import check_rate_limit
 
 logger = logging.getLogger(__name__)
 
+# Tools that accept analyst_override for identity injection.
+ANALYST_TOOLS: frozenset[str] = frozenset({
+    "record_action", "record_finding", "record_timeline_event",
+    "add_todo", "update_todo", "complete_todo",
+    "log_reasoning", "log_external_action",
+})
+
 # Maximum length for bearer tokens (DoS protection)
 _MAX_TOKEN_LENGTH = 1024
 
@@ -216,6 +223,62 @@ def create_mcp_server(gateway: Any) -> Server:
             return [TextContent(type="text", text=f"Error: {type(e).__name__}: {e}")]
 
         # Normalise to list of TextContent for the MCP protocol
+        contents: list[TextContent] = []
+        for item in result:
+            if isinstance(item, TextContent):
+                contents.append(item)
+            elif hasattr(item, "model_dump"):
+                contents.append(TextContent(type="text", text=json.dumps(item.model_dump())))
+            else:
+                contents.append(TextContent(type="text", text=str(item)))
+        return contents
+
+    return server
+
+
+def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
+    """Build a low-level MCP ``Server`` exposing only *backend_name*'s tools.
+
+    Unlike :func:`create_mcp_server` (which aggregates all backends), this
+    creates a dedicated server for a single backend.  Each gets its own
+    ``Server`` + ``StreamableHTTPSessionManager`` + ``MCPAuthASGIApp`` triple
+    so that MCP sessions are isolated per backend.
+    """
+    backend = gateway.backends[backend_name]
+    server = Server(f"sift-gateway/{backend_name}")
+
+    @server.list_tools()
+    async def _list_tools() -> list[Tool]:
+        return await backend.list_tools()
+
+    @server.call_tool()
+    async def _call_tool(name: str, arguments: dict) -> Sequence[TextContent]:
+        examiner = None
+        try:
+            ctx = server.request_context
+            request: Request | None = ctx.request
+            if request is not None:
+                examiner = getattr(request.state, "examiner", None)
+                if examiner is None:
+                    examiner = getattr(request.state, "analyst", None)
+        except LookupError:
+            pass
+
+        # Inject examiner identity for analyst tools
+        if examiner and name in ANALYST_TOOLS:
+            arguments = {**arguments, "analyst_override": examiner}
+
+        try:
+            result = await backend.call_tool(name, arguments)
+        except (RuntimeError, ConnectionError, OSError) as e:
+            logger.error("Per-backend call_tool error for %s/%s: %s", backend_name, name, e)
+            return [TextContent(type="text", text=f"Error: backend failure for {name}: {e}")]
+        except Exception as e:
+            logger.error("Per-backend call_tool unexpected error for %s/%s: %s: %s",
+                         backend_name, name, type(e).__name__, e)
+            return [TextContent(type="text", text=f"Error: {type(e).__name__}: {e}")]
+
+        # Normalise to list of TextContent
         contents: list[TextContent] = []
         for item in result:
             if isinstance(item, TextContent):

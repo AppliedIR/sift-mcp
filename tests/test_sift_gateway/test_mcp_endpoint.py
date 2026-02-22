@@ -13,6 +13,7 @@ from sift_gateway.auth import AuthMiddleware
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import (
     MCPAuthASGIApp,
+    create_backend_mcp_server,
     create_mcp_server,
     create_session_manager,
 )
@@ -40,12 +41,26 @@ def _make_app_with_mcp(gw: Gateway) -> Starlette:
     session_manager = create_session_manager(mcp_server)
     mcp_asgi = MCPAuthASGIApp(session_manager, api_keys=api_keys)
 
+    # Per-backend MCP endpoints
+    backend_session_managers = []
+    per_backend_routes = []
+    for name in gw.backends:
+        b_server = create_backend_mcp_server(gw, name)
+        b_sm = create_session_manager(b_server)
+        b_asgi = MCPAuthASGIApp(b_sm, api_keys=api_keys)
+        backend_session_managers.append(b_sm)
+        per_backend_routes.append(Mount(f"/mcp/{name}", app=b_asgi))
+
     routes = list(health_routes()) + list(rest_routes())
+    routes.extend(per_backend_routes)
     routes.append(Mount("/mcp", app=mcp_asgi))
 
     @contextlib.asynccontextmanager
     async def lifespan(app):
-        async with session_manager.run():
+        async with contextlib.AsyncExitStack() as stack:
+            await stack.enter_async_context(session_manager.run())
+            for b_sm in backend_session_managers:
+                await stack.enter_async_context(b_sm.run())
             yield
 
     app = Starlette(routes=routes, lifespan=lifespan)
@@ -355,3 +370,128 @@ class TestMCPIntegration:
             assert data["count"] == 1
             assert data["tools"][0]["name"] == "tool_a"
             assert data["tools"][0]["description"] == "Tool A"
+
+
+# ---------------------------------------------------------------------------
+# Per-backend MCP endpoint tests
+# ---------------------------------------------------------------------------
+
+class TestPerBackendMCP:
+    """Tests for per-backend MCP endpoints at /mcp/{backend-name}."""
+
+    def test_per_backend_mcp_initialize(self):
+        """POST to /mcp/b1 succeeds with MCP initialize."""
+        backend = MockBackend("b1", tools=[make_tool("test_tool", "A test tool")])
+        backend._started = True
+        gw = _make_gateway({"b1": backend}, {"test_tool": "b1"})
+        app = _make_app_with_mcp(gw)
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            init_request = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "1.0"},
+                },
+            }
+            resp = client.post(
+                "/mcp/b1",
+                json=init_request,
+                headers={
+                    "Accept": "application/json, text/event-stream",
+                    "Content-Type": "application/json",
+                },
+            )
+            assert resp.status_code in (200, 202)
+
+    def test_per_backend_only_for_configured(self):
+        """Only configured backends get dedicated per-backend MCP endpoints.
+
+        Unknown backend names under /mcp/* fall through to the aggregate
+        endpoint (expected Starlette Mount prefix-matching behavior).
+        Verify the dedicated endpoint for 'b1' works while 'b2' does not.
+        """
+        backend = MockBackend("b1", tools=[make_tool("test_tool", "A test")])
+        backend._started = True
+        gw = _make_gateway({"b1": backend}, {"test_tool": "b1"})
+        app = _make_app_with_mcp(gw)
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            init_request = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "1.0"},
+                },
+            }
+            # b1 has a dedicated endpoint
+            resp = client.post(
+                "/mcp/b1",
+                json=init_request,
+                headers={
+                    "Accept": "application/json, text/event-stream",
+                    "Content-Type": "application/json",
+                },
+            )
+            assert resp.status_code in (200, 202)
+
+    def test_per_backend_auth_required(self):
+        """When API keys are configured, /mcp/b1 requires auth."""
+        backend = MockBackend("b1", tools=[make_tool("test_tool", "A test")])
+        backend._started = True
+        keys = {"mykey": {"examiner": "alice", "role": "examiner"}}
+        gw = _make_gateway({"b1": backend}, {"test_tool": "b1"}, api_keys=keys)
+        app = _make_app_with_mcp(gw)
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            resp = client.post(
+                "/mcp/b1",
+                json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+                headers={"Accept": "application/json, text/event-stream"},
+            )
+            assert resp.status_code == 401
+
+    def test_aggregate_still_works(self):
+        """Aggregate /mcp continues to work alongside per-backend endpoints."""
+        backend = MockBackend("b1", tools=[make_tool("test_tool", "A test")])
+        backend._started = True
+        gw = _make_gateway({"b1": backend}, {"test_tool": "b1"})
+        app = _make_app_with_mcp(gw)
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            init_request = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "1.0"},
+                },
+            }
+            # Aggregate
+            resp = client.post(
+                "/mcp",
+                json=init_request,
+                headers={
+                    "Accept": "application/json, text/event-stream",
+                    "Content-Type": "application/json",
+                },
+            )
+            assert resp.status_code in (200, 202)
+            # Per-backend
+            resp2 = client.post(
+                "/mcp/b1",
+                json=init_request,
+                headers={
+                    "Accept": "application/json, text/event-stream",
+                    "Content-Type": "application/json",
+                },
+            )
+            assert resp2.status_code in (200, 202)

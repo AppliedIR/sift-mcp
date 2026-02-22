@@ -1,5 +1,6 @@
 """REST API routes for /api/v1/."""
 
+import asyncio
 import json
 import logging
 from starlette.requests import Request
@@ -141,10 +142,119 @@ async def list_backends(request: Request) -> JSONResponse:
     return JSONResponse({"backends": backends, "count": len(backends)})
 
 
+# ---------------------------------------------------------------------------
+# Service management endpoints
+# ---------------------------------------------------------------------------
+
+async def list_services(request: Request) -> JSONResponse:
+    """GET /api/v1/services — list all backends with health and started status."""
+    gateway = request.app.state.gateway
+
+    services = []
+    for name, backend in gateway.backends.items():
+        try:
+            health = await backend.health_check()
+        except Exception as e:
+            logger.warning("Health check failed for service %s: %s", name, e)
+            health = {"status": "error"}
+
+        services.append({
+            "name": name,
+            "type": backend.config.get("type", "stdio"),
+            "started": backend._started,
+            "health": health,
+        })
+
+    return JSONResponse({"services": services, "count": len(services)})
+
+
+async def start_service(request: Request) -> JSONResponse:
+    """POST /api/v1/services/{name}/start — start a backend and rebuild tool map."""
+    gateway = request.app.state.gateway
+    name = request.path_params["name"]
+
+    if name not in gateway.backends:
+        return JSONResponse({"error": f"Unknown backend: {name}"}, status_code=404)
+
+    backend = gateway.backends[name]
+    if backend._started:
+        return JSONResponse({"status": "already_running", "name": name})
+
+    try:
+        await asyncio.wait_for(backend.start(), timeout=30.0)
+    except asyncio.TimeoutError:
+        return JSONResponse({"error": f"Start timed out for {name}"}, status_code=504)
+    except Exception as e:
+        logger.error("Failed to start service %s: %s", name, e)
+        return JSONResponse({"error": f"Failed to start: {e}"}, status_code=500)
+
+    await gateway._build_tool_map()
+    return JSONResponse({"status": "started", "name": name})
+
+
+async def stop_service(request: Request) -> JSONResponse:
+    """POST /api/v1/services/{name}/stop — stop a backend and rebuild tool map."""
+    gateway = request.app.state.gateway
+    name = request.path_params["name"]
+
+    if name not in gateway.backends:
+        return JSONResponse({"error": f"Unknown backend: {name}"}, status_code=404)
+
+    backend = gateway.backends[name]
+    if not backend._started:
+        return JSONResponse({"status": "already_stopped", "name": name})
+
+    try:
+        await asyncio.wait_for(backend.stop(), timeout=10.0)
+    except asyncio.TimeoutError:
+        return JSONResponse({"error": f"Stop timed out for {name}"}, status_code=504)
+    except Exception as e:
+        logger.error("Failed to stop service %s: %s", name, e)
+        return JSONResponse({"error": f"Failed to stop: {e}"}, status_code=500)
+
+    await gateway._build_tool_map()
+    return JSONResponse({"status": "stopped", "name": name})
+
+
+async def restart_service(request: Request) -> JSONResponse:
+    """POST /api/v1/services/{name}/restart — stop + start a backend."""
+    gateway = request.app.state.gateway
+    name = request.path_params["name"]
+
+    if name not in gateway.backends:
+        return JSONResponse({"error": f"Unknown backend: {name}"}, status_code=404)
+
+    backend = gateway.backends[name]
+
+    # Stop if running
+    if backend._started:
+        try:
+            await asyncio.wait_for(backend.stop(), timeout=10.0)
+        except Exception as e:
+            logger.error("Failed to stop service %s during restart: %s", name, e)
+            return JSONResponse({"error": f"Failed to stop during restart: {e}"}, status_code=500)
+
+    # Start
+    try:
+        await asyncio.wait_for(backend.start(), timeout=30.0)
+    except asyncio.TimeoutError:
+        return JSONResponse({"error": f"Start timed out for {name}"}, status_code=504)
+    except Exception as e:
+        logger.error("Failed to start service %s during restart: %s", name, e)
+        return JSONResponse({"error": f"Failed to start during restart: {e}"}, status_code=500)
+
+    await gateway._build_tool_map()
+    return JSONResponse({"status": "restarted", "name": name})
+
+
 def rest_routes() -> list[Route]:
     """Return REST API v1 routes."""
     return [
         Route("/api/v1/tools", list_tools, methods=["GET"]),
         Route("/api/v1/tools/{tool_name}", call_tool, methods=["POST"]),
         Route("/api/v1/backends", list_backends, methods=["GET"]),
+        Route("/api/v1/services", list_services, methods=["GET"]),
+        Route("/api/v1/services/{name}/start", start_service, methods=["POST"]),
+        Route("/api/v1/services/{name}/stop", stop_service, methods=["POST"]),
+        Route("/api/v1/services/{name}/restart", restart_service, methods=["POST"]),
     ]

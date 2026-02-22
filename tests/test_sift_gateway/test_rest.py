@@ -232,3 +232,82 @@ class TestListBackends:
         names = {b["name"] for b in data["backends"]}
         assert "backend-a" in names
         assert "backend-b" in names
+
+
+class TestServiceManagement:
+    def test_list_services(self, mock_backends):
+        for b in mock_backends.values():
+            b._started = True
+        gw = _make_test_gateway(mock_backends)
+        app = _make_test_app(gw)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/api/v1/services")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["count"] == 2
+        names = {s["name"] for s in data["services"]}
+        assert "backend-a" in names
+        assert "backend-b" in names
+        # All started
+        for s in data["services"]:
+            assert s["started"] is True
+
+    def test_stop_service(self, mock_backends):
+        for b in mock_backends.values():
+            b._started = True
+        tool_map = {"analyze_file": "backend-a", "search_intel": "backend-b"}
+        gw = _make_test_gateway(mock_backends, tool_map)
+        app = _make_test_app(gw)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post("/api/v1/services/backend-a/stop")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "stopped"
+        assert not mock_backends["backend-a"]._started
+
+    def test_start_service(self, mock_backends):
+        # Start with stopped backends
+        tool_map = {}
+        gw = _make_test_gateway(mock_backends, tool_map)
+        app = _make_test_app(gw)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post("/api/v1/services/backend-a/start")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "started"
+        assert mock_backends["backend-a"]._started
+
+    def test_restart_service(self, mock_backends):
+        for b in mock_backends.values():
+            b._started = True
+        tool_map = {"analyze_file": "backend-a"}
+        gw = _make_test_gateway(mock_backends, tool_map)
+        app = _make_test_app(gw)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post("/api/v1/services/backend-a/restart")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "restarted"
+        assert mock_backends["backend-a"]._started
+
+    def test_start_unknown_404(self, mock_backends):
+        gw = _make_test_gateway(mock_backends)
+        app = _make_test_app(gw)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post("/api/v1/services/no-such/start")
+        assert resp.status_code == 404
+
+    def test_stop_already_stopped(self, mock_backends):
+        # Backends start as not started by default
+        gw = _make_test_gateway(mock_backends)
+        app = _make_test_app(gw)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post("/api/v1/services/backend-a/stop")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "already_stopped"
+
+    def test_start_already_running(self, mock_backends):
+        mock_backends["backend-a"]._started = True
+        gw = _make_test_gateway(mock_backends)
+        app = _make_test_app(gw)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.post("/api/v1/services/backend-a/start")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "already_running"
