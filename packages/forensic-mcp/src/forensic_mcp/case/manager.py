@@ -281,6 +281,7 @@ class CaseManager:
                 os.fsync(f.fileno())
         except OSError as e:
             logger.warning("Failed to write action log: %s", e)
+            return {"status": "write_failed", "timestamp": ts, "error": str(e)}
 
         return {"status": "recorded", "timestamp": ts}
 
