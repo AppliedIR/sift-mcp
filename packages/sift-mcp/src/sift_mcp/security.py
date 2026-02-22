@@ -19,6 +19,12 @@ _TOOL_ALLOWED_FLAGS: dict[str, set[str]] = {
     "run_bulk_extractor": {"-e", "-x"},  # -e enables scanner, -x disables
 }
 
+# Per-tool blocked flags: flags that are safe globally but dangerous for specific tools
+_TOOL_BLOCKED_FLAGS: dict[str, set[str]] = {
+    "find": {"-exec", "-execdir", "-delete"},  # catalog gate bypass / file deletion
+    "sed": {"-i", "--in-place"},               # in-place evidence modification
+}
+
 
 def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]:
     """Validate extra_args to block dangerous flags and shell metacharacters.
@@ -29,12 +35,17 @@ def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]
         return []
 
     tool_allowed = _TOOL_ALLOWED_FLAGS.get(tool_name, set())
+    tool_blocked = _TOOL_BLOCKED_FLAGS.get(tool_name, set())
 
     sanitized = []
     for arg in extra_args:
         if not isinstance(arg, str):
             raise ValueError(f"Non-string argument in extra_args: {type(arg).__name__}")
         flag = arg.lower().split("=")[0]
+        if flag in tool_blocked:
+            raise ValueError(
+                f"Blocked dangerous flag '{arg}' for {tool_name}"
+            )
         if flag in _DANGEROUS_FLAGS and flag not in tool_allowed:
             raise ValueError(
                 f"Blocked dangerous flag '{arg}' in extra_args for {tool_name}"

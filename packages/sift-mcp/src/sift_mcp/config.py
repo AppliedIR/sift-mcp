@@ -31,10 +31,14 @@ class SiftConfig:
     # Case directory (from env)
     case_dir: str = ""
 
+    # SMB share mount point for wintools extraction files
+    share_root: str = ""
+
     @classmethod
     def from_env(cls) -> SiftConfig:
         cfg = cls()
         cfg.case_dir = os.environ.get("AIIR_CASE_DIR", "")
+        cfg.share_root = os.environ.get("AIIR_SHARE_ROOT", "")
 
         extra_paths = os.environ.get("SIFT_TOOL_PATHS", "")
         if extra_paths:

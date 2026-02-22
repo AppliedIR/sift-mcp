@@ -25,6 +25,15 @@ class TestSiftConfig:
         assert cfg.tool_paths[0] == "/opt/custom"
         assert cfg.tool_paths[1] == "/opt/other"
 
+    def test_share_root_default(self):
+        cfg = SiftConfig()
+        assert cfg.share_root == ""
+
+    def test_share_root_from_env(self, monkeypatch):
+        monkeypatch.setenv("AIIR_SHARE_ROOT", "/mnt/wintools")
+        cfg = SiftConfig.from_env()
+        assert cfg.share_root == "/mnt/wintools"
+
     def test_get_config(self):
         cfg = get_config()
         assert isinstance(cfg, SiftConfig)

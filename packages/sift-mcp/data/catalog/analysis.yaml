@@ -1,0 +1,225 @@
+category: analysis
+
+tools:
+  # --- Text search and pattern matching ---
+  - name: grep
+    binary: grep
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "Search files for text patterns (regex supported)"
+
+  # --- Text processing ---
+  - name: awk
+    binary: awk
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "Pattern scanning and text processing language. RISK: awk system() can execute arbitrary commands — audit logging is the primary control."
+
+  - name: sed
+    binary: sed
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "Stream editor for filtering and transforming text"
+
+  - name: cut
+    binary: cut
+    input_style: positional
+    output_format: text
+    timeout_seconds: 120
+    interactive: false
+    description: "Extract columns or fields from delimited text"
+
+  - name: sort
+    binary: sort
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "Sort lines of text files"
+
+  - name: uniq
+    binary: uniq
+    input_style: positional
+    output_format: text
+    timeout_seconds: 120
+    interactive: false
+    description: "Report or filter repeated lines"
+
+  - name: wc
+    binary: wc
+    input_style: positional
+    output_format: text
+    timeout_seconds: 60
+    interactive: false
+    description: "Count lines, words, and bytes in files"
+
+  - name: head
+    binary: head
+    input_style: positional
+    output_format: text
+    timeout_seconds: 60
+    interactive: false
+    description: "Output the first lines of files"
+
+  - name: tail
+    binary: tail
+    input_style: positional
+    output_format: text
+    timeout_seconds: 60
+    interactive: false
+    description: "Output the last lines of files"
+
+  - name: tr
+    binary: tr
+    input_style: positional
+    output_format: text
+    timeout_seconds: 120
+    interactive: false
+    description: "Translate or delete characters"
+
+  - name: diff
+    binary: diff
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "Compare files line by line"
+
+  # --- Structured data ---
+  - name: jq
+    binary: jq
+    input_style: positional
+    output_format: json
+    timeout_seconds: 300
+    interactive: false
+    description: "Command-line JSON processor — filter, transform, query JSON data"
+
+  # --- Compression and archives ---
+  - name: zcat
+    binary: zcat
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "Decompress and output gzip files to stdout"
+
+  - name: zgrep
+    binary: zgrep
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "Search inside compressed files without extracting"
+
+  - name: tar
+    binary: tar
+    input_style: positional
+    output_format: text
+    timeout_seconds: 1800
+    interactive: false
+    description: "Archive extraction and listing (tar, tar.gz, tar.bz2, tar.xz)"
+
+  - name: unzip
+    binary: unzip
+    input_style: positional
+    output_format: text
+    timeout_seconds: 600
+    interactive: false
+    description: "Extract ZIP archives"
+
+  # --- File identification and metadata ---
+  - name: file
+    binary: file
+    input_style: positional
+    output_format: text
+    timeout_seconds: 60
+    interactive: false
+    description: "Identify file type by magic bytes and headers"
+
+  - name: stat
+    binary: stat
+    input_style: positional
+    output_format: text
+    timeout_seconds: 60
+    interactive: false
+    description: "Display detailed file status (size, timestamps, permissions, inode)"
+
+  - name: find
+    binary: find
+    input_style: positional
+    output_format: text
+    timeout_seconds: 600
+    interactive: false
+    description: "Search for files by name, type, size, timestamp, or other attributes"
+
+  - name: ls
+    binary: ls
+    input_style: positional
+    output_format: text
+    timeout_seconds: 60
+    interactive: false
+    description: "List directory contents with permissions and timestamps"
+
+  # --- Hashing ---
+  - name: md5sum
+    binary: md5sum
+    input_style: positional
+    output_format: text
+    timeout_seconds: 600
+    interactive: false
+    description: "Compute MD5 checksums"
+
+  - name: sha1sum
+    binary: sha1sum
+    input_style: positional
+    output_format: text
+    timeout_seconds: 600
+    interactive: false
+    description: "Compute SHA-1 checksums"
+
+  - name: sha256sum
+    binary: sha256sum
+    input_style: positional
+    output_format: text
+    timeout_seconds: 600
+    interactive: false
+    description: "Compute SHA-256 checksums"
+
+  # --- Binary inspection ---
+  - name: xxd
+    binary: xxd
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "Hex dump of binary files"
+
+  - name: hexdump
+    binary: hexdump
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "Display file contents in hex, decimal, octal, or ASCII"
+
+  - name: readelf
+    binary: readelf
+    input_style: positional
+    output_format: text
+    timeout_seconds: 120
+    interactive: false
+    description: "Display ELF binary headers, sections, and symbols"
+
+  - name: objdump
+    binary: objdump
+    input_style: positional
+    output_format: text
+    timeout_seconds: 300
+    interactive: false
+    description: "Disassemble and inspect object files and executables"

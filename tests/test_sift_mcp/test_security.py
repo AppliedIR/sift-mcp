@@ -139,3 +139,35 @@ class TestSanitizeExtraArgs:
         """bulk_extractor is exempted for -e (scanner enable)."""
         result = sanitize_extra_args(["-e", "email"], "run_bulk_extractor")
         assert result == ["-e", "email"]
+
+    # --- Per-tool blocked flags ---
+
+    def test_find_exec_blocked(self):
+        with pytest.raises(ValueError, match="Blocked dangerous flag.*find"):
+            sanitize_extra_args(["/cases", "-name", "*.log", "-exec", "rm", "{}", "+"], "find")
+
+    def test_find_execdir_blocked(self):
+        with pytest.raises(ValueError, match="Blocked dangerous flag.*find"):
+            sanitize_extra_args(["/cases", "-execdir", "cat", "{}", ";"], "find")
+
+    def test_find_delete_blocked(self):
+        with pytest.raises(ValueError, match="Blocked dangerous flag.*find"):
+            sanitize_extra_args(["/cases", "-name", "*.tmp", "-delete"], "find")
+
+    def test_find_name_allowed(self):
+        """Normal find flags should pass."""
+        result = sanitize_extra_args(["/cases", "-name", "*.evtx", "-type", "f"], "find")
+        assert "-name" in result
+
+    def test_sed_inplace_blocked(self):
+        with pytest.raises(ValueError, match="Blocked dangerous flag.*sed"):
+            sanitize_extra_args(["-i", "s/foo/bar/", "/cases/file.txt"], "sed")
+
+    def test_sed_inplace_long_blocked(self):
+        with pytest.raises(ValueError, match="Blocked dangerous flag.*sed"):
+            sanitize_extra_args(["--in-place", "s/foo/bar/", "/cases/file.txt"], "sed")
+
+    def test_sed_read_only_allowed(self):
+        """sed without -i should pass."""
+        result = sanitize_extra_args(["s/foo/bar/", "/cases/file.txt"], "sed")
+        assert "s/foo/bar/" in result
