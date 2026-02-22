@@ -43,7 +43,9 @@ def run_command(
 
     # Validate any arguments that look like file paths
     for arg in command[1:]:
-        if arg.startswith("/") and not arg.startswith("--"):
+        if arg.startswith("--"):
+            continue
+        if arg.startswith("/") or arg.startswith("..") or "/" in arg:
             validate_input_path(arg)
 
     # Resolve binary via find_binary to prevent absolute path bypass

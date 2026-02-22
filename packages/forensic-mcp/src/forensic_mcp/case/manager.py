@@ -663,9 +663,14 @@ class CaseManager:
         - ID exists, local is same or newer: SKIP
         """
         case_dir = self._require_active_case()
-        incoming = self._load_json_file(Path(incoming_path), [])
-        if not isinstance(incoming, list):
-            return {"status": "error", "message": "Incoming file must contain a JSON array"}
+        raw = self._load_json_file(Path(incoming_path), [])
+        # Accept both bare array and wrapper object {"findings": [...]}
+        if isinstance(raw, dict) and "findings" in raw:
+            incoming = raw["findings"]
+        elif isinstance(raw, list):
+            incoming = raw
+        else:
+            return {"status": "error", "message": "Incoming file must contain a JSON array or {\"findings\": [...]}"}
 
         local = self._load_findings(case_dir)
         local_by_id = {f["id"]: f for f in local if "id" in f}
@@ -673,6 +678,7 @@ class CaseManager:
         added = 0
         updated = 0
         skipped = 0
+        protected = 0
 
         for item in incoming:
             item_id = item.get("id", "")
@@ -686,6 +692,9 @@ class CaseManager:
                 added += 1
             else:
                 existing = local_by_id[item_id]
+                if existing.get("status") == "APPROVED":
+                    protected += 1
+                    continue
                 inc_ts = item.get("modified_at", item.get("staged", ""))
                 loc_ts = existing.get("modified_at", existing.get("staged", ""))
                 if inc_ts > loc_ts:
@@ -697,7 +706,7 @@ class CaseManager:
                     skipped += 1
 
         self._save_findings(case_dir, local)
-        return {"added": added, "updated": updated, "skipped": skipped}
+        return {"added": added, "updated": updated, "skipped": skipped, "protected": protected}
 
     def merge_timeline(self, incoming_path: str) -> dict:
         """Merge incoming timeline JSON into local timeline.
@@ -705,9 +714,14 @@ class CaseManager:
         Same dedup + last-write-wins logic as merge_findings.
         """
         case_dir = self._require_active_case()
-        incoming = self._load_json_file(Path(incoming_path), [])
-        if not isinstance(incoming, list):
-            return {"status": "error", "message": "Incoming file must contain a JSON array"}
+        raw = self._load_json_file(Path(incoming_path), [])
+        # Accept both bare array and wrapper object {"timeline": [...]}
+        if isinstance(raw, dict) and "timeline" in raw:
+            incoming = raw["timeline"]
+        elif isinstance(raw, list):
+            incoming = raw
+        else:
+            return {"status": "error", "message": "Incoming file must contain a JSON array or {\"timeline\": [...]}"}
 
         local = self._load_timeline(case_dir)
         local_by_id = {t["id"]: t for t in local if "id" in t}

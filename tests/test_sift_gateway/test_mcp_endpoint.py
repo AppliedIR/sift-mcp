@@ -62,8 +62,10 @@ class TestMCPAuthASGIApp:
     """Test the ASGI auth wrapper in isolation."""
 
     def _make_scope(self, headers: dict[str, str] | None = None) -> dict:
+        h = {"content-length": "0"}
+        h.update(headers or {})
         raw_headers = []
-        for k, v in (headers or {}).items():
+        for k, v in h.items():
             raw_headers.append((k.lower().encode(), v.encode()))
         return {
             "type": "http",
@@ -152,6 +154,28 @@ class TestMCPAuthASGIApp:
         assert scope["state"]["analyst"] == "alice"
         assert scope["state"]["role"] == "lead"
         dummy_session_manager.handle_request.assert_called_once()
+
+    async def test_post_without_content_length_returns_411(self, dummy_session_manager):
+        app = MCPAuthASGIApp(dummy_session_manager, api_keys={})
+        # Build scope without content-length header
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/mcp",
+            "headers": [],
+            "state": {},
+        }
+
+        sent = []
+
+        async def receive():
+            return {}
+
+        async def send(msg):
+            sent.append(msg)
+
+        await app(scope, receive, send)
+        assert any(b"411" in str(msg).encode() or msg.get("status") == 411 for msg in sent)
 
 
 # ---------------------------------------------------------------------------

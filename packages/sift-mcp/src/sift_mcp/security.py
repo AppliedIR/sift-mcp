@@ -32,6 +32,8 @@ def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]
 
     sanitized = []
     for arg in extra_args:
+        if not isinstance(arg, str):
+            raise ValueError(f"Non-string argument in extra_args: {type(arg).__name__}")
         flag = arg.lower().split("=")[0]
         if flag in _DANGEROUS_FLAGS and flag not in tool_allowed:
             raise ValueError(

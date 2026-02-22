@@ -71,6 +71,13 @@ class MCPAuthASGIApp:
 
         # Request size validation via Content-Length header
         content_length = _get_content_length(scope)
+        if content_length is None and scope.get("method", "") == "POST":
+            resp = JSONResponse(
+                {"error": "Content-Length header required"},
+                status_code=411,
+            )
+            await resp(scope, receive, send)
+            return
         if content_length is not None and content_length > _MAX_REQUEST_BYTES:
             resp = JSONResponse(
                 {"error": f"Request body too large (max {_MAX_REQUEST_BYTES} bytes)"},
