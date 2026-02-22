@@ -461,14 +461,36 @@ fi
 
 # --- windows-triage database setup ---
 if $INSTALL_TRIAGE; then
+    WT_DIR="$INSTALL_DIR/packages/windows-triage"
+    DB_DIR="$WT_DIR/data"
+
+    # Ensure zstandard is available for the download module
+    "$VENV_PYTHON" -m pip install --quiet zstandard 2>/dev/null || true
+
     if ! $AUTO_YES; then
         echo ""
         echo "windows-triage needs Windows baseline databases."
-        echo "  Set up now: clone data repos + import (takes 30-60 minutes)"
-        echo "  Skip:       see $INSTALL_DIR/packages/windows-triage/SETUP.md"
+        echo "  1. Download pre-built databases (recommended, ~1.2 GB download)"
+        echo "  2. Build from source (clones 4 repos, 30-60 minutes)"
+        echo "  3. Skip (set up later)"
         echo ""
-        if prompt_yn "Set up databases now?" "n"; then
-            WT_DIR="$INSTALL_DIR/packages/windows-triage"
+        DB_CHOICE=$(prompt "Database setup [1/2/3]" "1")
+    else
+        DB_CHOICE="1"   # -y mode: auto-download (was: skip)
+    fi
+
+    case "$DB_CHOICE" in
+        1)
+            info "Downloading pre-built databases..."
+            "$VENV_PYTHON" -m windows_triage.scripts.download_databases \
+                --dest "$DB_DIR" && \
+                ok "Databases downloaded and verified" || {
+                warn "Download failed. You can retry later:"
+                warn "  $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
+            }
+            ;;
+        2)
+            info "Building databases from source..."
             DATA_DIR="$WT_DIR/data/sources"
             mkdir -p "$DATA_DIR"
 
@@ -490,14 +512,12 @@ if $INSTALL_TRIAGE; then
             (cd "$WT_DIR" && "$VENV_PYTHON" scripts/init_databases.py && \
                 "$VENV_PYTHON" scripts/import_all.py --skip-registry) && \
                 ok "Databases imported" || warn "Database import had issues. See output above."
-        else
+            ;;
+        3|*)
             info "Skipping database setup."
-        fi
-    else
-        echo ""
-        info "windows-triage: databases can be imported later"
-        info "  See: $INSTALL_DIR/packages/windows-triage/SETUP.md"
-    fi
+            info "  Download later: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
+            ;;
+    esac
 fi
 
 # --- OpenCTI credential wizard ---
@@ -975,8 +995,7 @@ if $INSTALL_RAG; then
     echo "  RAG index:   ~/.aiir/venv/bin/python -m rag_mcp.build"
 fi
 if $INSTALL_TRIAGE; then
-    echo "  Triage DBs:  Bundled baselines are ready to use. Optional 12GB registry"
-    echo "               database: see packages/windows-triage/ in the source repo."
+    echo "  Triage DBs:  $VENV_PYTHON -m windows_triage.scripts.download_databases"
 fi
 
 echo ""

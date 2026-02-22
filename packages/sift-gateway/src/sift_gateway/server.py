@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import logging
+import time
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 
@@ -47,8 +48,28 @@ class Gateway:
             except Exception as exc:
                 logger.error("Failed to create backend %s: %s", name, exc)
 
+    @property
+    def lazy_start(self) -> bool:
+        """Whether backends start on first request instead of on boot."""
+        gw_config = self.config.get("gateway", {})
+        return gw_config.get("lazy_start", False)
+
+    @property
+    def idle_timeout(self) -> int:
+        """Seconds of idle time before a backend is stopped. 0 = never."""
+        gw_config = self.config.get("gateway", {})
+        return gw_config.get("idle_timeout_seconds", 0)
+
     async def start(self) -> None:
-        """Start all enabled backends and build the tool map."""
+        """Start all enabled backends and build the tool map.
+
+        When ``lazy_start`` is enabled in gateway config, backends are
+        not started here. They start on first request instead.
+        """
+        if self.lazy_start:
+            logger.info("Lazy start enabled. Backends start on first request.")
+            return
+
         for name, backend in self.backends.items():
             try:
                 await asyncio.wait_for(backend.start(), timeout=30.0)
@@ -113,6 +134,42 @@ class Gateway:
 
         logger.info("Tool map built: %d tools across %d backends",
                      len(self._tool_map), len(self.backends))
+
+    async def ensure_backend_started(self, backend_name: str) -> None:
+        """Start a backend if it's not running (for lazy start mode).
+
+        Also rebuilds the tool map after starting.
+        """
+        backend = self.backends.get(backend_name)
+        if backend is None:
+            return
+        if backend.started:
+            backend.last_tool_call = time.monotonic()
+            return
+        logger.info("Lazy-starting backend: %s", backend_name)
+        await asyncio.wait_for(backend.start(), timeout=30.0)
+        backend.last_tool_call = time.monotonic()
+        await self._build_tool_map()
+
+    async def _idle_reaper(self) -> None:
+        """Background task that stops backends idle longer than the timeout."""
+        timeout = self.idle_timeout
+        if timeout <= 0:
+            return
+        logger.info("Idle reaper started (timeout=%ds)", timeout)
+        while True:
+            await asyncio.sleep(60)
+            now = time.monotonic()
+            for name, backend in list(self.backends.items()):
+                if backend.started and backend.last_tool_call > 0:
+                    idle = now - backend.last_tool_call
+                    if idle > timeout:
+                        logger.info("Stopping idle backend: %s (idle %.0fs)", name, idle)
+                        try:
+                            await backend.stop()
+                        except Exception as exc:
+                            logger.error("Error stopping idle backend %s: %s", name, exc)
+                        await self._build_tool_map()
 
     async def list_tools(self) -> dict[str, str]:
         """Return the current tool map (tool_name -> backend_name)."""
@@ -231,11 +288,18 @@ class Gateway:
         async def lifespan(app):
             """Start backends → all MCP session managers → yield → stop."""
             await gateway.start()
+            reaper_task = None
+            if gateway.idle_timeout > 0:
+                reaper_task = asyncio.create_task(gateway._idle_reaper())
             async with contextlib.AsyncExitStack() as stack:
                 await stack.enter_async_context(session_manager.run())
                 for b_sm in backend_session_managers:
                     await stack.enter_async_context(b_sm.run())
                 yield
+            if reaper_task is not None:
+                reaper_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await reaper_task
             await gateway.stop()
 
         routes = []

@@ -12,6 +12,7 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import time
 from typing import Any, Sequence
 
 from mcp.server.lowlevel.server import Server
@@ -249,10 +250,17 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
 
     @server.list_tools()
     async def _list_tools() -> list[Tool]:
+        if not backend.started:
+            await gateway.ensure_backend_started(backend_name)
+        backend.last_tool_call = time.monotonic()
         return await backend.list_tools()
 
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict) -> Sequence[TextContent]:
+        if not backend.started:
+            await gateway.ensure_backend_started(backend_name)
+        backend.last_tool_call = time.monotonic()
+
         examiner = None
         try:
             ctx = server.request_context

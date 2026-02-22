@@ -40,7 +40,13 @@ curl -sSL "$AIIR_URL" | bash -s -- -y
 echo ""
 echo -e "${BOLD}Quick start complete.${NC}"
 echo ""
-echo "Gateway:  http://127.0.0.1:4508"
+# Read port from manifest if available, fall back to default
+GW_PORT=4508
+if [[ -f "$HOME/.aiir/manifest.json" ]]; then
+    _PORT=$(python3 -c "import json; print(json.load(open('$HOME/.aiir/manifest.json')).get('gateway',{}).get('port',4508))" 2>/dev/null || true)
+    [[ -n "$_PORT" ]] && GW_PORT="$_PORT"
+fi
+echo "Gateway:  http://127.0.0.1:${GW_PORT}"
 echo ""
 echo "Next steps:"
 echo "  1. Restart your shell (or: source ~/.bashrc)"

@@ -130,3 +130,63 @@ class TestGatewayToolMap:
         gw._tool_map = {}
         with pytest.raises(KeyError, match="Unknown tool"):
             await gw.call_tool("nonexistent", {})
+
+
+# --- Lazy start ---
+
+class TestLazyStart:
+    async def test_lazy_start_skips_boot(self):
+        """With lazy_start=true, gateway.start() should not start backends."""
+        gw = Gateway({"gateway": {"lazy_start": True}, "backends": {}})
+        backend = MockBackend("a", tools=[make_tool("tool_a")])
+        gw.backends = {"a": backend}
+        await gw.start()
+        assert not backend.started
+        assert gw._tool_map == {}
+
+    async def test_eager_start_default(self):
+        """Default behavior (lazy_start absent) starts backends immediately."""
+        gw = Gateway({"backends": {}})
+        backend = MockBackend("a", tools=[make_tool("tool_a")])
+        gw.backends = {"a": backend}
+        await gw.start()
+        assert backend.started
+        assert "tool_a" in gw._tool_map
+
+    async def test_ensure_backend_started(self):
+        """ensure_backend_started should start a cold backend."""
+        gw = Gateway({"gateway": {"lazy_start": True}, "backends": {}})
+        backend = MockBackend("a", tools=[make_tool("tool_a")])
+        gw.backends = {"a": backend}
+        assert not backend.started
+        await gw.ensure_backend_started("a")
+        assert backend.started
+        assert backend.last_tool_call > 0
+        assert "tool_a" in gw._tool_map
+
+    async def test_ensure_backend_started_noop_if_running(self):
+        """ensure_backend_started should just update timestamp if already running."""
+        gw = Gateway({"backends": {}})
+        backend = MockBackend("a", tools=[make_tool("tool_a")])
+        gw.backends = {"a": backend}
+        await backend.start()
+        old_ts = backend.last_tool_call
+        await gw.ensure_backend_started("a")
+        assert backend.started
+        assert backend.last_tool_call >= old_ts
+
+    async def test_last_tool_call_initializes_to_zero(self):
+        backend = MockBackend("a")
+        assert backend.last_tool_call == 0.0
+
+    async def test_lazy_start_property(self):
+        gw = Gateway({"gateway": {"lazy_start": True}, "backends": {}})
+        assert gw.lazy_start is True
+        gw2 = Gateway({"backends": {}})
+        assert gw2.lazy_start is False
+
+    async def test_idle_timeout_property(self):
+        gw = Gateway({"gateway": {"idle_timeout_seconds": 300}, "backends": {}})
+        assert gw.idle_timeout == 300
+        gw2 = Gateway({"backends": {}})
+        assert gw2.idle_timeout == 0

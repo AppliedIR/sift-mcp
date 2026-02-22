@@ -15,6 +15,7 @@ class MCPBackend(ABC):
         self.name = name
         self.config = config
         self._started = False
+        self.last_tool_call: float = 0.0  # time.monotonic() of last activity
 
     @property
     def enabled(self) -> bool:
