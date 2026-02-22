@@ -12,7 +12,14 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     """Run the forensic MCP server."""
     parser = argparse.ArgumentParser(description="forensic-mcp server")
-    parser.add_argument(
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--resources",
+        action="store_true",
+        default=True,
+        help="Register discipline reference data as MCP resources (default)",
+    )
+    mode_group.add_argument(
         "--deferred-tools",
         action="store_true",
         help="Register discipline reference data as tools instead of resources (for clients without resource support)",

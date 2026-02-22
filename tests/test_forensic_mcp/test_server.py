@@ -79,6 +79,94 @@ class TestServerSetup:
         assert discipline.issubset(names)
 
 
+class TestInvalidReferenceMode:
+    def test_invalid_reference_mode_raises(self):
+        with pytest.raises(ValueError, match="Invalid reference_mode"):
+            create_server(reference_mode="invalid")
+
+    def test_typo_reference_mode_raises(self):
+        with pytest.raises(ValueError, match="Invalid reference_mode"):
+            create_server(reference_mode="resource")
+
+
+class TestResourceContent:
+    """Verify MCP resources return valid content in resources mode."""
+
+    @pytest.mark.asyncio
+    async def test_investigation_framework_resource(self, server):
+        result = await server.read_resource("forensic-mcp://investigation-framework")
+        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        assert "principles" in data
+        assert "workflow" in data
+
+    @pytest.mark.asyncio
+    async def test_rules_resource(self, server):
+        result = await server.read_resource("forensic-mcp://rules")
+        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        assert len(data) > 0
+
+    @pytest.mark.asyncio
+    async def test_validation_schema_resource(self, server):
+        result = await server.read_resource("forensic-mcp://validation-schema")
+        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        assert "required_fields" in data
+        assert "valid_types" in data
+        assert "confidence_levels" in data
+
+    @pytest.mark.asyncio
+    async def test_playbooks_resource(self, server):
+        result = await server.read_resource("forensic-mcp://playbooks")
+        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        assert len(data) == 14
+
+    @pytest.mark.asyncio
+    async def test_playbook_by_name_resource(self, server):
+        result = await server.read_resource("forensic-mcp://playbook/unusual_logon")
+        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        assert data["name"] == "Unusual Logon Investigation"
+
+    @pytest.mark.asyncio
+    async def test_evidence_standards_resource(self, server):
+        result = await server.read_resource("forensic-mcp://evidence-standards")
+        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        for key in ("CONFIRMED", "INDICATED", "INFERRED", "UNKNOWN", "CONTRADICTED"):
+            assert key in data
+
+    @pytest.mark.asyncio
+    async def test_confidence_definitions_resource(self, server):
+        result = await server.read_resource("forensic-mcp://confidence-definitions")
+        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        for key in ("HIGH", "MEDIUM", "LOW", "SPECULATIVE"):
+            assert key in data
+
+    @pytest.mark.asyncio
+    async def test_anti_patterns_resource(self, server):
+        result = await server.read_resource("forensic-mcp://anti-patterns")
+        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        assert len(data) == 6
+
+    @pytest.mark.asyncio
+    async def test_evidence_template_resource(self, server):
+        result = await server.read_resource("forensic-mcp://evidence-template")
+        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        for key in ("title", "evidence_ids", "observation", "interpretation", "confidence", "type"):
+            assert key in data
+
+    @pytest.mark.asyncio
+    async def test_collection_checklist_resource(self, server):
+        result = await server.read_resource("forensic-mcp://collection-checklist/registry")
+        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        assert data["artifact_type"] == "Windows Registry"
+        assert len(data["files"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_checkpoint_resource(self, server):
+        result = await server.read_resource("forensic-mcp://checkpoint/attribution")
+        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        assert data["min_evidence_ids"] == 3
+        assert data["human_approval"] is True
+
+
 class TestDisciplineTools:
     """Discipline tools in legacy tools mode."""
 

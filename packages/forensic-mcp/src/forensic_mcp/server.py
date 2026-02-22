@@ -266,8 +266,10 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
 
     if reference_mode == "resources":
         _register_discipline_resources(server)
-    else:
+    elif reference_mode == "tools":
         _register_discipline_tools(server, audit)
+    else:
+        raise ValueError(f"Invalid reference_mode: {reference_mode!r} (expected 'resources' or 'tools')")
 
     return server
 
