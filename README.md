@@ -33,7 +33,7 @@ graph LR
 
 The diagram above shows the co-located layout (LLM client on the SIFT box). In production, the LLM client typically runs on a separate machine and connects to the gateway over the network with TLS and bearer token auth.
 
-The gateway exposes each backend as a separate MCP endpoint:
+The gateway exposes each backend as a separate MCP endpoint. Clients can connect to the aggregate endpoint or to individual backends:
 
 ```
 http://localhost:4508/mcp              # Aggregate (all tools)
@@ -70,10 +70,10 @@ graph LR
 | Tool | Description |
 |------|-------------|
 | `list_available_tools` | List all cataloged tools with installation status |
+| `list_missing_tools` | List tools not installed, with installation guidance and alternatives |
 | `get_tool_help` | Usage info, flags, caveats, and FK knowledge for a tool |
 | `check_tools` | Check which tools are installed and available |
 | `suggest_tools` | Given an artifact type, suggest relevant tools with corroboration guidance |
-| `list_missing_tools` | List tools not currently installed, with installation guidance |
 
 ### Generic Execution
 
@@ -147,8 +147,8 @@ The catalog is the security boundary. Only binaries listed in YAML catalog files
 | `timeline.yaml` | hayabusa, log2timeline, mactime, psort |
 | `sleuthkit.yaml` | fls, icat, mmls, blkls |
 | `malware.yaml` | yara, strings, ssdeep, binwalk |
-| `network.yaml` | tshark, zeek |
 | `analysis.yaml` | grep, awk, sed, cut, sort, uniq, wc, head, tail, tr, diff, jq, zcat, zgrep, tar, unzip, file, stat, find, ls, md5sum, sha1sum, sha256sum, xxd, hexdump, readelf, objdump |
+| `network.yaml` | tshark, zeek |
 | `file_analysis.yaml` | bulk_extractor |
 | `misc.yaml` | exiftool, regripper, hashdeep, 7z, dc3dd, ewfacquire, ewfmount, vshadowinfo, vshadowmount |
 
@@ -163,15 +163,16 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 ## Quick Start
 
 ```bash
-# Quickstart (core components)
+# One-command quickstart
 curl -sSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh | bash
 
-# Full install with tier selection
+# Or step by step
 git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
-./sift-install.sh
+./sift-install.sh          # Install MCP servers + gateway
+./aiir-install.sh          # Install aiir CLI + configure client
 ```
 
-The installer supports three tiers: quick (core only), recommended (+ forensic-rag + windows-triage), and custom (choose components individually). For remote client access with TLS, add `--remote`.
+The quickstart installs all core components, starts the gateway, and runs the aiir setup wizard. For tier selection (quick, recommended, custom) or remote access with TLS, run `sift-install.sh` directly.
 
 ## Configuration
 
