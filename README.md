@@ -1,6 +1,6 @@
 # SIFT MCP
 
-Catalog-gated forensic tool execution with knowledge-enriched response envelopes for the SIFT workstation. Part of the [AIIR](https://github.com/AppliedIR/aiir) platform.
+Monorepo for all SIFT-side AIIR components. The sift-mcp package provides 5 core tools for catalog-gated forensic tool execution with knowledge-enriched response envelopes. The monorepo also contains forensic-mcp (15 tools + 14 resources), sift-gateway, forensic-knowledge, forensic-rag, windows-triage, and opencti. Part of the [AIIR](https://github.com/AppliedIR/aiir) platform.
 
 ## Architecture
 
@@ -48,7 +48,7 @@ graph LR
 
 ## MCP Tools
 
-35 tools across discovery, generic execution, and tool-specific wrappers.
+5 core tools: 4 discovery + 1 generic execution.
 
 ### Discovery
 
@@ -65,60 +65,7 @@ graph LR
 |------|-------------|
 | `run_command` | Execute any cataloged tool with argument sanitization |
 
-### Zimmerman Suite (12 wrappers)
-
-| Tool | Artifact | What It Proves |
-|------|----------|----------------|
-| `run_amcacheparser` | Amcache.hve | File PRESENCE (not execution) |
-| `run_pecmd` | Prefetch (.pf) | EXECUTION with timestamps and run count |
-| `run_appcompatcacheparser` | ShimCache (SYSTEM hive) | File PRESENCE (not execution on Win10+) |
-| `run_recmd` | Registry hives | Registry values via batch file extraction |
-| `run_mftecmd` | $MFT, $UsnJrnl | File system metadata and change journal |
-| `run_evtxecmd` | .evtx files | Windows Event Log entries |
-| `run_jlecmd` | Jump Lists | User file access per application |
-| `run_lecmd` | LNK shortcuts | File access evidence with timestamps |
-| `run_sbecmd` | ShellBags | Folder access evidence |
-| `run_rbcmd` | Recycle Bin $I files | Deleted file evidence |
-| `run_srumecmd` | SRUM database | Application execution and network usage |
-| `run_sqlecmd` | SQLite databases | Browser history and other SQLite stores |
-
-### Sleuth Kit (4 wrappers)
-
-| Tool | Description |
-|------|-------------|
-| `run_fls` | List files and directories in a disk image |
-| `run_icat` | Extract a file by inode number from a disk image |
-| `run_blkls` | Extract unallocated clusters for carving |
-| `run_mmls` | Display partition table layout |
-
-### File Analysis (3 wrappers)
-
-| Tool | Description |
-|------|-------------|
-| `run_exiftool` | Extract metadata from files |
-| `extract_archive` | Extract or list archives (7z, zip, gz, tar, rar) |
-| `run_bulk_extractor` | Carve forensic records from disk images |
-
-### Timeline (2 wrappers)
-
-| Tool | Description |
-|------|-------------|
-| `run_hayabusa` | Sigma-based Windows event log analyzer |
-| `run_mactime` | Convert bodyfile to timeline |
-
-### Other Wrappers
-
-| Tool | Category | Description |
-|------|----------|-------------|
-| `run_volatility` | Memory | Run Volatility 3 plugins against a memory image |
-| `run_yara` | Malware | Run YARA rules against files or directories |
-| `run_strings` | Malware | Extract strings (ASCII, UTF-16LE, UTF-16BE) |
-| `run_tshark` | Network | Analyze PCAP with display filters and field extraction |
-| `run_zeek` | Network | Analyze PCAP and generate protocol logs |
-| `run_regripper` | Registry | Run RegRipper against a registry hive |
-| `run_hashdeep` | Hashing | Hash files with MD5, SHA-1, SHA-256 |
-| `run_dc3dd` | Imaging | Create forensic disk image with inline hashing |
-| `run_ewfacquire` | Imaging | Create E01 forensic image |
+All 30+ per-tool wrappers (Zimmerman suite, Sleuth Kit, Volatility, etc.) are consolidated into `run_command`. The tool catalog still defines each binary's input flags, output format, timeout, and FK knowledge mapping. The wrappers existed to auto-build arguments, but `run_command` validates against the same catalog schemas.
 
 ## What Can You Ask?
 
@@ -210,7 +157,7 @@ The interactive installer handles all SIFT packages (forensic-mcp, sift-mcp, sif
 | `SIFT_TIMEOUT` | `600` | Default command timeout in seconds |
 | `SIFT_TOOL_PATHS` | (none) | Extra binary search paths (colon-separated) |
 | `SIFT_HAYABUSA_DIR` | `/opt/hayabusa` | Hayabusa install location |
-| `AIIR_CASE_DIR` | (none) | Active case directory -- enables audit trail |
+| `AIIR_CASE_DIR` | (none) | Active case directory -- enables audit trail (flat layout, no examiner subdirectory) |
 | `AIIR_EXAMINER` | (none) | Examiner identity for evidence IDs and audit |
 
 ## Security Considerations

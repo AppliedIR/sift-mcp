@@ -1,7 +1,7 @@
 # AIIR Platform Architecture
 
 **Status:** Definitive reference for what is built. Not aspirational.
-**Last updated:** 2026-02-21
+**Last updated:** 2026-02-22
 
 ---
 
@@ -13,7 +13,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 2. **The gateway runs on the SIFT workstation.** It is not optional — even solo analysts use it (on localhost). It aggregates all SIFT-local MCPs behind one HTTP endpoint.
 3. **wintools-mcp runs on a Windows machine.** It is independent of the gateway. The gateway does not manage, proxy, or coordinate with wintools-mcp in any way.
 4. **Clients connect to two endpoints at most:** the gateway (for all SIFT tools) and wintools-mcp (for Windows tools). These are separate, unrelated connections.
-5. **The case directory lives on the SIFT machine.** forensic-mcp reads and writes it. The aiir CLI reads and writes it. In solo mode they share a local filesystem; in multi-examiner mode the case directory is exported via NFS or SMB.
+5. **The case directory is local per examiner.** Each examiner has their own flat case directory on their SIFT machine. forensic-mcp and the aiir CLI both read and write it. Multi-examiner collaboration uses export/merge (not shared filesystem).
 6. **Human approval is structural.** Findings stage as DRAFT. Only the aiir CLI (human, interactive, /dev/tty) can move them to APPROVED or REJECTED. The AI cannot approve its own work.
 7. **AGENTS.md is the source of truth for forensic rules.** It is LLM-agnostic. Per-client config files (CLAUDE.md, .cursorrules) are copies/derivatives, not sources.
 8. **forensic-knowledge is a shared data package.** It is a pip-installable YAML package. forensic-mcp, sift-mcp, and wintools-mcp all depend on it. It has no runtime state.
@@ -42,13 +42,13 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | Component | Purpose |
 |-----------|---------|
 | **sift-gateway** | Aggregates SIFT-local MCPs. Starts each as a stdio subprocess. Exposes all their tools via `/mcp` (Streamable HTTP) and `/api/v1/tools` (REST). API key → examiner identity mapping for multi-user. |
-| **forensic-mcp** | Case management, findings, timeline, evidence, TODOs, audit, discipline rules, reports. The investigation state machine. 48 tools. |
-| **sift-mcp** | Catalog-gated forensic tool execution on Linux/SIFT. Zimmerman suite, Volatility, Sleuth Kit, Hayabusa, etc. FK-enriched response envelopes. 35 tools, 36 catalog entries. |
+| **forensic-mcp** | Case management, findings, timeline, evidence, TODOs, discipline rules. The investigation state machine. 15 tools + 14 MCP resources. Reports, audit, and case lifecycle moved to aiir CLI. |
+| **sift-mcp** | Catalog-gated forensic tool execution on Linux/SIFT. Zimmerman suite, Volatility, Sleuth Kit, Hayabusa, etc. FK-enriched response envelopes. 5 core tools, 36 catalog entries. |
 | **forensic-rag-mcp** | Semantic search across Sigma rules, MITRE ATT&CK, Atomic Red Team, Splunk, KAPE, Velociraptor, LOLBAS, GTFOBins. |
 | **windows-triage-mcp** | Offline Windows baseline validation. Checks files, processes, services, scheduled tasks, registry, DLLs, pipes against known-good databases. |
-| **opencti-mcp** | Threat intelligence from OpenCTI. IOC lookup, threat actor search, malware search, MITRE technique search. |
-| **wintools-mcp** | Catalog-gated forensic tool execution on Windows. Zimmerman suite, Hayabusa. FK-enriched response envelopes. Denylist blocks dangerous binaries. 23 tools, 22 catalog entries. |
-| **aiir CLI** | Human-only actions: approve/reject findings, review case status, manage evidence, execute forensic commands with audit trail, configure examiner identity. Not callable by AI. |
+| **opencti-mcp** | Read-only threat intelligence from OpenCTI. IOC lookup, threat actor search, malware search, MITRE technique search. 10 tools. |
+| **wintools-mcp** | Catalog-gated forensic tool execution on Windows. Zimmerman suite, Hayabusa. FK-enriched response envelopes. Denylist blocks dangerous binaries. 7 tools, 22 catalog entries. |
+| **aiir CLI** | Human-only actions: approve/reject findings, review case status, manage evidence, generate reports, audit trail queries, case lifecycle (init/close/activate/migrate), execute forensic commands with audit trail, configure examiner identity. Not callable by AI. |
 | **sift-common** | Shared internal package. Canonical AuditWriter, operational logging (oplog), CSV/JSON/text output parsers. Used by all SIFT MCPs. |
 | **forensic-knowledge** | Pip-installable YAML data package. Tool guidance, artifact knowledge, discipline rules, playbooks, collection checklists. No runtime state. |
 
@@ -100,58 +100,52 @@ LLM Client ──streamable-http──► wintools-mcp :4624
 
 ### Multi-examiner
 
-Multiple examiners share a case. Each examiner runs their own full stack (LLM client, aiir CLI, sift-gateway, and all MCPs) on their own SIFT workstation. The case directory lives on shared storage (NFS or SMB) so all examiners read and write the same case.
+Multiple examiners work the same case. Each examiner runs their own full stack (LLM client, aiir CLI, sift-gateway, and all MCPs) on their own SIFT workstation with a local case directory. Collaboration is merge-based: examiners export findings/timeline as JSON and import each other's contributions using last-write-wins dedup.
 
 ```
 ┌─ Examiner 1 — SIFT Workstation ─┐
 │ LLM Client + aiir CLI            │
 │ sift-gateway :4508 ──► MCPs      │
-│                                   │
+│ Case Directory (local)            │
 └───────────────────────────────────┘
         │
-        ▼
-┌─ Shared Storage (NFS / SMB) ─────┐
-│ Case Directory                    │
-│   examiners/steve/                │
-│   examiners/jane/                 │
-└───────────────────────────────────┘
-        ▲
+        │  export / merge (JSON files)
         │
 ┌─ Examiner 2 — SIFT Workstation ─┐
 │ LLM Client + aiir CLI            │
 │ sift-gateway :4508 ──► MCPs      │
-│                                   │
+│ Case Directory (local)            │
 └───────────────────────────────────┘
 ```
 
-Each examiner writes to `examiners/{their-slug}/`. Reads merge all `examiners/*/` with scoped IDs. The shared case directory is exported via NFS or SMB so every examiner's stack sees the same state.
+Each examiner's findings and timeline entries include the examiner name in the ID (e.g., `F-alice-001`, `T-bob-003`). The `modified_at` field enables last-write-wins merge semantics.
 
 ---
 
 ## Case Directory Structure
 
+Flat layout. No `examiners/` subdirectory. All data files at case root.
+
 ```
 cases/INC-2026-0219/
-├── CASE.yaml                    # Case metadata (name, mode, team list)
+├── CASE.yaml                    # Case metadata (name, status, examiner)
 ├── evidence/                    # Original evidence (read-only after registration)
-├── extracted/                   # Tool output, working files
+├── extractions/                 # Extracted artifacts
 ├── reports/                     # Generated reports
-└── examiners/
-    ├── steve/
-    │   ├── findings.json        # DRAFT → APPROVED/REJECTED
-    │   ├── timeline.json
-    │   ├── todos.json
-    │   ├── evidence.json
-    │   ├── actions.jsonl         # Investigative actions (append-only)
-    │   ├── evidence_access.jsonl # Chain-of-custody log
-    │   ├── approvals.jsonl
-    │   └── audit/
-    │       ├── forensic-mcp.jsonl
-    │       ├── sift-mcp.jsonl
-    │       └── ...
-    └── jane/
-        └── (same structure)
+├── findings.json                # F-alice-001, F-alice-002, ...
+├── timeline.json                # T-alice-001, ...
+├── todos.json                   # TODO-alice-001, ...
+├── evidence.json                # Evidence registry
+├── actions.jsonl                # Investigative actions (append-only)
+├── evidence_access.jsonl        # Chain-of-custody log
+├── approvals.jsonl              # Approval audit trail
+└── audit/
+    ├── forensic-mcp.jsonl
+    ├── sift-mcp.jsonl
+    └── ...
 ```
+
+ID format includes examiner name: `F-{examiner}-{seq:03d}`, `T-{examiner}-{seq:03d}`, `TODO-{examiner}-{seq:03d}`. This makes IDs globally unique across examiners without namespace prefixing.
 
 ---
 
