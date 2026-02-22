@@ -193,6 +193,28 @@ class OpenCTIMCPServer:
                                 "description": "Max results (default: 10, max: 50)",
                                 "default": 10,
                                 "maximum": 50
+                            },
+                            "offset": {
+                                "type": "integer",
+                                "description": "Pagination offset (default: 0)",
+                                "default": 0
+                            },
+                            "labels": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Filter by labels"
+                            },
+                            "confidence_min": {
+                                "type": "integer",
+                                "description": "Minimum confidence score (0-100)"
+                            },
+                            "created_after": {
+                                "type": "string",
+                                "description": "Filter entities created after this ISO date"
+                            },
+                            "created_before": {
+                                "type": "string",
+                                "description": "Filter entities created before this ISO date"
                             }
                         },
                         "required": ["type", "query"]

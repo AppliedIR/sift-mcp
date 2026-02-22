@@ -274,8 +274,13 @@ class CaseManager:
         if command:
             entry["command"] = command
 
-        with open(case_dir / "actions.jsonl", "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
+        try:
+            with open(case_dir / "actions.jsonl", "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+        except OSError as e:
+            logger.warning("Failed to write action log: %s", e)
 
         return {"status": "recorded", "timestamp": ts}
 
@@ -1351,8 +1356,13 @@ class CaseManager:
             "detail": detail,
             "examiner": self.examiner,
         }
-        with open(log_file, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+        try:
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+        except OSError as e:
+            logger.warning("Failed to write evidence access log: %s", e)
 
     # --- Audit helpers ---
 
