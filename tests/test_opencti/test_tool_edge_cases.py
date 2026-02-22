@@ -23,7 +23,6 @@ def mock_config():
     return Config(
         opencti_url="http://localhost:8080",
         opencti_token=SecretStr("test-token"),
-        read_only=False,
     )
 
 
@@ -43,7 +42,7 @@ def mock_client():
     client.search_sightings.return_value = []
     client.search_incidents.return_value = []
     client.search_tools.return_value = []
-    client.search_course_of_action.return_value = []
+    client.search_courses_of_action.return_value = []
     client.search_infrastructure.return_value = []
     client.search_groupings.return_value = []
     client.search_notes.return_value = []
@@ -56,8 +55,6 @@ def mock_client():
     client.lookup_observable.return_value = None
     client.lookup_hash.return_value = None
     client.get_recent_indicators.return_value = []
-    client.list_enrichment_connectors.return_value = []
-    client.get_network_status.return_value = {"status": "ok"}
     return client
 
 
@@ -71,7 +68,7 @@ def server(mock_config, mock_client):
 
 
 # =============================================================================
-# Search Tool Edge Cases
+# Search Tool Edge Cases (via search_entity)
 # =============================================================================
 
 class TestSearchToolEdgeCases:
@@ -89,7 +86,9 @@ class TestSearchToolEdgeCases:
     ])
     async def test_minimal_queries(self, server, mock_client, query: str):
         """Handle minimal/empty queries."""
-        result = await server._dispatch_tool("search_threat_actor", {"query": query})
+        result = await server._dispatch_tool("search_entity", {
+            "type": "threat_actor", "query": query
+        })
         assert "results" in result
 
     @pytest.mark.asyncio
@@ -105,7 +104,9 @@ class TestSearchToolEdgeCases:
     ])
     async def test_special_char_queries(self, server, mock_client, query: str):
         """Handle special characters in queries."""
-        result = await server._dispatch_tool("search_threat_actor", {"query": query})
+        result = await server._dispatch_tool("search_entity", {
+            "type": "threat_actor", "query": query
+        })
         assert "results" in result
 
     @pytest.mark.asyncio
@@ -118,7 +119,9 @@ class TestSearchToolEdgeCases:
         ]
         for query in queries:
             try:
-                result = await server._dispatch_tool("search_threat_actor", {"query": query})
+                result = await server._dispatch_tool("search_entity", {
+                    "type": "threat_actor", "query": query
+                })
                 assert result is not None
             except ValidationError:
                 pass  # Acceptable
@@ -133,12 +136,14 @@ class TestSearchToolEdgeCases:
             "🐻",  # Emoji
         ]
         for query in queries:
-            result = await server._dispatch_tool("search_threat_actor", {"query": query})
+            result = await server._dispatch_tool("search_entity", {
+                "type": "threat_actor", "query": query
+            })
             assert "results" in result
 
 
 # =============================================================================
-# Pagination Edge Cases
+# Pagination Edge Cases (via search_entity with full-filter type)
 # =============================================================================
 
 class TestPaginationEdgeCases:
@@ -148,7 +153,8 @@ class TestPaginationEdgeCases:
     @pytest.mark.parametrize("limit", [0, 1, 100, 1000, 10000])
     async def test_limit_values(self, server, mock_client, limit: int):
         """Handle various limit values."""
-        result = await server._dispatch_tool("search_threat_actor", {
+        result = await server._dispatch_tool("search_entity", {
+            "type": "threat_actor",
             "query": "test",
             "limit": limit
         })
@@ -158,7 +164,8 @@ class TestPaginationEdgeCases:
     @pytest.mark.parametrize("offset", [0, 1, 100, 1000, 10000])
     async def test_offset_values(self, server, mock_client, offset: int):
         """Handle various offset values."""
-        result = await server._dispatch_tool("search_threat_actor", {
+        result = await server._dispatch_tool("search_entity", {
+            "type": "threat_actor",
             "query": "test",
             "offset": offset
         })
@@ -167,7 +174,8 @@ class TestPaginationEdgeCases:
     @pytest.mark.asyncio
     async def test_negative_limit(self, server, mock_client):
         """Handle negative limit."""
-        result = await server._dispatch_tool("search_threat_actor", {
+        result = await server._dispatch_tool("search_entity", {
+            "type": "threat_actor",
             "query": "test",
             "limit": -1
         })
@@ -177,7 +185,8 @@ class TestPaginationEdgeCases:
     @pytest.mark.asyncio
     async def test_negative_offset(self, server, mock_client):
         """Handle negative offset."""
-        result = await server._dispatch_tool("search_threat_actor", {
+        result = await server._dispatch_tool("search_entity", {
+            "type": "threat_actor",
             "query": "test",
             "offset": -1
         })
@@ -186,7 +195,7 @@ class TestPaginationEdgeCases:
 
 
 # =============================================================================
-# Filter Edge Cases
+# Filter Edge Cases (via search_entity with full-filter type)
 # =============================================================================
 
 class TestFilterEdgeCases:
@@ -195,7 +204,8 @@ class TestFilterEdgeCases:
     @pytest.mark.asyncio
     async def test_empty_labels_list(self, server, mock_client):
         """Handle empty labels list."""
-        result = await server._dispatch_tool("search_threat_actor", {
+        result = await server._dispatch_tool("search_entity", {
+            "type": "threat_actor",
             "query": "test",
             "labels": []
         })
@@ -204,7 +214,8 @@ class TestFilterEdgeCases:
     @pytest.mark.asyncio
     async def test_single_label(self, server, mock_client):
         """Handle single label."""
-        result = await server._dispatch_tool("search_threat_actor", {
+        result = await server._dispatch_tool("search_entity", {
+            "type": "threat_actor",
             "query": "test",
             "labels": ["apt"]
         })
@@ -213,9 +224,9 @@ class TestFilterEdgeCases:
     @pytest.mark.asyncio
     async def test_many_labels(self, server, mock_client):
         """Handle many labels - may be limited."""
-        # Labels may be limited to a max count (e.g., 10)
         try:
-            result = await server._dispatch_tool("search_threat_actor", {
+            result = await server._dispatch_tool("search_entity", {
+                "type": "threat_actor",
                 "query": "test",
                 "labels": ["label" + str(i) for i in range(20)]
             })
@@ -227,7 +238,8 @@ class TestFilterEdgeCases:
     @pytest.mark.parametrize("confidence", [0, 1, 50, 99, 100])
     async def test_confidence_boundary_values(self, server, mock_client, confidence: int):
         """Handle boundary confidence values."""
-        result = await server._dispatch_tool("search_threat_actor", {
+        result = await server._dispatch_tool("search_entity", {
+            "type": "threat_actor",
             "query": "test",
             "confidence_min": confidence
         })
@@ -243,7 +255,8 @@ class TestFilterEdgeCases:
             "2100-12-31T23:59:59Z",
         ]
         for date in dates:
-            result = await server._dispatch_tool("search_threat_actor", {
+            result = await server._dispatch_tool("search_entity", {
+                "type": "threat_actor",
                 "query": "test",
                 "created_after": date
             })
@@ -344,155 +357,6 @@ class TestIOCLookupEdgeCases:
 
 
 # =============================================================================
-# Indicator Creation Edge Cases
-# =============================================================================
-
-class TestIndicatorCreationEdgeCases:
-    """Edge cases for indicator creation."""
-
-    @pytest.mark.asyncio
-    async def test_minimal_indicator(self, server, mock_client):
-        """Create indicator with minimal fields."""
-        mock_client.create_indicator.return_value = {"id": "new-id"}
-
-        result = await server._dispatch_tool("create_indicator", {
-            "name": "Test",
-            "pattern": "[ipv4-addr:value = '1.1.1.1']",
-        })
-        assert result is not None
-
-    @pytest.mark.asyncio
-    async def test_indicator_with_all_fields(self, server, mock_client):
-        """Create indicator with all fields."""
-        mock_client.create_indicator.return_value = {"id": "new-id"}
-
-        result = await server._dispatch_tool("create_indicator", {
-            "name": "Complete Indicator",
-            "pattern": "[ipv4-addr:value = '1.1.1.1']",
-            "pattern_type": "stix",
-            "description": "A test indicator",
-            "labels": ["test", "example"],
-            "confidence": 75,
-            "valid_from": "2024-01-01T00:00:00Z",
-            "valid_until": "2024-12-31T23:59:59Z",
-        })
-        assert result is not None
-
-    @pytest.mark.asyncio
-    async def test_stix_pattern_type(self, server, mock_client):
-        """Test STIX pattern type."""
-        mock_client.create_indicator.return_value = {"id": "new-id"}
-
-        result = await server._dispatch_tool("create_indicator", {
-            "name": "Test stix",
-            "pattern": "[ipv4-addr:value = '1.1.1.1']",
-            "pattern_type": "stix",
-        })
-        assert result is not None
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("pattern_type", [
-        "pcre",
-        "sigma",
-        "snort",
-        "suricata",
-        "yara",
-    ])
-    async def test_non_stix_pattern_types(self, server, mock_client, pattern_type: str):
-        """Test non-STIX pattern types - STIX pattern validation may still apply."""
-        mock_client.create_indicator.return_value = {"id": "new-id"}
-
-        # For non-STIX pattern types, the server may still validate
-        # the pattern format or may accept any string
-        try:
-            result = await server._dispatch_tool("create_indicator", {
-                "name": f"Test {pattern_type}",
-                "pattern": "[ipv4-addr:value = '1.1.1.1']",  # Valid STIX pattern works
-                "pattern_type": pattern_type,
-            })
-            assert result is not None
-        except ValidationError:
-            # Some implementations may have different validation per type
-            pass
-
-
-# =============================================================================
-# Note Creation Edge Cases
-# =============================================================================
-
-class TestNoteCreationEdgeCases:
-    """Edge cases for note creation."""
-
-    @pytest.mark.asyncio
-    async def test_minimal_note(self, server, mock_client):
-        """Create note with minimal fields."""
-        mock_client.create_note.return_value = {"id": "new-note-id"}
-
-        result = await server._dispatch_tool("create_note", {
-            "content": "Test note",
-            "entity_ids": ["12345678-1234-1234-1234-123456789abc"],
-        })
-        assert result is not None
-
-    @pytest.mark.asyncio
-    async def test_note_with_long_content(self, server, mock_client):
-        """Create note with long content."""
-        mock_client.create_note.return_value = {"id": "new-note-id"}
-
-        result = await server._dispatch_tool("create_note", {
-            "content": "x" * 5000,
-            "entity_ids": ["12345678-1234-1234-1234-123456789abc"],
-        })
-        assert result is not None
-
-    @pytest.mark.asyncio
-    async def test_note_with_multiple_entities(self, server, mock_client):
-        """Create note linked to multiple entities."""
-        mock_client.create_note.return_value = {"id": "new-note-id"}
-
-        result = await server._dispatch_tool("create_note", {
-            "content": "Multi-entity note",
-            "entity_ids": [
-                "12345678-1234-1234-1234-123456789abc",
-                "87654321-1234-1234-1234-123456789abc",
-                "11111111-1234-1234-1234-123456789abc",
-            ],
-        })
-        assert result is not None
-
-
-# =============================================================================
-# Sighting Creation Edge Cases
-# =============================================================================
-
-class TestSightingCreationEdgeCases:
-    """Edge cases for sighting creation."""
-
-    @pytest.mark.asyncio
-    async def test_minimal_sighting(self, server, mock_client):
-        """Create sighting with minimal fields."""
-        mock_client.create_sighting.return_value = {"id": "new-sighting-id"}
-
-        result = await server._dispatch_tool("create_sighting", {
-            "indicator_id": "12345678-1234-1234-1234-123456789abc",
-            "sighted_by_id": "87654321-1234-1234-1234-123456789abc",
-        })
-        assert result is not None
-
-    @pytest.mark.asyncio
-    async def test_sighting_with_count(self, server, mock_client):
-        """Create sighting with count."""
-        mock_client.create_sighting.return_value = {"id": "new-sighting-id"}
-
-        result = await server._dispatch_tool("create_sighting", {
-            "indicator_id": "12345678-1234-1234-1234-123456789abc",
-            "sighted_by_id": "87654321-1234-1234-1234-123456789abc",
-            "count": 100,
-        })
-        assert result is not None
-
-
-# =============================================================================
 # Relationship Edge Cases
 # =============================================================================
 
@@ -553,92 +417,6 @@ class TestHealthCheckEdgeCases:
 
         result = await server._dispatch_tool("get_health", {})
         # Should still return result (just showing unavailable)
-        assert result is not None
-
-
-# =============================================================================
-# Network Status Edge Cases
-# =============================================================================
-
-class TestNetworkStatusEdgeCases:
-    """Edge cases for network status."""
-
-    @pytest.mark.asyncio
-    async def test_network_status_with_metrics(self, server, mock_client):
-        """Network status with various metrics."""
-        mock_client.get_network_status.return_value = {
-            "latency_p50": 100,
-            "latency_p95": 250,
-            "latency_p99": 500,
-            "success_rate": 0.99,
-            "circuit_breaker": "closed",
-        }
-
-        result = await server._dispatch_tool("get_network_status", {})
-        assert result is not None
-
-    @pytest.mark.asyncio
-    async def test_network_status_when_degraded(self, server, mock_client):
-        """Network status when system is degraded."""
-        mock_client.get_network_status.return_value = {
-            "latency_p50": 5000,
-            "latency_p95": 10000,
-            "success_rate": 0.5,
-            "circuit_breaker": "half-open",
-        }
-
-        result = await server._dispatch_tool("get_network_status", {})
-        assert result is not None
-
-
-# =============================================================================
-# Enrichment Edge Cases
-# =============================================================================
-
-class TestEnrichmentEdgeCases:
-    """Edge cases for enrichment operations."""
-
-    @pytest.mark.asyncio
-    async def test_trigger_enrichment_minimal(self, server, mock_client):
-        """Trigger enrichment with minimal params."""
-        mock_client.trigger_enrichment.return_value = {"status": "triggered"}
-
-        # Parameter names may vary - try common variants
-        try:
-            result = await server._dispatch_tool("trigger_enrichment", {
-                "observable_id": "12345678-1234-1234-1234-123456789abc",
-                "connector_id": "87654321-1234-1234-1234-123456789abc",
-            })
-            assert result is not None
-        except ValidationError:
-            # Try with entity_id instead
-            try:
-                result = await server._dispatch_tool("trigger_enrichment", {
-                    "entity_id": "12345678-1234-1234-1234-123456789abc",
-                    "connector_id": "87654321-1234-1234-1234-123456789abc",
-                })
-                assert result is not None
-            except ValidationError:
-                pass  # Parameters may be different
-
-    @pytest.mark.asyncio
-    async def test_list_connectors_empty(self, server, mock_client):
-        """List connectors when none available."""
-        mock_client.list_enrichment_connectors.return_value = []
-
-        result = await server._dispatch_tool("list_connectors", {})
-        assert result is not None
-
-    @pytest.mark.asyncio
-    async def test_list_connectors_multiple(self, server, mock_client):
-        """List connectors when multiple available."""
-        mock_client.list_enrichment_connectors.return_value = [
-            {"id": "1", "name": "VirusTotal"},
-            {"id": "2", "name": "Shodan"},
-            {"id": "3", "name": "AbuseIPDB"},
-        ]
-
-        result = await server._dispatch_tool("list_connectors", {})
         assert result is not None
 
 

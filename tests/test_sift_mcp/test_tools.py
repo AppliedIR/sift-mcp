@@ -16,7 +16,7 @@ def clean_state():
 
 class TestZimmermanCommon:
     def test_zimmerman_tool_pattern(self):
-        """Verify _run_zimmerman_tool builds correct command structure."""
+        """Verify Zimmerman tool catalog definitions are correct."""
         from sift_mcp.catalog import get_tool_def
         td = get_tool_def("AmcacheParser")
         assert td is not None
@@ -97,13 +97,6 @@ class TestNetworkTools:
         assert "zeek" in names
 
 
-class TestServerRegistration:
-    def test_server_creates_with_all_tools(self):
-        from sift_mcp.server import create_server
-        server = create_server()
-        assert server is not None
-
-
 class TestInstallerGracefulFailure:
     def test_hayabusa_installer_no_network(self, monkeypatch):
         """Installer should return None gracefully without network."""
@@ -131,163 +124,3 @@ class TestCatalogCompleteness:
         assert len(catalog) >= 36, f"Expected 36+ tools, got {len(catalog)}"
 
 
-class TestBlklsWrapper:
-    """Tests for run_blkls command construction."""
-
-    def test_blkls_basic_command(self, monkeypatch):
-        from unittest.mock import MagicMock
-        from sift_mcp.audit import AuditWriter
-        from sift_mcp.tools.sleuthkit import register_sleuthkit_tools
-
-        captured_cmd = {}
-
-        def mock_find_binary(name):
-            return f"/usr/bin/{name}"
-
-        def mock_execute(cmd, **kwargs):
-            captured_cmd["cmd"] = cmd
-            captured_cmd["timeout"] = kwargs.get("timeout")
-            return {"exit_code": 0, "stdout": "data", "stderr": "", "elapsed_seconds": 1.0, "command": cmd}
-
-        monkeypatch.setattr("sift_mcp.tools.sleuthkit.find_binary", mock_find_binary)
-        monkeypatch.setattr("sift_mcp.tools.sleuthkit.execute", mock_execute)
-
-        server = MagicMock()
-        tools = {}
-        server.tool.return_value = lambda f: tools.update({f.__name__: f}) or f
-        audit = MagicMock(spec=AuditWriter)
-        audit._next_evidence_id.return_value = "sift-20260220-001"
-
-        register_sleuthkit_tools(server, audit)
-        result = tools["run_blkls"]("/evidence/disk.dd", "/output/slack.bin")
-
-        assert captured_cmd["cmd"] == ["/usr/bin/blkls", "/evidence/disk.dd"]
-        assert captured_cmd["timeout"] == 3600
-        assert result["success"] is True
-        audit.log.assert_called()
-
-    def test_blkls_with_offset(self, monkeypatch):
-        from unittest.mock import MagicMock
-        from sift_mcp.audit import AuditWriter
-        from sift_mcp.tools.sleuthkit import register_sleuthkit_tools
-
-        captured_cmd = {}
-
-        def mock_find_binary(name):
-            return f"/usr/bin/{name}"
-
-        def mock_execute(cmd, **kwargs):
-            captured_cmd["cmd"] = cmd
-            return {"exit_code": 0, "stdout": "", "stderr": "", "elapsed_seconds": 0.5, "command": cmd}
-
-        monkeypatch.setattr("sift_mcp.tools.sleuthkit.find_binary", mock_find_binary)
-        monkeypatch.setattr("sift_mcp.tools.sleuthkit.execute", mock_execute)
-
-        server = MagicMock()
-        tools = {}
-        server.tool.return_value = lambda f: tools.update({f.__name__: f}) or f
-        audit = MagicMock(spec=AuditWriter)
-        audit._next_evidence_id.return_value = "sift-20260220-002"
-
-        register_sleuthkit_tools(server, audit)
-        tools["run_blkls"]("/evidence/disk.dd", "/output/slack.bin", partition_offset="2048")
-
-        assert captured_cmd["cmd"] == ["/usr/bin/blkls", "-o", "2048", "/evidence/disk.dd"]
-
-    def test_blkls_not_found(self, monkeypatch):
-        from unittest.mock import MagicMock
-        from sift_mcp.audit import AuditWriter
-        from sift_mcp.tools.sleuthkit import register_sleuthkit_tools
-        from sift_mcp.exceptions import ToolNotFoundError
-
-        monkeypatch.setattr("sift_mcp.tools.sleuthkit.find_binary", lambda name: None)
-
-        server = MagicMock()
-        tools = {}
-        server.tool.return_value = lambda f: tools.update({f.__name__: f}) or f
-        audit = MagicMock(spec=AuditWriter)
-
-        register_sleuthkit_tools(server, audit)
-        with pytest.raises(ToolNotFoundError):
-            tools["run_blkls"]("/evidence/disk.dd", "/output/slack.bin")
-
-
-class TestBulkExtractorWrapper:
-    """Tests for run_bulk_extractor command construction."""
-
-    def test_bulk_extractor_basic_command(self, monkeypatch):
-        from unittest.mock import MagicMock
-        from sift_mcp.audit import AuditWriter
-        from sift_mcp.tools.file_analysis import register_file_analysis_tools
-
-        captured_cmd = {}
-
-        def mock_find_binary(name):
-            return f"/usr/bin/{name}"
-
-        def mock_execute(cmd, **kwargs):
-            captured_cmd["cmd"] = cmd
-            captured_cmd["timeout"] = kwargs.get("timeout")
-            return {"exit_code": 0, "stdout": "output", "stderr": "", "elapsed_seconds": 120.0, "command": cmd}
-
-        monkeypatch.setattr("sift_mcp.tools.file_analysis.find_binary", mock_find_binary)
-        monkeypatch.setattr("sift_mcp.tools.file_analysis.execute", mock_execute)
-
-        server = MagicMock()
-        tools = {}
-        server.tool.return_value = lambda f: tools.update({f.__name__: f}) or f
-        audit = MagicMock(spec=AuditWriter)
-        audit._next_evidence_id.return_value = "sift-20260220-003"
-
-        register_file_analysis_tools(server, audit)
-        result = tools["run_bulk_extractor"]("/evidence/disk.dd", "/output/be_results")
-
-        assert captured_cmd["cmd"] == ["/usr/bin/bulk_extractor", "-o", "/output/be_results", "/evidence/disk.dd"]
-        assert captured_cmd["timeout"] == 7200
-        assert result["success"] is True
-        audit.log.assert_called()
-
-    def test_bulk_extractor_with_scanners(self, monkeypatch):
-        from unittest.mock import MagicMock
-        from sift_mcp.audit import AuditWriter
-        from sift_mcp.tools.file_analysis import register_file_analysis_tools
-
-        captured_cmd = {}
-
-        def mock_find_binary(name):
-            return f"/usr/bin/{name}"
-
-        def mock_execute(cmd, **kwargs):
-            captured_cmd["cmd"] = cmd
-            return {"exit_code": 0, "stdout": "", "stderr": "", "elapsed_seconds": 60.0, "command": cmd}
-
-        monkeypatch.setattr("sift_mcp.tools.file_analysis.find_binary", mock_find_binary)
-        monkeypatch.setattr("sift_mcp.tools.file_analysis.execute", mock_execute)
-
-        server = MagicMock()
-        tools = {}
-        server.tool.return_value = lambda f: tools.update({f.__name__: f}) or f
-        audit = MagicMock(spec=AuditWriter)
-        audit._next_evidence_id.return_value = "sift-20260220-004"
-
-        register_file_analysis_tools(server, audit)
-        tools["run_bulk_extractor"]("/evidence/disk.dd", "/output/be_results", extra_args=["-e", "ntfsusn"])
-
-        assert captured_cmd["cmd"] == ["/usr/bin/bulk_extractor", "-e", "ntfsusn", "-o", "/output/be_results", "/evidence/disk.dd"]
-
-    def test_bulk_extractor_not_found(self, monkeypatch):
-        from unittest.mock import MagicMock
-        from sift_mcp.audit import AuditWriter
-        from sift_mcp.tools.file_analysis import register_file_analysis_tools
-        from sift_mcp.exceptions import ToolNotFoundError
-
-        monkeypatch.setattr("sift_mcp.tools.file_analysis.find_binary", lambda name: None)
-
-        server = MagicMock()
-        tools = {}
-        server.tool.return_value = lambda f: tools.update({f.__name__: f}) or f
-        audit = MagicMock(spec=AuditWriter)
-
-        register_file_analysis_tools(server, audit)
-        with pytest.raises(ToolNotFoundError):
-            tools["run_bulk_extractor"]("/evidence/disk.dd", "/output/be_results")

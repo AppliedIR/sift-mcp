@@ -56,16 +56,15 @@ def case_with_data(manager):
         "type": "finding",
     })
 
-    # Approve first two findings
-    exam_dir = case_dir / "examiners" / "tester"
-    findings = json.loads((exam_dir / "findings.json").read_text())
+    # Approve first two findings (flat case root)
+    findings = json.loads((case_dir / "findings.json").read_text())
     findings[0]["status"] = "APPROVED"
     findings[0]["approved_by"] = "analyst1"
     findings[0]["approved_at"] = "2026-02-20T12:00:00Z"
     findings[1]["status"] = "APPROVED"
     findings[1]["approved_by"] = "analyst1"
     findings[1]["approved_at"] = "2026-02-20T12:30:00Z"
-    with open(exam_dir / "findings.json", "w") as f:
+    with open(case_dir / "findings.json", "w") as f:
         json.dump(findings, f, indent=2)
 
     # Timeline events
@@ -82,11 +81,11 @@ def case_with_data(manager):
         "source": "Event logs",
     })
     # Approve timeline events
-    timeline = json.loads((exam_dir / "timeline.json").read_text())
+    timeline = json.loads((case_dir / "timeline.json").read_text())
     for t in timeline:
         t["status"] = "APPROVED"
         t["approved_by"] = "analyst1"
-    with open(exam_dir / "timeline.json", "w") as f:
+    with open(case_dir / "timeline.json", "w") as f:
         json.dump(timeline, f, indent=2)
 
     # Actions
@@ -184,7 +183,12 @@ class TestFindingsReport:
         assert result["report_data"]["findings_count"] == 2
 
     def test_filter_by_id(self, manager, case_with_data):
-        result = manager.generate_findings_report(finding_ids=["F-001"])
+        # Get actual finding ID from the case data
+        case_dir = Path(case_with_data["path"])
+        findings = json.loads((case_dir / "findings.json").read_text())
+        first_id = findings[0]["id"]
+
+        result = manager.generate_findings_report(finding_ids=[first_id])
         assert result["report_data"]["findings_count"] == 1
         assert result["report_data"]["findings"][0]["title"] == "Suspicious process"
 
@@ -239,7 +243,7 @@ class TestSaveReport:
         assert path.exists()
 
     def test_atomic_write(self, manager, case_with_data):
-        """save_report uses atomic write — file is always complete."""
+        """save_report uses atomic write -- file is always complete."""
         content = "x" * 10000
         result = manager.save_report("big-report.md", content)
         assert result["characters"] == 10000

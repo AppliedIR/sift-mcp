@@ -20,7 +20,7 @@ class TestServerSetup:
     @pytest.mark.asyncio
     async def test_tool_count(self, server):
         tools = await server.list_tools()
-        assert len(tools) >= 40
+        assert len(tools) >= 36
 
     @pytest.mark.asyncio
     async def test_expected_tools_present(self, server):
@@ -42,8 +42,6 @@ class TestServerSetup:
             "get_confidence_definitions", "get_anti_patterns",
             "get_evidence_template",
             "add_todo", "list_todos", "update_todo", "complete_todo",
-            "export_contributions", "import_contributions",
-            "ingest_remote_audit", "get_team_status",
         }
         assert expected.issubset(names), f"Missing: {expected - names}"
 
@@ -134,7 +132,7 @@ class TestDisciplineTools:
     @pytest.mark.asyncio
     async def test_get_anti_patterns(self, server):
         result = await server.call_tool("get_anti_patterns", {})
-        # call_tool returns (content_list, metadata) — content has 6 TextContent items
+        # call_tool returns (content_list, metadata) -- content has 6 TextContent items
         content = result[0] if isinstance(result, tuple) else result
         assert len(content) == 6
         data = json.loads(content[0].text)
@@ -264,7 +262,7 @@ class TestEnhancedResponses:
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
         server = create_server()
         await server.call_tool("init_case", {"name": "Test"})
-        # Submit an invalid finding — missing fields
+        # Submit an invalid finding -- missing fields
         finding = {"title": "Bad finding"}
         result = await server.call_tool("record_finding", {"finding": finding})
         text = result[0].text
@@ -308,7 +306,7 @@ class TestTodoTools:
         result = await server.call_tool("add_todo", {"description": "Run volatility"})
         data = json.loads(result[0].text)
         assert data["status"] == "created"
-        assert data["todo_id"] == "TODO-001"
+        assert "TODO-" in data["todo_id"]
 
     @pytest.mark.asyncio
     async def test_list_todos(self, tmp_path, monkeypatch):
@@ -327,8 +325,9 @@ class TestTodoTools:
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
         server = create_server()
         await server.call_tool("init_case", {"name": "Test"})
-        await server.call_tool("add_todo", {"description": "A"})
-        result = await server.call_tool("complete_todo", {"todo_id": "TODO-001"})
+        add_result = await server.call_tool("add_todo", {"description": "A"})
+        todo_id = json.loads(add_result[0].text)["todo_id"]
+        result = await server.call_tool("complete_todo", {"todo_id": todo_id})
         data = json.loads(result[0].text)
         assert data["status"] == "updated"
 
@@ -342,9 +341,10 @@ class TestTodoTools:
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
         server = create_server()
         await server.call_tool("init_case", {"name": "Test"})
-        await server.call_tool("add_todo", {"description": "A"})
+        add_result = await server.call_tool("add_todo", {"description": "A"})
+        todo_id = json.loads(add_result[0].text)["todo_id"]
         result = await server.call_tool("update_todo", {
-            "todo_id": "TODO-001",
+            "todo_id": todo_id,
             "note": "In progress",
         })
         data = json.loads(result[0].text)

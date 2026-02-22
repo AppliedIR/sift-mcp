@@ -51,7 +51,7 @@ class TestAuditWriter:
         writer = AuditWriter("windows-triage-mcp")
         writer.log(tool="check_file", params={"path": "C:\\test.exe"}, result_summary={"verdict": "EXPECTED"})
 
-        audit_file = tmp_path / "examiners" / "tester" / "audit" / "windows-triage-mcp.jsonl"
+        audit_file = tmp_path / "audit" / "windows-triage-mcp.jsonl"
         assert audit_file.exists()
         entry = json.loads(audit_file.read_text().strip())
         assert entry["tool"] == "check_file"
@@ -69,7 +69,7 @@ class TestAuditWriter:
         for _ in range(3):
             writer.log(tool="check_file", params={}, result_summary={})
 
-        audit_file = tmp_path / "examiners" / "tester" / "audit" / "windows-triage-mcp.jsonl"
+        audit_file = tmp_path / "audit" / "windows-triage-mcp.jsonl"
         lines = [json.loads(l) for l in audit_file.read_text().strip().split("\n")]
         assert len(lines) == 3
 
@@ -190,7 +190,7 @@ class TestWrapResponse:
         server = self._make_server_instance()
         server._wrap_response("check_file", {"path": "test.exe"}, {"verdict": "UNKNOWN"})
 
-        audit_file = tmp_path / "examiners" / "tester" / "audit" / "windows-triage-mcp.jsonl"
+        audit_file = tmp_path / "audit" / "windows-triage-mcp.jsonl"
         assert audit_file.exists()
         entry = json.loads(audit_file.read_text().strip())
         assert entry["tool"] == "check_file"

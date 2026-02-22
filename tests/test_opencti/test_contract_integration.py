@@ -23,8 +23,6 @@ from opencti_mcp.validation import (
     validate_label,
     validate_date_filter,
     validate_observable_types,
-    validate_pattern_type,
-    validate_stix_pattern,
     validate_length,
     MAX_QUERY_LENGTH,
 )
@@ -54,7 +52,6 @@ def mock_config():
     return Config(
         opencti_url="http://localhost:8080",
         opencti_token=SecretStr("test-token"),
-        read_only=False,
     )
 
 
@@ -88,26 +85,25 @@ class TestAPIContracts:
     """Test that API contracts are maintained."""
 
     @pytest.mark.asyncio
-    async def test_search_returns_results_key(self, server, mock_client):
-        """All search tools return 'results' key."""
-        search_tools = [
-            "search_threat_actor",
-            "search_malware",
-            "search_campaign",
-            "search_vulnerability",
-            "search_attack_pattern",
-            "search_reports",
-            "search_observable",
+    async def test_search_entity_returns_results_key(self, server, mock_client):
+        """search_entity returns 'results' key for all entity types."""
+        entity_types = [
+            "threat_actor", "malware", "campaign", "vulnerability",
+            "attack_pattern", "observable",
         ]
 
-        for tool in search_tools:
-            result = await server._dispatch_tool(tool, {"query": "test"})
-            assert "results" in result, f"{tool} must return 'results'"
+        for entity_type in entity_types:
+            result = await server._dispatch_tool("search_entity", {
+                "type": entity_type, "query": "test"
+            })
+            assert "results" in result, f"search_entity type={entity_type} must return 'results'"
 
     @pytest.mark.asyncio
     async def test_search_results_are_lists(self, server, mock_client):
         """Search results are always lists."""
-        result = await server._dispatch_tool("search_threat_actor", {"query": "test"})
+        result = await server._dispatch_tool("search_entity", {
+            "type": "threat_actor", "query": "test"
+        })
         assert isinstance(result["results"], list)
 
     @pytest.mark.asyncio
@@ -135,16 +131,11 @@ class TestAPIContracts:
         # Should have some indication of status
 
     @pytest.mark.asyncio
-    async def test_write_tools_return_created_entity(self, server, mock_client):
-        """Write tools return created entity info."""
-        mock_client.create_indicator.return_value = {"id": "new-id", "name": "Test"}
-
-        result = await server._dispatch_tool("create_indicator", {
-            "name": "Test Indicator",
-            "pattern": "[ipv4-addr:value = '1.1.1.1']",
-        })
-        assert result is not None
-        # Should return created entity info
+    async def test_write_tools_removed(self, server):
+        """Write tools are no longer available."""
+        for tool in ["create_indicator", "create_note", "create_sighting", "trigger_enrichment"]:
+            with pytest.raises(ValidationError, match="Unknown tool"):
+                await server._dispatch_tool(tool, {})
 
 
 # =============================================================================
@@ -290,8 +281,8 @@ class TestIntegrationScenarios:
         ]
 
         # 1. Search
-        search_result = await server._dispatch_tool("search_threat_actor", {
-            "query": "APT29"
+        search_result = await server._dispatch_tool("search_entity", {
+            "type": "threat_actor", "query": "APT29"
         })
         assert "results" in search_result
         assert len(search_result["results"]) > 0
@@ -308,32 +299,6 @@ class TestIntegrationScenarios:
             "entity_id": entity_id
         })
         assert entity_result is not None
-
-    @pytest.mark.asyncio
-    async def test_create_and_link_workflow(self, server, mock_client):
-        """Create indicator and add note workflow."""
-        # Create indicator
-        mock_client.create_indicator.return_value = {
-            "id": "12345678-1234-1234-1234-123456789abc"
-        }
-
-        indicator_result = await server._dispatch_tool("create_indicator", {
-            "name": "Malicious IP",
-            "pattern": "[ipv4-addr:value = '10.0.0.1']",
-        })
-        assert indicator_result is not None
-
-        # Add note to indicator
-        indicator_id = "12345678-1234-1234-1234-123456789abc"
-        mock_client.create_note.return_value = {
-            "id": "87654321-1234-1234-1234-123456789abc"
-        }
-
-        note_result = await server._dispatch_tool("create_note", {
-            "content": "Observed in phishing campaign",
-            "entity_ids": [indicator_id],
-        })
-        assert note_result is not None
 
     @pytest.mark.asyncio
     async def test_ioc_lookup_workflow(self, server, mock_client):
@@ -383,8 +348,8 @@ class TestErrorContracts:
 
         # Query too long
         with pytest.raises(ValidationError):
-            await server._dispatch_tool("search_threat_actor", {
-                "query": "x" * 2000
+            await server._dispatch_tool("search_entity", {
+                "type": "threat_actor", "query": "x" * 2000
             })
 
     @pytest.mark.asyncio
@@ -393,7 +358,7 @@ class TestErrorContracts:
         mock_client.search_threat_actors.side_effect = Exception("Connection failed")
 
         with pytest.raises(Exception):
-            await server._dispatch_tool("search_threat_actor", {"query": "test"})
+            await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
 
 
 # =============================================================================
@@ -450,7 +415,9 @@ class TestResponseFormatContracts:
             {"id": "123", "name": "Test"}
         ]
 
-        result = await server._dispatch_tool("search_threat_actor", {"query": "test"})
+        result = await server._dispatch_tool("search_entity", {
+            "type": "threat_actor", "query": "test"
+        })
 
         # Must have results key
         assert "results" in result
@@ -469,7 +436,9 @@ class TestResponseFormatContracts:
             {"id": "123", "name": "Test", "created": "2024-01-01"}
         ]
 
-        result = await server._dispatch_tool("search_threat_actor", {"query": "test"})
+        result = await server._dispatch_tool("search_entity", {
+            "type": "threat_actor", "query": "test"
+        })
 
         # Should not raise
         json_str = json.dumps(result)
@@ -492,8 +461,8 @@ class TestIdempotency:
         """Same search returns same results."""
         mock_client.search_threat_actors.return_value = [{"id": "123"}]
 
-        result1 = await server._dispatch_tool("search_threat_actor", {"query": "test"})
-        result2 = await server._dispatch_tool("search_threat_actor", {"query": "test"})
+        result1 = await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+        result2 = await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
 
         assert result1 == result2
 

@@ -51,7 +51,7 @@ class TestAuditWriter:
         writer = AuditWriter("forensic-rag-mcp")
         writer.log(tool="search", params={"query": "mimikatz"}, result_summary={"count": 5})
 
-        audit_file = tmp_path / "examiners" / "tester" / "audit" / "forensic-rag-mcp.jsonl"
+        audit_file = tmp_path / "audit" / "forensic-rag-mcp.jsonl"
         assert audit_file.exists()
         entry = json.loads(audit_file.read_text().strip())
         assert entry["tool"] == "search"
@@ -69,7 +69,7 @@ class TestAuditWriter:
         for _ in range(3):
             writer.log(tool="search", params={}, result_summary={})
 
-        audit_file = tmp_path / "examiners" / "tester" / "audit" / "forensic-rag-mcp.jsonl"
+        audit_file = tmp_path / "audit" / "forensic-rag-mcp.jsonl"
         lines = [json.loads(l) for l in audit_file.read_text().strip().split("\n")]
         assert len(lines) == 3
 
@@ -200,7 +200,7 @@ class TestWrapResponse:
         result = {"status": "ok"}
         server._wrap_response("search", {"query": "test"}, result)
 
-        audit_file = tmp_path / "examiners" / "tester" / "audit" / "forensic-rag-mcp.jsonl"
+        audit_file = tmp_path / "audit" / "forensic-rag-mcp.jsonl"
         assert audit_file.exists()
         entry = json.loads(audit_file.read_text().strip())
         assert entry["tool"] == "search"

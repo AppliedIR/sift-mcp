@@ -36,8 +36,9 @@ class AuditWriter:
     file writes wrapped in try/except with fsync for durability.
     """
 
-    def __init__(self, mcp_name: str) -> None:
+    def __init__(self, mcp_name: str, audit_dir: str | None = None) -> None:
         self.mcp_name = mcp_name
+        self._explicit_audit_dir = audit_dir
         self._sequence = 0
         self._date_str = ""
         self._lock = threading.Lock()
@@ -47,15 +48,21 @@ class AuditWriter:
         return resolve_examiner()
 
     def _get_audit_dir(self) -> Path | None:
-        """Get the audit directory from AIIR_CASE_DIR env var."""
-        case_dir = os.environ.get("AIIR_CASE_DIR")
-        if not case_dir:
-            return None
-        path = Path(case_dir)
-        if not path.is_dir():
-            logger.warning("AIIR_CASE_DIR=%s is not a directory, skipping audit", case_dir)
-            return None
-        audit_dir = path / "examiners" / self.examiner / "audit"
+        """Get the audit directory.
+
+        Priority: explicit audit_dir > AIIR_CASE_DIR/audit/.
+        """
+        if self._explicit_audit_dir:
+            audit_dir = Path(self._explicit_audit_dir)
+        else:
+            case_dir = os.environ.get("AIIR_CASE_DIR")
+            if not case_dir:
+                return None
+            path = Path(case_dir)
+            if not path.is_dir():
+                logger.warning("AIIR_CASE_DIR=%s is not a directory, skipping audit", case_dir)
+                return None
+            audit_dir = path / "audit"
         try:
             audit_dir.mkdir(parents=True, exist_ok=True)
         except OSError as e:

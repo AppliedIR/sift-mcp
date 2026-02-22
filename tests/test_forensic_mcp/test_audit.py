@@ -41,7 +41,7 @@ class TestAuditRoundTrip:
     def test_multi_mcp_aggregation(self, manager, active_case):
         """Write to two different MCP audit files, get_audit_log returns both."""
         case_dir = Path(active_case["path"])
-        audit_dir = case_dir / "examiners" / "tester" / "audit"
+        audit_dir = case_dir / "audit"
 
         # Write entries as if from two different MCPs
         for mcp, tool in [("forensic-rag", "search"), ("windows-triage", "check_file")]:
@@ -83,10 +83,10 @@ class TestSequenceResume:
         # eid3 should end in -003
         assert eid3.endswith("-003")
 
-        # Simulate server restart — new writer, same audit file
+        # Simulate server restart -- new writer, same audit file
         writer2 = AuditWriter("forensic-mcp")
         eid4 = writer2.log(tool="t4", params={}, result_summary="ok")
-        # Should resume from 003 → 004, not restart at 001
+        # Should resume from 003 -> 004, not restart at 001
         assert eid4.endswith("-004"), f"Expected -004 suffix, got {eid4}"
 
     def test_resumes_across_date_change(self, manager, active_case):

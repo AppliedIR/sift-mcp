@@ -1,7 +1,7 @@
 """Case manager: lifecycle, records, evidence, execution, audit aggregation.
 
-Multi-examiner aware: each examiner's work is stored in examiners/{slug}/,
-reads merge all examiners/*/ for full team visibility.
+Local-first: each examiner owns a flat case directory. Collaboration via
+export/merge of findings and timeline (no real-time sync).
 """
 
 from __future__ import annotations
@@ -44,22 +44,23 @@ CASES_DIR_ENV = "AIIR_CASES_DIR"
 DEFAULT_CASES_DIR = "cases"
 
 # Protected fields that cannot be overridden by user-supplied data
-_PROTECTED_FINDING_FIELDS = {"id", "status", "staged", "created_by", "examiner"}
-_PROTECTED_EVENT_FIELDS = {"id", "status", "staged", "created_by", "examiner"}
-
-# Contribution bundle schema version
-_BUNDLE_SCHEMA_VERSION = 1
+_PROTECTED_FINDING_FIELDS = {"id", "status", "staged", "modified_at", "created_by", "examiner"}
+_PROTECTED_EVENT_FIELDS = {"id", "status", "staged", "modified_at", "created_by", "examiner"}
 
 
-def _safe_id_num(id_str: str) -> int:
-    """Extract the numeric suffix from an ID like 'F-001' or 'TODO-003'.
-
-    Returns 0 if the ID cannot be parsed.
-    """
-    try:
-        return int(id_str.split("-")[-1])
-    except (ValueError, IndexError):
-        return 0
+def _next_seq(items: list[dict], id_field: str, prefix: str, examiner: str) -> int:
+    """Find max sequence number for IDs matching {prefix}-{examiner}-NNN."""
+    pattern = f"{prefix}-{examiner}-"
+    max_num = 0
+    for item in items:
+        item_id = item.get(id_field, "")
+        if item_id.startswith(pattern):
+            try:
+                num = int(item_id[len(pattern):])
+                max_num = max(max_num, num)
+            except ValueError:
+                pass
+    return max_num + 1
 
 
 def _validate_case_id(case_id: str) -> None:
@@ -113,14 +114,10 @@ class CaseManager:
         """
         return override.strip().lower() if override and override.strip() else self.examiner
 
-    def _examiner_dir(self, case_dir: Path, examiner_override: str = "") -> Path:
-        """Return the examiners/{slug}/ directory for this examiner's work."""
-        return case_dir / "examiners" / self._effective_examiner(examiner_override)
-
     # --- Case Lifecycle ---
 
-    def init_case(self, name: str, description: str = "", examiner: str = "", collaborative: bool = False) -> dict:
-        """Create case directory with initialized docs."""
+    def init_case(self, name: str, description: str = "", examiner: str = "") -> dict:
+        """Create case directory with initialized files."""
         ts = datetime.now(timezone.utc)
         case_id = f"INC-{ts.strftime('%Y')}-{ts.strftime('%m%d%H%M%S')}"
         case_dir = self.cases_dir / case_id
@@ -134,58 +131,34 @@ class CaseManager:
 
         case_dir.mkdir(parents=True)
         (case_dir / "evidence").mkdir()
-        (case_dir / "extracted").mkdir()
+        (case_dir / "extractions").mkdir()
         (case_dir / "reports").mkdir()
+        (case_dir / "audit").mkdir()
 
-        # examiners/{slug}/ structure (this examiner's work)
-        exam_dir = self._examiner_dir(case_dir)
-        exam_dir.mkdir(parents=True)
-        (exam_dir / "audit").mkdir()
-
-        mode = "collaborative" if collaborative else "solo"
-
-        # CASE.yaml with examiner, team, and mode
+        # CASE.yaml
         case_meta = {
             "case_id": case_id,
             "name": name,
             "description": description,
-            "mode": mode,
             "status": "open",
             "examiner": exam,
-            "team": [exam],
             "created": ts.isoformat(),
-            "created_by": exam,
         }
         _atomic_write(case_dir / "CASE.yaml", yaml.dump(case_meta, default_flow_style=False))
 
-        # Initialize local stores
-        _atomic_write(exam_dir / "findings.json", json.dumps([]))
-        _atomic_write(exam_dir / "timeline.json", json.dumps([]))
-        _atomic_write(exam_dir / "todos.json", json.dumps([]))
-        _atomic_write(exam_dir / "evidence.json", json.dumps({"files": []}))
+        # Initialize data files at case root
+        _atomic_write(case_dir / "findings.json", json.dumps([]))
+        _atomic_write(case_dir / "timeline.json", json.dumps([]))
+        _atomic_write(case_dir / "todos.json", json.dumps([]))
+        _atomic_write(case_dir / "evidence.json", json.dumps({"files": []}))
 
         self._active_case_id = case_id
         os.environ["AIIR_CASE_DIR"] = str(case_dir)
         os.environ["AIIR_ACTIVE_CASE"] = case_id
         os.environ["AIIR_EXAMINER"] = exam
 
-        logger.info("Case initialized: %s (%s) examiner=%s mode=%s", case_id, name, exam, mode)
-        result: dict[str, Any] = {"case_id": case_id, "path": str(case_dir), "status": "open", "examiner": exam, "mode": mode}
-
-        if collaborative:
-            result["collaboration_setup"] = {
-                "mode": "collaborative",
-                "case_path": str(case_dir),
-                "share_instructions": {
-                    "linux_nfs": f"Export via /etc/exports: {case_dir} *(rw,sync,no_subtree_check)",
-                    "linux_smb": f"Add Samba share for {case_dir} in /etc/samba/smb.conf",
-                    "windows_smb": f"Right-click {case_dir} > Properties > Sharing > Share...",
-                },
-                "examiner_setup": "Each examiner sets AIIR_EXAMINER=<slug> before connecting",
-                "join_info": "Other examiners call set_active_case() or `aiir case join` to join",
-            }
-
-        return result
+        logger.info("Case initialized: %s (%s) examiner=%s", case_id, name, exam)
+        return {"case_id": case_id, "path": str(case_dir), "status": "open", "examiner": exam}
 
     def close_case(self, case_id: str, summary: str = "") -> dict:
         """Close a case. Warns if unapproved findings exist."""
@@ -198,8 +171,8 @@ class CaseManager:
         if meta.get("status") == "closed":
             return {"case_id": case_id, "status": "already_closed"}
 
-        # Check for unapproved findings (merged from all examiners)
-        findings = self._load_all_findings(case_dir)
+        # Check for unapproved findings
+        findings = self._load_findings(case_dir)
         drafts = [f for f in findings if f.get("status") == "DRAFT"]
 
         meta["status"] = "closed"
@@ -213,8 +186,8 @@ class CaseManager:
             warnings.append(f"{len(drafts)} unapproved finding(s) remain as DRAFT")
             result["draft_ids"] = [d["id"] for d in drafts]
 
-        # Check for open TODOs (merged)
-        todos = self._load_all_todos(case_dir)
+        # Check for open TODOs
+        todos = self._load_todos(case_dir)
         open_todos = [t for t in todos if t.get("status") == "open"]
         if open_todos:
             warnings.append(f"{len(open_todos)} open TODO(s) remain")
@@ -225,20 +198,19 @@ class CaseManager:
         return result
 
     def get_case_status(self, case_id: str | None = None) -> dict:
-        """Get investigation summary with per-examiner breakdown."""
+        """Get investigation summary."""
         case_dir = self._resolve_case_dir(case_id)
         meta = self._load_case_meta(case_dir)
-        findings = self._load_all_findings(case_dir)
-        timeline = self._load_all_timeline(case_dir)
+        findings = self._load_findings(case_dir)
+        timeline = self._load_timeline(case_dir)
         evidence = self._load_evidence_registry(case_dir)
-        todos = self._load_all_todos(case_dir)
+        todos = self._load_todos(case_dir)
 
-        result = {
+        return {
             "case_id": meta["case_id"],
             "name": meta.get("name", ""),
             "status": meta.get("status", "unknown"),
             "examiner": meta.get("examiner", ""),
-            "team": meta.get("team", []),
             "findings": {
                 "total": len(findings),
                 "draft": sum(1 for f in findings if f.get("status") == "DRAFT"),
@@ -253,26 +225,6 @@ class CaseManager:
                 "completed": sum(1 for t in todos if t.get("status") == "completed"),
             },
         }
-
-        # Per-examiner breakdown
-        examiners: dict[str, dict] = {}
-        for f in findings:
-            ex = f.get("examiner", meta.get("examiner", "local"))
-            examiners.setdefault(ex, {"findings": 0, "timeline": 0, "todos_open": 0})
-            examiners[ex]["findings"] += 1
-        for t in timeline:
-            ex = t.get("examiner", meta.get("examiner", "local"))
-            examiners.setdefault(ex, {"findings": 0, "timeline": 0, "todos_open": 0})
-            examiners[ex]["timeline"] += 1
-        for t in todos:
-            if t.get("status") == "open":
-                ex = t.get("created_by", meta.get("examiner", "local"))
-                examiners.setdefault(ex, {"findings": 0, "timeline": 0, "todos_open": 0})
-                examiners[ex]["todos_open"] += 1
-        if examiners:
-            result["by_examiner"] = examiners
-
-        return result
 
     def list_cases(self) -> list[dict]:
         """List all cases."""
@@ -292,53 +244,27 @@ class CaseManager:
         return results
 
     def set_active_case(self, case_id: str) -> dict:
-        """Set active case for session. Auto-joins by creating examiner dir if needed."""
+        """Set active case for session."""
         _validate_case_id(case_id)
         case_dir = self.cases_dir / case_id
         if not case_dir.exists():
             raise ValueError(f"Case not found: {case_id}")
 
-        meta = self._load_case_meta(case_dir)
-        exam = self.examiner
-
-        # Auto-join: create examiner dir with empty initial files if not exists
-        exam_dir = case_dir / "examiners" / exam
-        joined = False
-        if not exam_dir.exists():
-            _validate_examiner(exam)
-            exam_dir.mkdir(parents=True)
-            (exam_dir / "audit").mkdir()
-            _atomic_write(exam_dir / "findings.json", json.dumps([]))
-            _atomic_write(exam_dir / "timeline.json", json.dumps([]))
-            _atomic_write(exam_dir / "todos.json", json.dumps([]))
-            _atomic_write(exam_dir / "evidence.json", json.dumps({"files": []}))
-            joined = True
-
-            # Add examiner to CASE.yaml team list
-            if exam not in meta.get("team", []):
-                meta.setdefault("team", []).append(exam)
-                _atomic_write(case_dir / "CASE.yaml", yaml.dump(meta, default_flow_style=False))
-
         self._active_case_id = case_id
         os.environ["AIIR_CASE_DIR"] = str(case_dir)
         os.environ["AIIR_ACTIVE_CASE"] = case_id
-        os.environ["AIIR_EXAMINER"] = exam
 
-        result: dict[str, Any] = {"active_case": case_id, "examiner": exam}
-        if joined:
-            result["joined"] = True
-            result["message"] = f"Auto-joined case as examiner '{exam}'"
-        return result
+        return {"active_case": case_id, "examiner": self.examiner}
 
     # --- Investigation Records ---
 
     def record_action(self, description: str, tool: str = "", command: str = "", examiner_override: str = "") -> dict:
-        """Append action to examiners/{slug}/actions.jsonl."""
+        """Append action to actions.jsonl."""
         case_dir = self._require_active_case()
         ts = datetime.now(timezone.utc).isoformat()
         exam = self._effective_examiner(examiner_override)
 
-        entry = {
+        entry: dict[str, Any] = {
             "ts": ts,
             "description": description,
             "examiner": exam,
@@ -348,9 +274,7 @@ class CaseManager:
         if command:
             entry["command"] = command
 
-        exam_dir = self._examiner_dir(case_dir, examiner_override)
-        exam_dir.mkdir(parents=True, exist_ok=True)
-        with open(exam_dir / "actions.jsonl", "a", encoding="utf-8") as f:
+        with open(case_dir / "actions.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
 
         return {"status": "recorded", "timestamp": ts}
@@ -364,12 +288,11 @@ class CaseManager:
         if not validation.get("valid", False):
             return {"status": "VALIDATION_FAILED", "errors": validation.get("errors", [])}
 
-        # Assign finding ID using max existing local ID
-        findings = self._load_findings(case_dir)
-        max_num = max((_safe_id_num(f["id"]) for f in findings if "id" in f), default=0)
-        finding_id = f"F-{max_num + 1:03d}"
-
         exam = self._effective_examiner(examiner_override)
+        findings = self._load_findings(case_dir)
+        seq = _next_seq(findings, "id", "F", exam)
+        finding_id = f"F-{exam}-{seq:03d}"
+        now = datetime.now(timezone.utc).isoformat()
 
         # Strip protected fields from user input for defense-in-depth
         sanitized = {k: v for k, v in finding.items() if k not in _PROTECTED_FINDING_FIELDS}
@@ -377,7 +300,8 @@ class CaseManager:
             **sanitized,
             "id": finding_id,
             "status": "DRAFT",
-            "staged": datetime.now(timezone.utc).isoformat(),
+            "staged": now,
+            "modified_at": now,
             "created_by": exam,
             "examiner": exam,
         }
@@ -396,11 +320,11 @@ class CaseManager:
         if missing:
             return {"status": "VALIDATION_FAILED", "errors": [f"Missing required fields: {missing}"]}
 
-        timeline = self._load_timeline(case_dir)
-        max_num = max((_safe_id_num(t["id"]) for t in timeline if "id" in t), default=0)
-        event_id = f"T-{max_num + 1:03d}"
-
         exam = self._effective_examiner(examiner_override)
+        timeline = self._load_timeline(case_dir)
+        seq = _next_seq(timeline, "id", "T", exam)
+        event_id = f"T-{exam}-{seq:03d}"
+        now = datetime.now(timezone.utc).isoformat()
 
         # Strip protected fields from user input for defense-in-depth
         sanitized = {k: v for k, v in event.items() if k not in _PROTECTED_EVENT_FIELDS}
@@ -408,7 +332,8 @@ class CaseManager:
             **sanitized,
             "id": event_id,
             "status": "DRAFT",
-            "staged": datetime.now(timezone.utc).isoformat(),
+            "staged": now,
+            "modified_at": now,
             "created_by": exam,
             "examiner": exam,
         }
@@ -418,9 +343,9 @@ class CaseManager:
         return {"status": "STAGED", "event_id": event_id}
 
     def get_findings(self, status: str | None = None) -> list[dict]:
-        """Return merged findings from all examiners."""
+        """Return local findings."""
         case_dir = self._require_active_case()
-        findings = self._load_all_findings(case_dir)
+        findings = self._load_findings(case_dir)
         if status:
             findings = [f for f in findings if f.get("status") == status.upper()]
         return findings
@@ -434,7 +359,7 @@ class CaseManager:
         end_date: str | None = None,
         event_type: str | None = None,
     ) -> list[dict]:
-        """Return merged timeline from all examiners, sorted chronologically.
+        """Return local timeline, sorted chronologically.
 
         Optional filters narrow the result set:
         - status: DRAFT, APPROVED, REJECTED
@@ -445,7 +370,8 @@ class CaseManager:
         - event_type: exact match against event_type field
         """
         case_dir = self._require_active_case()
-        events = self._load_all_timeline(case_dir)
+        events = self._load_timeline(case_dir)
+        events.sort(key=lambda t: t.get("timestamp", ""))
         if status:
             events = [e for e in events if e.get("status") == status.upper()]
         if source:
@@ -461,27 +387,17 @@ class CaseManager:
         return events
 
     def get_actions(self, limit: int = 50) -> list[dict]:
-        """Return recent actions from all examiners/*/actions.jsonl."""
+        """Return recent actions from actions.jsonl."""
         case_dir = self._require_active_case()
         entries = []
-
-        examiners_root = case_dir / "examiners"
-        if examiners_root.is_dir():
-            for ex_dir in sorted(examiners_root.iterdir()):
-                if not ex_dir.is_dir() or ex_dir.name.startswith("."):
-                    continue
-                actions_file = ex_dir / "actions.jsonl"
-                if actions_file.exists():
-                    for line in actions_file.read_text().strip().split("\n"):
-                        if line:
-                            try:
-                                entry = json.loads(line)
-                            except json.JSONDecodeError:
-                                logger.warning("Corrupt JSONL line in %s", actions_file)
-                                continue
-                            entry.setdefault("examiner", ex_dir.name)
-                            entries.append(entry)
-
+        actions_file = case_dir / "actions.jsonl"
+        if actions_file.exists():
+            for line in actions_file.read_text().strip().split("\n"):
+                if line:
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        logger.warning("Corrupt JSONL line in %s", actions_file)
         entries.sort(key=lambda e: e.get("ts", ""))
         return entries[-limit:]
 
@@ -497,14 +413,10 @@ class CaseManager:
     ) -> dict:
         """Create a new TODO item."""
         case_dir = self._require_active_case()
-        todos = self._load_todos(case_dir)
         exam = self._effective_examiner(examiner_override)
-
-        max_num = max(
-            (_safe_id_num(t["todo_id"]) for t in todos if "todo_id" in t),
-            default=0,
-        )
-        todo_id = f"TODO-{max_num + 1:03d}"
+        todos = self._load_todos(case_dir)
+        seq = _next_seq(todos, "todo_id", "TODO", exam)
+        todo_id = f"TODO-{exam}-{seq:03d}"
 
         todo = {
             "todo_id": todo_id,
@@ -525,9 +437,9 @@ class CaseManager:
         return {"status": "created", "todo_id": todo_id}
 
     def list_todos(self, status: str = "open", assignee: str = "") -> list[dict]:
-        """List TODOs from all examiners, filtered by status and/or assignee."""
+        """List local TODOs, filtered by status and/or assignee."""
         case_dir = self._require_active_case()
-        todos = self._load_all_todos(case_dir)
+        todos = self._load_todos(case_dir)
 
         if status != "all":
             todos = [t for t in todos if t.get("status") == status]
@@ -545,7 +457,7 @@ class CaseManager:
         priority: str = "",
         examiner_override: str = "",
     ) -> dict:
-        """Update a TODO item (local only)."""
+        """Update a TODO item."""
         case_dir = self._require_active_case()
         todos = self._load_todos(case_dir)
         exam = self._effective_examiner(examiner_override)
@@ -659,7 +571,7 @@ class CaseManager:
     def get_evidence_access_log(self, path: str | None = None) -> list[dict]:
         """Return chain-of-custody log."""
         case_dir = self._require_active_case()
-        log_file = self._examiner_dir(case_dir) / "evidence_access.jsonl"
+        log_file = case_dir / "evidence_access.jsonl"
         if not log_file.exists():
             return []
         entries = []
@@ -677,18 +589,10 @@ class CaseManager:
     # --- Audit Aggregation ---
 
     def get_audit_log(self, limit: int = 100, mcp: str | None = None, tool_filter: str | None = None) -> list[dict]:
-        """Read and merge audit JSONL from all examiners/*/audit/."""
+        """Read and merge audit JSONL from audit/."""
         case_dir = self._require_active_case()
-        entries = []
-
-        examiners_root = case_dir / "examiners"
-        if examiners_root.is_dir():
-            for ex_dir in sorted(examiners_root.iterdir()):
-                if not ex_dir.is_dir() or ex_dir.name.startswith("."):
-                    continue
-                audit_dir = ex_dir / "audit"
-                entries.extend(self._read_audit_dir(audit_dir, mcp, tool_filter))
-
+        audit_dir = case_dir / "audit"
+        entries = self._read_audit_dir(audit_dir, mcp, tool_filter)
         entries.sort(key=lambda e: e.get("ts", ""))
         return entries[-limit:]
 
@@ -716,294 +620,120 @@ class CaseManager:
             "unique_evidence_ids": len(evidence_ids),
         }
 
-    # --- Multi-Examiner Sync ---
+    # --- Export / Merge ---
 
-    def export_contributions(self, since: str = "") -> dict:
-        """Export this examiner's work as a contribution bundle."""
+    def export_findings(self, output_path: str, since: str = "") -> dict:
+        """Export local findings to a JSON file. Optional since filter."""
         case_dir = self._require_active_case()
-        meta = self._load_case_meta(case_dir)
-        exam = self.examiner
-        local = self._examiner_dir(case_dir)
-
-        bundle: dict[str, Any] = {
-            "schema_version": _BUNDLE_SCHEMA_VERSION,
-            "case_id": meta["case_id"],
-            "examiner": exam,
-            "exported_at": datetime.now(timezone.utc).isoformat(),
-            "since": since or None,
-        }
-
-        # Findings
         findings = self._load_findings(case_dir)
-        for f in findings:
-            f.setdefault("examiner", exam)
-        bundle["findings"] = findings
-
-        # Timeline
-        timeline = self._load_timeline(case_dir)
-        for t in timeline:
-            t.setdefault("examiner", exam)
-        bundle["timeline"] = timeline
-
-        # TODOs
-        todos = self._load_todos(case_dir)
-        bundle["todos"] = todos
-
-        # Actions (JSONL)
-        actions_file = local / "actions.jsonl"
-        bundle["actions_jsonl"] = actions_file.read_text() if actions_file.exists() else ""
-        # Legacy fallback for old bundles
-        legacy_actions = local / "actions.md"
-        bundle["actions_md"] = legacy_actions.read_text() if legacy_actions.exists() else ""
-
-        # Approvals
-        approvals_file = local / "approvals.jsonl"
-        approvals = []
-        if approvals_file.exists():
-            for line in approvals_file.read_text().strip().split("\n"):
-                if line:
-                    try:
-                        approvals.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        logger.warning("Corrupt JSONL line in %s", approvals_file)
-        bundle["approvals"] = approvals
-
-        # Audit entries (all MCP audit files)
-        audit_dir = local / "audit"
-        audit: dict[str, list] = {}
-        if audit_dir.is_dir():
-            for jsonl_file in audit_dir.glob("*.jsonl"):
-                mcp_name = jsonl_file.stem
-                entries = []
-                for line in jsonl_file.read_text().strip().split("\n"):
-                    if line:
-                        try:
-                            entries.append(json.loads(line))
-                        except json.JSONDecodeError:
-                            logger.warning("Corrupt JSONL line in %s", jsonl_file)
-                audit[mcp_name] = entries
-        bundle["audit"] = audit
-
-        # Evidence manifest (hashes + descriptions, not files)
-        registry = self._load_evidence_registry(case_dir)
-        manifest = []
-        for entry in registry.get("files", []):
-            manifest.append({
-                "sha256": entry["sha256"],
-                "description": entry.get("description", ""),
-                "registered_at": entry.get("registered_at", ""),
-                "examiner": exam,
-            })
-        bundle["evidence_manifest"] = manifest
-
-        # Filter by since timestamp if provided
         if since:
-            bundle["findings"] = [f for f in bundle["findings"] if f.get("staged", "") >= since]
-            bundle["timeline"] = [t for t in bundle["timeline"] if t.get("staged", "") >= since]
-            bundle["approvals"] = [a for a in bundle["approvals"] if a.get("ts", "") >= since]
-            for mcp_name in bundle["audit"]:
-                bundle["audit"][mcp_name] = [
-                    e for e in bundle["audit"][mcp_name] if e.get("ts", "") >= since
-                ]
+            findings = [f for f in findings if f.get("modified_at", f.get("staged", "")) >= since]
 
-        return bundle
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write(out, json.dumps(findings, indent=2, default=str))
 
-    def import_contributions(self, bundle: dict) -> dict:
-        """Import a contribution bundle from another examiner."""
+        return {"exported": len(findings), "path": str(out)}
+
+    def export_timeline(self, output_path: str, since: str = "") -> dict:
+        """Export local timeline to a JSON file. Optional since filter."""
         case_dir = self._require_active_case()
-        meta = self._load_case_meta(case_dir)
+        timeline = self._load_timeline(case_dir)
+        if since:
+            timeline = [t for t in timeline if t.get("modified_at", t.get("staged", "")) >= since]
 
-        # Validate bundle
-        if bundle.get("schema_version") != _BUNDLE_SCHEMA_VERSION:
-            return {"status": "error", "message": f"Unsupported schema version: {bundle.get('schema_version')}"}
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write(out, json.dumps(timeline, indent=2, default=str))
 
-        bundle_examiner = bundle.get("examiner", "")
-        if not bundle_examiner:
-            return {"status": "error", "message": "Bundle missing examiner field"}
+        return {"exported": len(timeline), "path": str(out)}
 
-        if bundle_examiner == meta.get("examiner"):
-            return {"status": "error", "message": "Cannot import your own contributions"}
+    def merge_findings(self, incoming_path: str) -> dict:
+        """Merge incoming findings JSON into local findings.
 
-        bundle_case = bundle.get("case_id", "")
-        if bundle_case != meta["case_id"]:
-            return {"status": "error", "message": f"Case ID mismatch: bundle={bundle_case}, local={meta['case_id']}"}
-
-        _validate_examiner(bundle_examiner)
-
-        # Validate content types
-        for field in ("findings", "timeline", "todos"):
-            if field in bundle and not isinstance(bundle[field], list):
-                return {"status": "error", "message": f"Bundle '{field}' must be a list, got {type(bundle[field]).__name__}"}
-
-        # Validate audit entries have required fields
-        if "audit" in bundle:
-            if not isinstance(bundle["audit"], dict):
-                return {"status": "error", "message": "Bundle 'audit' must be a dict"}
-            for mcp_name, entries in bundle["audit"].items():
-                if not isinstance(entries, list):
-                    return {"status": "error", "message": f"Audit entries for '{mcp_name}' must be a list"}
-                for entry in entries:
-                    if not isinstance(entry, dict) or "ts" not in entry or "tool" not in entry:
-                        return {"status": "error", "message": f"Audit entry in '{mcp_name}' missing required 'ts' or 'tool' fields"}
-
-        # Write to examiners/{examiner}/
-        import_dir = case_dir / "examiners" / bundle_examiner
-        import_dir.mkdir(parents=True, exist_ok=True)
-        (import_dir / "audit").mkdir(exist_ok=True)
-
-        # Write findings
-        if "findings" in bundle:
-            _atomic_write(import_dir / "findings.json", json.dumps(bundle["findings"], indent=2, default=str))
-
-        # Write timeline
-        if "timeline" in bundle:
-            _atomic_write(import_dir / "timeline.json", json.dumps(bundle["timeline"], indent=2, default=str))
-
-        # Write TODOs
-        if "todos" in bundle:
-            _atomic_write(import_dir / "todos.json", json.dumps(bundle["todos"], indent=2, default=str))
-
-        # Write actions
-        if bundle.get("actions_jsonl"):
-            _atomic_write(import_dir / "actions.jsonl", bundle["actions_jsonl"])
-        elif bundle.get("actions_md"):
-            _atomic_write(import_dir / "actions.md", bundle["actions_md"])
-
-        # Write approvals
-        if "approvals" in bundle:
-            lines = [json.dumps(entry, default=str) + "\n" for entry in bundle["approvals"]]
-            _atomic_write(import_dir / "approvals.jsonl", "".join(lines))
-
-        # Write audit entries
-        if "audit" in bundle:
-            for mcp_name, entries in bundle["audit"].items():
-                # Validate mcp_name to prevent path traversal
-                if not mcp_name or ".." in mcp_name or "/" in mcp_name or "\\" in mcp_name:
-                    continue
-                lines = [json.dumps(entry, default=str) + "\n" for entry in entries]
-                _atomic_write(import_dir / "audit" / f"{mcp_name}.jsonl", "".join(lines))
-
-        # Write evidence manifest
-        if "evidence_manifest" in bundle:
-            _atomic_write(import_dir / "evidence_manifest.json", json.dumps(bundle["evidence_manifest"], indent=2, default=str))
-
-        # Update team list in CASE.yaml
-        if bundle_examiner not in meta.get("team", []):
-            meta.setdefault("team", []).append(bundle_examiner)
-            _atomic_write(case_dir / "CASE.yaml", yaml.dump(meta, default_flow_style=False))
-
-        return {
-            "status": "imported",
-            "examiner": bundle_examiner,
-            "findings": len(bundle.get("findings", [])),
-            "timeline": len(bundle.get("timeline", [])),
-            "todos": len(bundle.get("todos", [])),
-            "approvals": len(bundle.get("approvals", [])),
-        }
-
-    def ingest_remote_audit(self, source: str, mcp_name: str, since: str = "") -> dict:
-        """Pull audit entries from a remote MCP into local audit.
-
-        Args:
-            source: File path to a JSONL file.
-            mcp_name: MCP name for the audit file (e.g., 'wintools-mcp').
-            since: ISO timestamp — only ingest entries after this time.
+        For each record:
+        - ID not in local: ADD
+        - ID exists, incoming modified_at > local: REPLACE
+        - ID exists, local is same or newer: SKIP
         """
         case_dir = self._require_active_case()
+        incoming = self._load_json_file(Path(incoming_path), [])
+        if not isinstance(incoming, list):
+            return {"status": "error", "message": "Incoming file must contain a JSON array"}
 
-        # Validate mcp_name — no path traversal
-        if not mcp_name or ".." in mcp_name or "/" in mcp_name or "\\" in mcp_name:
-            return {"status": "error", "message": f"Invalid mcp_name: {mcp_name!r}"}
+        local = self._load_findings(case_dir)
+        local_by_id = {f["id"]: f for f in local if "id" in f}
 
-        # Read entries from file source
-        source_path = Path(source).resolve()
-        if not source_path.exists():
-            return {"status": "error", "message": f"Source not found: {source}"}
+        added = 0
+        updated = 0
+        skipped = 0
 
-        # Validate source is within case directory
-        try:
-            source_path.relative_to(case_dir.resolve())
-        except ValueError:
-            return {"status": "error", "message": "Source path must be within case directory"}
-
-        entries = []
-        for line in source_path.read_text().strip().split("\n"):
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                logger.warning("Corrupt JSONL line in %s", source_path)
+        for item in incoming:
+            item_id = item.get("id", "")
+            if not item_id:
+                skipped += 1
                 continue
 
-            # Filter by since
-            if since and entry.get("ts", "") <= since:
-                continue
+            if item_id not in local_by_id:
+                local.append(item)
+                local_by_id[item_id] = item
+                added += 1
+            else:
+                existing = local_by_id[item_id]
+                inc_ts = item.get("modified_at", item.get("staged", ""))
+                loc_ts = existing.get("modified_at", existing.get("staged", ""))
+                if inc_ts > loc_ts:
+                    idx = next(i for i, f in enumerate(local) if f.get("id") == item_id)
+                    local[idx] = item
+                    local_by_id[item_id] = item
+                    updated += 1
+                else:
+                    skipped += 1
 
-            # Validate required fields
-            required = {"ts", "tool"}
-            if not required.issubset(entry.keys()):
-                continue
+        self._save_findings(case_dir, local)
+        return {"added": added, "updated": updated, "skipped": skipped}
 
-            entries.append(entry)
+    def merge_timeline(self, incoming_path: str) -> dict:
+        """Merge incoming timeline JSON into local timeline.
 
-        if not entries:
-            return {"status": "ok", "ingested": 0}
-
-        # Append to examiners/{self}/audit/{mcp_name}.jsonl
-        audit_dir = self._examiner_dir(case_dir) / "audit"
-        audit_dir.mkdir(parents=True, exist_ok=True)
-        audit_file = audit_dir / f"{mcp_name}.jsonl"
-
-        # Read existing entries to deduplicate
-        existing_ts = set()
-        if audit_file.exists():
-            for line in audit_file.read_text().strip().split("\n"):
-                if line:
-                    try:
-                        existing_ts.add(json.loads(line).get("ts", ""))
-                    except json.JSONDecodeError:
-                        logger.warning("Corrupt JSONL line in %s", audit_file)
-
-        new_entries = [e for e in entries if e.get("ts", "") not in existing_ts]
-
-        with open(audit_file, "a", encoding="utf-8") as f:
-            for entry in new_entries:
-                f.write(json.dumps(entry, default=str) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
-
-        return {"status": "ok", "ingested": len(new_entries), "skipped_duplicates": len(entries) - len(new_entries)}
-
-    def get_team_status(self) -> dict:
-        """Per-examiner summary of contributions."""
+        Same dedup + last-write-wins logic as merge_findings.
+        """
         case_dir = self._require_active_case()
-        meta = self._load_case_meta(case_dir)
-        exam = self.examiner
+        incoming = self._load_json_file(Path(incoming_path), [])
+        if not isinstance(incoming, list):
+            return {"status": "error", "message": "Incoming file must contain a JSON array"}
 
-        result: dict[str, Any] = {
-            "case_id": meta["case_id"],
-            "local_examiner": exam,
-            "examiners": {},
-        }
+        local = self._load_timeline(case_dir)
+        local_by_id = {t["id"]: t for t in local if "id" in t}
 
-        examiners_root = case_dir / "examiners"
-        if examiners_root.is_dir():
-            for ex_dir in sorted(examiners_root.iterdir()):
-                if not ex_dir.is_dir() or ex_dir.name.startswith("."):
-                    continue
-                ex_name = ex_dir.name
-                findings = self._load_json_file(ex_dir / "findings.json", [])
-                timeline = self._load_json_file(ex_dir / "timeline.json", [])
-                todos = self._load_json_file(ex_dir / "todos.json", [])
-                result["examiners"][ex_name] = {
-                    "source": "local" if ex_name == exam else "team",
-                    "findings": len(findings),
-                    "timeline": len(timeline),
-                    "todos_open": sum(1 for t in todos if t.get("status") == "open"),
-                }
+        added = 0
+        updated = 0
+        skipped = 0
 
-        return result
+        for item in incoming:
+            item_id = item.get("id", "")
+            if not item_id:
+                skipped += 1
+                continue
+
+            if item_id not in local_by_id:
+                local.append(item)
+                local_by_id[item_id] = item
+                added += 1
+            else:
+                existing = local_by_id[item_id]
+                inc_ts = item.get("modified_at", item.get("staged", ""))
+                loc_ts = existing.get("modified_at", existing.get("staged", ""))
+                if inc_ts > loc_ts:
+                    idx = next(i for i, t in enumerate(local) if t.get("id") == item_id)
+                    local[idx] = item
+                    local_by_id[item_id] = item
+                    updated += 1
+                else:
+                    skipped += 1
+
+        self._save_timeline(case_dir, local)
+        return {"added": added, "updated": updated, "skipped": skipped}
 
     # --- Report Generation ---
 
@@ -1074,17 +804,16 @@ class CaseManager:
         """Complete IR report from all approved data."""
         case_dir = self._require_active_case()
         meta = self._load_case_meta(case_dir)
-        findings = [f for f in self._load_all_findings(case_dir) if f.get("status") == "APPROVED"]
-        timeline = [t for t in self._load_all_timeline(case_dir) if t.get("status") == "APPROVED"]
+        findings = [f for f in self._load_findings(case_dir) if f.get("status") == "APPROVED"]
+        timeline = [t for t in self._load_timeline(case_dir) if t.get("status") == "APPROVED"]
         evidence = self._load_evidence_registry(case_dir)
-        todos = self._load_all_todos(case_dir)
+        todos = self._load_todos(case_dir)
         iocs = self._extract_iocs(findings)
         mitre = self._build_mitre_mapping(findings)
 
-        # Load actions from this examiner
-        exam_dir = self._examiner_dir(case_dir)
+        # Load actions
         actions = []
-        actions_file = exam_dir / "actions.jsonl"
+        actions_file = case_dir / "actions.jsonl"
         if actions_file.exists():
             for line in actions_file.read_text().strip().split("\n"):
                 if line:
@@ -1099,7 +828,6 @@ class CaseManager:
                 "name": meta.get("name", ""),
                 "status": meta.get("status", ""),
                 "examiner": meta.get("examiner", ""),
-                "team": meta.get("team", []),
                 "created": meta.get("created", ""),
             },
             "findings": findings,
@@ -1116,7 +844,7 @@ class CaseManager:
             f"# Incident Response Report — {meta.get('case_id', '')}",
             f"**Case:** {meta.get('name', '')}",
             f"**Date:** {datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
-            f"**Examiner(s):** {', '.join(meta.get('team', []))}",
+            f"**Examiner:** {meta.get('examiner', '')}",
             "",
             "## Executive Summary",
             "",
@@ -1177,9 +905,9 @@ class CaseManager:
         """Non-technical management briefing from approved data."""
         case_dir = self._require_active_case()
         meta = self._load_case_meta(case_dir)
-        all_findings = self._load_all_findings(case_dir)
+        all_findings = self._load_findings(case_dir)
         approved = [f for f in all_findings if f.get("status") == "APPROVED"]
-        timeline = [t for t in self._load_all_timeline(case_dir) if t.get("status") == "APPROVED"]
+        timeline = [t for t in self._load_timeline(case_dir) if t.get("status") == "APPROVED"]
         iocs = self._extract_iocs(approved)
 
         confidence_breakdown = {}
@@ -1249,7 +977,8 @@ class CaseManager:
         """Filtered or complete approved timeline report."""
         case_dir = self._require_active_case()
         meta = self._load_case_meta(case_dir)
-        timeline = [t for t in self._load_all_timeline(case_dir) if t.get("status") == "APPROVED"]
+        timeline = [t for t in self._load_timeline(case_dir) if t.get("status") == "APPROVED"]
+        timeline.sort(key=lambda t: t.get("timestamp", ""))
 
         if start_date:
             timeline = [t for t in timeline if t.get("timestamp", "") >= start_date]
@@ -1294,7 +1023,7 @@ class CaseManager:
         """IOCs + MITRE for sharing/blocking. Structural output."""
         case_dir = self._require_active_case()
         meta = self._load_case_meta(case_dir)
-        findings = [f for f in self._load_all_findings(case_dir) if f.get("status") == "APPROVED"]
+        findings = [f for f in self._load_findings(case_dir) if f.get("status") == "APPROVED"]
         iocs = self._extract_iocs(findings)
         mitre = self._build_mitre_mapping(findings)
 
@@ -1353,10 +1082,10 @@ class CaseManager:
         """Specific findings in detail. Defaults to all approved."""
         case_dir = self._require_active_case()
         meta = self._load_case_meta(case_dir)
-        all_findings = [f for f in self._load_all_findings(case_dir) if f.get("status") == "APPROVED"]
+        all_findings = [f for f in self._load_findings(case_dir) if f.get("status") == "APPROVED"]
 
         if finding_ids:
-            findings = [f for f in all_findings if f["id"] in finding_ids or f["id"].split("/")[-1] in finding_ids]
+            findings = [f for f in all_findings if f["id"] in finding_ids]
         else:
             findings = all_findings
 
@@ -1414,9 +1143,9 @@ class CaseManager:
         """Quick overview for standups/handoffs."""
         case_dir = self._require_active_case()
         meta = self._load_case_meta(case_dir)
-        findings = self._load_all_findings(case_dir)
-        timeline = self._load_all_timeline(case_dir)
-        todos = self._load_all_todos(case_dir)
+        findings = self._load_findings(case_dir)
+        timeline = self._load_timeline(case_dir)
+        todos = self._load_todos(case_dir)
         evidence = self._load_evidence_registry(case_dir)
 
         approved_findings = [f for f in findings if f.get("status") == "APPROVED"]
@@ -1427,7 +1156,6 @@ class CaseManager:
                 "case_id": meta.get("case_id", ""),
                 "name": meta.get("name", ""),
                 "status": meta.get("status", ""),
-                "team": meta.get("team", []),
             },
             "counts": {
                 "findings_total": len(findings),
@@ -1447,7 +1175,7 @@ class CaseManager:
             f"# Status Brief — {meta.get('case_id', '')}",
             f"**Case:** {meta.get('name', '')}",
             f"**Status:** {meta.get('status', '')}",
-            f"**Team:** {', '.join(meta.get('team', []))}",
+            f"**Examiner:** {meta.get('examiner', '')}",
             f"**Date:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
             "",
             "## Counts",
@@ -1514,7 +1242,7 @@ class CaseManager:
     def _score_grounding(self, finding: dict) -> dict:
         """Score how well a finding is grounded by external reference MCPs.
 
-        Scans this examiner's audit directory for evidence of forensic-rag-mcp,
+        Scans the case audit directory for evidence of forensic-rag-mcp,
         windows-triage-mcp, and opencti-mcp usage. Returns WEAK/PARTIAL/STRONG
         with suggestions for unconsulted sources.
 
@@ -1524,7 +1252,7 @@ class CaseManager:
         if case_dir is None or not case_dir.exists():
             return {}
 
-        audit_dir = self._examiner_dir(case_dir) / "audit"
+        audit_dir = case_dir / "audit"
         if not audit_dir.is_dir():
             return self._grounding_result([], finding)
 
@@ -1588,44 +1316,34 @@ class CaseManager:
         with open(case_dir / "CASE.yaml") as f:
             return yaml.safe_load(f) or {}
 
-    # --- Local store I/O (this examiner only) ---
+    # --- Data I/O (case root) ---
 
     def _load_findings(self, case_dir: Path) -> list[dict]:
-        return self._load_json_file(self._examiner_dir(case_dir) / "findings.json", [])
+        return self._load_json_file(case_dir / "findings.json", [])
 
     def _save_findings(self, case_dir: Path, findings: list[dict]) -> None:
-        exam_dir = self._examiner_dir(case_dir)
-        exam_dir.mkdir(parents=True, exist_ok=True)
-        _atomic_write(exam_dir / "findings.json", json.dumps(findings, indent=2, default=str))
+        _atomic_write(case_dir / "findings.json", json.dumps(findings, indent=2, default=str))
 
     def _load_timeline(self, case_dir: Path) -> list[dict]:
-        return self._load_json_file(self._examiner_dir(case_dir) / "timeline.json", [])
+        return self._load_json_file(case_dir / "timeline.json", [])
 
     def _save_timeline(self, case_dir: Path, timeline: list[dict]) -> None:
-        exam_dir = self._examiner_dir(case_dir)
-        exam_dir.mkdir(parents=True, exist_ok=True)
-        _atomic_write(exam_dir / "timeline.json", json.dumps(timeline, indent=2, default=str))
+        _atomic_write(case_dir / "timeline.json", json.dumps(timeline, indent=2, default=str))
 
     def _load_todos(self, case_dir: Path) -> list[dict]:
-        return self._load_json_file(self._examiner_dir(case_dir) / "todos.json", [])
+        return self._load_json_file(case_dir / "todos.json", [])
 
     def _save_todos(self, case_dir: Path, todos: list[dict]) -> None:
-        exam_dir = self._examiner_dir(case_dir)
-        exam_dir.mkdir(parents=True, exist_ok=True)
-        _atomic_write(exam_dir / "todos.json", json.dumps(todos, indent=2, default=str))
+        _atomic_write(case_dir / "todos.json", json.dumps(todos, indent=2, default=str))
 
     def _load_evidence_registry(self, case_dir: Path) -> dict:
-        return self._load_json_file(self._examiner_dir(case_dir) / "evidence.json", {"files": []})
+        return self._load_json_file(case_dir / "evidence.json", {"files": []})
 
     def _save_evidence_registry(self, case_dir: Path, registry: dict) -> None:
-        exam_dir = self._examiner_dir(case_dir)
-        exam_dir.mkdir(parents=True, exist_ok=True)
-        _atomic_write(exam_dir / "evidence.json", json.dumps(registry, indent=2, default=str))
+        _atomic_write(case_dir / "evidence.json", json.dumps(registry, indent=2, default=str))
 
     def _log_evidence_access(self, case_dir: Path, action: str, path: str, detail: str = "") -> None:
-        exam_dir = self._examiner_dir(case_dir)
-        exam_dir.mkdir(parents=True, exist_ok=True)
-        log_file = exam_dir / "evidence_access.jsonl"
+        log_file = case_dir / "evidence_access.jsonl"
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "action": action,
@@ -1635,63 +1353,6 @@ class CaseManager:
         }
         with open(log_file, "a") as f:
             f.write(json.dumps(entry) + "\n")
-
-    # --- Merged reads (all examiners) ---
-
-    def _load_all_findings(self, case_dir: Path) -> list[dict]:
-        """Load findings from all examiners/*/, with scoped IDs."""
-        findings = []
-        examiners_root = case_dir / "examiners"
-        if not examiners_root.is_dir():
-            return findings
-        for ex_dir in sorted(examiners_root.iterdir()):
-            if not ex_dir.is_dir() or ex_dir.name.startswith("."):
-                continue
-            exam = ex_dir.name
-            ex_findings = self._load_json_file(ex_dir / "findings.json", [])
-            for f in ex_findings:
-                f.setdefault("examiner", exam)
-                if "/" not in f.get("id", ""):
-                    f["id"] = f"{exam}/{f['id']}"
-            findings.extend(ex_findings)
-        return findings
-
-    def _load_all_timeline(self, case_dir: Path) -> list[dict]:
-        """Load timeline from all examiners/*/, sorted chronologically."""
-        timeline = []
-        examiners_root = case_dir / "examiners"
-        if not examiners_root.is_dir():
-            return timeline
-        for ex_dir in sorted(examiners_root.iterdir()):
-            if not ex_dir.is_dir() or ex_dir.name.startswith("."):
-                continue
-            exam = ex_dir.name
-            ex_timeline = self._load_json_file(ex_dir / "timeline.json", [])
-            for t in ex_timeline:
-                t.setdefault("examiner", exam)
-                if "/" not in t.get("id", ""):
-                    t["id"] = f"{exam}/{t['id']}"
-            timeline.extend(ex_timeline)
-        timeline.sort(key=lambda t: t.get("timestamp", ""))
-        return timeline
-
-    def _load_all_todos(self, case_dir: Path) -> list[dict]:
-        """Load TODOs from all examiners/*/."""
-        todos = []
-        examiners_root = case_dir / "examiners"
-        if not examiners_root.is_dir():
-            return todos
-        for ex_dir in sorted(examiners_root.iterdir()):
-            if not ex_dir.is_dir() or ex_dir.name.startswith("."):
-                continue
-            exam = ex_dir.name
-            ex_todos = self._load_json_file(ex_dir / "todos.json", [])
-            for t in ex_todos:
-                t.setdefault("examiner", exam)
-                if "/" not in t.get("todo_id", ""):
-                    t["todo_id"] = f"{exam}/{t['todo_id']}"
-            todos.extend(ex_todos)
-        return todos
 
     # --- Audit helpers ---
 

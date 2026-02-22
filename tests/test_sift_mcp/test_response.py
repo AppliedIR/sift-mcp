@@ -162,7 +162,7 @@ class TestAudit:
         eid = writer.log(tool="test_tool", params={"x": 1}, result_summary={"ok": True})
 
         assert eid.startswith("sift-")
-        log_file = case_dir / "examiners" / "tester" / "audit" / "sift-mcp.jsonl"
+        log_file = case_dir / "audit" / "sift-mcp.jsonl"
         assert log_file.exists()
         entry = json.loads(log_file.read_text().strip())
         assert entry["tool"] == "test_tool"
@@ -188,7 +188,7 @@ class TestAudit:
         writer = AuditWriter("sift-mcp")
         writer.log(tool="run_command", params={"cmd": "ls"}, result_summary={"ok": True})
 
-        log_file = case_dir / "examiners" / "tester" / "audit" / "sift-mcp.jsonl"
+        log_file = case_dir / "audit" / "sift-mcp.jsonl"
         entry = json.loads(log_file.read_text().strip())
         assert entry["mcp"] == "sift-mcp"
         assert entry["source"] == "mcp_server"

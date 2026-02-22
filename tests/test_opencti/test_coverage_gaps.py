@@ -638,14 +638,13 @@ class TestAdaptiveMetricsGaps:
 # =============================================================================
 
 class TestClientWriteOperations:
-    """Tests for client write operations."""
+    """Tests for client write operations (client methods still exist, server no longer exposes them)."""
 
     @pytest.fixture
     def mock_config(self):
         return Config(
             opencti_url="http://localhost:8080",
             opencti_token=SecretStr("test-token"),
-            read_only=False
         )
 
     def test_create_indicator(self, mock_config):
@@ -958,50 +957,30 @@ class TestGracefulDegradationGaps:
 # =============================================================================
 
 class TestServerToolDispatchGaps:
-    """Tests for uncovered server tool dispatch paths."""
+    """Tests for server tool dispatch — admin and individual search tools removed."""
 
     @pytest.fixture
     def mock_config(self):
         return Config(
             opencti_url="http://localhost:8080",
             opencti_token=SecretStr("test-token"),
-            read_only=False
         )
 
     @pytest.mark.asyncio
-    async def test_dispatch_force_reconnect(self, mock_config):
-        """Test force_reconnect tool dispatch."""
+    async def test_admin_tools_removed(self, mock_config):
+        """Admin tools are no longer dispatched."""
         from opencti_mcp.server import OpenCTIMCPServer
+        from opencti_mcp.errors import ValidationError
 
         server = OpenCTIMCPServer(mock_config)
 
-        with patch.object(server.client, 'force_reconnect') as mock_reconnect:
-            mock_reconnect.return_value = None
-
-            result = await server._dispatch_tool("force_reconnect", {})
-
-            mock_reconnect.assert_called_once()
-            assert "success" in result or "reconnect" in str(result).lower()
+        for tool in ["force_reconnect", "get_cache_stats", "list_connectors", "get_network_status"]:
+            with pytest.raises(ValidationError, match="Unknown tool"):
+                await server._dispatch_tool(tool, {})
 
     @pytest.mark.asyncio
-    async def test_dispatch_get_cache_stats(self, mock_config):
-        """Test get_cache_stats tool dispatch."""
-        from opencti_mcp.server import OpenCTIMCPServer
-
-        server = OpenCTIMCPServer(mock_config)
-
-        with patch.object(server.client, 'get_cache_stats') as mock_stats:
-            mock_stats.return_value = {"search": {"hits": 0, "misses": 0}}
-
-            result = await server._dispatch_tool("get_cache_stats", {})
-
-            mock_stats.assert_called_once()
-            assert result is not None
-            assert isinstance(result, dict)
-
-    @pytest.mark.asyncio
-    async def test_dispatch_search_campaign(self, mock_config):
-        """Test search_campaign tool dispatch."""
+    async def test_dispatch_search_entity_campaign(self, mock_config):
+        """search_entity with type=campaign dispatches correctly."""
         from opencti_mcp.server import OpenCTIMCPServer
 
         server = OpenCTIMCPServer(mock_config)
@@ -1009,13 +988,16 @@ class TestServerToolDispatchGaps:
         with patch.object(server.client, 'search_campaigns') as mock_search:
             mock_search.return_value = [{"id": "camp-1", "name": "Test Campaign"}]
 
-            result = await server._dispatch_tool("search_campaign", {"query": "test"})
+            result = await server._dispatch_tool("search_entity", {
+                "type": "campaign", "query": "test"
+            })
 
             mock_search.assert_called_once()
+            assert "results" in result
 
     @pytest.mark.asyncio
-    async def test_dispatch_search_tool(self, mock_config):
-        """Test search_tool tool dispatch."""
+    async def test_dispatch_search_entity_tool(self, mock_config):
+        """search_entity with type=tool dispatches correctly."""
         from opencti_mcp.server import OpenCTIMCPServer
 
         server = OpenCTIMCPServer(mock_config)
@@ -1023,13 +1005,16 @@ class TestServerToolDispatchGaps:
         with patch.object(server.client, 'search_tools') as mock_search:
             mock_search.return_value = [{"id": "tool-1", "name": "Mimikatz"}]
 
-            result = await server._dispatch_tool("search_tool", {"query": "mimikatz"})
+            result = await server._dispatch_tool("search_entity", {
+                "type": "tool", "query": "mimikatz"
+            })
 
             mock_search.assert_called_once()
+            assert "results" in result
 
     @pytest.mark.asyncio
-    async def test_dispatch_search_infrastructure(self, mock_config):
-        """Test search_infrastructure tool dispatch."""
+    async def test_dispatch_search_entity_infrastructure(self, mock_config):
+        """search_entity with type=infrastructure dispatches correctly."""
         from opencti_mcp.server import OpenCTIMCPServer
 
         server = OpenCTIMCPServer(mock_config)
@@ -1037,6 +1022,9 @@ class TestServerToolDispatchGaps:
         with patch.object(server.client, 'search_infrastructure') as mock_search:
             mock_search.return_value = [{"id": "infra-1", "name": "C2 Server"}]
 
-            result = await server._dispatch_tool("search_infrastructure", {"query": "c2"})
+            result = await server._dispatch_tool("search_entity", {
+                "type": "infrastructure", "query": "c2"
+            })
 
             mock_search.assert_called_once()
+            assert "results" in result

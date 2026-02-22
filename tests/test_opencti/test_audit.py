@@ -51,7 +51,7 @@ class TestAuditWriter:
         writer = AuditWriter("opencti-mcp")
         writer.log(tool="lookup_ioc", params={"ioc": "8.8.8.8"}, result_summary={"found": True})
 
-        audit_file = tmp_path / "examiners" / "tester" / "audit" / "opencti-mcp.jsonl"
+        audit_file = tmp_path / "audit" / "opencti-mcp.jsonl"
         assert audit_file.exists()
         entry = json.loads(audit_file.read_text().strip())
         assert entry["tool"] == "lookup_ioc"
@@ -69,7 +69,7 @@ class TestAuditWriter:
         for _ in range(3):
             writer.log(tool="lookup_ioc", params={}, result_summary={})
 
-        audit_file = tmp_path / "examiners" / "tester" / "audit" / "opencti-mcp.jsonl"
+        audit_file = tmp_path / "audit" / "opencti-mcp.jsonl"
         lines = [json.loads(l) for l in audit_file.read_text().strip().split("\n")]
         assert len(lines) == 3
 
@@ -138,16 +138,14 @@ class TestToolMetadata:
         "search_sector", "search_location", "search_course_of_action",
         "search_grouping", "search_note", "lookup_hash",
         "get_entity", "get_relationships",
-        "create_indicator", "create_note", "create_sighting", "trigger_enrichment",
-        "get_health", "list_connectors", "get_network_status",
-        "force_reconnect", "get_cache_stats",
+        "get_health", "search_entity",
     }
 
     def test_known_tools(self):
         assert set(TOOL_METADATA.keys()) == self.EXPECTED_TOOLS
 
     def test_tool_count(self):
-        assert len(TOOL_METADATA) == 32
+        assert len(TOOL_METADATA) == 25
 
     def test_all_have_caveats_and_constraint(self):
         for tool, meta in TOOL_METADATA.items():
@@ -202,7 +200,7 @@ class TestWrapResponse:
         server = self._make_server_instance()
         server._wrap_response("lookup_ioc", {"ioc": "8.8.8.8"}, {"found": True})
 
-        audit_file = tmp_path / "examiners" / "tester" / "audit" / "opencti-mcp.jsonl"
+        audit_file = tmp_path / "audit" / "opencti-mcp.jsonl"
         assert audit_file.exists()
         entry = json.loads(audit_file.read_text().strip())
         assert entry["tool"] == "lookup_ioc"

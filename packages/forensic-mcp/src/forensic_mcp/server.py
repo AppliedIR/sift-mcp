@@ -93,10 +93,10 @@ def create_server() -> FastMCP:
     # --- Case Lifecycle ---
 
     @server.tool()
-    def init_case(name: str, description: str = "", examiner: str = "", collaborative: bool = False) -> dict:
+    def init_case(name: str, description: str = "", examiner: str = "") -> dict:
         """Create a new case directory with initialized docs. Returns case_id and investigation framework."""
         from forensic_mcp.discipline.rules import get_investigation_framework
-        result = manager.init_case(name, description, examiner=examiner, collaborative=collaborative)
+        result = manager.init_case(name, description, examiner=examiner)
         audit.log(tool="init_case", params={"name": name, "examiner": examiner}, result_summary=result)
 
         # Attach condensed investigation framework so the LLM gets methodology at case start
@@ -452,33 +452,5 @@ def create_server() -> FastMCP:
         result = manager.save_report(filename, content, report_type)
         audit.log(tool="save_report", params={"filename": filename, "report_type": report_type}, result_summary=result)
         return result
-
-    # --- Multi-Examiner Sync ---
-
-    @server.tool()
-    def export_contributions(since: str = "") -> dict:
-        """Export this examiner's work as a JSON contribution bundle for sharing with team members."""
-        result = manager.export_contributions(since)
-        audit.log(tool="export_contributions", params={"since": since}, result_summary={"examiner": result.get("examiner"), "findings": len(result.get("findings", []))})
-        return result
-
-    @server.tool()
-    def import_contributions(bundle: dict) -> dict:
-        """Import a contribution bundle from another examiner. Writes to examiners/{examiner}/."""
-        result = manager.import_contributions(bundle)
-        audit.log(tool="import_contributions", params={"examiner": bundle.get("examiner", "?")}, result_summary=result)
-        return result
-
-    @server.tool()
-    def ingest_remote_audit(source: str, mcp_name: str, since: str = "") -> dict:
-        """Pull audit entries from a remote MCP file into the local case audit trail."""
-        result = manager.ingest_remote_audit(source, mcp_name, since)
-        audit.log(tool="ingest_remote_audit", params={"source": source, "mcp_name": mcp_name}, result_summary=result)
-        return result
-
-    @server.tool()
-    def get_team_status() -> dict:
-        """Per-examiner summary: findings, timeline events, TODOs across all team members."""
-        return manager.get_team_status()
 
     return server

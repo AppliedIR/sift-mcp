@@ -147,32 +147,6 @@ TOOL_METADATA: dict[str, dict[str, list[str] | str]] = {
         ],
         "interpretation_constraint": "Relationship strength varies — check confidence scores",
     },
-    # === Write tools ===
-    "create_indicator": {
-        "caveats": [
-            "Created indicator is added to local OpenCTI instance only",
-        ],
-        "interpretation_constraint": "Indicator creation is a write operation, verify before sharing",
-    },
-    "create_note": {
-        "caveats": [
-            "Note is added to local OpenCTI instance only",
-        ],
-        "interpretation_constraint": "Notes are analyst observations, not automated detections",
-    },
-    "create_sighting": {
-        "caveats": [
-            "Sighting is recorded in local OpenCTI instance only",
-        ],
-        "interpretation_constraint": "Sighting creation should include accurate temporal data",
-    },
-    "trigger_enrichment": {
-        "caveats": [
-            "Enrichment depends on configured connectors (VirusTotal, Shodan, etc.)",
-            "Enrichment results may take time to appear",
-        ],
-        "interpretation_constraint": "Enrichment quality depends on connector configuration",
-    },
     # === Operational tools ===
     "get_health": {
         "caveats": [
@@ -180,29 +154,12 @@ TOOL_METADATA: dict[str, dict[str, list[str] | str]] = {
         ],
         "interpretation_constraint": "Health status is point-in-time",
     },
-    "list_connectors": {
+    # search_entity resolves metadata by looking up the per-type key above
+    "search_entity": {
         "caveats": [
-            "Connector list reflects configured integrations",
+            "Results depend on OpenCTI instance data completeness",
         ],
-        "interpretation_constraint": "Connector presence does not mean active enrichment",
-    },
-    "get_network_status": {
-        "caveats": [
-            "Network metrics reflect recent connection history",
-        ],
-        "interpretation_constraint": "Latency metrics are statistical, not guaranteed",
-    },
-    "force_reconnect": {
-        "caveats": [
-            "Reconnection clears caches and resets circuit breaker",
-        ],
-        "interpretation_constraint": "Use after configuration changes or persistent errors",
-    },
-    "get_cache_stats": {
-        "caveats": [
-            "Cache statistics reflect current session state",
-        ],
-        "interpretation_constraint": "Cache hit rates depend on query patterns",
+        "interpretation_constraint": "Entity search results are instance-specific and point-in-time",
     },
 }
 
