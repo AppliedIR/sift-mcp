@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from sift_mcp.catalog import is_in_catalog
@@ -23,7 +24,16 @@ _TOOL_ALLOWED_FLAGS: dict[str, set[str]] = {
 _TOOL_BLOCKED_FLAGS: dict[str, set[str]] = {
     "find": {"-exec", "-execdir", "-delete", "-fls", "-fprint", "-fprint0", "-fprintf"},
     "sed": {"-i", "--in-place"},               # in-place evidence modification
+    "tar": {"-x", "--extract", "--get", "-c", "--create", "--delete", "--append"},
+    "unzip": {"-o", "-n"},                     # block overwrite modes; list/test only
 }
+
+# awk can execute arbitrary commands via language syntax (not flags).
+# Scan program text for dangerous constructs.
+_AWK_DANGEROUS_RE = re.compile(r"system\s*\(|getline|\".*\||\|.*\"", re.IGNORECASE)
+
+# Tools whose positional args are program text and need content scanning
+_PROGRAM_TEXT_TOOLS = {"awk", "gawk", "mawk", "nawk"}
 
 
 def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]:
@@ -56,6 +66,18 @@ def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]
                     f"Blocked shell metacharacter in extra_args for {tool_name}"
                 )
         sanitized.append(arg)
+
+    # Scan awk program text for dangerous constructs (system(), getline, pipes)
+    if tool_name in _PROGRAM_TEXT_TOOLS:
+        for arg in sanitized:
+            if arg.startswith("-"):
+                continue  # skip flags
+            if _AWK_DANGEROUS_RE.search(arg):
+                raise ValueError(
+                    f"Blocked dangerous awk construct in program text for {tool_name}: "
+                    f"system(), getline, and pipe operators are not allowed"
+                )
+
     return sanitized
 
 

@@ -31,17 +31,20 @@ echo -e "${BOLD}--- Step 1: SIFT Platform ---${NC}"
 echo ""
 curl -sSL "$SIFT_URL" | bash -s -- --quick -y
 
-# Step 2: aiir CLI (interactive for examiner name)
+# Step 2: aiir CLI (non-interactive — stdin is the curl pipe, not a terminal)
 echo ""
 echo -e "${BOLD}--- Step 2: aiir CLI ---${NC}"
 echo ""
-curl -sSL "$AIIR_URL" | bash
+curl -sSL "$AIIR_URL" | bash -s -- -y
 
 echo ""
 echo -e "${BOLD}Quick start complete.${NC}"
 echo ""
+echo "Gateway:  http://127.0.0.1:4508"
+echo ""
 echo "Next steps:"
 echo "  1. Restart your shell (or: source ~/.bashrc)"
-echo "  2. Configure your LLM client:  aiir setup client"
-echo "  3. Verify installation:         aiir setup test"
+echo "  2. Set your examiner identity:  aiir config set examiner <name>"
+echo "  3. Configure your LLM client:   aiir setup client"
+echo "  4. Verify installation:          aiir setup test"
 echo ""

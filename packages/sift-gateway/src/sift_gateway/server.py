@@ -85,7 +85,7 @@ class Gateway:
         raw_map: dict[str, list[str]] = {}  # tool_name -> [backend_names]
 
         for name, backend in self.backends.items():
-            if not backend._started:
+            if not backend.started:
                 continue
             try:
                 tools = await asyncio.wait_for(backend.list_tools(), timeout=15.0)
@@ -127,7 +127,7 @@ class Gateway:
         # Collect raw Tool objects from each backend
         by_name: dict[str, Tool] = {}
         for backend in self.backends.values():
-            if not backend._started:
+            if not backend.started:
                 continue
             try:
                 for t in await backend.list_tools():

@@ -20,6 +20,10 @@ class MCPBackend(ABC):
     def enabled(self) -> bool:
         return self.config.get("enabled", True)
 
+    @property
+    def started(self) -> bool:
+        return self._started
+
     @abstractmethod
     async def start(self) -> None:
         """Start the backend connection / subprocess."""

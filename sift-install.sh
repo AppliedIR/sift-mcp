@@ -36,6 +36,7 @@ for arg in "$@"; do
     case "$arg" in
         -y|--yes)          AUTO_YES=true ;;
         --quick)           MODE="quick" ;;
+        --recommended)     MODE="recommended" ;;
         --custom)          MODE="custom" ;;
         --remote)          REMOTE_MODE=true ;;
         --manual-start)    MANUAL_START=true ;;
@@ -47,8 +48,8 @@ for arg in "$@"; do
             echo ""
             echo "Tiers (pick one):"
             echo "  --quick         Core platform only (~3 min)"
+            echo "  --recommended   Core + RAG + Windows triage (default)"
             echo "  --custom        Interactive package picker"
-            echo "  (default)       Recommended — core + RAG + Windows triage"
             echo ""
             echo "Options:"
             echo "  --remote          Enable TLS + bind 0.0.0.0 (for remote clients)"
@@ -154,7 +155,7 @@ if command -v python3 &>/dev/null; then
     PY_VERSION=$($PYTHON -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
     PY_MAJOR=$($PYTHON -c 'import sys; print(sys.version_info.major)')
     PY_MINOR=$($PYTHON -c 'import sys; print(sys.version_info.minor)')
-    if (( PY_MAJOR >= 3 && PY_MINOR >= 11 )); then
+    if (( PY_MAJOR > 3 || (PY_MAJOR == 3 && PY_MINOR >= 11) )); then
         ok "Python $PY_VERSION ($PYTHON)"
     else
         err "Python 3.11+ required (found $PY_VERSION)"
@@ -191,6 +192,15 @@ if command -v git &>/dev/null; then
 else
     err "git not found"
     echo "  Install: sudo apt install git"
+    exit 1
+fi
+
+# curl (used for health checks and network test)
+if command -v curl &>/dev/null; then
+    ok "curl available"
+else
+    err "curl not found"
+    echo "  Install: sudo apt install curl"
     exit 1
 fi
 
@@ -421,6 +431,95 @@ if (( INSTALL_ERRORS > 0 )); then
 fi
 
 # =============================================================================
+# Phase 5b: Post-Install Setup (data downloads, index builds)
+# =============================================================================
+
+if $INSTALL_RAG || $INSTALL_TRIAGE; then
+    header "Post-Install Setup"
+fi
+
+# --- forensic-rag index build ---
+if $INSTALL_RAG; then
+    if ! $AUTO_YES; then
+        echo "forensic-rag needs to build a search index (~2GB disk for ML model)."
+        echo "  Build now:  downloads model + builds index (takes a few minutes)"
+        echo "  Skip:       build later with: $VENV_PYTHON -m rag_mcp.build"
+        echo ""
+        if prompt_yn "Build index now?" "y"; then
+            info "Building forensic-rag index (this may take a few minutes)..."
+            "$VENV_PYTHON" -m rag_mcp.build && \
+                ok "Index built" || warn "Index build failed. You can retry later."
+        else
+            info "Skipping index build."
+        fi
+    else
+        echo ""
+        info "forensic-rag: index will build on first use (~2 min, ~2GB download)"
+        info "  Or build now: $VENV_PYTHON -m rag_mcp.build"
+    fi
+fi
+
+# --- windows-triage database setup ---
+if $INSTALL_TRIAGE; then
+    if ! $AUTO_YES; then
+        echo ""
+        echo "windows-triage needs Windows baseline databases."
+        echo "  Set up now: clone data repos + import (takes 30-60 minutes)"
+        echo "  Skip:       see $INSTALL_DIR/packages/windows-triage/SETUP.md"
+        echo ""
+        if prompt_yn "Set up databases now?" "n"; then
+            WT_DIR="$INSTALL_DIR/packages/windows-triage"
+            DATA_DIR="$WT_DIR/data/sources"
+            mkdir -p "$DATA_DIR"
+
+            info "Cloning VanillaWindowsReference..."
+            if [[ ! -d "$DATA_DIR/VanillaWindowsReference" ]]; then
+                git clone --quiet https://github.com/AndrewRathbun/VanillaWindowsReference.git "$DATA_DIR/VanillaWindowsReference"
+            fi
+
+            info "Cloning LOLBAS, LOLDrivers, HijackLibs..."
+            for repo in LOLBAS LOLDrivers HijackLibs; do
+                if [[ ! -d "$DATA_DIR/$repo" ]]; then
+                    git clone --quiet "https://github.com/LOLBAS-Project/$repo.git" "$DATA_DIR/$repo" 2>/dev/null || \
+                    git clone --quiet "https://github.com/magicsword-io/$repo.git" "$DATA_DIR/$repo" 2>/dev/null || \
+                    warn "Could not clone $repo"
+                fi
+            done
+
+            info "Initializing databases and importing..."
+            (cd "$WT_DIR" && "$VENV_PYTHON" scripts/init_databases.py && \
+                "$VENV_PYTHON" scripts/import_all.py --skip-registry) && \
+                ok "Databases imported" || warn "Database import had issues. See output above."
+        else
+            info "Skipping database setup."
+        fi
+    else
+        echo ""
+        info "windows-triage: databases can be imported later"
+        info "  See: $INSTALL_DIR/packages/windows-triage/SETUP.md"
+    fi
+fi
+
+# --- OpenCTI credential wizard ---
+OPENCTI_URL=""
+OPENCTI_TOKEN=""
+
+if $INSTALL_OPENCTI; then
+    echo ""
+    echo "opencti needs an OpenCTI server URL and API token."
+    echo ""
+    OPENCTI_URL=$(prompt "OpenCTI URL (e.g., https://opencti.example.com)" "")
+    if [[ -n "$OPENCTI_URL" ]]; then
+        read -rsp "OpenCTI API Token: " OPENCTI_TOKEN
+        echo ""
+    else
+        info "Skipping. Set OPENCTI_URL and OPENCTI_TOKEN in gateway.yaml later."
+        OPENCTI_URL=""
+        OPENCTI_TOKEN=""
+    fi
+fi
+
+# =============================================================================
 # Phase 6: Generate Bearer Token
 # =============================================================================
 
@@ -581,8 +680,10 @@ for name, module in core_backends + optional:
         "enabled": True,
     }
     if name == "opencti-mcp":
-        entry["env"]["OPENCTI_URL"] = "\${OPENCTI_URL}"
-        entry["env"]["OPENCTI_TOKEN"] = "\${OPENCTI_TOKEN}"
+        octi_url = "$OPENCTI_URL"
+        octi_token = "$OPENCTI_TOKEN"
+        entry["env"]["OPENCTI_URL"] = octi_url if octi_url else "\${OPENCTI_URL}"
+        entry["env"]["OPENCTI_TOKEN"] = octi_token if octi_token else "\${OPENCTI_TOKEN}"
     config["backends"][name] = entry
 
 with open("$GATEWAY_CONFIG", "w") as f:
@@ -715,7 +816,7 @@ fi
 
 # Check if gateway is already running
 GATEWAY_PID=""
-if curl -sf $CURL_EXTRA "$HEALTH_URL" &>/dev/null; then
+if curl -sf ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
     ok "Gateway already running on port $GATEWAY_PORT"
 elif ! $MANUAL_START; then
     info "Starting gateway on port $GATEWAY_PORT..."
@@ -724,7 +825,7 @@ elif ! $MANUAL_START; then
     sleep 2
 
     if kill -0 "$GATEWAY_PID" 2>/dev/null; then
-        if curl -sf $CURL_EXTRA "$HEALTH_URL" &>/dev/null; then
+        if curl -sf ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
             ok "Gateway running on port $GATEWAY_PORT"
         else
             warn "Gateway started but health check failed"
@@ -760,6 +861,8 @@ After=network.target
 
 [Service]
 ExecStart=$VENV_DIR/bin/python -m sift_gateway --config $GATEWAY_CONFIG
+Environment=AIIR_CASE_DIR=$CASE_DIR
+Environment=AIIR_EXAMINER=default
 Restart=on-failure
 RestartSec=5
 
@@ -876,3 +979,8 @@ fi
 echo ""
 echo -e "${BOLD}Documentation:${NC} $INSTALL_DIR/AGENTS.md"
 echo ""
+
+# Exit with error if smoke tests failed
+if (( INSTALL_ERRORS > 0 )); then
+    exit 1
+fi

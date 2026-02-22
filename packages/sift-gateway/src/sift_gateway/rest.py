@@ -161,7 +161,7 @@ async def list_services(request: Request) -> JSONResponse:
         services.append({
             "name": name,
             "type": backend.config.get("type", "stdio"),
-            "started": backend._started,
+            "started": backend.started,
             "health": health,
         })
 
@@ -177,7 +177,7 @@ async def start_service(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"Unknown backend: {name}"}, status_code=404)
 
     backend = gateway.backends[name]
-    if backend._started:
+    if backend.started:
         return JSONResponse({"status": "already_running", "name": name})
 
     try:
@@ -201,7 +201,7 @@ async def stop_service(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"Unknown backend: {name}"}, status_code=404)
 
     backend = gateway.backends[name]
-    if not backend._started:
+    if not backend.started:
         return JSONResponse({"status": "already_stopped", "name": name})
 
     try:
@@ -227,7 +227,7 @@ async def restart_service(request: Request) -> JSONResponse:
     backend = gateway.backends[name]
 
     # Stop if running
-    if backend._started:
+    if backend.started:
         try:
             await asyncio.wait_for(backend.stop(), timeout=10.0)
         except Exception as e:
@@ -238,9 +238,11 @@ async def restart_service(request: Request) -> JSONResponse:
     try:
         await asyncio.wait_for(backend.start(), timeout=30.0)
     except asyncio.TimeoutError:
+        await gateway._build_tool_map()
         return JSONResponse({"error": f"Start timed out for {name}"}, status_code=504)
     except Exception as e:
         logger.error("Failed to start service %s during restart: %s", name, e)
+        await gateway._build_tool_map()
         return JSONResponse({"error": f"Failed to start during restart: {e}"}, status_code=500)
 
     await gateway._build_tool_map()
