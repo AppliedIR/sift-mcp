@@ -150,10 +150,6 @@ class Config:
     rate_limit_queries: int = 60       # queries per minute
     rate_limit_enrichment: int = 10    # enrichments per hour
 
-    # Access control
-    read_only: bool = True             # if True, only expose query (read) operations
-                                       # if False, also expose write operations (create, enrich)
-
     # Production network resilience
     max_retries: int = 3               # retry attempts for transient failures
     retry_base_delay: float = 1.0      # base delay in seconds (exponential backoff)
@@ -238,10 +234,6 @@ class Config:
         timeout = _parse_int_env("OPENCTI_TIMEOUT", 60)
         max_results = _parse_int_env("OPENCTI_MAX_RESULTS", 100)
 
-        # Access control - default to read-only for security
-        # Set OPENCTI_READ_ONLY=false to enable write operations
-        read_only = os.getenv("OPENCTI_READ_ONLY", "true").lower() not in ("false", "0", "no")
-
         # Production resilience settings
         max_retries = _parse_int_env("OPENCTI_MAX_RETRIES", 3)
         retry_base_delay = _parse_float_env("OPENCTI_RETRY_DELAY", 1.0)
@@ -259,7 +251,6 @@ class Config:
             opencti_token=SecretStr(token),
             timeout_seconds=timeout,
             max_results=max_results,
-            read_only=read_only,
             max_retries=max_retries,
             retry_base_delay=retry_base_delay,
             retry_max_delay=retry_max_delay,

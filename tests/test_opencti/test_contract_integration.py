@@ -377,17 +377,15 @@ class TestConfigContracts:
         # Required fields exist
         assert hasattr(config, 'opencti_url')
         assert hasattr(config, 'opencti_token')
-        assert hasattr(config, 'read_only')
         assert hasattr(config, 'timeout_seconds')
         assert hasattr(config, 'max_results')
 
     def test_config_defaults_are_safe(self):
         """Config defaults are secure."""
-        # Read-only should default to True
         with patch.dict('os.environ', {'OPENCTI_TOKEN': 'test-token'}, clear=False):
             with patch('opencti_mcp.config._load_token', return_value='test-token'):
                 config = Config.load()
-                assert config.read_only is True
+                assert config.ssl_verify is True
 
     def test_config_token_is_secret(self):
         """Config token is wrapped in SecretStr."""

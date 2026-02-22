@@ -56,7 +56,6 @@ def _make_config(**overrides):
         retry_base_delay=0.001,   # very small for fast tests
         retry_max_delay=0.01,
         ssl_verify=True,
-        read_only=True,
         extra_observable_types=frozenset(),
         extra_pattern_types=frozenset(),
     )

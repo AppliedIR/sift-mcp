@@ -123,7 +123,6 @@ class TestAdaptiveTimeoutLoop:
         config.retry_base_delay = 1.0
         config.retry_max_delay = 30.0
         config.ssl_verify = True
-        config.read_only = True
         config.extra_observable_types = frozenset()
         config.extra_pattern_types = frozenset()
 
