@@ -92,12 +92,12 @@ Only APPROVED items are included — this enforces the HITL gate. Available repo
 - `save_report(filename, content, report_type)` — persist to reports/
 
 ## Concurrency Model
-- Per-examiner isolation: each examiner writes only to `examiners/{their-slug}/`
-- Reads merge all `examiners/*/` for full team visibility with scoped IDs (e.g. `alice/F-001`)
+- Flat case directory layout: all data files at case root (no `examiners/` subdirectory)
+- IDs include examiner name for uniqueness: `F-alice-001`, `T-bob-003`, `TODO-alice-001`
 - Solo cases: single examiner, standard workflow
-- Collaborative cases: shared filesystem (NFS/SMB), each examiner on own machine
-- `set_active_case()` auto-joins (creates examiner dir + adds to team list)
-- Audit JSONL is append-only: each MCP writes its own file per examiner, no contention
-- Bundle import writes to `examiners/{imported}/` — same structure, no separate sync directory
+- Collaborative cases: each examiner has their own local case directory. Collaboration uses export/import bundles (JSON files), not shared filesystems
+- `set_active_case()` activates a local case directory
+- Audit JSONL is append-only: each MCP writes its own file in `audit/`, no contention
+- Merge semantics: last-write-wins by `modified_at`, APPROVED findings are protected from overwrite
 - CLI reloads from disk before saving to preserve concurrent MCP writes
 - `AIIR_EXAMINER` env var identifies the examiner (falls back to `AIIR_ANALYST` then OS username)

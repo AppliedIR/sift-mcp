@@ -43,6 +43,12 @@ def run_command(
 
     # Validate any arguments that look like file paths
     for arg in command[1:]:
+        # Check flag=value arguments for path values
+        if "=" in arg and arg.startswith("-"):
+            value = arg.split("=", 1)[1]
+            if value and (value.startswith("/") or value.startswith("..") or "/" in value):
+                validate_input_path(value)
+            continue
         if arg.startswith("--"):
             continue
         if arg.startswith("/") or arg.startswith("..") or "/" in arg:
@@ -53,7 +59,7 @@ def run_command(
     if not resolved:
         raise ToolNotInCatalogError(
             f"Tool '{binary}' is in the catalog but not installed on this system. "
-            f"Use list_missing_tools() for installation guidance."
+            f"Use list_available_tools() to see installed tools."
         )
     command = [resolved] + command[1:]
 

@@ -13,7 +13,6 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from sift_mcp.audit import AuditWriter
 from sift_mcp.catalog import get_tool_def
 from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import ToolNotFoundError
@@ -106,67 +105,3 @@ def _run_zimmerman_tool(
             _temp_cleanup.cleanup()
 
 
-def register_zimmerman_tools(server, audit: AuditWriter):
-    """Register all Zimmerman tools with the MCP server."""
-
-    @server.tool()
-    def run_amcacheparser(input_file: str, output_dir: str = "") -> dict:
-        """Parse Amcache.hve — proves file PRESENCE (not execution)."""
-        return _run_zimmerman_tool("AmcacheParser", input_file, audit, output_dir=output_dir or None)
-
-    @server.tool()
-    def run_pecmd(input_file: str, output_dir: str = "") -> dict:
-        """Parse Prefetch file — proves EXECUTION with timestamps and run count."""
-        return _run_zimmerman_tool("PECmd", input_file, audit, output_dir=output_dir or None)
-
-    @server.tool()
-    def run_appcompatcacheparser(input_file: str, output_dir: str = "") -> dict:
-        """Parse ShimCache from SYSTEM hive — proves file PRESENCE (not execution on Win10+)."""
-        return _run_zimmerman_tool("AppCompatCacheParser", input_file, audit, output_dir=output_dir or None)
-
-    @server.tool()
-    def run_recmd(input_file: str, output_dir: str = "", batch_file: str = "") -> dict:
-        """Parse registry hive with RECmd. Use batch_file for targeted extraction."""
-        extra = sanitize_extra_args(["--bn", batch_file], "run_recmd") if batch_file else None
-        return _run_zimmerman_tool("RECmd", input_file, audit, output_dir=output_dir or None, extra_flags=extra)
-
-    @server.tool()
-    def run_mftecmd(input_file: str, output_dir: str = "") -> dict:
-        """Parse $MFT or $UsnJrnl — file system metadata and change journal."""
-        return _run_zimmerman_tool("MFTECmd", input_file, audit, output_dir=output_dir or None)
-
-    @server.tool()
-    def run_evtxecmd(input_file: str, output_dir: str = "", maps_dir: str = "") -> dict:
-        """Parse Windows Event Log (.evtx) files."""
-        extra = sanitize_extra_args(["--maps", maps_dir], "run_evtxecmd") if maps_dir else None
-        return _run_zimmerman_tool("EvtxECmd", input_file, audit, output_dir=output_dir or None, extra_flags=extra)
-
-    @server.tool()
-    def run_jlecmd(input_file: str, output_dir: str = "") -> dict:
-        """Parse Jump List files — tracks user file access per application."""
-        return _run_zimmerman_tool("JLECmd", input_file, audit, output_dir=output_dir or None)
-
-    @server.tool()
-    def run_lecmd(input_file: str, output_dir: str = "") -> dict:
-        """Parse LNK shortcut files — file access evidence with timestamps."""
-        return _run_zimmerman_tool("LECmd", input_file, audit, output_dir=output_dir or None)
-
-    @server.tool()
-    def run_sbecmd(input_dir: str, output_dir: str = "") -> dict:
-        """Parse ShellBags from registry hive directory — folder access evidence."""
-        return _run_zimmerman_tool("SBECmd", input_dir, audit, output_dir=output_dir or None)
-
-    @server.tool()
-    def run_rbcmd(input_file: str, output_dir: str = "") -> dict:
-        """Parse Recycle Bin $I files — deleted file evidence."""
-        return _run_zimmerman_tool("RBCmd", input_file, audit, output_dir=output_dir or None)
-
-    @server.tool()
-    def run_srumecmd(input_file: str, output_dir: str = "") -> dict:
-        """Parse SRUM database — application execution and network usage."""
-        return _run_zimmerman_tool("SrumECmd", input_file, audit, output_dir=output_dir or None)
-
-    @server.tool()
-    def run_sqlecmd(input_file: str, output_dir: str = "") -> dict:
-        """Parse SQLite databases (browser history, etc.)."""
-        return _run_zimmerman_tool("SQLECmd", input_file, audit, output_dir=output_dir or None)

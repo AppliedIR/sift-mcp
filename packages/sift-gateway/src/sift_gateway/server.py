@@ -25,10 +25,7 @@ logger = logging.getLogger(__name__)
 _ANALYST_TOOLS: frozenset[str] = frozenset({
     "record_action", "record_finding", "record_timeline_event",
     "add_todo", "update_todo", "complete_todo",
-    "export_contributions", "import_contributions",
-    "ingest_remote_audit",
     "log_reasoning", "log_external_action",
-    "register_evidence", "save_report",
 })
 
 
@@ -167,13 +164,13 @@ class Gateway:
                 ))
         return tools
 
-    async def call_tool(self, name: str, arguments: dict, analyst: str | None = None) -> list:
+    async def call_tool(self, name: str, arguments: dict, examiner: str | None = None) -> list:
         """Route a tool call to the correct backend.
 
         Args:
             name: The (possibly prefixed) tool name.
             arguments: Tool arguments dict.
-            analyst: Optional analyst identity for auditing.
+            examiner: Optional examiner identity for auditing.
 
         Returns:
             List of content items from the backend.
@@ -194,15 +191,15 @@ class Gateway:
         if name.startswith(prefix):
             actual_name = name[len(prefix):]
 
-        # Inject analyst identity into tools that accept analyst_override.
+        # Inject examiner identity into tools that accept analyst_override.
         # Always overwrite to prevent identity spoofing.
         # Role-based filtering (e.g., restricting certain tools by role) is
         # deferred — currently all authenticated users can call any tool.
-        if analyst:
+        if examiner:
             if actual_name in _ANALYST_TOOLS:
-                arguments = {**arguments, "analyst_override": analyst}
+                arguments = {**arguments, "analyst_override": examiner}
 
-        logger.info("Routing tool %s -> backend %s (analyst=%s)", actual_name, backend_name, analyst)
+        logger.info("Routing tool %s -> backend %s (examiner=%s)", actual_name, backend_name, examiner)
         try:
             return await asyncio.wait_for(backend.call_tool(actual_name, arguments), timeout=300.0)
         except asyncio.TimeoutError:

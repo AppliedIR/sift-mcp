@@ -34,13 +34,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Public paths skip auth
         if request.url.path in _PUBLIC_PATHS:
-            request.state.analyst = None
+            request.state.examiner = None
             request.state.role = None
             return await call_next(request)
 
         # If no api_keys configured, auth is disabled (single-user mode)
         if not self.api_keys:
-            request.state.analyst = "anonymous"
+            request.state.examiner = "anonymous"
             request.state.role = "examiner"
             return await call_next(request)
 
@@ -81,18 +81,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 {"error": "Server configuration error"},
                 status_code=500,
             )
-        request.state.analyst = key_info.get("examiner", key_info.get("analyst", "unknown"))
+        request.state.examiner = key_info.get("examiner", key_info.get("analyst", "unknown"))
         request.state.role = key_info.get("role", "examiner")
         return await call_next(request)
 
 
-def resolve_analyst(request: Request) -> dict:
-    """Extract analyst identity from a request that has passed through AuthMiddleware.
+def resolve_examiner(request: Request) -> dict:
+    """Extract examiner identity from a request that has passed through AuthMiddleware.
 
     Returns:
-        Dict with analyst and role keys.
+        Dict with examiner and role keys.
     """
+    # Support both new (examiner) and legacy (analyst) attribute names
+    examiner = getattr(request.state, "examiner", None)
+    if examiner is None:
+        examiner = getattr(request.state, "analyst", "anonymous")
     return {
-        "analyst": getattr(request.state, "analyst", "anonymous"),
+        "examiner": examiner,
         "role": getattr(request.state, "role", "examiner"),
     }

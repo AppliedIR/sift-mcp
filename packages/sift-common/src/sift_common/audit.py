@@ -10,6 +10,7 @@ import getpass
 import json
 import logging
 import os
+import re
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,16 +18,34 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_EXAMINER_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,19}$")
+
+
+def _sanitize_slug(raw: str) -> str:
+    """Sanitize a raw string into a valid examiner slug.
+
+    Lowercases, replaces invalid characters with hyphens, strips leading/trailing
+    hyphens, and truncates to 20 characters.
+    """
+    slug = re.sub(r"[^a-z0-9-]", "-", raw.lower()).strip("-")[:20]
+    if not slug:
+        return "unknown"
+    slug = slug.lstrip("-")
+    return slug if slug else "unknown"
+
 
 def resolve_examiner() -> str:
-    """Resolve examiner identity: AIIR_EXAMINER > AIIR_ANALYST > OS username."""
+    """Resolve examiner identity: AIIR_EXAMINER > AIIR_ANALYST > OS username.
+
+    The result is validated against the slug pattern ^[a-z0-9][a-z0-9-]{0,19}$.
+    """
     examiner = os.environ.get("AIIR_EXAMINER") or os.environ.get("AIIR_ANALYST")
     if not examiner:
         try:
             examiner = getpass.getuser()
         except Exception:
             examiner = "unknown"
-    return examiner.lower()
+    return _sanitize_slug(examiner)
 
 
 class AuditWriter:
@@ -50,10 +69,12 @@ class AuditWriter:
     def _get_audit_dir(self) -> Path | None:
         """Get the audit directory.
 
-        Priority: explicit audit_dir > AIIR_CASE_DIR/audit/.
+        Priority: explicit audit_dir > AIIR_AUDIT_DIR > AIIR_CASE_DIR/audit/.
         """
         if self._explicit_audit_dir:
             audit_dir = Path(self._explicit_audit_dir)
+        elif os.environ.get("AIIR_AUDIT_DIR"):
+            audit_dir = Path(os.environ["AIIR_AUDIT_DIR"])
         else:
             case_dir = os.environ.get("AIIR_CASE_DIR")
             if not case_dir:
@@ -98,20 +119,25 @@ class AuditWriter:
         pattern = f"{prefix}-{self.examiner}-{date_str}-"
         max_seq = 0
         try:
-            for line in log_file.read_text().strip().split("\n"):
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                    eid = entry.get("evidence_id", "")
-                    if eid.startswith(pattern):
-                        try:
-                            seq = int(eid[len(pattern):])
-                            max_seq = max(max_seq, seq)
-                        except ValueError:
-                            pass
-                except json.JSONDecodeError:
-                    continue
+            with open(log_file, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    # Quick pre-filter: only parse lines that could match the date
+                    if date_str not in line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        eid = entry.get("evidence_id", "")
+                        if eid.startswith(pattern):
+                            try:
+                                seq = int(eid[len(pattern):])
+                                max_seq = max(max_seq, seq)
+                            except ValueError:
+                                pass
+                    except json.JSONDecodeError:
+                        continue
         except OSError as e:
             logger.warning("Failed to read audit log %s for sequence resume: %s", log_file, e)
         return max_seq

@@ -103,6 +103,7 @@ def create_server() -> FastMCP:
             return response
 
         except SiftError as e:
+            elapsed = time.monotonic() - start
             response = build_response(
                 tool_name="run_command",
                 success=False,
@@ -115,9 +116,11 @@ def create_server() -> FastMCP:
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": str(e)},
                 evidence_id=evidence_id,
+                elapsed_ms=elapsed * 1000,
             )
             return response
         except (ValueError, OSError, RuntimeError) as e:
+            elapsed = time.monotonic() - start
             logger.warning("run_command unexpected error: %s: %s", type(e).__name__, e)
             response = build_response(
                 tool_name="run_command",
@@ -131,7 +134,35 @@ def create_server() -> FastMCP:
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": str(e)},
                 evidence_id=evidence_id,
+                elapsed_ms=elapsed * 1000,
             )
             return response
+        except Exception as e:
+            elapsed = time.monotonic() - start
+            logger.error("run_command catch-all error: %s: %s", type(e).__name__, e)
+            response = build_response(
+                tool_name="run_command",
+                success=False,
+                data=None,
+                evidence_id=evidence_id,
+                error=f"Unexpected error: {type(e).__name__}",
+            )
+            audit.log(
+                tool="run_command",
+                params={"command": command, "purpose": purpose},
+                result_summary={"error": f"{type(e).__name__}: {e}"},
+                evidence_id=evidence_id,
+                elapsed_ms=elapsed * 1000,
+            )
+            return response
+
+    # --- Missing Tools ---
+
+    @server.tool()
+    def list_missing_tools(category: str = "") -> list[dict]:
+        """List catalog tools not currently installed on this system."""
+        from sift_mcp.tools.discovery import list_available_tools as _list
+        all_tools = _list(category=category or None)
+        return [t for t in all_tools if not t.get("available", False)]
 
     return server

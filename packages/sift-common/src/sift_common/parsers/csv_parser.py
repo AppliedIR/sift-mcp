@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -43,12 +44,12 @@ def parse_csv(text: str, *, max_rows: int = 1000) -> dict[str, Any]:
                 "parse_error": str(e),
             }
 
-    # Count remaining
+    # Count remaining without creating dict objects
     total = len(rows)
     if len(rows) == max_rows:
         try:
-            for _ in reader:
-                total += 1
+            remaining = sum(1 for _ in reader)
+            total += remaining
         except csv.Error as e:
             logger.warning("CSV error while counting remaining rows: %s", e)
 
@@ -62,9 +63,19 @@ def parse_csv(text: str, *, max_rows: int = 1000) -> dict[str, Any]:
     }
 
 
+_MAX_CSV_BYTES = 50_000_000  # 50MB
+
+
 def parse_csv_file(file_path: str, *, max_rows: int = 1000) -> dict[str, Any]:
     """Parse a CSV file on disk."""
     try:
+        file_size = Path(file_path).stat().st_size
+        if file_size > _MAX_CSV_BYTES:
+            return {
+                "error": f"CSV file too large ({file_size:,} bytes, max 50MB)",
+                "rows": [],
+                "total_rows": 0,
+            }
         with open(file_path, "r", encoding="utf-8-sig") as f:
             text = f.read()
     except OSError as e:

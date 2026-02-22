@@ -6,7 +6,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from sift_gateway.auth import resolve_analyst
+from sift_gateway.auth import resolve_examiner
 from sift_gateway.rate_limit import check_rate_limit
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ async def call_tool(request: Request) -> JSONResponse:
 
     gateway = request.app.state.gateway
     tool_name = request.path_params["tool_name"]
-    identity = resolve_analyst(request)
+    identity = resolve_examiner(request)
 
     # Read the raw body and enforce actual size limit.
     # Checking Content-Length alone is insufficient because the header
@@ -86,7 +86,7 @@ async def call_tool(request: Request) -> JSONResponse:
         )
 
     try:
-        result = await gateway.call_tool(tool_name, arguments, analyst=identity.get("analyst"))
+        result = await gateway.call_tool(tool_name, arguments, examiner=identity.get("examiner"))
         # Serialize content items
         serialized = []
         for item in result:

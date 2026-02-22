@@ -124,7 +124,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
 
     @server.tool()
     def record_finding(finding: dict, analyst_override: str = "") -> dict:
-        """Stage finding as DRAFT. Requires human approval via 'aiir approve'."""
+        """Stage finding as DRAFT for human review. Required fields in finding dict: title (str), description (str), confidence (LOW/MEDIUM/HIGH), evidence_ids (list of str, non-empty). Optional: type, mitre_attack, iocs, source. Requires human approval via 'aiir approve'."""
         result = manager.record_finding(finding, examiner_override=analyst_override)
         audit.log(tool="record_finding", params={"finding": finding}, result_summary=result)
 

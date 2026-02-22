@@ -5,8 +5,6 @@ from __future__ import annotations
 import itertools
 import logging
 
-from sift_mcp.audit import resolve_examiner, AuditWriter
-
 logger = logging.getLogger(__name__)
 from sift_mcp.catalog import list_tools_in_catalog, get_tool_def
 from sift_mcp.environment import find_binary, get_environment_info

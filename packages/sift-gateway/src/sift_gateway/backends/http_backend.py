@@ -105,10 +105,14 @@ class HttpMCPBackend(MCPBackend):
         if not self._started or not self._session:
             raise RuntimeError(f"Backend {self.name} is not started")
 
-        result = await asyncio.wait_for(
-            self._session.call_tool(name, arguments), timeout=_TOOL_CALL_TIMEOUT
-        )
-        return result.content
+        try:
+            result = await asyncio.wait_for(
+                self._session.call_tool(name, arguments), timeout=_TOOL_CALL_TIMEOUT
+            )
+            return result.content
+        except (ConnectionError, OSError) as exc:
+            self._tools_cache = None
+            raise
 
     async def health_check(self) -> dict:
         if not self._started or not self._session:

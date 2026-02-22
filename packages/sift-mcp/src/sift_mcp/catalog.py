@@ -86,11 +86,18 @@ def load_catalog() -> dict[str, ToolDefinition]:
             logger.warning("Failed to read catalog file %s: %s", yaml_file, e)
             continue
 
-        if not doc:
+        if not doc or not isinstance(doc, dict):
             continue
 
         category = doc.get("category", yaml_file.stem)
-        for tool_entry in doc.get("tools", []):
+        tools_list = doc.get("tools", [])
+        if not isinstance(tools_list, list):
+            logger.warning("'tools' key in %s is not a list, skipping", yaml_file)
+            continue
+        for tool_entry in tools_list:
+            if not isinstance(tool_entry, dict):
+                logger.warning("Tool entry in %s is not a dict, skipping", yaml_file)
+                continue
             name = tool_entry.get("name")
             if not name:
                 logger.warning("Tool entry in %s missing 'name' field, skipping", yaml_file)

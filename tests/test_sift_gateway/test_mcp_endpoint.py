@@ -100,7 +100,7 @@ class TestMCPAuthASGIApp:
             sent.append(msg)
 
         await app(scope, receive, send)
-        assert scope["state"]["analyst"] == "anonymous"
+        assert scope["state"]["examiner"] == "anonymous"
         assert scope["state"]["role"] == "examiner"
         dummy_session_manager.handle_request.assert_called_once()
 
@@ -151,7 +151,7 @@ class TestMCPAuthASGIApp:
             pass
 
         await app(scope, receive, send)
-        assert scope["state"]["analyst"] == "alice"
+        assert scope["state"]["examiner"] == "alice"
         assert scope["state"]["role"] == "lead"
         dummy_session_manager.handle_request.assert_called_once()
 

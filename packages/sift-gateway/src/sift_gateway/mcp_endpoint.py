@@ -88,7 +88,7 @@ class MCPAuthASGIApp:
 
         if not self.api_keys:
             # No keys configured — single-user / anonymous mode
-            scope["state"]["analyst"] = "anonymous"
+            scope["state"]["examiner"] = "anonymous"
             scope["state"]["role"] = "examiner"
             await self.session_manager.handle_request(scope, receive, send)
             return
@@ -138,7 +138,7 @@ class MCPAuthASGIApp:
             await resp(scope, receive, send)
             return
 
-        scope["state"]["analyst"] = key_info.get(
+        scope["state"]["examiner"] = key_info.get(
             "examiner", key_info.get("analyst", "unknown")
         )
         scope["state"]["role"] = key_info.get("role", "examiner")
@@ -191,18 +191,20 @@ def create_mcp_server(gateway: Any) -> Server:
 
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict) -> Sequence[TextContent]:
-        # Extract analyst from the Starlette Request stashed by the transport
-        analyst = None
+        # Extract examiner from the Starlette Request stashed by the transport
+        examiner = None
         try:
             ctx = server.request_context
             request: Request | None = ctx.request
             if request is not None:
-                analyst = getattr(request.state, "analyst", None)
+                examiner = getattr(request.state, "examiner", None)
+                if examiner is None:
+                    examiner = getattr(request.state, "analyst", None)
         except LookupError:
             pass
 
         try:
-            result = await gateway.call_tool(name, arguments, analyst=analyst)
+            result = await gateway.call_tool(name, arguments, examiner=examiner)
         except KeyError as e:
             logger.warning("MCP call_tool unknown tool: %s", e)
             return [TextContent(type="text", text=f"Error: unknown tool {name}")]

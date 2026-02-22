@@ -15,6 +15,9 @@ DEFAULT_WINDOW_SECONDS = 60.0
 # How often (in seconds) to purge stale entries from the store.
 _CLEANUP_INTERVAL = 120.0
 
+# Maximum number of tracked IPs before forcing cleanup.
+_MAX_STORE_SIZE = 100_000
+
 
 class RateLimiter:
     """Sliding-window rate limiter keyed by IP address.
@@ -49,8 +52,8 @@ class RateLimiter:
         now = time.monotonic()
 
         with self._lock:
-            # Periodic cleanup of stale entries
-            if now - self._last_cleanup > _CLEANUP_INTERVAL:
+            # Periodic cleanup of stale entries, or when store exceeds max size
+            if now - self._last_cleanup > _CLEANUP_INTERVAL or len(self._store) > _MAX_STORE_SIZE:
                 self._cleanup(now)
                 self._last_cleanup = now
 

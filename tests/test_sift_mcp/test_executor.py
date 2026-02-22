@@ -2,7 +2,7 @@
 
 import pytest
 from sift_mcp.executor import execute
-from sift_mcp.exceptions import ExecutionError, TimeoutError
+from sift_mcp.exceptions import ExecutionError, ExecutionTimeoutError
 
 
 class TestExecutor:
@@ -22,7 +22,7 @@ class TestExecutor:
             execute(["definitely_not_a_binary_xyz"])
 
     def test_timeout(self):
-        with pytest.raises(TimeoutError):
+        with pytest.raises(ExecutionTimeoutError):
             execute(["sleep", "10"], timeout=1)
 
     def test_command_list_preserved(self):
@@ -43,3 +43,51 @@ class TestExecutor:
     def test_cwd(self, tmp_path):
         result = execute(["pwd"], cwd=str(tmp_path))
         assert str(tmp_path) in result["stdout"]
+
+    def test_oserror_catch(self, tmp_path):
+        """OSError subclass (e.g., bad exec format) should be caught."""
+        # Create a file with no exec permission to trigger OSError
+        bad_binary = tmp_path / "badbin"
+        bad_binary.write_text("not a binary")
+        bad_binary.chmod(0o755)
+        with pytest.raises(ExecutionError, match="OS error executing"):
+            execute([str(bad_binary)])
+
+
+class TestSaveOutputBlockedPrefixes:
+    """Tests for blocked-prefix enforcement in _save_output."""
+
+    def test_save_to_etc_blocked(self):
+        """Saving to /etc/ should be blocked."""
+        with pytest.raises(ExecutionError, match="system directory"):
+            execute(["echo", "test"], save_output=True, save_dir="/etc/evil")
+
+    def test_save_to_etc_backup_allowed(self, tmp_path):
+        """Saving to /etc-backup/ should NOT be blocked (partial match)."""
+        etc_backup = tmp_path / "etc-backup"
+        etc_backup.mkdir()
+        result = execute(["echo", "test"], save_output=True, save_dir=str(etc_backup))
+        assert result["exit_code"] == 0
+
+    def test_save_to_usr_local_blocked(self):
+        """Saving to /usr/local/ should be blocked."""
+        with pytest.raises(ExecutionError, match="system directory"):
+            execute(["echo", "test"], save_output=True, save_dir="/usr/local/out")
+
+    def test_save_to_case_dir_allowed(self, tmp_path, monkeypatch):
+        """Saving within AIIR_CASE_DIR should be allowed."""
+        monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        out = tmp_path / "extractions"
+        out.mkdir()
+        result = execute(["echo", "test"], save_output=True, save_dir=str(out))
+        assert result["exit_code"] == 0
+
+    def test_save_outside_case_dir_blocked(self, tmp_path, monkeypatch):
+        """When AIIR_CASE_DIR is set, saving outside it should fail."""
+        case_dir = tmp_path / "case"
+        case_dir.mkdir()
+        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        other = tmp_path / "other"
+        other.mkdir()
+        with pytest.raises(ExecutionError, match="outside the case directory"):
+            execute(["echo", "test"], save_output=True, save_dir=str(other))

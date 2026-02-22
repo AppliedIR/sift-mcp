@@ -48,6 +48,8 @@ def build_response(
     command: list[str] | None = None,
     error: str | None = None,
     fk_tool_name: str | None = None,
+    output_files: list | None = None,
+    extractions: list | None = None,
 ) -> dict:
     """Build enriched response envelope with forensic-knowledge context.
 
@@ -76,6 +78,10 @@ def build_response(
 
     if error:
         response["error"] = error
+    if output_files:
+        response["output_files"] = output_files
+    if extractions:
+        response["extractions"] = extractions
 
     # Load forensic-knowledge context
     fk_name = fk_tool_name or tool_name

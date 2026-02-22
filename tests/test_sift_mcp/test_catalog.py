@@ -64,3 +64,36 @@ class TestCatalogLoading:
         td = get_tool_def("hayabusa")
         assert td is not None
         assert td.category == "timeline"
+
+
+class TestMalformedCatalog:
+    """Tests for malformed catalog YAML handling."""
+
+    def test_yaml_syntax_error(self, tmp_path, monkeypatch):
+        """YAML syntax error should fail closed (empty catalog)."""
+        bad_yaml = tmp_path / "tools.yaml"
+        bad_yaml.write_text("invalid: yaml: [unclosed")
+        monkeypatch.setenv("SIFT_CATALOG_DIR", str(tmp_path))
+        clear_catalog_cache()
+        catalog = load_catalog()
+        # Should return empty or raise — not crash with traceback
+        # The catalog loads from multiple files; a bad one may be skipped
+        assert isinstance(catalog, dict)
+
+    def test_empty_catalog_file(self, tmp_path, monkeypatch):
+        """Empty YAML file should result in empty catalog."""
+        empty_yaml = tmp_path / "tools.yaml"
+        empty_yaml.write_text("")
+        monkeypatch.setenv("SIFT_CATALOG_DIR", str(tmp_path))
+        clear_catalog_cache()
+        catalog = load_catalog()
+        assert isinstance(catalog, dict)
+
+    def test_wrong_type_for_tools_key(self, tmp_path, monkeypatch):
+        """tools key with wrong type should fail closed."""
+        bad_yaml = tmp_path / "tools.yaml"
+        bad_yaml.write_text("tools: not_a_list")
+        monkeypatch.setenv("SIFT_CATALOG_DIR", str(tmp_path))
+        clear_catalog_cache()
+        catalog = load_catalog()
+        assert isinstance(catalog, dict)

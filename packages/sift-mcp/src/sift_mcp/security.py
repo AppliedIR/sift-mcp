@@ -21,7 +21,7 @@ _TOOL_ALLOWED_FLAGS: dict[str, set[str]] = {
 
 # Per-tool blocked flags: flags that are safe globally but dangerous for specific tools
 _TOOL_BLOCKED_FLAGS: dict[str, set[str]] = {
-    "find": {"-exec", "-execdir", "-delete"},  # catalog gate bypass / file deletion
+    "find": {"-exec", "-execdir", "-delete", "-fls", "-fprint", "-fprint0", "-fprintf"},
     "sed": {"-i", "--in-place"},               # in-place evidence modification
 }
 
@@ -65,9 +65,14 @@ _BLOCKED_DIRECTORIES = (
     "/bin",
     "/sbin",
     "/var/run",
+    "/var/log",
     "/proc",
     "/sys",
     "/dev",
+    "/root",
+    "/home",
+    "/tmp",
+    "/boot",
 )
 
 
@@ -75,9 +80,17 @@ def validate_input_path(path: str) -> str:
     """Validate that an input file path is not in a blocked system directory.
 
     Resolves symlinks, then checks against a blocklist of sensitive system
-    directories. Raises ValueError if the resolved path falls within a blocked
-    directory. Returns the resolved path string if valid.
+    directories. Also parses flag=value arguments and validates the value
+    portion as a path. Raises ValueError if the resolved path falls within
+    a blocked directory. Returns the resolved path string if valid.
     """
+    # Handle flag=value arguments: validate the value portion as a path
+    if "=" in path and path.startswith("-"):
+        value = path.split("=", 1)[1]
+        if value and (value.startswith("/") or value.startswith("..") or "/" in value):
+            return validate_input_path(value)
+        return path
+
     resolved = str(Path(path).resolve())
     for blocked in _BLOCKED_DIRECTORIES:
         if resolved == blocked or resolved.startswith(blocked + "/"):

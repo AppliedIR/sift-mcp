@@ -31,6 +31,8 @@ def _atomic_write(path: Path, content: str) -> None:
     try:
         with os.fdopen(fd, "w") as f:
             f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp_path, path)
     except BaseException:
         try:
@@ -398,12 +400,17 @@ class CaseManager:
         entries = []
         actions_file = case_dir / "actions.jsonl"
         if actions_file.exists():
-            for line in actions_file.read_text().strip().split("\n"):
-                if line:
-                    try:
-                        entries.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        logger.warning("Corrupt JSONL line in %s", actions_file)
+            try:
+                with open(actions_file, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            try:
+                                entries.append(json.loads(line))
+                            except json.JSONDecodeError:
+                                logger.warning("Corrupt JSONL line in %s", actions_file)
+            except OSError as e:
+                logger.warning("Failed to read actions file %s: %s", actions_file, e)
         entries.sort(key=lambda e: e.get("ts", ""))
         return entries[-limit:]
 
@@ -581,15 +588,21 @@ class CaseManager:
         if not log_file.exists():
             return []
         entries = []
-        for line in log_file.read_text().strip().split("\n"):
-            if line:
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    logger.warning("Corrupt JSONL line in %s", log_file)
-                    continue
-                if path is None or entry.get("path") == path:
-                    entries.append(entry)
+        try:
+            with open(log_file, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        logger.warning("Corrupt JSONL line in %s", log_file)
+                        continue
+                    if path is None or entry.get("path") == path:
+                        entries.append(entry)
+        except OSError as e:
+            logger.warning("Failed to read evidence access log %s: %s", log_file, e)
         return entries
 
     # --- Audit Aggregation ---
@@ -835,12 +848,17 @@ class CaseManager:
         actions = []
         actions_file = case_dir / "actions.jsonl"
         if actions_file.exists():
-            for line in actions_file.read_text().strip().split("\n"):
-                if line:
-                    try:
-                        actions.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        logger.warning("Corrupt JSONL line in %s", actions_file)
+            try:
+                with open(actions_file, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            try:
+                                actions.append(json.loads(line))
+                            except json.JSONDecodeError:
+                                logger.warning("Corrupt JSONL line in %s", actions_file)
+            except OSError as e:
+                logger.warning("Failed to read actions file %s: %s", actions_file, e)
 
         report_data = {
             "case": {
@@ -1333,8 +1351,12 @@ class CaseManager:
         return self._require_active_case()
 
     def _load_case_meta(self, case_dir: Path) -> dict:
-        with open(case_dir / "CASE.yaml") as f:
-            return yaml.safe_load(f) or {}
+        try:
+            with open(case_dir / "CASE.yaml") as f:
+                return yaml.safe_load(f) or {}
+        except (yaml.YAMLError, OSError) as e:
+            logger.warning("Failed to load CASE.yaml from %s: %s", case_dir, e)
+            return {}
 
     # --- Data I/O (case root) ---
 
@@ -1387,19 +1409,24 @@ class CaseManager:
         if not audit_dir.is_dir():
             return entries
         for jsonl_file in audit_dir.glob("*.jsonl"):
-            for line in jsonl_file.read_text().strip().split("\n"):
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    logger.warning("Corrupt JSONL line in %s", jsonl_file)
-                    continue
-                if mcp and entry.get("mcp") != mcp:
-                    continue
-                if tool_filter and entry.get("tool") != tool_filter:
-                    continue
-                entries.append(entry)
+            try:
+                with open(jsonl_file, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            logger.warning("Corrupt JSONL line in %s", jsonl_file)
+                            continue
+                        if mcp and entry.get("mcp") != mcp:
+                            continue
+                        if tool_filter and entry.get("tool") != tool_filter:
+                            continue
+                        entries.append(entry)
+            except OSError as e:
+                logger.warning("Failed to read audit file %s: %s", jsonl_file, e)
         return entries
 
     # --- Generic helpers ---

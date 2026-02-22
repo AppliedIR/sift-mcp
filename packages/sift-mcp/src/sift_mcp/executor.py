@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from sift_mcp.config import get_config
-from sift_mcp.exceptions import ExecutionError, TimeoutError
+from sift_mcp.exceptions import ExecutionError, ExecutionTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,8 @@ def execute(
             cmd_list,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             cwd=cwd,
         )
@@ -77,13 +79,15 @@ def execute(
 
     except subprocess.TimeoutExpired:
         elapsed = time.monotonic() - start
-        raise TimeoutError(
+        raise ExecutionTimeoutError(
             f"Command timed out after {timeout}s: {' '.join(cmd_list)}"
         )
     except FileNotFoundError:
         raise ExecutionError(f"Binary not found: {cmd_list[0]}")
     except PermissionError:
         raise ExecutionError(f"Permission denied: {cmd_list[0]}")
+    except OSError as e:
+        raise ExecutionError(f"OS error executing {cmd_list[0]}: {e}")
 
 
 def _truncate(text: str, max_bytes: int) -> str:
@@ -114,6 +118,17 @@ def _save_output(
     _blocked_prefixes = ("/etc", "/usr", "/bin", "/sbin", "/lib", "/boot", "/proc", "/sys", "/dev")
     if any(str(out_dir) == p or str(out_dir).startswith(p + "/") for p in _blocked_prefixes):
         raise ExecutionError(f"Refusing to write output to system directory: {out_dir}")
+
+    # When AIIR_CASE_DIR is set, restrict save_dir to within the case directory
+    case_dir = os.environ.get("AIIR_CASE_DIR")
+    if case_dir:
+        try:
+            case_resolved = Path(case_dir).resolve()
+            out_dir.relative_to(case_resolved)
+        except ValueError:
+            raise ExecutionError(
+                f"save_dir '{out_dir}' is outside the case directory '{case_resolved}'"
+            )
 
     try:
         out_dir.mkdir(parents=True, exist_ok=True)

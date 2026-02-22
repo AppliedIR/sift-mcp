@@ -7,15 +7,15 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from sift_gateway.auth import AuthMiddleware, resolve_analyst
+from sift_gateway.auth import AuthMiddleware, resolve_examiner
 
 
 def _make_app(api_keys: dict | None = None) -> Starlette:
     """Build a minimal Starlette app with auth middleware for testing."""
 
     async def protected_endpoint(request: Request):
-        identity = resolve_analyst(request)
-        return JSONResponse({"analyst": identity["analyst"], "role": identity["role"]})
+        identity = resolve_examiner(request)
+        return JSONResponse({"examiner": identity["examiner"], "role": identity["role"]})
 
     async def health_endpoint(request: Request):
         return JSONResponse({"status": "ok"})
@@ -30,17 +30,28 @@ def _make_app(api_keys: dict | None = None) -> Starlette:
 
 class TestAuthMiddleware:
     def test_valid_key(self):
+        api_keys = {"good_key": {"examiner": "alice", "role": "lead"}}
+        app = _make_app(api_keys)
+        client = TestClient(app)
+        resp = client.get("/api/test", headers={"Authorization": "Bearer good_key"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["examiner"] == "alice"
+        assert data["role"] == "lead"
+
+    def test_valid_key_legacy_analyst(self):
+        """Backward-compat: 'analyst' key in config maps to examiner."""
         api_keys = {"good_key": {"analyst": "alice", "role": "lead"}}
         app = _make_app(api_keys)
         client = TestClient(app)
         resp = client.get("/api/test", headers={"Authorization": "Bearer good_key"})
         assert resp.status_code == 200
         data = resp.json()
-        assert data["analyst"] == "alice"
+        assert data["examiner"] == "alice"
         assert data["role"] == "lead"
 
     def test_invalid_key_returns_403(self):
-        api_keys = {"good_key": {"analyst": "alice", "role": "lead"}}
+        api_keys = {"good_key": {"examiner": "alice", "role": "lead"}}
         app = _make_app(api_keys)
         client = TestClient(app)
         resp = client.get("/api/test", headers={"Authorization": "Bearer bad_key"})
@@ -48,7 +59,7 @@ class TestAuthMiddleware:
         assert "Invalid API key" in resp.json()["error"]
 
     def test_missing_auth_header_returns_401(self):
-        api_keys = {"good_key": {"analyst": "alice", "role": "lead"}}
+        api_keys = {"good_key": {"examiner": "alice", "role": "lead"}}
         app = _make_app(api_keys)
         client = TestClient(app)
         resp = client.get("/api/test")
@@ -60,7 +71,7 @@ class TestAuthMiddleware:
         resp = client.get("/api/test")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["analyst"] == "anonymous"
+        assert data["examiner"] == "anonymous"
         assert data["role"] == "examiner"
 
     def test_none_api_keys_disables_auth(self):
@@ -68,10 +79,10 @@ class TestAuthMiddleware:
         client = TestClient(app)
         resp = client.get("/api/test")
         assert resp.status_code == 200
-        assert resp.json()["analyst"] == "anonymous"
+        assert resp.json()["examiner"] == "anonymous"
 
     def test_health_exempt_from_auth(self):
-        api_keys = {"secret": {"analyst": "admin", "role": "lead"}}
+        api_keys = {"secret": {"examiner": "admin", "role": "lead"}}
         app = _make_app(api_keys)
         client = TestClient(app)
         resp = client.get("/health")
@@ -79,9 +90,9 @@ class TestAuthMiddleware:
         assert resp.json()["status"] == "ok"
 
     def test_bearer_case_insensitive(self):
-        api_keys = {"my_key": {"analyst": "bob", "role": "examiner"}}
+        api_keys = {"my_key": {"examiner": "bob", "role": "examiner"}}
         app = _make_app(api_keys)
         client = TestClient(app)
         resp = client.get("/api/test", headers={"Authorization": "bearer my_key"})
         assert resp.status_code == 200
-        assert resp.json()["analyst"] == "bob"
+        assert resp.json()["examiner"] == "bob"

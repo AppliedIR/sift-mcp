@@ -17,5 +17,9 @@ class ExecutionError(SiftError):
     """Tool execution failed."""
 
 
-class TimeoutError(SiftError):
+class ExecutionTimeoutError(SiftError):
     """Tool execution timed out."""
+
+
+# Backward compatibility alias
+TimeoutError = ExecutionTimeoutError

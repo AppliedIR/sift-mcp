@@ -43,20 +43,55 @@ class TestValidateInputPath:
         with pytest.raises(ValueError, match="blocked system directory"):
             validate_input_path("/etc/passwd")
 
-    def test_allows_tmp_evidence(self):
-        """Paths in /tmp should pass validation."""
-        result = validate_input_path("/tmp/evidence.img")
-        assert result.endswith("evidence.img")
+    def test_blocks_tmp(self):
+        """Paths in /tmp are now blocked."""
+        with pytest.raises(ValueError, match="blocked system directory"):
+            validate_input_path("/tmp/evidence.img")
 
     def test_allows_cases_evidence(self):
         """Paths in /cases should pass validation."""
         result = validate_input_path("/cases/test/image.E01")
         assert result.endswith("image.E01")
 
-    def test_allows_home_directory(self):
-        """Paths in /home should pass validation."""
-        result = validate_input_path("/home/user/evidence/disk.dd")
+    def test_blocks_home_directory(self):
+        """Paths in /home are now blocked."""
+        with pytest.raises(ValueError, match="blocked system directory"):
+            validate_input_path("/home/user/evidence/disk.dd")
+
+    def test_blocks_root_directory(self):
+        with pytest.raises(ValueError, match="blocked system directory"):
+            validate_input_path("/root/.bashrc")
+
+    def test_blocks_var_log(self):
+        with pytest.raises(ValueError, match="blocked system directory"):
+            validate_input_path("/var/log/syslog")
+
+    def test_blocks_boot(self):
+        with pytest.raises(ValueError, match="blocked system directory"):
+            validate_input_path("/boot/vmlinuz")
+
+    def test_allows_opt_directory(self):
+        """Paths in /opt should pass validation."""
+        result = validate_input_path("/opt/tools/evidence/disk.dd")
         assert result.endswith("disk.dd")
+
+    def test_symlink_to_blocked_dir(self, tmp_path):
+        """Symlink pointing to a blocked directory should be blocked."""
+        import os
+        link = tmp_path / "sneaky_link"
+        os.symlink("/etc/passwd", str(link))
+        with pytest.raises(ValueError, match="blocked system directory"):
+            validate_input_path(str(link))
+
+    def test_flag_value_path_validation(self):
+        """flag=value arguments should have the value portion validated as a path."""
+        with pytest.raises(ValueError, match="blocked system directory"):
+            validate_input_path("--input=/etc/shadow")
+
+    def test_flag_value_safe_path(self):
+        """flag=value with safe path should pass."""
+        result = validate_input_path("--input=/cases/evidence.img")
+        assert result.endswith("evidence.img")
 
 
 # --- T3: Zeek script blocking ---
@@ -171,3 +206,21 @@ class TestSanitizeExtraArgs:
         """sed without -i should pass."""
         result = sanitize_extra_args(["s/foo/bar/", "/cases/file.txt"], "sed")
         assert "s/foo/bar/" in result
+
+    # --- find write-to-file flags ---
+
+    def test_find_fls_blocked(self):
+        with pytest.raises(ValueError, match="Blocked dangerous flag.*find"):
+            sanitize_extra_args(["/cases", "-fls", "/tmp/output"], "find")
+
+    def test_find_fprint_blocked(self):
+        with pytest.raises(ValueError, match="Blocked dangerous flag.*find"):
+            sanitize_extra_args(["/cases", "-fprint", "/tmp/output"], "find")
+
+    def test_find_fprint0_blocked(self):
+        with pytest.raises(ValueError, match="Blocked dangerous flag.*find"):
+            sanitize_extra_args(["/cases", "-fprint0", "/tmp/output"], "find")
+
+    def test_find_fprintf_blocked(self):
+        with pytest.raises(ValueError, match="Blocked dangerous flag.*find"):
+            sanitize_extra_args(["/cases", "-fprintf", "/tmp/output", "%p"], "find")
