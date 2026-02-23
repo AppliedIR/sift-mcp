@@ -29,13 +29,17 @@ _suggest_counter = itertools.count(1)
 
 
 def list_available_tools(category: str | None = None) -> list[dict]:
-    """List all tools in the catalog with availability status."""
+    """List cataloged tools with availability and FK enrichment status.
+
+    Note: tools not in the catalog can also be executed via run_command.
+    Cataloged tools get enriched responses (caveats, corroboration, field meanings).
+    """
     tools = list_tools_in_catalog(category=category)
     results = []
     for t in tools:
         td = get_tool_def(t["name"])
         available = find_binary(td.binary) is not None if td else False
-        entry = {**t, "available": available}
+        entry = {**t, "available": available, "enriched": True}
         if td and available:
             entry["binary_path"] = find_binary(td.binary)
         results.append(entry)
@@ -91,7 +95,7 @@ def check_tools(tool_names: list[str] | None = None) -> dict:
                 path = find_binary(td.binary)
                 results[name] = {"available": path is not None, "binary_path": path}
             else:
-                results[name] = {"available": False, "error": "not in catalog"}
+                results[name] = {"available": False, "note": "not in catalog — can execute but without FK enrichment"}
         return results
 
     # Check all

@@ -1,11 +1,103 @@
-"""Tests for sift-mcp security utilities — path validation, Zeek script blocking."""
+"""Tests for sift-mcp security utilities — path validation, denylist, rm protection."""
+
+import os
 
 import pytest
 
-from sift_mcp.security import validate_input_path, sanitize_extra_args
+from sift_mcp.security import (
+    validate_input_path,
+    sanitize_extra_args,
+    is_denied,
+    validate_rm_targets,
+)
 
 
-# --- T2: Path traversal blocking ---
+# --- Denylist ---
+
+class TestDenylist:
+    """is_denied() checks against the hard denylist."""
+
+    def test_mkfs_denied(self):
+        assert is_denied("mkfs") is True
+
+    def test_mkfs_ext4_denied(self):
+        assert is_denied("mkfs.ext4") is True
+
+    def test_dd_denied(self):
+        assert is_denied("dd") is True
+
+    def test_shutdown_denied(self):
+        assert is_denied("shutdown") is True
+
+    def test_fdisk_denied(self):
+        assert is_denied("fdisk") is True
+
+    def test_mount_denied(self):
+        assert is_denied("mount") is True
+
+    def test_kill_denied(self):
+        assert is_denied("kill") is True
+
+    def test_rm_not_denied(self):
+        assert is_denied("rm") is False
+
+    def test_fls_not_denied(self):
+        assert is_denied("fls") is False
+
+    def test_strings_not_denied(self):
+        assert is_denied("strings") is False
+
+    def test_bash_not_denied(self):
+        assert is_denied("bash") is False
+
+    def test_case_insensitive(self):
+        assert is_denied("MKFS") is True
+        assert is_denied("DD") is True
+
+
+# --- rm Protection ---
+
+class TestRmProtection:
+    """validate_rm_targets() blocks rm in protected directories."""
+
+    def test_rm_blocks_cases_dir(self):
+        with pytest.raises(ValueError, match="protected evidence directory"):
+            validate_rm_targets(["-rf", "/cases"])
+
+    def test_rm_blocks_cases_subdir(self):
+        with pytest.raises(ValueError, match="protected evidence directory"):
+            validate_rm_targets(["/cases/INC-001/file.txt"])
+
+    def test_rm_blocks_evidence_dir(self):
+        with pytest.raises(ValueError, match="protected evidence directory"):
+            validate_rm_targets(["/evidence/disk.dd"])
+
+    def test_rm_blocks_case_evidence(self, tmp_path, monkeypatch):
+        case_dir = tmp_path / "INC-2026-001"
+        case_dir.mkdir()
+        evidence_dir = case_dir / "evidence"
+        evidence_dir.mkdir()
+        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        with pytest.raises(ValueError, match="case evidence"):
+            validate_rm_targets([str(evidence_dir / "file.img")])
+
+    def test_rm_allows_tmp(self):
+        # Should not raise
+        validate_rm_targets(["/tmp/output.csv"])
+
+    def test_rm_allows_regular_file(self):
+        validate_rm_targets(["-f", "/opt/work/temp.txt"])
+
+    def test_rm_blocks_root(self):
+        with pytest.raises(ValueError, match="filesystem root"):
+            validate_rm_targets(["-rf", "/"])
+
+    def test_rm_ignores_flags(self):
+        """Flags (starting with -) are not treated as paths."""
+        validate_rm_targets(["-rf"])  # should not raise
+
+
+# --- Path validation ---
 
 class TestValidateInputPath:
     """validate_input_path must block access to sensitive system directories."""
@@ -26,49 +118,38 @@ class TestValidateInputPath:
         with pytest.raises(ValueError, match="blocked system directory"):
             validate_input_path("/dev/sda")
 
-    def test_blocks_usr(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
-            validate_input_path("/usr/bin/ls")
-
-    def test_blocks_bin(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
-            validate_input_path("/bin/sh")
-
-    def test_blocks_sbin(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
-            validate_input_path("/sbin/init")
-
     def test_blocks_etc_passwd(self):
-        """Another /etc path to confirm all files under /etc are blocked."""
         with pytest.raises(ValueError, match="blocked system directory"):
             validate_input_path("/etc/passwd")
 
-    def test_blocks_tmp(self):
-        """Paths in /tmp are now blocked."""
+    def test_blocks_boot(self):
         with pytest.raises(ValueError, match="blocked system directory"):
-            validate_input_path("/tmp/evidence.img")
+            validate_input_path("/boot/vmlinuz")
+
+    def test_allows_home_directory(self):
+        """Paths in /home are now allowed for forensic analysis."""
+        result = validate_input_path("/home/user/evidence/disk.dd")
+        assert result.endswith("disk.dd")
+
+    def test_allows_tmp(self):
+        """Paths in /tmp are now allowed."""
+        result = validate_input_path("/tmp/evidence.img")
+        assert result.endswith("evidence.img")
+
+    def test_allows_var_log(self):
+        """Paths in /var/log are now allowed for forensic analysis."""
+        result = validate_input_path("/var/log/syslog")
+        assert result.endswith("syslog")
+
+    def test_allows_usr(self):
+        """Paths in /usr are now allowed."""
+        result = validate_input_path("/usr/bin/ls")
+        assert result.endswith("ls")
 
     def test_allows_cases_evidence(self):
         """Paths in /cases should pass validation."""
         result = validate_input_path("/cases/test/image.E01")
         assert result.endswith("image.E01")
-
-    def test_blocks_home_directory(self):
-        """Paths in /home are now blocked."""
-        with pytest.raises(ValueError, match="blocked system directory"):
-            validate_input_path("/home/user/evidence/disk.dd")
-
-    def test_blocks_root_directory(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
-            validate_input_path("/root/.bashrc")
-
-    def test_blocks_var_log(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
-            validate_input_path("/var/log/syslog")
-
-    def test_blocks_boot(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
-            validate_input_path("/boot/vmlinuz")
 
     def test_allows_opt_directory(self):
         """Paths in /opt should pass validation."""
@@ -94,20 +175,12 @@ class TestValidateInputPath:
         assert result.endswith("evidence.img")
 
 
-# --- T3: Zeek script blocking ---
+# --- Zeek script blocking ---
 
 class TestZeekScriptBlocking:
-    """Extra args containing Zeek scripts must be rejected.
-
-    The validation lives in run_zeek (network.py), but we test the
-    patterns directly to avoid needing a real Zeek binary.
-    """
+    """Extra args containing Zeek scripts must be rejected."""
 
     def _check_zeek_args(self, extra_args: list[str]) -> None:
-        """Reproduce the Zeek-specific validation from network.py.
-
-        This mirrors the exact checks in run_zeek after sanitize_extra_args.
-        """
         sanitized = sanitize_extra_args(extra_args, "zeek")
         for arg in sanitized:
             if "/" in arg or "\\" in arg:
@@ -122,34 +195,28 @@ class TestZeekScriptBlocking:
                 )
 
     def test_blocks_path_with_slash(self):
-        """Args containing / are blocked (could be script paths)."""
         with pytest.raises(ValueError, match="Zeek script arguments not allowed"):
             self._check_zeek_args(["/tmp/evil.zeek"])
 
     def test_blocks_zeek_extension(self):
-        """Args ending in .zeek are blocked."""
         with pytest.raises(ValueError, match="Zeek script arguments not allowed"):
             self._check_zeek_args(["script.zeek"])
 
     def test_blocks_bro_extension(self):
-        """Args ending in .bro are blocked (legacy Zeek scripts)."""
         with pytest.raises(ValueError, match="Zeek script arguments not allowed"):
             self._check_zeek_args(["old.bro"])
 
     def test_blocks_backslash_path(self):
-        """Args containing backslash are blocked."""
         with pytest.raises(ValueError, match="Zeek script arguments not allowed"):
             self._check_zeek_args(["C:\\scripts\\evil.zeek"])
 
     def test_allows_normal_flags(self):
-        """Normal Zeek flags should pass validation."""
-        # These should not raise
-        self._check_zeek_args(["-C"])  # ignore checksums
+        self._check_zeek_args(["-C"])
         self._check_zeek_args(["--no-checksums"])
-        self._check_zeek_args([])  # empty list
+        self._check_zeek_args([])
 
 
-# --- Extra: sanitize_extra_args ---
+# --- sanitize_extra_args ---
 
 class TestSanitizeExtraArgs:
     """Verify dangerous flag and shell metacharacter blocking."""
@@ -171,7 +238,6 @@ class TestSanitizeExtraArgs:
         assert result == ["-r", "--verbose", "-o", "output.txt"]
 
     def test_bulk_extractor_e_flag_allowed(self):
-        """bulk_extractor is exempted for -e (scanner enable)."""
         result = sanitize_extra_args(["-e", "email"], "run_bulk_extractor")
         assert result == ["-e", "email"]
 
@@ -190,7 +256,6 @@ class TestSanitizeExtraArgs:
             sanitize_extra_args(["/cases", "-name", "*.tmp", "-delete"], "find")
 
     def test_find_name_allowed(self):
-        """Normal find flags should pass."""
         result = sanitize_extra_args(["/cases", "-name", "*.evtx", "-type", "f"], "find")
         assert "-name" in result
 
@@ -203,11 +268,8 @@ class TestSanitizeExtraArgs:
             sanitize_extra_args(["--in-place", "s/foo/bar/", "/cases/file.txt"], "sed")
 
     def test_sed_read_only_allowed(self):
-        """sed without -i should pass."""
         result = sanitize_extra_args(["s/foo/bar/", "/cases/file.txt"], "sed")
         assert "s/foo/bar/" in result
-
-    # --- find write-to-file flags ---
 
     def test_find_fls_blocked(self):
         with pytest.raises(ValueError, match="Blocked dangerous flag.*find"):

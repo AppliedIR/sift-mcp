@@ -1,6 +1,6 @@
 # SIFT MCP
 
-Monorepo for all SIFT-side AIIR components. The sift-mcp package provides 6 core tools for catalog-gated forensic tool execution with knowledge-enriched response envelopes. The monorepo also contains forensic-mcp (15 tools + 14 resources), sift-gateway, forensic-knowledge, forensic-rag, windows-triage, and opencti. Part of the [AIIR](https://github.com/AppliedIR/aiir) platform.
+Monorepo for all SIFT-side AIIR components. The sift-mcp package provides 6 core tools for denylist-protected forensic tool execution with knowledge-enriched response envelopes. The monorepo also contains forensic-mcp (15 tools + 14 resources), sift-gateway, forensic-knowledge, forensic-rag, windows-triage, and opencti. Part of the [AIIR](https://github.com/AppliedIR/aiir) platform.
 
 ## Architecture
 
@@ -55,16 +55,19 @@ When the LLM client runs on a different machine, install with `--remote` to gene
 
 ### Execution Pipeline
 
-Every tool call follows the same pipeline: catalog check, safe execution, output parsing, knowledge enrichment, audit logging.
+Every tool call follows the same pipeline: denylist check, safe execution, output parsing, knowledge enrichment (for cataloged tools), audit logging.
 
 ```mermaid
 graph LR
-    REQ["MCP tool call"] --> CAT{"Catalog<br/>Check"}
-    CAT -->|"not in catalog"| REJECT["Rejected"]
-    CAT -->|"approved"| EXEC["subprocess.run()<br/>shell=False"]
+    REQ["MCP tool call"] --> DENY{"Denylist<br/>Check"}
+    DENY -->|"denied"| REJECT["Rejected"]
+    DENY -->|"allowed"| EXEC["subprocess.run()<br/>shell=False"]
     EXEC --> PARSE["Parse Output"]
-    PARSE --> ENRICH["FK Enrichment"]
+    PARSE --> CAT{"In Catalog?"}
+    CAT -->|"yes"| ENRICH["FK Enrichment"]
+    CAT -->|"no"| BASIC["Basic Envelope"]
     ENRICH --> RESP["Response Envelope"]
+    BASIC --> RESP
     RESP --> AUDIT["Audit Entry"]
 ```
 
@@ -76,7 +79,7 @@ graph LR
 
 | Tool | Description |
 |------|-------------|
-| `list_available_tools` | List all cataloged tools with installation status |
+| `list_available_tools` | List cataloged tools (enriched) — uncataloged tools can also execute |
 | `list_missing_tools` | List tools not installed, with installation guidance and alternatives |
 | `get_tool_help` | Usage info, flags, caveats, and FK knowledge for a tool |
 | `check_tools` | Check which tools are installed and available |
@@ -86,9 +89,9 @@ graph LR
 
 | Tool | Description |
 |------|-------------|
-| `run_command` | Execute any cataloged tool with argument sanitization |
+| `run_command` | Execute any forensic tool (denied binaries are blocked) |
 
-All 30+ per-tool wrappers (Zimmerman suite, Sleuth Kit, Volatility, etc.) are consolidated into `run_command`. The tool catalog still defines each binary's input flags, output format, timeout, and FK knowledge mapping. The wrappers existed to auto-build arguments, but `run_command` validates against the same catalog schemas.
+All 30+ per-tool wrappers (Zimmerman suite, Sleuth Kit, Volatility, etc.) are consolidated into `run_command`. A small denylist blocks system-destructive binaries. Tools listed in the catalog get enriched responses with forensic-knowledge data. Uncataloged tools execute with basic response envelopes.
 
 ## What Can You Ask?
 
@@ -143,9 +146,21 @@ Every tool response is wrapped in a structured envelope enriched by forensic-kno
 | `field_notes` | Timestamp field meanings and interpretation guidance |
 | `discipline_reminder` | Rotating forensic methodology reminder |
 
-## Tool Catalog
+## Execution Security
 
-The catalog is the security boundary. Only binaries listed in YAML catalog files can execute. All execution uses `subprocess.run(shell=False)` -- no shell, no arbitrary commands.
+A small denylist blocks catastrophic system-destructive operations (mkfs, dd, fdisk, shutdown, etc.). All other binaries can execute. This follows the REMnux MCP philosophy: VM/container isolation is the security boundary, not in-band command filtering.
+
+Additional protections:
+- `subprocess.run(shell=False)` — no shell, no arbitrary command chains
+- Argument sanitization — shell metacharacters blocked
+- Path validation — kernel interfaces (/proc, /sys, /dev) blocked for input
+- `rm` protection — evidence storage directories protected from deletion
+- Output truncation — large output capped
+- Audit trail — every execution logged with evidence ID
+
+## Forensic Catalog (Enrichment)
+
+Tools listed in YAML catalog files get enriched responses with forensic-knowledge data (caveats, corroboration suggestions, field meanings, discipline reminders). Uncataloged tools execute with basic response envelopes (evidence_id, audit, discipline reminder).
 
 | File | Tools |
 |------|-------|

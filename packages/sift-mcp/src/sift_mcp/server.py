@@ -52,7 +52,11 @@ def create_server() -> FastMCP:
 
     @server.tool()
     def run_command(command: list[str], purpose: str, timeout: int = 0, save_output: bool = False) -> dict:
-        """Execute a catalog-approved forensic tool. Rejects unknown binaries.
+        """Execute a forensic tool on this SIFT workstation.
+
+        Most SIFT-installed tools can be executed. A small set of system-destructive
+        binaries (mkfs, dd, fdisk, etc.) are blocked. Tools in the forensic catalog
+        get enriched responses with caveats and corroboration suggestions.
 
         Args:
             command: Command as list of strings (e.g., ["AmcacheParser", "-f", "Amcache.hve", "--csv", "/tmp/out"]).

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -81,19 +82,61 @@ def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]
     return sanitized
 
 
+# Hard-blocked binaries — catastrophic/irreversible system operations.
+# Security boundary is VM/container isolation, not this list.
+# See: REMnux MCP blocklist philosophy.
+DENIED_BINARIES = frozenset({
+    "mkfs", "mkfs.ext4", "mkfs.xfs", "mkfs.btrfs", "mkfs.ntfs",
+    "dd",                          # raw disk write — can destroy evidence
+    "fdisk", "parted", "gdisk",    # partition table modification
+    "shutdown", "reboot", "poweroff", "halt", "init",
+    "mount", "umount",             # filesystem mount changes
+    "kill", "killall", "pkill",    # process termination
+})
+
+# Directories where rm is blocked (evidence storage, case data)
+_RM_PROTECTED_DIRS = (
+    "/cases",
+    "/evidence",
+)
+
+
+def is_denied(binary_name: str) -> bool:
+    """Check if a binary is on the hard denylist."""
+    return binary_name.lower() in DENIED_BINARIES
+
+
+def validate_rm_targets(args: list[str]) -> None:
+    """Block rm from targeting evidence storage directories.
+
+    rm is allowed for general cleanup but blocked inside evidence
+    storage locations. Also blocks rm -rf / patterns.
+    """
+    path_args = [a for a in args if not a.startswith("-")]
+    for arg in path_args:
+        resolved = str(Path(arg).resolve())
+        if resolved == "/":
+            raise ValueError("Blocked: rm targeting filesystem root")
+        # Block evidence storage directories
+        for protected in _RM_PROTECTED_DIRS:
+            if resolved == protected or resolved.startswith(protected + "/"):
+                raise ValueError(
+                    f"Blocked: rm targeting protected evidence directory '{protected}'"
+                )
+        case_dir = os.environ.get("AIIR_CASE_DIR", "")
+        if case_dir:
+            case_resolved = str(Path(case_dir).resolve())
+            if resolved == case_resolved or resolved.startswith(case_resolved + "/evidence"):
+                raise ValueError(
+                    "Blocked: rm targeting case evidence directory"
+                )
+
+
 _BLOCKED_DIRECTORIES = (
     "/etc",
-    "/usr",
-    "/bin",
-    "/sbin",
-    "/var/run",
-    "/var/log",
     "/proc",
     "/sys",
     "/dev",
-    "/root",
-    "/home",
-    "/tmp",
     "/boot",
 )
 

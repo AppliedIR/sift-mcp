@@ -42,24 +42,30 @@ class TestRunCommandEnvelope:
             "command": ["echo", "hello"],
         }
 
-        with patch("sift_mcp.tools.generic.is_in_catalog", return_value=True), \
-             patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/echo"), \
+        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/echo"), \
              patch("sift_mcp.tools.generic.execute", return_value=mock_result), \
              patch("sift_mcp.tools.generic.sanitize_extra_args", return_value=["hello"]):
 
-            # Get the run_command tool function from the server's registered tools
-            # Access through the internal call mechanism
             from sift_mcp.tools.generic import run_command
             result = run_command(["echo", "hello"], purpose="test")
             assert result["exit_code"] == 0
 
-    def test_uncataloged_binary_error(self, monkeypatch):
-        """Verify error handling for uncataloged binaries."""
+    def test_denied_binary_error(self, monkeypatch):
+        """Verify error handling for denied binaries."""
         from sift_mcp.tools.generic import run_command
-        from sift_mcp.exceptions import ToolNotInCatalogError
+        from sift_mcp.exceptions import DeniedBinaryError
 
-        with pytest.raises(ToolNotInCatalogError, match="not in the approved"):
-            run_command(["evil_binary", "--flag"], purpose="test")
+        with pytest.raises(DeniedBinaryError, match="blocked"):
+            run_command(["mkfs", "/dev/sda"], purpose="test")
+
+    def test_uncataloged_binary_not_found(self, monkeypatch):
+        """Uncataloged binary not on system raises ExecutionError."""
+        from sift_mcp.tools.generic import run_command
+        from sift_mcp.exceptions import ExecutionError
+
+        with patch("sift_mcp.tools.generic.find_binary", return_value=None):
+            with pytest.raises(ExecutionError, match="not found"):
+                run_command(["nonexistent_tool", "--flag"], purpose="test")
 
     def test_catch_all_exception_handler(self, monkeypatch):
         """Verify the catch-all exception handler in server.py."""

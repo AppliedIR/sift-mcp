@@ -13,6 +13,10 @@ class ToolNotInCatalogError(SiftError):
     """Tool not in the approved catalog."""
 
 
+class DeniedBinaryError(SiftError):
+    """Raised when a binary is on the hard denylist."""
+
+
 class ExecutionError(SiftError):
     """Tool execution failed."""
 
