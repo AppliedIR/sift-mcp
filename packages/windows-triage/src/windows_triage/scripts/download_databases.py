@@ -4,7 +4,10 @@ Replaces the shell script ``download-databases.sh`` with a cross-platform
 Python implementation that works inside the AIIR venv.
 
 Usage:
-    python -m windows_triage.scripts.download_databases [--dest DIR]
+    python -m windows_triage.scripts.download_databases [--dest DIR] [--tag TAG]
+
+Authentication:
+    For private repos, set GITHUB_TOKEN or have ``gh`` CLI authenticated.
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ import json
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
@@ -29,24 +33,55 @@ CHUNK_SIZE = 1024 * 1024  # 1 MB
 
 
 def _github_headers() -> dict[str, str]:
-    """Build HTTP headers for GitHub API, including token if available."""
+    """Build HTTP headers for GitHub API, including token if available.
+
+    Token sources (in order): GITHUB_TOKEN env var, ``gh auth token`` CLI.
+    """
     headers = {"Accept": "application/vnd.github+json"}
     token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        try:
+            result = subprocess.run(
+                ["gh", "auth", "token"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                token = result.stdout.strip()
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
 
 
 def _fetch_release(tag: str = "latest") -> dict:
-    """Fetch release metadata from GitHub API."""
+    """Fetch release metadata from GitHub API.
+
+    When tag is "latest", tries ``/releases/latest`` first. If that returns 404
+    (no release marked as Latest), falls back to the first item in ``/releases``.
+    """
+    headers = _github_headers()
+
     if tag == "latest":
         url = f"https://api.github.com/repos/{REPO}/releases/latest"
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError:
+            # No "Latest" release — fall back to most recent release
+            url = f"https://api.github.com/repos/{REPO}/releases"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                releases = json.loads(resp.read())
+                if releases:
+                    return releases[0]
+                raise ValueError("No releases found in repository")
     else:
         url = f"https://api.github.com/repos/{REPO}/releases/tags/{tag}"
-
-    req = urllib.request.Request(url, headers=_github_headers())
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read())
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read())
 
 
 def _get_asset_url(release: dict, asset_name: str) -> str | None:
