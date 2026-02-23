@@ -111,7 +111,16 @@ class HttpMCPBackend(MCPBackend):
             )
             return result.content
         except (ConnectionError, OSError) as exc:
+            logger.error("Backend %s connection lost during call_tool: %s", self.name, exc)
             self._tools_cache = None
+            self._session = None
+            self._started = False
+            if self._exit_stack:
+                try:
+                    await self._exit_stack.aclose()
+                except Exception:
+                    pass
+                self._exit_stack = None
             raise
 
     async def health_check(self) -> dict:

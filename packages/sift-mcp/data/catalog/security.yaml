@@ -35,6 +35,9 @@ tool_blocked_flags:
     - "--create"
     - "--delete"
     - "--append"
+    - "--checkpoint-action"
+    - "--use-compress-program"
+    - "--to-command"
   unzip:
     - "-o"
     - "-n"

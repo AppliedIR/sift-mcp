@@ -162,8 +162,18 @@ def load_security_policy() -> dict:
         return _security_cache
     catalog_dir = _find_catalog_dir()
     security_file = catalog_dir / "security.yaml"
-    with open(security_file, "r", encoding="utf-8") as f:
-        doc = yaml.safe_load(f)
+    try:
+        with open(security_file, "r", encoding="utf-8") as f:
+            doc = yaml.safe_load(f)
+    except (OSError, yaml.YAMLError) as e:
+        logger.error("Failed to load security policy from %s: %s", security_file, e)
+        _security_cache = {
+            "dangerous_flags": set(),
+            "tool_allowed_flags": {},
+            "tool_blocked_flags": {},
+            "denied_binaries": frozenset(),
+        }
+        return _security_cache
     _security_cache = {
         "dangerous_flags": set(doc.get("dangerous_flags", [])),
         "tool_allowed_flags": {k: set(v) for k, v in doc.get("tool_allowed_flags", {}).items()},

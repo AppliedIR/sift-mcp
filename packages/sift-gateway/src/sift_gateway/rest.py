@@ -7,6 +7,7 @@ import os
 import socket
 import threading
 from urllib.parse import urlparse
+from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
@@ -349,6 +350,17 @@ async def join_gateway(request: Request) -> JSONResponse:
     # If wintools: add wintools backend to config
     wintools_registered = False
     if machine_type == "wintools" and wintools_url and wintools_token:
+        parsed = urlparse(wintools_url)
+        if parsed.scheme not in ("http", "https"):
+            return JSONResponse(
+                {"error": "wintools_url must use http or https scheme"},
+                status_code=400,
+            )
+        if not parsed.hostname:
+            return JSONResponse(
+                {"error": "wintools_url must include a hostname"},
+                status_code=400,
+            )
         _add_wintools_backend(gateway, wintools_url, wintools_token)
         wintools_registered = True
 
@@ -413,10 +425,14 @@ def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
             "role": "examiner",
         }
 
-        config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        fd = os.open(str(config_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            yaml.dump(config, f, default_flow_style=False)
+        try:
+            config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            fd = os.open(str(config_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
+                yaml.dump(config, f, default_flow_style=False)
+        except OSError as e:
+            logger.error("Failed to write gateway config: %s", e)
+            raise HTTPException(status_code=500, detail="Failed to save configuration")
 
     # Also update the in-memory gateway auth keys
     if hasattr(gateway, "_app"):
@@ -455,10 +471,14 @@ def _add_wintools_backend(gateway, url: str, token: str) -> None:
             "enabled": True,
         }
 
-        config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        fd = os.open(str(config_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            yaml.dump(config, f, default_flow_style=False)
+        try:
+            config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            fd = os.open(str(config_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
+                yaml.dump(config, f, default_flow_style=False)
+        except OSError as e:
+            logger.error("Failed to write gateway config: %s", e)
+            raise HTTPException(status_code=500, detail="Failed to save configuration")
 
 
 def _get_gateway_url(gateway) -> str:

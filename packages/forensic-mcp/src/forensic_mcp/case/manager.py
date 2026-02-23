@@ -711,9 +711,14 @@ class CaseManager:
                 skipped += 1
                 continue
 
+            # Strip approval/integrity fields — merged items always enter as DRAFT
+            cleaned = {k: v for k, v in item.items() if k not in _PROTECTED_FINDING_FIELDS}
+            cleaned["status"] = "DRAFT"
+
             if item_id not in local_by_id:
-                local.append(item)
-                local_by_id[item_id] = item
+                cleaned["id"] = item_id  # Restore id after stripping
+                local.append(cleaned)
+                local_by_id[item_id] = cleaned
                 added += 1
             else:
                 existing = local_by_id[item_id]
@@ -723,9 +728,10 @@ class CaseManager:
                 inc_ts = item.get("modified_at", item.get("staged", ""))
                 loc_ts = existing.get("modified_at", existing.get("staged", ""))
                 if inc_ts > loc_ts:
+                    cleaned["id"] = item_id  # Restore id after stripping
                     idx = next(i for i, f in enumerate(local) if f.get("id") == item_id)
-                    local[idx] = item
-                    local_by_id[item_id] = item
+                    local[idx] = cleaned
+                    local_by_id[item_id] = cleaned
                     updated += 1
                 else:
                     skipped += 1
@@ -761,18 +767,24 @@ class CaseManager:
                 skipped += 1
                 continue
 
+            # Strip approval/integrity fields — merged items always enter as DRAFT
+            cleaned = {k: v for k, v in item.items() if k not in _PROTECTED_EVENT_FIELDS}
+            cleaned["status"] = "DRAFT"
+
             if item_id not in local_by_id:
-                local.append(item)
-                local_by_id[item_id] = item
+                cleaned["id"] = item_id  # Restore id after stripping
+                local.append(cleaned)
+                local_by_id[item_id] = cleaned
                 added += 1
             else:
                 existing = local_by_id[item_id]
                 inc_ts = item.get("modified_at", item.get("staged", ""))
                 loc_ts = existing.get("modified_at", existing.get("staged", ""))
                 if inc_ts > loc_ts:
+                    cleaned["id"] = item_id  # Restore id after stripping
                     idx = next(i for i, t in enumerate(local) if t.get("id") == item_id)
-                    local[idx] = item
-                    local_by_id[item_id] = item
+                    local[idx] = cleaned
+                    local_by_id[item_id] = cleaned
                     updated += 1
                 else:
                     skipped += 1
@@ -1451,4 +1463,7 @@ class CaseManager:
             return json.loads(path.read_text())
         except json.JSONDecodeError:
             logger.error("Corrupt JSON file: %s", path)
+            return default
+        except OSError as e:
+            logger.error("Failed to read JSON file %s: %s", path, e)
             return default
