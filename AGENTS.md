@@ -55,21 +55,44 @@ When connected to remnux-mcp, escalate suspicious files for analysis. Use `analy
 
 **General rule:** If you find a file that is suspicious but cannot determine its purpose from metadata and context alone, submit it to REMnux before drawing conclusions. REMnux `analyze_file` returns structured findings in neutral language — treat its output as evidence to be interpreted, not as a verdict.
 
-## Voluntary Best Practices
-- Call `record_action()` for every investigative step
-- Use `log_reasoning()` to record analytical thought process
-- If you run tools via shell instead of MCP wrappers, call `log_external_action()`
-- Show your plan before multi-step actions — the analyst should confirm direction
+## Investigation Recording
 
-When record_finding() returns a grounding suggestion, consider running the suggested checks and updating the finding with additional evidence before moving on.
+**`record_finding()` — Present and record substantive findings as they emerge:**
 
-## Timeline Events
-When recording timeline events, include optional fields to improve filtering and analysis:
+The intended flow is: (1) analyze tool output, (2) show evidence to the examiner using the evidence presentation format, (3) get conversational approval, (4) call `record_finding()`. A finding is something that would appear in the final IR report:
+- A suspicious artifact, anomaly, or IOC with supporting evidence
+- A benign exclusion (ruling something out, with evidence why)
+- A causal link established between events
+- A significant evidence gap that affects conclusions
+
+Do not batch findings at the end of the investigation. Present each finding when you discover it. Findings reconstructed from memory after context compaction are lower quality than findings recorded in the moment.
+
+Do not record routine tool output as findings. "Ran AmcacheParser, got 42 entries" is not a finding — the audit trail already captured the tool execution. "AmcacheParser shows Mimikatz installation at 14:32 UTC, no corresponding Prefetch entry" is a finding.
+
+When `record_finding()` returns a grounding suggestion, consider running the suggested checks and updating the finding with additional evidence before moving on.
+
+**`record_timeline_event()` — Record key events forming the incident narrative:**
+
+Record timestamps that are part of the incident story — events the examiner would include in a timeline report. Include these fields to improve filtering and analysis:
 - **event_type**: classification of the event — `process`, `network`, `file`, `registry`, `auth`, `persistence`, `lateral`, `execution`, or `other`
 - **artifact_ref**: unique artifact identifier for deduplication — e.g. `prefetch:EVIL.EXE-{hash}`, `evtx:Security:4624:12345`
 - **related_findings**: list of finding IDs this event supports — e.g. `["F-001", "F-003"]`
 
+Not every timestamp in the evidence is a timeline event. MFT entries showing normal system activity are data; the timestamp when a malicious process first executed is a timeline event.
+
 Use `get_timeline()` with filters (status, source, examiner, start_date, end_date, event_type) to narrow results when the timeline grows large.
+
+**`log_reasoning()` — Record analytical decisions (no approval needed):**
+
+Call at decision points: when choosing which artifact to examine next and why, forming or revising a hypothesis, ruling something out, choosing between competing interpretations. This goes to the audit trail only — the examiner doesn't need to approve it, so use it freely.
+
+If context compaction occurs, only recorded reasoning survives. An unrecorded hypothesis is a lost hypothesis.
+
+**`log_external_action()` — Record non-MCP tool execution:**
+
+If you run a command via Bash or another tool outside MCP, call this afterward with the command, output summary, and purpose. Without this, the execution has no audit entry and findings cannot reference it.
+
+**Investigation rhythm:** After completing analysis of an artifact or artifact type (e.g., after parsing all prefetch files, after examining event logs), pause and assess: Did I identify anything the examiner should know about? If yes, present the evidence and record a finding. Did I encounter key timestamps for the incident narrative? If yes, record timeline events. Am I about to change direction? If yes, log the reasoning.
 
 ## Human-in-the-Loop
 All findings and timeline events stage as DRAFT. The human analyst reviews and

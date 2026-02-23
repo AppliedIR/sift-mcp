@@ -117,7 +117,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
 
     @server.tool()
     def record_action(description: str, tool: str = "", command: str = "", analyst_override: str = "") -> dict:
-        """Log action to the case actions log. Auto-committed, no approval needed."""
+        """Log a supplemental action note to the case record. Auto-committed, no approval needed. Note: MCP tool calls are already captured by the automatic audit trail."""
         result = manager.record_action(description, tool, command, examiner_override=analyst_override)
         audit.log(tool="record_action", params={"description": description}, result_summary=result)
         return result
@@ -197,14 +197,14 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
 
     @server.tool()
     def log_reasoning(text: str) -> dict:
-        """Voluntary: record orchestrator reasoning or analysis notes to audit trail."""
+        """Record analytical reasoning to the audit trail (no approval needed). Call when choosing what to examine next, forming a hypothesis, revising an interpretation, or ruling something out. Unrecorded reasoning is lost during context compaction."""
         result = {"status": "logged"}
         audit.log(tool="log_reasoning", params={"text": text}, result_summary=result, source="orchestrator")
         return result
 
     @server.tool()
     def log_external_action(command: str, output_summary: str, purpose: str) -> dict:
-        """Voluntary: record tool execution done outside MCP (e.g., via sift-mcp or raw Bash)."""
+        """Record a tool execution performed outside this MCP server (e.g., via Bash or another backend). Without this record, the action has no audit entry and findings cannot reference it."""
         result = {"status": "logged", "note": "orchestrator_voluntary -- not independently verified"}
         audit.log(
             tool="log_external_action",

@@ -179,17 +179,31 @@ forensic-rag.
 
 ## Case Documentation
 
-During investigations, use forensic-mcp tools to maintain the case record:
+The MCP audit trail automatically captures every tool execution. Your job
+is to surface substantive findings and record analytical decisions — not
+to log routine actions.
 
-| Action | Tool | Notes |
-|--------|------|-------|
-| Log every action | `record_action` | After EACH action, atomic |
-| Stage findings | `record_finding` | DRAFT until human approves via `aiir approve` |
-| Stage timeline events | `record_timeline_event` | DRAFT until human approves |
-| Track investigation tasks | `add_todo` / `complete_todo` | Priority: high/medium/low |
-| Record analysis reasoning | `log_reasoning` | Voluntary, goes to audit trail |
+**Findings — present evidence, then record:**
+When you observe something significant (IOC, anomaly, exclusion, causal
+link), present the evidence using the format in FORENSIC_DISCIPLINE.md,
+get the examiner's conversational approval, then call `record_finding()`.
+Quality bar: "Would this appear in the final report?"
 
-**Do NOT maintain separate markdown files.** forensic-mcp manages all
+**Timeline — record key incident events:**
+Call `record_timeline_event()` for timestamps that form the incident
+narrative. Include event_type and artifact_ref. Quality bar: "Would this
+be on the incident timeline?"
+
+**Reasoning — log at decision points:**
+Call `log_reasoning()` when choosing direction, forming/revising
+hypotheses, or ruling things out. No approval needed — goes to audit
+trail. Use freely. Unrecorded reasoning is lost during context compaction.
+
+**External actions — capture non-MCP execution:**
+Call `log_external_action()` after running commands via Bash or other
+non-MCP tools. Without this, the action has no audit entry.
+
+Do NOT maintain separate markdown files. forensic-mcp manages all
 case data in structured JSON with full audit trail.
 
 ---
@@ -226,4 +240,5 @@ remains DRAFT until the examiner reviews and approves it.
 2. Query tools before writing conclusions
 3. Show evidence for every claim
 4. Stop at checkpoints for human approval
-5. Record actions immediately via forensic-mcp
+5. Surface findings as you discover them — present evidence, get approval, record; never batch at the end
+6. Log reasoning at decision points — unrecorded analysis is lost to context compaction
