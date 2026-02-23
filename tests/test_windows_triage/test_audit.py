@@ -38,6 +38,7 @@ class TestAuditWriter:
 
     def test_reset_counter(self, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
         writer = AuditWriter("windows-triage-mcp")
         writer.log(tool="check_file", params={}, result_summary={})
         writer.log(tool="check_file", params={}, result_summary={})

@@ -29,7 +29,8 @@ class TestExecutor:
         result = execute(["echo", "a", "b", "c"])
         assert result["command"] == ["echo", "a", "b", "c"]
 
-    def test_save_output(self, tmp_path):
+    def test_save_output(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
         result = execute(
             ["echo", "saved output"],
             save_output=True,
@@ -62,8 +63,9 @@ class TestSaveOutputBlockedPrefixes:
         with pytest.raises(ExecutionError, match="system directory"):
             execute(["echo", "test"], save_output=True, save_dir="/etc/evil")
 
-    def test_save_to_etc_backup_allowed(self, tmp_path):
+    def test_save_to_etc_backup_allowed(self, tmp_path, monkeypatch):
         """Saving to /etc-backup/ should NOT be blocked (partial match)."""
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
         etc_backup = tmp_path / "etc-backup"
         etc_backup.mkdir()
         result = execute(["echo", "test"], save_output=True, save_dir=str(etc_backup))

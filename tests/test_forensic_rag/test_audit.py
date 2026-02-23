@@ -38,6 +38,7 @@ class TestAuditWriter:
 
     def test_reset_counter(self, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
         writer = AuditWriter("forensic-rag-mcp")
         writer.log(tool="search", params={}, result_summary={})
         writer.log(tool="search", params={}, result_summary={})
