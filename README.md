@@ -4,12 +4,15 @@ Monorepo for all SIFT-side AIIR components. The sift-mcp package provides 6 core
 
 ## Architecture
 
-This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, and opencti. The sift-mcp tool execution package runs as a subprocess of the sift-gateway. The LLM client and aiir CLI are the two human-facing tools. They always run on the same machine, which can be the SIFT workstation or a separate computer. The LLM client connects to the gateway over Streamable HTTP. It never talks to sift-mcp directly.
+This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, and opencti. The sift-mcp tool execution package runs as a subprocess of the sift-gateway. The LLM client and aiir CLI are the two human-facing tools. The aiir CLI always runs on the SIFT workstation — it requires direct filesystem access to the case directory. When the LLM client runs on a separate machine, the examiner must have SSH access to SIFT for all CLI operations. The LLM client connects to the gateway over Streamable HTTP. It never talks to sift-mcp directly.
 
 ```mermaid
 graph LR
-    subgraph sift ["SIFT Workstation"]
+    subgraph analyst ["Analyst Machine (if remote)"]
         CC["LLM Client<br/>(human interface)"]
+    end
+
+    subgraph sift ["SIFT Workstation"]
         CLI["aiir CLI<br/>(human interface)"]
         GW["sift-gateway<br/>:4508"]
         FM["forensic-mcp"]
@@ -20,7 +23,6 @@ graph LR
         FK["forensic-knowledge"]
         CASE["Case Directory"]
 
-        CC -->|"streamable-http"| GW
         GW -->|stdio| FM
         GW -->|stdio| SM
         GW -->|stdio| RAG
@@ -29,9 +31,12 @@ graph LR
         FM --> CASE
         CLI --> CASE
     end
+
+    CC -->|"streamable-http"| GW
+    analyst -.->|"SSH"| CLI
 ```
 
-The diagram above shows the co-located layout (LLM client on the SIFT box). In production, the LLM client typically runs on a separate machine and connects to the gateway over the network with TLS and bearer token auth.
+In co-located deployments, the LLM client also runs on SIFT and no SSH is needed. In production, the LLM client typically runs on a separate machine and connects to the gateway over the network with TLS and bearer token auth. The examiner must have SSH access to SIFT for CLI operations (approve, review, report, etc.).
 
 The gateway exposes each backend as a separate MCP endpoint. Clients can connect to the aggregate endpoint or to individual backends:
 
