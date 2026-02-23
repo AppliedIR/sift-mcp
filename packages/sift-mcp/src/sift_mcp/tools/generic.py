@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sift_mcp.catalog import get_tool_def
+from sift_mcp.config import get_config
 from sift_mcp.environment import find_binary
 from sift_mcp.executor import execute
 from sift_mcp.exceptions import DeniedBinaryError, ExecutionError
@@ -77,10 +78,46 @@ def run_command(
     # Sanitize any args after the binary
     sanitize_extra_args(command[1:], tool_name=binary)
 
-    return execute(
+    exec_result = execute(
         command,
         timeout=timeout,
         cwd=cwd,
         save_output=save_output,
         save_dir=save_dir,
     )
+
+    # Parse output based on catalog format when output exceeds byte budget
+    cfg = get_config()
+    stdout = exec_result.get("stdout", "")
+    stdout_bytes = exec_result.get("stdout_total_bytes", len(stdout.encode("utf-8")))
+
+    td = get_tool_def(binary)
+    output_format = td.output_format if td else "text"
+
+    # Small output — return as-is (no parsing overhead)
+    if stdout_bytes <= cfg.response_byte_budget:
+        exec_result["_output_format"] = output_format
+        return exec_result
+
+    # Large output — parse with byte budget
+    from sift_common.parsers import csv_parser, text_parser, json_parser
+
+    if output_format == "csv":
+        parsed = csv_parser.parse_csv(stdout, byte_budget=cfg.response_byte_budget)
+        exec_result["_parsed"] = parsed
+        exec_result["_output_format"] = "parsed_csv"
+    elif output_format == "json":
+        parsed = json_parser.parse_json(stdout, byte_budget=cfg.response_byte_budget)
+        if parsed.get("parse_error"):
+            parsed = json_parser.parse_jsonl(stdout, byte_budget=cfg.response_byte_budget)
+        exec_result["_parsed"] = parsed
+        exec_result["_output_format"] = "parsed_json"
+    else:
+        parsed = text_parser.parse_text(stdout, byte_budget=cfg.response_byte_budget)
+        exec_result["_parsed"] = parsed
+        exec_result["_output_format"] = "parsed_text"
+
+    # Replace raw stdout with None — full output is on disk if saved
+    exec_result["stdout"] = None
+
+    return exec_result

@@ -85,17 +85,32 @@ def create_server() -> FastMCP:
             td = get_tool_def(binary)
             fk_name = td.knowledge_name if td else binary
 
+            # Use parsed preview for large output, raw result for small
+            if exec_result.get("_parsed"):
+                resp_data = exec_result["_parsed"]
+                resp_format = exec_result["_output_format"]
+            else:
+                resp_data = exec_result
+                resp_format = exec_result.get("_output_format", "text")
+
             response = build_response(
                 tool_name="run_command",
                 success=exec_result["exit_code"] == 0,
-                data=exec_result,
+                data=resp_data,
                 evidence_id=evidence_id,
-                output_format="text",
+                output_format=resp_format,
                 elapsed_seconds=elapsed,
                 exit_code=exec_result["exit_code"],
                 command=command,
                 fk_tool_name=fk_name,
+                output_files=[exec_result["output_file"]] if exec_result.get("output_file") else None,
             )
+
+            # Add full output metadata if file was saved
+            if exec_result.get("output_file"):
+                response["full_output_path"] = exec_result["output_file"]
+                response["full_output_sha256"] = exec_result.get("output_sha256")
+                response["full_output_bytes"] = exec_result.get("stdout_total_bytes")
 
             audit.log(
                 tool="run_command",

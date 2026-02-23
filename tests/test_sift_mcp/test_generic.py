@@ -93,8 +93,111 @@ class TestGenericRunCommand:
             "stderr": "",
             "elapsed_seconds": 0.1,
             "command": ["rm", "/tmp/parsed_output.csv"],
+            "stdout_total_bytes": 0,
         }
         with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/rm"), \
              patch("sift_mcp.tools.generic.execute", return_value=mock_result):
             result = run_command(["rm", "/tmp/parsed_output.csv"])
             assert result["exit_code"] == 0
+
+
+class TestOutputParsing:
+    """Tests for byte-budgeted output parsing in run_command."""
+
+    def _mock_exec(self, stdout, stdout_bytes=None):
+        """Build a mock execute result."""
+        if stdout_bytes is None:
+            stdout_bytes = len(stdout.encode("utf-8"))
+        return {
+            "exit_code": 0,
+            "stdout": stdout,
+            "stderr": "",
+            "elapsed_seconds": 0.1,
+            "command": ["sometool", "--flag"],
+            "stdout_total_bytes": stdout_bytes,
+        }
+
+    def test_small_output_returns_raw(self):
+        """Output under budget → no parsing, raw stdout in result."""
+        result = self._mock_exec("small output")
+        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/sometool"), \
+             patch("sift_mcp.tools.generic.execute", return_value=result):
+            out = run_command(["sometool", "--flag"])
+        assert out["stdout"] == "small output"
+        assert "_parsed" not in out
+
+    def test_large_output_parsed_text(self, monkeypatch):
+        """Text output over budget → _parsed with lines."""
+        monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "100")
+        big_output = "\n".join(f"line {i}" for i in range(500))
+        result = self._mock_exec(big_output)
+        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/sometool"), \
+             patch("sift_mcp.tools.generic.execute", return_value=result):
+            out = run_command(["sometool", "--flag"])
+        assert "_parsed" in out
+        assert out["_output_format"] == "parsed_text"
+        assert out["_parsed"]["total_lines"] == 500
+        assert out["_parsed"]["preview_lines"] < 500
+        assert out["stdout"] is None
+
+    def test_large_output_parsed_csv(self, monkeypatch):
+        """CSV tool output over budget → _parsed with rows + columns."""
+        monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "200")
+        csv_output = "Name,Value\n" + "\n".join(f"item{i},{i}" for i in range(500))
+        result = self._mock_exec(csv_output)
+
+        from sift_mcp.catalog import ToolDefinition
+        mock_td = ToolDefinition(
+            name="csvtool", binary="csvtool", category="test",
+            output_format="csv",
+        )
+        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/csvtool"), \
+             patch("sift_mcp.tools.generic.execute", return_value=result), \
+             patch("sift_mcp.tools.generic.get_tool_def", return_value=mock_td):
+            out = run_command(["csvtool", "--flag"])
+        assert out["_output_format"] == "parsed_csv"
+        assert out["_parsed"]["total_rows"] >= 490  # ~500 data rows
+        assert out["_parsed"]["preview_rows"] < out["_parsed"]["total_rows"]
+        assert out["_parsed"]["columns"] == ["Name", "Value"]
+
+    def test_large_output_parsed_json(self, monkeypatch):
+        """JSON tool output over budget → _parsed with entries."""
+        import json as json_mod
+        monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "200")
+        json_output = json_mod.dumps([{"id": i} for i in range(500)])
+        result = self._mock_exec(json_output)
+
+        from sift_mcp.catalog import ToolDefinition
+        mock_td = ToolDefinition(
+            name="jsontool", binary="jsontool", category="test",
+            output_format="json",
+        )
+        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/jsontool"), \
+             patch("sift_mcp.tools.generic.execute", return_value=result), \
+             patch("sift_mcp.tools.generic.get_tool_def", return_value=mock_td):
+            out = run_command(["jsontool", "--flag"])
+        assert out["_output_format"] == "parsed_json"
+        assert out["_parsed"]["total_entries"] == 500
+        assert out["_parsed"]["preview_entries"] < 500
+
+    def test_uncataloged_tool_defaults_to_text(self, monkeypatch):
+        """Non-catalog tool → text parser used."""
+        monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "100")
+        big_output = "\n".join(f"line {i}" for i in range(500))
+        result = self._mock_exec(big_output)
+        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/sometool"), \
+             patch("sift_mcp.tools.generic.execute", return_value=result), \
+             patch("sift_mcp.tools.generic.get_tool_def", return_value=None):
+            out = run_command(["sometool", "--flag"])
+        assert out["_output_format"] == "parsed_text"
+
+    def test_stdout_nulled_when_parsed(self, monkeypatch):
+        """Raw stdout set to None when _parsed present."""
+        monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "100")
+        big_output = "\n".join(f"line {i}" for i in range(500))
+        result = self._mock_exec(big_output)
+        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/sometool"), \
+             patch("sift_mcp.tools.generic.execute", return_value=result):
+            out = run_command(["sometool", "--flag"])
+        assert out["stdout"] is None
+        assert out["_parsed"] is not None

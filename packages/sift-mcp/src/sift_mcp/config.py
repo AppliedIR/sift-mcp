@@ -22,8 +22,11 @@ class SiftConfig:
     # Default execution timeout (seconds)
     default_timeout: int = 600
 
-    # Max output bytes before truncation
-    max_output_bytes: int = 50000
+    # Max bytes captured from subprocess (safety limit for runaway processes)
+    max_output_bytes: int = 52_428_800  # 50MB
+
+    # Max bytes of tool output returned in MCP response (~2,500 tokens)
+    response_byte_budget: int = 10_240  # 10KB
 
     # Hayabusa install location
     hayabusa_dir: str = "/opt/hayabusa"
@@ -51,6 +54,12 @@ class SiftConfig:
         hayabusa = os.environ.get("SIFT_HAYABUSA_DIR")
         if hayabusa:
             cfg.hayabusa_dir = hayabusa
+
+        if os.environ.get("SIFT_RESPONSE_BUDGET"):
+            try:
+                cfg.response_byte_budget = int(os.environ["SIFT_RESPONSE_BUDGET"])
+            except ValueError:
+                pass
 
         return cfg
 

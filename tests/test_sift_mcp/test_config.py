@@ -34,6 +34,24 @@ class TestSiftConfig:
         cfg = SiftConfig.from_env()
         assert cfg.share_root == "/mnt/wintools"
 
+    def test_response_byte_budget_default(self):
+        cfg = SiftConfig()
+        assert cfg.response_byte_budget == 10_240
+
+    def test_max_output_bytes_default(self):
+        cfg = SiftConfig()
+        assert cfg.max_output_bytes == 52_428_800  # 50MB
+
+    def test_response_budget_from_env(self, monkeypatch):
+        monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "20480")
+        cfg = SiftConfig.from_env()
+        assert cfg.response_byte_budget == 20480
+
+    def test_response_budget_invalid_env(self, monkeypatch):
+        monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "not_a_number")
+        cfg = SiftConfig.from_env()
+        assert cfg.response_byte_budget == 10_240  # stays default
+
     def test_get_config(self):
         cfg = get_config()
         assert isinstance(cfg, SiftConfig)

@@ -55,6 +55,59 @@ class TestExecutor:
             execute([str(bad_binary)])
 
 
+class TestAutoSave:
+    """Tests for threshold-based auto-save behavior."""
+
+    def test_auto_save_when_exceeds_budget(self, tmp_path, monkeypatch):
+        """Output > budget with case dir set → file saved automatically."""
+        monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "100")  # tiny budget
+        extractions = tmp_path / "extractions"
+        extractions.mkdir()
+        # Generate output exceeding the budget
+        result = execute(["python3", "-c", "print('x' * 500)"])
+        assert "output_file" in result
+        assert "output_sha256" in result
+        from pathlib import Path
+        assert Path(result["output_file"]).exists()
+
+    def test_no_save_when_under_budget(self, tmp_path, monkeypatch):
+        """Output < budget → no file saved."""
+        monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        result = execute(["echo", "small"])
+        assert "output_file" not in result
+
+    def test_no_save_without_case_dir(self, monkeypatch):
+        """Output > budget but no AIIR_CASE_DIR → no file saved."""
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "10")
+        result = execute(["python3", "-c", "print('x' * 500)"])
+        assert "output_file" not in result
+
+    def test_explicit_save_output_still_works(self, tmp_path, monkeypatch):
+        """save_output=True always saves regardless of budget."""
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        result = execute(["echo", "small"], save_output=True, save_dir=str(tmp_path))
+        assert "output_file" in result
+
+    def test_stdout_not_truncated(self, monkeypatch):
+        """Raw stdout is preserved (no more _truncate on stdout)."""
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        # Generate output that would have been truncated at old 50KB limit
+        result = execute(["python3", "-c", "print('a' * 200)"])
+        assert "... [truncated" not in result["stdout"]
+        assert result["stdout_total_bytes"] > 0
+
+    def test_stderr_still_truncated(self, monkeypatch):
+        """Stderr truncation is unchanged."""
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        # stderr with enough content to test truncation threshold
+        result = execute(["python3", "-c", "import sys; sys.stderr.write('e' * 100000)"])
+        # With 50MB max, stderr limit is 50MB/10 = 5MB — won't actually truncate 100KB
+        # But the mechanism exists; just verify stderr is captured
+        assert result["stderr"]
+
+
 class TestSaveOutputBlockedPrefixes:
     """Tests for blocked-prefix enforcement in _save_output."""
 

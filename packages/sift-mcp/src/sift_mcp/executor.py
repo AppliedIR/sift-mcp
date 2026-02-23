@@ -56,21 +56,32 @@ def execute(
         )
         elapsed = time.monotonic() - start
 
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        stdout_bytes = len(stdout.encode("utf-8"))
+
         response: dict[str, Any] = {
             "exit_code": result.returncode,
-            "stdout": _truncate(result.stdout, config.max_output_bytes),
-            "stderr": _truncate(result.stderr, config.max_output_bytes // 2),
+            "stdout": stdout,
+            "stderr": _truncate(stderr, config.max_output_bytes // 10),
             "elapsed_seconds": round(elapsed, 2),
             "command": cmd_list,
+            "stdout_total_bytes": stdout_bytes,
         }
 
-        if result.stdout and len(result.stdout) > config.max_output_bytes:
-            response["stdout_truncated"] = True
-            response["stdout_total_bytes"] = len(result.stdout)
+        # Threshold-based save: auto-save when output exceeds response budget
+        case_dir = os.environ.get("AIIR_CASE_DIR", "")
+        exceeds_budget = stdout_bytes > config.response_byte_budget
 
-        if save_output and (result.stdout or result.stderr):
+        if exceeds_budget and case_dir:
             _save_output(
-                cmd_list, result.stdout, result.stderr,
+                cmd_list, stdout, stderr,
+                save_dir or os.path.join(case_dir, "extractions"),
+                response,
+            )
+        elif save_output and (stdout or stderr):
+            _save_output(
+                cmd_list, stdout, stderr,
                 save_dir or (str(Path(cwd) / "extracted") if cwd else None),
                 response,
             )

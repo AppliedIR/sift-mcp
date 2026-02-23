@@ -29,6 +29,45 @@ class TestCsvParser:
         assert result["total_rows"] >= 90  # At least 90 rows total
         assert result["truncated"] is True
 
+    def test_byte_budget_caps_rows(self):
+        from sift_mcp.parsers.csv_parser import parse_csv
+        lines = ["Name,Value,Extra"] + [f"item{i},{i}," + "x" * 80 for i in range(1000)]
+        text = "\n".join(lines)
+        result = parse_csv(text, byte_budget=1024)
+        assert result["preview_rows"] < 1000
+        assert result["preview_bytes"] <= 1024
+        assert result["truncated"] is True
+        assert result["total_rows"] >= 990  # ~1000 data rows
+
+    def test_byte_budget_zero_means_unlimited(self):
+        from sift_mcp.parsers.csv_parser import parse_csv
+        lines = ["Name,Value"] + [f"item{i},{i}" for i in range(50)]
+        text = "\n".join(lines)
+        result = parse_csv(text, byte_budget=0)
+        assert result["preview_rows"] == 50
+        assert result["truncated"] is False
+
+    def test_byte_budget_returns_complete_rows(self):
+        from sift_mcp.parsers.csv_parser import parse_csv
+        lines = ["Name,Value"] + [f"item{i},{i}" for i in range(100)]
+        text = "\n".join(lines)
+        result = parse_csv(text, byte_budget=500)
+        # Each row should be complete (all columns present)
+        for row in result["rows"]:
+            assert "Name" in row
+            assert "Value" in row
+
+    def test_wide_csv_fewer_rows(self):
+        from sift_mcp.parsers.csv_parser import parse_csv
+        # 50-column CSV should return fewer rows than 3-column for same budget
+        cols_3 = ["A,B,C"] + [f"x,y,z" for _ in range(100)]
+        cols_50 = [",".join(f"C{i}" for i in range(50))] + [
+            ",".join(f"val{i}" for i in range(50)) for _ in range(100)
+        ]
+        result_3 = parse_csv("\n".join(cols_3), byte_budget=1024)
+        result_50 = parse_csv("\n".join(cols_50), byte_budget=1024)
+        assert result_50["preview_rows"] < result_3["preview_rows"]
+
     def test_parse_csv_file(self, tmp_path):
         from sift_mcp.parsers.csv_parser import parse_csv_file
         csv_file = tmp_path / "test.csv"
@@ -76,6 +115,31 @@ class TestJsonParser:
         assert len(result["data"]) == 5
         assert result["truncated"] is True
 
+    def test_byte_budget_caps_entries(self):
+        from sift_mcp.parsers.json_parser import parse_json
+        data = json.dumps([{"id": i, "data": "x" * 100} for i in range(500)])
+        result = parse_json(data, byte_budget=1024)
+        assert result["preview_entries"] < 500
+        assert result["preview_bytes"] <= 1024
+        assert result["truncated"] is True
+        assert result["total_entries"] == 500
+
+    def test_json_byte_budget_zero_means_unlimited(self):
+        from sift_mcp.parsers.json_parser import parse_json
+        data = json.dumps([{"i": i} for i in range(50)])
+        result = parse_json(data, byte_budget=0)
+        assert result["preview_entries"] == 50
+        assert result["truncated"] is False
+
+    def test_jsonl_byte_budget(self):
+        from sift_mcp.parsers.json_parser import parse_jsonl
+        lines = [json.dumps({"id": i, "payload": "y" * 100}) for i in range(200)]
+        result = parse_jsonl("\n".join(lines), byte_budget=1024)
+        assert result["preview_entries"] < 200
+        assert result["preview_bytes"] <= 1024
+        assert result["truncated"] is True
+        assert result["total_entries"] == 200
+
 
 class TestTextParser:
     def test_parse_text(self):
@@ -90,6 +154,37 @@ class TestTextParser:
         text = "\n".join(f"line {i}" for i in range(1000))
         result = parse_text(text, max_lines=50)
         assert len(result["lines"]) == 50
+        assert result["truncated"] is True
+
+    def test_byte_budget_caps_lines(self):
+        from sift_mcp.parsers.text_parser import parse_text
+        text = "\n".join(f"line {i:04d} " + "x" * 100 for i in range(500))
+        result = parse_text(text, byte_budget=1024)
+        assert result["preview_lines"] < 500
+        assert result["preview_bytes"] <= 1024
+        assert result["truncated"] is True
+        assert result["total_lines"] == 500
+
+    def test_byte_budget_zero_means_unlimited(self):
+        from sift_mcp.parsers.text_parser import parse_text
+        text = "\n".join(f"line {i}" for i in range(100))
+        result = parse_text(text, byte_budget=0)
+        assert result["preview_lines"] == 100
+        assert result["truncated"] is False
+
+    def test_preview_bytes_accurate(self):
+        from sift_mcp.parsers.text_parser import parse_text
+        text = "\n".join(f"line {i}" for i in range(10))
+        result = parse_text(text, byte_budget=10240)
+        # All lines fit within budget
+        total_bytes = sum(len(line.encode("utf-8")) + 1 for line in text.split("\n"))
+        assert result["preview_bytes"] == total_bytes
+
+    def test_long_lines_fewer_in_preview(self):
+        from sift_mcp.parsers.text_parser import parse_text
+        text = "\n".join("x" * 1024 for _ in range(100))
+        result = parse_text(text, byte_budget=10240)
+        assert result["preview_lines"] <= 10  # ~1KB per line, 10KB budget
         assert result["truncated"] is True
 
     def test_extract_lines(self):
