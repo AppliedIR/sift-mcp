@@ -43,7 +43,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 |-----------|---------|
 | **sift-gateway** | Aggregates SIFT-local MCPs. Starts each as a stdio subprocess. Exposes all their tools via `/mcp` (Streamable HTTP) and `/api/v1/tools` (REST). API key → examiner identity mapping for multi-user. |
 | **forensic-mcp** | Case management, findings, timeline, evidence, TODOs, discipline rules. The investigation state machine. 15 tools + 14 MCP resources. Reports, audit, and case lifecycle moved to aiir CLI. |
-| **sift-mcp** | Authenticated, denylist-protected forensic tool execution on Linux/SIFT. Zimmerman suite, Volatility, Sleuth Kit, Hayabusa, etc. FK-enriched response envelopes. 6 core tools, 65+ catalog entries. |
+| **sift-mcp** | Denylist-protected forensic tool execution on Linux/SIFT. Zimmerman suite, Volatility, Sleuth Kit, Hayabusa, etc. FK-enriched response envelopes. 6 core tools, 65+ catalog entries. |
 | **forensic-rag-mcp** | Semantic search across Sigma rules, MITRE ATT&CK, Atomic Red Team, Splunk, KAPE, Velociraptor, LOLBAS, GTFOBins. |
 | **windows-triage-mcp** | Offline Windows baseline validation. Checks files, processes, services, scheduled tasks, registry, DLLs, pipes against known-good databases. |
 | **opencti-mcp** | Read-only threat intelligence from OpenCTI. IOC lookup, threat actor search, malware search, MITRE technique search. 10 tools. |
