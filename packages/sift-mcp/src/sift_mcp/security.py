@@ -6,7 +6,7 @@ import os
 import re
 from pathlib import Path
 
-from sift_mcp.catalog import is_in_catalog, load_security_policy
+from sift_mcp.catalog import load_security_policy
 
 _DANGEROUS_PATTERNS = [";", "&&", "||", "`", "$(", "${"]
 
@@ -140,10 +140,3 @@ def validate_input_path(path: str) -> str:
                 f"which is inside blocked system directory '{blocked}'"
             )
     return resolved
-
-
-def verify_catalog(binary_name: str) -> None:
-    """Verify a binary is in the approved catalog. Raises ValueError if not."""
-    name = binary_name.split("/")[-1]
-    if not is_in_catalog(name):
-        raise ValueError(f"Binary '{name}' is not in the approved catalog")
