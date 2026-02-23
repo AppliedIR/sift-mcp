@@ -16,7 +16,7 @@ NC='\033[0m'
 echo ""
 echo -e "${BOLD}============================================================${NC}"
 echo -e "${BOLD}  AIIR — Quick Start${NC}"
-echo -e "${BOLD}  Applied Incident Investigation and Response${NC}"
+echo -e "${BOLD}  Artificial Intelligence Incident Response${NC}"
 echo -e "${BOLD}============================================================${NC}"
 echo ""
 
