@@ -9,13 +9,14 @@ from mcp.server.fastmcp import FastMCP
 from sift_mcp.audit import AuditWriter
 from sift_mcp.response import build_response
 from sift_mcp.exceptions import SiftError
+from sift_common.instructions import SIFT_MCP as _INSTRUCTIONS
 
 logger = logging.getLogger(__name__)
 
 
 def create_server() -> FastMCP:
     """Create and configure the sift MCP server with core tools."""
-    server = FastMCP("sift-mcp")
+    server = FastMCP("sift-mcp", instructions=_INSTRUCTIONS)
     audit = AuditWriter(mcp_name="sift-mcp")
 
     # --- Discovery ---

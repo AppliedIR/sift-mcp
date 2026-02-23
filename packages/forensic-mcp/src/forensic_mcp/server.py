@@ -9,6 +9,7 @@ from mcp.server.fastmcp import FastMCP
 
 from forensic_mcp.case.manager import CaseManager
 from forensic_mcp.audit import AuditWriter
+from sift_common.instructions import FORENSIC_MCP as _INSTRUCTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
             "resources" (default) — MCP resources, not counted as tools.
             "tools" — MCP tools, for clients without resource support.
     """
-    server = FastMCP("forensic-mcp")
+    server = FastMCP("forensic-mcp", instructions=_INSTRUCTIONS)
     manager = CaseManager()
     audit = AuditWriter(mcp_name="forensic-mcp")
 

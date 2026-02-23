@@ -22,6 +22,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from sift_gateway.rate_limit import check_rate_limit
+from sift_common.instructions import GATEWAY as _GATEWAY_INSTRUCTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +192,7 @@ def create_mcp_server(gateway: Any) -> Server:
     collision-prefixed names).  ``@server.call_tool()`` routes to the
     correct backend, injecting analyst identity from the HTTP request.
     """
-    server = Server("sift-gateway")
+    server = Server("sift-gateway", instructions=_GATEWAY_INSTRUCTIONS)
 
     @server.list_tools()
     async def _list_tools() -> list[Tool]:

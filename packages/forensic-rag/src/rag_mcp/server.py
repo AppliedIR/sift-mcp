@@ -46,6 +46,7 @@ from .index import RAGIndex
 from .oplog import setup_logging
 from .tool_metadata import TOOL_METADATA, DEFAULT_METADATA
 from .utils import MAX_TOP_K
+from sift_common.instructions import FORENSIC_RAG as _INSTRUCTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ class RAGServer:
     """
 
     def __init__(self) -> None:
-        self.server = Server("rag-knowledge")
+        self.server = Server("rag-knowledge", instructions=_INSTRUCTIONS)
         self.index = RAGIndex()
         self._audit = AuditWriter("forensic-rag-mcp")
         self._register_tools()

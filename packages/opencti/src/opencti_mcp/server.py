@@ -30,6 +30,7 @@ from .errors import (
     ValidationError,
     RateLimitError,
 )
+from sift_common.instructions import OPENCTI as _INSTRUCTIONS
 from .validation import (
     validate_length,
     validate_limit,
@@ -99,7 +100,7 @@ class OpenCTIMCPServer:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.client = OpenCTIClient(config)
-        self.server = Server("opencti-mcp")
+        self.server = Server("opencti-mcp", instructions=_INSTRUCTIONS)
         self._audit = AuditWriter("opencti-mcp")
         self._register_tools()
 

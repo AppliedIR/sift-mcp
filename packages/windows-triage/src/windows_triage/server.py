@@ -60,6 +60,7 @@ from .exceptions import ValidationError, DatabaseError, WindowsTriageError
 from .oplog import setup_logging
 from .tool_metadata import TOOL_METADATA, DEFAULT_METADATA
 from .db import KnownGoodDB, ContextDB, RegistryDB
+from sift_common.instructions import WINDOWS_TRIAGE as _INSTRUCTIONS
 from .analysis import (
     normalize_path,
     extract_filename,
@@ -149,7 +150,7 @@ class WindowsTriageServer:
             ConfigurationError: If configuration is invalid
             DatabaseError: If databases cannot be opened
         """
-        self.server = Server("windows-triage")
+        self.server = Server("windows-triage", instructions=_INSTRUCTIONS)
         self._start_time = time.time()
 
         # Load configuration
