@@ -31,29 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from rag_mcp.index import RAGIndex, ALLOWED_MODELS
 from rag_mcp.server import RAGServer, MAX_QUERY_LENGTH, MAX_FILTER_LENGTH, MAX_TOP_K
 
-
-# =============================================================================
-# Test Fixtures
-# =============================================================================
-
-@pytest.fixture(scope="module")
-def rag_index():
-    """Shared RAG index for all tests (expensive to load)."""
-    idx = RAGIndex()
-    idx.load()
-    return idx
-
-
-@pytest.fixture(scope="module")
-def rag_server():
-    """Shared RAG server for all tests."""
-    return RAGServer()
-
-
-@pytest.fixture(scope="module")
-def available_sources(rag_index):
-    """Get list of available sources."""
-    return rag_index.available_sources
+# Fixtures (rag_index, rag_server, available_sources) provided by conftest.py
 
 
 # =============================================================================
@@ -1522,7 +1500,7 @@ class TestPerformance:
         avg_latency = sum(latencies) / len(latencies)
         assert avg_latency < 200, f"Average latency {avg_latency:.1f}ms exceeds 200ms threshold"
 
-    def test_cold_start_latency(self):
+    def test_cold_start_latency(self, rag_index):
         """Cold start (new index load) should complete in reasonable time."""
         start = time.perf_counter()
         idx = RAGIndex()

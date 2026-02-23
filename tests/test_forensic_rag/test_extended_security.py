@@ -22,19 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from rag_mcp.index import RAGIndex, ALLOWED_MODELS
 from rag_mcp.server import RAGServer, MAX_QUERY_LENGTH, MAX_FILTER_LENGTH, MAX_TOP_K
 
-
-@pytest.fixture(scope="module")
-def rag_index():
-    """Shared RAG index."""
-    idx = RAGIndex()
-    idx.load()
-    return idx
-
-
-@pytest.fixture(scope="module")
-def rag_server():
-    """Shared RAG server."""
-    return RAGServer()
+# Fixtures (rag_index, rag_server) provided by conftest.py
 
 
 # =============================================================================

@@ -15,12 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from rag_mcp.index import RAGIndex
 from rag_mcp.server import RAGServer
 
-
-@pytest.fixture(scope="module")
-def rag_index():
-    idx = RAGIndex()
-    idx.load()
-    return idx
+# Fixtures (rag_index, rag_server) provided by conftest.py
 
 
 # =============================================================================

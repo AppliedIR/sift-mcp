@@ -16,13 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from rag_mcp.index import RAGIndex
 
-
-@pytest.fixture(scope="module")
-def rag_index():
-    """Shared RAG index for all tests."""
-    idx = RAGIndex()
-    idx.load()
-    return idx
+# Fixture rag_index provided by conftest.py
 
 
 # =============================================================================
