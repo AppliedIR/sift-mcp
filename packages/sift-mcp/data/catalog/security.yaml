@@ -1,0 +1,61 @@
+# Security policy: flags and binaries blocked by the execution sandbox.
+# Loaded by catalog.load_security_policy() and consumed by security.py.
+
+dangerous_flags:
+  - "-e"
+  - "--exec"
+  - "--command"
+  - "-enc"
+  - "-encodedcommand"
+  - "--script"
+  - "--invoke"
+
+tool_allowed_flags:
+  run_bulk_extractor:
+    - "-e"
+    - "-x"
+
+tool_blocked_flags:
+  find:
+    - "-exec"
+    - "-execdir"
+    - "-delete"
+    - "-fls"
+    - "-fprint"
+    - "-fprint0"
+    - "-fprintf"
+  sed:
+    - "-i"
+    - "--in-place"
+  tar:
+    - "-x"
+    - "--extract"
+    - "--get"
+    - "-c"
+    - "--create"
+    - "--delete"
+    - "--append"
+  unzip:
+    - "-o"
+    - "-n"
+
+denied_binaries:
+  - "mkfs"
+  - "mkfs.ext4"
+  - "mkfs.xfs"
+  - "mkfs.btrfs"
+  - "mkfs.ntfs"
+  - "dd"
+  - "fdisk"
+  - "parted"
+  - "gdisk"
+  - "shutdown"
+  - "reboot"
+  - "poweroff"
+  - "halt"
+  - "init"
+  - "mount"
+  - "umount"
+  - "kill"
+  - "killall"
+  - "pkill"

@@ -148,8 +148,34 @@ def is_in_catalog(binary_name: str) -> bool:
     return any(td.binary.lower() == binary_name.lower() for td in catalog.values())
 
 
+_security_cache: dict | None = None
+
+
+def load_security_policy() -> dict:
+    """Load security policy from security.yaml in the catalog directory.
+
+    Returns dict with keys: dangerous_flags (set), tool_allowed_flags (dict of sets),
+    tool_blocked_flags (dict of sets), denied_binaries (frozenset).
+    """
+    global _security_cache
+    if _security_cache is not None:
+        return _security_cache
+    catalog_dir = _find_catalog_dir()
+    security_file = catalog_dir / "security.yaml"
+    with open(security_file, "r", encoding="utf-8") as f:
+        doc = yaml.safe_load(f)
+    _security_cache = {
+        "dangerous_flags": set(doc.get("dangerous_flags", [])),
+        "tool_allowed_flags": {k: set(v) for k, v in doc.get("tool_allowed_flags", {}).items()},
+        "tool_blocked_flags": {k: set(v) for k, v in doc.get("tool_blocked_flags", {}).items()},
+        "denied_binaries": frozenset(doc.get("denied_binaries", [])),
+    }
+    return _security_cache
+
+
 def clear_catalog_cache() -> None:
     """Clear catalog cache (for testing)."""
-    global _CATALOG_DIR
+    global _CATALOG_DIR, _security_cache
     _catalog_cache.clear()
     _CATALOG_DIR = None
+    _security_cache = None

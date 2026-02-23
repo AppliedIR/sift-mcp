@@ -6,28 +6,14 @@ import os
 import re
 from pathlib import Path
 
-from sift_mcp.catalog import is_in_catalog
-
-# Flags that could be abused for data exfiltration or code execution
-_DANGEROUS_FLAGS = {
-    "-e", "--exec", "--command", "-enc", "-encodedcommand",
-    "--script", "--invoke",
-}
+from sift_mcp.catalog import is_in_catalog, load_security_policy
 
 _DANGEROUS_PATTERNS = [";", "&&", "||", "`", "$(", "${"]
 
-# Per-tool overrides: flags that are dangerous globally but safe for specific tools
-_TOOL_ALLOWED_FLAGS: dict[str, set[str]] = {
-    "run_bulk_extractor": {"-e", "-x"},  # -e enables scanner, -x disables
-}
 
-# Per-tool blocked flags: flags that are safe globally but dangerous for specific tools
-_TOOL_BLOCKED_FLAGS: dict[str, set[str]] = {
-    "find": {"-exec", "-execdir", "-delete", "-fls", "-fprint", "-fprint0", "-fprintf"},
-    "sed": {"-i", "--in-place"},               # in-place evidence modification
-    "tar": {"-x", "--extract", "--get", "-c", "--create", "--delete", "--append"},
-    "unzip": {"-o", "-n"},                     # block overwrite modes; list/test only
-}
+def _get_policy() -> dict:
+    """Lazy-load security policy from YAML catalog."""
+    return load_security_policy()
 
 # awk can execute arbitrary commands via language syntax (not flags).
 # Scan program text for dangerous constructs.
@@ -45,8 +31,9 @@ def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]
     if not extra_args:
         return []
 
-    tool_allowed = _TOOL_ALLOWED_FLAGS.get(tool_name, set())
-    tool_blocked = _TOOL_BLOCKED_FLAGS.get(tool_name, set())
+    policy = _get_policy()
+    tool_allowed = policy["tool_allowed_flags"].get(tool_name, set())
+    tool_blocked = policy["tool_blocked_flags"].get(tool_name, set())
 
     sanitized = []
     for arg in extra_args:
@@ -57,7 +44,7 @@ def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]
             raise ValueError(
                 f"Blocked dangerous flag '{arg}' for {tool_name}"
             )
-        if flag in _DANGEROUS_FLAGS and flag not in tool_allowed:
+        if flag in policy["dangerous_flags"] and flag not in tool_allowed:
             raise ValueError(
                 f"Blocked dangerous flag '{arg}' in extra_args for {tool_name}"
             )
@@ -82,18 +69,6 @@ def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]
     return sanitized
 
 
-# Hard-blocked binaries — catastrophic/irreversible system operations.
-# Security boundary is VM/container isolation, not this list.
-# See: REMnux MCP blocklist philosophy.
-DENIED_BINARIES = frozenset({
-    "mkfs", "mkfs.ext4", "mkfs.xfs", "mkfs.btrfs", "mkfs.ntfs",
-    "dd",                          # raw disk write — can destroy evidence
-    "fdisk", "parted", "gdisk",    # partition table modification
-    "shutdown", "reboot", "poweroff", "halt", "init",
-    "mount", "umount",             # filesystem mount changes
-    "kill", "killall", "pkill",    # process termination
-})
-
 # Directories where rm is blocked (evidence storage, case data)
 _RM_PROTECTED_DIRS = (
     "/cases",
@@ -103,7 +78,7 @@ _RM_PROTECTED_DIRS = (
 
 def is_denied(binary_name: str) -> bool:
     """Check if a binary is on the hard denylist."""
-    return binary_name.lower() in DENIED_BINARIES
+    return binary_name.lower() in _get_policy()["denied_binaries"]
 
 
 def validate_rm_targets(args: list[str]) -> None:

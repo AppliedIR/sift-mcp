@@ -23,6 +23,21 @@
 #
 set -euo pipefail
 
+GATEWAY_PID=""
+_cleanup() {
+    local exit_code=$?
+    if [[ -n "${GATEWAY_PID:-}" ]]; then
+        kill "$GATEWAY_PID" 2>/dev/null || true
+        wait "$GATEWAY_PID" 2>/dev/null || true
+    fi
+    if (( exit_code != 0 )); then
+        echo ""
+        err "Installation failed (exit code $exit_code)."
+        err "Check output above for details. Re-run the installer to retry."
+    fi
+}
+trap _cleanup EXIT
+
 # =============================================================================
 # Parse Arguments
 # =============================================================================
@@ -113,6 +128,14 @@ prompt_yn() {
     read -rp "$(echo -e "${BOLD}$msg${NC} $suffix: ")" answer
     answer="${answer:-$default}"
     [[ "${answer,,}" == "y" ]]
+}
+
+validate_port() {
+    local port="$1" label="${2:-Port}"
+    if ! [[ "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+        err "$label must be a number between 1 and 65535 (got: $port)"
+        return 1
+    fi
 }
 
 # =============================================================================
@@ -745,7 +768,6 @@ SCRIPT
 chmod +x "$GATEWAY_START"
 
 # Check for existing process on the gateway port
-GATEWAY_PID=""
 if curl -sf "http://127.0.0.1:$GATEWAY_PORT/health" &>/dev/null; then
     ok "Gateway already running on port $GATEWAY_PORT"
 else
@@ -868,6 +890,7 @@ if [[ "$MODE" == "custom" ]]; then
             WIN_HOST=$(prompt "Windows workstation IP or hostname" "")
             if [[ -n "$WIN_HOST" ]]; then
                 WIN_PORT=$(prompt "wintools-mcp port" "4624")
+                validate_port "$WIN_PORT" "wintools-mcp port" || continue
                 if curl -sf "http://$WIN_HOST:$WIN_PORT/health" &>/dev/null; then
                     ok "Connected to wintools-mcp at $WIN_HOST:$WIN_PORT"
                 else

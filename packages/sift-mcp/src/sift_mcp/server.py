@@ -104,6 +104,7 @@ def create_server() -> FastMCP:
                 command=command,
                 fk_tool_name=fk_name,
                 output_files=[exec_result["output_file"]] if exec_result.get("output_file") else None,
+                extractions=exec_result.get("extractions"),
             )
 
             # Add full output metadata if file was saved

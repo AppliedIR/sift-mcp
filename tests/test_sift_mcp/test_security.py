@@ -286,3 +286,33 @@ class TestSanitizeExtraArgs:
     def test_find_fprintf_blocked(self):
         with pytest.raises(ValueError, match="Blocked dangerous flag.*find"):
             sanitize_extra_args(["/cases", "-fprintf", "/tmp/output", "%p"], "find")
+
+
+# --- Security policy YAML ---
+
+class TestSecurityPolicyYAML:
+    """Verify security policy loads from YAML and matches expected contents."""
+
+    def test_security_policy_loads_from_yaml(self):
+        from sift_mcp.catalog import load_security_policy, clear_catalog_cache
+        clear_catalog_cache()
+        policy = load_security_policy()
+
+        assert isinstance(policy["dangerous_flags"], set)
+        assert "-e" in policy["dangerous_flags"]
+        assert "--exec" in policy["dangerous_flags"]
+
+        assert isinstance(policy["denied_binaries"], frozenset)
+        assert "mkfs" in policy["denied_binaries"]
+        assert "dd" in policy["denied_binaries"]
+        assert "kill" in policy["denied_binaries"]
+
+        assert "run_bulk_extractor" in policy["tool_allowed_flags"]
+        assert "-e" in policy["tool_allowed_flags"]["run_bulk_extractor"]
+
+        assert "find" in policy["tool_blocked_flags"]
+        assert "-exec" in policy["tool_blocked_flags"]["find"]
+        assert "sed" in policy["tool_blocked_flags"]
+        assert "-i" in policy["tool_blocked_flags"]["sed"]
+
+        clear_catalog_cache()

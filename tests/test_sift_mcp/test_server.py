@@ -77,6 +77,35 @@ class TestRunCommandEnvelope:
         assert server is not None
 
 
+    def test_extractions_passed_to_response(self, monkeypatch):
+        """Verify extractions flow into the response envelope."""
+        monkeypatch.setenv("AIIR_EXAMINER", "testuser")
+        from sift_mcp.response import build_response
+
+        extractions = ["/cases/test/extractions/20260223_tool_stdout.txt"]
+        response = build_response(
+            tool_name="run_command",
+            success=True,
+            data={"stdout": "ok"},
+            evidence_id="sift-test-20260223-001",
+            extractions=extractions,
+        )
+        assert response["extractions"] == extractions
+
+    def test_extractions_absent_when_none(self, monkeypatch):
+        """Verify extractions key omitted when not provided."""
+        monkeypatch.setenv("AIIR_EXAMINER", "testuser")
+        from sift_mcp.response import build_response
+
+        response = build_response(
+            tool_name="run_command",
+            success=True,
+            data={"stdout": "ok"},
+            evidence_id="sift-test-20260223-001",
+        )
+        assert "extractions" not in response
+
+
 class TestListMissingTools:
     """Test the list_missing_tools tool."""
 
