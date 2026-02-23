@@ -885,14 +885,33 @@ fi
 CLIENT_CONFIGURED=false
 
 if $REMOTE_MODE; then
-    # --remote: skip local client config, print instructions for remote machine
-    header "Remote Client Instructions"
-    echo "To configure your LLM client on your remote machine:"
-    echo ""
-    echo "  pip install aiir"
-    echo "  aiir setup client --sift=http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'THIS_IP'):$GATEWAY_PORT"
-    echo ""
-    echo "Replace the IP with this machine's address if auto-detect is wrong."
+    # --remote: generate join code for remote machine
+    header "Remote Client Setup"
+
+    HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'THIS_IP')
+
+    # Generate join code if gateway is running and aiir CLI is available
+    JOIN_CODE=""
+    if $AIIR_CLI_INSTALLED && curl -sf "http://127.0.0.1:$GATEWAY_PORT/health" &>/dev/null; then
+        JOIN_OUTPUT=$("$AIIR_CLI" setup join-code 2>&1) || true
+        JOIN_CODE=$(echo "$JOIN_OUTPUT" | grep "Join code:" | awk '{print $3}')
+    fi
+
+    if [[ -n "$JOIN_CODE" ]]; then
+        echo "On the machine running your LLM client (Claude Code, Cursor, etc.):"
+        echo ""
+        echo -e "  ${BOLD}pip install aiir${NC}"
+        echo -e "  ${BOLD}aiir join --sift $HOST_IP:$GATEWAY_PORT --code $JOIN_CODE${NC}"
+        echo ""
+        echo "Join code expires in 2 hours. Generate new codes with: aiir setup join-code"
+    else
+        echo "To configure your LLM client on your remote machine:"
+        echo ""
+        echo "  pip install aiir"
+        echo "  aiir setup client --sift=http://$HOST_IP:$GATEWAY_PORT"
+        echo ""
+        echo "Or generate a join code: aiir setup join-code"
+    fi
 elif $AIIR_CLI_INSTALLED; then
     if [[ -n "$CLIENT_ARG" ]]; then
         # --client=X: explicit client choice
@@ -916,11 +935,26 @@ elif $AIIR_CLI_INSTALLED; then
                 --examiner="$EXAMINER" && CLIENT_CONFIGURED=true || warn "Client configuration failed"
         else
             echo ""
-            echo "To configure your LLM client on your remote machine:"
-            echo ""
-            echo "  pip install aiir"
-            echo "  aiir setup client --sift=http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'THIS_IP'):$GATEWAY_PORT"
-            echo ""
+            HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'THIS_IP')
+            # Try to generate a join code for the remote machine
+            JOIN_CODE=""
+            if curl -sf "http://127.0.0.1:$GATEWAY_PORT/health" &>/dev/null; then
+                JOIN_OUTPUT=$("$AIIR_CLI" setup join-code 2>&1) || true
+                JOIN_CODE=$(echo "$JOIN_OUTPUT" | grep "Join code:" | awk '{print $3}')
+            fi
+            if [[ -n "$JOIN_CODE" ]]; then
+                echo "On your remote machine:"
+                echo ""
+                echo "  pip install aiir"
+                echo -e "  ${BOLD}aiir join --sift $HOST_IP:$GATEWAY_PORT --code $JOIN_CODE${NC}"
+                echo ""
+            else
+                echo "To configure your LLM client on your remote machine:"
+                echo ""
+                echo "  pip install aiir"
+                echo "  aiir setup client --sift=http://$HOST_IP:$GATEWAY_PORT"
+                echo ""
+            fi
         fi
     fi
 else

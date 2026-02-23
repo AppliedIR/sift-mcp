@@ -923,6 +923,68 @@ else
 fi
 
 # =============================================================================
+# Phase 8b: Multi-Machine Setup (remote mode only)
+# =============================================================================
+
+if $REMOTE_MODE; then
+    header "Multi-Machine Setup"
+
+    # Detect host IP for join instructions
+    HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'THIS_IP')
+
+    # Wait for gateway to be ready before generating join codes
+    JOIN_READY=false
+    if curl -sf ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
+        JOIN_READY=true
+    fi
+
+    if $JOIN_READY; then
+        # Generate join code for the remote LLM client machine
+        JOIN_OUTPUT=$("$VENV_DIR/bin/python" -m aiir_cli setup join-code 2>&1) || true
+        JOIN_CODE=$(echo "$JOIN_OUTPUT" | grep "Join code:" | awk '{print $3}')
+
+        if [[ -n "$JOIN_CODE" ]]; then
+            echo ""
+            echo -e "${BOLD}Remote LLM Client${NC}"
+            echo "  On the machine running your LLM client (Claude Code, Cursor, etc.):"
+            echo ""
+            echo -e "    ${BOLD}aiir join --sift $HOST_IP:$GATEWAY_PORT --code $JOIN_CODE${NC}"
+            echo ""
+
+            # Offer to generate a second join code for Windows wintools
+            if prompt_yn "Will you connect a Windows forensic workstation?" "n"; then
+                WIN_OUTPUT=$("$VENV_DIR/bin/python" -m aiir_cli setup join-code 2>&1) || true
+                WIN_CODE=$(echo "$WIN_OUTPUT" | grep "Join code:" | awk '{print $3}')
+                if [[ -n "$WIN_CODE" ]]; then
+                    echo ""
+                    echo -e "${BOLD}Windows Workstation${NC}"
+                    echo "  On the Windows machine with wintools-mcp:"
+                    echo ""
+                    echo -e "    ${BOLD}aiir join --sift $HOST_IP:$GATEWAY_PORT --code $WIN_CODE --wintools${NC}"
+                    echo ""
+                fi
+            fi
+
+            echo ""
+            echo "  Join codes expire in 2 hours. Generate new codes with:"
+            echo "    aiir setup join-code"
+        else
+            warn "Could not generate join code. Generate one later with:"
+            echo "    aiir setup join-code"
+        fi
+    else
+        warn "Gateway not responding. Start it first, then generate join codes:"
+        echo "    $GATEWAY_START"
+        echo "    aiir setup join-code"
+    fi
+
+    echo ""
+    echo -e "${BOLD}SSH Access${NC}"
+    echo "  For CLI operations (approve, review, report), SSH into this machine:"
+    echo "    ssh $(whoami)@$HOST_IP"
+fi
+
+# =============================================================================
 # Summary
 # =============================================================================
 
@@ -960,18 +1022,15 @@ else
 fi
 
 echo ""
-echo -e "${BOLD}Bearer token:${NC} $TOKEN"
-echo "  Use this token to authenticate LLM clients to the gateway."
-
 if $REMOTE_MODE; then
+    echo -e "${BOLD}Bearer token:${NC} $TOKEN"
+    echo "  (Stored in gateway config. Remote clients use 'aiir join' instead.)"
     echo ""
-    echo -e "${BOLD}TLS:${NC}"
-    echo "  Copy this file to your client machine and import into the OS trust store:"
-    echo "    $HOME/.aiir/tls/ca-cert.pem"
-    echo ""
-    echo "  Gateway endpoint for remote clients:"
-    HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'THIS_IP')
-    echo "    https://$HOST_IP:$GATEWAY_PORT"
+    echo -e "${BOLD}TLS CA certificate:${NC}"
+    echo "  $HOME/.aiir/tls/ca-cert.pem"
+else
+    echo -e "${BOLD}Bearer token:${NC} $TOKEN"
+    echo "  Use this token to authenticate LLM clients to the gateway."
 fi
 
 echo ""
@@ -979,11 +1038,20 @@ echo "Next steps:"
 STEP=1
 echo "  $STEP. Restart your shell (or: source ${SHELL_RC:-~/.bashrc})"
 STEP=$((STEP + 1))
-echo "  $STEP. Install the aiir CLI:"
-echo "     curl -sSL https://raw.githubusercontent.com/AppliedIR/aiir/main/aiir-install.sh | bash"
-echo "     (or: ./aiir-install.sh if you have the repo)"
-STEP=$((STEP + 1))
-echo "  $STEP. Configure your LLM client:  aiir setup client"
+if $REMOTE_MODE; then
+    echo "  $STEP. On your LLM client machine, install the aiir CLI:"
+    echo "     curl -sSL https://raw.githubusercontent.com/AppliedIR/aiir/main/aiir-install.sh | bash"
+    STEP=$((STEP + 1))
+    echo "  $STEP. Run the 'aiir join' command shown above"
+    STEP=$((STEP + 1))
+    echo "  $STEP. Configure your LLM client:  aiir setup client --remote"
+else
+    echo "  $STEP. Install the aiir CLI:"
+    echo "     curl -sSL https://raw.githubusercontent.com/AppliedIR/aiir/main/aiir-install.sh | bash"
+    echo "     (or: ./aiir-install.sh if you have the repo)"
+    STEP=$((STEP + 1))
+    echo "  $STEP. Configure your LLM client:  aiir setup client"
+fi
 STEP=$((STEP + 1))
 echo "  $STEP. Verify installation:         aiir setup test"
 
