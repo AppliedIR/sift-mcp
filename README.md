@@ -10,6 +10,7 @@ This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, sift-
 graph LR
     subgraph analyst ["Analyst Machine (if remote)"]
         CC["LLM Client<br/>(human interface)"]
+        SSH["SSH Session<br/>(human interface)"]
     end
 
     subgraph sift ["SIFT Workstation"]
@@ -33,7 +34,8 @@ graph LR
     end
 
     CC -->|"streamable-http"| GW
-    analyst -.->|"SSH"| CLI
+    SSH -.->|"SSH"| CLI
+    style SSH fill:#e0e0e0,stroke:#999,color:#333
 ```
 
 In co-located deployments, the LLM client also runs on SIFT and no SSH is needed. In production, the LLM client typically runs on a separate machine and connects to the gateway over the network with TLS and bearer token auth. The examiner must have SSH access to SIFT for CLI operations (approve, review, report, etc.).
@@ -170,11 +172,20 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 ```bash
 # One-command quickstart
 curl -sSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh | bash
+```
 
-# Or step by step
+Or step by step:
+
+```bash
 git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 ./sift-install.sh          # Install MCP servers + gateway
 ./aiir-install.sh          # Install aiir CLI + configure client
+```
+
+We recommend using an LLM client that does not have the ability to directly interface with your system's shell. Tools like Claude Code are amazingly effective, but difficult to constrain. Our system is designed to require the LLM to go through existing MCPs to ensure proper audit trail when accessing forensic tooling. However, your use case may be different. If you prefer to move fast, break things, and let Claude take the wheel:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh | bash -s -- --ccode
 ```
 
 The quickstart installs all core components, starts the gateway, and runs the aiir setup wizard. For tier selection (quick, recommended, custom) or remote access with TLS, run `sift-install.sh` directly.
