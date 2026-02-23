@@ -3,11 +3,21 @@
 import asyncio
 import json
 import logging
+import socket
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from sift_gateway.auth import resolve_examiner
+from sift_gateway.join import (
+    generate_join_code,
+    store_join_code,
+    validate_join_code,
+    mark_code_used,
+    check_join_rate_limit,
+    record_join_failure,
+)
+from sift_gateway.token_gen import generate_gateway_token
 from sift_gateway.rate_limit import check_rate_limit
 
 logger = logging.getLogger(__name__)
@@ -249,6 +259,211 @@ async def restart_service(request: Request) -> JSONResponse:
     return JSONResponse({"status": "restarted", "name": name})
 
 
+# ---------------------------------------------------------------------------
+# Join code endpoints
+# ---------------------------------------------------------------------------
+
+
+async def create_join_code(request: Request) -> JSONResponse:
+    """POST /api/v1/setup/join-code — generate a one-time join code.
+
+    Requires bearer token auth (authenticated examiner).
+    """
+    expires_hours = 2
+    body = await request.body()
+    if body:
+        try:
+            data = json.loads(body)
+            expires_hours = data.get("expires_hours", 2)
+        except json.JSONDecodeError:
+            pass
+
+    code = generate_join_code()
+    store_join_code(code, expires_hours=expires_hours)
+
+    # Detect gateway URL for instructions
+    gateway = request.app.state.gateway
+    gw_config = gateway.config.get("gateway", {})
+    host = gw_config.get("host", "127.0.0.1")
+    port = gw_config.get("port", 4508)
+    # Use machine IP if bound to 0.0.0.0
+    if host == "0.0.0.0":
+        try:
+            host = socket.gethostbyname(socket.gethostname())
+        except socket.gaierror:
+            host = "127.0.0.1"
+
+    return JSONResponse({
+        "code": code,
+        "expires_hours": expires_hours,
+        "instructions": f"aiir join --sift {host}:{port} --code {code}",
+    })
+
+
+async def join_gateway(request: Request) -> JSONResponse:
+    """POST /api/v1/setup/join — exchange join code for gateway credentials.
+
+    Unauthenticated — the join code is the auth mechanism.
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_join_rate_limit(client_ip):
+        return JSONResponse(
+            {"error": "Too many failed attempts. Try again later."},
+            status_code=429,
+        )
+
+    try:
+        body = json.loads(await request.body())
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    code = body.get("code", "")
+    machine_type = body.get("machine_type", "examiner")
+    hostname = body.get("hostname", "")
+    wintools_url = body.get("wintools_url")
+    wintools_token = body.get("wintools_token")
+
+    matched_hash = validate_join_code(code)
+    if not matched_hash:
+        record_join_failure(client_ip)
+        return JSONResponse(
+            {"error": "Invalid or expired join code"},
+            status_code=403,
+        )
+
+    # Generate a new bearer token for the joining machine
+    new_token = generate_gateway_token()
+    examiner_name = hostname or machine_type
+
+    # Write new token to gateway config
+    gateway = request.app.state.gateway
+    _add_api_key_to_config(gateway, new_token, examiner_name)
+
+    # If wintools: add wintools backend to config
+    wintools_registered = False
+    if machine_type == "wintools" and wintools_url and wintools_token:
+        _add_wintools_backend(gateway, wintools_url, wintools_token)
+        wintools_registered = True
+
+    mark_code_used(code)
+
+    # Build response
+    backends = list(gateway.backends.keys())
+    gw_url = _get_gateway_url(gateway)
+
+    response = {
+        "gateway_url": gw_url,
+        "gateway_token": new_token,
+        "backends": backends,
+        "examiner": examiner_name,
+    }
+
+    if wintools_registered:
+        response["wintools_registered"] = True
+        response["restart_required"] = True
+
+    return JSONResponse(response)
+
+
+async def join_status(request: Request) -> JSONResponse:
+    """GET /api/v1/setup/join-status — check pending join codes (authenticated)."""
+    from sift_gateway.join import _load_state
+    import time
+
+    state = _load_state()
+    now = time.time()
+    active = 0
+    for info in state.get("codes", {}).values():
+        if not info.get("used", False) and now <= info.get("expires_ts", 0):
+            active += 1
+
+    return JSONResponse({"active_codes": active})
+
+
+def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
+    """Add a new API key to the gateway config and write to disk."""
+    import yaml
+    from pathlib import Path
+
+    config_path = Path.home() / ".aiir" / "gateway.yaml"
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                config = yaml.safe_load(f) or {}
+        except (yaml.YAMLError, OSError):
+            config = {}
+    else:
+        config = {}
+
+    if "api_keys" not in config:
+        config["api_keys"] = {}
+
+    config["api_keys"][token] = {
+        "examiner": examiner,
+        "role": "examiner",
+    }
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w") as f:
+        yaml.dump(config, f, default_flow_style=False)
+
+    # Also update the in-memory gateway auth keys
+    if hasattr(gateway, "_app"):
+        # Walk middleware stack to find AuthMiddleware
+        app = gateway._app
+        while hasattr(app, "app"):
+            if hasattr(app, "api_keys"):
+                app.api_keys[token] = {"examiner": examiner, "role": "examiner"}
+                break
+            app = app.app
+
+
+def _add_wintools_backend(gateway, url: str, token: str) -> None:
+    """Add a wintools-mcp HTTP backend to the gateway config."""
+    import yaml
+    from pathlib import Path
+
+    config_path = Path.home() / ".aiir" / "gateway.yaml"
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                config = yaml.safe_load(f) or {}
+        except (yaml.YAMLError, OSError):
+            config = {}
+    else:
+        config = {}
+
+    if "backends" not in config:
+        config["backends"] = {}
+
+    config["backends"]["wintools-mcp"] = {
+        "type": "http",
+        "url": url,
+        "token": token,
+        "enabled": True,
+    }
+
+    with open(config_path, "w") as f:
+        yaml.dump(config, f, default_flow_style=False)
+
+
+def _get_gateway_url(gateway) -> str:
+    """Build the gateway URL from config."""
+    gw_config = gateway.config.get("gateway", {})
+    host = gw_config.get("host", "127.0.0.1")
+    port = gw_config.get("port", 4508)
+    tls = gw_config.get("tls", {})
+
+    if host == "0.0.0.0":
+        try:
+            host = socket.gethostbyname(socket.gethostname())
+        except socket.gaierror:
+            host = "127.0.0.1"
+
+    scheme = "https" if tls.get("certfile") else "http"
+    return f"{scheme}://{host}:{port}"
+
+
 def rest_routes() -> list[Route]:
     """Return REST API v1 routes."""
     return [
@@ -259,4 +474,7 @@ def rest_routes() -> list[Route]:
         Route("/api/v1/services/{name}/start", start_service, methods=["POST"]),
         Route("/api/v1/services/{name}/stop", stop_service, methods=["POST"]),
         Route("/api/v1/services/{name}/restart", restart_service, methods=["POST"]),
+        Route("/api/v1/setup/join-code", create_join_code, methods=["POST"]),
+        Route("/api/v1/setup/join", join_gateway, methods=["POST"]),
+        Route("/api/v1/setup/join-status", join_status, methods=["GET"]),
     ]
