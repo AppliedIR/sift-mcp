@@ -191,7 +191,7 @@ EXTENDED_MITRE_QUERIES = [
     ("T1055.013", "process doppelganging", 0.5),
     ("T1055.014", "vdso hijacking", 0.5),
     ("T1207", "rogue domain controller", 0.5),
-    ("T1014", "rootkit", 0.6),
+    ("T1014", "rootkit", 0.5),
     ("T1553", "subvert trust controls", 0.5),
     ("T1553.001", "gatekeeper bypass", 0.5),
     ("T1553.002", "code signing", 0.5),

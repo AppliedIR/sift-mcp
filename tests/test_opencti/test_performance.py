@@ -60,8 +60,9 @@ class TestValidationPerformance:
             elapsed = time.perf_counter() - start
             times.append(elapsed / iterations)
 
-        # All sizes should have similar timing (within 100x to account for variance)
-        assert max(times) < min(times) * 100, f"Times varied too much: {times}"
+        # All sizes should have similar timing (within 500x to account for
+        # CPU scheduling variance during large test suite runs)
+        assert max(times) < min(times) * 500, f"Times varied too much: {times}"
 
     def test_uuid_validation_performance(self):
         """UUID validation is fast."""

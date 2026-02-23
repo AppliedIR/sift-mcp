@@ -136,15 +136,16 @@ class TestDisciplineReminders:
         assert len(set(reminders)) == 10
 
     def test_reminder_wraps_around(self):
-        # Make 11 calls — should wrap
-        for i in range(11):
+        # Make enough calls to wrap around the full list
+        n = len(DISCIPLINE_REMINDERS)
+        for i in range(n + 1):
             resp = build_response(
                 tool_name="test",
                 success=True,
                 data={},
                 evidence_id=f"sift-20260220-{200+i:03d}",
             )
-        # 11th call (counter=11) → index 1 (11 % 10)
+        # (n+1)th call (counter=n+1) → index (n+1) % n == 1
         assert resp["discipline_reminder"] == DISCIPLINE_REMINDERS[1]
 
 
