@@ -17,7 +17,7 @@ set -euo pipefail
 # Configuration
 # =============================================================================
 
-REPO="scriptedstatement/windows-triage-mcp"
+REPO="AppliedIR/sift-mcp"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="${SCRIPT_DIR}/../data"
 VERSION="${1:-latest}"

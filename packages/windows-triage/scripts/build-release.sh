@@ -12,7 +12,7 @@
 # Upload with gh CLI:
 #   gh release create v2025.02 release/*.zst release/checksums.sha256 \
 #     --title "Triage Databases v2025.02" \
-#     --notes "Pre-built triage databases for windows-triage-mcp"
+#     --notes "Pre-built triage databases for windows-triage"
 #
 set -euo pipefail
 
