@@ -3,7 +3,10 @@
 import asyncio
 import json
 import logging
+import os
 import socket
+import threading
+from urllib.parse import urlparse
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
@@ -278,25 +281,24 @@ async def create_join_code(request: Request) -> JSONResponse:
         except json.JSONDecodeError:
             pass
 
+    if not isinstance(expires_hours, (int, float)) or expires_hours < 1 or expires_hours > 48:
+        return JSONResponse(
+            {"error": "expires_hours must be between 1 and 48"},
+            status_code=400,
+        )
+
     code = generate_join_code()
     store_join_code(code, expires_hours=expires_hours)
 
-    # Detect gateway URL for instructions
     gateway = request.app.state.gateway
-    gw_config = gateway.config.get("gateway", {})
-    host = gw_config.get("host", "127.0.0.1")
-    port = gw_config.get("port", 4508)
-    # Use machine IP if bound to 0.0.0.0
-    if host == "0.0.0.0":
-        try:
-            host = socket.gethostbyname(socket.gethostname())
-        except socket.gaierror:
-            host = "127.0.0.1"
+    gw_url = _get_gateway_url(gateway)
+    parsed = urlparse(gw_url)
+    host_port = f"{parsed.hostname}:{parsed.port}"
 
     return JSONResponse({
         "code": code,
         "expires_hours": expires_hours,
-        "instructions": f"aiir join --sift {host}:{port} --code {code}",
+        "instructions": f"aiir join --sift {host_port} --code {code}",
     })
 
 
@@ -331,13 +333,18 @@ async def join_gateway(request: Request) -> JSONResponse:
             status_code=403,
         )
 
-    # Generate a new bearer token for the joining machine
-    new_token = generate_gateway_token()
-    examiner_name = hostname or machine_type
+    # Mark used IMMEDIATELY — before any config writes
+    mark_code_used(code)
 
-    # Write new token to gateway config
+    examiner_name = hostname or machine_type
     gateway = request.app.state.gateway
-    _add_api_key_to_config(gateway, new_token, examiner_name)
+
+    # Generate a bearer token only for non-wintools joins
+    if machine_type != "wintools":
+        new_token = generate_gateway_token()
+        _add_api_key_to_config(gateway, new_token, examiner_name)
+    else:
+        new_token = None
 
     # If wintools: add wintools backend to config
     wintools_registered = False
@@ -345,18 +352,17 @@ async def join_gateway(request: Request) -> JSONResponse:
         _add_wintools_backend(gateway, wintools_url, wintools_token)
         wintools_registered = True
 
-    mark_code_used(code)
-
     # Build response
     backends = list(gateway.backends.keys())
     gw_url = _get_gateway_url(gateway)
 
     response = {
         "gateway_url": gw_url,
-        "gateway_token": new_token,
         "backends": backends,
         "examiner": examiner_name,
     }
+    if new_token:
+        response["gateway_token"] = new_token
 
     if wintools_registered:
         response["wintools_registered"] = True
@@ -380,32 +386,37 @@ async def join_status(request: Request) -> JSONResponse:
     return JSONResponse({"active_codes": active})
 
 
+_CONFIG_LOCK = threading.Lock()
+
+
 def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
     """Add a new API key to the gateway config and write to disk."""
     import yaml
     from pathlib import Path
 
-    config_path = Path.home() / ".aiir" / "gateway.yaml"
-    if config_path.exists():
-        try:
-            with open(config_path) as f:
-                config = yaml.safe_load(f) or {}
-        except (yaml.YAMLError, OSError):
+    with _CONFIG_LOCK:
+        config_path = Path.home() / ".aiir" / "gateway.yaml"
+        if config_path.exists():
+            try:
+                with open(config_path) as f:
+                    config = yaml.safe_load(f) or {}
+            except (yaml.YAMLError, OSError):
+                config = {}
+        else:
             config = {}
-    else:
-        config = {}
 
-    if "api_keys" not in config:
-        config["api_keys"] = {}
+        if "api_keys" not in config:
+            config["api_keys"] = {}
 
-    config["api_keys"][token] = {
-        "examiner": examiner,
-        "role": "examiner",
-    }
+        config["api_keys"][token] = {
+            "examiner": examiner,
+            "role": "examiner",
+        }
 
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(config_path, "w") as f:
-        yaml.dump(config, f, default_flow_style=False)
+        config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(str(config_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
 
     # Also update the in-memory gateway auth keys
     if hasattr(gateway, "_app"):
@@ -423,28 +434,31 @@ def _add_wintools_backend(gateway, url: str, token: str) -> None:
     import yaml
     from pathlib import Path
 
-    config_path = Path.home() / ".aiir" / "gateway.yaml"
-    if config_path.exists():
-        try:
-            with open(config_path) as f:
-                config = yaml.safe_load(f) or {}
-        except (yaml.YAMLError, OSError):
+    with _CONFIG_LOCK:
+        config_path = Path.home() / ".aiir" / "gateway.yaml"
+        if config_path.exists():
+            try:
+                with open(config_path) as f:
+                    config = yaml.safe_load(f) or {}
+            except (yaml.YAMLError, OSError):
+                config = {}
+        else:
             config = {}
-    else:
-        config = {}
 
-    if "backends" not in config:
-        config["backends"] = {}
+        if "backends" not in config:
+            config["backends"] = {}
 
-    config["backends"]["wintools-mcp"] = {
-        "type": "http",
-        "url": url,
-        "token": token,
-        "enabled": True,
-    }
+        config["backends"]["wintools-mcp"] = {
+            "type": "http",
+            "url": url,
+            "bearer_token": token,
+            "enabled": True,
+        }
 
-    with open(config_path, "w") as f:
-        yaml.dump(config, f, default_flow_style=False)
+        config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd = os.open(str(config_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
 
 
 def _get_gateway_url(gateway) -> str:

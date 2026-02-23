@@ -1,9 +1,11 @@
 """Tests for sift_gateway.join — join code generation, validation, rate limiting."""
 
+import json
 import time
 
 import pytest
 
+import sift_gateway.join as join_mod
 from sift_gateway.join import (
     generate_join_code,
     store_join_code,
@@ -22,6 +24,8 @@ def clean_state(tmp_path, monkeypatch):
     state_file = tmp_path / ".join_state.json"
     monkeypatch.setattr("sift_gateway.join._STATE_FILE", state_file)
     monkeypatch.setattr("sift_gateway.join._STATE_DIR", tmp_path)
+    # Reset in-memory rate limit state
+    join_mod._join_failures.clear()
     yield
 
 
@@ -92,6 +96,35 @@ class TestJoinCodeStorage:
         # Second use fails
         assert validate_join_code(code) is None
 
+    def test_load_prunes_expired_and_used(self, tmp_path):
+        """_load_state() prunes expired and used codes, keeps valid ones."""
+        now = time.time()
+        state = {
+            "codes": {
+                "hash_expired": {
+                    "created": "2026-01-01T00:00:00+00:00",
+                    "expires_ts": now - 3600,  # expired 1 hour ago
+                    "used": False,
+                },
+                "hash_used": {
+                    "created": "2026-01-01T00:00:00+00:00",
+                    "expires_ts": now + 3600,  # still valid
+                    "used": True,
+                },
+                "hash_valid": {
+                    "created": "2026-01-01T00:00:00+00:00",
+                    "expires_ts": now + 3600,  # still valid
+                    "used": False,
+                },
+            },
+            "failures": {},
+        }
+        join_mod._STATE_FILE.write_text(json.dumps(state))
+        loaded = join_mod._load_state()
+        assert "hash_expired" not in loaded["codes"]
+        assert "hash_used" not in loaded["codes"]
+        assert "hash_valid" in loaded["codes"]
+
 
 class TestJoinRateLimit:
     def test_allows_initial_attempts(self):
@@ -111,6 +144,54 @@ class TestJoinRateLimit:
             record_join_failure(ip)
         assert check_join_rate_limit(ip) is False
         # Advance time past the 15-minute window
-        real_time = time.time
-        monkeypatch.setattr("sift_gateway.join.time.time", lambda: real_time() + 1000)
+        real_monotonic = time.monotonic
+        monkeypatch.setattr("sift_gateway.join.time.monotonic", lambda: real_monotonic() + 1000)
         assert check_join_rate_limit(ip) is True
+
+
+class TestJoinGatewayCallOrder:
+    """Verify mark_code_used is called before _add_api_key_to_config (TOCTOU fix)."""
+
+    def test_mark_used_before_config_write(self, monkeypatch):
+        """mark_code_used() must be called before _add_api_key_to_config()."""
+        from unittest.mock import patch, MagicMock, call
+        from starlette.testclient import TestClient
+        from starlette.applications import Starlette
+        from sift_gateway.rest import rest_routes, _get_gateway_url
+
+        call_order = []
+
+        def mock_validate(code):
+            return "fake_hash"
+
+        def mock_mark_used(code):
+            call_order.append("mark_code_used")
+
+        def mock_add_api_key(gateway, token, examiner):
+            call_order.append("_add_api_key_to_config")
+
+        def mock_generate_token():
+            return "aiir_gw_test123"
+
+        # Build minimal app
+        app = Starlette(routes=rest_routes())
+        mock_gw = MagicMock()
+        mock_gw.backends = {"forensic-mcp": MagicMock()}
+        mock_gw.config = {"gateway": {"host": "10.0.0.5", "port": 4508}}
+        app.state.gateway = mock_gw
+
+        client = TestClient(app, raise_server_exceptions=False)
+
+        with patch("sift_gateway.rest.validate_join_code", mock_validate), \
+             patch("sift_gateway.rest.mark_code_used", mock_mark_used), \
+             patch("sift_gateway.rest._add_api_key_to_config", mock_add_api_key), \
+             patch("sift_gateway.rest.generate_gateway_token", mock_generate_token), \
+             patch("sift_gateway.rest.check_join_rate_limit", return_value=True):
+            resp = client.post("/api/v1/setup/join", json={
+                "code": "ABCD-EFGH",
+                "machine_type": "examiner",
+                "hostname": "analyst-1",
+            })
+
+        assert resp.status_code == 200
+        assert call_order == ["mark_code_used", "_add_api_key_to_config"]
