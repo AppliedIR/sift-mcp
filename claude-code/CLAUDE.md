@@ -96,8 +96,9 @@ All findings are DRAFT until approved by the examiner via `aiir approve`.
 - `list_playbooks`, `get_playbook` — investigation procedures
 
 ### sift-mcp (SIFT Tool Execution)
-Runs forensic tools installed on the SIFT workstation. Tools must be
-in the approved catalog.
+Runs forensic tools installed on the SIFT workstation. A denylist
+blocks dangerous binaries; all other tools can execute. Cataloged
+tools get FK-enriched responses.
 
 - `run_command` — execute forensic tool, returns output + evidence_id
 - `list_available_tools` — tools on this system with availability

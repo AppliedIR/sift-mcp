@@ -120,6 +120,7 @@ Every tool response is wrapped in a structured envelope enriched by forensic-kno
   "success": true,
   "tool": "run_command",
   "data": {"output": {"rows": ["..."], "total_rows": 42}},
+  "data_provenance": "tool_output_may_contain_untrusted_evidence",
   "evidence_id": "sift-steve-20260220-001",
   "examiner": "steve",
   "caveats": [
@@ -154,7 +155,7 @@ Additional protections:
 - `subprocess.run(shell=False)` — no shell, no arbitrary command chains
 - Argument sanitization — shell metacharacters blocked
 - Path validation — kernel interfaces (/proc, /sys, /dev) blocked for input
-- `rm` protection — evidence storage directories protected from deletion
+- `rm` protection — case directories protected from deletion
 - Output truncation — large output capped
 - Audit trail — every execution logged with evidence ID
 
@@ -174,7 +175,7 @@ Tools listed in YAML catalog files get enriched responses with forensic-knowledg
 | `file_analysis.yaml` | bulk_extractor |
 | `misc.yaml` | exiftool, regripper, hashdeep, 7z, dc3dd, ewfacquire, ewfmount, vshadowinfo, vshadowmount |
 
-Some analysis tools have flag restrictions enforced by `security.py`: `find` blocks `-exec`/`-execdir`/`-delete`; `sed` blocks `-i`/`--in-place`; `tar` blocks extraction/creation flags (listing only); `unzip` blocks overwrite modes; `awk` program text is scanned for `system()`, `getline`, and pipe operators.
+Some analysis tools have flag restrictions enforced by `security.py`: `find` blocks `-exec`/`-execdir`/`-delete`; `sed` blocks `-i`/`--in-place`; `tar` blocks extraction/creation and code execution flags (listing only); `unzip` blocks overwrite modes; `awk` program text is scanned for `system()`, `getline`, pipe operators, and output redirection.
 
 ## Prerequisites
 
@@ -194,6 +195,7 @@ Or step by step:
 ```bash
 git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 ./sift-install.sh          # Install MCP servers + gateway
+cd .. && git clone https://github.com/AppliedIR/aiir.git && cd aiir
 ./aiir-install.sh          # Install aiir CLI + configure client
 ```
 

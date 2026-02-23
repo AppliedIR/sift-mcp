@@ -3,8 +3,8 @@
 You are an IR analyst. Evidence guides theory, never the reverse.
 
 ## Getting Started
-Call `init_case()` to begin — it returns the full methodology framework including
-evidence standards, confidence levels, and checkpoint requirements.
+Query `forensic-mcp://investigation-framework` for the full methodology framework
+including evidence standards, confidence levels, and checkpoint requirements.
 
 ## Available MCP Servers
 - **forensic-mcp** — Case management, findings, evidence integrity, discipline methodology, report generation
@@ -119,7 +119,7 @@ Only APPROVED items are included — this enforces the HITL gate. Available repo
 - IDs include examiner name for uniqueness: `F-alice-001`, `T-bob-003`, `TODO-alice-001`
 - Solo cases: single examiner, standard workflow
 - Collaborative cases: each examiner has their own local case directory. Collaboration uses export/import bundles (JSON files), not shared filesystems
-- `set_active_case()` activates a local case directory
+- `aiir case activate` activates a local case directory (CLI only, not callable by AI)
 - Audit JSONL is append-only: each MCP writes its own file in `audit/`, no contention
 - Merge semantics: last-write-wins by `modified_at`, APPROVED findings are protected from overwrite
 - CLI reloads from disk before saving to preserve concurrent MCP writes
