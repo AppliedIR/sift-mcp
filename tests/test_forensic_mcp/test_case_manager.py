@@ -107,6 +107,35 @@ class TestCaseLifecycle:
         with pytest.raises(ValueError, match="No active case"):
             manager._require_active_case()
 
+    def test_init_reads_active_case_from_env(self, tmp_path, monkeypatch):
+        """AIIR_ACTIVE_CASE env var activates an existing case on __init__."""
+        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        # Create a case directory manually
+        case_id = "INC-2026-0223120000"
+        case_dir = tmp_path / case_id
+        case_dir.mkdir()
+        monkeypatch.setenv("AIIR_ACTIVE_CASE", case_id)
+        mgr = CaseManager()
+        assert mgr._active_case_id == case_id
+        assert os.environ.get("AIIR_CASE_DIR") == str(case_dir)
+
+    def test_init_ignores_missing_case_dir(self, tmp_path, monkeypatch):
+        """AIIR_ACTIVE_CASE pointing to non-existent dir is ignored."""
+        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("AIIR_ACTIVE_CASE", "INC-NONEXISTENT")
+        mgr = CaseManager()
+        assert mgr._active_case_id is None
+
+    def test_init_ignores_invalid_case_id(self, tmp_path, monkeypatch):
+        """AIIR_ACTIVE_CASE with path traversal is rejected."""
+        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("AIIR_ACTIVE_CASE", "../etc/passwd")
+        mgr = CaseManager()
+        assert mgr._active_case_id is None
+
 
 # --- Investigation Records ---
 

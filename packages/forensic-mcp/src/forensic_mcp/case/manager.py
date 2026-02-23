@@ -88,6 +88,18 @@ class CaseManager:
 
     def __init__(self) -> None:
         self._active_case_id: str | None = None
+        # Read from environment if set by installer/gateway
+        env_case = os.environ.get("AIIR_ACTIVE_CASE")
+        if env_case:
+            try:
+                _validate_case_id(env_case)
+                case_dir = self.cases_dir / env_case
+                if case_dir.is_dir():
+                    self._active_case_id = env_case
+                    os.environ["AIIR_CASE_DIR"] = str(case_dir)
+                    logger.info("Activated case from environment: %s", env_case)
+            except ValueError:
+                logger.warning("AIIR_ACTIVE_CASE contains invalid case ID: %s", env_case)
 
     @property
     def cases_dir(self) -> Path:
