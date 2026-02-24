@@ -734,6 +734,7 @@ for name, module in backends:
         'args': ['-m', module],
         'env': {
             'AIIR_CASE_DIR': '\${AIIR_CASE_DIR}',
+            'AIIR_ACTIVE_CASE': '\${AIIR_ACTIVE_CASE}',
             'AIIR_EXAMINER': '\${AIIR_EXAMINER}',
         },
         'enabled': True,

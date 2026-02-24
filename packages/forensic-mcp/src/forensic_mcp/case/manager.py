@@ -88,6 +88,7 @@ class CaseManager:
 
     def __init__(self) -> None:
         self._active_case_id: str | None = None
+        self._active_case_path: Path | None = None
         # Read from environment if set by installer/gateway
         env_case = os.environ.get("AIIR_ACTIVE_CASE")
         if env_case:
@@ -96,6 +97,7 @@ class CaseManager:
                 case_dir = self.cases_dir / env_case
                 if case_dir.is_dir():
                     self._active_case_id = env_case
+                    self._active_case_path = case_dir
                     os.environ["AIIR_CASE_DIR"] = str(case_dir)
                     logger.info("Activated case from environment: %s", env_case)
             except ValueError:
@@ -107,6 +109,8 @@ class CaseManager:
 
     @property
     def active_case_dir(self) -> Path | None:
+        if self._active_case_path:
+            return self._active_case_path
         if not self._active_case_id:
             return None
         return self.cases_dir / self._active_case_id
@@ -119,13 +123,24 @@ class CaseManager:
         if self._active_case_id is None:
             active_file = Path.home() / ".aiir" / "active_case"
             if active_file.exists():
-                case_id = active_file.read_text().strip()
-                _validate_case_id(case_id)
-                case_dir = self.cases_dir / case_id
-                if case_dir.is_dir():
-                    self._active_case_id = case_id
-                    os.environ["AIIR_CASE_DIR"] = str(case_dir)
-                    os.environ["AIIR_ACTIVE_CASE"] = case_id
+                content = active_file.read_text().strip()
+                if os.path.isabs(content):
+                    # Absolute path — use directly
+                    case_dir = Path(content)
+                    if case_dir.is_dir():
+                        self._active_case_id = case_dir.name
+                        self._active_case_path = case_dir
+                        os.environ["AIIR_CASE_DIR"] = str(case_dir)
+                        os.environ["AIIR_ACTIVE_CASE"] = case_dir.name
+                else:
+                    # Legacy: bare case ID
+                    _validate_case_id(content)
+                    case_dir = self.cases_dir / content
+                    if case_dir.is_dir():
+                        self._active_case_id = content
+                        self._active_case_path = case_dir
+                        os.environ["AIIR_CASE_DIR"] = str(case_dir)
+                        os.environ["AIIR_ACTIVE_CASE"] = content
         d = self.active_case_dir
         if d is None or not d.exists():
             raise ValueError("No active case. Run 'aiir case activate <id>' first.")
@@ -190,6 +205,7 @@ class CaseManager:
         _atomic_write(case_dir / "evidence.json", json.dumps({"files": []}))
 
         self._active_case_id = case_id
+        self._active_case_path = case_dir
         os.environ["AIIR_CASE_DIR"] = str(case_dir)
         os.environ["AIIR_ACTIVE_CASE"] = case_id
         os.environ["AIIR_EXAMINER"] = exam
@@ -288,6 +304,7 @@ class CaseManager:
             raise ValueError(f"Case not found: {case_id}")
 
         self._active_case_id = case_id
+        self._active_case_path = case_dir
         os.environ["AIIR_CASE_DIR"] = str(case_dir)
         os.environ["AIIR_ACTIVE_CASE"] = case_id
 

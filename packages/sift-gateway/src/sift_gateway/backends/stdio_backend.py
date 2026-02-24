@@ -42,6 +42,8 @@ class StdioMCPBackend(MCPBackend):
             for key, val in os.environ.items():
                 if key.startswith("AIIR_") and key not in env:
                     env[key] = val
+            # Remove empty values (from unset ${VAR} interpolation)
+            env = {k: v for k, v in env.items() if v}
 
         server_params = StdioServerParameters(
             command=command,

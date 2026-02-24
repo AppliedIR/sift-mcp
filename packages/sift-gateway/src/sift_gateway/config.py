@@ -16,12 +16,13 @@ _ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 def _interpolate_env(value: str) -> str:
     """Replace ${VAR} patterns with environment variable values.
 
-    If a referenced variable is not set, the placeholder is left as-is.
+    If a referenced variable is not set, the placeholder is replaced with
+    an empty string to prevent literal '${VAR}' from leaking into configs.
     """
 
     def _replace(match: re.Match) -> str:
         var_name = match.group(1)
-        return os.environ.get(var_name, match.group(0))
+        return os.environ.get(var_name, "")
 
     return _ENV_VAR_PATTERN.sub(_replace, value)
 

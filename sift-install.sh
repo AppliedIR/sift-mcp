@@ -695,6 +695,7 @@ for name, module in core_backends + optional:
         "args": ["-m", module],
         "env": {
             "AIIR_CASE_DIR": "\${AIIR_CASE_DIR}",
+            "AIIR_ACTIVE_CASE": "\${AIIR_ACTIVE_CASE}",
             "AIIR_EXAMINER": "\${AIIR_EXAMINER}",
         },
         "enabled": True,

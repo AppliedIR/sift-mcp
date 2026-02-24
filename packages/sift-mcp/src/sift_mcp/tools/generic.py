@@ -62,7 +62,7 @@ def run_command(
             if value and (value.startswith("/") or value.startswith("..") or "/" in value):
                 validate_input_path(value)
             continue
-        if arg.startswith("--"):
+        if arg.startswith("-") and "=" not in arg:
             continue
         if arg.startswith("/") or arg.startswith("..") or "/" in arg:
             validate_input_path(arg)
