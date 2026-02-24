@@ -116,9 +116,32 @@ class CaseManager:
         return resolve_examiner()
 
     def _require_active_case(self) -> Path:
+        if self._active_case_id is None:
+            active_file = Path.home() / ".aiir" / "active_case"
+            if active_file.exists():
+                case_id = active_file.read_text().strip()
+                _validate_case_id(case_id)
+                case_dir = self.cases_dir / case_id
+                if case_dir.is_dir():
+                    self._active_case_id = case_id
+                    os.environ["AIIR_CASE_DIR"] = str(case_dir)
+                    os.environ["AIIR_ACTIVE_CASE"] = case_id
         d = self.active_case_dir
         if d is None or not d.exists():
-            raise ValueError("No active case. Call set_active_case() or init_case() first.")
+            raise ValueError("No active case. Run 'aiir case activate <id>' first.")
+        # Safety belt: refuse closed cases
+        meta_file = d / "CASE.yaml"
+        if meta_file.exists():
+            try:
+                meta = yaml.safe_load(meta_file.read_text()) or {}
+                if meta.get("status") == "closed":
+                    raise ValueError(
+                        f"Case {self._active_case_id} is closed. "
+                        f"Run 'aiir case reopen {self._active_case_id}' or "
+                        f"'aiir case activate <id>' to work on a different case."
+                    )
+            except yaml.YAMLError:
+                pass
         return d
 
     def _effective_examiner(self, override: str = "") -> str:
