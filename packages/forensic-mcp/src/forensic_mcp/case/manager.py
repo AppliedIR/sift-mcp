@@ -766,8 +766,6 @@ class CaseManager:
             source = eid_source.get(eid)
             if source:
                 result[source.lower()].append(eid)
-            elif eid.startswith("shell-"):
-                result["shell"].append(eid)
             else:
                 result["none"].append(eid)
 

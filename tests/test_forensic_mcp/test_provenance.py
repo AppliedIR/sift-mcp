@@ -100,11 +100,23 @@ class TestClassifyProvenance:
         assert result["summary"] == "HOOK"
         assert "hook-tester-20260225-001" in result["hook"]
 
-    def test_shell_evidence_ids(self, manager, active_case):
+    def test_shell_prefix_without_audit_is_none(self, manager, active_case):
+        """shell-* prefix alone does not grant SHELL tier — must exist in audit trail."""
         case_dir = Path(active_case["path"])
         result = manager._classify_provenance(["shell-tester-20260225-001"], case_dir)
-        assert result["summary"] == "SHELL"
-        assert "shell-tester-20260225-001" in result["shell"]
+        assert result["summary"] == "NONE"
+        assert "shell-tester-20260225-001" in result["none"]
+
+    def test_shell_prefix_with_audit_is_mcp(self, manager, active_case):
+        """shell-* IDs written by record_finding() appear in MCP audit and classify as MCP."""
+        case_dir = Path(active_case["path"])
+        audit_dir = case_dir / "audit"
+        (audit_dir / "forensic-mcp.jsonl").write_text(
+            json.dumps({"evidence_id": "shell-tester-20260225-001", "tool": "supporting_command"}) + "\n"
+        )
+        result = manager._classify_provenance(["shell-tester-20260225-001"], case_dir)
+        assert result["summary"] == "MCP"
+        assert "shell-tester-20260225-001" in result["mcp"]
 
     def test_mixed_evidence_ids(self, manager, active_case):
         case_dir = Path(active_case["path"])
@@ -113,11 +125,11 @@ class TestClassifyProvenance:
             json.dumps({"evidence_id": "sift-001", "tool": "run_command"}) + "\n"
         )
         result = manager._classify_provenance(
-            ["sift-001", "shell-tester-20260225-001"], case_dir
+            ["sift-001", "shell-fake-001"], case_dir
         )
         assert result["summary"] == "MIXED"
         assert "sift-001" in result["mcp"]
-        assert "shell-tester-20260225-001" in result["shell"]
+        assert "shell-fake-001" in result["none"]
 
     def test_all_none(self, manager, active_case):
         case_dir = Path(active_case["path"])
