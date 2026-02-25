@@ -123,6 +123,17 @@ def mark_code_used(code: str) -> None:
             continue
 
 
+def validate_and_consume_join_code(code: str) -> str | None:
+    """Atomically validate and mark a join code as used. Thread-safe."""
+    with _join_code_lock:
+        matched_hash = validate_join_code(code)
+        if matched_hash:
+            mark_code_used(code)
+        return matched_hash
+
+
+_join_code_lock = threading.Lock()
+
 _join_failures: dict[str, list[float]] = {}
 _join_failures_lock = threading.Lock()
 

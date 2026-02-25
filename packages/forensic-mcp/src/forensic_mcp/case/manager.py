@@ -45,7 +45,7 @@ CASES_DIR_ENV = "AIIR_CASES_DIR"
 DEFAULT_CASES_DIR = "cases"
 
 # Evidence ID format: prefix-examiner-YYYYMMDD-NNN (all lowercase alphanumeric + hyphens)
-_EVIDENCE_ID_PATTERN = re.compile(r"^[a-z]+-[a-z0-9]+-\d{8}-\d{3,}$")
+_EVIDENCE_ID_PATTERN = re.compile(r"^[a-z]+-[a-z0-9]+-[0-9]{8}-[0-9]{3,}\Z")
 
 # Allowlist: only these fields pass through from user-supplied finding data
 _ALLOWED_FINDING_FIELDS = {
@@ -108,8 +108,10 @@ def _next_seq(items: list[dict], id_field: str, prefix: str, examiner: str) -> i
 
 def _validate_case_id(case_id: str) -> None:
     """Validate case_id to prevent path traversal."""
-    if not case_id:
+    if not case_id or not case_id.strip():
         raise ValueError("Case ID cannot be empty")
+    if "\x00" in case_id:
+        raise ValueError("Case ID contains null byte")
     if ".." in case_id or "/" in case_id or "\\" in case_id:
         raise ValueError(f"Invalid case ID (path traversal characters): {case_id}")
 

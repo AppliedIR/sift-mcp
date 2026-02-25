@@ -18,10 +18,9 @@ from sift_gateway.auth import resolve_examiner
 from sift_gateway.join import (
     check_join_rate_limit,
     generate_join_code,
-    mark_code_used,
     record_join_failure,
     store_join_code,
-    validate_join_code,
+    validate_and_consume_join_code,
 )
 from sift_gateway.rate_limit import check_rate_limit
 from sift_gateway.token_gen import generate_gateway_token
@@ -359,16 +358,13 @@ async def join_gateway(request: Request) -> JSONResponse:
     wintools_url = body.get("wintools_url")
     wintools_token = body.get("wintools_token")
 
-    matched_hash = validate_join_code(code)
+    matched_hash = validate_and_consume_join_code(code)
     if not matched_hash:
         record_join_failure(client_ip)
         return JSONResponse(
             {"error": "Invalid or expired join code"},
             status_code=403,
         )
-
-    # Mark used IMMEDIATELY — before any config writes
-    mark_code_used(code)
 
     examiner_name = hostname or machine_type
     gateway = request.app.state.gateway
