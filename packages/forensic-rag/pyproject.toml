@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Security",
 ]
 dependencies = [
-    "mcp>=1.0",
+    "mcp>=1.26",
     "chromadb>=1.0",
     "sentence-transformers>=2.2",
     "pyyaml>=6.0",
