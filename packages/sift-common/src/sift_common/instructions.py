@@ -114,3 +114,11 @@ OPENCTI = (
     "context informs but does not replace evidence-based analysis. "
     "Correlation with CTI is supporting evidence, not proof."
 )
+
+CASE_MCP = (
+    "Case management tools for the AIIR forensic investigation platform. "
+    "Use case_init to create cases and case_activate to switch between them. "
+    "Evidence registration (evidence_register) computes SHA-256 hashes and "
+    "sets files read-only for integrity. All evidence modifications require "
+    "examiner confirmation. Query case_status for investigation progress."
+)

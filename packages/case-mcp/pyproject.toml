@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "case-mcp"
+version = "0.1.0"
+description = "AIIR case management MCP server"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "AppliedIncidentResponse.com"}]
+keywords = ["mcp", "forensics", "case-management", "dfir"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+dependencies = [
+    "aiir-cli",
+    "sift-common",
+    "mcp>=1.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+case-mcp = "case_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/case_mcp"]
