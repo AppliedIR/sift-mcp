@@ -170,10 +170,12 @@ class TestAudit:
         assert entry["tool"] == "test_tool"
         assert entry["evidence_id"] == eid
 
-    def test_audit_no_case_dir(self, monkeypatch):
+    def test_audit_no_case_dir(self, monkeypatch, tmp_path):
         from sift_mcp.audit import AuditWriter
 
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.delenv("AIIR_AUDIT_DIR", raising=False)
+        monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         writer = AuditWriter("sift-mcp")
         eid = writer.log(tool="test", params={}, result_summary={})
         assert eid.startswith("sift-")  # Still returns an ID

@@ -1,7 +1,5 @@
 """Tests for configuration module."""
 
-import os
-
 import pytest
 from windows_triage.config import (
     Config,
@@ -100,49 +98,36 @@ class TestConfig:
 class TestParseIntEnv:
     """Tests for _parse_int_env helper."""
 
-    def test_default_value(self):
+    def test_default_value(self, monkeypatch):
         """Test default value when env var not set."""
-        # Ensure env var doesn't exist
-        os.environ.pop("WT_TEST_INT", None)
+        monkeypatch.delenv("WT_TEST_INT", raising=False)
         result = _parse_int_env("WT_TEST_INT", 42)
         assert result == 42
 
-    def test_valid_int(self):
+    def test_valid_int(self, monkeypatch):
         """Test parsing valid integer."""
-        os.environ["WT_TEST_INT"] = "100"
-        try:
-            result = _parse_int_env("WT_TEST_INT", 42)
-            assert result == 100
-        finally:
-            os.environ.pop("WT_TEST_INT", None)
+        monkeypatch.setenv("WT_TEST_INT", "100")
+        result = _parse_int_env("WT_TEST_INT", 42)
+        assert result == 100
 
-    def test_invalid_int(self):
+    def test_invalid_int(self, monkeypatch):
         """Test parsing invalid integer raises ConfigurationError."""
-        os.environ["WT_TEST_INT"] = "not-a-number"
-        try:
-            with pytest.raises(ConfigurationError) as exc_info:
-                _parse_int_env("WT_TEST_INT", 42)
-            assert "WT_TEST_INT" in str(exc_info.value)
-        finally:
-            os.environ.pop("WT_TEST_INT", None)
+        monkeypatch.setenv("WT_TEST_INT", "not-a-number")
+        with pytest.raises(ConfigurationError) as exc_info:
+            _parse_int_env("WT_TEST_INT", 42)
+        assert "WT_TEST_INT" in str(exc_info.value)
 
-    def test_empty_string(self):
+    def test_empty_string(self, monkeypatch):
         """Test empty string raises ConfigurationError."""
-        os.environ["WT_TEST_INT"] = ""
-        try:
-            with pytest.raises(ConfigurationError):
-                _parse_int_env("WT_TEST_INT", 42)
-        finally:
-            os.environ.pop("WT_TEST_INT", None)
+        monkeypatch.setenv("WT_TEST_INT", "")
+        with pytest.raises(ConfigurationError):
+            _parse_int_env("WT_TEST_INT", 42)
 
-    def test_whitespace_only(self):
+    def test_whitespace_only(self, monkeypatch):
         """Test whitespace-only string raises ConfigurationError."""
-        os.environ["WT_TEST_INT"] = "   "
-        try:
-            with pytest.raises(ConfigurationError):
-                _parse_int_env("WT_TEST_INT", 42)
-        finally:
-            os.environ.pop("WT_TEST_INT", None)
+        monkeypatch.setenv("WT_TEST_INT", "   ")
+        with pytest.raises(ConfigurationError):
+            _parse_int_env("WT_TEST_INT", 42)
 
 
 class TestGetConfig:

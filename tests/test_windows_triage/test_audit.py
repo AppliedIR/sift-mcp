@@ -84,6 +84,8 @@ class TestAuditWriter:
     def test_no_write_without_case_dir(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.delenv("AIIR_AUDIT_DIR", raising=False)
+        monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         writer = AuditWriter("windows-triage-mcp")
         eid = writer.log(tool="check_file", params={}, result_summary={})
         assert eid
