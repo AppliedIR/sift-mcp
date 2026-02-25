@@ -54,7 +54,7 @@ REMOTE_MODE=false
 for arg in "$@"; do
     case "$arg" in
         -y|--yes)          AUTO_YES=true ;;
-        --quick|--minimal) MODE="quick" ;;
+        --quick) MODE="quick" ;;
         --recommended)     MODE="recommended" ;;
         --full|--custom)   MODE="custom" ;;
         --manual-start)    MANUAL_START=true ;;
