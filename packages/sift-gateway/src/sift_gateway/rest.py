@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import socket
+import tempfile
 import threading
 from urllib.parse import urlparse
 
@@ -434,15 +435,38 @@ async def join_status(request: Request) -> JSONResponse:
 _CONFIG_LOCK = threading.Lock()
 
 
+def _atomic_yaml_write(config_path, config: dict) -> None:
+    """Write YAML config atomically via temp file + fsync + os.replace."""
+    import yaml
+
+    config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(config_path.parent), suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp_path, 0o600)
+        os.replace(tmp_path, str(config_path))
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
 def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
     """Add a new API key to the gateway config and write to disk."""
     from pathlib import Path
 
-    import yaml
-
     with _CONFIG_LOCK:
         config_path = Path.home() / ".aiir" / "gateway.yaml"
         if config_path.exists():
+            import yaml
+
             try:
                 with open(config_path) as f:
                     config = yaml.safe_load(f) or {}
@@ -460,10 +484,7 @@ def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
         }
 
         try:
-            config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            fd = os.open(str(config_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w") as f:
-                yaml.dump(config, f, default_flow_style=False)
+            _atomic_yaml_write(config_path, config)
         except OSError as e:
             logger.error("Failed to write gateway config: %s", e)
             raise HTTPException(
@@ -509,10 +530,7 @@ def _add_wintools_backend(gateway, url: str, token: str) -> None:
         }
 
         try:
-            config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            fd = os.open(str(config_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w") as f:
-                yaml.dump(config, f, default_flow_style=False)
+            _atomic_yaml_write(config_path, config)
         except OSError as e:
             logger.error("Failed to write gateway config: %s", e)
             raise HTTPException(
