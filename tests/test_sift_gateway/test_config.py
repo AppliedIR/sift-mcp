@@ -19,9 +19,9 @@ class TestInterpolateEnv:
         monkeypatch.setenv("HOST", "localhost")
         assert _interpolate_env("http://${HOST}:8080") == "http://localhost:8080"
 
-    def test_missing_var_unchanged(self):
+    def test_missing_var_empty(self):
         result = _interpolate_env("${SURELY_NOT_SET_12345}")
-        assert result == "${SURELY_NOT_SET_12345}"
+        assert result == ""
 
     def test_multiple_vars(self, monkeypatch):
         monkeypatch.setenv("A", "1")

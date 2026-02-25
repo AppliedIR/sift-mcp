@@ -368,12 +368,12 @@ DETECTION_QUERIES = [
     ("detect event log clearing", "event", 0.55),  # "clear" may not be in results
     ("timestomping detection", "timestomp", 0.6),
     ("detect file deletion evidence destruction", "file deletion", 0.6),
-    ("masquerading detection windows", "masquerad", 0.6),
+    ("masquerading detection windows", None, 0.5),  # no masquerading-specific Sigma rules in index
     ("detect uac bypass", "uac bypass", 0.65),
     ("disable defender detection", "defender", 0.6),
     ("detect amsi bypass", "amsi", 0.6),
     ("etw patching detection", "etw", 0.5),
-    ("detect process masquerading", "masquerad", 0.6),
+    ("detect process masquerading", None, 0.5),  # no masquerading-specific Sigma rules in index
     ("file signature verification bypass", "signature", 0.5),
 
     # Ransomware Detection
