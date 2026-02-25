@@ -7,6 +7,37 @@ import pytest
 from forensic_mcp.server import create_server
 
 
+def _setup_test_case(manager, cases_dir):
+    """Create a test case directory matching what init_case used to do."""
+    import yaml as _yaml
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc)
+    case_id = f"INC-{ts.strftime('%Y')}-{ts.strftime('%m%d%H%M%S')}"
+    case_dir = cases_dir / case_id
+    case_dir.mkdir(parents=True)
+    (case_dir / "evidence").mkdir()
+    (case_dir / "extractions").mkdir()
+    (case_dir / "reports").mkdir()
+    (case_dir / "audit").mkdir()
+    case_meta = {
+        "case_id": case_id,
+        "name": "Test",
+        "status": "open",
+        "examiner": "tester",
+        "created": ts.isoformat(),
+    }
+    (case_dir / "CASE.yaml").write_text(_yaml.dump(case_meta, default_flow_style=False))
+    (case_dir / "findings.json").write_text("[]")
+    (case_dir / "timeline.json").write_text("[]")
+    (case_dir / "todos.json").write_text("[]")
+    (case_dir / "evidence.json").write_text('{"files": []}')
+    manager._active_case_id = case_id
+    manager._active_case_path = case_dir
+    import os
+    os.environ["AIIR_CASE_DIR"] = str(case_dir)
+    os.environ["AIIR_ACTIVE_CASE"] = case_id
+
+
 @pytest.fixture
 def server():
     """Server in default (resources) mode — 15 active tools."""
@@ -306,8 +337,9 @@ class TestEnhancedResponses:
     @pytest.mark.asyncio
     async def test_record_finding_returns_considerations(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
         server = create_server()
-        server._manager.init_case("Test")
+        _setup_test_case(server._manager, tmp_path / "cases")
         finding = {
             "title": "Suspicious binary found",
             "evidence_ids": ["ev-001", "ev-002"],
@@ -329,8 +361,9 @@ class TestEnhancedResponses:
     @pytest.mark.asyncio
     async def test_record_finding_attribution_considerations(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
         server = create_server()
-        server._manager.init_case("Test")
+        _setup_test_case(server._manager, tmp_path / "cases")
         finding = {
             "title": "APT29 attribution",
             "evidence_ids": ["ev-001", "ev-002", "ev-003"],
@@ -351,8 +384,9 @@ class TestEnhancedResponses:
     @pytest.mark.asyncio
     async def test_validation_failure_includes_guidance(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
         server = create_server()
-        server._manager.init_case("Test")
+        _setup_test_case(server._manager, tmp_path / "cases")
         finding = {"title": "Bad finding"}
         result = await server.call_tool("record_finding", {"finding": finding})
         text = result[0].text
@@ -367,8 +401,9 @@ class TestGroundingInResponse:
     async def test_record_finding_includes_grounding(self, tmp_path, monkeypatch):
         """record_finding response includes grounding key when no audit trail exists (WEAK)."""
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
         server = create_server()
-        server._manager.init_case("Grounding Test")
+        _setup_test_case(server._manager, tmp_path / "cases")
         finding = {
             "title": "Suspicious binary",
             "evidence_ids": ["ev-001", "ev-002"],
@@ -391,8 +426,9 @@ class TestTodoTools:
     @pytest.mark.asyncio
     async def test_add_todo(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
         server = create_server()
-        server._manager.init_case("Test")
+        _setup_test_case(server._manager, tmp_path / "cases")
         result = await server.call_tool("add_todo", {"description": "Run volatility"})
         data = json.loads(result[0].text)
         assert data["status"] == "created"
@@ -401,8 +437,9 @@ class TestTodoTools:
     @pytest.mark.asyncio
     async def test_list_todos(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
         server = create_server()
-        server._manager.init_case("Test")
+        _setup_test_case(server._manager, tmp_path / "cases")
         await server.call_tool("add_todo", {"description": "A"})
         await server.call_tool("add_todo", {"description": "B"})
         result = await server.call_tool("list_todos", {})
@@ -412,8 +449,9 @@ class TestTodoTools:
     @pytest.mark.asyncio
     async def test_complete_todo(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
         server = create_server()
-        server._manager.init_case("Test")
+        _setup_test_case(server._manager, tmp_path / "cases")
         add_result = await server.call_tool("add_todo", {"description": "A"})
         todo_id = json.loads(add_result[0].text)["todo_id"]
         result = await server.call_tool("complete_todo", {"todo_id": todo_id})
@@ -427,8 +465,9 @@ class TestTodoTools:
     @pytest.mark.asyncio
     async def test_update_todo_with_note(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
         server = create_server()
-        server._manager.init_case("Test")
+        _setup_test_case(server._manager, tmp_path / "cases")
         add_result = await server.call_tool("add_todo", {"description": "A"})
         todo_id = json.loads(add_result[0].text)["todo_id"]
         result = await server.call_tool("update_todo", {

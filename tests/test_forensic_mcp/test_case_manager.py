@@ -1,4 +1,4 @@
-"""Tests for CaseManager: lifecycle, findings, timeline, evidence, audit."""
+"""Tests for CaseManager: lifecycle, findings, timeline, todos."""
 
 import json
 import os
@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import yaml as _yaml
 
 from forensic_mcp.case.manager import CaseManager
 
@@ -20,63 +21,40 @@ def manager(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def active_case(manager):
-    """Manager with an initialized case."""
-    result = manager.init_case("Test Incident", "Testing the case manager")
-    return result
+def active_case(manager, tmp_path, monkeypatch):
+    """Manager with a manually created case directory."""
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc)
+    case_id = f"INC-{ts.strftime('%Y')}-{ts.strftime('%m%d%H%M%S')}"
+    case_dir = tmp_path / case_id
+    case_dir.mkdir()
+    (case_dir / "evidence").mkdir()
+    (case_dir / "extractions").mkdir()
+    (case_dir / "reports").mkdir()
+    (case_dir / "audit").mkdir()
+    case_meta = {
+        "case_id": case_id,
+        "name": "Test Incident",
+        "description": "Testing the case manager",
+        "status": "open",
+        "examiner": "tester",
+        "created": ts.isoformat(),
+    }
+    (case_dir / "CASE.yaml").write_text(_yaml.dump(case_meta, default_flow_style=False))
+    (case_dir / "findings.json").write_text("[]")
+    (case_dir / "timeline.json").write_text("[]")
+    (case_dir / "todos.json").write_text("[]")
+    (case_dir / "evidence.json").write_text('{"files": []}')
+    manager._active_case_id = case_id
+    manager._active_case_path = case_dir
+    monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+    monkeypatch.setenv("AIIR_ACTIVE_CASE", case_id)
+    return {"case_id": case_id, "path": str(case_dir), "status": "open", "examiner": "tester"}
 
 
 # --- Case Lifecycle ---
 
 class TestCaseLifecycle:
-    def test_init_case_creates_directory(self, manager):
-        result = manager.init_case("My Incident")
-        assert result["status"] == "open"
-        assert result["case_id"].startswith("INC-")
-
-        case_dir = Path(result["path"])
-        assert case_dir.exists()
-        assert (case_dir / "CASE.yaml").exists()
-        assert (case_dir / "evidence").is_dir()
-        assert (case_dir / "extractions").is_dir()
-        assert (case_dir / "reports").is_dir()
-        assert (case_dir / "audit").is_dir()
-        # Flat structure: data files at case root
-        assert (case_dir / "findings.json").exists()
-        assert (case_dir / "timeline.json").exists()
-        assert (case_dir / "todos.json").exists()
-        assert (case_dir / "evidence.json").exists()
-
-    def test_init_case_sets_active(self, manager):
-        result = manager.init_case("Test")
-        assert manager._active_case_id == result["case_id"]
-        assert os.environ.get("AIIR_ACTIVE_CASE") == result["case_id"]
-
-    def test_close_case(self, manager, active_case):
-        result = manager.close_case(active_case["case_id"], summary="All done")
-        assert result["status"] == "closed"
-
-    def test_close_case_already_closed(self, manager, active_case):
-        manager.close_case(active_case["case_id"])
-        result = manager.close_case(active_case["case_id"])
-        assert result["status"] == "already_closed"
-
-    def test_close_case_warns_on_drafts(self, manager, active_case):
-        # Stage a finding first
-        manager.record_finding({
-            "title": "Test",
-            "evidence_ids": ["ev-001"],
-            "observation": "obs",
-            "interpretation": "interp",
-            "confidence": "MEDIUM",
-            "confidence_justification": "justified",
-            "type": "finding",
-        })
-        result = manager.close_case(active_case["case_id"])
-        assert result["status"] == "closed"
-        assert "warning" in result
-        assert "1 unapproved" in result["warning"]
-
     def test_get_case_status(self, manager, active_case):
         result = manager.get_case_status()
         assert result["case_id"] == active_case["case_id"]
@@ -84,24 +62,15 @@ class TestCaseLifecycle:
         assert result["findings"]["total"] == 0
         assert result["timeline_events"] == 0
 
-    def test_list_cases(self, manager):
-        manager.init_case("Case One")
-        # Reset active to allow creating another
-        manager._active_case_id = None
+    def test_list_cases(self, manager, tmp_path):
+        case_id = "INC-2026-0101000000"
+        case_dir = tmp_path / case_id
+        case_dir.mkdir()
+        meta = {"case_id": case_id, "name": "Case One", "status": "open", "created": "2026-01-01T00:00:00", "examiner": "tester"}
+        (case_dir / "CASE.yaml").write_text(_yaml.dump(meta, default_flow_style=False))
         result = manager.list_cases()
         assert len(result) >= 1
         assert result[0]["name"] == "Case One"
-
-    def test_set_active_case(self, manager, active_case):
-        case_id = active_case["case_id"]
-        manager._active_case_id = None
-        result = manager.set_active_case(case_id)
-        assert result["active_case"] == case_id
-        assert manager._active_case_id == case_id
-
-    def test_set_active_case_not_found(self, manager):
-        with pytest.raises(ValueError, match="Case not found"):
-            manager.set_active_case("INC-NONEXISTENT")
 
     def test_require_active_case_raises(self, manager):
         with pytest.raises(ValueError, match="No active case"):
@@ -252,88 +221,6 @@ class TestRecords:
         assert len(approved) == 0
 
 
-# --- Evidence Management ---
-
-class TestEvidence:
-    def _evidence_dir(self, manager):
-        """Helper to get case evidence directory."""
-        return manager.active_case_dir / "evidence"
-
-    def test_register_evidence(self, manager, active_case):
-        evidence_file = self._evidence_dir(manager) / "test_evidence.bin"
-        evidence_file.write_bytes(b"malware sample content here")
-
-        result = manager.register_evidence(str(evidence_file), "Test malware sample")
-        assert result["status"] == "registered"
-        assert len(result["sha256"]) == 64
-        # File should be read-only
-        assert not os.access(evidence_file, os.W_OK)
-
-    def test_register_evidence_outside_case_blocked(self, manager, active_case, tmp_path):
-        """Path traversal: evidence outside case directory should be rejected."""
-        outside_file = tmp_path / "outside.bin"
-        outside_file.write_bytes(b"sneaky")
-        with pytest.raises(ValueError, match="within case directory"):
-            manager.register_evidence(str(outside_file))
-
-    def test_verify_evidence_integrity_ok(self, manager, active_case):
-        evidence_file = self._evidence_dir(manager) / "evidence.bin"
-        evidence_file.write_bytes(b"evidence content")
-        manager.register_evidence(str(evidence_file))
-
-        result = manager.verify_evidence_integrity()
-        assert result["total"] == 1
-        assert result["ok"] == 1
-        assert result["files"][0]["status"] == "OK"
-
-    def test_verify_evidence_integrity_modified(self, manager, active_case):
-        evidence_file = self._evidence_dir(manager) / "evidence.bin"
-        evidence_file.write_bytes(b"original content")
-        manager.register_evidence(str(evidence_file))
-
-        # Modify the file (need to make writable first)
-        evidence_file.chmod(0o644)
-        evidence_file.write_bytes(b"tampered content")
-        evidence_file.chmod(0o444)
-
-        result = manager.verify_evidence_integrity()
-        assert result["files"][0]["status"] == "MODIFIED"
-
-    def test_verify_evidence_integrity_missing(self, manager, active_case):
-        evidence_file = self._evidence_dir(manager) / "evidence.bin"
-        evidence_file.write_bytes(b"content")
-        manager.register_evidence(str(evidence_file))
-
-        # Remove the file
-        evidence_file.chmod(0o644)
-        evidence_file.unlink()
-
-        result = manager.verify_evidence_integrity()
-        assert result["files"][0]["status"] == "MISSING"
-
-    def test_list_evidence(self, manager, active_case):
-        ev_dir = self._evidence_dir(manager)
-        f1 = ev_dir / "ev1.bin"
-        f1.write_bytes(b"one")
-        f2 = ev_dir / "ev2.bin"
-        f2.write_bytes(b"two")
-
-        manager.register_evidence(str(f1), "First")
-        manager.register_evidence(str(f2), "Second")
-
-        evidence = manager.list_evidence()
-        assert len(evidence) == 2
-
-    def test_evidence_access_log(self, manager, active_case):
-        evidence_file = self._evidence_dir(manager) / "ev.bin"
-        evidence_file.write_bytes(b"data")
-        manager.register_evidence(str(evidence_file))
-
-        log = manager.get_evidence_access_log()
-        assert len(log) >= 1
-        assert log[0]["action"] == "register"
-
-
 # --- TODOs ---
 
 class TestTodos:
@@ -404,13 +291,6 @@ class TestTodos:
         assert status["todos"]["open"] == 1
         assert status["todos"]["completed"] == 1
 
-    def test_close_case_warns_open_todos(self, manager, active_case):
-        manager.add_todo("Unfinished")
-        case_id = active_case["case_id"]
-        result = manager.close_case(case_id)
-        assert "open TODO" in result.get("warning", "")
-        assert result["open_todo_ids"] == ["TODO-tester-001"]
-
 
 # --- Multi-Examiner ---
 
@@ -480,18 +360,6 @@ class TestMultiExaminer:
         examiners = {f["created_by"] for f in findings}
         assert "tester" in examiners
         assert "alice" in examiners
-
-
-# --- Audit ---
-
-class TestAudit:
-    def test_audit_log_empty(self, manager, active_case):
-        log = manager.get_audit_log()
-        assert log == []
-
-    def test_audit_summary_empty(self, manager, active_case):
-        summary = manager.get_audit_summary()
-        assert summary["total_entries"] == 0
 
 
 # --- Atomic Writes ---
@@ -612,31 +480,6 @@ class TestCorruptJsonl:
         )
         actions = manager.get_actions()
         assert len(actions) == 2
-
-    def test_corrupt_audit_skipped(self, manager, active_case):
-        """Corrupt JSONL lines in audit files are skipped."""
-        case_dir = Path(active_case["path"])
-        audit_dir = case_dir / "audit"
-        audit_dir.mkdir(parents=True, exist_ok=True)
-        audit_file = audit_dir / "test-mcp.jsonl"
-        audit_file.write_text(
-            '{"ts": "2026-01-01T00:00:00Z", "mcp": "test-mcp", "tool": "t1"}\n'
-            "CORRUPT LINE\n"
-            '{"ts": "2026-01-02T00:00:00Z", "mcp": "test-mcp", "tool": "t2"}\n'
-        )
-        entries = manager.get_audit_log()
-        assert len(entries) == 2
-
-    def test_corrupt_evidence_access_log_skipped(self, manager, active_case):
-        """Corrupt lines in evidence_access.jsonl are skipped."""
-        case_dir = Path(active_case["path"])
-        log_file = case_dir / "evidence_access.jsonl"
-        log_file.write_text(
-            '{"ts": "2026-01-01T00:00:00Z", "action": "register", "path": "/a"}\n'
-            "BAD\n"
-        )
-        entries = manager.get_evidence_access_log()
-        assert len(entries) == 1
 
 
 # --- Timeline Filtering ---
@@ -852,158 +695,3 @@ class TestExaminerOverride:
         assert actions_file.exists()
         entry = json.loads(actions_file.read_text().strip())
         assert entry["examiner"] == "alice"
-
-
-# --- Export / Merge ---
-
-class TestExportMerge:
-    """Tests for export_findings, export_timeline, merge_findings, merge_timeline."""
-
-    def test_export_findings(self, manager, active_case, tmp_path):
-        finding = {
-            "title": "Test",
-            "evidence_ids": ["ev-001"],
-            "observation": "obs",
-            "interpretation": "interp",
-            "confidence": "MEDIUM",
-            "confidence_justification": "justified",
-            "type": "finding",
-        }
-        manager.record_finding(finding)
-        out = str(tmp_path / "export" / "findings.json")
-        result = manager.export_findings(out)
-        assert result["exported"] == 1
-        assert Path(out).exists()
-        data = json.loads(Path(out).read_text())
-        assert len(data) == 1
-        assert data[0]["title"] == "Test"
-
-    def test_export_timeline(self, manager, active_case, tmp_path):
-        manager.record_timeline_event({
-            "timestamp": "2026-01-10T08:00:00Z",
-            "description": "Event",
-        })
-        out = str(tmp_path / "export" / "timeline.json")
-        result = manager.export_timeline(out)
-        assert result["exported"] == 1
-        assert Path(out).exists()
-
-    def test_merge_findings_adds_new(self, manager, active_case, tmp_path):
-        # Export a finding from "alice"
-        incoming = [{
-            "id": "F-alice-001",
-            "title": "Alice finding",
-            "modified_at": "2026-01-10T10:00:00Z",
-            "examiner": "alice",
-        }]
-        incoming_path = tmp_path / "incoming.json"
-        incoming_path.write_text(json.dumps(incoming))
-
-        result = manager.merge_findings(str(incoming_path))
-        assert result["added"] == 1
-        assert result["updated"] == 0
-
-        findings = manager.get_findings()
-        assert any(f["id"] == "F-alice-001" for f in findings)
-
-    def test_merge_findings_updates_newer(self, manager, active_case, tmp_path):
-        # Record a local finding
-        finding = {
-            "title": "Original",
-            "evidence_ids": ["ev-001"],
-            "observation": "obs",
-            "interpretation": "interp",
-            "confidence": "MEDIUM",
-            "confidence_justification": "justified",
-            "type": "finding",
-        }
-        manager.record_finding(finding)
-        findings = manager.get_findings()
-        local_id = findings[0]["id"]
-
-        # Incoming with same ID but newer modified_at
-        incoming = [{
-            "id": local_id,
-            "title": "Updated by alice",
-            "modified_at": "2099-01-01T00:00:00Z",
-            "examiner": "alice",
-        }]
-        incoming_path = tmp_path / "incoming.json"
-        incoming_path.write_text(json.dumps(incoming))
-
-        result = manager.merge_findings(str(incoming_path))
-        assert result["updated"] == 1
-
-        findings = manager.get_findings()
-        matched = [f for f in findings if f["id"] == local_id]
-        assert matched[0]["title"] == "Updated by alice"
-
-    def test_merge_findings_skips_older(self, manager, active_case, tmp_path):
-        finding = {
-            "title": "Original",
-            "evidence_ids": ["ev-001"],
-            "observation": "obs",
-            "interpretation": "interp",
-            "confidence": "MEDIUM",
-            "confidence_justification": "justified",
-            "type": "finding",
-        }
-        manager.record_finding(finding)
-        findings = manager.get_findings()
-        local_id = findings[0]["id"]
-
-        # Incoming with same ID but older timestamp
-        incoming = [{
-            "id": local_id,
-            "title": "Old version",
-            "modified_at": "2000-01-01T00:00:00Z",
-            "examiner": "alice",
-        }]
-        incoming_path = tmp_path / "incoming.json"
-        incoming_path.write_text(json.dumps(incoming))
-
-        result = manager.merge_findings(str(incoming_path))
-        assert result["skipped"] == 1
-
-        findings = manager.get_findings()
-        matched = [f for f in findings if f["id"] == local_id]
-        assert matched[0]["title"] == "Original"
-
-    def test_merge_timeline_adds_new(self, manager, active_case, tmp_path):
-        incoming = [{
-            "id": "T-alice-001",
-            "timestamp": "2026-01-10T08:00:00Z",
-            "description": "Alice event",
-            "modified_at": "2026-01-10T10:00:00Z",
-        }]
-        incoming_path = tmp_path / "incoming.json"
-        incoming_path.write_text(json.dumps(incoming))
-
-        result = manager.merge_timeline(str(incoming_path))
-        assert result["added"] == 1
-
-        timeline = manager.get_timeline()
-        assert any(e["id"] == "T-alice-001" for e in timeline)
-
-    def test_modified_at_present(self, manager, active_case):
-        """Records have modified_at field set on creation."""
-        finding = {
-            "title": "Test",
-            "evidence_ids": ["ev-001"],
-            "observation": "obs",
-            "interpretation": "interp",
-            "confidence": "MEDIUM",
-            "confidence_justification": "justified",
-            "type": "finding",
-        }
-        manager.record_finding(finding)
-        findings = manager.get_findings()
-        assert "modified_at" in findings[0]
-        assert findings[0]["modified_at"]  # non-empty
-
-        manager.record_timeline_event({
-            "timestamp": "2026-01-10T08:00:00Z",
-            "description": "Event",
-        })
-        timeline = manager.get_timeline()
-        assert "modified_at" in timeline[0]

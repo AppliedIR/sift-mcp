@@ -1,9 +1,6 @@
 """Tests for audit trail write + read round-trip."""
 
-import json
-import os
 import threading
-from pathlib import Path
 
 import pytest
 
@@ -21,56 +18,47 @@ def manager(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def active_case(manager):
-    result = manager.init_case("Audit Test")
-    return result
+def active_case(manager, tmp_path, monkeypatch):
+    import yaml as _yaml
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc)
+    case_id = f"INC-{ts.strftime('%Y')}-{ts.strftime('%m%d%H%M%S')}"
+    case_dir = tmp_path / case_id
+    case_dir.mkdir()
+    (case_dir / "evidence").mkdir()
+    (case_dir / "extractions").mkdir()
+    (case_dir / "reports").mkdir()
+    (case_dir / "audit").mkdir()
+    case_meta = {
+        "case_id": case_id,
+        "name": "Audit Test",
+        "status": "open",
+        "examiner": "tester",
+        "created": ts.isoformat(),
+    }
+    (case_dir / "CASE.yaml").write_text(_yaml.dump(case_meta, default_flow_style=False))
+    (case_dir / "findings.json").write_text("[]")
+    (case_dir / "timeline.json").write_text("[]")
+    (case_dir / "todos.json").write_text("[]")
+    (case_dir / "evidence.json").write_text('{"files": []}')
+    manager._active_case_id = case_id
+    manager._active_case_path = case_dir
+    monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+    monkeypatch.setenv("AIIR_ACTIVE_CASE", case_id)
+    return {"case_id": case_id, "path": str(case_dir)}
 
 
 class TestAuditRoundTrip:
     def test_write_then_read(self, manager, active_case):
-        """Write an audit entry via AuditWriter, read it back via get_audit_log."""
+        """Write an audit entry via AuditWriter, read it back via get_entries."""
         writer = AuditWriter("forensic-mcp")
         eid = writer.log(tool="test_tool", params={"key": "val"}, result_summary="ok")
 
-        log = manager.get_audit_log()
-        assert len(log) == 1
-        assert log[0]["tool"] == "test_tool"
-        assert log[0]["evidence_id"] == eid
-        assert log[0]["params"] == {"key": "val"}
-
-    def test_multi_mcp_aggregation(self, manager, active_case):
-        """Write to two different MCP audit files, get_audit_log returns both."""
-        case_dir = Path(active_case["path"])
-        audit_dir = case_dir / "audit"
-
-        # Write entries as if from two different MCPs
-        for mcp, tool in [("forensic-rag", "search"), ("windows-triage", "check_file")]:
-            entry = {
-                "ts": f"2026-02-20T10:0{mcp[0]}:00Z",
-                "mcp": mcp,
-                "tool": tool,
-                "evidence_id": f"test-{mcp}-001",
-            }
-            with open(audit_dir / f"{mcp}.jsonl", "a") as f:
-                f.write(json.dumps(entry) + "\n")
-
-        log = manager.get_audit_log()
-        mcps = {e["mcp"] for e in log}
-        assert "forensic-rag" in mcps
-        assert "windows-triage" in mcps
-
-    def test_audit_summary_counts_evidence_ids(self, manager, active_case):
-        """get_audit_summary counts unique evidence_ids correctly."""
-        writer = AuditWriter("forensic-mcp")
-        writer.log(tool="tool_a", params={}, result_summary="ok")
-        writer.log(tool="tool_b", params={}, result_summary="ok")
-        writer.log(tool="tool_a", params={}, result_summary="ok")
-
-        summary = manager.get_audit_summary()
-        assert summary["total_entries"] == 3
-        assert summary["unique_evidence_ids"] == 3
-        assert summary["by_tool"]["tool_a"] == 2
-        assert summary["by_tool"]["tool_b"] == 1
+        entries = writer.get_entries()
+        assert len(entries) == 1
+        assert entries[0]["tool"] == "test_tool"
+        assert entries[0]["evidence_id"] == eid
+        assert entries[0]["params"] == {"key": "val"}
 
 
 class TestSequenceResume:
@@ -130,9 +118,9 @@ class TestThreadSafety:
         writer = AuditWriter("forensic-mcp")
         writer.log(tool="test", params={"key": "val"}, result_summary={"ok": True})
 
-        log = manager.get_audit_log()
-        assert len(log) == 1
-        entry = log[0]
+        entries = writer.get_entries()
+        assert len(entries) == 1
+        entry = entries[0]
         # Canonical fields from unified audit.py
         assert entry["mcp"] == "forensic-mcp"
         assert entry["source"] == "mcp_server"
