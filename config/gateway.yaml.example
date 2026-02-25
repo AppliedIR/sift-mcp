@@ -50,6 +50,8 @@ backends:
     command: "python"
     args: ["-m", "case_mcp"]
     env:
+      AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
+      AIIR_CASES_DIR: "${AIIR_CASES_DIR}"
       AIIR_EXAMINER: "${AIIR_EXAMINER}"
     enabled: true
 

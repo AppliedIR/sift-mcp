@@ -59,7 +59,10 @@ def _resolve_case_dir(case_id: str = "") -> Path:
 
     env_dir = os.environ.get("AIIR_CASE_DIR")
     if env_dir:
-        return Path(env_dir)
+        p = Path(env_dir)
+        if not p.is_dir():
+            raise ValueError(f"AIIR_CASE_DIR does not exist: {env_dir}")
+        return p
 
     active_file = Path.home() / ".aiir" / "active_case"
     if active_file.exists():
@@ -72,6 +75,8 @@ def _resolve_case_dir(case_id: str = "") -> Path:
                     raise ValueError(f"Invalid case ID in active_case: {content}")
                 cases_dir = Path(os.environ.get("AIIR_CASES_DIR", "cases"))
                 case_dir = cases_dir / content
+            if not case_dir.is_dir():
+                raise ValueError(f"Case directory does not exist: {case_dir}")
             os.environ["AIIR_CASE_DIR"] = str(case_dir)
             return case_dir
 
