@@ -376,7 +376,10 @@ install_pkg "sift-mcp" "$INSTALL_DIR/packages/sift-mcp" || exit 1
 # 5. sift-gateway (depends on 2)
 install_pkg "sift-gateway" "$INSTALL_DIR/packages/sift-gateway" || exit 1
 
-# 6. windows-triage-mcp (optional, depends on 2)
+# 6. case-mcp
+install_pkg "case-mcp" "$INSTALL_DIR/packages/case-mcp" || exit 1
+
+# 7. windows-triage-mcp (optional, depends on 2)
 if $INSTALL_TRIAGE; then
     install_pkg "windows-triage-mcp" "$INSTALL_DIR/packages/windows-triage" || {
         warn "windows-triage install failed. Continuing without it."
@@ -422,6 +425,7 @@ smoke_test "sift-common"        "sift_common"
 smoke_test "forensic-mcp"       "forensic_mcp"
 smoke_test "sift-mcp"           "sift_mcp"
 smoke_test "sift-gateway"       "sift_gateway"
+smoke_test "case-mcp"           "case_mcp"
 $INSTALL_TRIAGE  && smoke_test "windows-triage-mcp" "windows_triage"
 $INSTALL_RAG     && smoke_test "rag-mcp"            "rag_mcp"
 $INSTALL_OPENCTI && smoke_test "opencti-mcp"        "opencti_mcp"
@@ -677,6 +681,7 @@ if remote:
 core_backends = [
     ("forensic-mcp", "forensic_mcp"),
     ("sift-mcp", "sift_mcp"),
+    ("case-mcp", "case_mcp"),
 ]
 
 # Optional backends
@@ -737,6 +742,7 @@ pkg_list = [
     ("sift-common", "sift_common"),
     ("forensic-mcp", "forensic_mcp"),
     ("sift-mcp", "sift_mcp"),
+    ("case-mcp", "case_mcp"),
     ("sift-gateway", "sift_gateway"),
 ]
 
@@ -996,6 +1002,7 @@ ok "forensic-knowledge"
 ok "sift-common"
 ok "forensic-mcp"
 ok "sift-mcp"
+ok "case-mcp"
 ok "sift-gateway"
 $INSTALL_TRIAGE  && ok "windows-triage-mcp"
 $INSTALL_RAG     && ok "rag-mcp (forensic-rag)"

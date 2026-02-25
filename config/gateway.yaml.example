@@ -45,6 +45,14 @@ backends:
       AIIR_EXAMINER: "${AIIR_EXAMINER}"
     enabled: true
 
+  case-mcp:
+    type: stdio
+    command: "python"
+    args: ["-m", "case_mcp"]
+    env:
+      AIIR_EXAMINER: "${AIIR_EXAMINER}"
+    enabled: true
+
   forensic-rag-mcp:
     type: stdio
     command: "python"

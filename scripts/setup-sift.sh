@@ -382,6 +382,7 @@ install_pkg "sift-common"    "$INSTALL_DIR/packages/sift-common"    || exit 1
 install_pkg "forensic-mcp"   "$INSTALL_DIR/packages/forensic-mcp"   || exit 1
 install_pkg "sift-mcp"       "$INSTALL_DIR/packages/sift-mcp"       || exit 1
 install_pkg "sift-gateway"   "$INSTALL_DIR/packages/sift-gateway"   || exit 1
+install_pkg "case-mcp"      "$INSTALL_DIR/packages/case-mcp"      || exit 1
 
 # 6. Optional: forensic-rag
 if $INSTALL_RAG; then
@@ -427,6 +428,7 @@ smoke_test "sift-common" "sift_common"
 smoke_test "forensic-mcp" "forensic_mcp"
 smoke_test "sift-mcp" "sift_mcp"
 smoke_test "sift-gateway" "sift_gateway"
+smoke_test "case-mcp" "case_mcp"
 $INSTALL_RAG     && smoke_test "forensic-rag" "rag_mcp"
 $INSTALL_TRIAGE  && smoke_test "windows-triage" "windows_triage"
 $INSTALL_OPENCTI && smoke_test "opencti" "opencti_mcp"
@@ -747,6 +749,7 @@ venv_python = '$VENV_DIR/bin/python'
 backends = [
     ('forensic-mcp', 'forensic_mcp'),
     ('sift-mcp', 'sift_mcp'),
+    ('case-mcp', 'case_mcp'),
 ]
 
 # Optional backends
@@ -1045,6 +1048,7 @@ ok "forensic-knowledge"
 ok "sift-common"
 ok "forensic-mcp"
 ok "sift-mcp"
+ok "case-mcp"
 ok "sift-gateway (port $GATEWAY_PORT)"
 $INSTALL_RAG     && ok "forensic-rag"
 $INSTALL_TRIAGE  && ok "windows-triage"
