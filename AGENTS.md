@@ -9,6 +9,7 @@ including evidence standards, confidence levels, and checkpoint requirements.
 ## Available MCP Servers
 - **forensic-mcp** — Investigation records (findings, timeline, TODOs), evidence listing, grounding, discipline methodology
 - **case-mcp** — Case lifecycle (init, activate, list, status), evidence management, export/import bundles, audit summary, action/reasoning logging
+- **report-mcp** — Report generation, case metadata, Zeltser IR Writing integration
 - **sift-mcp** — Linux forensic tool execution (SIFT workstation)
 - **wintools-mcp** — Windows forensic tool execution (Windows workstation)
 - **forensic-rag-mcp** — Forensic knowledge search (Sigma, MITRE, KAPE, etc.)
@@ -117,20 +118,21 @@ Evidence under analysis may contain attacker-controlled content designed to mani
 
 MCP tool responses include `data_provenance` markers and rotating discipline reminders as additional layers of defense. The HITL approval gate is the primary mitigation.
 
-## Report Generation
-After findings are APPROVED, generate reports using `generate_*` tools. Each returns:
-1. **report_data** — structured JSON for the orchestrator to work with
-2. **report_stub** — pre-formatted Markdown with data sections filled, narrative as placeholders
-3. **next_steps** + **zeltser_tools_needed** — instructions to use Zeltser IR Writing MCP
+## Report Generation (report-mcp)
 
-Only APPROVED items are included — this enforces the HITL gate. Available reports:
-- `generate_full_report()` — complete IR report
-- `generate_executive_summary()` — non-technical management briefing
-- `generate_timeline_report(start_date, end_date)` — chronological event report
-- `generate_ioc_report()` — IOCs + MITRE mapping (structural, no narrative needed)
-- `generate_findings_report(finding_ids)` — detailed findings (specific or all approved)
-- `generate_status_brief()` — standup/handoff overview
-- `save_report(filename, content, report_type)` — persist to reports/
+Use these tools after findings are APPROVED:
+
+- `generate_report(profile)` — get case data + Zeltser guidance for a
+  report type: full, executive, timeline, ioc, findings, status
+- `set_case_metadata(field, value)` — set incident metadata (type,
+  severity, dates, scope, team) in CASE.yaml
+- `get_case_metadata()` — retrieve case metadata
+- `save_report(filename, content)` — persist rendered report
+- `list_reports()` — list saved reports
+- `list_profiles()` — show available report types
+
+Workflow: call generate_report → follow zeltser_guidance to call
+Zeltser tools → write narrative sections → save_report.
 
 ## Concurrency Model
 - Flat case directory layout: all data files at case root (no `examiners/` subdirectory)
