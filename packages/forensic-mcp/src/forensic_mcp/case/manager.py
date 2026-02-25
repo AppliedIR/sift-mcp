@@ -6,6 +6,7 @@ Local-first: each examiner owns a flat case directory. Case lifecycle
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -51,6 +52,8 @@ _PROTECTED_FINDING_FIELDS = {
     "modified_at",
     "created_by",
     "examiner",
+    "provenance",
+    "content_hash",
 }
 _PROTECTED_EVENT_FIELDS = {
     "id",
@@ -60,6 +63,33 @@ _PROTECTED_EVENT_FIELDS = {
     "created_by",
     "examiner",
 }
+
+# Keys excluded from content hash — volatile/derived fields
+_HASH_EXCLUDE_KEYS = {
+    "status",
+    "approved_at",
+    "approved_by",
+    "rejected_at",
+    "rejected_by",
+    "rejection_reason",
+    "examiner_notes",
+    "examiner_modifications",
+    "content_hash",
+    "verification",
+    "modified_at",
+    "provenance",
+}
+
+
+def _compute_content_hash(item: dict) -> str:
+    """SHA-256 of canonical JSON excluding volatile fields.
+
+    Duplicated from aiir-cli case_io.py — forensic-mcp does NOT depend on
+    aiir-cli. Kept in sync manually.
+    """
+    hashable = {k: v for k, v in item.items() if k not in _HASH_EXCLUDE_KEYS}
+    canonical = json.dumps(hashable, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def _next_seq(items: list[dict], id_field: str, prefix: str, examiner: str) -> int:
@@ -265,8 +295,22 @@ class CaseManager:
 
         return {"status": "recorded", "timestamp": ts}
 
-    def record_finding(self, finding: dict, examiner_override: str = "") -> dict:
-        """Validate and stage finding as DRAFT."""
+    def record_finding(
+        self,
+        finding: dict,
+        examiner_override: str = "",
+        supporting_commands: list[dict] | None = None,
+        audit: Any | None = None,
+    ) -> dict:
+        """Validate and stage finding as DRAFT.
+
+        Args:
+            finding: Finding data dict.
+            examiner_override: Override examiner identity.
+            supporting_commands: List of shell commands that produced evidence.
+                Each dict must have command, output_excerpt, purpose.
+            audit: AuditWriter instance (needed for shell evidence ID generation).
+        """
         case_dir = self._require_active_case()
 
         # Validate via discipline module
@@ -282,11 +326,66 @@ class CaseManager:
         seq = _next_seq(findings, "id", "F", exam)
         finding_id = f"F-{exam}-{seq:03d}"
         now = datetime.now(timezone.utc).isoformat()
+        today = datetime.now(timezone.utc).strftime("%Y%m%d")
 
         # Strip protected fields from user input for defense-in-depth
         sanitized = {
             k: v for k, v in finding.items() if k not in _PROTECTED_FINDING_FIELDS
         }
+
+        # Process supporting_commands — generate shell evidence IDs
+        shell_evidence_ids: list[str] = []
+        validated_commands: list[dict] = []
+        if supporting_commands:
+            for i, cmd in enumerate(supporting_commands[:5]):
+                if not isinstance(cmd, dict):
+                    continue
+                command = cmd.get("command", "")
+                output_excerpt = cmd.get("output_excerpt", "")
+                purpose = cmd.get("purpose", "")
+                if not command or not purpose:
+                    continue
+                # Truncate output_excerpt
+                if len(output_excerpt) > 2000:
+                    output_excerpt = output_excerpt[:2000]
+                shell_seq = self._next_shell_seq(case_dir, exam, today)
+                shell_eid = f"shell-{exam}-{today}-{shell_seq:03d}"
+                shell_evidence_ids.append(shell_eid)
+                validated_cmd = {
+                    "command": command,
+                    "output_excerpt": output_excerpt,
+                    "purpose": purpose,
+                }
+                validated_commands.append(validated_cmd)
+                # Write audit entry for this shell command
+                if audit:
+                    audit.log(
+                        tool="supporting_command",
+                        params={"command": command, "purpose": purpose},
+                        result_summary={"output_excerpt": output_excerpt[:200]},
+                        source="shell_self_report",
+                        evidence_id=shell_eid,
+                    )
+
+        # Extend evidence_ids with shell evidence IDs
+        evidence_ids = list(sanitized.get("evidence_ids", []))
+        evidence_ids.extend(shell_evidence_ids)
+        sanitized["evidence_ids"] = evidence_ids
+
+        # Classify provenance
+        provenance = self._classify_provenance(evidence_ids, case_dir)
+
+        # Hard gate: reject if all NONE and no supporting_commands
+        if provenance["summary"] == "NONE" and not validated_commands:
+            return {
+                "status": "REJECTED",
+                "error": (
+                    "Finding rejected: no provenance. Provide supporting_commands "
+                    "with the Bash commands used, or re-run analysis through MCP "
+                    "tools to create an audited evidence trail."
+                ),
+            }
+
         finding_record = {
             **sanitized,
             "id": finding_id,
@@ -295,11 +394,52 @@ class CaseManager:
             "modified_at": now,
             "created_by": exam,
             "examiner": exam,
+            "provenance": provenance["summary"],
         }
+
+        # Store supporting_commands if provided
+        if validated_commands:
+            finding_record["supporting_commands"] = validated_commands
+
+        # Compute content hash at staging
+        finding_record["content_hash"] = _compute_content_hash(finding_record)
+
         findings.append(finding_record)
         self._save_findings(case_dir, findings)
 
-        return {"status": "STAGED", "finding_id": finding_id}
+        return {
+            "status": "STAGED",
+            "finding_id": finding_id,
+            "provenance_detail": provenance,
+        }
+
+    def _next_shell_seq(self, case_dir: Path, examiner: str, today: str) -> int:
+        """Find next sequence number for shell-{examiner}-{today}-NNN evidence IDs."""
+        audit_dir = case_dir / "audit"
+        prefix = f"shell-{examiner}-{today}-"
+        max_num = 0
+        if audit_dir.is_dir():
+            for jsonl_file in audit_dir.glob("*.jsonl"):
+                try:
+                    with open(jsonl_file, encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                entry = json.loads(line)
+                                eid = entry.get("evidence_id", "")
+                                if eid.startswith(prefix):
+                                    try:
+                                        num = int(eid[len(prefix):])
+                                        max_num = max(max_num, num)
+                                    except ValueError:
+                                        pass
+                            except json.JSONDecodeError:
+                                continue
+                except OSError:
+                    continue
+        return max_num + 1
 
     def record_timeline_event(self, event: dict, examiner_override: str = "") -> dict:
         """Validate and stage timeline event as DRAFT."""
@@ -566,6 +706,90 @@ class CaseManager:
         if suggestions:
             result["suggestions"] = suggestions
 
+        return result
+
+    # --- Provenance Classification ---
+
+    # Provenance tier priority: MCP > HOOK > SHELL
+    _PROVENANCE_TIERS = ("MCP", "HOOK", "SHELL")
+
+    def _classify_provenance(
+        self, evidence_ids: list[str], case_dir: Path
+    ) -> dict:
+        """Classify evidence IDs by provenance tier.
+
+        Scans audit/*.jsonl to determine where each evidence_id came from:
+        - MCP: found in any audit file except claude-code.jsonl
+        - HOOK: found in claude-code.jsonl
+        - SHELL: evidence_id starts with "shell-"
+        - NONE: not found in any audit file
+
+        Returns {"summary": tier, "mcp": [...], "hook": [...], "shell": [...], "none": [...]}.
+        """
+        audit_dir = case_dir / "audit"
+
+        # Build evidence_id -> source lookup from audit files
+        eid_source: dict[str, str] = {}
+        if audit_dir.is_dir():
+            for jsonl_file in audit_dir.glob("*.jsonl"):
+                source = "HOOK" if jsonl_file.name == "claude-code.jsonl" else "MCP"
+                try:
+                    with open(jsonl_file, encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                entry = json.loads(line)
+                                eid = entry.get("evidence_id", "")
+                                if not eid:
+                                    continue
+                                existing = eid_source.get(eid)
+                                if existing is None:
+                                    eid_source[eid] = source
+                                elif source == "MCP":
+                                    # MCP > HOOK priority
+                                    eid_source[eid] = "MCP"
+                            except json.JSONDecodeError:
+                                continue
+                except OSError:
+                    continue
+
+        # Classify each evidence_id
+        result: dict[str, list[str]] = {
+            "mcp": [],
+            "hook": [],
+            "shell": [],
+            "none": [],
+        }
+        for eid in evidence_ids:
+            source = eid_source.get(eid)
+            if source:
+                result[source.lower()].append(eid)
+            elif eid.startswith("shell-"):
+                result["shell"].append(eid)
+            else:
+                result["none"].append(eid)
+
+        # Compute summary tier
+        tiers_present = set()
+        if result["mcp"]:
+            tiers_present.add("MCP")
+        if result["hook"]:
+            tiers_present.add("HOOK")
+        if result["shell"]:
+            tiers_present.add("SHELL")
+        has_none = bool(result["none"])
+
+        if not tiers_present:
+            summary = "NONE"
+        elif len(tiers_present) == 1 and not has_none:
+            summary = next(iter(tiers_present))
+        else:
+            # Mixed tiers or any NONE with other tiers
+            summary = "MIXED"
+
+        result["summary"] = summary  # type: ignore[assignment]
         return result
 
     # --- Internal helpers ---
