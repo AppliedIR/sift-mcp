@@ -82,6 +82,7 @@ def main():
 
     project_root = Path(__file__).parent.parent
     data_dir = project_root / "data"
+    sources_dir = data_dir / "sources"
 
     # Check databases exist
     if not (data_dir / "known_good.db").exists():
@@ -123,6 +124,14 @@ def main():
 
     # Import registry extractions
     if not args.skip_registry:
+        # Auto-extract ZIPs if needed
+        registry_dir = sources_dir / "VanillaWindowsRegistryHives"
+        if registry_dir.exists():
+            zips = list(registry_dir.rglob("RegistryHivesJSON.zip"))
+            jsons = list(registry_dir.rglob("*_ROOT.json"))
+            if zips and not jsons:
+                run_script("extract_registry_zips.py", [], "Extracting registry ZIPs")
+
         extra_args = ["--verbose"] if args.verbose else []
         success = run_script(
             "import_registry_extractions.py",

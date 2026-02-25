@@ -180,8 +180,9 @@ def find_registry_json_files(sources_dir: Path, custom_registry_dir: Path = None
     if not any(files.values()):
         zip_count = len(list(registry_dir.rglob("RegistryHivesJSON.zip")))
         if zip_count > 0:
-            logger.warning(f"Found {zip_count} RegistryHivesJSON.zip files but no extracted JSONs!")
-            logger.warning("Run: python scripts/extract_registry_zips.py")
+            logger.error(f"Found {zip_count} RegistryHivesJSON.zip files but no extracted JSONs!")
+            logger.error("Run: python scripts/extract_registry_zips.py")
+            sys.exit(1)
 
     return files
 
