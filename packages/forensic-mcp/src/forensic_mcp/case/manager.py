@@ -127,7 +127,7 @@ class CaseManager:
                 if os.path.isabs(content):
                     # Absolute path — use directly
                     case_dir = Path(content)
-                    if case_dir.is_dir():
+                    if case_dir.is_dir() and (case_dir / "CASE.yaml").exists():
                         self._active_case_id = case_dir.name
                         self._active_case_path = case_dir
                         os.environ["AIIR_CASE_DIR"] = str(case_dir)
@@ -136,7 +136,7 @@ class CaseManager:
                     # Legacy: bare case ID
                     _validate_case_id(content)
                     case_dir = self.cases_dir / content
-                    if case_dir.is_dir():
+                    if case_dir.is_dir() and (case_dir / "CASE.yaml").exists():
                         self._active_case_id = content
                         self._active_case_path = case_dir
                         os.environ["AIIR_CASE_DIR"] = str(case_dir)
