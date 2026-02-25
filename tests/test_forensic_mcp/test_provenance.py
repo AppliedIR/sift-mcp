@@ -14,6 +14,9 @@ from forensic_mcp.case.manager import CaseManager, _compute_content_hash
 def manager(tmp_path, monkeypatch):
     monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
     monkeypatch.setenv("AIIR_EXAMINER", "tester")
+    monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+    monkeypatch.delenv("AIIR_AUDIT_DIR", raising=False)
+    monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
     return CaseManager()
 
 
