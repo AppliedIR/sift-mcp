@@ -117,13 +117,6 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     # --- Investigation Records ---
 
     @server.tool()
-    def record_action(description: str, tool: str = "", command: str = "", analyst_override: str = "") -> dict:
-        """Log a supplemental action note to the case record. Auto-committed, no approval needed. Note: MCP tool calls are already captured by the automatic audit trail."""
-        result = manager.record_action(description, tool, command, examiner_override=analyst_override)
-        audit.log(tool="record_action", params={"description": description}, result_summary=result)
-        return result
-
-    @server.tool()
     def record_finding(finding: dict, analyst_override: str = "") -> dict:
         """Stage finding as DRAFT for human review. Required fields in finding dict: title (str), description (str), confidence (LOW/MEDIUM/HIGH), evidence_ids (list of str, non-empty). Optional: type, mitre_attack, iocs, source. Requires human approval via 'aiir approve'."""
         result = manager.record_finding(finding, examiner_override=analyst_override)
@@ -195,25 +188,6 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     def get_actions(limit: int = 50) -> list[dict]:
         """Return recent actions from the case actions log."""
         return manager.get_actions(limit)
-
-    @server.tool()
-    def log_reasoning(text: str) -> dict:
-        """Record analytical reasoning to the audit trail (no approval needed). Call when choosing what to examine next, forming a hypothesis, revising an interpretation, or ruling something out. Unrecorded reasoning is lost during context compaction."""
-        result = {"status": "logged"}
-        audit.log(tool="log_reasoning", params={"text": text}, result_summary=result, source="orchestrator")
-        return result
-
-    @server.tool()
-    def log_external_action(command: str, output_summary: str, purpose: str) -> dict:
-        """Record a tool execution performed outside this MCP server (e.g., via Bash or another backend). Without this record, the action has no audit entry and findings cannot reference it."""
-        result = {"status": "logged", "note": "orchestrator_voluntary -- not independently verified"}
-        audit.log(
-            tool="log_external_action",
-            params={"command": command, "output_summary": output_summary, "purpose": purpose},
-            result_summary=result,
-            source="orchestrator_voluntary",
-        )
-        return result
 
     # --- TODOs ---
 

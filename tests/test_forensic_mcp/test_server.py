@@ -26,12 +26,12 @@ class TestServerSetup:
     @pytest.mark.asyncio
     async def test_tool_count_resources_mode(self, server):
         tools = await server.list_tools()
-        assert len(tools) == 15
+        assert len(tools) == 12
 
     @pytest.mark.asyncio
     async def test_tool_count_tools_mode(self, tools_server):
         tools = await tools_server.list_tools()
-        assert len(tools) == 29
+        assert len(tools) == 26
 
     @pytest.mark.asyncio
     async def test_expected_tools_present(self, server):
@@ -39,9 +39,8 @@ class TestServerSetup:
         names = {t.name for t in tools}
         expected = {
             "get_case_status", "list_cases",
-            "record_action", "record_finding", "record_timeline_event",
+            "record_finding", "record_timeline_event",
             "get_findings", "get_timeline", "get_actions",
-            "log_reasoning", "log_external_action",
             "add_todo", "list_todos", "update_todo", "complete_todo",
             "list_evidence",
         }

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -288,6 +289,100 @@ def create_server() -> FastMCP:
             return json.dumps(result)
         except (ValueError, OSError) as e:
             return json.dumps({"error": str(e)})
+
+    # ------------------------------------------------------------------
+    # Tool 11: record_action (SAFE — auto-committed, no approval)
+    # ------------------------------------------------------------------
+    @server.tool()
+    def record_action(
+        description: str,
+        tool: str = "",
+        command: str = "",
+    ) -> str:
+        """Log a supplemental action note to the case record.
+        Auto-committed, no approval needed. Note: MCP tool calls are
+        already captured by the automatic audit trail."""
+        try:
+            case_dir = _resolve_case_dir()
+            examiner = resolve_examiner()
+            ts = datetime.now(timezone.utc).isoformat()
+
+            # Match actions.jsonl format from CaseManager.record_action()
+            entry: dict = {
+                "ts": ts,
+                "description": description,
+                "examiner": examiner,
+            }
+            if tool:
+                entry["tool"] = tool
+            if command:
+                entry["command"] = command
+
+            try:
+                with open(
+                    case_dir / "actions.jsonl", "a", encoding="utf-8"
+                ) as f:
+                    f.write(json.dumps(entry) + "\n")
+                    f.flush()
+                    os.fsync(f.fileno())
+            except OSError as e:
+                return json.dumps(
+                    {"status": "write_failed", "timestamp": ts,
+                     "error": str(e)}
+                )
+
+            audit.log(
+                tool="record_action",
+                params={"description": description},
+                result_summary={"status": "recorded", "timestamp": ts},
+            )
+            return json.dumps({"status": "recorded", "timestamp": ts})
+        except (ValueError, OSError) as e:
+            return json.dumps({"error": str(e)})
+
+    # ------------------------------------------------------------------
+    # Tool 12: log_reasoning (SAFE — audit-only, no approval)
+    # ------------------------------------------------------------------
+    @server.tool()
+    def log_reasoning(text: str) -> str:
+        """Record analytical reasoning to the audit trail (no approval
+        needed). Call when choosing what to examine next, forming a
+        hypothesis, revising an interpretation, or ruling something out.
+        Unrecorded reasoning is lost during context compaction."""
+        result = {"status": "logged"}
+        audit.log(
+            tool="log_reasoning",
+            params={"text": text},
+            result_summary=result,
+            source="orchestrator",
+        )
+        return json.dumps(result)
+
+    # ------------------------------------------------------------------
+    # Tool 13: log_external_action (SAFE — audit-only, no approval)
+    # ------------------------------------------------------------------
+    @server.tool()
+    def log_external_action(
+        command: str, output_summary: str, purpose: str
+    ) -> str:
+        """Record a tool execution performed outside this MCP server
+        (e.g., via Bash or another backend). Without this record, the
+        action has no audit entry and findings cannot reference it."""
+        result = {
+            "status": "logged",
+            "note": "orchestrator_voluntary -- not independently verified",
+        }
+        audit.log(
+            tool="log_external_action",
+            params={
+                "command": command,
+                "output_summary": output_summary,
+                "purpose": purpose,
+            },
+            result_summary=result,
+            source="orchestrator_voluntary",
+        )
+        return json.dumps(result)
 
     return server
 
