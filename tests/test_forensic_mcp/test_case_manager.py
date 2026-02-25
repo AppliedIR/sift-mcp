@@ -32,6 +32,10 @@ def manager(tmp_path, monkeypatch):
     """CaseManager with temp cases directory."""
     monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
     monkeypatch.setenv("AIIR_EXAMINER", "tester")
+    monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+    monkeypatch.delenv("AIIR_ACTIVE_CASE", raising=False)
+    # Isolate from real ~/.aiir/active_case
+    monkeypatch.setenv("HOME", str(tmp_path))
     mgr = CaseManager()
     return mgr
 
