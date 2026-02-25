@@ -2,6 +2,11 @@
 
 Monorepo for all SIFT-side AIIR components. 10 packages: forensic-mcp (15 tools + 14 resources), case-mcp (13 tools), report-mcp (6 tools), sift-mcp (6 tools), sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, and sift-common. Part of the [AIIR](https://github.com/AppliedIR/aiir) platform.
 
+**[Documentation](https://appliedir.github.io/sift-mcp/)** ·
+[Getting Started](https://appliedir.github.io/sift-mcp/getting-started/) ·
+[CLI Reference](https://appliedir.github.io/sift-mcp/cli-reference/) ·
+[MCP Reference](https://appliedir.github.io/sift-mcp/mcp-reference/)
+
 ## Architecture
 
 This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, case-mcp, report-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, and sift-common. Each MCP runs as a stdio subprocess of the sift-gateway. The LLM client and aiir CLI are the two human-facing tools. The aiir CLI always runs on the SIFT workstation — it requires direct filesystem access to the case directory. When the LLM client runs on a separate machine, the examiner must have SSH access to SIFT for all CLI operations. The LLM client connects to the gateway over Streamable HTTP. It never talks to MCP backends directly.
