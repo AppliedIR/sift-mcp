@@ -7,7 +7,8 @@ Query `forensic-mcp://investigation-framework` for the full methodology framewor
 including evidence standards, confidence levels, and checkpoint requirements.
 
 ## Available MCP Servers
-- **forensic-mcp** — Case management, findings, evidence integrity, discipline methodology, report generation
+- **forensic-mcp** — Investigation records (findings, timeline, TODOs), evidence listing, grounding, discipline methodology
+- **case-mcp** — Case lifecycle (init, activate, list, status), evidence management, export/import bundles, audit summary, action/reasoning logging
 - **sift-mcp** — Linux forensic tool execution (SIFT workstation)
 - **wintools-mcp** — Windows forensic tool execution (Windows workstation)
 - **forensic-rag-mcp** — Forensic knowledge search (Sigma, MITRE, KAPE, etc.)

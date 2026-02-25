@@ -1,10 +1,10 @@
 # SIFT MCP
 
-Monorepo for all SIFT-side AIIR components. The sift-mcp package provides 6 core tools for denylist-protected forensic tool execution with knowledge-enriched response envelopes. The monorepo also contains forensic-mcp (15 tools + 14 resources), sift-gateway, forensic-knowledge, forensic-rag, windows-triage, and opencti. Part of the [AIIR](https://github.com/AppliedIR/aiir) platform.
+Monorepo for all SIFT-side AIIR components. The sift-mcp package provides 6 core tools for denylist-protected forensic tool execution with knowledge-enriched response envelopes. The monorepo also contains forensic-mcp (15 tools + 14 resources), case-mcp (13 tools), sift-gateway, forensic-knowledge, forensic-rag, windows-triage, and opencti. Part of the [AIIR](https://github.com/AppliedIR/aiir) platform.
 
 ## Architecture
 
-This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, and opencti. The sift-mcp tool execution package runs as a subprocess of the sift-gateway. The LLM client and aiir CLI are the two human-facing tools. The aiir CLI always runs on the SIFT workstation — it requires direct filesystem access to the case directory. When the LLM client runs on a separate machine, the examiner must have SSH access to SIFT for all CLI operations. The LLM client connects to the gateway over Streamable HTTP. It never talks to sift-mcp directly.
+This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, case-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, and opencti. The sift-mcp tool execution package runs as a subprocess of the sift-gateway. The LLM client and aiir CLI are the two human-facing tools. The aiir CLI always runs on the SIFT workstation — it requires direct filesystem access to the case directory. When the LLM client runs on a separate machine, the examiner must have SSH access to SIFT for all CLI operations. The LLM client connects to the gateway over Streamable HTTP. It never talks to sift-mcp directly.
 
 ```mermaid
 graph LR
@@ -17,6 +17,7 @@ graph LR
         CLI["aiir CLI<br/>(human interface)"]
         GW["sift-gateway<br/>:4508"]
         FM["forensic-mcp"]
+        CM["case-mcp"]
         SM["sift-mcp"]
         RAG["forensic-rag"]
         WT["windows-triage"]
@@ -25,11 +26,13 @@ graph LR
         CASE["Case Directory"]
 
         GW -->|stdio| FM
+        GW -->|stdio| CM
         GW -->|stdio| SM
         GW -->|stdio| RAG
         GW -->|stdio| WT
         GW -->|stdio| OC
         FM --> CASE
+        CM --> CASE
         CLI --> CASE
     end
 
@@ -45,6 +48,7 @@ The gateway exposes each backend as a separate MCP endpoint. Clients can connect
 ```
 http://localhost:4508/mcp              # Aggregate (all tools)
 http://localhost:4508/mcp/forensic-mcp
+http://localhost:4508/mcp/case-mcp
 http://localhost:4508/mcp/sift-mcp
 http://localhost:4508/mcp/windows-triage-mcp
 http://localhost:4508/mcp/forensic-rag-mcp
