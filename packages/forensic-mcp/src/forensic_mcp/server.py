@@ -123,9 +123,18 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     # --- Investigation Records ---
 
     @server.tool()
-    def record_finding(finding: dict, analyst_override: str = "") -> dict:
-        """Stage finding as DRAFT for human review. Required fields in finding dict: title (str), description (str), confidence (LOW/MEDIUM/HIGH), evidence_ids (list of str, non-empty). Optional: type, mitre_attack, iocs, source. Requires human approval via 'aiir approve'."""
-        result = manager.record_finding(finding, examiner_override=analyst_override)
+    def record_finding(
+        finding: dict,
+        analyst_override: str = "",
+        supporting_commands: list[dict] | None = None,
+    ) -> dict:
+        """Stage finding as DRAFT for human review. Required fields in finding dict: title (str), description (str), confidence (LOW/MEDIUM/HIGH), evidence_ids (list of str, non-empty). Optional: type, mitre_attack, iocs, source, supporting_commands (list of {command, output_excerpt, purpose} for Bash-sourced evidence). Requires human approval via 'aiir approve'."""
+        result = manager.record_finding(
+            finding,
+            examiner_override=analyst_override,
+            supporting_commands=supporting_commands,
+            audit=audit,
+        )
         audit.log(
             tool="record_finding", params={"finding": finding}, result_summary=result
         )
@@ -139,6 +148,15 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
             grounding = manager._score_grounding(finding)
             if grounding:
                 result["grounding"] = grounding
+
+            # Add provenance classification to response
+            provenance = result.pop("provenance_detail", None)
+            if provenance:
+                result["provenance"] = provenance
+                if provenance["summary"] == "SHELL":
+                    result["provenance_guidance"] = (
+                        "For stronger provenance, re-run analysis through MCP tools."
+                    )
 
         # Enrich validation failures with rule citations
         if result.get("status") == "VALIDATION_FAILED":
