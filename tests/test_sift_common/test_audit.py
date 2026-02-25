@@ -35,9 +35,9 @@ class TestSanitizeSlug:
     def test_strips_leading_hyphens(self):
         assert _sanitize_slug("---admin") == "admin"
 
-    def test_truncates_to_20(self):
-        result = _sanitize_slug("a" * 30)
-        assert len(result) <= 20
+    def test_truncates_to_40(self):
+        result = _sanitize_slug("a" * 50)
+        assert len(result) <= 40
 
     def test_empty_returns_unknown(self):
         assert _sanitize_slug("") == "unknown"

@@ -18,16 +18,19 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_EXAMINER_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,19}$")
+_EXAMINER_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 
 
 def _sanitize_slug(raw: str) -> str:
     """Sanitize a raw string into a valid examiner slug.
 
     Lowercases, replaces invalid characters with hyphens, strips leading/trailing
-    hyphens, and truncates to 20 characters.
+    hyphens, and truncates to 40 characters.
     """
-    slug = re.sub(r"[^a-z0-9-]", "-", raw.lower()).strip("-")[:20]
+    slug = re.sub(r"[^a-z0-9-]", "-", raw.lower()).strip("-")
+    if len(slug) > 40:
+        logger.warning("Examiner slug truncated from %d to 40 chars: %s", len(slug), slug[:40])
+        slug = slug[:40]
     if not slug:
         return "unknown"
     slug = slug.lstrip("-")
