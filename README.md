@@ -1,10 +1,10 @@
 # SIFT MCP
 
-Monorepo for all SIFT-side AIIR components. The sift-mcp package provides 6 core tools for denylist-protected forensic tool execution with knowledge-enriched response envelopes. The monorepo also contains forensic-mcp (15 tools + 14 resources), case-mcp (13 tools), sift-gateway, forensic-knowledge, forensic-rag, windows-triage, and opencti. Part of the [AIIR](https://github.com/AppliedIR/aiir) platform.
+Monorepo for all SIFT-side AIIR components. 10 packages: forensic-mcp (15 tools + 14 resources), case-mcp (13 tools), report-mcp (6 tools), sift-mcp (6 tools), sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, and sift-common. Part of the [AIIR](https://github.com/AppliedIR/aiir) platform.
 
 ## Architecture
 
-This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, case-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, and opencti. The sift-mcp tool execution package runs as a subprocess of the sift-gateway. The LLM client and aiir CLI are the two human-facing tools. The aiir CLI always runs on the SIFT workstation — it requires direct filesystem access to the case directory. When the LLM client runs on a separate machine, the examiner must have SSH access to SIFT for all CLI operations. The LLM client connects to the gateway over Streamable HTTP. It never talks to sift-mcp directly.
+This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, case-mcp, report-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, and sift-common. Each MCP runs as a stdio subprocess of the sift-gateway. The LLM client and aiir CLI are the two human-facing tools. The aiir CLI always runs on the SIFT workstation — it requires direct filesystem access to the case directory. When the LLM client runs on a separate machine, the examiner must have SSH access to SIFT for all CLI operations. The LLM client connects to the gateway over Streamable HTTP. It never talks to MCP backends directly.
 
 ```mermaid
 graph LR
@@ -18,6 +18,7 @@ graph LR
         GW["sift-gateway<br/>:4508"]
         FM["forensic-mcp"]
         CM["case-mcp"]
+        RM["report-mcp"]
         SM["sift-mcp"]
         RAG["forensic-rag"]
         WT["windows-triage"]
@@ -27,12 +28,14 @@ graph LR
 
         GW -->|stdio| FM
         GW -->|stdio| CM
+        GW -->|stdio| RM
         GW -->|stdio| SM
         GW -->|stdio| RAG
         GW -->|stdio| WT
         GW -->|stdio| OC
         FM --> CASE
         CM --> CASE
+        RM --> CASE
         CLI --> CASE
     end
 
@@ -49,6 +52,7 @@ The gateway exposes each backend as a separate MCP endpoint. Clients can connect
 http://localhost:4508/mcp              # Aggregate (all tools)
 http://localhost:4508/mcp/forensic-mcp
 http://localhost:4508/mcp/case-mcp
+http://localhost:4508/mcp/report-mcp
 http://localhost:4508/mcp/sift-mcp
 http://localhost:4508/mcp/windows-triage-mcp
 http://localhost:4508/mcp/forensic-rag-mcp
@@ -208,11 +212,7 @@ cd .. && git clone https://github.com/AppliedIR/aiir.git && cd aiir
 ./aiir-install.sh          # Install aiir CLI + configure client
 ```
 
-We recommend using an LLM client that does not have the ability to directly interface with your system's shell. Tools like Claude Code are amazingly effective, but difficult to constrain. Our system is designed to require the LLM to go through existing MCPs to ensure proper audit trail when accessing forensic tooling. However, your use case may be different. If you prefer to move fast, break things, and let Claude take the wheel:
-
-```bash
-curl -sSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh | bash -s -- --ccode
-```
+When you select Claude Code during `aiir setup client`, the installer deploys additional forensic controls: kernel-level sandbox (restricts Bash writes), PostToolUse audit hook (captures every Bash command to the case audit trail), provenance enforcement (findings without an evidence trail are rejected), and PIN-gated human approval. Non-shell clients (Claude Desktop, Cursor, etc.) get MCP config only.
 
 The quickstart installs all core components, starts the gateway, and runs the aiir setup wizard. For tier selection (quick, recommended, custom) or remote access with TLS, run `sift-install.sh` directly.
 
@@ -223,7 +223,8 @@ The quickstart installs all core components, starts the gateway, and runs the ai
 | `SIFT_TIMEOUT` | `600` | Default command timeout in seconds |
 | `SIFT_TOOL_PATHS` | (none) | Extra binary search paths (colon-separated) |
 | `SIFT_HAYABUSA_DIR` | `/opt/hayabusa` | Hayabusa install location |
-| `AIIR_CASE_DIR` | (none) | Active case directory -- enables audit trail (flat layout, no examiner subdirectory) |
+| `AIIR_CASE_DIR` | (none) | Active case directory — enables audit trail. Falls back to `~/.aiir/active_case` if unset. |
+| `AIIR_CASES_DIR` | (none) | Root directory containing all cases |
 | `AIIR_EXAMINER` | (none) | Examiner identity for evidence IDs and audit |
 
 ### Remote Access (TLS + Auth)
@@ -245,7 +246,39 @@ Any data loaded into the system or its component VMs, computers, or instances ru
 
 Outgoing Internet connections are required for report generation (Zeltser IR Writing MCP) and optionally used for threat intelligence (OpenCTI) and documentation (MS Learn MCP). No incoming connections from external systems should be allowed.
 
-When choosing an LLM client, we recommend constrained clients that are limited to chat and MCP functionality. AIIR is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. AI clients with the ability to run arbitrary commands on the host system can bypass those safeguards. Such clients can still interact with AIIR, but they can also conduct activities outside the scope of the platform's controls. AIIR is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
+AIIR is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. Clients with direct shell access (like Claude Code) can also operate outside MCP, but `aiir setup client` deploys forensic controls for Claude Code: a kernel-level sandbox restricts Bash writes, a PostToolUse hook captures every Bash command to the audit trail, and provenance enforcement ensures findings are traceable to evidence. AIIR is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
+
+## Audit Trail and Provenance
+
+Every MCP tool call is logged to a per-backend JSONL file in the case `audit/` directory with a unique evidence ID (`{backend}-{examiner}-{date}-{seq}`). When Claude Code is the client, a PostToolUse hook additionally captures every Bash command to `audit/claude-code.jsonl`.
+
+Findings recorded via `record_finding()` are classified by provenance tier based on the audit trail:
+
+| Tier | Source | Meaning |
+|------|--------|---------|
+| MCP | MCP audit log | Evidence gathered through an MCP tool (system-witnessed) |
+| HOOK | Claude Code hook log | Evidence gathered via Bash with hook capture (framework-witnessed) |
+| SHELL | `supporting_commands` parameter | Evidence from direct shell commands (self-reported) |
+| NONE | No audit record | No evidence trail — finding is rejected by hard gate |
+
+Findings with NONE provenance and no supporting commands are rejected. This ensures every finding is traceable to evidence.
+
+Content integrity is protected by SHA-256 hashes computed at staging and verified at approval. Cross-file verification compares hashes stored in `findings.json` against those in `approvals.jsonl` to detect post-approval tampering.
+
+## Report Generation
+
+Report generation uses the report-mcp package (6 tools) with data-driven profiles:
+
+| Profile | Purpose |
+|---------|---------|
+| `full` | Comprehensive IR report with all approved data |
+| `executive` | Management briefing (1-2 pages, non-technical) |
+| `timeline` | Chronological event narrative |
+| `ioc` | Structured IOC export with MITRE mapping |
+| `findings` | Detailed approved findings |
+| `status` | Quick status for standups |
+
+`generate_report()` produces structured JSON with case data, IOC aggregation, MITRE ATT&CK mapping, and Zeltser IR Writing guidance. The LLM renders narrative sections using Zeltser's IR templates. Reports only include APPROVED findings — provenance, confidence, and other internal working notes are stripped.
 
 ## Evidence Handling
 

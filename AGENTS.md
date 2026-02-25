@@ -15,9 +15,9 @@ including evidence standards, confidence levels, and checkpoint requirements.
 - **forensic-rag-mcp** — Forensic knowledge search (Sigma, MITRE, KAPE, etc.)
 - **windows-triage-mcp** — Windows baseline validation (offline)
 - **opencti-mcp** — Threat intelligence (OpenCTI)
-- **remnux-mcp** — Malware analysis (REMnux workstation, optional)
+- **remnux-mcp** — Malware analysis (REMnux workstation, separate deployment, optional)
 
-Call `list_available_tools()` on any connected MCP to see current tool inventory.
+Call `list_available_tools()` on sift-mcp or wintools-mcp to see current forensic tool inventory.
 
 ## Malware Analysis Escalation
 

@@ -1,7 +1,7 @@
 # AIIR Platform Architecture
 
 **Status:** Definitive reference for what is built. Not aspirational.
-**Last updated:** 2026-02-22
+**Last updated:** 2026-02-25
 
 ---
 
@@ -28,6 +28,8 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 |-----------|---------|------|-----------------------|---------------------|
 | sift-gateway | SIFT | 4508 | Streamable HTTP MCP | stdio to backends |
 | forensic-mcp | SIFT | — | (via gateway) | stdio subprocess |
+| case-mcp | SIFT | — | (via gateway) | stdio subprocess |
+| report-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | sift-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | forensic-rag-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | windows-triage-mcp | SIFT | — | (via gateway) | stdio subprocess |
@@ -42,7 +44,9 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | Component | Purpose |
 |-----------|---------|
 | **sift-gateway** | Aggregates SIFT-local MCPs. Starts each as a stdio subprocess. Exposes all their tools via `/mcp` (Streamable HTTP) and `/api/v1/tools` (REST). API key → examiner identity mapping for multi-user. |
-| **forensic-mcp** | Case management, findings, timeline, evidence, TODOs, discipline rules. The investigation state machine. 15 tools + 14 MCP resources. Reports, audit, and case lifecycle moved to aiir CLI. |
+| **forensic-mcp** | Findings, timeline, evidence, TODOs, discipline rules. The investigation state machine. 15 tools + 14 MCP resources. |
+| **case-mcp** | Case lifecycle and status. Init, activate, close, migrate, list cases, case info, evidence summary, timeline summary, findings summary, recent activity, disk usage, export, import. 13 tools. |
+| **report-mcp** | Report generation with data-driven profiles (full, executive, timeline, ioc, findings, status). Aggregates approved findings, IOCs, MITRE mappings, and Zeltser IR Writing guidance. 6 tools. |
 | **sift-mcp** | Authenticated, denylist-protected forensic tool execution on Linux/SIFT. Zimmerman suite, Volatility, Sleuth Kit, Hayabusa, etc. FK-enriched response envelopes. 6 core tools, 65+ catalog entries. |
 | **forensic-rag-mcp** | Semantic search across Sigma rules, MITRE ATT&CK, Atomic Red Team, Splunk, KAPE, Velociraptor, LOLBAS, GTFOBins. |
 | **windows-triage-mcp** | Offline Windows baseline validation. Checks files, processes, services, scheduled tasks, registry, DLLs, pipes against known-good databases. |
@@ -142,6 +146,7 @@ cases/INC-2026-0219/
 └── audit/
     ├── forensic-mcp.jsonl
     ├── sift-mcp.jsonl
+    ├── claude-code.jsonl       # PostToolUse hook captures (Claude Code only)
     └── ...
 ```
 
@@ -163,7 +168,9 @@ sift-gateway :4508                     wintools-mcp :4624
     │                                      │
     ▼                                      ▼
 forensic-mcp                          Windows forensic tools
-sift-mcp ──► SIFT forensic tools      (Zimmerman, Hayabusa)
+case-mcp                              (Zimmerman, Hayabusa)
+report-mcp
+sift-mcp ──► SIFT forensic tools
 forensic-rag-mcp
 windows-triage-mcp
 opencti-mcp
@@ -226,8 +233,8 @@ Generated `.mcp.json` example:
 
 | Repo | GitHub | Purpose |
 |------|--------|---------|
-| [sift-mcp](https://github.com/AppliedIR/sift-mcp) | AppliedIR/sift-mcp | SIFT monorepo: forensic-mcp, sift-mcp, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, sift-common, SIFT installer, platform docs |
+| [sift-mcp](https://github.com/AppliedIR/sift-mcp) | AppliedIR/sift-mcp | SIFT monorepo: 10 packages (forensic-mcp, case-mcp, report-mcp, sift-mcp, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, sift-common), SIFT installer, platform docs |
 | [wintools-mcp](https://github.com/AppliedIR/wintools-mcp) | AppliedIR/wintools-mcp | Windows tool execution MCP + Windows installer |
 | [aiir](https://github.com/AppliedIR/aiir) | AppliedIR/aiir | CLI + this architecture doc |
 
-All repos are private under the AppliedIR GitHub org.
+Public repos under the AppliedIR GitHub org.
