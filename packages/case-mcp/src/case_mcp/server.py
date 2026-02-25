@@ -37,6 +37,19 @@ from sift_common.oplog import setup_logging
 
 logger = logging.getLogger(__name__)
 
+_MAX_NAME = 200
+_MAX_TEXT = 10_000
+_MAX_SHORT = 200
+
+
+def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
+    """Reject strings exceeding max_len or containing null bytes."""
+    if value is not None and isinstance(value, str):
+        if len(value) > max_len:
+            raise ValueError(f"{field} exceeds maximum length of {max_len} characters")
+        if "\x00" in value:
+            raise ValueError(f"{field} contains invalid null byte")
+
 
 def _resolve_case_dir(case_id: str = "") -> Path:
     """Resolve case directory without sys.exit.
@@ -102,6 +115,8 @@ def create_server() -> FastMCP:
         a permanent directory with case metadata.
         """
         try:
+            _validate_str_length(name, "name", _MAX_NAME)
+            _validate_str_length(description, "description", _MAX_TEXT)
             examiner = resolve_examiner()
             result = _case_init_data(
                 name=name,
@@ -181,6 +196,7 @@ def create_server() -> FastMCP:
         file permissions and is difficult to undo.
         """
         try:
+            _validate_str_length(description, "description", _MAX_TEXT)
             case_dir = _resolve_case_dir()
             examiner = resolve_examiner()
             result = register_evidence_data(
@@ -304,6 +320,9 @@ def create_server() -> FastMCP:
         Auto-committed, no approval needed. Note: MCP tool calls are
         already captured by the automatic audit trail."""
         try:
+            _validate_str_length(description, "description", _MAX_TEXT)
+            _validate_str_length(tool, "tool", _MAX_SHORT)
+            _validate_str_length(command, "command", _MAX_TEXT)
             case_dir = _resolve_case_dir()
             examiner = resolve_examiner()
             ts = datetime.now(timezone.utc).isoformat()
@@ -347,6 +366,7 @@ def create_server() -> FastMCP:
         needed). Call when choosing what to examine next, forming a
         hypothesis, revising an interpretation, or ruling something out.
         Unrecorded reasoning is lost during context compaction."""
+        _validate_str_length(text, "text", _MAX_TEXT)
         result = {"status": "logged"}
         audit.log(
             tool="log_reasoning",
@@ -364,6 +384,9 @@ def create_server() -> FastMCP:
         """Record a tool execution performed outside this MCP server
         (e.g., via Bash or another backend). Without this record, the
         action has no audit entry and findings cannot reference it."""
+        _validate_str_length(command, "command", _MAX_TEXT)
+        _validate_str_length(output_summary, "output_summary", _MAX_TEXT)
+        _validate_str_length(purpose, "purpose", _MAX_TEXT)
         result = {
             "status": "logged",
             "note": "orchestrator_voluntary -- not independently verified",

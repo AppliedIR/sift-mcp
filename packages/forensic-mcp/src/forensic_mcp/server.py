@@ -13,6 +13,19 @@ from forensic_mcp.case.manager import CaseManager
 
 logger = logging.getLogger(__name__)
 
+_MAX_TITLE = 500
+_MAX_TEXT = 10_000
+_MAX_SHORT = 200
+
+
+def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
+    """Reject strings exceeding max_len or containing null bytes."""
+    if value is not None and isinstance(value, str):
+        if len(value) > max_len:
+            raise ValueError(f"{field} exceeds maximum length of {max_len} characters")
+        if "\x00" in value:
+            raise ValueError(f"{field} contains invalid null byte")
+
 
 def _build_finding_considerations(finding: dict) -> list[str]:
     """Assemble pre-acceptance guidance for a staged finding."""
@@ -129,6 +142,17 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         supporting_commands: list[dict] | None = None,
     ) -> dict:
         """Stage finding as DRAFT for human review. Required fields in finding dict: title (str), description (str), confidence (LOW/MEDIUM/HIGH), evidence_ids (list of str, non-empty). Optional: type, mitre_attack, iocs, source, supporting_commands (list of {command, output_excerpt, purpose} for Bash-sourced evidence). Requires human approval via 'aiir approve'."""
+        _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
+        if isinstance(finding, dict):
+            _validate_str_length(finding.get("title"), "title", _MAX_TITLE)
+            _validate_str_length(finding.get("observation"), "observation", _MAX_TEXT)
+            _validate_str_length(finding.get("interpretation"), "interpretation", _MAX_TEXT)
+            _validate_str_length(finding.get("confidence_justification"), "confidence_justification", _MAX_TEXT)
+        if supporting_commands:
+            for cmd in supporting_commands[:5]:
+                if isinstance(cmd, dict):
+                    _validate_str_length(cmd.get("command"), "supporting_commands.command", _MAX_TEXT)
+                    _validate_str_length(cmd.get("purpose"), "supporting_commands.purpose", _MAX_TEXT)
         result = manager.record_finding(
             finding,
             examiner_override=analyst_override,
@@ -175,6 +199,10 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - artifact_ref: deduplication hint — unique artifact identifier
           (e.g. "prefetch:EVIL.EXE-{hash}", "evtx:Security:4624:12345")
         """
+        _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
+        if isinstance(event, dict):
+            _validate_str_length(event.get("description"), "description", _MAX_TEXT)
+            _validate_str_length(event.get("source"), "source", _MAX_TITLE)
         result = manager.record_timeline_event(
             event, examiner_override=analyst_override
         )
@@ -232,6 +260,9 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         analyst_override: str = "",
     ) -> dict:
         """Create a TODO item for the investigation. Priority: high/medium/low."""
+        _validate_str_length(description, "description", _MAX_TEXT)
+        _validate_str_length(assignee, "assignee", _MAX_SHORT)
+        _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
         result = manager.add_todo(
             description,
             assignee,
@@ -261,6 +292,9 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         analyst_override: str = "",
     ) -> dict:
         """Update a TODO: change status, add note, reassign, reprioritize."""
+        _validate_str_length(note, "note", _MAX_TEXT)
+        _validate_str_length(assignee, "assignee", _MAX_SHORT)
+        _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
         result = manager.update_todo(
             todo_id,
             status,

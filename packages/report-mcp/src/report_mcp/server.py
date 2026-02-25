@@ -32,6 +32,20 @@ from report_mcp.profiles import PROFILES, STRIPPED_FINDING_FIELDS
 
 logger = logging.getLogger(__name__)
 
+_MAX_FILENAME = 200
+_MAX_FIELD = 500
+_MAX_REPORT_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
+    """Reject strings exceeding max_len or containing null bytes."""
+    if value is not None and isinstance(value, str):
+        if len(value) > max_len:
+            raise ValueError(f"{field} exceeds maximum length of {max_len} characters")
+        if "\x00" in value:
+            raise ValueError(f"{field} contains invalid null byte")
+
+
 # -- Metadata validation tables --
 
 _ENUM_FIELDS: dict[str, set[str]] = {
@@ -570,6 +584,9 @@ def create_server() -> FastMCP:
         Unknown fields are accepted and stored as-is.
         """
         try:
+            _validate_str_length(field, "field", _MAX_FIELD)
+            if isinstance(value, str):
+                _validate_str_length(value, "value", 10_000)
             if field in _PROTECTED_FIELDS:
                 return json.dumps(
                     {
@@ -683,6 +700,11 @@ def create_server() -> FastMCP:
         underscores, and dots are allowed. Path traversal is blocked.
         """
         try:
+            _validate_str_length(filename, "filename", _MAX_FILENAME)
+            if len(content.encode("utf-8", errors="replace")) > _MAX_REPORT_BYTES:
+                return json.dumps(
+                    {"error": f"Report content exceeds maximum size of 10 MB."}
+                )
             # Block path traversal
             if ".." in filename or "/" in filename or "\\" in filename:
                 return json.dumps(
