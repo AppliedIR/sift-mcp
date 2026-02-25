@@ -9,6 +9,7 @@ import hashlib
 import logging
 import os
 import subprocess
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +21,19 @@ from sift_mcp.exceptions import ExecutionError, ExecutionTimeoutError
 logger = logging.getLogger(__name__)
 
 
+def _read_pipe(pipe, chunks: list[bytes], limit: int, total: list[int]) -> None:
+    """Read from a pipe incrementally, respecting byte limit."""
+    while True:
+        remaining = limit - total[0]
+        if remaining <= 0:
+            break
+        data = pipe.read(min(65536, remaining))
+        if not data:
+            break
+        chunks.append(data)
+        total[0] += len(data)
+
+
 def execute(
     cmd_list: list[str],
     *,
@@ -29,6 +43,9 @@ def execute(
     save_dir: str | None = None,
 ) -> dict[str, Any]:
     """Execute a command as a subprocess (shell=False).
+
+    Uses Popen with incremental pipe reading to enforce max_output_bytes
+    at capture time, preventing OOM from runaway processes.
 
     Args:
         cmd_list: Command and arguments as a list.
@@ -42,36 +59,68 @@ def execute(
     """
     config = get_config()
     timeout = timeout or config.default_timeout
+    max_bytes = config.max_output_bytes
 
     start = time.monotonic()
+    truncated = False
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd_list,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             cwd=cwd,
         )
+
+        stdout_chunks: list[bytes] = []
+        stderr_chunks: list[bytes] = []
+        total = [0]  # shared mutable counter across both pipes
+
+        # Read stderr in a thread to avoid deadlock
+        stderr_thread = threading.Thread(
+            target=_read_pipe,
+            args=(proc.stderr, stderr_chunks, max_bytes, total),
+        )
+        stderr_thread.start()
+
+        # Read stdout in main thread
+        _read_pipe(proc.stdout, stdout_chunks, max_bytes, total)
+
+        # If limit reached, kill the process
+        if total[0] >= max_bytes:
+            truncated = True
+            proc.kill()
+
+        stderr_thread.join(timeout=5)
+
+        try:
+            proc.wait(timeout=max(0, timeout - (time.monotonic() - start)))
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+            raise
+
         elapsed = time.monotonic() - start
 
-        stdout = result.stdout or ""
-        stderr = result.stderr or ""
-        stdout_bytes = len(stdout.encode("utf-8"))
+        stdout_raw = b"".join(stdout_chunks)
+        stderr_raw = b"".join(stderr_chunks)
+        stdout = stdout_raw.decode("utf-8", errors="replace")
+        stderr = stderr_raw.decode("utf-8", errors="replace")
+        stdout_byte_count = len(stdout_raw)
 
         response: dict[str, Any] = {
-            "exit_code": result.returncode,
+            "exit_code": proc.returncode,
             "stdout": stdout,
             "stderr": _truncate(stderr, config.max_output_bytes // 10),
             "elapsed_seconds": round(elapsed, 2),
             "command": cmd_list,
-            "stdout_total_bytes": stdout_bytes,
+            "stdout_total_bytes": stdout_byte_count,
         }
+        if truncated:
+            response["truncated"] = True
 
         # Threshold-based save: auto-save when output exceeds response budget
         case_dir = os.environ.get("AIIR_CASE_DIR", "")
-        exceeds_budget = stdout_bytes > config.response_byte_budget
+        exceeds_budget = stdout_byte_count > config.response_byte_budget
 
         if exceeds_budget and case_dir:
             _save_output(
@@ -93,7 +142,6 @@ def execute(
         return response
 
     except subprocess.TimeoutExpired as exc:
-        elapsed = time.monotonic() - start
         raise ExecutionTimeoutError(
             f"Command timed out after {timeout}s: {' '.join(cmd_list)}"
         ) from exc
@@ -105,11 +153,11 @@ def execute(
         raise ExecutionError(f"OS error executing {cmd_list[0]}: {e}") from e
 
 
-def _truncate(text: str, max_bytes: int) -> str:
-    """Truncate text to max_bytes."""
-    if len(text) <= max_bytes:
+def _truncate(text: str, max_chars: int) -> str:
+    """Truncate text to max_chars."""
+    if len(text) <= max_chars:
         return text
-    return text[:max_bytes] + f"\n... [truncated at {max_bytes} bytes]"
+    return text[:max_chars] + f"\n... [truncated at {max_chars} chars]"
 
 
 def _save_output(

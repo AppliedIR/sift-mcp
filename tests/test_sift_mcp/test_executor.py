@@ -2,7 +2,7 @@
 
 import pytest
 from sift_mcp.exceptions import ExecutionError, ExecutionTimeoutError
-from sift_mcp.executor import execute
+from sift_mcp.executor import _truncate, execute
 
 
 class TestExecutor:
@@ -23,7 +23,7 @@ class TestExecutor:
 
     def test_timeout(self):
         with pytest.raises(ExecutionTimeoutError):
-            execute(["sleep", "10"], timeout=1)
+            execute(["sleep", "30"], timeout=2)
 
     def test_command_list_preserved(self):
         result = execute(["echo", "a", "b", "c"])
@@ -150,3 +150,49 @@ class TestSaveOutputBlockedPrefixes:
         other.mkdir()
         with pytest.raises(ExecutionError, match="outside the case directory"):
             execute(["echo", "test"], save_output=True, save_dir=str(other))
+
+
+class TestByteLimit:
+    """Tests for incremental pipe reading with byte limit enforcement."""
+
+    def test_normal_output_unaffected(self, monkeypatch):
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        result = execute(["echo", "hello"])
+        assert "hello" in result["stdout"]
+        assert result.get("truncated") is not True
+
+    def test_output_truncated_at_limit(self, monkeypatch):
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.setenv("SIFT_MAX_OUTPUT", "1000")
+        result = execute(
+            ["python3", "-c", "import sys; sys.stdout.buffer.write(b'x' * 5000)"]
+        )
+        assert result["truncated"] is True
+        assert result["stdout_total_bytes"] <= 1000
+
+    def test_process_killed_on_limit(self, monkeypatch):
+        """Process producing infinite output should be killed, not OOM."""
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.setenv("SIFT_MAX_OUTPUT", "2000")
+        result = execute(
+            ["python3", "-c", "import sys;\nwhile True: sys.stdout.buffer.write(b'A' * 1024)"]
+        )
+        assert result["truncated"] is True
+        assert result["stdout_total_bytes"] <= 2000
+
+    def test_timeout_still_works(self, monkeypatch):
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        with pytest.raises(ExecutionTimeoutError):
+            execute(["sleep", "30"], timeout=2)
+
+
+class TestTruncateNaming:
+    """Verify _truncate uses max_chars (not max_bytes)."""
+
+    def test_under_limit(self):
+        assert _truncate("hello", 10) == "hello"
+
+    def test_over_limit(self):
+        result = _truncate("hello world", 5)
+        assert result.startswith("hello")
+        assert "truncated at 5 chars" in result

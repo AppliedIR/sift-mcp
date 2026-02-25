@@ -62,6 +62,12 @@ class SiftConfig:
             except ValueError:
                 pass
 
+        if os.environ.get("SIFT_MAX_OUTPUT"):
+            try:
+                cfg.max_output_bytes = int(os.environ["SIFT_MAX_OUTPUT"])
+            except ValueError:
+                pass
+
         return cfg
 
 
