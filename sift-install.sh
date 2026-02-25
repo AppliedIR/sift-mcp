@@ -149,24 +149,30 @@ fi
 
 header "Checking Prerequisites"
 
-# Python 3.11+
-if command -v python3 &>/dev/null; then
-    PYTHON=$(command -v python3)
-    PY_VERSION=$($PYTHON -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-    PY_MAJOR=$($PYTHON -c 'import sys; print(sys.version_info.major)')
-    PY_MINOR=$($PYTHON -c 'import sys; print(sys.version_info.minor)')
-    if (( PY_MAJOR > 3 || (PY_MAJOR == 3 && PY_MINOR >= 11) )); then
-        ok "Python $PY_VERSION ($PYTHON)"
-    else
-        err "Python 3.11+ required (found $PY_VERSION)"
-        echo "  Install: sudo apt install python3.11 python3.11-venv"
-        exit 1
+# Python 3.10+
+PYTHON=""
+for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
+    if command -v "$candidate" &>/dev/null; then
+        PY_MAJOR=$("$candidate" -c 'import sys; print(sys.version_info.major)' 2>/dev/null) || continue
+        PY_MINOR=$("$candidate" -c 'import sys; print(sys.version_info.minor)' 2>/dev/null) || continue
+        if (( PY_MAJOR == 3 && PY_MINOR >= 10 )); then
+            PYTHON=$(command -v "$candidate")
+            break
+        fi
     fi
-else
-    err "Python 3 not found"
-    echo "  Install: sudo apt install python3 python3-venv"
+done
+
+if [[ -z "$PYTHON" ]]; then
+    err "Python 3.10+ required. Found candidates:"
+    for candidate in python3.13 python3.12 python3.11 python3.10 python3; do
+        command -v "$candidate" &>/dev/null && echo "  $candidate: $($candidate --version 2>&1)"
+    done
+    echo "  Install: sudo apt install python3.11 python3.11-venv"
     exit 1
 fi
+
+PY_VERSION=$($PYTHON -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+ok "Python $PY_VERSION ($PYTHON)"
 
 # pip
 if $PYTHON -m pip --version &>/dev/null; then
