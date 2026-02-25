@@ -13,31 +13,26 @@ Tests include:
 
 from __future__ import annotations
 
-import time
 import threading
-import concurrent.futures
-import pytest
-from unittest.mock import patch, MagicMock
-from opencti_mcp.validation import (
-    validate_length,
-    validate_ioc,
-    validate_uuid,
-    validate_labels,
-    validate_stix_pattern,
-    validate_observable_types,
-    validate_date_filter,
-    truncate_response,
-    sanitize_for_log,
-    MAX_QUERY_LENGTH,
-)
-from opencti_mcp.client import RateLimiter, CircuitBreaker, CircuitState
-from opencti_mcp.config import Config, SecretStr
-from opencti_mcp.errors import ValidationError, RateLimitError
+import time
 
+import pytest
+from opencti_mcp.client import CircuitBreaker, CircuitState, RateLimiter
+from opencti_mcp.config import Config, SecretStr
+from opencti_mcp.errors import ValidationError
+from opencti_mcp.validation import (
+    MAX_QUERY_LENGTH,
+    truncate_response,
+    validate_ioc,
+    validate_labels,
+    validate_length,
+    validate_uuid,
+)
 
 # =============================================================================
 # Race Condition Tests
 # =============================================================================
+
 
 class TestRaceConditions:
     """Test for race conditions in concurrent access."""
@@ -122,11 +117,13 @@ class TestRaceConditions:
 # TOCTOU (Time-of-Check to Time-of-Use) Tests
 # =============================================================================
 
+
 class TestTOCTOU:
     """Test for TOCTOU vulnerabilities."""
 
     def test_validation_atomic(self):
         """Validation is atomic - input can't change mid-validation."""
+
         # Create an object that changes during iteration
         class MutatingList(list):
             def __iter__(self):
@@ -147,6 +144,7 @@ class TestTOCTOU:
 # =============================================================================
 # Algorithmic Complexity Attack Tests
 # =============================================================================
+
 
 class TestAlgorithmicComplexity:
     """Test resistance to algorithmic complexity attacks."""
@@ -214,6 +212,7 @@ class TestAlgorithmicComplexity:
 # State Manipulation Tests
 # =============================================================================
 
+
 class TestStateManipulation:
     """Test resistance to state manipulation attacks."""
 
@@ -244,7 +243,11 @@ class TestStateManipulation:
         # Immediately recording success shouldn't change state
         cb.record_success()
         # State might still be open or transition to half-open
-        assert cb.state in (CircuitState.OPEN, CircuitState.HALF_OPEN, CircuitState.CLOSED)
+        assert cb.state in (
+            CircuitState.OPEN,
+            CircuitState.HALF_OPEN,
+            CircuitState.CLOSED,
+        )
 
     def test_rate_limiter_window_boundary(self):
         """Rate limiter handles window boundaries correctly."""
@@ -266,6 +269,7 @@ class TestStateManipulation:
 # =============================================================================
 # Resource Exhaustion Variations
 # =============================================================================
+
 
 class TestResourceExhaustionVariations:
     """Test various resource exhaustion scenarios."""
@@ -293,10 +297,7 @@ class TestResourceExhaustionVariations:
 
     def test_long_string_in_many_fields(self):
         """Multiple long strings are all truncated."""
-        data = {
-            f"field_{i}": "x" * 10000
-            for i in range(100)
-        }
+        data = {f"field_{i}": "x" * 10000 for i in range(100)}
 
         result = truncate_response(data)
         # All should be truncated
@@ -308,6 +309,7 @@ class TestResourceExhaustionVariations:
 # =============================================================================
 # Type Confusion Tests
 # =============================================================================
+
 
 class TestTypeConfusion:
     """Test resistance to type confusion attacks."""
@@ -351,6 +353,7 @@ class TestTypeConfusion:
 # Deserialization Safety Tests
 # =============================================================================
 
+
 class TestDeserializationSafety:
     """Test deserialization safety."""
 
@@ -368,7 +371,6 @@ class TestDeserializationSafety:
 
     def test_config_not_reducible(self):
         """Config objects cannot be reduced for pickling."""
-        import copyreg
 
         config = Config(
             opencti_url="http://localhost:8080",
@@ -380,7 +382,6 @@ class TestDeserializationSafety:
 
     def test_secret_str_not_directly_serializable(self):
         """SecretStr doesn't expose value in serialization."""
-        import json
 
         secret = SecretStr("my-secret")
 
@@ -395,6 +396,7 @@ class TestDeserializationSafety:
 # =============================================================================
 # Side-Channel Consideration Tests
 # =============================================================================
+
 
 class TestSideChannelConsiderations:
     """Test side-channel attack mitigations."""
@@ -460,6 +462,7 @@ class TestSideChannelConsiderations:
 # Input Validation Bypass Attempts
 # =============================================================================
 
+
 class TestValidationBypassAttempts:
     """Test attempts to bypass validation."""
 
@@ -516,6 +519,7 @@ class TestValidationBypassAttempts:
 # =============================================================================
 # Concurrent Validation Tests
 # =============================================================================
+
 
 class TestConcurrentValidation:
     """Test validation under concurrent access."""
@@ -580,6 +584,7 @@ class TestConcurrentValidation:
 # =============================================================================
 # Error Recovery Tests
 # =============================================================================
+
 
 class TestErrorRecovery:
     """Test error recovery and resilience."""

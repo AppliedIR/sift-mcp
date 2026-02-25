@@ -1,14 +1,13 @@
 """Tests for configuration module."""
 
 import os
-import pytest
-from pathlib import Path
 
+import pytest
 from windows_triage.config import (
     Config,
+    _parse_int_env,
     get_config,
     reset_config,
-    _parse_int_env,
 )
 from windows_triage.exceptions import ConfigurationError
 
@@ -18,10 +17,7 @@ class TestConfig:
 
     def test_default_config(self, tmp_path):
         """Test config with defaults."""
-        config = Config(
-            data_dir=tmp_path,
-            skip_db_validation=True
-        )
+        config = Config(data_dir=tmp_path, skip_db_validation=True)
         assert config.cache_size == 10000
         assert config.log_level == "INFO"
         assert config.max_path_length == 4096
@@ -33,7 +29,9 @@ class TestConfig:
         assert config.cache_size == 0
 
         # Max valid value
-        config = Config(data_dir=tmp_path, cache_size=1_000_000, skip_db_validation=True)
+        config = Config(
+            data_dir=tmp_path, cache_size=1_000_000, skip_db_validation=True
+        )
         assert config.cache_size == 1_000_000
 
     def test_cache_size_too_large(self, tmp_path):
@@ -54,7 +52,9 @@ class TestConfig:
         config = Config(data_dir=tmp_path, max_path_length=1, skip_db_validation=True)
         assert config.max_path_length == 1
 
-        config = Config(data_dir=tmp_path, max_path_length=32768, skip_db_validation=True)
+        config = Config(
+            data_dir=tmp_path, max_path_length=32768, skip_db_validation=True
+        )
         assert config.max_path_length == 32768
 
         # Out of bounds

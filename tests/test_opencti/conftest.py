@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import Mock, MagicMock
-from typing import Any
+from unittest.mock import MagicMock, Mock
 
-from opencti_mcp.config import Config, SecretStr
-from opencti_mcp.client import OpenCTIClient
-from opencti_mcp.server import OpenCTIMCPServer
+import pytest
 from opencti_mcp.adaptive import reset_global_metrics
+from opencti_mcp.client import OpenCTIClient
+from opencti_mcp.config import Config, SecretStr
+from opencti_mcp.server import OpenCTIMCPServer
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +44,7 @@ def mock_pycti_client() -> Mock:
             "pattern_type": "stix",
             "confidence": 85,
             "created": "2025-01-15T10:00:00Z",
-            "objectLabel": [{"value": "malicious"}]
+            "objectLabel": [{"value": "malicious"}],
         }
     ]
 
@@ -57,7 +56,7 @@ def mock_pycti_client() -> Mock:
             "description": "Russian threat actor",
             "sophistication": "expert",
             "resource_level": "government",
-            "primary_motivation": "espionage"
+            "primary_motivation": "espionage",
         }
     ]
     client.threat_actor_group.list.return_value = []
@@ -69,7 +68,7 @@ def mock_pycti_client() -> Mock:
             "aliases": ["BEACON"],
             "description": "Commercial adversary simulation tool",
             "malware_types": ["backdoor"],
-            "is_family": True
+            "is_family": True,
         }
     ]
 
@@ -80,7 +79,7 @@ def mock_pycti_client() -> Mock:
             "x_mitre_id": "T1003",
             "description": "Credential access technique",
             "killChainPhases": [{"phase_name": "credential-access"}],
-            "x_mitre_platforms": ["Windows"]
+            "x_mitre_platforms": ["Windows"],
         }
     ]
 
@@ -90,7 +89,7 @@ def mock_pycti_client() -> Mock:
             "name": "CVE-2024-3400",
             "description": "Critical vulnerability",
             "x_opencti_cvss_base_score": 10.0,
-            "x_opencti_cvss_base_severity": "CRITICAL"
+            "x_opencti_cvss_base_severity": "CRITICAL",
         }
     ]
 
@@ -101,7 +100,7 @@ def mock_pycti_client() -> Mock:
             "description": "Analysis of recent activity",
             "published": "2025-01-10",
             "report_types": ["threat-report"],
-            "confidence": 90
+            "confidence": 90,
         }
     ]
 
@@ -109,10 +108,7 @@ def mock_pycti_client() -> Mock:
     client.stix_core_relationship.list.return_value = [
         {
             "relationship_type": "indicates",
-            "to": {
-                "entity_type": "Malware",
-                "name": "SUNBURST"
-            }
+            "to": {"entity_type": "Malware", "name": "SUNBURST"},
         }
     ]
 
@@ -131,7 +127,9 @@ def mock_opencti_client(mock_config: Config, mock_pycti_client: Mock) -> OpenCTI
 
 
 @pytest.fixture
-def mock_server(mock_config: Config, mock_opencti_client: OpenCTIClient) -> OpenCTIMCPServer:
+def mock_server(
+    mock_config: Config, mock_opencti_client: OpenCTIClient
+) -> OpenCTIMCPServer:
     """Create an MCP server with mocked client."""
     server = OpenCTIMCPServer(mock_config)
     server.client = mock_opencti_client

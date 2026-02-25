@@ -1,10 +1,10 @@
 """Tests for sift_mcp.server — MCP server creation and tool execution."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from sift_mcp.server import create_server
+import pytest
 from sift_mcp.catalog import clear_catalog_cache
+from sift_mcp.server import create_server
 
 
 @pytest.fixture(autouse=True)
@@ -42,26 +42,28 @@ class TestRunCommandEnvelope:
             "command": ["echo", "hello"],
         }
 
-        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/echo"), \
-             patch("sift_mcp.tools.generic.execute", return_value=mock_result), \
-             patch("sift_mcp.tools.generic.sanitize_extra_args", return_value=["hello"]):
-
+        with (
+            patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/echo"),
+            patch("sift_mcp.tools.generic.execute", return_value=mock_result),
+            patch("sift_mcp.tools.generic.sanitize_extra_args", return_value=["hello"]),
+        ):
             from sift_mcp.tools.generic import run_command
+
             result = run_command(["echo", "hello"], purpose="test")
             assert result["exit_code"] == 0
 
     def test_denied_binary_error(self, monkeypatch):
         """Verify error handling for denied binaries."""
-        from sift_mcp.tools.generic import run_command
         from sift_mcp.exceptions import DeniedBinaryError
+        from sift_mcp.tools.generic import run_command
 
         with pytest.raises(DeniedBinaryError, match="blocked"):
             run_command(["mkfs", "/dev/sda"], purpose="test")
 
     def test_uncataloged_binary_not_found(self, monkeypatch):
         """Uncataloged binary not on system raises ExecutionError."""
-        from sift_mcp.tools.generic import run_command
         from sift_mcp.exceptions import ExecutionError
+        from sift_mcp.tools.generic import run_command
 
         with patch("sift_mcp.tools.generic.find_binary", return_value=None):
             with pytest.raises(ExecutionError, match="not found"):
@@ -75,7 +77,6 @@ class TestRunCommandEnvelope:
         # The catch-all wraps unexpected exceptions. We test by checking
         # that the server builds without error and has the run_command tool.
         assert server is not None
-
 
     def test_extractions_passed_to_response(self, monkeypatch):
         """Verify extractions flow into the response envelope."""

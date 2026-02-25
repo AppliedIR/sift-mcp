@@ -12,21 +12,18 @@ from __future__ import annotations
 
 import asyncio
 import gc
-import sys
 import threading
 import time
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
 from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import MagicMock, patch
 
-from opencti_mcp.server import OpenCTIMCPServer
-from opencti_mcp.client import OpenCTIClient
+import pytest
 from opencti_mcp.config import Config, SecretStr
+from opencti_mcp.server import OpenCTIMCPServer
 from opencti_mcp.validation import (
-    validate_uuid,
-    validate_label,
-    validate_length,
     MAX_QUERY_LENGTH,
+    validate_length,
+    validate_uuid,
 )
 
 
@@ -36,13 +33,15 @@ def validate_query(query: str) -> str:
         return ""
     validate_length(query, MAX_QUERY_LENGTH, "query")
     return query
-from opencti_mcp.errors import ValidationError, OpenCTIMCPError
-from opencti_mcp.client import CircuitBreaker, RateLimiter
 
+
+from opencti_mcp.client import CircuitBreaker, RateLimiter
+from opencti_mcp.errors import ValidationError
 
 # =============================================================================
 # Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def mock_config():
@@ -66,7 +65,7 @@ def mock_client():
 @pytest.fixture
 def server(mock_config, mock_client):
     """Create server with mocked dependencies."""
-    with patch('opencti_mcp.server.OpenCTIClient', return_value=mock_client):
+    with patch("opencti_mcp.server.OpenCTIClient", return_value=mock_client):
         server = OpenCTIMCPServer(mock_config)
         server.client = mock_client
         return server
@@ -76,16 +75,21 @@ def server(mock_config, mock_client):
 # Failure Injection Tests
 # =============================================================================
 
+
 class TestFailureInjection:
     """Test behavior under injected failures."""
 
     @pytest.mark.asyncio
     async def test_client_connection_failure(self, server, mock_client):
         """Handle client connection failure gracefully."""
-        mock_client.search_threat_actors.side_effect = ConnectionError("Connection refused")
+        mock_client.search_threat_actors.side_effect = ConnectionError(
+            "Connection refused"
+        )
 
         with pytest.raises(ConnectionError):
-            await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+            await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "test"}
+            )
 
     @pytest.mark.asyncio
     async def test_client_timeout(self, server, mock_client):
@@ -93,7 +97,9 @@ class TestFailureInjection:
         mock_client.search_threat_actors.side_effect = TimeoutError("Request timed out")
 
         with pytest.raises(TimeoutError):
-            await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+            await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "test"}
+            )
 
     @pytest.mark.asyncio
     async def test_intermittent_failures(self, server, mock_client):
@@ -110,10 +116,14 @@ class TestFailureInjection:
 
         # First call fails
         with pytest.raises(ConnectionError):
-            await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+            await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "test"}
+            )
 
         # Second call succeeds
-        result = await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test"}
+        )
         assert "results" in result
 
     @pytest.mark.asyncio
@@ -125,7 +135,9 @@ class TestFailureInjection:
         # 1. Handle gracefully with empty results
         # 2. Raise an error
         try:
-            result = await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+            result = await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "test"}
+            )
             # If it succeeds, should have results
             assert result is not None
         except (TypeError, AttributeError):
@@ -138,7 +150,9 @@ class TestFailureInjection:
         # Return non-list
         mock_client.search_threat_actors.return_value = "not a list"
 
-        result = await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test"}
+        )
         # Should handle gracefully
         assert result is not None
 
@@ -146,6 +160,7 @@ class TestFailureInjection:
 # =============================================================================
 # Recovery Behavior Tests
 # =============================================================================
+
 
 class TestRecoveryBehavior:
     """Test recovery from failures."""
@@ -157,14 +172,18 @@ class TestRecoveryBehavior:
         mock_client.search_threat_actors.side_effect = ConnectionError()
 
         with pytest.raises(ConnectionError):
-            await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+            await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "test"}
+            )
 
         # Fix the client
         mock_client.search_threat_actors.side_effect = None
         mock_client.search_threat_actors.return_value = [{"id": "123"}]
 
         # Subsequent request succeeds
-        result = await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test"}
+        )
         assert "results" in result
 
     def test_validation_unaffected_by_previous_errors(self):
@@ -182,6 +201,7 @@ class TestRecoveryBehavior:
 # Graceful Degradation Tests
 # =============================================================================
 
+
 class TestGracefulDegradation:
     """Test graceful degradation under stress."""
 
@@ -194,7 +214,9 @@ class TestGracefulDegradation:
             # Simulating partial data
         ]
 
-        result = await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test"}
+        )
         assert "results" in result
         # Should return what we have
 
@@ -208,7 +230,9 @@ class TestGracefulDegradation:
             {"id": "3", "name": "Also good"},
         ]
 
-        result = await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test"}
+        )
         # Should handle gracefully
         assert result is not None
 
@@ -216,6 +240,7 @@ class TestGracefulDegradation:
 # =============================================================================
 # Resource Exhaustion Handling Tests
 # =============================================================================
+
 
 class TestResourceExhaustionHandling:
     """Test handling of resource exhaustion."""
@@ -255,8 +280,11 @@ class TestResourceExhaustionHandling:
     @pytest.mark.asyncio
     async def test_concurrent_load(self, server, mock_client):
         """Handle concurrent load without issues."""
+
         async def make_request():
-            return await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+            return await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "test"}
+            )
 
         # Run many concurrent requests
         tasks = [make_request() for _ in range(100)]
@@ -271,6 +299,7 @@ class TestResourceExhaustionHandling:
 # =============================================================================
 # Circuit Breaker Tests
 # =============================================================================
+
 
 class TestCircuitBreakerResilience:
     """Test circuit breaker resilience."""
@@ -318,6 +347,7 @@ class TestCircuitBreakerResilience:
 # Rate Limiter Resilience Tests
 # =============================================================================
 
+
 class TestRateLimiterResilience:
     """Test rate limiter resilience."""
 
@@ -363,6 +393,7 @@ class TestRateLimiterResilience:
 # Async Resilience Tests
 # =============================================================================
 
+
 class TestAsyncResilience:
     """Test async operation resilience."""
 
@@ -372,7 +403,9 @@ class TestAsyncResilience:
 
         async def slow_request():
             await asyncio.sleep(10)
-            return await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+            return await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "test"}
+            )
 
         task = asyncio.create_task(slow_request())
 
@@ -384,7 +417,9 @@ class TestAsyncResilience:
             await task
 
     @pytest.mark.asyncio
-    async def test_exception_in_one_task_doesnt_affect_others(self, server, mock_client):
+    async def test_exception_in_one_task_doesnt_affect_others(
+        self, server, mock_client
+    ):
         """Exception in one task doesn't affect others."""
         mock_client.search_threat_actors.return_value = []
 
@@ -392,13 +427,12 @@ class TestAsyncResilience:
             raise ValueError("Task failed")
 
         async def succeeding_task():
-            return await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+            return await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "test"}
+            )
 
         results = await asyncio.gather(
-            failing_task(),
-            succeeding_task(),
-            succeeding_task(),
-            return_exceptions=True
+            failing_task(), succeeding_task(), succeeding_task(), return_exceptions=True
         )
 
         # First task failed, others succeeded
@@ -411,6 +445,7 @@ class TestAsyncResilience:
 # Input Fuzzing Under Load Tests
 # =============================================================================
 
+
 class TestInputFuzzingUnderLoad:
     """Test input handling under load."""
 
@@ -421,7 +456,9 @@ class TestInputFuzzingUnderLoad:
 
         async def make_request(query):
             try:
-                return await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": query})
+                return await server._dispatch_tool(
+                    "search_entity", {"type": "threat_actor", "query": query}
+                )
             except ValidationError:
                 return "validation_error"
 
@@ -443,6 +480,7 @@ class TestInputFuzzingUnderLoad:
 # =============================================================================
 # State Consistency Tests
 # =============================================================================
+
 
 class TestStateConsistency:
     """Test state consistency under chaos."""
@@ -482,20 +520,25 @@ class TestStateConsistency:
         mock_client.search_threat_actors.side_effect = Exception("Error")
 
         with pytest.raises(Exception):
-            await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+            await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "test"}
+            )
 
         # Fix client
         mock_client.search_threat_actors.side_effect = None
         mock_client.search_threat_actors.return_value = [{"id": "123"}]
 
         # Server should still work
-        result = await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test"}
+        )
         assert "results" in result
 
 
 # =============================================================================
 # Timeout Handling Tests
 # =============================================================================
+
 
 class TestTimeoutHandling:
     """Test timeout handling."""
@@ -511,7 +554,9 @@ class TestTimeoutHandling:
         mock_client.search_threat_actors.side_effect = slow_search
 
         start = time.perf_counter()
-        result = await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test"}
+        )
         elapsed = time.perf_counter() - start
 
         # Should complete (with the delay)
@@ -523,13 +568,14 @@ class TestTimeoutHandling:
 # Error Message Safety Tests
 # =============================================================================
 
+
 class TestErrorMessageSafety:
     """Test error messages don't leak sensitive info."""
 
     @pytest.mark.asyncio
     async def test_client_error_doesnt_leak_token(self, mock_config, mock_client):
         """Client errors don't expose token."""
-        with patch('opencti_mcp.server.OpenCTIClient', return_value=mock_client):
+        with patch("opencti_mcp.server.OpenCTIClient", return_value=mock_client):
             server = OpenCTIMCPServer(mock_config)
             server.client = mock_client
 
@@ -538,7 +584,9 @@ class TestErrorMessageSafety:
         )
 
         try:
-            await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+            await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "test"}
+            )
         except Exception as e:
             # Error message shouldn't contain actual token
             error_str = str(e)
@@ -561,6 +609,7 @@ class TestErrorMessageSafety:
 # Graceful Shutdown Tests
 # =============================================================================
 
+
 class TestGracefulShutdown:
     """Test graceful shutdown behavior."""
 
@@ -570,7 +619,9 @@ class TestGracefulShutdown:
 
         async def slow_request():
             mock_client.search_threat_actors.return_value = []
-            return await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+            return await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "test"}
+            )
 
         # Start multiple requests
         tasks = [asyncio.create_task(slow_request()) for _ in range(5)]

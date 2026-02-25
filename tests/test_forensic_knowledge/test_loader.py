@@ -14,6 +14,7 @@ def clear_cache():
 
 # --- Artifacts ---
 
+
 class TestArtifacts:
     def test_get_artifact_amcache(self):
         art = loader.get_artifact("amcache")
@@ -63,6 +64,7 @@ class TestArtifacts:
 
 # --- Tools ---
 
+
 class TestTools:
     def test_get_tool_amcacheparser(self):
         tool = loader.get_tool("AmcacheParser")
@@ -93,7 +95,9 @@ class TestTools:
     def test_list_tools_returns_platform(self):
         tools = loader.list_tools()
         for t in tools:
-            assert "platform" in t, f"Tool '{t['name']}' missing platform in list output"
+            assert "platform" in t, (
+                f"Tool '{t['name']}' missing platform in list output"
+            )
 
     def test_list_tools_platform_filter(self):
         linux_tools = loader.list_tools(platform="linux")
@@ -110,6 +114,7 @@ class TestTools:
 
 
 # --- Discipline ---
+
 
 class TestDiscipline:
     def test_get_rules(self):
@@ -138,7 +143,9 @@ class TestDiscipline:
         assert "confirmation_bias" in names
         # All anti-patterns have how_to_avoid
         for p in patterns:
-            assert "how_to_avoid" in p, f"anti-pattern missing how_to_avoid: {p['name']}"
+            assert "how_to_avoid" in p, (
+                f"anti-pattern missing how_to_avoid: {p['name']}"
+            )
             assert len(p["how_to_avoid"]) > 0
 
     def test_get_evidence_standards(self):
@@ -171,6 +178,7 @@ class TestDiscipline:
 
 # --- Guidance ---
 
+
 class TestGuidance:
     def test_get_corroboration_persistence(self):
         corr = loader.get_corroboration("persistence")
@@ -199,6 +207,7 @@ class TestGuidance:
 
 
 # --- Playbooks & Checklists ---
+
 
 class TestPlaybooks:
     def test_get_playbook_unusual_logon(self):
@@ -229,6 +238,7 @@ class TestPlaybooks:
 
 
 # --- Investigation Framework ---
+
 
 class TestFramework:
     def test_get_investigation_framework(self):
@@ -271,7 +281,6 @@ class TestFramework:
             assert "how" in r, f"golden rule missing how: {r}"
             assert len(r["how"]) > 0
 
-
     def test_framework_hitl_checkpoints_have_guidance(self):
         fw = loader.get_investigation_framework()
         checkpoints = fw["hitl_checkpoints"]
@@ -293,6 +302,7 @@ class TestFramework:
 
 # --- Caching ---
 
+
 class TestCaching:
     def test_cache_works(self):
         art1 = loader.get_artifact("amcache")
@@ -308,6 +318,7 @@ class TestCaching:
 
 
 # --- Path Traversal ---
+
 
 class TestPathTraversal:
     def test_artifact_dotdot_rejected(self):

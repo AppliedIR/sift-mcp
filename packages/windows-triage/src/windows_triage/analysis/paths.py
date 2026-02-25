@@ -29,7 +29,6 @@ Suspicious Directory Detection:
 """
 
 import re
-from typing import List
 
 
 def normalize_path(path: str) -> str:
@@ -54,14 +53,14 @@ def normalize_path(path: str) -> str:
     path = path.lower()
 
     # Remove drive letter (C:\Windows -> \windows)
-    if len(path) > 2 and path[1] == ':':
+    if len(path) > 2 and path[1] == ":":
         path = path[2:]
 
     # Normalize separators (/ -> \)
-    path = path.replace('/', '\\')
+    path = path.replace("/", "\\")
 
     # Remove trailing slashes, but preserve root directory
-    stripped = path.rstrip('\\')
+    stripped = path.rstrip("\\")
     if not stripped:
         # Path was just backslashes (root directory) - preserve single backslash
         return "\\"
@@ -83,10 +82,10 @@ def extract_filename(path: str) -> str:
         return ""
 
     # Normalize separators first
-    path = path.replace('/', '\\')
+    path = path.replace("/", "\\")
 
     # Get last component
-    parts = path.split('\\')
+    parts = path.split("\\")
     return parts[-1].lower() if parts else ""
 
 
@@ -109,7 +108,7 @@ def extract_directory(path: str) -> str:
         return ""
 
     # Find last backslash
-    last_sep = normalized.rfind('\\')
+    last_sep = normalized.rfind("\\")
     if last_sep < 0:
         # No separator - just a filename, no directory
         return ""
@@ -121,12 +120,12 @@ def extract_directory(path: str) -> str:
 
 # Windows system directories (expected locations for system binaries)
 SYSTEM_DIRECTORIES = [
-    '\\windows\\system32',
-    '\\windows\\syswow64',
-    '\\windows\\winsxs',
-    '\\windows',
-    '\\program files',
-    '\\program files (x86)',
+    "\\windows\\system32",
+    "\\windows\\syswow64",
+    "\\windows\\winsxs",
+    "\\windows",
+    "\\program files",
+    "\\program files (x86)",
 ]
 
 
@@ -145,30 +144,30 @@ def is_system_path(path: str) -> bool:
         return False
     for sys_dir in SYSTEM_DIRECTORIES:
         # Must match directory boundary: either exact match or followed by backslash
-        if normalized == sys_dir or normalized.startswith(sys_dir + '\\'):
+        if normalized == sys_dir or normalized.startswith(sys_dir + "\\"):
             return True
     return False
 
 
 # Paths commonly used by malware for staging
 SUSPICIOUS_DIRECTORIES = [
-    '\\temp',
-    '\\tmp',
-    '\\appdata\\local\\temp',
-    '\\appdata\\roaming',
-    '\\users\\public',
-    '\\programdata',
-    '\\windows\\temp',
-    '\\downloads',
-    '\\desktop',
-    '\\perflogs',
-    '\\intel',
-    '\\recycler',
-    '\\$recycle.bin',
+    "\\temp",
+    "\\tmp",
+    "\\appdata\\local\\temp",
+    "\\appdata\\roaming",
+    "\\users\\public",
+    "\\programdata",
+    "\\windows\\temp",
+    "\\downloads",
+    "\\desktop",
+    "\\perflogs",
+    "\\intel",
+    "\\recycler",
+    "\\$recycle.bin",
 ]
 
 
-def check_suspicious_path(path: str) -> List[dict]:
+def check_suspicious_path(path: str) -> list[dict]:
     """
     Check if a file path is in a commonly-abused location.
 
@@ -184,12 +183,14 @@ def check_suspicious_path(path: str) -> List[dict]:
     for suspicious in SUSPICIOUS_DIRECTORIES:
         # Check if the suspicious directory is in the path
         if suspicious in normalized:
-            findings.append({
-                'type': 'suspicious_directory',
-                'severity': 'low',
-                'matched': suspicious.lstrip('\\'),
-                'description': 'File in commonly-abused directory'
-            })
+            findings.append(
+                {
+                    "type": "suspicious_directory",
+                    "severity": "low",
+                    "matched": suspicious.lstrip("\\"),
+                    "description": "File in commonly-abused directory",
+                }
+            )
             break  # Only report once
 
     return findings
@@ -232,17 +233,17 @@ def parse_service_binary_path(image_path: str) -> str:
             path = exe_match.group(1)
         else:
             # Fall back to first space
-            space_idx = path.find(' ')
+            space_idx = path.find(" ")
             if space_idx > 0:
                 path = path[:space_idx]
 
     # Expand common system paths
     path_lower = path.lower()
-    if path_lower.startswith('\\systemroot\\'):
-        path = '\\windows\\' + path[12:]
-    elif path_lower.startswith('%systemroot%\\'):
-        path = '\\windows\\' + path[13:]
-    elif path_lower.startswith('system32\\'):
-        path = '\\windows\\system32\\' + path[9:]
+    if path_lower.startswith("\\systemroot\\"):
+        path = "\\windows\\" + path[12:]
+    elif path_lower.startswith("%systemroot%\\"):
+        path = "\\windows\\" + path[13:]
+    elif path_lower.startswith("system32\\"):
+        path = "\\windows\\system32\\" + path[9:]
 
     return normalize_path(path)

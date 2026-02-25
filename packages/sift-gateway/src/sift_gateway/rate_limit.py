@@ -53,7 +53,10 @@ class RateLimiter:
 
         with self._lock:
             # Periodic cleanup of stale entries, or when store exceeds max size
-            if now - self._last_cleanup > _CLEANUP_INTERVAL or len(self._store) > _MAX_STORE_SIZE:
+            if (
+                now - self._last_cleanup > _CLEANUP_INTERVAL
+                or len(self._store) > _MAX_STORE_SIZE
+            ):
                 self._cleanup(now)
                 self._last_cleanup = now
 
@@ -86,7 +89,8 @@ class RateLimiter:
         """Remove IPs with no recent requests. Caller must hold _lock."""
         cutoff = now - self.window
         stale_keys = [
-            ip for ip, timestamps in self._store.items()
+            ip
+            for ip, timestamps in self._store.items()
             if not timestamps or timestamps[-1] < cutoff
         ]
         for key in stale_keys:

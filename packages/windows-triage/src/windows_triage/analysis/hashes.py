@@ -32,21 +32,19 @@ Usage:
 """
 
 import re
-from typing import Optional
-
 
 # Hash length to algorithm mapping
 HASH_LENGTHS = {
-    32: 'md5',
-    40: 'sha1',
-    64: 'sha256',
+    32: "md5",
+    40: "sha1",
+    64: "sha256",
 }
 
 # Valid hex pattern
-HEX_PATTERN = re.compile(r'^[a-fA-F0-9]+$')
+HEX_PATTERN = re.compile(r"^[a-fA-F0-9]+$")
 
 
-def detect_hash_algorithm(hash_str: str) -> Optional[str]:
+def detect_hash_algorithm(hash_str: str) -> str | None:
     """
     Detect hash algorithm from string length.
 
@@ -65,9 +63,9 @@ def detect_hash_algorithm(hash_str: str) -> Optional[str]:
         return None
 
     # Remove common prefixes
-    for prefix in ('md5:', 'sha1:', 'sha256:', 'sha-1:', 'sha-256:'):
+    for prefix in ("md5:", "sha1:", "sha256:", "sha-1:", "sha-256:"):
         if hash_str.startswith(prefix):
-            hash_str = hash_str[len(prefix):]
+            hash_str = hash_str[len(prefix) :]
             break
 
     length = len(hash_str)
@@ -88,9 +86,9 @@ def validate_hash(hash_str: str) -> bool:
     hash_str = hash_str.strip().lower()
 
     # Remove prefixes
-    for prefix in ('md5:', 'sha1:', 'sha256:', 'sha-1:', 'sha-256:'):
+    for prefix in ("md5:", "sha1:", "sha256:", "sha-1:", "sha-256:"):
         if hash_str.startswith(prefix):
-            hash_str = hash_str[len(prefix):]
+            hash_str = hash_str[len(prefix) :]
             break
 
     # Check length
@@ -114,9 +112,9 @@ def normalize_hash(hash_str: str) -> str:
     hash_str = hash_str.strip().lower()
 
     # Remove prefixes
-    for prefix in ('md5:', 'sha1:', 'sha256:', 'sha-1:', 'sha-256:'):
+    for prefix in ("md5:", "sha1:", "sha256:", "sha-1:", "sha-256:"):
         if hash_str.startswith(prefix):
-            hash_str = hash_str[len(prefix):]
+            hash_str = hash_str[len(prefix) :]
             break
 
     return hash_str
@@ -132,13 +130,13 @@ def get_hash_column(algorithm: str) -> str:
     Returns:
         Column name (md5, sha1, or sha256)
     """
-    algorithm = algorithm.lower().replace('-', '')
-    if algorithm in ('md5', 'sha1', 'sha256'):
+    algorithm = algorithm.lower().replace("-", "")
+    if algorithm in ("md5", "sha1", "sha256"):
         return algorithm
     raise ValueError(f"Unknown hash algorithm: {algorithm}")
 
 
-def parse_hash_with_algorithm(hash_str: str) -> tuple[Optional[str], Optional[str]]:
+def parse_hash_with_algorithm(hash_str: str) -> tuple[str | None, str | None]:
     """
     Parse a hash string and return (normalized_hash, algorithm).
 

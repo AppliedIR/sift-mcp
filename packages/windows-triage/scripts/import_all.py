@@ -68,16 +68,26 @@ def main():
     parser = argparse.ArgumentParser(
         description="Import all data sources into forensic triage databases"
     )
-    parser.add_argument("--skip-files", action="store_true",
-                        help="Skip VanillaWindowsReference file import")
-    parser.add_argument("--skip-registry", action="store_true",
-                        help="Skip registry extractions (services/tasks/autoruns)")
-    parser.add_argument("--skip-context", action="store_true",
-                        help="Skip context.db imports")
-    parser.add_argument("--files-limit", type=int, default=0,
-                        help="Limit number of file CSVs to process")
-    parser.add_argument("--verbose", action="store_true",
-                        help="Show detailed output")
+    parser.add_argument(
+        "--skip-files",
+        action="store_true",
+        help="Skip VanillaWindowsReference file import",
+    )
+    parser.add_argument(
+        "--skip-registry",
+        action="store_true",
+        help="Skip registry extractions (services/tasks/autoruns)",
+    )
+    parser.add_argument(
+        "--skip-context", action="store_true", help="Skip context.db imports"
+    )
+    parser.add_argument(
+        "--files-limit",
+        type=int,
+        default=0,
+        help="Limit number of file CSVs to process",
+    )
+    parser.add_argument("--verbose", action="store_true", help="Show detailed output")
     args = parser.parse_args()
 
     project_root = Path(__file__).parent.parent
@@ -103,9 +113,9 @@ def main():
         success = run_script(
             "import_context.py",
             extra_args,
-            "Importing context.db (LOLBins, drivers, DLLs, process rules)"
+            "Importing context.db (LOLBins, drivers, DLLs, process rules)",
         )
-        results['context'] = success
+        results["context"] = success
 
     # Import VanillaWindowsReference files
     if not args.skip_files:
@@ -118,9 +128,9 @@ def main():
         success = run_script(
             "import_files.py",
             extra_args,
-            "Importing VanillaWindowsReference files (this may take a while)"
+            "Importing VanillaWindowsReference files (this may take a while)",
         )
-        results['files'] = success
+        results["files"] = success
 
     # Import registry extractions
     if not args.skip_registry:
@@ -131,9 +141,13 @@ def main():
             zips = list(registry_dir.rglob("RegistryHivesJSON.zip"))
             jsons = list(registry_dir.rglob("*_ROOT.json"))
             if zips and not jsons:
-                if not run_script("extract_registry_zips.py", [], "Extracting registry ZIPs"):
-                    print("WARNING: Registry ZIP extraction failed, skipping registry import")
-                    results['registry'] = False
+                if not run_script(
+                    "extract_registry_zips.py", [], "Extracting registry ZIPs"
+                ):
+                    print(
+                        "WARNING: Registry ZIP extraction failed, skipping registry import"
+                    )
+                    results["registry"] = False
                     skip_registry = True
 
         if not skip_registry:
@@ -141,9 +155,9 @@ def main():
             success = run_script(
                 "import_registry_extractions.py",
                 extra_args,
-                "Extracting services/tasks/autoruns from VanillaWindowsRegistryHives"
+                "Extracting services/tasks/autoruns from VanillaWindowsRegistryHives",
             )
-            results['registry'] = success
+            results["registry"] = success
 
     # Summary
     print("\n" + "=" * 60)

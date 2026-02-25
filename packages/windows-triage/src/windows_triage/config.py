@@ -19,11 +19,10 @@ Usage:
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from .exceptions import ConfigurationError
 
@@ -39,7 +38,9 @@ class Config:
     """
 
     # Paths
-    project_root: Path = field(default_factory=lambda: Path(__file__).parent.parent.parent)
+    project_root: Path = field(
+        default_factory=lambda: Path(__file__).parent.parent.parent
+    )
     data_dir: Path = field(default=None)
     known_good_db: Path = field(default=None)
     context_db: Path = field(default=None)
@@ -121,7 +122,7 @@ def _parse_int_env(name: str, default: int) -> int:
     try:
         return int(value)
     except ValueError:
-        raise ConfigurationError(f"Invalid integer for {name}: {value!r}")
+        raise ConfigurationError(f"Invalid integer for {name}: {value!r}") from None
 
 
 def _load_config_from_env() -> Config:
@@ -161,12 +162,13 @@ def _load_config_from_env() -> Config:
         max_key_path_length=_parse_int_env("WT_MAX_KEY_PATH_LENGTH", 1024),
         log_level=os.environ.get("WT_LOG_LEVEL", "INFO"),
         cache_size=_parse_int_env("WT_CACHE_SIZE", 10000),
-        skip_db_validation=os.environ.get("WT_SKIP_DB_VALIDATION", "").lower() in ("1", "true", "yes"),
+        skip_db_validation=os.environ.get("WT_SKIP_DB_VALIDATION", "").lower()
+        in ("1", "true", "yes"),
     )
 
 
 # Module-level singleton
-_config: Optional[Config] = None
+_config: Config | None = None
 
 
 def get_config(reload: bool = False) -> Config:

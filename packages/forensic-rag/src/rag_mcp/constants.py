@@ -23,7 +23,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = Path(os.environ.get("RAG_INDEX_DIR", PROJECT_ROOT / "data")).resolve()
 
 # Knowledge directory (can be overridden via RAG_KNOWLEDGE_DIR)
-KNOWLEDGE_ROOT = Path(os.environ.get("RAG_KNOWLEDGE_DIR", PROJECT_ROOT / "knowledge")).resolve()
+KNOWLEDGE_ROOT = Path(
+    os.environ.get("RAG_KNOWLEDGE_DIR", PROJECT_ROOT / "knowledge")
+).resolve()
 
 # =============================================================================
 # Managed Directory Sentinel
@@ -45,6 +47,7 @@ SOURCES_DIR_NAME = "sources"
 # Derived Paths
 # =============================================================================
 
+
 def get_chroma_path() -> Path:
     """Get the ChromaDB storage path."""
     return DATA_ROOT / CHROMA_DIR_NAME
@@ -60,17 +63,19 @@ def get_sources_path() -> Path:
 # =============================================================================
 
 # Paths that should NEVER be deleted, even with --unsafe-paths
-FORBIDDEN_PATHS = frozenset([
-    Path("/"),
-    Path("/home"),
-    Path("/root"),
-    Path("/tmp"),
-    Path("/var"),
-    Path("/etc"),
-    Path("/usr"),
-    Path.home(),
-    PROJECT_ROOT,  # Never delete the project itself
-])
+FORBIDDEN_PATHS = frozenset(
+    [
+        Path("/"),
+        Path("/home"),
+        Path("/root"),
+        Path("/tmp"),
+        Path("/var"),
+        Path("/etc"),
+        Path("/usr"),
+        Path.home(),
+        PROJECT_ROOT,  # Never delete the project itself
+    ]
+)
 
 # Minimum path depth required for deletion (prevents deleting shallow paths)
 MIN_DELETE_DEPTH = 3  # e.g., /path/to/project/data/chroma = depth 6

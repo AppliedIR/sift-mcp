@@ -7,13 +7,11 @@ prevent accidental deletion of important directories.
 """
 
 import os
-import tempfile
 from pathlib import Path
 
 import pytest
-
+from rag_mcp.constants import MANAGED_SENTINEL, MIN_DELETE_DEPTH
 from rag_mcp.fs_safety import (
-    FilesystemSafetyError,
     ForbiddenPathError,
     MissingSentinelError,
     PathNotWithinRootError,
@@ -29,7 +27,6 @@ from rag_mcp.fs_safety import (
     safe_rmtree,
     safe_unlink,
 )
-from rag_mcp.constants import MANAGED_SENTINEL, MIN_DELETE_DEPTH
 
 
 class TestResolveStrict:

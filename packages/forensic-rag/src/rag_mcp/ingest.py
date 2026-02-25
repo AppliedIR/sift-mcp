@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .utils import atomic_write_json, compute_file_hash
 
@@ -49,14 +49,14 @@ BUNDLED_MARKER = ".bundled"
 
 # Chunking settings
 CHUNK_TARGET = 1000  # Target characters per chunk
-CHUNK_MIN = 500      # Minimum chunk size
-CHUNK_MAX = 1500     # Maximum chunk size
+CHUNK_MIN = 500  # Minimum chunk size
+CHUNK_MAX = 1500  # Maximum chunk size
 
 # Security: File size limit (10MB)
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
 # Security: ID sanitization pattern (alphanumeric, underscore, hyphen only)
-SAFE_ID_PATTERN = re.compile(r'[^a-zA-Z0-9_-]')
+SAFE_ID_PATTERN = re.compile(r"[^a-zA-Z0-9_-]")
 
 
 def _sanitize_id(name: str) -> str:
@@ -65,7 +65,7 @@ def _sanitize_id(name: str) -> str:
     Security: Only allows alphanumeric, underscore, and hyphen characters.
     Prevents ID injection and path traversal in ID handling.
     """
-    return SAFE_ID_PATTERN.sub('_', name)
+    return SAFE_ID_PATTERN.sub("_", name)
 
 
 def _validate_file_size(path: Path) -> None:
@@ -84,10 +84,11 @@ def _validate_file_size(path: Path) -> None:
 @dataclass
 class IngestResult:
     """Result of ingesting a document."""
+
     path: str
     status: str  # "success", "error", "skipped"
     records: int = 0
-    record_ids: Optional[list[str]] = None
+    record_ids: list[str] | None = None
     message: str = ""
 
     def __post_init__(self) -> None:
@@ -98,6 +99,7 @@ class IngestResult:
 @dataclass
 class ScanResult:
     """Result of scanning knowledge folder."""
+
     supported: list[Path]
     unsupported: list[tuple[Path, str]]  # (path, rejection message)
 
@@ -105,6 +107,7 @@ class ScanResult:
 @dataclass
 class ChangeSet:
     """Changes detected in knowledge folder."""
+
     new: list[Path]
     modified: list[Path]
     deleted: list[str]  # relative paths
@@ -113,6 +116,7 @@ class ChangeSet:
 # =============================================================================
 # Format Validation
 # =============================================================================
+
 
 def validate_format(path: Path) -> tuple[bool, str]:
     """
@@ -142,8 +146,7 @@ def _is_in_bundled_dir(path: Path, root: Path) -> bool:
 
 
 def scan_knowledge_folder(
-    folder: Optional[Path] = None,
-    skip_bundled: bool = False
+    folder: Path | None = None, skip_bundled: bool = False
 ) -> ScanResult:
     """
     Scan folder for supported and unsupported files.
@@ -186,13 +189,14 @@ def scan_knowledge_folder(
 # State Management
 # =============================================================================
 
+
 def load_user_state() -> dict[str, Any]:
     """Load watched documents state."""
     if USER_STATE_FILE.exists():
         try:
             with open(USER_STATE_FILE, encoding="utf-8") as f:
                 return json.load(f)
-        except (IOError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError):
             pass
     return {"version": 1, "files": {}}
 
@@ -211,7 +215,7 @@ def load_ingested_state() -> dict[str, Any]:
         try:
             with open(INGESTED_STATE_FILE, encoding="utf-8") as f:
                 return json.load(f)
-        except (IOError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError):
             pass
     return {"version": 1, "documents": {}}
 
@@ -227,6 +231,7 @@ def save_ingested_state(state: dict[str, Any]) -> None:
 # =============================================================================
 # Text Chunking
 # =============================================================================
+
 
 def chunk_text(text: str, file_path: str, source_prefix: str = "user") -> list[dict]:
     """
@@ -246,10 +251,10 @@ def chunk_text(text: str, file_path: str, source_prefix: str = "user") -> list[d
     # Determine split strategy
     if ext == ".md":
         # Split on markdown headers first
-        sections = re.split(r'\n(?=#{1,3} )', text)
+        sections = re.split(r"\n(?=#{1,3} )", text)
     else:
         # Split on paragraph breaks
-        sections = re.split(r'\n\n+', text)
+        sections = re.split(r"\n\n+", text)
 
     # Remove empty sections
     sections = [s.strip() for s in sections if s.strip()]
@@ -265,7 +270,11 @@ def chunk_text(text: str, file_path: str, source_prefix: str = "user") -> list[d
     for section in sections:
         # If adding this section exceeds max, flush current chunk
         if len(current_chunk) + len(section) > CHUNK_MAX and current_chunk:
-            chunks.append(_make_chunk(current_chunk, id_prefix, chunk_num, file_path, source_prefix))
+            chunks.append(
+                _make_chunk(
+                    current_chunk, id_prefix, chunk_num, file_path, source_prefix
+                )
+            )
             chunk_num += 1
             current_chunk = ""
 
@@ -273,14 +282,22 @@ def chunk_text(text: str, file_path: str, source_prefix: str = "user") -> list[d
 
         # If we've hit target size, flush
         if len(current_chunk) >= CHUNK_TARGET:
-            chunks.append(_make_chunk(current_chunk, id_prefix, chunk_num, file_path, source_prefix))
+            chunks.append(
+                _make_chunk(
+                    current_chunk, id_prefix, chunk_num, file_path, source_prefix
+                )
+            )
             chunk_num += 1
             current_chunk = ""
 
     # Don't forget the last chunk
     if current_chunk.strip():
         if len(current_chunk) >= CHUNK_MIN or not chunks:
-            chunks.append(_make_chunk(current_chunk, id_prefix, chunk_num, file_path, source_prefix))
+            chunks.append(
+                _make_chunk(
+                    current_chunk, id_prefix, chunk_num, file_path, source_prefix
+                )
+            )
         elif chunks:
             # Append tiny remainder to last chunk
             chunks[-1]["text"] += "\n" + current_chunk.strip()
@@ -288,7 +305,9 @@ def chunk_text(text: str, file_path: str, source_prefix: str = "user") -> list[d
     return chunks
 
 
-def _make_chunk(text: str, id_prefix: str, chunk_num: int, file_path: str, source_prefix: str) -> dict:
+def _make_chunk(
+    text: str, id_prefix: str, chunk_num: int, file_path: str, source_prefix: str
+) -> dict:
     """Create a chunk record."""
     return {
         "id": f"{id_prefix}_{chunk_num}",
@@ -296,14 +315,15 @@ def _make_chunk(text: str, id_prefix: str, chunk_num: int, file_path: str, sourc
         "metadata": {
             "source": f"{source_prefix}_{Path(file_path).stem}",
             "file": file_path,
-            "chunk": chunk_num
-        }
+            "chunk": chunk_num,
+        },
     }
 
 
 # =============================================================================
 # JSON Processing
 # =============================================================================
+
 
 def process_json_file(path: Path, source_prefix: str = "user") -> list[dict]:
     """
@@ -335,7 +355,9 @@ def process_json_file(path: Path, source_prefix: str = "user") -> list[dict]:
         for key in ["items", "records", "data", "entries", "documents"]:
             if key in data and isinstance(data[key], list):
                 for i, item in enumerate(data[key]):
-                    record = _normalize_record(item, id_prefix, i, str(path), source_prefix)
+                    record = _normalize_record(
+                        item, id_prefix, i, str(path), source_prefix
+                    )
                     if record:
                         records.append(record)
                 return records
@@ -366,13 +388,15 @@ def process_jsonl_file(path: Path, source_prefix: str = "user") -> list[dict]:
                 if record:
                     records.append(record)
             except json.JSONDecodeError:
-                logger.debug(f"Invalid JSON on line {i+1} of {path}")
+                logger.debug(f"Invalid JSON on line {i + 1} of {path}")
                 continue
 
     return records
 
 
-def _normalize_record(item: dict, id_prefix: str, index: int, file_path: str, source_prefix: str) -> Optional[dict]:
+def _normalize_record(
+    item: dict, id_prefix: str, index: int, file_path: str, source_prefix: str
+) -> dict | None:
     """Normalize a record to have required fields."""
     if not isinstance(item, dict):
         return None
@@ -392,19 +416,18 @@ def _normalize_record(item: dict, id_prefix: str, index: int, file_path: str, so
     if not isinstance(metadata, dict):
         metadata = {}
 
-    metadata["source"] = metadata.get("source", f"{source_prefix}_{Path(file_path).stem}")
+    metadata["source"] = metadata.get(
+        "source", f"{source_prefix}_{Path(file_path).stem}"
+    )
     metadata["file"] = file_path
 
-    return {
-        "id": f"{id_prefix}_{index}",
-        "text": text,
-        "metadata": metadata
-    }
+    return {"id": f"{id_prefix}_{index}", "text": text, "metadata": metadata}
 
 
 # =============================================================================
 # Document Processing
 # =============================================================================
+
 
 def process_document(path: Path, source_prefix: str = "user") -> IngestResult:
     """
@@ -443,7 +466,7 @@ def process_document(path: Path, source_prefix: str = "user") -> IngestResult:
             path=str(path),
             status="success",
             records=len(records),
-            record_ids=record_ids
+            record_ids=record_ids,
         )
 
     except Exception as e:
@@ -495,9 +518,9 @@ def get_document_records(path: Path, source_prefix: str = "user") -> list[dict]:
 # Watched Documents (knowledge/ folder)
 # =============================================================================
 
+
 def check_for_changes(
-    folder: Optional[Path] = None,
-    skip_bundled: bool = False
+    folder: Path | None = None, skip_bundled: bool = False
 ) -> ChangeSet:
     """
     Compare knowledge folder against state to find changes.
@@ -550,7 +573,7 @@ def update_watched_state(rel_path: str, path: Path, record_ids: list[str]) -> No
         "id_prefix": f"user_{path.stem}",
         "records": len(record_ids),
         "record_ids": record_ids,
-        "processed_at": datetime.now().isoformat()
+        "processed_at": datetime.now().isoformat(),
     }
     save_user_state(state)
 
@@ -569,6 +592,7 @@ def remove_watched_state(rel_path: str) -> list[str]:
 # =============================================================================
 # Ingested Documents (one-time import)
 # =============================================================================
+
 
 def ingest_document(path: Path, name: str) -> IngestResult:
     """
@@ -612,7 +636,7 @@ def ingest_document(path: Path, name: str) -> IngestResult:
             "original_filename": path.name,
             "records": len(records),
             "record_ids": record_ids,
-            "ingested_at": datetime.now().isoformat()
+            "ingested_at": datetime.now().isoformat(),
         }
         save_ingested_state(state)
 
@@ -620,7 +644,7 @@ def ingest_document(path: Path, name: str) -> IngestResult:
             path=str(path),
             status="success",
             records=len(records),
-            record_ids=record_ids
+            record_ids=record_ids,
         )
         if replaced:
             result.message = f"Replaced existing '{name}'"
@@ -650,12 +674,14 @@ def list_ingested() -> list[dict]:
     result = []
 
     for name, info in state.get("documents", {}).items():
-        result.append({
-            "name": name,
-            "original_filename": info.get("original_filename", ""),
-            "records": info.get("records", 0),
-            "ingested_at": info.get("ingested_at", "")
-        })
+        result.append(
+            {
+                "name": name,
+                "original_filename": info.get("original_filename", ""),
+                "records": info.get("records", 0),
+                "ingested_at": info.get("ingested_at", ""),
+            }
+        )
 
     return sorted(result, key=lambda x: x["ingested_at"], reverse=True)
 

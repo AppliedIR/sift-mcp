@@ -4,17 +4,15 @@ import json
 import time
 
 import pytest
-
 import sift_gateway.join as join_mod
 from sift_gateway.join import (
+    _JOIN_CHARSET,
+    check_join_rate_limit,
     generate_join_code,
+    mark_code_used,
+    record_join_failure,
     store_join_code,
     validate_join_code,
-    mark_code_used,
-    check_join_rate_limit,
-    record_join_failure,
-    _JOIN_CHARSET,
-    _STATE_FILE,
 )
 
 
@@ -57,6 +55,7 @@ class TestJoinCodeStorage:
         store_join_code(code)
         # Read state file from the monkeypatched location and verify no plaintext
         import sift_gateway.join as join_mod
+
         state_text = join_mod._STATE_FILE.read_text()
         assert code not in state_text
         # But there should be a bcrypt hash (starts with $2b$)
@@ -145,7 +144,9 @@ class TestJoinRateLimit:
         assert check_join_rate_limit(ip) is False
         # Advance time past the 15-minute window
         real_monotonic = time.monotonic
-        monkeypatch.setattr("sift_gateway.join.time.monotonic", lambda: real_monotonic() + 1000)
+        monkeypatch.setattr(
+            "sift_gateway.join.time.monotonic", lambda: real_monotonic() + 1000
+        )
         assert check_join_rate_limit(ip) is True
 
 
@@ -154,10 +155,11 @@ class TestJoinGatewayCallOrder:
 
     def test_mark_used_before_config_write(self, monkeypatch):
         """mark_code_used() must be called before _add_api_key_to_config()."""
-        from unittest.mock import patch, MagicMock, call
-        from starlette.testclient import TestClient
+        from unittest.mock import MagicMock, patch
+
+        from sift_gateway.rest import rest_routes
         from starlette.applications import Starlette
-        from sift_gateway.rest import rest_routes, _get_gateway_url
+        from starlette.testclient import TestClient
 
         call_order = []
 
@@ -182,16 +184,21 @@ class TestJoinGatewayCallOrder:
 
         client = TestClient(app, raise_server_exceptions=False)
 
-        with patch("sift_gateway.rest.validate_join_code", mock_validate), \
-             patch("sift_gateway.rest.mark_code_used", mock_mark_used), \
-             patch("sift_gateway.rest._add_api_key_to_config", mock_add_api_key), \
-             patch("sift_gateway.rest.generate_gateway_token", mock_generate_token), \
-             patch("sift_gateway.rest.check_join_rate_limit", return_value=True):
-            resp = client.post("/api/v1/setup/join", json={
-                "code": "ABCD-EFGH",
-                "machine_type": "examiner",
-                "hostname": "analyst-1",
-            })
+        with (
+            patch("sift_gateway.rest.validate_join_code", mock_validate),
+            patch("sift_gateway.rest.mark_code_used", mock_mark_used),
+            patch("sift_gateway.rest._add_api_key_to_config", mock_add_api_key),
+            patch("sift_gateway.rest.generate_gateway_token", mock_generate_token),
+            patch("sift_gateway.rest.check_join_rate_limit", return_value=True),
+        ):
+            resp = client.post(
+                "/api/v1/setup/join",
+                json={
+                    "code": "ABCD-EFGH",
+                    "machine_type": "examiner",
+                    "hostname": "analyst-1",
+                },
+            )
 
         assert resp.status_code == 200
         assert call_order == ["mark_code_used", "_add_api_key_to_config"]

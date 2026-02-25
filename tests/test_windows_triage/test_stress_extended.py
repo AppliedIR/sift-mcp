@@ -3,61 +3,70 @@
 Combined with test_stress.py (722 tests), this brings total stress tests to 2000+.
 """
 
-import pytest
-import string
 import random
+import string
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from windows_triage.analysis.paths import (
-    normalize_path,
-    extract_filename,
-    extract_directory,
-    is_system_path,
-    check_suspicious_path,
-    parse_service_binary_path,
+from windows_triage.analysis.filename import (
+    EXECUTABLE_EXTENSIONS,
+    analyze_filename,
+    calculate_entropy,
 )
 from windows_triage.analysis.hashes import (
     detect_hash_algorithm,
-    validate_hash,
     normalize_hash,
-    get_hash_column,
-    parse_hash_with_algorithm,
+    validate_hash,
+)
+from windows_triage.analysis.paths import (
+    check_suspicious_path,
+    extract_filename,
+    normalize_path,
+    parse_service_binary_path,
 )
 from windows_triage.analysis.unicode import (
-    detect_unicode_evasion,
-    normalize_homoglyphs,
-    strip_invisible_chars,
-    normalize_leet,
-    levenshtein_distance,
-    detect_typosquatting,
-    detect_leet_speak,
-    get_canonical_form,
     check_process_name_spoofing,
+    detect_leet_speak,
+    detect_typosquatting,
+    detect_unicode_evasion,
+    levenshtein_distance,
+    normalize_homoglyphs,
+    normalize_leet,
 )
-from windows_triage.analysis.filename import (
-    calculate_entropy,
-    analyze_filename,
-    check_known_tool_filename,
-    EXECUTABLE_EXTENSIONS,
-)
-
 
 # =============================================================================
 # EXTENDED PATH TESTS (200+ tests)
 # =============================================================================
 
+
 class TestPathEdgeCasesExtended:
     """Extended path edge cases."""
 
     # Windows special folders
-    @pytest.mark.parametrize("folder", [
-        "Windows", "System32", "SysWOW64", "Program Files", "Program Files (x86)",
-        "Users", "ProgramData", "AppData", "Local", "Roaming", "Temp",
-        "Microsoft", "Windows Defender", "WindowsApps", "WinSxS",
-    ])
+    @pytest.mark.parametrize(
+        "folder",
+        [
+            "Windows",
+            "System32",
+            "SysWOW64",
+            "Program Files",
+            "Program Files (x86)",
+            "Users",
+            "ProgramData",
+            "AppData",
+            "Local",
+            "Roaming",
+            "Temp",
+            "Microsoft",
+            "Windows Defender",
+            "WindowsApps",
+            "WinSxS",
+        ],
+    )
     def test_windows_folders(self, folder):
         path = f"C:\\{folder}\\test.exe"
         result = normalize_path(path)
@@ -78,10 +87,17 @@ class TestPathEdgeCasesExtended:
         assert result is not None
 
     # Device paths
-    @pytest.mark.parametrize("device", [
-        "\\\\.\\C:", "\\\\.\\PhysicalDrive0", "\\\\.\\COM1", "\\\\.\\NUL",
-        "\\\\?\\C:\\Windows", "\\\\?\\UNC\\server\\share",
-    ])
+    @pytest.mark.parametrize(
+        "device",
+        [
+            "\\\\.\\C:",
+            "\\\\.\\PhysicalDrive0",
+            "\\\\.\\COM1",
+            "\\\\.\\NUL",
+            "\\\\?\\C:\\Windows",
+            "\\\\?\\UNC\\server\\share",
+        ],
+    )
     def test_device_paths(self, device):
         result = normalize_path(device)
         assert result is not None
@@ -92,10 +108,23 @@ class TestPathEdgeCasesExtended:
         assert result is not None
 
     # Paths with special Windows names
-    @pytest.mark.parametrize("reserved", [
-        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4",
-        "LPT1", "LPT2", "LPT3", "CLOCK$",
-    ])
+    @pytest.mark.parametrize(
+        "reserved",
+        [
+            "CON",
+            "PRN",
+            "AUX",
+            "NUL",
+            "COM1",
+            "COM2",
+            "COM3",
+            "COM4",
+            "LPT1",
+            "LPT2",
+            "LPT3",
+            "CLOCK$",
+        ],
+    )
     def test_reserved_names(self, reserved):
         result = normalize_path(f"C:\\{reserved}")
         assert result is not None
@@ -103,21 +132,27 @@ class TestPathEdgeCasesExtended:
         assert result2 is not None
 
     # Paths with various quote styles
-    @pytest.mark.parametrize("path", [
-        '"C:\\Program Files\\test.exe"',
-        "'C:\\Program Files\\test.exe'",
-        '`C:\\Program Files\\test.exe`',
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            '"C:\\Program Files\\test.exe"',
+            "'C:\\Program Files\\test.exe'",
+            "`C:\\Program Files\\test.exe`",
+        ],
+    )
     def test_quoted_paths(self, path):
         result = normalize_path(path)
         assert result is not None
 
     # Paths with command line arguments
-    @pytest.mark.parametrize("path", [
-        "C:\\Windows\\System32\\cmd.exe /c dir",
-        '"C:\\Program Files\\app.exe" --arg value',
-        "C:\\app.exe -f file.txt",
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "C:\\Windows\\System32\\cmd.exe /c dir",
+            '"C:\\Program Files\\app.exe" --arg value',
+            "C:\\app.exe -f file.txt",
+        ],
+    )
     def test_paths_with_args(self, path):
         result = parse_service_binary_path(path)
         assert result is not None
@@ -130,11 +165,14 @@ class TestPathEdgeCasesExtended:
         assert result is not None
 
     # Paths with various separators mixed
-    @pytest.mark.parametrize("path", [
-        "C:/Windows\\System32/cmd.exe",
-        "C:\\Windows/System32\\cmd.exe",
-        "C:/Windows/System32/cmd.exe",
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "C:/Windows\\System32/cmd.exe",
+            "C:\\Windows/System32\\cmd.exe",
+            "C:/Windows/System32/cmd.exe",
+        ],
+    )
     def test_mixed_separators(self, path):
         result = normalize_path(path)
         assert "\\" in result
@@ -144,35 +182,41 @@ class TestPathEdgeCasesExtended:
 class TestSuspiciousPathsExtended:
     """Extended suspicious path detection."""
 
-    @pytest.mark.parametrize("path", [
-        # Temp directories
-        "C:\\Windows\\Temp\\malware.exe",
-        "C:\\Users\\John\\AppData\\Local\\Temp\\payload.exe",
-        "%TEMP%\\dropper.exe",
-        # Public folders
-        "C:\\Users\\Public\\Downloads\\suspicious.exe",
-        "C:\\Users\\Public\\Documents\\hidden.exe",
-        # Recycle bin
-        "C:\\$Recycle.Bin\\S-1-5-21-123\\payload.exe",
-        "C:\\RECYCLER\\info.exe",
-        # Root of drives
-        "C:\\suspicious.exe",
-        "D:\\malware.exe",
-        # PerfLogs
-        "C:\\PerfLogs\\malware.exe",
-        # Hidden system folders
-        "C:\\System Volume Information\\file.exe",
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            # Temp directories
+            "C:\\Windows\\Temp\\malware.exe",
+            "C:\\Users\\John\\AppData\\Local\\Temp\\payload.exe",
+            "%TEMP%\\dropper.exe",
+            # Public folders
+            "C:\\Users\\Public\\Downloads\\suspicious.exe",
+            "C:\\Users\\Public\\Documents\\hidden.exe",
+            # Recycle bin
+            "C:\\$Recycle.Bin\\S-1-5-21-123\\payload.exe",
+            "C:\\RECYCLER\\info.exe",
+            # Root of drives
+            "C:\\suspicious.exe",
+            "D:\\malware.exe",
+            # PerfLogs
+            "C:\\PerfLogs\\malware.exe",
+            # Hidden system folders
+            "C:\\System Volume Information\\file.exe",
+        ],
+    )
     def test_suspicious_locations(self, path):
         result = check_suspicious_path(path)
         assert result is not None
 
-    @pytest.mark.parametrize("path", [
-        # Legitimate locations
-        "C:\\Windows\\System32\\cmd.exe",
-        "C:\\Program Files\\Microsoft Office\\Office16\\WINWORD.EXE",
-        "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            # Legitimate locations
+            "C:\\Windows\\System32\\cmd.exe",
+            "C:\\Program Files\\Microsoft Office\\Office16\\WINWORD.EXE",
+            "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+        ],
+    )
     def test_legitimate_locations(self, path):
         result = check_suspicious_path(path)
         # These might return None or empty result
@@ -182,6 +226,7 @@ class TestSuspiciousPathsExtended:
 # =============================================================================
 # EXTENDED HASH TESTS (200+ tests)
 # =============================================================================
+
 
 class TestHashExtended:
     """Extended hash detection tests."""
@@ -219,26 +264,38 @@ class TestHashExtended:
         assert validate_hash(hash_str) is True
 
     # Hash with various formats
-    @pytest.mark.parametrize("fmt,hash_str", [
-        ("md5", "MD5:d41d8cd98f00b204e9800998ecf8427e"),
-        ("md5", "md5:d41d8cd98f00b204e9800998ecf8427e"),
-        ("sha1", "SHA1:da39a3ee5e6b4b0d3255bfef95601890afd80709"),
-        ("sha1", "sha-1:da39a3ee5e6b4b0d3255bfef95601890afd80709"),
-        ("sha256", "SHA256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
-        ("sha256", "sha-256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
-    ])
+    @pytest.mark.parametrize(
+        "fmt,hash_str",
+        [
+            ("md5", "MD5:d41d8cd98f00b204e9800998ecf8427e"),
+            ("md5", "md5:d41d8cd98f00b204e9800998ecf8427e"),
+            ("sha1", "SHA1:da39a3ee5e6b4b0d3255bfef95601890afd80709"),
+            ("sha1", "sha-1:da39a3ee5e6b4b0d3255bfef95601890afd80709"),
+            (
+                "sha256",
+                "SHA256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+            (
+                "sha256",
+                "sha-256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+        ],
+    )
     def test_prefixed_hashes(self, fmt, hash_str):
         assert detect_hash_algorithm(hash_str) == fmt
 
     # Edge cases for hash validation
-    @pytest.mark.parametrize("hash_str", [
-        "0" * 32,  # All zeros MD5
-        "f" * 32,  # All f's MD5
-        "0" * 40,  # All zeros SHA1
-        "f" * 40,  # All f's SHA1
-        "0" * 64,  # All zeros SHA256
-        "f" * 64,  # All f's SHA256
-    ])
+    @pytest.mark.parametrize(
+        "hash_str",
+        [
+            "0" * 32,  # All zeros MD5
+            "f" * 32,  # All f's MD5
+            "0" * 40,  # All zeros SHA1
+            "f" * 40,  # All f's SHA1
+            "0" * 64,  # All zeros SHA256
+            "f" * 64,  # All f's SHA256
+        ],
+    )
     def test_extreme_hash_values(self, hash_str):
         assert validate_hash(hash_str) is True
 
@@ -249,11 +306,14 @@ class TestHashExtended:
         assert validate_hash(hash_str) is False
 
     # Hash normalization
-    @pytest.mark.parametrize("input_hash,expected", [
-        ("ABC123" + "0" * 26, "abc123" + "0" * 26),
-        ("  abc123" + "0" * 26 + "  ", "abc123" + "0" * 26),
-        ("MD5:abc123" + "0" * 26, "abc123" + "0" * 26),
-    ])
+    @pytest.mark.parametrize(
+        "input_hash,expected",
+        [
+            ("ABC123" + "0" * 26, "abc123" + "0" * 26),
+            ("  abc123" + "0" * 26 + "  ", "abc123" + "0" * 26),
+            ("MD5:abc123" + "0" * 26, "abc123" + "0" * 26),
+        ],
+    )
     def test_hash_normalization(self, input_hash, expected):
         result = normalize_hash(input_hash)
         assert result == expected
@@ -261,19 +321,19 @@ class TestHashExtended:
     # Random valid hashes
     @pytest.mark.parametrize("i", range(50))
     def test_random_md5(self, i):
-        hash_str = ''.join(random.choices('0123456789abcdef', k=32))
+        hash_str = "".join(random.choices("0123456789abcdef", k=32))
         assert validate_hash(hash_str) is True
         assert detect_hash_algorithm(hash_str) == "md5"
 
     @pytest.mark.parametrize("i", range(50))
     def test_random_sha1(self, i):
-        hash_str = ''.join(random.choices('0123456789abcdef', k=40))
+        hash_str = "".join(random.choices("0123456789abcdef", k=40))
         assert validate_hash(hash_str) is True
         assert detect_hash_algorithm(hash_str) == "sha1"
 
     @pytest.mark.parametrize("i", range(50))
     def test_random_sha256(self, i):
-        hash_str = ''.join(random.choices('0123456789abcdef', k=64))
+        hash_str = "".join(random.choices("0123456789abcdef", k=64))
         assert validate_hash(hash_str) is True
         assert detect_hash_algorithm(hash_str) == "sha256"
 
@@ -282,17 +342,35 @@ class TestHashExtended:
 # EXTENDED UNICODE TESTS (300+ tests)
 # =============================================================================
 
+
 class TestUnicodeExtended:
     """Extended Unicode evasion tests."""
 
     # All Cyrillic lookalikes comprehensive
     CYRILLIC_MAP = {
-        '\u0430': 'a', '\u0435': 'e', '\u043E': 'o', '\u0440': 'p',
-        '\u0441': 'c', '\u0443': 'y', '\u0445': 'x', '\u0456': 'i',
-        '\u0458': 'j', '\u04BB': 'h', '\u0455': 's', '\u0501': 'd',
-        '\u0410': 'A', '\u0412': 'B', '\u0415': 'E', '\u041D': 'H',
-        '\u041E': 'O', '\u0420': 'P', '\u0421': 'C', '\u0422': 'T',
-        '\u0425': 'X', '\u041C': 'M', '\u041A': 'K',
+        "\u0430": "a",
+        "\u0435": "e",
+        "\u043e": "o",
+        "\u0440": "p",
+        "\u0441": "c",
+        "\u0443": "y",
+        "\u0445": "x",
+        "\u0456": "i",
+        "\u0458": "j",
+        "\u04bb": "h",
+        "\u0455": "s",
+        "\u0501": "d",
+        "\u0410": "A",
+        "\u0412": "B",
+        "\u0415": "E",
+        "\u041d": "H",
+        "\u041e": "O",
+        "\u0420": "P",
+        "\u0421": "C",
+        "\u0422": "T",
+        "\u0425": "X",
+        "\u041c": "M",
+        "\u041a": "K",
     }
 
     @pytest.mark.parametrize("cyrillic,latin", list(CYRILLIC_MAP.items()))
@@ -302,12 +380,26 @@ class TestUnicodeExtended:
 
     # Greek lookalikes
     GREEK_MAP = {
-        '\u03B1': 'a', '\u03B5': 'e', '\u03BF': 'o', '\u03C1': 'p',
-        '\u03C5': 'u', '\u03B9': 'i', '\u03BD': 'v',
-        '\u0391': 'A', '\u0392': 'B', '\u0395': 'E', '\u0397': 'H',
-        '\u0399': 'I', '\u039A': 'K', '\u039C': 'M', '\u039D': 'N',
-        '\u039F': 'O', '\u03A1': 'P', '\u03A4': 'T', '\u03A7': 'X',
-        '\u0396': 'Z',
+        "\u03b1": "a",
+        "\u03b5": "e",
+        "\u03bf": "o",
+        "\u03c1": "p",
+        "\u03c5": "u",
+        "\u03b9": "i",
+        "\u03bd": "v",
+        "\u0391": "A",
+        "\u0392": "B",
+        "\u0395": "E",
+        "\u0397": "H",
+        "\u0399": "I",
+        "\u039a": "K",
+        "\u039c": "M",
+        "\u039d": "N",
+        "\u039f": "O",
+        "\u03a1": "P",
+        "\u03a4": "T",
+        "\u03a7": "X",
+        "\u0396": "Z",
     }
 
     @pytest.mark.parametrize("greek,latin", list(GREEK_MAP.items()))
@@ -317,9 +409,18 @@ class TestUnicodeExtended:
 
     # Protected Windows process names with various attacks
     PROTECTED_PROCESSES = [
-        "svchost.exe", "lsass.exe", "csrss.exe", "services.exe",
-        "smss.exe", "wininit.exe", "winlogon.exe", "explorer.exe",
-        "spoolsv.exe", "taskhost.exe", "dwm.exe", "conhost.exe",
+        "svchost.exe",
+        "lsass.exe",
+        "csrss.exe",
+        "services.exe",
+        "smss.exe",
+        "wininit.exe",
+        "winlogon.exe",
+        "explorer.exe",
+        "spoolsv.exe",
+        "taskhost.exe",
+        "dwm.exe",
+        "conhost.exe",
     ]
 
     @pytest.mark.parametrize("process", PROTECTED_PROCESSES)
@@ -337,32 +438,32 @@ class TestUnicodeExtended:
     @pytest.mark.parametrize("process", PROTECTED_PROCESSES[:6])
     def test_protected_process_leet_0(self, process):
         """Leet speak with 0 for o."""
-        if 'o' in process:
-            spoofed = process.replace('o', '0')
+        if "o" in process:
+            spoofed = process.replace("o", "0")
             result = check_process_name_spoofing(spoofed, [process])
             assert len(result) > 0
 
     @pytest.mark.parametrize("process", PROTECTED_PROCESSES[:6])
     def test_protected_process_leet_1(self, process):
         """Leet speak with 1 for i."""
-        if 'i' in process:
-            spoofed = process.replace('i', '1')
+        if "i" in process:
+            spoofed = process.replace("i", "1")
             result = check_process_name_spoofing(spoofed, [process])
             assert len(result) > 0
 
     @pytest.mark.parametrize("process", PROTECTED_PROCESSES[:6])
     def test_protected_process_leet_3(self, process):
         """Leet speak with 3 for e."""
-        if 'e' in process:
-            spoofed = process.replace('e', '3')
+        if "e" in process:
+            spoofed = process.replace("e", "3")
             result = check_process_name_spoofing(spoofed, [process])
             assert len(result) > 0
 
     @pytest.mark.parametrize("process", PROTECTED_PROCESSES[:6])
     def test_protected_process_leet_5(self, process):
         """Leet speak with 5 for s."""
-        if 's' in process:
-            spoofed = process.replace('s', '5')
+        if "s" in process:
+            spoofed = process.replace("s", "5")
             result = check_process_name_spoofing(spoofed, [process])
             assert len(result) > 0
 
@@ -372,18 +473,18 @@ class TestUnicodeExtended:
         """Zero-width chars at different positions."""
         name = "svchost.exe"
         if pos < len(name):
-            spoofed = name[:pos] + '\u200B' + name[pos:]
+            spoofed = name[:pos] + "\u200b" + name[pos:]
             result = detect_unicode_evasion(spoofed)
-            assert any(f['type'] == 'zero_width' for f in result)
+            assert any(f["type"] == "zero_width" for f in result)
 
     # RLO attack variations
     @pytest.mark.parametrize("extension", ["exe", "scr", "bat", "cmd", "ps1"])
     def test_rlo_extension_hide(self, extension):
         """RLO to hide dangerous extensions."""
         # e.g., "invoice\u202Eexe.pdf" displays as "invoicefdp.exe"
-        filename = f"document\u202E{extension}.pdf"
+        filename = f"document\u202e{extension}.pdf"
         result = detect_unicode_evasion(filename)
-        assert any(f['type'] == 'bidi_override' for f in result)
+        assert any(f["type"] == "bidi_override" for f in result)
 
     # Multiple homoglyphs in same filename
     @pytest.mark.parametrize("count", [1, 2, 3, 5, 10])
@@ -392,53 +493,62 @@ class TestUnicodeExtended:
         name = "a" * count
         spoofed = chr(0x0430) * count  # Cyrillic 'a' repeated
         result = detect_unicode_evasion(spoofed + ".exe")
-        assert len([f for f in result if f['type'] == 'homoglyph']) >= 1
+        assert len([f for f in result if f["type"] == "homoglyph"]) >= 1
 
 
 class TestTyposquattingExtended:
     """Extended typosquatting tests."""
 
     # Common typos for svchost.exe
-    @pytest.mark.parametrize("typo", [
-        "svchot.exe",    # Missing s
-        "svcost.exe",    # Missing h
-        "svhost.exe",    # Missing c
-        "scvhost.exe",   # Transposed cv
-        "svchost.ex",    # Missing e
-        "svchosts.exe",  # Extra s
-        "svchoost.exe",  # Extra o
-        "svchst.exe",    # Missing o
-    ])
+    @pytest.mark.parametrize(
+        "typo",
+        [
+            "svchot.exe",  # Missing s
+            "svcost.exe",  # Missing h
+            "svhost.exe",  # Missing c
+            "scvhost.exe",  # Transposed cv
+            "svchost.ex",  # Missing e
+            "svchosts.exe",  # Extra s
+            "svchoost.exe",  # Extra o
+            "svchst.exe",  # Missing o
+        ],
+    )
     def test_svchost_typos(self, typo):
         result = detect_typosquatting(typo, ["svchost.exe"])
         assert len(result) > 0 or levenshtein_distance(typo.lower(), "svchost.exe") > 2
 
     # Common typos for lsass.exe
-    @pytest.mark.parametrize("typo", [
-        "lsas.exe",      # Missing s
-        "lssas.exe",     # Extra s
-        "lsass.ex",      # Missing e
-        "lasss.exe",     # Transposed
-        "isass.exe",     # l -> i
-    ])
+    @pytest.mark.parametrize(
+        "typo",
+        [
+            "lsas.exe",  # Missing s
+            "lssas.exe",  # Extra s
+            "lsass.ex",  # Missing e
+            "lasss.exe",  # Transposed
+            "isass.exe",  # l -> i
+        ],
+    )
     def test_lsass_typos(self, typo):
         result = detect_typosquatting(typo, ["lsass.exe"])
         assert len(result) > 0 or levenshtein_distance(typo.lower(), "lsass.exe") > 2
 
     # Edit distance boundaries
-    @pytest.mark.parametrize("s1,s2,expected", [
-        ("", "", 0),
-        ("a", "", 1),
-        ("", "a", 1),
-        ("abc", "abc", 0),
-        ("abc", "abd", 1),
-        ("abc", "adc", 1),
-        ("abc", "dbc", 1),
-        ("abc", "abcd", 1),
-        ("abc", "ab", 1),
-        ("kitten", "sitting", 3),
-        ("saturday", "sunday", 3),
-    ])
+    @pytest.mark.parametrize(
+        "s1,s2,expected",
+        [
+            ("", "", 0),
+            ("a", "", 1),
+            ("", "a", 1),
+            ("abc", "abc", 0),
+            ("abc", "abd", 1),
+            ("abc", "adc", 1),
+            ("abc", "dbc", 1),
+            ("abc", "abcd", 1),
+            ("abc", "ab", 1),
+            ("kitten", "sitting", 3),
+            ("saturday", "sunday", 3),
+        ],
+    )
     def test_levenshtein_known_values(self, s1, s2, expected):
         assert levenshtein_distance(s1, s2) == expected
 
@@ -448,9 +558,16 @@ class TestLeetSpeakExtended:
 
     # All leet substitutions
     LEET_MAP = {
-        '0': 'o', '1': 'i', '3': 'e', '4': 'a',
-        '5': 's', '7': 't', '8': 'b', '@': 'a',
-        '$': 's', '!': 'i',
+        "0": "o",
+        "1": "i",
+        "3": "e",
+        "4": "a",
+        "5": "s",
+        "7": "t",
+        "8": "b",
+        "@": "a",
+        "$": "s",
+        "!": "i",
     }
 
     @pytest.mark.parametrize("leet,normal", list(LEET_MAP.items()))
@@ -459,30 +576,36 @@ class TestLeetSpeakExtended:
         assert result == normal
 
     # Complex leet combinations
-    @pytest.mark.parametrize("leet,expected", [
-        ("h3ll0", "hello"),
-        ("w0rld", "world"),
-        ("t3st", "test"),
-        ("p4ssw0rd", "password"),
-        ("4dm1n", "admin"),
-        ("r00t", "root"),
-        ("5y5t3m", "system"),
-        ("s3rv1c3", "service"),
-    ])
+    @pytest.mark.parametrize(
+        "leet,expected",
+        [
+            ("h3ll0", "hello"),
+            ("w0rld", "world"),
+            ("t3st", "test"),
+            ("p4ssw0rd", "password"),
+            ("4dm1n", "admin"),
+            ("r00t", "root"),
+            ("5y5t3m", "system"),
+            ("s3rv1c3", "service"),
+        ],
+    )
     def test_leet_words(self, leet, expected):
         result = normalize_leet(leet)
         assert result == expected
 
     # Leet speak in process names
-    @pytest.mark.parametrize("original,leet", [
-        ("svchost.exe", "5vch0st.exe"),
-        ("svchost.exe", "svch0st.exe"),
-        ("svchost.exe", "5vcho5t.exe"),
-        ("lsass.exe", "l54ss.exe"),
-        ("lsass.exe", "ls4ss.exe"),
-        ("services.exe", "s3rvic3s.exe"),
-        ("csrss.exe", "c5r55.exe"),
-    ])
+    @pytest.mark.parametrize(
+        "original,leet",
+        [
+            ("svchost.exe", "5vch0st.exe"),
+            ("svchost.exe", "svch0st.exe"),
+            ("svchost.exe", "5vcho5t.exe"),
+            ("lsass.exe", "l54ss.exe"),
+            ("lsass.exe", "ls4ss.exe"),
+            ("services.exe", "s3rvic3s.exe"),
+            ("csrss.exe", "c5r55.exe"),
+        ],
+    )
     def test_leet_process_spoofing(self, original, leet):
         result = detect_leet_speak(leet, [original])
         # Should detect if leet normalizes to original
@@ -495,16 +618,20 @@ class TestLeetSpeakExtended:
 # EXTENDED FILENAME TESTS (200+ tests)
 # =============================================================================
 
+
 class TestFilenameExtended:
     """Extended filename analysis tests."""
 
     # Entropy tests with known values
-    @pytest.mark.parametrize("s,min_entropy,max_entropy", [
-        ("aaaa", 0.0, 0.1),
-        ("abab", 0.9, 1.1),
-        ("abcd", 1.9, 2.1),
-        ("abcdefgh", 2.9, 3.1),
-    ])
+    @pytest.mark.parametrize(
+        "s,min_entropy,max_entropy",
+        [
+            ("aaaa", 0.0, 0.1),
+            ("abab", 0.9, 1.1),
+            ("abcd", 1.9, 2.1),
+            ("abcdefgh", 2.9, 3.1),
+        ],
+    )
     def test_entropy_ranges(self, s, min_entropy, max_entropy):
         entropy = calculate_entropy(s)
         assert min_entropy <= entropy <= max_entropy
@@ -513,7 +640,7 @@ class TestFilenameExtended:
     @pytest.mark.parametrize("ext", list(EXECUTABLE_EXTENSIONS))
     def test_all_executable_extensions(self, ext):
         result = analyze_filename(f"test.{ext}")
-        assert 'entropy' in result
+        assert "entropy" in result
 
     # Double extensions with all document types
     DOC_EXTENSIONS = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt"]
@@ -524,47 +651,51 @@ class TestFilenameExtended:
     def test_double_extensions_comprehensive(self, doc_ext, exec_ext):
         filename = f"document.{doc_ext}.{exec_ext}"
         result = analyze_filename(filename)
-        assert any(f['type'] == 'double_extension' for f in result['findings'])
+        assert any(f["type"] == "double_extension" for f in result["findings"])
 
     # Short names for all executable types
     @pytest.mark.parametrize("ext", ["exe", "dll", "scr", "bat", "ps1"])
     @pytest.mark.parametrize("name", ["a", "ab", "x", "1"])
     def test_short_executable_names(self, ext, name):
         result = analyze_filename(f"{name}.{ext}")
-        assert result['is_suspicious'] is True
+        assert result["is_suspicious"] is True
 
     # Filenames with various Unicode categories
-    @pytest.mark.parametrize("char", [
-        "\u0000",  # Null
-        "\u0001",  # SOH
-        "\u001F",  # Unit separator
-        "\u007F",  # DEL
-    ])
+    @pytest.mark.parametrize(
+        "char",
+        [
+            "\u0000",  # Null
+            "\u0001",  # SOH
+            "\u001f",  # Unit separator
+            "\u007f",  # DEL
+        ],
+    )
     def test_control_characters(self, char):
         result = analyze_filename(f"test{char}file.exe")
-        assert any(f['type'] == 'control_chars' for f in result['findings'])
+        assert any(f["type"] == "control_chars" for f in result["findings"])
 
     # Space padding variations
     @pytest.mark.parametrize("spaces", [8, 16, 32, 64, 100])
     def test_space_padding_lengths(self, spaces):
         filename = "document" + " " * spaces + ".exe"
         result = analyze_filename(filename)
-        assert any(f['type'] == 'space_padding' for f in result['findings'])
+        assert any(f["type"] == "space_padding" for f in result["findings"])
 
     # Random filename generation
     @pytest.mark.parametrize("i", range(100))
     def test_random_filenames(self, i):
         length = random.randint(1, 50)
-        name = ''.join(random.choices(string.ascii_letters + string.digits, k=length))
+        name = "".join(random.choices(string.ascii_letters + string.digits, k=length))
         ext = random.choice(["exe", "dll", "txt", "pdf", "doc"])
         result = analyze_filename(f"{name}.{ext}")
         assert result is not None
-        assert 'entropy' in result
+        assert "entropy" in result
 
 
 # =============================================================================
 # EXTENDED INTEGRATION TESTS (200+ tests)
 # =============================================================================
+
 
 class TestIntegrationExtended:
     """Extended integration tests."""
@@ -590,7 +721,7 @@ class TestIntegrationExtended:
     # Full analysis pipeline for suspicious files
     SUSPICIOUS_FILES = [
         "C:\\Temp\\5vch0st.exe",  # Leet speak
-        "C:\\Temp\\svch\u043Est.exe",  # Homoglyph
+        "C:\\Temp\\svch\u043est.exe",  # Homoglyph
         "C:\\Users\\Public\\document.pdf.exe",  # Double extension
         "C:\\Temp\\a.exe",  # Short name
     ]
@@ -605,9 +736,7 @@ class TestIntegrationExtended:
 
         # At least one of these should flag something
         has_findings = (
-            analysis['is_suspicious'] or
-            len(unicode_check) > 0 or
-            len(spoofing) > 0
+            analysis["is_suspicious"] or len(unicode_check) > 0 or len(spoofing) > 0
         )
         assert has_findings
 
@@ -617,7 +746,7 @@ class TestIntegrationExtended:
         dirs = ["Windows", "Temp", "Users", "Program Files", "System32"]
         dir_path = "\\".join(random.choices(dirs, k=random.randint(1, 4)))
         name_len = random.randint(3, 20)
-        name = ''.join(random.choices(string.ascii_letters, k=name_len))
+        name = "".join(random.choices(string.ascii_letters, k=name_len))
         ext = random.choice(["exe", "dll", "txt", "pdf"])
 
         full_path = f"C:\\{dir_path}\\{name}.{ext}"
@@ -632,10 +761,10 @@ class TestIntegrationExtended:
     def test_random_hash_file_pairs(self, i):
         # Generate random hash
         hash_len = random.choice([32, 40, 64])
-        hash_str = ''.join(random.choices('0123456789abcdef', k=hash_len))
+        hash_str = "".join(random.choices("0123456789abcdef", k=hash_len))
 
         # Generate random filename
-        name = ''.join(random.choices(string.ascii_letters, k=10))
+        name = "".join(random.choices(string.ascii_letters, k=10))
         filename = f"{name}.exe"
 
         # Validate both
@@ -647,6 +776,7 @@ class TestIntegrationExtended:
 # =============================================================================
 # EXTENDED PERFORMANCE TESTS (100+ tests)
 # =============================================================================
+
 
 class TestPerformanceExtended:
     """Extended performance tests."""
@@ -660,7 +790,9 @@ class TestPerformanceExtended:
 
     @pytest.mark.parametrize("size", [100, 500, 1000])
     def test_batch_hash_validation(self, size):
-        hashes = [''.join(random.choices('0123456789abcdef', k=64)) for _ in range(size)]
+        hashes = [
+            "".join(random.choices("0123456789abcdef", k=64)) for _ in range(size)
+        ]
         for h in hashes:
             result = validate_hash(h)
             assert result is True
@@ -681,7 +813,7 @@ class TestPerformanceExtended:
 
     @pytest.mark.parametrize("length", [100, 1000, 10000])
     def test_long_string_entropy(self, length):
-        s = ''.join(random.choices(string.ascii_letters, k=length))
+        s = "".join(random.choices(string.ascii_letters, k=length))
         entropy = calculate_entropy(s)
         assert entropy > 0
 
@@ -696,39 +828,67 @@ class TestPerformanceExtended:
 # EXTENDED EDGE CASES (100+ tests)
 # =============================================================================
 
+
 class TestEdgeCasesExtended:
     """Extended edge case tests."""
 
     # Empty and whitespace
-    @pytest.mark.parametrize("input_str", [
-        "", " ", "  ", "\t", "\n", "\r", "\r\n",
-        " \t\n", "   \t   ",
-    ])
+    @pytest.mark.parametrize(
+        "input_str",
+        [
+            "",
+            " ",
+            "  ",
+            "\t",
+            "\n",
+            "\r",
+            "\r\n",
+            " \t\n",
+            "   \t   ",
+        ],
+    )
     def test_whitespace_inputs_path(self, input_str):
         result = normalize_path(input_str)
         assert result is not None or result == ""
 
-    @pytest.mark.parametrize("input_str", [
-        "", " ", "  ", "\t", "\n",
-    ])
+    @pytest.mark.parametrize(
+        "input_str",
+        [
+            "",
+            " ",
+            "  ",
+            "\t",
+            "\n",
+        ],
+    )
     def test_whitespace_inputs_filename(self, input_str):
         result = analyze_filename(input_str)
         assert result is not None
 
-    @pytest.mark.parametrize("input_str", [
-        "", " ", "  ", "abc", "not-a-hash",
-    ])
+    @pytest.mark.parametrize(
+        "input_str",
+        [
+            "",
+            " ",
+            "  ",
+            "abc",
+            "not-a-hash",
+        ],
+    )
     def test_invalid_hash_inputs(self, input_str):
         result = detect_hash_algorithm(input_str)
         assert result is None
 
     # Unicode edge cases
-    @pytest.mark.parametrize("char", [
-        "\uFFFF",  # Max BMP
-        "\u0100",  # Latin Extended
-        "\u4E00",  # CJK
-        "\U0001F600",  # Emoji
-    ])
+    @pytest.mark.parametrize(
+        "char",
+        [
+            "\uffff",  # Max BMP
+            "\u0100",  # Latin Extended
+            "\u4e00",  # CJK
+            "\U0001f600",  # Emoji
+        ],
+    )
     def test_unicode_edge_chars(self, char):
         result = detect_unicode_evasion(f"test{char}.exe")
         assert result is not None
@@ -761,7 +921,7 @@ class TestEdgeCasesExtended:
         assert result is not None
 
     # Special characters
-    @pytest.mark.parametrize("char", ['<', '>', ':', '"', '|', '?', '*'])
+    @pytest.mark.parametrize("char", ["<", ">", ":", '"', "|", "?", "*"])
     def test_invalid_path_chars(self, char):
         path = f"C:\\test{char}file.exe"
         result = normalize_path(path)
@@ -772,6 +932,7 @@ class TestEdgeCasesExtended:
 # ADDITIONAL FUZZ TESTS TO REACH 2000+ (250+ tests)
 # =============================================================================
 
+
 class TestFuzzPaths:
     """Fuzz testing for paths."""
 
@@ -780,7 +941,7 @@ class TestFuzzPaths:
         """Random path fuzzing."""
         chars = string.ascii_letters + string.digits + "\\/_-. "
         length = random.randint(5, 100)
-        path = ''.join(random.choices(chars, k=length))
+        path = "".join(random.choices(chars, k=length))
         result = normalize_path(path)
         assert result is not None or result is None
 
@@ -802,7 +963,7 @@ class TestFuzzHashes:
         """Random strings as hash input."""
         length = random.randint(1, 100)
         chars = string.printable
-        s = ''.join(random.choices(chars, k=length))
+        s = "".join(random.choices(chars, k=length))
         result = detect_hash_algorithm(s)
         # Should return None or valid algorithm
         assert result in [None, "md5", "sha1", "sha256"]
@@ -810,7 +971,7 @@ class TestFuzzHashes:
     @pytest.mark.parametrize("length", list(range(1, 70)))
     def test_all_lengths_1_to_70(self, length):
         """Test all hash lengths from 1 to 70."""
-        hash_str = 'a' * length
+        hash_str = "a" * length
         result = detect_hash_algorithm(hash_str)
         if length == 32:
             assert result == "md5"
@@ -830,7 +991,7 @@ class TestFuzzFilenames:
         """Random filename fuzzing."""
         chars = string.ascii_letters + string.digits + ".-_"
         length = random.randint(1, 50)
-        name = ''.join(random.choices(chars, k=length))
+        name = "".join(random.choices(chars, k=length))
         ext = random.choice(["exe", "dll", "txt", "pdf", ""])
         filename = f"{name}.{ext}" if ext else name
         result = analyze_filename(filename)
@@ -839,7 +1000,7 @@ class TestFuzzFilenames:
     @pytest.mark.parametrize("ext", list(EXECUTABLE_EXTENSIONS))
     def test_all_extensions_with_random_name(self, ext):
         """All extensions with random names."""
-        name = ''.join(random.choices(string.ascii_letters, k=10))
+        name = "".join(random.choices(string.ascii_letters, k=10))
         result = analyze_filename(f"{name}.{ext}")
         assert result is not None
 
@@ -852,7 +1013,7 @@ class TestFuzzUnicode:
         """Random Unicode strings."""
         length = random.randint(5, 30)
         chars = [chr(random.randint(0x20, 0xFFFF)) for _ in range(length)]
-        s = ''.join(chars) + ".exe"
+        s = "".join(chars) + ".exe"
         result = detect_unicode_evasion(s)
         assert result is not None
 

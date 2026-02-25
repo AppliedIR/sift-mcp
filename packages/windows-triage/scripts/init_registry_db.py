@@ -31,9 +31,7 @@ def main():
         description="Initialize optional full registry database"
     )
     parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Recreate database even if it exists"
+        "--force", action="store_true", help="Recreate database even if it exists"
     )
     args = parser.parse_args()
 

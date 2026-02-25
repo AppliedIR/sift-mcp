@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from forensic_knowledge import loader
 
-
 VALID_TYPES = {"finding", "attribution", "conclusion", "exclusion"}
 
 
@@ -42,17 +41,23 @@ def validate(finding: dict) -> dict:
     # Type validation
     finding_type = finding.get("type", "")
     if finding_type and finding_type not in VALID_TYPES:
-        errors.append(f"Invalid type '{finding_type}'. Must be one of: {sorted(VALID_TYPES)}")
+        errors.append(
+            f"Invalid type '{finding_type}'. Must be one of: {sorted(VALID_TYPES)}"
+        )
 
     # Confidence validation
     confidence = finding.get("confidence", "").upper()
     valid_confidence = set(confidence_defs.keys())
     if confidence and confidence not in valid_confidence:
-        errors.append(f"Invalid confidence '{confidence}'. Must be one of: {sorted(valid_confidence)}")
+        errors.append(
+            f"Invalid confidence '{confidence}'. Must be one of: {sorted(valid_confidence)}"
+        )
 
     # Confidence justification required
     if not finding.get("confidence_justification"):
-        errors.append("Missing confidence_justification (FD-005: confidence must be justified)")
+        errors.append(
+            "Missing confidence_justification (FD-005: confidence must be justified)"
+        )
 
     # Evidence count by confidence level (FD-001, FD-007)
     if confidence in confidence_defs and not errors:

@@ -12,13 +12,10 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
-from sift_common.audit import AuditWriter, resolve_examiner
-from sift_common.instructions import CASE_MCP as _INSTRUCTIONS
-from sift_common.oplog import setup_logging
-
 from aiir_cli.case_io import (
     export_bundle as _export_bundle,
+)
+from aiir_cli.case_io import (
     import_bundle as _import_bundle,
 )
 from aiir_cli.commands.audit_cmd import audit_summary_data
@@ -33,6 +30,10 @@ from aiir_cli.main import (
     _case_list_data,
     _case_status_data,
 )
+from mcp.server.fastmcp import FastMCP
+from sift_common.audit import AuditWriter, resolve_examiner
+from sift_common.instructions import CASE_MCP as _INSTRUCTIONS
+from sift_common.oplog import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +69,7 @@ def _resolve_case_dir(case_id: str = "") -> Path:
                 case_dir = Path(content)
             else:
                 if ".." in content or "/" in content or "\\" in content:
-                    raise ValueError(
-                        f"Invalid case ID in active_case: {content}"
-                    )
+                    raise ValueError(f"Invalid case ID in active_case: {content}")
                 cases_dir = Path(os.environ.get("AIIR_CASES_DIR", "cases"))
                 case_dir = cases_dir / content
             os.environ["AIIR_CASE_DIR"] = str(case_dir)
@@ -261,9 +260,7 @@ def create_server() -> FastMCP:
             case_dir = _resolve_case_dir()
             bundle_file = Path(bundle_path)
             if not bundle_file.exists():
-                return json.dumps(
-                    {"error": f"Bundle file not found: {bundle_path}"}
-                )
+                return json.dumps({"error": f"Bundle file not found: {bundle_path}"})
             bundle_data = json.loads(bundle_file.read_text())
             result = _import_bundle(case_dir, bundle_data)
             audit.log(
@@ -272,8 +269,7 @@ def create_server() -> FastMCP:
                 result_summary=result,
             )
             return json.dumps(result)
-        except (ValueError, FileNotFoundError, OSError,
-                json.JSONDecodeError) as e:
+        except (ValueError, FileNotFoundError, OSError, json.JSONDecodeError) as e:
             return json.dumps({"error": str(e)})
 
     # ------------------------------------------------------------------
@@ -319,16 +315,13 @@ def create_server() -> FastMCP:
                 entry["command"] = command
 
             try:
-                with open(
-                    case_dir / "actions.jsonl", "a", encoding="utf-8"
-                ) as f:
+                with open(case_dir / "actions.jsonl", "a", encoding="utf-8") as f:
                     f.write(json.dumps(entry) + "\n")
                     f.flush()
                     os.fsync(f.fileno())
             except OSError as e:
                 return json.dumps(
-                    {"status": "write_failed", "timestamp": ts,
-                     "error": str(e)}
+                    {"status": "write_failed", "timestamp": ts, "error": str(e)}
                 )
 
             audit.log(
@@ -362,9 +355,7 @@ def create_server() -> FastMCP:
     # Tool 13: log_external_action (SAFE — audit-only, no approval)
     # ------------------------------------------------------------------
     @server.tool()
-    def log_external_action(
-        command: str, output_summary: str, purpose: str
-    ) -> str:
+    def log_external_action(command: str, output_summary: str, purpose: str) -> str:
         """Record a tool execution performed outside this MCP server
         (e.g., via Bash or another backend). Without this record, the
         action has no audit entry and findings cannot reference it."""

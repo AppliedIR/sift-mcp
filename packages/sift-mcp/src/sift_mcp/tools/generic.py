@@ -5,8 +5,8 @@ from __future__ import annotations
 from sift_mcp.catalog import get_tool_def
 from sift_mcp.config import get_config
 from sift_mcp.environment import find_binary
-from sift_mcp.executor import execute
 from sift_mcp.exceptions import DeniedBinaryError, ExecutionError
+from sift_mcp.executor import execute
 from sift_mcp.security import (
     is_denied,
     sanitize_extra_args,
@@ -59,7 +59,9 @@ def run_command(
         # Check flag=value arguments for path values
         if "=" in arg and arg.startswith("-"):
             value = arg.split("=", 1)[1]
-            if value and (value.startswith("/") or value.startswith("..") or "/" in value):
+            if value and (
+                value.startswith("/") or value.startswith("..") or "/" in value
+            ):
                 validate_input_path(value)
             continue
         if arg.startswith("-") and "=" not in arg:
@@ -70,9 +72,7 @@ def run_command(
     # Resolve binary via find_binary to prevent absolute path bypass
     resolved = find_binary(binary)
     if not resolved:
-        raise ExecutionError(
-            f"Binary '{binary}' not found on this system."
-        )
+        raise ExecutionError(f"Binary '{binary}' not found on this system.")
     command = [resolved] + command[1:]
 
     # Sanitize any args after the binary
@@ -100,7 +100,7 @@ def run_command(
         return exec_result
 
     # Large output — parse with byte budget
-    from sift_common.parsers import csv_parser, text_parser, json_parser
+    from sift_common.parsers import csv_parser, json_parser, text_parser
 
     if output_format == "csv":
         parsed = csv_parser.parse_csv(stdout, byte_budget=cfg.response_byte_budget)
@@ -109,7 +109,9 @@ def run_command(
     elif output_format == "json":
         parsed = json_parser.parse_json(stdout, byte_budget=cfg.response_byte_budget)
         if parsed.get("parse_error"):
-            parsed = json_parser.parse_jsonl(stdout, byte_budget=cfg.response_byte_budget)
+            parsed = json_parser.parse_jsonl(
+                stdout, byte_budget=cfg.response_byte_budget
+            )
         exec_result["_parsed"] = parsed
         exec_result["_output_format"] = "parsed_json"
     else:

@@ -12,21 +12,21 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import chromadb
 from sentence_transformers import SentenceTransformer
 
+from .tuning_config import TuningConfig, load_tuning_config
 from .utils import (
     ALLOWED_MODELS,
     DEFAULT_MODEL_NAME,
-    MAX_TOP_K,
     MAX_RETRIEVE,
+    MAX_TOP_K,
     MITRE_ID_PATTERN,
     augment_text_with_mitre,
     load_mitre_lookup,
 )
-from .tuning_config import load_tuning_config, TuningConfig
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,9 @@ DEFAULT_SOURCE_BOOST = {
 }
 DEFAULT_KEYWORD_BOOST = 1.15  # 15% boost for results containing query terms
 DEFAULT_LOW_SCORE_THRESHOLD = 0.50  # Queries with top scores below this need attention
-DEFAULT_WEAK_MITRE_THRESHOLD = 0.60  # MITRE queries scoring below this may have missing data
+DEFAULT_WEAK_MITRE_THRESHOLD = (
+    0.60  # MITRE queries scoring below this may have missing data
+)
 
 
 class RAGIndex:
@@ -69,9 +71,7 @@ class RAGIndex:
     """
 
     def __init__(
-        self,
-        index_dir: Optional[Path] = None,
-        model_name: Optional[str] = None
+        self, index_dir: Path | None = None, model_name: str | None = None
     ) -> None:
         """
         Initialize the RAG index.
@@ -80,14 +80,18 @@ class RAGIndex:
             index_dir: Path to ChromaDB index directory
             model_name: Sentence transformer model name
         """
-        self.index_dir = Path(index_dir or os.environ.get("RAG_INDEX_DIR", DEFAULT_INDEX_DIR))
-        self.model_name = model_name or os.environ.get("RAG_MODEL_NAME", DEFAULT_MODEL_NAME)
+        self.index_dir = Path(
+            index_dir or os.environ.get("RAG_INDEX_DIR", DEFAULT_INDEX_DIR)
+        )
+        self.model_name = model_name or os.environ.get(
+            "RAG_MODEL_NAME", DEFAULT_MODEL_NAME
+        )
 
-        self.model: Optional[SentenceTransformer] = None
-        self.collection: Optional[Any] = None
+        self.model: SentenceTransformer | None = None
+        self.collection: Any | None = None
         self.available_sources: list[str] = []
         self._mitre_lookup: dict[str, str] = {}  # T1003 -> "OS Credential Dumping"
-        self._tuning_config: Optional[TuningConfig] = None
+        self._tuning_config: TuningConfig | None = None
         self._loaded = False
 
     @property
@@ -132,10 +136,14 @@ class RAGIndex:
         # Load tuning configuration (thresholds, boosts)
         self._tuning_config = load_tuning_config()
         if self._tuning_config.last_modified:
-            logger.info(f"Tuning config loaded (last modified: {self._tuning_config.last_modified})")
+            logger.info(
+                f"Tuning config loaded (last modified: {self._tuning_config.last_modified})"
+            )
 
         count = self.collection.count()
-        logger.info(f"Ready. {count} documents indexed from {len(self.available_sources)} sources.")
+        logger.info(
+            f"Ready. {count} documents indexed from {len(self.available_sources)} sources."
+        )
         logger.info(f"MITRE lookup loaded: {len(self._mitre_lookup)} technique IDs")
         self._loaded = True
 
@@ -149,7 +157,7 @@ class RAGIndex:
                     self.available_sources = metadata.get("sources", [])
                     if self.available_sources:
                         return
-            except (IOError, json.JSONDecodeError):
+            except (OSError, json.JSONDecodeError):
                 pass
 
         # Fallback: scan collection
@@ -209,18 +217,52 @@ class RAGIndex:
         """
         # Common stopwords to ignore
         stopwords = {
-            "the", "and", "for", "how", "what", "when", "where", "why",
-            "with", "from", "this", "that", "these", "those", "are", "was",
-            "were", "been", "being", "have", "has", "had", "does", "did",
-            "will", "would", "could", "should", "may", "might", "must",
-            "can", "detect", "detection", "find", "search", "query",
-            "using", "via", "through"
+            "the",
+            "and",
+            "for",
+            "how",
+            "what",
+            "when",
+            "where",
+            "why",
+            "with",
+            "from",
+            "this",
+            "that",
+            "these",
+            "those",
+            "are",
+            "was",
+            "were",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "can",
+            "detect",
+            "detection",
+            "find",
+            "search",
+            "query",
+            "using",
+            "via",
+            "through",
         }
 
         terms = []
         # Split on non-alphanumeric (preserve dots for T1003.001)
-        for word in re.split(r'[^\w.]', query.lower()):
-            word = word.strip('.')
+        for word in re.split(r"[^\w.]", query.lower()):
+            word = word.strip(".")
             if len(word) >= 3 and word not in stopwords:
                 terms.append(word)
 
@@ -230,7 +272,9 @@ class RAGIndex:
 
         return list(set(terms))
 
-    def _calculate_keyword_boost(self, text: str, title: str, terms: list[str]) -> float:
+    def _calculate_keyword_boost(
+        self, text: str, title: str, terms: list[str]
+    ) -> float:
         """
         Calculate keyword boost multiplier based on exact term matches.
 
@@ -264,7 +308,7 @@ class RAGIndex:
         else:
             return keyword_boost  # Full boost for 2+ terms
 
-    def get_matching_sources(self, source_filter: Optional[str]) -> list[str]:
+    def get_matching_sources(self, source_filter: str | None) -> list[str]:
         """
         Get sources matching a partial filter string.
 
@@ -277,19 +321,20 @@ class RAGIndex:
         if not source_filter:
             return self.available_sources
         source_filter = source_filter.lower()
-        return [s for s in self.available_sources
-                if source_filter in s.lower() or s.lower() in source_filter]
+        return [
+            s
+            for s in self.available_sources
+            if source_filter in s.lower() or s.lower() in source_filter
+        ]
 
     @staticmethod
     def _is_mitre_id(query: str) -> bool:
         """Check if query is a MITRE technique ID (T1003, TA0001, etc.)."""
-        return bool(re.match(r'^T[AS]?\d{4}(\.\d{3})?$', query.strip().upper()))
+        return bool(re.match(r"^T[AS]?\d{4}(\.\d{3})?$", query.strip().upper()))
 
     @staticmethod
     def _boost_mitre_matches(
-        results: list[dict[str, Any]],
-        mitre_id: str,
-        top_k: int
+        results: list[dict[str, Any]], mitre_id: str, top_k: int
     ) -> list[dict[str, Any]]:
         """
         Re-rank results to boost exact MITRE technique ID matches to the top.
@@ -324,10 +369,10 @@ class RAGIndex:
         self,
         query: str,
         top_k: int = 5,
-        source: Optional[str] = None,
-        source_ids: Optional[list[str]] = None,
-        technique: Optional[str] = None,
-        platform: Optional[str] = None
+        source: str | None = None,
+        source_ids: list[str] | None = None,
+        technique: str | None = None,
+        platform: str | None = None,
     ) -> dict[str, Any]:
         """
         Search the knowledge base using semantic similarity.
@@ -362,7 +407,9 @@ class RAGIndex:
         # source_ids (exact match) takes precedence over source (substring match)
         source_filter = source.lower() if source and not source_ids else None
         source_ids_set = set(source_ids) if source_ids else None
-        matched_sources = self.get_matching_sources(source_filter) if source_filter else []
+        matched_sources = (
+            self.get_matching_sources(source_filter) if source_filter else []
+        )
 
         retrieve_k = top_k
         if source_filter or source_ids_set or technique or platform:
@@ -381,7 +428,7 @@ class RAGIndex:
         results = self.collection.query(
             query_embeddings=[query_embedding],
             n_results=retrieve_k,
-            include=["documents", "metadatas", "distances"]
+            include=["documents", "metadatas", "distances"],
         )
 
         # Format and filter results
@@ -412,7 +459,10 @@ class RAGIndex:
                     continue
             elif source_filter:
                 source_lower = result_source.lower()
-                if source_filter not in source_lower and source_lower not in source_filter:
+                if (
+                    source_filter not in source_lower
+                    and source_lower not in source_filter
+                ):
                     continue
 
             if technique:
@@ -425,15 +475,17 @@ class RAGIndex:
                 if platform.lower() not in platform_str.lower():
                     continue
 
-            formatted.append({
-                "rank": 0,  # Will be set after sorting
-                "score": round(score, 3),
-                "source": result_source if result_source else "unknown",
-                "mitre_techniques": meta.get("mitre_techniques", ""),
-                "platform": meta.get("platform", ""),
-                "title": meta.get("title", ""),
-                "text": doc[:MAX_TEXT_LENGTH]
-            })
+            formatted.append(
+                {
+                    "rank": 0,  # Will be set after sorting
+                    "score": round(score, 3),
+                    "source": result_source if result_source else "unknown",
+                    "mitre_techniques": meta.get("mitre_techniques", ""),
+                    "platform": meta.get("platform", ""),
+                    "title": meta.get("title", ""),
+                    "text": doc[:MAX_TEXT_LENGTH],
+                }
+            )
 
         # Boost MITRE matches if applicable
         if is_mitre_query and formatted:
@@ -454,14 +506,11 @@ class RAGIndex:
             "results": formatted,
             "source_filter": source_filter,
             "source_ids": list(source_ids_set) if source_ids_set else None,
-            "matched_sources": matched_sources if source_filter else None
+            "matched_sources": matched_sources if source_filter else None,
         }
 
     def _log_query_metrics(
-        self,
-        original_query: str,
-        augmented_query: str,
-        results: list[dict[str, Any]]
+        self, original_query: str, augmented_query: str, results: list[dict[str, Any]]
     ) -> None:
         """
         Log query metrics for production threshold analysis.
@@ -493,7 +542,9 @@ class RAGIndex:
             is_mitre_query = True
         elif any(kw in original_query.lower() for kw in ["detect", "sigma", "rule"]):
             query_type = "detection"
-        elif any(kw in original_query.lower() for kw in ["forensic", "artifact", "evidence"]):
+        elif any(
+            kw in original_query.lower() for kw in ["forensic", "artifact", "evidence"]
+        ):
             query_type = "forensic"
 
         top_score = results[0]["score"] if results else 0.0
@@ -530,7 +581,8 @@ class RAGIndex:
         # MITRE ID not in lookup - potential data gap
         if is_mitre_query:
             unknown_ids = [
-                tid.upper() for tid in mitre_ids_in_query
+                tid.upper()
+                for tid in mitre_ids_in_query
                 if tid.upper() not in self._mitre_lookup
             ]
             if unknown_ids:
@@ -559,6 +611,7 @@ class RAGIndex:
         # Log structured JSON summary for easy parsing
         import json
         from datetime import datetime
+
         summary_logger = logging.getLogger("rag_mcp.query_summary")
         top_sources = list(set(r.get("source", "unknown") for r in results[:5]))
         summary = {
@@ -582,6 +635,6 @@ class RAGIndex:
             "document_count": self.collection.count(),
             "source_count": len(self.available_sources),
             "sources": self.available_sources,
-            "model": self.model_name
+            "model": self.model_name,
             # Note: index_dir intentionally omitted to avoid path disclosure
         }

@@ -4,43 +4,36 @@ Tests the parsing functions in importers without requiring actual
 LOLBAS/LOLDrivers/HijackLibs repositories.
 """
 
-import json
-import pytest
 import sqlite3
-import tempfile
-from pathlib import Path
-from unittest.mock import patch, mock_open
 
-import yaml
-
+import pytest
+from windows_triage.importers.hijacklibs import (
+    _normalize_path_var,
+    _parse_hijacklib_yaml,
+    get_hijack_types,
+    import_hijacklibs,
+)
 from windows_triage.importers.lolbas import (
-    import_lolbas,
     _parse_lolbas_yml,
     get_lolbin_functions,
+    import_lolbas,
 )
 from windows_triage.importers.loldrivers import (
-    import_loldrivers,
     _parse_loldriver_yaml,
-)
-from windows_triage.importers.hijacklibs import (
-    import_hijacklibs,
-    _parse_hijacklib_yaml,
-    _normalize_path_var,
-    get_hijack_types,
+    import_loldrivers,
 )
 from windows_triage.importers.process_expectations import (
-    load_process_expectations,
-    import_process_expectations,
     get_process_tree,
     get_system_processes,
     get_user_processes,
-    DEFAULT_YAML_PATH,
+    import_process_expectations,
+    load_process_expectations,
 )
-
 
 # ============================================================================
 # LOLBAS Importer Tests
 # ============================================================================
+
 
 class TestLolbasParser:
     """Tests for LOLBAS YAML parsing."""
@@ -72,15 +65,15 @@ Aliases:
         result = _parse_lolbas_yml(yml_file, "OSBinaries")
 
         assert result is not None
-        assert result['name'] == 'Certutil.exe'
-        assert result['filename_lower'] == 'certutil.exe'
-        assert 'Download' in result['functions']
-        assert 'Encode' in result['functions']
-        assert 'T1105' in result['mitre_techniques']
-        assert 'T1140' in result['mitre_techniques']
-        assert len(result['expected_paths']) == 2
-        assert result['detection'] is not None
-        assert 'cert' in result['aliases']
+        assert result["name"] == "Certutil.exe"
+        assert result["filename_lower"] == "certutil.exe"
+        assert "Download" in result["functions"]
+        assert "Encode" in result["functions"]
+        assert "T1105" in result["mitre_techniques"]
+        assert "T1140" in result["mitre_techniques"]
+        assert len(result["expected_paths"]) == 2
+        assert result["detection"] is not None
+        assert "cert" in result["aliases"]
 
     def test_parse_minimal_lolbin(self, tmp_path):
         """Test parsing LOLBAS file with minimal data."""
@@ -93,10 +86,10 @@ Name: Simple.exe
         result = _parse_lolbas_yml(yml_file, "OSBinaries")
 
         assert result is not None
-        assert result['name'] == 'Simple.exe'
-        assert result['filename_lower'] == 'simple.exe'
-        assert result['functions'] == []
-        assert result['expected_paths'] == []
+        assert result["name"] == "Simple.exe"
+        assert result["filename_lower"] == "simple.exe"
+        assert result["functions"] == []
+        assert result["expected_paths"] == []
 
     def test_parse_empty_file(self, tmp_path):
         """Test parsing empty YAML file."""
@@ -155,8 +148,8 @@ class TestLolbasImport:
     def test_import_lolbas_directory_not_found(self, context_db, tmp_path):
         """Test import with non-existent directory."""
         stats = import_lolbas(context_db, tmp_path / "nonexistent")
-        assert stats['lolbins_imported'] == 0
-        assert stats['errors'] == 0
+        assert stats["lolbins_imported"] == 0
+        assert stats["errors"] == 0
 
     def test_import_lolbas_success(self, context_db, tmp_path):
         """Test successful LOLBAS import."""
@@ -176,13 +169,15 @@ Commands:
 
         stats = import_lolbas(context_db, tmp_path)
 
-        assert stats['lolbins_imported'] == 1
-        assert stats['errors'] == 0
+        assert stats["lolbins_imported"] == 1
+        assert stats["errors"] == 0
 
         # Verify data was inserted
         conn = sqlite3.connect(context_db)
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM lolbins WHERE filename_lower = ?", ('testbin.exe',))
+        cursor.execute(
+            "SELECT * FROM lolbins WHERE filename_lower = ?", ("testbin.exe",)
+        )
         row = cursor.fetchone()
         conn.close()
 
@@ -195,16 +190,17 @@ class TestLolbinFunctions:
     def test_get_lolbin_functions(self):
         """Test getting list of LOLBin abuse functions."""
         functions = get_lolbin_functions()
-        assert 'Download' in functions
-        assert 'Execute' in functions
-        assert 'AWL Bypass' in functions
-        assert 'Credentials' in functions
+        assert "Download" in functions
+        assert "Execute" in functions
+        assert "AWL Bypass" in functions
+        assert "Credentials" in functions
         assert len(functions) >= 10
 
 
 # ============================================================================
 # LOLDrivers Importer Tests
 # ============================================================================
+
 
 class TestLoldriversParser:
     """Tests for LOLDrivers YAML parsing."""
@@ -239,14 +235,14 @@ KnownVulnerableSamples:
         result = _parse_loldriver_yaml(yml_file)
 
         assert result is not None
-        assert result['id'] == 'driver-001'
-        assert result['category'] == 'vulnerable driver'
-        assert result['cve'] == 'CVE-2019-16098'
-        assert len(result['samples']) == 1
-        sample = result['samples'][0]
-        assert sample['filename_lower'] == 'rtcore64.sys'
-        assert sample['sha256'] is not None
-        assert sample['company'] == "Micro-Star INT'L CO., LTD."
+        assert result["id"] == "driver-001"
+        assert result["category"] == "vulnerable driver"
+        assert result["cve"] == "CVE-2019-16098"
+        assert len(result["samples"]) == 1
+        sample = result["samples"][0]
+        assert sample["filename_lower"] == "rtcore64.sys"
+        assert sample["sha256"] is not None
+        assert sample["company"] == "Micro-Star INT'L CO., LTD."
 
     def test_parse_malicious_driver(self, tmp_path):
         """Test parsing malicious driver category."""
@@ -263,7 +259,7 @@ KnownVulnerableSamples:
         result = _parse_loldriver_yaml(yml_file)
 
         assert result is not None
-        assert 'malicious' in result['category'].lower()
+        assert "malicious" in result["category"].lower()
 
     def test_parse_empty_file(self, tmp_path):
         """Test parsing empty YAML file."""
@@ -285,7 +281,7 @@ Category: vulnerable driver
         result = _parse_loldriver_yaml(yml_file)
 
         assert result is not None
-        assert result['samples'] == []
+        assert result["samples"] == []
 
     def test_cve_extraction_from_resources(self, tmp_path):
         """Test CVE extraction from resources."""
@@ -304,7 +300,7 @@ KnownVulnerableSamples: []
         result = _parse_loldriver_yaml(yml_file)
 
         assert result is not None
-        assert result['cve'] == 'CVE-2021-12345'
+        assert result["cve"] == "CVE-2021-12345"
 
 
 class TestLoldriversImport:
@@ -340,7 +336,7 @@ class TestLoldriversImport:
     def test_import_loldrivers_directory_not_found(self, context_db, tmp_path):
         """Test import with non-existent directory."""
         stats = import_loldrivers(context_db, tmp_path / "nonexistent")
-        assert stats['vulnerable_imported'] == 0
+        assert stats["vulnerable_imported"] == 0
 
     def test_import_loldrivers_filters_malicious(self, context_db, tmp_path):
         """Test that malicious drivers are filtered by default."""
@@ -359,9 +355,9 @@ KnownVulnerableSamples:
 
         stats = import_loldrivers(context_db, tmp_path, include_malicious=False)
 
-        assert stats['vulnerable_imported'] == 0
-        assert stats['malicious_imported'] == 0
-        assert stats['skipped'] == 1
+        assert stats["vulnerable_imported"] == 0
+        assert stats["malicious_imported"] == 0
+        assert stats["skipped"] == 1
 
     def test_import_loldrivers_include_malicious(self, context_db, tmp_path):
         """Test including malicious drivers."""
@@ -379,7 +375,7 @@ KnownVulnerableSamples:
 
         stats = import_loldrivers(context_db, tmp_path, include_malicious=True)
 
-        assert stats['malicious_imported'] == 1
+        assert stats["malicious_imported"] == 1
 
     def test_import_loldrivers_success(self, context_db, tmp_path):
         """Test successful vulnerable driver import."""
@@ -398,13 +394,14 @@ KnownVulnerableSamples:
 
         stats = import_loldrivers(context_db, tmp_path)
 
-        assert stats['vulnerable_imported'] == 1
-        assert stats['samples_imported'] == 1
+        assert stats["vulnerable_imported"] == 1
+        assert stats["samples_imported"] == 1
 
 
 # ============================================================================
 # HijackLibs Importer Tests
 # ============================================================================
+
 
 class TestHijacklibsParser:
     """Tests for HijackLibs YAML parsing."""
@@ -432,10 +429,10 @@ VulnerableExecutables:
         result = _parse_hijacklib_yaml(yml_file)
 
         assert len(result) == 2
-        assert result[0]['dll_name_lower'] == 'version.dll'
-        assert result[0]['hijack_type'] == 'Sideloading'
-        assert result[0]['vendor'] == 'Microsoft'
-        assert '\\windows\\system32' in result[0]['expected_paths']
+        assert result[0]["dll_name_lower"] == "version.dll"
+        assert result[0]["hijack_type"] == "Sideloading"
+        assert result[0]["vendor"] == "Microsoft"
+        assert "\\windows\\system32" in result[0]["expected_paths"]
 
     def test_parse_no_vulnerable_exes(self, tmp_path):
         """Test parsing file with no vulnerable executables."""
@@ -550,7 +547,7 @@ class TestHijacklibsImport:
     def test_import_hijacklibs_directory_not_found(self, context_db, tmp_path):
         """Test import with non-existent directory."""
         stats = import_hijacklibs(context_db, tmp_path / "nonexistent")
-        assert stats['dlls_imported'] == 0
+        assert stats["dlls_imported"] == 0
 
     def test_import_hijacklibs_success(self, context_db, tmp_path):
         """Test successful HijackLibs import."""
@@ -568,8 +565,8 @@ VulnerableExecutables:
 
         stats = import_hijacklibs(context_db, tmp_path)
 
-        assert stats['dlls_imported'] == 1
-        assert stats['entries_imported'] == 1
+        assert stats["dlls_imported"] == 1
+        assert stats["entries_imported"] == 1
 
 
 class TestHijackTypes:
@@ -578,14 +575,15 @@ class TestHijackTypes:
     def test_get_hijack_types(self):
         """Test getting list of hijack types."""
         types = get_hijack_types()
-        assert 'Phantom' in types
-        assert 'Sideloading' in types
-        assert 'Search Order' in types
+        assert "Phantom" in types
+        assert "Sideloading" in types
+        assert "Search Order" in types
 
 
 # ============================================================================
 # Process Expectations Importer Tests
 # ============================================================================
+
 
 class TestProcessExpectationsImport:
     """Tests for process expectations import."""
@@ -639,7 +637,7 @@ processes:
 
         procs = load_process_expectations(yml_path)
         assert len(procs) == 1
-        assert procs[0]['process_name'] == 'test.exe'
+        assert procs[0]["process_name"] == "test.exe"
 
     def test_load_process_expectations_missing_file(self, tmp_path):
         """Test loading from non-existent file."""
@@ -667,14 +665,16 @@ processes:
 
         stats = import_process_expectations(context_db, yml_path)
 
-        assert stats['processes_imported'] == 1
-        assert stats['errors'] == 0
+        assert stats["processes_imported"] == 1
+        assert stats["errors"] == 0
 
         # Verify data
         conn = sqlite3.connect(context_db)
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM expected_processes WHERE process_name_lower = ?",
-                      ('test.exe',))
+        cursor.execute(
+            "SELECT * FROM expected_processes WHERE process_name_lower = ?",
+            ("test.exe",),
+        )
         row = cursor.fetchone()
         conn.close()
 
@@ -689,7 +689,7 @@ processes: []
         yml_path.write_text(yml_content)
 
         stats = import_process_expectations(context_db, yml_path)
-        assert stats['processes_imported'] == 0
+        assert stats["processes_imported"] == 0
 
 
 class TestProcessTreeHelpers:
@@ -718,6 +718,7 @@ class TestProcessTreeHelpers:
 # Error Handling Tests
 # ============================================================================
 
+
 class TestImporterErrorHandling:
     """Tests for error handling in importers."""
 
@@ -733,7 +734,7 @@ Commands: []
         # Should not raise, just return with empty functions
         result = _parse_lolbas_yml(yml_file, "OSBinaries")
         assert result is not None
-        assert result['functions'] == []
+        assert result["functions"] == []
 
     def test_loldriver_handles_malformed_samples(self, tmp_path):
         """Test LOLDrivers parser handles malformed samples."""
@@ -751,7 +752,7 @@ KnownVulnerableSamples:
         result = _parse_loldriver_yaml(yml_file)
         assert result is not None
         # Should skip null entry, get valid one
-        assert len(result['samples']) == 1
+        assert len(result["samples"]) == 1
 
     def test_hijacklib_handles_empty_path(self, tmp_path):
         """Test HijackLibs parser handles empty path."""

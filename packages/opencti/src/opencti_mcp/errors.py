@@ -54,8 +54,7 @@ class ConnectionError(OpenCTIMCPError):
     def __init__(self, message: str) -> None:
         # Never expose connection details to clients
         super().__init__(
-            message,
-            safe_message="Unable to connect to OpenCTI. Check server status."
+            message, safe_message="Unable to connect to OpenCTI. Check server status."
         )
 
 
@@ -86,8 +85,7 @@ class QueryError(OpenCTIMCPError):
     def __init__(self, message: str) -> None:
         # Never expose query details to clients
         super().__init__(
-            message,
-            safe_message="Query failed. Check server logs for details."
+            message, safe_message="Query failed. Check server logs for details."
         )
 
 

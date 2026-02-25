@@ -3,10 +3,10 @@
 import pytest
 from windows_triage.analysis.hashes import (
     detect_hash_algorithm,
-    validate_hash,
-    normalize_hash,
     get_hash_column,
+    normalize_hash,
     parse_hash_with_algorithm,
+    validate_hash,
 )
 
 
@@ -19,7 +19,9 @@ class TestDetectHashAlgorithm:
 
     def test_sha1_length(self):
         # SHA1 = 40 characters
-        assert detect_hash_algorithm("da39a3ee5e6b4b0d3255bfef95601890afd80709") == "sha1"
+        assert (
+            detect_hash_algorithm("da39a3ee5e6b4b0d3255bfef95601890afd80709") == "sha1"
+        )
 
     def test_sha256_length(self):
         # SHA256 = 64 characters
@@ -30,10 +32,15 @@ class TestDetectHashAlgorithm:
         assert detect_hash_algorithm("md5:d41d8cd98f00b204e9800998ecf8427e") == "md5"
 
     def test_with_sha1_prefix(self):
-        assert detect_hash_algorithm("sha1:da39a3ee5e6b4b0d3255bfef95601890afd80709") == "sha1"
+        assert (
+            detect_hash_algorithm("sha1:da39a3ee5e6b4b0d3255bfef95601890afd80709")
+            == "sha1"
+        )
 
     def test_with_sha256_prefix(self):
-        hash_str = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        hash_str = (
+            "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        )
         assert detect_hash_algorithm(hash_str) == "sha256"
 
     def test_uppercase(self):
@@ -85,24 +92,41 @@ class TestNormalizeHash:
     """Tests for normalize_hash function."""
 
     def test_lowercase(self):
-        assert normalize_hash("D41D8CD98F00B204E9800998ECF8427E") == "d41d8cd98f00b204e9800998ecf8427e"
+        assert (
+            normalize_hash("D41D8CD98F00B204E9800998ECF8427E")
+            == "d41d8cd98f00b204e9800998ecf8427e"
+        )
 
     def test_strip_whitespace(self):
-        assert normalize_hash("  d41d8cd98f00b204e9800998ecf8427e  ") == "d41d8cd98f00b204e9800998ecf8427e"
+        assert (
+            normalize_hash("  d41d8cd98f00b204e9800998ecf8427e  ")
+            == "d41d8cd98f00b204e9800998ecf8427e"
+        )
 
     def test_remove_md5_prefix(self):
-        assert normalize_hash("md5:d41d8cd98f00b204e9800998ecf8427e") == "d41d8cd98f00b204e9800998ecf8427e"
+        assert (
+            normalize_hash("md5:d41d8cd98f00b204e9800998ecf8427e")
+            == "d41d8cd98f00b204e9800998ecf8427e"
+        )
 
     def test_remove_sha1_prefix(self):
-        assert normalize_hash("sha1:da39a3ee5e6b4b0d3255bfef95601890afd80709") == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+        assert (
+            normalize_hash("sha1:da39a3ee5e6b4b0d3255bfef95601890afd80709")
+            == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+        )
 
     def test_remove_sha256_prefix(self):
-        hash_str = "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        hash_str = (
+            "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        )
         expected = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         assert normalize_hash(hash_str) == expected
 
     def test_remove_sha_dash_prefix(self):
-        assert normalize_hash("sha-1:da39a3ee5e6b4b0d3255bfef95601890afd80709") == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+        assert (
+            normalize_hash("sha-1:da39a3ee5e6b4b0d3255bfef95601890afd80709")
+            == "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+        )
 
 
 class TestGetHashColumn:
@@ -137,9 +161,14 @@ class TestParseHashWithAlgorithm:
         assert algorithm == "md5"
 
     def test_sha256_with_prefix(self):
-        hash_str = "sha256:E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        hash_str = (
+            "sha256:E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        )
         normalized, algorithm = parse_hash_with_algorithm(hash_str)
-        assert normalized == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        assert (
+            normalized
+            == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        )
         assert algorithm == "sha256"
 
     def test_invalid_hash(self):

@@ -14,32 +14,29 @@ import pickle
 import random
 import threading
 import time
-from unittest.mock import MagicMock, Mock, patch, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
-
-from opencti_mcp.cache import TTLCache, CacheManager, generate_cache_key, NOT_FOUND
+from opencti_mcp.cache import NOT_FOUND, TTLCache, generate_cache_key
 from opencti_mcp.client import (
     CircuitBreaker,
     CircuitState,
     OpenCTIClient,
-    RateLimiter,
-    TRANSIENT_ERRORS,
 )
 from opencti_mcp.config import Config, SecretStr
 from opencti_mcp.errors import (
-    ConfigurationError,
     ConnectionError,
     QueryError,
-    RateLimitError,
-    ValidationError,
 )
-from opencti_mcp.feature_flags import FeatureFlags, get_feature_flags, reset_feature_flags
-
+from opencti_mcp.feature_flags import (
+    FeatureFlags,
+    reset_feature_flags,
+)
 
 # =============================================================================
 # Helpers
 # =============================================================================
+
 
 def _make_config(**overrides):
     """Create a Config with sensible test defaults, accepting overrides."""
@@ -53,7 +50,7 @@ def _make_config(**overrides):
         circuit_breaker_threshold=5,
         circuit_breaker_timeout=60,
         max_retries=3,
-        retry_base_delay=0.001,   # very small for fast tests
+        retry_base_delay=0.001,  # very small for fast tests
         retry_max_delay=0.01,
         ssl_verify=True,
         extra_observable_types=frozenset(),
@@ -76,6 +73,7 @@ def _make_client(config=None, feature_flags=None, **config_overrides):
     if feature_flags is not None:
         # Inject the feature flags so __init__ picks them up
         import opencti_mcp.feature_flags as _ff_mod
+
         _ff_mod._global_flags = feature_flags
 
     client = OpenCTIClient(config)
@@ -110,6 +108,7 @@ def _reset_ff():
 # A: Authentication Failure Scenarios (A1-A10)
 # =============================================================================
 
+
 class TestAuthenticationFailures:
     """A1-A10: Authentication failure handling and secret protection."""
 
@@ -127,7 +126,11 @@ class TestAuthenticationFailures:
             client.search_indicators("test")
         # The error should be visible (not swallowed into a generic "internal error")
         err_str = str(exc_info.value)
-        assert "internal" not in err_str.lower() or "Authentication" in err_str or "failed" in err_str
+        assert (
+            "internal" not in err_str.lower()
+            or "Authentication" in err_str
+            or "failed" in err_str
+        )
 
     # ------------------------------------------------------------------
     # A2: Auth errors are NOT retried (non-transient)
@@ -265,13 +268,14 @@ class TestAuthenticationFailures:
 # GD: Graceful Degradation (GD1-GD7)
 # =============================================================================
 
+
 class TestGracefulDegradation:
     """GD1-GD7: Behavior when the service is unavailable and cache fallback
     is used."""
 
-    def _make_degradation_client(self, graceful_degradation=True,
-                                  response_caching=True,
-                                  negative_caching=True):
+    def _make_degradation_client(
+        self, graceful_degradation=True, response_caching=True, negative_caching=True
+    ):
         """Helper: create a client with caching + degradation flags set."""
         ff = FeatureFlags(
             response_caching=response_caching,
@@ -378,9 +382,16 @@ class TestGracefulDegradation:
 
         # Clear the search cache and manually populate it
         client._search_cache.clear()
-        cache_key = generate_cache_key("indicators", "test_degraded", 10, 0,
-                                        labels=None, confidence_min=None,
-                                        created_after=None, created_before=None)
+        cache_key = generate_cache_key(
+            "indicators",
+            "test_degraded",
+            10,
+            0,
+            labels=None,
+            confidence_min=None,
+            created_after=None,
+            created_before=None,
+        )
         client._search_cache.set(cache_key, original)
 
         # Now temporarily disable response_caching so _get_cached returns miss
@@ -421,9 +432,16 @@ class TestGracefulDegradation:
         result = client.search_indicators("cached_query")
 
         # Put data in cache manually under a different key
-        cache_key = generate_cache_key("indicators", "no_fallback_query", 10, 0,
-                                        labels=None, confidence_min=None,
-                                        created_after=None, created_before=None)
+        cache_key = generate_cache_key(
+            "indicators",
+            "no_fallback_query",
+            10,
+            0,
+            labels=None,
+            confidence_min=None,
+            created_after=None,
+            created_before=None,
+        )
         client._search_cache.set(cache_key, result)
 
         # Disable response_caching so _get_cached returns miss
@@ -458,7 +476,7 @@ class TestGracefulDegradation:
         original = client.search_indicators("cached_query")
 
         # Manually expire the cache entry by moving its timestamp back
-        if hasattr(client, '_search_cache'):
+        if hasattr(client, "_search_cache"):
             cache = client._search_cache
             with cache._lock:
                 for key, entry in cache._cache.items():
@@ -532,7 +550,7 @@ class TestGracefulDegradation:
         client._last_response_degraded = True
 
         # Clear cache to force a real server call
-        if hasattr(client, '_search_cache'):
+        if hasattr(client, "_search_cache"):
             client._search_cache.clear()
 
         # Normal successful request to server
@@ -544,6 +562,7 @@ class TestGracefulDegradation:
 # =============================================================================
 # CA: Caching (CA1-CA9)
 # =============================================================================
+
 
 class TestCaching:
     """CA1-CA9: Response caching behavior."""
@@ -562,9 +581,9 @@ class TestCaching:
     def test_ca1_caching_enabled_initializes_caches(self):
         """CA1: With response_caching=True, cache objects are created."""
         client = self._make_caching_client(response_caching=True)
-        assert hasattr(client, '_search_cache')
-        assert hasattr(client, '_entity_cache')
-        assert hasattr(client, '_ioc_cache')
+        assert hasattr(client, "_search_cache")
+        assert hasattr(client, "_entity_cache")
+        assert hasattr(client, "_ioc_cache")
         assert isinstance(client._search_cache, TTLCache)
 
     # ------------------------------------------------------------------
@@ -580,7 +599,7 @@ class TestCaching:
         )
         client = _make_client(feature_flags=ff)
         # _init_caches should not have been called
-        assert not hasattr(client, '_search_cache')
+        assert not hasattr(client, "_search_cache")
 
     # ------------------------------------------------------------------
     # CA3: Cache hit on second identical query
@@ -727,6 +746,7 @@ class TestCaching:
 # N: Network Condition Simulation (N1-N12)
 # =============================================================================
 
+
 class TestNetworkConditionSimulation:
     """N1-N12: Simulate realistic network conditions users encounter."""
 
@@ -758,20 +778,26 @@ class TestNetworkConditionSimulation:
                 raise builtins_ConnectionError("random failure")
             return [
                 {
-                    "id": "ind-1", "name": "IOC", "pattern": "[ipv4-addr:value='1.2.3.4']",
-                    "pattern_type": "stix", "confidence": 80,
-                    "created": "2025-01-01T00:00:00Z", "objectLabel": [],
+                    "id": "ind-1",
+                    "name": "IOC",
+                    "pattern": "[ipv4-addr:value='1.2.3.4']",
+                    "pattern_type": "stix",
+                    "confidence": 80,
+                    "created": "2025-01-01T00:00:00Z",
+                    "objectLabel": [],
                 }
             ]
 
         # Use Python's built-in ConnectionError (which IS in TRANSIENT_ERRORS)
         import builtins
+
         builtins_ConnectionError = builtins.__dict__.get(
-            'ConnectionError', type('ConnectionError', (OSError,), {})
+            "ConnectionError", type("ConnectionError", (OSError,), {})
         )
 
         # Re-define with actual builtin ConnectionError
         call_count = 0
+
         def flaky_call_v2(**kwargs):
             nonlocal call_count
             call_count += 1
@@ -779,9 +805,13 @@ class TestNetworkConditionSimulation:
                 raise OSError("random network glitch")
             return [
                 {
-                    "id": "ind-1", "name": "IOC", "pattern": "[ipv4-addr:value='1.2.3.4']",
-                    "pattern_type": "stix", "confidence": 80,
-                    "created": "2025-01-01T00:00:00Z", "objectLabel": [],
+                    "id": "ind-1",
+                    "name": "IOC",
+                    "pattern": "[ipv4-addr:value='1.2.3.4']",
+                    "pattern_type": "stix",
+                    "confidence": 80,
+                    "created": "2025-01-01T00:00:00Z",
+                    "objectLabel": [],
                 }
             ]
 
@@ -796,11 +826,11 @@ class TestNetworkConditionSimulation:
                 # Reset circuit breaker to keep test going
                 client._circuit_breaker.reset()
                 # Invalidate cache so next call actually hits the mock
-                if hasattr(client, '_search_cache'):
+                if hasattr(client, "_search_cache"):
                     client._search_cache.clear()
             except Exception:
                 client._circuit_breaker.reset()
-                if hasattr(client, '_search_cache'):
+                if hasattr(client, "_search_cache"):
                     client._search_cache.clear()
 
         # Most runs should succeed given retries
@@ -817,9 +847,13 @@ class TestNetworkConditionSimulation:
             time.sleep(0.05)  # 50ms to keep test fast (simulating 500ms concept)
             return [
                 {
-                    "id": "ind-1", "name": "IOC", "pattern": "[ipv4-addr:value='1.2.3.4']",
-                    "pattern_type": "stix", "confidence": 80,
-                    "created": "2025-01-01T00:00:00Z", "objectLabel": [],
+                    "id": "ind-1",
+                    "name": "IOC",
+                    "pattern": "[ipv4-addr:value='1.2.3.4']",
+                    "pattern_type": "stix",
+                    "confidence": 80,
+                    "created": "2025-01-01T00:00:00Z",
+                    "objectLabel": [],
                 }
             ]
 
@@ -843,16 +877,20 @@ class TestNetworkConditionSimulation:
             time.sleep(delay)
             return [
                 {
-                    "id": "ind-1", "name": "IOC", "pattern": "[ipv4-addr:value='1.2.3.4']",
-                    "pattern_type": "stix", "confidence": 80,
-                    "created": "2025-01-01T00:00:00Z", "objectLabel": [],
+                    "id": "ind-1",
+                    "name": "IOC",
+                    "pattern": "[ipv4-addr:value='1.2.3.4']",
+                    "pattern_type": "stix",
+                    "confidence": 80,
+                    "created": "2025-01-01T00:00:00Z",
+                    "objectLabel": [],
                 }
             ]
 
         client._client.indicator.list.side_effect = jittery_call
 
         for i in range(10):
-            if hasattr(client, '_search_cache'):
+            if hasattr(client, "_search_cache"):
                 client._search_cache.clear()
             client.search_indicators(f"jitter_test_{i}")
 
@@ -891,9 +929,13 @@ class TestNetworkConditionSimulation:
                 raise ConnectionResetError("Connection reset by peer")
             return [
                 {
-                    "id": "ind-1", "name": "IOC", "pattern": "[ipv4-addr:value='1.2.3.4']",
-                    "pattern_type": "stix", "confidence": 80,
-                    "created": "2025-01-01T00:00:00Z", "objectLabel": [],
+                    "id": "ind-1",
+                    "name": "IOC",
+                    "pattern": "[ipv4-addr:value='1.2.3.4']",
+                    "pattern_type": "stix",
+                    "confidence": 80,
+                    "created": "2025-01-01T00:00:00Z",
+                    "objectLabel": [],
                 }
             ]
 
@@ -947,9 +989,13 @@ class TestNetworkConditionSimulation:
         # If not, pycti raises. We test that either way, no crash.
         client._client.indicator.list.return_value = [
             {
-                "id": "ind-1", "name": "IOC", "pattern": "[ipv4-addr:value='1.2.3.4']",
-                "pattern_type": "stix", "confidence": 80,
-                "created": "2025-01-01T00:00:00Z", "objectLabel": [],
+                "id": "ind-1",
+                "name": "IOC",
+                "pattern": "[ipv4-addr:value='1.2.3.4']",
+                "pattern_type": "stix",
+                "confidence": 80,
+                "created": "2025-01-01T00:00:00Z",
+                "objectLabel": [],
             }
         ]
         result = client.search_indicators("redirect_test")
@@ -964,7 +1010,7 @@ class TestNetworkConditionSimulation:
         client = self._make_network_client(max_retries=0)
         client._circuit_breaker = CircuitBreaker(
             failure_threshold=2,
-            recovery_timeout=0  # immediate recovery for testing
+            recovery_timeout=0,  # immediate recovery for testing
         )
 
         # Server is down — trip the circuit
@@ -974,18 +1020,25 @@ class TestNetworkConditionSimulation:
                 client.search_indicators(f"down_{_}")
             except Exception:
                 pass
-            if hasattr(client, '_search_cache'):
+            if hasattr(client, "_search_cache"):
                 client._search_cache.clear()
 
-        assert client._circuit_breaker.state in (CircuitState.OPEN, CircuitState.HALF_OPEN)
+        assert client._circuit_breaker.state in (
+            CircuitState.OPEN,
+            CircuitState.HALF_OPEN,
+        )
 
         # Server comes back
         client._client.indicator.list.side_effect = None
         client._client.indicator.list.return_value = [
             {
-                "id": "ind-1", "name": "IOC", "pattern": "[ipv4-addr:value='1.2.3.4']",
-                "pattern_type": "stix", "confidence": 80,
-                "created": "2025-01-01T00:00:00Z", "objectLabel": [],
+                "id": "ind-1",
+                "name": "IOC",
+                "pattern": "[ipv4-addr:value='1.2.3.4']",
+                "pattern_type": "stix",
+                "confidence": 80,
+                "created": "2025-01-01T00:00:00Z",
+                "objectLabel": [],
             }
         ]
 
@@ -994,7 +1047,7 @@ class TestNetworkConditionSimulation:
         # Force small sleep to ensure monotonic time advances
         time.sleep(0.01)
 
-        if hasattr(client, '_search_cache'):
+        if hasattr(client, "_search_cache"):
             client._search_cache.clear()
 
         result = client.search_indicators("recovery_test")
@@ -1016,6 +1069,7 @@ class TestNetworkConditionSimulation:
 
         class HTTPError(Exception):
             """Mock requests.exceptions.HTTPError."""
+
             def __init__(self, msg, response=None):
                 super().__init__(msg)
                 self.response = response
@@ -1027,9 +1081,13 @@ class TestNetworkConditionSimulation:
                 raise HTTPError("429 Too Many Requests", response=MockResponse())
             return [
                 {
-                    "id": "ind-1", "name": "IOC", "pattern": "[ipv4-addr:value='1.2.3.4']",
-                    "pattern_type": "stix", "confidence": 80,
-                    "created": "2025-01-01T00:00:00Z", "objectLabel": [],
+                    "id": "ind-1",
+                    "name": "IOC",
+                    "pattern": "[ipv4-addr:value='1.2.3.4']",
+                    "pattern_type": "stix",
+                    "confidence": 80,
+                    "created": "2025-01-01T00:00:00Z",
+                    "objectLabel": [],
                 }
             ]
 
@@ -1054,9 +1112,13 @@ class TestNetworkConditionSimulation:
                 raise OSError("Name or service not known")
             return [
                 {
-                    "id": "ind-1", "name": "IOC", "pattern": "[ipv4-addr:value='1.2.3.4']",
-                    "pattern_type": "stix", "confidence": 80,
-                    "created": "2025-01-01T00:00:00Z", "objectLabel": [],
+                    "id": "ind-1",
+                    "name": "IOC",
+                    "pattern": "[ipv4-addr:value='1.2.3.4']",
+                    "pattern_type": "stix",
+                    "confidence": 80,
+                    "created": "2025-01-01T00:00:00Z",
+                    "objectLabel": [],
                 }
             ]
 
@@ -1106,6 +1168,7 @@ class TestNetworkConditionSimulation:
 # Additional edge-case tests
 # =============================================================================
 
+
 class TestCacheKeyGeneration:
     """Verify cache keys are deterministic and vary with parameters."""
 
@@ -1149,7 +1212,9 @@ class TestTTLCacheInternals:
 
     def test_negative_cache_separate_ttl(self):
         """Negative cache entries have a shorter TTL."""
-        cache = TTLCache(ttl_seconds=10, negative_ttl_seconds=0.05, max_size=100, name="neg")
+        cache = TTLCache(
+            ttl_seconds=10, negative_ttl_seconds=0.05, max_size=100, name="neg"
+        )
         cache.set_negative("absent_key")
 
         found, val = cache.get("absent_key")

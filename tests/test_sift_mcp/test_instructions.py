@@ -2,12 +2,12 @@
 
 from sift_common.instructions import (
     FORENSIC_MCP,
-    SIFT_MCP,
-    WINTOOLS_MCP,
-    GATEWAY,
-    WINDOWS_TRIAGE,
     FORENSIC_RAG,
+    GATEWAY,
     OPENCTI,
+    SIFT_MCP,
+    WINDOWS_TRIAGE,
+    WINTOOLS_MCP,
 )
 
 
@@ -59,6 +59,7 @@ class TestServerInstructionsWired:
 
     def test_forensic_mcp_server_has_instructions(self):
         from forensic_mcp.server import create_server
+
         server = create_server()
         # FastMCP stores instructions on the underlying _mcp_server
         instructions = getattr(server, "instructions", None) or getattr(
@@ -69,6 +70,7 @@ class TestServerInstructionsWired:
 
     def test_sift_mcp_server_has_instructions(self):
         from sift_mcp.server import create_server
+
         server = create_server()
         instructions = getattr(server, "instructions", None) or getattr(
             getattr(server, "_mcp_server", None), "instructions", None

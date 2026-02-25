@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import pytest
-
-from opencti_mcp.audit import AuditWriter, resolve_examiner
-from opencti_mcp.tool_metadata import TOOL_METADATA, DEFAULT_METADATA
+from opencti_mcp.audit import AuditWriter
+from opencti_mcp.tool_metadata import DEFAULT_METADATA, TOOL_METADATA
 
 
 class TestAuditWriter:
@@ -20,7 +16,9 @@ class TestAuditWriter:
     def test_evidence_id_format(self, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         writer = AuditWriter("opencti-mcp")
-        eid = writer.log(tool="lookup_ioc", params={"ioc": "8.8.8.8"}, result_summary={})
+        eid = writer.log(
+            tool="lookup_ioc", params={"ioc": "8.8.8.8"}, result_summary={}
+        )
         parts = eid.split("-")
         assert parts[0] == "opencti"
         assert parts[1] == "tester"
@@ -32,7 +30,10 @@ class TestAuditWriter:
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
         writer = AuditWriter("opencti-mcp")
-        ids = [writer.log(tool="lookup_ioc", params={}, result_summary={}) for _ in range(5)]
+        ids = [
+            writer.log(tool="lookup_ioc", params={}, result_summary={})
+            for _ in range(5)
+        ]
         seqs = [int(eid.split("-")[-1]) for eid in ids]
         assert seqs == [1, 2, 3, 4, 5]
 
@@ -50,7 +51,9 @@ class TestAuditWriter:
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
         writer = AuditWriter("opencti-mcp")
-        writer.log(tool="lookup_ioc", params={"ioc": "8.8.8.8"}, result_summary={"found": True})
+        writer.log(
+            tool="lookup_ioc", params={"ioc": "8.8.8.8"}, result_summary={"found": True}
+        )
 
         audit_file = tmp_path / "audit" / "opencti-mcp.jsonl"
         assert audit_file.exists()
@@ -131,15 +134,31 @@ class TestToolMetadata:
     """Tool metadata lookup."""
 
     EXPECTED_TOOLS = {
-        "search_threat_intel", "lookup_ioc", "search_threat_actor",
-        "search_malware", "search_attack_pattern", "search_vulnerability",
-        "get_recent_indicators", "search_reports", "search_campaign",
-        "search_tool", "search_infrastructure", "search_incident",
-        "search_observable", "search_sighting", "search_organization",
-        "search_sector", "search_location", "search_course_of_action",
-        "search_grouping", "search_note", "lookup_hash",
-        "get_entity", "get_relationships",
-        "get_health", "search_entity",
+        "search_threat_intel",
+        "lookup_ioc",
+        "search_threat_actor",
+        "search_malware",
+        "search_attack_pattern",
+        "search_vulnerability",
+        "get_recent_indicators",
+        "search_reports",
+        "search_campaign",
+        "search_tool",
+        "search_infrastructure",
+        "search_incident",
+        "search_observable",
+        "search_sighting",
+        "search_organization",
+        "search_sector",
+        "search_location",
+        "search_course_of_action",
+        "search_grouping",
+        "search_note",
+        "lookup_hash",
+        "get_entity",
+        "get_relationships",
+        "get_health",
+        "search_entity",
     }
 
     def test_known_tools(self):
@@ -164,7 +183,8 @@ class TestWrapResponse:
 
     def _make_server_instance(self):
         from opencti_mcp.server import OpenCTIMCPServer
-        with patch.object(OpenCTIMCPServer, '__init__', lambda self: None):
+
+        with patch.object(OpenCTIMCPServer, "__init__", lambda self: None):
             server = OpenCTIMCPServer.__new__(OpenCTIMCPServer)
             server._audit = AuditWriter("opencti-mcp")
             return server
@@ -172,7 +192,9 @@ class TestWrapResponse:
     def test_wraps_successful_result(self):
         server = self._make_server_instance()
         result = {"results": [], "total": 0}
-        wrapped = server._wrap_response("search_threat_actor", {"query": "APT29"}, result)
+        wrapped = server._wrap_response(
+            "search_threat_actor", {"query": "APT29"}, result
+        )
         assert "evidence_id" in wrapped
         assert wrapped["evidence_id"].startswith("opencti-")
         assert "examiner" in wrapped

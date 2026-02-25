@@ -12,32 +12,30 @@ These tests simulate advanced attacker techniques including:
 from __future__ import annotations
 
 import time
+
 import pytest
-from unittest.mock import patch, MagicMock
+from opencti_mcp.client import CircuitBreaker, CircuitState, RateLimiter
+from opencti_mcp.config import Config, SecretStr
+from opencti_mcp.errors import ValidationError
 from opencti_mcp.validation import (
-    validate_length,
-    validate_ioc,
-    validate_uuid,
-    validate_labels,
-    validate_relationship_types,
-    validate_stix_pattern,
-    validate_observable_types,
-    validate_note_types,
-    validate_date_filter,
-    validate_pattern_type,
+    MAX_IOC_LENGTH,
+    MAX_QUERY_LENGTH,
     sanitize_for_log,
     truncate_response,
-    MAX_QUERY_LENGTH,
-    MAX_IOC_LENGTH,
+    validate_date_filter,
+    validate_ioc,
+    validate_labels,
+    validate_length,
+    validate_note_types,
+    validate_observable_types,
+    validate_relationship_types,
+    validate_uuid,
 )
-from opencti_mcp.errors import ValidationError, RateLimitError
-from opencti_mcp.config import Config, SecretStr
-from opencti_mcp.client import RateLimiter, CircuitBreaker, CircuitState
-
 
 # =============================================================================
 # Timing Attack Prevention Tests
 # =============================================================================
+
 
 class TestTimingAttackPrevention:
     """Ensure validation doesn't leak information via timing."""
@@ -103,6 +101,7 @@ class TestTimingAttackPrevention:
 # Memory Exhaustion Prevention Tests
 # =============================================================================
 
+
 class TestMemoryExhaustionPrevention:
     """Ensure inputs can't cause memory exhaustion."""
 
@@ -148,6 +147,7 @@ class TestMemoryExhaustionPrevention:
 # Unicode Normalization Attack Tests
 # =============================================================================
 
+
 class TestUnicodeNormalizationAttacks:
     """Test handling of Unicode normalization attacks."""
 
@@ -169,7 +169,7 @@ class TestUnicodeNormalizationAttacks:
     def test_mathematical_alphanumeric_rejected(self):
         """Mathematical alphanumeric symbols are rejected."""
         # Mathematical bold 'a' (U+1D41A)
-        math_bold = "\U0001D41Analysis"
+        math_bold = "\U0001d41analysis"
         with pytest.raises(ValidationError):
             validate_note_types([math_bold])
 
@@ -191,6 +191,7 @@ class TestUnicodeNormalizationAttacks:
 # =============================================================================
 # Protocol Injection Tests
 # =============================================================================
+
 
 class TestProtocolInjection:
     """Test for protocol-level injection attempts."""
@@ -234,6 +235,7 @@ class TestProtocolInjection:
 # =============================================================================
 # State Manipulation Tests
 # =============================================================================
+
 
 class TestStateManipulation:
     """Test resistance to state manipulation attacks."""
@@ -294,6 +296,7 @@ class TestStateManipulation:
 # Boundary Condition Stress Tests
 # =============================================================================
 
+
 class TestBoundaryStress:
     """Stress test boundary conditions."""
 
@@ -350,6 +353,7 @@ class TestBoundaryStress:
 # Concurrent Access Safety Tests
 # =============================================================================
 
+
 class TestConcurrentSafety:
     """Test thread safety of shared components."""
 
@@ -386,6 +390,7 @@ class TestConcurrentSafety:
 # Error Message Information Leakage Tests
 # =============================================================================
 
+
 class TestErrorLeakage:
     """Ensure error messages don't leak sensitive information."""
 
@@ -417,6 +422,7 @@ class TestErrorLeakage:
 # =============================================================================
 # Config Security Tests
 # =============================================================================
+
 
 class TestConfigSecurity:
     """Test configuration security."""
@@ -455,33 +461,37 @@ class TestConfigSecurity:
 # Fuzzing-Style Random Input Tests
 # =============================================================================
 
+
 class TestFuzzingStyle:
     """Fuzzing-style tests with various input patterns."""
 
-    @pytest.mark.parametrize("input_str", [
-        "",  # Empty
-        " ",  # Single space
-        "   ",  # Multiple spaces
-        "\t",  # Tab
-        "\n",  # Newline
-        "\r\n",  # Windows newline
-        "\x00",  # Null byte
-        "\xff",  # High byte
-        "a" * 10000,  # Very long
-        "🔥" * 100,  # Emoji
-        "α" * 100,  # Greek
-        "中文" * 100,  # Chinese
-        "مرحبا" * 100,  # Arabic (RTL)
-        "\u202e" * 10,  # RTL override
-        "\u200b" * 10,  # Zero-width space
-        "${test}",  # Shell variable
-        "$(whoami)",  # Command substitution
-        "`id`",  # Backtick execution
-        "{{7*7}}",  # Template injection
-        "'; DROP TABLE--",  # SQL injection
-        "<script>",  # XSS
-        "\\x00\\x00",  # Escaped nulls
-    ])
+    @pytest.mark.parametrize(
+        "input_str",
+        [
+            "",  # Empty
+            " ",  # Single space
+            "   ",  # Multiple spaces
+            "\t",  # Tab
+            "\n",  # Newline
+            "\r\n",  # Windows newline
+            "\x00",  # Null byte
+            "\xff",  # High byte
+            "a" * 10000,  # Very long
+            "🔥" * 100,  # Emoji
+            "α" * 100,  # Greek
+            "中文" * 100,  # Chinese
+            "مرحبا" * 100,  # Arabic (RTL)
+            "\u202e" * 10,  # RTL override
+            "\u200b" * 10,  # Zero-width space
+            "${test}",  # Shell variable
+            "$(whoami)",  # Command substitution
+            "`id`",  # Backtick execution
+            "{{7*7}}",  # Template injection
+            "'; DROP TABLE--",  # SQL injection
+            "<script>",  # XSS
+            "\\x00\\x00",  # Escaped nulls
+        ],
+    )
     def test_various_inputs_dont_crash(self, input_str: str):
         """Various inputs don't crash validation."""
         # Should not raise unhandled exceptions

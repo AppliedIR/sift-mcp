@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def is_wsl() -> bool:
     """Detect if running under WSL."""
     try:
-        with open("/proc/version", "r") as f:
+        with open("/proc/version") as f:
             return "microsoft" in f.read().lower()
     except (FileNotFoundError, PermissionError, OSError) as e:
         logger.debug("Cannot read /proc/version for WSL detection: %s", e)

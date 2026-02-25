@@ -75,30 +75,34 @@ def execute(
 
         if exceeds_budget and case_dir:
             _save_output(
-                cmd_list, stdout, stderr,
+                cmd_list,
+                stdout,
+                stderr,
                 save_dir or os.path.join(case_dir, "extractions"),
                 response,
             )
         elif save_output and (stdout or stderr):
             _save_output(
-                cmd_list, stdout, stderr,
+                cmd_list,
+                stdout,
+                stderr,
                 save_dir or (str(Path(cwd) / "extracted") if cwd else None),
                 response,
             )
 
         return response
 
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         elapsed = time.monotonic() - start
         raise ExecutionTimeoutError(
             f"Command timed out after {timeout}s: {' '.join(cmd_list)}"
-        )
-    except FileNotFoundError:
-        raise ExecutionError(f"Binary not found: {cmd_list[0]}")
-    except PermissionError:
-        raise ExecutionError(f"Permission denied: {cmd_list[0]}")
+        ) from exc
+    except FileNotFoundError as exc:
+        raise ExecutionError(f"Binary not found: {cmd_list[0]}") from exc
+    except PermissionError as exc:
+        raise ExecutionError(f"Permission denied: {cmd_list[0]}") from exc
     except OSError as e:
-        raise ExecutionError(f"OS error executing {cmd_list[0]}: {e}")
+        raise ExecutionError(f"OS error executing {cmd_list[0]}: {e}") from e
 
 
 def _truncate(text: str, max_bytes: int) -> str:
@@ -126,8 +130,20 @@ def _save_output(
         return
 
     # Block writes to system directories
-    _blocked_prefixes = ("/etc", "/usr", "/bin", "/sbin", "/lib", "/boot", "/proc", "/sys", "/dev")
-    if any(str(out_dir) == p or str(out_dir).startswith(p + "/") for p in _blocked_prefixes):
+    _blocked_prefixes = (
+        "/etc",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/lib",
+        "/boot",
+        "/proc",
+        "/sys",
+        "/dev",
+    )
+    if any(
+        str(out_dir) == p or str(out_dir).startswith(p + "/") for p in _blocked_prefixes
+    ):
         raise ExecutionError(f"Refusing to write output to system directory: {out_dir}")
 
     # When AIIR_CASE_DIR is set, restrict save_dir to within the case directory
@@ -136,10 +152,10 @@ def _save_output(
         try:
             case_resolved = Path(case_dir).resolve()
             out_dir.relative_to(case_resolved)
-        except ValueError:
+        except ValueError as exc:
             raise ExecutionError(
                 f"save_dir '{out_dir}' is outside the case directory '{case_resolved}'"
-            )
+            ) from exc
 
     try:
         out_dir.mkdir(parents=True, exist_ok=True)

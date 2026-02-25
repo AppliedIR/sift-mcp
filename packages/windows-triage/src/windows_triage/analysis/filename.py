@@ -53,7 +53,6 @@ Usage:
 import math
 import re
 from collections import Counter
-from typing import List
 
 # Note: Unicode/process spoofing detection is handled by check_process_name_spoofing()
 # which is called separately in the server to avoid duplicate findings.
@@ -77,25 +76,43 @@ def calculate_entropy(s: str) -> float:
     freq = Counter(s)
     length = len(s)
 
-    return -sum(
-        (count / length) * math.log2(count / length)
-        for count in freq.values()
-    )
+    return -sum((count / length) * math.log2(count / length) for count in freq.values())
 
 
 # Executable extensions that warrant extra scrutiny
 EXECUTABLE_EXTENSIONS = {
-    'exe', 'dll', 'sys', 'scr', 'com', 'bat', 'cmd',
-    'ps1', 'psm1', 'psd1', 'vbs', 'vbe', 'js', 'jse',
-    'wsf', 'wsh', 'msc', 'hta', 'cpl', 'msi', 'msp',
-    'drv', 'ocx', 'ax', 'jar'
+    "exe",
+    "dll",
+    "sys",
+    "scr",
+    "com",
+    "bat",
+    "cmd",
+    "ps1",
+    "psm1",
+    "psd1",
+    "vbs",
+    "vbe",
+    "js",
+    "jse",
+    "wsf",
+    "wsh",
+    "msc",
+    "hta",
+    "cpl",
+    "msi",
+    "msp",
+    "drv",
+    "ocx",
+    "ax",
+    "jar",
 }
 
 # Double extension patterns that are highly suspicious
 DOUBLE_EXTENSION_PATTERN = re.compile(
-    r'\.(doc|docx|pdf|jpg|jpeg|png|gif|txt|xls|xlsx|ppt|pptx|mp3|mp4|avi|mov)'
-    r'\.(exe|scr|com|bat|cmd|ps1|vbs|js|hta|pif|msi)$',
-    re.IGNORECASE
+    r"\.(doc|docx|pdf|jpg|jpeg|png|gif|txt|xls|xlsx|ppt|pptx|mp3|mp4|avi|mov)"
+    r"\.(exe|scr|com|bat|cmd|ps1|vbs|js|hta|pif|msi)$",
+    re.IGNORECASE,
 )
 
 
@@ -121,12 +138,12 @@ def analyze_filename(filename: str) -> dict:
         - findings: List of suspicious characteristics
         - is_suspicious: Boolean indicating if any findings
     """
-    findings: List[dict] = []
+    findings: list[dict] = []
 
     # Split name and extension
-    if '.' in filename:
+    if "." in filename:
         # Handle multiple dots - last one is extension
-        parts = filename.rsplit('.', 1)
+        parts = filename.rsplit(".", 1)
         name_part = parts[0]
         extension = parts[1].lower()
     else:
@@ -140,72 +157,84 @@ def analyze_filename(filename: str) -> dict:
     # Threshold: 2 chars or less - single/double letter executables are rare in legitimate software
     if extension in EXECUTABLE_EXTENSIONS:
         if len(name_part) <= 2:
-            findings.append({
-                'type': 'short_name',
-                'severity': 'medium',
-                'name_length': len(name_part),
-                'description': f'Very short filename for executable: "{filename}"'
-            })
+            findings.append(
+                {
+                    "type": "short_name",
+                    "severity": "medium",
+                    "name_length": len(name_part),
+                    "description": f'Very short filename for executable: "{filename}"',
+                }
+            )
 
         # Check for high entropy (random-looking names)
         # Thresholds: >4.5 bits entropy for names >6 chars
         # - 4.5 bits: typical for random alphanumeric strings (log2(36) ≈ 5.17 for max)
         # - 6 chars: minimum length to avoid false positives on short legitimate names
         if entropy > 4.5 and len(name_part) > 6:
-            findings.append({
-                'type': 'high_entropy',
-                'severity': 'medium',
-                'entropy': round(entropy, 2),
-                'description': f'High entropy ({entropy:.2f}) suggests random/generated name'
-            })
+            findings.append(
+                {
+                    "type": "high_entropy",
+                    "severity": "medium",
+                    "entropy": round(entropy, 2),
+                    "description": f"High entropy ({entropy:.2f}) suggests random/generated name",
+                }
+            )
 
     # Check for double extensions
     if DOUBLE_EXTENSION_PATTERN.search(filename):
-        findings.append({
-            'type': 'double_extension',
-            'severity': 'critical',
-            'description': 'Double extension detected - common masquerading technique'
-        })
+        findings.append(
+            {
+                "type": "double_extension",
+                "severity": "critical",
+                "description": "Double extension detected - common masquerading technique",
+            }
+        )
 
     # Check for excessive spaces (used to hide real extension)
     # Threshold: 8+ consecutive spaces - enough to push extension off visible area in file explorers
-    if '        ' in filename:
-        findings.append({
-            'type': 'space_padding',
-            'severity': 'high',
-            'description': 'Excessive spaces in filename - may hide true extension'
-        })
+    if "        " in filename:
+        findings.append(
+            {
+                "type": "space_padding",
+                "severity": "high",
+                "description": "Excessive spaces in filename - may hide true extension",
+            }
+        )
 
     # Check for trailing spaces before extension
     # Threshold: 3+ trailing spaces - deliberate padding vs incidental single space
-    if name_part.endswith('   '):
-        findings.append({
-            'type': 'trailing_spaces',
-            'severity': 'high',
-            'description': 'Trailing spaces before extension - may hide content'
-        })
+    if name_part.endswith("   "):
+        findings.append(
+            {
+                "type": "trailing_spaces",
+                "severity": "high",
+                "description": "Trailing spaces before extension - may hide content",
+            }
+        )
 
     # Check for control characters
-    if re.search(r'[\x00-\x1F\x7F]', filename):
-        findings.append({
-            'type': 'control_chars',
-            'severity': 'critical',
-            'description': 'Control characters in filename'
-        })
+    if re.search(r"[\x00-\x1F\x7F]", filename):
+        findings.append(
+            {
+                "type": "control_chars",
+                "severity": "critical",
+                "description": "Control characters in filename",
+            }
+        )
 
     # Note: Unicode evasion (homoglyphs, leet speak, typosquatting) and
     # process name spoofing are handled separately by check_process_name_spoofing()
     # to avoid duplicate findings when both functions are called.
 
     return {
-        'filename': filename,
-        'entropy': round(entropy, 2),
-        'findings': findings,
-        'is_suspicious': len(findings) > 0
+        "filename": filename,
+        "entropy": round(entropy, 2),
+        "findings": findings,
+        "is_suspicious": len(findings) > 0,
     }
 
 
-def check_known_tool_filename(filename: str, known_patterns: List[dict]) -> dict | None:
+def check_known_tool_filename(filename: str, known_patterns: list[dict]) -> dict | None:
     """
     Check if a filename matches known malicious tool patterns.
 
@@ -219,11 +248,11 @@ def check_known_tool_filename(filename: str, known_patterns: List[dict]) -> dict
     filename_lower = filename.lower()
 
     for pattern in known_patterns:
-        if pattern.get('is_regex'):
-            if re.match(pattern['filename_pattern'], filename_lower):
+        if pattern.get("is_regex"):
+            if re.match(pattern["filename_pattern"], filename_lower):
                 return pattern
         else:
-            if filename_lower == pattern['filename_pattern'].lower():
+            if filename_lower == pattern["filename_pattern"].lower():
                 return pattern
 
     return None

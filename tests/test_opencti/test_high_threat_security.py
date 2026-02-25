@@ -12,23 +12,23 @@ Threat Model:
 from __future__ import annotations
 
 import pytest
+from opencti_mcp.errors import ValidationError
 from opencti_mcp.validation import (
-    validate_uuid,
-    validate_uuid_list,
-    validate_labels,
+    MAX_QUERY_LENGTH,
+    validate_ioc,
     validate_label,
+    validate_labels,
+    validate_length,
     validate_relationship_types,
     validate_stix_pattern,
-    validate_length,
-    validate_ioc,
-    MAX_QUERY_LENGTH,
+    validate_uuid,
+    validate_uuid_list,
 )
-from opencti_mcp.errors import ValidationError
-
 
 # =============================================================================
 # UUID Injection Tests
 # =============================================================================
+
 
 class TestUUIDInjection:
     """Test UUID validation against injection attempts."""
@@ -54,16 +54,19 @@ class TestUUIDInjection:
         with pytest.raises(ValidationError, match="36 characters"):
             validate_uuid("550e8400-e29b-41d4-a716-446655440000-extra", "entity_id")
 
-    @pytest.mark.parametrize("malicious", [
-        "550e8400-e29b-41d4-a716-44665544000'",  # SQL injection
-        "550e8400-e29b-41d4-a716-446655440000;",  # Command separator
-        "550e8400-e29b-41d4-a716-44665544000\x00",  # Null byte
-        "550e8400-e29b-41d4-a716-446655440000\n",  # Newline
-        "550e8400-e29b-41d4-a716-446655440g00",  # Invalid hex
-        "../../../etc/passwd/446655440000",  # Path traversal
-        "${entity_id}-446655440000-446655",  # Template injection
-        "{{7*7}}-e29b-41d4-a716-446655440000",  # SSTI
-    ])
+    @pytest.mark.parametrize(
+        "malicious",
+        [
+            "550e8400-e29b-41d4-a716-44665544000'",  # SQL injection
+            "550e8400-e29b-41d4-a716-446655440000;",  # Command separator
+            "550e8400-e29b-41d4-a716-44665544000\x00",  # Null byte
+            "550e8400-e29b-41d4-a716-446655440000\n",  # Newline
+            "550e8400-e29b-41d4-a716-446655440g00",  # Invalid hex
+            "../../../etc/passwd/446655440000",  # Path traversal
+            "${entity_id}-446655440000-446655",  # Template injection
+            "{{7*7}}-e29b-41d4-a716-446655440000",  # SSTI
+        ],
+    )
     def test_injection_attempts_rejected(self, malicious: str):
         """Injection attempts are rejected."""
         with pytest.raises(ValidationError):
@@ -72,7 +75,9 @@ class TestUUIDInjection:
     def test_wrong_format_rejected(self):
         """Wrong UUID format is rejected."""
         with pytest.raises(ValidationError, match="36 characters"):
-            validate_uuid("550e8400e29b41d4a716446655440000", "entity_id")  # No hyphens (32 chars)
+            validate_uuid(
+                "550e8400e29b41d4a716446655440000", "entity_id"
+            )  # No hyphens (32 chars)
 
     def test_uuid_list_validation(self):
         """UUID list validation works."""
@@ -95,6 +100,7 @@ class TestUUIDInjection:
 # Label Injection Tests
 # =============================================================================
 
+
 class TestLabelInjection:
     """Test label validation against injection attempts."""
 
@@ -114,14 +120,17 @@ class TestLabelInjection:
         with pytest.raises(ValidationError, match="100 characters"):
             validate_label("x" * 101)
 
-    @pytest.mark.parametrize("malicious", [
-        "label'; DROP TABLE indicators;--",  # SQL injection
-        "label<script>alert(1)</script>",  # XSS
-        "label\x00evil",  # Null byte
-        "label$(whoami)",  # Command injection
-        "label`id`",  # Command injection
-        "label\n\rHTTP/1.1 200 OK",  # HTTP response splitting
-    ])
+    @pytest.mark.parametrize(
+        "malicious",
+        [
+            "label'; DROP TABLE indicators;--",  # SQL injection
+            "label<script>alert(1)</script>",  # XSS
+            "label\x00evil",  # Null byte
+            "label$(whoami)",  # Command injection
+            "label`id`",  # Command injection
+            "label\n\rHTTP/1.1 200 OK",  # HTTP response splitting
+        ],
+    )
     def test_injection_in_labels_rejected(self, malicious: str):
         """Injection attempts in labels are rejected."""
         with pytest.raises(ValidationError):
@@ -137,6 +146,7 @@ class TestLabelInjection:
 # =============================================================================
 # STIX Pattern Injection Tests
 # =============================================================================
+
 
 class TestSTIXPatternInjection:
     """Test STIX pattern validation against injection attempts."""
@@ -181,6 +191,7 @@ class TestSTIXPatternInjection:
 # Relationship Type Injection Tests
 # =============================================================================
 
+
 class TestRelationshipTypeInjection:
     """Test relationship type validation."""
 
@@ -205,11 +216,14 @@ class TestRelationshipTypeInjection:
         with pytest.raises(ValidationError, match="too long"):
             validate_relationship_types(["x" * 100])
 
-    @pytest.mark.parametrize("malicious", [
-        "indicates'; DROP TABLE--",
-        "uses<script>",
-        "targets\x00evil",
-    ])
+    @pytest.mark.parametrize(
+        "malicious",
+        [
+            "indicates'; DROP TABLE--",
+            "uses<script>",
+            "targets\x00evil",
+        ],
+    )
     def test_injection_in_types_rejected(self, malicious: str):
         """Injection in relationship types is rejected."""
         with pytest.raises(ValidationError, match="invalid characters"):
@@ -219,6 +233,7 @@ class TestRelationshipTypeInjection:
 # =============================================================================
 # ReDoS Prevention Tests
 # =============================================================================
+
 
 class TestReDoSPrevention:
     """Test that regex-based validation is not vulnerable to ReDoS."""
@@ -258,6 +273,7 @@ class TestReDoSPrevention:
 # Information Disclosure Tests
 # =============================================================================
 
+
 class TestInformationDisclosure:
     """Test that errors don't leak sensitive information."""
 
@@ -285,6 +301,7 @@ class TestInformationDisclosure:
 # =============================================================================
 # Boundary Condition Tests
 # =============================================================================
+
 
 class TestBoundaryConditions:
     """Test edge cases and boundary conditions."""
@@ -320,6 +337,7 @@ class TestBoundaryConditions:
 # =============================================================================
 # Unicode Security Tests
 # =============================================================================
+
 
 class TestUnicodeSecurity:
     """Test handling of Unicode edge cases."""
@@ -361,14 +379,14 @@ class TestUnicodeSecurity:
     def test_greek_letters_in_domain_rejected(self):
         """Greek letters in domains are rejected."""
         # Using Greek 'ο' (U+03BF) instead of Latin 'o'
-        greek_domain = "g\u03BFogle.com"
+        greek_domain = "g\u03bfogle.com"
         result = validate_ioc(greek_domain)
         assert result[1] != "domain", f"Greek letter domain accepted as: {result[1]}"
 
     def test_cyrillic_tld_rejected(self):
         """Cyrillic TLDs are rejected."""
         # Using Cyrillic 'с' (U+0441) and 'о' (U+043E) in .com
-        cyrillic_tld = "example.\u0441\u043Em"
+        cyrillic_tld = "example.\u0441\u043em"
         result = validate_ioc(cyrillic_tld)
         assert result[1] != "domain", f"Cyrillic TLD domain accepted as: {result[1]}"
 

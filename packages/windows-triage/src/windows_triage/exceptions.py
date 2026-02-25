@@ -24,6 +24,7 @@ class WindowsTriageError(Exception):
     All custom exceptions inherit from this class, allowing callers to catch
     all windows-triage errors with a single except clause if desired.
     """
+
     pass
 
 
@@ -40,6 +41,7 @@ class ValidationError(WindowsTriageError):
         - Missing required parameter
         - Null bytes in input
     """
+
     pass
 
 
@@ -56,6 +58,7 @@ class DatabaseError(WindowsTriageError):
         - Database corruption detected
         - Connection failed
     """
+
     pass
 
 
@@ -70,4 +73,5 @@ class ConfigurationError(WindowsTriageError):
         - Required database file missing
         - Invalid log level specified
     """
+
     pass

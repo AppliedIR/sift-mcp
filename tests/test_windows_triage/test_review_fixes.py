@@ -2,21 +2,20 @@
 
 import json
 import logging
-import pytest
-import tempfile
 import sqlite3
+import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-from windows_triage.server import WindowsTriageServer
-from windows_triage.oplog import _StructuredFormatter, setup_logging
+import pytest
 from windows_triage.config import Config
-from windows_triage.exceptions import ValidationError, DatabaseError, WindowsTriageError
-
+from windows_triage.oplog import _StructuredFormatter, setup_logging
+from windows_triage.server import WindowsTriageServer
 
 # ============================================================================
 # Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def temp_dbs():
@@ -148,6 +147,7 @@ def temp_dbs():
 # _error_response tests
 # ============================================================================
 
+
 class TestErrorResponse:
     """Tests for standardized error response format."""
 
@@ -190,6 +190,7 @@ class TestErrorResponse:
 # Structured logging tests
 # ============================================================================
 
+
 class TestStructuredLogging:
     """Tests for structured JSON logging."""
 
@@ -197,8 +198,13 @@ class TestStructuredLogging:
         """JSON formatter produces valid JSON."""
         formatter = _StructuredFormatter("test-service")
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="test.py",
-            lineno=1, msg="test message", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="test message",
+            args=(),
+            exc_info=None,
         )
         output = formatter.format(record)
         parsed = json.loads(output)
@@ -211,8 +217,13 @@ class TestStructuredLogging:
         """Warnings and above include file location."""
         formatter = _StructuredFormatter()
         record = logging.LogRecord(
-            name="test", level=logging.WARNING, pathname="/foo/bar.py",
-            lineno=42, msg="warn", args=(), exc_info=None,
+            name="test",
+            level=logging.WARNING,
+            pathname="/foo/bar.py",
+            lineno=42,
+            msg="warn",
+            args=(),
+            exc_info=None,
         )
         output = formatter.format(record)
         parsed = json.loads(output)
@@ -223,8 +234,13 @@ class TestStructuredLogging:
         """Info level does not include location."""
         formatter = _StructuredFormatter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="test.py",
-            lineno=1, msg="info", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="info",
+            args=(),
+            exc_info=None,
         )
         output = formatter.format(record)
         parsed = json.loads(output)
@@ -237,11 +253,17 @@ class TestStructuredLogging:
             raise ValueError("boom")
         except ValueError:
             import sys
+
             exc_info = sys.exc_info()
 
         record = logging.LogRecord(
-            name="test", level=logging.ERROR, pathname="test.py",
-            lineno=1, msg="error", args=(), exc_info=exc_info,
+            name="test",
+            level=logging.ERROR,
+            pathname="test.py",
+            lineno=1,
+            msg="error",
+            args=(),
+            exc_info=exc_info,
         )
         output = formatter.format(record)
         parsed = json.loads(output)
@@ -250,14 +272,24 @@ class TestStructuredLogging:
 
     def test_setup_logging_text_format(self):
         """Text format uses standard formatter."""
-        setup_logging("windows-triage-mcp", level=logging.DEBUG, json_format=False, log_to_file=False)
+        setup_logging(
+            "windows-triage-mcp",
+            level=logging.DEBUG,
+            json_format=False,
+            log_to_file=False,
+        )
         logger = logging.getLogger("windows_triage_mcp")
         assert len(logger.handlers) == 1
         assert not isinstance(logger.handlers[0].formatter, _StructuredFormatter)
 
     def test_setup_logging_json_format(self):
         """JSON format uses StructuredFormatter."""
-        setup_logging("windows-triage-mcp", level=logging.DEBUG, json_format=True, log_to_file=False)
+        setup_logging(
+            "windows-triage-mcp",
+            level=logging.DEBUG,
+            json_format=True,
+            log_to_file=False,
+        )
         logger = logging.getLogger("windows_triage_mcp")
         assert len(logger.handlers) == 1
         assert isinstance(logger.handlers[0].formatter, _StructuredFormatter)
@@ -273,6 +305,7 @@ class TestStructuredLogging:
 # ============================================================================
 # Database cleanup (atexit) tests
 # ============================================================================
+
 
 class TestDatabaseCleanup:
     """Tests for close_databases method."""
@@ -315,6 +348,7 @@ class TestDatabaseCleanup:
 # ============================================================================
 # Skip-validation warning test
 # ============================================================================
+
 
 class TestSkipValidationWarning:
     """Test that skip_db_validation logs a warning."""

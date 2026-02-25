@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from pathlib import Path
 
 
 @dataclass
@@ -12,12 +11,14 @@ class SiftConfig:
     """Runtime configuration loaded from environment."""
 
     # Tool binary search paths
-    tool_paths: list[str] = field(default_factory=lambda: [
-        "/usr/local/bin",
-        "/usr/bin",
-        "/opt/zimmerman",
-        "/opt/volatility3",
-    ])
+    tool_paths: list[str] = field(
+        default_factory=lambda: [
+            "/usr/local/bin",
+            "/usr/bin",
+            "/opt/zimmerman",
+            "/opt/volatility3",
+        ]
+    )
 
     # Default execution timeout (seconds)
     default_timeout: int = 600

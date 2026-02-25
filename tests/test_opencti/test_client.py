@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, patch
-
-from opencti_mcp.client import OpenCTIClient, RateLimiter, CircuitBreaker, CircuitState
-from opencti_mcp.config import Config, SecretStr
-from opencti_mcp.errors import QueryError, RateLimitError, ConnectionError
-
+from opencti_mcp.client import CircuitBreaker, CircuitState, OpenCTIClient, RateLimiter
+from opencti_mcp.config import Config
+from opencti_mcp.errors import QueryError, RateLimitError
 
 # =============================================================================
 # Rate Limiter Tests
 # =============================================================================
+
 
 class TestRateLimiter:
     """Tests for RateLimiter class."""
@@ -81,6 +81,7 @@ class TestRateLimiter:
 # =============================================================================
 # Circuit Breaker Tests
 # =============================================================================
+
 
 class TestCircuitBreaker:
     """Tests for CircuitBreaker class."""
@@ -152,6 +153,7 @@ class TestCircuitBreaker:
 # Client Connection Tests
 # =============================================================================
 
+
 class TestClientConnection:
     """Tests for client connection handling."""
 
@@ -173,7 +175,9 @@ class TestClientConnection:
         """is_available returns False on connection error."""
         client = OpenCTIClient(mock_config)
         client._client = Mock()
-        client._client.stix_cyber_observable.list.side_effect = Exception("Connection failed")
+        client._client.stix_cyber_observable.list.side_effect = Exception(
+            "Connection failed"
+        )
 
         assert client.is_available() is False
 
@@ -184,9 +188,13 @@ class TestClientConnection:
         assert result1 is True
 
         # Second call should use cache (not call API again)
-        call_count_before = mock_opencti_client._client.stix_cyber_observable.list.call_count
+        call_count_before = (
+            mock_opencti_client._client.stix_cyber_observable.list.call_count
+        )
         result2 = mock_opencti_client.is_available()
-        call_count_after = mock_opencti_client._client.stix_cyber_observable.list.call_count
+        call_count_after = (
+            mock_opencti_client._client.stix_cyber_observable.list.call_count
+        )
 
         assert result2 is True
         assert call_count_after == call_count_before  # No new API call
@@ -200,9 +208,13 @@ class TestClientConnection:
         mock_opencti_client.clear_health_cache()
 
         # Next call should hit API
-        call_count_before = mock_opencti_client._client.stix_cyber_observable.list.call_count
+        call_count_before = (
+            mock_opencti_client._client.stix_cyber_observable.list.call_count
+        )
         mock_opencti_client.is_available()
-        call_count_after = mock_opencti_client._client.stix_cyber_observable.list.call_count
+        call_count_after = (
+            mock_opencti_client._client.stix_cyber_observable.list.call_count
+        )
 
         assert call_count_after == call_count_before + 1
 
@@ -210,6 +222,7 @@ class TestClientConnection:
 # =============================================================================
 # Search Method Tests
 # =============================================================================
+
 
 class TestSearchMethods:
     """Tests for search methods."""
@@ -278,6 +291,7 @@ class TestSearchMethods:
 # Context Method Tests
 # =============================================================================
 
+
 class TestContextMethods:
     """Tests for context/lookup methods."""
 
@@ -308,6 +322,7 @@ class TestContextMethods:
 # Error Handling Tests
 # =============================================================================
 
+
 class TestErrorHandling:
     """Tests for error handling."""
 
@@ -332,6 +347,7 @@ class TestErrorHandling:
 # =============================================================================
 # Validation Tests
 # =============================================================================
+
 
 class TestInputValidation:
     """Tests for input validation in client."""

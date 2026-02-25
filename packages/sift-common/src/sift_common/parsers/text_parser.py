@@ -38,4 +38,4 @@ def parse_text(stdout: str, *, max_lines: int = 50000, byte_budget: int = 0) -> 
 def extract_lines(stdout: str, *, start: int = 0, count: int = 50) -> list[str]:
     """Extract a range of lines from output."""
     lines = stdout.split("\n")
-    return lines[start:start + count]
+    return lines[start : start + count]

@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import pytest
-
-from windows_triage.audit import AuditWriter, resolve_examiner
-from windows_triage.tool_metadata import TOOL_METADATA, DEFAULT_METADATA
+from windows_triage.audit import AuditWriter
+from windows_triage.tool_metadata import DEFAULT_METADATA, TOOL_METADATA
 
 
 class TestAuditWriter:
@@ -20,7 +16,9 @@ class TestAuditWriter:
     def test_evidence_id_format(self, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         writer = AuditWriter("windows-triage-mcp")
-        eid = writer.log(tool="check_file", params={"path": "test.exe"}, result_summary={})
+        eid = writer.log(
+            tool="check_file", params={"path": "test.exe"}, result_summary={}
+        )
         parts = eid.split("-")
         assert parts[0] == "windowstriage"
         assert parts[1] == "tester"
@@ -32,7 +30,10 @@ class TestAuditWriter:
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
         writer = AuditWriter("windows-triage-mcp")
-        ids = [writer.log(tool="check_file", params={}, result_summary={}) for _ in range(5)]
+        ids = [
+            writer.log(tool="check_file", params={}, result_summary={})
+            for _ in range(5)
+        ]
         seqs = [int(eid.split("-")[-1]) for eid in ids]
         assert seqs == [1, 2, 3, 4, 5]
 
@@ -50,7 +51,11 @@ class TestAuditWriter:
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
         writer = AuditWriter("windows-triage-mcp")
-        writer.log(tool="check_file", params={"path": "C:\\test.exe"}, result_summary={"verdict": "EXPECTED"})
+        writer.log(
+            tool="check_file",
+            params={"path": "C:\\test.exe"},
+            result_summary={"verdict": "EXPECTED"},
+        )
 
         audit_file = tmp_path / "audit" / "windows-triage-mcp.jsonl"
         assert audit_file.exists()
@@ -132,10 +137,19 @@ class TestToolMetadata:
 
     def test_known_tools(self):
         expected_tools = {
-            "check_file", "check_process_tree", "check_service",
-            "check_scheduled_task", "check_autorun", "check_registry",
-            "check_hash", "analyze_filename", "check_lolbin",
-            "check_hijackable_dll", "check_pipe", "get_db_stats", "get_health",
+            "check_file",
+            "check_process_tree",
+            "check_service",
+            "check_scheduled_task",
+            "check_autorun",
+            "check_registry",
+            "check_hash",
+            "analyze_filename",
+            "check_lolbin",
+            "check_hijackable_dll",
+            "check_pipe",
+            "get_db_stats",
+            "get_health",
         }
         assert set(TOOL_METADATA.keys()) == expected_tools
 
@@ -155,7 +169,8 @@ class TestWrapResponse:
 
     def _make_server_instance(self):
         from windows_triage.server import WindowsTriageServer
-        with patch.object(WindowsTriageServer, '__init__', lambda self, **kw: None):
+
+        with patch.object(WindowsTriageServer, "__init__", lambda self, **kw: None):
             server = WindowsTriageServer.__new__(WindowsTriageServer)
             server._audit = AuditWriter("windows-triage-mcp")
             return server
@@ -163,7 +178,9 @@ class TestWrapResponse:
     def test_wraps_successful_result(self):
         server = self._make_server_instance()
         result = {"verdict": "EXPECTED", "path": "C:\\Windows\\System32\\cmd.exe"}
-        wrapped = server._wrap_response("check_file", {"path": "C:\\Windows\\System32\\cmd.exe"}, result)
+        wrapped = server._wrap_response(
+            "check_file", {"path": "C:\\Windows\\System32\\cmd.exe"}, result
+        )
         assert "evidence_id" in wrapped
         assert "examiner" in wrapped
         assert "caveats" in wrapped
@@ -189,7 +206,9 @@ class TestWrapResponse:
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
         server = self._make_server_instance()
-        server._wrap_response("check_file", {"path": "test.exe"}, {"verdict": "UNKNOWN"})
+        server._wrap_response(
+            "check_file", {"path": "test.exe"}, {"verdict": "UNKNOWN"}
+        )
 
         audit_file = tmp_path / "audit" / "windows-triage-mcp.jsonl"
         assert audit_file.exists()
@@ -201,5 +220,7 @@ class TestWrapResponse:
     def test_no_audit_when_case_dir_unset(self, tmp_path, monkeypatch):
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
         server = self._make_server_instance()
-        server._wrap_response("check_file", {"path": "test.exe"}, {"verdict": "UNKNOWN"})
+        server._wrap_response(
+            "check_file", {"path": "test.exe"}, {"verdict": "UNKNOWN"}
+        )
         assert not (tmp_path / "examiners").exists()

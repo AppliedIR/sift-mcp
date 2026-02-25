@@ -3,14 +3,15 @@
 import json
 
 import pytest
-
 from forensic_mcp.server import create_server
 
 
 def _setup_test_case(manager, cases_dir):
     """Create a test case directory matching what init_case used to do."""
-    import yaml as _yaml
     from datetime import datetime, timezone
+
+    import yaml as _yaml
+
     ts = datetime.now(timezone.utc)
     case_id = f"INC-{ts.strftime('%Y')}-{ts.strftime('%m%d%H%M%S')}"
     case_dir = cases_dir / case_id
@@ -34,6 +35,7 @@ def _setup_test_case(manager, cases_dir):
     manager._active_case_id = case_id
     manager._active_case_path = case_dir
     import os
+
     os.environ["AIIR_CASE_DIR"] = str(case_dir)
     os.environ["AIIR_ACTIVE_CASE"] = case_id
 
@@ -69,10 +71,17 @@ class TestServerSetup:
         tools = await server.list_tools()
         names = {t.name for t in tools}
         expected = {
-            "get_case_status", "list_cases",
-            "record_finding", "record_timeline_event",
-            "get_findings", "get_timeline", "get_actions",
-            "add_todo", "list_todos", "update_todo", "complete_todo",
+            "get_case_status",
+            "list_cases",
+            "record_finding",
+            "record_timeline_event",
+            "get_findings",
+            "get_timeline",
+            "get_actions",
+            "add_todo",
+            "list_todos",
+            "update_todo",
+            "complete_todo",
             "list_evidence",
         }
         assert names == expected
@@ -83,12 +92,21 @@ class TestServerSetup:
         tools = await server.list_tools()
         names = {t.name for t in tools}
         removed = {
-            "init_case", "close_case", "set_active_case",
-            "register_evidence", "verify_evidence_integrity", "get_evidence_access_log",
-            "get_audit_log", "get_audit_summary",
-            "generate_full_report", "generate_executive_summary",
-            "generate_timeline_report", "generate_ioc_report",
-            "generate_findings_report", "generate_status_brief", "save_report",
+            "init_case",
+            "close_case",
+            "set_active_case",
+            "register_evidence",
+            "verify_evidence_integrity",
+            "get_evidence_access_log",
+            "get_audit_log",
+            "get_audit_summary",
+            "generate_full_report",
+            "generate_executive_summary",
+            "generate_timeline_report",
+            "generate_ioc_report",
+            "generate_findings_report",
+            "generate_status_brief",
+            "save_report",
         }
         assert names.isdisjoint(removed)
 
@@ -98,13 +116,20 @@ class TestServerSetup:
         tools = await tools_server.list_tools()
         names = {t.name for t in tools}
         discipline = {
-            "get_investigation_framework", "get_rules",
-            "get_checkpoint_requirements", "validate_finding",
-            "get_evidence_standards", "get_confidence_definitions",
-            "get_anti_patterns", "get_evidence_template",
-            "get_tool_guidance", "get_false_positive_context",
-            "get_corroboration_suggestions", "list_playbooks",
-            "get_playbook", "get_collection_checklist",
+            "get_investigation_framework",
+            "get_rules",
+            "get_checkpoint_requirements",
+            "validate_finding",
+            "get_evidence_standards",
+            "get_confidence_definitions",
+            "get_anti_patterns",
+            "get_evidence_template",
+            "get_tool_guidance",
+            "get_false_positive_context",
+            "get_corroboration_suggestions",
+            "list_playbooks",
+            "get_playbook",
+            "get_collection_checklist",
         }
         assert discipline.issubset(names)
 
@@ -125,20 +150,26 @@ class TestResourceContent:
     @pytest.mark.asyncio
     async def test_investigation_framework_resource(self, server):
         result = await server.read_resource("forensic-mcp://investigation-framework")
-        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        data = json.loads(
+            result[0].content if hasattr(result[0], "content") else result[0].text
+        )
         assert "principles" in data
         assert "workflow" in data
 
     @pytest.mark.asyncio
     async def test_rules_resource(self, server):
         result = await server.read_resource("forensic-mcp://rules")
-        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        data = json.loads(
+            result[0].content if hasattr(result[0], "content") else result[0].text
+        )
         assert len(data) > 0
 
     @pytest.mark.asyncio
     async def test_validation_schema_resource(self, server):
         result = await server.read_resource("forensic-mcp://validation-schema")
-        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        data = json.loads(
+            result[0].content if hasattr(result[0], "content") else result[0].text
+        )
         assert "required_fields" in data
         assert "valid_types" in data
         assert "confidence_levels" in data
@@ -146,53 +177,78 @@ class TestResourceContent:
     @pytest.mark.asyncio
     async def test_playbooks_resource(self, server):
         result = await server.read_resource("forensic-mcp://playbooks")
-        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        data = json.loads(
+            result[0].content if hasattr(result[0], "content") else result[0].text
+        )
         assert len(data) == 14
 
     @pytest.mark.asyncio
     async def test_playbook_by_name_resource(self, server):
         result = await server.read_resource("forensic-mcp://playbook/unusual_logon")
-        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        data = json.loads(
+            result[0].content if hasattr(result[0], "content") else result[0].text
+        )
         assert data["name"] == "Unusual Logon Investigation"
 
     @pytest.mark.asyncio
     async def test_evidence_standards_resource(self, server):
         result = await server.read_resource("forensic-mcp://evidence-standards")
-        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        data = json.loads(
+            result[0].content if hasattr(result[0], "content") else result[0].text
+        )
         for key in ("CONFIRMED", "INDICATED", "INFERRED", "UNKNOWN", "CONTRADICTED"):
             assert key in data
 
     @pytest.mark.asyncio
     async def test_confidence_definitions_resource(self, server):
         result = await server.read_resource("forensic-mcp://confidence-definitions")
-        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        data = json.loads(
+            result[0].content if hasattr(result[0], "content") else result[0].text
+        )
         for key in ("HIGH", "MEDIUM", "LOW", "SPECULATIVE"):
             assert key in data
 
     @pytest.mark.asyncio
     async def test_anti_patterns_resource(self, server):
         result = await server.read_resource("forensic-mcp://anti-patterns")
-        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        data = json.loads(
+            result[0].content if hasattr(result[0], "content") else result[0].text
+        )
         assert len(data) == 6
 
     @pytest.mark.asyncio
     async def test_evidence_template_resource(self, server):
         result = await server.read_resource("forensic-mcp://evidence-template")
-        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
-        for key in ("title", "evidence_ids", "observation", "interpretation", "confidence", "type"):
+        data = json.loads(
+            result[0].content if hasattr(result[0], "content") else result[0].text
+        )
+        for key in (
+            "title",
+            "evidence_ids",
+            "observation",
+            "interpretation",
+            "confidence",
+            "type",
+        ):
             assert key in data
 
     @pytest.mark.asyncio
     async def test_collection_checklist_resource(self, server):
-        result = await server.read_resource("forensic-mcp://collection-checklist/registry")
-        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        result = await server.read_resource(
+            "forensic-mcp://collection-checklist/registry"
+        )
+        data = json.loads(
+            result[0].content if hasattr(result[0], "content") else result[0].text
+        )
         assert data["artifact_type"] == "Windows Registry"
         assert len(data["files"]) > 0
 
     @pytest.mark.asyncio
     async def test_checkpoint_resource(self, server):
         result = await server.read_resource("forensic-mcp://checkpoint/attribution")
-        data = json.loads(result[0].content if hasattr(result[0], "content") else result[0].text)
+        data = json.loads(
+            result[0].content if hasattr(result[0], "content") else result[0].text
+        )
         assert data["min_evidence_ids"] == 3
         assert data["human_approval"] is True
 
@@ -248,19 +304,25 @@ class TestDisciplineTools:
 
     @pytest.mark.asyncio
     async def test_get_tool_guidance(self, server):
-        result = await server.call_tool("get_tool_guidance", {"tool_name": "check_file"})
+        result = await server.call_tool(
+            "get_tool_guidance", {"tool_name": "check_file"}
+        )
         text = result[0].text
         data = json.loads(text)
         assert "score_interpretation" in data
 
     @pytest.mark.asyncio
     async def test_get_corroboration_suggestions(self, server):
-        result = await server.call_tool("get_corroboration_suggestions", {"finding_type": "persistence"})
+        result = await server.call_tool(
+            "get_corroboration_suggestions", {"finding_type": "persistence"}
+        )
         assert len(result) > 0
 
     @pytest.mark.asyncio
     async def test_get_checkpoint_requirements_attribution(self, server):
-        result = await server.call_tool("get_checkpoint_requirements", {"action_type": "attribution"})
+        result = await server.call_tool(
+            "get_checkpoint_requirements", {"action_type": "attribution"}
+        )
         text = result[0].text
         data = json.loads(text)
         assert data["min_evidence_ids"] == 3
@@ -297,14 +359,25 @@ class TestDisciplineTools:
         result = await server.call_tool("get_evidence_template", {})
         text = result[0].text
         data = json.loads(text)
-        for key in ("title", "evidence_ids", "observation", "interpretation", "confidence", "type"):
+        for key in (
+            "title",
+            "evidence_ids",
+            "observation",
+            "interpretation",
+            "confidence",
+            "type",
+        ):
             assert key in data
 
     @pytest.mark.asyncio
     async def test_get_false_positive_context(self, server):
-        result = await server.call_tool("get_false_positive_context", {
-            "tool_name": "check_file", "finding_type": "unknown_file",
-        })
+        result = await server.call_tool(
+            "get_false_positive_context",
+            {
+                "tool_name": "check_file",
+                "finding_type": "unknown_file",
+            },
+        )
         text = result[0].text
         data = json.loads(text)
         assert "common_benign_causes" in data
@@ -312,7 +385,9 @@ class TestDisciplineTools:
 
     @pytest.mark.asyncio
     async def test_get_collection_checklist_registry(self, server):
-        result = await server.call_tool("get_collection_checklist", {"artifact_type": "registry"})
+        result = await server.call_tool(
+            "get_collection_checklist", {"artifact_type": "registry"}
+        )
         text = result[0].text
         data = json.loads(text)
         assert data["artifact_type"] == "Windows Registry"
@@ -359,7 +434,9 @@ class TestEnhancedResponses:
         assert "DRAFT" in data["finding_status"]
 
     @pytest.mark.asyncio
-    async def test_record_finding_attribution_considerations(self, tmp_path, monkeypatch):
+    async def test_record_finding_attribution_considerations(
+        self, tmp_path, monkeypatch
+    ):
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         server = create_server()
@@ -378,7 +455,9 @@ class TestEnhancedResponses:
         data = json.loads(text)
         assert data["status"] == "STAGED"
         considerations = data["considerations"]
-        has_attribution_warning = any("attribution" in c.lower() for c in considerations)
+        has_attribution_warning = any(
+            "attribution" in c.lower() for c in considerations
+        )
         assert has_attribution_warning
 
     @pytest.mark.asyncio
@@ -470,9 +549,12 @@ class TestTodoTools:
         _setup_test_case(server._manager, tmp_path / "cases")
         add_result = await server.call_tool("add_todo", {"description": "A"})
         todo_id = json.loads(add_result[0].text)["todo_id"]
-        result = await server.call_tool("update_todo", {
-            "todo_id": todo_id,
-            "note": "In progress",
-        })
+        result = await server.call_tool(
+            "update_todo",
+            {
+                "todo_id": todo_id,
+                "note": "In progress",
+            },
+        )
         data = json.loads(result[0].text)
         assert data["status"] == "updated"

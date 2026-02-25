@@ -51,7 +51,9 @@ def install_hayabusa() -> str | None:
         )
         result = subprocess.run(
             ["curl", "-sL", release_url],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode != 0:
             logger.warning("Cannot reach GitHub API for Hayabusa install")
@@ -68,20 +70,27 @@ def install_hayabusa() -> str | None:
         target_name = None
         for asset in assets:
             name = asset["name"]
-            if "linux" in name.lower() and arch_suffix in name and "musl" in name.lower():
+            if (
+                "linux" in name.lower()
+                and arch_suffix in name
+                and "musl" in name.lower()
+            ):
                 target_name = name
                 download_url = asset["browser_download_url"]
                 break
 
         if not target_name:
-            logger.warning("No matching Hayabusa binary found for linux/%s", arch_suffix)
+            logger.warning(
+                "No matching Hayabusa binary found for linux/%s", arch_suffix
+            )
             return None
 
         # Download archive
         archive_path = install_dir / target_name
         dl_result = subprocess.run(
             ["curl", "-sL", "-o", str(archive_path), download_url],
-            capture_output=True, timeout=120,
+            capture_output=True,
+            timeout=120,
         )
         if dl_result.returncode != 0:
             return None
@@ -93,7 +102,9 @@ def install_hayabusa() -> str | None:
         )
         sums_result = subprocess.run(
             ["curl", "-sL", sums_url],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if sums_result.returncode != 0 or not sums_result.stdout.strip():
             archive_path.unlink(missing_ok=True)
@@ -112,7 +123,8 @@ def install_hayabusa() -> str | None:
         if not expected_hash:
             archive_path.unlink(missing_ok=True)
             logger.warning(
-                "No SHA-256 entry for %s in SHA256SUMS", target_name,
+                "No SHA-256 entry for %s in SHA256SUMS",
+                target_name,
             )
             return None
 
@@ -127,7 +139,8 @@ def install_hayabusa() -> str | None:
             archive_path.unlink(missing_ok=True)
             logger.warning(
                 "Hayabusa hash mismatch: expected %s, got %s",
-                expected_hash, actual_hash,
+                expected_hash,
+                actual_hash,
             )
             raise ValueError(
                 f"Hayabusa archive hash verification failed: "
@@ -138,25 +151,37 @@ def install_hayabusa() -> str | None:
         if target_name.endswith(".zip"):
             extract_result = subprocess.run(
                 ["unzip", "-o", str(archive_path), "-d", str(install_dir)],
-                capture_output=True, timeout=60,
+                capture_output=True,
+                timeout=60,
             )
             if extract_result.returncode != 0:
-                logger.warning("unzip failed for %s: exit code %d", archive_path, extract_result.returncode)
+                logger.warning(
+                    "unzip failed for %s: exit code %d",
+                    archive_path,
+                    extract_result.returncode,
+                )
                 return None
         elif ".tar" in target_name:
             extract_result = subprocess.run(
                 ["tar", "xf", str(archive_path), "-C", str(install_dir)],
-                capture_output=True, timeout=60,
+                capture_output=True,
+                timeout=60,
             )
             if extract_result.returncode != 0:
-                logger.warning("tar extract failed for %s: exit code %d", archive_path, extract_result.returncode)
+                logger.warning(
+                    "tar extract failed for %s: exit code %d",
+                    archive_path,
+                    extract_result.returncode,
+                )
                 return None
 
         # Find the binary
         try:
             candidates = list(install_dir.rglob("hayabusa*"))
         except OSError as e:
-            logger.warning("Failed to search for hayabusa binary in %s: %s", install_dir, e)
+            logger.warning(
+                "Failed to search for hayabusa binary in %s: %s", install_dir, e
+            )
             candidates = []
         for candidate in candidates:
             if candidate.is_file() and os.access(candidate, os.X_OK):
@@ -169,7 +194,12 @@ def install_hayabusa() -> str | None:
 
         return None
 
-    except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError,
-            json.JSONDecodeError, ValueError) as e:
+    except (
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+        PermissionError,
+        json.JSONDecodeError,
+        ValueError,
+    ) as e:
         logger.warning("Hayabusa install failed: %s", e)
         return None

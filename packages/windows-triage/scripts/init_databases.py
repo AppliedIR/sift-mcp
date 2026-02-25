@@ -40,17 +40,15 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
-from windows_triage.db import KnownGoodDB, ContextDB
+from windows_triage.db import ContextDB, KnownGoodDB
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Initialize forensic triage databases"
-    )
+    parser = argparse.ArgumentParser(description="Initialize forensic triage databases")
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Recreate databases even if they exist (DESTRUCTIVE)"
+        help="Recreate databases even if they exist (DESTRUCTIVE)",
     )
     args = parser.parse_args()
 
@@ -99,19 +97,19 @@ def main():
     print("Database initialization complete!")
     print("=" * 60)
 
-    print(f"\nDatabase locations:")
+    print("\nDatabase locations:")
     print(f"  known_good.db: {known_good_path}")
     print(f"  context.db:    {context_path}")
 
-    print(f"\nNext steps:")
-    print(f"  1. Clone data sources into data/sources/")
-    print(f"  2. Run: python scripts/import_files.py")
-    print(f"  3. Run: python scripts/import_context.py")
-    print(f"  4. (Optional) Run: python scripts/import_registry_extractions.py")
+    print("\nNext steps:")
+    print("  1. Clone data sources into data/sources/")
+    print("  2. Run: python scripts/import_files.py")
+    print("  3. Run: python scripts/import_context.py")
+    print("  4. (Optional) Run: python scripts/import_registry_extractions.py")
 
-    print(f"\nOptional full registry baseline:")
-    print(f"  Run: python scripts/init_registry_db.py")
-    print(f"  Then: python scripts/import_registry_full.py")
+    print("\nOptional full registry baseline:")
+    print("  Run: python scripts/init_registry_db.py")
+    print("  Then: python scripts/import_registry_full.py")
 
 
 if __name__ == "__main__":

@@ -1,13 +1,11 @@
 """Tests for sift_mcp.tools.generic — denylist-protected execution."""
 
-import os
-
-import pytest
 from unittest.mock import patch
 
-from sift_mcp.tools.generic import run_command
-from sift_mcp.exceptions import DeniedBinaryError, ExecutionError
+import pytest
 from sift_mcp.catalog import clear_catalog_cache
+from sift_mcp.exceptions import DeniedBinaryError, ExecutionError
+from sift_mcp.tools.generic import run_command
 
 
 @pytest.fixture(autouse=True)
@@ -48,8 +46,10 @@ class TestGenericRunCommand:
             "elapsed_seconds": 0.1,
             "command": ["echo", "hello"],
         }
-        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/echo"), \
-             patch("sift_mcp.tools.generic.execute", return_value=mock_result):
+        with (
+            patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/echo"),
+            patch("sift_mcp.tools.generic.execute", return_value=mock_result),
+        ):
             result = run_command(["echo", "hello"])
             assert result["exit_code"] == 0
 
@@ -95,8 +95,10 @@ class TestGenericRunCommand:
             "command": ["rm", "/tmp/parsed_output.csv"],
             "stdout_total_bytes": 0,
         }
-        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/rm"), \
-             patch("sift_mcp.tools.generic.execute", return_value=mock_result):
+        with (
+            patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/rm"),
+            patch("sift_mcp.tools.generic.execute", return_value=mock_result),
+        ):
             result = run_command(["rm", "/tmp/parsed_output.csv"])
             assert result["exit_code"] == 0
 
@@ -120,8 +122,12 @@ class TestOutputParsing:
     def test_small_output_returns_raw(self):
         """Output under budget → no parsing, raw stdout in result."""
         result = self._mock_exec("small output")
-        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/sometool"), \
-             patch("sift_mcp.tools.generic.execute", return_value=result):
+        with (
+            patch(
+                "sift_mcp.tools.generic.find_binary", return_value="/usr/bin/sometool"
+            ),
+            patch("sift_mcp.tools.generic.execute", return_value=result),
+        ):
             out = run_command(["sometool", "--flag"])
         assert out["stdout"] == "small output"
         assert "_parsed" not in out
@@ -131,8 +137,12 @@ class TestOutputParsing:
         monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "100")
         big_output = "\n".join(f"line {i}" for i in range(500))
         result = self._mock_exec(big_output)
-        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/sometool"), \
-             patch("sift_mcp.tools.generic.execute", return_value=result):
+        with (
+            patch(
+                "sift_mcp.tools.generic.find_binary", return_value="/usr/bin/sometool"
+            ),
+            patch("sift_mcp.tools.generic.execute", return_value=result),
+        ):
             out = run_command(["sometool", "--flag"])
         assert "_parsed" in out
         assert out["_output_format"] == "parsed_text"
@@ -147,13 +157,20 @@ class TestOutputParsing:
         result = self._mock_exec(csv_output)
 
         from sift_mcp.catalog import ToolDefinition
+
         mock_td = ToolDefinition(
-            name="csvtool", binary="csvtool", category="test",
+            name="csvtool",
+            binary="csvtool",
+            category="test",
             output_format="csv",
         )
-        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/csvtool"), \
-             patch("sift_mcp.tools.generic.execute", return_value=result), \
-             patch("sift_mcp.tools.generic.get_tool_def", return_value=mock_td):
+        with (
+            patch(
+                "sift_mcp.tools.generic.find_binary", return_value="/usr/bin/csvtool"
+            ),
+            patch("sift_mcp.tools.generic.execute", return_value=result),
+            patch("sift_mcp.tools.generic.get_tool_def", return_value=mock_td),
+        ):
             out = run_command(["csvtool", "--flag"])
         assert out["_output_format"] == "parsed_csv"
         assert out["_parsed"]["total_rows"] >= 490  # ~500 data rows
@@ -163,18 +180,26 @@ class TestOutputParsing:
     def test_large_output_parsed_json(self, monkeypatch):
         """JSON tool output over budget → _parsed with entries."""
         import json as json_mod
+
         monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "200")
         json_output = json_mod.dumps([{"id": i} for i in range(500)])
         result = self._mock_exec(json_output)
 
         from sift_mcp.catalog import ToolDefinition
+
         mock_td = ToolDefinition(
-            name="jsontool", binary="jsontool", category="test",
+            name="jsontool",
+            binary="jsontool",
+            category="test",
             output_format="json",
         )
-        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/jsontool"), \
-             patch("sift_mcp.tools.generic.execute", return_value=result), \
-             patch("sift_mcp.tools.generic.get_tool_def", return_value=mock_td):
+        with (
+            patch(
+                "sift_mcp.tools.generic.find_binary", return_value="/usr/bin/jsontool"
+            ),
+            patch("sift_mcp.tools.generic.execute", return_value=result),
+            patch("sift_mcp.tools.generic.get_tool_def", return_value=mock_td),
+        ):
             out = run_command(["jsontool", "--flag"])
         assert out["_output_format"] == "parsed_json"
         assert out["_parsed"]["total_entries"] == 500
@@ -185,9 +210,13 @@ class TestOutputParsing:
         monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "100")
         big_output = "\n".join(f"line {i}" for i in range(500))
         result = self._mock_exec(big_output)
-        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/sometool"), \
-             patch("sift_mcp.tools.generic.execute", return_value=result), \
-             patch("sift_mcp.tools.generic.get_tool_def", return_value=None):
+        with (
+            patch(
+                "sift_mcp.tools.generic.find_binary", return_value="/usr/bin/sometool"
+            ),
+            patch("sift_mcp.tools.generic.execute", return_value=result),
+            patch("sift_mcp.tools.generic.get_tool_def", return_value=None),
+        ):
             out = run_command(["sometool", "--flag"])
         assert out["_output_format"] == "parsed_text"
 
@@ -196,8 +225,12 @@ class TestOutputParsing:
         monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "100")
         big_output = "\n".join(f"line {i}" for i in range(500))
         result = self._mock_exec(big_output)
-        with patch("sift_mcp.tools.generic.find_binary", return_value="/usr/bin/sometool"), \
-             patch("sift_mcp.tools.generic.execute", return_value=result):
+        with (
+            patch(
+                "sift_mcp.tools.generic.find_binary", return_value="/usr/bin/sometool"
+            ),
+            patch("sift_mcp.tools.generic.execute", return_value=result),
+        ):
             out = run_command(["sometool", "--flag"])
         assert out["stdout"] is None
         assert out["_parsed"] is not None

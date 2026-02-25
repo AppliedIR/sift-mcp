@@ -18,36 +18,34 @@ import time
 from typing import Any
 
 from mcp.server import Server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
+from sift_common.instructions import OPENCTI as _INSTRUCTIONS
 
 from .audit import AuditWriter, resolve_examiner
-from .config import Config
 from .client import OpenCTIClient
-from .tool_metadata import TOOL_METADATA, DEFAULT_METADATA
+from .config import Config
 from .errors import (
-    OpenCTIMCPError,
     ConfigurationError,
-    ValidationError,
+    OpenCTIMCPError,
     RateLimitError,
+    ValidationError,
 )
-from sift_common.instructions import OPENCTI as _INSTRUCTIONS
+from .tool_metadata import DEFAULT_METADATA, TOOL_METADATA
 from .validation import (
-    validate_length,
-    validate_limit,
-    validate_offset,
+    MAX_IOC_LENGTH,
+    MAX_QUERY_LENGTH,
+    sanitize_for_log,
+    validate_date_filter,
     validate_days,
     validate_ioc,
-    validate_uuid,
     validate_labels,
-    validate_relationship_types,
+    validate_length,
+    validate_limit,
     validate_observable_types,
-    validate_date_filter,
-    sanitize_for_log,
-    MAX_QUERY_LENGTH,
-    MAX_IOC_LENGTH,
-    MAX_OFFSET,
+    validate_offset,
+    validate_relationship_types,
+    validate_uuid,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -74,22 +72,43 @@ _ENTITY_TYPE_METHODS = {
 }
 
 # Entity types whose client methods accept confidence_min parameter
-_ENTITY_TYPES_WITH_CONFIDENCE = frozenset({
-    "threat_actor", "malware", "campaign", "incident",
-})
+_ENTITY_TYPES_WITH_CONFIDENCE = frozenset(
+    {
+        "threat_actor",
+        "malware",
+        "campaign",
+        "incident",
+    }
+)
 
 # Entity types whose client methods accept full filter params (offset, labels, dates)
 # vs. simple methods that only take (query, limit)
-_ENTITY_TYPES_FULL_FILTERS = frozenset({
-    "threat_actor", "malware", "attack_pattern", "vulnerability",
-    "campaign", "tool", "infrastructure", "incident", "observable",
-})
+_ENTITY_TYPES_FULL_FILTERS = frozenset(
+    {
+        "threat_actor",
+        "malware",
+        "attack_pattern",
+        "vulnerability",
+        "campaign",
+        "tool",
+        "infrastructure",
+        "incident",
+        "observable",
+    }
+)
 
 # Simple entity types: client methods only take (query, limit)
-_ENTITY_TYPES_SIMPLE = frozenset({
-    "sighting", "organization", "sector", "location",
-    "course_of_action", "grouping", "note",
-})
+_ENTITY_TYPES_SIMPLE = frozenset(
+    {
+        "sighting",
+        "organization",
+        "sector",
+        "location",
+        "course_of_action",
+        "grouping",
+        "note",
+    }
+)
 
 VALID_ENTITY_TYPES = frozenset(_ENTITY_TYPE_METHODS.keys())
 
@@ -115,10 +134,7 @@ class OpenCTIMCPServer:
                 Tool(
                     name="get_health",
                     description="Check OpenCTI server health and connectivity.",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {}
-                    }
+                    inputSchema={"type": "object", "properties": {}},
                 ),
                 Tool(
                     name="search_threat_intel",
@@ -129,44 +145,44 @@ class OpenCTIMCPServer:
                             "query": {
                                 "type": "string",
                                 "description": "Search term (IOC, threat actor name, malware, CVE, etc.)",
-                                "maxLength": MAX_QUERY_LENGTH
+                                "maxLength": MAX_QUERY_LENGTH,
                             },
                             "limit": {
                                 "type": "integer",
                                 "description": "Max results per entity type (default: 5, max: 20)",
                                 "default": 5,
                                 "minimum": 1,
-                                "maximum": 20
+                                "maximum": 20,
                             },
                             "offset": {
                                 "type": "integer",
                                 "description": "Skip first N results (for pagination, max: 500)",
                                 "default": 0,
                                 "minimum": 0,
-                                "maximum": 500
+                                "maximum": 500,
                             },
                             "labels": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Filter by labels (e.g., ['tlp:amber', 'malicious'])"
+                                "description": "Filter by labels (e.g., ['tlp:amber', 'malicious'])",
                             },
                             "confidence_min": {
                                 "type": "integer",
                                 "description": "Minimum confidence threshold (0-100)",
                                 "minimum": 0,
-                                "maximum": 100
+                                "maximum": 100,
                             },
                             "created_after": {
                                 "type": "string",
-                                "description": "Filter by created date >= (ISO format: 2024-01-01)"
+                                "description": "Filter by created date >= (ISO format: 2024-01-01)",
                             },
                             "created_before": {
                                 "type": "string",
-                                "description": "Filter by created date <= (ISO format: 2024-12-31)"
-                            }
+                                "description": "Filter by created date <= (ISO format: 2024-12-31)",
+                            },
                         },
-                        "required": ["query"]
-                    }
+                        "required": ["query"],
+                    },
                 ),
                 Tool(
                     name="search_entity",
@@ -182,44 +198,44 @@ class OpenCTIMCPServer:
                             "type": {
                                 "type": "string",
                                 "description": "Entity type to search",
-                                "enum": sorted(VALID_ENTITY_TYPES)
+                                "enum": sorted(VALID_ENTITY_TYPES),
                             },
                             "query": {
                                 "type": "string",
                                 "description": "Search term",
-                                "maxLength": MAX_QUERY_LENGTH
+                                "maxLength": MAX_QUERY_LENGTH,
                             },
                             "limit": {
                                 "type": "integer",
                                 "description": "Max results (default: 10, max: 50)",
                                 "default": 10,
-                                "maximum": 50
+                                "maximum": 50,
                             },
                             "offset": {
                                 "type": "integer",
                                 "description": "Pagination offset (default: 0)",
-                                "default": 0
+                                "default": 0,
                             },
                             "labels": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Filter by labels"
+                                "description": "Filter by labels",
                             },
                             "confidence_min": {
                                 "type": "integer",
-                                "description": "Minimum confidence score (0-100)"
+                                "description": "Minimum confidence score (0-100)",
                             },
                             "created_after": {
                                 "type": "string",
-                                "description": "Filter entities created after this ISO date"
+                                "description": "Filter entities created after this ISO date",
                             },
                             "created_before": {
                                 "type": "string",
-                                "description": "Filter entities created before this ISO date"
-                            }
+                                "description": "Filter entities created before this ISO date",
+                            },
                         },
-                        "required": ["type", "query"]
-                    }
+                        "required": ["type", "query"],
+                    },
                 ),
                 Tool(
                     name="lookup_ioc",
@@ -230,11 +246,11 @@ class OpenCTIMCPServer:
                             "ioc": {
                                 "type": "string",
                                 "description": "IOC value (IP address, file hash, domain, or URL)",
-                                "maxLength": MAX_IOC_LENGTH
+                                "maxLength": MAX_IOC_LENGTH,
                             }
                         },
-                        "required": ["ioc"]
-                    }
+                        "required": ["ioc"],
+                    },
                 ),
                 Tool(
                     name="lookup_hash",
@@ -245,11 +261,11 @@ class OpenCTIMCPServer:
                             "hash": {
                                 "type": "string",
                                 "description": "File hash (MD5, SHA1, or SHA256)",
-                                "maxLength": 128
+                                "maxLength": 128,
                             }
                         },
-                        "required": ["hash"]
-                    }
+                        "required": ["hash"],
+                    },
                 ),
                 Tool(
                     name="search_attack_pattern",
@@ -260,37 +276,37 @@ class OpenCTIMCPServer:
                             "query": {
                                 "type": "string",
                                 "description": "MITRE technique ID (e.g., 'T1003') or name (e.g., 'credential dumping')",
-                                "maxLength": MAX_QUERY_LENGTH
+                                "maxLength": MAX_QUERY_LENGTH,
                             },
                             "limit": {
                                 "type": "integer",
                                 "description": "Max results (default: 10, max: 50)",
                                 "default": 10,
-                                "maximum": 50
+                                "maximum": 50,
                             },
                             "offset": {
                                 "type": "integer",
                                 "description": "Skip first N results (for pagination)",
                                 "default": 0,
                                 "minimum": 0,
-                                "maximum": 500
+                                "maximum": 500,
                             },
                             "labels": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Filter by labels"
+                                "description": "Filter by labels",
                             },
                             "created_after": {
                                 "type": "string",
-                                "description": "Filter by created date >= (ISO format)"
+                                "description": "Filter by created date >= (ISO format)",
                             },
                             "created_before": {
                                 "type": "string",
-                                "description": "Filter by created date <= (ISO format)"
-                            }
+                                "description": "Filter by created date <= (ISO format)",
+                            },
                         },
-                        "required": ["query"]
-                    }
+                        "required": ["query"],
+                    },
                 ),
                 Tool(
                     name="get_recent_indicators",
@@ -303,16 +319,16 @@ class OpenCTIMCPServer:
                                 "description": "Number of days to look back (default: 7, max: 90)",
                                 "default": 7,
                                 "minimum": 1,
-                                "maximum": 90
+                                "maximum": 90,
                             },
                             "limit": {
                                 "type": "integer",
                                 "description": "Max results (default: 20, max: 100)",
                                 "default": 20,
-                                "maximum": 100
-                            }
-                        }
-                    }
+                                "maximum": 100,
+                            },
+                        },
+                    },
                 ),
                 Tool(
                     name="get_entity",
@@ -322,11 +338,11 @@ class OpenCTIMCPServer:
                         "properties": {
                             "entity_id": {
                                 "type": "string",
-                                "description": "OpenCTI entity ID (UUID format)"
+                                "description": "OpenCTI entity ID (UUID format)",
                             }
                         },
-                        "required": ["entity_id"]
-                    }
+                        "required": ["entity_id"],
+                    },
                 ),
                 Tool(
                     name="get_relationships",
@@ -336,28 +352,28 @@ class OpenCTIMCPServer:
                         "properties": {
                             "entity_id": {
                                 "type": "string",
-                                "description": "Entity ID to get relationships for"
+                                "description": "Entity ID to get relationships for",
                             },
                             "direction": {
                                 "type": "string",
                                 "enum": ["from", "to", "both"],
                                 "description": "Relationship direction: 'from' (outgoing), 'to' (incoming), 'both' (default)",
-                                "default": "both"
+                                "default": "both",
                             },
                             "relationship_types": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Filter by relationship types (e.g., ['indicates', 'uses', 'targets'])"
+                                "description": "Filter by relationship types (e.g., ['indicates', 'uses', 'targets'])",
                             },
                             "limit": {
                                 "type": "integer",
                                 "description": "Max results (default: 50, max: 50)",
                                 "default": 50,
-                                "maximum": 50
-                            }
+                                "maximum": 50,
+                            },
                         },
-                        "required": ["entity_id"]
-                    }
+                        "required": ["entity_id"],
+                    },
                 ),
                 Tool(
                     name="search_reports",
@@ -368,17 +384,17 @@ class OpenCTIMCPServer:
                             "query": {
                                 "type": "string",
                                 "description": "Search term (campaign name, threat actor, etc.)",
-                                "maxLength": MAX_QUERY_LENGTH
+                                "maxLength": MAX_QUERY_LENGTH,
                             },
                             "limit": {
                                 "type": "integer",
                                 "description": "Max results (default: 10, max: 50)",
                                 "default": 10,
-                                "maximum": 50
-                            }
+                                "maximum": 50,
+                            },
                         },
-                        "required": ["query"]
-                    }
+                        "required": ["query"],
+                    },
                 ),
             ]
 
@@ -392,73 +408,117 @@ class OpenCTIMCPServer:
                 result = await self._dispatch_tool(name, arguments)
                 elapsed_ms = (time.monotonic() - start) * 1000
                 result = self._wrap_response(
-                    name, arguments, result,
-                    evidence_id=evidence_id, elapsed_ms=elapsed_ms,
+                    name,
+                    arguments,
+                    result,
+                    evidence_id=evidence_id,
+                    elapsed_ms=elapsed_ms,
                 )
-                return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
+                return [
+                    TextContent(
+                        type="text", text=json.dumps(result, indent=2, default=str)
+                    )
+                ]
 
             except ValidationError as e:
                 elapsed_ms = (time.monotonic() - start) * 1000
-                logger.warning("Validation failed", extra={
-                    "tool": name,
-                    "error": str(e),
-                    "arguments": sanitize_for_log(arguments)
-                })
+                logger.warning(
+                    "Validation failed",
+                    extra={
+                        "tool": name,
+                        "error": str(e),
+                        "arguments": sanitize_for_log(arguments),
+                    },
+                )
                 error_result = {"error": "validation_error", "message": str(e)}
                 error_result = self._wrap_response(
-                    name, arguments, error_result,
-                    evidence_id=evidence_id, elapsed_ms=elapsed_ms,
+                    name,
+                    arguments,
+                    error_result,
+                    evidence_id=evidence_id,
+                    elapsed_ms=elapsed_ms,
                 )
                 return [TextContent(type="text", text=json.dumps(error_result))]
 
             except RateLimitError as e:
                 elapsed_ms = (time.monotonic() - start) * 1000
-                logger.warning("Rate limit exceeded", extra={
-                    "tool": name,
+                logger.warning(
+                    "Rate limit exceeded",
+                    extra={
+                        "tool": name,
+                        "wait_seconds": e.wait_seconds,
+                        "limit_type": e.limit_type,
+                    },
+                )
+                error_result = {
+                    "error": "rate_limit_exceeded",
+                    "message": e.safe_message,
                     "wait_seconds": e.wait_seconds,
-                    "limit_type": e.limit_type
-                })
-                error_result = {"error": "rate_limit_exceeded", "message": e.safe_message, "wait_seconds": e.wait_seconds}
+                }
                 error_result = self._wrap_response(
-                    name, arguments, error_result,
-                    evidence_id=evidence_id, elapsed_ms=elapsed_ms,
+                    name,
+                    arguments,
+                    error_result,
+                    evidence_id=evidence_id,
+                    elapsed_ms=elapsed_ms,
                 )
                 return [TextContent(type="text", text=json.dumps(error_result))]
 
             except ConfigurationError as e:
                 elapsed_ms = (time.monotonic() - start) * 1000
                 logger.error("Configuration error", extra={"error": str(e)})
-                error_result = {"error": "configuration_error", "message": "OpenCTI is not properly configured. Check server settings."}
+                error_result = {
+                    "error": "configuration_error",
+                    "message": "OpenCTI is not properly configured. Check server settings.",
+                }
                 error_result = self._wrap_response(
-                    name, arguments, error_result,
-                    evidence_id=evidence_id, elapsed_ms=elapsed_ms,
+                    name,
+                    arguments,
+                    error_result,
+                    evidence_id=evidence_id,
+                    elapsed_ms=elapsed_ms,
                 )
                 return [TextContent(type="text", text=json.dumps(error_result))]
 
             except OpenCTIMCPError as e:
                 elapsed_ms = (time.monotonic() - start) * 1000
-                logger.error("MCP error", extra={
-                    "tool": name,
-                    "error_type": type(e).__name__,
-                    "error": str(e)
-                })
-                error_result = {"error": type(e).__name__.lower(), "message": e.safe_message}
+                logger.error(
+                    "MCP error",
+                    extra={
+                        "tool": name,
+                        "error_type": type(e).__name__,
+                        "error": str(e),
+                    },
+                )
+                error_result = {
+                    "error": type(e).__name__.lower(),
+                    "message": e.safe_message,
+                }
                 error_result = self._wrap_response(
-                    name, arguments, error_result,
-                    evidence_id=evidence_id, elapsed_ms=elapsed_ms,
+                    name,
+                    arguments,
+                    error_result,
+                    evidence_id=evidence_id,
+                    elapsed_ms=elapsed_ms,
                 )
                 return [TextContent(type="text", text=json.dumps(error_result))]
 
             except Exception as e:
                 elapsed_ms = (time.monotonic() - start) * 1000
-                logger.exception("Internal error", extra={
-                    "tool": name,
-                    "error_type": type(e).__name__
-                })
-                error_result = {"error": "internal_error", "message": "An unexpected error occurred. Check server logs."}
+                logger.exception(
+                    "Internal error",
+                    extra={"tool": name, "error_type": type(e).__name__},
+                )
+                error_result = {
+                    "error": "internal_error",
+                    "message": "An unexpected error occurred. Check server logs.",
+                }
                 error_result = self._wrap_response(
-                    name, arguments, error_result,
-                    evidence_id=evidence_id, elapsed_ms=elapsed_ms,
+                    name,
+                    arguments,
+                    error_result,
+                    evidence_id=evidence_id,
+                    elapsed_ms=elapsed_ms,
                 )
                 return [TextContent(type="text", text=json.dumps(error_result))]
 
@@ -476,7 +536,7 @@ class OpenCTIMCPServer:
         offset: int | None,
         labels: list[str] | None,
         created_after: str | None,
-        created_before: str | None
+        created_before: str | None,
     ) -> tuple[int, list[str] | None, str | None, str | None]:
         """Validate common search filter parameters.
 
@@ -498,7 +558,9 @@ class OpenCTIMCPServer:
         return validated_offset, validated_labels, validated_after, validated_before
 
     @staticmethod
-    def _error_response(error_code: str, message: str, **extra_fields: Any) -> list[TextContent]:
+    def _error_response(
+        error_code: str, message: str, **extra_fields: Any
+    ) -> list[TextContent]:
         """Format error response consistently.
 
         Args:
@@ -514,8 +576,12 @@ class OpenCTIMCPServer:
         return [TextContent(type="text", text=json.dumps(response))]
 
     def _wrap_response(
-        self, tool_name: str, arguments: dict[str, Any], result: dict[str, Any],
-        evidence_id: str | None = None, elapsed_ms: float | None = None,
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        result: dict[str, Any],
+        evidence_id: str | None = None,
+        elapsed_ms: float | None = None,
     ) -> dict[str, Any]:
         """Wrap tool result with evidence ID, caveats, and audit trail.
 
@@ -523,8 +589,11 @@ class OpenCTIMCPServer:
         """
         summary = result if "error" not in result else {"error": result["error"]}
         evidence_id = self._audit.log(
-            tool=tool_name, params=arguments, result_summary=summary,
-            evidence_id=evidence_id, elapsed_ms=elapsed_ms,
+            tool=tool_name,
+            params=arguments,
+            result_summary=summary,
+            evidence_id=evidence_id,
+            elapsed_ms=elapsed_ms,
         )
         # For search_entity, resolve metadata by the underlying entity type
         meta_key = tool_name
@@ -587,23 +656,37 @@ class OpenCTIMCPServer:
 
         # Full-filter types: support offset, labels, dates, and maybe confidence
         if entity_type in _ENTITY_TYPES_FULL_FILTERS:
-            offset, labels, created_after, created_before = self._validate_search_filters(
-                arguments.get("offset"), arguments.get("labels"),
-                arguments.get("created_after"), arguments.get("created_before")
+            offset, labels, created_after, created_before = (
+                self._validate_search_filters(
+                    arguments.get("offset"),
+                    arguments.get("labels"),
+                    arguments.get("created_after"),
+                    arguments.get("created_before"),
+                )
             )
             if entity_type in _ENTITY_TYPES_WITH_CONFIDENCE:
                 confidence_min = arguments.get("confidence_min")
                 results = await asyncio.to_thread(
-                    method, query, limit, offset,
-                    labels, confidence_min, created_after, created_before
+                    method,
+                    query,
+                    limit,
+                    offset,
+                    labels,
+                    confidence_min,
+                    created_after,
+                    created_before,
                 )
             else:
                 results = await asyncio.to_thread(
-                    method, query, limit, offset,
-                    labels, created_after, created_before
+                    method, query, limit, offset, labels, created_after, created_before
                 )
             results = self._safe_results(results)
-            return {"type": entity_type, "results": results, "total": len(results), "offset": offset}
+            return {
+                "type": entity_type,
+                "results": results,
+                "total": len(results),
+                "offset": offset,
+            }
 
         # Simple types: only (query, limit)
         results = await asyncio.to_thread(method, query, limit)
@@ -625,13 +708,23 @@ class OpenCTIMCPServer:
             confidence_min = arguments.get("confidence_min")
             validate_length(query, MAX_QUERY_LENGTH, "query")
             limit = validate_limit(arguments.get("limit", 5), max_value=20)
-            offset, labels, created_after, created_before = self._validate_search_filters(
-                arguments.get("offset"), arguments.get("labels"),
-                arguments.get("created_after"), arguments.get("created_before")
+            offset, labels, created_after, created_before = (
+                self._validate_search_filters(
+                    arguments.get("offset"),
+                    arguments.get("labels"),
+                    arguments.get("created_after"),
+                    arguments.get("created_before"),
+                )
             )
             return await asyncio.to_thread(
-                self.client.unified_search, query, limit, offset,
-                labels, confidence_min, created_after, created_before
+                self.client.unified_search,
+                query,
+                limit,
+                offset,
+                labels,
+                confidence_min,
+                created_after,
+                created_before,
             )
 
         elif name == "search_entity":
@@ -641,18 +734,14 @@ class OpenCTIMCPServer:
             ioc = arguments.get("ioc", "")
             validate_length(ioc, MAX_IOC_LENGTH, "ioc")
             is_valid, ioc_type = validate_ioc(ioc)
-            result = await asyncio.to_thread(
-                self.client.get_indicator_context, ioc
-            )
+            result = await asyncio.to_thread(self.client.get_indicator_context, ioc)
             result["ioc_type"] = ioc_type
             return result
 
         elif name == "lookup_hash":
             hash_value = arguments.get("hash", "")
             validate_length(hash_value, 128, "hash")
-            result = await asyncio.to_thread(
-                self.client.lookup_hash, hash_value
-            )
+            result = await asyncio.to_thread(self.client.lookup_hash, hash_value)
             if result is None:
                 return {"found": False, "hash": hash_value}
             return result
@@ -661,13 +750,22 @@ class OpenCTIMCPServer:
             query = arguments.get("query", "")
             validate_length(query, MAX_QUERY_LENGTH, "query")
             limit = validate_limit(arguments.get("limit", 10), max_value=50)
-            offset, labels, created_after, created_before = self._validate_search_filters(
-                arguments.get("offset"), arguments.get("labels"),
-                arguments.get("created_after"), arguments.get("created_before")
+            offset, labels, created_after, created_before = (
+                self._validate_search_filters(
+                    arguments.get("offset"),
+                    arguments.get("labels"),
+                    arguments.get("created_after"),
+                    arguments.get("created_before"),
+                )
             )
             results = await asyncio.to_thread(
-                self.client.search_attack_patterns, query, limit, offset,
-                labels, created_after, created_before
+                self.client.search_attack_patterns,
+                query,
+                limit,
+                offset,
+                labels,
+                created_after,
+                created_before,
             )
             results = self._safe_results(results)
             return {"results": results, "total": len(results), "offset": offset}
@@ -687,9 +785,7 @@ class OpenCTIMCPServer:
             entity_id = arguments.get("entity_id", "")
             # Security: Validate UUID format to prevent injection
             entity_id = validate_uuid(entity_id, "entity_id")
-            result = await asyncio.to_thread(
-                self.client.get_entity, entity_id
-            )
+            result = await asyncio.to_thread(self.client.get_entity, entity_id)
             if result is None:
                 return {"found": False, "entity_id": entity_id}
             return {"found": True, "entity": result}
@@ -708,22 +804,40 @@ class OpenCTIMCPServer:
                 direction = "both"
             limit = validate_limit(limit, max_value=50)
             results = await asyncio.to_thread(
-                self.client.get_relationships, entity_id, direction, relationship_types, limit
+                self.client.get_relationships,
+                entity_id,
+                direction,
+                relationship_types,
+                limit,
             )
-            return {"entity_id": entity_id, "relationships": results, "total": len(results)}
+            return {
+                "entity_id": entity_id,
+                "relationships": results,
+                "total": len(results),
+            }
 
         elif name == "search_reports":
             query = arguments.get("query", "")
             confidence_min = arguments.get("confidence_min")
             validate_length(query, MAX_QUERY_LENGTH, "query")
             limit = validate_limit(arguments.get("limit", 10), max_value=50)
-            offset, labels, created_after, created_before = self._validate_search_filters(
-                arguments.get("offset"), arguments.get("labels"),
-                arguments.get("created_after"), arguments.get("created_before")
+            offset, labels, created_after, created_before = (
+                self._validate_search_filters(
+                    arguments.get("offset"),
+                    arguments.get("labels"),
+                    arguments.get("created_after"),
+                    arguments.get("created_before"),
+                )
             )
             results = await asyncio.to_thread(
-                self.client.search_reports, query, limit, offset,
-                labels, confidence_min, created_after, created_before
+                self.client.search_reports,
+                query,
+                limit,
+                offset,
+                labels,
+                confidence_min,
+                created_after,
+                created_before,
             )
             results = self._safe_results(results)
             return {"results": results, "total": len(results), "offset": offset}
@@ -737,7 +851,5 @@ class OpenCTIMCPServer:
 
         async with stdio_server() as (read_stream, write_stream):
             await self.server.run(
-                read_stream,
-                write_stream,
-                self.server.create_initialization_options()
+                read_stream, write_stream, self.server.create_initialization_options()
             )

@@ -14,25 +14,27 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # MITRE technique ID pattern for text augmentation
-MITRE_ID_PATTERN = re.compile(r'\b(T\d{4}(?:\.\d{3})?)\b', re.IGNORECASE)
+MITRE_ID_PATTERN = re.compile(r"\b(T\d{4}(?:\.\d{3})?)\b", re.IGNORECASE)
 
 # =============================================================================
 # Shared Constants
 # =============================================================================
 
 # Allowed embedding models (security: prevent arbitrary model loading)
-ALLOWED_MODELS = frozenset({
-    "BAAI/bge-base-en-v1.5",
-    "BAAI/bge-small-en-v1.5",
-    "BAAI/bge-large-en-v1.5",
-    "sentence-transformers/all-MiniLM-L6-v2",
-    "sentence-transformers/all-mpnet-base-v2",
-})
+ALLOWED_MODELS = frozenset(
+    {
+        "BAAI/bge-base-en-v1.5",
+        "BAAI/bge-small-en-v1.5",
+        "BAAI/bge-large-en-v1.5",
+        "sentence-transformers/all-MiniLM-L6-v2",
+        "sentence-transformers/all-mpnet-base-v2",
+    }
+)
 
 # Default embedding model
 DEFAULT_MODEL_NAME = "BAAI/bge-base-en-v1.5"
@@ -45,6 +47,7 @@ MAX_RETRIEVE = 500  # Maximum results to retrieve before filtering
 # =============================================================================
 # Metadata Handling
 # =============================================================================
+
 
 def sanitize_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     """
@@ -81,6 +84,7 @@ def sanitize_metadata(meta: dict[str, Any]) -> dict[str, Any]:
 # =============================================================================
 # File Utilities
 # =============================================================================
+
 
 def compute_file_hash(path: Path) -> str:
     """
@@ -127,7 +131,7 @@ def load_jsonl_records(path: Path) -> list[dict]:
                     rec["id"] = f"{source}_{i}"
                 records.append(rec)
             except json.JSONDecodeError:
-                logger.debug(f"Invalid JSON on line {i+1} of {path}")
+                logger.debug(f"Invalid JSON on line {i + 1} of {path}")
     return records
 
 
@@ -144,19 +148,17 @@ def atomic_write_json(path: Path, data: Any, indent: int = 2) -> None:
         data: JSON-serializable data
         indent: JSON indentation (default 2)
     """
-    import tempfile
     import os
+    import tempfile
 
     path.parent.mkdir(parents=True, exist_ok=True)
 
     # Write to temp file in same directory (required for atomic rename)
     fd, temp_path = tempfile.mkstemp(
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp"
+        dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
     )
     try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=indent)
         # Atomic rename (POSIX guarantees this is atomic on same filesystem)
         os.replace(temp_path, path)
@@ -172,6 +174,7 @@ def atomic_write_json(path: Path, data: Any, indent: int = 2) -> None:
 # =============================================================================
 # MITRE Technique Augmentation
 # =============================================================================
+
 
 def load_mitre_lookup(sources_dir: Path) -> dict[str, str]:
     """
@@ -210,7 +213,7 @@ def load_mitre_lookup(sources_dir: Path) -> dict[str, str]:
                         # Normalize ID to uppercase
                         technique_id = technique_id.strip().upper()
                         # Only map if it looks like a technique ID
-                        if re.match(r'^T\d{4}(\.\d{3})?$', technique_id):
+                        if re.match(r"^T\d{4}(\.\d{3})?$", technique_id):
                             # Skip mitigation records
                             if title.endswith(" Mitigation"):
                                 continue
@@ -218,7 +221,7 @@ def load_mitre_lookup(sources_dir: Path) -> dict[str, str]:
                 except json.JSONDecodeError:
                     continue
         logger.debug(f"Loaded {len(lookup)} MITRE technique mappings")
-    except IOError as e:
+    except OSError as e:
         logger.warning(f"Could not load MITRE lookup: {e}")
 
     return lookup

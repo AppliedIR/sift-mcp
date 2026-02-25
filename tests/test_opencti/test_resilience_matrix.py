@@ -6,36 +6,31 @@ Each test is tagged with its matrix ID for traceability.
 
 from __future__ import annotations
 
-import os
-import sys
 import time
-import threading
-from time import monotonic
-from unittest.mock import Mock, MagicMock, patch, PropertyMock, call
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-
+from opencti_mcp.adaptive import AdaptiveMetrics
 from opencti_mcp.client import (
-    OpenCTIClient,
-    CircuitBreaker,
-    CircuitState,
     TRANSIENT_ERRORS,
     TRANSIENT_HTTP_CODES,
+    CircuitBreaker,
+    CircuitState,
+    OpenCTIClient,
 )
 from opencti_mcp.config import Config, SecretStr
 from opencti_mcp.errors import (
     ConfigurationError,
     ValidationError,
-    QueryError,
 )
+
 # Import the opencti_mcp ConnectionError under a distinct name
 from opencti_mcp.errors import ConnectionError as OCTIConnectionError
-from opencti_mcp.adaptive import AdaptiveMetrics, AdaptiveConfig
-
 
 # =============================================================================
 # Helpers
 # =============================================================================
+
 
 def make_config(**overrides) -> Config:
     """Create a Config with sensible test defaults, applying overrides."""
@@ -54,7 +49,9 @@ def make_config(**overrides) -> Config:
     return Config(**defaults)
 
 
-def make_client(config: Config = None, adaptive_metrics: AdaptiveMetrics = None) -> OpenCTIClient:
+def make_client(
+    config: Config = None, adaptive_metrics: AdaptiveMetrics = None
+) -> OpenCTIClient:
     """Create an OpenCTIClient with optional config/metrics overrides."""
     if config is None:
         config = make_config()
@@ -106,6 +103,7 @@ class FakeHTTPError(Exception):
 # =============================================================================
 # TIMEOUT HANDLING (T1 - T17)
 # =============================================================================
+
 
 class TestTimeoutHandling:
     """Tests T1 through T17: timeout defaults, validation, adaptive behaviour."""
@@ -324,6 +322,7 @@ class TestTimeoutHandling:
 # =============================================================================
 # RETRY AND BACKOFF (R1 - R20)
 # =============================================================================
+
 
 class TestRetryAndBackoff:
     """Tests R1 through R20: retry on transient errors, backoff, exhaustion."""
@@ -691,6 +690,7 @@ class TestRetryAndBackoff:
 # CIRCUIT BREAKER (CB1 - CB12)
 # =============================================================================
 
+
 class TestCircuitBreaker:
     """Tests CB1 through CB12: states, transitions, configuration."""
 
@@ -831,6 +831,7 @@ class TestCircuitBreaker:
 # =============================================================================
 # Additional Edge-Case and Integration Tests
 # =============================================================================
+
 
 class TestTransientErrorClassification:
     """Verify _is_transient_error classification logic."""

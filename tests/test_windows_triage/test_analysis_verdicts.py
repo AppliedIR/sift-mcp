@@ -1,13 +1,12 @@
 """Tests for verdict calculation logic."""
 
-import pytest
 from windows_triage.analysis.verdicts import (
     Verdict,
     VerdictResult,
     calculate_file_verdict,
+    calculate_hash_verdict,
     calculate_process_verdict,
     calculate_service_verdict,
-    calculate_hash_verdict,
 )
 
 
@@ -21,7 +20,7 @@ class TestVerdict:
         assert Verdict.EXPECTED.value == "EXPECTED"
         assert Verdict.UNKNOWN.value == "UNKNOWN"
         # MALICIOUS is intentionally not in the offline verdict system
-        assert not hasattr(Verdict, 'MALICIOUS')
+        assert not hasattr(Verdict, "MALICIOUS")
 
     def test_str(self):
         assert str(Verdict.SUSPICIOUS) == "SUSPICIOUS"
@@ -35,12 +34,12 @@ class TestVerdictResult:
         result = VerdictResult(
             verdict=Verdict.EXPECTED,
             reasons=["Path matches baseline"],
-            confidence="high"
+            confidence="high",
         )
         d = result.to_dict()
-        assert d['verdict'] == "EXPECTED"
-        assert d['reasons'] == ["Path matches baseline"]
-        assert d['confidence'] == "high"
+        assert d["verdict"] == "EXPECTED"
+        assert d["reasons"] == ["Path matches baseline"]
+        assert d["confidence"] == "high"
 
 
 class TestCalculateFileVerdict:
@@ -48,34 +47,38 @@ class TestCalculateFileVerdict:
 
     def test_critical_filename_finding(self):
         """Critical findings like double extension should be SUSPICIOUS."""
-        findings = [{
-            'type': 'double_extension',
-            'severity': 'critical',
-            'description': 'Double extension detected'
-        }]
+        findings = [
+            {
+                "type": "double_extension",
+                "severity": "critical",
+                "description": "Double extension detected",
+            }
+        ]
         result = calculate_file_verdict(
             path_in_baseline=False,
             filename_in_baseline=False,
             is_system_path=False,
             filename_findings=findings,
-            lolbin_info=None
+            lolbin_info=None,
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
     def test_known_tool_pattern(self):
         """Known attack tools should be SUSPICIOUS."""
-        findings = [{
-            'type': 'known_tool',
-            'severity': 'high',
-            'tool_name': 'Mimikatz',
-            'category': 'credential_theft'
-        }]
+        findings = [
+            {
+                "type": "known_tool",
+                "severity": "high",
+                "tool_name": "Mimikatz",
+                "category": "credential_theft",
+            }
+        ]
         result = calculate_file_verdict(
             path_in_baseline=False,
             filename_in_baseline=False,
             is_system_path=False,
             filename_findings=findings,
-            lolbin_info=None
+            lolbin_info=None,
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
@@ -86,10 +89,10 @@ class TestCalculateFileVerdict:
             filename_in_baseline=True,
             is_system_path=True,
             filename_findings=[],
-            lolbin_info=None
+            lolbin_info=None,
         )
         assert result.verdict == Verdict.EXPECTED
-        assert result.confidence == 'high'
+        assert result.confidence == "high"
 
     def test_path_in_baseline_lolbin(self):
         """File in baseline that's a LOLBin should be EXPECTED_LOLBIN."""
@@ -98,7 +101,7 @@ class TestCalculateFileVerdict:
             filename_in_baseline=True,
             is_system_path=True,
             filename_findings=[],
-            lolbin_info={'name': 'certutil.exe', 'functions': ['Download', 'Execute']}
+            lolbin_info={"name": "certutil.exe", "functions": ["Download", "Execute"]},
         )
         assert result.verdict == Verdict.EXPECTED_LOLBIN
         assert "LOLBin" in result.reasons[1]
@@ -110,10 +113,10 @@ class TestCalculateFileVerdict:
             filename_in_baseline=True,
             is_system_path=True,
             filename_findings=[],
-            lolbin_info=None
+            lolbin_info=None,
         )
         assert result.verdict == Verdict.EXPECTED
-        assert result.confidence == 'medium'
+        assert result.confidence == "medium"
 
     def test_lolbin_wrong_location(self):
         """LOLBin in non-system path should be SUSPICIOUS."""
@@ -122,7 +125,7 @@ class TestCalculateFileVerdict:
             filename_in_baseline=False,
             is_system_path=False,  # Not in system path
             filename_findings=[],
-            lolbin_info={'name': 'certutil.exe', 'functions': ['Download']}
+            lolbin_info={"name": "certutil.exe", "functions": ["Download"]},
         )
         assert result.verdict == Verdict.SUSPICIOUS
         assert "non-standard location" in result.reasons[0]
@@ -134,7 +137,7 @@ class TestCalculateFileVerdict:
             filename_in_baseline=False,
             is_system_path=False,
             filename_findings=[],
-            lolbin_info=None
+            lolbin_info=None,
         )
         assert result.verdict == Verdict.UNKNOWN
         assert "neutral" in result.reasons[0].lower()
@@ -147,23 +150,25 @@ class TestCalculateFileVerdict:
             is_system_path=False,  # Wrong path!
             filename_findings=[],
             lolbin_info=None,
-            is_protected_process=True
+            is_protected_process=True,
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
     def test_high_severity_findings(self):
         """High severity findings should be SUSPICIOUS."""
-        findings = [{
-            'type': 'high_entropy',
-            'severity': 'high',
-            'description': 'High entropy filename'
-        }]
+        findings = [
+            {
+                "type": "high_entropy",
+                "severity": "high",
+                "description": "High entropy filename",
+            }
+        ]
         result = calculate_file_verdict(
             path_in_baseline=False,
             filename_in_baseline=False,
             is_system_path=False,
             filename_findings=findings,
-            lolbin_info=None
+            lolbin_info=None,
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
@@ -172,20 +177,22 @@ class TestCalculateProcessVerdict:
     """Tests for calculate_process_verdict function."""
 
     def test_process_spoofing_critical(self):
-        findings = [{
-            'type': 'process_spoofing',
-            'severity': 'critical',
-            'description': 'Possible spoofing of svchost.exe'
-        }]
+        findings = [
+            {
+                "type": "process_spoofing",
+                "severity": "critical",
+                "description": "Possible spoofing of svchost.exe",
+            }
+        ]
         result = calculate_process_verdict(
             process_known=False,
             parent_valid=True,
             path_valid=None,
             user_valid=None,
-            findings=findings
+            findings=findings,
         )
         assert result.verdict == Verdict.SUSPICIOUS
-        assert result.confidence == 'high'
+        assert result.confidence == "high"
 
     def test_unknown_process_no_findings(self):
         result = calculate_process_verdict(
@@ -193,7 +200,7 @@ class TestCalculateProcessVerdict:
             parent_valid=True,
             path_valid=None,
             user_valid=None,
-            findings=[]
+            findings=[],
         )
         assert result.verdict == Verdict.UNKNOWN
 
@@ -203,10 +210,10 @@ class TestCalculateProcessVerdict:
             parent_valid=True,
             path_valid=True,
             user_valid=True,
-            findings=[]
+            findings=[],
         )
         assert result.verdict == Verdict.EXPECTED
-        assert result.confidence == 'high'
+        assert result.confidence == "high"
 
     def test_known_process_invalid_parent(self):
         result = calculate_process_verdict(
@@ -214,7 +221,7 @@ class TestCalculateProcessVerdict:
             parent_valid=False,
             path_valid=True,
             user_valid=True,
-            findings=[]
+            findings=[],
         )
         assert result.verdict == Verdict.SUSPICIOUS
         assert "parent" in result.reasons[0].lower()
@@ -225,7 +232,7 @@ class TestCalculateProcessVerdict:
             parent_valid=True,
             path_valid=False,  # Wrong path
             user_valid=True,
-            findings=[]
+            findings=[],
         )
         assert result.verdict == Verdict.SUSPICIOUS
         assert "path" in result.reasons[0].lower()
@@ -236,7 +243,7 @@ class TestCalculateProcessVerdict:
             parent_valid=True,
             path_valid=True,
             user_valid=False,  # Wrong user
-            findings=[]
+            findings=[],
         )
         assert result.verdict == Verdict.SUSPICIOUS
         assert "user" in result.reasons[0].lower()
@@ -248,7 +255,7 @@ class TestCalculateProcessVerdict:
             parent_valid=True,
             path_valid=None,
             user_valid=None,
-            findings=[]
+            findings=[],
         )
         assert result.verdict == Verdict.EXPECTED
 
@@ -258,9 +265,7 @@ class TestCalculateServiceVerdict:
 
     def test_service_in_baseline(self):
         result = calculate_service_verdict(
-            service_in_baseline=True,
-            binary_path_matches=True,
-            binary_findings=[]
+            service_in_baseline=True, binary_path_matches=True, binary_findings=[]
         )
         assert result.verdict == Verdict.EXPECTED
 
@@ -268,29 +273,27 @@ class TestCalculateServiceVerdict:
         result = calculate_service_verdict(
             service_in_baseline=True,
             binary_path_matches=False,  # Binary path changed
-            binary_findings=[]
+            binary_findings=[],
         )
         assert result.verdict == Verdict.SUSPICIOUS
         assert "hijacked" in result.reasons[1].lower()
 
     def test_critical_binary_finding(self):
-        findings = [{
-            'type': 'double_extension',
-            'severity': 'critical',
-            'description': 'Double extension'
-        }]
+        findings = [
+            {
+                "type": "double_extension",
+                "severity": "critical",
+                "description": "Double extension",
+            }
+        ]
         result = calculate_service_verdict(
-            service_in_baseline=True,
-            binary_path_matches=True,
-            binary_findings=findings
+            service_in_baseline=True, binary_path_matches=True, binary_findings=findings
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
     def test_unknown_service(self):
         result = calculate_service_verdict(
-            service_in_baseline=False,
-            binary_path_matches=None,
-            binary_findings=[]
+            service_in_baseline=False, binary_path_matches=None, binary_findings=[]
         )
         assert result.verdict == Verdict.UNKNOWN
         assert "neutral" in result.reasons[0].lower()
@@ -307,7 +310,7 @@ class TestCalculateHashVerdict:
         """Vulnerable driver should be SUSPICIOUS."""
         result = calculate_hash_verdict(
             is_vulnerable_driver=True,
-            driver_info={'product': 'RTCore64.sys', 'cve': 'CVE-2019-16098'}
+            driver_info={"product": "RTCore64.sys", "cve": "CVE-2019-16098"},
         )
         assert result.verdict == Verdict.SUSPICIOUS
         assert "CVE" in result.reasons[1]
@@ -315,8 +318,7 @@ class TestCalculateHashVerdict:
     def test_lolbin_hash(self):
         """Known LOLBin hash should be EXPECTED_LOLBIN."""
         result = calculate_hash_verdict(
-            is_lolbin=True,
-            lolbin_info={'name': 'certutil.exe'}
+            is_lolbin=True, lolbin_info={"name": "certutil.exe"}
         )
         assert result.verdict == Verdict.EXPECTED_LOLBIN
 
@@ -331,11 +333,11 @@ class TestCalculateHashVerdict:
         result = calculate_hash_verdict(
             is_vulnerable_driver=True,
             driver_info={
-                'product': 'Vulnerable Driver',
-                'cve': 'CVE-2021-12345',
-                'vulnerability_type': 'Arbitrary Read/Write'
-            }
+                "product": "Vulnerable Driver",
+                "cve": "CVE-2021-12345",
+                "vulnerability_type": "Arbitrary Read/Write",
+            },
         )
         assert result.verdict == Verdict.SUSPICIOUS
-        assert result.confidence == 'high'
-        assert any('Vulnerability' in r for r in result.reasons)
+        assert result.confidence == "high"
+        assert any("Vulnerability" in r for r in result.reasons)

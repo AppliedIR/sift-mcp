@@ -29,9 +29,9 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from .tuning_config import load_tuning_config, save_tuning_config, TuningConfig
+from .tuning_config import TuningConfig, load_tuning_config, save_tuning_config
 
 # Log locations
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -42,13 +42,14 @@ DEFAULT_ATTENTION_LOG = DEFAULT_LOGS_DIR / "attention.log"
 # Safe bounds for automated adjustments
 MIN_THRESHOLD = 0.40  # Never go below this
 MAX_THRESHOLD = 0.70  # Never go above this
-MIN_BOOST = 1.0       # No boost
-MAX_BOOST = 1.30      # Maximum 30% boost
+MIN_BOOST = 1.0  # No boost
+MAX_BOOST = 1.30  # Maximum 30% boost
 
 
 @dataclass
 class QueryStats:
     """Statistics for a category of queries."""
+
     count: int = 0
     total_score: float = 0.0
     min_score: float = 1.0
@@ -97,13 +98,14 @@ class QueryStats:
 @dataclass
 class Recommendation:
     """A specific recommendation for tuning adjustment."""
+
     rec_type: str  # "threshold", "source_boost", "keyword_boost", "content_gap"
     description: str
     rationale: str
-    current_value: Optional[float] = None
-    recommended_value: Optional[float] = None
-    query_type: Optional[str] = None  # For threshold recommendations
-    source: Optional[str] = None  # For source_boost recommendations
+    current_value: float | None = None
+    recommended_value: float | None = None
+    query_type: str | None = None  # For threshold recommendations
+    source: str | None = None  # For source_boost recommendations
     affected_queries: int = 0
     confidence: str = "medium"  # "high", "medium", "low"
 
@@ -135,17 +137,20 @@ class Recommendation:
 @dataclass
 class AnalysisResult:
     """Complete analysis result with recommendations."""
-    period_start: Optional[datetime] = None
-    period_end: Optional[datetime] = None
+
+    period_start: datetime | None = None
+    period_end: datetime | None = None
     total_queries: int = 0
     stats_by_type: dict[str, QueryStats] = field(default_factory=dict)
     mitre_id_stats: dict[str, QueryStats] = field(default_factory=dict)
-    attention_issues: dict[str, list[dict]] = field(default_factory=lambda: defaultdict(list))
+    attention_issues: dict[str, list[dict]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
     content_gaps: list[str] = field(default_factory=list)
     recommendations: list[Recommendation] = field(default_factory=list)
 
 
-def parse_log_line(line: str) -> Optional[dict[str, Any]]:
+def parse_log_line(line: str) -> dict[str, Any] | None:
     """Parse a structured log line into a dictionary."""
     try:
         # Find the structured data part (after the log prefix)
@@ -158,11 +163,12 @@ def parse_log_line(line: str) -> Optional[dict[str, Any]]:
         result = {}
 
         # Handle query= specially since it may contain spaces or mixed quotes
-        query_match = re.search(r"query=(['\"])(.+?)\1$", data_str) or \
-                      re.search(r"query=(.+)$", data_str)
+        query_match = re.search(r"query=(['\"])(.+?)\1$", data_str) or re.search(
+            r"query=(.+)$", data_str
+        )
         if query_match:
             result["query"] = query_match.group(2)
-            data_str = data_str[:query_match.start()].strip()
+            data_str = data_str[: query_match.start()].strip()
 
         # Parse remaining key=value pairs
         for pair in re.findall(r"(\w+)=([^\s\[]+|\[[^\]]*\])", data_str):
@@ -179,7 +185,9 @@ def parse_log_line(line: str) -> Optional[dict[str, Any]]:
         # Parse timestamp
         timestamp_str = parts[0].strip()
         try:
-            result["timestamp"] = datetime.fromisoformat(timestamp_str.replace(",", "."))
+            result["timestamp"] = datetime.fromisoformat(
+                timestamp_str.replace(",", ".")
+            )
         except ValueError:
             pass
 
@@ -189,10 +197,10 @@ def parse_log_line(line: str) -> Optional[dict[str, Any]]:
 
 
 def analyze_logs(
-    metrics_log: Optional[Path] = None,
-    attention_log: Optional[Path] = None,
-    since: Optional[timedelta] = None,
-    current_config: Optional[TuningConfig] = None
+    metrics_log: Path | None = None,
+    attention_log: Path | None = None,
+    since: timedelta | None = None,
+    current_config: TuningConfig | None = None,
 ) -> AnalysisResult:
     """
     Analyze query logs and generate recommendations.
@@ -231,7 +239,10 @@ def analyze_logs(
 
                 # Update period tracking
                 if "timestamp" in parsed:
-                    if not result.period_start or parsed["timestamp"] < result.period_start:
+                    if (
+                        not result.period_start
+                        or parsed["timestamp"] < result.period_start
+                    ):
                         result.period_start = parsed["timestamp"]
                     if not result.period_end or parsed["timestamp"] > result.period_end:
                         result.period_end = parsed["timestamp"]
@@ -251,11 +262,13 @@ def analyze_logs(
                 # Track individual MITRE IDs
                 if query_type == "mitre_id":
                     query = parsed.get("query", "")
-                    mitre_ids = re.findall(r'T\d{4}(?:\.\d{3})?', query.upper())
+                    mitre_ids = re.findall(r"T\d{4}(?:\.\d{3})?", query.upper())
                     for mid in mitre_ids:
                         if mid not in result.mitre_id_stats:
                             result.mitre_id_stats[mid] = QueryStats()
-                        result.mitre_id_stats[mid].add(top_score, result_count, augmented)
+                        result.mitre_id_stats[mid].add(
+                            top_score, result_count, augmented
+                        )
 
     # Analyze attention log
     if attention_log.exists():
@@ -276,11 +289,13 @@ def analyze_logs(
                 for reason in reasons:
                     reason = reason.strip()
                     if reason:
-                        result.attention_issues[reason].append({
-                            "query": parsed.get("query", ""),
-                            "score": parsed.get("top_score", 0.0),
-                            "source": parsed.get("top_result_source", ""),
-                        })
+                        result.attention_issues[reason].append(
+                            {
+                                "query": parsed.get("query", ""),
+                                "score": parsed.get("top_score", 0.0),
+                                "source": parsed.get("top_result_source", ""),
+                            }
+                        )
 
                 if "zero_results" in reasons:
                     query = parsed.get("query", "")
@@ -307,48 +322,56 @@ def _generate_recommendations(result: AnalysisResult, config: TuningConfig) -> N
         low_pct = (stats.low_score_count / stats.count) if stats.count > 0 else 0
         if low_pct > 0.20:  # More than 20% below threshold
             # Recommend p25 score as new threshold (within bounds)
-            new_threshold = max(MIN_THRESHOLD, min(MAX_THRESHOLD, stats.p25_score - 0.05))
+            new_threshold = max(
+                MIN_THRESHOLD, min(MAX_THRESHOLD, stats.p25_score - 0.05)
+            )
             if new_threshold < current_threshold - 0.03:  # Significant change
-                result.recommendations.append(Recommendation(
-                    rec_type="threshold",
-                    description=f"Lower {query_type} threshold from {current_threshold:.2f} to {new_threshold:.2f}",
-                    rationale=f"{low_pct*100:.0f}% of {stats.count} queries scored below current threshold. "
-                              f"P25 score is {stats.p25_score:.3f}.",
-                    current_value=current_threshold,
-                    recommended_value=round(new_threshold, 2),
-                    query_type=query_type,
-                    affected_queries=stats.low_score_count,
-                    confidence="medium" if stats.count >= 50 else "low",
-                ))
+                result.recommendations.append(
+                    Recommendation(
+                        rec_type="threshold",
+                        description=f"Lower {query_type} threshold from {current_threshold:.2f} to {new_threshold:.2f}",
+                        rationale=f"{low_pct * 100:.0f}% of {stats.count} queries scored below current threshold. "
+                        f"P25 score is {stats.p25_score:.3f}.",
+                        current_value=current_threshold,
+                        recommended_value=round(new_threshold, 2),
+                        query_type=query_type,
+                        affected_queries=stats.low_score_count,
+                        confidence="medium" if stats.count >= 50 else "low",
+                    )
+                )
 
         # If threshold is very low and most queries score high, consider raising
         elif stats.p25_score > current_threshold + 0.15 and stats.avg_score > 0.70:
             new_threshold = min(MAX_THRESHOLD, stats.p25_score - 0.10)
             if new_threshold > current_threshold + 0.03:
-                result.recommendations.append(Recommendation(
-                    rec_type="threshold",
-                    description=f"Raise {query_type} threshold from {current_threshold:.2f} to {new_threshold:.2f}",
-                    rationale=f"Query scores are consistently high (avg {stats.avg_score:.3f}, P25 {stats.p25_score:.3f}). "
-                              f"Raising threshold improves precision.",
-                    current_value=current_threshold,
-                    recommended_value=round(new_threshold, 2),
-                    query_type=query_type,
-                    affected_queries=stats.count,
-                    confidence="medium",
-                ))
+                result.recommendations.append(
+                    Recommendation(
+                        rec_type="threshold",
+                        description=f"Raise {query_type} threshold from {current_threshold:.2f} to {new_threshold:.2f}",
+                        rationale=f"Query scores are consistently high (avg {stats.avg_score:.3f}, P25 {stats.p25_score:.3f}). "
+                        f"Raising threshold improves precision.",
+                        current_value=current_threshold,
+                        recommended_value=round(new_threshold, 2),
+                        query_type=query_type,
+                        affected_queries=stats.count,
+                        confidence="medium",
+                    )
+                )
 
     # Content gap recommendations
     if len(result.content_gaps) >= 5:
         # Group by pattern (e.g., MITRE IDs)
-        mitre_gaps = [q for q in result.content_gaps if re.match(r'^T\d{4}', q.upper())]
+        mitre_gaps = [q for q in result.content_gaps if re.match(r"^T\d{4}", q.upper())]
         if mitre_gaps:
-            result.recommendations.append(Recommendation(
-                rec_type="content_gap",
-                description=f"Add content for {len(mitre_gaps)} MITRE techniques with zero results",
-                rationale=f"Queries for these MITRE IDs returned no results: {', '.join(mitre_gaps[:5])}{'...' if len(mitre_gaps) > 5 else ''}",
-                affected_queries=len(mitre_gaps),
-                confidence="high",
-            ))
+            result.recommendations.append(
+                Recommendation(
+                    rec_type="content_gap",
+                    description=f"Add content for {len(mitre_gaps)} MITRE techniques with zero results",
+                    rationale=f"Queries for these MITRE IDs returned no results: {', '.join(mitre_gaps[:5])}{'...' if len(mitre_gaps) > 5 else ''}",
+                    affected_queries=len(mitre_gaps),
+                    confidence="high",
+                )
+            )
 
 
 def format_report(result: AnalysisResult, config: TuningConfig) -> str:
@@ -359,12 +382,16 @@ def format_report(result: AnalysisResult, config: TuningConfig) -> str:
     lines.append("=" * 70)
 
     if result.period_start and result.period_end:
-        lines.append(f"Period: {result.period_start.strftime('%Y-%m-%d %H:%M')} to {result.period_end.strftime('%Y-%m-%d %H:%M')}")
+        lines.append(
+            f"Period: {result.period_start.strftime('%Y-%m-%d %H:%M')} to {result.period_end.strftime('%Y-%m-%d %H:%M')}"
+        )
     lines.append(f"Total queries analyzed: {result.total_queries}")
 
     if result.total_queries == 0:
         lines.append("")
-        lines.append("No query logs found. Run some queries first, then re-run analysis.")
+        lines.append(
+            "No query logs found. Run some queries first, then re-run analysis."
+        )
         lines.append(f"Expected log location: {DEFAULT_METRICS_LOG}")
         return "\n".join(lines)
 
@@ -375,10 +402,14 @@ def format_report(result: AnalysisResult, config: TuningConfig) -> str:
         lines.append("-" * 70)
         lines.append("QUERY TYPE STATISTICS")
         lines.append("-" * 70)
-        lines.append(f"{'Type':<15} {'Count':>8} {'Avg':>8} {'P25':>8} {'Min':>8} {'Low%':>8}")
+        lines.append(
+            f"{'Type':<15} {'Count':>8} {'Avg':>8} {'P25':>8} {'Min':>8} {'Low%':>8}"
+        )
         lines.append("-" * 70)
         for qtype, stats in sorted(result.stats_by_type.items()):
-            low_pct = (stats.low_score_count / stats.count * 100) if stats.count > 0 else 0
+            low_pct = (
+                (stats.low_score_count / stats.count * 100) if stats.count > 0 else 0
+            )
             lines.append(
                 f"{qtype:<15} {stats.count:>8} {stats.avg_score:>8.3f} "
                 f"{stats.p25_score:>8.3f} {stats.min_score:>8.3f} {low_pct:>7.1f}%"
@@ -395,7 +426,9 @@ def format_report(result: AnalysisResult, config: TuningConfig) -> str:
     lines.append(f"Keyword boost: {config.keyword_boost}")
     lines.append(f"Source boosts: {config.source_boosts}")
     if config.last_modified:
-        lines.append(f"Last modified: {config.last_modified} by {config.last_modified_by}")
+        lines.append(
+            f"Last modified: {config.last_modified} by {config.last_modified_by}"
+        )
     lines.append("")
 
     # Attention issues
@@ -451,9 +484,7 @@ def format_recommendations(recommendations: list[Recommendation]) -> str:
 
 
 def interactive_approval(
-    recommendations: list[Recommendation],
-    config: TuningConfig,
-    approver: str
+    recommendations: list[Recommendation], config: TuningConfig, approver: str
 ) -> tuple[int, int]:
     """
     Interactively ask for approval of each recommendation.
@@ -472,7 +503,9 @@ def interactive_approval(
     actionable = [r for r in recommendations if r.rec_type != "content_gap"]
 
     if not actionable:
-        print("\nNo actionable recommendations (content gaps require manual intervention).")
+        print(
+            "\nNo actionable recommendations (content gaps require manual intervention)."
+        )
         return 0, len(recommendations)
 
     print("\n" + "=" * 70)
@@ -504,7 +537,9 @@ def interactive_approval(
                 response = "n"
 
             if response in ("y", "yes"):
-                config.apply_recommendation(rec.to_config_format(), approved_by=approver)
+                config.apply_recommendation(
+                    rec.to_config_format(), approved_by=approver
+                )
                 print("  -> APPROVED")
                 approved += 1
                 break
@@ -537,32 +572,33 @@ Examples:
 
   python -m rag_mcp.analyze_queries --since 7d --approver "claude-agent"
       Analyze last 7 days, set approver name for audit trail
-"""
+""",
     )
     parser.add_argument(
-        "--metrics-log", type=Path,
-        help=f"Path to query metrics log (default: {DEFAULT_METRICS_LOG})"
+        "--metrics-log",
+        type=Path,
+        help=f"Path to query metrics log (default: {DEFAULT_METRICS_LOG})",
     )
     parser.add_argument(
-        "--attention-log", type=Path,
-        help=f"Path to attention log (default: {DEFAULT_ATTENTION_LOG})"
+        "--attention-log",
+        type=Path,
+        help=f"Path to attention log (default: {DEFAULT_ATTENTION_LOG})",
     )
     parser.add_argument(
-        "--since", type=str,
-        help="Analyze logs since (e.g., 1d, 7d, 30d, 1h)"
+        "--since", type=str, help="Analyze logs since (e.g., 1d, 7d, 30d, 1h)"
     )
     parser.add_argument(
-        "--report-only", action="store_true",
-        help="Just show report, don't prompt for approval"
+        "--report-only",
+        action="store_true",
+        help="Just show report, don't prompt for approval",
     )
     parser.add_argument(
-        "--approver", type=str, default="interactive",
-        help="Name of approver for audit trail (default: interactive)"
+        "--approver",
+        type=str,
+        default="interactive",
+        help="Name of approver for audit trail (default: interactive)",
     )
-    parser.add_argument(
-        "--export", type=Path,
-        help="Export analysis to JSON file"
-    )
+    parser.add_argument("--export", type=Path, help="Export analysis to JSON file")
     args = parser.parse_args()
 
     # Parse time duration
@@ -579,7 +615,10 @@ Examples:
             elif unit == "m":
                 since = timedelta(minutes=value)
         else:
-            print(f"WARNING: Invalid --since format '{args.since}'. Expected: <number><d|h|m> (e.g., 7d, 24h, 30m)", file=sys.stderr)
+            print(
+                f"WARNING: Invalid --since format '{args.since}'. Expected: <number><d|h|m> (e.g., 7d, 24h, 30m)",
+                file=sys.stderr,
+            )
 
     # Load current config
     config = load_tuning_config()
@@ -590,7 +629,7 @@ Examples:
         metrics_log=args.metrics_log,
         attention_log=args.attention_log,
         since=since,
-        current_config=config
+        current_config=config,
     )
 
     # Show report
@@ -604,7 +643,9 @@ Examples:
     if args.export:
         export_data = {
             "period": {
-                "start": result.period_start.isoformat() if result.period_start else None,
+                "start": result.period_start.isoformat()
+                if result.period_start
+                else None,
                 "end": result.period_end.isoformat() if result.period_end else None,
             },
             "total_queries": result.total_queries,
@@ -632,12 +673,11 @@ Examples:
             ],
         }
         import tempfile as _tempfile
+
         export_path = Path(args.export)
         export_path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp_path = _tempfile.mkstemp(
-            dir=export_path.parent,
-            prefix=f".{export_path.name}.",
-            suffix=".tmp"
+            dir=export_path.parent, prefix=f".{export_path.name}.", suffix=".tmp"
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -654,9 +694,7 @@ Examples:
     # Interactive approval
     if not args.report_only and result.recommendations:
         approved, skipped = interactive_approval(
-            result.recommendations,
-            config,
-            args.approver
+            result.recommendations, config, args.approver
         )
 
         if approved > 0:

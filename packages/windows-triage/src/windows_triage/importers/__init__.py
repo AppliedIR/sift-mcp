@@ -11,37 +11,34 @@ known_good.db imports are handled by scripts:
 - import_registry_extractions.py (services, tasks, autoruns)
 """
 
-from .lolbas import (
-    import_lolbas,
-    get_lolbin_functions,
+from .hijacklibs import (
+    get_hijack_types,
+    import_hijacklibs,
 )
-
+from .lolbas import (
+    get_lolbin_functions,
+    import_lolbas,
+)
 from .loldrivers import (
     import_loldrivers,
 )
-
-from .hijacklibs import (
-    import_hijacklibs,
-    get_hijack_types,
-)
-
 from .process_expectations import (
-    import_process_expectations,
-    load_process_expectations,
     get_process_tree,
     get_system_processes,
     get_user_processes,
+    import_process_expectations,
+    load_process_expectations,
 )
 
 __all__ = [
-    'import_lolbas',
-    'get_lolbin_functions',
-    'import_loldrivers',
-    'import_hijacklibs',
-    'get_hijack_types',
-    'import_process_expectations',
-    'load_process_expectations',
-    'get_process_tree',
-    'get_system_processes',
-    'get_user_processes',
+    "import_lolbas",
+    "get_lolbin_functions",
+    "import_loldrivers",
+    "import_hijacklibs",
+    "get_hijack_types",
+    "import_process_expectations",
+    "load_process_expectations",
+    "get_process_tree",
+    "get_system_processes",
+    "get_user_processes",
 ]

@@ -1,12 +1,11 @@
 """Tests for path normalization and analysis utilities."""
 
-import pytest
 from windows_triage.analysis.paths import (
-    normalize_path,
-    extract_filename,
-    extract_directory,
-    is_system_path,
     check_suspicious_path,
+    extract_directory,
+    extract_filename,
+    is_system_path,
+    normalize_path,
     parse_service_binary_path,
 )
 
@@ -15,14 +14,20 @@ class TestNormalizePath:
     """Tests for normalize_path function."""
 
     def test_lowercase(self):
-        assert normalize_path("C:\\Windows\\System32\\CMD.EXE") == "\\windows\\system32\\cmd.exe"
+        assert (
+            normalize_path("C:\\Windows\\System32\\CMD.EXE")
+            == "\\windows\\system32\\cmd.exe"
+        )
 
     def test_remove_drive_letter(self):
         assert normalize_path("C:\\Windows\\file.txt") == "\\windows\\file.txt"
         assert normalize_path("D:\\Data\\file.txt") == "\\data\\file.txt"
 
     def test_normalize_separators(self):
-        assert normalize_path("C:/Windows/System32/cmd.exe") == "\\windows\\system32\\cmd.exe"
+        assert (
+            normalize_path("C:/Windows/System32/cmd.exe")
+            == "\\windows\\system32\\cmd.exe"
+        )
 
     def test_remove_trailing_slashes(self):
         assert normalize_path("C:\\Windows\\System32\\") == "\\windows\\system32"
@@ -63,7 +68,9 @@ class TestExtractDirectory:
     """Tests for extract_directory function."""
 
     def test_basic_path(self):
-        assert extract_directory("C:\\Windows\\System32\\cmd.exe") == "\\windows\\system32"
+        assert (
+            extract_directory("C:\\Windows\\System32\\cmd.exe") == "\\windows\\system32"
+        )
 
     def test_filename_only(self):
         assert extract_directory("file.txt") == ""
@@ -103,13 +110,15 @@ class TestCheckSuspiciousPath:
     def test_temp_directory(self):
         findings = check_suspicious_path("C:\\Temp\\file.exe")
         assert len(findings) == 1
-        assert findings[0]['type'] == 'suspicious_directory'
-        assert 'temp' in findings[0]['matched']
+        assert findings[0]["type"] == "suspicious_directory"
+        assert "temp" in findings[0]["matched"]
 
     def test_appdata_local_temp(self):
-        findings = check_suspicious_path("C:\\Users\\Admin\\AppData\\Local\\Temp\\evil.exe")
+        findings = check_suspicious_path(
+            "C:\\Users\\Admin\\AppData\\Local\\Temp\\evil.exe"
+        )
         assert len(findings) == 1
-        assert 'temp' in findings[0]['matched']
+        assert "temp" in findings[0]["matched"]
 
     def test_users_public(self):
         findings = check_suspicious_path("C:\\Users\\Public\\Downloads\\file.exe")
@@ -132,11 +141,15 @@ class TestParseServiceBinaryPath:
     """Tests for parse_service_binary_path function."""
 
     def test_quoted_path(self):
-        result = parse_service_binary_path('"C:\\Program Files\\Service\\svc.exe" -arg1')
+        result = parse_service_binary_path(
+            '"C:\\Program Files\\Service\\svc.exe" -arg1'
+        )
         assert result == "\\program files\\service\\svc.exe"
 
     def test_unquoted_path(self):
-        result = parse_service_binary_path("C:\\Windows\\System32\\svchost.exe -k netsvcs")
+        result = parse_service_binary_path(
+            "C:\\Windows\\System32\\svchost.exe -k netsvcs"
+        )
         assert result == "\\windows\\system32\\svchost.exe"
 
     def test_systemroot_variable(self):
@@ -144,7 +157,9 @@ class TestParseServiceBinaryPath:
         assert result == "\\windows\\system32\\svc.exe"
 
     def test_systemroot_path(self):
-        result = parse_service_binary_path("\\SystemRoot\\System32\\drivers\\driver.sys")
+        result = parse_service_binary_path(
+            "\\SystemRoot\\System32\\drivers\\driver.sys"
+        )
         assert result == "\\windows\\system32\\drivers\\driver.sys"
 
     def test_system32_relative(self):

@@ -13,25 +13,33 @@ import hmac
 import json
 import logging
 import time
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from mcp.server.lowlevel.server import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
+from sift_common.instructions import GATEWAY as _GATEWAY_INSTRUCTIONS
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from sift_gateway.rate_limit import check_rate_limit
-from sift_common.instructions import GATEWAY as _GATEWAY_INSTRUCTIONS
 
 logger = logging.getLogger(__name__)
 
 # Tools that accept analyst_override for identity injection.
-ANALYST_TOOLS: frozenset[str] = frozenset({
-    "record_action", "record_finding", "record_timeline_event",
-    "add_todo", "update_todo", "complete_todo",
-    "log_reasoning", "log_external_action",
-})
+ANALYST_TOOLS: frozenset[str] = frozenset(
+    {
+        "record_action",
+        "record_finding",
+        "record_timeline_event",
+        "add_todo",
+        "update_todo",
+        "complete_todo",
+        "log_reasoning",
+        "log_external_action",
+    }
+)
 
 # Maximum length for bearer tokens (DoS protection)
 _MAX_TOKEN_LENGTH = 1024
@@ -43,6 +51,7 @@ _MAX_REQUEST_BYTES = 10 * 1024 * 1024
 # ---------------------------------------------------------------------------
 # ASGI-level auth wrapper
 # ---------------------------------------------------------------------------
+
 
 class MCPAuthASGIApp:
     """ASGI app that authenticates requests then delegates to the session manager.
@@ -115,7 +124,9 @@ class MCPAuthASGIApp:
 
         # Length check: reject excessively long tokens before timing-safe comparison
         if len(token) > _MAX_TOKEN_LENGTH:
-            logger.warning("MCP endpoint: rejected oversized bearer token (%d bytes)", len(token))
+            logger.warning(
+                "MCP endpoint: rejected oversized bearer token (%d bytes)", len(token)
+            )
             resp = JSONResponse(
                 {"error": "Invalid API key"},
                 status_code=403,
@@ -185,6 +196,7 @@ def _extract_bearer_token(scope: dict) -> str | None:
 # MCP server factory
 # ---------------------------------------------------------------------------
 
+
 def create_mcp_server(gateway: Any) -> Server:
     """Build a low-level MCP ``Server`` that proxies through *gateway*.
 
@@ -219,9 +231,16 @@ def create_mcp_server(gateway: Any) -> Server:
             return [TextContent(type="text", text=f"Error: unknown tool {name}")]
         except (RuntimeError, ConnectionError, OSError) as e:
             logger.error("MCP call_tool backend error for %s: %s", name, e)
-            return [TextContent(type="text", text=f"Error: backend failure for {name}: {e}")]
+            return [
+                TextContent(type="text", text=f"Error: backend failure for {name}: {e}")
+            ]
         except Exception as e:
-            logger.error("MCP call_tool unexpected error for %s: %s: %s", name, type(e).__name__, e)
+            logger.error(
+                "MCP call_tool unexpected error for %s: %s: %s",
+                name,
+                type(e).__name__,
+                e,
+            )
             return [TextContent(type="text", text=f"Error: {type(e).__name__}: {e}")]
 
         # Normalise to list of TextContent for the MCP protocol
@@ -230,7 +249,9 @@ def create_mcp_server(gateway: Any) -> Server:
             if isinstance(item, TextContent):
                 contents.append(item)
             elif hasattr(item, "model_dump"):
-                contents.append(TextContent(type="text", text=json.dumps(item.model_dump())))
+                contents.append(
+                    TextContent(type="text", text=json.dumps(item.model_dump()))
+                )
             else:
                 contents.append(TextContent(type="text", text=str(item)))
         return contents
@@ -280,11 +301,20 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
         try:
             result = await backend.call_tool(name, arguments)
         except (RuntimeError, ConnectionError, OSError) as e:
-            logger.error("Per-backend call_tool error for %s/%s: %s", backend_name, name, e)
-            return [TextContent(type="text", text=f"Error: backend failure for {name}: {e}")]
+            logger.error(
+                "Per-backend call_tool error for %s/%s: %s", backend_name, name, e
+            )
+            return [
+                TextContent(type="text", text=f"Error: backend failure for {name}: {e}")
+            ]
         except Exception as e:
-            logger.error("Per-backend call_tool unexpected error for %s/%s: %s: %s",
-                         backend_name, name, type(e).__name__, e)
+            logger.error(
+                "Per-backend call_tool unexpected error for %s/%s: %s: %s",
+                backend_name,
+                name,
+                type(e).__name__,
+                e,
+            )
             return [TextContent(type="text", text=f"Error: {type(e).__name__}: {e}")]
 
         # Normalise to list of TextContent
@@ -293,7 +323,9 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
             if isinstance(item, TextContent):
                 contents.append(item)
             elif hasattr(item, "model_dump"):
-                contents.append(TextContent(type="text", text=json.dumps(item.model_dump())))
+                contents.append(
+                    TextContent(type="text", text=json.dumps(item.model_dump()))
+                )
             else:
                 contents.append(TextContent(type="text", text=str(item)))
         return contents
@@ -304,6 +336,7 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
 # ---------------------------------------------------------------------------
 # Session manager factory
 # ---------------------------------------------------------------------------
+
 
 def create_session_manager(mcp_server: Server) -> StreamableHTTPSessionManager:
     """Create a ``StreamableHTTPSessionManager`` wrapping *mcp_server*."""

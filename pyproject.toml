@@ -4,6 +4,46 @@ version = "0.1.0"
 description = "AIIR forensic investigation platform — SIFT workstation monorepo"
 requires-python = ">=3.10"
 
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (let formatter handle)
+    "E402",   # import order — logger between imports is fine
+    "SIM102", # collapsible if — readability preference
+    "SIM103", # return bool directly — readability preference
+    "SIM105", # contextlib.suppress — verbose for existing code
+    "SIM108", # ternary operator — readability preference
+    "SIM115", # context manager for open — not always applicable
+    "SIM117", # combine with statements — verbose for existing code
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "B011",   # assert False — common in test unreachable paths
+    "B017",   # pytest.raises without match — common in tests
+    "B018",   # useless expression — common in test assertions
+    "F841",   # unused variables — common in test fixtures
+    "B007",   # unused loop variables — common in test iterations
+    "E741",   # ambiguous variable names — test readability
+    "E722",   # bare except — acceptable in robustness tests
+    "F811",   # redefined class — test file organization
+]
+"**/scripts/**" = [
+    "B904",   # raise from — scripts don't need chained exceptions
+    "F841",   # unused variables — acceptable in scripts
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

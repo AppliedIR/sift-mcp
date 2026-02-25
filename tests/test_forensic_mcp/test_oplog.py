@@ -2,10 +2,6 @@
 
 import json
 import logging
-from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 
 from forensic_mcp.oplog import _StructuredFormatter, setup_logging
 
@@ -14,8 +10,13 @@ class TestStructuredFormatter:
     def test_basic_info_fields(self):
         formatter = _StructuredFormatter("test-service")
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="test.py",
-            lineno=1, msg="hello world", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="hello world",
+            args=(),
+            exc_info=None,
         )
         parsed = json.loads(formatter.format(record))
         assert parsed["level"] == "INFO"
@@ -27,8 +28,13 @@ class TestStructuredFormatter:
     def test_warning_includes_location(self):
         formatter = _StructuredFormatter("svc")
         record = logging.LogRecord(
-            name="test", level=logging.WARNING, pathname="/foo/bar.py",
-            lineno=42, msg="warn", args=(), exc_info=None,
+            name="test",
+            level=logging.WARNING,
+            pathname="/foo/bar.py",
+            lineno=42,
+            msg="warn",
+            args=(),
+            exc_info=None,
         )
         parsed = json.loads(formatter.format(record))
         assert parsed["location"]["file"] == "/foo/bar.py"
@@ -40,9 +46,15 @@ class TestStructuredFormatter:
             raise ValueError("boom")
         except ValueError:
             import sys
+
             record = logging.LogRecord(
-                name="test", level=logging.ERROR, pathname="test.py",
-                lineno=1, msg="error", args=(), exc_info=sys.exc_info(),
+                name="test",
+                level=logging.ERROR,
+                pathname="test.py",
+                lineno=1,
+                msg="error",
+                args=(),
+                exc_info=sys.exc_info(),
             )
         parsed = json.loads(formatter.format(record))
         assert parsed["exception"]["type"] == "ValueError"

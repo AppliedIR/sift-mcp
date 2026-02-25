@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
-import pytest
 
 from opencti_mcp.logging import (
-    StructuredFormatter,
     RequestContextFilter,
-    setup_logging,
+    StructuredFormatter,
+    clear_request_id,
     get_logger,
     set_request_id,
-    clear_request_id,
+    setup_logging,
 )
 
 
@@ -152,7 +151,7 @@ class TestRequestContextFilter:
         )
 
         filter.filter(record)
-        assert not hasattr(record, 'request_id')
+        assert not hasattr(record, "request_id")
 
 
 class TestLoggingSetup:

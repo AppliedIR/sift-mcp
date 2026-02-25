@@ -73,7 +73,7 @@ def _load_yaml(rel_path: str) -> Any:
     if not full_path.exists():
         return None
 
-    with open(full_path, "r", encoding="utf-8") as f:
+    with open(full_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     _cache[rel_path] = data
@@ -92,7 +92,7 @@ def _load_all_in_dir(rel_dir: str) -> list[Any]:
 
     results = []
     for yaml_file in sorted(data_dir.glob("*.yaml")):
-        with open(yaml_file, "r", encoding="utf-8") as f:
+        with open(yaml_file, encoding="utf-8") as f:
             doc = yaml.safe_load(f)
         if doc:
             results.append(doc)
@@ -112,6 +112,7 @@ def clear_cache() -> None:
 # Input validation
 # ---------------------------------------------------------------------------
 
+
 def _sanitize_name(name: str) -> str:
     """Validate name used in path construction. Raises ValueError on traversal."""
     if not name:
@@ -124,6 +125,7 @@ def _sanitize_name(name: str) -> str:
 # ---------------------------------------------------------------------------
 # Artifact knowledge
 # ---------------------------------------------------------------------------
+
 
 def get_artifact(name: str) -> dict | None:
     """Load artifact knowledge by name (e.g., 'amcache')."""
@@ -142,11 +144,13 @@ def list_artifacts(platform: str | None = None) -> list[dict]:
     platforms = [platform] if platform else ["windows", "linux", "macos"]
     for plat in platforms:
         for artifact in _load_all_in_dir(f"artifacts/{plat}"):
-            results.append({
-                "name": artifact.get("name", ""),
-                "description": artifact.get("description", ""),
-                "platform": artifact.get("platform", plat),
-            })
+            results.append(
+                {
+                    "name": artifact.get("name", ""),
+                    "description": artifact.get("description", ""),
+                    "platform": artifact.get("platform", plat),
+                }
+            )
     return results
 
 
@@ -163,6 +167,7 @@ def get_artifacts_for_tool(tool_name: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Tool knowledge
 # ---------------------------------------------------------------------------
+
 
 def get_tool(name: str) -> dict | None:
     """Load tool knowledge by name (case-insensitive)."""
@@ -183,12 +188,14 @@ def list_tools(category: str | None = None, platform: str | None = None) -> list
             tool_platforms = tool.get("platform", [])
             if platform and platform not in tool_platforms:
                 continue
-            results.append({
-                "name": tool.get("name", ""),
-                "category": tool.get("category", cat),
-                "description": tool.get("description", ""),
-                "platform": tool_platforms,
-            })
+            results.append(
+                {
+                    "name": tool.get("name", ""),
+                    "category": tool.get("category", cat),
+                    "description": tool.get("description", ""),
+                    "platform": tool_platforms,
+                }
+            )
     return results
 
 
@@ -203,6 +210,7 @@ def _iter_tool_categories() -> list[str]:
 # ---------------------------------------------------------------------------
 # Discipline knowledge
 # ---------------------------------------------------------------------------
+
 
 def get_rules() -> list[dict]:
     """Load all discipline rules."""
@@ -220,11 +228,13 @@ def list_playbooks() -> list[dict]:
     """List available playbooks."""
     results = []
     for pb in _load_all_in_dir("discipline/playbooks"):
-        results.append({
-            "name": pb.get("name", ""),
-            "description": pb.get("description", ""),
-            "phases": len(pb.get("phases", [])),
-        })
+        results.append(
+            {
+                "name": pb.get("name", ""),
+                "description": pb.get("description", ""),
+                "phases": len(pb.get("phases", [])),
+            }
+        )
     return results
 
 
@@ -269,7 +279,10 @@ def list_checkpoints() -> list[dict]:
     if not data:
         return []
     return [
-        {"action_type": cp.get("action_type", ""), "description": cp.get("description", "")}
+        {
+            "action_type": cp.get("action_type", ""),
+            "description": cp.get("description", ""),
+        }
         for cp in data.get("checkpoints", [])
     ]
 

@@ -18,19 +18,11 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import chromadb
 from sentence_transformers import SentenceTransformer
 
-from .sources import (
-    SOURCES,
-    SOURCES_DIR,
-    check_source_updates,
-    load_disabled_sources,
-    load_sources_state,
-    sync_source,
-)
 from .ingest import (
     DEFAULT_KNOWLEDGE_DIR,
     check_for_changes,
@@ -39,13 +31,20 @@ from .ingest import (
     save_user_state,
     scan_knowledge_folder,
 )
-from .utils import DEFAULT_MODEL_NAME, compute_file_hash, load_jsonl_records, sanitize_metadata
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(message)s",
-    stream=sys.stdout
+from .sources import (
+    SOURCES,
+    SOURCES_DIR,
+    check_source_updates,
+    sync_source,
 )
+from .utils import (
+    DEFAULT_MODEL_NAME,
+    compute_file_hash,
+    load_jsonl_records,
+    sanitize_metadata,
+)
+
+logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -55,6 +54,7 @@ DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 @dataclass
 class RefreshResult:
     """Result of a refresh operation."""
+
     status: str  # "success", "error", "no_changes"
     sources_updated: int = 0
     sources_checked: int = 0
@@ -69,12 +69,12 @@ class RefreshResult:
 
 def refresh(
     check_only: bool = False,
-    source_name: Optional[str] = None,
+    source_name: str | None = None,
     skip_online: bool = False,
     no_bundled: bool = False,
-    data_dir: Optional[Path] = None,
-    knowledge_dir: Optional[Path] = None,
-    model_name: Optional[str] = None
+    data_dir: Path | None = None,
+    knowledge_dir: Path | None = None,
+    model_name: str | None = None,
 ) -> RefreshResult:
     """
     Incrementally update the index.
@@ -89,7 +89,9 @@ def refresh(
         RefreshResult with summary
     """
     data_dir = data_dir or Path(os.environ.get("RAG_INDEX_DIR", DEFAULT_DATA_DIR))
-    knowledge_dir = knowledge_dir or Path(os.environ.get("RAG_KNOWLEDGE_DIR", DEFAULT_KNOWLEDGE_DIR))
+    knowledge_dir = knowledge_dir or Path(
+        os.environ.get("RAG_KNOWLEDGE_DIR", DEFAULT_KNOWLEDGE_DIR)
+    )
     model_name = model_name or os.environ.get("RAG_MODEL_NAME", DEFAULT_MODEL_NAME)
 
     result = RefreshResult(status="success")
@@ -129,7 +131,9 @@ def refresh(
             if source_name not in SOURCES:
                 result.errors.append(f"Unknown source: {source_name}")
             else:
-                _refresh_single_source(source_name, collection, model, check_only, result)
+                _refresh_single_source(
+                    source_name, collection, model, check_only, result
+                )
         else:
             # All sources
             updates = check_source_updates()
@@ -140,11 +144,17 @@ def refresh(
                     result.warnings.append(f"{status.name}: {status.error}")
                     logger.info(f"  {status.name}: ERROR ({status.error})")
                 elif status.has_update:
-                    logger.info(f"  {status.name}: UPDATE AVAILABLE ({status.current_version} -> {status.latest_version})")
+                    logger.info(
+                        f"  {status.name}: UPDATE AVAILABLE ({status.current_version} -> {status.latest_version})"
+                    )
                     if not check_only:
-                        _refresh_single_source(status.name, collection, model, check_only, result)
+                        _refresh_single_source(
+                            status.name, collection, model, check_only, result
+                        )
                 else:
-                    logger.info(f"  {status.name}: up to date ({status.current_version})")
+                    logger.info(
+                        f"  {status.name}: up to date ({status.current_version})"
+                    )
 
     # =========================================================================
     # Phase 2: User Documents
@@ -214,10 +224,7 @@ def refresh(
                 embeddings = model.encode(texts).tolist()
 
                 collection.add(
-                    ids=ids,
-                    documents=texts,
-                    embeddings=embeddings,
-                    metadatas=metadatas
+                    ids=ids, documents=texts, embeddings=embeddings, metadatas=metadatas
                 )
                 result.records_added += len(records)
 
@@ -228,7 +235,7 @@ def refresh(
                     "id_prefix": f"user_{path.stem}",
                     "records": len(records),
                     "record_ids": ids,
-                    "processed_at": datetime.now().isoformat()
+                    "processed_at": datetime.now().isoformat(),
                 }
 
         save_user_state(state)
@@ -265,7 +272,7 @@ def refresh(
                 try:
                     with open(metadata_path, encoding="utf-8") as f:
                         existing_metadata = json.load(f)
-                except (IOError, json.JSONDecodeError):
+                except (OSError, json.JSONDecodeError):
                     pass
 
             metadata = {
@@ -275,12 +282,14 @@ def refresh(
                 "model": existing_metadata.get("model", model_name),
                 "record_count": record_count,
                 "source_count": len(all_sources),
-                "sources": sorted(all_sources)
+                "sources": sorted(all_sources),
             }
 
             with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2)
-            logger.info(f"  Updated metadata.json: {len(all_sources)} sources, {record_count} records")
+            logger.info(
+                f"  Updated metadata.json: {len(all_sources)} sources, {record_count} records"
+            )
         except Exception as e:
             result.warnings.append(f"Failed to update metadata.json: {e}")
             logger.warning(f"  Warning: Could not update metadata.json: {e}")
@@ -297,10 +306,10 @@ def refresh(
     logger.info("=" * 60)
 
     has_changes = (
-        result.sources_updated > 0 or
-        result.documents_added > 0 or
-        result.documents_modified > 0 or
-        result.documents_deleted > 0
+        result.sources_updated > 0
+        or result.documents_added > 0
+        or result.documents_modified > 0
+        or result.documents_deleted > 0
     )
 
     if check_only:
@@ -308,10 +317,14 @@ def refresh(
             logger.info(f"  Source '{source_name}' checked")
         else:
             logger.info(f"  Online sources checked: {result.sources_checked}")
-        logger.info(f"  User documents: {len(changes.new)} new, {len(changes.modified)} modified, {len(changes.deleted)} deleted")
+        logger.info(
+            f"  User documents: {len(changes.new)} new, {len(changes.modified)} modified, {len(changes.deleted)} deleted"
+        )
     else:
         logger.info(f"  Sources updated: {result.sources_updated}")
-        logger.info(f"  Documents: +{result.documents_added} modified:{result.documents_modified} -{result.documents_deleted}")
+        logger.info(
+            f"  Documents: +{result.documents_added} modified:{result.documents_modified} -{result.documents_deleted}"
+        )
         logger.info(f"  Records: +{result.records_added} -{result.records_removed}")
 
     if not has_changes and not check_only:
@@ -348,11 +361,7 @@ def _log_refresh_summary(result: RefreshResult, check_only: bool) -> None:
 
 
 def _refresh_single_source(
-    name: str,
-    collection: Any,
-    model: Any,
-    check_only: bool,
-    result: RefreshResult
+    name: str, collection: Any, model: Any, check_only: bool, result: RefreshResult
 ) -> None:
     """Refresh a single online source."""
     if check_only:
@@ -389,17 +398,14 @@ def _refresh_single_source(
     if records:
         batch_size = 100
         for i in range(0, len(records), batch_size):
-            batch = records[i:i + batch_size]
+            batch = records[i : i + batch_size]
             ids = [r["id"] for r in batch]
             texts = [r["text"] for r in batch]
             metadatas = [sanitize_metadata(r.get("metadata", {})) for r in batch]
             embeddings = model.encode(texts).tolist()
 
             collection.add(
-                ids=ids,
-                documents=texts,
-                embeddings=embeddings,
-                metadatas=metadatas
+                ids=ids, documents=texts, embeddings=embeddings, metadatas=metadatas
             )
 
         result.records_added += len(records)
@@ -411,18 +417,22 @@ def _refresh_single_source(
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Refresh RAG index")
-    parser.add_argument("--check-only", action="store_true",
-                        help="Report changes without applying")
-    parser.add_argument("--source", type=str,
-                        help="Only refresh specific online source")
-    parser.add_argument("--skip-online", action="store_true",
-                        help="Skip online sources")
-    parser.add_argument("--no-bundled", action="store_true",
-                        help="Skip bundled reference content (AppliedIR, SANS)")
-    parser.add_argument("--data-dir", type=Path,
-                        help="Data directory")
-    parser.add_argument("--knowledge-dir", type=Path,
-                        help="Knowledge directory")
+    parser.add_argument(
+        "--check-only", action="store_true", help="Report changes without applying"
+    )
+    parser.add_argument(
+        "--source", type=str, help="Only refresh specific online source"
+    )
+    parser.add_argument(
+        "--skip-online", action="store_true", help="Skip online sources"
+    )
+    parser.add_argument(
+        "--no-bundled",
+        action="store_true",
+        help="Skip bundled reference content (AppliedIR, SANS)",
+    )
+    parser.add_argument("--data-dir", type=Path, help="Data directory")
+    parser.add_argument("--knowledge-dir", type=Path, help="Knowledge directory")
     args = parser.parse_args()
 
     result = refresh(
@@ -431,7 +441,7 @@ def main() -> int:
         skip_online=args.skip_online,
         no_bundled=args.no_bundled,
         data_dir=args.data_dir,
-        knowledge_dir=args.knowledge_dir
+        knowledge_dir=args.knowledge_dir,
     )
 
     return 0 if result.status in ("success", "no_changes") else 1

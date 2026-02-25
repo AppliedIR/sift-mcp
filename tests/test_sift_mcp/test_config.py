@@ -1,7 +1,5 @@
 """Tests for sift_mcp.config."""
 
-import os
-import pytest
 from sift_mcp.config import SiftConfig, get_config
 
 

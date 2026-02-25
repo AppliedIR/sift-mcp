@@ -6,18 +6,16 @@ registry keys/values against clean Windows installation baselines.
 Fixtures are defined in conftest.py: temp_registry_db, registry_db_instance, empty_temp_registry_db
 """
 
-import pytest
-import sqlite3
 import tempfile
 from pathlib import Path
 
+import pytest
 from windows_triage.db import RegistryDB
-from windows_triage.db.schemas import REGISTRY_FULL_SCHEMA
-
 
 # ============================================================================
 # RegistryDB Initialization Tests
 # ============================================================================
+
 
 class TestRegistryDBInitialization:
     """Tests for RegistryDB class initialization."""
@@ -66,6 +64,7 @@ class TestRegistryDBInitialization:
 # normalize_key_path Tests
 # ============================================================================
 
+
 class TestNormalizeKeyPath:
     """Tests for the normalize_key_path static method."""
 
@@ -106,13 +105,16 @@ class TestNormalizeKeyPath:
 
     def test_mixed_slashes(self):
         """Test handling of mixed forward and backslashes."""
-        result = RegistryDB.normalize_key_path("software/microsoft\\windows/currentversion")
+        result = RegistryDB.normalize_key_path(
+            "software/microsoft\\windows/currentversion"
+        )
         assert result == "software\\microsoft\\windows\\currentversion"
 
 
 # ============================================================================
 # extract_hive Tests
 # ============================================================================
+
 
 class TestExtractHive:
     """Tests for the extract_hive static method."""
@@ -183,6 +185,7 @@ class TestExtractHive:
 # is_available Tests
 # ============================================================================
 
+
 class TestIsAvailable:
     """Tests for the is_available method."""
 
@@ -203,7 +206,7 @@ class TestIsAvailable:
 
     def test_not_available_with_invalid_db(self):
         """Test is_available with file that exists but is not a valid DB."""
-        with tempfile.NamedTemporaryFile(suffix='.db', delete=False, mode='w') as f:
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False, mode="w") as f:
             f.write("not a valid sqlite database")
             db_path = Path(f.name)
 
@@ -218,6 +221,7 @@ class TestIsAvailable:
 # lookup_key Tests
 # ============================================================================
 
+
 class TestLookupKey:
     """Tests for the lookup_key method."""
 
@@ -228,54 +232,49 @@ class TestLookupKey:
         )
         assert len(results) > 0
         # Should have SecurityHealth from our test data
-        value_names = [r['value_name'] for r in results]
-        assert 'SecurityHealth' in value_names
+        value_names = [r["value_name"] for r in results]
+        assert "SecurityHealth" in value_names
 
     def test_lookup_nonexistent_key(self, registry_db_instance):
         """Test looking up a key that doesn't exist."""
-        results = registry_db_instance.lookup_key(
-            "nonexistent\\key\\path"
-        )
+        results = registry_db_instance.lookup_key("nonexistent\\key\\path")
         assert len(results) == 0
 
     def test_lookup_with_hive_filter(self, registry_db_instance):
         """Test looking up with explicit hive filter."""
         results = registry_db_instance.lookup_key(
-            "microsoft\\windows\\currentversion\\run",
-            hive="SOFTWARE"
+            "microsoft\\windows\\currentversion\\run", hive="SOFTWARE"
         )
         assert len(results) > 0
         for r in results:
-            assert r['hive'] == 'SOFTWARE'
+            assert r["hive"] == "SOFTWARE"
 
     def test_lookup_with_wrong_hive_filter(self, registry_db_instance):
         """Test that wrong hive filter returns no results."""
         results = registry_db_instance.lookup_key(
             "microsoft\\windows\\currentversion\\run",
-            hive="SYSTEM"  # The Run key is in SOFTWARE, not SYSTEM
+            hive="SYSTEM",  # The Run key is in SOFTWARE, not SYSTEM
         )
         assert len(results) == 0
 
     def test_lookup_with_os_version_filter(self, registry_db_instance):
         """Test looking up with OS version filter."""
         results = registry_db_instance.lookup_key(
-            "microsoft\\windows\\currentversion\\run",
-            os_version="W11_22H2"
+            "microsoft\\windows\\currentversion\\run", os_version="W11_22H2"
         )
         assert len(results) > 0
         # All results should be from W11_22H2
         for r in results:
-            assert 'W11_22H2' in r['os_versions']
+            assert "W11_22H2" in r["os_versions"]
 
     def test_lookup_excludes_wrong_os_version(self, registry_db_instance):
         """Test that OS version filter excludes other versions."""
         # VMware User Process is only in W10_21H2
         results = registry_db_instance.lookup_key(
-            "microsoft\\windows\\currentversion\\run",
-            os_version="W11_22H2"
+            "microsoft\\windows\\currentversion\\run", os_version="W11_22H2"
         )
-        value_names = [r['value_name'] for r in results]
-        assert 'VMware User Process' not in value_names
+        value_names = [r["value_name"] for r in results]
+        assert "VMware User Process" not in value_names
 
     def test_lookup_auto_extracts_hive(self, registry_db_instance):
         """Test that hive is auto-extracted from path.
@@ -316,42 +315,37 @@ class TestLookupKey:
 # lookup_value Tests
 # ============================================================================
 
+
 class TestLookupValue:
     """Tests for the lookup_value method."""
 
     def test_lookup_existing_value(self, registry_db_instance):
         """Test looking up a value that exists."""
         results = registry_db_instance.lookup_value(
-            "microsoft\\windows\\currentversion\\run",
-            "SecurityHealth"
+            "microsoft\\windows\\currentversion\\run", "SecurityHealth"
         )
         assert len(results) == 1
-        assert results[0]['value_name'] == 'SecurityHealth'
-        assert results[0]['value_type'] == 'REG_SZ'
+        assert results[0]["value_name"] == "SecurityHealth"
+        assert results[0]["value_type"] == "REG_SZ"
 
     def test_lookup_nonexistent_value(self, registry_db_instance):
         """Test looking up a value that doesn't exist."""
         results = registry_db_instance.lookup_value(
-            "microsoft\\windows\\currentversion\\run",
-            "NonexistentValue"
+            "microsoft\\windows\\currentversion\\run", "NonexistentValue"
         )
         assert len(results) == 0
 
     def test_lookup_value_with_hive_filter(self, registry_db_instance):
         """Test looking up value with explicit hive filter."""
         results = registry_db_instance.lookup_value(
-            "microsoft\\windows\\currentversion\\run",
-            "SecurityHealth",
-            hive="SOFTWARE"
+            "microsoft\\windows\\currentversion\\run", "SecurityHealth", hive="SOFTWARE"
         )
         assert len(results) == 1
 
     def test_lookup_value_with_wrong_hive_filter(self, registry_db_instance):
         """Test that wrong hive filter returns no results."""
         results = registry_db_instance.lookup_value(
-            "microsoft\\windows\\currentversion\\run",
-            "SecurityHealth",
-            hive="SYSTEM"
+            "microsoft\\windows\\currentversion\\run", "SecurityHealth", hive="SYSTEM"
         )
         assert len(results) == 0
 
@@ -360,7 +354,7 @@ class TestLookupValue:
         results = registry_db_instance.lookup_value(
             "microsoft\\windows\\currentversion\\run",
             "SecurityHealth",
-            os_version="W11_22H2"
+            os_version="W11_22H2",
         )
         assert len(results) == 1
 
@@ -370,7 +364,7 @@ class TestLookupValue:
         results = registry_db_instance.lookup_value(
             "microsoft\\windows\\currentversion\\run",
             "VMware User Process",
-            os_version="W10_21H2"
+            os_version="W10_21H2",
         )
         assert len(results) == 1
 
@@ -378,7 +372,7 @@ class TestLookupValue:
         results = registry_db_instance.lookup_value(
             "microsoft\\windows\\currentversion\\run",
             "VMware User Process",
-            os_version="W11_22H2"
+            os_version="W11_22H2",
         )
         assert len(results) == 0
 
@@ -392,39 +386,44 @@ class TestLookupValue:
 # key_exists and value_exists Tests
 # ============================================================================
 
+
 class TestExistsMethods:
     """Tests for key_exists and value_exists convenience methods."""
 
     def test_key_exists_true(self, registry_db_instance):
         """Test key_exists returns True for existing key."""
-        assert registry_db_instance.key_exists(
-            "microsoft\\windows\\currentversion\\run"
-        ) is True
+        assert (
+            registry_db_instance.key_exists("microsoft\\windows\\currentversion\\run")
+            is True
+        )
 
     def test_key_exists_false(self, registry_db_instance):
         """Test key_exists returns False for nonexistent key."""
-        assert registry_db_instance.key_exists(
-            "nonexistent\\key\\path"
-        ) is False
+        assert registry_db_instance.key_exists("nonexistent\\key\\path") is False
 
     def test_value_exists_true(self, registry_db_instance):
         """Test value_exists returns True for existing value."""
-        assert registry_db_instance.value_exists(
-            "microsoft\\windows\\currentversion\\run",
-            "SecurityHealth"
-        ) is True
+        assert (
+            registry_db_instance.value_exists(
+                "microsoft\\windows\\currentversion\\run", "SecurityHealth"
+            )
+            is True
+        )
 
     def test_value_exists_false(self, registry_db_instance):
         """Test value_exists returns False for nonexistent value."""
-        assert registry_db_instance.value_exists(
-            "microsoft\\windows\\currentversion\\run",
-            "NonexistentValue"
-        ) is False
+        assert (
+            registry_db_instance.value_exists(
+                "microsoft\\windows\\currentversion\\run", "NonexistentValue"
+            )
+            is False
+        )
 
 
 # ============================================================================
 # get_stats Tests
 # ============================================================================
+
 
 class TestGetStats:
     """Tests for the get_stats method."""
@@ -432,32 +431,33 @@ class TestGetStats:
     def test_get_stats_available(self, registry_db_instance):
         """Test get_stats with available database."""
         stats = registry_db_instance.get_stats()
-        assert stats['available'] is True
-        assert 'registry_entries' in stats
-        assert stats['registry_entries'] > 0
-        assert 'by_hive' in stats
-        assert 'SOFTWARE' in stats['by_hive']
-        assert 'os_versions' in stats
+        assert stats["available"] is True
+        assert "registry_entries" in stats
+        assert stats["registry_entries"] > 0
+        assert "by_hive" in stats
+        assert "SOFTWARE" in stats["by_hive"]
+        assert "os_versions" in stats
 
     def test_get_stats_unavailable(self):
         """Test get_stats with unavailable database."""
         db = RegistryDB("/nonexistent/path/registry.db")
         stats = db.get_stats()
-        assert stats['available'] is False
-        assert 'reason' in stats
+        assert stats["available"] is False
+        assert "reason" in stats
 
     def test_get_stats_empty_db(self, empty_temp_registry_db):
         """Test get_stats with empty database."""
         db = RegistryDB(empty_temp_registry_db, read_only=False)
         stats = db.get_stats()
-        assert stats['available'] is True
-        assert stats['registry_entries'] == 0
+        assert stats["available"] is True
+        assert stats["registry_entries"] == 0
         db.close()
 
 
 # ============================================================================
 # Cache Tests
 # ============================================================================
+
 
 class TestCaching:
     """Tests for the caching functionality."""
@@ -471,9 +471,9 @@ class TestCaching:
         db.lookup_key("microsoft\\windows\\currentversion\\run")  # Cache hit
 
         cache_stats = db.get_cache_stats()
-        assert cache_stats['caching_enabled'] is True
-        assert 'lookup_key' in cache_stats
-        assert cache_stats['lookup_key']['hits'] >= 1
+        assert cache_stats["caching_enabled"] is True
+        assert "lookup_key" in cache_stats
+        assert cache_stats["lookup_key"]["hits"] >= 1
         db.close()
 
     def test_cache_stats_disabled(self, temp_registry_db):
@@ -481,7 +481,7 @@ class TestCaching:
         db = RegistryDB(temp_registry_db, cache_size=0)
 
         cache_stats = db.get_cache_stats()
-        assert cache_stats['caching_enabled'] is False
+        assert cache_stats["caching_enabled"] is False
         db.close()
 
     def test_clear_cache(self, temp_registry_db):
@@ -492,18 +492,19 @@ class TestCaching:
         db.lookup_key("microsoft\\windows\\currentversion\\run")
 
         cache_stats_before = db.get_cache_stats()
-        assert cache_stats_before['lookup_key']['size'] > 0
+        assert cache_stats_before["lookup_key"]["size"] > 0
 
         db.clear_cache()
 
         cache_stats_after = db.get_cache_stats()
-        assert cache_stats_after['lookup_key']['size'] == 0
+        assert cache_stats_after["lookup_key"]["size"] == 0
         db.close()
 
 
 # ============================================================================
 # Connection and Resource Management Tests
 # ============================================================================
+
 
 class TestConnectionManagement:
     """Tests for database connection management."""
@@ -532,7 +533,7 @@ class TestConnectionManagement:
 
     def test_init_schema(self, temp_registry_db):
         """Test schema initialization."""
-        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             new_db_path = Path(f.name)
 
         db = RegistryDB(new_db_path, read_only=False)
@@ -547,6 +548,7 @@ class TestConnectionManagement:
 # ============================================================================
 # Integration with Real Database (if available)
 # ============================================================================
+
 
 class TestWithRealDatabase:
     """Tests using the actual known_good_registry.db if available.
@@ -582,13 +584,13 @@ class TestWithRealDatabase:
         stats = real_registry_db.get_stats()
         size_mb = db_path.stat().st_size / (1024 * 1024)
 
-        assert stats['registry_entries'] > 0, (
+        assert stats["registry_entries"] > 0, (
             f"known_good_registry.db exists ({size_mb:.1f} MB) but contains "
             f"0 registry entries and {stats.get('os_versions', 0)} OS versions. "
             f"The registry import likely found no JSON files — check that "
             f"import_registry_full.py can read RegistryHivesJSON.zip archives."
         )
-        assert stats['os_versions'] > 0, (
+        assert stats["os_versions"] > 0, (
             f"known_good_registry.db has {stats['registry_entries']} entries "
             f"but 0 OS versions — import may be partially broken."
         )
@@ -596,34 +598,31 @@ class TestWithRealDatabase:
     def test_real_db_has_data(self, real_registry_db):
         """Test that real database contains data (skips if empty)."""
         stats = real_registry_db.get_stats()
-        if stats['registry_entries'] == 0:
+        if stats["registry_entries"] == 0:
             pytest.skip(
                 "known_good_registry.db exists but is empty — "
                 "registry import did not run or found no data"
             )
-        assert stats['available'] is True
-        assert stats['registry_entries'] > 0
-        assert stats['os_versions'] > 0
+        assert stats["available"] is True
+        assert stats["registry_entries"] > 0
+        assert stats["os_versions"] > 0
 
     def test_real_db_common_key_lookup(self, real_registry_db):
         """Test looking up a common registry key (skips if empty)."""
         stats = real_registry_db.get_stats()
-        if stats['registry_entries'] == 0:
+        if stats["registry_entries"] == 0:
             pytest.skip(
                 "known_good_registry.db exists but is empty — "
                 "registry import did not run or found no data"
             )
         # This key should exist in any Windows installation
-        results = real_registry_db.lookup_key(
-            "microsoft\\windows\\currentversion"
-        )
+        results = real_registry_db.lookup_key("microsoft\\windows\\currentversion")
         assert len(results) > 0
 
     def test_real_db_run_key_lookup(self, real_registry_db):
         """Test looking up the Run key (common persistence location)."""
         results = real_registry_db.lookup_key(
-            "software\\microsoft\\windows\\currentversion\\run",
-            hive="SOFTWARE"
+            "software\\microsoft\\windows\\currentversion\\run", hive="SOFTWARE"
         )
         # Run key entries vary by OS, but the key path should be queryable
         # The result might be empty or have entries depending on the baseline

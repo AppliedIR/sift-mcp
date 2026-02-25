@@ -64,89 +64,84 @@ Usage:
 """
 
 import unicodedata
-from typing import List
-
 
 # Bidirectional override characters used in RLO attacks
 BIDI_OVERRIDES = {
-    '\u202E': 'Right-to-Left Override (RLO)',
-    '\u202D': 'Left-to-Right Override (LRO)',
-    '\u202C': 'Pop Directional Formatting',
-    '\u202B': 'Right-to-Left Embedding',
-    '\u202A': 'Left-to-Right Embedding',
-    '\u2066': 'Left-to-Right Isolate',
-    '\u2067': 'Right-to-Left Isolate',
-    '\u2068': 'First Strong Isolate',
-    '\u2069': 'Pop Directional Isolate',
+    "\u202e": "Right-to-Left Override (RLO)",
+    "\u202d": "Left-to-Right Override (LRO)",
+    "\u202c": "Pop Directional Formatting",
+    "\u202b": "Right-to-Left Embedding",
+    "\u202a": "Left-to-Right Embedding",
+    "\u2066": "Left-to-Right Isolate",
+    "\u2067": "Right-to-Left Isolate",
+    "\u2068": "First Strong Isolate",
+    "\u2069": "Pop Directional Isolate",
 }
 
 # Zero-width characters that can hide content
 ZERO_WIDTH_CHARS = {
-    '\u200B': 'Zero Width Space',
-    '\u200C': 'Zero Width Non-Joiner',
-    '\u200D': 'Zero Width Joiner',
-    '\uFEFF': 'Byte Order Mark / Zero Width No-Break Space',
-    '\u00AD': 'Soft Hyphen',
-    '\u2060': 'Word Joiner',
+    "\u200b": "Zero Width Space",
+    "\u200c": "Zero Width Non-Joiner",
+    "\u200d": "Zero Width Joiner",
+    "\ufeff": "Byte Order Mark / Zero Width No-Break Space",
+    "\u00ad": "Soft Hyphen",
+    "\u2060": "Word Joiner",
 }
 
 # Common homoglyphs - non-Latin characters that look like Latin letters
 # Format: char -> (looks_like, unicode_name)
 HOMOGLYPHS = {
     # Cyrillic lowercase
-    '\u0430': ('a', 'CYRILLIC SMALL LETTER A'),
-    '\u0435': ('e', 'CYRILLIC SMALL LETTER IE'),
-    '\u043E': ('o', 'CYRILLIC SMALL LETTER O'),
-    '\u0440': ('p', 'CYRILLIC SMALL LETTER ER'),
-    '\u0441': ('c', 'CYRILLIC SMALL LETTER ES'),
-    '\u0443': ('y', 'CYRILLIC SMALL LETTER U'),
-    '\u0445': ('x', 'CYRILLIC SMALL LETTER HA'),
-    '\u0456': ('i', 'CYRILLIC SMALL LETTER BYELORUSSIAN-UKRAINIAN I'),
-    '\u0458': ('j', 'CYRILLIC SMALL LETTER JE'),
-    '\u04BB': ('h', 'CYRILLIC SMALL LETTER SHHA'),
-    '\u0455': ('s', 'CYRILLIC SMALL LETTER DZE'),
-    '\u0501': ('d', 'CYRILLIC SMALL LETTER KOMI DE'),
-
+    "\u0430": ("a", "CYRILLIC SMALL LETTER A"),
+    "\u0435": ("e", "CYRILLIC SMALL LETTER IE"),
+    "\u043e": ("o", "CYRILLIC SMALL LETTER O"),
+    "\u0440": ("p", "CYRILLIC SMALL LETTER ER"),
+    "\u0441": ("c", "CYRILLIC SMALL LETTER ES"),
+    "\u0443": ("y", "CYRILLIC SMALL LETTER U"),
+    "\u0445": ("x", "CYRILLIC SMALL LETTER HA"),
+    "\u0456": ("i", "CYRILLIC SMALL LETTER BYELORUSSIAN-UKRAINIAN I"),
+    "\u0458": ("j", "CYRILLIC SMALL LETTER JE"),
+    "\u04bb": ("h", "CYRILLIC SMALL LETTER SHHA"),
+    "\u0455": ("s", "CYRILLIC SMALL LETTER DZE"),
+    "\u0501": ("d", "CYRILLIC SMALL LETTER KOMI DE"),
     # Cyrillic uppercase
-    '\u0410': ('A', 'CYRILLIC CAPITAL LETTER A'),
-    '\u0412': ('B', 'CYRILLIC CAPITAL LETTER VE'),
-    '\u0415': ('E', 'CYRILLIC CAPITAL LETTER IE'),
-    '\u041D': ('H', 'CYRILLIC CAPITAL LETTER EN'),
-    '\u041E': ('O', 'CYRILLIC CAPITAL LETTER O'),
-    '\u0420': ('P', 'CYRILLIC CAPITAL LETTER ER'),
-    '\u0421': ('C', 'CYRILLIC CAPITAL LETTER ES'),
-    '\u0422': ('T', 'CYRILLIC CAPITAL LETTER TE'),
-    '\u0425': ('X', 'CYRILLIC CAPITAL LETTER HA'),
-    '\u041C': ('M', 'CYRILLIC CAPITAL LETTER EM'),
-    '\u041A': ('K', 'CYRILLIC CAPITAL LETTER KA'),
-
+    "\u0410": ("A", "CYRILLIC CAPITAL LETTER A"),
+    "\u0412": ("B", "CYRILLIC CAPITAL LETTER VE"),
+    "\u0415": ("E", "CYRILLIC CAPITAL LETTER IE"),
+    "\u041d": ("H", "CYRILLIC CAPITAL LETTER EN"),
+    "\u041e": ("O", "CYRILLIC CAPITAL LETTER O"),
+    "\u0420": ("P", "CYRILLIC CAPITAL LETTER ER"),
+    "\u0421": ("C", "CYRILLIC CAPITAL LETTER ES"),
+    "\u0422": ("T", "CYRILLIC CAPITAL LETTER TE"),
+    "\u0425": ("X", "CYRILLIC CAPITAL LETTER HA"),
+    "\u041c": ("M", "CYRILLIC CAPITAL LETTER EM"),
+    "\u041a": ("K", "CYRILLIC CAPITAL LETTER KA"),
     # Greek lowercase
-    '\u03B1': ('a', 'GREEK SMALL LETTER ALPHA'),
-    '\u03B5': ('e', 'GREEK SMALL LETTER EPSILON'),
-    '\u03BF': ('o', 'GREEK SMALL LETTER OMICRON'),
-    '\u03C1': ('p', 'GREEK SMALL LETTER RHO'),
-    '\u03C5': ('u', 'GREEK SMALL LETTER UPSILON'),
-    '\u03B9': ('i', 'GREEK SMALL LETTER IOTA'),
-    '\u03BD': ('v', 'GREEK SMALL LETTER NU'),
-
+    "\u03b1": ("a", "GREEK SMALL LETTER ALPHA"),
+    "\u03b5": ("e", "GREEK SMALL LETTER EPSILON"),
+    "\u03bf": ("o", "GREEK SMALL LETTER OMICRON"),
+    "\u03c1": ("p", "GREEK SMALL LETTER RHO"),
+    "\u03c5": ("u", "GREEK SMALL LETTER UPSILON"),
+    "\u03b9": ("i", "GREEK SMALL LETTER IOTA"),
+    "\u03bd": ("v", "GREEK SMALL LETTER NU"),
     # Greek uppercase
-    '\u0391': ('A', 'GREEK CAPITAL LETTER ALPHA'),
-    '\u0392': ('B', 'GREEK CAPITAL LETTER BETA'),
-    '\u0395': ('E', 'GREEK CAPITAL LETTER EPSILON'),
-    '\u0397': ('H', 'GREEK CAPITAL LETTER ETA'),
-    '\u0399': ('I', 'GREEK CAPITAL LETTER IOTA'),
-    '\u039A': ('K', 'GREEK CAPITAL LETTER KAPPA'),
-    '\u039C': ('M', 'GREEK CAPITAL LETTER MU'),
-    '\u039D': ('N', 'GREEK CAPITAL LETTER NU'),
-    '\u039F': ('O', 'GREEK CAPITAL LETTER OMICRON'),
-    '\u03A1': ('P', 'GREEK CAPITAL LETTER RHO'),
-    '\u03A4': ('T', 'GREEK CAPITAL LETTER TAU'),
-    '\u03A7': ('X', 'GREEK CAPITAL LETTER CHI'),
-    '\u0396': ('Z', 'GREEK CAPITAL LETTER ZETA'),
+    "\u0391": ("A", "GREEK CAPITAL LETTER ALPHA"),
+    "\u0392": ("B", "GREEK CAPITAL LETTER BETA"),
+    "\u0395": ("E", "GREEK CAPITAL LETTER EPSILON"),
+    "\u0397": ("H", "GREEK CAPITAL LETTER ETA"),
+    "\u0399": ("I", "GREEK CAPITAL LETTER IOTA"),
+    "\u039a": ("K", "GREEK CAPITAL LETTER KAPPA"),
+    "\u039c": ("M", "GREEK CAPITAL LETTER MU"),
+    "\u039d": ("N", "GREEK CAPITAL LETTER NU"),
+    "\u039f": ("O", "GREEK CAPITAL LETTER OMICRON"),
+    "\u03a1": ("P", "GREEK CAPITAL LETTER RHO"),
+    "\u03a4": ("T", "GREEK CAPITAL LETTER TAU"),
+    "\u03a7": ("X", "GREEK CAPITAL LETTER CHI"),
+    "\u0396": ("Z", "GREEK CAPITAL LETTER ZETA"),
 }
 
 
-def detect_unicode_evasion(text: str) -> List[dict]:
+def detect_unicode_evasion(text: str) -> list[dict]:
     """
     Detect Unicode-based evasion techniques in filenames/process names.
 
@@ -166,63 +161,78 @@ def detect_unicode_evasion(text: str) -> List[dict]:
     # Check for bidirectional overrides (RLO attack)
     for i, char in enumerate(text):
         if char in BIDI_OVERRIDES:
-            findings.append({
-                'type': 'bidi_override',
-                'severity': 'critical',
-                'position': i,
-                'character': repr(char),
-                'unicode_name': BIDI_OVERRIDES[char],
-                'description': f'Bidirectional text override detected - possible RLO attack'
-            })
+            findings.append(
+                {
+                    "type": "bidi_override",
+                    "severity": "critical",
+                    "position": i,
+                    "character": repr(char),
+                    "unicode_name": BIDI_OVERRIDES[char],
+                    "description": "Bidirectional text override detected - possible RLO attack",
+                }
+            )
 
     # Check for zero-width characters
     for i, char in enumerate(text):
         if char in ZERO_WIDTH_CHARS:
-            findings.append({
-                'type': 'zero_width',
-                'severity': 'high',
-                'position': i,
-                'character': repr(char),
-                'unicode_name': ZERO_WIDTH_CHARS[char],
-                'description': 'Zero-width character detected - may hide true content'
-            })
+            findings.append(
+                {
+                    "type": "zero_width",
+                    "severity": "high",
+                    "position": i,
+                    "character": repr(char),
+                    "unicode_name": ZERO_WIDTH_CHARS[char],
+                    "description": "Zero-width character detected - may hide true content",
+                }
+            )
 
     # Check for homoglyphs
     for i, char in enumerate(text):
         if char in HOMOGLYPHS:
             looks_like, unicode_name = HOMOGLYPHS[char]
-            findings.append({
-                'type': 'homoglyph',
-                'severity': 'high',
-                'position': i,
-                'character': char,
-                'looks_like': looks_like,
-                'unicode_name': unicode_name,
-                'description': f'Non-Latin character that looks like "{looks_like}"'
-            })
+            findings.append(
+                {
+                    "type": "homoglyph",
+                    "severity": "high",
+                    "position": i,
+                    "character": char,
+                    "looks_like": looks_like,
+                    "unicode_name": unicode_name,
+                    "description": f'Non-Latin character that looks like "{looks_like}"',
+                }
+            )
 
     # Check for mixed scripts (excluding common punctuation/numbers)
     scripts = set()
     for char in text:
         if char.isalpha():
             try:
-                name = unicodedata.name(char, '')
+                name = unicodedata.name(char, "")
                 if name:
                     # Extract script from Unicode name (first word usually)
                     script = name.split()[0]
                     # Normalize script names
-                    if script in ('LATIN', 'CYRILLIC', 'GREEK', 'ARMENIAN', 'HEBREW', 'ARABIC'):
+                    if script in (
+                        "LATIN",
+                        "CYRILLIC",
+                        "GREEK",
+                        "ARMENIAN",
+                        "HEBREW",
+                        "ARABIC",
+                    ):
                         scripts.add(script)
             except ValueError:
                 pass
 
     if len(scripts) > 1:
-        findings.append({
-            'type': 'mixed_scripts',
-            'severity': 'medium',
-            'scripts': sorted(scripts),
-            'description': f'Mixed Unicode scripts detected: {", ".join(sorted(scripts))}'
-        })
+        findings.append(
+            {
+                "type": "mixed_scripts",
+                "severity": "medium",
+                "scripts": sorted(scripts),
+                "description": f"Mixed Unicode scripts detected: {', '.join(sorted(scripts))}",
+            }
+        )
 
     return findings
 
@@ -245,7 +255,7 @@ def normalize_homoglyphs(text: str) -> str:
             result.append(HOMOGLYPHS[char][0])
         else:
             result.append(char)
-    return ''.join(result)
+    return "".join(result)
 
 
 def strip_invisible_chars(text: str) -> str:
@@ -259,22 +269,25 @@ def strip_invisible_chars(text: str) -> str:
         Text with invisible characters removed
     """
     invisible = set(ZERO_WIDTH_CHARS.keys()) | set(BIDI_OVERRIDES.keys())
-    return ''.join(c for c in text if c not in invisible)
+    return "".join(c for c in text if c not in invisible)
 
 
 # Common leet speak substitutions (number -> letter)
 # Values are tuples of possible replacements (first is primary/most common)
 LEET_SUBSTITUTIONS = {
-    '0': ('o',),
-    '1': ('i', 'l'),  # 'i' is more common (w1nd0ws, m1m1katz), but can be 'l' (1sass -> lsass)
-    '3': ('e',),
-    '4': ('a',),
-    '5': ('s',),
-    '7': ('t',),
-    '8': ('b',),
-    '@': ('a',),
-    '$': ('s',),
-    '!': ('i',),
+    "0": ("o",),
+    "1": (
+        "i",
+        "l",
+    ),  # 'i' is more common (w1nd0ws, m1m1katz), but can be 'l' (1sass -> lsass)
+    "3": ("e",),
+    "4": ("a",),
+    "5": ("s",),
+    "7": ("t",),
+    "8": ("b",),
+    "@": ("a",),
+    "$": ("s",),
+    "!": ("i",),
 }
 
 
@@ -295,10 +308,10 @@ def normalize_leet(text: str, use_primary: bool = True) -> str:
             result.append(LEET_SUBSTITUTIONS[char][0])  # Use primary mapping
         else:
             result.append(char)
-    return ''.join(result)
+    return "".join(result)
 
 
-def get_leet_variations(text: str) -> List[str]:
+def get_leet_variations(text: str) -> list[str]:
     """
     Generate all possible leet speak normalizations for ambiguous characters.
 
@@ -321,7 +334,7 @@ def get_leet_variations(text: str) -> List[str]:
             variations_at_pos.append((char,))
 
     # Generate all combinations
-    return [''.join(combo) for combo in product(*variations_at_pos)]
+    return ["".join(combo) for combo in product(*variations_at_pos)]
 
 
 def levenshtein_distance(s1: str, s2: str) -> int:
@@ -350,7 +363,9 @@ def levenshtein_distance(s1: str, s2: str) -> int:
     return previous_row[-1]
 
 
-def detect_typosquatting(text: str, protected_names: List[str], max_distance: int = 2) -> List[dict]:
+def detect_typosquatting(
+    text: str, protected_names: list[str], max_distance: int = 2
+) -> list[dict]:
     """
     Detect potential typosquatting/misspelling of protected process names.
 
@@ -382,20 +397,22 @@ def detect_typosquatting(text: str, protected_names: List[str], max_distance: in
         distance = levenshtein_distance(text_lower, protected_lower)
 
         if 0 < distance <= max_distance:
-            findings.append({
-                'type': 'typosquatting',
-                'severity': 'high',
-                'target_process': protected,
-                'actual_name': text,
-                'edit_distance': distance,
-                'description': f'Possible typosquatting of {protected} (edit distance: {distance})'
-            })
+            findings.append(
+                {
+                    "type": "typosquatting",
+                    "severity": "high",
+                    "target_process": protected,
+                    "actual_name": text,
+                    "edit_distance": distance,
+                    "description": f"Possible typosquatting of {protected} (edit distance: {distance})",
+                }
+            )
             break  # Only report first match
 
     return findings
 
 
-def detect_leet_speak(text: str, protected_names: List[str]) -> List[dict]:
+def detect_leet_speak(text: str, protected_names: list[str]) -> list[dict]:
     """
     Detect leet speak being used to impersonate protected names.
 
@@ -424,14 +441,16 @@ def detect_leet_speak(text: str, protected_names: List[str]) -> List[dict]:
         protected_lower = protected.lower()
         for normalized in variations:
             if normalized == protected_lower and text_lower != protected_lower:
-                findings.append({
-                    'type': 'leet_speak',
-                    'severity': 'high',
-                    'target_process': protected,
-                    'actual_name': text,
-                    'normalized_form': normalized,
-                    'description': f'Leet speak impersonation of {protected}'
-                })
+                findings.append(
+                    {
+                        "type": "leet_speak",
+                        "severity": "high",
+                        "target_process": protected,
+                        "actual_name": text,
+                        "normalized_form": normalized,
+                        "description": f"Leet speak impersonation of {protected}",
+                    }
+                )
                 return findings  # Return on first match
 
     return findings
@@ -459,7 +478,9 @@ def get_canonical_form(text: str) -> str:
     return text.lower()
 
 
-def check_process_name_spoofing(process_name: str, protected_names: List[str]) -> List[dict]:
+def check_process_name_spoofing(
+    process_name: str, protected_names: list[str]
+) -> list[dict]:
     """
     Check if a process name is attempting to spoof a protected process.
 
@@ -497,16 +518,18 @@ def check_process_name_spoofing(process_name: str, protected_names: List[str]) -
         protected_lower = protected.lower()
         if canonical == protected_lower and process_name.lower() != protected_lower:
             # Only add if not already caught by leet speak detection
-            already_found = any(f.get('type') == 'leet_speak' for f in findings)
+            already_found = any(f.get("type") == "leet_speak" for f in findings)
             if not already_found:
-                findings.append({
-                    'type': 'process_spoofing',
-                    'severity': 'critical',
-                    'target_process': protected,
-                    'actual_name': process_name,
-                    'canonical_form': canonical,
-                    'description': f'Possible spoofing of {protected} using lookalike characters'
-                })
+                findings.append(
+                    {
+                        "type": "process_spoofing",
+                        "severity": "critical",
+                        "target_process": protected,
+                        "actual_name": process_name,
+                        "canonical_form": canonical,
+                        "description": f"Possible spoofing of {protected} using lookalike characters",
+                    }
+                )
             break
 
     # Check for typosquatting (only if no other spoofing detected)

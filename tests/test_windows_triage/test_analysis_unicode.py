@@ -1,16 +1,15 @@
 """Tests for Unicode evasion detection."""
 
-import pytest
 from windows_triage.analysis.unicode import (
-    detect_unicode_evasion,
-    normalize_homoglyphs,
-    strip_invisible_chars,
-    normalize_leet,
-    levenshtein_distance,
-    detect_typosquatting,
-    detect_leet_speak,
-    get_canonical_form,
     check_process_name_spoofing,
+    detect_leet_speak,
+    detect_typosquatting,
+    detect_unicode_evasion,
+    get_canonical_form,
+    levenshtein_distance,
+    normalize_homoglyphs,
+    normalize_leet,
+    strip_invisible_chars,
 )
 
 
@@ -23,39 +22,39 @@ class TestDetectUnicodeEvasion:
 
     def test_rlo_attack(self):
         # RLO character followed by text
-        filename = "invoice\u202Eexe.pdf"  # Displays as "invoicfdp.exe"
+        filename = "invoice\u202eexe.pdf"  # Displays as "invoicfdp.exe"
         findings = detect_unicode_evasion(filename)
         assert len(findings) >= 1
-        assert any(f['type'] == 'bidi_override' for f in findings)
-        assert any(f['severity'] == 'critical' for f in findings)
+        assert any(f["type"] == "bidi_override" for f in findings)
+        assert any(f["severity"] == "critical" for f in findings)
 
     def test_zero_width_space(self):
-        filename = "svc\u200Bhost.exe"  # Zero-width space
+        filename = "svc\u200bhost.exe"  # Zero-width space
         findings = detect_unicode_evasion(filename)
         assert len(findings) >= 1
-        assert any(f['type'] == 'zero_width' for f in findings)
+        assert any(f["type"] == "zero_width" for f in findings)
 
     def test_cyrillic_homoglyph(self):
         # Cyrillic 'а' instead of Latin 'a' - use lsass.exe which has 'a'
-        filename = "lsass.exe".replace('a', '\u0430')  # Cyrillic a
+        filename = "lsass.exe".replace("a", "\u0430")  # Cyrillic a
         findings = detect_unicode_evasion(filename)
-        assert any(f['type'] == 'homoglyph' for f in findings)
+        assert any(f["type"] == "homoglyph" for f in findings)
 
     def test_greek_homoglyph(self):
         # Greek 'ο' instead of Latin 'o'
-        filename = "svchost.exe".replace('o', '\u03BF')  # Greek omicron
+        filename = "svchost.exe".replace("o", "\u03bf")  # Greek omicron
         findings = detect_unicode_evasion(filename)
-        assert any(f['type'] == 'homoglyph' for f in findings)
+        assert any(f["type"] == "homoglyph" for f in findings)
 
     def test_mixed_scripts(self):
         # Mix of Latin and Cyrillic - use chr() to avoid escape issues
         filename = "svch" + chr(0x043E) + "st.exe"  # Cyrillic 'о'
         findings = detect_unicode_evasion(filename)
-        assert any(f['type'] in ('homoglyph', 'mixed_scripts') for f in findings)
+        assert any(f["type"] in ("homoglyph", "mixed_scripts") for f in findings)
 
     def test_multiple_issues(self):
         # Both RLO and homoglyph
-        filename = "\u202Esvchost\u0430.exe"
+        filename = "\u202esvchost\u0430.exe"
         findings = detect_unicode_evasion(filename)
         assert len(findings) >= 2
 
@@ -67,14 +66,14 @@ class TestNormalizeHomoglyphs:
         assert normalize_homoglyphs("\u0430bc") == "abc"
 
     def test_cyrillic_o(self):
-        assert normalize_homoglyphs("hell\u043E") == "hello"
+        assert normalize_homoglyphs("hell\u043e") == "hello"
 
     def test_greek_alpha(self):
-        assert normalize_homoglyphs("\u03B1pple") == "apple"
+        assert normalize_homoglyphs("\u03b1pple") == "apple"
 
     def test_mixed(self):
         # Cyrillic а, о and Greek ε
-        text = "h\u0435ll\u043E"
+        text = "h\u0435ll\u043e"
         result = normalize_homoglyphs(text)
         assert result == "hello"
 
@@ -86,16 +85,16 @@ class TestStripInvisibleChars:
     """Tests for strip_invisible_chars function."""
 
     def test_zero_width_space(self):
-        assert strip_invisible_chars("hello\u200Bworld") == "helloworld"
+        assert strip_invisible_chars("hello\u200bworld") == "helloworld"
 
     def test_rlo(self):
-        assert strip_invisible_chars("test\u202Etext") == "testtext"
+        assert strip_invisible_chars("test\u202etext") == "testtext"
 
     def test_bom(self):
-        assert strip_invisible_chars("\uFEFFhello") == "hello"
+        assert strip_invisible_chars("\ufeffhello") == "hello"
 
     def test_multiple_invisibles(self):
-        text = "\u200Btest\u202E\u200Ctext\uFEFF"
+        text = "\u200btest\u202e\u200ctext\ufeff"
         assert strip_invisible_chars(text) == "testtext"
 
     def test_normal_text(self):
@@ -163,8 +162,8 @@ class TestDetectTyposquatting:
         # svchots instead of svchost (transposition)
         findings = detect_typosquatting("svchots.exe", ["svchost.exe"])
         assert len(findings) == 1
-        assert findings[0]['type'] == 'typosquatting'
-        assert findings[0]['target_process'] == 'svchost.exe'
+        assert findings[0]["type"] == "typosquatting"
+        assert findings[0]["target_process"] == "svchost.exe"
 
     def test_svhost(self):
         # svhost instead of svchost (missing c)
@@ -197,8 +196,8 @@ class TestDetectLeetSpeak:
     def test_svch0st(self):
         findings = detect_leet_speak("svch0st.exe", ["svchost.exe"])
         assert len(findings) == 1
-        assert findings[0]['type'] == 'leet_speak'
-        assert findings[0]['target_process'] == 'svchost.exe'
+        assert findings[0]["type"] == "leet_speak"
+        assert findings[0]["target_process"] == "svchost.exe"
 
     def test_5vchost(self):
         findings = detect_leet_speak("5vchost.exe", ["svchost.exe"])
@@ -234,7 +233,7 @@ class TestGetCanonicalForm:
         assert get_canonical_form("svch0st.exe") == "svchost.exe"
 
     def test_with_invisible(self):
-        text = "svc\u200Bhost.exe"
+        text = "svc\u200bhost.exe"
         assert get_canonical_form(text) == "svchost.exe"
 
     def test_combined(self):
@@ -248,7 +247,9 @@ class TestCheckProcessNameSpoofing:
     """Tests for check_process_name_spoofing function."""
 
     def test_clean_name(self):
-        findings = check_process_name_spoofing("notepad.exe", ["svchost.exe", "lsass.exe"])
+        findings = check_process_name_spoofing(
+            "notepad.exe", ["svchost.exe", "lsass.exe"]
+        )
         assert len(findings) == 0
 
     def test_homoglyph_attack(self):
@@ -256,22 +257,22 @@ class TestCheckProcessNameSpoofing:
         filename = "svch" + chr(0x043E) + "st.exe"
         findings = check_process_name_spoofing(filename, ["svchost.exe"])
         assert len(findings) >= 1
-        assert any(f['severity'] in ('critical', 'high') for f in findings)
+        assert any(f["severity"] in ("critical", "high") for f in findings)
 
     def test_leet_speak_attack(self):
         findings = check_process_name_spoofing("5vch0st.exe", ["svchost.exe"])
         assert len(findings) >= 1
-        assert any(f['type'] == 'leet_speak' for f in findings)
+        assert any(f["type"] == "leet_speak" for f in findings)
 
     def test_typosquatting(self):
         findings = check_process_name_spoofing("svchots.exe", ["svchost.exe"])
         assert len(findings) >= 1
-        assert any(f['type'] == 'typosquatting' for f in findings)
+        assert any(f["type"] == "typosquatting" for f in findings)
 
     def test_rlo_attack(self):
-        filename = "svc\u202Eexe.host"
+        filename = "svc\u202eexe.host"
         findings = check_process_name_spoofing(filename, ["svchost.exe"])
-        assert any(f['type'] == 'bidi_override' for f in findings)
+        assert any(f["type"] == "bidi_override" for f in findings)
 
     def test_exact_match_not_flagged(self):
         # Real svchost.exe should not be flagged

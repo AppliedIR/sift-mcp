@@ -1,13 +1,11 @@
 """Tests for auth middleware and analyst identity resolution."""
 
-import pytest
+from sift_gateway.auth import AuthMiddleware, resolve_examiner
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
-
-from sift_gateway.auth import AuthMiddleware, resolve_examiner
 
 
 def _make_app(api_keys: dict | None = None) -> Starlette:
@@ -15,15 +13,19 @@ def _make_app(api_keys: dict | None = None) -> Starlette:
 
     async def protected_endpoint(request: Request):
         identity = resolve_examiner(request)
-        return JSONResponse({"examiner": identity["examiner"], "role": identity["role"]})
+        return JSONResponse(
+            {"examiner": identity["examiner"], "role": identity["role"]}
+        )
 
     async def health_endpoint(request: Request):
         return JSONResponse({"status": "ok"})
 
-    app = Starlette(routes=[
-        Route("/api/test", protected_endpoint, methods=["GET"]),
-        Route("/health", health_endpoint, methods=["GET"]),
-    ])
+    app = Starlette(
+        routes=[
+            Route("/api/test", protected_endpoint, methods=["GET"]),
+            Route("/health", health_endpoint, methods=["GET"]),
+        ]
+    )
     app.add_middleware(AuthMiddleware, api_keys=api_keys)
     return app
 

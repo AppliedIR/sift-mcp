@@ -5,8 +5,8 @@ import logging
 import os
 from contextlib import AsyncExitStack
 
-from mcp.client.stdio import stdio_client, StdioServerParameters
 from mcp.client.session import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.types import Tool
 
 from sift_gateway.backends.base import MCPBackend
@@ -64,11 +64,17 @@ class StdioMCPBackend(MCPBackend):
             self._started = True
             logger.info("Backend %s started (stdio)", self.name)
         except Exception as exc:
-            logger.error("Backend %s failed to start: %s: %s", self.name, type(exc).__name__, exc)
+            logger.error(
+                "Backend %s failed to start: %s: %s", self.name, type(exc).__name__, exc
+            )
             try:
                 await self._exit_stack.aclose()
             except Exception as cleanup_exc:
-                logger.warning("Backend %s cleanup after failed start also failed: %s", self.name, cleanup_exc)
+                logger.warning(
+                    "Backend %s cleanup after failed start also failed: %s",
+                    self.name,
+                    cleanup_exc,
+                )
             self._exit_stack = None
             self._session = None
             raise
@@ -80,9 +86,16 @@ class StdioMCPBackend(MCPBackend):
             try:
                 await asyncio.wait_for(self._exit_stack.aclose(), timeout=_STOP_TIMEOUT)
             except asyncio.TimeoutError:
-                logger.warning("Backend %s stop timed out after %ds", self.name, _STOP_TIMEOUT)
+                logger.warning(
+                    "Backend %s stop timed out after %ds", self.name, _STOP_TIMEOUT
+                )
             except Exception as exc:
-                logger.error("Backend %s error during stop: %s: %s", self.name, type(exc).__name__, exc)
+                logger.error(
+                    "Backend %s error during stop: %s: %s",
+                    self.name,
+                    type(exc).__name__,
+                    exc,
+                )
         self._exit_stack = None
         self._session = None
         self._tools_cache = None
@@ -109,7 +122,7 @@ class StdioMCPBackend(MCPBackend):
                 self._session.call_tool(name, arguments), timeout=_TOOL_CALL_TIMEOUT
             )
             return result.content
-        except (ConnectionError, OSError) as exc:
+        except (ConnectionError, OSError):
             self._tools_cache = None
             raise
 
@@ -118,7 +131,16 @@ class StdioMCPBackend(MCPBackend):
             return {"status": "stopped", "type": "stdio"}
         try:
             await self.list_tools()
-            return {"status": "ok", "type": "stdio", "tools": len(self._tools_cache or [])}
+            return {
+                "status": "ok",
+                "type": "stdio",
+                "tools": len(self._tools_cache or []),
+            }
         except Exception as exc:
-            logger.warning("Backend %s health check failed: %s: %s", self.name, type(exc).__name__, exc)
+            logger.warning(
+                "Backend %s health check failed: %s: %s",
+                self.name,
+                type(exc).__name__,
+                exc,
+            )
             return {"status": "error", "type": "stdio", "error": str(exc)}

@@ -63,7 +63,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from pycti import OpenCTIApiClient
 
@@ -79,7 +79,8 @@ logger = logging.getLogger(__name__)
 # SECURITY: Token MUST be provided via environment variable or config file
 OPENCTI_URL = os.getenv("OPENCTI_URL", "http://localhost:8080")
 
-def _get_opencti_token() -> Optional[str]:
+
+def _get_opencti_token() -> str | None:
     """
     Get OpenCTI API token from environment or config file.
 
@@ -102,7 +103,7 @@ def _get_opencti_token() -> Optional[str]:
     if config_file.exists():
         try:
             return config_file.read_text().strip()
-        except (IOError, OSError):
+        except OSError:
             pass
 
     # 3. Try .env file in current working directory
@@ -110,22 +111,26 @@ def _get_opencti_token() -> Optional[str]:
     if env_file.exists():
         try:
             content = env_file.read_text()
-            for line in content.split('\n'):
+            for line in content.split("\n"):
                 line = line.strip()
-                if line.startswith("OPENCTI_TOKEN=") or line.startswith("OPENCTI_ADMIN_TOKEN="):
+                if line.startswith("OPENCTI_TOKEN=") or line.startswith(
+                    "OPENCTI_ADMIN_TOKEN="
+                ):
                     return line.split("=", 1)[1].strip().strip('"').strip("'")
-        except (IOError, OSError):
+        except OSError:
             pass
 
     return None
 
+
 # Get token at module load time
-OPENCTI_TOKEN: Optional[str] = _get_opencti_token()
+OPENCTI_TOKEN: str | None = _get_opencti_token()
 
 
 # =============================================================================
 # IOC Validation
 # =============================================================================
+
 
 def validate_ioc_format(query: str, ioc_type: str = "auto") -> tuple[bool, str, str]:
     """
@@ -159,48 +164,52 @@ def validate_ioc_format(query: str, ioc_type: str = "auto") -> tuple[bool, str, 
     # -------------------------------------------------------------------------
     # IPv4 Address Validation
     # -------------------------------------------------------------------------
-    ipv4_pattern = r'^(\d{1,3}\.){3}\d{1,3}$'
+    ipv4_pattern = r"^(\d{1,3}\.){3}\d{1,3}$"
     if re.match(ipv4_pattern, query):
-        octets = query.split('.')
+        octets = query.split(".")
         if all(0 <= int(o) <= 255 for o in octets):
             return True, "ipv4", ""
         else:
-            return False, "ipv4", f"Invalid IP format: octets must be 0-255"
+            return False, "ipv4", "Invalid IP format: octets must be 0-255"
 
     # -------------------------------------------------------------------------
     # Hash Validation (MD5=32, SHA1=40, SHA256=64 hex characters)
     # -------------------------------------------------------------------------
     if len(query) in (32, 40, 64):
-        if re.match(r'^[0-9a-fA-F]+$', query):
+        if re.match(r"^[0-9a-fA-F]+$", query):
             hash_types = {32: "md5", 40: "sha1", 64: "sha256"}
             return True, hash_types[len(query)], ""
         else:
             # Length matches hash but not valid hexadecimal
-            return False, "hash", f"Invalid hash format: '{query}' is not valid hexadecimal"
+            return (
+                False,
+                "hash",
+                f"Invalid hash format: '{query}' is not valid hexadecimal",
+            )
 
     # -------------------------------------------------------------------------
     # URL Validation
     # -------------------------------------------------------------------------
-    if query.startswith(('http://', 'https://', 'ftp://')):
+    if query.startswith(("http://", "https://", "ftp://")):
         return True, "url", ""
 
     # -------------------------------------------------------------------------
     # Domain Validation (basic pattern matching)
     # -------------------------------------------------------------------------
-    domain_pattern = r'^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$'
+    domain_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$"
     if re.match(domain_pattern, query):
         return True, "domain", ""
 
     # -------------------------------------------------------------------------
     # CVE Validation
     # -------------------------------------------------------------------------
-    if re.match(r'^CVE-\d{4}-\d+$', query, re.IGNORECASE):
+    if re.match(r"^CVE-\d{4}-\d+$", query, re.IGNORECASE):
         return True, "cve", ""
 
     # -------------------------------------------------------------------------
     # MITRE Technique ID Validation
     # -------------------------------------------------------------------------
-    if re.match(r'^T\d{4}(\.\d{3})?$', query, re.IGNORECASE):
+    if re.match(r"^T\d{4}(\.\d{3})?$", query, re.IGNORECASE):
         return True, "mitre_technique", ""
 
     # -------------------------------------------------------------------------
@@ -212,6 +221,7 @@ def validate_ioc_format(query: str, ioc_type: str = "auto") -> tuple[bool, str, 
 # =============================================================================
 # OpenCTI Query Class
 # =============================================================================
+
 
 class OpenCTIQuery:
     """
@@ -235,11 +245,7 @@ class OpenCTIQuery:
         client: pycti OpenCTIApiClient instance
     """
 
-    def __init__(
-        self,
-        url: str = OPENCTI_URL,
-        token: Optional[str] = None
-    ) -> None:
+    def __init__(self, url: str = OPENCTI_URL, token: str | None = None) -> None:
         """
         Initialize the OpenCTI client.
 
@@ -274,10 +280,7 @@ class OpenCTIQuery:
             list: Formatted indicator results
         """
         results = self.client.indicator.list(
-            search=query,
-            first=limit,
-            orderBy="created",
-            orderMode="desc"
+            search=query, first=limit, orderBy="created", orderMode="desc"
         )
         return self._format_indicators(results)
 
@@ -299,16 +302,12 @@ class OpenCTIQuery:
         results = []
 
         # Search IntrusionSet (where most APT groups are stored)
-        intrusion_sets = self.client.intrusion_set.list(
-            search=query,
-            first=limit
-        )
+        intrusion_sets = self.client.intrusion_set.list(search=query, first=limit)
         results.extend(intrusion_sets)
 
         # Also search ThreatActorGroup for completeness
         threat_actor_groups = self.client.threat_actor_group.list(
-            search=query,
-            first=limit
+            search=query, first=limit
         )
         results.extend(threat_actor_groups)
 
@@ -334,13 +333,12 @@ class OpenCTIQuery:
         Returns:
             list: Formatted malware results
         """
-        results = self.client.malware.list(
-            search=query,
-            first=limit
-        )
+        results = self.client.malware.list(search=query, first=limit)
         return self._format_malware(results)
 
-    def search_attack_patterns(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+    def search_attack_patterns(
+        self, query: str, limit: int = 10
+    ) -> list[dict[str, Any]]:
         """
         Search for attack patterns (MITRE ATT&CK techniques).
 
@@ -351,10 +349,7 @@ class OpenCTIQuery:
         Returns:
             list: Formatted attack pattern results with MITRE IDs
         """
-        results = self.client.attack_pattern.list(
-            search=query,
-            first=limit
-        )
+        results = self.client.attack_pattern.list(search=query, first=limit)
         return self._format_attack_patterns(results)
 
     def search_reports(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
@@ -369,14 +364,13 @@ class OpenCTIQuery:
             list: Formatted report results ordered by publication date
         """
         results = self.client.report.list(
-            search=query,
-            first=limit,
-            orderBy="published",
-            orderMode="desc"
+            search=query, first=limit, orderBy="published", orderMode="desc"
         )
         return self._format_reports(results)
 
-    def search_vulnerabilities(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+    def search_vulnerabilities(
+        self, query: str, limit: int = 10
+    ) -> list[dict[str, Any]]:
         """
         Search for vulnerabilities (CVEs).
 
@@ -387,17 +381,16 @@ class OpenCTIQuery:
         Returns:
             list: Formatted vulnerability results with CVSS scores
         """
-        results = self.client.vulnerability.list(
-            search=query,
-            first=limit
-        )
+        results = self.client.vulnerability.list(search=query, first=limit)
         return self._format_vulnerabilities(results)
 
     # -------------------------------------------------------------------------
     # Advanced Queries
     # -------------------------------------------------------------------------
 
-    def get_recent_indicators(self, days: int = 7, limit: int = 20) -> list[dict[str, Any]]:
+    def get_recent_indicators(
+        self, days: int = 7, limit: int = 20
+    ) -> list[dict[str, Any]]:
         """
         Get indicators created in the last N days.
 
@@ -411,20 +404,20 @@ class OpenCTIQuery:
         Returns:
             list: Recent indicators ordered by creation date (newest first)
         """
-        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat().replace("+00:00", "Z")
+        since = (
+            (datetime.now(timezone.utc) - timedelta(days=days))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
         results = self.client.indicator.list(
             first=limit,
             orderBy="created",
             orderMode="desc",
             filters={
                 "mode": "and",
-                "filters": [{
-                    "key": "created",
-                    "values": [since],
-                    "operator": "gte"
-                }],
-                "filterGroups": []
-            }
+                "filters": [{"key": "created", "values": [since], "operator": "gte"}],
+                "filterGroups": [],
+            },
         )
         return self._format_indicators(results)
 
@@ -445,10 +438,7 @@ class OpenCTIQuery:
             dict: Full context including relationships, or {"found": False}
         """
         # Search for the indicator
-        results = self.client.indicator.list(
-            search=indicator_value,
-            first=5
-        )
+        results = self.client.indicator.list(search=indicator_value, first=5)
 
         # pycti may return False instead of empty list
         if not results or not isinstance(results, list):
@@ -463,16 +453,18 @@ class OpenCTIQuery:
             "description": indicator.get("description", ""),
             "created": indicator.get("created", ""),
             "confidence": indicator.get("confidence", 0),
-            "labels": [l.get("value") if isinstance(l, dict) else l for l in indicator.get("objectLabel", [])],
+            "labels": [
+                lbl.get("value") if isinstance(lbl, dict) else lbl
+                for lbl in indicator.get("objectLabel", [])
+            ],
             "kill_chain_phases": [],
             "related_threats": [],
-            "mitre_techniques": []
+            "mitre_techniques": [],
         }
 
         # Traverse relationships to find connected entities
         relations = self.client.stix_core_relationship.list(
-            fromId=indicator.get("id"),
-            first=20
+            fromId=indicator.get("id"), first=20
         )
         if not relations or not isinstance(relations, list):
             relations = []
@@ -512,7 +504,7 @@ class OpenCTIQuery:
             "malware": self.search_malware(query, limit),
             "attack_patterns": self.search_attack_patterns(query, limit),
             "reports": self.search_reports(query, limit),
-            "vulnerabilities": self.search_vulnerabilities(query, limit)
+            "vulnerabilities": self.search_vulnerabilities(query, limit),
         }
 
     # -------------------------------------------------------------------------
@@ -526,7 +518,7 @@ class OpenCTIQuery:
         Returns:
             list: Connector info including name, scope, and status
         """
-        query = '''
+        query = """
         query ConnectorsList {
           connectors {
             id
@@ -537,22 +529,24 @@ class OpenCTIQuery:
             active
           }
         }
-        '''
+        """
         result = self.client.query(query)
         connectors = result.get("data", {}).get("connectors", [])
         enrichment = []
         for c in connectors:
             if c.get("connector_type") == "INTERNAL_ENRICHMENT":
-                enrichment.append({
-                    "id": c.get("id"),
-                    "name": c.get("name"),
-                    "scope": c.get("connector_scope", []),
-                    "auto": c.get("auto", False),
-                    "active": c.get("active", False)
-                })
+                enrichment.append(
+                    {
+                        "id": c.get("id"),
+                        "name": c.get("name"),
+                        "scope": c.get("connector_scope", []),
+                        "auto": c.get("auto", False),
+                        "active": c.get("active", False),
+                    }
+                )
         return enrichment
 
-    def find_observable(self, value: str) -> Optional[dict[str, Any]]:
+    def find_observable(self, value: str) -> dict[str, Any] | None:
         """
         Find an observable (IP, hash, domain) by its value.
 
@@ -562,18 +556,21 @@ class OpenCTIQuery:
         Returns:
             dict: Observable data if found, None otherwise
         """
-        results = self.client.stix_cyber_observable.list(
-            search=value,
-            first=10
-        )
+        results = self.client.stix_cyber_observable.list(search=value, first=10)
         # Find exact or close match
         for obs in results:
-            obs_value = obs.get("value") or obs.get("hashes", {}).get("SHA-256") or obs.get("hashes", {}).get("MD5")
+            obs_value = (
+                obs.get("value")
+                or obs.get("hashes", {}).get("SHA-256")
+                or obs.get("hashes", {}).get("MD5")
+            )
             if obs_value and value.lower() in obs_value.lower():
                 return obs
         return results[0] if results else None
 
-    def enrich_observable(self, value: str, connector_name: str = "VirusTotal") -> dict[str, Any]:
+    def enrich_observable(
+        self, value: str, connector_name: str = "VirusTotal"
+    ) -> dict[str, Any]:
         """
         Trigger enrichment on an observable.
 
@@ -594,7 +591,7 @@ class OpenCTIQuery:
             return {
                 "success": False,
                 "error": f"Observable '{value}' not found in OpenCTI. Import it first.",
-                "value": value
+                "value": value,
             }
 
         # Find the connector
@@ -609,7 +606,7 @@ class OpenCTIQuery:
             return {
                 "success": False,
                 "error": f"Connector '{connector_name}' not found. Available: {[c['name'] for c in connectors]}",
-                "value": value
+                "value": value,
             }
 
         # Check if observable type is in connector scope
@@ -619,14 +616,13 @@ class OpenCTIQuery:
             return {
                 "success": False,
                 "error": f"Observable type '{obs_type}' not in connector scope: {scope}",
-                "value": value
+                "value": value,
             }
 
         # Trigger enrichment
         try:
             self.client.stix_cyber_observable.ask_for_enrichment(
-                id=observable.get("id"),
-                connector_id=connector["id"]
+                id=observable.get("id"), connector_id=connector["id"]
             )
             return {
                 "success": True,
@@ -634,20 +630,13 @@ class OpenCTIQuery:
                 "value": value,
                 "observable_id": observable.get("id"),
                 "observable_type": obs_type,
-                "connector": connector["name"]
+                "connector": connector["name"],
             }
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "value": value
-            }
+            return {"success": False, "error": str(e), "value": value}
 
     def enrich_and_wait(
-        self,
-        value: str,
-        connector_name: str = "VirusTotal",
-        timeout: int = 30
+        self, value: str, connector_name: str = "VirusTotal", timeout: int = 30
     ) -> dict[str, Any]:
         """
         Trigger enrichment and wait for results.
@@ -686,7 +675,7 @@ class OpenCTIQuery:
             if updated:
                 # Check for new external references (VT adds these)
                 ext_refs = updated.get("externalReferences", [])
-                labels = [l.get("value") for l in updated.get("objectLabel", [])]
+                labels = [lbl.get("value") for lbl in updated.get("objectLabel", [])]
                 if ext_refs or labels:
                     return {
                         "success": True,
@@ -697,14 +686,14 @@ class OpenCTIQuery:
                             {"source": r.get("source_name"), "url": r.get("url")}
                             for r in ext_refs
                         ],
-                        "enriched_by": connector_name
+                        "enriched_by": connector_name,
                     }
 
         return {
             "success": True,
             "message": "Enrichment requested, results pending",
             "value": value,
-            "note": "Check OpenCTI UI for results or query again later"
+            "note": "Check OpenCTI UI for results or query again later",
         }
 
     # -------------------------------------------------------------------------
@@ -715,16 +704,23 @@ class OpenCTIQuery:
         """Format indicator results for output."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "indicator",
-                "name": r.get("name", ""),
-                "pattern": r.get("pattern", ""),
-                "pattern_type": r.get("pattern_type", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "confidence": r.get("confidence", 0),
-                "created": r.get("created", ""),
-                "labels": [l.get("value") if isinstance(l, dict) else l for l in r.get("objectLabel", [])]
-            })
+            formatted.append(
+                {
+                    "type": "indicator",
+                    "name": r.get("name", ""),
+                    "pattern": r.get("pattern", ""),
+                    "pattern_type": r.get("pattern_type", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "confidence": r.get("confidence", 0),
+                    "created": r.get("created", ""),
+                    "labels": [
+                        lbl.get("value") if isinstance(lbl, dict) else lbl
+                        for lbl in r.get("objectLabel", [])
+                    ],
+                }
+            )
         return formatted
 
     def _format_threat_actors(self, results: list[Any]) -> list[dict[str, Any]]:
@@ -734,16 +730,20 @@ class OpenCTIQuery:
             aliases = r.get("aliases") or []
             if isinstance(aliases, str):
                 aliases = [aliases]
-            formatted.append({
-                "type": "threat_actor",
-                "name": r.get("name", ""),
-                "aliases": aliases,
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "goals": r.get("goals") or [],
-                "sophistication": r.get("sophistication", ""),
-                "resource_level": r.get("resource_level", ""),
-                "primary_motivation": r.get("primary_motivation", "")
-            })
+            formatted.append(
+                {
+                    "type": "threat_actor",
+                    "name": r.get("name", ""),
+                    "aliases": aliases,
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "goals": r.get("goals") or [],
+                    "sophistication": r.get("sophistication", ""),
+                    "resource_level": r.get("resource_level", ""),
+                    "primary_motivation": r.get("primary_motivation", ""),
+                }
+            )
         return formatted
 
     def _format_malware(self, results: list[Any]) -> list[dict[str, Any]]:
@@ -753,62 +753,82 @@ class OpenCTIQuery:
             aliases = r.get("aliases") or []
             if isinstance(aliases, str):
                 aliases = [aliases]
-            formatted.append({
-                "type": "malware",
-                "name": r.get("name", ""),
-                "aliases": aliases,
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "malware_types": r.get("malware_types") or [],
-                "is_family": r.get("is_family", False),
-                "capabilities": r.get("capabilities") or []
-            })
+            formatted.append(
+                {
+                    "type": "malware",
+                    "name": r.get("name", ""),
+                    "aliases": aliases,
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "malware_types": r.get("malware_types") or [],
+                    "is_family": r.get("is_family", False),
+                    "capabilities": r.get("capabilities") or [],
+                }
+            )
         return formatted
 
     def _format_attack_patterns(self, results: list[Any]) -> list[dict[str, Any]]:
         """Format attack pattern results for output."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "attack_pattern",
-                "name": r.get("name", ""),
-                "x_mitre_id": r.get("x_mitre_id", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "kill_chain_phases": [p.get("phase_name") if isinstance(p, dict) else p for p in r.get("killChainPhases", [])],
-                "platforms": r.get("x_mitre_platforms", [])
-            })
+            formatted.append(
+                {
+                    "type": "attack_pattern",
+                    "name": r.get("name", ""),
+                    "x_mitre_id": r.get("x_mitre_id", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "kill_chain_phases": [
+                        p.get("phase_name") if isinstance(p, dict) else p
+                        for p in r.get("killChainPhases", [])
+                    ],
+                    "platforms": r.get("x_mitre_platforms", []),
+                }
+            )
         return formatted
 
     def _format_reports(self, results: list[Any]) -> list[dict[str, Any]]:
         """Format report results for output."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "report",
-                "name": r.get("name", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "published": r.get("published", ""),
-                "report_types": r.get("report_types", []),
-                "confidence": r.get("confidence", 0)
-            })
+            formatted.append(
+                {
+                    "type": "report",
+                    "name": r.get("name", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "published": r.get("published", ""),
+                    "report_types": r.get("report_types", []),
+                    "confidence": r.get("confidence", 0),
+                }
+            )
         return formatted
 
     def _format_vulnerabilities(self, results: list[Any]) -> list[dict[str, Any]]:
         """Format vulnerability results for output."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "vulnerability",
-                "name": r.get("name", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "cvss_score": r.get("x_opencti_cvss_base_score", ""),
-                "cvss_severity": r.get("x_opencti_cvss_base_severity", "")
-            })
+            formatted.append(
+                {
+                    "type": "vulnerability",
+                    "name": r.get("name", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "cvss_score": r.get("x_opencti_cvss_base_score", ""),
+                    "cvss_severity": r.get("x_opencti_cvss_base_severity", ""),
+                }
+            )
         return formatted
 
 
 # =============================================================================
 # Output Formatting
 # =============================================================================
+
 
 def format_results(results: dict[str, Any], output_format: str = "text") -> str:
     """
@@ -855,7 +875,9 @@ def format_results(results: dict[str, Any], output_format: str = "text") -> str:
                 aliases = ", ".join(aliases_list[:3]) if aliases_list else "None"
                 lines.append(f"[{i}] {name}")
                 lines.append(f"    Aliases: {aliases}")
-                lines.append(f"    Motivation: {item.get('primary_motivation') or 'Unknown'}")
+                lines.append(
+                    f"    Motivation: {item.get('primary_motivation') or 'Unknown'}"
+                )
 
             elif item_type == "malware":
                 types_list = item.get("malware_types") or []
@@ -893,6 +915,7 @@ def format_results(results: dict[str, Any], output_format: str = "text") -> str:
 # Main Entry Point
 # =============================================================================
 
+
 def main() -> None:
     """
     Main entry point for the OpenCTI query CLI.
@@ -915,43 +938,78 @@ Enrichment examples:
   opencti_query.py "8.8.8.8" --enrich
   opencti_query.py "44d88612fea8a8f36de82e1278abb02f" --enrich --connector VirusTotal
   opencti_query.py "evil.com" --enrich --wait
-"""
+""",
     )
 
     # Positional argument: search query
     parser.add_argument("query", nargs="?", help="Search query")
 
     # Search options
-    parser.add_argument("--type", "-t",
-                        choices=["all", "indicator", "threat_actor", "malware",
-                                "attack_pattern", "report", "vulnerability"],
-                        default="all", help="Entity type to search")
-    parser.add_argument("--limit", "-l", type=int, default=10,
-                        help="Max results per category (default: 10)")
-    parser.add_argument("--recent", "-r", type=int, metavar="DAYS",
-                        help="Get indicators from last N days")
-    parser.add_argument("--context", "-c", action="store_true",
-                        help="Get full context for indicator")
+    parser.add_argument(
+        "--type",
+        "-t",
+        choices=[
+            "all",
+            "indicator",
+            "threat_actor",
+            "malware",
+            "attack_pattern",
+            "report",
+            "vulnerability",
+        ],
+        default="all",
+        help="Entity type to search",
+    )
+    parser.add_argument(
+        "--limit",
+        "-l",
+        type=int,
+        default=10,
+        help="Max results per category (default: 10)",
+    )
+    parser.add_argument(
+        "--recent",
+        "-r",
+        type=int,
+        metavar="DAYS",
+        help="Get indicators from last N days",
+    )
+    parser.add_argument(
+        "--context", "-c", action="store_true", help="Get full context for indicator"
+    )
 
     # Output options
-    parser.add_argument("--json", "-j", action="store_true",
-                        help="Output as JSON")
+    parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
 
     # Connection options
-    parser.add_argument("--url", default=OPENCTI_URL,
-                        help="OpenCTI URL")
-    parser.add_argument("--token", default=None,
-                        help="OpenCTI API token (or set OPENCTI_TOKEN env var)")
+    parser.add_argument("--url", default=OPENCTI_URL, help="OpenCTI URL")
+    parser.add_argument(
+        "--token", default=None, help="OpenCTI API token (or set OPENCTI_TOKEN env var)"
+    )
 
     # Enrichment options
-    parser.add_argument("--enrich", "-e", action="store_true",
-                        help="Trigger enrichment on observable (uses 1 API call)")
-    parser.add_argument("--connector", default="VirusTotal",
-                        help="Enrichment connector to use (default: VirusTotal)")
-    parser.add_argument("--wait", "-w", action="store_true",
-                        help="Wait for enrichment results (up to 30s)")
-    parser.add_argument("--list-connectors", action="store_true",
-                        help="List available enrichment connectors")
+    parser.add_argument(
+        "--enrich",
+        "-e",
+        action="store_true",
+        help="Trigger enrichment on observable (uses 1 API call)",
+    )
+    parser.add_argument(
+        "--connector",
+        default="VirusTotal",
+        help="Enrichment connector to use (default: VirusTotal)",
+    )
+    parser.add_argument(
+        "--wait",
+        "-w",
+        action="store_true",
+        help="Wait for enrichment results (up to 30s)",
+    )
+    parser.add_argument(
+        "--list-connectors",
+        action="store_true",
+        help="List available enrichment connectors",
+    )
 
     args = parser.parse_args()
 
@@ -964,7 +1022,7 @@ Enrichment examples:
         is_valid, detected_type, warning = validate_ioc_format(args.query)
         if not is_valid:
             print(f"Warning: {warning}", file=sys.stderr)
-            print(f"Query may not return expected results.", file=sys.stderr)
+            print("Query may not return expected results.", file=sys.stderr)
 
     try:
         # Use provided token or fall back to configured token
@@ -1019,7 +1077,11 @@ Enrichment examples:
         # ---------------------------------------------------------------------
         if args.recent:
             # Get recent indicators
-            results = {"recent_indicators": octi.get_recent_indicators(days=args.recent, limit=args.limit)}
+            results = {
+                "recent_indicators": octi.get_recent_indicators(
+                    days=args.recent, limit=args.limit
+                )
+            }
 
         elif args.context and args.type == "indicator":
             # Get full context for a specific indicator
@@ -1032,16 +1094,22 @@ Enrichment examples:
                     print(f"Type: {context.get('type')}")
                     print(f"Name: {context.get('name')}")
                     print(f"Confidence: {context.get('confidence')}%")
-                    if context.get('description'):
+                    if context.get("description"):
                         print(f"Description: {context.get('description')[:200]}...")
-                    if context.get('labels'):
+                    if context.get("labels"):
                         print(f"Labels: {', '.join(context.get('labels', []))}")
-                    if context.get('related_threats'):
-                        print(f"Related Threats: {', '.join(context.get('related_threats', []))}")
-                    if context.get('mitre_techniques'):
-                        print(f"MITRE Techniques: {', '.join(context.get('mitre_techniques', []))}")
+                    if context.get("related_threats"):
+                        print(
+                            f"Related Threats: {', '.join(context.get('related_threats', []))}"
+                        )
+                    if context.get("mitre_techniques"):
+                        print(
+                            f"MITRE Techniques: {', '.join(context.get('mitre_techniques', []))}"
+                        )
                 else:
-                    print(f"Indicator '{context.get('indicator')}' not found in OpenCTI")
+                    print(
+                        f"Indicator '{context.get('indicator')}' not found in OpenCTI"
+                    )
             return
 
         elif args.type == "all":
@@ -1056,7 +1124,7 @@ Enrichment examples:
                 "malware": octi.search_malware,
                 "attack_pattern": octi.search_attack_patterns,
                 "report": octi.search_reports,
-                "vulnerability": octi.search_vulnerabilities
+                "vulnerability": octi.search_vulnerabilities,
             }
             results = {args.type: search_funcs[args.type](args.query, args.limit)}
 

@@ -2,15 +2,15 @@
 
 import json
 import logging
+
 import pytest
-
-from rag_mcp.server import RAGServer
 from rag_mcp.oplog import _StructuredFormatter, setup_logging
-
+from rag_mcp.server import RAGServer
 
 # ============================================================================
 # _error_response tests
 # ============================================================================
+
 
 class TestErrorResponse:
     """Tests for standardized error response format."""
@@ -41,6 +41,7 @@ class TestErrorResponse:
 # Structured logging tests
 # ============================================================================
 
+
 class TestStructuredLogging:
     """Tests for structured JSON logging."""
 
@@ -48,8 +49,13 @@ class TestStructuredLogging:
         """JSON formatter produces valid JSON."""
         formatter = _StructuredFormatter("test-service")
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="test.py",
-            lineno=1, msg="test message", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="test message",
+            args=(),
+            exc_info=None,
         )
         output = formatter.format(record)
         parsed = json.loads(output)
@@ -62,8 +68,13 @@ class TestStructuredLogging:
         """Warnings include location info."""
         formatter = _StructuredFormatter()
         record = logging.LogRecord(
-            name="test", level=logging.WARNING, pathname="/foo/bar.py",
-            lineno=42, msg="warn", args=(), exc_info=None,
+            name="test",
+            level=logging.WARNING,
+            pathname="/foo/bar.py",
+            lineno=42,
+            msg="warn",
+            args=(),
+            exc_info=None,
         )
         output = formatter.format(record)
         parsed = json.loads(output)
@@ -74,8 +85,13 @@ class TestStructuredLogging:
         """Info level omits location."""
         formatter = _StructuredFormatter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="test.py",
-            lineno=1, msg="info", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="info",
+            args=(),
+            exc_info=None,
         )
         output = formatter.format(record)
         parsed = json.loads(output)
@@ -88,11 +104,17 @@ class TestStructuredLogging:
             raise ValueError("boom")
         except ValueError:
             import sys
+
             exc_info = sys.exc_info()
 
         record = logging.LogRecord(
-            name="test", level=logging.ERROR, pathname="test.py",
-            lineno=1, msg="error", args=(), exc_info=exc_info,
+            name="test",
+            level=logging.ERROR,
+            pathname="test.py",
+            lineno=1,
+            msg="error",
+            args=(),
+            exc_info=exc_info,
         )
         output = formatter.format(record)
         parsed = json.loads(output)
@@ -101,14 +123,21 @@ class TestStructuredLogging:
 
     def test_setup_logging_text(self):
         """Text format uses standard formatter."""
-        setup_logging("forensic-rag-mcp", level=logging.DEBUG, json_format=False, log_to_file=False)
+        setup_logging(
+            "forensic-rag-mcp",
+            level=logging.DEBUG,
+            json_format=False,
+            log_to_file=False,
+        )
         logger = logging.getLogger("forensic_rag_mcp")
         assert len(logger.handlers) == 1
         assert not isinstance(logger.handlers[0].formatter, _StructuredFormatter)
 
     def test_setup_logging_json(self):
         """JSON format uses StructuredFormatter."""
-        setup_logging("forensic-rag-mcp", level=logging.DEBUG, json_format=True, log_to_file=False)
+        setup_logging(
+            "forensic-rag-mcp", level=logging.DEBUG, json_format=True, log_to_file=False
+        )
         logger = logging.getLogger("forensic_rag_mcp")
         assert len(logger.handlers) == 1
         assert isinstance(logger.handlers[0].formatter, _StructuredFormatter)
@@ -125,33 +154,39 @@ class TestStructuredLogging:
 # Octal IP SSRF guard tests
 # ============================================================================
 
+
 class TestOctalIpGuard:
     """Tests for octal IP notation detection in SSRF guard."""
 
     def test_octal_localhost_detected(self):
         """Octal 127.0.0.1 (0177.0.0.1) is detected as IP literal."""
         from rag_mcp.sources import _is_ip_literal
+
         assert _is_ip_literal("0177.0.0.1") is True
 
     def test_octal_10_network_detected(self):
         """Octal 10.x.x.x (012.x.x.x) is detected."""
         from rag_mcp.sources import _is_ip_literal
+
         assert _is_ip_literal("012.0.0.1") is True
 
     def test_standard_ipv4_detected(self):
         """Standard IPv4 still detected."""
         from rag_mcp.sources import _is_ip_literal
+
         assert _is_ip_literal("127.0.0.1") is True
         assert _is_ip_literal("192.168.1.1") is True
 
     def test_ipv6_detected(self):
         """IPv6 still detected."""
         from rag_mcp.sources import _is_ip_literal
+
         assert _is_ip_literal("::1") is True
 
     def test_hostnames_not_detected(self):
         """Normal hostnames are NOT IP literals."""
         from rag_mcp.sources import _is_ip_literal
+
         assert _is_ip_literal("github.com") is False
         assert _is_ip_literal("api.github.com") is False
         assert _is_ip_literal("raw.githubusercontent.com") is False
@@ -159,24 +194,28 @@ class TestOctalIpGuard:
     def test_empty_and_none(self):
         """Empty string and None handled."""
         from rag_mcp.sources import _is_ip_literal
+
         assert _is_ip_literal("") is False
         assert _is_ip_literal(None) is False
 
     def test_octal_blocked_by_validate_url_host(self):
         """Octal IPs are blocked by the full URL validation chain."""
         from rag_mcp.sources import _validate_url_host
+
         with pytest.raises(ValueError, match="IP literal"):
             _validate_url_host("https://0177.0.0.1/evil")
 
     def test_octal_various_patterns(self):
         """Various octal patterns detected."""
         from rag_mcp.sources import _is_ip_literal
+
         assert _is_ip_literal("0100.0.0.1") is True  # 64.x.x.x
         assert _is_ip_literal("0300.0.0.1") is True  # 192.x.x.x
-        assert _is_ip_literal("00.0.0.0") is True     # 0.0.0.0 in octal
+        assert _is_ip_literal("00.0.0.0") is True  # 0.0.0.0 in octal
 
     def test_non_octal_leading_zero(self):
         """Hostname starting with 0 but not octal IP format."""
         from rag_mcp.sources import _is_ip_literal
+
         # "0day.example.com" starts with 0 but has non-digit after
         assert _is_ip_literal("0day.example.com") is False

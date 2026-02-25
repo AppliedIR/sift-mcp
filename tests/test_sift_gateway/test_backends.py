@@ -1,25 +1,28 @@
 """Tests for backend factory and lifecycle."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-
-from sift_gateway.backends import create_backend, MCPBackend
-from sift_gateway.backends.stdio_backend import StdioMCPBackend
+from sift_gateway.backends import create_backend
 from sift_gateway.backends.http_backend import HttpMCPBackend
+from sift_gateway.backends.stdio_backend import StdioMCPBackend
 from sift_gateway.server import Gateway
-from .conftest import MockBackend, make_tool
 
+from .conftest import MockBackend, make_tool
 
 # --- Backend factory ---
 
+
 class TestBackendFactory:
     def test_create_stdio_backend(self):
-        backend = create_backend("test", {"type": "stdio", "command": "python", "args": ["-m", "test"]})
+        backend = create_backend(
+            "test", {"type": "stdio", "command": "python", "args": ["-m", "test"]}
+        )
         assert isinstance(backend, StdioMCPBackend)
         assert backend.name == "test"
 
     def test_create_http_backend(self):
-        backend = create_backend("test", {"type": "http", "url": "http://localhost:9000/mcp"})
+        backend = create_backend(
+            "test", {"type": "http", "url": "http://localhost:9000/mcp"}
+        )
         assert isinstance(backend, HttpMCPBackend)
         assert backend.name == "test"
 
@@ -34,6 +37,7 @@ class TestBackendFactory:
 
 # --- Backend enabled flag ---
 
+
 class TestBackendEnabled:
     def test_enabled_default_true(self):
         backend = StdioMCPBackend("test", {"type": "stdio"})
@@ -45,6 +49,7 @@ class TestBackendEnabled:
 
 
 # --- StdioMCPBackend not-started guards ---
+
 
 class TestStdioNotStarted:
     async def test_list_tools_raises_if_not_started(self):
@@ -65,9 +70,12 @@ class TestStdioNotStarted:
 
 # --- HttpMCPBackend not-started guards ---
 
+
 class TestHttpNotStarted:
     async def test_health_check_when_stopped(self):
-        backend = HttpMCPBackend("test", {"type": "http", "url": "http://localhost:9000"})
+        backend = HttpMCPBackend(
+            "test", {"type": "http", "url": "http://localhost:9000"}
+        )
         result = await backend.health_check()
         assert result["status"] == "stopped"
         assert "url" in result
@@ -79,6 +87,7 @@ class TestHttpNotStarted:
 
 
 # --- Gateway tool map ---
+
 
 class TestGatewayToolMap:
     async def test_build_tool_map_no_collisions(self):
@@ -133,6 +142,7 @@ class TestGatewayToolMap:
 
 
 # --- Lazy start ---
+
 
 class TestLazyStart:
     async def test_lazy_start_skips_boot(self):

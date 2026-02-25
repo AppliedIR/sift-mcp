@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import time
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
-from opencti_mcp.adaptive import AdaptiveMetrics, AdaptiveConfig, LatencyStats
-from opencti_mcp.config import Config, SecretStr
-from opencti_mcp.feature_flags import FeatureFlags, get_feature_flags, reset_feature_flags
-
+from opencti_mcp.adaptive import AdaptiveConfig, AdaptiveMetrics
+from opencti_mcp.config import Config
+from opencti_mcp.feature_flags import (
+    FeatureFlags,
+    get_feature_flags,
+    reset_feature_flags,
+)
 
 # ============================================================================
 # Feature flags cleanup tests
 # ============================================================================
+
 
 class TestFeatureFlagsCleanup:
     """Tests for dead feature flag removal."""
@@ -47,8 +50,10 @@ class TestFeatureFlagsCleanup:
         d = flags.to_dict()
         assert len(d) == 4
         assert set(d.keys()) == {
-            "response_caching", "graceful_degradation",
-            "startup_validation", "negative_caching",
+            "response_caching",
+            "graceful_degradation",
+            "startup_validation",
+            "negative_caching",
         }
 
     def test_load_from_env(self):
@@ -61,11 +66,14 @@ class TestFeatureFlagsCleanup:
 
     def test_dead_env_vars_ignored(self):
         """Old env vars for removed flags don't cause errors."""
-        with patch.dict("os.environ", {
-            "FF_VERSION_CHECKING": "false",
-            "FF_REQUEST_CORRELATION": "false",
-            "FF_ADAPTIVE_TIMEOUTS": "true",
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "FF_VERSION_CHECKING": "false",
+                "FF_REQUEST_CORRELATION": "false",
+                "FF_ADAPTIVE_TIMEOUTS": "true",
+            },
+        ):
             reset_feature_flags()
             flags = get_feature_flags()
             # Should load without error, dead vars silently ignored
@@ -76,6 +84,7 @@ class TestFeatureFlagsCleanup:
 # ============================================================================
 # Default timeout tests
 # ============================================================================
+
 
 class TestDefaultTimeout:
     """Tests for raised default timeout."""
@@ -93,10 +102,14 @@ class TestDefaultTimeout:
 
     def test_config_env_override(self):
         """OPENCTI_TIMEOUT env var still overrides default."""
-        with patch.dict("os.environ", {
-            "OPENCTI_TOKEN": "test-token",
-            "OPENCTI_TIMEOUT": "120",
-        }, clear=False):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENCTI_TOKEN": "test-token",
+                "OPENCTI_TIMEOUT": "120",
+            },
+            clear=False,
+        ):
             with patch("opencti_mcp.config._load_token", return_value="test-token"):
                 config = Config.load()
                 assert config.timeout_seconds == 120
@@ -106,12 +119,14 @@ class TestDefaultTimeout:
 # Adaptive timeout feedback loop tests
 # ============================================================================
 
+
 class TestAdaptiveTimeoutLoop:
     """Tests for _maybe_adapt_timeout wiring."""
 
     def _make_client(self, timeout=60):
         """Create a mock-configured OpenCTIClient."""
         from opencti_mcp.client import OpenCTIClient
+
         config = MagicMock()
         config.timeout_seconds = timeout
         config.max_results = 100
@@ -220,7 +235,7 @@ class TestAdaptiveTimeoutLoop:
         """Adapted timeout never goes below 10s."""
         client, metrics = self._make_client(timeout=60)
         # Mock get_adaptive_config to return very low timeout
-        with patch.object(metrics, 'get_adaptive_config') as mock_config:
+        with patch.object(metrics, "get_adaptive_config") as mock_config:
             mock_config.return_value = AdaptiveConfig(
                 recommended_timeout=3,  # Very low
                 recommended_retry_delay=1.0,
@@ -239,7 +254,7 @@ class TestAdaptiveTimeoutLoop:
     def test_adapt_clamps_maximum(self):
         """Adapted timeout never exceeds 300s."""
         client, metrics = self._make_client(timeout=60)
-        with patch.object(metrics, 'get_adaptive_config') as mock_config:
+        with patch.object(metrics, "get_adaptive_config") as mock_config:
             mock_config.return_value = AdaptiveConfig(
                 recommended_timeout=500,  # Very high
                 recommended_retry_delay=1.0,
@@ -278,8 +293,8 @@ class TestAdaptiveTimeoutLoop:
         """_maybe_adapt_timeout is called after successful requests."""
         client, metrics = self._make_client(timeout=60)
 
-        with patch.object(client, '_maybe_adapt_timeout') as mock_adapt:
-            with patch.object(client, '_circuit_breaker') as mock_cb:
+        with patch.object(client, "_maybe_adapt_timeout") as mock_adapt:
+            with patch.object(client, "_circuit_breaker") as mock_cb:
                 mock_cb.allow_request.return_value = True
                 mock_cb.record_success = MagicMock()
 

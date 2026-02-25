@@ -7,6 +7,7 @@ import os
 import socket
 import threading
 from urllib.parse import urlparse
+
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -14,15 +15,15 @@ from starlette.routing import Route
 
 from sift_gateway.auth import resolve_examiner
 from sift_gateway.join import (
+    check_join_rate_limit,
     generate_join_code,
+    mark_code_used,
+    record_join_failure,
     store_join_code,
     validate_join_code,
-    mark_code_used,
-    check_join_rate_limit,
-    record_join_failure,
 )
-from sift_gateway.token_gen import generate_gateway_token
 from sift_gateway.rate_limit import check_rate_limit
+from sift_gateway.token_gen import generate_gateway_token
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +48,14 @@ async def list_tools(request: Request) -> JSONResponse:
         backend_name = gateway._tool_map.get(t.name, "")
         if backend_filter and backend_name != backend_filter:
             continue
-        tools.append({
-            "name": t.name,
-            "backend": backend_name,
-            "description": t.description or "",
-            "input_schema": t.inputSchema,
-        })
+        tools.append(
+            {
+                "name": t.name,
+                "backend": backend_name,
+                "description": t.description or "",
+                "input_schema": t.inputSchema,
+            }
+        )
 
     return JSONResponse({"tools": tools, "count": len(tools)})
 
@@ -101,7 +104,9 @@ async def call_tool(request: Request) -> JSONResponse:
         )
 
     try:
-        result = await gateway.call_tool(tool_name, arguments, examiner=identity.get("examiner"))
+        result = await gateway.call_tool(
+            tool_name, arguments, examiner=identity.get("examiner")
+        )
         # Serialize content items
         serialized = []
         for item in result:
@@ -112,11 +117,13 @@ async def call_tool(request: Request) -> JSONResponse:
             else:
                 serialized.append(str(item))
 
-        return JSONResponse({
-            "tool": tool_name,
-            "backend": gateway._tool_map[tool_name],
-            "result": serialized,
-        })
+        return JSONResponse(
+            {
+                "tool": tool_name,
+                "backend": gateway._tool_map[tool_name],
+                "result": serialized,
+            }
+        )
     except KeyError as exc:
         logger.error("Tool call failed — tool not in map: %s — %s", tool_name, exc)
         return JSONResponse(
@@ -124,9 +131,19 @@ async def call_tool(request: Request) -> JSONResponse:
             status_code=404,
         )
     except Exception as exc:
-        logger.error("Tool call failed: %s — %s: %s", tool_name, type(exc).__name__, exc, exc_info=True)
+        logger.error(
+            "Tool call failed: %s — %s: %s",
+            tool_name,
+            type(exc).__name__,
+            exc,
+            exc_info=True,
+        )
         return JSONResponse(
-            {"error": "Tool call failed", "tool": tool_name, "error_type": type(exc).__name__},
+            {
+                "error": "Tool call failed",
+                "tool": tool_name,
+                "error_type": type(exc).__name__,
+            },
             status_code=500,
         )
 
@@ -146,12 +163,14 @@ async def list_backends(request: Request) -> JSONResponse:
             logger.warning("Health check unexpected error for backend %s: %s", name, e)
             health = {"status": "error"}
 
-        backends.append({
-            "name": name,
-            "type": backend.config.get("type", "stdio"),
-            "enabled": backend.enabled,
-            "health": health,
-        })
+        backends.append(
+            {
+                "name": name,
+                "type": backend.config.get("type", "stdio"),
+                "enabled": backend.enabled,
+                "health": health,
+            }
+        )
 
     return JSONResponse({"backends": backends, "count": len(backends)})
 
@@ -159,6 +178,7 @@ async def list_backends(request: Request) -> JSONResponse:
 # ---------------------------------------------------------------------------
 # Service management endpoints
 # ---------------------------------------------------------------------------
+
 
 async def list_services(request: Request) -> JSONResponse:
     """GET /api/v1/services — list all backends with health and started status."""
@@ -172,12 +192,14 @@ async def list_services(request: Request) -> JSONResponse:
             logger.warning("Health check failed for service %s: %s", name, e)
             health = {"status": "error"}
 
-        services.append({
-            "name": name,
-            "type": backend.config.get("type", "stdio"),
-            "started": backend.started,
-            "health": health,
-        })
+        services.append(
+            {
+                "name": name,
+                "type": backend.config.get("type", "stdio"),
+                "started": backend.started,
+                "health": health,
+            }
+        )
 
     return JSONResponse({"services": services, "count": len(services)})
 
@@ -246,7 +268,9 @@ async def restart_service(request: Request) -> JSONResponse:
             await asyncio.wait_for(backend.stop(), timeout=10.0)
         except Exception as e:
             logger.error("Failed to stop service %s during restart: %s", name, e)
-            return JSONResponse({"error": f"Failed to stop during restart: {e}"}, status_code=500)
+            return JSONResponse(
+                {"error": f"Failed to stop during restart: {e}"}, status_code=500
+            )
 
     # Start
     try:
@@ -257,7 +281,9 @@ async def restart_service(request: Request) -> JSONResponse:
     except Exception as e:
         logger.error("Failed to start service %s during restart: %s", name, e)
         await gateway._build_tool_map()
-        return JSONResponse({"error": f"Failed to start during restart: {e}"}, status_code=500)
+        return JSONResponse(
+            {"error": f"Failed to start during restart: {e}"}, status_code=500
+        )
 
     await gateway._build_tool_map()
     return JSONResponse({"status": "restarted", "name": name})
@@ -282,7 +308,11 @@ async def create_join_code(request: Request) -> JSONResponse:
         except json.JSONDecodeError:
             pass
 
-    if not isinstance(expires_hours, (int, float)) or expires_hours < 1 or expires_hours > 48:
+    if (
+        not isinstance(expires_hours, (int, float))
+        or expires_hours < 1
+        or expires_hours > 48
+    ):
         return JSONResponse(
             {"error": "expires_hours must be between 1 and 48"},
             status_code=400,
@@ -296,11 +326,13 @@ async def create_join_code(request: Request) -> JSONResponse:
     parsed = urlparse(gw_url)
     host_port = f"{parsed.hostname}:{parsed.port}"
 
-    return JSONResponse({
-        "code": code,
-        "expires_hours": expires_hours,
-        "instructions": f"aiir join --sift {host_port} --code {code}",
-    })
+    return JSONResponse(
+        {
+            "code": code,
+            "expires_hours": expires_hours,
+            "instructions": f"aiir join --sift {host_port} --code {code}",
+        }
+    )
 
 
 async def join_gateway(request: Request) -> JSONResponse:
@@ -385,8 +417,9 @@ async def join_gateway(request: Request) -> JSONResponse:
 
 async def join_status(request: Request) -> JSONResponse:
     """GET /api/v1/setup/join-status — check pending join codes (authenticated)."""
-    from sift_gateway.join import _load_state
     import time
+
+    from sift_gateway.join import _load_state
 
     state = _load_state()
     now = time.time()
@@ -403,8 +436,9 @@ _CONFIG_LOCK = threading.Lock()
 
 def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
     """Add a new API key to the gateway config and write to disk."""
-    import yaml
     from pathlib import Path
+
+    import yaml
 
     with _CONFIG_LOCK:
         config_path = Path.home() / ".aiir" / "gateway.yaml"
@@ -432,7 +466,9 @@ def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
                 yaml.dump(config, f, default_flow_style=False)
         except OSError as e:
             logger.error("Failed to write gateway config: %s", e)
-            raise HTTPException(status_code=500, detail="Failed to save configuration")
+            raise HTTPException(
+                status_code=500, detail="Failed to save configuration"
+            ) from e
 
     # Also update the in-memory gateway auth keys
     if hasattr(gateway, "_app"):
@@ -447,8 +483,9 @@ def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
 
 def _add_wintools_backend(gateway, url: str, token: str) -> None:
     """Add a wintools-mcp HTTP backend to the gateway config."""
-    import yaml
     from pathlib import Path
+
+    import yaml
 
     with _CONFIG_LOCK:
         config_path = Path.home() / ".aiir" / "gateway.yaml"
@@ -478,7 +515,9 @@ def _add_wintools_backend(gateway, url: str, token: str) -> None:
                 yaml.dump(config, f, default_flow_style=False)
         except OSError as e:
             logger.error("Failed to write gateway config: %s", e)
-            raise HTTPException(status_code=500, detail="Failed to save configuration")
+            raise HTTPException(
+                status_code=500, detail="Failed to save configuration"
+            ) from e
 
 
 def _get_gateway_url(gateway) -> str:

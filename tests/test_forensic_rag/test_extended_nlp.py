@@ -14,7 +14,6 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from rag_mcp.index import RAGIndex
 
 # Fixture rag_index provided by conftest.py
 
@@ -42,7 +41,6 @@ EXTENDED_MITRE_QUERIES = [
     ("T1078.002", "domain accounts", 0.5),
     ("T1078.003", "local accounts", 0.5),
     ("T1078.004", "cloud accounts", 0.5),
-
     # Reconnaissance (TA0043)
     ("T1595", "active scanning", 0.5),
     ("T1595.001", "scanning ip blocks", 0.5),
@@ -60,7 +58,6 @@ EXTENDED_MITRE_QUERIES = [
     ("T1596", "search open technical databases", 0.5),
     ("T1593", "search open websites domains", 0.5),
     ("T1594", "search victim owned websites", 0.5),
-
     # Resource Development (TA0042)
     ("T1583", "acquire infrastructure", 0.5),
     ("T1583.001", "domains", 0.5),
@@ -90,7 +87,6 @@ EXTENDED_MITRE_QUERIES = [
     ("T1608.003", "install digital certificate", 0.5),
     ("T1608.004", "drive-by target", 0.5),
     ("T1608.005", "link target", 0.5),
-
     # Additional Execution
     ("T1106", "native api", 0.5),
     ("T1129", "shared modules", 0.5),
@@ -98,7 +94,6 @@ EXTENDED_MITRE_QUERIES = [
     ("T1559", "inter-process communication", 0.5),
     ("T1559.001", "component object model", 0.5),
     ("T1559.002", "dynamic data exchange", 0.5),
-
     # Additional Persistence
     ("T1037", "boot or logon initialization scripts", 0.5),
     ("T1037.001", "logon script windows", 0.5),
@@ -143,7 +138,6 @@ EXTENDED_MITRE_QUERIES = [
     ("T1505.002", "transport agent", 0.5),
     ("T1505.003", "web shell", 0.6),
     ("T1505.004", "iis components", 0.5),
-
     # Additional Privilege Escalation
     ("T1484", "domain policy modification", 0.5),
     ("T1484.001", "group policy modification", 0.5),
@@ -151,7 +145,6 @@ EXTENDED_MITRE_QUERIES = [
     ("T1546.012", "image file execution options", 0.5),
     ("T1546.013", "powershell profile", 0.5),
     ("T1546.014", "emond", 0.5),
-
     # Additional Defense Evasion
     ("T1612", "build image on host", 0.5),
     ("T1622", "debugger evasion", 0.5),
@@ -222,7 +215,6 @@ EXTENDED_DETECTION_QUERIES = [
     ("watering hole attack detection", "watering", 0.5),
     ("spear phishing detection", "phishing", 0.6),
     ("business email compromise detection", "email", 0.5),
-
     # Endpoint Detection
     ("edr bypass detection", "edr", 0.5),
     ("antivirus evasion detection", "antivirus", 0.5),
@@ -230,7 +222,6 @@ EXTENDED_DETECTION_QUERIES = [
     ("virtualization detection evasion", "virtual", 0.5),
     ("debugger detection evasion", "debugger", 0.5),
     ("detect analysis environment checks", "analysis", 0.5),
-
     # Network Detection
     ("detect dns exfiltration", "dns", 0.6),
     ("icmp tunnel detection", "icmp", 0.5),
@@ -241,7 +232,6 @@ EXTENDED_DETECTION_QUERIES = [
     ("dga detection", "dga", 0.5),
     ("detect beaconing behavior", "beacon", 0.6),
     ("encrypted traffic analysis", "encrypted", 0.5),
-
     # Active Directory Detection
     ("bloodhound recon detection", "bloodhound", 0.5),
     ("ldap reconnaissance detection", "ldap", 0.5),
@@ -258,7 +248,6 @@ EXTENDED_DETECTION_QUERIES = [
     ("constrained delegation detection", "constrained", 0.5),
     ("unconstrained delegation detection", "unconstrained", 0.5),
     ("resource based constrained delegation", "rbcd", 0.5),
-
     # Cloud Detection
     ("detect aws persistence", "aws", 0.5),
     ("azure token theft detection", "azure", 0.5),
@@ -272,7 +261,6 @@ EXTENDED_DETECTION_QUERIES = [
     ("detect container escape", "container escape", 0.5),
     ("kubernetes attack detection", "kubernetes", 0.5),
     ("detect pod security bypass", "pod", 0.5),
-
     # Malware Behavior Detection
     ("detect packed executable", "packed", 0.5),
     ("crypter detection", "crypter", 0.5),
@@ -284,7 +272,6 @@ EXTENDED_DETECTION_QUERIES = [
     ("detect early bird injection", "early bird", 0.5),
     ("mockingjay injection detection", "mockingjay", 0.5),
     ("dirty vanity detection", "vanity", 0.5),
-
     # Ransomware Specific
     ("detect ransomware encryption behavior", "ransomware", 0.6),
     ("shadow copy deletion detection", "shadow copy", 0.6),
@@ -295,7 +282,6 @@ EXTENDED_DETECTION_QUERIES = [
     ("mass file modification detection", "mass file", 0.5),
     ("detect file extension changes", "extension", 0.5),
     ("entropy analysis ransomware", "entropy", 0.5),
-
     # Credential Theft Specific
     ("detect memdump credential", "memdump", 0.5),
     ("comsvcs minidump detection", "comsvcs", 0.6),
@@ -307,7 +293,6 @@ EXTENDED_DETECTION_QUERIES = [
     ("reg save sam detection", "reg save", 0.6),
     ("detect lazagne", "lazagne", 0.5),
     ("browser credential theft detection", "browser credential", 0.5),
-
     # Specific Tool Detection
     ("detect sliver c2", "sliver", 0.5),
     ("metasploit detection", "metasploit", 0.5),
@@ -328,7 +313,6 @@ EXTENDED_DETECTION_QUERIES = [
     ("detect invoke-mimikatz", "invoke-mimikatz", 0.6),
     ("powersploit detection", "powersploit", 0.6),
     ("detect sharphound", "sharphound", 0.5),
-
     # Windows Specific Detection
     ("detect wdigest credential", "wdigest", 0.5),
     ("ssp credential detection", "ssp", 0.5),
@@ -340,7 +324,6 @@ EXTENDED_DETECTION_QUERIES = [
     ("nanodump detection", "nanodump", 0.5),
     ("detect handlekatz", "handlekatz", 0.5),
     ("pypykatz detection", "pypykatz", 0.5),
-
     # Linux Specific Detection
     ("detect linux rootkit", "rootkit", 0.6),
     ("linux kernel module attack", "kernel module", 0.5),
@@ -356,7 +339,6 @@ EXTENDED_DETECTION_QUERIES = [
     ("linux authorized keys backdoor", "authorized_keys", 0.5),
     ("detect linux reverse shell", "reverse shell", 0.6),
     ("linux bind shell detection", "bind shell", 0.5),
-
     # macOS Specific Detection
     ("detect macos persistence", "macos", 0.5),
     ("launchd persistence detection", "launchd", 0.5),
@@ -364,7 +346,6 @@ EXTENDED_DETECTION_QUERIES = [
     ("macos authorization plugin", "authorization", 0.5),
     ("detect tcc bypass macos", "tcc", 0.5),
     ("macos keychain access detection", "keychain", 0.5),
-
     # Mobile Detection
     ("android malware detection", "android", 0.5),
     ("detect ios jailbreak", "ios", 0.5),
@@ -401,7 +382,6 @@ EXTENDED_FORENSIC_QUERIES = [
     ("dropbox forensics", "dropbox", 0.5),
     ("google drive forensics", "google drive", 0.5),
     ("box forensics sync", "box sync", 0.5),
-
     # Registry Forensics Extended
     ("ntuser dat forensics", "ntuser", 0.6),
     ("usrclass dat forensics", "usrclass", 0.5),
@@ -414,7 +394,6 @@ EXTENDED_FORENSIC_QUERIES = [
     ("bcd hive forensics", "bcd", 0.5),
     ("components hive forensics", "components", 0.5),
     ("drivers hive forensics", "drivers", 0.5),
-
     # Event Log Forensics Extended
     ("security evtx forensics", "security", 0.6),
     ("system evtx forensics", "system", 0.5),
@@ -432,7 +411,6 @@ EXTENDED_FORENSIC_QUERIES = [
     ("code integrity evtx", "code integrity", 0.5),
     ("ntlm operational evtx", "ntlm", 0.5),
     ("kerberos operational evtx", "kerberos", 0.5),
-
     # Memory Forensics Extended
     ("volatility yarascan", "yarascan", 0.5),
     ("volatility filescan", "filescan", 0.5),
@@ -461,7 +439,6 @@ EXTENDED_FORENSIC_QUERIES = [
     ("volatility getservicesids", "servicesids", 0.5),
     ("volatility mutantscan", "mutantscan", 0.5),
     ("volatility symlinkscan", "symlinkscan", 0.5),
-
     # Linux Forensics Extended
     ("linux var log forensics", "var log", 0.5),
     ("linux syslog forensics", "syslog", 0.5),
@@ -479,7 +456,6 @@ EXTENDED_FORENSIC_QUERIES = [
     ("linux postgresql forensics", "postgresql", 0.5),
     ("linux docker forensics", "docker", 0.5),
     ("kubernetes audit forensics", "kubernetes", 0.5),
-
     # macOS Forensics Extended
     ("macos unified log forensics", "unified log", 0.5),
     ("macos asl forensics", "asl", 0.5),
@@ -489,7 +465,6 @@ EXTENDED_FORENSIC_QUERIES = [
     ("macos kext forensics", "kext", 0.5),
     ("macos plist forensics", "plist", 0.5),
     ("macos airport forensics", "airport", 0.5),
-
     # Network Forensics Extended
     ("pcap timeline analysis", "pcap", 0.5),
     ("netflow forensics", "netflow", 0.5),
@@ -505,7 +480,6 @@ EXTENDED_FORENSIC_QUERIES = [
     ("ftp traffic forensics", "ftp traffic", 0.5),
     ("smtp traffic forensics", "smtp", 0.5),
     ("imap traffic forensics", "imap", 0.5),
-
     # Mobile Forensics Extended
     ("android sqlite forensics", "sqlite", 0.5),
     ("android shared preferences forensics", "shared preferences", 0.5),
@@ -515,7 +489,6 @@ EXTENDED_FORENSIC_QUERIES = [
     ("ios keychain forensics", "ios keychain", 0.5),
     ("ios sms forensics", "ios sms", 0.5),
     ("ios call history forensics", "call history", 0.5),
-
     # Cloud Forensics Extended
     ("aws cloudtrail forensics", "cloudtrail", 0.5),
     ("aws vpc flow logs forensics", "vpc flow", 0.5),
@@ -532,47 +505,59 @@ EXTENDED_FORENSIC_QUERIES = [
 # Test Classes
 # =============================================================================
 
+
 class TestExtendedMITRE:
     """Extended MITRE technique tests."""
 
-    @pytest.mark.parametrize("technique_id,expected_keyword,min_score", EXTENDED_MITRE_QUERIES)
-    def test_extended_mitre_technique(self, rag_index, technique_id, expected_keyword, min_score):
+    @pytest.mark.parametrize(
+        "technique_id,expected_keyword,min_score", EXTENDED_MITRE_QUERIES
+    )
+    def test_extended_mitre_technique(
+        self, rag_index, technique_id, expected_keyword, min_score
+    ):
         """Test extended MITRE technique queries."""
         result = rag_index.search(technique_id, top_k=5)
         results = result["results"]
 
         assert results, f"No results for: {technique_id}"
         # Allow lower scores for extended techniques that may have less coverage
-        assert results[0]["score"] >= min_score, \
+        assert results[0]["score"] >= min_score, (
             f"Score {results[0]['score']:.3f} below {min_score} for: {technique_id}"
+        )
 
 
 class TestExtendedDetection:
     """Extended detection scenario tests."""
 
-    @pytest.mark.parametrize("query,expected_keyword,min_score", EXTENDED_DETECTION_QUERIES)
+    @pytest.mark.parametrize(
+        "query,expected_keyword,min_score", EXTENDED_DETECTION_QUERIES
+    )
     def test_extended_detection(self, rag_index, query, expected_keyword, min_score):
         """Test extended detection queries."""
         result = rag_index.search(query, top_k=5)
         results = result["results"]
 
         assert results, f"No results for: {query}"
-        assert results[0]["score"] >= min_score, \
+        assert results[0]["score"] >= min_score, (
             f"Score {results[0]['score']:.3f} below {min_score} for: {query}"
+        )
 
 
 class TestExtendedForensics:
     """Extended forensics tests."""
 
-    @pytest.mark.parametrize("query,expected_keyword,min_score", EXTENDED_FORENSIC_QUERIES)
+    @pytest.mark.parametrize(
+        "query,expected_keyword,min_score", EXTENDED_FORENSIC_QUERIES
+    )
     def test_extended_forensics(self, rag_index, query, expected_keyword, min_score):
         """Test extended forensic queries."""
         result = rag_index.search(query, top_k=5)
         results = result["results"]
 
         assert results, f"No results for: {query}"
-        assert results[0]["score"] >= min_score, \
+        assert results[0]["score"] >= min_score, (
             f"Score {results[0]['score']:.3f} below {min_score} for: {query}"
+        )
 
 
 if __name__ == "__main__":

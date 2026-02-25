@@ -11,21 +11,19 @@ Tests cover:
 from __future__ import annotations
 
 import pytest
-from opencti_mcp.validation import (
-    validate_observable_types,
-    validate_note_types,
-    validate_date_filter,
-    validate_pattern_type,
-    VALID_OBSERVABLE_TYPES,
-    VALID_NOTE_TYPES,
-    VALID_PATTERN_TYPES,
-)
 from opencti_mcp.errors import ValidationError
-
+from opencti_mcp.validation import (
+    VALID_PATTERN_TYPES,
+    validate_date_filter,
+    validate_note_types,
+    validate_observable_types,
+    validate_pattern_type,
+)
 
 # =============================================================================
 # Observable Type Validation Tests
 # =============================================================================
+
 
 class TestObservableTypeValidation:
     """Test observable type validation."""
@@ -39,8 +37,17 @@ class TestObservableTypeValidation:
     def test_all_known_types_accepted(self):
         """All known observable types should be accepted."""
         # Test a subset to verify
-        known_types = ["IPv4-Addr", "IPv6-Addr", "Domain-Name", "URL", "StixFile",
-                       "Email-Addr", "Mac-Addr", "Process", "User-Account"]
+        known_types = [
+            "IPv4-Addr",
+            "IPv6-Addr",
+            "Domain-Name",
+            "URL",
+            "StixFile",
+            "Email-Addr",
+            "Mac-Addr",
+            "Process",
+            "User-Account",
+        ]
         result = validate_observable_types(known_types)
         assert result == known_types
 
@@ -82,13 +89,16 @@ class TestObservableTypeValidation:
         with pytest.raises(ValidationError, match="must be a list"):
             validate_observable_types("IPv4-Addr")
 
-    @pytest.mark.parametrize("malicious", [
-        "IPv4-Addr'; DROP TABLE--",
-        "IPv4-Addr<script>",
-        "IPv4-Addr\x00evil",
-        "../../../etc/passwd",
-        "${observable_type}",
-    ])
+    @pytest.mark.parametrize(
+        "malicious",
+        [
+            "IPv4-Addr'; DROP TABLE--",
+            "IPv4-Addr<script>",
+            "IPv4-Addr\x00evil",
+            "../../../etc/passwd",
+            "${observable_type}",
+        ],
+    )
     def test_injection_attempts_rejected(self, malicious: str):
         """Injection attempts are rejected."""
         with pytest.raises(ValidationError):
@@ -103,6 +113,7 @@ class TestObservableTypeValidation:
 # =============================================================================
 # Note Type Validation Tests
 # =============================================================================
+
 
 class TestNoteTypeValidation:
     """Test note type validation."""
@@ -139,12 +150,15 @@ class TestNoteTypeValidation:
         with pytest.raises(ValidationError, match="must be a list"):
             validate_note_types("analysis")
 
-    @pytest.mark.parametrize("malicious", [
-        "analysis'; DROP TABLE--",
-        "analysis<script>",
-        "analysis\x00evil",
-        "analysis`id`",
-    ])
+    @pytest.mark.parametrize(
+        "malicious",
+        [
+            "analysis'; DROP TABLE--",
+            "analysis<script>",
+            "analysis\x00evil",
+            "analysis`id`",
+        ],
+    )
     def test_injection_in_note_types_rejected(self, malicious: str):
         """Injection attempts in note types are rejected."""
         with pytest.raises(ValidationError, match="invalid characters"):
@@ -169,6 +183,7 @@ class TestNoteTypeValidation:
 # =============================================================================
 # Date Filter Validation Tests
 # =============================================================================
+
 
 class TestDateFilterValidation:
     """Test date filter validation."""
@@ -262,11 +277,14 @@ class TestDateFilterValidation:
         with pytest.raises(ValidationError, match="must be a string"):
             validate_date_filter(20240115, "date")
 
-    @pytest.mark.parametrize("malicious", [
-        "2024-01-15'; DROP TABLE--",
-        "2024-01-15<script>",
-        "2024-01-15${date}",
-    ])
+    @pytest.mark.parametrize(
+        "malicious",
+        [
+            "2024-01-15'; DROP TABLE--",
+            "2024-01-15<script>",
+            "2024-01-15${date}",
+        ],
+    )
     def test_injection_attempts_rejected(self, malicious: str):
         """Injection attempts are rejected."""
         with pytest.raises(ValidationError):
@@ -286,6 +304,7 @@ class TestDateFilterValidation:
 # =============================================================================
 # Pattern Type Validation Tests
 # =============================================================================
+
 
 class TestPatternTypeValidation:
     """Test pattern type validation."""
@@ -330,6 +349,7 @@ class TestPatternTypeValidation:
 # =============================================================================
 # Deep Edge Case Tests
 # =============================================================================
+
 
 class TestDeepEdgeCases:
     """Deep edge case testing for all validations."""
@@ -388,6 +408,7 @@ class TestDeepEdgeCases:
 # Unicode Security Tests for New Functions
 # =============================================================================
 
+
 class TestNewFunctionUnicodeSecurity:
     """Unicode security tests for new validation functions."""
 
@@ -416,6 +437,7 @@ class TestNewFunctionUnicodeSecurity:
 # =============================================================================
 # Integration-Style Tests
 # =============================================================================
+
 
 class TestValidationIntegration:
     """Integration-style tests combining multiple validations."""

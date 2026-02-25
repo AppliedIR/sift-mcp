@@ -15,8 +15,14 @@ def clear_cache():
 
 REQUIRED_ARTIFACT_FIELDS = {"name", "description", "platform"}
 OPTIONAL_ARTIFACT_FIELDS = {
-    "locations", "proves", "does_not_prove", "timestamps",
-    "common_misinterpretations", "corroborate_with", "related_tools", "references",
+    "locations",
+    "proves",
+    "does_not_prove",
+    "timestamps",
+    "common_misinterpretations",
+    "corroborate_with",
+    "related_tools",
+    "references",
     "cross_mcp_checks",
 }
 
@@ -32,7 +38,9 @@ class TestArtifactSchemas:
                 # Try the description-based name
                 continue
             for field in REQUIRED_ARTIFACT_FIELDS:
-                assert field in art, f"Artifact '{name}' missing required field '{field}'"
+                assert field in art, (
+                    f"Artifact '{name}' missing required field '{field}'"
+                )
 
     def test_all_artifacts_have_proves_or_does_not_prove(self):
         """Every artifact should document what it proves or doesn't."""
@@ -49,15 +57,23 @@ class TestArtifactSchemas:
         for platform in ("windows", "linux"):
             for art in loader._load_all_in_dir(f"artifacts/{platform}"):
                 for ts in art.get("timestamps", []):
-                    assert "field" in ts, f"Timestamp in '{art['name']}' missing 'field'"
-                    assert "meaning" in ts, f"Timestamp in '{art['name']}' missing 'meaning'"
+                    assert "field" in ts, (
+                        f"Timestamp in '{art['name']}' missing 'field'"
+                    )
+                    assert "meaning" in ts, (
+                        f"Timestamp in '{art['name']}' missing 'meaning'"
+                    )
 
     def test_artifact_misinterpretations_have_claim_and_correction(self):
         for platform in ("windows", "linux"):
             for art in loader._load_all_in_dir(f"artifacts/{platform}"):
                 for m in art.get("common_misinterpretations", []):
-                    assert "claim" in m, f"Misinterpretation in '{art['name']}' missing 'claim'"
-                    assert "correction" in m, f"Misinterpretation in '{art['name']}' missing 'correction'"
+                    assert "claim" in m, (
+                        f"Misinterpretation in '{art['name']}' missing 'claim'"
+                    )
+                    assert "correction" in m, (
+                        f"Misinterpretation in '{art['name']}' missing 'correction'"
+                    )
 
 
 # --- Tool schema ---
@@ -105,11 +121,12 @@ class TestToolSchemas:
 
 # --- Discipline schema ---
 
+
 class TestDisciplineSchemas:
     def test_rules_have_required_fields(self):
         rules = loader.get_rules()
         for rule in rules:
-            assert "id" in rule, f"Rule missing 'id'"
+            assert "id" in rule, "Rule missing 'id'"
             assert "name" in rule, f"Rule '{rule.get('id', '?')}' missing 'name'"
             assert "severity" in rule, f"Rule '{rule['id']}' missing 'severity'"
             assert "description" in rule, f"Rule '{rule['id']}' missing 'description'"
@@ -118,13 +135,17 @@ class TestDisciplineSchemas:
         conf = loader.get_confidence_definitions()
         for level, defn in conf.items():
             assert "criteria" in defn, f"Confidence '{level}' missing 'criteria'"
-            assert "min_evidence_ids" in defn, f"Confidence '{level}' missing 'min_evidence_ids'"
+            assert "min_evidence_ids" in defn, (
+                f"Confidence '{level}' missing 'min_evidence_ids'"
+            )
 
     def test_anti_patterns_have_required_fields(self):
         patterns = loader.get_anti_patterns()
         for ap in patterns:
             assert "name" in ap, "Anti-pattern missing 'name'"
-            assert "description" in ap, f"Anti-pattern '{ap['name']}' missing 'description'"
+            assert "description" in ap, (
+                f"Anti-pattern '{ap['name']}' missing 'description'"
+            )
             assert "severity" in ap, f"Anti-pattern '{ap['name']}' missing 'severity'"
 
     def test_checkpoints_have_required_fields(self):
@@ -140,7 +161,9 @@ class TestDisciplineSchemas:
         pbs = loader.list_playbooks()
         assert len(pbs) == 14, f"Expected 14 playbooks, got {len(pbs)}"
         for pb_summary in pbs:
-            assert pb_summary["phases"] >= 2, f"Playbook '{pb_summary['name']}' has < 2 phases"
+            assert pb_summary["phases"] >= 2, (
+                f"Playbook '{pb_summary['name']}' has < 2 phases"
+            )
 
     def test_checklists_have_files_and_tools(self):
         cls = loader.list_collection_checklists()
@@ -154,12 +177,17 @@ class TestDisciplineSchemas:
 
 # --- Framework schema ---
 
+
 class TestFrameworkSchema:
     def test_framework_has_all_sections(self):
         fw = loader.get_investigation_framework()
         required_sections = [
-            "principles", "workflow", "hitl_checkpoints",
-            "never_decide_autonomously", "self_check", "golden_rules",
+            "principles",
+            "workflow",
+            "hitl_checkpoints",
+            "never_decide_autonomously",
+            "self_check",
+            "golden_rules",
         ]
         for section in required_sections:
             assert section in fw, f"Framework missing section '{section}'"
@@ -174,7 +202,9 @@ class TestFrameworkSchema:
         fw = loader.get_investigation_framework()
         for w in fw["workflow"]:
             assert "step" in w, "Workflow item missing 'step'"
-            assert "description" in w, f"Workflow step '{w['step']}' missing 'description'"
+            assert "description" in w, (
+                f"Workflow step '{w['step']}' missing 'description'"
+            )
 
     def test_framework_hitl_checkpoints_have_action_and_why(self):
         fw = loader.get_investigation_framework()
@@ -184,6 +214,7 @@ class TestFrameworkSchema:
 
 
 # --- Cross-MCP checks schema ---
+
 
 class TestCrossMcpChecks:
     VALID_MCPS = {"windows-triage", "opencti", "forensic-rag", "remnux"}
@@ -207,8 +238,12 @@ class TestCrossMcpChecks:
                 name = art.get("name", "?")
                 for check in art.get("cross_mcp_checks", []):
                     assert "mcp" in check, f"cross_mcp_check in '{name}' missing 'mcp'"
-                    assert "tool" in check, f"cross_mcp_check in '{name}' missing 'tool'"
-                    assert "when" in check, f"cross_mcp_check in '{name}' missing 'when'"
+                    assert "tool" in check, (
+                        f"cross_mcp_check in '{name}' missing 'tool'"
+                    )
+                    assert "when" in check, (
+                        f"cross_mcp_check in '{name}' missing 'when'"
+                    )
 
     def test_cross_mcp_checks_use_valid_mcps(self):
         """MCP names must be from the allowed set."""
@@ -231,6 +266,7 @@ class TestCrossMcpChecks:
 
 
 # --- Scenario playbook schema ---
+
 
 class TestScenarioPlaybooks:
     def test_scenario_playbooks_have_mitre(self):
@@ -277,12 +313,24 @@ class TestScenarioPlaybooks:
 
 # --- Tool cross-MCP schema ---
 
+
 class TestToolCrossMcp:
     TOOLS_WITH_CROSS_MCP = [
-        "PECmd", "AmcacheParser", "AppCompatCacheParser", "MFTECmd",
-        "RECmd", "EvtxECmd", "Hayabusa", "Volatility 3",
-        "densityscout", "sigcheck", "capa", "autorunsc",
-        "tshark", "zeek", "HollowsHunter",
+        "PECmd",
+        "AmcacheParser",
+        "AppCompatCacheParser",
+        "MFTECmd",
+        "RECmd",
+        "EvtxECmd",
+        "Hayabusa",
+        "Volatility 3",
+        "densityscout",
+        "sigcheck",
+        "capa",
+        "autorunsc",
+        "tshark",
+        "zeek",
+        "HollowsHunter",
     ]
 
     def test_tools_have_cross_mcp_steps(self):

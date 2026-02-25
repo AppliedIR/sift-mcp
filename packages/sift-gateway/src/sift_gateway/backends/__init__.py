@@ -5,8 +5,8 @@ import shutil
 from urllib.parse import urlparse
 
 from sift_gateway.backends.base import MCPBackend
-from sift_gateway.backends.stdio_backend import StdioMCPBackend
 from sift_gateway.backends.http_backend import HttpMCPBackend
+from sift_gateway.backends.stdio_backend import StdioMCPBackend
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,9 @@ def create_backend(name: str, config: dict) -> MCPBackend:
         if not command:
             raise ValueError(f"Backend {name!r}: stdio type requires 'command' key")
         if not isinstance(command, str):
-            raise ValueError(f"Backend {name!r}: 'command' must be a string, got {type(command).__name__}")
+            raise ValueError(
+                f"Backend {name!r}: 'command' must be a string, got {type(command).__name__}"
+            )
         # Warn (don't fail) if command not found on PATH — it may exist at runtime
         if shutil.which(command) is None:
             logger.warning("Backend %s: command %r not found on PATH", name, command)
@@ -44,7 +46,9 @@ def create_backend(name: str, config: dict) -> MCPBackend:
         if not url:
             raise ValueError(f"Backend {name!r}: http type requires 'url' key")
         if not isinstance(url, str):
-            raise ValueError(f"Backend {name!r}: 'url' must be a string, got {type(url).__name__}")
+            raise ValueError(
+                f"Backend {name!r}: 'url' must be a string, got {type(url).__name__}"
+            )
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https"):
             raise ValueError(

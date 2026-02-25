@@ -15,9 +15,12 @@ def _get_policy() -> dict:
     """Lazy-load security policy from YAML catalog."""
     return load_security_policy()
 
+
 # awk can execute arbitrary commands via language syntax (not flags).
 # Scan program text for dangerous constructs.
-_AWK_DANGEROUS_RE = re.compile(r"system\s*\(|getline|\".*\||\|.*\"|>\s*\"|>>\s*\"", re.IGNORECASE)
+_AWK_DANGEROUS_RE = re.compile(
+    r"system\s*\(|getline|\".*\||\|.*\"|>\s*\"|>>\s*\"", re.IGNORECASE
+)
 
 # Tools whose positional args are program text and need content scanning
 _PROGRAM_TEXT_TOOLS = {"awk", "gawk", "mawk", "nawk"}
@@ -41,9 +44,7 @@ def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]
             raise ValueError(f"Non-string argument in extra_args: {type(arg).__name__}")
         flag = arg.lower().split("=")[0]
         if flag in tool_blocked:
-            raise ValueError(
-                f"Blocked dangerous flag '{arg}' for {tool_name}"
-            )
+            raise ValueError(f"Blocked dangerous flag '{arg}' for {tool_name}")
         if flag in policy["dangerous_flags"] and flag not in tool_allowed:
             raise ValueError(
                 f"Blocked dangerous flag '{arg}' in extra_args for {tool_name}"
@@ -102,9 +103,7 @@ def validate_rm_targets(args: list[str]) -> None:
         if case_dir:
             case_resolved = str(Path(case_dir).resolve())
             if resolved == case_resolved or resolved.startswith(case_resolved + "/"):
-                raise ValueError(
-                    "Blocked: rm targeting case evidence directory"
-                )
+                raise ValueError("Blocked: rm targeting case evidence directory")
 
 
 _BLOCKED_DIRECTORIES = (

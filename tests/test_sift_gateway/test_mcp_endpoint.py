@@ -1,14 +1,9 @@
 """Tests for the Streamable HTTP MCP endpoint."""
 
 import contextlib
-import json
+from unittest.mock import MagicMock
 
 import pytest
-from unittest.mock import MagicMock
-from starlette.applications import Starlette
-from starlette.routing import Mount, Route
-from starlette.testclient import TestClient
-
 from sift_gateway.auth import AuthMiddleware
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import (
@@ -19,14 +14,20 @@ from sift_gateway.mcp_endpoint import (
 )
 from sift_gateway.rest import rest_routes
 from sift_gateway.server import Gateway
-from .conftest import MockBackend, make_tool
+from starlette.applications import Starlette
+from starlette.routing import Mount
+from starlette.testclient import TestClient
 
+from .conftest import MockBackend, make_tool
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_gateway(mock_backends: dict, tool_map: dict, api_keys: dict | None = None) -> Gateway:
+
+def _make_gateway(
+    mock_backends: dict, tool_map: dict, api_keys: dict | None = None
+) -> Gateway:
     config = {"gateway": {}, "api_keys": api_keys or {}, "backends": {}}
     gw = Gateway(config)
     gw.backends = mock_backends
@@ -72,6 +73,7 @@ def _make_app_with_mcp(gw: Gateway) -> Starlette:
 # ---------------------------------------------------------------------------
 # MCPAuthASGIApp unit tests
 # ---------------------------------------------------------------------------
+
 
 class TestMCPAuthASGIApp:
     """Test the ASGI auth wrapper in isolation."""
@@ -190,19 +192,25 @@ class TestMCPAuthASGIApp:
             sent.append(msg)
 
         await app(scope, receive, send)
-        assert any(b"411" in str(msg).encode() or msg.get("status") == 411 for msg in sent)
+        assert any(
+            b"411" in str(msg).encode() or msg.get("status") == 411 for msg in sent
+        )
 
 
 # ---------------------------------------------------------------------------
 # create_mcp_server unit tests
 # ---------------------------------------------------------------------------
 
+
 class TestCreateMCPServer:
     async def test_list_tools_returns_all(self):
-        backend_a = MockBackend("backend-a", tools=[
-            make_tool("analyze_file", "Analyze a file"),
-            make_tool("list_evidence", "List evidence"),
-        ])
+        backend_a = MockBackend(
+            "backend-a",
+            tools=[
+                make_tool("analyze_file", "Analyze a file"),
+                make_tool("list_evidence", "List evidence"),
+            ],
+        )
         backend_a._started = True
         gw = _make_gateway(
             {"backend-a": backend_a},
@@ -233,6 +241,7 @@ class TestCreateMCPServer:
 
     async def test_get_tools_list_includes_schemas(self):
         from mcp.types import Tool as MCPTool
+
         tool = MCPTool(
             name="check",
             description="Check something",
@@ -249,6 +258,7 @@ class TestCreateMCPServer:
 # ---------------------------------------------------------------------------
 # Integration: full app with MCP client
 # ---------------------------------------------------------------------------
+
 
 class TestMCPIntegration:
     """Integration tests using TestClient as context manager (triggers lifespan)."""
@@ -375,6 +385,7 @@ class TestMCPIntegration:
 # ---------------------------------------------------------------------------
 # Per-backend MCP endpoint tests
 # ---------------------------------------------------------------------------
+
 
 class TestPerBackendMCP:
     """Tests for per-backend MCP endpoints at /mcp/{backend-name}."""

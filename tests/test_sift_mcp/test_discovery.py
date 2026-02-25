@@ -1,11 +1,14 @@
 """Tests for sift_mcp.tools.discovery."""
 
 import pytest
-from sift_mcp.tools.discovery import (
-    list_available_tools, get_tool_help, check_tools, suggest_tools,
-    ARTIFACT_ALIASES,
-)
 from sift_mcp.catalog import clear_catalog_cache
+from sift_mcp.tools.discovery import (
+    ARTIFACT_ALIASES,
+    check_tools,
+    get_tool_help,
+    list_available_tools,
+    suggest_tools,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -114,7 +117,10 @@ class TestArtifactAliases:
 
     def test_aliases_resolve_to_valid_artifacts(self):
         from forensic_knowledge import loader
+
         for alias, targets in ARTIFACT_ALIASES.items():
             for target in targets:
                 art = loader.get_artifact(target)
-                assert art is not None, f"Alias '{alias}' target '{target}' not found in FK"
+                assert art is not None, (
+                    f"Alias '{alias}' target '{target}' not found in FK"
+                )

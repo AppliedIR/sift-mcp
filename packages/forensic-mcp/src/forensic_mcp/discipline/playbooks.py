@@ -32,5 +32,8 @@ def get_checklist(artifact_type: str) -> dict:
         for at in ("registry", "event_logs", "memory", "filesystem"):
             if loader.get_collection_checklist(at) is not None:
                 available.append(at)
-        return {"error": f"Unknown artifact type '{artifact_type}'", "available": sorted(available)}
+        return {
+            "error": f"Unknown artifact type '{artifact_type}'",
+            "available": sorted(available),
+        }
     return result

@@ -15,10 +15,8 @@ import os
 from pathlib import Path
 
 import pytest
-
 from rag_mcp.index import DEFAULT_INDEX_DIR, RAGIndex
 from rag_mcp.server import RAGServer
-
 
 _SKIP_MSG = "RAG index not built. Run `python -m rag_mcp.build` to enable these tests."
 
@@ -37,6 +35,7 @@ def rag_index_available() -> bool:
 # ---------------------------------------------------------------------------
 # Shared fixtures — only loaded when tests request them by name
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def rag_index():

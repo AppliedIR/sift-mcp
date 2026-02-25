@@ -7,22 +7,20 @@ can be configured via environment variables for customized OpenCTI instances.
 from __future__ import annotations
 
 import os
-import pytest
 from unittest.mock import patch
 
-from opencti_mcp.config import Config, SecretStr, _parse_set_env
+import pytest
+from opencti_mcp.config import Config, _parse_set_env
+from opencti_mcp.errors import ValidationError
 from opencti_mcp.validation import (
     validate_observable_types,
     validate_pattern_type,
-    VALID_OBSERVABLE_TYPES,
-    VALID_PATTERN_TYPES,
 )
-from opencti_mcp.errors import ValidationError
-
 
 # =============================================================================
 # Environment Variable Parsing Tests
 # =============================================================================
+
 
 class TestParseSetEnv:
     """Tests for _parse_set_env helper function."""
@@ -75,25 +73,32 @@ class TestParseSetEnv:
 # Config Loading Tests
 # =============================================================================
 
+
 class TestConfigExtraTypes:
     """Tests for Config loading of extra types."""
 
     def test_config_loads_extra_observable_types(self):
         """Config loads OPENCTI_EXTRA_OBSERVABLE_TYPES."""
-        with patch.dict(os.environ, {
-            "OPENCTI_TOKEN": "test-token",
-            "OPENCTI_EXTRA_OBSERVABLE_TYPES": "Custom-IOC,Internal-Asset",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "OPENCTI_TOKEN": "test-token",
+                "OPENCTI_EXTRA_OBSERVABLE_TYPES": "Custom-IOC,Internal-Asset",
+            },
+        ):
             config = Config.load()
             assert "Custom-IOC" in config.extra_observable_types
             assert "Internal-Asset" in config.extra_observable_types
 
     def test_config_loads_extra_pattern_types(self):
         """Config loads OPENCTI_EXTRA_PATTERN_TYPES."""
-        with patch.dict(os.environ, {
-            "OPENCTI_TOKEN": "test-token",
-            "OPENCTI_EXTRA_PATTERN_TYPES": "osquery,custom-sig",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "OPENCTI_TOKEN": "test-token",
+                "OPENCTI_EXTRA_PATTERN_TYPES": "osquery,custom-sig",
+            },
+        ):
             config = Config.load()
             assert "osquery" in config.extra_pattern_types
             assert "custom-sig" in config.extra_pattern_types
@@ -113,6 +118,7 @@ class TestConfigExtraTypes:
 # Observable Type Validation Tests
 # =============================================================================
 
+
 class TestValidateObservableTypesWithExtras:
     """Tests for validate_observable_types with extra_types."""
 
@@ -130,8 +136,7 @@ class TestValidateObservableTypesWithExtras:
         """Custom types are accepted when in extra_types."""
         extra = frozenset({"Custom-IOC", "Internal-Asset"})
         result = validate_observable_types(
-            ["Custom-IOC", "IPv4-Addr"],
-            extra_types=extra
+            ["Custom-IOC", "IPv4-Addr"], extra_types=extra
         )
         assert result == ["Custom-IOC", "IPv4-Addr"]
 
@@ -139,8 +144,7 @@ class TestValidateObservableTypesWithExtras:
         """Custom-only list is accepted with extras."""
         extra = frozenset({"Custom-IOC", "Internal-Asset"})
         result = validate_observable_types(
-            ["Custom-IOC", "Internal-Asset"],
-            extra_types=extra
+            ["Custom-IOC", "Internal-Asset"], extra_types=extra
         )
         assert "Custom-IOC" in result
         assert "Internal-Asset" in result
@@ -160,8 +164,7 @@ class TestValidateObservableTypesWithExtras:
         """Mix of standard and custom types works."""
         extra = frozenset({"Proprietary-Intel"})
         result = validate_observable_types(
-            ["IPv4-Addr", "Proprietary-Intel", "StixFile"],
-            extra_types=extra
+            ["IPv4-Addr", "Proprietary-Intel", "StixFile"], extra_types=extra
         )
         assert len(result) == 3
 
@@ -179,6 +182,7 @@ class TestValidateObservableTypesWithExtras:
 # =============================================================================
 # Pattern Type Validation Tests
 # =============================================================================
+
 
 class TestValidatePatternTypeWithExtras:
     """Tests for validate_pattern_type with extra_types."""
@@ -239,21 +243,23 @@ class TestValidatePatternTypeWithExtras:
 # Integration Tests
 # =============================================================================
 
+
 class TestConfigurableAllowListsIntegration:
     """Integration tests for the full flow."""
 
     def test_realistic_custom_observable_types(self):
         """Test with realistic custom observable types."""
         # Simulate an org that has internal asset types
-        extra = frozenset({
-            "Internal-Host",
-            "Cloud-Resource",
-            "Employee-Account",
-        })
+        extra = frozenset(
+            {
+                "Internal-Host",
+                "Cloud-Resource",
+                "Employee-Account",
+            }
+        )
 
         result = validate_observable_types(
-            ["Internal-Host", "IPv4-Addr", "Cloud-Resource"],
-            extra_types=extra
+            ["Internal-Host", "IPv4-Addr", "Cloud-Resource"], extra_types=extra
         )
         assert len(result) == 3
 
@@ -286,15 +292,14 @@ class TestConfigurableAllowListsIntegration:
 # Security Tests
 # =============================================================================
 
+
 class TestConfigurableAllowListsSecurity:
     """Security tests for configurable allow-lists."""
 
     def test_injection_in_extra_types_env_var(self):
         """Malicious env var content doesn't cause issues."""
         # Even if someone sets a weird value, it just becomes a string in the set
-        with patch.dict(os.environ, {
-            "TEST_VAR": "'; DROP TABLE--,<script>,${cmd}"
-        }):
+        with patch.dict(os.environ, {"TEST_VAR": "'; DROP TABLE--,<script>,${cmd}"}):
             result = _parse_set_env("TEST_VAR")
             # Values are parsed as-is, validation happens later
             assert "'; DROP TABLE--" in result

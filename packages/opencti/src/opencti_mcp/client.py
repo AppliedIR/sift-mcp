@@ -19,31 +19,30 @@ import time as time_module
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from time import time, monotonic
-from typing import Any, Optional
+from time import monotonic
+from typing import Any
 
+from .adaptive import AdaptiveMetrics, get_global_metrics
+from .cache import NOT_FOUND, CacheManager, TTLCache, generate_cache_key
 from .config import Config
 from .errors import ConnectionError, QueryError, RateLimitError, ValidationError
-from .adaptive import get_global_metrics, AdaptiveMetrics
-from .cache import TTLCache, CacheManager, generate_cache_key, NOT_FOUND
 from .feature_flags import get_feature_flags
 from .validation import (
-    validate_length,
-    validate_limit,
-    validate_days,
+    MAX_IOC_LENGTH,
+    MAX_QUERY_LENGTH,
     normalize_hash,
     truncate_response,
-    MAX_QUERY_LENGTH,
-    MAX_IOC_LENGTH,
+    validate_days,
+    validate_length,
+    validate_limit,
 )
-
 
 # =============================================================================
 # Constants
 # =============================================================================
 
 MAX_RELATIONSHIPS = 50  # Max relationships to fetch per entity
-HEALTH_CHECK_TTL = 30   # Seconds to cache health check result
+HEALTH_CHECK_TTL = 30  # Seconds to cache health check result
 
 # Transient errors that should trigger retry.
 # These are network/connection issues that may resolve on retry:
@@ -56,21 +55,23 @@ HEALTH_CHECK_TTL = 30   # Seconds to cache health check result
 # - SSLError: SSL handshake failures - may be transient certificate/negotiation issues
 # - ProxyError: Proxy connection failed - proxy may recover
 # - ChunkedEncodingError/ContentDecodingError: Incomplete response - server hiccup
-TRANSIENT_ERRORS = frozenset({
-    'ConnectionError',
-    'TimeoutError',
-    'OSError',
-    'RequestException',
-    'HTTPError',
-    'ConnectionResetError',
-    'BrokenPipeError',
-    'ConnectionRefusedError',
-    'ConnectionAbortedError',
-    'SSLError',
-    'ProxyError',
-    'ChunkedEncodingError',
-    'ContentDecodingError',
-})
+TRANSIENT_ERRORS = frozenset(
+    {
+        "ConnectionError",
+        "TimeoutError",
+        "OSError",
+        "RequestException",
+        "HTTPError",
+        "ConnectionResetError",
+        "BrokenPipeError",
+        "ConnectionRefusedError",
+        "ConnectionAbortedError",
+        "SSLError",
+        "ProxyError",
+        "ChunkedEncodingError",
+        "ContentDecodingError",
+    }
+)
 
 # HTTP status codes that indicate transient failures
 TRANSIENT_HTTP_CODES = frozenset({408, 429, 500, 502, 503, 504})
@@ -83,10 +84,12 @@ logger = logging.getLogger(__name__)
 # Circuit Breaker
 # =============================================================================
 
+
 class CircuitState(Enum):
     """Circuit breaker states for type-safe state management."""
-    CLOSED = "closed"      # Normal operation, requests go through
-    OPEN = "open"          # Service unhealthy, requests fail immediately
+
+    CLOSED = "closed"  # Normal operation, requests go through
+    OPEN = "open"  # Service unhealthy, requests fail immediately
     HALF_OPEN = "half_open"  # Testing if service recovered
 
 
@@ -150,8 +153,8 @@ class CircuitBreaker:
                     extra={
                         "failures": self._failure_count,
                         "threshold": self.failure_threshold,
-                        "recovery_timeout": self.recovery_timeout
-                    }
+                        "recovery_timeout": self.recovery_timeout,
+                    },
                 )
 
     def reset(self) -> None:
@@ -164,6 +167,7 @@ class CircuitBreaker:
 # =============================================================================
 # Rate Limiter
 # =============================================================================
+
 
 class RateLimiter:
     """Thread-safe sliding window rate limiter.
@@ -230,6 +234,7 @@ class RateLimiter:
 # OpenCTI Client
 # =============================================================================
 
+
 class OpenCTIClient:
     """Client for querying OpenCTI threat intelligence.
 
@@ -251,25 +256,25 @@ class OpenCTIClient:
     - Adaptive metrics adjust recommendations for geographically distributed users
     """
 
-    def __init__(self, config: Config, adaptive_metrics: Optional[AdaptiveMetrics] = None) -> None:
+    def __init__(
+        self, config: Config, adaptive_metrics: AdaptiveMetrics | None = None
+    ) -> None:
         self.config = config
         self._client: Any = None
         self._client_lock = threading.Lock()
         self._query_limiter = RateLimiter(
-            max_calls=config.rate_limit_queries,
-            window_seconds=60
+            max_calls=config.rate_limit_queries, window_seconds=60
         )
         self._enrichment_limiter = RateLimiter(
-            max_calls=config.rate_limit_enrichment,
-            window_seconds=3600
+            max_calls=config.rate_limit_enrichment, window_seconds=3600
         )
         # Health check cache
-        self._health_cache: Optional[tuple[bool, float]] = None
+        self._health_cache: tuple[bool, float] | None = None
 
         # Circuit breaker for failing fast
         self._circuit_breaker = CircuitBreaker(
             failure_threshold=config.circuit_breaker_threshold,
-            recovery_timeout=config.circuit_breaker_timeout
+            recovery_timeout=config.circuit_breaker_timeout,
         )
 
         # Adaptive metrics for network-aware configuration
@@ -287,7 +292,10 @@ class OpenCTIClient:
 
         # Response caches (if caching enabled)
         self._cache_manager = CacheManager()
-        if self._feature_flags.response_caching or self._feature_flags.graceful_degradation:
+        if (
+            self._feature_flags.response_caching
+            or self._feature_flags.graceful_degradation
+        ):
             self._init_caches()
 
     def _init_caches(self) -> None:
@@ -301,28 +309,19 @@ class OpenCTIClient:
         """
         # Search results cache
         self._search_cache: TTLCache[Any] = TTLCache(
-            ttl_seconds=60,
-            negative_ttl_seconds=30,
-            max_size=500,
-            name="search"
+            ttl_seconds=60, negative_ttl_seconds=30, max_size=500, name="search"
         )
         self._cache_manager.register("search", self._search_cache)
 
         # Entity lookup cache (by ID)
         self._entity_cache: TTLCache[Any] = TTLCache(
-            ttl_seconds=300,
-            negative_ttl_seconds=60,
-            max_size=1000,
-            name="entity"
+            ttl_seconds=300, negative_ttl_seconds=60, max_size=1000, name="entity"
         )
         self._cache_manager.register("entity", self._entity_cache)
 
         # IOC context cache
         self._ioc_cache: TTLCache[Any] = TTLCache(
-            ttl_seconds=60,
-            negative_ttl_seconds=30,
-            max_size=500,
-            name="ioc"
+            ttl_seconds=60, negative_ttl_seconds=30, max_size=500, name="ioc"
         )
         self._cache_manager.register("ioc", self._ioc_cache)
 
@@ -372,7 +371,9 @@ class OpenCTIClient:
 
         found, value = cache.get_stale(key)
         if found and value is not NOT_FOUND:
-            logger.info(f"Graceful degradation: using cached response for {key[:16]}...")
+            logger.info(
+                f"Graceful degradation: using cached response for {key[:16]}..."
+            )
             return (True, value, True)
 
         return (False, None, False)
@@ -418,7 +419,7 @@ class OpenCTIClient:
             return True
 
         # Check for HTTP status codes in response errors
-        if hasattr(error, 'response') and hasattr(error.response, 'status_code'):
+        if hasattr(error, "response") and hasattr(error.response, "status_code"):
             if error.response.status_code in TRANSIENT_HTTP_CODES:
                 return True
 
@@ -437,18 +438,21 @@ class OpenCTIClient:
         toward circuit breaker failure threshold.
         """
         # Check HTTP status codes 401/403
-        if hasattr(error, 'response') and hasattr(error.response, 'status_code'):
+        if hasattr(error, "response") and hasattr(error.response, "status_code"):
             if error.response.status_code in (401, 403):
                 return True
 
         # Check error type names commonly used for auth failures
         error_name = type(error).__name__
-        if error_name in ('AuthenticationError', 'AuthorizationError'):
+        if error_name in ("AuthenticationError", "AuthorizationError"):
             return True
 
         # Check error message patterns
         error_msg = str(error).lower()
-        if any(kw in error_msg for kw in ('unauthorized', 'forbidden', 'authentication', 'invalid token')):
+        if any(
+            kw in error_msg
+            for kw in ("unauthorized", "forbidden", "authentication", "invalid token")
+        ):
             return True
 
         return False
@@ -460,7 +464,7 @@ class OpenCTIClient:
         Capped at retry_max_delay.
         Adds random jitter to prevent thundering herd.
         """
-        delay = self.config.retry_base_delay * (2 ** attempt)
+        delay = self.config.retry_base_delay * (2**attempt)
         delay = min(delay, self.config.retry_max_delay)
 
         # Add 10-20% jitter to prevent synchronized retries
@@ -496,7 +500,7 @@ class OpenCTIClient:
                     "new_timeout": new_timeout,
                     "sample_count": adaptive.probe_count,
                     "success_rate": adaptive.success_rate,
-                }
+                },
             )
             with self._client_lock:
                 if self._client is not None:
@@ -517,8 +521,7 @@ class OpenCTIClient:
             logger.warning("Circuit breaker open, failing fast")
             raise ConnectionError("OpenCTI unavailable (circuit breaker open)")
 
-        last_exception: Optional[Exception] = None
-        start_time = time_module.time()
+        last_exception: Exception | None = None
 
         for attempt in range(self.config.max_retries + 1):
             try:
@@ -528,8 +531,7 @@ class OpenCTIClient:
                 # Success - record it and track latency
                 self._circuit_breaker.record_success()
                 self._adaptive_metrics.record_request(
-                    start_time=attempt_start,
-                    success=True
+                    start_time=attempt_start, success=True
                 )
                 self._maybe_adapt_timeout()
                 return result
@@ -539,9 +541,7 @@ class OpenCTIClient:
 
                 # Record the failure in adaptive metrics (per-attempt time)
                 self._adaptive_metrics.record_request(
-                    start_time=attempt_start,
-                    success=False,
-                    error_type=type(e).__name__
+                    start_time=attempt_start, success=False, error_type=type(e).__name__
                 )
 
                 # Check if this is a transient error worth retrying
@@ -560,8 +560,8 @@ class OpenCTIClient:
                     extra={
                         "error_type": type(e).__name__,
                         "attempt": attempt + 1,
-                        "max_retries": self.config.max_retries
-                    }
+                        "max_retries": self.config.max_retries,
+                    },
                 )
 
                 # Check if we have retries left
@@ -569,10 +569,7 @@ class OpenCTIClient:
                     self._circuit_breaker.record_failure()
                     logger.error(
                         "Max retries exhausted",
-                        extra={
-                            "attempts": attempt + 1,
-                            "error_type": type(e).__name__
-                        }
+                        extra={"attempts": attempt + 1, "error_type": type(e).__name__},
                     )
                     raise
 
@@ -581,8 +578,7 @@ class OpenCTIClient:
                 logger.info(f"Retrying in {delay:.2f}s...")
                 time_module.sleep(delay)
 
-                # Update start_time for next attempt
-                start_time = time_module.time()
+                # Reset timing for next attempt (backoff already applied above)
 
         # Should not reach here, but just in case
         if last_exception:
@@ -611,12 +607,14 @@ class OpenCTIClient:
                     self.config.opencti_token.get_secret_value(),
                     log_level="error",
                     requests_timeout=self._effective_timeout,
-                    ssl_verify=self.config.ssl_verify
+                    ssl_verify=self.config.ssl_verify,
                 )
                 return self._client
 
             except ImportError as e:
-                raise ConnectionError("pycti not installed. Run: pip install pycti") from e
+                raise ConnectionError(
+                    "pycti not installed. Run: pip install pycti"
+                ) from e
             except Exception as e:
                 # Don't leak connection details
                 logger.error(f"Failed to connect to OpenCTI: {e}")
@@ -697,7 +695,9 @@ class OpenCTIClient:
         self._circuit_breaker.reset()
         self._adaptive_metrics.reset()
         self._client = None  # Force fresh connect() on next request
-        logger.info("Reconnection complete - caches cleared, client reset, circuit breaker reset")
+        logger.info(
+            "Reconnection complete - caches cleared, client reset, circuit breaker reset"
+        )
 
     # =========================================================================
     # Startup Validation and Version Checking
@@ -739,11 +739,11 @@ class OpenCTIClient:
         url = self.config.opencti_url.lower()
         if url.startswith("http://") and not self._is_local_url(url):
             result["warnings"].append(
-                f"Using unencrypted HTTP for remote server. Consider HTTPS."
+                "Using unencrypted HTTP for remote server. Consider HTTPS."
             )
             logger.warning(
                 "Security warning: Using HTTP for remote OpenCTI server",
-                extra={"url_scheme": "http"}
+                extra={"url_scheme": "http"},
             )
 
         if skip_connectivity:
@@ -770,8 +770,8 @@ class OpenCTIClient:
                 "Startup validation passed",
                 extra={
                     "opencti_version": result["opencti_version"],
-                    "warning_count": len(result["warnings"])
-                }
+                    "warning_count": len(result["warnings"]),
+                },
             )
 
         except Exception as e:
@@ -782,7 +782,7 @@ class OpenCTIClient:
 
             logger.error(
                 "Startup validation failed",
-                extra={"error": str(e), "error_type": type(e).__name__}
+                extra={"error": str(e), "error_type": type(e).__name__},
             )
 
         return result
@@ -790,6 +790,7 @@ class OpenCTIClient:
     def _is_local_url(self, url: str) -> bool:
         """Check if URL points to localhost."""
         from urllib.parse import urlparse
+
         try:
             hostname = urlparse(url).hostname or ""
         except Exception:
@@ -805,7 +806,7 @@ class OpenCTIClient:
         try:
             # Try to get version from the about query
             # This is a lightweight query that returns server info
-            if hasattr(client, 'query'):
+            if hasattr(client, "query"):
                 query = """
                 query {
                     about {
@@ -818,8 +819,8 @@ class OpenCTIClient:
                 }
                 """
                 response = client.query(query)
-                if response and 'data' in response and 'about' in response['data']:
-                    about = response['data']['about']
+                if response and "data" in response and "about" in response["data"]:
+                    about = response["data"]["about"]
                     version_info = {"version": about.get("version")}
 
                     # Find platform version in dependencies
@@ -836,9 +837,7 @@ class OpenCTIClient:
         return None
 
     def _check_version_compatibility(
-        self,
-        version_info: dict[str, str],
-        result: dict[str, Any]
+        self, version_info: dict[str, str], result: dict[str, Any]
     ) -> None:
         """Check version compatibility and add warnings if needed.
 
@@ -920,14 +919,14 @@ class OpenCTIClient:
             "circuit_breaker": {
                 "state": self._circuit_breaker.state.value,
                 "failure_threshold": self._circuit_breaker.failure_threshold,
-                "recovery_timeout_seconds": self._circuit_breaker.recovery_timeout
+                "recovery_timeout_seconds": self._circuit_breaker.recovery_timeout,
             },
             "adaptive_metrics": adaptive_status,
             "current_config": {
                 "timeout_seconds": self.config.timeout_seconds,
                 "effective_timeout_seconds": self._effective_timeout,
                 "max_retries": self.config.max_retries,
-                "retry_base_delay": self.config.retry_base_delay
+                "retry_base_delay": self.config.retry_base_delay,
             },
             "recommendations": {
                 "timeout_seconds": config.recommended_timeout,
@@ -936,8 +935,8 @@ class OpenCTIClient:
                 "circuit_threshold": config.recommended_circuit_threshold,
                 "latency_classification": config.latency_classification,
                 "success_rate": config.success_rate,
-                "sample_count": config.probe_count
-            }
+                "sample_count": config.probe_count,
+            },
         }
 
     def start_adaptive_probing(self) -> None:
@@ -979,50 +978,42 @@ class OpenCTIClient:
 
         if labels:
             # Labels filter - match any of the specified labels
-            filters.append({
-                "key": "objectLabel",
-                "values": labels[:10],  # Limit to 10 labels
-                "operator": "eq",
-                "mode": "or"
-            })
+            filters.append(
+                {
+                    "key": "objectLabel",
+                    "values": labels[:10],  # Limit to 10 labels
+                    "operator": "eq",
+                    "mode": "or",
+                }
+            )
 
         if confidence_min is not None:
             if 0 <= confidence_min <= 100:
-                filters.append({
-                    "key": "confidence",
-                    "values": [str(confidence_min)],
-                    "operator": "gte"
-                })
+                filters.append(
+                    {
+                        "key": "confidence",
+                        "values": [str(confidence_min)],
+                        "operator": "gte",
+                    }
+                )
 
         if created_after:
             # Normalize timestamp format
             ts = created_after.replace("+00:00", "Z")
             if not ts.endswith("Z"):
                 ts += "T00:00:00Z"
-            filters.append({
-                "key": "created",
-                "values": [ts],
-                "operator": "gte"
-            })
+            filters.append({"key": "created", "values": [ts], "operator": "gte"})
 
         if created_before:
             ts = created_before.replace("+00:00", "Z")
             if not ts.endswith("Z"):
                 ts += "T23:59:59Z"
-            filters.append({
-                "key": "created",
-                "values": [ts],
-                "operator": "lte"
-            })
+            filters.append({"key": "created", "values": [ts], "operator": "lte"})
 
         if not filters:
             return None
 
-        return {
-            "mode": "and",
-            "filters": filters,
-            "filterGroups": []
-        }
+        return {"mode": "and", "filters": filters, "filterGroups": []}
 
     def search_indicators(
         self,
@@ -1033,7 +1024,7 @@ class OpenCTIClient:
         confidence_min: int | None = None,
         created_after: str | None = None,
         created_before: str | None = None,
-        _skip_rate_limit: bool = False
+        _skip_rate_limit: bool = False,
     ) -> list[dict[str, Any]]:
         """Search for indicators (IOCs).
 
@@ -1057,13 +1048,18 @@ class OpenCTIClient:
 
         # Generate cache key
         cache_key = generate_cache_key(
-            "indicators", query, limit, offset,
-            labels=labels, confidence_min=confidence_min,
-            created_after=created_after, created_before=created_before
+            "indicators",
+            query,
+            limit,
+            offset,
+            labels=labels,
+            confidence_min=confidence_min,
+            created_after=created_after,
+            created_before=created_before,
         )
 
         # Check cache first (if caching enabled)
-        if hasattr(self, '_search_cache'):
+        if hasattr(self, "_search_cache"):
             found, cached = self._get_cached(self._search_cache, cache_key)
             if found and cached is not NOT_FOUND:
                 self._last_response_from_cache = True
@@ -1072,8 +1068,10 @@ class OpenCTIClient:
         # Check if circuit breaker allows request
         if not self._circuit_breaker.allow_request():
             # Try graceful degradation - return cached result if available
-            if hasattr(self, '_search_cache'):
-                found, cached, degraded = self._get_fallback(self._search_cache, cache_key)
+            if hasattr(self, "_search_cache"):
+                found, cached, degraded = self._get_fallback(
+                    self._search_cache, cache_key
+                )
                 if found:
                     self._last_response_from_cache = True
                     self._last_response_degraded = True
@@ -1093,35 +1091,38 @@ class OpenCTIClient:
                 "search": query,
                 "first": limit + offset,  # Fetch extra for offset
                 "orderBy": "created",
-                "orderMode": "desc"
+                "orderMode": "desc",
             }
 
             # Add filters if provided
-            filters = self._build_filters(labels, confidence_min, created_after, created_before)
+            filters = self._build_filters(
+                labels, confidence_min, created_after, created_before
+            )
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(
-                client.indicator.list,
-                **kwargs
-            )
+            results = self._execute_with_retry(client.indicator.list, **kwargs)
 
             # Apply offset
-            results = (results or [])[offset:offset + limit]
+            results = (results or [])[offset : offset + limit]
             formatted = self._format_indicators(results)
 
             # Cache the results
-            if hasattr(self, '_search_cache'):
+            if hasattr(self, "_search_cache"):
                 self._cache_response(self._search_cache, cache_key, formatted)
 
             return formatted
 
         except Exception as e:
             # On failure, try graceful degradation
-            if hasattr(self, '_search_cache'):
-                found, cached, degraded = self._get_fallback(self._search_cache, cache_key)
+            if hasattr(self, "_search_cache"):
+                found, cached, degraded = self._get_fallback(
+                    self._search_cache, cache_key
+                )
                 if found:
-                    logger.warning(f"Indicator search failed, returning cached result: {e}")
+                    logger.warning(
+                        f"Indicator search failed, returning cached result: {e}"
+                    )
                     self._last_response_from_cache = True
                     self._last_response_degraded = True
                     return cached
@@ -1138,7 +1139,7 @@ class OpenCTIClient:
         confidence_min: int | None = None,
         created_after: str | None = None,
         created_before: str | None = None,
-        _skip_rate_limit: bool = False
+        _skip_rate_limit: bool = False,
     ) -> list[dict[str, Any]]:
         """Search for threat actors and APT groups.
 
@@ -1156,26 +1157,25 @@ class OpenCTIClient:
         try:
             results = []
 
-            kwargs: dict[str, Any] = {
-                "search": query,
-                "first": limit + offset
-            }
+            kwargs: dict[str, Any] = {"search": query, "first": limit + offset}
 
             # Add filters if provided
-            filters = self._build_filters(labels, confidence_min, created_after, created_before)
+            filters = self._build_filters(
+                labels, confidence_min, created_after, created_before
+            )
             if filters:
                 kwargs["filters"] = filters
 
             # Search IntrusionSet (where most APTs are)
-            intrusion_sets = self._execute_with_retry(
-                client.intrusion_set.list, **kwargs
-            ) or []
+            intrusion_sets = (
+                self._execute_with_retry(client.intrusion_set.list, **kwargs) or []
+            )
             results.extend(intrusion_sets)
 
             # Also search ThreatActorGroup
-            threat_actors = self._execute_with_retry(
-                client.threat_actor_group.list, **kwargs
-            ) or []
+            threat_actors = (
+                self._execute_with_retry(client.threat_actor_group.list, **kwargs) or []
+            )
             results.extend(threat_actors)
 
             # Deduplicate by id (name-based dedup can drop distinct actors)
@@ -1189,7 +1189,7 @@ class OpenCTIClient:
                     unique.append(r)
 
             # Apply offset and limit
-            return self._format_threat_actors(unique[offset:offset + limit])
+            return self._format_threat_actors(unique[offset : offset + limit])
 
         except Exception as e:
             logger.error(f"Threat actor search failed: {e}")
@@ -1204,7 +1204,7 @@ class OpenCTIClient:
         confidence_min: int | None = None,
         created_after: str | None = None,
         created_before: str | None = None,
-        _skip_rate_limit: bool = False
+        _skip_rate_limit: bool = False,
     ) -> list[dict[str, Any]]:
         """Search for malware families."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
@@ -1217,20 +1217,17 @@ class OpenCTIClient:
         client = self.connect()
 
         try:
-            kwargs: dict[str, Any] = {
-                "search": query,
-                "first": limit + offset
-            }
+            kwargs: dict[str, Any] = {"search": query, "first": limit + offset}
 
-            filters = self._build_filters(labels, confidence_min, created_after, created_before)
+            filters = self._build_filters(
+                labels, confidence_min, created_after, created_before
+            )
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(
-                client.malware.list, **kwargs
-            ) or []
+            results = self._execute_with_retry(client.malware.list, **kwargs) or []
 
-            results = results[offset:offset + limit]
+            results = results[offset : offset + limit]
             return self._format_malware(results)
 
         except Exception as e:
@@ -1245,7 +1242,7 @@ class OpenCTIClient:
         labels: list[str] | None = None,
         created_after: str | None = None,
         created_before: str | None = None,
-        _skip_rate_limit: bool = False
+        _skip_rate_limit: bool = False,
     ) -> list[dict[str, Any]]:
         """Search for MITRE ATT&CK techniques."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
@@ -1258,21 +1255,18 @@ class OpenCTIClient:
         client = self.connect()
 
         try:
-            kwargs: dict[str, Any] = {
-                "search": query,
-                "first": limit + offset
-            }
+            kwargs: dict[str, Any] = {"search": query, "first": limit + offset}
 
             # Attack patterns don't have confidence, so exclude it from filters
             filters = self._build_filters(labels, None, created_after, created_before)
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(
-                client.attack_pattern.list, **kwargs
-            ) or []
+            results = (
+                self._execute_with_retry(client.attack_pattern.list, **kwargs) or []
+            )
 
-            results = results[offset:offset + limit]
+            results = results[offset : offset + limit]
             return self._format_attack_patterns(results)
 
         except Exception as e:
@@ -1287,7 +1281,7 @@ class OpenCTIClient:
         labels: list[str] | None = None,
         created_after: str | None = None,
         created_before: str | None = None,
-        _skip_rate_limit: bool = False
+        _skip_rate_limit: bool = False,
     ) -> list[dict[str, Any]]:
         """Search for vulnerabilities (CVEs)."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
@@ -1300,20 +1294,17 @@ class OpenCTIClient:
         client = self.connect()
 
         try:
-            kwargs: dict[str, Any] = {
-                "search": query,
-                "first": limit + offset
-            }
+            kwargs: dict[str, Any] = {"search": query, "first": limit + offset}
 
             filters = self._build_filters(labels, None, created_after, created_before)
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(
-                client.vulnerability.list, **kwargs
-            ) or []
+            results = (
+                self._execute_with_retry(client.vulnerability.list, **kwargs) or []
+            )
 
-            results = results[offset:offset + limit]
+            results = results[offset : offset + limit]
             return self._format_vulnerabilities(results)
 
         except Exception as e:
@@ -1329,7 +1320,7 @@ class OpenCTIClient:
         confidence_min: int | None = None,
         created_after: str | None = None,
         created_before: str | None = None,
-        _skip_rate_limit: bool = False
+        _skip_rate_limit: bool = False,
     ) -> list[dict[str, Any]]:
         """Search for threat intelligence reports."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
@@ -1346,19 +1337,18 @@ class OpenCTIClient:
                 "search": query,
                 "first": limit + offset,
                 "orderBy": "published",
-                "orderMode": "desc"
+                "orderMode": "desc",
             }
 
-            filters = self._build_filters(labels, confidence_min, created_after, created_before)
+            filters = self._build_filters(
+                labels, confidence_min, created_after, created_before
+            )
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(
-                client.report.list,
-                **kwargs
-            ) or []
+            results = self._execute_with_retry(client.report.list, **kwargs) or []
 
-            results = results[offset:offset + limit]
+            results = results[offset : offset + limit]
             return self._format_reports(results)
 
         except Exception as e:
@@ -1374,7 +1364,7 @@ class OpenCTIClient:
         confidence_min: int | None = None,
         created_after: str | None = None,
         created_before: str | None = None,
-        _skip_rate_limit: bool = False
+        _skip_rate_limit: bool = False,
     ) -> list[dict[str, Any]]:
         """Search for campaigns."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
@@ -1391,19 +1381,18 @@ class OpenCTIClient:
                 "search": query,
                 "first": limit + offset,
                 "orderBy": "created",
-                "orderMode": "desc"
+                "orderMode": "desc",
             }
 
-            filters = self._build_filters(labels, confidence_min, created_after, created_before)
+            filters = self._build_filters(
+                labels, confidence_min, created_after, created_before
+            )
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(
-                client.campaign.list,
-                **kwargs
-            ) or []
+            results = self._execute_with_retry(client.campaign.list, **kwargs) or []
 
-            results = results[offset:offset + limit]
+            results = results[offset : offset + limit]
             return self._format_campaigns(results)
 
         except Exception as e:
@@ -1418,7 +1407,7 @@ class OpenCTIClient:
         labels: list[str] | None = None,
         created_after: str | None = None,
         created_before: str | None = None,
-        _skip_rate_limit: bool = False
+        _skip_rate_limit: bool = False,
     ) -> list[dict[str, Any]]:
         """Search for tools (legitimate software used maliciously)."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
@@ -1431,21 +1420,15 @@ class OpenCTIClient:
         client = self.connect()
 
         try:
-            kwargs: dict[str, Any] = {
-                "search": query,
-                "first": limit + offset
-            }
+            kwargs: dict[str, Any] = {"search": query, "first": limit + offset}
 
             filters = self._build_filters(labels, None, created_after, created_before)
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(
-                client.tool.list,
-                **kwargs
-            ) or []
+            results = self._execute_with_retry(client.tool.list, **kwargs) or []
 
-            results = results[offset:offset + limit]
+            results = results[offset : offset + limit]
             return self._format_tools(results)
 
         except Exception as e:
@@ -1460,7 +1443,7 @@ class OpenCTIClient:
         labels: list[str] | None = None,
         created_after: str | None = None,
         created_before: str | None = None,
-        _skip_rate_limit: bool = False
+        _skip_rate_limit: bool = False,
     ) -> list[dict[str, Any]]:
         """Search for infrastructure (C2, hosting, etc.)."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
@@ -1473,21 +1456,17 @@ class OpenCTIClient:
         client = self.connect()
 
         try:
-            kwargs: dict[str, Any] = {
-                "search": query,
-                "first": limit + offset
-            }
+            kwargs: dict[str, Any] = {"search": query, "first": limit + offset}
 
             filters = self._build_filters(labels, None, created_after, created_before)
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(
-                client.infrastructure.list,
-                **kwargs
-            ) or []
+            results = (
+                self._execute_with_retry(client.infrastructure.list, **kwargs) or []
+            )
 
-            results = results[offset:offset + limit]
+            results = results[offset : offset + limit]
             return self._format_infrastructure(results)
 
         except Exception as e:
@@ -1503,7 +1482,7 @@ class OpenCTIClient:
         confidence_min: int | None = None,
         created_after: str | None = None,
         created_before: str | None = None,
-        _skip_rate_limit: bool = False
+        _skip_rate_limit: bool = False,
     ) -> list[dict[str, Any]]:
         """Search for incidents."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
@@ -1520,19 +1499,18 @@ class OpenCTIClient:
                 "search": query,
                 "first": limit + offset,
                 "orderBy": "created",
-                "orderMode": "desc"
+                "orderMode": "desc",
             }
 
-            filters = self._build_filters(labels, confidence_min, created_after, created_before)
+            filters = self._build_filters(
+                labels, confidence_min, created_after, created_before
+            )
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(
-                client.incident.list,
-                **kwargs
-            ) or []
+            results = self._execute_with_retry(client.incident.list, **kwargs) or []
 
-            results = results[offset:offset + limit]
+            results = results[offset : offset + limit]
             return self._format_incidents(results)
 
         except Exception as e:
@@ -1548,7 +1526,7 @@ class OpenCTIClient:
         labels: list[str] | None = None,
         created_after: str | None = None,
         created_before: str | None = None,
-        _skip_rate_limit: bool = False
+        _skip_rate_limit: bool = False,
     ) -> list[dict[str, Any]]:
         """Search for observables (SCOs - IPs, domains, hashes, etc.).
 
@@ -1571,10 +1549,7 @@ class OpenCTIClient:
         client = self.connect()
 
         try:
-            kwargs: dict[str, Any] = {
-                "search": query,
-                "first": limit + offset
-            }
+            kwargs: dict[str, Any] = {"search": query, "first": limit + offset}
             if observable_types:
                 kwargs["types"] = observable_types
 
@@ -1583,20 +1558,21 @@ class OpenCTIClient:
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(
-                client.stix_cyber_observable.list,
-                **kwargs
-            ) or []
+            results = (
+                self._execute_with_retry(client.stix_cyber_observable.list, **kwargs)
+                or []
+            )
 
-            results = results[offset:offset + limit]
+            results = results[offset : offset + limit]
             return self._format_observables(results)
 
         except Exception as e:
             logger.error(f"Observable search failed: {e}")
             raise QueryError(f"Observable search failed: {type(e).__name__}") from e
 
-    def search_sightings(self, query: str, limit: int = 10,
-                         _skip_rate_limit: bool = False) -> list[dict[str, Any]]:
+    def search_sightings(
+        self, query: str, limit: int = 10, _skip_rate_limit: bool = False
+    ) -> list[dict[str, Any]]:
         """Search for sightings (detection events)."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
         limit = validate_limit(limit)
@@ -1607,21 +1583,25 @@ class OpenCTIClient:
         client = self.connect()
 
         try:
-            results = self._execute_with_retry(
-                client.stix_sighting_relationship.list,
-                search=query,
-                first=limit,
-                orderBy="created",
-                orderMode="desc"
-            ) or []
+            results = (
+                self._execute_with_retry(
+                    client.stix_sighting_relationship.list,
+                    search=query,
+                    first=limit,
+                    orderBy="created",
+                    orderMode="desc",
+                )
+                or []
+            )
             return self._format_sightings(results)
 
         except Exception as e:
             logger.error(f"Sighting search failed: {e}")
             raise QueryError(f"Sighting search failed: {type(e).__name__}") from e
 
-    def search_organizations(self, query: str, limit: int = 10,
-                             _skip_rate_limit: bool = False) -> list[dict[str, Any]]:
+    def search_organizations(
+        self, query: str, limit: int = 10, _skip_rate_limit: bool = False
+    ) -> list[dict[str, Any]]:
         """Search for organizations."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
         limit = validate_limit(limit)
@@ -1633,20 +1613,24 @@ class OpenCTIClient:
 
         try:
             # Organizations are stored as Identity with type "Organization"
-            results = self._execute_with_retry(
-                client.identity.list,
-                search=query,
-                first=limit,
-                types=["Organization"]
-            ) or []
+            results = (
+                self._execute_with_retry(
+                    client.identity.list,
+                    search=query,
+                    first=limit,
+                    types=["Organization"],
+                )
+                or []
+            )
             return self._format_organizations(results)
 
         except Exception as e:
             logger.error(f"Organization search failed: {e}")
             raise QueryError(f"Organization search failed: {type(e).__name__}") from e
 
-    def search_sectors(self, query: str, limit: int = 10,
-                       _skip_rate_limit: bool = False) -> list[dict[str, Any]]:
+    def search_sectors(
+        self, query: str, limit: int = 10, _skip_rate_limit: bool = False
+    ) -> list[dict[str, Any]]:
         """Search for sectors/industries."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
         limit = validate_limit(limit)
@@ -1658,20 +1642,21 @@ class OpenCTIClient:
 
         try:
             # Sectors are stored as Identity with type "Sector"
-            results = self._execute_with_retry(
-                client.identity.list,
-                search=query,
-                first=limit,
-                types=["Sector"]
-            ) or []
+            results = (
+                self._execute_with_retry(
+                    client.identity.list, search=query, first=limit, types=["Sector"]
+                )
+                or []
+            )
             return self._format_sectors(results)
 
         except Exception as e:
             logger.error(f"Sector search failed: {e}")
             raise QueryError(f"Sector search failed: {type(e).__name__}") from e
 
-    def search_locations(self, query: str, limit: int = 10,
-                         _skip_rate_limit: bool = False) -> list[dict[str, Any]]:
+    def search_locations(
+        self, query: str, limit: int = 10, _skip_rate_limit: bool = False
+    ) -> list[dict[str, Any]]:
         """Search for locations (countries, regions, cities)."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
         limit = validate_limit(limit)
@@ -1682,19 +1667,21 @@ class OpenCTIClient:
         client = self.connect()
 
         try:
-            results = self._execute_with_retry(
-                client.location.list,
-                search=query,
-                first=limit
-            ) or []
+            results = (
+                self._execute_with_retry(
+                    client.location.list, search=query, first=limit
+                )
+                or []
+            )
             return self._format_locations(results)
 
         except Exception as e:
             logger.error(f"Location search failed: {e}")
             raise QueryError(f"Location search failed: {type(e).__name__}") from e
 
-    def search_courses_of_action(self, query: str, limit: int = 10,
-                                 _skip_rate_limit: bool = False) -> list[dict[str, Any]]:
+    def search_courses_of_action(
+        self, query: str, limit: int = 10, _skip_rate_limit: bool = False
+    ) -> list[dict[str, Any]]:
         """Search for courses of action (mitigations)."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
         limit = validate_limit(limit)
@@ -1705,19 +1692,23 @@ class OpenCTIClient:
         client = self.connect()
 
         try:
-            results = self._execute_with_retry(
-                client.course_of_action.list,
-                search=query,
-                first=limit
-            ) or []
+            results = (
+                self._execute_with_retry(
+                    client.course_of_action.list, search=query, first=limit
+                )
+                or []
+            )
             return self._format_courses_of_action(results)
 
         except Exception as e:
             logger.error(f"Course of action search failed: {e}")
-            raise QueryError(f"Course of action search failed: {type(e).__name__}") from e
+            raise QueryError(
+                f"Course of action search failed: {type(e).__name__}"
+            ) from e
 
-    def search_groupings(self, query: str, limit: int = 10,
-                         _skip_rate_limit: bool = False) -> list[dict[str, Any]]:
+    def search_groupings(
+        self, query: str, limit: int = 10, _skip_rate_limit: bool = False
+    ) -> list[dict[str, Any]]:
         """Search for groupings (analysis containers)."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
         limit = validate_limit(limit)
@@ -1728,21 +1719,25 @@ class OpenCTIClient:
         client = self.connect()
 
         try:
-            results = self._execute_with_retry(
-                client.grouping.list,
-                search=query,
-                first=limit,
-                orderBy="created",
-                orderMode="desc"
-            ) or []
+            results = (
+                self._execute_with_retry(
+                    client.grouping.list,
+                    search=query,
+                    first=limit,
+                    orderBy="created",
+                    orderMode="desc",
+                )
+                or []
+            )
             return self._format_groupings(results)
 
         except Exception as e:
             logger.error(f"Grouping search failed: {e}")
             raise QueryError(f"Grouping search failed: {type(e).__name__}") from e
 
-    def search_notes(self, query: str, limit: int = 10,
-                     _skip_rate_limit: bool = False) -> list[dict[str, Any]]:
+    def search_notes(
+        self, query: str, limit: int = 10, _skip_rate_limit: bool = False
+    ) -> list[dict[str, Any]]:
         """Search for analyst notes."""
         validate_length(query, MAX_QUERY_LENGTH, "query")
         limit = validate_limit(limit)
@@ -1753,13 +1748,16 @@ class OpenCTIClient:
         client = self.connect()
 
         try:
-            results = self._execute_with_retry(
-                client.note.list,
-                search=query,
-                first=limit,
-                orderBy="created",
-                orderMode="desc"
-            ) or []
+            results = (
+                self._execute_with_retry(
+                    client.note.list,
+                    search=query,
+                    first=limit,
+                    orderBy="created",
+                    orderMode="desc",
+                )
+                or []
+            )
             return self._format_notes(results)
 
         except Exception as e:
@@ -1801,28 +1799,62 @@ class OpenCTIClient:
         result = {
             "query": query,
             "indicators": self.search_indicators(
-                query, limit, offset, labels, confidence_min,
-                created_after, created_before, _skip_rate_limit=True
+                query,
+                limit,
+                offset,
+                labels,
+                confidence_min,
+                created_after,
+                created_before,
+                _skip_rate_limit=True,
             ),
             "threat_actors": self.search_threat_actors(
-                query, limit, offset, labels, confidence_min,
-                created_after, created_before, _skip_rate_limit=True
+                query,
+                limit,
+                offset,
+                labels,
+                confidence_min,
+                created_after,
+                created_before,
+                _skip_rate_limit=True,
             ),
             "malware": self.search_malware(
-                query, limit, offset, labels, confidence_min,
-                created_after, created_before, _skip_rate_limit=True
+                query,
+                limit,
+                offset,
+                labels,
+                confidence_min,
+                created_after,
+                created_before,
+                _skip_rate_limit=True,
             ),
             "attack_patterns": self.search_attack_patterns(
-                query, limit, offset, labels,
-                created_after, created_before, _skip_rate_limit=True
+                query,
+                limit,
+                offset,
+                labels,
+                created_after,
+                created_before,
+                _skip_rate_limit=True,
             ),
             "vulnerabilities": self.search_vulnerabilities(
-                query, limit, offset, labels,
-                created_after, created_before, _skip_rate_limit=True
+                query,
+                limit,
+                offset,
+                labels,
+                created_after,
+                created_before,
+                _skip_rate_limit=True,
             ),
             "reports": self.search_reports(
-                query, limit, offset, labels, confidence_min,
-                created_after, created_before, _skip_rate_limit=True
+                query,
+                limit,
+                offset,
+                labels,
+                confidence_min,
+                created_after,
+                created_before,
+                _skip_rate_limit=True,
             ),
         }
 
@@ -1845,16 +1877,20 @@ class OpenCTIClient:
 
         try:
             # Search for indicators first
-            results = self._execute_with_retry(
-                client.indicator.list, search=ioc, first=5
-            ) or []
+            results = (
+                self._execute_with_retry(client.indicator.list, search=ioc, first=5)
+                or []
+            )
 
             # Also search observables if no indicators found
             observables = []
             if not results:
-                observables = self._execute_with_retry(
-                    client.stix_cyber_observable.list, search=ioc, first=5
-                ) or []
+                observables = (
+                    self._execute_with_retry(
+                        client.stix_cyber_observable.list, search=ioc, first=5
+                    )
+                    or []
+                )
 
             if not results and not observables:
                 return {"found": False, "ioc": ioc}
@@ -1871,25 +1907,32 @@ class OpenCTIClient:
                 "found": True,
                 "ioc": ioc,
                 "entity_type": entity_type,
-                "type": entity.get("pattern_type", entity.get("entity_type", "unknown")),
+                "type": entity.get(
+                    "pattern_type", entity.get("entity_type", "unknown")
+                ),
                 "name": entity.get("name", entity.get("value", "")),
-                "description": entity.get("description", "")[:500] if entity.get("description") else "",
+                "description": entity.get("description", "")[:500]
+                if entity.get("description")
+                else "",
                 "created": entity.get("created", ""),
                 "confidence": entity.get("confidence", 0),
                 "labels": self._extract_labels(entity),
                 "related_threat_actors": [],
                 "related_malware": [],
                 "mitre_techniques": [],
-                "source": "opencti"
+                "source": "opencti",
             }
 
             # Get relationships
             try:
-                relations = self._execute_with_retry(
-                    client.stix_core_relationship.list,
-                    fromId=entity.get("id"),
-                    first=MAX_RELATIONSHIPS
-                ) or []
+                relations = (
+                    self._execute_with_retry(
+                        client.stix_core_relationship.list,
+                        fromId=entity.get("id"),
+                        first=MAX_RELATIONSHIPS,
+                    )
+                    or []
+                )
 
                 for rel in relations:
                     target = rel.get("to", {})
@@ -1916,7 +1959,7 @@ class OpenCTIClient:
             logger.error(f"IOC context lookup failed: {e}")
             raise QueryError(f"IOC context lookup failed: {type(e).__name__}") from e
 
-    def get_entity(self, entity_id: str) -> Optional[dict[str, Any]]:
+    def get_entity(self, entity_id: str) -> dict[str, Any] | None:
         """Get any entity by its OpenCTI ID.
 
         Args:
@@ -1934,8 +1977,7 @@ class OpenCTIClient:
         try:
             # Use stix_domain_object.read for SDOs
             entity = self._execute_with_retry(
-                client.stix_domain_object.read,
-                id=entity_id
+                client.stix_domain_object.read, id=entity_id
             )
 
             if entity:
@@ -1943,8 +1985,7 @@ class OpenCTIClient:
 
             # Try SCO if SDO not found
             entity = self._execute_with_retry(
-                client.stix_cyber_observable.read,
-                id=entity_id
+                client.stix_cyber_observable.read, id=entity_id
             )
 
             if entity:
@@ -1952,8 +1993,7 @@ class OpenCTIClient:
 
             # Try relationship
             entity = self._execute_with_retry(
-                client.stix_core_relationship.read,
-                id=entity_id
+                client.stix_core_relationship.read, id=entity_id
             )
 
             if entity:
@@ -1970,7 +2010,7 @@ class OpenCTIClient:
         entity_id: str,
         direction: str = "both",
         relationship_types: list[str] | None = None,
-        limit: int = 50
+        limit: int = 50,
     ) -> list[dict[str, Any]]:
         """Get relationships for an entity.
 
@@ -1995,32 +2035,30 @@ class OpenCTIClient:
 
             # Get outgoing relationships (from this entity)
             if direction in ("from", "both"):
-                kwargs: dict[str, Any] = {
-                    "fromId": entity_id,
-                    "first": limit
-                }
+                kwargs: dict[str, Any] = {"fromId": entity_id, "first": limit}
                 if relationship_types:
                     kwargs["relationship_type"] = relationship_types
 
-                outgoing = self._execute_with_retry(
-                    client.stix_core_relationship.list,
-                    **kwargs
-                ) or []
+                outgoing = (
+                    self._execute_with_retry(
+                        client.stix_core_relationship.list, **kwargs
+                    )
+                    or []
+                )
                 results.extend(outgoing)
 
             # Get incoming relationships (to this entity)
             if direction in ("to", "both"):
-                kwargs = {
-                    "toId": entity_id,
-                    "first": limit
-                }
+                kwargs = {"toId": entity_id, "first": limit}
                 if relationship_types:
                     kwargs["relationship_type"] = relationship_types
 
-                incoming = self._execute_with_retry(
-                    client.stix_core_relationship.list,
-                    **kwargs
-                ) or []
+                incoming = (
+                    self._execute_with_retry(
+                        client.stix_core_relationship.list, **kwargs
+                    )
+                    or []
+                )
                 results.extend(incoming)
 
             # Deduplicate first, then slice to limit
@@ -2039,7 +2077,9 @@ class OpenCTIClient:
             logger.error(f"Get relationships failed: {e}")
             raise QueryError(f"Get relationships failed: {type(e).__name__}") from e
 
-    def get_recent_indicators(self, days: int = 7, limit: int = 20) -> list[dict[str, Any]]:
+    def get_recent_indicators(
+        self, days: int = 7, limit: int = 20
+    ) -> list[dict[str, Any]]:
         """Get indicators from the last N days."""
         days = validate_days(days)
         limit = validate_limit(limit)
@@ -2053,33 +2093,36 @@ class OpenCTIClient:
             # OpenCTI expects Z suffix
             since = since.replace("+00:00", "Z")
 
-            results = self._execute_with_retry(
-                client.indicator.list,
-                first=limit,
-                orderBy="created",
-                orderMode="desc",
-                filters={
-                    "mode": "and",
-                    "filters": [{
-                        "key": "created",
-                        "values": [since],
-                        "operator": "gte"
-                    }],
-                    "filterGroups": []
-                }
-            ) or []
+            results = (
+                self._execute_with_retry(
+                    client.indicator.list,
+                    first=limit,
+                    orderBy="created",
+                    orderMode="desc",
+                    filters={
+                        "mode": "and",
+                        "filters": [
+                            {"key": "created", "values": [since], "operator": "gte"}
+                        ],
+                        "filterGroups": [],
+                    },
+                )
+                or []
+            )
 
             return self._format_indicators(results)
 
         except Exception as e:
             logger.error(f"Recent indicators query failed: {e}")
-            raise QueryError(f"Recent indicators query failed: {type(e).__name__}") from e
+            raise QueryError(
+                f"Recent indicators query failed: {type(e).__name__}"
+            ) from e
 
     # =========================================================================
     # Hash Lookup
     # =========================================================================
 
-    def lookup_hash(self, hash_value: str) -> Optional[dict[str, Any]]:
+    def lookup_hash(self, hash_value: str) -> dict[str, Any] | None:
         """Look up a file hash in OpenCTI."""
         hash_normalized = normalize_hash(hash_value)
 
@@ -2089,19 +2132,24 @@ class OpenCTIClient:
 
         try:
             # Search indicators with this hash
-            indicators = self._execute_with_retry(
-                client.indicator.list,
-                filters={
-                    "mode": "and",
-                    "filters": [{
-                        "key": "pattern",
-                        "values": [hash_normalized],
-                        "operator": "contains"
-                    }],
-                    "filterGroups": []
-                },
-                first=5
-            ) or []
+            indicators = (
+                self._execute_with_retry(
+                    client.indicator.list,
+                    filters={
+                        "mode": "and",
+                        "filters": [
+                            {
+                                "key": "pattern",
+                                "values": [hash_normalized],
+                                "operator": "contains",
+                            }
+                        ],
+                        "filterGroups": [],
+                    },
+                    first=5,
+                )
+                or []
+            )
 
             if indicators:
                 return {
@@ -2110,24 +2158,27 @@ class OpenCTIClient:
                     "confidence": "high",
                     "indicators": len(indicators),
                     "malware_family": indicators[0].get("name"),
-                    "source": "opencti"
+                    "source": "opencti",
                 }
 
             # Also check observables
-            files = self._execute_with_retry(
-                client.stix_cyber_observable.list,
-                types=["StixFile"],
-                filters={
-                    "mode": "or",
-                    "filters": [
-                        {"key": "hashes.MD5", "values": [hash_normalized]},
-                        {"key": "hashes.SHA-1", "values": [hash_normalized]},
-                        {"key": "hashes.SHA-256", "values": [hash_normalized]},
-                    ],
-                    "filterGroups": []
-                },
-                first=5
-            ) or []
+            files = (
+                self._execute_with_retry(
+                    client.stix_cyber_observable.list,
+                    types=["StixFile"],
+                    filters={
+                        "mode": "or",
+                        "filters": [
+                            {"key": "hashes.MD5", "values": [hash_normalized]},
+                            {"key": "hashes.SHA-1", "values": [hash_normalized]},
+                            {"key": "hashes.SHA-256", "values": [hash_normalized]},
+                        ],
+                        "filterGroups": [],
+                    },
+                    first=5,
+                )
+                or []
+            )
 
             if files:
                 return {
@@ -2135,7 +2186,7 @@ class OpenCTIClient:
                     "hash": hash_value,
                     "confidence": "medium",
                     "observables": len(files),
-                    "source": "opencti"
+                    "source": "opencti",
                 }
 
             return None
@@ -2155,7 +2206,7 @@ class OpenCTIClient:
         client = self.connect()
 
         try:
-            query = '''
+            query = """
             query ConnectorsList {
               connectors {
                 id
@@ -2166,20 +2217,22 @@ class OpenCTIClient:
                 active
               }
             }
-            '''
+            """
             result = self._execute_with_retry(client.query, query)
             connectors = result.get("data", {}).get("connectors", [])
 
             enrichment = []
             for c in connectors:
                 if c.get("connector_type") == "INTERNAL_ENRICHMENT":
-                    enrichment.append({
-                        "id": c.get("id"),
-                        "name": c.get("name"),
-                        "scope": c.get("connector_scope", []),
-                        "auto": c.get("auto", False),
-                        "active": c.get("active", False)
-                    })
+                    enrichment.append(
+                        {
+                            "id": c.get("id"),
+                            "name": c.get("name"),
+                            "scope": c.get("connector_scope", []),
+                            "auto": c.get("auto", False),
+                            "active": c.get("active", False),
+                        }
+                    )
 
             return enrichment
 
@@ -2207,7 +2260,7 @@ class OpenCTIClient:
 
         try:
             # Use GraphQL mutation to trigger enrichment
-            mutation = '''
+            mutation = """
             mutation AskForEnrichment($id: ID!, $connectorId: ID!) {
               stixCoreObjectEdit(id: $id) {
                 askEnrichment(connectorId: $connectorId) {
@@ -2219,14 +2272,16 @@ class OpenCTIClient:
                 }
               }
             }
-            '''
+            """
             result = self._execute_with_retry(
-                client.query,
-                mutation,
-                {"id": entity_id, "connectorId": connector_id}
+                client.query, mutation, {"id": entity_id, "connectorId": connector_id}
             )
 
-            enrichment_data = result.get("data", {}).get("stixCoreObjectEdit", {}).get("askEnrichment", {})
+            enrichment_data = (
+                result.get("data", {})
+                .get("stixCoreObjectEdit", {})
+                .get("askEnrichment", {})
+            )
 
             return {
                 "success": True,
@@ -2234,7 +2289,7 @@ class OpenCTIClient:
                 "connector_id": connector_id,
                 "connector_name": enrichment_data.get("connector", {}).get("name", ""),
                 "work_id": enrichment_data.get("id", ""),
-                "status": enrichment_data.get("status", "pending")
+                "status": enrichment_data.get("status", "pending"),
             }
 
         except Exception as e:
@@ -2252,7 +2307,7 @@ class OpenCTIClient:
         pattern_type: str = "stix",
         description: str = "",
         confidence: int = 50,
-        labels: list[str] | None = None
+        labels: list[str] | None = None,
     ) -> dict[str, Any]:
         """Create a new indicator (IOC).
 
@@ -2292,7 +2347,7 @@ class OpenCTIClient:
                 pattern_type=pattern_type,
                 description=description,
                 confidence=confidence,
-                x_opencti_main_observable_type="Unknown"
+                x_opencti_main_observable_type="Unknown",
             )
 
             if result:
@@ -2303,8 +2358,7 @@ class OpenCTIClient:
                     for label in labels[:10]:  # Limit labels
                         try:
                             client.stix_domain_object.add_label(
-                                id=indicator_id,
-                                label_name=label
+                                id=indicator_id, label_name=label
                             )
                         except Exception as e:
                             logger.warning(f"Failed to add label {label}: {e}")
@@ -2314,7 +2368,7 @@ class OpenCTIClient:
                     "id": indicator_id,
                     "name": result.get("name", ""),
                     "pattern": result.get("pattern", "")[:200],
-                    "created": result.get("created", "")
+                    "created": result.get("created", ""),
                 }
 
             return {"success": False, "error": "No result returned"}
@@ -2329,7 +2383,7 @@ class OpenCTIClient:
         entity_ids: list[str],
         note_types: list[str] | None = None,
         confidence: int = 75,
-        likelihood: int | None = None
+        likelihood: int | None = None,
     ) -> dict[str, Any]:
         """Create a note attached to one or more entities.
 
@@ -2372,7 +2426,7 @@ class OpenCTIClient:
                 note_types=note_types or ["analysis"],
                 confidence=confidence,
                 likelihood=likelihood,
-                objects=entity_ids
+                objects=entity_ids,
             )
 
             if result:
@@ -2381,7 +2435,7 @@ class OpenCTIClient:
                     "id": result.get("id", ""),
                     "content": result.get("content", "")[:500],
                     "created": result.get("created", ""),
-                    "attached_to": len(entity_ids)
+                    "attached_to": len(entity_ids),
                 }
 
             return {"success": False, "error": "No result returned"}
@@ -2398,7 +2452,7 @@ class OpenCTIClient:
         last_seen: str | None = None,
         count: int = 1,
         description: str = "",
-        confidence: int = 75
+        confidence: int = 75,
     ) -> dict[str, Any]:
         """Create a sighting (detection event).
 
@@ -2438,7 +2492,9 @@ class OpenCTIClient:
 
             # Use current time if not provided
             if not first_seen:
-                first_seen = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+                first_seen = (
+                    datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+                )
             if not last_seen:
                 last_seen = first_seen
 
@@ -2450,7 +2506,7 @@ class OpenCTIClient:
                 last_seen=last_seen,
                 count=count,
                 description=description,
-                confidence=confidence
+                confidence=confidence,
             )
 
             if result:
@@ -2460,7 +2516,7 @@ class OpenCTIClient:
                     "first_seen": result.get("first_seen", ""),
                     "last_seen": result.get("last_seen", ""),
                     "count": result.get("attribute_count", count),
-                    "created": result.get("created", "")
+                    "created": result.get("created", ""),
                 }
 
             return {"success": False, "error": "No result returned"}
@@ -2477,24 +2533,27 @@ class OpenCTIClient:
         """Extract labels from entity."""
         labels = entity.get("objectLabel", [])
         return [
-            l.get("value") if isinstance(l, dict) else str(l)
-            for l in labels
+            lbl.get("value") if isinstance(lbl, dict) else str(lbl) for lbl in labels
         ]
 
     def _format_indicators(self, results: list) -> list[dict[str, Any]]:
         """Format indicator results."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "indicator",
-                "name": r.get("name", ""),
-                "pattern": r.get("pattern", "")[:200] if r.get("pattern") else "",
-                "pattern_type": r.get("pattern_type", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "confidence": r.get("confidence", 0),
-                "created": r.get("created", ""),
-                "labels": self._extract_labels(r)
-            })
+            formatted.append(
+                {
+                    "type": "indicator",
+                    "name": r.get("name", ""),
+                    "pattern": r.get("pattern", "")[:200] if r.get("pattern") else "",
+                    "pattern_type": r.get("pattern_type", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "confidence": r.get("confidence", 0),
+                    "created": r.get("created", ""),
+                    "labels": self._extract_labels(r),
+                }
+            )
         return formatted
 
     def _format_threat_actors(self, results: list) -> list[dict[str, Any]]:
@@ -2504,16 +2563,20 @@ class OpenCTIClient:
             aliases = r.get("aliases") or []
             if isinstance(aliases, str):
                 aliases = [aliases]
-            formatted.append({
-                "type": "threat_actor",
-                "name": r.get("name", ""),
-                "aliases": aliases[:10],  # Limit aliases
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "sophistication": r.get("sophistication", ""),
-                "resource_level": r.get("resource_level", ""),
-                "primary_motivation": r.get("primary_motivation", ""),
-                "goals": (r.get("goals") or [])[:5]
-            })
+            formatted.append(
+                {
+                    "type": "threat_actor",
+                    "name": r.get("name", ""),
+                    "aliases": aliases[:10],  # Limit aliases
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "sophistication": r.get("sophistication", ""),
+                    "resource_level": r.get("resource_level", ""),
+                    "primary_motivation": r.get("primary_motivation", ""),
+                    "goals": (r.get("goals") or [])[:5],
+                }
+            )
         return formatted
 
     def _format_malware(self, results: list) -> list[dict[str, Any]]:
@@ -2523,59 +2586,75 @@ class OpenCTIClient:
             aliases = r.get("aliases") or []
             if isinstance(aliases, str):
                 aliases = [aliases]
-            formatted.append({
-                "type": "malware",
-                "name": r.get("name", ""),
-                "aliases": aliases[:10],
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "malware_types": r.get("malware_types") or [],
-                "is_family": r.get("is_family", False),
-                "capabilities": (r.get("capabilities") or [])[:10]
-            })
+            formatted.append(
+                {
+                    "type": "malware",
+                    "name": r.get("name", ""),
+                    "aliases": aliases[:10],
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "malware_types": r.get("malware_types") or [],
+                    "is_family": r.get("is_family", False),
+                    "capabilities": (r.get("capabilities") or [])[:10],
+                }
+            )
         return formatted
 
     def _format_attack_patterns(self, results: list) -> list[dict[str, Any]]:
         """Format attack pattern results."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "attack_pattern",
-                "name": r.get("name", ""),
-                "mitre_id": r.get("x_mitre_id", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "kill_chain_phases": [
-                    p.get("phase_name") if isinstance(p, dict) else str(p)
-                    for p in r.get("killChainPhases", [])
-                ][:10],
-                "platforms": (r.get("x_mitre_platforms") or [])[:10]
-            })
+            formatted.append(
+                {
+                    "type": "attack_pattern",
+                    "name": r.get("name", ""),
+                    "mitre_id": r.get("x_mitre_id", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "kill_chain_phases": [
+                        p.get("phase_name") if isinstance(p, dict) else str(p)
+                        for p in r.get("killChainPhases", [])
+                    ][:10],
+                    "platforms": (r.get("x_mitre_platforms") or [])[:10],
+                }
+            )
         return formatted
 
     def _format_vulnerabilities(self, results: list) -> list[dict[str, Any]]:
         """Format vulnerability results."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "vulnerability",
-                "name": r.get("name", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "cvss_score": r.get("x_opencti_cvss_base_score", ""),
-                "cvss_severity": r.get("x_opencti_cvss_base_severity", "")
-            })
+            formatted.append(
+                {
+                    "type": "vulnerability",
+                    "name": r.get("name", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "cvss_score": r.get("x_opencti_cvss_base_score", ""),
+                    "cvss_severity": r.get("x_opencti_cvss_base_severity", ""),
+                }
+            )
         return formatted
 
     def _format_reports(self, results: list) -> list[dict[str, Any]]:
         """Format report results."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "report",
-                "name": r.get("name", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "published": r.get("published", ""),
-                "report_types": r.get("report_types", []),
-                "confidence": r.get("confidence", 0)
-            })
+            formatted.append(
+                {
+                    "type": "report",
+                    "name": r.get("name", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "published": r.get("published", ""),
+                    "report_types": r.get("report_types", []),
+                    "confidence": r.get("confidence", 0),
+                }
+            )
         return formatted
 
     def _format_campaigns(self, results: list) -> list[dict[str, Any]]:
@@ -2585,18 +2664,22 @@ class OpenCTIClient:
             aliases = r.get("aliases") or []
             if isinstance(aliases, str):
                 aliases = [aliases]
-            formatted.append({
-                "type": "campaign",
-                "id": r.get("id", ""),
-                "name": r.get("name", ""),
-                "aliases": aliases[:10],
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "first_seen": r.get("first_seen", ""),
-                "last_seen": r.get("last_seen", ""),
-                "objective": r.get("objective", ""),
-                "confidence": r.get("confidence", 0),
-                "labels": self._extract_labels(r)
-            })
+            formatted.append(
+                {
+                    "type": "campaign",
+                    "id": r.get("id", ""),
+                    "name": r.get("name", ""),
+                    "aliases": aliases[:10],
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "first_seen": r.get("first_seen", ""),
+                    "last_seen": r.get("last_seen", ""),
+                    "objective": r.get("objective", ""),
+                    "confidence": r.get("confidence", 0),
+                    "labels": self._extract_labels(r),
+                }
+            )
         return formatted
 
     def _format_tools(self, results: list) -> list[dict[str, Any]]:
@@ -2606,15 +2689,19 @@ class OpenCTIClient:
             aliases = r.get("aliases") or []
             if isinstance(aliases, str):
                 aliases = [aliases]
-            formatted.append({
-                "type": "tool",
-                "id": r.get("id", ""),
-                "name": r.get("name", ""),
-                "aliases": aliases[:10],
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "tool_types": r.get("tool_types") or [],
-                "labels": self._extract_labels(r)
-            })
+            formatted.append(
+                {
+                    "type": "tool",
+                    "id": r.get("id", ""),
+                    "name": r.get("name", ""),
+                    "aliases": aliases[:10],
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "tool_types": r.get("tool_types") or [],
+                    "labels": self._extract_labels(r),
+                }
+            )
         return formatted
 
     def _format_infrastructure(self, results: list) -> list[dict[str, Any]]:
@@ -2624,70 +2711,84 @@ class OpenCTIClient:
             aliases = r.get("aliases") or []
             if isinstance(aliases, str):
                 aliases = [aliases]
-            formatted.append({
-                "type": "infrastructure",
-                "id": r.get("id", ""),
-                "name": r.get("name", ""),
-                "aliases": aliases[:10],
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "infrastructure_types": r.get("infrastructure_types") or [],
-                "first_seen": r.get("first_seen", ""),
-                "last_seen": r.get("last_seen", ""),
-                "labels": self._extract_labels(r)
-            })
+            formatted.append(
+                {
+                    "type": "infrastructure",
+                    "id": r.get("id", ""),
+                    "name": r.get("name", ""),
+                    "aliases": aliases[:10],
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "infrastructure_types": r.get("infrastructure_types") or [],
+                    "first_seen": r.get("first_seen", ""),
+                    "last_seen": r.get("last_seen", ""),
+                    "labels": self._extract_labels(r),
+                }
+            )
         return formatted
 
     def _format_incidents(self, results: list) -> list[dict[str, Any]]:
         """Format incident results."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "incident",
-                "id": r.get("id", ""),
-                "name": r.get("name", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "incident_type": r.get("incident_type", ""),
-                "severity": r.get("severity", ""),
-                "source": r.get("source", ""),
-                "first_seen": r.get("first_seen", ""),
-                "last_seen": r.get("last_seen", ""),
-                "objective": r.get("objective", ""),
-                "confidence": r.get("confidence", 0),
-                "labels": self._extract_labels(r)
-            })
+            formatted.append(
+                {
+                    "type": "incident",
+                    "id": r.get("id", ""),
+                    "name": r.get("name", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "incident_type": r.get("incident_type", ""),
+                    "severity": r.get("severity", ""),
+                    "source": r.get("source", ""),
+                    "first_seen": r.get("first_seen", ""),
+                    "last_seen": r.get("last_seen", ""),
+                    "objective": r.get("objective", ""),
+                    "confidence": r.get("confidence", 0),
+                    "labels": self._extract_labels(r),
+                }
+            )
         return formatted
 
     def _format_observables(self, results: list) -> list[dict[str, Any]]:
         """Format observable (SCO) results."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "observable",
-                "id": r.get("id", ""),
-                "entity_type": r.get("entity_type", ""),
-                "observable_value": r.get("observable_value", r.get("value", "")),
-                "created": r.get("created", ""),
-                "labels": self._extract_labels(r)
-            })
+            formatted.append(
+                {
+                    "type": "observable",
+                    "id": r.get("id", ""),
+                    "entity_type": r.get("entity_type", ""),
+                    "observable_value": r.get("observable_value", r.get("value", "")),
+                    "created": r.get("created", ""),
+                    "labels": self._extract_labels(r),
+                }
+            )
         return formatted
 
     def _format_sightings(self, results: list) -> list[dict[str, Any]]:
         """Format sighting results."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "sighting",
-                "id": r.get("id", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "first_seen": r.get("first_seen", ""),
-                "last_seen": r.get("last_seen", ""),
-                "count": r.get("attribute_count", 1),
-                "from_entity": r.get("from", {}).get("name", ""),
-                "from_type": r.get("from", {}).get("entity_type", ""),
-                "to_entity": r.get("to", {}).get("name", ""),
-                "to_type": r.get("to", {}).get("entity_type", ""),
-                "confidence": r.get("confidence", 0)
-            })
+            formatted.append(
+                {
+                    "type": "sighting",
+                    "id": r.get("id", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "first_seen": r.get("first_seen", ""),
+                    "last_seen": r.get("last_seen", ""),
+                    "count": r.get("attribute_count", 1),
+                    "from_entity": r.get("from", {}).get("name", ""),
+                    "from_type": r.get("from", {}).get("entity_type", ""),
+                    "to_entity": r.get("to", {}).get("name", ""),
+                    "to_type": r.get("to", {}).get("entity_type", ""),
+                    "confidence": r.get("confidence", 0),
+                }
+            )
         return formatted
 
     def _format_organizations(self, results: list) -> list[dict[str, Any]]:
@@ -2697,92 +2798,120 @@ class OpenCTIClient:
             aliases = r.get("aliases") or []
             if isinstance(aliases, str):
                 aliases = [aliases]
-            formatted.append({
-                "type": "organization",
-                "id": r.get("id", ""),
-                "name": r.get("name", ""),
-                "aliases": aliases[:10],
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "contact_information": r.get("contact_information", ""),
-                "sectors": [s.get("name", "") for s in r.get("sectors", []) if isinstance(s, dict)][:5],
-                "labels": self._extract_labels(r)
-            })
+            formatted.append(
+                {
+                    "type": "organization",
+                    "id": r.get("id", ""),
+                    "name": r.get("name", ""),
+                    "aliases": aliases[:10],
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "contact_information": r.get("contact_information", ""),
+                    "sectors": [
+                        s.get("name", "")
+                        for s in r.get("sectors", [])
+                        if isinstance(s, dict)
+                    ][:5],
+                    "labels": self._extract_labels(r),
+                }
+            )
         return formatted
 
     def _format_sectors(self, results: list) -> list[dict[str, Any]]:
         """Format sector results."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "sector",
-                "id": r.get("id", ""),
-                "name": r.get("name", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "labels": self._extract_labels(r)
-            })
+            formatted.append(
+                {
+                    "type": "sector",
+                    "id": r.get("id", ""),
+                    "name": r.get("name", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "labels": self._extract_labels(r),
+                }
+            )
         return formatted
 
     def _format_locations(self, results: list) -> list[dict[str, Any]]:
         """Format location results."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "location",
-                "id": r.get("id", ""),
-                "name": r.get("name", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "location_type": r.get("x_opencti_location_type", r.get("entity_type", "")),
-                "latitude": r.get("latitude"),
-                "longitude": r.get("longitude"),
-                "country": r.get("country", ""),
-                "labels": self._extract_labels(r)
-            })
+            formatted.append(
+                {
+                    "type": "location",
+                    "id": r.get("id", ""),
+                    "name": r.get("name", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "location_type": r.get(
+                        "x_opencti_location_type", r.get("entity_type", "")
+                    ),
+                    "latitude": r.get("latitude"),
+                    "longitude": r.get("longitude"),
+                    "country": r.get("country", ""),
+                    "labels": self._extract_labels(r),
+                }
+            )
         return formatted
 
     def _format_courses_of_action(self, results: list) -> list[dict[str, Any]]:
         """Format course of action (mitigation) results."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "course_of_action",
-                "id": r.get("id", ""),
-                "name": r.get("name", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "mitre_id": r.get("x_mitre_id", ""),
-                "labels": self._extract_labels(r)
-            })
+            formatted.append(
+                {
+                    "type": "course_of_action",
+                    "id": r.get("id", ""),
+                    "name": r.get("name", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "mitre_id": r.get("x_mitre_id", ""),
+                    "labels": self._extract_labels(r),
+                }
+            )
         return formatted
 
     def _format_groupings(self, results: list) -> list[dict[str, Any]]:
         """Format grouping results."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "grouping",
-                "id": r.get("id", ""),
-                "name": r.get("name", ""),
-                "description": r.get("description", "")[:500] if r.get("description") else "",
-                "context": r.get("context", ""),
-                "created": r.get("created", ""),
-                "labels": self._extract_labels(r)
-            })
+            formatted.append(
+                {
+                    "type": "grouping",
+                    "id": r.get("id", ""),
+                    "name": r.get("name", ""),
+                    "description": r.get("description", "")[:500]
+                    if r.get("description")
+                    else "",
+                    "context": r.get("context", ""),
+                    "created": r.get("created", ""),
+                    "labels": self._extract_labels(r),
+                }
+            )
         return formatted
 
     def _format_notes(self, results: list) -> list[dict[str, Any]]:
         """Format note results."""
         formatted = []
         for r in results:
-            formatted.append({
-                "type": "note",
-                "id": r.get("id", ""),
-                "content": r.get("content", "")[:1000] if r.get("content") else "",
-                "authors": (r.get("authors") or [])[:5],
-                "created": r.get("created", ""),
-                "note_types": r.get("note_types") or [],
-                "likelihood": r.get("likelihood"),
-                "confidence": r.get("confidence", 0),
-                "labels": self._extract_labels(r)
-            })
+            formatted.append(
+                {
+                    "type": "note",
+                    "id": r.get("id", ""),
+                    "content": r.get("content", "")[:1000] if r.get("content") else "",
+                    "authors": (r.get("authors") or [])[:5],
+                    "created": r.get("created", ""),
+                    "note_types": r.get("note_types") or [],
+                    "likelihood": r.get("likelihood"),
+                    "confidence": r.get("confidence", 0),
+                    "labels": self._extract_labels(r),
+                }
+            )
         return formatted
 
     def _format_entity(self, entity: dict) -> dict[str, Any]:
@@ -2793,8 +2922,12 @@ class OpenCTIClient:
         result = {
             "id": entity.get("id", ""),
             "entity_type": entity_type,
-            "name": entity.get("name", entity.get("value", entity.get("observable_value", ""))),
-            "description": entity.get("description", "")[:500] if entity.get("description") else "",
+            "name": entity.get(
+                "name", entity.get("value", entity.get("observable_value", ""))
+            ),
+            "description": entity.get("description", "")[:500]
+            if entity.get("description")
+            else "",
             "created": entity.get("created", ""),
             "modified": entity.get("modified", ""),
             "confidence": entity.get("confidence"),
@@ -2802,7 +2935,7 @@ class OpenCTIClient:
             "external_references": [
                 {"source": ref.get("source_name", ""), "url": ref.get("url", "")}
                 for ref in entity.get("externalReferences", [])[:5]
-            ]
+            ],
         }
 
         # Type-specific fields
@@ -2837,8 +2970,16 @@ class OpenCTIClient:
         elif entity_type == "Report":
             result["published"] = entity.get("published")
             result["report_types"] = entity.get("report_types", [])
-        elif entity_type in ("IPv4-Addr", "IPv6-Addr", "Domain-Name", "Url", "StixFile"):
-            result["observable_value"] = entity.get("observable_value", entity.get("value", ""))
+        elif entity_type in (
+            "IPv4-Addr",
+            "IPv6-Addr",
+            "Domain-Name",
+            "Url",
+            "StixFile",
+        ):
+            result["observable_value"] = entity.get(
+                "observable_value", entity.get("value", "")
+            )
 
         return result
 
@@ -2850,19 +2991,21 @@ class OpenCTIClient:
         return {
             "id": rel.get("id", ""),
             "relationship_type": rel.get("relationship_type", ""),
-            "description": rel.get("description", "")[:500] if rel.get("description") else "",
+            "description": rel.get("description", "")[:500]
+            if rel.get("description")
+            else "",
             "from": {
                 "id": from_entity.get("id", ""),
                 "type": from_entity.get("entity_type", ""),
-                "name": from_entity.get("name", from_entity.get("value", ""))
+                "name": from_entity.get("name", from_entity.get("value", "")),
             },
             "to": {
                 "id": to_entity.get("id", ""),
                 "type": to_entity.get("entity_type", ""),
-                "name": to_entity.get("name", to_entity.get("value", ""))
+                "name": to_entity.get("name", to_entity.get("value", "")),
             },
             "start_time": rel.get("start_time"),
             "stop_time": rel.get("stop_time"),
             "confidence": rel.get("confidence"),
-            "created": rel.get("created", "")
+            "created": rel.get("created", ""),
         }

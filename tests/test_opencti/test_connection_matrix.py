@@ -9,31 +9,28 @@ Test matrix covering:
 from __future__ import annotations
 
 import logging
-import os
-import stat
 import threading
 import uuid
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, Mock, patch, mock_open
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-
+from opencti_mcp.client import TRANSIENT_ERRORS, OpenCTIClient
 from opencti_mcp.config import (
     Config,
     SecretStr,
-    _validate_url,
     _load_token,
     _load_token_file,
     _load_token_from_env_file,
+    _validate_url,
 )
-from opencti_mcp.client import OpenCTIClient, TRANSIENT_ERRORS
 from opencti_mcp.errors import ConfigurationError, ConnectionError
-
 
 # =============================================================================
 # Helpers
 # =============================================================================
+
 
 def make_config(**overrides: Any) -> Config:
     """Create a Config with sensible defaults, overridable by kwargs."""
@@ -50,6 +47,7 @@ def make_config(**overrides: Any) -> Config:
 # =============================================================================
 # C1-C8: Connection URL Variants
 # =============================================================================
+
 
 class TestConnectionURLVariants:
     """C1-C8: Verify various URL formats are accepted and normalized."""
@@ -148,7 +146,9 @@ class TestConnectionURLVariants:
         assert call_args[0][0] == "http://localhost:8080"
 
     @patch("pycti.OpenCTIApiClient")
-    def test_c8_connect_multiple_trailing_slashes_normalized(self, mock_pycti_cls: Mock) -> None:
+    def test_c8_connect_multiple_trailing_slashes_normalized(
+        self, mock_pycti_cls: Mock
+    ) -> None:
         """C8: Connect with multiple trailing slashes — verify normalized."""
         mock_pycti_cls.return_value = MagicMock()
         config = make_config(opencti_url="http://localhost:8080///")
@@ -166,6 +166,7 @@ class TestConnectionURLVariants:
 # C9-C19: Token Handling
 # =============================================================================
 
+
 class TestTokenHandling:
     """C9-C19: Token loading, validation, and security."""
 
@@ -178,7 +179,9 @@ class TestTokenHandling:
 
         assert config.opencti_token.get_secret_value() == "env-test-token-abc"
 
-    def test_c10_token_from_config_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_c10_token_from_config_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """C10: Token from file (~/.config/opencti-mcp/token) via _load_token()."""
         # Unset env var so it falls through to file
         monkeypatch.delenv("OPENCTI_TOKEN", raising=False)
@@ -198,13 +201,15 @@ class TestTokenHandling:
 
         assert token == "file-test-token-xyz"
 
-    def test_c11_token_from_env_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_c11_token_from_env_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """C11: Token from .env file."""
         monkeypatch.delenv("OPENCTI_TOKEN", raising=False)
 
         # Create .env file
         env_file = tmp_path / ".env"
-        env_file.write_text('OPENCTI_TOKEN=dotenv-token-123\n')
+        env_file.write_text("OPENCTI_TOKEN=dotenv-token-123\n")
         env_file.chmod(0o600)
 
         token = _load_token_from_env_file(env_file)
@@ -289,6 +294,7 @@ class TestTokenHandling:
 # C20-C21: Connection Caching and Thread Safety
 # =============================================================================
 
+
 class TestConnectionCachingAndThreadSafety:
     """C20-C21: Client caching and concurrent access."""
 
@@ -320,6 +326,7 @@ class TestConnectionCachingAndThreadSafety:
             call_count += 1
             # Small sleep to increase contention window
             import time
+
             time.sleep(0.01)
             return MagicMock()
 
@@ -359,6 +366,7 @@ class TestConnectionCachingAndThreadSafety:
 # =============================================================================
 # S1-S10: SSL/TLS Handling
 # =============================================================================
+
 
 class TestSSLTLSHandling:
     """S1-S10: SSL verification, env parsing, error handling, and HTTP warnings."""
@@ -402,8 +410,16 @@ class TestSSLTLSHandling:
             ("No", False),
         ],
         ids=[
-            "true", "false", "1", "0", "yes", "no",
-            "True_caps", "FALSE_caps", "YES_caps", "No_caps",
+            "true",
+            "false",
+            "1",
+            "0",
+            "yes",
+            "no",
+            "True_caps",
+            "FALSE_caps",
+            "YES_caps",
+            "No_caps",
         ],
     )
     def test_s3_ssl_verify_env_var_parsing(
@@ -430,26 +446,36 @@ class TestSSLTLSHandling:
 
         The ConnectionError safe_message should be generic.
         """
-        error = ConnectionError("SSL: CERTIFICATE_VERIFY_FAILED [path: /etc/ssl/cert.pem]")
+        error = ConnectionError(
+            "SSL: CERTIFICATE_VERIFY_FAILED [path: /etc/ssl/cert.pem]"
+        )
         assert "certificate" not in error.safe_message.lower()
         assert "ssl" not in error.safe_message.lower()
-        assert error.safe_message == "Unable to connect to OpenCTI. Check server status."
+        assert (
+            error.safe_message == "Unable to connect to OpenCTI. Check server status."
+        )
 
-    def test_s6_http_url_remote_host_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_s6_http_url_remote_host_logs_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """S6: HTTP URL for remote host (e.g., http://example.com:8080) logs security warning."""
         with caplog.at_level(logging.WARNING, logger="opencti_mcp.config"):
             _validate_url("http://example.com:8080")
 
-        assert any("HTTP" in rec.message and "plaintext" in rec.message for rec in caplog.records)
+        assert any(
+            "HTTP" in rec.message and "plaintext" in rec.message
+            for rec in caplog.records
+        )
 
-    def test_s7_http_url_localhost_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_s7_http_url_localhost_no_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """S7: HTTP URL for localhost does NOT log warning."""
         with caplog.at_level(logging.WARNING, logger="opencti_mcp.config"):
             _validate_url("http://localhost:8080")
 
         warning_records = [
-            r for r in caplog.records
-            if "plaintext" in r.message.lower()
+            r for r in caplog.records if "plaintext" in r.message.lower()
         ]
         assert len(warning_records) == 0
 
@@ -473,8 +499,7 @@ class TestSSLTLSHandling:
             _validate_url(url)
 
         warning_records = [
-            r for r in caplog.records
-            if "plaintext" in r.message.lower()
+            r for r in caplog.records if "plaintext" in r.message.lower()
         ]
         assert len(warning_records) == 0
 
@@ -494,8 +519,7 @@ class TestSSLTLSHandling:
 
         # Current behavior: it DOES warn (because .cluster.local is not in is_local check)
         warning_records = [
-            r for r in caplog.records
-            if "plaintext" in r.message.lower()
+            r for r in caplog.records if "plaintext" in r.message.lower()
         ]
         assert len(warning_records) == 1, (
             "Expected 1 warning for K8s .cluster.local URL (not recognized as internal)"
@@ -511,8 +535,7 @@ class TestSSLTLSHandling:
             _validate_url("https://10.0.0.50:443")
 
         warning_records = [
-            r for r in caplog.records
-            if "plaintext" in r.message.lower()
+            r for r in caplog.records if "plaintext" in r.message.lower()
         ]
         assert len(warning_records) == 0
 
@@ -520,6 +543,7 @@ class TestSSLTLSHandling:
 # =============================================================================
 # U1-U10: URL Edge Cases
 # =============================================================================
+
 
 class TestURLEdgeCases:
     """U1-U10: URL normalization, validation, and special formats."""
@@ -596,6 +620,7 @@ class TestURLEdgeCases:
 # Reconnect Tests (supplementary)
 # =============================================================================
 
+
 class TestReconnect:
     """Verify reconnect clears cached client and creates a new one."""
 
@@ -617,7 +642,9 @@ class TestReconnect:
         assert mock_pycti_cls.call_count == 2
 
     @patch("pycti.OpenCTIApiClient")
-    def test_connect_after_reconnect_returns_new_cached(self, mock_pycti_cls: Mock) -> None:
+    def test_connect_after_reconnect_returns_new_cached(
+        self, mock_pycti_cls: Mock
+    ) -> None:
         """After reconnect, subsequent connect() should return the new cached client."""
         instance1 = MagicMock(name="client1")
         instance2 = MagicMock(name="client2")
@@ -638,6 +665,7 @@ class TestReconnect:
 # Additional edge case coverage
 # =============================================================================
 
+
 class TestConfigEdgeCases:
     """Additional edge cases for Config construction and validation."""
 
@@ -657,7 +685,9 @@ class TestConfigEdgeCases:
             make_config(opencti_url="   ")
 
     @patch("pycti.OpenCTIApiClient")
-    def test_connect_import_error_raises_connection_error(self, mock_pycti_cls: Mock) -> None:
+    def test_connect_import_error_raises_connection_error(
+        self, mock_pycti_cls: Mock
+    ) -> None:
         """If pycti import fails, a ConnectionError is raised."""
         mock_pycti_cls.side_effect = ImportError("No module named 'pycti'")
 
@@ -668,7 +698,9 @@ class TestConfigEdgeCases:
             client.connect()
 
     @patch("pycti.OpenCTIApiClient")
-    def test_connect_generic_exception_raises_connection_error(self, mock_pycti_cls: Mock) -> None:
+    def test_connect_generic_exception_raises_connection_error(
+        self, mock_pycti_cls: Mock
+    ) -> None:
         """Generic exceptions during connect are wrapped in ConnectionError."""
         mock_pycti_cls.side_effect = RuntimeError("unexpected failure")
 
@@ -774,10 +806,7 @@ class TestEnvFileTokenLoading:
         """Comments and empty lines in .env file are skipped."""
         env_file = tmp_path / ".env"
         env_file.write_text(
-            "# This is a comment\n"
-            "\n"
-            "SOME_OTHER_VAR=value\n"
-            "OPENCTI_TOKEN=real-token\n"
+            "# This is a comment\n\nSOME_OTHER_VAR=value\nOPENCTI_TOKEN=real-token\n"
         )
         env_file.chmod(0o600)
 

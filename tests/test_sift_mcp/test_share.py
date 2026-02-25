@@ -1,13 +1,11 @@
 """Tests for share-relative path resolution (sift_common.resolve_share_path)."""
 
-import pytest
 from pathlib import Path
 
 from sift_common import resolve_share_path
 
 
 class TestResolveSharePath:
-
     def test_resolves_with_share_root(self, monkeypatch):
         monkeypatch.setenv("AIIR_SHARE_ROOT", "/mnt/wintools")
         result = resolve_share_path("extractions/evtxecmd-Security-003.csv")

@@ -37,24 +37,25 @@ import sqlite3
 import sys
 import zipfile
 from pathlib import Path
-from typing import Dict, List, NamedTuple, Optional, Any
+from typing import NamedTuple
 
 
 class RegistryJsonSource(NamedTuple):
     """Represents a registry JSON file, either on disk or inside a zip."""
-    path: Path          # JSON file path (disk) or zip file path (zip)
-    zip_entry: str      # "" for disk files, entry name for zip files
-    os_folder: str      # OS version folder name (e.g. "W10_22H2_Pro_20221115_19045.2251")
-    hive_type: str      # SYSTEM, SOFTWARE, NTUSER, SAM, SECURITY, DEFAULT
+
+    path: Path  # JSON file path (disk) or zip file path (zip)
+    zip_entry: str  # "" for disk files, entry name for zip files
+    os_folder: str  # OS version folder name (e.g. "W10_22H2_Pro_20221115_19045.2251")
+    hive_type: str  # SYSTEM, SOFTWARE, NTUSER, SAM, SECURITY, DEFAULT
+
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
-def parse_os_from_source(source: RegistryJsonSource) -> Dict[str, str]:
+def parse_os_from_source(source: RegistryJsonSource) -> dict[str, str]:
     """
     Parse OS info from a RegistryJsonSource.
 
@@ -68,42 +69,40 @@ def parse_os_from_source(source: RegistryJsonSource) -> Dict[str, str]:
     os_folder = source.os_folder
 
     result = {
-        'short_name': os_folder,
-        'os_family': 'Windows',
-        'os_edition': None,
-        'os_release': None,
-        'hive_type': source.hive_type,
+        "short_name": os_folder,
+        "os_family": "Windows",
+        "os_edition": None,
+        "os_release": None,
+        "hive_type": source.hive_type,
     }
 
     # Pattern: W10_1507_Edu_20150729_10240 or W2016_1607_Standard_20161108_14393
-    match = re.match(r'^(W\d+|W2\d+)_(\w+)_(\w+)', os_folder)
+    match = re.match(r"^(W\d+|W2\d+)_(\w+)_(\w+)", os_folder)
     if match:
         prefix, release, edition = match.groups()
-        if prefix.startswith('W2'):
+        if prefix.startswith("W2"):
             # Server version like W2016 -> Windows Server 2016
-            result['os_family'] = f"Windows Server {prefix[1:]}"
+            result["os_family"] = f"Windows Server {prefix[1:]}"
         else:
             # Desktop version like W10 -> Windows 10
-            result['os_family'] = f"Windows {prefix[1:]}"
-        result['os_release'] = release
-        result['os_edition'] = edition
-    elif 'WindowsServer' in os_folder:
+            result["os_family"] = f"Windows {prefix[1:]}"
+        result["os_release"] = release
+        result["os_edition"] = edition
+    elif "WindowsServer" in os_folder:
         # Pattern: WindowsServer2008_SP2_Standard_20090526_6002
-        match2 = re.match(r'WindowsServer(\d+)_(\w+)_(\w+)', os_folder)
+        match2 = re.match(r"WindowsServer(\d+)_(\w+)_(\w+)", os_folder)
         if match2:
             version, release, edition = match2.groups()
-            result['os_family'] = f"Windows Server {version}"
-            result['os_release'] = release
-            result['os_edition'] = edition
+            result["os_family"] = f"Windows Server {version}"
+            result["os_release"] = release
+            result["os_edition"] = edition
 
     return result
 
 
 def flatten_registry_keys(
-    data: Dict,
-    current_path: str = "",
-    results: List[Dict] = None
-) -> List[Dict]:
+    data: dict, current_path: str = "", results: list[dict] = None
+) -> list[dict]:
     """
     Recursively flatten registry JSON into key/value records.
 
@@ -126,28 +125,28 @@ def flatten_registry_keys(
         return results
 
     # Get key path from this node (use KeyName for relative path construction)
-    key_name = data.get('KeyName', '')
+    key_name = data.get("KeyName", "")
     if not current_path and key_name:
         # Use the KeyPath from root, but normalize it
-        key_path = data.get('KeyPath', key_name)
+        key_path = data.get("KeyPath", key_name)
         # Extract just the registry path portion (after the hive identifier)
-        if '\\' in key_path:
+        if "\\" in key_path:
             # Remove the hive/GUID prefix, keep path after first backslash
-            parts = key_path.split('\\', 1)
-            current_path = parts[1] if len(parts) > 1 else ''
+            parts = key_path.split("\\", 1)
+            current_path = parts[1] if len(parts) > 1 else ""
         else:
-            current_path = ''
+            current_path = ""
     elif key_name:
         current_path = f"{current_path}\\{key_name}" if current_path else key_name
 
     # Process values at this level (array format)
-    values = data.get('Values', [])
+    values = data.get("Values", [])
     if isinstance(values, list):
         for value_entry in values:
             if isinstance(value_entry, dict):
-                value_name = value_entry.get('ValueName', '')
-                val_type = value_entry.get('ValueType', 'REG_SZ')
-                val = value_entry.get('ValueData', '')
+                value_name = value_entry.get("ValueName", "")
+                val_type = value_entry.get("ValueType", "REG_SZ")
+                val = value_entry.get("ValueData", "")
 
                 # Convert value to string representation
                 if isinstance(val, bytes):
@@ -155,17 +154,19 @@ def flatten_registry_keys(
                 elif isinstance(val, (list, dict)):
                     val_str = json.dumps(val)
                 else:
-                    val_str = str(val) if val is not None else ''
+                    val_str = str(val) if val is not None else ""
 
-                results.append({
-                    'key_path': current_path,
-                    'value_name': value_name,
-                    'value_type': str(val_type),
-                    'value_data': val_str
-                })
+                results.append(
+                    {
+                        "key_path": current_path,
+                        "value_name": value_name,
+                        "value_type": str(val_type),
+                        "value_data": val_str,
+                    }
+                )
 
     # Process subkeys (array format)
-    subkeys = data.get('SubKeys', [])
+    subkeys = data.get("SubKeys", [])
     if isinstance(subkeys, list):
         for subkey_data in subkeys:
             if isinstance(subkey_data, dict):
@@ -174,11 +175,10 @@ def flatten_registry_keys(
     return results
 
 
-def get_or_create_os_id(conn: sqlite3.Connection, os_info: Dict) -> int:
+def get_or_create_os_id(conn: sqlite3.Connection, os_info: dict) -> int:
     """Get or create OS version entry."""
     cursor = conn.execute(
-        "SELECT id FROM baseline_os WHERE short_name = ?",
-        (os_info['short_name'],)
+        "SELECT id FROM baseline_os WHERE short_name = ?", (os_info["short_name"],)
     )
     row = cursor.fetchone()
     if row:
@@ -189,9 +189,13 @@ def get_or_create_os_id(conn: sqlite3.Connection, os_info: Dict) -> int:
         INSERT INTO baseline_os (short_name, os_family, os_edition, os_release, source_json)
         VALUES (?, ?, ?, ?, ?)
         """,
-        (os_info['short_name'], os_info['os_family'],
-         os_info.get('os_edition'), os_info.get('os_release'),
-         os_info.get('hive_type'))
+        (
+            os_info["short_name"],
+            os_info["os_family"],
+            os_info.get("os_edition"),
+            os_info.get("os_release"),
+            os_info.get("hive_type"),
+        ),
     )
     conn.commit()
     return cursor.lastrowid
@@ -199,47 +203,51 @@ def get_or_create_os_id(conn: sqlite3.Connection, os_info: Dict) -> int:
 
 def import_registry_data(
     conn: sqlite3.Connection,
-    records: List[Dict],
+    records: list[dict],
     hive: str,
     os_short_name: str,
-    batch_size: int = 5000
-) -> Dict[str, int]:
+    batch_size: int = 5000,
+) -> dict[str, int]:
     """
     Import registry records with deduplication.
 
     Returns stats dict.
     """
-    stats = {'inserted': 0, 'updated': 0, 'errors': 0}
+    stats = {"inserted": 0, "updated": 0, "errors": 0}
 
     batch = []
 
     for record in records:
         try:
-            key_path_lower = record['key_path'].lower()
-            value_name = record['value_name']
-            value_type = record['value_type']
-            value_data = record['value_data']
+            key_path_lower = record["key_path"].lower()
+            value_name = record["value_name"]
+            value_type = record["value_type"]
+            value_data = record["value_data"]
 
             # Hash value_data for deduplication
-            value_data_hash = hashlib.sha256(value_data.encode('utf-8', errors='replace')).hexdigest()[:32]
+            value_data_hash = hashlib.sha256(
+                value_data.encode("utf-8", errors="replace")
+            ).hexdigest()[:32]
 
-            batch.append((
-                hive,
-                key_path_lower,
-                value_name,
-                value_type,
-                value_data,
-                value_data_hash,
-                os_short_name
-            ))
+            batch.append(
+                (
+                    hive,
+                    key_path_lower,
+                    value_name,
+                    value_type,
+                    value_data,
+                    value_data_hash,
+                    os_short_name,
+                )
+            )
 
             if len(batch) >= batch_size:
                 _insert_batch(conn, batch, stats)
                 batch = []
 
         except Exception as e:
-            stats['errors'] += 1
-            if stats['errors'] <= 5:
+            stats["errors"] += 1
+            if stats["errors"] <= 5:
                 logger.debug(f"Error processing record: {e}")
 
     if batch:
@@ -248,7 +256,7 @@ def import_registry_data(
     return stats
 
 
-def _insert_batch(conn: sqlite3.Connection, batch: List, stats: Dict):
+def _insert_batch(conn: sqlite3.Connection, batch: list, stats: dict):
     """Insert a batch of registry records with upsert logic."""
     for record in batch:
         hive, key_path, value_name, value_type, value_data, value_hash, os_name = record
@@ -262,7 +270,7 @@ def _insert_batch(conn: sqlite3.Connection, batch: List, stats: Dict):
                   AND (value_name = ? OR (value_name IS NULL AND ? IS NULL))
                   AND value_data_hash = ?
                 """,
-                (hive, key_path, value_name, value_name, value_hash)
+                (hive, key_path, value_name, value_name, value_hash),
             )
             row = cursor.fetchone()
 
@@ -274,9 +282,9 @@ def _insert_batch(conn: sqlite3.Connection, batch: List, stats: Dict):
                     os_versions.append(os_name)
                     conn.execute(
                         "UPDATE baseline_registry SET os_versions = ? WHERE id = ?",
-                        (json.dumps(os_versions), reg_id)
+                        (json.dumps(os_versions), reg_id),
                     )
-                    stats['updated'] += 1
+                    stats["updated"] += 1
             else:
                 # Insert new
                 conn.execute(
@@ -285,14 +293,22 @@ def _insert_batch(conn: sqlite3.Connection, batch: List, stats: Dict):
                         (hive, key_path_lower, value_name, value_type, value_data, value_data_hash, os_versions)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (hive, key_path, value_name, value_type, value_data, value_hash, json.dumps([os_name]))
+                    (
+                        hive,
+                        key_path,
+                        value_name,
+                        value_type,
+                        value_data,
+                        value_hash,
+                        json.dumps([os_name]),
+                    ),
                 )
-                stats['inserted'] += 1
+                stats["inserted"] += 1
 
         except sqlite3.IntegrityError:
-            stats['updated'] += 1  # Duplicate, already exists
-        except Exception as e:
-            stats['errors'] += 1
+            stats["updated"] += 1  # Duplicate, already exists
+        except Exception:
+            stats["errors"] += 1
 
     conn.commit()
 
@@ -300,11 +316,13 @@ def _insert_batch(conn: sqlite3.Connection, batch: List, stats: Dict):
 def _hive_from_filename(filename: str) -> str:
     """Extract hive type from a filename like 'SYSTEM_ROOT.json'."""
     # Handle both forward and backslash paths from zip entries
-    basename = filename.rsplit('/', 1)[-1].rsplit('\\', 1)[-1]
-    return basename.replace('_ROOT.json', '').upper()
+    basename = filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    return basename.replace("_ROOT.json", "").upper()
 
 
-def find_registry_json_files(sources_dir: Path, hive_filter: Optional[str] = None) -> List[RegistryJsonSource]:
+def find_registry_json_files(
+    sources_dir: Path, hive_filter: str | None = None
+) -> list[RegistryJsonSource]:
     """Find registry JSON files, checking disk first then falling back to zips."""
     registry_dir = sources_dir / "VanillaWindowsRegistryHives"
     if not registry_dir.exists():
@@ -319,12 +337,14 @@ def find_registry_json_files(sources_dir: Path, hive_filter: Optional[str] = Non
             continue
         # OS folder is 3 levels up: KapeResearch -> mout -> OS_Version_Folder
         os_folder = json_path.parent.parent.parent.name
-        sources.append(RegistryJsonSource(
-            path=json_path,
-            zip_entry="",
-            os_folder=os_folder,
-            hive_type=hive_type,
-        ))
+        sources.append(
+            RegistryJsonSource(
+                path=json_path,
+                zip_entry="",
+                os_folder=os_folder,
+                hive_type=hive_type,
+            )
+        )
 
     if sources:
         logger.info(f"Found {len(sources)} on-disk registry JSON files")
@@ -337,16 +357,18 @@ def find_registry_json_files(sources_dir: Path, hive_filter: Optional[str] = Non
         try:
             with zipfile.ZipFile(zip_path) as zf:
                 for entry in zf.namelist():
-                    if entry.endswith('_ROOT.json'):
+                    if entry.endswith("_ROOT.json"):
                         hive_type = _hive_from_filename(entry)
                         if hive_filter and hive_filter.upper() != hive_type:
                             continue
-                        sources.append(RegistryJsonSource(
-                            path=zip_path,
-                            zip_entry=entry,
-                            os_folder=os_folder,
-                            hive_type=hive_type,
-                        ))
+                        sources.append(
+                            RegistryJsonSource(
+                                path=zip_path,
+                                zip_entry=entry,
+                                os_folder=os_folder,
+                                hive_type=hive_type,
+                            )
+                        )
         except (zipfile.BadZipFile, OSError) as e:
             logger.warning(f"Skipping bad zip {zip_path}: {e}")
 
@@ -363,7 +385,7 @@ def load_registry_json(source: RegistryJsonSource) -> dict:
             with zf.open(source.zip_entry) as f:
                 return json.load(f)
     else:
-        with open(source.path, 'r', encoding='utf-8', errors='replace') as f:
+        with open(source.path, encoding="utf-8", errors="replace") as f:
             return json.load(f)
 
 
@@ -377,12 +399,18 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--batch-size", type=int, default=5000)
-    parser.add_argument("--sources-dir", type=str, default=None,
-                        help="Override sources directory")
-    parser.add_argument("--only-files", nargs="+",
-                        help="Only process these specific JSON files")
-    parser.add_argument("--sync-commit", type=str, default=None,
-                        help="Record this commit hash after import")
+    parser.add_argument(
+        "--sources-dir", type=str, default=None, help="Override sources directory"
+    )
+    parser.add_argument(
+        "--only-files", nargs="+", help="Only process these specific JSON files"
+    )
+    parser.add_argument(
+        "--sync-commit",
+        type=str,
+        default=None,
+        help="Record this commit hash after import",
+    )
     args = parser.parse_args()
 
     if args.verbose:
@@ -406,9 +434,11 @@ def main():
             if p.exists():
                 hive_type = _hive_from_filename(p.name)
                 os_folder = p.parent.parent.parent.name
-                sources.append(RegistryJsonSource(
-                    path=p, zip_entry="", os_folder=os_folder, hive_type=hive_type
-                ))
+                sources.append(
+                    RegistryJsonSource(
+                        path=p, zip_entry="", os_folder=os_folder, hive_type=hive_type
+                    )
+                )
         if not sources:
             logger.error("None of the specified --only-files exist")
             sys.exit(1)
@@ -416,7 +446,9 @@ def main():
     else:
         sources = find_registry_json_files(sources_dir, args.hive)
         if not sources:
-            logger.error("No registry JSON files found (checked for *_ROOT.json and RegistryHivesJSON.zip)")
+            logger.error(
+                "No registry JSON files found (checked for *_ROOT.json and RegistryHivesJSON.zip)"
+            )
             sys.exit(1)
 
     logger.info(f"Found {len(sources)} registry JSON sources")
@@ -426,45 +458,49 @@ def main():
         logger.info(f"Filtered to {len(sources)} sources")
 
     if args.limit > 0:
-        sources = sources[:args.limit]
+        sources = sources[: args.limit]
 
     conn = None if args.dry_run else sqlite3.connect(db_path)
 
-    total_stats = {'inserted': 0, 'updated': 0, 'errors': 0, 'files': 0}
+    total_stats = {"inserted": 0, "updated": 0, "errors": 0, "files": 0}
 
     try:
         for i, source in enumerate(sources):
             os_info = parse_os_from_source(source)
-            hive = os_info['hive_type']
+            hive = os_info["hive_type"]
 
             if source.zip_entry:
                 label = f"{source.path.name}:{source.zip_entry}"
             else:
                 label = str(source.path)
-            logger.info(f"[{i+1}/{len(sources)}] {os_info['short_name']} - {hive} ({label})")
+            logger.info(
+                f"[{i + 1}/{len(sources)}] {os_info['short_name']} - {hive} ({label})"
+            )
 
             try:
                 data = load_registry_json(source)
             except Exception as e:
                 logger.error(f"Failed to load {label}: {e}")
-                total_stats['errors'] += 1
+                total_stats["errors"] += 1
                 continue
 
             records = flatten_registry_keys(data)
             logger.info(f"  Extracted {len(records):,} registry values")
 
             if args.dry_run:
-                total_stats['inserted'] += len(records)
+                total_stats["inserted"] += len(records)
             else:
                 get_or_create_os_id(conn, os_info)
                 stats = import_registry_data(
-                    conn, records, hive, os_info['short_name'], args.batch_size
+                    conn, records, hive, os_info["short_name"], args.batch_size
                 )
-                logger.info(f"  Inserted: {stats['inserted']:,}, Updated: {stats['updated']:,}")
+                logger.info(
+                    f"  Inserted: {stats['inserted']:,}, Updated: {stats['updated']:,}"
+                )
                 for key in stats:
                     total_stats[key] += stats[key]
 
-            total_stats['files'] += 1
+            total_stats["files"] += 1
 
     finally:
         if conn:
@@ -472,13 +508,13 @@ def main():
             if args.sync_commit:
                 conn.execute(
                     "UPDATE sources SET last_sync_commit = ?, last_sync_time = datetime('now') WHERE name = ?",
-                    (args.sync_commit, 'vanilla_windows_registry')
+                    (args.sync_commit, "vanilla_windows_registry"),
                 )
                 if conn.execute("SELECT changes()").fetchone()[0] == 0:
                     conn.execute(
                         "INSERT INTO sources (name, source_type, url, last_sync_commit, last_sync_time) "
                         "VALUES (?, 'git', 'https://github.com/AndrewRathbun/VanillaWindowsRegistryHives', ?, datetime('now'))",
-                        ('vanilla_windows_registry', args.sync_commit)
+                        ("vanilla_windows_registry", args.sync_commit),
                     )
                 conn.commit()
             conn.close()

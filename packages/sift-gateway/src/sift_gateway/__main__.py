@@ -40,21 +40,31 @@ def main():
 
     try:
         config = load_config(args.config)
-    except FileNotFoundError as exc:
+    except FileNotFoundError:
         logger.error("Config file not found: %s", args.config)
         print(f"ERROR: Config file not found: {args.config}", file=sys.stderr)
-        print("Create gateway.yaml using 'aiir setup' or see sift-gateway documentation.", file=sys.stderr)
+        print(
+            "Create gateway.yaml using 'aiir setup' or see sift-gateway documentation.",
+            file=sys.stderr,
+        )
         sys.exit(1)
     except yaml.YAMLError as exc:
         logger.error("Invalid YAML in config file %s: %s", args.config, exc)
-        print(f"ERROR: Invalid YAML in config file {args.config}: {exc}", file=sys.stderr)
+        print(
+            f"ERROR: Invalid YAML in config file {args.config}: {exc}", file=sys.stderr
+        )
         sys.exit(1)
 
     # Validate config structure
     gw_config = config.get("gateway", {})
     if not isinstance(gw_config, dict):
-        logger.error("Config 'gateway' key must be a mapping, got %s", type(gw_config).__name__)
-        print(f"ERROR: Config 'gateway' key must be a mapping, got {type(gw_config).__name__}", file=sys.stderr)
+        logger.error(
+            "Config 'gateway' key must be a mapping, got %s", type(gw_config).__name__
+        )
+        print(
+            f"ERROR: Config 'gateway' key must be a mapping, got {type(gw_config).__name__}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     # TLS configuration
@@ -65,7 +75,10 @@ def main():
         keyfile = tls_config.get("keyfile")
         if not certfile or not keyfile:
             logger.error("TLS config requires both 'certfile' and 'keyfile'")
-            print("ERROR: TLS config requires both 'certfile' and 'keyfile'", file=sys.stderr)
+            print(
+                "ERROR: TLS config requires both 'certfile' and 'keyfile'",
+                file=sys.stderr,
+            )
             sys.exit(1)
         if not Path(certfile).is_file():
             logger.error("TLS certificate file not found: %s", certfile)
@@ -82,13 +95,18 @@ def main():
     port = args.port or gw_config.get("port", 4508)
     if not isinstance(port, int):
         logger.error("Config 'gateway.port' must be an integer, got %r", port)
-        print(f"ERROR: Config 'gateway.port' must be an integer, got {port!r}", file=sys.stderr)
+        print(
+            f"ERROR: Config 'gateway.port' must be an integer, got {port!r}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     gateway = Gateway(config)
     app = gateway.create_app()
     uvicorn.run(
-        app, host=host, port=port,
+        app,
+        host=host,
+        port=port,
         log_level=gw_config.get("log_level", "info").lower(),
         **ssl_kwargs,
     )

@@ -43,7 +43,9 @@ def _github_headers() -> dict[str, str]:
         try:
             result = subprocess.run(
                 ["gh", "auth", "token"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if result.returncode == 0:
                 token = result.stdout.strip()
@@ -76,7 +78,7 @@ def _fetch_release(tag: str = "latest") -> dict:
                 releases = json.loads(resp.read())
                 if releases:
                     return releases[0]
-                raise ValueError("No releases found in repository")
+                raise ValueError("No releases found in repository") from None
     else:
         url = f"https://api.github.com/repos/{REPO}/releases/tags/{tag}"
         req = urllib.request.Request(url, headers=headers)
@@ -248,9 +250,15 @@ def download_databases(dest_dir: str | Path, tag: str = "latest") -> bool:
             # Verify databases
             print("\nVerifying databases...")
             ok = True
-            ok &= _verify_database(dest / "known_good.db", "baseline_files", 1_000_000, "known_good.db")
-            ok &= _verify_database(dest / "context.db", "lolbins", 100, "context.db (lolbins)")
-            ok &= _verify_database(dest / "context.db", "vulnerable_drivers", 100, "context.db (drivers)")
+            ok &= _verify_database(
+                dest / "known_good.db", "baseline_files", 1_000_000, "known_good.db"
+            )
+            ok &= _verify_database(
+                dest / "context.db", "lolbins", 100, "context.db (lolbins)"
+            )
+            ok &= _verify_database(
+                dest / "context.db", "vulnerable_drivers", 100, "context.db (drivers)"
+            )
 
             if ok:
                 print("\nDatabases installed successfully.")

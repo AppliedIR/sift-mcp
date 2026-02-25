@@ -9,25 +9,24 @@ from __future__ import annotations
 import io
 import logging
 import pickle
-import pytest
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 
+import pytest
 from opencti_mcp.config import Config, SecretStr
 from opencti_mcp.errors import ConfigurationError
 from opencti_mcp.validation import (
-    validate_length,
-    validate_ioc,
-    sanitize_for_log,
-    MAX_QUERY_LENGTH,
     MAX_IOC_LENGTH,
+    MAX_QUERY_LENGTH,
+    sanitize_for_log,
+    validate_ioc,
+    validate_length,
 )
-
 
 # =============================================================================
 # Credential Safety Tests
 # =============================================================================
+
 
 class TestCredentialSafety:
     """Ensure credentials never leak."""
@@ -76,8 +75,8 @@ class TestCredentialSafety:
         # Make file world-readable
         token_file.chmod(0o644)
 
-        with patch.dict('os.environ', {'OPENCTI_TOKEN': ''}, clear=False):
-            with patch('opencti_mcp.config.Path.home', return_value=tmp_path):
+        with patch.dict("os.environ", {"OPENCTI_TOKEN": ""}, clear=False):
+            with patch("opencti_mcp.config.Path.home", return_value=tmp_path):
                 token_dir = tmp_path / ".config" / "opencti-mcp"
                 token_dir.mkdir(parents=True)
                 insecure_token = token_dir / "token"
@@ -104,6 +103,7 @@ class TestCredentialSafety:
 # Input Validation Security Tests
 # =============================================================================
 
+
 class TestInputValidation:
     """Input validation security tests."""
 
@@ -116,25 +116,33 @@ class TestInputValidation:
         with pytest.raises(Exception):
             validate_length(evil_input, MAX_QUERY_LENGTH, "query")
 
-    @pytest.mark.parametrize("length", [
-        MAX_QUERY_LENGTH + 1,
-        MAX_QUERY_LENGTH + 1000,
-        MAX_QUERY_LENGTH * 2,
-    ])
+    @pytest.mark.parametrize(
+        "length",
+        [
+            MAX_QUERY_LENGTH + 1,
+            MAX_QUERY_LENGTH + 1000,
+            MAX_QUERY_LENGTH * 2,
+        ],
+    )
     def test_max_query_length_enforced(self, length: int):
         """Query length limit is enforced."""
         from opencti_mcp.errors import ValidationError
+
         long_query = "a" * length
         with pytest.raises(ValidationError):
             validate_length(long_query, MAX_QUERY_LENGTH, "query")
 
-    @pytest.mark.parametrize("length", [
-        MAX_IOC_LENGTH + 1,
-        MAX_IOC_LENGTH + 1000,
-    ])
+    @pytest.mark.parametrize(
+        "length",
+        [
+            MAX_IOC_LENGTH + 1,
+            MAX_IOC_LENGTH + 1000,
+        ],
+    )
     def test_max_ioc_length_enforced(self, length: int):
         """IOC length limit is enforced."""
         from opencti_mcp.errors import ValidationError
+
         long_ioc = "a" * length
         with pytest.raises(ValidationError):
             validate_ioc(long_ioc)
@@ -142,18 +150,21 @@ class TestInputValidation:
     def test_null_bytes_rejected(self):
         """IOCs with null bytes are rejected."""
         from opencti_mcp.errors import ValidationError
+
         with pytest.raises(ValidationError, match="null byte"):
             validate_ioc("192.168.1.1\x00evil")
 
     def test_empty_ioc_rejected(self):
         """Empty IOCs are rejected."""
         from opencti_mcp.errors import ValidationError
+
         with pytest.raises(ValidationError, match="empty"):
             validate_ioc("")
 
     def test_whitespace_only_ioc_rejected(self):
         """Whitespace-only IOCs are rejected."""
         from opencti_mcp.errors import ValidationError
+
         with pytest.raises(ValidationError, match="empty"):
             validate_ioc("   ")
 
@@ -168,12 +179,14 @@ class TestInputValidation:
 # Error Leakage Tests
 # =============================================================================
 
+
 class TestErrorLeakage:
     """Ensure internal details don't leak in errors."""
 
     def test_connection_error_safe_message(self):
         """ConnectionError has safe message."""
         from opencti_mcp.errors import ConnectionError
+
         error = ConnectionError("Failed to connect to http://secret-server:8080")
         assert "secret-server" not in error.safe_message
         assert "8080" not in error.safe_message
@@ -181,6 +194,7 @@ class TestErrorLeakage:
     def test_query_error_safe_message(self):
         """QueryError has safe message."""
         from opencti_mcp.errors import QueryError
+
         error = QueryError("GraphQL error: invalid token xyz123")
         assert "xyz123" not in error.safe_message
         assert "GraphQL" not in error.safe_message
@@ -188,13 +202,18 @@ class TestErrorLeakage:
     def test_no_stack_trace_exposure(self, mock_server):
         """Internal errors don't expose stack traces."""
         import asyncio
+
         from opencti_mcp.errors import QueryError
 
         # Force an error
-        mock_server.client._client.indicator.list.side_effect = Exception("internal error details")
+        mock_server.client._client.indicator.list.side_effect = Exception(
+            "internal error details"
+        )
 
         async def test():
-            result = await mock_server._dispatch_tool("search_threat_intel", {"query": "test"})
+            result = await mock_server._dispatch_tool(
+                "search_threat_intel", {"query": "test"}
+            )
             return result
 
         with pytest.raises(QueryError):
@@ -205,12 +224,17 @@ class TestErrorLeakage:
 # Response Safety Tests
 # =============================================================================
 
+
 class TestResponseSafety:
     """Test response sanitization."""
 
     def test_response_size_limited(self):
         """Large responses are truncated."""
-        from opencti_mcp.validation import truncate_response, MAX_RESPONSE_SIZE, MAX_DESCRIPTION_LENGTH
+        from opencti_mcp.validation import (
+            MAX_DESCRIPTION_LENGTH,
+            MAX_RESPONSE_SIZE,
+            truncate_response,
+        )
 
         large_data = {
             "description": "x" * (MAX_RESPONSE_SIZE + 1000),
@@ -246,6 +270,7 @@ class TestResponseSafety:
 # =============================================================================
 # Rate Limiting Tests
 # =============================================================================
+
 
 class TestRateLimiting:
     """Test rate limiting controls."""
@@ -287,6 +312,7 @@ class TestRateLimiting:
 # Log Sanitization Tests
 # =============================================================================
 
+
 class TestLogSanitization:
     """Test log sanitization."""
 
@@ -327,6 +353,7 @@ class TestLogSanitization:
 # Network Security Tests
 # =============================================================================
 
+
 class TestNetworkSecurity:
     """Test network security controls."""
 
@@ -348,7 +375,6 @@ class TestNetworkSecurity:
 
     def test_http_warning_for_remote(self):
         """Warning logged for HTTP to non-local hosts."""
-        import io
 
         # Set up a custom handler to capture log output
         log_capture = io.StringIO()
@@ -373,7 +399,6 @@ class TestNetworkSecurity:
 
     def test_localhost_http_no_warning(self):
         """No warning for HTTP to localhost."""
-        import io
 
         # Set up a custom handler to capture log output
         log_capture = io.StringIO()
@@ -402,71 +427,85 @@ class TestNetworkSecurity:
 # Environment Variable Parsing Tests
 # =============================================================================
 
+
 class TestEnvVarParsing:
     """Test safe environment variable parsing (functionality correctness)."""
 
     def test_parse_int_env_valid(self):
         """Valid integer env vars are parsed correctly."""
         from opencti_mcp.config import _parse_int_env
-        with patch.dict('os.environ', {'TEST_INT': '42'}):
-            assert _parse_int_env('TEST_INT', 10) == 42
+
+        with patch.dict("os.environ", {"TEST_INT": "42"}):
+            assert _parse_int_env("TEST_INT", 10) == 42
 
     def test_parse_int_env_default(self):
         """Missing env var uses default."""
         from opencti_mcp.config import _parse_int_env
-        with patch.dict('os.environ', {}, clear=True):
-            assert _parse_int_env('MISSING_VAR', 99) == 99
+
+        with patch.dict("os.environ", {}, clear=True):
+            assert _parse_int_env("MISSING_VAR", 99) == 99
 
     def test_parse_int_env_invalid_uses_default(self):
         """Invalid integer env var uses default without crashing."""
         from opencti_mcp.config import _parse_int_env
-        with patch.dict('os.environ', {'TEST_INT': 'not-a-number'}):
+
+        with patch.dict("os.environ", {"TEST_INT": "not-a-number"}):
             # Should not raise, should return default
-            result = _parse_int_env('TEST_INT', 50)
+            result = _parse_int_env("TEST_INT", 50)
             assert result == 50
 
     def test_parse_int_env_empty_uses_default(self):
         """Empty string env var uses default."""
         from opencti_mcp.config import _parse_int_env
-        with patch.dict('os.environ', {'TEST_INT': ''}):
-            result = _parse_int_env('TEST_INT', 30)
+
+        with patch.dict("os.environ", {"TEST_INT": ""}):
+            result = _parse_int_env("TEST_INT", 30)
             assert result == 30
 
     def test_parse_float_env_valid(self):
         """Valid float env vars are parsed correctly."""
         from opencti_mcp.config import _parse_float_env
-        with patch.dict('os.environ', {'TEST_FLOAT': '3.14'}):
-            assert _parse_float_env('TEST_FLOAT', 1.0) == 3.14
+
+        with patch.dict("os.environ", {"TEST_FLOAT": "3.14"}):
+            assert _parse_float_env("TEST_FLOAT", 1.0) == 3.14
 
     def test_parse_float_env_default(self):
         """Missing env var uses default."""
         from opencti_mcp.config import _parse_float_env
-        with patch.dict('os.environ', {}, clear=True):
-            assert _parse_float_env('MISSING_VAR', 2.5) == 2.5
+
+        with patch.dict("os.environ", {}, clear=True):
+            assert _parse_float_env("MISSING_VAR", 2.5) == 2.5
 
     def test_parse_float_env_invalid_uses_default(self):
         """Invalid float env var uses default without crashing."""
         from opencti_mcp.config import _parse_float_env
-        with patch.dict('os.environ', {'TEST_FLOAT': 'abc'}):
-            result = _parse_float_env('TEST_FLOAT', 1.5)
+
+        with patch.dict("os.environ", {"TEST_FLOAT": "abc"}):
+            result = _parse_float_env("TEST_FLOAT", 1.5)
             assert result == 1.5
 
     def test_config_load_with_invalid_timeout(self):
         """Config.load handles invalid OPENCTI_TIMEOUT gracefully."""
-        with patch.dict('os.environ', {
-            'OPENCTI_TOKEN': 'test-token',
-            'OPENCTI_TIMEOUT': 'invalid',
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENCTI_TOKEN": "test-token",
+                "OPENCTI_TIMEOUT": "invalid",
+            },
+        ):
             config = Config.load()
             # Should use default of 60
             assert config.timeout_seconds == 60
 
     def test_config_load_with_invalid_max_retries(self):
         """Config.load handles invalid OPENCTI_MAX_RETRIES gracefully."""
-        with patch.dict('os.environ', {
-            'OPENCTI_TOKEN': 'test-token',
-            'OPENCTI_MAX_RETRIES': 'xyz',
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENCTI_TOKEN": "test-token",
+                "OPENCTI_MAX_RETRIES": "xyz",
+            },
+        ):
             config = Config.load()
             # Should use default of 3
             assert config.max_retries == 3

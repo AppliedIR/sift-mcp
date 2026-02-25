@@ -6,14 +6,20 @@ import itertools
 import logging
 
 logger = logging.getLogger(__name__)
-from sift_mcp.catalog import list_tools_in_catalog, get_tool_def
-from sift_mcp.environment import find_binary, get_environment_info
 from forensic_knowledge import loader
+
+from sift_mcp.catalog import get_tool_def, list_tools_in_catalog
+from sift_mcp.environment import find_binary
 from sift_mcp.response import DISCIPLINE_REMINDERS
 
 # Alias mapping — common artifact names to FK artifact YAML names
 ARTIFACT_ALIASES: dict[str, list[str]] = {
-    "evtx": ["event_logs_security", "event_logs_system", "event_logs_sysmon", "event_logs_powershell"],
+    "evtx": [
+        "event_logs_security",
+        "event_logs_system",
+        "event_logs_sysmon",
+        "event_logs_powershell",
+    ],
     "evt": ["event_logs_security", "event_logs_system"],
     "event_log": ["event_logs_security", "event_logs_system", "event_logs_sysmon"],
     "event_logs": ["event_logs_security", "event_logs_system", "event_logs_sysmon"],
@@ -95,7 +101,10 @@ def check_tools(tool_names: list[str] | None = None) -> dict:
                 path = find_binary(td.binary)
                 results[name] = {"available": path is not None, "binary_path": path}
             else:
-                results[name] = {"available": False, "note": "not in catalog — can execute but without FK enrichment"}
+                results[name] = {
+                    "available": False,
+                    "note": "not in catalog — can execute but without FK enrichment",
+                }
         return results
 
     # Check all
@@ -189,5 +198,7 @@ def suggest_tools(artifact_type: str, question: str = "") -> dict:
         "advisories": all_advisories,
         "corroboration": all_corroboration,
         "cross_mcp_checks": all_cross_mcp,
-        "discipline_reminder": DISCIPLINE_REMINDERS[call_num % len(DISCIPLINE_REMINDERS)],
+        "discipline_reminder": DISCIPLINE_REMINDERS[
+            call_num % len(DISCIPLINE_REMINDERS)
+        ],
     }

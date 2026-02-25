@@ -17,15 +17,14 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from .constants import (
     DATA_ROOT,
+    FORBIDDEN_PATHS,
     KNOWLEDGE_ROOT,
     PROJECT_ROOT,
-    FORBIDDEN_PATHS,
 )
 from .utils import ALLOWED_MODELS, DEFAULT_MODEL_NAME
 
@@ -34,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 class ConfigurationError(Exception):
     """Raised when configuration is invalid."""
+
     pass
 
 
@@ -44,6 +44,7 @@ class Config:
 
     All paths are resolved and validated at initialization.
     """
+
     # Paths
     project_root: Path
     data_dir: Path
@@ -88,9 +89,13 @@ class Config:
         if self.max_top_k < 1:
             errors.append(f"max_top_k must be positive, got {self.max_top_k}")
         if self.max_query_length < 1:
-            errors.append(f"max_query_length must be positive, got {self.max_query_length}")
+            errors.append(
+                f"max_query_length must be positive, got {self.max_query_length}"
+            )
         if self.max_download_bytes < 1:
-            errors.append(f"max_download_bytes must be positive, got {self.max_download_bytes}")
+            errors.append(
+                f"max_download_bytes must be positive, got {self.max_download_bytes}"
+            )
 
         # Validate data_dir is not a forbidden path (unless unsafe_paths)
         if not self.unsafe_paths:
@@ -108,7 +113,7 @@ class Config:
 
 
 # Global config cache
-_config: Optional[Config] = None
+_config: Config | None = None
 
 
 def get_config(reload: bool = False) -> Config:
@@ -133,19 +138,27 @@ def get_config(reload: bool = False) -> Config:
 
     # Load from environment with defaults
     data_dir = Path(os.environ.get("RAG_INDEX_DIR", str(DATA_ROOT))).resolve()
-    knowledge_dir = Path(os.environ.get("RAG_KNOWLEDGE_DIR", str(KNOWLEDGE_ROOT))).resolve()
+    knowledge_dir = Path(
+        os.environ.get("RAG_KNOWLEDGE_DIR", str(KNOWLEDGE_ROOT))
+    ).resolve()
     model_name = os.environ.get("RAG_MODEL_NAME", DEFAULT_MODEL_NAME)
 
     # Limits
     max_top_k = int(os.environ.get("RAG_MAX_TOP_K", "50"))
     max_query_length = int(os.environ.get("RAG_MAX_QUERY_LENGTH", "1000"))
-    max_download_bytes = int(os.environ.get("RAG_MAX_DOWNLOAD_BYTES", str(60 * 1024 * 1024)))
+    max_download_bytes = int(
+        os.environ.get("RAG_MAX_DOWNLOAD_BYTES", str(60 * 1024 * 1024))
+    )
     fetch_max_retries = int(os.environ.get("RAG_FETCH_MAX_RETRIES", "3"))
 
     # Security
     allow_http = os.environ.get("RAG_ALLOW_HTTP", "").lower() in ("1", "true", "yes")
     https_only = not allow_http
-    unsafe_paths = os.environ.get("RAG_UNSAFE_PATHS", "").lower() in ("1", "true", "yes")
+    unsafe_paths = os.environ.get("RAG_UNSAFE_PATHS", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
     config = Config(
         project_root=PROJECT_ROOT,
@@ -165,7 +178,7 @@ def get_config(reload: bool = False) -> Config:
     config.validate()
 
     # Log configuration (debug level, no secrets)
-    logger.debug(f"Configuration loaded:")
+    logger.debug("Configuration loaded:")
     logger.debug(f"  data_dir: {config.data_dir}")
     logger.debug(f"  knowledge_dir: {config.knowledge_dir}")
     logger.debug(f"  model_name: {config.model_name}")

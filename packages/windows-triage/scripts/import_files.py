@@ -38,28 +38,24 @@ Options:
 
 import argparse
 import csv
-import json
 import logging
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 # Add src to path
 src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
 from windows_triage.db import KnownGoodDB
-from windows_triage.analysis.paths import normalize_path, extract_filename, extract_directory
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
-def parse_os_from_csv_path(csv_path: Path) -> Dict[str, str]:
+def parse_os_from_csv_path(csv_path: Path) -> dict[str, str]:
     """
     Parse OS information from CSV file path.
 
@@ -75,65 +71,59 @@ def parse_os_from_csv_path(csv_path: Path) -> Dict[str, str]:
     filename = csv_path.parent.name  # The folder containing the CSV
 
     result = {
-        'short_name': filename,
-        'os_family': 'Windows',
-        'os_edition': None,
-        'os_release': None,
-        'build_number': None,
-        'source_csv': csv_path.name
+        "short_name": filename,
+        "os_family": "Windows",
+        "os_edition": None,
+        "os_release": None,
+        "build_number": None,
+        "source_csv": csv_path.name,
     }
 
     # Parse from folder name - multiple patterns:
     # W11_21H2_Pro_20230321_22000.1696
     # W10_1507_Pro_20150729_10240
     # WindowsServer2022_21H2_Standard_20230321_20348.1607
-    match = re.match(
-        r'^(W\d+|WS\d+)_(\w+)_(\w+)_(\d+)_(\d+\.?\d*)',
-        filename
-    )
+    match = re.match(r"^(W\d+|WS\d+)_(\w+)_(\w+)_(\d+)_(\d+\.?\d*)", filename)
     if match:
         prefix, release, edition, date, build = match.groups()
 
-        if prefix.startswith('WS'):
-            result['os_family'] = f"Windows Server {prefix[2:]}"
+        if prefix.startswith("WS"):
+            result["os_family"] = f"Windows Server {prefix[2:]}"
         else:
-            result['os_family'] = f"Windows {prefix[1:]}"
+            result["os_family"] = f"Windows {prefix[1:]}"
 
-        result['os_release'] = release
-        result['os_edition'] = edition
-        result['build_number'] = build
+        result["os_release"] = release
+        result["os_edition"] = edition
+        result["build_number"] = build
     else:
         # Try WindowsServer pattern: WindowsServer2022_21H2_Standard_20230321_20348.1607
-        match = re.match(
-            r'^WindowsServer(\d+)_(\w+)_(\w+)_(\d+)_(\d+\.?\d*)',
-            filename
-        )
+        match = re.match(r"^WindowsServer(\d+)_(\w+)_(\w+)_(\d+)_(\d+\.?\d*)", filename)
         if match:
             server_ver, release, edition, date, build = match.groups()
-            result['os_family'] = f"Windows Server {server_ver}"
-            result['os_release'] = release
-            result['os_edition'] = edition
-            result['build_number'] = build
+            result["os_family"] = f"Windows Server {server_ver}"
+            result["os_release"] = release
+            result["os_edition"] = edition
+            result["build_number"] = build
 
     # Also check parent folders for OS version info
     for part in parts:
-        if part.startswith('Windows') and not part.startswith('WindowsServer'):
-            if 'Windows11' in part or 'Windows 11' in part:
-                result['os_family'] = 'Windows 11'
-            elif 'Windows10' in part or 'Windows 10' in part:
-                result['os_family'] = 'Windows 10'
-            elif 'Windows8' in part:
-                result['os_family'] = 'Windows 8.1'
-        elif part.startswith('WindowsServer'):
+        if part.startswith("Windows") and not part.startswith("WindowsServer"):
+            if "Windows11" in part or "Windows 11" in part:
+                result["os_family"] = "Windows 11"
+            elif "Windows10" in part or "Windows 10" in part:
+                result["os_family"] = "Windows 10"
+            elif "Windows8" in part:
+                result["os_family"] = "Windows 8.1"
+        elif part.startswith("WindowsServer"):
             # Extract server version
-            server_match = re.search(r'(\d{4})', str(parts))
+            server_match = re.search(r"(\d{4})", str(parts))
             if server_match:
-                result['os_family'] = f"Windows Server {server_match.group(1)}"
+                result["os_family"] = f"Windows Server {server_match.group(1)}"
 
     return result
 
 
-def find_csv_files(sources_dir: Path) -> List[Path]:
+def find_csv_files(sources_dir: Path) -> list[Path]:
     """
     Find all FileHashes.csv or similar CSV files in VanillaWindowsReference.
 
@@ -142,7 +132,9 @@ def find_csv_files(sources_dir: Path) -> List[Path]:
     vanilla_dir = sources_dir / "VanillaWindowsReference"
     if not vanilla_dir.exists():
         logger.error(f"VanillaWindowsReference not found at {vanilla_dir}")
-        logger.error("Clone it with: git clone https://github.com/AndrewRathbun/VanillaWindowsReference.git")
+        logger.error(
+            "Clone it with: git clone https://github.com/AndrewRathbun/VanillaWindowsReference.git"
+        )
         return []
 
     csv_files = []
@@ -164,11 +156,8 @@ def find_csv_files(sources_dir: Path) -> List[Path]:
 
 
 def process_csv_file(
-    csv_path: Path,
-    db: KnownGoodDB,
-    os_info: Dict[str, str],
-    batch_size: int = 10000
-) -> Dict[str, int]:
+    csv_path: Path, db: KnownGoodDB, os_info: dict[str, str], batch_size: int = 10000
+) -> dict[str, int]:
     """
     Process a single CSV file and import into database.
 
@@ -182,98 +171,100 @@ def process_csv_file(
         Stats dict with files_processed, files_added, hashes_added
     """
     stats = {
-        'files_processed': 0,
-        'files_new': 0,
-        'files_updated': 0,
-        'hashes_added': 0,
-        'errors': 0
+        "files_processed": 0,
+        "files_new": 0,
+        "files_updated": 0,
+        "hashes_added": 0,
+        "errors": 0,
     }
 
     # Register OS version
     os_id = db.add_os_version(
-        short_name=os_info['short_name'],
-        os_family=os_info['os_family'],
-        os_edition=os_info.get('os_edition'),
-        os_release=os_info.get('os_release'),
-        build_number=os_info.get('build_number'),
-        source_csv=os_info.get('source_csv')
+        short_name=os_info["short_name"],
+        os_family=os_info["os_family"],
+        os_edition=os_info.get("os_edition"),
+        os_release=os_info.get("os_release"),
+        build_number=os_info.get("build_number"),
+        source_csv=os_info.get("source_csv"),
     )
 
     batch = []
 
     try:
-        with open(csv_path, 'r', encoding='utf-8', errors='replace') as f:
+        with open(csv_path, encoding="utf-8", errors="replace") as f:
             reader = csv.DictReader(f)
 
             for row in reader:
                 try:
                     # Get path - try different column names
-                    full_path = row.get('FullName') or row.get('Path') or row.get('FilePath', '')
-                    name = row.get('Name') or row.get('FileName', '')
+                    full_path = (
+                        row.get("FullName")
+                        or row.get("Path")
+                        or row.get("FilePath", "")
+                    )
+                    name = row.get("Name") or row.get("FileName", "")
 
                     if not full_path and not name:
                         continue
 
                     # If we only have name, try to construct path from DirectoryName
                     if not full_path and name:
-                        directory = row.get('DirectoryName', '')
+                        directory = row.get("DirectoryName", "")
                         full_path = f"{directory}\\{name}" if directory else name
 
                     # Skip research artifacts
-                    if 'IgnoreThisFile' in full_path or 'test.csv' in full_path:
+                    if "IgnoreThisFile" in full_path or "test.csv" in full_path:
                         continue
 
                     # Extract hashes
-                    md5 = row.get('MD5', '').strip() or None
-                    sha1 = row.get('SHA1', '').strip() or None
-                    sha256 = row.get('SHA256', '').strip() or None
+                    md5 = row.get("MD5", "").strip() or None
+                    sha1 = row.get("SHA1", "").strip() or None
+                    sha256 = row.get("SHA256", "").strip() or None
 
                     # Get file size
                     try:
-                        file_size = int(row.get('Length', 0) or 0) or None
+                        file_size = int(row.get("Length", 0) or 0) or None
                     except (ValueError, TypeError):
                         file_size = None
 
-                    batch.append({
-                        'path': full_path,
-                        'md5': md5,
-                        'sha1': sha1,
-                        'sha256': sha256,
-                        'file_size': file_size
-                    })
+                    batch.append(
+                        {
+                            "path": full_path,
+                            "md5": md5,
+                            "sha1": sha1,
+                            "sha256": sha256,
+                            "file_size": file_size,
+                        }
+                    )
 
-                    stats['files_processed'] += 1
+                    stats["files_processed"] += 1
 
                     if len(batch) >= batch_size:
                         result = db.upsert_files_batch(
-                            batch,
-                            os_info['short_name'],
-                            os_info.get('source_csv')
+                            batch, os_info["short_name"], os_info.get("source_csv")
                         )
-                        stats['files_new'] += result.get('inserted', 0)
-                        stats['files_updated'] += result.get('updated', 0)
-                        stats['hashes_added'] += result.get('hashes_added', 0)
+                        stats["files_new"] += result.get("inserted", 0)
+                        stats["files_updated"] += result.get("updated", 0)
+                        stats["hashes_added"] += result.get("hashes_added", 0)
                         batch = []
 
                 except Exception as e:
-                    stats['errors'] += 1
-                    if stats['errors'] <= 5:
+                    stats["errors"] += 1
+                    if stats["errors"] <= 5:
                         logger.warning(f"Error processing row: {e}")
 
         # Final batch
         if batch:
             result = db.upsert_files_batch(
-                batch,
-                os_info['short_name'],
-                os_info.get('source_csv')
+                batch, os_info["short_name"], os_info.get("source_csv")
             )
-            stats['files_new'] += result.get('inserted', 0)
-            stats['files_updated'] += result.get('updated', 0)
-            stats['hashes_added'] += result.get('hashes_added', 0)
+            stats["files_new"] += result.get("inserted", 0)
+            stats["files_updated"] += result.get("updated", 0)
+            stats["hashes_added"] += result.get("hashes_added", 0)
 
     except Exception as e:
         logger.error(f"Failed to process {csv_path}: {e}")
-        stats['errors'] += 1
+        stats["errors"] += 1
 
     return stats
 
@@ -286,46 +277,40 @@ def main():
         "--limit",
         type=int,
         default=0,
-        help="Only process first N CSV files (for testing)"
+        help="Only process first N CSV files (for testing)",
     )
     parser.add_argument(
         "--os-filter",
         type=str,
         default=None,
-        help="Only process CSVs matching pattern (e.g., 'Win11', 'Server2022')"
+        help="Only process CSVs matching pattern (e.g., 'Win11', 'Server2022')",
     )
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Parse CSVs but don't write to database"
+        "--dry-run", action="store_true", help="Parse CSVs but don't write to database"
     )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Show detailed progress"
-    )
+    parser.add_argument("--verbose", action="store_true", help="Show detailed progress")
     parser.add_argument(
         "--batch-size",
         type=int,
         default=10000,
-        help="Batch size for database operations"
+        help="Batch size for database operations",
     )
     parser.add_argument(
         "--sources-dir",
         type=str,
         default=None,
-        help="Override sources directory (default: data/sources)"
+        help="Override sources directory (default: data/sources)",
     )
     parser.add_argument(
         "--only-files",
         nargs="+",
-        help="Only process these specific CSV file paths (for incremental updates)"
+        help="Only process these specific CSV file paths (for incremental updates)",
     )
     parser.add_argument(
         "--sync-commit",
         type=str,
         default=None,
-        help="Record this commit hash in sources table after import"
+        help="Record this commit hash in sources table after import",
     )
     args = parser.parse_args()
 
@@ -361,7 +346,7 @@ def main():
         logger.info(f"Filtered to {len(csv_files)} files matching '{args.os_filter}'")
 
     if args.limit > 0:
-        csv_files = csv_files[:args.limit]
+        csv_files = csv_files[: args.limit]
         logger.info(f"Limited to first {len(csv_files)} files")
 
     if not csv_files:
@@ -377,56 +362,67 @@ def main():
         db.connect()
 
     total_stats = {
-        'files_processed': 0,
-        'files_new': 0,
-        'files_updated': 0,
-        'hashes_added': 0,
-        'errors': 0,
-        'csvs_processed': 0
+        "files_processed": 0,
+        "files_new": 0,
+        "files_updated": 0,
+        "hashes_added": 0,
+        "errors": 0,
+        "csvs_processed": 0,
     }
 
     try:
         for i, csv_path in enumerate(csv_files):
             os_info = parse_os_from_csv_path(csv_path)
 
-            logger.info(f"\n[{i+1}/{len(csv_files)}] Processing: {os_info['short_name']}")
-            logger.info(f"  OS: {os_info['os_family']} {os_info.get('os_release', '')} {os_info.get('os_edition', '')}")
+            logger.info(
+                f"\n[{i + 1}/{len(csv_files)}] Processing: {os_info['short_name']}"
+            )
+            logger.info(
+                f"  OS: {os_info['os_family']} {os_info.get('os_release', '')} {os_info.get('os_edition', '')}"
+            )
             logger.info(f"  File: {csv_path.name}")
 
             if args.dry_run:
                 # Just count rows
-                with open(csv_path, 'r', encoding='utf-8', errors='replace') as f:
+                with open(csv_path, encoding="utf-8", errors="replace") as f:
                     row_count = sum(1 for _ in csv.DictReader(f))
                 logger.info(f"  Would process {row_count:,} rows")
-                total_stats['files_processed'] += row_count
+                total_stats["files_processed"] += row_count
             else:
                 stats = process_csv_file(csv_path, db, os_info, args.batch_size)
                 logger.info(f"  Processed: {stats['files_processed']:,} files")
-                logger.info(f"  New paths: {stats['files_new']:,}, Updated: {stats['files_updated']:,}")
-                logger.info(f"  Hashes: {stats['hashes_added']:,}, Errors: {stats['errors']}")
+                logger.info(
+                    f"  New paths: {stats['files_new']:,}, Updated: {stats['files_updated']:,}"
+                )
+                logger.info(
+                    f"  Hashes: {stats['hashes_added']:,}, Errors: {stats['errors']}"
+                )
 
                 for key in total_stats:
                     if key in stats:
                         total_stats[key] += stats[key]
 
-            total_stats['csvs_processed'] += 1
+            total_stats["csvs_processed"] += 1
 
     finally:
         if db:
             # Update source tracking
-            db.update_source_stats('vanilla_windows_reference', total_stats['files_new'])
+            db.update_source_stats(
+                "vanilla_windows_reference", total_stats["files_new"]
+            )
             if args.sync_commit:
                 import sqlite3
+
                 conn = sqlite3.connect(db_path)
                 conn.execute(
                     "UPDATE sources SET last_sync_commit = ?, last_sync_time = datetime('now') WHERE name = ?",
-                    (args.sync_commit, 'vanilla_windows_reference')
+                    (args.sync_commit, "vanilla_windows_reference"),
                 )
                 if conn.execute("SELECT changes()").fetchone()[0] == 0:
                     conn.execute(
                         "INSERT INTO sources (name, source_type, url, last_sync_commit, last_sync_time) "
                         "VALUES (?, 'git', 'https://github.com/AndrewRathbun/VanillaWindowsReference', ?, datetime('now'))",
-                        ('vanilla_windows_reference', args.sync_commit)
+                        ("vanilla_windows_reference", args.sync_commit),
                     )
                 conn.commit()
                 conn.close()

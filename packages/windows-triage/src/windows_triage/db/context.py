@@ -56,15 +56,15 @@ Usage:
     process = db.get_expected_process("svchost.exe")
 """
 
-import sqlite3
+import json
 import logging
+import re
+import sqlite3
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional, List, Dict, Any
-import json
-import re
+from typing import Any
 
-from .schemas import CONTEXT_SCHEMA, CONTEXT_INITIAL_DATA
+from .schemas import CONTEXT_INITIAL_DATA, CONTEXT_SCHEMA
 
 logger = logging.getLogger(__name__)
 from ..analysis.hashes import get_hash_column
@@ -73,7 +73,9 @@ from ..analysis.hashes import get_hash_column
 class ContextDB:
     """Interface to context.db for risk enrichment lookups."""
 
-    def __init__(self, db_path: str | Path, read_only: bool = False, cache_size: int = 10000):
+    def __init__(
+        self, db_path: str | Path, read_only: bool = False, cache_size: int = 10000
+    ):
         """
         Initialize connection to context.db.
 
@@ -85,13 +87,19 @@ class ContextDB:
         self.db_path = Path(db_path)
         self.read_only = read_only
         self.cache_size = cache_size
-        self._conn: Optional[sqlite3.Connection] = None
+        self._conn: sqlite3.Connection | None = None
 
         # Configure LRU cache sizes based on cache_size parameter
         if cache_size > 0:
-            self._check_lolbin_cached = lru_cache(maxsize=cache_size)(self._check_lolbin_uncached)
-            self._get_expected_process_cached = lru_cache(maxsize=cache_size)(self._get_expected_process_uncached)
-            self._get_protected_process_names_cached = lru_cache(maxsize=1)(self._get_protected_process_names_uncached)
+            self._check_lolbin_cached = lru_cache(maxsize=cache_size)(
+                self._check_lolbin_uncached
+            )
+            self._get_expected_process_cached = lru_cache(maxsize=cache_size)(
+                self._get_expected_process_uncached
+            )
+            self._get_protected_process_names_cached = lru_cache(maxsize=1)(
+                self._get_protected_process_names_uncached
+            )
 
     def connect(self) -> sqlite3.Connection:
         """Get or create database connection."""
@@ -120,7 +128,7 @@ class ContextDB:
 
     # ==================== LOLBin Operations ====================
 
-    def check_lolbin(self, filename: str) -> Optional[dict]:
+    def check_lolbin(self, filename: str) -> dict | None:
         """
         Check if a filename is a known LOLBin.
 
@@ -138,26 +146,30 @@ class ContextDB:
         result = self._check_lolbin_uncached(filename_lower)
         return dict(result) if result else None
 
-    def _check_lolbin_uncached(self, filename_lower: str) -> Optional[tuple]:
+    def _check_lolbin_uncached(self, filename_lower: str) -> tuple | None:
         """Uncached LOLBin lookup (returns tuple for cache compatibility)."""
         conn = self.connect()
         cursor = conn.execute(
             """
             SELECT * FROM lolbins WHERE filename_lower = ?
             """,
-            (filename_lower,)
+            (filename_lower,),
         )
         row = cursor.fetchone()
         if row:
             result = dict(row)
             # Parse JSON fields
-            for field in ('functions', 'expected_paths', 'mitre_techniques'):
+            for field in ("functions", "expected_paths", "mitre_techniques"):
                 if result.get(field):
                     try:
                         parsed = json.loads(result[field])
-                        result[field] = tuple(parsed) if isinstance(parsed, list) else parsed
+                        result[field] = (
+                            tuple(parsed) if isinstance(parsed, list) else parsed
+                        )
                     except json.JSONDecodeError as e:
-                        logger.warning(f"Invalid JSON in lolbins.{field}: {result[field]!r} - {e}")
+                        logger.warning(
+                            f"Invalid JSON in lolbins.{field}: {result[field]!r} - {e}"
+                        )
             # Return as tuple of items for cache hashability
             return tuple(sorted(result.items()))
         return None
@@ -165,13 +177,13 @@ class ContextDB:
     def add_lolbin(
         self,
         filename: str,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        functions: Optional[List[str]] = None,
-        expected_paths: Optional[List[str]] = None,
-        mitre_techniques: Optional[List[str]] = None,
-        detection: Optional[str] = None,
-        source_url: Optional[str] = None
+        name: str | None = None,
+        description: str | None = None,
+        functions: list[str] | None = None,
+        expected_paths: list[str] | None = None,
+        mitre_techniques: list[str] | None = None,
+        detection: str | None = None,
+        source_url: str | None = None,
     ):
         """Add a LOLBin entry."""
         conn = self.connect()
@@ -190,14 +202,16 @@ class ContextDB:
                 json.dumps(expected_paths) if expected_paths else None,
                 json.dumps(mitre_techniques) if mitre_techniques else None,
                 detection,
-                source_url
-            )
+                source_url,
+            ),
         )
         conn.commit()
 
     # ==================== Vulnerable Driver Operations ====================
 
-    def check_vulnerable_driver(self, hash_value: str, algorithm: str, check_authentihash: bool = True) -> Optional[dict]:
+    def check_vulnerable_driver(
+        self, hash_value: str, algorithm: str, check_authentihash: bool = True
+    ) -> dict | None:
         """
         Check if a hash matches a known vulnerable driver.
 
@@ -217,12 +231,12 @@ class ContextDB:
             f"""
             SELECT * FROM vulnerable_drivers WHERE {column} = ?
             """,
-            (hash_value.lower(),)
+            (hash_value.lower(),),
         )
         row = cursor.fetchone()
         if row:
             result = dict(row)
-            result['match_type'] = 'file_hash'
+            result["match_type"] = "file_hash"
             return result
 
         # Also check authentihash if requested
@@ -232,30 +246,30 @@ class ContextDB:
                 f"""
                 SELECT * FROM vulnerable_drivers WHERE {auth_column} = ?
                 """,
-                (hash_value.lower(),)
+                (hash_value.lower(),),
             )
             row = cursor.fetchone()
             if row:
                 result = dict(row)
-                result['match_type'] = 'authentihash'
+                result["match_type"] = "authentihash"
                 return result
 
         return None
 
     def add_vulnerable_driver(
         self,
-        filename: Optional[str] = None,
-        sha256: Optional[str] = None,
-        sha1: Optional[str] = None,
-        md5: Optional[str] = None,
-        authentihash_sha256: Optional[str] = None,
-        authentihash_sha1: Optional[str] = None,
-        authentihash_md5: Optional[str] = None,
-        vendor: Optional[str] = None,
-        product: Optional[str] = None,
-        cve: Optional[str] = None,
-        vulnerability_type: Optional[str] = None,
-        description: Optional[str] = None
+        filename: str | None = None,
+        sha256: str | None = None,
+        sha1: str | None = None,
+        md5: str | None = None,
+        authentihash_sha256: str | None = None,
+        authentihash_sha1: str | None = None,
+        authentihash_md5: str | None = None,
+        vendor: str | None = None,
+        product: str | None = None,
+        cve: str | None = None,
+        vulnerability_type: str | None = None,
+        description: str | None = None,
     ):
         """Add a vulnerable driver entry."""
         conn = self.connect()
@@ -279,14 +293,14 @@ class ContextDB:
                 product,
                 cve,
                 vulnerability_type,
-                description
-            )
+                description,
+            ),
         )
         conn.commit()
 
     # ==================== Expected Process Operations ====================
 
-    def get_expected_process(self, process_name: str) -> Optional[dict]:
+    def get_expected_process(self, process_name: str) -> dict | None:
         """
         Get expected process info for parent-child validation.
 
@@ -317,48 +331,63 @@ class ContextDB:
         if cached:
             # Convert back to mutable dict with mutable lists
             result = dict(cached)
-            for field in ('valid_parents', 'suspicious_parents', 'valid_paths', 'valid_users'):
+            for field in (
+                "valid_parents",
+                "suspicious_parents",
+                "valid_paths",
+                "valid_users",
+            ):
                 if field in result and isinstance(result[field], tuple):
                     result[field] = list(result[field])
             return result
         return None
 
-    def _get_expected_process_uncached(self, process_name_lower: str) -> Optional[tuple]:
+    def _get_expected_process_uncached(self, process_name_lower: str) -> tuple | None:
         """Uncached expected process lookup."""
         conn = self.connect()
         cursor = conn.execute(
             """
             SELECT * FROM expected_processes WHERE process_name_lower = ?
             """,
-            (process_name_lower,)
+            (process_name_lower,),
         )
         row = cursor.fetchone()
         if row:
             result = dict(row)
             # Parse JSON fields and convert lists to tuples for hashability
-            for field in ('valid_parents', 'suspicious_parents', 'valid_paths', 'valid_users', 'required_args'):
+            for field in (
+                "valid_parents",
+                "suspicious_parents",
+                "valid_paths",
+                "valid_users",
+                "required_args",
+            ):
                 if result.get(field):
                     try:
                         parsed = json.loads(result[field])
-                        result[field] = tuple(parsed) if isinstance(parsed, list) else parsed
+                        result[field] = (
+                            tuple(parsed) if isinstance(parsed, list) else parsed
+                        )
                     except json.JSONDecodeError as e:
-                        logger.warning(f"Invalid JSON in expected_processes.{field}: {result[field]!r} - {e}")
+                        logger.warning(
+                            f"Invalid JSON in expected_processes.{field}: {result[field]!r} - {e}"
+                        )
             return tuple(sorted(result.items()))
         return None
 
     def add_expected_process(
         self,
         process_name: str,
-        valid_parents: List[str],
+        valid_parents: list[str],
         parent_exits: bool = False,
-        valid_paths: Optional[List[str]] = None,
-        user_type: Optional[str] = None,
-        valid_users: Optional[List[str]] = None,
+        valid_paths: list[str] | None = None,
+        user_type: str | None = None,
+        valid_users: list[str] | None = None,
         min_instances: int = 1,
-        max_instances: Optional[int] = None,
+        max_instances: int | None = None,
         per_session: bool = False,
-        required_args: Optional[str] = None,
-        source: Optional[str] = None
+        required_args: str | None = None,
+        source: str | None = None,
     ):
         """Add an expected process entry."""
         conn = self.connect()
@@ -381,14 +410,14 @@ class ContextDB:
                 max_instances,
                 1 if per_session else 0,
                 required_args,
-                source
-            )
+                source,
+            ),
         )
         conn.commit()
 
     # ==================== Suspicious Filename Operations ====================
 
-    def check_suspicious_filename(self, filename: str) -> Optional[dict]:
+    def check_suspicious_filename(self, filename: str) -> dict | None:
         """
         Check if a filename matches known suspicious patterns.
 
@@ -407,30 +436,30 @@ class ContextDB:
             SELECT * FROM suspicious_filenames
             WHERE is_regex = 0 AND filename_pattern = ?
             """,
-            (filename_lower,)
+            (filename_lower,),
         )
         row = cursor.fetchone()
         if row:
             return dict(row)
 
         # Then try regex patterns
-        cursor = conn.execute(
-            "SELECT * FROM suspicious_filenames WHERE is_regex = 1"
-        )
+        cursor = conn.execute("SELECT * FROM suspicious_filenames WHERE is_regex = 1")
         for row in cursor.fetchall():
-            pattern = row['filename_pattern']
+            pattern = row["filename_pattern"]
             try:
                 if re.fullmatch(pattern, filename_lower, re.IGNORECASE):
                     return dict(row)
             except re.error as e:
-                logger.warning(f"Invalid regex in suspicious_filenames: {pattern!r} - {e}")
+                logger.warning(
+                    f"Invalid regex in suspicious_filenames: {pattern!r} - {e}"
+                )
                 continue
 
         return None
 
     # ==================== Pipe Pattern Operations ====================
 
-    def check_suspicious_pipe(self, pipe_name: str) -> Optional[dict]:
+    def check_suspicious_pipe(self, pipe_name: str) -> dict | None:
         """
         Check if a pipe name matches known suspicious patterns.
 
@@ -449,7 +478,7 @@ class ContextDB:
             SELECT * FROM suspicious_pipe_patterns
             WHERE is_regex = 0 AND pipe_pattern = ?
             """,
-            (pipe_name_lower,)
+            (pipe_name_lower,),
         )
         row = cursor.fetchone()
         if row:
@@ -460,20 +489,22 @@ class ContextDB:
             "SELECT * FROM suspicious_pipe_patterns WHERE is_regex = 1"
         )
         for row in cursor.fetchall():
-            pattern = row['pipe_pattern']
+            pattern = row["pipe_pattern"]
             # Convert simple wildcard to regex (escape literal chars, then replace wildcard)
-            parts = pattern.split('*')
-            regex_pattern = '.*'.join(re.escape(p) for p in parts)
+            parts = pattern.split("*")
+            regex_pattern = ".*".join(re.escape(p) for p in parts)
             try:
                 if re.fullmatch(regex_pattern, pipe_name_lower, re.IGNORECASE):
                     return dict(row)
             except re.error as e:
-                logger.warning(f"Invalid regex in suspicious_pipe_patterns: {pattern!r} - {e}")
+                logger.warning(
+                    f"Invalid regex in suspicious_pipe_patterns: {pattern!r} - {e}"
+                )
                 continue
 
         return None
 
-    def check_windows_pipe(self, pipe_name: str) -> Optional[dict]:
+    def check_windows_pipe(self, pipe_name: str) -> dict | None:
         """
         Check if a pipe name is a known Windows pipe.
 
@@ -488,14 +519,14 @@ class ContextDB:
             """
             SELECT * FROM windows_named_pipes WHERE pipe_name = ?
             """,
-            (pipe_name.lower(),)
+            (pipe_name.lower(),),
         )
         row = cursor.fetchone()
         return dict(row) if row else None
 
     # ==================== Protected Process Operations ====================
 
-    def get_protected_process_names(self) -> List[str]:
+    def get_protected_process_names(self) -> list[str]:
         """Get list of protected process names."""
         if self.cache_size > 0:
             return list(self._get_protected_process_names_cached())
@@ -504,26 +535,24 @@ class ContextDB:
     def _get_protected_process_names_uncached(self) -> tuple:
         """Uncached protected process names lookup."""
         conn = self.connect()
-        cursor = conn.execute(
-            "SELECT process_name_lower FROM protected_process_names"
-        )
+        cursor = conn.execute("SELECT process_name_lower FROM protected_process_names")
         return tuple(row[0] for row in cursor.fetchall())
 
-    def check_protected_process(self, process_name: str) -> Optional[dict]:
+    def check_protected_process(self, process_name: str) -> dict | None:
         """Check if a process name is protected."""
         conn = self.connect()
         cursor = conn.execute(
             """
             SELECT * FROM protected_process_names WHERE process_name_lower = ?
             """,
-            (process_name.lower(),)
+            (process_name.lower(),),
         )
         row = cursor.fetchone()
         return dict(row) if row else None
 
     # ==================== Hijackable DLL Operations ====================
 
-    def check_hijackable_dll(self, dll_name: str) -> List[dict]:
+    def check_hijackable_dll(self, dll_name: str) -> list[dict]:
         """
         Check if a DLL is hijackable.
 
@@ -538,7 +567,7 @@ class ContextDB:
             """
             SELECT * FROM hijackable_dlls WHERE dll_name_lower = ?
             """,
-            (dll_name.lower(),)
+            (dll_name.lower(),),
         )
         return [dict(row) for row in cursor.fetchall()]
 
@@ -549,25 +578,25 @@ class ContextDB:
         conn = self.connect()
 
         stats = {
-            'lolbins': 0,
-            'hijackable_dlls': 0,
-            'vulnerable_drivers': 0,
-            'expected_processes': 0,
-            'suspicious_filenames': 0,
-            'suspicious_pipes': 0,
-            'windows_pipes': 0,
-            'protected_processes': 0,
+            "lolbins": 0,
+            "hijackable_dlls": 0,
+            "vulnerable_drivers": 0,
+            "expected_processes": 0,
+            "suspicious_filenames": 0,
+            "suspicious_pipes": 0,
+            "windows_pipes": 0,
+            "protected_processes": 0,
         }
 
         tables = [
-            ('lolbins', 'lolbins'),
-            ('hijackable_dlls', 'hijackable_dlls'),
-            ('vulnerable_drivers', 'vulnerable_drivers'),
-            ('expected_processes', 'expected_processes'),
-            ('suspicious_filenames', 'suspicious_filenames'),
-            ('suspicious_pipe_patterns', 'suspicious_pipes'),
-            ('windows_named_pipes', 'windows_pipes'),
-            ('protected_process_names', 'protected_processes'),
+            ("lolbins", "lolbins"),
+            ("hijackable_dlls", "hijackable_dlls"),
+            ("vulnerable_drivers", "vulnerable_drivers"),
+            ("expected_processes", "expected_processes"),
+            ("suspicious_filenames", "suspicious_filenames"),
+            ("suspicious_pipe_patterns", "suspicious_pipes"),
+            ("windows_named_pipes", "windows_pipes"),
+            ("protected_process_names", "protected_processes"),
         ]
 
         for table, key in tables:
@@ -585,15 +614,15 @@ class ContextDB:
             self._get_expected_process_cached.cache_clear()
             self._get_protected_process_names_cached.cache_clear()
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         if self.cache_size == 0:
-            return {'caching_enabled': False}
+            return {"caching_enabled": False}
 
         return {
-            'caching_enabled': True,
-            'cache_size': self.cache_size,
-            'check_lolbin': self._check_lolbin_cached.cache_info()._asdict(),
-            'get_expected_process': self._get_expected_process_cached.cache_info()._asdict(),
-            'get_protected_process_names': self._get_protected_process_names_cached.cache_info()._asdict(),
+            "caching_enabled": True,
+            "cache_size": self.cache_size,
+            "check_lolbin": self._check_lolbin_cached.cache_info()._asdict(),
+            "get_expected_process": self._get_expected_process_cached.cache_info()._asdict(),
+            "get_protected_process_names": self._get_protected_process_names_cached.cache_info()._asdict(),
         }

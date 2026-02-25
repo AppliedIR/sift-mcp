@@ -12,8 +12,6 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from rag_mcp.index import RAGIndex
-from rag_mcp.server import RAGServer
 
 # Fixtures (rag_index, rag_server) provided by conftest.py
 
@@ -37,7 +35,6 @@ FINAL_NLP_QUERIES = [
     ("event id 4741 computer account created", "4741", 0.5),
     ("event id 4742 computer account changed", "4742", 0.5),
     ("event id 4743 computer account deleted", "4743", 0.5),
-
     # More Detection Scenarios
     ("detect exchange server exploitation", "exchange", 0.5),
     ("solarwinds orion compromise detection", "solarwinds", 0.5),
@@ -152,7 +149,7 @@ PROTOTYPE_POLLUTION = [
     "prototype",
     "__proto__.admin",
     "constructor.prototype",
-    "[\"__proto__\"]",
+    '["__proto__"]',
     '{"__proto__": {"admin": true}}',
     "Object.prototype",
     "Array.prototype",
@@ -162,8 +159,8 @@ PROTOTYPE_POLLUTION = [
 # More encoding tests
 ENCODING_TESTS = [
     b"\xff\xfe".decode("utf-16-le", errors="ignore"),  # BOM
-    "test\uFFFDtest",  # Replacement character
-    "test\uFEFFtest",  # BOM in string
+    "test\ufffdtest",  # Replacement character
+    "test\ufefftest",  # BOM in string
     "\x00\x00\x00test",  # Null padding
     "test" + "\x00" * 100,  # Null padding after
 ]

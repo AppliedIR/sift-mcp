@@ -45,7 +45,8 @@ def _load_state() -> dict:
     now = time.time()
     codes = state.get("codes", {})
     state["codes"] = {
-        h: info for h, info in codes.items()
+        h: info
+        for h, info in codes.items()
         if not info.get("used", False) and now <= info.get("expires_ts", 0)
     }
     # Prune stale failure entries (legacy — new failures are in-memory)

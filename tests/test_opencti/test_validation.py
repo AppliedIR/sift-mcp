@@ -3,32 +3,52 @@
 from __future__ import annotations
 
 import pytest
-
+from opencti_mcp.errors import ValidationError
 from opencti_mcp.validation import (
+    MAX_LIMIT,
+    MAX_OFFSET,
+    normalize_hash,
+    truncate_string,
+    validate_days,
+    validate_hash,
+    validate_ioc,
     validate_length,
     validate_limit,
     validate_offset,
-    validate_days,
-    validate_ioc,
-    validate_hash,
-    normalize_hash,
-    truncate_string,
-    MAX_QUERY_LENGTH,
-    MAX_IOC_LENGTH,
-    MAX_LIMIT,
-    MAX_OFFSET,
 )
-from opencti_mcp.errors import ValidationError
 
 # Test data - defined locally to avoid import issues
 VALID_IPV4 = ["192.168.1.1", "10.0.0.1", "8.8.8.8", "255.255.255.255", "0.0.0.0"]
-INVALID_IPV4 = ["256.1.1.1", "1.2.3", "1.2.3.4.5", "not.an.ip", "192.168.1", "01.02.03.04"]
+INVALID_IPV4 = [
+    "256.1.1.1",
+    "1.2.3",
+    "1.2.3.4.5",
+    "not.an.ip",
+    "192.168.1",
+    "01.02.03.04",
+]
 VALID_MD5 = ["d41d8cd98f00b204e9800998ecf8427e", "a" * 32, "0" * 32, "f" * 32]
 VALID_SHA1 = ["da39a3ee5e6b4b0d3255bfef95601890afd80709", "a" * 40]
-VALID_SHA256 = ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "a" * 64]
+VALID_SHA256 = [
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "a" * 64,
+]
 INVALID_HASHES = ["xyz123", "tooshort", "g" * 64, "a" * 31, "a" * 33]
-VALID_DOMAINS = ["example.com", "sub.example.com", "deep.sub.example.com", "test-site.org", "my-test.co.uk"]
-INVALID_DOMAINS = [".example.com", "example.", "example..com", "-example.com", "example-.com", "a"]
+VALID_DOMAINS = [
+    "example.com",
+    "sub.example.com",
+    "deep.sub.example.com",
+    "test-site.org",
+    "my-test.co.uk",
+]
+INVALID_DOMAINS = [
+    ".example.com",
+    "example.",
+    "example..com",
+    "-example.com",
+    "example-.com",
+    "a",
+]
 VALID_CVES = ["CVE-2024-3400", "cve-2021-44228", "CVE-2020-0001"]
 VALID_MITRE_IDS = ["T1003", "T1003.001", "t1059", "T1059.003"]
 
@@ -36,6 +56,7 @@ VALID_MITRE_IDS = ["T1003", "T1003.001", "t1059", "T1059.003"]
 # =============================================================================
 # Length Validation
 # =============================================================================
+
 
 class TestLengthValidation:
     """Tests for validate_length function."""
@@ -65,6 +86,7 @@ class TestLengthValidation:
 # =============================================================================
 # Limit Validation
 # =============================================================================
+
 
 class TestLimitValidation:
     """Tests for validate_limit function."""
@@ -97,6 +119,7 @@ class TestLimitValidation:
 # Days Validation
 # =============================================================================
 
+
 class TestDaysValidation:
     """Tests for validate_days function."""
 
@@ -121,6 +144,7 @@ class TestDaysValidation:
 # =============================================================================
 # Offset Validation
 # =============================================================================
+
 
 class TestOffsetValidation:
     """Tests for validate_offset function."""
@@ -159,6 +183,7 @@ class TestOffsetValidation:
 # =============================================================================
 # IOC Validation
 # =============================================================================
+
 
 class TestIOCValidation:
     """Tests for validate_ioc function."""
@@ -239,6 +264,7 @@ class TestIOCValidation:
 # Hash Validation
 # =============================================================================
 
+
 class TestHashValidation:
     """Tests for hash validation functions."""
 
@@ -262,8 +288,12 @@ class TestHashValidation:
         result = normalize_hash("md5:d41d8cd98f00b204e9800998ecf8427e")
         assert result == "d41d8cd98f00b204e9800998ecf8427e"
 
-        result = normalize_hash("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
-        assert result == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        result = normalize_hash(
+            "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        )
+        assert (
+            result == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        )
 
     def test_normalize_hash_strip_whitespace(self):
         """Strip whitespace."""
@@ -274,6 +304,7 @@ class TestHashValidation:
 # =============================================================================
 # Truncation
 # =============================================================================
+
 
 class TestTruncation:
     """Tests for truncation functions."""
@@ -354,7 +385,7 @@ VALID_CIDR = [
 INVALID_CIDR = [
     "192.168.1.0/33",  # Prefix too large for IPv4
     "2001:db8::/129",  # Prefix too large for IPv6
-    "192.168.1.0/",    # Missing prefix
+    "192.168.1.0/",  # Missing prefix
     "192.168.1.0/abc",  # Non-numeric prefix
 ]
 
@@ -381,6 +412,7 @@ class TestCIDRValidation:
 # Truncation Indicators
 # =============================================================================
 
+
 class TestTruncationIndicators:
     """Tests for truncation metadata."""
 
@@ -390,8 +422,8 @@ class TestTruncationIndicators:
 
         data = {
             "description": "x" * 1000,  # Will be truncated
-            "pattern": "y" * 500,       # Will be truncated
-            "name": "short",            # Will not be truncated
+            "pattern": "y" * 500,  # Will be truncated
+            "name": "short",  # Will not be truncated
         }
 
         result = truncate_response(data)
@@ -417,7 +449,7 @@ class TestTruncationIndicators:
 
     def test_list_truncation_tracked(self):
         """List truncation is tracked."""
-        from opencti_mcp.validation import truncate_response, MAX_LIMIT
+        from opencti_mcp.validation import MAX_LIMIT, truncate_response
 
         data = {
             "items": list(range(MAX_LIMIT + 50)),

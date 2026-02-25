@@ -6,10 +6,10 @@ import json
 import logging
 
 from mcp.server.fastmcp import FastMCP
-
-from forensic_mcp.case.manager import CaseManager
-from forensic_mcp.audit import AuditWriter
 from sift_common.instructions import FORENSIC_MCP as _INSTRUCTIONS
+
+from forensic_mcp.audit import AuditWriter
+from forensic_mcp.case.manager import CaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +78,17 @@ def _build_validation_guidance(errors: list[str]) -> list[str]:
     guidance: list[str] = []
     for err in errors:
         if "evidence_id" in err.lower():
-            guidance.append("FD-001: Every claim must reference at least one evidence_id from an actual tool call")
+            guidance.append(
+                "FD-001: Every claim must reference at least one evidence_id from an actual tool call"
+            )
         if "confidence_justification" in err.lower():
-            guidance.append("FD-005: Confidence must be justified — cite specific evidence for your confidence level")
+            guidance.append(
+                "FD-005: Confidence must be justified — cite specific evidence for your confidence level"
+            )
         if "attribution" in err.lower() and "3" in err:
-            guidance.append("FD-003: Attribution requires multiple corroborating TTPs, not just a single IOC match")
+            guidance.append(
+                "FD-003: Attribution requires multiple corroborating TTPs, not just a single IOC match"
+            )
     return guidance
 
 
@@ -120,11 +126,15 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     def record_finding(finding: dict, analyst_override: str = "") -> dict:
         """Stage finding as DRAFT for human review. Required fields in finding dict: title (str), description (str), confidence (LOW/MEDIUM/HIGH), evidence_ids (list of str, non-empty). Optional: type, mitre_attack, iocs, source. Requires human approval via 'aiir approve'."""
         result = manager.record_finding(finding, examiner_override=analyst_override)
-        audit.log(tool="record_finding", params={"finding": finding}, result_summary=result)
+        audit.log(
+            tool="record_finding", params={"finding": finding}, result_summary=result
+        )
 
         # Enrich with considerations when staging succeeds
         if result.get("status") == "STAGED":
-            result["finding_status"] = "DRAFT — requires human approval via aiir approve"
+            result["finding_status"] = (
+                "DRAFT — requires human approval via aiir approve"
+            )
             result["considerations"] = _build_finding_considerations(finding)
             grounding = manager._score_grounding(finding)
             if grounding:
@@ -147,8 +157,12 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - artifact_ref: deduplication hint — unique artifact identifier
           (e.g. "prefetch:EVIL.EXE-{hash}", "evtx:Security:4624:12345")
         """
-        result = manager.record_timeline_event(event, examiner_override=analyst_override)
-        audit.log(tool="record_timeline_event", params={"event": event}, result_summary=result)
+        result = manager.record_timeline_event(
+            event, examiner_override=analyst_override
+        )
+        audit.log(
+            tool="record_timeline_event", params={"event": event}, result_summary=result
+        )
         return result
 
     @server.tool()
@@ -200,8 +214,18 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         analyst_override: str = "",
     ) -> dict:
         """Create a TODO item for the investigation. Priority: high/medium/low."""
-        result = manager.add_todo(description, assignee, priority, related_findings, examiner_override=analyst_override)
-        audit.log(tool="add_todo", params={"description": description, "assignee": assignee}, result_summary=result)
+        result = manager.add_todo(
+            description,
+            assignee,
+            priority,
+            related_findings,
+            examiner_override=analyst_override,
+        )
+        audit.log(
+            tool="add_todo",
+            params={"description": description, "assignee": assignee},
+            result_summary=result,
+        )
         return result
 
     @server.tool()
@@ -219,15 +243,26 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         analyst_override: str = "",
     ) -> dict:
         """Update a TODO: change status, add note, reassign, reprioritize."""
-        result = manager.update_todo(todo_id, status, note, assignee, priority, examiner_override=analyst_override)
-        audit.log(tool="update_todo", params={"todo_id": todo_id}, result_summary=result)
+        result = manager.update_todo(
+            todo_id,
+            status,
+            note,
+            assignee,
+            priority,
+            examiner_override=analyst_override,
+        )
+        audit.log(
+            tool="update_todo", params={"todo_id": todo_id}, result_summary=result
+        )
         return result
 
     @server.tool()
     def complete_todo(todo_id: str, analyst_override: str = "") -> dict:
         """Mark a TODO as completed."""
         result = manager.complete_todo(todo_id, examiner_override=analyst_override)
-        audit.log(tool="complete_todo", params={"todo_id": todo_id}, result_summary=result)
+        audit.log(
+            tool="complete_todo", params={"todo_id": todo_id}, result_summary=result
+        )
         return result
 
     # --- Evidence ---
@@ -244,7 +279,9 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     elif reference_mode == "tools":
         _register_discipline_tools(server, audit)
     else:
-        raise ValueError(f"Invalid reference_mode: {reference_mode!r} (expected 'resources' or 'tools')")
+        raise ValueError(
+            f"Invalid reference_mode: {reference_mode!r} (expected 'resources' or 'tools')"
+        )
 
     return server
 
@@ -260,30 +297,40 @@ def _register_discipline_resources(server: FastMCP) -> None:
     def investigation_framework_resource() -> str:
         """Full investigation framework: principles, HITL checkpoints, workflow, golden rules, self-check."""
         from forensic_mcp.discipline.rules import get_investigation_framework
+
         return json.dumps(get_investigation_framework())
 
     @server.resource("forensic-mcp://rules")
     def rules_resource() -> str:
         """All forensic discipline rules as structured data."""
         from forensic_mcp.discipline.rules import get_all_rules
+
         return json.dumps(get_all_rules())
 
     @server.resource("forensic-mcp://checkpoint/{action_type}")
     def checkpoint_resource(action_type: str) -> str:
         """Requirements before a specific action (attribution, root_cause, exclusion, scope_change)."""
         from forensic_mcp.discipline.rules import get_checkpoint
+
         return json.dumps(get_checkpoint(action_type))
 
     @server.resource("forensic-mcp://validation-schema")
     def validation_schema_resource() -> str:
         """Finding validation rules: required fields, confidence levels, evidence count requirements."""
-        from forensic_mcp.discipline.validation import VALID_TYPES
         from forensic_knowledge import loader
+
+        from forensic_mcp.discipline.validation import VALID_TYPES
+
         confidence_defs = loader.get_confidence_definitions()
         schema = {
             "required_fields": [
-                "title", "observation", "interpretation", "confidence",
-                "type", "evidence_ids", "confidence_justification",
+                "title",
+                "observation",
+                "interpretation",
+                "confidence",
+                "type",
+                "evidence_ids",
+                "confidence_justification",
             ],
             "valid_types": sorted(VALID_TYPES),
             "confidence_levels": {
@@ -302,60 +349,70 @@ def _register_discipline_resources(server: FastMCP) -> None:
     def evidence_standards_resource() -> str:
         """Evidence classification levels with definitions."""
         from forensic_mcp.discipline.rules import get_evidence_standards_data
+
         return json.dumps(get_evidence_standards_data())
 
     @server.resource("forensic-mcp://confidence-definitions")
     def confidence_definitions_resource() -> str:
         """Confidence levels (HIGH/MEDIUM/LOW/SPECULATIVE) with criteria."""
         from forensic_mcp.discipline.rules import get_confidence_definitions_data
+
         return json.dumps(get_confidence_definitions_data())
 
     @server.resource("forensic-mcp://anti-patterns")
     def anti_patterns_resource() -> str:
         """Common forensic mistakes to avoid."""
         from forensic_mcp.discipline.rules import get_anti_patterns_data
+
         return json.dumps(get_anti_patterns_data())
 
     @server.resource("forensic-mcp://evidence-template")
     def evidence_template_resource() -> str:
         """Required evidence presentation format."""
         from forensic_mcp.discipline.rules import get_evidence_template_data
+
         return json.dumps(get_evidence_template_data())
 
     @server.resource("forensic-mcp://tool-guidance/{tool_name}")
     def tool_guidance_resource(tool_name: str) -> str:
         """How to interpret results from a specific forensic tool."""
         from forensic_mcp.discipline.guidance import get_guidance
+
         return json.dumps(get_guidance(tool_name))
 
     @server.resource("forensic-mcp://false-positive-context/{tool_name}/{finding_type}")
     def false_positive_context_resource(tool_name: str, finding_type: str) -> str:
         """Common false positives for a tool/finding combination."""
         from forensic_mcp.discipline.guidance import get_false_positives
+
         return json.dumps(get_false_positives(tool_name, finding_type))
 
     @server.resource("forensic-mcp://corroboration/{finding_type}")
     def corroboration_resource(finding_type: str) -> str:
         """Cross-reference suggestions based on finding type."""
         from forensic_mcp.discipline.guidance import get_corroboration
+
         return json.dumps(get_corroboration(finding_type))
 
     @server.resource("forensic-mcp://playbooks")
     def playbooks_resource() -> str:
         """Available investigation playbooks."""
         from forensic_mcp.discipline.playbooks import list_all
+
         return json.dumps(list_all())
 
     @server.resource("forensic-mcp://playbook/{name}")
     def playbook_resource(name: str) -> str:
         """Step-by-step procedure for a specific investigation type."""
         from forensic_mcp.discipline.playbooks import get_by_name
+
         return json.dumps(get_by_name(name))
 
     @server.resource("forensic-mcp://collection-checklist/{artifact_type}")
     def collection_checklist_resource(artifact_type: str) -> str:
         """Evidence collection checklist per artifact type."""
         from forensic_mcp.discipline.playbooks import get_checklist
+
         return json.dumps(get_checklist(artifact_type))
 
 
@@ -370,84 +427,102 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     def get_investigation_framework() -> dict:
         """Return the full investigation framework: principles, HITL checkpoints, workflow, golden rules, self-check."""
         from forensic_mcp.discipline.rules import get_investigation_framework as _get_fw
+
         result = _get_fw()
-        audit.log(tool="get_investigation_framework", params={}, result_summary={"keys": list(result.keys())})
+        audit.log(
+            tool="get_investigation_framework",
+            params={},
+            result_summary={"keys": list(result.keys())},
+        )
         return result
 
     @server.tool()
     def get_rules() -> list[dict]:
         """Return all forensic discipline rules as structured data."""
         from forensic_mcp.discipline.rules import get_all_rules
+
         return get_all_rules()
 
     @server.tool()
     def get_checkpoint_requirements(action_type: str) -> dict:
         """What's required before a specific action (attribution, root cause, exclusion, etc.)."""
         from forensic_mcp.discipline.rules import get_checkpoint
+
         return get_checkpoint(action_type)
 
     @server.tool()
     def validate_finding(finding_json: dict) -> dict:
         """Check a proposed finding against format and methodology standards."""
         from forensic_mcp.discipline.validation import validate
+
         return validate(finding_json)
 
     @server.tool()
     def get_evidence_standards() -> dict:
         """Evidence classification levels with definitions."""
         from forensic_mcp.discipline.rules import get_evidence_standards_data
+
         return get_evidence_standards_data()
 
     @server.tool()
     def get_confidence_definitions() -> dict:
         """Confidence levels (HIGH/MEDIUM/LOW/SPECULATIVE) with criteria."""
         from forensic_mcp.discipline.rules import get_confidence_definitions_data
+
         return get_confidence_definitions_data()
 
     @server.tool()
     def get_anti_patterns() -> list[dict]:
         """Common forensic mistakes to avoid."""
         from forensic_mcp.discipline.rules import get_anti_patterns_data
+
         return get_anti_patterns_data()
 
     @server.tool()
     def get_evidence_template() -> dict:
         """Required evidence presentation format."""
         from forensic_mcp.discipline.rules import get_evidence_template_data
+
         return get_evidence_template_data()
 
     @server.tool()
     def get_tool_guidance(tool_name: str) -> dict:
         """How to interpret results from a specific forensic tool."""
         from forensic_mcp.discipline.guidance import get_guidance
+
         return get_guidance(tool_name)
 
     @server.tool()
     def get_false_positive_context(tool_name: str, finding_type: str) -> dict:
         """Common false positives for a tool/finding combination."""
         from forensic_mcp.discipline.guidance import get_false_positives
+
         return get_false_positives(tool_name, finding_type)
 
     @server.tool()
     def get_corroboration_suggestions(finding_type: str) -> list[dict]:
         """Cross-reference suggestions based on finding type."""
         from forensic_mcp.discipline.guidance import get_corroboration
+
         return get_corroboration(finding_type)
 
     @server.tool()
     def list_playbooks() -> list[dict]:
         """Available investigation playbooks."""
         from forensic_mcp.discipline.playbooks import list_all
+
         return list_all()
 
     @server.tool()
     def get_playbook(name: str) -> dict:
         """Step-by-step procedure for a specific investigation type."""
         from forensic_mcp.discipline.playbooks import get_by_name
+
         return get_by_name(name)
 
     @server.tool()
     def get_collection_checklist(artifact_type: str) -> dict:
         """Evidence collection checklist per artifact type."""
         from forensic_mcp.discipline.playbooks import get_checklist
+
         return get_checklist(artifact_type)

@@ -42,8 +42,8 @@ Usage:
 
 __version__ = "0.5.0"
 
+from .config import Config, get_config
 from .index import RAGIndex
 from .server import RAGServer
-from .config import get_config, Config
 
 __all__ = ["RAGIndex", "RAGServer", "get_config", "Config", "__version__"]

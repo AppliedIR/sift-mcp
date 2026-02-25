@@ -1,8 +1,5 @@
 """Shared test fixtures for the AIIR SIFT monorepo."""
 
-import os
-import tempfile
-
 import pytest
 
 

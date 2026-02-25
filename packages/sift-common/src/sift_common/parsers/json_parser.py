@@ -9,7 +9,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def parse_json(text: str, *, max_entries: int = 100000, byte_budget: int = 0) -> dict[str, Any]:
+def parse_json(
+    text: str, *, max_entries: int = 100000, byte_budget: int = 0
+) -> dict[str, Any]:
     """Parse JSON text output.
 
     Handles both single objects and arrays. For JSONL (one object per line),
@@ -24,8 +26,13 @@ def parse_json(text: str, *, max_entries: int = 100000, byte_budget: int = 0) ->
         {"data": parsed, "total_entries": int, "truncated": bool}
     """
     if not text.strip():
-        return {"data": None, "total_entries": 0, "truncated": False,
-                "preview_entries": 0, "preview_bytes": 0}
+        return {
+            "data": None,
+            "total_entries": 0,
+            "truncated": False,
+            "preview_entries": 0,
+            "preview_bytes": 0,
+        }
 
     try:
         parsed = json.loads(text)
@@ -61,11 +68,18 @@ def parse_json(text: str, *, max_entries: int = 100000, byte_budget: int = 0) ->
             "truncated": total > len(preview),
         }
 
-    return {"data": parsed, "total_entries": 1, "truncated": False,
-            "preview_entries": 1, "preview_bytes": 0}
+    return {
+        "data": parsed,
+        "total_entries": 1,
+        "truncated": False,
+        "preview_entries": 1,
+        "preview_bytes": 0,
+    }
 
 
-def parse_jsonl(text: str, *, max_entries: int = 100000, byte_budget: int = 0) -> dict[str, Any]:
+def parse_jsonl(
+    text: str, *, max_entries: int = 100000, byte_budget: int = 0
+) -> dict[str, Any]:
     """Parse JSONL (newline-delimited JSON) output.
 
     Args:

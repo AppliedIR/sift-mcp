@@ -1,6 +1,7 @@
 """Abstract base class for MCP backends."""
 
 from abc import ABC, abstractmethod
+
 from mcp.types import Tool
 
 

@@ -64,7 +64,11 @@ def setup_logging(
     if json_format is None:
         json_format = os.environ.get("AIIR_LOG_FORMAT", "json").lower() != "text"
     if log_to_file is None:
-        log_to_file = os.environ.get("AIIR_LOG_FILE", "true").lower() in ("true", "1", "yes")
+        log_to_file = os.environ.get("AIIR_LOG_FILE", "true").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
 
     pkg_logger = logging.getLogger(service_name.replace("-", "_"))
     pkg_logger.setLevel(level)
@@ -99,12 +103,14 @@ def setup_logging(
         except OSError as exc:
             pkg_logger.warning(
                 "Failed to set up file logging to ~/.aiir/logs/: %s: %s",
-                type(exc).__name__, exc,
+                type(exc).__name__,
+                exc,
             )
         except Exception as exc:
             pkg_logger.warning(
                 "Unexpected error setting up file logging: %s: %s",
-                type(exc).__name__, exc,
+                type(exc).__name__,
+                exc,
             )
 
     pkg_logger.propagate = False

@@ -13,31 +13,27 @@ Covers:
 
 from __future__ import annotations
 
-import time
-import sys
 import threading
-import pytest
-from unittest.mock import patch, MagicMock
-from opencti_mcp.validation import (
-    validate_length,
-    validate_ioc,
-    validate_uuid,
-    validate_labels,
-    validate_stix_pattern,
-    validate_observable_types,
-    validate_date_filter,
-    truncate_response,
-    sanitize_for_log,
-    MAX_QUERY_LENGTH,
-    MAX_IOC_LENGTH,
-)
-from opencti_mcp.client import RateLimiter, CircuitBreaker
-from opencti_mcp.config import Config, SecretStr
+import time
 
+import pytest
+from opencti_mcp.client import CircuitBreaker, RateLimiter
+from opencti_mcp.validation import (
+    MAX_QUERY_LENGTH,
+    sanitize_for_log,
+    truncate_response,
+    validate_date_filter,
+    validate_ioc,
+    validate_labels,
+    validate_length,
+    validate_stix_pattern,
+    validate_uuid,
+)
 
 # =============================================================================
 # Validation Performance Tests
 # =============================================================================
+
 
 class TestValidationPerformance:
     """Test validation function performance."""
@@ -132,7 +128,9 @@ class TestValidationPerformance:
         ten_time = (time.perf_counter() - start) / iterations
 
         # Should scale roughly linearly (10x labels = ~10x time, with tolerance)
-        assert ten_time < single_time * 20, f"Label validation doesn't scale: {single_time} vs {ten_time}"
+        assert ten_time < single_time * 20, (
+            f"Label validation doesn't scale: {single_time} vs {ten_time}"
+        )
 
     def test_stix_pattern_validation_performance(self):
         """STIX pattern validation is fast."""
@@ -175,6 +173,7 @@ class TestValidationPerformance:
 # =============================================================================
 # Truncation Performance Tests
 # =============================================================================
+
 
 class TestTruncationPerformance:
     """Test truncation function performance."""
@@ -238,6 +237,7 @@ class TestTruncationPerformance:
 # Rate Limiter Performance Tests
 # =============================================================================
 
+
 class TestRateLimiterPerformance:
     """Test rate limiter performance."""
 
@@ -269,7 +269,9 @@ class TestRateLimiterPerformance:
 
     def test_rate_limiter_cleanup_efficient(self):
         """Rate limiter cleanup is efficient."""
-        limiter = RateLimiter(max_calls=10000, window_seconds=0.001)  # Very short window
+        limiter = RateLimiter(
+            max_calls=10000, window_seconds=0.001
+        )  # Very short window
 
         # Fill up the limiter
         for _ in range(5000):
@@ -322,6 +324,7 @@ class TestRateLimiterPerformance:
 # Circuit Breaker Performance Tests
 # =============================================================================
 
+
 class TestCircuitBreakerPerformance:
     """Test circuit breaker performance."""
 
@@ -360,6 +363,7 @@ class TestCircuitBreakerPerformance:
 # =============================================================================
 # Log Sanitization Performance Tests
 # =============================================================================
+
 
 class TestLogSanitizationPerformance:
     """Test log sanitization performance."""
@@ -409,6 +413,7 @@ class TestLogSanitizationPerformance:
 # Memory Usage Tests
 # =============================================================================
 
+
 class TestMemoryUsage:
     """Test memory usage patterns."""
 
@@ -423,6 +428,7 @@ class TestMemoryUsage:
 
         # Get size before truncation
         import json
+
         original_size = len(json.dumps(large_data))
 
         # Truncate
@@ -464,6 +470,7 @@ class TestMemoryUsage:
 # Concurrent Access Performance Tests
 # =============================================================================
 
+
 class TestConcurrentPerformance:
     """Test concurrent access performance."""
 
@@ -501,6 +508,7 @@ class TestConcurrentPerformance:
 # =============================================================================
 # Benchmark Tests (for reference)
 # =============================================================================
+
 
 class TestBenchmarks:
     """Benchmark tests for performance baseline."""

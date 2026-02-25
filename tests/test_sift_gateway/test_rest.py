@@ -1,14 +1,12 @@
 """Tests for REST API routes."""
 
-import pytest
-from starlette.applications import Starlette
-from starlette.routing import Route
-from starlette.testclient import TestClient
-
 from sift_gateway.auth import AuthMiddleware
 from sift_gateway.health import health_routes
 from sift_gateway.rest import rest_routes
 from sift_gateway.server import Gateway
+from starlette.applications import Starlette
+from starlette.testclient import TestClient
+
 from .conftest import MockBackend, make_tool
 
 
@@ -86,7 +84,9 @@ class TestCallTool:
         gw = _make_test_gateway(mock_backends, {"analyze_file": "backend-a"})
         app = _make_test_app(gw)
         client = TestClient(app, raise_server_exceptions=False)
-        resp = client.post("/api/v1/tools/analyze_file", json={"arguments": {"path": "/data/img.E01"}})
+        resp = client.post(
+            "/api/v1/tools/analyze_file", json={"arguments": {"path": "/data/img.E01"}}
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["tool"] == "analyze_file"
@@ -116,9 +116,12 @@ class TestCallTool:
 class TestAnalystInjection:
     def test_analyst_injected_for_forensic_mcp(self):
         """When API key resolves to an analyst, forensic-mcp record tools get analyst_override."""
-        forensic = MockBackend("forensic-mcp", tools=[
-            make_tool("record_finding", "Record a finding"),
-        ])
+        forensic = MockBackend(
+            "forensic-mcp",
+            tools=[
+                make_tool("record_finding", "Record a finding"),
+            ],
+        )
         forensic._started = True
         config = {
             "gateway": {},
@@ -149,9 +152,12 @@ class TestAnalystInjection:
 
     def test_no_injection_for_non_forensic_backend(self):
         """Non-forensic-mcp backends should NOT get analyst_override injected."""
-        other = MockBackend("sift-mcp", tools=[
-            make_tool("run_command", "Run a command"),
-        ])
+        other = MockBackend(
+            "sift-mcp",
+            tools=[
+                make_tool("run_command", "Run a command"),
+            ],
+        )
         other._started = True
         config = {
             "gateway": {},

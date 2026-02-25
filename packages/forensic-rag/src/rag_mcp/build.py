@@ -19,30 +19,25 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
 
 import chromadb
 from sentence_transformers import SentenceTransformer
 
-from .fs_safety import safe_rmtree, safe_mkdir, create_sentinel, FilesystemSafetyError
-from .constants import DATA_ROOT, MANAGED_SENTINEL
-
+from .constants import MANAGED_SENTINEL
+from .fs_safety import FilesystemSafetyError, create_sentinel, safe_rmtree
+from .ingest import (
+    DEFAULT_KNOWLEDGE_DIR,
+    get_document_records,
+    load_ingested_state,
+    save_user_state,
+    scan_knowledge_folder,
+)
 from .sources import (
     SOURCES,
     SOURCES_DIR,
     get_cached_sources,
     load_disabled_sources,
-    load_sources_state,
-    save_sources_state,
     sync_source,
-)
-from .ingest import (
-    DEFAULT_KNOWLEDGE_DIR,
-    get_document_records,
-    load_ingested_state,
-    load_user_state,
-    save_user_state,
-    scan_knowledge_folder,
 )
 from .utils import (
     ALLOWED_MODELS,
@@ -54,11 +49,7 @@ from .utils import (
     sanitize_metadata,
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(message)s",
-    stream=sys.stdout
-)
+logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -68,6 +59,7 @@ DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 @dataclass
 class BuildResult:
     """Result of a build operation."""
+
     status: str  # "success", "error"
     total_records: int = 0
     online_sources: int = 0
@@ -85,9 +77,9 @@ def build(
     skip_online: bool = False,
     no_bundled: bool = False,
     dry_run: bool = False,
-    data_dir: Optional[Path] = None,
-    knowledge_dir: Optional[Path] = None,
-    model_name: Optional[str] = None
+    data_dir: Path | None = None,
+    knowledge_dir: Path | None = None,
+    model_name: str | None = None,
 ) -> BuildResult:
     """
     Build complete ChromaDB index from scratch.
@@ -102,7 +94,9 @@ def build(
         BuildResult with summary
     """
     data_dir = data_dir or Path(os.environ.get("RAG_INDEX_DIR", DEFAULT_DATA_DIR))
-    knowledge_dir = knowledge_dir or Path(os.environ.get("RAG_KNOWLEDGE_DIR", DEFAULT_KNOWLEDGE_DIR))
+    knowledge_dir = knowledge_dir or Path(
+        os.environ.get("RAG_KNOWLEDGE_DIR", DEFAULT_KNOWLEDGE_DIR)
+    )
     model_name = model_name or os.environ.get("RAG_MODEL_NAME", DEFAULT_MODEL_NAME)
 
     result = BuildResult(status="success")
@@ -132,7 +126,7 @@ def build(
         logger.info("=" * 60)
 
         disabled = load_disabled_sources()
-        cached = get_cached_sources()
+        get_cached_sources()  # warm cache for later use
 
         for name, source in SOURCES.items():
             if name in disabled:
@@ -181,7 +175,9 @@ def build(
 
     # Report unsupported files
     for path, message in scan.unsupported:
-        rel_path = path.relative_to(knowledge_dir) if knowledge_dir in path.parents else path
+        rel_path = (
+            path.relative_to(knowledge_dir) if knowledge_dir in path.parents else path
+        )
         result.warnings.append(f"{rel_path}: {message}")
         logger.info(f"  {rel_path}: UNSUPPORTED ({message})")
 
@@ -209,7 +205,7 @@ def build(
                 "id_prefix": f"user_{path.stem}",
                 "records": len(records),
                 "record_ids": [r["id"] for r in records],
-                "processed_at": datetime.now().isoformat()
+                "processed_at": datetime.now().isoformat(),
             }
 
     if not scan.supported:
@@ -236,7 +232,9 @@ def build(
             f"({total_ingested} records). Re-ingest them after build completes."
         )
         logger.info("")
-        logger.info(f"  WARNING: {len(ingested_docs)} ingested document(s) will be lost!")
+        logger.info(
+            f"  WARNING: {len(ingested_docs)} ingested document(s) will be lost!"
+        )
         logger.info("           ChromaDB is rebuilt from scratch.")
         logger.info("           Re-run 'python -m rag_mcp.ingest' after build.")
         logger.info("")
@@ -298,7 +296,9 @@ def build(
             # First build or missing sentinel - use safe_rmtree without sentinel requirement
             # All other safety checks (forbidden paths, root containment, depth) still apply
             logger.warning(f"  Could not safely remove old index: {e}")
-            logger.warning("  Attempting first-time setup removal (sentinel not required)...")
+            logger.warning(
+                "  Attempting first-time setup removal (sentinel not required)..."
+            )
             try:
                 safe_rmtree(chroma_path, root=data_dir, require_sentinel_file=False)
                 logger.info("  Removed old index (first-time setup, no sentinel)")
@@ -314,8 +314,7 @@ def build(
 
     client = chromadb.PersistentClient(path=str(chroma_path))
     collection = client.create_collection(
-        name="ir_knowledge",
-        metadata={"hnsw:space": "cosine"}
+        name="ir_knowledge", metadata={"hnsw:space": "cosine"}
     )
 
     # Batch embed and add records
@@ -326,7 +325,7 @@ def build(
 
     augmented_count = 0
     for i in range(0, total, batch_size):
-        batch = all_records[i:i + batch_size]
+        batch = all_records[i : i + batch_size]
 
         ids = [r["id"] for r in batch]
         # Augment text with MITRE technique names before embedding
@@ -344,17 +343,16 @@ def build(
 
         # Add to collection
         collection.add(
-            ids=ids,
-            documents=texts,
-            embeddings=embeddings,
-            metadatas=metadatas
+            ids=ids, documents=texts, embeddings=embeddings, metadatas=metadatas
         )
 
         if (i + batch_size) % 1000 == 0 or i + batch_size >= total:
             logger.info(f"    {min(i + batch_size, total)}/{total} records")
 
     result.total_records = total
-    logger.info(f"  Text augmentation: {augmented_count} records enriched with MITRE technique names")
+    logger.info(
+        f"  Text augmentation: {augmented_count} records enriched with MITRE technique names"
+    )
 
     # =========================================================================
     # Phase 5: Save State and Metadata
@@ -382,13 +380,13 @@ def build(
         "model": model_name,
         "record_count": total,
         "source_count": len(all_sources),
-        "sources": sorted(all_sources)
+        "sources": sorted(all_sources),
     }
 
     metadata_path = data_dir / "metadata.json"
     with open(metadata_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
-    logger.info(f"  Saved metadata.json")
+    logger.info("  Saved metadata.json")
 
     # =========================================================================
     # Summary
@@ -398,9 +396,15 @@ def build(
     logger.info("Build Complete")
     logger.info("=" * 60)
     logger.info(f"  Total records: {result.total_records}")
-    logger.info(f"  Online sources: {result.online_sources} ({result.online_records} records)")
-    logger.info(f"  User documents: {result.user_documents} ({result.user_records} records)")
-    logger.info(f"  Ingested documents: {result.ingested_documents} ({result.ingested_records} records)")
+    logger.info(
+        f"  Online sources: {result.online_sources} ({result.online_records} records)"
+    )
+    logger.info(
+        f"  User documents: {result.user_documents} ({result.user_records} records)"
+    )
+    logger.info(
+        f"  Ingested documents: {result.ingested_documents} ({result.ingested_records} records)"
+    )
 
     if result.warnings:
         logger.info("")
@@ -414,18 +418,26 @@ def build(
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Build RAG index")
-    parser.add_argument("--force-fetch", action="store_true",
-                        help="Re-fetch all online sources")
-    parser.add_argument("--skip-online", action="store_true",
-                        help="Only process user documents")
-    parser.add_argument("--no-bundled", action="store_true",
-                        help="Skip bundled reference content (AppliedIR, SANS)")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Show what would be built")
-    parser.add_argument("--data-dir", type=Path,
-                        help="Data directory (default: ./data)")
-    parser.add_argument("--knowledge-dir", type=Path,
-                        help="Knowledge directory (default: ./knowledge)")
+    parser.add_argument(
+        "--force-fetch", action="store_true", help="Re-fetch all online sources"
+    )
+    parser.add_argument(
+        "--skip-online", action="store_true", help="Only process user documents"
+    )
+    parser.add_argument(
+        "--no-bundled",
+        action="store_true",
+        help="Skip bundled reference content (AppliedIR, SANS)",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be built"
+    )
+    parser.add_argument(
+        "--data-dir", type=Path, help="Data directory (default: ./data)"
+    )
+    parser.add_argument(
+        "--knowledge-dir", type=Path, help="Knowledge directory (default: ./knowledge)"
+    )
     args = parser.parse_args()
 
     result = build(
@@ -434,7 +446,7 @@ def main() -> int:
         no_bundled=args.no_bundled,
         dry_run=args.dry_run,
         data_dir=args.data_dir,
-        knowledge_dir=args.knowledge_dir
+        knowledge_dir=args.knowledge_dir,
     )
 
     return 0 if result.status == "success" else 1

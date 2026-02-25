@@ -53,7 +53,7 @@ class TestUrlValidation:
 
     def test_http_rejected_by_default(self):
         """HTTP URLs are rejected by default (HTTPS_ONLY=True)."""
-        from rag_mcp.sources import _validate_url_host, HTTPS_ONLY
+        from rag_mcp.sources import HTTPS_ONLY, _validate_url_host
 
         if HTTPS_ONLY:
             with pytest.raises(ValueError, match="HTTPS required"):
@@ -120,7 +120,7 @@ class TestDownloadSizeLimits:
 
     def test_content_length_check(self):
         """Content-Length exceeding limit is rejected early."""
-        from rag_mcp.sources import fetch_url, DownloadTooLargeError
+        from rag_mcp.sources import fetch_url
 
         # Mock response with large Content-Length
         mock_response = MagicMock()
@@ -212,7 +212,9 @@ class TestRedirectSafety:
 
         # Mock response that redirects to a disallowed host
         mock_response = MagicMock()
-        mock_response.geturl.return_value = "https://evil.com/payload"  # Redirect target
+        mock_response.geturl.return_value = (
+            "https://evil.com/payload"  # Redirect target
+        )
         mock_response.headers = {"Content-Length": "100"}
         mock_response.__enter__ = MagicMock(return_value=mock_response)
         mock_response.__exit__ = MagicMock(return_value=False)
@@ -246,8 +248,8 @@ class TestRetryBehavior:
 
     def test_retry_on_timeout(self):
         """Transient timeout should trigger retry."""
+
         from rag_mcp.sources import fetch_url
-        from socket import timeout as SocketTimeout
 
         call_count = 0
 
@@ -255,7 +257,7 @@ class TestRetryBehavior:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                raise SocketTimeout("timed out")
+                raise TimeoutError("timed out")
             # Third attempt succeeds
             mock_resp = MagicMock()
             mock_resp.geturl.return_value = args[0].full_url
@@ -341,15 +343,15 @@ class TestRetryBehavior:
 
     def test_max_retries_exhausted(self):
         """All retries exhausted returns None."""
+
         from rag_mcp.sources import fetch_url
-        from socket import timeout as SocketTimeout
 
         call_count = 0
 
         def mock_urlopen(*args, **kwargs):
             nonlocal call_count
             call_count += 1
-            raise SocketTimeout("timed out")
+            raise TimeoutError("timed out")
 
         with patch("rag_mcp.sources.urlopen", side_effect=mock_urlopen):
             with patch("rag_mcp.sources._validate_url_host"):

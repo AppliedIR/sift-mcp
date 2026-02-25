@@ -44,8 +44,22 @@ CASES_DIR_ENV = "AIIR_CASES_DIR"
 DEFAULT_CASES_DIR = "cases"
 
 # Protected fields that cannot be overridden by user-supplied data
-_PROTECTED_FINDING_FIELDS = {"id", "status", "staged", "modified_at", "created_by", "examiner"}
-_PROTECTED_EVENT_FIELDS = {"id", "status", "staged", "modified_at", "created_by", "examiner"}
+_PROTECTED_FINDING_FIELDS = {
+    "id",
+    "status",
+    "staged",
+    "modified_at",
+    "created_by",
+    "examiner",
+}
+_PROTECTED_EVENT_FIELDS = {
+    "id",
+    "status",
+    "staged",
+    "modified_at",
+    "created_by",
+    "examiner",
+}
 
 
 def _next_seq(items: list[dict], id_field: str, prefix: str, examiner: str) -> int:
@@ -56,7 +70,7 @@ def _next_seq(items: list[dict], id_field: str, prefix: str, examiner: str) -> i
         item_id = item.get(id_field, "")
         if item_id.startswith(pattern):
             try:
-                num = int(item_id[len(pattern):])
+                num = int(item_id[len(pattern) :])
                 max_num = max(max_num, num)
             except ValueError:
                 pass
@@ -75,7 +89,7 @@ def _validate_examiner(examiner: str) -> None:
     """Validate examiner slug: lowercase alphanumeric + hyphens, max 20 chars."""
     if not examiner:
         raise ValueError("Examiner identity cannot be empty")
-    if not re.match(r'^[a-z0-9][a-z0-9-]{0,19}$', examiner):
+    if not re.match(r"^[a-z0-9][a-z0-9-]{0,19}$", examiner):
         raise ValueError(
             f"Invalid examiner '{examiner}': must be lowercase alphanumeric + hyphens, max 20 chars"
         )
@@ -99,7 +113,9 @@ class CaseManager:
                     os.environ["AIIR_CASE_DIR"] = str(case_dir)
                     logger.info("Activated case from environment: %s", env_case)
             except ValueError:
-                logger.warning("AIIR_ACTIVE_CASE contains invalid case ID: %s", env_case)
+                logger.warning(
+                    "AIIR_ACTIVE_CASE contains invalid case ID: %s", env_case
+                )
 
     @property
     def cases_dir(self) -> Path:
@@ -162,7 +178,9 @@ class CaseManager:
 
         Used by gateway to propagate per-request examiner identity.
         """
-        return override.strip().lower() if override and override.strip() else self.examiner
+        return (
+            override.strip().lower() if override and override.strip() else self.examiner
+        )
 
     def get_case_status(self, case_id: str | None = None) -> dict:
         """Get investigation summary."""
@@ -201,18 +219,26 @@ class CaseManager:
         for case_dir in sorted(self.cases_dir.iterdir()):
             if case_dir.is_dir() and (case_dir / "CASE.yaml").exists():
                 meta = self._load_case_meta(case_dir)
-                results.append({
-                    "case_id": meta["case_id"],
-                    "name": meta.get("name", ""),
-                    "status": meta.get("status", "unknown"),
-                    "created": meta.get("created", ""),
-                    "examiner": meta.get("examiner", ""),
-                })
+                results.append(
+                    {
+                        "case_id": meta["case_id"],
+                        "name": meta.get("name", ""),
+                        "status": meta.get("status", "unknown"),
+                        "created": meta.get("created", ""),
+                        "examiner": meta.get("examiner", ""),
+                    }
+                )
         return results
 
     # --- Investigation Records ---
 
-    def record_action(self, description: str, tool: str = "", command: str = "", examiner_override: str = "") -> dict:
+    def record_action(
+        self,
+        description: str,
+        tool: str = "",
+        command: str = "",
+        examiner_override: str = "",
+    ) -> dict:
         """Append action to actions.jsonl."""
         case_dir = self._require_active_case()
         ts = datetime.now(timezone.utc).isoformat()
@@ -246,7 +272,10 @@ class CaseManager:
         # Validate via discipline module
         validation = validate_finding_data(finding)
         if not validation.get("valid", False):
-            return {"status": "VALIDATION_FAILED", "errors": validation.get("errors", [])}
+            return {
+                "status": "VALIDATION_FAILED",
+                "errors": validation.get("errors", []),
+            }
 
         exam = self._effective_examiner(examiner_override)
         findings = self._load_findings(case_dir)
@@ -255,7 +284,9 @@ class CaseManager:
         now = datetime.now(timezone.utc).isoformat()
 
         # Strip protected fields from user input for defense-in-depth
-        sanitized = {k: v for k, v in finding.items() if k not in _PROTECTED_FINDING_FIELDS}
+        sanitized = {
+            k: v for k, v in finding.items() if k not in _PROTECTED_FINDING_FIELDS
+        }
         finding_record = {
             **sanitized,
             "id": finding_id,
@@ -278,7 +309,10 @@ class CaseManager:
         required = ["timestamp", "description"]
         missing = [k for k in required if not event.get(k)]
         if missing:
-            return {"status": "VALIDATION_FAILED", "errors": [f"Missing required fields: {missing}"]}
+            return {
+                "status": "VALIDATION_FAILED",
+                "errors": [f"Missing required fields: {missing}"],
+            }
 
         exam = self._effective_examiner(examiner_override)
         timeline = self._load_timeline(case_dir)
@@ -335,7 +369,9 @@ class CaseManager:
         if status:
             events = [e for e in events if e.get("status") == status.upper()]
         if source:
-            events = [e for e in events if source.lower() in e.get("source", "").lower()]
+            events = [
+                e for e in events if source.lower() in e.get("source", "").lower()
+            ]
         if examiner:
             events = [e for e in events if e.get("examiner") == examiner]
         if start_date:
@@ -438,11 +474,13 @@ class CaseManager:
                 if priority and priority in ("high", "medium", "low"):
                     todo["priority"] = priority
                 if note:
-                    todo["notes"].append({
-                        "note": note,
-                        "by": exam,
-                        "at": datetime.now(timezone.utc).isoformat(),
-                    })
+                    todo["notes"].append(
+                        {
+                            "note": note,
+                            "by": exam,
+                            "at": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
                 self._save_todos(case_dir, todos)
                 return {"status": "updated", "todo_id": todo_id}
 
@@ -450,7 +488,9 @@ class CaseManager:
 
     def complete_todo(self, todo_id: str, examiner_override: str = "") -> dict:
         """Mark a TODO as completed."""
-        return self.update_todo(todo_id, status="completed", examiner_override=examiner_override)
+        return self.update_todo(
+            todo_id, status="completed", examiner_override=examiner_override
+        )
 
     # --- Evidence ---
 
@@ -502,6 +542,7 @@ class CaseManager:
         if finding_type:
             try:
                 from forensic_knowledge import loader
+
                 checks = loader.get_corroboration(finding_type)
                 if checks:
                     for check in checks:
@@ -511,7 +552,9 @@ class CaseManager:
                             short_name = mcp.replace("-mcp", "")
                             if short_name in check_text.lower():
                                 reason = check.get("reason", "")
-                                suggestions.append(f"{check_text} — {reason}" if reason else check_text)
+                                suggestions.append(
+                                    f"{check_text} — {reason}" if reason else check_text
+                                )
             except Exception:
                 pass  # FK not available — skip suggestions
 
@@ -550,13 +593,17 @@ class CaseManager:
         return self._load_json_file(case_dir / "findings.json", [])
 
     def _save_findings(self, case_dir: Path, findings: list[dict]) -> None:
-        _atomic_write(case_dir / "findings.json", json.dumps(findings, indent=2, default=str))
+        _atomic_write(
+            case_dir / "findings.json", json.dumps(findings, indent=2, default=str)
+        )
 
     def _load_timeline(self, case_dir: Path) -> list[dict]:
         return self._load_json_file(case_dir / "timeline.json", [])
 
     def _save_timeline(self, case_dir: Path, timeline: list[dict]) -> None:
-        _atomic_write(case_dir / "timeline.json", json.dumps(timeline, indent=2, default=str))
+        _atomic_write(
+            case_dir / "timeline.json", json.dumps(timeline, indent=2, default=str)
+        )
 
     def _load_todos(self, case_dir: Path) -> list[dict]:
         return self._load_json_file(case_dir / "todos.json", [])

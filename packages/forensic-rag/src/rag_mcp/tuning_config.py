@@ -14,10 +14,10 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .utils import atomic_write_json
 
@@ -36,23 +36,28 @@ class TuningConfig:
     These values can be adjusted based on query analysis to optimize
     search quality for your specific usage patterns.
     """
+
     # Version for config compatibility
     version: str = "1.0"
 
     # Score thresholds by query type
     # Queries scoring below these thresholds may indicate poor matches
-    thresholds: dict[str, float] = field(default_factory=lambda: {
-        "general": 0.50,
-        "mitre_id": 0.55,
-        "detection": 0.55,
-        "forensic": 0.55,
-    })
+    thresholds: dict[str, float] = field(
+        default_factory=lambda: {
+            "general": 0.50,
+            "mitre_id": 0.55,
+            "detection": 0.55,
+            "forensic": 0.55,
+        }
+    )
 
     # Source boost multipliers
     # Authoritative sources can receive score boosts
-    source_boosts: dict[str, float] = field(default_factory=lambda: {
-        "forensic_clarifications": 1.15,
-    })
+    source_boosts: dict[str, float] = field(
+        default_factory=lambda: {
+            "forensic_clarifications": 1.15,
+        }
+    )
 
     # Keyword boost for hybrid search
     keyword_boost: float = 1.15
@@ -62,14 +67,12 @@ class TuningConfig:
     weak_mitre_threshold: float = 0.60
 
     # Audit trail
-    last_modified: Optional[str] = None
-    last_modified_by: Optional[str] = None
+    last_modified: str | None = None
+    last_modified_by: str | None = None
     modification_history: list[dict[str, Any]] = field(default_factory=list)
 
     def apply_recommendation(
-        self,
-        recommendation: dict[str, Any],
-        approved_by: str = "unknown"
+        self, recommendation: dict[str, Any], approved_by: str = "unknown"
     ) -> None:
         """
         Apply a recommendation from query analysis.
@@ -91,7 +94,7 @@ class TuningConfig:
                     old_value,
                     new_value,
                     approved_by,
-                    recommendation.get("reason", "")
+                    recommendation.get("reason", ""),
                 )
 
         elif rec_type == "source_boost":
@@ -105,7 +108,7 @@ class TuningConfig:
                     old_value,
                     new_value,
                     approved_by,
-                    recommendation.get("reason", "")
+                    recommendation.get("reason", ""),
                 )
 
         elif rec_type == "keyword_boost":
@@ -118,7 +121,7 @@ class TuningConfig:
                     old_value,
                     new_value,
                     approved_by,
-                    recommendation.get("reason", "")
+                    recommendation.get("reason", ""),
                 )
 
     def _record_change(
@@ -127,19 +130,21 @@ class TuningConfig:
         old_value: Any,
         new_value: Any,
         approved_by: str,
-        reason: str
+        reason: str,
     ) -> None:
         """Record a change in the audit trail."""
         self.last_modified = datetime.now().isoformat()
         self.last_modified_by = approved_by
-        self.modification_history.append({
-            "timestamp": self.last_modified,
-            "parameter": parameter,
-            "old_value": old_value,
-            "new_value": new_value,
-            "approved_by": approved_by,
-            "reason": reason,
-        })
+        self.modification_history.append(
+            {
+                "timestamp": self.last_modified,
+                "parameter": parameter,
+                "old_value": old_value,
+                "new_value": new_value,
+                "approved_by": approved_by,
+                "reason": reason,
+            }
+        )
         # Keep last 100 changes, log dropped entries for audit continuity
         if len(self.modification_history) > 100:
             dropped = self.modification_history[:-100]
@@ -153,7 +158,7 @@ class TuningConfig:
             self.modification_history = self.modification_history[-100:]
 
 
-def load_tuning_config(config_path: Optional[Path] = None) -> TuningConfig:
+def load_tuning_config(config_path: Path | None = None) -> TuningConfig:
     """
     Load tuning configuration from file.
 
@@ -191,15 +196,12 @@ def load_tuning_config(config_path: Optional[Path] = None) -> TuningConfig:
         logger.debug(f"Loaded tuning config from {path}")
         return config
 
-    except (IOError, json.JSONDecodeError) as e:
+    except (OSError, json.JSONDecodeError) as e:
         logger.warning(f"Could not load tuning config: {e}, using defaults")
         return TuningConfig()
 
 
-def save_tuning_config(
-    config: TuningConfig,
-    config_path: Optional[Path] = None
-) -> None:
+def save_tuning_config(config: TuningConfig, config_path: Path | None = None) -> None:
     """
     Save tuning configuration to file.
 

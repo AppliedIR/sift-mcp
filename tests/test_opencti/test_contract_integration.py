@@ -10,21 +10,18 @@ Tests:
 from __future__ import annotations
 
 import json
-import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 from dataclasses import asdict
+from unittest.mock import MagicMock, patch
 
-from opencti_mcp.server import OpenCTIMCPServer
-from opencti_mcp.client import OpenCTIClient
+import pytest
 from opencti_mcp.config import Config, SecretStr
+from opencti_mcp.server import OpenCTIMCPServer
 from opencti_mcp.validation import (
-    validate_uuid,
+    MAX_QUERY_LENGTH,
     validate_ioc,
     validate_label,
-    validate_date_filter,
-    validate_observable_types,
     validate_length,
-    MAX_QUERY_LENGTH,
+    validate_uuid,
 )
 
 
@@ -38,13 +35,15 @@ def validate_query(query: str) -> str:
 
 def sanitize_for_graphql(value: str) -> str:
     """Simple GraphQL sanitization - escape quotes."""
-    return value.replace('\\', '\\\\').replace('"', '\\"')
-from opencti_mcp.errors import ValidationError, OpenCTIMCPError
+    return value.replace("\\", "\\\\").replace('"', '\\"')
 
+
+from opencti_mcp.errors import ValidationError
 
 # =============================================================================
 # Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def mock_config():
@@ -71,7 +70,7 @@ def mock_client():
 @pytest.fixture
 def server(mock_config, mock_client):
     """Create server with mocked dependencies."""
-    with patch('opencti_mcp.server.OpenCTIClient', return_value=mock_client):
+    with patch("opencti_mcp.server.OpenCTIClient", return_value=mock_client):
         server = OpenCTIMCPServer(mock_config)
         server.client = mock_client
         return server
@@ -81,6 +80,7 @@ def server(mock_config, mock_client):
 # API Contract Tests
 # =============================================================================
 
+
 class TestAPIContracts:
     """Test that API contracts are maintained."""
 
@@ -88,38 +88,44 @@ class TestAPIContracts:
     async def test_search_entity_returns_results_key(self, server, mock_client):
         """search_entity returns 'results' key for all entity types."""
         entity_types = [
-            "threat_actor", "malware", "campaign", "vulnerability",
-            "attack_pattern", "observable",
+            "threat_actor",
+            "malware",
+            "campaign",
+            "vulnerability",
+            "attack_pattern",
+            "observable",
         ]
 
         for entity_type in entity_types:
-            result = await server._dispatch_tool("search_entity", {
-                "type": entity_type, "query": "test"
-            })
-            assert "results" in result, f"search_entity type={entity_type} must return 'results'"
+            result = await server._dispatch_tool(
+                "search_entity", {"type": entity_type, "query": "test"}
+            )
+            assert "results" in result, (
+                f"search_entity type={entity_type} must return 'results'"
+            )
 
     @pytest.mark.asyncio
     async def test_search_results_are_lists(self, server, mock_client):
         """Search results are always lists."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "threat_actor", "query": "test"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test"}
+        )
         assert isinstance(result["results"], list)
 
     @pytest.mark.asyncio
     async def test_get_entity_returns_entity_or_error(self, server, mock_client):
         """get_entity returns entity dict or appropriate error."""
         # Success case
-        result = await server._dispatch_tool("get_entity", {
-            "entity_id": "12345678-1234-1234-1234-123456789abc"
-        })
+        result = await server._dispatch_tool(
+            "get_entity", {"entity_id": "12345678-1234-1234-1234-123456789abc"}
+        )
         assert isinstance(result, dict)
 
         # Not found case
         mock_client.get_entity.return_value = None
-        result = await server._dispatch_tool("get_entity", {
-            "entity_id": "12345678-1234-1234-1234-123456789abc"
-        })
+        result = await server._dispatch_tool(
+            "get_entity", {"entity_id": "12345678-1234-1234-1234-123456789abc"}
+        )
         # Should return None or empty dict or error
         assert result is None or isinstance(result, dict)
 
@@ -133,7 +139,12 @@ class TestAPIContracts:
     @pytest.mark.asyncio
     async def test_write_tools_removed(self, server):
         """Write tools are no longer available."""
-        for tool in ["create_indicator", "create_note", "create_sighting", "trigger_enrichment"]:
+        for tool in [
+            "create_indicator",
+            "create_note",
+            "create_sighting",
+            "trigger_enrichment",
+        ]:
             with pytest.raises(ValidationError, match="Unknown tool"):
                 await server._dispatch_tool(tool, {})
 
@@ -141,6 +152,7 @@ class TestAPIContracts:
 # =============================================================================
 # Cross-Function Consistency Tests
 # =============================================================================
+
 
 class TestCrossFunctionConsistency:
     """Test consistency across functions."""
@@ -212,6 +224,7 @@ class TestCrossFunctionConsistency:
 # Input/Output Contract Tests
 # =============================================================================
 
+
 class TestIOContracts:
     """Test input/output contracts."""
 
@@ -269,6 +282,7 @@ class TestIOContracts:
 # Integration Scenario Tests
 # =============================================================================
 
+
 class TestIntegrationScenarios:
     """Test realistic integration scenarios."""
 
@@ -281,9 +295,9 @@ class TestIntegrationScenarios:
         ]
 
         # 1. Search
-        search_result = await server._dispatch_tool("search_entity", {
-            "type": "threat_actor", "query": "APT29"
-        })
+        search_result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "APT29"}
+        )
         assert "results" in search_result
         assert len(search_result["results"]) > 0
 
@@ -292,12 +306,12 @@ class TestIntegrationScenarios:
         mock_client.get_entity.return_value = {
             "id": entity_id,
             "name": "APT29",
-            "description": "Russian threat actor"
+            "description": "Russian threat actor",
         }
 
-        entity_result = await server._dispatch_tool("get_entity", {
-            "entity_id": entity_id
-        })
+        entity_result = await server._dispatch_tool(
+            "get_entity", {"entity_id": entity_id}
+        )
         assert entity_result is not None
 
     @pytest.mark.asyncio
@@ -307,12 +321,12 @@ class TestIntegrationScenarios:
         mock_client.lookup_observable.return_value = {
             "id": "12345678-1234-1234-1234-123456789abc",
             "value": "192.168.1.1",
-            "type": "ipv4-addr"
+            "type": "ipv4-addr",
         }
 
-        lookup_result = await server._dispatch_tool("lookup_ioc", {
-            "ioc": "192.168.1.1"
-        })
+        lookup_result = await server._dispatch_tool(
+            "lookup_ioc", {"ioc": "192.168.1.1"}
+        )
         assert lookup_result is not None
 
         # Get relationships
@@ -320,15 +334,16 @@ class TestIntegrationScenarios:
             {"type": "indicates", "target": {"name": "APT29"}}
         ]
 
-        rel_result = await server._dispatch_tool("get_relationships", {
-            "entity_id": "12345678-1234-1234-1234-123456789abc"
-        })
+        rel_result = await server._dispatch_tool(
+            "get_relationships", {"entity_id": "12345678-1234-1234-1234-123456789abc"}
+        )
         assert rel_result is not None
 
 
 # =============================================================================
 # Error Contract Tests
 # =============================================================================
+
 
 class TestErrorContracts:
     """Test error handling contracts."""
@@ -348,9 +363,9 @@ class TestErrorContracts:
 
         # Query too long
         with pytest.raises(ValidationError):
-            await server._dispatch_tool("search_entity", {
-                "type": "threat_actor", "query": "x" * 2000
-            })
+            await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "x" * 2000}
+            )
 
     @pytest.mark.asyncio
     async def test_client_errors_propagate_appropriately(self, server, mock_client):
@@ -358,32 +373,35 @@ class TestErrorContracts:
         mock_client.search_threat_actors.side_effect = Exception("Connection failed")
 
         with pytest.raises(Exception):
-            await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+            await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "test"}
+            )
 
 
 # =============================================================================
 # Config Contract Tests
 # =============================================================================
 
+
 class TestConfigContracts:
     """Test configuration contracts."""
 
     def test_config_has_required_fields(self):
         """Config has all required fields."""
-        with patch.dict('os.environ', {'OPENCTI_TOKEN': 'test-token'}, clear=False):
-            with patch('opencti_mcp.config._load_token', return_value='test-token'):
+        with patch.dict("os.environ", {"OPENCTI_TOKEN": "test-token"}, clear=False):
+            with patch("opencti_mcp.config._load_token", return_value="test-token"):
                 config = Config.load()
 
         # Required fields exist
-        assert hasattr(config, 'opencti_url')
-        assert hasattr(config, 'opencti_token')
-        assert hasattr(config, 'timeout_seconds')
-        assert hasattr(config, 'max_results')
+        assert hasattr(config, "opencti_url")
+        assert hasattr(config, "opencti_token")
+        assert hasattr(config, "timeout_seconds")
+        assert hasattr(config, "max_results")
 
     def test_config_defaults_are_safe(self):
         """Config defaults are secure."""
-        with patch.dict('os.environ', {'OPENCTI_TOKEN': 'test-token'}, clear=False):
-            with patch('opencti_mcp.config._load_token', return_value='test-token'):
+        with patch.dict("os.environ", {"OPENCTI_TOKEN": "test-token"}, clear=False):
+            with patch("opencti_mcp.config._load_token", return_value="test-token"):
                 config = Config.load()
                 assert config.ssl_verify is True
 
@@ -403,19 +421,18 @@ class TestConfigContracts:
 # Response Format Contract Tests
 # =============================================================================
 
+
 class TestResponseFormatContracts:
     """Test response format contracts."""
 
     @pytest.mark.asyncio
     async def test_search_response_format(self, server, mock_client):
         """Search responses have consistent format."""
-        mock_client.search_threat_actors.return_value = [
-            {"id": "123", "name": "Test"}
-        ]
+        mock_client.search_threat_actors.return_value = [{"id": "123", "name": "Test"}]
 
-        result = await server._dispatch_tool("search_entity", {
-            "type": "threat_actor", "query": "test"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test"}
+        )
 
         # Must have results key
         assert "results" in result
@@ -434,9 +451,9 @@ class TestResponseFormatContracts:
             {"id": "123", "name": "Test", "created": "2024-01-01"}
         ]
 
-        result = await server._dispatch_tool("search_entity", {
-            "type": "threat_actor", "query": "test"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test"}
+        )
 
         # Should not raise
         json_str = json.dumps(result)
@@ -451,6 +468,7 @@ class TestResponseFormatContracts:
 # Idempotency Tests
 # =============================================================================
 
+
 class TestIdempotency:
     """Test idempotent operations."""
 
@@ -459,8 +477,12 @@ class TestIdempotency:
         """Same search returns same results."""
         mock_client.search_threat_actors.return_value = [{"id": "123"}]
 
-        result1 = await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
-        result2 = await server._dispatch_tool("search_entity", {"type": "threat_actor", "query": "test"})
+        result1 = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test"}
+        )
+        result2 = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test"}
+        )
 
         assert result1 == result2
 
@@ -490,6 +512,7 @@ class TestIdempotency:
 # Backward Compatibility Tests
 # =============================================================================
 
+
 class TestBackwardCompatibility:
     """Test backward compatibility of interfaces."""
 
@@ -511,7 +534,7 @@ class TestBackwardCompatibility:
 
     def test_config_load_returns_config(self):
         """Config.load() returns Config instance."""
-        with patch.dict('os.environ', {'OPENCTI_TOKEN': 'test-token'}, clear=False):
-            with patch('opencti_mcp.config._load_token', return_value='test-token'):
+        with patch.dict("os.environ", {"OPENCTI_TOKEN": "test-token"}, clear=False):
+            with patch("opencti_mcp.config._load_token", return_value="test-token"):
                 config = Config.load()
         assert isinstance(config, Config)

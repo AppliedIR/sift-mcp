@@ -1,6 +1,6 @@
 """Tests for sift_mcp.environment."""
 
-from sift_mcp.environment import is_wsl, get_environment_info, find_binary
+from sift_mcp.environment import find_binary, get_environment_info, is_wsl
 
 
 class TestEnvironment:

@@ -28,11 +28,11 @@ Usage:
     )
 """
 
-import sqlite3
 import json
+import sqlite3
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 from .schemas import REGISTRY_FULL_SCHEMA
 
@@ -43,7 +43,9 @@ class RegistryDB:
     # Valid registry hives
     VALID_HIVES = {"SYSTEM", "SOFTWARE", "NTUSER", "DEFAULT", "SAM", "SECURITY"}
 
-    def __init__(self, db_path: str | Path, read_only: bool = True, cache_size: int = 10000):
+    def __init__(
+        self, db_path: str | Path, read_only: bool = True, cache_size: int = 10000
+    ):
         """Initialize connection to known_good_registry.db.
 
         Args:
@@ -54,12 +56,16 @@ class RegistryDB:
         self.db_path = Path(db_path)
         self.read_only = read_only
         self.cache_size = cache_size
-        self._conn: Optional[sqlite3.Connection] = None
+        self._conn: sqlite3.Connection | None = None
 
         # Configure LRU cache sizes based on cache_size parameter
         if cache_size > 0:
-            self._lookup_key_cached = lru_cache(maxsize=cache_size)(self._lookup_key_uncached)
-            self._lookup_value_cached = lru_cache(maxsize=cache_size)(self._lookup_value_uncached)
+            self._lookup_key_cached = lru_cache(maxsize=cache_size)(
+                self._lookup_key_uncached
+            )
+            self._lookup_value_cached = lru_cache(maxsize=cache_size)(
+                self._lookup_value_uncached
+            )
 
     def connect(self) -> sqlite3.Connection:
         """Get or create database connection."""
@@ -118,7 +124,7 @@ class RegistryDB:
         return normalized
 
     @staticmethod
-    def extract_hive(key_path: str) -> Optional[str]:
+    def extract_hive(key_path: str) -> str | None:
         """Extract hive name from key path if present.
 
         Examples:
@@ -159,11 +165,8 @@ class RegistryDB:
         return None
 
     def lookup_key(
-        self,
-        key_path: str,
-        hive: Optional[str] = None,
-        os_version: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+        self, key_path: str, hive: str | None = None, os_version: str | None = None
+    ) -> list[dict[str, Any]]:
         """Look up a registry key in the baseline.
 
         Args:
@@ -191,10 +194,7 @@ class RegistryDB:
         return list(results)
 
     def _lookup_key_uncached(
-        self,
-        key_normalized: str,
-        hive: Optional[str],
-        os_version: Optional[str]
+        self, key_normalized: str, hive: str | None, os_version: str | None
     ) -> tuple:
         """Uncached key lookup implementation."""
         conn = self.connect()
@@ -221,20 +221,24 @@ class RegistryDB:
 
         results = []
         for row in cursor:
-            os_versions_list = json.loads(row["os_versions"]) if row["os_versions"] else []
+            os_versions_list = (
+                json.loads(row["os_versions"]) if row["os_versions"] else []
+            )
 
             # Filter by OS version if specified
             if os_version and os_version not in os_versions_list:
                 continue
 
-            results.append({
-                "hive": row["hive"],
-                "key_path": row["key_path_lower"],
-                "value_name": row["value_name"],
-                "value_type": row["value_type"],
-                "value_data": row["value_data"],
-                "os_versions": os_versions_list,
-            })
+            results.append(
+                {
+                    "hive": row["hive"],
+                    "key_path": row["key_path_lower"],
+                    "value_name": row["value_name"],
+                    "value_type": row["value_type"],
+                    "value_data": row["value_data"],
+                    "os_versions": os_versions_list,
+                }
+            )
 
         return tuple(results)
 
@@ -242,9 +246,9 @@ class RegistryDB:
         self,
         key_path: str,
         value_name: str,
-        hive: Optional[str] = None,
-        os_version: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+        hive: str | None = None,
+        os_version: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Look up a specific registry value in the baseline.
 
         Args:
@@ -265,9 +269,13 @@ class RegistryDB:
 
         # Use cache if available
         if self.cache_size > 0:
-            results = self._lookup_value_cached(key_normalized, value_name, hive, os_version)
+            results = self._lookup_value_cached(
+                key_normalized, value_name, hive, os_version
+            )
         else:
-            results = self._lookup_value_uncached(key_normalized, value_name, hive, os_version)
+            results = self._lookup_value_uncached(
+                key_normalized, value_name, hive, os_version
+            )
 
         return list(results)
 
@@ -275,8 +283,8 @@ class RegistryDB:
         self,
         key_normalized: str,
         value_name: str,
-        hive: Optional[str],
-        os_version: Optional[str]
+        hive: str | None,
+        os_version: str | None,
     ) -> tuple:
         """Uncached value lookup implementation."""
         conn = self.connect()
@@ -302,32 +310,33 @@ class RegistryDB:
 
         results = []
         for row in cursor:
-            os_versions_list = json.loads(row["os_versions"]) if row["os_versions"] else []
+            os_versions_list = (
+                json.loads(row["os_versions"]) if row["os_versions"] else []
+            )
 
             # Filter by OS version if specified
             if os_version and os_version not in os_versions_list:
                 continue
 
-            results.append({
-                "hive": row["hive"],
-                "key_path": row["key_path_lower"],
-                "value_name": row["value_name"],
-                "value_type": row["value_type"],
-                "value_data": row["value_data"],
-                "os_versions": os_versions_list,
-            })
+            results.append(
+                {
+                    "hive": row["hive"],
+                    "key_path": row["key_path_lower"],
+                    "value_name": row["value_name"],
+                    "value_type": row["value_type"],
+                    "value_data": row["value_data"],
+                    "os_versions": os_versions_list,
+                }
+            )
 
         return tuple(results)
 
-    def key_exists(self, key_path: str, hive: Optional[str] = None) -> bool:
+    def key_exists(self, key_path: str, hive: str | None = None) -> bool:
         """Check if a key exists in any baseline."""
         return len(self.lookup_key(key_path, hive)) > 0
 
     def value_exists(
-        self,
-        key_path: str,
-        value_name: str,
-        hive: Optional[str] = None
+        self, key_path: str, value_name: str, hive: str | None = None
     ) -> bool:
         """Check if a specific value exists in any baseline."""
         return len(self.lookup_value(key_path, value_name, hive)) > 0
@@ -338,7 +347,7 @@ class RegistryDB:
             self._lookup_key_cached.cache_clear()
             self._lookup_value_cached.cache_clear()
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         if self.cache_size == 0:
             return {"caching_enabled": False}
@@ -362,10 +371,13 @@ class RegistryDB:
             },
         }
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get database statistics."""
         if not self.is_available():
-            return {"available": False, "reason": "Database not found or not initialized"}
+            return {
+                "available": False,
+                "reason": "Database not found or not initialized",
+            }
 
         conn = self.connect()
 

@@ -1,8 +1,8 @@
 """Tests for sift_mcp.executor — subprocess execution."""
 
 import pytest
-from sift_mcp.executor import execute
 from sift_mcp.exceptions import ExecutionError, ExecutionTimeoutError
+from sift_mcp.executor import execute
 
 
 class TestExecutor:
@@ -39,6 +39,7 @@ class TestExecutor:
         assert "output_file" in result
         assert "output_sha256" in result
         from pathlib import Path
+
         assert Path(result["output_file"]).exists()
 
     def test_cwd(self, tmp_path):
@@ -69,6 +70,7 @@ class TestAutoSave:
         assert "output_file" in result
         assert "output_sha256" in result
         from pathlib import Path
+
         assert Path(result["output_file"]).exists()
 
     def test_no_save_when_under_budget(self, tmp_path, monkeypatch):
@@ -102,7 +104,9 @@ class TestAutoSave:
         """Stderr truncation is unchanged."""
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
         # stderr with enough content to test truncation threshold
-        result = execute(["python3", "-c", "import sys; sys.stderr.write('e' * 100000)"])
+        result = execute(
+            ["python3", "-c", "import sys; sys.stderr.write('e' * 100000)"]
+        )
         # With 50MB max, stderr limit is 50MB/10 = 5MB — won't actually truncate 100KB
         # But the mechanism exists; just verify stderr is captured
         assert result["stderr"]

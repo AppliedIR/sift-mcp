@@ -3,22 +3,22 @@
 from __future__ import annotations
 
 import time
-import pytest
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
 from opencti_mcp.cache import (
-    TTLCache,
-    CacheManager,
     NOT_FOUND,
+    CacheManager,
+    TTLCache,
     generate_cache_key,
     get_cache_manager,
     reset_cache_manager,
 )
 
-
 # =============================================================================
 # TTLCache Tests
 # =============================================================================
+
 
 class TestTTLCache:
     """Tests for TTLCache class."""
@@ -191,6 +191,7 @@ class TestTTLCache:
 # CacheManager Tests
 # =============================================================================
 
+
 class TestCacheManager:
     """Tests for CacheManager class."""
 
@@ -265,6 +266,7 @@ class TestCacheManager:
 # Utility Function Tests
 # =============================================================================
 
+
 class TestCacheUtilities:
     """Tests for cache utility functions."""
 
@@ -318,6 +320,7 @@ class TestCacheUtilities:
 # =============================================================================
 # Edge Cases
 # =============================================================================
+
 
 class TestCacheEdgeCases:
     """Edge case tests."""

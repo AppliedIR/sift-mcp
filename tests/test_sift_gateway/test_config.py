@@ -1,14 +1,10 @@
 """Tests for config loading and env var interpolation."""
 
-import os
 import pytest
-import tempfile
-from pathlib import Path
-
-from sift_gateway.config import load_config, _interpolate_env, _walk_and_interpolate
-
+from sift_gateway.config import _interpolate_env, _walk_and_interpolate, load_config
 
 # --- _interpolate_env ---
+
 
 class TestInterpolateEnv:
     def test_simple_var(self, monkeypatch):
@@ -34,6 +30,7 @@ class TestInterpolateEnv:
 
 # --- _walk_and_interpolate ---
 
+
 class TestWalkAndInterpolate:
     def test_nested_dict(self, monkeypatch):
         monkeypatch.setenv("PORT", "9090")
@@ -54,6 +51,7 @@ class TestWalkAndInterpolate:
 
 
 # --- load_config ---
+
 
 class TestLoadConfig:
     def test_load_valid_yaml(self, tmp_path):

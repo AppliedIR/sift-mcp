@@ -4,25 +4,23 @@ These tests validate all 12 MCP tools by testing the underlying handler methods
 directly, bypassing the MCP protocol layer.
 """
 
-import json
-import pytest
-import tempfile
 import sqlite3
+import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock
 
+import pytest
+from windows_triage.config import Config
+from windows_triage.exceptions import DatabaseError, ValidationError
 from windows_triage.server import (
     WindowsTriageServer,
     _validate_input_length,
     _validate_no_null_bytes,
 )
-from windows_triage.config import Config
-from windows_triage.exceptions import ValidationError, DatabaseError
-
 
 # ============================================================================
 # Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def temp_dbs():
@@ -318,7 +316,7 @@ def server(temp_dbs):
         known_good_db=kg_path,
         context_db=ctx_path,
         skip_db_validation=True,
-        cache_size=0  # Disable caching for predictable tests
+        cache_size=0,  # Disable caching for predictable tests
     )
     return WindowsTriageServer(config=config)
 
@@ -326,6 +324,7 @@ def server(temp_dbs):
 # ============================================================================
 # Input Validation Tests
 # ============================================================================
+
 
 class TestInputValidation:
     """Tests for input validation functions."""
@@ -373,6 +372,7 @@ class TestInputValidation:
 # check_file Tests
 # ============================================================================
 
+
 class TestCheckFile:
     """Tests for check_file tool."""
 
@@ -380,65 +380,67 @@ class TestCheckFile:
     async def test_file_in_baseline(self, server):
         """Test checking a file that exists in baseline."""
         result = await server._check_file("C:\\Windows\\System32\\cmd.exe")
-        assert result['path_in_baseline'] is True
-        assert result['verdict'] == 'EXPECTED'
+        assert result["path_in_baseline"] is True
+        assert result["verdict"] == "EXPECTED"
 
     @pytest.mark.asyncio
     async def test_file_not_in_baseline(self, server):
         """Test checking a file not in baseline."""
         result = await server._check_file("C:\\Users\\test\\malware.exe")
-        assert result['path_in_baseline'] is False
-        assert result['verdict'] == 'UNKNOWN'
+        assert result["path_in_baseline"] is False
+        assert result["verdict"] == "UNKNOWN"
 
     @pytest.mark.asyncio
     async def test_lolbin_in_baseline(self, server):
         """Test checking a LOLBin in its expected location."""
         result = await server._check_file("C:\\Windows\\System32\\certutil.exe")
-        assert result['path_in_baseline'] is True
-        assert result['is_lolbin'] is True
-        assert result['verdict'] == 'EXPECTED_LOLBIN'
+        assert result["path_in_baseline"] is True
+        assert result["is_lolbin"] is True
+        assert result["verdict"] == "EXPECTED_LOLBIN"
 
     @pytest.mark.asyncio
     async def test_lolbin_wrong_location(self, server):
         """Test checking a LOLBin in unexpected location."""
         result = await server._check_file("C:\\Users\\test\\certutil.exe")
         # Not in baseline, but filename matches LOLBin
-        assert result['path_in_baseline'] is False
-        assert result['verdict'] == 'SUSPICIOUS'
-        assert 'non-standard location' in str(result.get('reasons', []))
+        assert result["path_in_baseline"] is False
+        assert result["verdict"] == "SUSPICIOUS"
+        assert "non-standard location" in str(result.get("reasons", []))
 
     @pytest.mark.asyncio
     async def test_hash_mismatch(self, server):
         """Test checking file with hash mismatch."""
         result = await server._check_file(
             "C:\\Windows\\System32\\cmd.exe",
-            hash_value="ffffffffffffffffffffffffffffffff"  # Wrong hash
+            hash_value="ffffffffffffffffffffffffffffffff",  # Wrong hash
         )
         # Should detect hash mismatch against baseline
-        assert any('hash_mismatch' in str(f.get('type', ''))
-                   for f in result.get('findings', []))
+        assert any(
+            "hash_mismatch" in str(f.get("type", ""))
+            for f in result.get("findings", [])
+        )
 
     @pytest.mark.asyncio
     async def test_protected_process_wrong_path(self, server):
         """Test protected process name in wrong path."""
         result = await server._check_file("C:\\Temp\\svchost.exe")
-        assert result['verdict'] == 'SUSPICIOUS'
+        assert result["verdict"] == "SUSPICIOUS"
         # Should flag protected process in wrong location
 
     @pytest.mark.asyncio
     async def test_invalid_hash_ignored(self, server):
         """Test that invalid hash format is handled gracefully."""
         result = await server._check_file(
-            "C:\\Windows\\System32\\cmd.exe",
-            hash_value="not-a-valid-hash"
+            "C:\\Windows\\System32\\cmd.exe", hash_value="not-a-valid-hash"
         )
         # Should still return valid result
-        assert 'verdict' in result
+        assert "verdict" in result
 
 
 # ============================================================================
 # check_process_tree Tests
 # ============================================================================
+
 
 class TestCheckProcessTree:
     """Tests for check_process_tree tool."""
@@ -447,52 +449,54 @@ class TestCheckProcessTree:
     async def test_valid_parent_child(self, server):
         """Test valid parent-child relationship."""
         result = await server._check_process_tree(
-            process_name="svchost.exe",
-            parent_name="services.exe"
+            process_name="svchost.exe", parent_name="services.exe"
         )
-        assert result['in_expectations_db'] is True
-        assert result['verdict'] == 'EXPECTED'
+        assert result["in_expectations_db"] is True
+        assert result["verdict"] == "EXPECTED"
 
     @pytest.mark.asyncio
     async def test_invalid_parent(self, server):
         """Test invalid parent process."""
         result = await server._check_process_tree(
             process_name="svchost.exe",
-            parent_name="notepad.exe"  # Invalid parent
+            parent_name="notepad.exe",  # Invalid parent
         )
-        assert result['verdict'] == 'SUSPICIOUS'
+        assert result["verdict"] == "SUSPICIOUS"
 
     @pytest.mark.asyncio
     async def test_suspicious_parent_blacklist(self, server):
         """Test suspicious parent from blacklist."""
         result = await server._check_process_tree(
             process_name="cmd.exe",
-            parent_name="winword.exe"  # Office app spawning shell
+            parent_name="winword.exe",  # Office app spawning shell
         )
-        assert result['verdict'] == 'SUSPICIOUS'
-        assert any('suspicious_parent' in str(f.get('type', ''))
-                   for f in result.get('findings', []))
+        assert result["verdict"] == "SUSPICIOUS"
+        assert any(
+            "suspicious_parent" in str(f.get("type", ""))
+            for f in result.get("findings", [])
+        )
 
     @pytest.mark.asyncio
     async def test_injection_detected(self, server):
         """Test injection detection (never_spawns_children)."""
         result = await server._check_process_tree(
             process_name="cmd.exe",
-            parent_name="lsass.exe"  # lsass should never spawn children
+            parent_name="lsass.exe",  # lsass should never spawn children
         )
-        assert result['verdict'] == 'SUSPICIOUS'
-        assert any('injection' in str(f.get('type', '')).lower()
-                   for f in result.get('findings', []))
+        assert result["verdict"] == "SUSPICIOUS"
+        assert any(
+            "injection" in str(f.get("type", "")).lower()
+            for f in result.get("findings", [])
+        )
 
     @pytest.mark.asyncio
     async def test_unknown_process(self, server):
         """Test unknown process (not in database)."""
         result = await server._check_process_tree(
-            process_name="custom_app.exe",
-            parent_name="explorer.exe"
+            process_name="custom_app.exe", parent_name="explorer.exe"
         )
-        assert result['in_expectations_db'] is False
-        assert result['verdict'] == 'UNKNOWN'
+        assert result["in_expectations_db"] is False
+        assert result["verdict"] == "UNKNOWN"
 
     @pytest.mark.asyncio
     async def test_path_validation(self, server):
@@ -500,19 +504,17 @@ class TestCheckProcessTree:
         result = await server._check_process_tree(
             process_name="svchost.exe",
             parent_name="services.exe",
-            path="C:\\Temp\\svchost.exe"  # Wrong path
+            path="C:\\Temp\\svchost.exe",  # Wrong path
         )
-        assert result['verdict'] == 'SUSPICIOUS'
+        assert result["verdict"] == "SUSPICIOUS"
 
     @pytest.mark.asyncio
     async def test_user_validation_system(self, server):
         """Test user context validation for SYSTEM process."""
         result = await server._check_process_tree(
-            process_name="svchost.exe",
-            parent_name="services.exe",
-            user="SYSTEM"
+            process_name="svchost.exe", parent_name="services.exe", user="SYSTEM"
         )
-        assert result['verdict'] == 'EXPECTED'
+        assert result["verdict"] == "EXPECTED"
 
     @pytest.mark.asyncio
     async def test_user_validation_wrong_user(self, server):
@@ -520,14 +522,15 @@ class TestCheckProcessTree:
         result = await server._check_process_tree(
             process_name="svchost.exe",
             parent_name="services.exe",
-            user="testuser"  # Should be SYSTEM
+            user="testuser",  # Should be SYSTEM
         )
-        assert result['verdict'] == 'SUSPICIOUS'
+        assert result["verdict"] == "SUSPICIOUS"
 
 
 # ============================================================================
 # check_service Tests
 # ============================================================================
+
 
 class TestCheckService:
     """Tests for check_service tool."""
@@ -535,31 +538,25 @@ class TestCheckService:
     @pytest.mark.asyncio
     async def test_service_in_baseline(self, server):
         """Test service that exists in baseline."""
-        result = await server._check_service(
-            service_name="BITS",
-            os_version="W11_22H2"
-        )
-        assert result['in_baseline'] is True
-        assert result['verdict'] == 'EXPECTED'
+        result = await server._check_service(service_name="BITS", os_version="W11_22H2")
+        assert result["in_baseline"] is True
+        assert result["verdict"] == "EXPECTED"
 
     @pytest.mark.asyncio
     async def test_service_not_in_baseline(self, server):
         """Test service not in baseline."""
         result = await server._check_service(
-            service_name="MaliciousService",
-            os_version="W11_22H2"
+            service_name="MaliciousService", os_version="W11_22H2"
         )
-        assert result['in_baseline'] is False
-        assert result['verdict'] == 'UNKNOWN'
+        assert result["in_baseline"] is False
+        assert result["verdict"] == "UNKNOWN"
 
     @pytest.mark.asyncio
     async def test_service_missing_os_version(self, server):
         """Test that missing os_version returns error."""
-        result = await server._check_service(
-            service_name="BITS"
-        )
-        assert 'error' in result
-        assert 'os_version' in result['error']
+        result = await server._check_service(service_name="BITS")
+        assert "error" in result
+        assert "os_version" in result["error"]
 
     @pytest.mark.asyncio
     async def test_service_binary_mismatch(self, server):
@@ -567,14 +564,15 @@ class TestCheckService:
         result = await server._check_service(
             service_name="BITS",
             binary_path="C:\\Temp\\malicious.exe",  # Wrong binary
-            os_version="W11_22H2"
+            os_version="W11_22H2",
         )
-        assert result['verdict'] == 'SUSPICIOUS'
+        assert result["verdict"] == "SUSPICIOUS"
 
 
 # ============================================================================
 # check_scheduled_task Tests
 # ============================================================================
+
 
 class TestCheckScheduledTask:
     """Tests for check_scheduled_task tool."""
@@ -584,20 +582,19 @@ class TestCheckScheduledTask:
         """Test task that exists in baseline."""
         result = await server._check_scheduled_task(
             task_path="\\Microsoft\\Windows\\UpdateOrchestrator\\Schedule Scan",
-            os_version="W11_22H2"
+            os_version="W11_22H2",
         )
-        assert result['in_baseline'] is True
-        assert result['verdict'] == 'EXPECTED'
+        assert result["in_baseline"] is True
+        assert result["verdict"] == "EXPECTED"
 
     @pytest.mark.asyncio
     async def test_task_not_in_baseline(self, server):
         """Test task not in baseline."""
         result = await server._check_scheduled_task(
-            task_path="\\Custom\\MaliciousTask",
-            os_version="W11_22H2"
+            task_path="\\Custom\\MaliciousTask", os_version="W11_22H2"
         )
-        assert result['in_baseline'] is False
-        assert result['verdict'] == 'UNKNOWN'
+        assert result["in_baseline"] is False
+        assert result["verdict"] == "UNKNOWN"
 
     @pytest.mark.asyncio
     async def test_task_missing_os_version(self, server):
@@ -605,21 +602,21 @@ class TestCheckScheduledTask:
         result = await server._check_scheduled_task(
             task_path="\\Microsoft\\Windows\\Test"
         )
-        assert 'error' in result
+        assert "error" in result
 
     @pytest.mark.asyncio
     async def test_task_suspicious_location(self, server):
         """Test task in suspicious location."""
         result = await server._check_scheduled_task(
-            task_path="\\Temp\\SuspiciousTask",
-            os_version="W11_22H2"
+            task_path="\\Temp\\SuspiciousTask", os_version="W11_22H2"
         )
-        assert result['verdict'] == 'SUSPICIOUS'
+        assert result["verdict"] == "SUSPICIOUS"
 
 
 # ============================================================================
 # check_autorun Tests
 # ============================================================================
+
 
 class TestCheckAutorun:
     """Tests for check_autorun tool."""
@@ -630,10 +627,10 @@ class TestCheckAutorun:
         result = await server._check_autorun(
             key_path="SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
             value_name="SecurityHealth",
-            os_version="W11_22H2"
+            os_version="W11_22H2",
         )
-        assert result['in_baseline'] is True
-        assert result['verdict'] == 'EXPECTED'
+        assert result["in_baseline"] is True
+        assert result["verdict"] == "EXPECTED"
 
     @pytest.mark.asyncio
     async def test_autorun_not_in_baseline(self, server):
@@ -641,9 +638,9 @@ class TestCheckAutorun:
         result = await server._check_autorun(
             key_path="SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
             value_name="MaliciousApp",
-            os_version="W11_22H2"
+            os_version="W11_22H2",
         )
-        assert result['in_baseline'] is False
+        assert result["in_baseline"] is False
 
     @pytest.mark.asyncio
     async def test_autorun_missing_os_version(self, server):
@@ -651,7 +648,7 @@ class TestCheckAutorun:
         result = await server._check_autorun(
             key_path="SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"
         )
-        assert 'error' in result
+        assert "error" in result
 
     @pytest.mark.asyncio
     async def test_autorun_high_risk_location(self, server):
@@ -659,15 +656,16 @@ class TestCheckAutorun:
         result = await server._check_autorun(
             key_path="SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
             value_name="UnknownApp",
-            os_version="W11_22H2"
+            os_version="W11_22H2",
         )
         # High-risk location but not in baseline
-        assert result['verdict'] == 'SUSPICIOUS'
+        assert result["verdict"] == "SUSPICIOUS"
 
 
 # ============================================================================
 # check_registry Tests
 # ============================================================================
+
 
 class TestCheckRegistry:
     """Tests for check_registry tool."""
@@ -675,14 +673,15 @@ class TestCheckRegistry:
     @pytest.fixture
     def server_with_registry(self, temp_dbs):
         """Create a WindowsTriageServer with a registry database."""
-        import tempfile
         import sqlite3
+        import tempfile
+
         from windows_triage.db.schemas import REGISTRY_FULL_SCHEMA
 
         kg_path, ctx_path = temp_dbs
 
         # Create a temporary registry database
-        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             reg_path = Path(f.name)
 
         conn = sqlite3.connect(reg_path)
@@ -691,26 +690,57 @@ class TestCheckRegistry:
         cursor = conn.cursor()
 
         # Insert OS version
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO baseline_os (short_name, os_family, os_edition, os_release)
             VALUES (?, ?, ?, ?)
-        """, ('W11_22H2', 'Windows 11', 'Enterprise', '22H2'))
+        """,
+            ("W11_22H2", "Windows 11", "Enterprise", "22H2"),
+        )
 
         # Insert registry entries
         test_entries = [
-            ('SOFTWARE', 'microsoft\\windows\\currentversion\\run', 'SecurityHealth',
-             'REG_SZ', '%ProgramFiles%\\Windows Defender\\MSASCuiL.exe', '["W11_22H2"]'),
-            ('SOFTWARE', 'microsoft\\windows\\currentversion', 'ProgramFilesDir',
-             'REG_SZ', 'C:\\Program Files', '["W11_22H2"]'),
-            ('SYSTEM', 'currentcontrolset\\services\\bits', 'Start',
-             'REG_DWORD', '3', '["W11_22H2"]'),
+            (
+                "SOFTWARE",
+                "microsoft\\windows\\currentversion\\run",
+                "SecurityHealth",
+                "REG_SZ",
+                "%ProgramFiles%\\Windows Defender\\MSASCuiL.exe",
+                '["W11_22H2"]',
+            ),
+            (
+                "SOFTWARE",
+                "microsoft\\windows\\currentversion",
+                "ProgramFilesDir",
+                "REG_SZ",
+                "C:\\Program Files",
+                '["W11_22H2"]',
+            ),
+            (
+                "SYSTEM",
+                "currentcontrolset\\services\\bits",
+                "Start",
+                "REG_DWORD",
+                "3",
+                '["W11_22H2"]',
+            ),
         ]
 
-        for hive, key_path, value_name, value_type, value_data, os_versions in test_entries:
-            cursor.execute("""
+        for (
+            hive,
+            key_path,
+            value_name,
+            value_type,
+            value_data,
+            os_versions,
+        ) in test_entries:
+            cursor.execute(
+                """
                 INSERT INTO baseline_registry (hive, key_path_lower, value_name, value_type, value_data, os_versions)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (hive, key_path, value_name, value_type, value_data, os_versions))
+            """,
+                (hive, key_path, value_name, value_type, value_data, os_versions),
+            )
 
         conn.commit()
         conn.close()
@@ -720,7 +750,7 @@ class TestCheckRegistry:
             context_db=ctx_path,
             registry_db=reg_path,
             skip_db_validation=True,
-            cache_size=0
+            cache_size=0,
         )
 
         server = WindowsTriageServer(config=config)
@@ -739,7 +769,7 @@ class TestCheckRegistry:
             context_db=ctx_path,
             registry_db=Path("/nonexistent/path/known_good_registry.db"),
             skip_db_validation=True,
-            cache_size=0
+            cache_size=0,
         )
         return WindowsTriageServer(config=config)
 
@@ -749,10 +779,13 @@ class TestCheckRegistry:
         result = await server_without_registry._check_registry(
             "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"
         )
-        assert 'error' in result
-        assert 'not available' in result['error'].lower() or 'not installed' in result.get('message', '').lower()
-        assert result.get('verdict') is None
-        assert result.get('lookup_performed') is False
+        assert "error" in result
+        assert (
+            "not available" in result["error"].lower()
+            or "not installed" in result.get("message", "").lower()
+        )
+        assert result.get("verdict") is None
+        assert result.get("lookup_performed") is False
 
     @pytest.mark.asyncio
     async def test_registry_key_in_baseline(self, server_with_registry):
@@ -760,80 +793,72 @@ class TestCheckRegistry:
         result = await server_with_registry._check_registry(
             "microsoft\\windows\\currentversion\\run"
         )
-        assert result['in_baseline'] is True
-        assert result['verdict'] == 'EXPECTED'
-        assert 'match_count' in result
-        assert result['match_count'] > 0
+        assert result["in_baseline"] is True
+        assert result["verdict"] == "EXPECTED"
+        assert "match_count" in result
+        assert result["match_count"] > 0
 
     @pytest.mark.asyncio
     async def test_registry_key_not_in_baseline(self, server_with_registry):
         """Test checking a registry key not in baseline."""
-        result = await server_with_registry._check_registry(
-            "nonexistent\\key\\path"
-        )
-        assert result['in_baseline'] is False
-        assert result['verdict'] == 'UNKNOWN'
+        result = await server_with_registry._check_registry("nonexistent\\key\\path")
+        assert result["in_baseline"] is False
+        assert result["verdict"] == "UNKNOWN"
 
     @pytest.mark.asyncio
     async def test_registry_value_in_baseline(self, server_with_registry):
         """Test checking a specific registry value that exists."""
         result = await server_with_registry._check_registry(
-            "microsoft\\windows\\currentversion\\run",
-            value_name="SecurityHealth"
+            "microsoft\\windows\\currentversion\\run", value_name="SecurityHealth"
         )
-        assert result['in_baseline'] is True
-        assert result['verdict'] == 'EXPECTED'
+        assert result["in_baseline"] is True
+        assert result["verdict"] == "EXPECTED"
 
     @pytest.mark.asyncio
     async def test_registry_value_not_in_baseline(self, server_with_registry):
         """Test checking a specific registry value that doesn't exist."""
         result = await server_with_registry._check_registry(
-            "microsoft\\windows\\currentversion\\run",
-            value_name="NonexistentValue"
+            "microsoft\\windows\\currentversion\\run", value_name="NonexistentValue"
         )
-        assert result['in_baseline'] is False
-        assert result['verdict'] == 'UNKNOWN'
+        assert result["in_baseline"] is False
+        assert result["verdict"] == "UNKNOWN"
 
     @pytest.mark.asyncio
     async def test_registry_with_hive_filter(self, server_with_registry):
         """Test checking registry with explicit hive filter."""
         result = await server_with_registry._check_registry(
-            "microsoft\\windows\\currentversion\\run",
-            hive="SOFTWARE"
+            "microsoft\\windows\\currentversion\\run", hive="SOFTWARE"
         )
-        assert result['in_baseline'] is True
-        assert result['verdict'] == 'EXPECTED'
+        assert result["in_baseline"] is True
+        assert result["verdict"] == "EXPECTED"
 
     @pytest.mark.asyncio
     async def test_registry_with_wrong_hive_filter(self, server_with_registry):
         """Test that wrong hive filter returns no results."""
         # Run key is in SOFTWARE, not SYSTEM
         result = await server_with_registry._check_registry(
-            "microsoft\\windows\\currentversion\\run",
-            hive="SYSTEM"
+            "microsoft\\windows\\currentversion\\run", hive="SYSTEM"
         )
-        assert result['in_baseline'] is False
-        assert result['verdict'] == 'UNKNOWN'
+        assert result["in_baseline"] is False
+        assert result["verdict"] == "UNKNOWN"
 
     @pytest.mark.asyncio
     async def test_registry_with_os_version_filter(self, server_with_registry):
         """Test checking registry with OS version filter."""
         result = await server_with_registry._check_registry(
-            "microsoft\\windows\\currentversion\\run",
-            os_version="W11_22H2"
+            "microsoft\\windows\\currentversion\\run", os_version="W11_22H2"
         )
-        assert result['in_baseline'] is True
-        assert 'W11_22H2' in result.get('os_versions', [])
+        assert result["in_baseline"] is True
+        assert "W11_22H2" in result.get("os_versions", [])
 
     @pytest.mark.asyncio
     async def test_registry_system_hive(self, server_with_registry):
         """Test checking a SYSTEM hive key."""
         result = await server_with_registry._check_registry(
-            "currentcontrolset\\services\\bits",
-            hive="SYSTEM"
+            "currentcontrolset\\services\\bits", hive="SYSTEM"
         )
-        assert result['in_baseline'] is True
-        assert result['verdict'] == 'EXPECTED'
+        assert result["in_baseline"] is True
+        assert result["verdict"] == "EXPECTED"
 
     @pytest.mark.asyncio
     async def test_registry_returns_values_info(self, server_with_registry):
@@ -841,15 +866,16 @@ class TestCheckRegistry:
         result = await server_with_registry._check_registry(
             "microsoft\\windows\\currentversion\\run"
         )
-        assert result['in_baseline'] is True
+        assert result["in_baseline"] is True
         # Should have values info if values exist
-        if 'values' in result:
-            assert isinstance(result['values'], list)
+        if "values" in result:
+            assert isinstance(result["values"], list)
 
 
 # ============================================================================
 # check_hash Tests
 # ============================================================================
+
 
 class TestCheckHash:
     """Tests for check_hash tool."""
@@ -860,8 +886,8 @@ class TestCheckHash:
         result = await server._check_hash(
             "01aa278b07b58dc46c84bd0b1b5c8e9ee4e62ea0bf7a695862444af32e87f1fd"
         )
-        assert result['verdict'] == 'SUSPICIOUS'
-        assert 'vulnerable_driver' in result
+        assert result["verdict"] == "SUSPICIOUS"
+        assert "vulnerable_driver" in result
 
     @pytest.mark.asyncio
     async def test_unknown_hash(self, server):
@@ -869,13 +895,13 @@ class TestCheckHash:
         result = await server._check_hash(
             "0000000000000000000000000000000000000000000000000000000000000000"
         )
-        assert result['verdict'] == 'UNKNOWN'
+        assert result["verdict"] == "UNKNOWN"
 
     @pytest.mark.asyncio
     async def test_invalid_hash(self, server):
         """Test invalid hash format."""
         result = await server._check_hash("not-a-hash")
-        assert 'error' in result
+        assert "error" in result
 
     @pytest.mark.asyncio
     async def test_hash_md5(self, server):
@@ -883,12 +909,13 @@ class TestCheckHash:
         # MD5 hashes are 32 characters
         result = await server._check_hash("abc123def456abc123def456abc12345")
         # Should detect MD5 algorithm
-        assert result.get('algorithm') == 'md5' or 'error' not in result
+        assert result.get("algorithm") == "md5" or "error" not in result
 
 
 # ============================================================================
 # analyze_filename Tests
 # ============================================================================
+
 
 class TestAnalyzeFilename:
     """Tests for analyze_filename tool."""
@@ -897,15 +924,17 @@ class TestAnalyzeFilename:
     async def test_normal_filename(self, server):
         """Test normal filename."""
         result = await server._analyze_filename("notepad.exe")
-        assert result['is_suspicious'] is False
+        assert result["is_suspicious"] is False
 
     @pytest.mark.asyncio
     async def test_double_extension(self, server):
         """Test double extension detection."""
         result = await server._analyze_filename("document.pdf.exe")
-        assert result['is_suspicious'] is True
-        assert any('double_extension' in str(f.get('type', ''))
-                   for f in result.get('findings', []))
+        assert result["is_suspicious"] is True
+        assert any(
+            "double_extension" in str(f.get("type", ""))
+            for f in result.get("findings", [])
+        )
 
     @pytest.mark.asyncio
     async def test_known_tool_match(self, server):
@@ -915,13 +944,14 @@ class TestAnalyzeFilename:
         # may require exact filename_pattern match.
         result = await server._analyze_filename("mimikatz.exe")
         # Just verify the analysis runs without error and returns expected structure
-        assert 'findings' in result
-        assert 'entropy' in result
+        assert "findings" in result
+        assert "entropy" in result
 
 
 # ============================================================================
 # check_lolbin Tests
 # ============================================================================
+
 
 class TestCheckLolbin:
     """Tests for check_lolbin tool."""
@@ -930,25 +960,26 @@ class TestCheckLolbin:
     async def test_lolbin_found(self, server):
         """Test LOLBin lookup."""
         result = await server._check_lolbin("certutil.exe")
-        assert result['is_lolbin'] is True
-        assert 'Download' in result.get('functions', [])
+        assert result["is_lolbin"] is True
+        assert "Download" in result.get("functions", [])
 
     @pytest.mark.asyncio
     async def test_not_lolbin(self, server):
         """Test non-LOLBin."""
         result = await server._check_lolbin("notepad.exe")
-        assert result['is_lolbin'] is False
+        assert result["is_lolbin"] is False
 
     @pytest.mark.asyncio
     async def test_lolbin_case_insensitive(self, server):
         """Test case-insensitive lookup."""
         result = await server._check_lolbin("CERTUTIL.EXE")
-        assert result['is_lolbin'] is True
+        assert result["is_lolbin"] is True
 
 
 # ============================================================================
 # check_hijackable_dll Tests
 # ============================================================================
+
 
 class TestCheckHijackableDll:
     """Tests for check_hijackable_dll tool."""
@@ -957,19 +988,20 @@ class TestCheckHijackableDll:
     async def test_hijackable_dll_found(self, server):
         """Test hijackable DLL lookup."""
         result = await server._check_hijackable_dll("version.dll")
-        assert result['is_hijackable'] is True
-        assert result['total_scenarios'] > 0
+        assert result["is_hijackable"] is True
+        assert result["total_scenarios"] > 0
 
     @pytest.mark.asyncio
     async def test_not_hijackable(self, server):
         """Test non-hijackable DLL."""
         result = await server._check_hijackable_dll("kernel32.dll")
-        assert result['is_hijackable'] is False
+        assert result["is_hijackable"] is False
 
 
 # ============================================================================
 # check_pipe Tests
 # ============================================================================
+
 
 class TestCheckPipe:
     """Tests for check_pipe tool."""
@@ -978,26 +1010,27 @@ class TestCheckPipe:
     async def test_suspicious_pipe_regex(self, server):
         """Test suspicious pipe detection (regex pattern)."""
         result = await server._check_pipe("msagent_12345")
-        assert result['verdict'] == 'SUSPICIOUS'
-        assert result['tool_name'] == 'Cobalt Strike'
+        assert result["verdict"] == "SUSPICIOUS"
+        assert result["tool_name"] == "Cobalt Strike"
 
     @pytest.mark.asyncio
     async def test_windows_pipe(self, server):
         """Test known Windows pipe."""
         result = await server._check_pipe("lsass")
-        assert result['verdict'] == 'EXPECTED'
-        assert result['is_windows_pipe'] is True
+        assert result["verdict"] == "EXPECTED"
+        assert result["is_windows_pipe"] is True
 
     @pytest.mark.asyncio
     async def test_unknown_pipe(self, server):
         """Test unknown pipe."""
         result = await server._check_pipe("custom_app_pipe")
-        assert result['verdict'] == 'UNKNOWN'
+        assert result["verdict"] == "UNKNOWN"
 
 
 # ============================================================================
 # get_db_stats Tests
 # ============================================================================
+
 
 class TestGetDbStats:
     """Tests for get_db_stats tool."""
@@ -1006,13 +1039,14 @@ class TestGetDbStats:
     async def test_get_stats(self, server):
         """Test getting database statistics."""
         result = await server._get_db_stats()
-        assert 'known_good_db' in result
-        assert 'context_db' in result
+        assert "known_good_db" in result
+        assert "context_db" in result
 
 
 # ============================================================================
 # get_health Tests
 # ============================================================================
+
 
 class TestGetHealth:
     """Tests for get_health tool."""
@@ -1021,15 +1055,16 @@ class TestGetHealth:
     async def test_get_health(self, server):
         """Test getting server health."""
         result = await server._get_health()
-        assert result['status'] == 'healthy'
-        assert 'uptime_seconds' in result
-        assert 'databases' in result
-        assert 'cache' in result
+        assert result["status"] == "healthy"
+        assert "uptime_seconds" in result
+        assert "databases" in result
+        assert "cache" in result
 
 
 # ============================================================================
 # Server Initialization Tests
 # ============================================================================
+
 
 class TestServerInitialization:
     """Tests for server initialization."""
@@ -1038,9 +1073,7 @@ class TestServerInitialization:
         """Test server creates with valid configuration."""
         kg_path, ctx_path = temp_dbs
         config = Config(
-            known_good_db=kg_path,
-            context_db=ctx_path,
-            skip_db_validation=True
+            known_good_db=kg_path, context_db=ctx_path, skip_db_validation=True
         )
         server = WindowsTriageServer(config=config)
         assert server is not None
@@ -1050,7 +1083,7 @@ class TestServerInitialization:
         config = Config(
             known_good_db=Path("/nonexistent/directory/known_good.db"),
             context_db=Path("/nonexistent/directory/context.db"),
-            skip_db_validation=False  # Validation will fail because DBs don't exist
+            skip_db_validation=False,  # Validation will fail because DBs don't exist
         )
         # Should raise DatabaseError because read-only mode can't create missing file
         with pytest.raises(DatabaseError):
@@ -1061,6 +1094,7 @@ class TestServerInitialization:
 # Tool Registration Tests
 # ============================================================================
 
+
 class TestToolRegistration:
     """Tests for MCP tool registration."""
 
@@ -1068,19 +1102,19 @@ class TestToolRegistration:
         """Test that all 13 tools are registered."""
         # The server object has the tool handlers as methods
         handlers = [
-            '_check_file',
-            '_check_process_tree',
-            '_check_service',
-            '_check_scheduled_task',
-            '_check_autorun',
-            '_check_registry',
-            '_check_hash',
-            '_analyze_filename',
-            '_check_lolbin',
-            '_check_hijackable_dll',
-            '_check_pipe',
-            '_get_db_stats',
-            '_get_health',
+            "_check_file",
+            "_check_process_tree",
+            "_check_service",
+            "_check_scheduled_task",
+            "_check_autorun",
+            "_check_registry",
+            "_check_hash",
+            "_analyze_filename",
+            "_check_lolbin",
+            "_check_hijackable_dll",
+            "_check_pipe",
+            "_get_db_stats",
+            "_get_health",
         ]
         for handler in handlers:
             assert hasattr(server, handler), f"Missing handler: {handler}"
@@ -1090,6 +1124,7 @@ class TestToolRegistration:
 # Edge Cases and Error Handling
 # ============================================================================
 
+
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
@@ -1098,13 +1133,13 @@ class TestEdgeCases:
         """Test handling empty path."""
         result = await server._check_file("")
         # Should handle gracefully
-        assert 'verdict' in result
+        assert "verdict" in result
 
     @pytest.mark.asyncio
     async def test_unicode_path(self, server):
         """Test handling Unicode in path."""
         result = await server._check_file("C:\\Users\\日本語\\test.exe")
-        assert 'verdict' in result
+        assert "verdict" in result
 
     @pytest.mark.asyncio
     async def test_very_long_path(self, server):
@@ -1124,12 +1159,13 @@ class TestEdgeCases:
     async def test_special_characters_in_filename(self, server):
         """Test handling special characters."""
         result = await server._analyze_filename("file [1].exe")
-        assert 'findings' in result
+        assert "findings" in result
 
 
 # ============================================================================
 # Process Tree Forensic Context Tests (F5)
 # ============================================================================
+
 
 class TestProcessTreeForensicContext:
     """Test F5 fix. SUSPICIOUS findings include forensic context from
@@ -1207,6 +1243,7 @@ class TestProcessTreeForensicContext:
 # ============================================================================
 # Process Tree User Context Tests (F6)
 # ============================================================================
+
 
 class TestProcessTreeUserContext:
     """Test F6 fix. When the user parameter is provided to

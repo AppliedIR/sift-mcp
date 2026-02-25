@@ -1,11 +1,8 @@
 """Tests for gateway __main__ (TLS configuration)."""
 
-import sys
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 from sift_gateway.__main__ import main
 
 
@@ -64,7 +61,14 @@ class TestTLSConfig:
                     mock_gw_cls.return_value = mock_gw
                     main()
                     call_kwargs = mock_uvicorn.run.call_args
-                    assert call_kwargs.kwargs.get("host", call_kwargs.args[1] if len(call_kwargs.args) > 1 else None) == "0.0.0.0" or call_kwargs[1]["host"] == "0.0.0.0"
+                    assert (
+                        call_kwargs.kwargs.get(
+                            "host",
+                            call_kwargs.args[1] if len(call_kwargs.args) > 1 else None,
+                        )
+                        == "0.0.0.0"
+                        or call_kwargs[1]["host"] == "0.0.0.0"
+                    )
 
     def test_no_tls_default_host_localhost(self, tmp_path):
         """Without TLS, default host is 127.0.0.1."""
@@ -88,10 +92,7 @@ class TestTLSConfig:
         """TLS config with only certfile (no keyfile) causes exit."""
         config_file = tmp_path / "gateway.yaml"
         config_file.write_text(
-            "gateway:\n"
-            "  tls:\n"
-            "    certfile: /some/cert.pem\n"
-            "backends: {}\n"
+            "gateway:\n  tls:\n    certfile: /some/cert.pem\nbackends: {}\n"
         )
         with patch("sys.argv", ["sift-gateway", "--config", str(config_file)]):
             with pytest.raises(SystemExit) as exc_info:

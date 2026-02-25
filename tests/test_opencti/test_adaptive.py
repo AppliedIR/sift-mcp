@@ -4,27 +4,25 @@ from __future__ import annotations
 
 import threading
 import time
-import pytest
 
 from opencti_mcp.adaptive import (
-    AdaptiveMetrics,
+    LATENCY_ACCEPTABLE,
+    LATENCY_EXCELLENT,
+    LATENCY_GOOD,
+    LATENCY_POOR,
     AdaptiveConfig,
+    AdaptiveMetrics,
     LatencyStats,
-    ProbeResult,
     SlidingWindowMetrics,
     SuccessRateTracker,
     get_global_metrics,
     reset_global_metrics,
-    LATENCY_EXCELLENT,
-    LATENCY_GOOD,
-    LATENCY_ACCEPTABLE,
-    LATENCY_POOR,
 )
-
 
 # =============================================================================
 # Sliding Window Metrics Tests
 # =============================================================================
+
 
 class TestSlidingWindowMetrics:
     """Tests for SlidingWindowMetrics class."""
@@ -158,6 +156,7 @@ class TestSlidingWindowMetrics:
 # Success Rate Tracker Tests
 # =============================================================================
 
+
 class TestSuccessRateTracker:
     """Tests for SuccessRateTracker class."""
 
@@ -228,6 +227,7 @@ class TestSuccessRateTracker:
 # Latency Stats Tests
 # =============================================================================
 
+
 class TestLatencyStats:
     """Tests for LatencyStats class."""
 
@@ -241,7 +241,7 @@ class TestLatencyStats:
             median_ms=70,
             p95_ms=LATENCY_EXCELLENT - 10,  # Below excellent threshold
             p99_ms=95,
-            stddev_ms=10
+            stddev_ms=10,
         )
         assert stats.classification() == "excellent"
 
@@ -255,7 +255,7 @@ class TestLatencyStats:
             median_ms=200,
             p95_ms=LATENCY_EXCELLENT + 50,  # Between excellent and good
             p99_ms=280,
-            stddev_ms=50
+            stddev_ms=50,
         )
         assert stats.classification() == "good"
 
@@ -269,7 +269,7 @@ class TestLatencyStats:
             median_ms=600,
             p95_ms=LATENCY_GOOD + 200,  # Between good and acceptable
             p99_ms=850,
-            stddev_ms=100
+            stddev_ms=100,
         )
         assert stats.classification() == "acceptable"
 
@@ -283,7 +283,7 @@ class TestLatencyStats:
             median_ms=2000,
             p95_ms=LATENCY_ACCEPTABLE + 500,  # Between acceptable and poor
             p99_ms=2800,
-            stddev_ms=300
+            stddev_ms=300,
         )
         assert stats.classification() == "poor"
 
@@ -297,7 +297,7 @@ class TestLatencyStats:
             median_ms=4000,
             p95_ms=LATENCY_POOR + 500,  # Above poor threshold
             p99_ms=4800,
-            stddev_ms=500
+            stddev_ms=500,
         )
         assert stats.classification() == "critical"
 
@@ -305,6 +305,7 @@ class TestLatencyStats:
 # =============================================================================
 # Adaptive Config Tests
 # =============================================================================
+
 
 class TestAdaptiveConfig:
     """Tests for AdaptiveConfig class."""
@@ -318,7 +319,7 @@ class TestAdaptiveConfig:
             recommended_circuit_threshold=5,
             latency_classification="good",
             success_rate=0.95,
-            probe_count=100
+            probe_count=100,
         )
 
         result = config.to_dict()
@@ -339,7 +340,7 @@ class TestAdaptiveConfig:
             median_ms=100,
             p95_ms=180,
             p99_ms=195,
-            stddev_ms=30
+            stddev_ms=30,
         )
 
         config = AdaptiveConfig(
@@ -350,7 +351,7 @@ class TestAdaptiveConfig:
             latency_classification="good",
             success_rate=0.95,
             probe_count=10,
-            latency_stats=stats
+            latency_stats=stats,
         )
 
         result = config.to_dict()
@@ -362,6 +363,7 @@ class TestAdaptiveConfig:
 # =============================================================================
 # Adaptive Metrics Tests
 # =============================================================================
+
 
 class TestAdaptiveMetrics:
     """Tests for AdaptiveMetrics class."""
@@ -520,6 +522,7 @@ class TestAdaptiveMetrics:
 # =============================================================================
 # Global Metrics Tests
 # =============================================================================
+
 
 class TestGlobalMetrics:
     """Tests for global metrics singleton."""

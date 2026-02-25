@@ -51,17 +51,14 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any
 
 import yaml
 
 logger = logging.getLogger(__name__)
 
 
-def import_lolbas(
-    db_path: Path,
-    lolbas_dir: Path
-) -> dict:
+def import_lolbas(db_path: Path, lolbas_dir: Path) -> dict:
     """
     Import LOLBAS data into context.db.
 
@@ -72,11 +69,7 @@ def import_lolbas(
     Returns:
         Dict with import statistics
     """
-    stats = {
-        'lolbins_imported': 0,
-        'errors': 0,
-        'skipped': 0
-    }
+    stats = {"lolbins_imported": 0, "errors": 0, "skipped": 0}
 
     yml_dir = lolbas_dir / "yml"
     if not yml_dir.exists():
@@ -88,7 +81,7 @@ def import_lolbas(
 
     try:
         # Process each category
-        categories = ['OSBinaries', 'OSLibraries', 'OSScripts', 'OtherMSBinaries']
+        categories = ["OSBinaries", "OSLibraries", "OSScripts", "OtherMSBinaries"]
 
         for category in categories:
             category_dir = yml_dir / category
@@ -101,29 +94,32 @@ def import_lolbas(
                 try:
                     lolbin = _parse_lolbas_yml(yml_file, category)
                     if not lolbin:
-                        stats['skipped'] += 1
+                        stats["skipped"] += 1
                         continue
 
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         INSERT OR REPLACE INTO lolbins (
                             filename_lower, name, description, functions,
                             expected_paths, mitre_techniques, detection, source_url
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        lolbin['filename_lower'],
-                        lolbin['name'],
-                        lolbin['description'],
-                        json.dumps(lolbin['functions']),
-                        json.dumps(lolbin['expected_paths']),
-                        json.dumps(lolbin['mitre_techniques']),
-                        lolbin['detection'],
-                        f"https://lolbas-project.github.io/lolbas/{category}/{yml_file.stem}/"
-                    ))
-                    stats['lolbins_imported'] += 1
+                    """,
+                        (
+                            lolbin["filename_lower"],
+                            lolbin["name"],
+                            lolbin["description"],
+                            json.dumps(lolbin["functions"]),
+                            json.dumps(lolbin["expected_paths"]),
+                            json.dumps(lolbin["mitre_techniques"]),
+                            lolbin["detection"],
+                            f"https://lolbas-project.github.io/lolbas/{category}/{yml_file.stem}/",
+                        ),
+                    )
+                    stats["lolbins_imported"] += 1
 
                 except Exception as e:
-                    stats['errors'] += 1
-                    if stats['errors'] <= 10:
+                    stats["errors"] += 1
+                    if stats["errors"] <= 10:
                         logger.warning(f"Error processing {yml_file}: {e}")
 
         conn.commit()
@@ -135,7 +131,7 @@ def import_lolbas(
     return stats
 
 
-def _parse_lolbas_yml(yml_path: Path, category: str) -> Dict[str, Any] | None:
+def _parse_lolbas_yml(yml_path: Path, category: str) -> dict[str, Any] | None:
     """
     Parse a single LOLBAS YAML file.
 
@@ -146,77 +142,77 @@ def _parse_lolbas_yml(yml_path: Path, category: str) -> Dict[str, Any] | None:
     Returns:
         Dict with parsed LOLBin data, or None if invalid
     """
-    with open(yml_path, 'r', encoding='utf-8') as f:
+    with open(yml_path, encoding="utf-8") as f:
         try:
             data = yaml.safe_load(f)
         except yaml.YAMLError as e:
             logger.warning(f"YAML parse error in {yml_path}: {e}")
             return None
 
-    if not data or not data.get('Name'):
+    if not data or not data.get("Name"):
         return None
 
-    name = data['Name']
+    name = data["Name"]
     filename_lower = name.lower()
 
     # Extract unique functions/categories from commands
     functions = set()
     mitre_techniques = set()
 
-    for cmd in data.get('Commands', []):
-        if cmd.get('Category'):
-            functions.add(cmd['Category'])
-        if cmd.get('MitreID'):
-            mitre_techniques.add(cmd['MitreID'])
+    for cmd in data.get("Commands", []):
+        if cmd.get("Category"):
+            functions.add(cmd["Category"])
+        if cmd.get("MitreID"):
+            mitre_techniques.add(cmd["MitreID"])
 
     # Extract expected paths
     expected_paths = []
-    for path_entry in data.get('Full_Path', []):
-        if path_entry.get('Path'):
-            expected_paths.append(path_entry['Path'].lower())
+    for path_entry in data.get("Full_Path", []):
+        if path_entry.get("Path"):
+            expected_paths.append(path_entry["Path"].lower())
 
     # Extract detection info
     detection_items = []
-    for det in data.get('Detection', []):
-        if det.get('IOC'):
+    for det in data.get("Detection", []):
+        if det.get("IOC"):
             detection_items.append(f"IOC: {det['IOC']}")
 
     # Handle aliases
     aliases = []
-    for alias_entry in data.get('Aliases', []):
-        if alias_entry.get('Alias'):
-            aliases.append(alias_entry['Alias'].lower())
+    for alias_entry in data.get("Aliases", []):
+        if alias_entry.get("Alias"):
+            aliases.append(alias_entry["Alias"].lower())
 
     return {
-        'filename_lower': filename_lower,
-        'name': name,
-        'description': data.get('Description', ''),
-        'functions': sorted(functions),
-        'expected_paths': expected_paths,
-        'mitre_techniques': sorted(mitre_techniques),
-        'detection': '\n'.join(detection_items) if detection_items else None,
-        'aliases': aliases,
-        'category': category
+        "filename_lower": filename_lower,
+        "name": name,
+        "description": data.get("Description", ""),
+        "functions": sorted(functions),
+        "expected_paths": expected_paths,
+        "mitre_techniques": sorted(mitre_techniques),
+        "detection": "\n".join(detection_items) if detection_items else None,
+        "aliases": aliases,
+        "category": category,
     }
 
 
-def get_lolbin_functions() -> List[str]:
+def get_lolbin_functions() -> list[str]:
     """
     Get list of all LOLBAS function categories.
 
     These are the ways LOLBins can be abused.
     """
     return [
-        'Download',      # Download files from internet
-        'Upload',        # Exfiltrate data
-        'Execute',       # Execute arbitrary code
-        'AWL Bypass',    # Application Whitelist bypass
-        'ADS',           # Alternate Data Streams
-        'Encode',        # Encode/obfuscate
-        'Decode',        # Decode payloads
-        'Copy',          # Copy files
-        'Compile',       # Compile code
-        'Credentials',   # Credential access
-        'Reconnaissance',# System enumeration
-        'UAC Bypass',    # Bypass UAC
+        "Download",  # Download files from internet
+        "Upload",  # Exfiltrate data
+        "Execute",  # Execute arbitrary code
+        "AWL Bypass",  # Application Whitelist bypass
+        "ADS",  # Alternate Data Streams
+        "Encode",  # Encode/obfuscate
+        "Decode",  # Decode payloads
+        "Copy",  # Copy files
+        "Compile",  # Compile code
+        "Credentials",  # Credential access
+        "Reconnaissance",  # System enumeration
+        "UAC Bypass",  # Bypass UAC
     ]

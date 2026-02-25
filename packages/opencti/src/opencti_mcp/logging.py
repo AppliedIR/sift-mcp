@@ -53,15 +53,32 @@ class StructuredFormatter(logging.Formatter):
 
         # Add extra fields (filtering out standard LogRecord attributes)
         standard_attrs = {
-            'name', 'msg', 'args', 'created', 'filename', 'funcName',
-            'levelname', 'levelno', 'lineno', 'module', 'msecs',
-            'pathname', 'process', 'processName', 'relativeCreated',
-            'stack_info', 'exc_info', 'exc_text', 'thread', 'threadName',
-            'taskName', 'message'
+            "name",
+            "msg",
+            "args",
+            "created",
+            "filename",
+            "funcName",
+            "levelname",
+            "levelno",
+            "lineno",
+            "module",
+            "msecs",
+            "pathname",
+            "process",
+            "processName",
+            "relativeCreated",
+            "stack_info",
+            "exc_info",
+            "exc_text",
+            "thread",
+            "threadName",
+            "taskName",
+            "message",
         }
 
         for key, value in record.__dict__.items():
-            if key not in standard_attrs and not key.startswith('_'):
+            if key not in standard_attrs and not key.startswith("_"):
                 # Ensure value is JSON serializable
                 try:
                     json.dumps(value)
@@ -91,13 +108,13 @@ class RequestContextFilter(logging.Filter):
         if request_id is None:
             request_id = str(uuid.uuid4())[:8]
         with self._lock:
-            self._context['request_id'] = request_id
+            self._context["request_id"] = request_id
         return request_id
 
     def clear_request_id(self) -> None:
         """Clear the current request ID (thread-safe)."""
         with self._lock:
-            self._context.pop('request_id', None)
+            self._context.pop("request_id", None)
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Add context to log record (thread-safe)."""
@@ -114,7 +131,7 @@ _context_filter = RequestContextFilter()
 def setup_logging(
     level: int = logging.INFO,
     json_format: bool = True,
-    service_name: str = "opencti-mcp"
+    service_name: str = "opencti-mcp",
 ) -> None:
     """Configure logging for the MCP server.
 

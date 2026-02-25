@@ -14,6 +14,7 @@ import logging
 from typing import Any
 
 from forensic_knowledge import loader
+
 from sift_mcp.audit import resolve_examiner
 
 logger = logging.getLogger(__name__)
@@ -91,10 +92,24 @@ def build_response(
     # Load forensic-knowledge context
     fk_name = fk_tool_name or tool_name
     try:
-        corroboration, caveats, advisories, field_notes, field_meanings, cross_mcp_checks = _build_knowledge_context(fk_name)
+        (
+            corroboration,
+            caveats,
+            advisories,
+            field_notes,
+            field_meanings,
+            cross_mcp_checks,
+        ) = _build_knowledge_context(fk_name)
     except Exception as e:
         logger.warning("FK knowledge context unavailable for %s: %s", fk_name, e)
-        corroboration, caveats, advisories, field_notes, field_meanings, cross_mcp_checks = {}, [], [], {}, {}, []
+        (
+            corroboration,
+            caveats,
+            advisories,
+            field_notes,
+            field_meanings,
+            cross_mcp_checks,
+        ) = {}, [], [], {}, {}, []
 
     if caveats:
         response["caveats"] = caveats

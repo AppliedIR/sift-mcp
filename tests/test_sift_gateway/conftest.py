@@ -1,9 +1,9 @@
 """Shared test fixtures."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock
-from mcp.types import Tool
+from unittest.mock import MagicMock
 
+import pytest
+from mcp.types import Tool
 from sift_gateway.backends.base import MCPBackend
 
 
@@ -26,7 +26,11 @@ class MockBackend(MCPBackend):
 
     async def call_tool(self, name: str, arguments: dict) -> list:
         self._call_log.append({"name": name, "arguments": arguments})
-        return [MagicMock(model_dump=lambda: {"type": "text", "text": f"result from {name}"})]
+        return [
+            MagicMock(
+                model_dump=lambda: {"type": "text", "text": f"result from {name}"}
+            )
+        ]
 
     async def health_check(self) -> dict:
         if self._started:
@@ -36,7 +40,11 @@ class MockBackend(MCPBackend):
 
 def make_tool(name: str, description: str = "") -> Tool:
     """Create a Tool instance for testing."""
-    return Tool(name=name, description=description, inputSchema={"type": "object", "properties": {}})
+    return Tool(
+        name=name,
+        description=description,
+        inputSchema={"type": "object", "properties": {}},
+    )
 
 
 @pytest.fixture
@@ -72,12 +80,18 @@ def sample_config():
 @pytest.fixture
 def mock_backends():
     """Return two mock backends with distinct tools."""
-    backend_a = MockBackend("backend-a", tools=[
-        make_tool("analyze_file", "Analyze a file"),
-        make_tool("list_evidence", "List evidence items"),
-    ])
-    backend_b = MockBackend("backend-b", tools=[
-        make_tool("search_intel", "Search threat intel"),
-        make_tool("check_hash", "Check a hash"),
-    ])
+    backend_a = MockBackend(
+        "backend-a",
+        tools=[
+            make_tool("analyze_file", "Analyze a file"),
+            make_tool("list_evidence", "List evidence items"),
+        ],
+    )
+    backend_b = MockBackend(
+        "backend-b",
+        tools=[
+            make_tool("search_intel", "Search threat intel"),
+            make_tool("check_hash", "Check a hash"),
+        ],
+    )
     return {"backend-a": backend_a, "backend-b": backend_b}

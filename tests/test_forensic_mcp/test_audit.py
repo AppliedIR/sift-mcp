@@ -3,7 +3,6 @@
 import threading
 
 import pytest
-
 from forensic_mcp.audit import AuditWriter
 from forensic_mcp.case.manager import CaseManager
 
@@ -19,8 +18,10 @@ def manager(tmp_path, monkeypatch):
 
 @pytest.fixture
 def active_case(manager, tmp_path, monkeypatch):
-    import yaml as _yaml
     from datetime import datetime, timezone
+
+    import yaml as _yaml
+
     ts = datetime.now(timezone.utc)
     case_id = f"INC-{ts.strftime('%Y')}-{ts.strftime('%m%d%H%M%S')}"
     case_dir = tmp_path / case_id

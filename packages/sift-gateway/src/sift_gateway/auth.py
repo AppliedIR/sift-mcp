@@ -2,6 +2,7 @@
 
 import hmac
 import logging
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -77,12 +78,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         key_info = self.api_keys.get(matched_key, {})
         if not isinstance(key_info, dict):
-            logger.error("API key config for matched key is not a dict, got %s", type(key_info).__name__)
+            logger.error(
+                "API key config for matched key is not a dict, got %s",
+                type(key_info).__name__,
+            )
             return JSONResponse(
                 {"error": "Server configuration error"},
                 status_code=500,
             )
-        request.state.examiner = key_info.get("examiner", key_info.get("analyst", "unknown"))
+        request.state.examiner = key_info.get(
+            "examiner", key_info.get("analyst", "unknown")
+        )
         request.state.role = key_info.get("role", "examiner")
         return await call_next(request)
 

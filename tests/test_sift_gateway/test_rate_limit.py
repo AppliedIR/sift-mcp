@@ -1,13 +1,11 @@
 """Tests for sift_gateway.rate_limit — sliding window rate limiter."""
 
 import time
-from unittest.mock import patch
 
 import pytest
-
 from sift_gateway.rate_limit import (
-    RateLimiter,
     _MAX_STORE_SIZE,
+    RateLimiter,
     reset_rate_limiter,
 )
 

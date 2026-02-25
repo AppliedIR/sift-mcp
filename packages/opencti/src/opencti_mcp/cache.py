@@ -11,9 +11,9 @@ from __future__ import annotations
 import hashlib
 import time
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from threading import Lock
-from typing import Any, Optional, TypeVar, Generic
+from typing import Any, Generic, TypeVar
 
 from .logging import get_logger
 
@@ -28,6 +28,7 @@ NOT_FOUND = object()
 @dataclass
 class CacheEntry(Generic[T]):
     """A cached value with timestamp."""
+
     value: T
     timestamp: float
     is_negative: bool = False
@@ -47,7 +48,7 @@ class TTLCache(Generic[T]):
     def __init__(
         self,
         ttl_seconds: float,
-        negative_ttl_seconds: Optional[float] = None,
+        negative_ttl_seconds: float | None = None,
         max_size: int = 1000,
         name: str = "cache",
     ):
@@ -72,7 +73,7 @@ class TTLCache(Generic[T]):
         self._misses = 0
         self._evictions = 0
 
-    def get(self, key: str) -> tuple[bool, Optional[T]]:
+    def get(self, key: str) -> tuple[bool, T | None]:
         """Get value from cache.
 
         Returns:
@@ -125,7 +126,7 @@ class TTLCache(Generic[T]):
             is_negative=is_negative,
         )
 
-    def get_stale(self, key: str) -> tuple[bool, Optional[T]]:
+    def get_stale(self, key: str) -> tuple[bool, T | None]:
         """Get value from cache, ignoring TTL expiration.
 
         Used for graceful degradation when the server is unavailable.
@@ -187,7 +188,7 @@ class CacheManager:
         with self._lock:
             self._caches[name] = cache
 
-    def get(self, name: str) -> Optional[TTLCache[Any]]:
+    def get(self, name: str) -> TTLCache[Any] | None:
         """Get cache by name."""
         with self._lock:
             return self._caches.get(name)
@@ -222,7 +223,7 @@ def generate_cache_key(*args: Any, **kwargs: Any) -> str:
 
 
 # Global cache manager instance
-_cache_manager: Optional[CacheManager] = None
+_cache_manager: CacheManager | None = None
 
 
 def get_cache_manager() -> CacheManager:

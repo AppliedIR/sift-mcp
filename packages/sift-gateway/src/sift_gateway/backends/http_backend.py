@@ -5,8 +5,8 @@ import logging
 from contextlib import AsyncExitStack
 from urllib.parse import urlparse
 
-from mcp.client.streamable_http import streamablehttp_client
 from mcp.client.session import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
 
 from sift_gateway.backends.base import MCPBackend
@@ -65,11 +65,21 @@ class HttpMCPBackend(MCPBackend):
             self._started = True
             logger.info("Backend %s started (http -> %s)", self.name, url)
         except Exception as exc:
-            logger.error("Backend %s failed to start (http -> %s): %s: %s", self.name, url, type(exc).__name__, exc)
+            logger.error(
+                "Backend %s failed to start (http -> %s): %s: %s",
+                self.name,
+                url,
+                type(exc).__name__,
+                exc,
+            )
             try:
                 await self._exit_stack.aclose()
             except Exception as cleanup_exc:
-                logger.warning("Backend %s cleanup after failed start also failed: %s", self.name, cleanup_exc)
+                logger.warning(
+                    "Backend %s cleanup after failed start also failed: %s",
+                    self.name,
+                    cleanup_exc,
+                )
             self._exit_stack = None
             self._session = None
             raise
@@ -81,9 +91,16 @@ class HttpMCPBackend(MCPBackend):
             try:
                 await asyncio.wait_for(self._exit_stack.aclose(), timeout=_STOP_TIMEOUT)
             except asyncio.TimeoutError:
-                logger.warning("Backend %s stop timed out after %ds", self.name, _STOP_TIMEOUT)
+                logger.warning(
+                    "Backend %s stop timed out after %ds", self.name, _STOP_TIMEOUT
+                )
             except Exception as exc:
-                logger.error("Backend %s error during stop: %s: %s", self.name, type(exc).__name__, exc)
+                logger.error(
+                    "Backend %s error during stop: %s: %s",
+                    self.name,
+                    type(exc).__name__,
+                    exc,
+                )
         self._exit_stack = None
         self._session = None
         self._tools_cache = None
@@ -111,7 +128,9 @@ class HttpMCPBackend(MCPBackend):
             )
             return result.content
         except (ConnectionError, OSError) as exc:
-            logger.error("Backend %s connection lost during call_tool: %s", self.name, exc)
+            logger.error(
+                "Backend %s connection lost during call_tool: %s", self.name, exc
+            )
             self._tools_cache = None
             self._session = None
             self._started = False
@@ -135,7 +154,12 @@ class HttpMCPBackend(MCPBackend):
                 "tools": len(self._tools_cache or []),
             }
         except Exception as exc:
-            logger.warning("Backend %s health check failed: %s: %s", self.name, type(exc).__name__, exc)
+            logger.warning(
+                "Backend %s health check failed: %s: %s",
+                self.name,
+                type(exc).__name__,
+                exc,
+            )
             return {
                 "status": "error",
                 "type": "http",

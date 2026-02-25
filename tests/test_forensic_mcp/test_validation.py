@@ -20,7 +20,9 @@ def test_valid_finding():
 def test_missing_required_fields():
     result = validate({})
     assert result["valid"] is False
-    assert len(result["errors"]) >= 5  # title, observation, interpretation, confidence, type + evidence + justification
+    assert (
+        len(result["errors"]) >= 5
+    )  # title, observation, interpretation, confidence, type + evidence + justification
 
 
 def test_high_confidence_needs_two_evidence():

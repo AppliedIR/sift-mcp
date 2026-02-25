@@ -1,7 +1,7 @@
 """Tests for sift_mcp.response — envelope builder with FK enrichment."""
 
 import pytest
-from sift_mcp.response import build_response, reset_call_counter, DISCIPLINE_REMINDERS
+from sift_mcp.response import DISCIPLINE_REMINDERS, build_response, reset_call_counter
 
 
 @pytest.fixture(autouse=True)
@@ -128,7 +128,7 @@ class TestDisciplineReminders:
                 tool_name="test",
                 success=True,
                 data={},
-                evidence_id=f"sift-20260220-{100+i:03d}",
+                evidence_id=f"sift-20260220-{100 + i:03d}",
             )
             reminders.append(resp["discipline_reminder"])
 
@@ -143,7 +143,7 @@ class TestDisciplineReminders:
                 tool_name="test",
                 success=True,
                 data={},
-                evidence_id=f"sift-20260220-{200+i:03d}",
+                evidence_id=f"sift-20260220-{200 + i:03d}",
             )
         # (n+1)th call (counter=n+1) → index (n+1) % n == 1
         assert resp["discipline_reminder"] == DISCIPLINE_REMINDERS[1]
@@ -151,8 +151,9 @@ class TestDisciplineReminders:
 
 class TestAudit:
     def test_audit_writes_to_case_dir(self, tmp_path, monkeypatch):
-        from sift_mcp.audit import AuditWriter
         import json
+
+        from sift_mcp.audit import AuditWriter
 
         case_dir = tmp_path / "test-case"
         case_dir.mkdir()
@@ -178,8 +179,9 @@ class TestAudit:
         assert eid.startswith("sift-")  # Still returns an ID
 
     def test_canonical_fields(self, tmp_path, monkeypatch):
-        from sift_mcp.audit import AuditWriter
         import json
+
+        from sift_mcp.audit import AuditWriter
 
         case_dir = tmp_path / "test-case"
         case_dir.mkdir()
@@ -187,7 +189,9 @@ class TestAudit:
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
 
         writer = AuditWriter("sift-mcp")
-        writer.log(tool="run_command", params={"cmd": "ls"}, result_summary={"ok": True})
+        writer.log(
+            tool="run_command", params={"cmd": "ls"}, result_summary={"ok": True}
+        )
 
         log_file = case_dir / "audit" / "sift-mcp.jsonl"
         entry = json.loads(log_file.read_text().strip())
@@ -198,8 +202,9 @@ class TestAudit:
         assert "params" in entry
 
     def test_thread_safe_sequence(self, tmp_path, monkeypatch):
-        from sift_mcp.audit import AuditWriter
         import threading
+
+        from sift_mcp.audit import AuditWriter
 
         case_dir = tmp_path / "test-case"
         case_dir.mkdir()

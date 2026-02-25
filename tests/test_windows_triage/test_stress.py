@@ -11,59 +11,52 @@ This file contains 1000+ tests covering:
 - Path traversal attempts
 """
 
-import pytest
-import string
 import random
+import string
 import sys
 from pathlib import Path
+
+import pytest
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from windows_triage.analysis.paths import (
-    normalize_path,
-    extract_filename,
-    extract_directory,
-    is_system_path,
-    check_suspicious_path,
-    parse_service_binary_path,
+from windows_triage.analysis.filename import (
+    EXECUTABLE_EXTENSIONS,
+    analyze_filename,
+    calculate_entropy,
+    check_known_tool_filename,
 )
 from windows_triage.analysis.hashes import (
     detect_hash_algorithm,
-    validate_hash,
     normalize_hash,
-    get_hash_column,
-    parse_hash_with_algorithm,
+    validate_hash,
+)
+from windows_triage.analysis.paths import (
+    check_suspicious_path,
+    extract_filename,
+    normalize_path,
 )
 from windows_triage.analysis.unicode import (
-    detect_unicode_evasion,
-    normalize_homoglyphs,
-    strip_invisible_chars,
-    normalize_leet,
-    levenshtein_distance,
-    detect_typosquatting,
-    detect_leet_speak,
-    get_canonical_form,
     check_process_name_spoofing,
-)
-from windows_triage.analysis.filename import (
-    calculate_entropy,
-    analyze_filename,
-    check_known_tool_filename,
-    EXECUTABLE_EXTENSIONS,
+    detect_typosquatting,
+    detect_unicode_evasion,
+    levenshtein_distance,
+    normalize_homoglyphs,
+    normalize_leet,
 )
 from windows_triage.analysis.verdicts import (
     Verdict,
     VerdictResult,
     calculate_file_verdict,
-    calculate_process_verdict,
     calculate_hash_verdict,
+    calculate_process_verdict,
 )
-
 
 # =============================================================================
 # PATH NORMALIZATION STRESS TESTS (100+ tests)
 # =============================================================================
+
 
 class TestPathNormalizationEdgeCases:
     """Edge cases for path normalization."""
@@ -302,6 +295,7 @@ class TestSuspiciousPathEdgeCases:
 # HASH DETECTION STRESS TESTS (100+ tests)
 # =============================================================================
 
+
 class TestHashDetectionEdgeCases:
     """Edge cases for hash detection."""
 
@@ -444,20 +438,21 @@ class TestHashValidationStress:
         """Test 100 random valid hashes."""
         for _ in range(100):
             length = random.choice([32, 40, 64])
-            hash_str = ''.join(random.choices('0123456789abcdef', k=length))
+            hash_str = "".join(random.choices("0123456789abcdef", k=length))
             assert validate_hash(hash_str) is True
 
     def test_random_invalid_hashes(self):
         """Test 100 random invalid hashes."""
         for _ in range(100):
             length = random.choice([31, 33, 39, 41, 63, 65, 100])
-            hash_str = ''.join(random.choices('0123456789abcdef', k=length))
+            hash_str = "".join(random.choices("0123456789abcdef", k=length))
             assert validate_hash(hash_str) is False
 
 
 # =============================================================================
 # UNICODE EVASION STRESS TESTS (200+ tests)
 # =============================================================================
+
 
 class TestUnicodeEvasionEdgeCases:
     """Edge cases for Unicode evasion detection."""
@@ -478,54 +473,66 @@ class TestUnicodeEvasionEdgeCases:
         assert len(result) == 0
 
     # All Cyrillic homoglyphs
-    @pytest.mark.parametrize("char,expected", [
-        ('\u0430', 'a'),  # Cyrillic а
-        ('\u0435', 'e'),  # Cyrillic е
-        ('\u043E', 'o'),  # Cyrillic о
-        ('\u0440', 'p'),  # Cyrillic р
-        ('\u0441', 'c'),  # Cyrillic с
-        ('\u0445', 'x'),  # Cyrillic х
-        ('\u0443', 'y'),  # Cyrillic у
-    ])
+    @pytest.mark.parametrize(
+        "char,expected",
+        [
+            ("\u0430", "a"),  # Cyrillic а
+            ("\u0435", "e"),  # Cyrillic е
+            ("\u043e", "o"),  # Cyrillic о
+            ("\u0440", "p"),  # Cyrillic р
+            ("\u0441", "c"),  # Cyrillic с
+            ("\u0445", "x"),  # Cyrillic х
+            ("\u0443", "y"),  # Cyrillic у
+        ],
+    )
     def test_cyrillic_homoglyphs(self, char, expected):
         result = detect_unicode_evasion(f"test{char}file.exe")
-        assert any(f['type'] == 'homoglyph' for f in result)
+        assert any(f["type"] == "homoglyph" for f in result)
 
     # Greek homoglyphs
-    @pytest.mark.parametrize("char", [
-        '\u03B1',  # Greek alpha (α)
-        '\u03B5',  # Greek epsilon (ε)
-        '\u03BF',  # Greek omicron (ο)
-        '\u03C1',  # Greek rho (ρ)
-    ])
+    @pytest.mark.parametrize(
+        "char",
+        [
+            "\u03b1",  # Greek alpha (α)
+            "\u03b5",  # Greek epsilon (ε)
+            "\u03bf",  # Greek omicron (ο)
+            "\u03c1",  # Greek rho (ρ)
+        ],
+    )
     def test_greek_homoglyphs(self, char):
         result = detect_unicode_evasion(f"test{char}file.exe")
-        assert any(f['type'] == 'homoglyph' for f in result)
+        assert any(f["type"] == "homoglyph" for f in result)
 
     # All BIDI control characters
-    @pytest.mark.parametrize("char,name", [
-        ('\u202A', 'LRE'),
-        ('\u202B', 'RLE'),
-        ('\u202C', 'PDF'),
-        ('\u202D', 'LRO'),
-        ('\u202E', 'RLO'),
-        ('\u2066', 'LRI'),
-        ('\u2067', 'RLI'),
-        ('\u2068', 'FSI'),
-        ('\u2069', 'PDI'),
-    ])
+    @pytest.mark.parametrize(
+        "char,name",
+        [
+            ("\u202a", "LRE"),
+            ("\u202b", "RLE"),
+            ("\u202c", "PDF"),
+            ("\u202d", "LRO"),
+            ("\u202e", "RLO"),
+            ("\u2066", "LRI"),
+            ("\u2067", "RLI"),
+            ("\u2068", "FSI"),
+            ("\u2069", "PDI"),
+        ],
+    )
     def test_bidi_controls(self, char, name):
         result = detect_unicode_evasion(f"test{char}file.exe")
         assert len(result) > 0
 
     # Zero-width characters
-    @pytest.mark.parametrize("char,name", [
-        ('\u200B', 'ZWSP'),
-        ('\u200C', 'ZWNJ'),
-        ('\u200D', 'ZWJ'),
-        ('\uFEFF', 'BOM'),
-        ('\u2060', 'Word Joiner'),
-    ])
+    @pytest.mark.parametrize(
+        "char,name",
+        [
+            ("\u200b", "ZWSP"),
+            ("\u200c", "ZWNJ"),
+            ("\u200d", "ZWJ"),
+            ("\ufeff", "BOM"),
+            ("\u2060", "Word Joiner"),
+        ],
+    )
     def test_zero_width_chars(self, char, name):
         result = detect_unicode_evasion(f"test{char}file.exe")
         assert len(result) > 0
@@ -538,13 +545,13 @@ class TestUnicodeEvasionEdgeCases:
         assert len(result) >= 2
 
     def test_homoglyph_and_rlo(self):
-        filename = "\u202E" + "svch" + chr(0x043E) + "st.exe"
+        filename = "\u202e" + "svch" + chr(0x043E) + "st.exe"
         result = detect_unicode_evasion(filename)
         assert len(result) >= 2
 
     def test_all_techniques_combined(self):
         # RLO + homoglyph + zero-width
-        filename = "\u202E" + "svc" + "\u200B" + chr(0x043E) + "st.exe"
+        filename = "\u202e" + "svc" + "\u200b" + chr(0x043E) + "st.exe"
         result = detect_unicode_evasion(filename)
         assert len(result) >= 3
 
@@ -556,13 +563,13 @@ class TestUnicodeEvasionEdgeCases:
         assert len(result) > 0
 
     def test_many_zero_width(self):
-        filename = "test" + "\u200B" * 100 + ".exe"
+        filename = "test" + "\u200b" * 100 + ".exe"
         result = detect_unicode_evasion(filename)
         assert len(result) > 0
 
     def test_alternating_homoglyphs(self):
         # Alternating Latin and Cyrillic
-        filename = "".join(['a', chr(0x0430)] * 25) + ".exe"
+        filename = "".join(["a", chr(0x0430)] * 25) + ".exe"
         result = detect_unicode_evasion(filename)
         assert len(result) > 0
 
@@ -580,13 +587,15 @@ class TestNormalizeHomoglyphsStress:
 
     def test_pure_cyrillic_lookalikes(self):
         # All Cyrillic chars that look like Latin
-        cyrillic = "".join([
-            chr(0x0430),  # а -> a
-            chr(0x0435),  # е -> e
-            chr(0x043E),  # о -> o
-            chr(0x0440),  # р -> p
-            chr(0x0441),  # с -> c
-        ])
+        cyrillic = "".join(
+            [
+                chr(0x0430),  # а -> a
+                chr(0x0435),  # е -> e
+                chr(0x043E),  # о -> o
+                chr(0x0440),  # р -> p
+                chr(0x0441),  # с -> c
+            ]
+        )
         result = normalize_homoglyphs(cyrillic)
         assert result == "aeopc"
 
@@ -594,7 +603,7 @@ class TestNormalizeHomoglyphsStress:
         # Long string alternating scripts
         text = ""
         for i in range(100):
-            text += 'a' if i % 2 == 0 else chr(0x0430)
+            text += "a" if i % 2 == 0 else chr(0x0430)
         result = normalize_homoglyphs(text)
         assert result == "a" * 100
 
@@ -609,18 +618,21 @@ class TestNormalizeHomoglyphsStress:
 class TestLeetSpeakStress:
     """Stress tests for leet speak detection."""
 
-    @pytest.mark.parametrize("leet,normal", [
-        ('0', 'o'),
-        ('1', 'i'),
-        ('3', 'e'),
-        ('4', 'a'),
-        ('5', 's'),
-        ('7', 't'),
-        ('8', 'b'),
-        ('@', 'a'),
-        ('$', 's'),
-        ('!', 'i'),
-    ])
+    @pytest.mark.parametrize(
+        "leet,normal",
+        [
+            ("0", "o"),
+            ("1", "i"),
+            ("3", "e"),
+            ("4", "a"),
+            ("5", "s"),
+            ("7", "t"),
+            ("8", "b"),
+            ("@", "a"),
+            ("$", "s"),
+            ("!", "i"),
+        ],
+    )
     def test_individual_leet_chars(self, leet, normal):
         result = normalize_leet(leet)
         assert result == normal
@@ -667,24 +679,30 @@ class TestTyposquattingStress:
         assert len(result) > 0
 
     # Single character changes
-    @pytest.mark.parametrize("typo", [
-        "svhost.exe",     # Missing c
-        "svcost.exe",     # Missing h
-        "svchst.exe",     # Missing o
-        "svchost.ex",     # Missing e
-        "svchoste.exe",   # Extra e
-        "svchhost.exe",   # Extra h
-    ])
+    @pytest.mark.parametrize(
+        "typo",
+        [
+            "svhost.exe",  # Missing c
+            "svcost.exe",  # Missing h
+            "svchst.exe",  # Missing o
+            "svchost.ex",  # Missing e
+            "svchoste.exe",  # Extra e
+            "svchhost.exe",  # Extra h
+        ],
+    )
     def test_single_char_typos(self, typo):
         result = detect_typosquatting(typo, ["svchost.exe"])
         assert len(result) > 0
 
     # Transpositions
-    @pytest.mark.parametrize("typo", [
-        "svchots.exe",    # o and t swapped
-        "scvhost.exe",    # c and v swapped
-        "svchost.exs",    # e and s swapped (but not in name)
-    ])
+    @pytest.mark.parametrize(
+        "typo",
+        [
+            "svchots.exe",  # o and t swapped
+            "scvhost.exe",  # c and v swapped
+            "svchost.exs",  # e and s swapped (but not in name)
+        ],
+    )
     def test_transposition_typos(self, typo):
         result = detect_typosquatting(typo, ["svchost.exe"])
         # May or may not detect based on edit distance
@@ -732,10 +750,21 @@ class TestProcessNameSpoofingStress:
 
     # Critical Windows processes
     PROTECTED = [
-        "svchost.exe", "lsass.exe", "csrss.exe", "services.exe",
-        "smss.exe", "wininit.exe", "winlogon.exe", "explorer.exe",
-        "taskhostw.exe", "dwm.exe", "conhost.exe", "dllhost.exe",
-        "RuntimeBroker.exe", "SearchIndexer.exe", "spoolsv.exe"
+        "svchost.exe",
+        "lsass.exe",
+        "csrss.exe",
+        "services.exe",
+        "smss.exe",
+        "wininit.exe",
+        "winlogon.exe",
+        "explorer.exe",
+        "taskhostw.exe",
+        "dwm.exe",
+        "conhost.exe",
+        "dllhost.exe",
+        "RuntimeBroker.exe",
+        "SearchIndexer.exe",
+        "spoolsv.exe",
     ]
 
     @pytest.mark.parametrize("process", PROTECTED)
@@ -777,6 +806,7 @@ class TestProcessNameSpoofingStress:
 # FILENAME ANALYSIS STRESS TESTS (100+ tests)
 # =============================================================================
 
+
 class TestEntropyCalculationStress:
     """Stress tests for entropy calculation."""
 
@@ -802,7 +832,9 @@ class TestEntropyCalculationStress:
     def test_random_string_entropy(self):
         # Random strings should have high entropy
         for _ in range(10):
-            random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=20))
+            random_str = "".join(
+                random.choices(string.ascii_letters + string.digits, k=20)
+            )
             entropy = calculate_entropy(random_str)
             assert entropy > 3.0
 
@@ -844,7 +876,7 @@ class TestAnalyzeFilenameStress:
     def test_double_extension_combinations(self, ext1, ext2):
         filename = f"document.{ext1}.{ext2}"
         result = analyze_filename(filename)
-        assert any(f['type'] == 'double_extension' for f in result['findings'])
+        assert any(f["type"] == "double_extension" for f in result["findings"])
 
     # Short names - executables
     @pytest.mark.parametrize("length", [1, 2])
@@ -852,12 +884,12 @@ class TestAnalyzeFilenameStress:
     def test_short_executable_names(self, length, ext):
         filename = "a" * length + "." + ext
         result = analyze_filename(filename)
-        assert result['is_suspicious'] is True
+        assert result["is_suspicious"] is True
 
     # Control characters
     @pytest.mark.parametrize("char", [chr(i) for i in range(32)])
     def test_control_characters(self, char):
-        if char not in ['\t', '\n', '\r']:  # Skip common whitespace
+        if char not in ["\t", "\n", "\r"]:  # Skip common whitespace
             filename = f"test{char}file.exe"
             result = analyze_filename(filename)
             # Should detect control chars
@@ -865,11 +897,11 @@ class TestAnalyzeFilenameStress:
 
     def test_null_byte_injection(self):
         result = analyze_filename("legit.txt\x00.exe")
-        assert result['is_suspicious'] is True
+        assert result["is_suspicious"] is True
 
     def test_many_spaces(self):
         result = analyze_filename("document" + " " * 100 + ".exe")
-        assert any(f['type'] == 'space_padding' for f in result['findings'])
+        assert any(f["type"] == "space_padding" for f in result["findings"])
 
     def test_unicode_in_filename(self):
         result = analyze_filename("документ.exe")
@@ -888,15 +920,27 @@ class TestKnownToolFilenameStress:
     """Stress tests for known tool filename detection."""
 
     PATTERNS = [
-        {'filename_pattern': 'mimikatz.exe', 'is_regex': False, 'tool_name': 'Mimikatz'},
-        {'filename_pattern': '^psexec.*\\.exe$', 'is_regex': True, 'tool_name': 'PsExec'},
-        {'filename_pattern': '^rubeus.*\\.exe$', 'is_regex': True, 'tool_name': 'Rubeus'},
+        {
+            "filename_pattern": "mimikatz.exe",
+            "is_regex": False,
+            "tool_name": "Mimikatz",
+        },
+        {
+            "filename_pattern": "^psexec.*\\.exe$",
+            "is_regex": True,
+            "tool_name": "PsExec",
+        },
+        {
+            "filename_pattern": "^rubeus.*\\.exe$",
+            "is_regex": True,
+            "tool_name": "Rubeus",
+        },
     ]
 
     def test_exact_match(self):
         result = check_known_tool_filename("mimikatz.exe", self.PATTERNS)
         assert result is not None
-        assert result['tool_name'] == 'Mimikatz'
+        assert result["tool_name"] == "Mimikatz"
 
     def test_case_insensitive(self):
         result = check_known_tool_filename("MIMIKATZ.EXE", self.PATTERNS)
@@ -905,7 +949,7 @@ class TestKnownToolFilenameStress:
     def test_regex_match(self):
         result = check_known_tool_filename("psexec64.exe", self.PATTERNS)
         assert result is not None
-        assert result['tool_name'] == 'PsExec'
+        assert result["tool_name"] == "PsExec"
 
     def test_regex_variations(self):
         # Note: psexecsvc.exe (with 'c' before 'svc') is the actual PsExec service name
@@ -923,7 +967,11 @@ class TestKnownToolFilenameStress:
 
     def test_invalid_regex(self):
         patterns = [
-            {'filename_pattern': '[invalid(regex', 'is_regex': True, 'tool_name': 'Test'}
+            {
+                "filename_pattern": "[invalid(regex",
+                "is_regex": True,
+                "tool_name": "Test",
+            }
         ]
         # Should handle gracefully
         try:
@@ -937,37 +985,34 @@ class TestKnownToolFilenameStress:
 # VERDICT CALCULATION STRESS TESTS (100+ tests)
 # =============================================================================
 
+
 class TestVerdictCalculationStress:
     """Stress tests for verdict calculation."""
 
     def test_verdict_enum_values(self):
         """Test verdict enum values (MALICIOUS intentionally not in offline enum)."""
         # MALICIOUS is intentionally not included - use opencti-mcp for threat intel
-        assert not hasattr(Verdict, 'MALICIOUS')
+        assert not hasattr(Verdict, "MALICIOUS")
         assert Verdict.SUSPICIOUS.value == "SUSPICIOUS"
         assert Verdict.EXPECTED_LOLBIN.value == "EXPECTED_LOLBIN"
         assert Verdict.EXPECTED.value == "EXPECTED"
         assert Verdict.UNKNOWN.value == "UNKNOWN"
 
     def test_verdict_result_minimal(self):
-        result = VerdictResult(
-            verdict=Verdict.UNKNOWN,
-            confidence=0.0,
-            reasons=[]
-        )
+        result = VerdictResult(verdict=Verdict.UNKNOWN, confidence=0.0, reasons=[])
         d = result.to_dict()
-        assert d['verdict'] == "UNKNOWN"
+        assert d["verdict"] == "UNKNOWN"
 
     def test_verdict_result_full(self):
         result = VerdictResult(
             verdict=Verdict.SUSPICIOUS,
-            confidence='high',
+            confidence="high",
             reasons=["Suspicious pattern detected"],
         )
         d = result.to_dict()
-        assert d['verdict'] == "SUSPICIOUS"
-        assert d['confidence'] == 'high'
-        assert len(d['reasons']) == 1
+        assert d["verdict"] == "SUSPICIOUS"
+        assert d["confidence"] == "high"
+        assert len(d["reasons"]) == 1
 
 
 class TestCalculateFileVerdictStress:
@@ -982,7 +1027,7 @@ class TestCalculateFileVerdictStress:
             filename_in_baseline=False,
             is_system_path=False,
             filename_findings=[],
-            lolbin_info=None
+            lolbin_info=None,
         )
         assert result.verdict == Verdict.UNKNOWN
 
@@ -991,8 +1036,8 @@ class TestCalculateFileVerdictStress:
             path_in_baseline=False,
             filename_in_baseline=False,
             is_system_path=False,
-            filename_findings=[{'type': 'bidi_override', 'severity': 'critical'}],
-            lolbin_info=None
+            filename_findings=[{"type": "bidi_override", "severity": "critical"}],
+            lolbin_info=None,
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
@@ -1001,8 +1046,14 @@ class TestCalculateFileVerdictStress:
             path_in_baseline=False,
             filename_in_baseline=False,
             is_system_path=False,
-            filename_findings=[{'type': 'known_tool', 'tool_name': 'Mimikatz', 'category': 'credential_theft'}],
-            lolbin_info=None
+            filename_findings=[
+                {
+                    "type": "known_tool",
+                    "tool_name": "Mimikatz",
+                    "category": "credential_theft",
+                }
+            ],
+            lolbin_info=None,
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
@@ -1012,7 +1063,7 @@ class TestCalculateFileVerdictStress:
             filename_in_baseline=True,
             is_system_path=True,
             filename_findings=[],
-            lolbin_info={'name': 'certutil.exe', 'functions': ['Download', 'Encode']}
+            lolbin_info={"name": "certutil.exe", "functions": ["Download", "Encode"]},
         )
         assert result.verdict == Verdict.EXPECTED_LOLBIN
 
@@ -1022,7 +1073,7 @@ class TestCalculateFileVerdictStress:
             filename_in_baseline=True,
             is_system_path=True,
             filename_findings=[],
-            lolbin_info=None
+            lolbin_info=None,
         )
         assert result.verdict == Verdict.EXPECTED
 
@@ -1031,8 +1082,8 @@ class TestCalculateFileVerdictStress:
             path_in_baseline=True,
             filename_in_baseline=True,
             is_system_path=True,
-            filename_findings=[{'type': 'bidi_override', 'severity': 'critical'}],
-            lolbin_info=None
+            filename_findings=[{"type": "bidi_override", "severity": "critical"}],
+            lolbin_info=None,
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
@@ -1047,7 +1098,7 @@ class TestCalculateProcessVerdictStress:
             parent_valid=True,
             path_valid=None,
             user_valid=None,
-            findings=[]
+            findings=[],
         )
         assert result.verdict == Verdict.UNKNOWN
 
@@ -1057,7 +1108,7 @@ class TestCalculateProcessVerdictStress:
             parent_valid=True,
             path_valid=None,
             user_valid=None,
-            findings=[{'type': 'homoglyph', 'severity': 'critical'}]
+            findings=[{"type": "homoglyph", "severity": "critical"}],
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
@@ -1067,7 +1118,7 @@ class TestCalculateProcessVerdictStress:
             parent_valid=True,
             path_valid=True,
             user_valid=True,
-            findings=[]
+            findings=[],
         )
         assert result.verdict == Verdict.EXPECTED
 
@@ -1077,7 +1128,7 @@ class TestCalculateProcessVerdictStress:
             parent_valid=False,
             path_valid=True,
             user_valid=True,
-            findings=[]
+            findings=[],
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
@@ -1095,14 +1146,13 @@ class TestCalculateHashVerdictStress:
     def test_vulnerable_driver(self):
         result = calculate_hash_verdict(
             is_vulnerable_driver=True,
-            driver_info={'product': 'VulnDriver.sys', 'cve': 'CVE-2021-1234'}
+            driver_info={"product": "VulnDriver.sys", "cve": "CVE-2021-1234"},
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
     def test_lolbin_hash(self):
         result = calculate_hash_verdict(
-            is_lolbin=True,
-            lolbin_info={'name': 'certutil.exe'}
+            is_lolbin=True, lolbin_info={"name": "certutil.exe"}
         )
         assert result.verdict == Verdict.EXPECTED_LOLBIN
 
@@ -1110,6 +1160,7 @@ class TestCalculateHashVerdictStress:
 # =============================================================================
 # DATABASE STRESS TESTS (100+ tests)
 # =============================================================================
+
 
 class TestDatabaseEdgeCases:
     """Edge cases for database operations."""
@@ -1214,6 +1265,7 @@ class TestKnownGoodDBEdgeCases:
 # PERFORMANCE STRESS TESTS (50+ tests)
 # =============================================================================
 
+
 class TestPerformanceStress:
     """Performance and memory stress tests."""
 
@@ -1259,6 +1311,7 @@ class TestPerformanceStress:
 # INTEGRATION STRESS TESTS (50+ tests)
 # =============================================================================
 
+
 class TestIntegrationStress:
     """Integration tests combining multiple components."""
 
@@ -1277,7 +1330,7 @@ class TestIntegrationStress:
         # This should all work without errors
         assert filename == "cmd.exe"
         assert "\\windows\\system32\\cmd.exe" in normalized
-        assert filename_result['is_suspicious'] is False
+        assert filename_result["is_suspicious"] is False
         assert len(unicode_findings) == 0
 
     def test_full_file_analysis_suspicious(self):
@@ -1294,7 +1347,7 @@ class TestIntegrationStress:
 
         # Should detect homoglyph
         assert len(unicode_findings) > 0
-        assert any(f['type'] == 'homoglyph' for f in unicode_findings)
+        assert any(f["type"] == "homoglyph" for f in unicode_findings)
 
     def test_full_process_analysis(self):
         """Full analysis of process."""
@@ -1322,8 +1375,10 @@ class TestIntegrationStress:
         """Test random filename analysis."""
         # Generate random filename
         name_length = random.randint(1, 50)
-        name = ''.join(random.choices(string.ascii_letters + string.digits, k=name_length))
-        ext = random.choice(['exe', 'dll', 'txt', 'pdf', 'doc'])
+        name = "".join(
+            random.choices(string.ascii_letters + string.digits, k=name_length)
+        )
+        ext = random.choice(["exe", "dll", "txt", "pdf", "doc"])
         filename = f"{name}.{ext}"
 
         # Should not crash
@@ -1335,7 +1390,7 @@ class TestIntegrationStress:
         """Test random path normalization."""
         depth = random.randint(1, 20)
         parts = [
-            ''.join(random.choices(string.ascii_letters, k=random.randint(1, 20)))
+            "".join(random.choices(string.ascii_letters, k=random.randint(1, 20)))
             for _ in range(depth)
         ]
         path = "C:\\" + "\\".join(parts) + ".exe"
@@ -1348,8 +1403,8 @@ class TestIntegrationStress:
     def test_random_hash_validation(self, i):
         """Test random hash validation."""
         length = random.choice([31, 32, 33, 39, 40, 41, 63, 64, 65])
-        chars = '0123456789abcdef' if random.random() > 0.3 else string.printable
-        hash_str = ''.join(random.choices(chars, k=length))
+        chars = "0123456789abcdef" if random.random() > 0.3 else string.printable
+        hash_str = "".join(random.choices(chars, k=length))
 
         # Should not crash
         result = validate_hash(hash_str)

@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check .
+      - run: ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Install packages in dependency order
+      - name: Install base packages
+        run: |
+          pip install -e packages/sift-common
+          pip install -e packages/forensic-knowledge
+
+      - name: Install aiir-cli (case-mcp dependency, private repo)
+        run: pip install "aiir-cli @ git+https://${{ secrets.GH_PAT }}@github.com/AppliedIR/aiir.git"
+
+      - name: Install remaining packages
+        run: |
+          pip install -e packages/forensic-mcp
+          pip install -e packages/sift-mcp
+          pip install -e packages/windows-triage
+          pip install -e packages/forensic-rag
+          pip install -e packages/opencti
+          pip install -e packages/sift-gateway
+          pip install -e packages/case-mcp
+
+      - name: Install test dependencies
+        run: pip install pytest pytest-asyncio pytest-timeout pytest-cov
+
+      - run: pytest tests/ -v --tb=short

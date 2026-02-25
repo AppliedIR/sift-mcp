@@ -3,16 +3,15 @@
 import os
 
 import pytest
-
 from sift_mcp.security import (
-    validate_input_path,
-    sanitize_extra_args,
     is_denied,
+    sanitize_extra_args,
+    validate_input_path,
     validate_rm_targets,
 )
 
-
 # --- Denylist ---
+
 
 class TestDenylist:
     """is_denied() checks against the hard denylist."""
@@ -57,6 +56,7 @@ class TestDenylist:
 
 # --- rm Protection ---
 
+
 class TestRmProtection:
     """validate_rm_targets() blocks rm in protected directories."""
 
@@ -98,6 +98,7 @@ class TestRmProtection:
 
 
 # --- Path validation ---
+
 
 class TestValidateInputPath:
     """validate_input_path must block access to sensitive system directories."""
@@ -158,7 +159,6 @@ class TestValidateInputPath:
 
     def test_symlink_to_blocked_dir(self, tmp_path):
         """Symlink pointing to a blocked directory should be blocked."""
-        import os
         link = tmp_path / "sneaky_link"
         os.symlink("/etc/passwd", str(link))
         with pytest.raises(ValueError, match="blocked system directory"):
@@ -176,6 +176,7 @@ class TestValidateInputPath:
 
 
 # --- Zeek script blocking ---
+
 
 class TestZeekScriptBlocking:
     """Extra args containing Zeek scripts must be rejected."""
@@ -218,6 +219,7 @@ class TestZeekScriptBlocking:
 
 # --- sanitize_extra_args ---
 
+
 class TestSanitizeExtraArgs:
     """Verify dangerous flag and shell metacharacter blocking."""
 
@@ -234,7 +236,9 @@ class TestSanitizeExtraArgs:
             sanitize_extra_args(["$(whoami)"], "some_tool")
 
     def test_allows_safe_flags(self):
-        result = sanitize_extra_args(["-r", "--verbose", "-o", "output.txt"], "some_tool")
+        result = sanitize_extra_args(
+            ["-r", "--verbose", "-o", "output.txt"], "some_tool"
+        )
         assert result == ["-r", "--verbose", "-o", "output.txt"]
 
     def test_bulk_extractor_e_flag_allowed(self):
@@ -245,7 +249,9 @@ class TestSanitizeExtraArgs:
 
     def test_find_exec_blocked(self):
         with pytest.raises(ValueError, match="Blocked dangerous flag.*find"):
-            sanitize_extra_args(["/cases", "-name", "*.log", "-exec", "rm", "{}", "+"], "find")
+            sanitize_extra_args(
+                ["/cases", "-name", "*.log", "-exec", "rm", "{}", "+"], "find"
+            )
 
     def test_find_execdir_blocked(self):
         with pytest.raises(ValueError, match="Blocked dangerous flag.*find"):
@@ -256,7 +262,9 @@ class TestSanitizeExtraArgs:
             sanitize_extra_args(["/cases", "-name", "*.tmp", "-delete"], "find")
 
     def test_find_name_allowed(self):
-        result = sanitize_extra_args(["/cases", "-name", "*.evtx", "-type", "f"], "find")
+        result = sanitize_extra_args(
+            ["/cases", "-name", "*.evtx", "-type", "f"], "find"
+        )
         assert "-name" in result
 
     def test_sed_inplace_blocked(self):
@@ -290,11 +298,13 @@ class TestSanitizeExtraArgs:
 
 # --- Security policy YAML ---
 
+
 class TestSecurityPolicyYAML:
     """Verify security policy loads from YAML and matches expected contents."""
 
     def test_security_policy_loads_from_yaml(self):
-        from sift_mcp.catalog import load_security_policy, clear_catalog_cache
+        from sift_mcp.catalog import clear_catalog_cache, load_security_policy
+
         clear_catalog_cache()
         policy = load_security_policy()
 

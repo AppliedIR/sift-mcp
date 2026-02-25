@@ -52,7 +52,6 @@ Key Design Decisions:
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, List
 
 
 class Verdict(Enum):
@@ -61,6 +60,7 @@ class Verdict(Enum):
     Note: MALICIOUS is intentionally not included. For threat intelligence
     lookups that can identify malware, use opencti-mcp separately.
     """
+
     SUSPICIOUS = "SUSPICIOUS"
     EXPECTED_LOLBIN = "EXPECTED_LOLBIN"
     EXPECTED = "EXPECTED"
@@ -73,15 +73,16 @@ class Verdict(Enum):
 @dataclass
 class VerdictResult:
     """Result of verdict calculation with reasoning."""
+
     verdict: Verdict
-    reasons: List[str]
+    reasons: list[str]
     confidence: str  # "high", "medium", "low"
 
     def to_dict(self) -> dict:
         return {
-            'verdict': str(self.verdict),
-            'reasons': self.reasons,
-            'confidence': self.confidence
+            "verdict": str(self.verdict),
+            "reasons": self.reasons,
+            "confidence": self.confidence,
         }
 
 
@@ -89,9 +90,9 @@ def calculate_file_verdict(
     path_in_baseline: bool,
     filename_in_baseline: bool,
     is_system_path: bool,
-    filename_findings: List[dict],
-    lolbin_info: Optional[dict],
-    is_protected_process: bool = False
+    filename_findings: list[dict],
+    lolbin_info: dict | None,
+    is_protected_process: bool = False,
 ) -> VerdictResult:
     """
     Calculate verdict for a file/path check (offline analysis only).
@@ -112,70 +113,64 @@ def calculate_file_verdict(
     reasons = []
 
     # Priority 1: Critical filename issues (unicode evasion, double extension)
-    critical_findings = [f for f in filename_findings if f.get('severity') == 'critical']
+    critical_findings = [
+        f for f in filename_findings if f.get("severity") == "critical"
+    ]
     if critical_findings:
         reasons.append("Critical filename issues detected")
         for finding in critical_findings[:2]:
-            reasons.append(finding.get('description', finding.get('type')))
+            reasons.append(finding.get("description", finding.get("type")))
         return VerdictResult(
-            verdict=Verdict.SUSPICIOUS,
-            reasons=reasons,
-            confidence='high'
+            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="high"
         )
 
     # Priority 3: Suspicious filename patterns (known tools)
-    tool_findings = [f for f in filename_findings if f.get('type') == 'known_tool']
+    tool_findings = [f for f in filename_findings if f.get("type") == "known_tool"]
     if tool_findings:
         reasons.append(f"Known tool: {tool_findings[0].get('tool_name', 'unknown')}")
         reasons.append(f"Category: {tool_findings[0].get('category', 'unknown')}")
         return VerdictResult(
-            verdict=Verdict.SUSPICIOUS,
-            reasons=reasons,
-            confidence='high'
+            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="high"
         )
 
     # Priority 4: Path or filename matches baseline
     if path_in_baseline:
         if lolbin_info:
             reasons.append("Path matches Windows baseline")
-            reasons.append(f"LOLBin: can be abused for {', '.join(lolbin_info.get('functions', [])[:2])}")
+            reasons.append(
+                f"LOLBin: can be abused for {', '.join(lolbin_info.get('functions', [])[:2])}"
+            )
             return VerdictResult(
-                verdict=Verdict.EXPECTED_LOLBIN,
-                reasons=reasons,
-                confidence='high'
+                verdict=Verdict.EXPECTED_LOLBIN, reasons=reasons, confidence="high"
             )
         reasons.append("Path matches Windows baseline")
         return VerdictResult(
-            verdict=Verdict.EXPECTED,
-            reasons=reasons,
-            confidence='high'
+            verdict=Verdict.EXPECTED, reasons=reasons, confidence="high"
         )
 
     if filename_in_baseline and is_system_path:
         if lolbin_info:
             reasons.append("Filename matches Windows baseline")
             reasons.append("Located in system directory")
-            reasons.append(f"LOLBin: can be abused for {', '.join(lolbin_info.get('functions', [])[:2])}")
+            reasons.append(
+                f"LOLBin: can be abused for {', '.join(lolbin_info.get('functions', [])[:2])}"
+            )
             return VerdictResult(
-                verdict=Verdict.EXPECTED_LOLBIN,
-                reasons=reasons,
-                confidence='medium'
+                verdict=Verdict.EXPECTED_LOLBIN, reasons=reasons, confidence="medium"
             )
         reasons.append("Filename matches Windows baseline")
         reasons.append("Located in system directory")
         return VerdictResult(
-            verdict=Verdict.EXPECTED,
-            reasons=reasons,
-            confidence='medium'
+            verdict=Verdict.EXPECTED, reasons=reasons, confidence="medium"
         )
 
     # Priority 5: Just a LOLBin name (not in expected location)
     if lolbin_info and not is_system_path:
-        reasons.append(f"LOLBin ({lolbin_info.get('name', 'unknown')}) in non-standard location")
+        reasons.append(
+            f"LOLBin ({lolbin_info.get('name', 'unknown')}) in non-standard location"
+        )
         return VerdictResult(
-            verdict=Verdict.SUSPICIOUS,
-            reasons=reasons,
-            confidence='medium'
+            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="medium"
         )
 
     # Priority 5b: Protected system process name in non-system location
@@ -184,37 +179,29 @@ def calculate_file_verdict(
         reasons.append("Protected system process name found outside system directory")
         reasons.append("Likely process masquerading attempt")
         return VerdictResult(
-            verdict=Verdict.SUSPICIOUS,
-            reasons=reasons,
-            confidence='high'
+            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="high"
         )
 
     # Priority 6: High severity filename issues
-    high_findings = [f for f in filename_findings if f.get('severity') == 'high']
+    high_findings = [f for f in filename_findings if f.get("severity") == "high"]
     if high_findings:
         for finding in high_findings[:2]:
-            reasons.append(finding.get('description', finding.get('type')))
+            reasons.append(finding.get("description", finding.get("type")))
         return VerdictResult(
-            verdict=Verdict.SUSPICIOUS,
-            reasons=reasons,
-            confidence='medium'
+            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="medium"
         )
 
     # Default: Unknown (neutral - just not in our baseline)
     reasons.append("Not in baseline (neutral - may be legitimate third-party software)")
-    return VerdictResult(
-        verdict=Verdict.UNKNOWN,
-        reasons=reasons,
-        confidence='low'
-    )
+    return VerdictResult(verdict=Verdict.UNKNOWN, reasons=reasons, confidence="low")
 
 
 def calculate_process_verdict(
     process_known: bool,
     parent_valid: bool,
-    path_valid: Optional[bool],
-    user_valid: Optional[bool],
-    findings: List[dict]
+    path_valid: bool | None,
+    user_valid: bool | None,
+    findings: list[dict],
 ) -> VerdictResult:
     """
     Calculate verdict for a process tree check.
@@ -232,74 +219,56 @@ def calculate_process_verdict(
     reasons = []
 
     # Check for critical findings first (e.g., process spoofing)
-    critical_findings = [f for f in findings if f.get('severity') == 'critical']
+    critical_findings = [f for f in findings if f.get("severity") == "critical"]
     if critical_findings:
         for finding in critical_findings:
-            reasons.append(finding.get('description', finding.get('type')))
+            reasons.append(finding.get("description", finding.get("type")))
         return VerdictResult(
-            verdict=Verdict.SUSPICIOUS,
-            reasons=reasons,
-            confidence='high'
+            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="high"
         )
 
     if not process_known:
         # Not in our expectations database - check for other issues
         # (Critical findings already handled above and returned)
         # Check high severity findings
-        high_findings = [f for f in findings if f.get('severity') == 'high']
+        high_findings = [f for f in findings if f.get("severity") == "high"]
         if high_findings:
             for finding in high_findings[:2]:
-                reasons.append(finding.get('description', finding.get('type')))
+                reasons.append(finding.get("description", finding.get("type")))
             return VerdictResult(
-                verdict=Verdict.SUSPICIOUS,
-                reasons=reasons,
-                confidence='medium'
+                verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="medium"
             )
         reasons.append("Process not in expectations database (neutral)")
-        return VerdictResult(
-            verdict=Verdict.UNKNOWN,
-            reasons=reasons,
-            confidence='low'
-        )
+        return VerdictResult(verdict=Verdict.UNKNOWN, reasons=reasons, confidence="low")
 
     # Process is known - check relationships
     if not parent_valid:
         reasons.append("Unexpected parent process")
         return VerdictResult(
-            verdict=Verdict.SUSPICIOUS,
-            reasons=reasons,
-            confidence='high'
+            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="high"
         )
 
     if path_valid is False:  # Explicitly False, not None
         reasons.append("Unexpected executable path")
         return VerdictResult(
-            verdict=Verdict.SUSPICIOUS,
-            reasons=reasons,
-            confidence='high'
+            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="high"
         )
 
     if user_valid is False:  # Explicitly False, not None
         reasons.append("Unexpected user context")
         return VerdictResult(
-            verdict=Verdict.SUSPICIOUS,
-            reasons=reasons,
-            confidence='medium'
+            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="medium"
         )
 
     # All checks passed
     reasons.append("Process relationship matches expectations")
-    return VerdictResult(
-        verdict=Verdict.EXPECTED,
-        reasons=reasons,
-        confidence='high'
-    )
+    return VerdictResult(verdict=Verdict.EXPECTED, reasons=reasons, confidence="high")
 
 
 def calculate_service_verdict(
     service_in_baseline: bool,
-    binary_path_matches: Optional[bool],
-    binary_findings: List[dict]
+    binary_path_matches: bool | None,
+    binary_findings: list[dict],
 ) -> VerdictResult:
     """
     Calculate verdict for a service check.
@@ -315,14 +284,12 @@ def calculate_service_verdict(
     reasons = []
 
     # Check for suspicious binary
-    critical_findings = [f for f in binary_findings if f.get('severity') == 'critical']
+    critical_findings = [f for f in binary_findings if f.get("severity") == "critical"]
     if critical_findings:
         for finding in critical_findings[:2]:
-            reasons.append(finding.get('description', finding.get('type')))
+            reasons.append(finding.get("description", finding.get("type")))
         return VerdictResult(
-            verdict=Verdict.SUSPICIOUS,
-            reasons=reasons,
-            confidence='high'
+            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="high"
         )
 
     if service_in_baseline:
@@ -330,41 +297,33 @@ def calculate_service_verdict(
             reasons.append("Service name in baseline but binary path differs")
             reasons.append("May indicate hijacked service")
             return VerdictResult(
-                verdict=Verdict.SUSPICIOUS,
-                reasons=reasons,
-                confidence='medium'
+                verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="medium"
             )
         reasons.append("Service matches Windows baseline")
         return VerdictResult(
-            verdict=Verdict.EXPECTED,
-            reasons=reasons,
-            confidence='high'
+            verdict=Verdict.EXPECTED, reasons=reasons, confidence="high"
         )
 
     # Unknown service
-    high_findings = [f for f in binary_findings if f.get('severity') == 'high']
+    high_findings = [f for f in binary_findings if f.get("severity") == "high"]
     if high_findings:
         for finding in high_findings[:2]:
-            reasons.append(finding.get('description', finding.get('type')))
+            reasons.append(finding.get("description", finding.get("type")))
         return VerdictResult(
-            verdict=Verdict.SUSPICIOUS,
-            reasons=reasons,
-            confidence='medium'
+            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="medium"
         )
 
-    reasons.append("Service not in baseline (neutral - may be third-party or enterprise software)")
-    return VerdictResult(
-        verdict=Verdict.UNKNOWN,
-        reasons=reasons,
-        confidence='low'
+    reasons.append(
+        "Service not in baseline (neutral - may be third-party or enterprise software)"
     )
+    return VerdictResult(verdict=Verdict.UNKNOWN, reasons=reasons, confidence="low")
 
 
 def calculate_hash_verdict(
     is_vulnerable_driver: bool = False,
-    driver_info: Optional[dict] = None,
+    driver_info: dict | None = None,
     is_lolbin: bool = False,
-    lolbin_info: Optional[dict] = None,
+    lolbin_info: dict | None = None,
 ) -> VerdictResult:
     """
     Calculate verdict for a hash-only lookup (offline analysis only).
@@ -386,30 +345,22 @@ def calculate_hash_verdict(
     # Vulnerable driver (BYOVD attack potential)
     if is_vulnerable_driver and driver_info:
         reasons.append(f"Vulnerable driver: {driver_info.get('product', 'unknown')}")
-        if driver_info.get('cve'):
+        if driver_info.get("cve"):
             reasons.append(f"CVE: {driver_info['cve']}")
-        if driver_info.get('vulnerability_type'):
+        if driver_info.get("vulnerability_type"):
             reasons.append(f"Vulnerability: {driver_info['vulnerability_type']}")
         return VerdictResult(
-            verdict=Verdict.SUSPICIOUS,
-            reasons=reasons,
-            confidence='high'
+            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="high"
         )
 
     # Known LOLBin hash
     if is_lolbin and lolbin_info:
         reasons.append(f"LOLBin: {lolbin_info.get('name', 'unknown')}")
         return VerdictResult(
-            verdict=Verdict.EXPECTED_LOLBIN,
-            reasons=reasons,
-            confidence='medium'
+            verdict=Verdict.EXPECTED_LOLBIN, reasons=reasons, confidence="medium"
         )
 
     # Hash not in local databases
     reasons.append("Hash not found in local databases (neutral)")
     reasons.append("For threat intel, query opencti-mcp")
-    return VerdictResult(
-        verdict=Verdict.UNKNOWN,
-        reasons=reasons,
-        confidence='low'
-    )
+    return VerdictResult(verdict=Verdict.UNKNOWN, reasons=reasons, confidence="low")

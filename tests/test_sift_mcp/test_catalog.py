@@ -2,8 +2,11 @@
 
 import pytest
 from sift_mcp.catalog import (
-    load_catalog, get_tool_def, list_tools_in_catalog,
-    is_in_catalog, clear_catalog_cache, ToolDefinition,
+    clear_catalog_cache,
+    get_tool_def,
+    is_in_catalog,
+    list_tools_in_catalog,
+    load_catalog,
 )
 
 

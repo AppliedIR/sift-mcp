@@ -28,12 +28,12 @@ import asyncio
 import logging
 import sys
 
-from .config import Config
 from .client import OpenCTIClient
+from .config import Config
 from .errors import ConfigurationError
 from .feature_flags import get_feature_flags
-from .server import OpenCTIMCPServer
 from .oplog import setup_logging
+from .server import OpenCTIMCPServer
 
 
 def main() -> None:
@@ -65,7 +65,7 @@ def main() -> None:
             if validation.get("opencti_version"):
                 logger.info(
                     f"Connected to OpenCTI {validation['opencti_version']}",
-                    extra={"opencti_version": validation["opencti_version"]}
+                    extra={"opencti_version": validation["opencti_version"]},
                 )
 
             # Check for critical errors
@@ -91,7 +91,7 @@ def main() -> None:
     except KeyboardInterrupt:
         logger.info("Shutting down")
 
-    except Exception as e:
+    except Exception:
         logger.exception("Fatal error")
         sys.exit(1)
 

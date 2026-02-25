@@ -12,24 +12,19 @@ Run with: pytest tests/test_rag_comprehensive.py -v --tb=short
 from __future__ import annotations
 
 import asyncio
-import json
 import random
-import re
-import string
 import sys
 import time
-import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
 
 import pytest
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from rag_mcp.index import RAGIndex, ALLOWED_MODELS
-from rag_mcp.server import RAGServer, MAX_QUERY_LENGTH, MAX_FILTER_LENGTH, MAX_TOP_K
+from rag_mcp.index import ALLOWED_MODELS, RAGIndex
+from rag_mcp.server import MAX_FILTER_LENGTH, MAX_QUERY_LENGTH, MAX_TOP_K
 
 # Fixtures (rag_index, rag_server, available_sources) provided by conftest.py
 
@@ -38,9 +33,11 @@ from rag_mcp.server import RAGServer, MAX_QUERY_LENGTH, MAX_FILTER_LENGTH, MAX_T
 # Test Result Tracking
 # =============================================================================
 
+
 @dataclass
 class TestMetrics:
     """Track test metrics for analysis."""
+
     total_queries: int = 0
     passed: int = 0
     failed: int = 0
@@ -50,9 +47,14 @@ class TestMetrics:
     latencies: list[float] = field(default_factory=list)
     failures: list[dict] = field(default_factory=list)
 
-    def record(self, query: str, results: list, latency_ms: float,
-               expected_in_results: Optional[str] = None,
-               min_score: float = 0.5) -> bool:
+    def record(
+        self,
+        query: str,
+        results: list,
+        latency_ms: float,
+        expected_in_results: str | None = None,
+        min_score: float = 0.5,
+    ) -> bool:
         """Record a test result. Returns True if passed."""
         self.total_queries += 1
         self.latencies.append(latency_ms)
@@ -69,40 +71,50 @@ class TestMetrics:
 
             if top_score < min_score:
                 passed = False
-                failure_reason = f"Top score {top_score:.3f} below threshold {min_score}"
+                failure_reason = (
+                    f"Top score {top_score:.3f} below threshold {min_score}"
+                )
 
             if expected_in_results:
                 found = any(
-                    expected_in_results.lower() in r.get("text", "").lower() or
-                    expected_in_results.lower() in r.get("title", "").lower() or
-                    expected_in_results.lower() in r.get("source", "").lower()
+                    expected_in_results.lower() in r.get("text", "").lower()
+                    or expected_in_results.lower() in r.get("title", "").lower()
+                    or expected_in_results.lower() in r.get("source", "").lower()
                     for r in results
                 )
                 if not found:
                     passed = False
-                    failure_reason = f"Expected '{expected_in_results}' not found in results"
+                    failure_reason = (
+                        f"Expected '{expected_in_results}' not found in results"
+                    )
 
         if passed:
             self.passed += 1
         else:
             self.failed += 1
-            self.failures.append({
-                "query": query,
-                "reason": failure_reason,
-                "top_result": results[0] if results else None
-            })
+            self.failures.append(
+                {
+                    "query": query,
+                    "reason": failure_reason,
+                    "top_result": results[0] if results else None,
+                }
+            )
 
         return passed
 
     def finalize(self) -> dict:
         """Calculate final metrics."""
         self.avg_score = sum(self.scores) / len(self.scores) if self.scores else 0
-        self.avg_latency_ms = sum(self.latencies) / len(self.latencies) if self.latencies else 0
+        self.avg_latency_ms = (
+            sum(self.latencies) / len(self.latencies) if self.latencies else 0
+        )
         return {
             "total": self.total_queries,
             "passed": self.passed,
             "failed": self.failed,
-            "pass_rate": f"{100*self.passed/self.total_queries:.1f}%" if self.total_queries else "N/A",
+            "pass_rate": f"{100 * self.passed / self.total_queries:.1f}%"
+            if self.total_queries
+            else "N/A",
             "avg_score": f"{self.avg_score:.3f}",
             "avg_latency_ms": f"{self.avg_latency_ms:.1f}",
             "min_score": f"{min(self.scores):.3f}" if self.scores else "N/A",
@@ -139,7 +151,6 @@ MITRE_TECHNIQUE_QUERIES = [
     ("T1558.002", "silver", 0.55),
     ("T1558.003", "kerberos", 0.60),
     ("T1539", "cookie", 0.55),
-
     # Execution
     ("T1059", "command", 0.65),
     ("T1059.001", "powershell", 0.65),
@@ -148,14 +159,21 @@ MITRE_TECHNIQUE_QUERIES = [
     ("T1059.005", "visual basic", 0.55),
     ("T1059.006", "python", 0.55),
     ("T1059.007", "javascript", 0.55),
-    ("T1204.001", "malicious", 0.55),  # "Malicious Link" - content covers malware analysis
-    ("T1204.002", "malicious", 0.55),  # "Malicious File" - content covers malware analysis
+    (
+        "T1204.001",
+        "malicious",
+        0.55,
+    ),  # "Malicious Link" - content covers malware analysis
+    (
+        "T1204.002",
+        "malicious",
+        0.55,
+    ),  # "Malicious File" - content covers malware analysis
     ("T1047", "wmi", 0.65),
     ("T1053", "scheduled", 0.65),
     ("T1053.005", "task", 0.55),
     ("T1569", "service", 0.55),
     ("T1569.002", "service", 0.55),
-
     # Persistence
     ("T1547", "autostart", 0.55),
     ("T1547.001", "run", 0.60),
@@ -172,7 +190,6 @@ MITRE_TECHNIQUE_QUERIES = [
     ("T1136", "account", 0.55),
     ("T1136.001", "account", 0.55),
     ("T1136.002", "account", 0.55),
-
     # Privilege Escalation
     ("T1548", "elevation", 0.55),
     ("T1548.002", "uac", 0.60),
@@ -185,7 +202,6 @@ MITRE_TECHNIQUE_QUERIES = [
     ("T1055.002", "pe", 0.55),
     ("T1055.003", "thread", 0.55),
     ("T1055.012", "hollow", 0.55),
-
     # Defense Evasion
     ("T1070", "indicator", 0.55),
     ("T1070.001", "event log", 0.60),
@@ -197,9 +213,21 @@ MITRE_TECHNIQUE_QUERIES = [
     ("T1562.002", "logging", 0.55),
     ("T1562.004", "firewall", 0.55),
     ("T1027", "obfuscat", 0.55),
-    ("T1027.001", None, 0.55),  # Binary Padding - no specific content, validate score only
-    ("T1027.002", None, 0.55),  # Software Packing - no specific content, validate score only
-    ("T1027.004", None, 0.55),  # Compile After Delivery - no specific content, validate score only
+    (
+        "T1027.001",
+        None,
+        0.55,
+    ),  # Binary Padding - no specific content, validate score only
+    (
+        "T1027.002",
+        None,
+        0.55,
+    ),  # Software Packing - no specific content, validate score only
+    (
+        "T1027.004",
+        None,
+        0.55,
+    ),  # Compile After Delivery - no specific content, validate score only
     ("T1027.010", "obfuscat", 0.55),
     ("T1036.003", "rename", 0.55),
     ("T1036.005", "name", 0.55),
@@ -211,7 +239,6 @@ MITRE_TECHNIQUE_QUERIES = [
     ("T1218.007", "msiexec", 0.55),
     ("T1218.010", "regsvr32", 0.60),
     ("T1218.011", "rundll32", 0.60),
-
     # Discovery
     ("T1087", "account", 0.55),
     ("T1087.001", "account", 0.55),
@@ -228,7 +255,6 @@ MITRE_TECHNIQUE_QUERIES = [
     ("T1049", "connection", 0.55),
     ("T1033", "user", 0.55),
     ("T1007", "service", 0.55),
-
     # Lateral Movement
     ("T1021", "remote", 0.60),
     ("T1021.001", "rdp", 0.60),
@@ -242,7 +268,6 @@ MITRE_TECHNIQUE_QUERIES = [
     ("T1550", "authentication", 0.55),
     ("T1550.002", "hash", 0.60),
     ("T1550.003", "ticket", 0.55),
-
     # Collection
     ("T1560", "file", 0.55),  # Archive Collected Data - filesystem content
     ("T1560.001", "archive", 0.55),
@@ -258,7 +283,6 @@ MITRE_TECHNIQUE_QUERIES = [
     ("T1056", "input", 0.55),
     ("T1056.001", "keylog", 0.60),
     ("T1113", "screen", 0.55),
-
     # Command and Control
     ("T1071", "protocol", 0.55),
     ("T1071.001", "http", 0.55),
@@ -267,7 +291,11 @@ MITRE_TECHNIQUE_QUERIES = [
     ("T1132", "encod", 0.55),
     ("T1001", "obfuscat", 0.55),
     ("T1573", "encrypt", 0.55),
-    ("T1008", None, 0.55),  # Fallback Channels - no specific content, validate score only
+    (
+        "T1008",
+        None,
+        0.55,
+    ),  # Fallback Channels - no specific content, validate score only
     ("T1105", "transfer", 0.55),
     ("T1095", "protocol", 0.55),
     ("T1571", "port", 0.55),
@@ -275,7 +303,6 @@ MITRE_TECHNIQUE_QUERIES = [
     ("T1090", "proxy", 0.55),
     ("T1219", "remote", 0.55),
     ("T1102", "service", 0.55),  # Web Service - service keyword found in results
-
     # Exfiltration
     ("T1020", "exfiltration", 0.55),
     ("T1030", "transfer", 0.55),
@@ -285,7 +312,6 @@ MITRE_TECHNIQUE_QUERIES = [
     ("T1052", "physical", 0.55),
     ("T1567", "web", 0.55),
     ("T1029", "transfer", 0.55),
-
     # Impact
     ("T1485", "destruction", 0.55),
     ("T1486", "encrypt", 0.60),
@@ -312,11 +338,14 @@ DETECTION_QUERIES = [
     ("detecting secretsdump", "secrets", 0.5),
     ("ntds.dit extraction detection", "ntds", 0.6),
     ("sam database theft detection", "sam", 0.6),
-    ("hashdump detection methods", None, 0.5),  # specialized tool name, semantic match sufficient
+    (
+        "hashdump detection methods",
+        None,
+        0.5,
+    ),  # specialized tool name, semantic match sufficient
     ("detect password spraying", "password", 0.6),
     ("brute force detection windows", None, 0.5),
     ("detecting credential access in memory", "credential", 0.6),
-
     # PowerShell Detection
     ("malicious powershell detection", "powershell", 0.65),
     ("powershell encoded command detection", "encoded", 0.65),
@@ -327,7 +356,6 @@ DETECTION_QUERIES = [
     ("powershell bypass detection", "powershell", 0.5),  # bypass may not be in results
     ("detect amsi bypass", "amsi", 0.5),
     ("powershell obfuscation detection", "obfuscat", 0.6),
-
     # Lateral Movement Detection
     ("detect psexec", "psexec", 0.65),
     ("wmi lateral movement detection", "wmi", 0.65),
@@ -339,7 +367,6 @@ DETECTION_QUERIES = [
     ("wmic remote execution detection", "wmic", 0.6),
     ("smbexec detection", "smb", 0.5),
     ("detect remote service installation", "service", 0.5),
-
     # Persistence Detection
     ("detect scheduled task persistence", "scheduled task", 0.65),
     ("registry run key persistence", "run key", 0.65),
@@ -351,7 +378,6 @@ DETECTION_QUERIES = [
     ("detect bits jobs persistence", "bits", 0.5),
     ("logon script persistence detection", "logon script", 0.5),
     ("appinit dlls persistence", "appinit", 0.5),
-
     # Process Injection Detection
     ("detect process injection", "process injection", 0.65),
     ("dll injection detection", "dll injection", 0.65),
@@ -360,22 +386,40 @@ DETECTION_QUERIES = [
     ("detect reflective dll loading", "dll", 0.5),  # "reflective" may not be in results
     ("createremotethread detection", "thread", 0.5),  # keyword may differ
     ("detect code injection", "injection", 0.5),  # simplified keyword
-    ("pe injection detection", None, 0.5),  # PE injection is specialized, semantic match sufficient
-    ("detect apc injection", None, 0.5),  # APC is specialized, semantic match sufficient
-    ("ntmapviewofsection detection", None, 0.5),  # specialized API name, semantic match sufficient
-
+    (
+        "pe injection detection",
+        None,
+        0.5,
+    ),  # PE injection is specialized, semantic match sufficient
+    (
+        "detect apc injection",
+        None,
+        0.5,
+    ),  # APC is specialized, semantic match sufficient
+    (
+        "ntmapviewofsection detection",
+        None,
+        0.5,
+    ),  # specialized API name, semantic match sufficient
     # Defense Evasion Detection
     ("detect event log clearing", "event", 0.55),  # "clear" may not be in results
     ("timestomping detection", "timestomp", 0.6),
     ("detect file deletion evidence destruction", "file deletion", 0.6),
-    ("masquerading detection windows", None, 0.5),  # no masquerading-specific Sigma rules in index
+    (
+        "masquerading detection windows",
+        None,
+        0.5,
+    ),  # no masquerading-specific Sigma rules in index
     ("detect uac bypass", "uac bypass", 0.65),
     ("disable defender detection", "defender", 0.6),
     ("detect amsi bypass", "amsi", 0.6),
     ("etw patching detection", "etw", 0.5),
-    ("detect process masquerading", None, 0.5),  # no masquerading-specific Sigma rules in index
+    (
+        "detect process masquerading",
+        None,
+        0.5,
+    ),  # no masquerading-specific Sigma rules in index
     ("file signature verification bypass", "signature", 0.5),
-
     # Ransomware Detection
     ("ransomware detection sigma", "ransomware", 0.65),
     ("detect file encryption ransomware", "encrypt", 0.6),
@@ -385,7 +429,6 @@ DETECTION_QUERIES = [
     ("detect mass file encryption", "encrypt", 0.5),
     ("ransomware persistence detection", "ransomware", 0.5),
     ("detect ransomware lateral movement", "ransomware", 0.5),
-
     # Network Detection
     ("detect dns tunneling", "dns tunnel", 0.6),
     ("c2 beacon detection", "beacon", 0.6),
@@ -416,7 +459,6 @@ FORENSIC_QUERIES = [
     ("recycle bin forensics", "recycle bin", 0.6),
     ("browser history forensics", "browser history", 0.6),
     ("windows timeline forensics", "timeline", 0.5),
-
     # Memory Forensics
     ("volatility memory analysis", "volatility", 0.65),
     ("memory forensics process list", "process", 0.6),
@@ -428,7 +470,6 @@ FORENSIC_QUERIES = [
     ("memory forensics command history", "memory", 0.5),  # simplified
     ("vad tree memory forensics", "memory", 0.5),  # VAD is specialized
     ("memory forensics injected code", "inject", 0.6),
-
     # Linux Forensics
     ("linux auth log forensics", "auth", 0.6),
     ("bash history forensics", "bash history", 0.65),
@@ -439,7 +480,6 @@ FORENSIC_QUERIES = [
     ("linux persistence artifacts", "persistence", 0.5),
     ("wtmp btmp forensics", "wtmp", 0.5),
     ("linux webshell forensics", None, 0.5),
-
     # Disk Forensics
     ("sleuth kit forensic analysis", "forensic", 0.5),  # toolkit name may not match
     ("file carving forensics", "forensic", 0.5),  # carving is specialized
@@ -447,7 +487,6 @@ FORENSIC_QUERIES = [
     ("disk image forensic analysis", "forensic", 0.5),  # disk image may not match
     ("slack space forensics", "forensic", 0.5),  # slack is specialized
     ("file system forensic analysis", "forensic", 0.5),  # file system may not match
-
     # Event IDs
     ("event id 4624 analysis", "4624", 0.65),
     ("event id 4625 investigation", "4625", 0.65),
@@ -484,7 +523,11 @@ LOLBIN_QUERIES = [
     ("forfiles command execution", "forfiles", 0.6),
     ("pcalua execution", "pcalua", 0.5),
     ("syncappvpublishingserver", None, 0.5),
-    ("presentationhost xaml", None, 0.5),  # obscure LOLBin, may not be in knowledge base
+    (
+        "presentationhost xaml",
+        None,
+        0.5,
+    ),  # obscure LOLBin, may not be in knowledge base
     ("ieexec code execution", "ieexec", 0.5),
     ("dnscmd dll injection", "dnscmd", 0.5),
     ("odbcconf dll loading", "odbcconf", 0.6),
@@ -499,7 +542,6 @@ LOLBIN_QUERIES = [
     ("control panel dll", "control", 0.5),
     ("bash wsl execution", "bash", 0.6),
     ("wsl exe execution", "wsl", 0.6),
-
     # GTFOBins (Linux)
     ("awk command execution", "awk", 0.6),
     ("sed command execution", "sed", 0.5),
@@ -530,13 +572,16 @@ IR_SCENARIO_QUERIES = [
     ("malware infection investigation steps", "malware", 0.6),
     ("ransomware attack investigation", "ransomware", 0.65),
     ("data breach investigation", "investigation", 0.5),  # breach is abstract concept
-    ("insider threat investigation", "investigation", 0.5),  # insider not well represented
+    (
+        "insider threat investigation",
+        "investigation",
+        0.5,
+    ),  # insider not well represented
     ("compromised account investigation", None, 0.5),
     ("supply chain attack investigation", "supply chain", 0.5),
     ("apt investigation methodology", None, 0.5),
     ("nation state actor investigation", "nation", 0.5),
     ("business email compromise investigation", None, 0.5),
-
     # Containment and Eradication
     ("containment procedures ransomware", None, 0.5),
     ("isolate compromised host", None, 0.5),  # semantic match sufficient
@@ -544,17 +589,19 @@ IR_SCENARIO_QUERIES = [
     ("blocking c2 communication", "c2", 0.5),
     ("credential reset after breach", "credential", 0.5),
     ("recovery from ransomware", "recovery", 0.5),
-
     # Specific Attack Scenarios
     ("cobalt strike detection investigation", "cobalt strike", 0.65),
-    ("emotet investigation guide", "malware", 0.5),  # specific malware name may not be in knowledge base
+    (
+        "emotet investigation guide",
+        "malware",
+        0.5,
+    ),  # specific malware name may not be in knowledge base
     ("trickbot investigation", "trickbot", 0.5),
     ("qakbot investigation procedures", "qakbot", 0.5),
     ("lockbit ransomware investigation", "lockbit", 0.5),
     ("conti ransomware investigation", "conti", 0.5),
     ("ryuk ransomware analysis", "ryuk", 0.5),
     ("revil ransomware investigation", "revil", 0.5),
-
     # Cloud Incidents
     ("aws incident response", "aws", 0.5),
     ("azure security investigation", "azure", 0.5),
@@ -562,7 +609,6 @@ IR_SCENARIO_QUERIES = [
     ("cloud storage breach investigation", "cloud", 0.5),
     ("o365 compromise investigation", "o365", 0.5),
     ("saas account compromise", "account", 0.5),  # saas is generic cloud term
-
     # Compliance and Reporting
     ("incident report writing", "report", 0.5),
     ("timeline creation forensics", "timeline", 0.6),
@@ -580,9 +626,12 @@ ATTACK_PATTERN_QUERIES = [
     ("installation malware techniques", "malware", 0.5),  # installation is generic
     ("command and control techniques", "command and control", 0.6),
     ("actions on objectives attack", "objectives", 0.5),
-
     # Specific Attack Types
-    ("living off the land attack", None, 0.5),  # LOTL phrase may not be in KB, semantic match sufficient
+    (
+        "living off the land attack",
+        None,
+        0.5,
+    ),  # LOTL phrase may not be in KB, semantic match sufficient
     ("fileless malware techniques", "fileless", 0.65),
     ("supply chain attack techniques", "supply chain", 0.5),
     ("watering hole attack", "attack", 0.5),  # specific attack type may not be in KB
@@ -598,7 +647,6 @@ ATTACK_PATTERN_QUERIES = [
     ("buffer overflow exploitation", "buffer overflow", 0.5),
     ("privilege escalation linux", "privilege escalation", 0.6),
     ("privilege escalation windows", "privilege escalation", 0.6),
-
     # Specific Malware Behaviors
     ("rat remote access trojan", "rat", 0.5),
     ("rootkit detection techniques", "rootkit", 0.6),
@@ -608,7 +656,11 @@ ATTACK_PATTERN_QUERIES = [
     ("botnet c2 communication", "c2", 0.5),  # botnet may not be in text
     ("dropper malware techniques", "malware", 0.5),  # dropper is specialized type
     ("loader malware analysis", "malware", 0.5),  # loader is specialized type
-    ("worm propagation techniques", None, 0.5),  # worm is specific type, semantic match sufficient
+    (
+        "worm propagation techniques",
+        None,
+        0.5,
+    ),  # worm is specific type, semantic match sufficient
 ]
 
 # Source-Specific Queries (100+)
@@ -619,7 +671,6 @@ SOURCE_SPECIFIC_QUERIES = [
     ("sigma rule credential access", "sigma", 0.6),
     ("sigma sysmon detection", "sigma", 0.65),
     ("sigma rule lateral movement", "sigma", 0.6),
-
     # MITRE-specific
     ("mitre attack technique credential", "mitre", 0.65),
     ("mitre defense evasion techniques", "mitre", 0.65),
@@ -627,18 +678,15 @@ SOURCE_SPECIFIC_QUERIES = [
     ("mitre attack cloud techniques", "mitre", 0.6),
     ("mitre car analytics", "car", 0.6),
     ("mitre d3fend countermeasures", "d3fend", 0.6),
-
     # Atomic Red Team
     ("atomic red team test credential", "atomic", 0.65),
     ("atomic test execution techniques", "atomic", 0.65),
     ("atomic red team persistence", "atomic", 0.65),
     ("atomic test defense evasion", "atomic", 0.6),
-
     # Velociraptor
     ("velociraptor artifact collection", "velociraptor", 0.65),
     ("velociraptor windows forensics", "velociraptor", 0.65),
     ("velociraptor hunt artifact", "velociraptor", 0.6),
-
     # Elastic
     ("elastic detection rule", "elastic", 0.65),
     ("elastic siem rule", "elastic", 0.6),
@@ -658,7 +706,11 @@ QA_DERIVED_QUERIES = [
     ("how to detect credential theft", "credential", 0.6),
     ("what is dcsync attack", None, 0.55),
     ("how does mimikatz work", "mimikatz", 0.65),
-    ("what are lolbins", "lolbin", 0.55),  # score threshold adjusted based on actual 0.604
+    (
+        "what are lolbins",
+        "lolbin",
+        0.55,
+    ),  # score threshold adjusted based on actual 0.604
     ("how to detect powershell attacks", "powershell", 0.65),
     ("what is wmi persistence", "wmi", 0.6),
     ("how to detect service installation", "service", 0.6),
@@ -683,6 +735,7 @@ QA_DERIVED_QUERIES = [
 # NLP Test Class (1000+ queries)
 # =============================================================================
 
+
 class TestNLPQueries:
     """NLP query tests with qualitative and quantitative assessment."""
 
@@ -702,8 +755,12 @@ class TestNLPQueries:
     # MITRE Technique Tests (200+)
     # -------------------------------------------------------------------------
 
-    @pytest.mark.parametrize("technique_id,expected_keyword,min_score", MITRE_TECHNIQUE_QUERIES)
-    def test_mitre_technique_query(self, rag_index, technique_id, expected_keyword, min_score):
+    @pytest.mark.parametrize(
+        "technique_id,expected_keyword,min_score", MITRE_TECHNIQUE_QUERIES
+    )
+    def test_mitre_technique_query(
+        self, rag_index, technique_id, expected_keyword, min_score
+    ):
         """Test MITRE technique ID queries return relevant results."""
         results, latency = self._run_search(rag_index, technique_id, top_k=5)
 
@@ -712,10 +769,12 @@ class TestNLPQueries:
             results=results,
             latency_ms=latency,
             expected_in_results=expected_keyword,
-            min_score=min_score
+            min_score=min_score,
         )
 
-        assert passed, f"Query '{technique_id}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        assert passed, (
+            f"Query '{technique_id}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        )
 
     # -------------------------------------------------------------------------
     # Detection Query Tests (200+)
@@ -731,10 +790,12 @@ class TestNLPQueries:
             results=results,
             latency_ms=latency,
             expected_in_results=expected_keyword,
-            min_score=min_score
+            min_score=min_score,
         )
 
-        assert passed, f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        assert passed, (
+            f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        )
 
     # -------------------------------------------------------------------------
     # Forensic Query Tests (150+)
@@ -750,10 +811,12 @@ class TestNLPQueries:
             results=results,
             latency_ms=latency,
             expected_in_results=expected_keyword,
-            min_score=min_score
+            min_score=min_score,
         )
 
-        assert passed, f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        assert passed, (
+            f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        )
 
     # -------------------------------------------------------------------------
     # LOLBin Query Tests (100+)
@@ -769,10 +832,12 @@ class TestNLPQueries:
             results=results,
             latency_ms=latency,
             expected_in_results=expected_keyword,
-            min_score=min_score
+            min_score=min_score,
         )
 
-        assert passed, f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        assert passed, (
+            f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        )
 
     # -------------------------------------------------------------------------
     # IR Scenario Tests (150+)
@@ -788,10 +853,12 @@ class TestNLPQueries:
             results=results,
             latency_ms=latency,
             expected_in_results=expected_keyword,
-            min_score=min_score
+            min_score=min_score,
         )
 
-        assert passed, f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        assert passed, (
+            f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        )
 
     # -------------------------------------------------------------------------
     # Attack Pattern Tests (100+)
@@ -807,10 +874,12 @@ class TestNLPQueries:
             results=results,
             latency_ms=latency,
             expected_in_results=expected_keyword,
-            min_score=min_score
+            min_score=min_score,
         )
 
-        assert passed, f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        assert passed, (
+            f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        )
 
     # -------------------------------------------------------------------------
     # Source-Specific Tests (100+)
@@ -826,10 +895,12 @@ class TestNLPQueries:
             results=results,
             latency_ms=latency,
             expected_in_results=expected_source,
-            min_score=min_score
+            min_score=min_score,
         )
 
-        assert passed, f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        assert passed, (
+            f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        )
 
     # -------------------------------------------------------------------------
     # Q&A Derived Tests (100+)
@@ -845,21 +916,31 @@ class TestNLPQueries:
             results=results,
             latency_ms=latency,
             expected_in_results=expected_keyword,
-            min_score=min_score
+            min_score=min_score,
         )
 
-        assert passed, f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        assert passed, (
+            f"Query '{query}' failed: {self.metrics.failures[-1] if self.metrics.failures else 'unknown'}"
+        )
 
 
 # =============================================================================
 # Additional NLP Queries to reach 1000+
 # =============================================================================
 
+
 # Generate variations of base queries
 def generate_query_variations(base_queries: list) -> list:
     """Generate variations of base queries to expand test coverage."""
     variations = []
-    prefixes = ["how to", "detect", "investigate", "sigma rule for", "what is", "analyzing"]
+    prefixes = [
+        "how to",
+        "detect",
+        "investigate",
+        "sigma rule for",
+        "what is",
+        "analyzing",
+    ]
 
     for query, keyword, score in base_queries[:50]:
         # Only generate a few variations per base query
@@ -883,7 +964,6 @@ ADDITIONAL_QUERIES = [
     ("collection techniques clipboard", "clipboard", 0.5),
     ("exfiltration over dns", "dns", 0.5),
     ("impact techniques ransomware", "ransomware", 0.6),
-
     # Windows-specific
     ("windows defender evasion", "defender", 0.6),
     ("windows firewall bypass", "firewall", 0.5),
@@ -895,7 +975,6 @@ ADDITIONAL_QUERIES = [
     ("windows com object hijack", "com", 0.5),
     ("windows applocker bypass", "applocker", 0.5),
     ("windows constrained language mode bypass", "constrained", 0.5),
-
     # Linux-specific
     ("linux privilege escalation suid", "suid", 0.5),
     ("linux capability abuse", "capability", 0.5),
@@ -907,7 +986,6 @@ ADDITIONAL_QUERIES = [
     ("linux pam backdoor", "pam", 0.5),
     ("linux ssh key persistence", "ssh", 0.5),
     ("linux systemd persistence", "systemd", 0.5),
-
     # Cloud-specific
     ("aws cloudtrail analysis", "cloudtrail", 0.5),
     ("aws iam privilege escalation", "iam", 0.5),
@@ -917,7 +995,6 @@ ADDITIONAL_QUERIES = [
     ("gcp service account abuse", "service account", 0.5),
     ("kubernetes rbac abuse", "rbac", 0.5),
     ("kubernetes secrets theft", "secret", 0.5),
-
     # Tool-specific detection
     ("psexec network detection", "psexec", 0.6),
     ("bloodhound activity detection", "bloodhound", 0.5),
@@ -929,14 +1006,12 @@ ADDITIONAL_QUERIES = [
     ("adrecon enumeration detection", "adrecon", 0.5),
     ("nmap scan detection", "nmap", 0.5),
     ("masscan detection", "masscan", 0.5),
-
     # Threat actor related
     ("apt29 techniques detection", "apt29", 0.5),
     ("apt28 detection methods", "apt28", 0.5),
     ("lazarus group detection", "lazarus", 0.5),
     ("fin7 detection techniques", "fin7", 0.5),
     ("wizard spider detection", "wizard spider", 0.5),
-
     # More event IDs
     ("event id 4648 explicit credential", "4648", 0.6),
     ("event id 4663 file access", "4663", 0.5),
@@ -961,13 +1036,15 @@ class TestAdditionalNLPQueries:
         results = result["results"]
 
         assert results, f"No results for query: {query}"
-        assert results[0]["score"] >= min_score, \
+        assert results[0]["score"] >= min_score, (
             f"Score {results[0]['score']:.3f} below threshold {min_score} for: {query}"
+        )
 
 
 # =============================================================================
 # Edge Case and Security Tests (500+)
 # =============================================================================
+
 
 class TestEdgeCases:
     """Edge case and security tests."""
@@ -1091,12 +1168,10 @@ class TestEdgeCases:
         "пароль credential",
         "كلمة المرور",
         "סיסמה password",
-
         # Emojis
         "🔐 credential access",
         "malware 🦠 detection",
         "🔥 ransomware attack",
-
         # Special characters
         "c&c server",
         "pass-the-hash",
@@ -1106,24 +1181,19 @@ class TestEdgeCases:
         "C:\\Windows\\System32",
         "/etc/passwd",
         "SELECT * FROM users",
-
         # Mixed scripts
         "mimikatz миміkatz",
         "攻击 attack 攻撃",
-
         # Zero-width characters
         "cred\u200bential",  # Zero-width space
-        "pass\u200cword",   # Zero-width non-joiner
-        "te\u200dst",       # Zero-width joiner
-
+        "pass\u200cword",  # Zero-width non-joiner
+        "te\u200dst",  # Zero-width joiner
         # Combining characters
-        "te\u0301st",       # Combining accent
-        "crede\u0308ntial", # Combining diaeresis
-
+        "te\u0301st",  # Combining accent
+        "crede\u0308ntial",  # Combining diaeresis
         # Bidirectional
         "test\u202ereversed",  # Right-to-left override
-        "\u202dcredential",     # Left-to-right override
-
+        "\u202dcredential",  # Left-to-right override
         # Null and control characters (should be handled)
         "test\x00query",
         "query\x1ftest",
@@ -1138,8 +1208,9 @@ class TestEdgeCases:
             assert "results" in result
         except Exception as e:
             # Some unicode might cause issues, but should not crash
-            assert "encoding" in str(e).lower() or "unicode" in str(e).lower(), \
+            assert "encoding" in str(e).lower() or "unicode" in str(e).lower(), (
                 f"Unexpected error for unicode query: {e}"
+            )
 
     # -------------------------------------------------------------------------
     # Injection and Security Tests (100+)
@@ -1257,9 +1328,7 @@ class TestEdgeCases:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                result = loop.run_until_complete(
-                    rag_server._search({"query": query})
-                )
+                result = loop.run_until_complete(rag_server._search({"query": query}))
                 assert "results" in result
             finally:
                 loop.close()
@@ -1325,17 +1394,22 @@ class TestEdgeCases:
 
     def test_platform_filter_variations(self, rag_index):
         """Platform filter case variations."""
-        for platform in ["windows", "Windows", "WINDOWS", "linux", "Linux", "macos", "macOS"]:
+        for platform in [
+            "windows",
+            "Windows",
+            "WINDOWS",
+            "linux",
+            "Linux",
+            "macos",
+            "macOS",
+        ]:
             result = rag_index.search("credential", platform=platform)
             assert "results" in result
 
     def test_combined_filters(self, rag_index):
         """Multiple filters combined should work."""
         result = rag_index.search(
-            "credential",
-            source="sigma",
-            technique="T1003",
-            platform="windows"
+            "credential", source="sigma", technique="T1003", platform="windows"
         )
         assert "results" in result
 
@@ -1345,7 +1419,7 @@ class TestEdgeCases:
         result = rag_index.search(
             "credential",
             source="gtfobins",  # Linux tool
-            platform="windows"
+            platform="windows",
         )
         assert "results" in result
         # May be empty due to conflict
@@ -1371,7 +1445,8 @@ class TestEdgeCases:
 
     def test_model_allowlist_default(self, rag_index):
         """Default model should be in allowlist."""
-        from rag_mcp.index import DEFAULT_MODEL_NAME, ALLOWED_MODELS
+        from rag_mcp.index import ALLOWED_MODELS, DEFAULT_MODEL_NAME
+
         assert DEFAULT_MODEL_NAME in ALLOWED_MODELS
 
     def test_model_allowlist_rejected(self):
@@ -1425,7 +1500,13 @@ class TestEdgeCases:
                 errors.append((query, str(e)))
 
         threads = []
-        queries = ["credential", "lateral movement", "powershell", "persistence", "ransomware"]
+        queries = [
+            "credential",
+            "lateral movement",
+            "powershell",
+            "persistence",
+            "ransomware",
+        ]
 
         for i in range(20):
             query = queries[i % len(queries)]
@@ -1443,38 +1524,44 @@ class TestEdgeCases:
     # Boundary and Numeric Tests (50+)
     # -------------------------------------------------------------------------
 
-    @pytest.mark.parametrize("query", [
-        "0",
-        "1",
-        "-1",
-        "999999999999999999",
-        "-999999999999999999",
-        "3.14159265358979",
-        "1e100",
-        "NaN",
-        "Infinity",
-        "-Infinity",
-        "0x41414141",
-        "0b1010101",
-        "0o777",
-    ])
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "0",
+            "1",
+            "-1",
+            "999999999999999999",
+            "-999999999999999999",
+            "3.14159265358979",
+            "1e100",
+            "NaN",
+            "Infinity",
+            "-Infinity",
+            "0x41414141",
+            "0b1010101",
+            "0o777",
+        ],
+    )
     def test_numeric_queries(self, rag_index, query):
         """Numeric string queries should be handled safely."""
         result = rag_index.search(query, top_k=3)
         assert "results" in result
 
-    @pytest.mark.parametrize("query", [
-        "true",
-        "false",
-        "null",
-        "undefined",
-        "None",
-        "[]",
-        "{}",
-        "()",
-        "''",
-        '""',
-    ])
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "true",
+            "false",
+            "null",
+            "undefined",
+            "None",
+            "[]",
+            "{}",
+            "()",
+            "''",
+            '""',
+        ],
+    )
     def test_boolean_and_empty_queries(self, rag_index, query):
         """Boolean-like and empty structure queries should be safe."""
         result = rag_index.search(query, top_k=3)
@@ -1484,6 +1571,7 @@ class TestEdgeCases:
 # =============================================================================
 # Performance and Stress Tests
 # =============================================================================
+
 
 class TestPerformance:
     """Performance and stress tests."""
@@ -1498,7 +1586,9 @@ class TestPerformance:
             latencies.append(latency)
 
         avg_latency = sum(latencies) / len(latencies)
-        assert avg_latency < 200, f"Average latency {avg_latency:.1f}ms exceeds 200ms threshold"
+        assert avg_latency < 200, (
+            f"Average latency {avg_latency:.1f}ms exceeds 200ms threshold"
+        )
 
     def test_cold_start_latency(self, rag_index):
         """Cold start (new index load) should complete in reasonable time."""
@@ -1526,13 +1616,15 @@ class TestPerformance:
         second_half_avg = sum(latencies[25:]) / 25
 
         # Second half should not be significantly slower (20% tolerance)
-        assert second_half_avg < first_half_avg * 1.2, \
+        assert second_half_avg < first_half_avg * 1.2, (
             f"Performance degradation: {first_half_avg:.1f}ms -> {second_half_avg:.1f}ms"
+        )
 
 
 # =============================================================================
 # Server Integration Tests
 # =============================================================================
+
 
 class TestServerIntegration:
     """Server-level integration tests."""
@@ -1586,16 +1678,17 @@ class TestServerIntegration:
 # Test Summary Report
 # =============================================================================
 
+
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Generate test summary report."""
     total_tests = 0
     passed = 0
     failed = 0
 
-    for report in terminalreporter.stats.get('passed', []):
+    for report in terminalreporter.stats.get("passed", []):
         total_tests += 1
         passed += 1
-    for report in terminalreporter.stats.get('failed', []):
+    for report in terminalreporter.stats.get("failed", []):
         total_tests += 1
         failed += 1
 
@@ -1604,7 +1697,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     terminalreporter.write_line(f"Passed: {passed}")
     terminalreporter.write_line(f"Failed: {failed}")
     if total_tests > 0:
-        terminalreporter.write_line(f"Pass rate: {100*passed/total_tests:.1f}%")
+        terminalreporter.write_line(f"Pass rate: {100 * passed / total_tests:.1f}%")
 
 
 if __name__ == "__main__":

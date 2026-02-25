@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 
 from mcp.server.fastmcp import FastMCP
+from sift_common.instructions import SIFT_MCP as _INSTRUCTIONS
 
 from sift_mcp.audit import AuditWriter
-from sift_mcp.response import build_response
 from sift_mcp.exceptions import SiftError
-from sift_common.instructions import SIFT_MCP as _INSTRUCTIONS
+from sift_mcp.response import build_response
 
 logger = logging.getLogger(__name__)
 
@@ -25,34 +25,46 @@ def create_server() -> FastMCP:
     def list_available_tools(category: str = "") -> list[dict]:
         """List forensic tools available on this SIFT workstation, with availability status."""
         from sift_mcp.tools.discovery import list_available_tools as _list
+
         return _list(category=category or None)
 
     @server.tool()
     def get_tool_help(tool_name: str) -> dict:
         """Get usage information, flags, and caveats for a specific forensic tool."""
         from sift_mcp.tools.discovery import get_tool_help as _help
+
         result = _help(tool_name)
-        audit.log(tool="get_tool_help", params={"tool_name": tool_name}, result_summary=result)
+        audit.log(
+            tool="get_tool_help", params={"tool_name": tool_name}, result_summary=result
+        )
         return result
 
     @server.tool()
     def check_tools(tool_names: list[str] | None = None) -> dict:
         """Check which tools are installed and available on this system."""
         from sift_mcp.tools.discovery import check_tools as _check
+
         return _check(tool_names=tool_names)
 
     @server.tool()
     def suggest_tools(artifact_type: str, question: str = "") -> dict:
         """Suggest tools for analyzing a specific artifact type. Uses forensic-knowledge."""
         from sift_mcp.tools.discovery import suggest_tools as _suggest
+
         result = _suggest(artifact_type, question)
-        audit.log(tool="suggest_tools", params={"artifact_type": artifact_type}, result_summary=result)
+        audit.log(
+            tool="suggest_tools",
+            params={"artifact_type": artifact_type},
+            result_summary=result,
+        )
         return result
 
     # --- Generic Execution ---
 
     @server.tool()
-    def run_command(command: list[str], purpose: str, timeout: int = 0, save_output: bool = False) -> dict:
+    def run_command(
+        command: list[str], purpose: str, timeout: int = 0, save_output: bool = False
+    ) -> dict:
         """Execute a forensic tool on this SIFT workstation.
 
         Most SIFT-installed tools can be executed. A small set of system-destructive
@@ -66,8 +78,9 @@ def create_server() -> FastMCP:
             save_output: Save stdout/stderr to files with SHA-256 hashes.
         """
         import time
-        from sift_mcp.tools.generic import run_command as _run
+
         from sift_mcp.catalog import get_tool_def
+        from sift_mcp.tools.generic import run_command as _run
 
         start = time.monotonic()
         evidence_id = audit._next_evidence_id()
@@ -104,7 +117,9 @@ def create_server() -> FastMCP:
                 exit_code=exec_result["exit_code"],
                 command=command,
                 fk_tool_name=fk_name,
-                output_files=[exec_result["output_file"]] if exec_result.get("output_file") else None,
+                output_files=[exec_result["output_file"]]
+                if exec_result.get("output_file")
+                else None,
                 extractions=exec_result.get("extractions"),
             )
 
@@ -183,6 +198,7 @@ def create_server() -> FastMCP:
     def list_missing_tools(category: str = "") -> list[dict]:
         """List catalog tools not currently installed on this system."""
         from sift_mcp.tools.discovery import list_available_tools as _list
+
         all_tools = _list(category=category or None)
         return [t for t in all_tools if not t.get("available", False)]
 

@@ -15,10 +15,18 @@ def get_guidance(tool_name: str) -> dict:
     if result is None:
         # List available tools that have interpretations
         available = []
-        for name in ("check_file", "check_process_tree", "search", "search_threat_intel"):
+        for name in (
+            "check_file",
+            "check_process_tree",
+            "search",
+            "search_threat_intel",
+        ):
             if loader.get_tool_interpretation(name) is not None:
                 available.append(name)
-        return {"error": f"No guidance available for '{tool_name}'", "available": sorted(available)}
+        return {
+            "error": f"No guidance available for '{tool_name}'",
+            "available": sorted(available),
+        }
     return result
 
 
@@ -28,7 +36,10 @@ def get_false_positives(tool_name: str, finding_type: str) -> dict:
     if result is None:
         return {
             "error": f"No false positive context for ({tool_name}, {finding_type})",
-            "available": ["check_file/unknown_file", "check_process_tree/unexpected_parent"],
+            "available": [
+                "check_file/unknown_file",
+                "check_process_tree/unexpected_parent",
+            ],
         }
     return result
 
@@ -41,5 +52,10 @@ def get_corroboration(finding_type: str) -> list[dict]:
         for ft in ("persistence", "lateral_movement", "malware", "credential_access"):
             if loader.get_corroboration(ft) is not None:
                 available.append(ft)
-        return [{"error": f"No corroboration map for '{finding_type}'", "available": sorted(available)}]
+        return [
+            {
+                "error": f"No corroboration map for '{finding_type}'",
+                "available": sorted(available),
+            }
+        ]
     return result

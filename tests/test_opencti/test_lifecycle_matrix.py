@@ -6,53 +6,46 @@ Covers IV1-IV15, RH1-RH8, RL1-RL6, LC1-LC10, LO1-LO9.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import os
 import sys
 import threading
 import time
 from io import StringIO
 from time import monotonic
-from typing import Any
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-
+from opencti_mcp.client import RateLimiter
 from opencti_mcp.config import Config, SecretStr
 from opencti_mcp.errors import (
-    ValidationError,
-    RateLimitError,
-    ConnectionError as OCTIConnectionError,
-    QueryError,
     ConfigurationError,
-    OpenCTIMCPError,
+    RateLimitError,
+    ValidationError,
 )
+from opencti_mcp.errors import (
+    ConnectionError as OCTIConnectionError,
+)
+from opencti_mcp.logging import StructuredFormatter
+from opencti_mcp.server import OpenCTIMCPServer
 from opencti_mcp.validation import (
+    MAX_DESCRIPTION_LENGTH,
+    MAX_IOC_LENGTH,
+    MAX_LIMIT,
+    MAX_QUERY_LENGTH,
+    MAX_RESPONSE_SIZE,
+    sanitize_for_log,
+    truncate_response,
+    validate_ioc,
     validate_length,
     validate_limit,
-    validate_ioc,
     validate_uuid,
-    validate_no_null_bytes,
-    validate_offset,
-    truncate_response,
-    truncate_string,
-    sanitize_for_log,
-    MAX_QUERY_LENGTH,
-    MAX_IOC_LENGTH,
-    MAX_RESPONSE_SIZE,
-    MAX_DESCRIPTION_LENGTH,
-    MAX_LIMIT,
 )
-from opencti_mcp.client import RateLimiter
-from opencti_mcp.server import OpenCTIMCPServer
-from opencti_mcp.logging import StructuredFormatter, setup_logging
-
 
 # =============================================================================
 # Helper: create a mock config
 # =============================================================================
+
 
 def _make_config(**overrides) -> Config:
     defaults = dict(
@@ -68,6 +61,7 @@ def _make_config(**overrides) -> Config:
 # #############################################################################
 # INPUT VALIDATION  (IV1 - IV15)
 # #############################################################################
+
 
 class TestInputValidation:
     """IV1-IV15: Validates all input sanitization and rejection paths."""
@@ -270,12 +264,15 @@ class TestInputValidation:
 # RESPONSE HANDLING (RH1 - RH8)
 # #############################################################################
 
+
 class TestResponseHandling:
     """RH1-RH8: Response formatting, truncation, and error handling."""
 
     # RH1 ------------------------------------------------------------------
     @pytest.mark.asyncio
-    async def test_rh1_normal_search_response_formatted_as_textcontent_json(self, mock_server):
+    async def test_rh1_normal_search_response_formatted_as_textcontent_json(
+        self, mock_server
+    ):
         """RH1: Normal search response is formatted as list of TextContent with JSON."""
         result = await mock_server._dispatch_tool(
             "search_threat_intel", {"query": "APT29", "limit": 5}
@@ -291,10 +288,7 @@ class TestResponseHandling:
     def test_rh2_large_response_truncated(self):
         """RH2: Large response (approaching MAX_RESPONSE_SIZE 1MB) gets truncation metadata."""
         # Create a response with a huge description
-        large_data = {
-            "description": "x" * (MAX_RESPONSE_SIZE + 100),
-            "name": "test"
-        }
+        large_data = {"description": "x" * (MAX_RESPONSE_SIZE + 100), "name": "test"}
         result = truncate_response(large_data)
         # Description should be truncated
         assert len(result["description"]) <= MAX_DESCRIPTION_LENGTH
@@ -313,11 +307,7 @@ class TestResponseHandling:
     # RH4 ------------------------------------------------------------------
     def test_rh4_description_fields_truncated_if_very_long(self):
         """RH4: Description fields in results are truncated if very long."""
-        data = {
-            "results": [
-                {"name": "test", "description": "a" * 1000}
-            ]
-        }
+        data = {"results": [{"name": "test", "description": "a" * 1000}]}
         result = truncate_response(data)
         desc = result["results"][0]["description"]
         assert len(desc) <= MAX_DESCRIPTION_LENGTH
@@ -347,12 +337,14 @@ class TestResponseHandling:
     def test_rh7_generic_exception_says_internal_error(self):
         """RH7: Error response for generic Exception says 'unexpected error' (no details)."""
         error_response = OpenCTIMCPServer._error_response(
-            "internal_error",
-            "An unexpected error occurred. Check server logs."
+            "internal_error", "An unexpected error occurred. Check server logs."
         )
         body = json.loads(error_response[0].text)
         assert body["error"] == "internal_error"
-        assert "unexpected error" in body["message"].lower() or "internal" in body["message"].lower()
+        assert (
+            "unexpected error" in body["message"].lower()
+            or "internal" in body["message"].lower()
+        )
 
     # RH8 ------------------------------------------------------------------
     @pytest.mark.asyncio
@@ -375,8 +367,7 @@ class TestResponseHandling:
         # The actual call_tool handler catches Exception and returns safe message
         # Let's test _error_response directly
         response = OpenCTIMCPServer._error_response(
-            "internal_error",
-            "An unexpected error occurred. Check server logs."
+            "internal_error", "An unexpected error occurred. Check server logs."
         )
         body = json.loads(response[0].text)
         assert "Traceback" not in body["message"]
@@ -386,6 +377,7 @@ class TestResponseHandling:
 # #############################################################################
 # RATE LIMITING (RL1 - RL6)
 # #############################################################################
+
 
 class TestRateLimiting:
     """RL1-RL6: Rate limiter behavior, boundaries, and thread safety."""
@@ -473,6 +465,7 @@ class TestRateLimiting:
 # STARTUP AND LIFECYCLE (LC1 - LC10)
 # #############################################################################
 
+
 class TestStartupLifecycle:
     """LC1-LC10: Server startup, configuration, and lifecycle management."""
 
@@ -483,8 +476,12 @@ class TestStartupLifecycle:
     @patch("opencti_mcp.__main__.setup_logging")
     @patch("opencti_mcp.__main__.get_feature_flags")
     def test_lc1_main_valid_config_starts_without_error(
-        self, mock_flags, mock_setup_log, mock_config_load,
-        mock_server_cls, mock_asyncio
+        self,
+        mock_flags,
+        mock_setup_log,
+        mock_config_load,
+        mock_server_cls,
+        mock_asyncio,
     ):
         """LC1: main() with valid config starts without error."""
         config = _make_config()
@@ -497,6 +494,7 @@ class TestStartupLifecycle:
         mock_server_cls.return_value = mock_server_instance
 
         from opencti_mcp.__main__ import main
+
         main()
 
         mock_config_load.assert_called_once()
@@ -506,13 +504,16 @@ class TestStartupLifecycle:
     # LC2 ------------------------------------------------------------------
     @patch("opencti_mcp.__main__.setup_logging")
     @patch("opencti_mcp.__main__.Config.load")
-    def test_lc2_missing_token_exits_with_code_1(self, mock_config_load, mock_setup_log):
+    def test_lc2_missing_token_exits_with_code_1(
+        self, mock_config_load, mock_setup_log
+    ):
         """LC2: main() with missing token exits with code 1 and clear message."""
         mock_config_load.side_effect = ConfigurationError(
             "OpenCTI API token not found. Set OPENCTI_TOKEN environment variable."
         )
 
         from opencti_mcp.__main__ import main
+
         with pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 1
@@ -520,13 +521,15 @@ class TestStartupLifecycle:
     # LC3 ------------------------------------------------------------------
     def test_lc3_startup_validation_connects_reports_version(self, mock_server):
         """LC3: Startup validation connects and reports version (mock)."""
-        mock_server.client.validate_startup = Mock(return_value={
-            "valid": True,
-            "warnings": [],
-            "errors": [],
-            "opencti_version": "6.4.2",
-            "platform_version": "6.4.2",
-        })
+        mock_server.client.validate_startup = Mock(
+            return_value={
+                "valid": True,
+                "warnings": [],
+                "errors": [],
+                "opencti_version": "6.4.2",
+                "platform_version": "6.4.2",
+            }
+        )
         result = mock_server.client.validate_startup()
         assert result["valid"] is True
         assert result["opencti_version"] == "6.4.2"
@@ -538,8 +541,12 @@ class TestStartupLifecycle:
     @patch("opencti_mcp.__main__.setup_logging")
     @patch("opencti_mcp.__main__.get_feature_flags")
     def test_lc4_startup_validation_failure_is_warning_not_fatal(
-        self, mock_flags, mock_setup_log, mock_config_load,
-        mock_server_cls, mock_asyncio
+        self,
+        mock_flags,
+        mock_setup_log,
+        mock_config_load,
+        mock_server_cls,
+        mock_asyncio,
     ):
         """LC4: Startup validation failure is WARNING, not fatal (server still starts)."""
         config = _make_config()
@@ -566,6 +573,7 @@ class TestStartupLifecycle:
             mock_client_cls.return_value = mock_client
 
             from opencti_mcp.__main__ import main
+
             # Should NOT raise; server should still start
             main()
 
@@ -579,8 +587,12 @@ class TestStartupLifecycle:
     @patch("opencti_mcp.__main__.setup_logging")
     @patch("opencti_mcp.__main__.get_feature_flags")
     def test_lc5_ff_startup_validation_false_skips_validation(
-        self, mock_flags, mock_setup_log, mock_config_load,
-        mock_server_cls, mock_asyncio
+        self,
+        mock_flags,
+        mock_setup_log,
+        mock_config_load,
+        mock_server_cls,
+        mock_asyncio,
     ):
         """LC5: FF_STARTUP_VALIDATION=false skips validation entirely."""
         config = _make_config()
@@ -624,6 +636,7 @@ class TestStartupLifecycle:
                 mock_asyncio.run.side_effect = KeyboardInterrupt()
 
                 from opencti_mcp.__main__ import main
+
                 # Should NOT raise, should exit cleanly
                 main()  # No exception should propagate
 
@@ -646,6 +659,7 @@ class TestStartupLifecycle:
             mock_server_cls.side_effect = RuntimeError("Unexpected internal error")
 
             from opencti_mcp.__main__ import main
+
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 1
@@ -703,7 +717,9 @@ class TestStartupLifecycle:
         # Set health cache to a value
         client._health_cache = (True, monotonic())
         # Set circuit breaker to open
-        client._circuit_breaker._state = client._circuit_breaker._state.__class__("open")
+        client._circuit_breaker._state = client._circuit_breaker._state.__class__(
+            "open"
+        )
 
         client.force_reconnect()
 
@@ -716,6 +732,7 @@ class TestStartupLifecycle:
 # #############################################################################
 # LOGGING AND OBSERVABILITY (LO1 - LO9)
 # #############################################################################
+
 
 class TestLoggingObservability:
     """LO1-LO9: Structured logging, security, and observability."""

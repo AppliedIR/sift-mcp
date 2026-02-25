@@ -13,8 +13,8 @@ class TestKnownGoodDB:
         results = db.lookup_by_path("\\windows\\system32\\cmd.exe")
         assert len(results) > 0  # Returns list of matches
         # v2 schema: lookup_by_path returns list of dicts with path_normalized, os_versions
-        assert 'path_normalized' in results[0]
-        assert 'os_versions' in results[0]
+        assert "path_normalized" in results[0]
+        assert "os_versions" in results[0]
         db.close()
 
     def test_lookup_by_path_case_insensitive(self, known_good_db_instance):
@@ -40,8 +40,8 @@ class TestKnownGoodDB:
         results = db.lookup_by_filename("cmd.exe")
         assert len(results) > 0
         # v2 schema returns file_id, path_normalized, directory, os_versions
-        assert 'path_normalized' in results[0]
-        assert 'cmd.exe' in results[0]['path_normalized']
+        assert "path_normalized" in results[0]
+        assert "cmd.exe" in results[0]["path_normalized"]
         db.close()
 
     def test_lookup_by_filename_case_insensitive(self, known_good_db_instance):
@@ -83,7 +83,7 @@ class TestKnownGoodDB:
         # Full MD5 hash from fixture: 'abc123' + '0' * 26
         results = db.lookup_hash("abc123" + "0" * 26)
         assert len(results) > 0
-        assert results[0]['filename'] == 'cmd.exe'
+        assert results[0]["filename"] == "cmd.exe"
         db.close()
 
     def test_lookup_hash_sha1(self, known_good_db_instance):
@@ -108,9 +108,9 @@ class TestKnownGoodDB:
         db = known_good_db_instance
         db.connect()
         stats = db.get_stats()
-        assert 'files' in stats
-        assert stats['files'] > 0
-        assert 'hashes' in stats  # v2 schema has separate hash table
+        assert "files" in stats
+        assert stats["files"] > 0
+        assert "hashes" in stats  # v2 schema has separate hash table
         db.close()
 
 
@@ -122,6 +122,7 @@ class TestKnownGoodDBWithRealData:
         """Use the real known_good.db if it exists."""
         import sqlite3
         from pathlib import Path
+
         from windows_triage.db.known_good import KnownGoodDB
 
         db_path = Path(__file__).parent.parent / "data" / "known_good.db"
@@ -130,7 +131,9 @@ class TestKnownGoodDBWithRealData:
 
         # Check if v2 schema (has baseline_hashes table)
         conn = sqlite3.connect(db_path)
-        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='baseline_hashes'")
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='baseline_hashes'"
+        )
         has_hashes_table = cursor.fetchone() is not None
         conn.close()
         if not has_hashes_table:

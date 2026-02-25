@@ -28,9 +28,10 @@ import statistics
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -40,47 +41,50 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Probe settings
-DEFAULT_PROBE_INTERVAL = 60        # Seconds between probes
-MIN_PROBE_INTERVAL = 10            # Minimum probe interval
-MAX_PROBE_INTERVAL = 300           # Maximum probe interval
+DEFAULT_PROBE_INTERVAL = 60  # Seconds between probes
+MIN_PROBE_INTERVAL = 10  # Minimum probe interval
+MAX_PROBE_INTERVAL = 300  # Maximum probe interval
 
 # Metric windows
-LATENCY_WINDOW_SIZE = 100          # Number of samples to keep
-SUCCESS_WINDOW_SIZE = 50           # Number of success/fail samples
+LATENCY_WINDOW_SIZE = 100  # Number of samples to keep
+SUCCESS_WINDOW_SIZE = 50  # Number of success/fail samples
 
 # Adaptive thresholds
-MIN_TIMEOUT = 5                    # Minimum timeout (seconds)
-MAX_TIMEOUT = 300                  # Maximum timeout (seconds)
-TIMEOUT_PERCENTILE = 95            # Use P95 latency for timeout
-TIMEOUT_BUFFER_MULTIPLIER = 2.0   # Multiply P95 by this for timeout
+MIN_TIMEOUT = 5  # Minimum timeout (seconds)
+MAX_TIMEOUT = 300  # Maximum timeout (seconds)
+TIMEOUT_PERCENTILE = 95  # Use P95 latency for timeout
+TIMEOUT_BUFFER_MULTIPLIER = 2.0  # Multiply P95 by this for timeout
 
-MIN_RETRY_DELAY = 0.5              # Minimum retry delay (seconds)
-MAX_RETRY_DELAY = 60.0             # Maximum retry delay (seconds)
+MIN_RETRY_DELAY = 0.5  # Minimum retry delay (seconds)
+MAX_RETRY_DELAY = 60.0  # Maximum retry delay (seconds)
 
 # Latency classifications (milliseconds)
-LATENCY_EXCELLENT = 100            # < 100ms = excellent
-LATENCY_GOOD = 300                 # < 300ms = good
-LATENCY_ACCEPTABLE = 1000          # < 1s = acceptable
-LATENCY_POOR = 3000                # < 3s = poor
-                                   # >= 3s = critical
+LATENCY_EXCELLENT = 100  # < 100ms = excellent
+LATENCY_GOOD = 300  # < 300ms = good
+LATENCY_ACCEPTABLE = 1000  # < 1s = acceptable
+LATENCY_POOR = 3000  # < 3s = poor
+# >= 3s = critical
 
 
 # =============================================================================
 # Data Classes
 # =============================================================================
 
+
 @dataclass
 class ProbeResult:
     """Result of a single probe."""
+
     timestamp: float
     latency_ms: float
     success: bool
-    error_type: Optional[str] = None
+    error_type: str | None = None
 
 
 @dataclass
 class LatencyStats:
     """Latency statistics from collected samples."""
+
     sample_count: int
     min_ms: float
     max_ms: float
@@ -108,6 +112,7 @@ class LatencyStats:
 @dataclass
 class AdaptiveConfig:
     """Dynamically computed configuration based on metrics."""
+
     recommended_timeout: int
     recommended_retry_delay: float
     recommended_max_retries: int
@@ -118,8 +123,8 @@ class AdaptiveConfig:
     probe_count: int
 
     # Raw stats for debugging
-    latency_stats: Optional[LatencyStats] = None
-    last_probe_time: Optional[float] = None
+    latency_stats: LatencyStats | None = None
+    last_probe_time: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -132,13 +137,16 @@ class AdaptiveConfig:
             "success_rate": round(self.success_rate, 3),
             "probe_count": self.probe_count,
             "latency_p95_ms": self.latency_stats.p95_ms if self.latency_stats else None,
-            "latency_mean_ms": self.latency_stats.mean_ms if self.latency_stats else None,
+            "latency_mean_ms": self.latency_stats.mean_ms
+            if self.latency_stats
+            else None,
         }
 
 
 # =============================================================================
 # Sliding Window Metrics
 # =============================================================================
+
 
 class SlidingWindowMetrics:
     """Thread-safe sliding window for metric collection."""
@@ -167,7 +175,7 @@ class SlidingWindowMetrics:
         with self._lock:
             self._samples.clear()
 
-    def percentile(self, p: float) -> Optional[float]:
+    def percentile(self, p: float) -> float | None:
         """Calculate percentile (0-100)."""
         samples = self.get_samples()
         if not samples:
@@ -181,7 +189,7 @@ class SlidingWindowMetrics:
 
         return sorted_samples[lower] * (1 - weight) + sorted_samples[upper] * weight
 
-    def statistics(self) -> Optional[LatencyStats]:
+    def statistics(self) -> LatencyStats | None:
         """Calculate comprehensive statistics."""
         samples = self.get_samples()
         if len(samples) < 2:
@@ -238,6 +246,7 @@ class SuccessRateTracker:
 # Adaptive Metrics Engine
 # =============================================================================
 
+
 class AdaptiveMetrics:
     """Adaptive metrics collection and configuration recommendation.
 
@@ -253,15 +262,17 @@ class AdaptiveMetrics:
         latency_window: int = LATENCY_WINDOW_SIZE,
         success_window: int = SUCCESS_WINDOW_SIZE,
     ) -> None:
-        self.probe_interval = max(MIN_PROBE_INTERVAL, min(probe_interval, MAX_PROBE_INTERVAL))
+        self.probe_interval = max(
+            MIN_PROBE_INTERVAL, min(probe_interval, MAX_PROBE_INTERVAL)
+        )
 
         self._latency_metrics = SlidingWindowMetrics(latency_window)
         self._success_tracker = SuccessRateTracker(success_window)
 
-        self._probe_thread: Optional[threading.Thread] = None
+        self._probe_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
-        self._last_probe_time: Optional[float] = None
-        self._probe_func: Optional[Callable[[], ProbeResult]] = None
+        self._last_probe_time: float | None = None
+        self._probe_func: Callable[[], ProbeResult] | None = None
 
         # Lock for probe results
         self._lock = threading.Lock()
@@ -279,7 +290,9 @@ class AdaptiveMetrics:
         else:
             self._success_tracker.record_failure()
 
-    def record_request(self, start_time: float, success: bool, error_type: Optional[str] = None) -> None:
+    def record_request(
+        self, start_time: float, success: bool, error_type: str | None = None
+    ) -> None:
         """Record a request with timing.
 
         Args:
@@ -296,14 +309,16 @@ class AdaptiveMetrics:
             self._success_tracker.record_failure()
 
         with self._lock:
-            self._recent_probes.append(ProbeResult(
-                timestamp=time.time(),
-                latency_ms=latency_ms,
-                success=success,
-                error_type=error_type,
-            ))
+            self._recent_probes.append(
+                ProbeResult(
+                    timestamp=time.time(),
+                    latency_ms=latency_ms,
+                    success=success,
+                    error_type=error_type,
+                )
+            )
 
-    def get_latency_stats(self) -> Optional[LatencyStats]:
+    def get_latency_stats(self) -> LatencyStats | None:
         """Get current latency statistics."""
         return self._latency_metrics.statistics()
 
@@ -339,7 +354,9 @@ class AdaptiveMetrics:
 
         # Calculate adaptive retry delay based on latency variability
         # Higher variability = longer initial delay
-        retry_delay = max(MIN_RETRY_DELAY, min(stats.p95_ms / 1000 * 0.5, MAX_RETRY_DELAY))
+        retry_delay = max(
+            MIN_RETRY_DELAY, min(stats.p95_ms / 1000 * 0.5, MAX_RETRY_DELAY)
+        )
 
         # Adjust retries based on success rate
         if success_rate >= 0.99:
@@ -355,11 +372,11 @@ class AdaptiveMetrics:
         if success_rate >= 0.99:
             circuit_threshold = 10  # Very reliable - high tolerance
         elif success_rate >= 0.95:
-            circuit_threshold = 5   # Good - normal threshold
+            circuit_threshold = 5  # Good - normal threshold
         elif success_rate >= 0.90:
-            circuit_threshold = 3   # Issues - lower threshold
+            circuit_threshold = 3  # Issues - lower threshold
         else:
-            circuit_threshold = 2   # Unreliable - trip quickly
+            circuit_threshold = 2  # Unreliable - trip quickly
 
         return AdaptiveConfig(
             recommended_timeout=timeout,
@@ -380,8 +397,12 @@ class AdaptiveMetrics:
         """
         with self._lock:
             # Clear existing samples by creating new instances with same window sizes
-            latency_window = self._latency_metrics._samples.maxlen or LATENCY_WINDOW_SIZE
-            success_window = self._success_tracker._results.maxlen or SUCCESS_WINDOW_SIZE
+            latency_window = (
+                self._latency_metrics._samples.maxlen or LATENCY_WINDOW_SIZE
+            )
+            success_window = (
+                self._success_tracker._results.maxlen or SUCCESS_WINDOW_SIZE
+            )
             self._latency_metrics = SlidingWindowMetrics(latency_window)
             self._success_tracker = SuccessRateTracker(success_window)
             self._recent_probes.clear()
@@ -411,7 +432,9 @@ class AdaptiveMetrics:
 
     def _probe_loop(self, client: Any) -> None:
         """Background probe loop."""
-        logger.info(f"Starting adaptive metrics probe (interval: {self.probe_interval}s)")
+        logger.info(
+            f"Starting adaptive metrics probe (interval: {self.probe_interval}s)"
+        )
 
         while not self._stop_event.is_set():
             try:
@@ -459,7 +482,7 @@ class AdaptiveMetrics:
             target=self._probe_loop,
             args=(client,),
             daemon=True,
-            name="opencti-adaptive-probe"
+            name="opencti-adaptive-probe",
         )
         self._probe_thread.start()
 
@@ -488,12 +511,15 @@ class AdaptiveMetrics:
         recent = self.get_recent_probes()
 
         return {
-            "probing_active": self._probe_thread is not None and self._probe_thread.is_alive(),
+            "probing_active": self._probe_thread is not None
+            and self._probe_thread.is_alive(),
             "probe_interval": self.probe_interval,
             "sample_count": self._latency_metrics.count(),
             "last_probe_time": datetime.fromtimestamp(
                 self._last_probe_time, tz=timezone.utc
-            ).isoformat() if self._last_probe_time else None,
+            ).isoformat()
+            if self._last_probe_time
+            else None,
             "recent_probe_results": [
                 {
                     "latency_ms": round(p.latency_ms, 1),
@@ -510,7 +536,7 @@ class AdaptiveMetrics:
 # Global Metrics Instance
 # =============================================================================
 
-_global_metrics: Optional[AdaptiveMetrics] = None
+_global_metrics: AdaptiveMetrics | None = None
 _global_lock = threading.Lock()
 
 

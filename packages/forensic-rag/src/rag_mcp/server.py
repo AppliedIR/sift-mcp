@@ -32,21 +32,18 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
-import sys
-from datetime import datetime, timezone
 from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
+from sift_common.instructions import FORENSIC_RAG as _INSTRUCTIONS
 
 from .audit import AuditWriter, resolve_examiner
 from .index import RAGIndex
 from .oplog import setup_logging
-from .tool_metadata import TOOL_METADATA, DEFAULT_METADATA
+from .tool_metadata import DEFAULT_METADATA, TOOL_METADATA
 from .utils import MAX_TOP_K
-from sift_common.instructions import FORENSIC_RAG as _INSTRUCTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -78,14 +75,19 @@ class RAGServer:
     @staticmethod
     def _error_response(error_code: str, message: str) -> list[TextContent]:
         """Format error response consistently."""
-        return [TextContent(
-            type="text",
-            text=json.dumps({"error": error_code, "message": message})
-        )]
+        return [
+            TextContent(
+                type="text", text=json.dumps({"error": error_code, "message": message})
+            )
+        ]
 
     def _wrap_response(
-        self, tool_name: str, arguments: dict[str, Any], result: dict[str, Any],
-        evidence_id: str | None = None, elapsed_ms: float | None = None,
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        result: dict[str, Any],
+        evidence_id: str | None = None,
+        elapsed_ms: float | None = None,
     ) -> dict[str, Any]:
         """Wrap tool result with evidence ID, caveats, and audit trail.
 
@@ -93,8 +95,11 @@ class RAGServer:
         """
         summary = result if "error" not in result else {"error": result["error"]}
         evidence_id = self._audit.log(
-            tool=tool_name, params=arguments, result_summary=summary,
-            evidence_id=evidence_id, elapsed_ms=elapsed_ms,
+            tool=tool_name,
+            params=arguments,
+            result_summary=summary,
+            evidence_id=evidence_id,
+            elapsed_ms=elapsed_ms,
         )
         meta = TOOL_METADATA.get(tool_name, DEFAULT_METADATA)
 
@@ -129,19 +134,19 @@ class RAGServer:
                                     "Natural language search query. Examples: "
                                     "'credential dumping detection', 'lateral movement windows', "
                                     "'T1003' (MITRE technique ID)"
-                                )
+                                ),
                             },
                             "top_k": {
                                 "type": "integer",
                                 "description": "Number of results to return (default: 5, max: 50)",
-                                "default": 5
+                                "default": 5,
                             },
                             "source": {
                                 "type": "string",
                                 "description": (
                                     "Filter by source (partial/substring match). Examples: "
                                     "'sigma', 'mitre', 'atomic'. Use source_ids for exact matching."
-                                )
+                                ),
                             },
                             "source_ids": {
                                 "type": "array",
@@ -150,20 +155,20 @@ class RAGServer:
                                     "Filter by exact source IDs (deterministic). Examples: "
                                     "['sigma', 'mitre_attack'], ['velociraptor', 'kape']. "
                                     "Use list_sources to see valid IDs. Takes precedence over 'source'."
-                                )
+                                ),
                             },
                             "technique": {
                                 "type": "string",
-                                "description": "Filter by MITRE technique ID (e.g., 'T1003', 'T1059.001')"
+                                "description": "Filter by MITRE technique ID (e.g., 'T1003', 'T1059.001')",
                             },
                             "platform": {
                                 "type": "string",
                                 "description": "Filter by platform",
-                                "enum": ["windows", "linux", "macos"]
-                            }
+                                "enum": ["windows", "linux", "macos"],
+                            },
                         },
-                        "required": ["query"]
-                    }
+                        "required": ["query"],
+                    },
                 ),
                 Tool(
                     name="list_sources",
@@ -171,24 +176,19 @@ class RAGServer:
                         "List all available knowledge sources in the RAG index. "
                         "Use this to discover what sources can be used with the 'source' filter."
                     ),
-                    inputSchema={
-                        "type": "object",
-                        "properties": {}
-                    }
+                    inputSchema={"type": "object", "properties": {}},
                 ),
                 Tool(
                     name="get_stats",
                     description="Get RAG index statistics (document count, sources, model info).",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {}
-                    }
-                )
+                    inputSchema={"type": "object", "properties": {}},
+                ),
             ]
 
         @self.server.call_tool()
         async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             import time
+
             evidence_id = self._audit._next_evidence_id()
             start = time.monotonic()
             try:
@@ -203,31 +203,44 @@ class RAGServer:
 
                 elapsed_ms = (time.monotonic() - start) * 1000
                 result = self._wrap_response(
-                    name, arguments, result,
-                    evidence_id=evidence_id, elapsed_ms=elapsed_ms,
+                    name,
+                    arguments,
+                    result,
+                    evidence_id=evidence_id,
+                    elapsed_ms=elapsed_ms,
                 )
 
-                return [TextContent(
-                    type="text",
-                    text=json.dumps(result, indent=2, default=str)
-                )]
+                return [
+                    TextContent(
+                        type="text", text=json.dumps(result, indent=2, default=str)
+                    )
+                ]
 
             except ValueError as e:
                 elapsed_ms = (time.monotonic() - start) * 1000
                 logger.warning(f"Tool {name} validation failed: {e}")
                 error_result = {"error": "validation_error", "message": str(e)}
                 error_result = self._wrap_response(
-                    name, arguments, error_result,
-                    evidence_id=evidence_id, elapsed_ms=elapsed_ms,
+                    name,
+                    arguments,
+                    error_result,
+                    evidence_id=evidence_id,
+                    elapsed_ms=elapsed_ms,
                 )
                 return [TextContent(type="text", text=json.dumps(error_result))]
-            except Exception as e:
+            except Exception:
                 elapsed_ms = (time.monotonic() - start) * 1000
                 logger.exception(f"Tool {name} internal error")
-                error_result = {"error": "internal_error", "message": "An unexpected error occurred. Check server logs."}
+                error_result = {
+                    "error": "internal_error",
+                    "message": "An unexpected error occurred. Check server logs.",
+                }
                 error_result = self._wrap_response(
-                    name, arguments, error_result,
-                    evidence_id=evidence_id, elapsed_ms=elapsed_ms,
+                    name,
+                    arguments,
+                    error_result,
+                    evidence_id=evidence_id,
+                    elapsed_ms=elapsed_ms,
                 )
                 return [TextContent(type="text", text=json.dumps(error_result))]
 
@@ -282,15 +295,11 @@ class RAGServer:
                 source=source,
                 source_ids=source_ids,
                 technique=technique,
-                platform=platform
-            )
+                platform=platform,
+            ),
         )
 
-        response = {
-            "status": "ok",
-            "query": query,
-            "results": search_result["results"]
-        }
+        response = {"status": "ok", "query": query, "results": search_result["results"]}
 
         # Add context about filters
         if search_result["source_filter"]:
@@ -313,17 +322,14 @@ class RAGServer:
         return {
             "status": "ok",
             "sources": self.index.available_sources,
-            "count": len(self.index.available_sources)
+            "count": len(self.index.available_sources),
         }
 
     async def _get_stats(self) -> dict[str, Any]:
         """Get index statistics."""
         loop = asyncio.get_running_loop()
         stats = await loop.run_in_executor(None, self.index.get_stats)
-        return {
-            "status": "ok",
-            **stats
-        }
+        return {"status": "ok", **stats}
 
     async def run(self) -> None:
         """Run the MCP server."""
@@ -335,9 +341,7 @@ class RAGServer:
 
         async with stdio_server() as (read_stream, write_stream):
             await self.server.run(
-                read_stream,
-                write_stream,
-                self.server.create_initialization_options()
+                read_stream, write_stream, self.server.create_initialization_options()
             )
 
 

@@ -34,20 +34,17 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-import urllib.request
 import urllib.error
+import urllib.request
 import zipfile
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 # Add src to path
 src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -56,59 +53,59 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 SOURCES = {
-    'files': {
-        'name': 'VanillaWindowsReference',
-        'db': 'known_good.db',
-        'db_source_key': 'vanilla_windows_reference',
-        'repo': 'AndrewRathbun/VanillaWindowsReference',
-        'url': 'https://github.com/AndrewRathbun/VanillaWindowsReference.git',
-        'import_script': 'import_files.py',
-        'file_glob': '*.csv',
-        'description': 'Windows file baselines (~2.6M paths)',
+    "files": {
+        "name": "VanillaWindowsReference",
+        "db": "known_good.db",
+        "db_source_key": "vanilla_windows_reference",
+        "repo": "AndrewRathbun/VanillaWindowsReference",
+        "url": "https://github.com/AndrewRathbun/VanillaWindowsReference.git",
+        "import_script": "import_files.py",
+        "file_glob": "*.csv",
+        "description": "Windows file baselines (~2.6M paths)",
     },
-    'registry': {
-        'name': 'VanillaWindowsRegistryHives',
-        'db': 'known_good_registry.db',
-        'db_source_key': 'vanilla_windows_registry',
-        'repo': 'AndrewRathbun/VanillaWindowsRegistryHives',
-        'url': 'https://github.com/AndrewRathbun/VanillaWindowsRegistryHives.git',
-        'import_script': 'import_registry_full.py',
-        'file_glob': '*_ROOT.json',
-        'description': 'Full registry baseline (optional, 12GB)',
+    "registry": {
+        "name": "VanillaWindowsRegistryHives",
+        "db": "known_good_registry.db",
+        "db_source_key": "vanilla_windows_registry",
+        "repo": "AndrewRathbun/VanillaWindowsRegistryHives",
+        "url": "https://github.com/AndrewRathbun/VanillaWindowsRegistryHives.git",
+        "import_script": "import_registry_full.py",
+        "file_glob": "*_ROOT.json",
+        "description": "Full registry baseline (optional, 12GB)",
     },
-    'registry_extractions': {
-        'name': 'VanillaWindowsRegistryHives (extractions)',
-        'db': 'known_good.db',
-        'db_source_key': 'vanilla_windows_registry',
-        'repo': 'AndrewRathbun/VanillaWindowsRegistryHives',
-        'url': 'https://github.com/AndrewRathbun/VanillaWindowsRegistryHives.git',
-        'import_script': 'import_registry_extractions.py',
-        'file_glob': '*_ROOT.json',
-        'description': 'Services, tasks, autoruns extracted from registry',
+    "registry_extractions": {
+        "name": "VanillaWindowsRegistryHives (extractions)",
+        "db": "known_good.db",
+        "db_source_key": "vanilla_windows_registry",
+        "repo": "AndrewRathbun/VanillaWindowsRegistryHives",
+        "url": "https://github.com/AndrewRathbun/VanillaWindowsRegistryHives.git",
+        "import_script": "import_registry_extractions.py",
+        "file_glob": "*_ROOT.json",
+        "description": "Services, tasks, autoruns extracted from registry",
     },
-    'lolbas': {
-        'name': 'LOLBAS',
-        'db': 'context.db',
-        'db_source_key': 'lolbas',
-        'repo': 'LOLBAS-Project/LOLBAS',
-        'url': 'https://github.com/LOLBAS-Project/LOLBAS.git',
-        'description': 'Living Off The Land Binaries',
+    "lolbas": {
+        "name": "LOLBAS",
+        "db": "context.db",
+        "db_source_key": "lolbas",
+        "repo": "LOLBAS-Project/LOLBAS",
+        "url": "https://github.com/LOLBAS-Project/LOLBAS.git",
+        "description": "Living Off The Land Binaries",
     },
-    'loldrivers': {
-        'name': 'LOLDrivers',
-        'db': 'context.db',
-        'db_source_key': 'loldrivers_vulnerable',
-        'repo': 'magicsword-io/LOLDrivers',
-        'url': 'https://github.com/magicsword-io/LOLDrivers.git',
-        'description': 'Vulnerable and malicious drivers',
+    "loldrivers": {
+        "name": "LOLDrivers",
+        "db": "context.db",
+        "db_source_key": "loldrivers_vulnerable",
+        "repo": "magicsword-io/LOLDrivers",
+        "url": "https://github.com/magicsword-io/LOLDrivers.git",
+        "description": "Vulnerable and malicious drivers",
     },
-    'hijacklibs': {
-        'name': 'HijackLibs',
-        'db': 'context.db',
-        'db_source_key': 'hijacklibs',
-        'repo': 'wietze/HijackLibs',
-        'url': 'https://github.com/wietze/HijackLibs.git',
-        'description': 'DLL hijacking vulnerabilities',
+    "hijacklibs": {
+        "name": "HijackLibs",
+        "db": "context.db",
+        "db_source_key": "hijacklibs",
+        "repo": "wietze/HijackLibs",
+        "url": "https://github.com/wietze/HijackLibs.git",
+        "description": "DLL hijacking vulnerabilities",
     },
 }
 
@@ -117,7 +114,8 @@ SOURCES = {
 # GitHub API Helpers
 # ============================================================
 
-def github_api_get(endpoint: str) -> Optional[dict]:
+
+def github_api_get(endpoint: str) -> dict | None:
     """Make authenticated GitHub API request."""
     url = f"https://api.github.com/{endpoint}"
     headers = {"Accept": "application/vnd.github+json"}
@@ -137,40 +135,40 @@ def github_api_get(endpoint: str) -> Optional[dict]:
         return None
 
 
-def get_latest_commit(repo: str, branch: str = "main") -> Optional[str]:
+def get_latest_commit(repo: str, branch: str = "main") -> str | None:
     """Get latest commit SHA from GitHub API."""
     data = github_api_get(f"repos/{repo}/commits/{branch}")
-    if data and 'sha' in data:
-        return data['sha'][:40]
+    if data and "sha" in data:
+        return data["sha"][:40]
     # Try 'master' as fallback
     if branch == "main":
         data = github_api_get(f"repos/{repo}/commits/master")
-        if data and 'sha' in data:
-            return data['sha'][:40]
+        if data and "sha" in data:
+            return data["sha"][:40]
     return None
 
 
-def get_changed_files(repo: str, base_commit: str, head_commit: str) -> List[str]:
+def get_changed_files(repo: str, base_commit: str, head_commit: str) -> list[str]:
     """Get list of changed files between two commits via GitHub API."""
     data = github_api_get(f"repos/{repo}/compare/{base_commit}...{head_commit}")
-    if not data or 'files' not in data:
+    if not data or "files" not in data:
         return []
-    return [f['filename'] for f in data['files']]
+    return [f["filename"] for f in data["files"]]
 
 
 # ============================================================
 # Database Helpers
 # ============================================================
 
-def get_last_sync(db_path: Path, source_key: str) -> Optional[str]:
+
+def get_last_sync(db_path: Path, source_key: str) -> str | None:
     """Read last_sync_commit from a database's sources table."""
     if not db_path.exists():
         return None
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.execute(
-            "SELECT last_sync_commit FROM sources WHERE name = ?",
-            (source_key,)
+            "SELECT last_sync_commit FROM sources WHERE name = ?", (source_key,)
         )
         row = cursor.fetchone()
         conn.close()
@@ -185,14 +183,14 @@ def set_last_sync(db_path: Path, source_key: str, commit: str, url: str = ""):
     conn.execute(
         """UPDATE sources SET last_sync_commit = ?, last_sync_time = datetime('now')
            WHERE name = ?""",
-        (commit, source_key)
+        (commit, source_key),
     )
     # If no row was updated, insert one
     if conn.execute("SELECT changes()").fetchone()[0] == 0:
         conn.execute(
             """INSERT INTO sources (name, source_type, url, last_sync_commit, last_sync_time)
                VALUES (?, 'git', ?, ?, datetime('now'))""",
-            (source_key, url, commit)
+            (source_key, url, commit),
         )
     conn.commit()
     conn.close()
@@ -202,12 +200,13 @@ def set_last_sync(db_path: Path, source_key: str, commit: str, url: str = ""):
 # Clone & Import Helpers
 # ============================================================
 
+
 def extract_registry_zips(clone_dir: Path) -> int:
     """Extract RegistryHivesJSON.zip files in-place within a cloned repo."""
     extracted = 0
     for zip_path in clone_dir.rglob("RegistryHivesJSON.zip"):
         try:
-            with zipfile.ZipFile(zip_path, 'r') as zf:
+            with zipfile.ZipFile(zip_path, "r") as zf:
                 zf.extractall(zip_path.parent)
             extracted += 1
         except Exception as e:
@@ -220,7 +219,9 @@ def shallow_clone(url: str, dest: Path, depth: int = 1) -> bool:
     try:
         result = subprocess.run(
             ["git", "clone", "--depth", str(depth), url, str(dest)],
-            capture_output=True, text=True, timeout=600
+            capture_output=True,
+            text=True,
+            timeout=600,
         )
         return result.returncode == 0
     except Exception as e:
@@ -228,7 +229,7 @@ def shallow_clone(url: str, dest: Path, depth: int = 1) -> bool:
         return False
 
 
-def run_import(script_name: str, args: List[str], dry_run: bool = False) -> bool:
+def run_import(script_name: str, args: list[str], dry_run: bool = False) -> bool:
     """Run an import script with arguments."""
     scripts_dir = Path(__file__).parent
     script_path = scripts_dir / script_name
@@ -244,9 +245,7 @@ def run_import(script_name: str, args: List[str], dry_run: bool = False) -> bool
         return True
 
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=7200
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)
         if result.returncode != 0:
             logger.error(f"Import failed: {result.stderr[-500:]}")
             return False
@@ -263,68 +262,69 @@ def run_import(script_name: str, args: List[str], dry_run: bool = False) -> bool
 # Source Update Functions
 # ============================================================
 
-def check_source(source_key: str, data_dir: Path) -> Dict:
+
+def check_source(source_key: str, data_dir: Path) -> dict:
     """Check if a source needs updating."""
     source = SOURCES[source_key]
-    db_path = data_dir / source['db']
+    db_path = data_dir / source["db"]
 
     status = {
-        'key': source_key,
-        'name': source['name'],
-        'db': source['db'],
-        'db_exists': db_path.exists(),
-        'last_sync': None,
-        'latest_commit': None,
-        'needs_update': False,
-        'changed_files': [],
-        'skipped': False,
+        "key": source_key,
+        "name": source["name"],
+        "db": source["db"],
+        "db_exists": db_path.exists(),
+        "last_sync": None,
+        "latest_commit": None,
+        "needs_update": False,
+        "changed_files": [],
+        "skipped": False,
     }
 
     if not db_path.exists():
-        status['skipped'] = True
-        status['skip_reason'] = f"{source['db']} not found"
+        status["skipped"] = True
+        status["skip_reason"] = f"{source['db']} not found"
         return status
 
-    status['last_sync'] = get_last_sync(db_path, source['db_source_key'])
+    status["last_sync"] = get_last_sync(db_path, source["db_source_key"])
 
     # Query GitHub for latest commit
-    status['latest_commit'] = get_latest_commit(source['repo'])
+    status["latest_commit"] = get_latest_commit(source["repo"])
 
-    if not status['latest_commit']:
+    if not status["latest_commit"]:
         logger.warning(f"  Could not fetch latest commit for {source['repo']}")
-        status['skipped'] = True
-        status['skip_reason'] = "GitHub API unavailable"
+        status["skipped"] = True
+        status["skip_reason"] = "GitHub API unavailable"
         return status
 
-    if status['last_sync'] and status['last_sync'] == status['latest_commit']:
-        status['needs_update'] = False
+    if status["last_sync"] and status["last_sync"] == status["latest_commit"]:
+        status["needs_update"] = False
     else:
-        status['needs_update'] = True
+        status["needs_update"] = True
         # Get changed files if we have a previous sync point
-        if status['last_sync']:
-            status['changed_files'] = get_changed_files(
-                source['repo'], status['last_sync'], status['latest_commit']
+        if status["last_sync"]:
+            status["changed_files"] = get_changed_files(
+                source["repo"], status["last_sync"], status["latest_commit"]
             )
 
     return status
 
 
-def update_files(data_dir: Path, status: Dict, force: bool, dry_run: bool) -> bool:
+def update_files(data_dir: Path, status: dict, force: bool, dry_run: bool) -> bool:
     """Update known_good.db file baselines from VanillaWindowsReference."""
-    source = SOURCES['files']
-    db_path = data_dir / source['db']
+    source = SOURCES["files"]
+    db_path = data_dir / source["db"]
 
     # Determine if we can do an incremental update
-    changed_csvs = [f for f in status.get('changed_files', []) if f.endswith('.csv')]
+    changed_csvs = [f for f in status.get("changed_files", []) if f.endswith(".csv")]
 
-    if not force and changed_csvs and status.get('last_sync'):
+    if not force and changed_csvs and status.get("last_sync"):
         # Incremental: clone and import only changed CSVs
         logger.info(f"  Incremental update: {len(changed_csvs)} changed CSVs")
 
         with tempfile.TemporaryDirectory() as tmp:
             clone_dir = Path(tmp) / "VanillaWindowsReference"
             logger.info("  Cloning repository (shallow)...")
-            if not shallow_clone(source['url'], clone_dir):
+            if not shallow_clone(source["url"], clone_dir):
                 return False
 
             # Build full paths for changed CSVs
@@ -336,13 +336,18 @@ def update_files(data_dir: Path, status: Dict, force: bool, dry_run: bool) -> bo
 
             if not csv_paths:
                 logger.info("  No actionable CSV changes")
-                set_last_sync(db_path, source['db_source_key'], status['latest_commit'], source['url'])
+                set_last_sync(
+                    db_path,
+                    source["db_source_key"],
+                    status["latest_commit"],
+                    source["url"],
+                )
                 return True
 
             logger.info(f"  Importing {len(csv_paths)} changed CSVs...")
             import_args = ["--only-files"] + csv_paths
-            import_args += ["--sync-commit", status['latest_commit']]
-            return run_import(source['import_script'], import_args, dry_run)
+            import_args += ["--sync-commit", status["latest_commit"]]
+            return run_import(source["import_script"], import_args, dry_run)
     else:
         # Full import: clone everything
         logger.info("  Full import (no previous sync or --force)")
@@ -350,25 +355,28 @@ def update_files(data_dir: Path, status: Dict, force: bool, dry_run: bool) -> bo
         with tempfile.TemporaryDirectory() as tmp:
             clone_dir = Path(tmp) / "VanillaWindowsReference"
             logger.info("  Cloning repository (shallow)...")
-            if not shallow_clone(source['url'], clone_dir):
+            if not shallow_clone(source["url"], clone_dir):
                 return False
 
             # import_files.py expects sources_dir containing VanillaWindowsReference/
             import_args = ["--sources-dir", tmp]
-            import_args += ["--sync-commit", status['latest_commit']]
-            return run_import(source['import_script'], import_args, dry_run)
+            import_args += ["--sync-commit", status["latest_commit"]]
+            return run_import(source["import_script"], import_args, dry_run)
 
 
-def update_registry(data_dir: Path, status: Dict, force: bool, dry_run: bool) -> bool:
+def update_registry(data_dir: Path, status: dict, force: bool, dry_run: bool) -> bool:
     """Update known_good_registry.db from VanillaWindowsRegistryHives."""
-    source = SOURCES['registry']
-    db_path = data_dir / source['db']
+    source = SOURCES["registry"]
+    db_path = data_dir / source["db"]
 
     # Registry hive JSONs are inside zip files — always need extraction after clone
-    changed_jsons = [f for f in status.get('changed_files', [])
-                     if f.endswith('_ROOT.json') or f.endswith('.zip')]
+    changed_jsons = [
+        f
+        for f in status.get("changed_files", [])
+        if f.endswith("_ROOT.json") or f.endswith(".zip")
+    ]
 
-    if not force and changed_jsons and status.get('last_sync'):
+    if not force and changed_jsons and status.get("last_sync"):
         logger.info(f"  Incremental update: {len(changed_jsons)} changed files")
 
     # Registry always needs full clone + extraction (zips contain the JSONs)
@@ -377,7 +385,7 @@ def update_registry(data_dir: Path, status: Dict, force: bool, dry_run: bool) ->
     with tempfile.TemporaryDirectory() as tmp:
         clone_dir = Path(tmp) / "VanillaWindowsRegistryHives"
         logger.info("  Cloning repository (shallow)...")
-        if not shallow_clone(source['url'], clone_dir):
+        if not shallow_clone(source["url"], clone_dir):
             return False
 
         logger.info("  Extracting registry JSON from zip archives...")
@@ -385,14 +393,16 @@ def update_registry(data_dir: Path, status: Dict, force: bool, dry_run: bool) ->
         logger.info(f"  Extracted {extracted} zip archives")
 
         import_args = ["--sources-dir", tmp]
-        import_args += ["--sync-commit", status['latest_commit']]
-        return run_import(source['import_script'], import_args, dry_run)
+        import_args += ["--sync-commit", status["latest_commit"]]
+        return run_import(source["import_script"], import_args, dry_run)
 
 
-def update_registry_extractions(data_dir: Path, status: Dict, force: bool, dry_run: bool) -> bool:
+def update_registry_extractions(
+    data_dir: Path, status: dict, force: bool, dry_run: bool
+) -> bool:
     """Update services/tasks/autoruns in known_good.db from registry hives."""
-    source = SOURCES['registry_extractions']
-    db_path = data_dir / source['db']
+    source = SOURCES["registry_extractions"]
+    db_path = data_dir / source["db"]
 
     # Registry extractions always re-import fully — the extraction logic is complex
     # and the dataset is relatively small (thousands not millions)
@@ -401,7 +411,7 @@ def update_registry_extractions(data_dir: Path, status: Dict, force: bool, dry_r
     with tempfile.TemporaryDirectory() as tmp:
         clone_dir = Path(tmp) / "VanillaWindowsRegistryHives"
         logger.info("  Cloning repository (shallow)...")
-        if not shallow_clone(source['url'], clone_dir):
+        if not shallow_clone(source["url"], clone_dir):
             return False
 
         logger.info("  Extracting registry JSON from zip archives...")
@@ -410,50 +420,57 @@ def update_registry_extractions(data_dir: Path, status: Dict, force: bool, dry_r
 
         # import_registry_extractions.py accepts --registry-dir
         import_args = ["--registry-dir", str(clone_dir)]
-        success = run_import(source['import_script'], import_args, dry_run)
+        success = run_import(source["import_script"], import_args, dry_run)
         if success and not dry_run:
-            set_last_sync(db_path, source['db_source_key'], status['latest_commit'], source['url'])
+            set_last_sync(
+                db_path, source["db_source_key"], status["latest_commit"], source["url"]
+            )
         return success
 
 
-def _update_registry_with_clone(data_dir: Path, status: Dict,
-                                shared_dir: str, force: bool, dry_run: bool) -> bool:
+def _update_registry_with_clone(
+    data_dir: Path, status: dict, shared_dir: str, force: bool, dry_run: bool
+) -> bool:
     """Update known_good_registry.db using an already-cloned and extracted registry repo."""
-    source = SOURCES['registry']
-    db_path = data_dir / source['db']
+    source = SOURCES["registry"]
+    db_path = data_dir / source["db"]
 
     import_args = ["--sources-dir", shared_dir]
-    import_args += ["--sync-commit", status['latest_commit']]
-    return run_import(source['import_script'], import_args, dry_run)
+    import_args += ["--sync-commit", status["latest_commit"]]
+    return run_import(source["import_script"], import_args, dry_run)
 
 
-def _update_registry_extractions_with_clone(data_dir: Path, status: Dict,
-                                            shared_dir: str, force: bool, dry_run: bool) -> bool:
+def _update_registry_extractions_with_clone(
+    data_dir: Path, status: dict, shared_dir: str, force: bool, dry_run: bool
+) -> bool:
     """Update services/tasks/autoruns in known_good.db using an already-cloned registry repo."""
-    source = SOURCES['registry_extractions']
-    db_path = data_dir / source['db']
+    source = SOURCES["registry_extractions"]
+    db_path = data_dir / source["db"]
     clone_dir = Path(shared_dir) / "VanillaWindowsRegistryHives"
 
     import_args = ["--registry-dir", str(clone_dir)]
-    success = run_import(source['import_script'], import_args, dry_run)
+    success = run_import(source["import_script"], import_args, dry_run)
     if success and not dry_run:
-        set_last_sync(db_path, source['db_source_key'], status['latest_commit'], source['url'])
+        set_last_sync(
+            db_path, source["db_source_key"], status["latest_commit"], source["url"]
+        )
     return success
 
 
-def update_context_source(source_key: str, data_dir: Path, status: Dict,
-                          force: bool, dry_run: bool) -> bool:
+def update_context_source(
+    source_key: str, data_dir: Path, status: dict, force: bool, dry_run: bool
+) -> bool:
     """Update a single context.db source (LOLBAS, LOLDrivers, or HijackLibs)."""
     source = SOURCES[source_key]
-    db_path = data_dir / source['db']
+    db_path = data_dir / source["db"]
 
     # Context sources are small — always do full re-import
     logger.info(f"  Full re-import of {source['name']}")
 
     with tempfile.TemporaryDirectory() as tmp:
-        clone_dir = Path(tmp) / source['name']
+        clone_dir = Path(tmp) / source["name"]
         logger.info("  Cloning repository (shallow)...")
-        if not shallow_clone(source['url'], clone_dir):
+        if not shallow_clone(source["url"], clone_dir):
             return False
 
         # Call the appropriate importer directly via Python
@@ -462,26 +479,34 @@ def update_context_source(source_key: str, data_dir: Path, status: Dict,
             return True
 
         try:
-            if source_key == 'lolbas':
+            if source_key == "lolbas":
                 from windows_triage.importers import import_lolbas
+
                 stats = import_lolbas(db_path=db_path, lolbas_dir=clone_dir)
                 logger.info(f"  Imported {stats['lolbins_imported']} LOLBins")
 
-            elif source_key == 'loldrivers':
+            elif source_key == "loldrivers":
                 from windows_triage.importers import import_loldrivers
+
                 stats = import_loldrivers(
-                    db_path=db_path, loldrivers_dir=clone_dir,
-                    include_malicious=True
+                    db_path=db_path, loldrivers_dir=clone_dir, include_malicious=True
                 )
-                logger.info(f"  Imported {stats['vulnerable_imported']} vulnerable, "
-                            f"{stats['malicious_imported']} malicious drivers")
+                logger.info(
+                    f"  Imported {stats['vulnerable_imported']} vulnerable, "
+                    f"{stats['malicious_imported']} malicious drivers"
+                )
 
-            elif source_key == 'hijacklibs':
+            elif source_key == "hijacklibs":
                 from windows_triage.importers import import_hijacklibs
-                stats = import_hijacklibs(db_path=db_path, hijacklibs_dir=clone_dir)
-                logger.info(f"  Imported {stats['entries_imported']} hijackable DLL entries")
 
-            set_last_sync(db_path, source['db_source_key'], status['latest_commit'], source['url'])
+                stats = import_hijacklibs(db_path=db_path, hijacklibs_dir=clone_dir)
+                logger.info(
+                    f"  Imported {stats['entries_imported']} hijackable DLL entries"
+                )
+
+            set_last_sync(
+                db_path, source["db_source_key"], status["latest_commit"], source["url"]
+            )
             return True
 
         except Exception as e:
@@ -493,22 +518,31 @@ def update_context_source(source_key: str, data_dir: Path, status: Dict,
 # Main
 # ============================================================
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Incremental database update from upstream sources"
     )
-    parser.add_argument("--source", type=str,
-                        help=f"Only update specific source ({', '.join(SOURCES.keys())})")
-    parser.add_argument("--force", action="store_true",
-                        help="Ignore sync tracking, reimport everything")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Show what would be done without doing it")
-    parser.add_argument("--check-only", action="store_true",
-                        help="Just check for updates, don't apply")
-    parser.add_argument("--verbose", action="store_true",
-                        help="Verbose output")
-    parser.add_argument("--list-sources", action="store_true",
-                        help="List available sources")
+    parser.add_argument(
+        "--source",
+        type=str,
+        help=f"Only update specific source ({', '.join(SOURCES.keys())})",
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Ignore sync tracking, reimport everything"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be done without doing it",
+    )
+    parser.add_argument(
+        "--check-only", action="store_true", help="Just check for updates, don't apply"
+    )
+    parser.add_argument("--verbose", action="store_true", help="Verbose output")
+    parser.add_argument(
+        "--list-sources", action="store_true", help="List available sources"
+    )
     args = parser.parse_args()
 
     if args.verbose:
@@ -545,46 +579,54 @@ def main():
 
     statuses = {}
     for source_key in sources_to_check:
-        repo = SOURCES[source_key]['repo']
+        repo = SOURCES[source_key]["repo"]
         if repo in _repo_commit_cache:
             # Reuse cached commit for same repo
             status = check_source(source_key, data_dir)
-            status['latest_commit'] = _repo_commit_cache[repo]
-            if status.get('last_sync') and status['last_sync'] == status['latest_commit']:
-                status['needs_update'] = False
-            elif not status.get('skipped'):
-                status['needs_update'] = True
+            status["latest_commit"] = _repo_commit_cache[repo]
+            if (
+                status.get("last_sync")
+                and status["last_sync"] == status["latest_commit"]
+            ):
+                status["needs_update"] = False
+            elif not status.get("skipped"):
+                status["needs_update"] = True
         else:
             status = check_source(source_key, data_dir)
-            if status.get('latest_commit'):
-                _repo_commit_cache[repo] = status['latest_commit']
+            if status.get("latest_commit"):
+                _repo_commit_cache[repo] = status["latest_commit"]
 
         statuses[source_key] = status
 
-        if status.get('skipped'):
+        if status.get("skipped"):
             icon = "⊘"
-            label = status.get('skip_reason', 'skipped')
-        elif status['needs_update']:
+            label = status.get("skip_reason", "skipped")
+        elif status["needs_update"]:
             icon = "●"
-            changed = len(status.get('changed_files', []))
-            label = f"UPDATE AVAILABLE ({changed} files changed)" if changed else "UPDATE AVAILABLE"
+            changed = len(status.get("changed_files", []))
+            label = (
+                f"UPDATE AVAILABLE ({changed} files changed)"
+                if changed
+                else "UPDATE AVAILABLE"
+            )
         else:
             icon = "✓"
             label = "up to date"
 
-        sync_info = f" [{status['last_sync'][:8]}]" if status.get('last_sync') else ""
+        sync_info = f" [{status['last_sync'][:8]}]" if status.get("last_sync") else ""
         print(f"  {icon} {status['name']:40} {label}{sync_info}")
 
     if args.check_only:
-        needs = sum(1 for s in statuses.values() if s['needs_update'])
-        skipped = sum(1 for s in statuses.values() if s['skipped'])
+        needs = sum(1 for s in statuses.values() if s["needs_update"])
+        skipped = sum(1 for s in statuses.values() if s["skipped"])
         print(f"\n{needs} source(s) need updating, {skipped} skipped")
         return
 
     # ── Run Updates ───────────────────────────────────────────
 
-    needs_update = {k: v for k, v in statuses.items()
-                    if v['needs_update'] or args.force}
+    needs_update = {
+        k: v for k, v in statuses.items() if v["needs_update"] or args.force
+    }
 
     if not needs_update:
         print("\nAll databases are up to date.")
@@ -600,21 +642,23 @@ def main():
     _shared_registry_dir = None
 
     for source_key, status in needs_update.items():
-        if status.get('skipped'):
+        if status.get("skipped"):
             continue
 
         print(f"\n── {SOURCES[source_key]['name']} ──")
 
         try:
-            if source_key == 'files':
+            if source_key == "files":
                 success = update_files(data_dir, status, args.force, args.dry_run)
-            elif source_key in ('registry', 'registry_extractions'):
+            elif source_key in ("registry", "registry_extractions"):
                 # Share clone between registry and registry_extractions
                 if _shared_registry_dir is None:
                     _shared_registry_dir = tempfile.mkdtemp()
-                    clone_dir = Path(_shared_registry_dir) / "VanillaWindowsRegistryHives"
+                    clone_dir = (
+                        Path(_shared_registry_dir) / "VanillaWindowsRegistryHives"
+                    )
                     logger.info("  Cloning VanillaWindowsRegistryHives (shared)...")
-                    if not shallow_clone(SOURCES['registry']['url'], clone_dir):
+                    if not shallow_clone(SOURCES["registry"]["url"], clone_dir):
                         logger.error("  Clone failed")
                         results[source_key] = False
                         continue
@@ -622,14 +666,18 @@ def main():
                     extracted = extract_registry_zips(clone_dir)
                     logger.info(f"  Extracted {extracted} zip archives")
 
-                if source_key == 'registry':
+                if source_key == "registry":
                     success = _update_registry_with_clone(
-                        data_dir, status, _shared_registry_dir, args.force, args.dry_run)
+                        data_dir, status, _shared_registry_dir, args.force, args.dry_run
+                    )
                 else:
                     success = _update_registry_extractions_with_clone(
-                        data_dir, status, _shared_registry_dir, args.force, args.dry_run)
-            elif source_key in ('lolbas', 'loldrivers', 'hijacklibs'):
-                success = update_context_source(source_key, data_dir, status, args.force, args.dry_run)
+                        data_dir, status, _shared_registry_dir, args.force, args.dry_run
+                    )
+            elif source_key in ("lolbas", "loldrivers", "hijacklibs"):
+                success = update_context_source(
+                    source_key, data_dir, status, args.force, args.dry_run
+                )
             else:
                 logger.warning(f"  No update handler for {source_key}")
                 success = False

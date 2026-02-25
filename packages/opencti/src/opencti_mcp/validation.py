@@ -9,38 +9,38 @@ Security design:
 from __future__ import annotations
 
 import re
-from typing import Any, Tuple
+from typing import Any
 
 from .errors import ValidationError
-
 
 # =============================================================================
 # Security Constants - Resource Exhaustion Prevention
 # =============================================================================
 
 # ASCII-only character sets for security (prevents homoglyph/IDN attacks)
-_ASCII_ALPHA = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
-_ASCII_ALNUM = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
-_ASCII_DIGITS = set('0123456789')
+_ASCII_ALPHA = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+_ASCII_ALNUM = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+_ASCII_DIGITS = set("0123456789")
 
-MAX_QUERY_LENGTH = 1000       # Search query
-MAX_IOC_LENGTH = 2048         # IOC value (URLs can be long)
-MAX_HASH_LENGTH = 128         # Hash with optional prefix
-MAX_LIMIT = 100               # Max results per query
-MAX_DAYS = 365                # Max days for temporal queries
+MAX_QUERY_LENGTH = 1000  # Search query
+MAX_IOC_LENGTH = 2048  # IOC value (URLs can be long)
+MAX_HASH_LENGTH = 128  # Hash with optional prefix
+MAX_LIMIT = 100  # Max results per query
+MAX_DAYS = 365  # Max days for temporal queries
 MAX_RESPONSE_SIZE = 1_000_000  # 1MB response limit
-MAX_DESCRIPTION_LENGTH = 500   # Truncate descriptions
-MAX_PATTERN_LENGTH = 200       # Truncate patterns
-MAX_OFFSET = 500              # Max pagination offset
-MAX_LABEL_LENGTH = 63         # Max label length (DNS label limit)
-MAX_DOMAIN_LENGTH = 253       # Max domain name length (DNS limit)
-MAX_IPV6_LENGTH = 45          # Max IPv6 with embedded IPv4
-HASH_LENGTHS = (32, 40, 64)   # MD5, SHA1, SHA256 lengths
+MAX_DESCRIPTION_LENGTH = 500  # Truncate descriptions
+MAX_PATTERN_LENGTH = 200  # Truncate patterns
+MAX_OFFSET = 500  # Max pagination offset
+MAX_LABEL_LENGTH = 63  # Max label length (DNS label limit)
+MAX_DOMAIN_LENGTH = 253  # Max domain name length (DNS limit)
+MAX_IPV6_LENGTH = 45  # Max IPv6 with embedded IPv4
+HASH_LENGTHS = (32, 40, 64)  # MD5, SHA1, SHA256 lengths
 
 
 # =============================================================================
 # Length Validation
 # =============================================================================
+
 
 def validate_no_null_bytes(value: str, field: str) -> None:
     """Reject null bytes which can cause path truncation attacks.
@@ -75,7 +75,9 @@ def validate_length(value: str | None, max_length: int, field: str) -> None:
     """
     if value is not None and isinstance(value, str):
         if len(value) > max_length:
-            raise ValidationError(f"{field} exceeds maximum length of {max_length} characters")
+            raise ValidationError(
+                f"{field} exceeds maximum length of {max_length} characters"
+            )
         # Check for null bytes
         if "\x00" in value:
             raise ValidationError(f"{field} contains invalid null byte")
@@ -145,7 +147,8 @@ def validate_offset(value: int | None, max_value: int = MAX_OFFSET) -> int:
 # IOC Validation
 # =============================================================================
 
-def validate_ioc(ioc: str) -> Tuple[bool, str]:
+
+def validate_ioc(ioc: str) -> tuple[bool, str]:
     """Validate IOC format and detect type.
 
     Security: Length check is performed FIRST before any pattern matching.
@@ -168,7 +171,7 @@ def validate_ioc(ioc: str) -> Tuple[bool, str]:
         raise ValidationError("IOC cannot be empty")
 
     # 3. Check for null bytes (security)
-    if '\x00' in ioc:
+    if "\x00" in ioc:
         raise ValidationError("IOC contains invalid characters")
 
     # 4. Detect type using simple patterns (no complex regex)
@@ -185,7 +188,7 @@ def validate_ioc(ioc: str) -> Tuple[bool, str]:
         hash_type = _detect_hash_type(ioc)
         return True, hash_type
 
-    if ioc.startswith(('http://', 'https://', 'ftp://')):
+    if ioc.startswith(("http://", "https://", "ftp://")):
         return True, "url"
 
     if _is_domain(ioc):
@@ -206,7 +209,7 @@ def _is_ipv4(value: str) -> bool:
 
     Uses simple parsing instead of regex to avoid ReDoS.
     """
-    parts = value.split('.')
+    parts = value.split(".")
     if len(parts) != 4:
         return False
 
@@ -219,7 +222,7 @@ def _is_ipv4(value: str) -> bool:
         if num < 0 or num > 255:
             return False
         # Reject leading zeros (e.g., "01.02.03.04")
-        if len(part) > 1 and part[0] == '0':
+        if len(part) > 1 and part[0] == "0":
             return False
 
     return True
@@ -236,32 +239,32 @@ def _is_ipv6(value: str) -> bool:
         return False
 
     # Must contain at least one colon
-    if ':' not in value:
+    if ":" not in value:
         return False
 
     # Handle :: compression
-    if '::' in value:
+    if "::" in value:
         # Only one :: allowed
-        if value.count('::') > 1:
+        if value.count("::") > 1:
             return False
         # Split on :: and validate both parts
-        parts = value.split('::')
+        parts = value.split("::")
         if len(parts) != 2:
             return False
-        left = parts[0].split(':') if parts[0] else []
-        right = parts[1].split(':') if parts[1] else []
+        left = parts[0].split(":") if parts[0] else []
+        right = parts[1].split(":") if parts[1] else []
         # Total groups must be <= 8
         if len(left) + len(right) > 7:
             return False
         all_groups = left + right
     else:
         # Full notation - must have exactly 8 groups
-        all_groups = value.split(':')
+        all_groups = value.split(":")
         if len(all_groups) != 8:
             return False
 
     # Validate each group
-    hex_chars = set('0123456789abcdefABCDEF')
+    hex_chars = set("0123456789abcdefABCDEF")
     for group in all_groups:
         if not group:
             continue  # Empty groups from :: are OK
@@ -278,10 +281,10 @@ def _is_cidr(value: str) -> bool:
 
     Uses simple parsing instead of regex to avoid ReDoS.
     """
-    if '/' not in value:
+    if "/" not in value:
         return False
 
-    parts = value.rsplit('/', 1)
+    parts = value.rsplit("/", 1)
     if len(parts) != 2:
         return False
 
@@ -313,7 +316,7 @@ def _is_hash(value: str) -> bool:
         return False
 
     # Check hex characters
-    return all(c in '0123456789abcdefABCDEF' for c in normalized)
+    return all(c in "0123456789abcdefABCDEF" for c in normalized)
 
 
 def _detect_hash_type(value: str) -> str:
@@ -328,10 +331,10 @@ def _normalize_hash(value: str) -> str:
     value = value.strip().lower()
 
     # Remove common prefixes
-    prefixes = ['md5:', 'sha1:', 'sha256:', 'sha-1:', 'sha-256:']
+    prefixes = ["md5:", "sha1:", "sha256:", "sha-1:", "sha-256:"]
     for prefix in prefixes:
         if value.startswith(prefix):
-            value = value[len(prefix):]
+            value = value[len(prefix) :]
             break
 
     return value.strip()
@@ -350,19 +353,19 @@ def _is_domain(value: str) -> bool:
         return False
 
     # Must have at least one dot
-    if '.' not in value:
+    if "." not in value:
         return False
 
     # Cannot start or end with dot
-    if value.startswith('.') or value.endswith('.'):
+    if value.startswith(".") or value.endswith("."):
         return False
 
     # Cannot have consecutive dots
-    if '..' in value:
+    if ".." in value:
         return False
 
     # Check each label
-    labels = value.split('.')
+    labels = value.split(".")
     for label in labels:
         if not label:
             return False
@@ -370,10 +373,10 @@ def _is_domain(value: str) -> bool:
             return False
         # Labels can only contain ASCII alphanumeric and hyphens
         # Security: Using explicit ASCII set prevents Unicode homoglyph attacks
-        if not all(c in _ASCII_ALNUM or c == '-' for c in label):
+        if not all(c in _ASCII_ALNUM or c == "-" for c in label):
             return False
         # Cannot start or end with hyphen
-        if label.startswith('-') or label.endswith('-'):
+        if label.startswith("-") or label.endswith("-"):
             return False
 
     # TLD must be ASCII alphabetic (at least 2 chars)
@@ -388,10 +391,10 @@ def _is_domain(value: str) -> bool:
 def _is_cve(value: str) -> bool:
     """Check if value is a CVE identifier."""
     upper = value.upper()
-    if not upper.startswith('CVE-'):
+    if not upper.startswith("CVE-"):
         return False
 
-    parts = upper[4:].split('-')
+    parts = upper[4:].split("-")
     if len(parts) != 2:
         return False
 
@@ -409,11 +412,11 @@ def _is_mitre_id(value: str) -> bool:
     upper = value.upper()
 
     # Main technique: T1234
-    if re.match(r'^T\d{4}$', upper):
+    if re.match(r"^T\d{4}$", upper):
         return True
 
     # Sub-technique: T1234.001
-    if re.match(r'^T\d{4}\.\d{3}$', upper):
+    if re.match(r"^T\d{4}\.\d{3}$", upper):
         return True
 
     return False
@@ -424,7 +427,7 @@ def _is_mitre_id(value: str) -> bool:
 # =============================================================================
 
 # UUID v4 pattern - used for OpenCTI entity IDs
-_UUID_CHARS = set('0123456789abcdefABCDEF-')
+_UUID_CHARS = set("0123456789abcdefABCDEF-")
 
 
 def validate_uuid(value: str, field: str = "id") -> str:
@@ -455,20 +458,21 @@ def validate_uuid(value: str, field: str = "id") -> str:
         raise ValidationError(f"{field} contains invalid characters")
 
     # Structure check: 8-4-4-4-12
-    parts = value.split('-')
+    parts = value.split("-")
     if len(parts) != 5:
         raise ValidationError(f"{field} must be a valid UUID format")
 
     expected_lengths = [8, 4, 4, 4, 12]
-    for part, expected_len in zip(parts, expected_lengths):
+    for part, expected_len in zip(parts, expected_lengths, strict=True):
         if len(part) != expected_len:
             raise ValidationError(f"{field} must be a valid UUID format")
 
     return value.lower()
 
 
-def validate_uuid_list(values: list[str] | None, field: str = "ids",
-                       max_items: int = 20) -> list[str]:
+def validate_uuid_list(
+    values: list[str] | None, field: str = "ids", max_items: int = 20
+) -> list[str]:
     """Validate a list of UUIDs.
 
     Args:
@@ -496,7 +500,9 @@ def validate_uuid_list(values: list[str] | None, field: str = "ids",
 # =============================================================================
 
 # Allowed characters in labels (alphanumeric, common punctuation)
-_LABEL_ALLOWED = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_:. ')
+_LABEL_ALLOWED = set(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_:. "
+)
 
 
 def validate_label(value: str) -> str:
@@ -522,7 +528,7 @@ def validate_label(value: str) -> str:
         raise ValidationError("Label exceeds maximum length of 100 characters")
 
     # Check for null bytes
-    if '\x00' in value:
+    if "\x00" in value:
         raise ValidationError("Label contains invalid characters")
 
     # Check allowed characters
@@ -559,23 +565,48 @@ def validate_labels(values: list[str] | None, max_items: int = 10) -> list[str]:
 # =============================================================================
 
 # Valid STIX Cyber Observable (SCO) types
-VALID_OBSERVABLE_TYPES = frozenset({
-    'Artifact', 'Autonomous-System', 'Directory', 'Domain-Name',
-    'Email-Addr', 'Email-Message', 'Email-Mime-Part-Type',
-    'File', 'StixFile',  # StixFile is OpenCTI's name for File
-    'IPv4-Addr', 'IPv6-Addr', 'Mac-Addr', 'Mutex', 'Network-Traffic',
-    'Process', 'Software', 'Url', 'URL',  # Both cases for compatibility
-    'User-Account', 'Windows-Registry-Key', 'Windows-Registry-Value-Type',
-    'X509-Certificate', 'Cryptocurrency-Wallet', 'Hostname',
-    'Text', 'User-Agent', 'Bank-Account', 'Phone-Number', 'Payment-Card',
-    'Media-Content', 'Tracking-Number', 'Credential',
-})
+VALID_OBSERVABLE_TYPES = frozenset(
+    {
+        "Artifact",
+        "Autonomous-System",
+        "Directory",
+        "Domain-Name",
+        "Email-Addr",
+        "Email-Message",
+        "Email-Mime-Part-Type",
+        "File",
+        "StixFile",  # StixFile is OpenCTI's name for File
+        "IPv4-Addr",
+        "IPv6-Addr",
+        "Mac-Addr",
+        "Mutex",
+        "Network-Traffic",
+        "Process",
+        "Software",
+        "Url",
+        "URL",  # Both cases for compatibility
+        "User-Account",
+        "Windows-Registry-Key",
+        "Windows-Registry-Value-Type",
+        "X509-Certificate",
+        "Cryptocurrency-Wallet",
+        "Hostname",
+        "Text",
+        "User-Agent",
+        "Bank-Account",
+        "Phone-Number",
+        "Payment-Card",
+        "Media-Content",
+        "Tracking-Number",
+        "Credential",
+    }
+)
 
 
 def validate_observable_types(
     values: list[str] | None,
     max_items: int = 10,
-    extra_types: frozenset[str] | None = None
+    extra_types: frozenset[str] | None = None,
 ) -> list[str] | None:
     """Validate observable type list.
 
@@ -628,13 +659,23 @@ def validate_observable_types(
 # =============================================================================
 
 # Valid note types in OpenCTI
-VALID_NOTE_TYPES = frozenset({
-    'analysis', 'assessment', 'external', 'internal',
-    'threat-report', 'hypothesis', 'observation', 'conclusion',
-})
+VALID_NOTE_TYPES = frozenset(
+    {
+        "analysis",
+        "assessment",
+        "external",
+        "internal",
+        "threat-report",
+        "hypothesis",
+        "observation",
+        "conclusion",
+    }
+)
 
 
-def validate_note_types(values: list[str] | None, max_items: int = 5) -> list[str] | None:
+def validate_note_types(
+    values: list[str] | None, max_items: int = 5
+) -> list[str] | None:
     """Validate note type list.
 
     Security: Restricts to known note types to prevent injection.
@@ -666,10 +707,12 @@ def validate_note_types(values: list[str] | None, max_items: int = 5) -> list[st
         if len(v) > 50:
             raise ValidationError(f"Note type '{v[:20]}...' is too long")
         # Check for invalid characters (ASCII alphanumeric and hyphen only)
-        if not all(c in _ASCII_ALNUM or c == '-' for c in v):
+        if not all(c in _ASCII_ALNUM or c == "-" for c in v):
             raise ValidationError(f"Note type '{v}' contains invalid characters")
         if v not in VALID_NOTE_TYPES:
-            raise ValidationError(f"Unknown note type '{v}'. Valid: {', '.join(sorted(VALID_NOTE_TYPES))}")
+            raise ValidationError(
+                f"Unknown note type '{v}'. Valid: {', '.join(sorted(VALID_NOTE_TYPES))}"
+            )
         validated.append(v)
 
     return validated if validated else None
@@ -681,10 +724,10 @@ def validate_note_types(values: list[str] | None, max_items: int = 5) -> list[st
 
 # ISO8601 date pattern: YYYY-MM-DD with optional time
 _ISO_DATE_PATTERN = re.compile(
-    r'^(\d{4})-(\d{2})-(\d{2})'  # Date: YYYY-MM-DD
-    r'(T(\d{2}):(\d{2}):(\d{2})'  # Optional time: THH:MM:SS
-    r'(\.\d+)?'  # Optional fractional seconds
-    r'(Z|[+-]\d{2}:\d{2})?)?$'  # Optional timezone
+    r"^(\d{4})-(\d{2})-(\d{2})"  # Date: YYYY-MM-DD
+    r"(T(\d{2}):(\d{2}):(\d{2})"  # Optional time: THH:MM:SS
+    r"(\.\d+)?"  # Optional fractional seconds
+    r"(Z|[+-]\d{2}:\d{2})?)?$"  # Optional timezone
 )
 
 
@@ -718,7 +761,7 @@ def validate_date_filter(value: str | None, field: str = "date") -> str | None:
         raise ValidationError(f"{field} is too long")
 
     # Check for null bytes
-    if '\x00' in value:
+    if "\x00" in value:
         raise ValidationError(f"{field} contains invalid characters")
 
     # Validate format
@@ -740,7 +783,11 @@ def validate_date_filter(value: str | None, field: str = "date") -> str | None:
 
     # Validate time components if present
     if match.group(4):  # Time component exists
-        hour, minute, second = int(match.group(5)), int(match.group(6)), int(match.group(7))
+        hour, minute, second = (
+            int(match.group(5)),
+            int(match.group(6)),
+            int(match.group(7)),
+        )
         if not (0 <= hour <= 23):
             raise ValidationError(f"{field} hour must be between 0 and 23")
         if not (0 <= minute <= 59):
@@ -756,15 +803,23 @@ def validate_date_filter(value: str | None, field: str = "date") -> str | None:
 # =============================================================================
 
 # Valid indicator pattern types
-VALID_PATTERN_TYPES = frozenset({
-    'stix', 'pcre', 'sigma', 'snort', 'suricata', 'yara',
-    'tanium-signal', 'spl', 'eql',
-})
+VALID_PATTERN_TYPES = frozenset(
+    {
+        "stix",
+        "pcre",
+        "sigma",
+        "snort",
+        "suricata",
+        "yara",
+        "tanium-signal",
+        "spl",
+        "eql",
+    }
+)
 
 
 def validate_pattern_type(
-    value: str | None,
-    extra_types: frozenset[str] | None = None
+    value: str | None, extra_types: frozenset[str] | None = None
 ) -> str:
     """Validate indicator pattern type.
 
@@ -811,18 +866,48 @@ def validate_pattern_type(
 # =============================================================================
 
 # Valid STIX relationship types
-VALID_RELATIONSHIP_TYPES = frozenset({
-    'indicates', 'uses', 'targets', 'attributed-to', 'related-to',
-    'mitigates', 'derived-from', 'duplicate-of', 'variant-of',
-    'impersonates', 'located-at', 'based-on', 'delivers', 'drops',
-    'exploits', 'compromises', 'originates-from', 'investigates',
-    'authored-by', 'beacons-to', 'exfiltrates-to', 'downloads',
-    'communicates-with', 'consists-of', 'controls', 'has', 'hosts',
-    'owns', 'part-of', 'resides-in', 'resolves-to', 'belongs-to',
-    # OpenCTI custom types
-    'participates-in', 'cooperates-with', 'employed-by', 'citizen-of',
-    'national-of',
-})
+VALID_RELATIONSHIP_TYPES = frozenset(
+    {
+        "indicates",
+        "uses",
+        "targets",
+        "attributed-to",
+        "related-to",
+        "mitigates",
+        "derived-from",
+        "duplicate-of",
+        "variant-of",
+        "impersonates",
+        "located-at",
+        "based-on",
+        "delivers",
+        "drops",
+        "exploits",
+        "compromises",
+        "originates-from",
+        "investigates",
+        "authored-by",
+        "beacons-to",
+        "exfiltrates-to",
+        "downloads",
+        "communicates-with",
+        "consists-of",
+        "controls",
+        "has",
+        "hosts",
+        "owns",
+        "part-of",
+        "resides-in",
+        "resolves-to",
+        "belongs-to",
+        # OpenCTI custom types
+        "participates-in",
+        "cooperates-with",
+        "employed-by",
+        "citizen-of",
+        "national-of",
+    }
+)
 
 
 def validate_relationship_types(values: list[str] | None) -> list[str] | None:
@@ -854,10 +939,14 @@ def validate_relationship_types(values: list[str] | None) -> list[str] | None:
             raise ValidationError(f"Relationship type '{v[:20]}...' is too long")
         # Security: ASCII-only to prevent homoglyph attacks
         # Uses explicit ASCII alphanumeric set instead of c.isalnum()
-        if not all(c in _ASCII_ALNUM or c == '-' for c in v):
-            raise ValidationError(f"Relationship type '{v}' contains invalid characters")
+        if not all(c in _ASCII_ALNUM or c == "-" for c in v):
+            raise ValidationError(
+                f"Relationship type '{v}' contains invalid characters"
+            )
         if v not in VALID_RELATIONSHIP_TYPES:
-            raise ValidationError(f"Unknown relationship type '{v}'. Valid: {', '.join(sorted(VALID_RELATIONSHIP_TYPES))}")
+            raise ValidationError(
+                f"Unknown relationship type '{v}'. Valid: {', '.join(sorted(VALID_RELATIONSHIP_TYPES))}"
+            )
         validated.append(v)
 
     return validated if validated else None
@@ -866,6 +955,7 @@ def validate_relationship_types(values: list[str] | None) -> list[str] | None:
 # =============================================================================
 # STIX Pattern Validation
 # =============================================================================
+
 
 def validate_stix_pattern(pattern: str) -> None:
     """Basic validation of STIX pattern syntax.
@@ -889,38 +979,52 @@ def validate_stix_pattern(pattern: str) -> None:
         raise ValidationError("STIX pattern exceeds maximum length")
 
     # Must start with [ and end with ]
-    if not pattern.startswith('[') or not pattern.endswith(']'):
+    if not pattern.startswith("[") or not pattern.endswith("]"):
         raise ValidationError("STIX pattern must be enclosed in brackets []")
 
     # Check for null bytes
-    if '\x00' in pattern:
+    if "\x00" in pattern:
         raise ValidationError("STIX pattern contains invalid characters")
 
     # Check bracket balance (basic)
-    open_count = pattern.count('[')
-    close_count = pattern.count(']')
+    open_count = pattern.count("[")
+    close_count = pattern.count("]")
     if open_count != close_count:
         raise ValidationError("STIX pattern has unbalanced brackets")
 
     # Check for common pattern types
     valid_prefixes = (
-        'ipv4-addr:', 'ipv6-addr:', 'domain-name:', 'url:', 'file:',
-        'email-addr:', 'mac-addr:', 'windows-registry-key:', 'process:',
-        'network-traffic:', 'artifact:', 'autonomous-system:', 'directory:',
-        'mutex:', 'software:', 'user-account:', 'x509-certificate:',
+        "ipv4-addr:",
+        "ipv6-addr:",
+        "domain-name:",
+        "url:",
+        "file:",
+        "email-addr:",
+        "mac-addr:",
+        "windows-registry-key:",
+        "process:",
+        "network-traffic:",
+        "artifact:",
+        "autonomous-system:",
+        "directory:",
+        "mutex:",
+        "software:",
+        "user-account:",
+        "x509-certificate:",
     )
 
     # Pattern should contain at least one object type reference
     inner = pattern[1:-1].strip()
     has_valid_type = any(vp in inner.lower() for vp in valid_prefixes)
 
-    if not has_valid_type and ':' not in inner:
+    if not has_valid_type and ":" not in inner:
         raise ValidationError("STIX pattern must reference an observable type")
 
 
 # =============================================================================
 # Hash Validation
 # =============================================================================
+
 
 def validate_hash(value: str) -> bool:
     """Validate file hash format.
@@ -941,7 +1045,7 @@ def validate_hash(value: str) -> bool:
         return False
 
     # Must be hexadecimal
-    return all(c in '0123456789abcdefABCDEF' for c in normalized)
+    return all(c in "0123456789abcdefABCDEF" for c in normalized)
 
 
 def normalize_hash(value: str) -> str:
@@ -953,16 +1057,19 @@ def normalize_hash(value: str) -> str:
 # Response Truncation
 # =============================================================================
 
+
 def truncate_string(value: str | None, max_length: int) -> str | None:
     """Truncate string to max length with ellipsis."""
     if value is None:
         return None
     if len(value) <= max_length:
         return value
-    return value[:max_length - 3] + "..."
+    return value[: max_length - 3] + "..."
 
 
-def truncate_response(result: dict[str, Any], max_size: int = MAX_RESPONSE_SIZE) -> dict[str, Any]:
+def truncate_response(
+    result: dict[str, Any], max_size: int = MAX_RESPONSE_SIZE
+) -> dict[str, Any]:
     """Truncate response if it exceeds size limit.
 
     Security: Prevents memory exhaustion from large OpenCTI responses.
@@ -982,18 +1089,19 @@ def truncate_response(result: dict[str, Any], max_size: int = MAX_RESPONSE_SIZE)
 
     if len(serialized) > max_size:
         # Add truncation notice if overall size was exceeded
-        result['_truncated'] = True
-        result['_original_size'] = len(serialized)
+        result["_truncated"] = True
+        result["_original_size"] = len(serialized)
 
     # Add truncation indicators if any fields were truncated
     if truncated_fields:
-        result['_truncated_fields'] = truncated_fields
+        result["_truncated_fields"] = truncated_fields
 
     return result
 
 
-def _truncate_dict_fields(data: dict[str, Any], truncated_fields: list[str] | None = None,
-                          path: str = "") -> dict[str, Any]:
+def _truncate_dict_fields(
+    data: dict[str, Any], truncated_fields: list[str] | None = None, path: str = ""
+) -> dict[str, Any]:
     """Recursively truncate large fields in a dict.
 
     Args:
@@ -1010,11 +1118,11 @@ def _truncate_dict_fields(data: dict[str, Any], truncated_fields: list[str] | No
         field_path = f"{path}.{key}" if path else key
 
         if isinstance(value, str):
-            if key == 'description':
+            if key == "description":
                 if len(value) > MAX_DESCRIPTION_LENGTH:
                     truncated_fields.append(field_path)
                 result[key] = truncate_string(value, MAX_DESCRIPTION_LENGTH)
-            elif key == 'pattern':
+            elif key == "pattern":
                 if len(value) > MAX_PATTERN_LENGTH:
                     truncated_fields.append(field_path)
                 result[key] = truncate_string(value, MAX_PATTERN_LENGTH)
@@ -1031,7 +1139,8 @@ def _truncate_dict_fields(data: dict[str, Any], truncated_fields: list[str] | No
                 truncated_fields.append(f"{field_path}[{MAX_LIMIT}+]")
             result[key] = [
                 _truncate_dict_fields(v, truncated_fields, f"{field_path}[{i}]")
-                if isinstance(v, dict) else v
+                if isinstance(v, dict)
+                else v
                 for i, v in enumerate(value[:MAX_LIMIT])
             ]
         else:
@@ -1044,7 +1153,15 @@ def _truncate_dict_fields(data: dict[str, Any], truncated_fields: list[str] | No
 # Log Sanitization
 # =============================================================================
 
-SENSITIVE_FIELDS = {'token', 'password', 'secret', 'key', 'auth', 'credential', 'api_key'}
+SENSITIVE_FIELDS = {
+    "token",
+    "password",
+    "secret",
+    "key",
+    "auth",
+    "credential",
+    "api_key",
+}
 
 
 def sanitize_for_log(value: Any) -> Any:
@@ -1054,7 +1171,7 @@ def sanitize_for_log(value: Any) -> Any:
     """
     if isinstance(value, str):
         # Remove/escape control characters
-        sanitized = value.encode('unicode_escape').decode('ascii')
+        sanitized = value.encode("unicode_escape").decode("ascii")
         # Truncate long values
         if len(sanitized) > 500:
             sanitized = sanitized[:500] + "...[truncated]"

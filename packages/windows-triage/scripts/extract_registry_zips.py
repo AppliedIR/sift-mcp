@@ -34,16 +34,14 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Dict
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
-def find_registry_zips(sources_dir: Path, os_filter: str = None) -> List[Path]:
+def find_registry_zips(sources_dir: Path, os_filter: str = None) -> list[Path]:
     """Find all RegistryHivesJSON.zip files."""
     registry_dir = sources_dir / "VanillaWindowsRegistryHives"
 
@@ -51,7 +49,9 @@ def find_registry_zips(sources_dir: Path, os_filter: str = None) -> List[Path]:
         logger.error(f"VanillaWindowsRegistryHives not found at {registry_dir}")
         logger.error("Clone it first:")
         logger.error("  cd data/sources")
-        logger.error("  git clone https://github.com/AndrewRathbun/VanillaWindowsRegistryHives.git")
+        logger.error(
+            "  git clone https://github.com/AndrewRathbun/VanillaWindowsRegistryHives.git"
+        )
         return []
 
     zips = list(registry_dir.rglob("RegistryHivesJSON.zip"))
@@ -62,7 +62,7 @@ def find_registry_zips(sources_dir: Path, os_filter: str = None) -> List[Path]:
     return sorted(zips)
 
 
-def extract_zip(zip_path: Path, output_dir: Path = None) -> Dict[str, int]:
+def extract_zip(zip_path: Path, output_dir: Path = None) -> dict[str, int]:
     """
     Extract a single RegistryHivesJSON.zip file.
 
@@ -73,7 +73,7 @@ def extract_zip(zip_path: Path, output_dir: Path = None) -> Dict[str, int]:
     Returns:
         Stats dict with files extracted count
     """
-    stats = {'extracted': 0, 'skipped': 0, 'errors': 0}
+    stats = {"extracted": 0, "skipped": 0, "errors": 0}
 
     if output_dir is None:
         output_dir = zip_path.parent
@@ -81,7 +81,7 @@ def extract_zip(zip_path: Path, output_dir: Path = None) -> Dict[str, int]:
     # Check if already extracted (look for SYSTEM_ROOT.json)
     expected_json = output_dir / "mout" / "KapeResearch" / "SYSTEM_ROOT.json"
     if expected_json.exists():
-        stats['skipped'] = 1
+        stats["skipped"] = 1
         return stats
 
     try:
@@ -90,24 +90,24 @@ def extract_zip(zip_path: Path, output_dir: Path = None) -> Dict[str, int]:
             ["unzip", "-o", "-q", str(zip_path), "-d", str(output_dir)],
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=120,
         )
 
         # Check if extraction succeeded (return code 0 or 1 with just warnings)
         # Return code 1 can mean "warnings but success" for unzip
         json_files = list((output_dir / "mout" / "KapeResearch").glob("*.json"))
         if json_files:
-            stats['extracted'] = len(json_files)
+            stats["extracted"] = len(json_files)
         elif result.returncode != 0 and "warning" not in result.stderr.lower():
             logger.warning(f"unzip error for {zip_path.name}: {result.stderr}")
-            stats['errors'] = 1
+            stats["errors"] = 1
 
     except subprocess.TimeoutExpired:
         logger.error(f"Timeout extracting {zip_path}")
-        stats['errors'] = 1
+        stats["errors"] = 1
     except Exception as e:
         logger.error(f"Error extracting {zip_path}: {e}")
-        stats['errors'] = 1
+        stats["errors"] = 1
 
     return stats
 
@@ -117,9 +117,13 @@ def main():
         description="Extract RegistryHivesJSON.zip files for import"
     )
     parser.add_argument("--limit", type=int, default=0, help="Limit ZIPs to extract")
-    parser.add_argument("--os-filter", type=str, help="Filter by OS pattern (e.g., 'W10')")
+    parser.add_argument(
+        "--os-filter", type=str, help="Filter by OS pattern (e.g., 'W10')"
+    )
     parser.add_argument("--output-dir", type=str, help="Extract to specific directory")
-    parser.add_argument("--dry-run", action="store_true", help="List ZIPs without extracting")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="List ZIPs without extracting"
+    )
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
@@ -139,7 +143,7 @@ def main():
     logger.info(f"Found {len(zips)} RegistryHivesJSON.zip files")
 
     if args.limit > 0:
-        zips = zips[:args.limit]
+        zips = zips[: args.limit]
         logger.info(f"Limited to {len(zips)} files")
 
     if args.dry_run:
@@ -152,25 +156,25 @@ def main():
         return
 
     # Extract ZIPs
-    total_stats = {'extracted': 0, 'skipped': 0, 'errors': 0, 'total': 0}
+    total_stats = {"extracted": 0, "skipped": 0, "errors": 0, "total": 0}
 
     for i, zip_path in enumerate(zips):
         output_dir = Path(args.output_dir) if args.output_dir else None
         rel_path = zip_path.relative_to(sources_dir / "VanillaWindowsRegistryHives")
 
-        logger.info(f"[{i+1}/{len(zips)}] {rel_path}")
+        logger.info(f"[{i + 1}/{len(zips)}] {rel_path}")
 
         stats = extract_zip(zip_path, output_dir)
 
-        for key in ['extracted', 'skipped', 'errors']:
+        for key in ["extracted", "skipped", "errors"]:
             total_stats[key] += stats[key]
-        total_stats['total'] += 1
+        total_stats["total"] += 1
 
-        if stats['skipped']:
+        if stats["skipped"]:
             logger.debug("  Already extracted, skipping")
-        elif stats['extracted']:
+        elif stats["extracted"]:
             logger.debug(f"  Extracted {stats['extracted']} JSON files")
-        elif stats['errors']:
+        elif stats["errors"]:
             logger.warning("  Failed to extract")
 
     # Summary
@@ -183,8 +187,10 @@ def main():
     print(f"Errors:           {total_stats['errors']}")
 
     # Verify extraction worked
-    if total_stats['extracted'] > 0 or total_stats['skipped'] > 0:
-        json_count = len(list((sources_dir / "VanillaWindowsRegistryHives").rglob("*_ROOT.json")))
+    if total_stats["extracted"] > 0 or total_stats["skipped"] > 0:
+        json_count = len(
+            list((sources_dir / "VanillaWindowsRegistryHives").rglob("*_ROOT.json"))
+        )
         print(f"\nTotal *_ROOT.json files now available: {json_count}")
 
 

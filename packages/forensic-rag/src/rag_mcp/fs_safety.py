@@ -27,7 +27,6 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from typing import Optional
 
 from .constants import (
     DATA_ROOT,
@@ -41,26 +40,31 @@ logger = logging.getLogger(__name__)
 
 class FilesystemSafetyError(Exception):
     """Raised when a filesystem operation violates safety rules."""
+
     pass
 
 
 class PathNotWithinRootError(FilesystemSafetyError):
     """Raised when a path is not within the allowed root."""
+
     pass
 
 
 class ForbiddenPathError(FilesystemSafetyError):
     """Raised when attempting to operate on a forbidden path."""
+
     pass
 
 
 class MissingSentinelError(FilesystemSafetyError):
     """Raised when a directory lacks the required sentinel file."""
+
     pass
 
 
 class PathTooShallowError(FilesystemSafetyError):
     """Raised when a path is too shallow (close to filesystem root)."""
+
     pass
 
 
@@ -80,7 +84,7 @@ def resolve_strict(path: Path) -> Path:
     try:
         return path.resolve(strict=False)
     except (OSError, RuntimeError) as e:
-        raise FilesystemSafetyError(f"Cannot resolve path {path}: {e}")
+        raise FilesystemSafetyError(f"Cannot resolve path {path}: {e}") from e
 
 
 def is_within(child: Path, parent: Path) -> bool:
@@ -100,7 +104,9 @@ def is_within(child: Path, parent: Path) -> bool:
         child_resolved = resolve_strict(child)
         parent_resolved = resolve_strict(parent)
         # Use os.path.commonpath for reliable comparison
-        return os.path.commonpath([child_resolved, parent_resolved]) == str(parent_resolved)
+        return os.path.commonpath([child_resolved, parent_resolved]) == str(
+            parent_resolved
+        )
     except (ValueError, OSError):
         return False
 
@@ -133,12 +139,7 @@ def is_forbidden_path(path: Path) -> bool:
     return resolved in FORBIDDEN_PATHS
 
 
-def require_within_root(
-    path: Path,
-    root: Path,
-    *,
-    label: str = "path"
-) -> Path:
+def require_within_root(path: Path, root: Path, *, label: str = "path") -> Path:
     """
     Validate that a path is within a root directory.
 
@@ -158,9 +159,7 @@ def require_within_root(
     root_resolved = resolve_strict(root)
 
     if is_forbidden_path(resolved):
-        raise ForbiddenPathError(
-            f"{label} '{resolved}' is a forbidden system path"
-        )
+        raise ForbiddenPathError(f"{label} '{resolved}' is a forbidden system path")
 
     if not is_within(resolved, root_resolved):
         raise PathNotWithinRootError(
@@ -170,10 +169,7 @@ def require_within_root(
     return resolved
 
 
-def require_sentinel(
-    directory: Path,
-    sentinel_name: str = MANAGED_SENTINEL
-) -> None:
+def require_sentinel(directory: Path, sentinel_name: str = MANAGED_SENTINEL) -> None:
     """
     Require that a directory contains the managed sentinel file.
 
@@ -199,10 +195,7 @@ def require_sentinel(
         )
 
 
-def create_sentinel(
-    directory: Path,
-    sentinel_name: str = MANAGED_SENTINEL
-) -> Path:
+def create_sentinel(directory: Path, sentinel_name: str = MANAGED_SENTINEL) -> Path:
     """
     Create a sentinel file in a directory to mark it as managed.
 
@@ -226,11 +219,11 @@ def create_sentinel(
 
 def safe_mkdir(
     directory: Path,
-    root: Optional[Path] = None,
+    root: Path | None = None,
     *,
     parents: bool = True,
     exist_ok: bool = True,
-    create_sentinel: bool = True
+    create_sentinel: bool = True,
 ) -> Path:
     """
     Safely create a directory within an allowed root.
@@ -267,10 +260,10 @@ def safe_mkdir(
 
 def safe_rmtree(
     directory: Path,
-    root: Optional[Path] = None,
+    root: Path | None = None,
     *,
     require_sentinel_file: bool = True,
-    missing_ok: bool = False
+    missing_ok: bool = False,
 ) -> bool:
     """
     Safely remove a directory tree with multiple safety checks.
@@ -314,9 +307,7 @@ def safe_rmtree(
 
     # Safety check 2: Must not be forbidden
     if is_forbidden_path(resolved):
-        raise ForbiddenPathError(
-            f"Refusing to delete forbidden path: {resolved}"
-        )
+        raise ForbiddenPathError(f"Refusing to delete forbidden path: {resolved}")
 
     # Safety check 3: Must be deep enough
     depth = get_path_depth(resolved)
@@ -337,10 +328,7 @@ def safe_rmtree(
 
 
 def safe_unlink(
-    file_path: Path,
-    root: Optional[Path] = None,
-    *,
-    missing_ok: bool = False
+    file_path: Path, root: Path | None = None, *, missing_ok: bool = False
 ) -> bool:
     """
     Safely delete a single file within an allowed root.

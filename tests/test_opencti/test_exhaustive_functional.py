@@ -11,19 +11,20 @@ Covers:
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-from opencti_mcp.server import OpenCTIMCPServer, VALID_ENTITY_TYPES
 from opencti_mcp.config import Config, SecretStr
-from opencti_mcp.errors import ValidationError, QueryError, RateLimitError
+from opencti_mcp.errors import ValidationError
+from opencti_mcp.server import OpenCTIMCPServer
 from opencti_mcp.validation import (
     VALID_OBSERVABLE_TYPES,
 )
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def mock_config():
@@ -71,8 +72,8 @@ def mock_client():
 @pytest.fixture
 def server(mock_config, mock_client):
     """Create server with mocked dependencies."""
-    with patch('opencti_mcp.server.OpenCTIClient', return_value=mock_client):
-        with patch('opencti_mcp.server.Config.load', return_value=mock_config):
+    with patch("opencti_mcp.server.OpenCTIClient", return_value=mock_client):
+        with patch("opencti_mcp.server.Config.load", return_value=mock_config):
             server = OpenCTIMCPServer(mock_config)
             server.client = mock_client
             return server
@@ -81,6 +82,7 @@ def server(mock_config, mock_client):
 # =============================================================================
 # search_entity Tests (consolidated from 16 individual search tools)
 # =============================================================================
+
 
 class TestSearchEntityThreatActor:
     """Test search_entity with type=threat_actor."""
@@ -91,62 +93,71 @@ class TestSearchEntityThreatActor:
         mock_client.search_threat_actors.return_value = [
             {"id": "1", "name": "APT29", "type": "threat_actor"}
         ]
-        result = await server._dispatch_tool("search_entity", {
-            "type": "threat_actor", "query": "APT29"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "APT29"}
+        )
         assert "results" in result
         mock_client.search_threat_actors.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_with_filters(self, server, mock_client):
         """Search with filters works."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "threat_actor",
-            "query": "APT",
-            "limit": 5,
-            "offset": 10,
-            "labels": ["apt", "russia"],
-            "confidence_min": 70,
-            "created_after": "2024-01-01",
-            "created_before": "2024-12-31",
-        })
+        result = await server._dispatch_tool(
+            "search_entity",
+            {
+                "type": "threat_actor",
+                "query": "APT",
+                "limit": 5,
+                "offset": 10,
+                "labels": ["apt", "russia"],
+                "confidence_min": 70,
+                "created_after": "2024-01-01",
+                "created_before": "2024-12-31",
+            },
+        )
         assert "results" in result
 
     @pytest.mark.asyncio
     async def test_empty_query(self, server, mock_client):
         """Empty query returns results."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "threat_actor", "query": ""
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": ""}
+        )
         assert "results" in result
 
     @pytest.mark.asyncio
     async def test_query_too_long(self, server):
         """Query exceeding max length raises error."""
         with pytest.raises(ValidationError):
-            await server._dispatch_tool("search_entity", {
-                "type": "threat_actor", "query": "x" * 1001
-            })
+            await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "x" * 1001}
+            )
 
     @pytest.mark.asyncio
     async def test_invalid_labels(self, server):
         """Invalid labels raise error."""
         with pytest.raises(ValidationError):
-            await server._dispatch_tool("search_entity", {
-                "type": "threat_actor",
-                "query": "test",
-                "labels": ["valid", "<script>invalid</script>"]
-            })
+            await server._dispatch_tool(
+                "search_entity",
+                {
+                    "type": "threat_actor",
+                    "query": "test",
+                    "labels": ["valid", "<script>invalid</script>"],
+                },
+            )
 
     @pytest.mark.asyncio
     async def test_invalid_date_filter(self, server):
         """Invalid date filter raises error."""
         with pytest.raises(ValidationError):
-            await server._dispatch_tool("search_entity", {
-                "type": "threat_actor",
-                "query": "test",
-                "created_after": "not-a-date"
-            })
+            await server._dispatch_tool(
+                "search_entity",
+                {
+                    "type": "threat_actor",
+                    "query": "test",
+                    "created_after": "not-a-date",
+                },
+            )
 
 
 class TestSearchEntityMalware:
@@ -158,23 +169,26 @@ class TestSearchEntityMalware:
         mock_client.search_malware.return_value = [
             {"id": "1", "name": "Cobalt Strike", "type": "malware"}
         ]
-        result = await server._dispatch_tool("search_entity", {
-            "type": "malware", "query": "Cobalt"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "malware", "query": "Cobalt"}
+        )
         assert "results" in result
 
     @pytest.mark.asyncio
     async def test_with_all_filters(self, server, mock_client):
         """Search with all filters."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "malware",
-            "query": "ransomware",
-            "limit": 20,
-            "offset": 0,
-            "labels": ["ransomware"],
-            "confidence_min": 50,
-            "created_after": "2024-01-01",
-        })
+        result = await server._dispatch_tool(
+            "search_entity",
+            {
+                "type": "malware",
+                "query": "ransomware",
+                "limit": 20,
+                "offset": 0,
+                "labels": ["ransomware"],
+                "confidence_min": 50,
+                "created_after": "2024-01-01",
+            },
+        )
         assert "results" in result
 
 
@@ -187,15 +201,17 @@ class TestSearchAttackPattern:
         mock_client.search_attack_patterns.return_value = [
             {"id": "1", "name": "Credential Dumping", "mitre_id": "T1003"}
         ]
-        result = await server._dispatch_tool("search_attack_pattern", {"query": "T1003"})
+        result = await server._dispatch_tool(
+            "search_attack_pattern", {"query": "T1003"}
+        )
         assert "results" in result
 
     @pytest.mark.asyncio
     async def test_technique_name_search(self, server, mock_client):
         """Search by technique name."""
-        result = await server._dispatch_tool("search_attack_pattern", {
-            "query": "credential dumping"
-        })
+        result = await server._dispatch_tool(
+            "search_attack_pattern", {"query": "credential dumping"}
+        )
         assert "results" in result
 
 
@@ -208,17 +224,17 @@ class TestSearchEntityVulnerability:
         mock_client.search_vulnerabilities.return_value = [
             {"id": "1", "name": "CVE-2024-3400", "cvss_score": 10.0}
         ]
-        result = await server._dispatch_tool("search_entity", {
-            "type": "vulnerability", "query": "CVE-2024-3400"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "vulnerability", "query": "CVE-2024-3400"}
+        )
         assert "results" in result
 
     @pytest.mark.asyncio
     async def test_year_search(self, server, mock_client):
         """Search CVEs by year."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "vulnerability", "query": "2024"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "vulnerability", "query": "2024"}
+        )
         assert "results" in result
 
 
@@ -231,40 +247,45 @@ class TestSearchEntityObservable:
         mock_client.search_observables.return_value = [
             {"id": "1", "value": "192.168.1.1", "type": "IPv4-Addr"}
         ]
-        result = await server._dispatch_tool("search_entity", {
-            "type": "observable", "query": "192.168"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "observable", "query": "192.168"}
+        )
         assert "results" in result
 
     @pytest.mark.asyncio
     async def test_with_observable_types(self, server, mock_client):
         """Search with observable type filter."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "observable",
-            "query": "1.1.1.1",
-            "observable_types": ["IPv4-Addr", "IPv6-Addr"]
-        })
+        result = await server._dispatch_tool(
+            "search_entity",
+            {
+                "type": "observable",
+                "query": "1.1.1.1",
+                "observable_types": ["IPv4-Addr", "IPv6-Addr"],
+            },
+        )
         assert "results" in result
 
     @pytest.mark.asyncio
     async def test_invalid_observable_type(self, server):
         """Invalid observable type raises error."""
         with pytest.raises(ValidationError):
-            await server._dispatch_tool("search_entity", {
-                "type": "observable",
-                "query": "test",
-                "observable_types": ["InvalidType"]
-            })
+            await server._dispatch_tool(
+                "search_entity",
+                {
+                    "type": "observable",
+                    "query": "test",
+                    "observable_types": ["InvalidType"],
+                },
+            )
 
     @pytest.mark.asyncio
     async def test_all_valid_observable_types(self, server, mock_client):
         """All valid observable types are accepted."""
         for obs_type in list(VALID_OBSERVABLE_TYPES)[:5]:  # Test subset
-            result = await server._dispatch_tool("search_entity", {
-                "type": "observable",
-                "query": "test",
-                "observable_types": [obs_type]
-            })
+            result = await server._dispatch_tool(
+                "search_entity",
+                {"type": "observable", "query": "test", "observable_types": [obs_type]},
+            )
             assert "results" in result
 
 
@@ -287,9 +308,9 @@ class TestSearchEntityCampaign:
     @pytest.mark.asyncio
     async def test_basic_search(self, server, mock_client):
         """Basic campaign search."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "campaign", "query": "operation"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "campaign", "query": "operation"}
+        )
         assert "results" in result
 
 
@@ -299,9 +320,9 @@ class TestSearchEntityTool:
     @pytest.mark.asyncio
     async def test_basic_search(self, server, mock_client):
         """Basic tool search."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "tool", "query": "mimikatz"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "tool", "query": "mimikatz"}
+        )
         assert "results" in result
 
 
@@ -311,9 +332,9 @@ class TestSearchEntityInfrastructure:
     @pytest.mark.asyncio
     async def test_basic_search(self, server, mock_client):
         """Basic infrastructure search."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "infrastructure", "query": "c2"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "infrastructure", "query": "c2"}
+        )
         assert "results" in result
 
 
@@ -323,9 +344,9 @@ class TestSearchEntityIncident:
     @pytest.mark.asyncio
     async def test_basic_search(self, server, mock_client):
         """Basic incident search."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "incident", "query": "breach"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "incident", "query": "breach"}
+        )
         assert "results" in result
 
 
@@ -335,9 +356,9 @@ class TestSearchEntitySighting:
     @pytest.mark.asyncio
     async def test_basic_search(self, server, mock_client):
         """Basic sighting search."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "sighting", "query": "detection"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "sighting", "query": "detection"}
+        )
         assert "results" in result
 
 
@@ -347,9 +368,9 @@ class TestSearchEntityOrganization:
     @pytest.mark.asyncio
     async def test_basic_search(self, server, mock_client):
         """Basic organization search."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "organization", "query": "corp"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "organization", "query": "corp"}
+        )
         assert "results" in result
 
 
@@ -359,9 +380,9 @@ class TestSearchEntitySector:
     @pytest.mark.asyncio
     async def test_basic_search(self, server, mock_client):
         """Basic sector search."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "sector", "query": "finance"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "sector", "query": "finance"}
+        )
         assert "results" in result
 
 
@@ -371,9 +392,9 @@ class TestSearchEntityLocation:
     @pytest.mark.asyncio
     async def test_basic_search(self, server, mock_client):
         """Basic location search."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "location", "query": "russia"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "location", "query": "russia"}
+        )
         assert "results" in result
 
 
@@ -383,9 +404,9 @@ class TestSearchEntityCourseOfAction:
     @pytest.mark.asyncio
     async def test_basic_search(self, server, mock_client):
         """Basic course of action search."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "course_of_action", "query": "mitigation"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "course_of_action", "query": "mitigation"}
+        )
         assert "results" in result
 
 
@@ -395,9 +416,9 @@ class TestSearchEntityGrouping:
     @pytest.mark.asyncio
     async def test_basic_search(self, server, mock_client):
         """Basic grouping search."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "grouping", "query": "analysis"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "grouping", "query": "analysis"}
+        )
         assert "results" in result
 
 
@@ -407,9 +428,9 @@ class TestSearchEntityNote:
     @pytest.mark.asyncio
     async def test_basic_search(self, server, mock_client):
         """Basic note search."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "note", "query": "finding"
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "note", "query": "finding"}
+        )
         assert "results" in result
 
 
@@ -420,14 +441,15 @@ class TestSearchEntityInvalidType:
     async def test_invalid_type(self, server):
         """Invalid entity type raises error."""
         with pytest.raises(ValidationError, match="Invalid entity type"):
-            await server._dispatch_tool("search_entity", {
-                "type": "invalid_type", "query": "test"
-            })
+            await server._dispatch_tool(
+                "search_entity", {"type": "invalid_type", "query": "test"}
+            )
 
 
 # =============================================================================
 # Unified Search Tests
 # =============================================================================
+
 
 class TestSearchThreatIntel:
     """Test search_threat_intel (unified search) tool."""
@@ -437,7 +459,7 @@ class TestSearchThreatIntel:
         """Basic unified search."""
         mock_client.unified_search.return_value = {
             "results": [{"id": "1", "name": "APT29"}],
-            "total": 1
+            "total": 1,
         }
         result = await server._dispatch_tool("search_threat_intel", {"query": "APT29"})
         assert "results" in result or "total" in result
@@ -445,16 +467,17 @@ class TestSearchThreatIntel:
     @pytest.mark.asyncio
     async def test_with_entity_types(self, server, mock_client):
         """Unified search with entity type filter."""
-        result = await server._dispatch_tool("search_threat_intel", {
-            "query": "test",
-            "entity_types": ["threat_actor", "malware"]
-        })
+        result = await server._dispatch_tool(
+            "search_threat_intel",
+            {"query": "test", "entity_types": ["threat_actor", "malware"]},
+        )
         assert result is not None
 
 
 # =============================================================================
 # Entity Operation Tests
 # =============================================================================
+
 
 class TestGetEntity:
     """Test get_entity tool."""
@@ -464,28 +487,26 @@ class TestGetEntity:
         """Get entity with valid UUID."""
         mock_client.get_entity.return_value = {
             "id": "12345678-1234-1234-1234-123456789abc",
-            "name": "Test Entity"
+            "name": "Test Entity",
         }
-        result = await server._dispatch_tool("get_entity", {
-            "entity_id": "12345678-1234-1234-1234-123456789abc"
-        })
+        result = await server._dispatch_tool(
+            "get_entity", {"entity_id": "12345678-1234-1234-1234-123456789abc"}
+        )
         assert result is not None
 
     @pytest.mark.asyncio
     async def test_invalid_uuid(self, server):
         """Invalid UUID raises error."""
         with pytest.raises(ValidationError):
-            await server._dispatch_tool("get_entity", {
-                "entity_id": "not-a-valid-uuid"
-            })
+            await server._dispatch_tool("get_entity", {"entity_id": "not-a-valid-uuid"})
 
     @pytest.mark.asyncio
     async def test_entity_not_found(self, server, mock_client):
         """Entity not found returns appropriate response."""
         mock_client.get_entity.return_value = None
-        result = await server._dispatch_tool("get_entity", {
-            "entity_id": "12345678-1234-1234-1234-123456789abc"
-        })
+        result = await server._dispatch_tool(
+            "get_entity", {"entity_id": "12345678-1234-1234-1234-123456789abc"}
+        )
         assert result is None or isinstance(result, dict)
 
 
@@ -498,28 +519,34 @@ class TestGetRelationships:
         mock_client.get_relationships.return_value = [
             {"id": "1", "relationship_type": "uses", "target": {"name": "Malware"}}
         ]
-        result = await server._dispatch_tool("get_relationships", {
-            "entity_id": "12345678-1234-1234-1234-123456789abc"
-        })
+        result = await server._dispatch_tool(
+            "get_relationships", {"entity_id": "12345678-1234-1234-1234-123456789abc"}
+        )
         assert "relationships" in result or isinstance(result, list)
 
     @pytest.mark.asyncio
     async def test_with_relationship_types(self, server, mock_client):
         """Get relationships with type filter."""
-        result = await server._dispatch_tool("get_relationships", {
-            "entity_id": "12345678-1234-1234-1234-123456789abc",
-            "relationship_types": ["uses", "targets"]
-        })
+        result = await server._dispatch_tool(
+            "get_relationships",
+            {
+                "entity_id": "12345678-1234-1234-1234-123456789abc",
+                "relationship_types": ["uses", "targets"],
+            },
+        )
         assert result is not None
 
     @pytest.mark.asyncio
     async def test_invalid_relationship_type(self, server):
         """Invalid relationship type raises error."""
         with pytest.raises(ValidationError):
-            await server._dispatch_tool("get_relationships", {
-                "entity_id": "12345678-1234-1234-1234-123456789abc",
-                "relationship_types": ["uses<script>"]
-            })
+            await server._dispatch_tool(
+                "get_relationships",
+                {
+                    "entity_id": "12345678-1234-1234-1234-123456789abc",
+                    "relationship_types": ["uses<script>"],
+                },
+            )
 
 
 class TestLookupIOC:
@@ -534,9 +561,9 @@ class TestLookupIOC:
     @pytest.mark.asyncio
     async def test_lookup_hash(self, server, mock_client):
         """Lookup hash."""
-        result = await server._dispatch_tool("lookup_hash", {
-            "hash": "d41d8cd98f00b204e9800998ecf8427e"
-        })
+        result = await server._dispatch_tool(
+            "lookup_hash", {"hash": "d41d8cd98f00b204e9800998ecf8427e"}
+        )
         # Returns found=False if not found, which is OK
 
     @pytest.mark.asyncio
@@ -584,20 +611,31 @@ class TestGetRecentIndicators:
 # Write/Admin Tools Removed Tests
 # =============================================================================
 
+
 class TestRemovedTools:
     """Verify removed tools raise ValidationError."""
 
     @pytest.mark.asyncio
     async def test_write_tools_removed(self, server):
         """Write tools are no longer available."""
-        for tool in ["create_indicator", "create_note", "create_sighting", "trigger_enrichment"]:
+        for tool in [
+            "create_indicator",
+            "create_note",
+            "create_sighting",
+            "trigger_enrichment",
+        ]:
             with pytest.raises(ValidationError, match="Unknown tool"):
                 await server._dispatch_tool(tool, {})
 
     @pytest.mark.asyncio
     async def test_admin_tools_removed(self, server):
         """Admin tools are no longer available."""
-        for tool in ["list_connectors", "get_network_status", "force_reconnect", "get_cache_stats"]:
+        for tool in [
+            "list_connectors",
+            "get_network_status",
+            "force_reconnect",
+            "get_cache_stats",
+        ]:
             with pytest.raises(ValidationError, match="Unknown tool"):
                 await server._dispatch_tool(tool, {})
 
@@ -605,11 +643,21 @@ class TestRemovedTools:
     async def test_individual_search_tools_removed(self, server):
         """Individual search_* tools (consolidated into search_entity) are gone."""
         removed = [
-            "search_threat_actor", "search_malware", "search_vulnerability",
-            "search_campaign", "search_tool", "search_infrastructure",
-            "search_incident", "search_observable", "search_sighting",
-            "search_organization", "search_sector", "search_location",
-            "search_course_of_action", "search_grouping", "search_note",
+            "search_threat_actor",
+            "search_malware",
+            "search_vulnerability",
+            "search_campaign",
+            "search_tool",
+            "search_infrastructure",
+            "search_incident",
+            "search_observable",
+            "search_sighting",
+            "search_organization",
+            "search_sector",
+            "search_location",
+            "search_course_of_action",
+            "search_grouping",
+            "search_note",
         ]
         for tool in removed:
             with pytest.raises(ValidationError, match="Unknown tool"):
@@ -619,6 +667,7 @@ class TestRemovedTools:
 # =============================================================================
 # System Operation Tests
 # =============================================================================
+
 
 class TestGetHealth:
     """Test get_health tool."""
@@ -636,58 +685,52 @@ class TestGetHealth:
 # Pagination Tests (via search_entity)
 # =============================================================================
 
+
 class TestPagination:
     """Test pagination handling."""
 
     @pytest.mark.asyncio
     async def test_limit_default(self, server, mock_client):
         """Default limit is applied."""
-        await server._dispatch_tool("search_entity", {
-            "type": "threat_actor", "query": "test"
-        })
+        await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test"}
+        )
         call_args = mock_client.search_threat_actors.call_args
         assert call_args is not None
 
     @pytest.mark.asyncio
     async def test_limit_clamped(self, server, mock_client):
         """Limit is clamped to max."""
-        await server._dispatch_tool("search_entity", {
-            "type": "threat_actor",
-            "query": "test",
-            "limit": 1000
-        })
+        await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test", "limit": 1000}
+        )
 
     @pytest.mark.asyncio
     async def test_offset_clamped(self, server, mock_client):
         """Offset is clamped to max."""
-        await server._dispatch_tool("search_entity", {
-            "type": "threat_actor",
-            "query": "test",
-            "offset": 10000
-        })
+        await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test", "offset": 10000}
+        )
 
     @pytest.mark.asyncio
     async def test_negative_limit(self, server, mock_client):
         """Negative limit is handled."""
-        await server._dispatch_tool("search_entity", {
-            "type": "threat_actor",
-            "query": "test",
-            "limit": -5
-        })
+        await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test", "limit": -5}
+        )
 
     @pytest.mark.asyncio
     async def test_negative_offset(self, server, mock_client):
         """Negative offset is handled."""
-        await server._dispatch_tool("search_entity", {
-            "type": "threat_actor",
-            "query": "test",
-            "offset": -10
-        })
+        await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "test", "offset": -10}
+        )
 
 
 # =============================================================================
 # Error Handling Tests
 # =============================================================================
+
 
 class TestErrorHandling:
     """Test error handling."""
@@ -703,9 +746,9 @@ class TestErrorHandling:
         """Client errors are wrapped appropriately."""
         mock_client.search_threat_actors.side_effect = Exception("Connection failed")
         with pytest.raises(Exception):
-            await server._dispatch_tool("search_entity", {
-                "type": "threat_actor", "query": "test"
-            })
+            await server._dispatch_tool(
+                "search_entity", {"type": "threat_actor", "query": "test"}
+            )
 
     @pytest.mark.asyncio
     async def test_validation_error_clear_message(self, server):
@@ -720,51 +763,54 @@ class TestErrorHandling:
 # Filter Combination Tests (via search_entity)
 # =============================================================================
 
+
 class TestFilterCombinations:
     """Test various filter combinations."""
 
     @pytest.mark.asyncio
     async def test_all_filters_combined(self, server, mock_client):
         """All filters can be combined."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "threat_actor",
-            "query": "APT",
-            "limit": 20,
-            "offset": 5,
-            "labels": ["apt", "state-sponsored"],
-            "confidence_min": 70,
-            "created_after": "2024-01-01",
-            "created_before": "2024-12-31",
-        })
+        result = await server._dispatch_tool(
+            "search_entity",
+            {
+                "type": "threat_actor",
+                "query": "APT",
+                "limit": 20,
+                "offset": 5,
+                "labels": ["apt", "state-sponsored"],
+                "confidence_min": 70,
+                "created_after": "2024-01-01",
+                "created_before": "2024-12-31",
+            },
+        )
         assert "results" in result
 
     @pytest.mark.asyncio
     async def test_date_range(self, server, mock_client):
         """Date range filter works."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "malware",
-            "query": "",
-            "created_after": "2024-01-01",
-            "created_before": "2024-06-30",
-        })
+        result = await server._dispatch_tool(
+            "search_entity",
+            {
+                "type": "malware",
+                "query": "",
+                "created_after": "2024-01-01",
+                "created_before": "2024-06-30",
+            },
+        )
         assert "results" in result
 
     @pytest.mark.asyncio
     async def test_labels_only(self, server, mock_client):
         """Labels-only filter works."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "threat_actor",
-            "query": "",
-            "labels": ["apt"]
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "", "labels": ["apt"]}
+        )
         assert "results" in result
 
     @pytest.mark.asyncio
     async def test_confidence_only(self, server, mock_client):
         """Confidence-only filter works."""
-        result = await server._dispatch_tool("search_entity", {
-            "type": "threat_actor",
-            "query": "",
-            "confidence_min": 80
-        })
+        result = await server._dispatch_tool(
+            "search_entity", {"type": "threat_actor", "query": "", "confidence_min": 80}
+        )
         assert "results" in result

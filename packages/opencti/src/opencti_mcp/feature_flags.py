@@ -11,8 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +42,7 @@ class FeatureFlags:
     negative_caching: bool = True
 
     @classmethod
-    def load(cls) -> "FeatureFlags":
+    def load(cls) -> FeatureFlags:
         """Load feature flags from environment variables.
 
         Environment variables use FF_ prefix:
@@ -51,6 +50,7 @@ class FeatureFlags:
         - FF_GRACEFUL_DEGRADATION=false
         - etc.
         """
+
         def parse_bool(name: str, default: bool) -> bool:
             env_name = f"FF_{name.upper()}"
             value = os.environ.get(env_name, "").lower()

@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
-from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
-from rag_mcp.audit import AuditWriter, resolve_examiner
-from rag_mcp.tool_metadata import TOOL_METADATA, DEFAULT_METADATA
+from rag_mcp.audit import AuditWriter
+from rag_mcp.tool_metadata import DEFAULT_METADATA, TOOL_METADATA
 
 
 class TestAuditWriter:
@@ -20,7 +16,9 @@ class TestAuditWriter:
     def test_evidence_id_format(self, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         writer = AuditWriter("forensic-rag-mcp")
-        eid = writer.log(tool="search", params={"q": "test"}, result_summary={"ok": True})
+        eid = writer.log(
+            tool="search", params={"q": "test"}, result_summary={"ok": True}
+        )
         parts = eid.split("-")
         assert parts[0] == "forensicrag"
         assert parts[1] == "tester"
@@ -32,7 +30,9 @@ class TestAuditWriter:
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
         writer = AuditWriter("forensic-rag-mcp")
-        ids = [writer.log(tool="search", params={}, result_summary={}) for _ in range(5)]
+        ids = [
+            writer.log(tool="search", params={}, result_summary={}) for _ in range(5)
+        ]
         seqs = [int(eid.split("-")[-1]) for eid in ids]
         assert seqs == [1, 2, 3, 4, 5]
 
@@ -50,7 +50,9 @@ class TestAuditWriter:
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
         writer = AuditWriter("forensic-rag-mcp")
-        writer.log(tool="search", params={"query": "mimikatz"}, result_summary={"count": 5})
+        writer.log(
+            tool="search", params={"query": "mimikatz"}, result_summary={"count": 5}
+        )
 
         audit_file = tmp_path / "audit" / "forensic-rag-mcp.jsonl"
         assert audit_file.exists()
@@ -159,10 +161,9 @@ class TestWrapResponse:
 
     def _make_server_instance(self):
         """Create a minimal server instance for testing _wrap_response."""
-        from unittest.mock import MagicMock
         from rag_mcp.server import RAGServer
 
-        with patch.object(RAGServer, '__init__', lambda self: None):
+        with patch.object(RAGServer, "__init__", lambda self: None):
             server = RAGServer.__new__(RAGServer)
             server._audit = AuditWriter("forensic-rag-mcp")
             return server

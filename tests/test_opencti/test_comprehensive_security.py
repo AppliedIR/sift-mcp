@@ -13,76 +13,77 @@ Organized by finding severity and category.
 from __future__ import annotations
 
 import time
+
 import pytest
-from unittest.mock import patch, MagicMock, PropertyMock
+from opencti_mcp.client import CircuitBreaker, CircuitState, RateLimiter
+from opencti_mcp.config import Config, SecretStr
+from opencti_mcp.errors import ValidationError
 from opencti_mcp.validation import (
-    validate_length,
-    validate_limit,
-    validate_days,
-    validate_ioc,
-    validate_uuid,
-    validate_uuid_list,
-    validate_labels,
-    validate_label,
-    validate_relationship_types,
-    validate_stix_pattern,
-    validate_observable_types,
-    validate_note_types,
-    validate_date_filter,
-    validate_pattern_type,
-    truncate_response,
-    sanitize_for_log,
-    normalize_hash,
+    MAX_IOC_LENGTH,
+    MAX_QUERY_LENGTH,
+    VALID_OBSERVABLE_TYPES,
+    VALID_PATTERN_TYPES,
+    _is_cidr,
+    _is_cve,
+    _is_domain,
     _is_ipv4,
     _is_ipv6,
-    _is_cidr,
-    _is_domain,
-    _is_cve,
     _is_mitre_id,
-    VALID_OBSERVABLE_TYPES,
-    VALID_NOTE_TYPES,
-    VALID_PATTERN_TYPES,
-    VALID_RELATIONSHIP_TYPES,
-    MAX_QUERY_LENGTH,
-    MAX_IOC_LENGTH,
-    MAX_LIMIT,
+    normalize_hash,
+    sanitize_for_log,
+    truncate_response,
+    validate_date_filter,
+    validate_label,
+    validate_labels,
+    validate_length,
+    validate_limit,
+    validate_note_types,
+    validate_observable_types,
+    validate_pattern_type,
+    validate_relationship_types,
+    validate_stix_pattern,
+    validate_uuid,
+    validate_uuid_list,
 )
-from opencti_mcp.errors import ValidationError, RateLimitError
-from opencti_mcp.config import Config, SecretStr
-from opencti_mcp.client import RateLimiter, CircuitBreaker, CircuitState
-
 
 # =============================================================================
 # FINDING 1: Date Filter Validation Consistency Tests
 # =============================================================================
 
+
 class TestDateFilterValidationConsistency:
     """Tests for consistent date filter validation across all handlers."""
 
-    @pytest.mark.parametrize("malicious_date", [
-        "2024-01-15'; DROP TABLE--",
-        "2024-01-15<script>alert(1)</script>",
-        "2024-01-15${date}",
-        "2024-01-15\x00malicious",
-        "2024-01-15\nInjected: header",
-        "../../../etc/passwd",
-        "2024-01-15|ls -la",
-        "2024-01-15`whoami`",
-        "{{2024-01-15}}",
-    ])
+    @pytest.mark.parametrize(
+        "malicious_date",
+        [
+            "2024-01-15'; DROP TABLE--",
+            "2024-01-15<script>alert(1)</script>",
+            "2024-01-15${date}",
+            "2024-01-15\x00malicious",
+            "2024-01-15\nInjected: header",
+            "../../../etc/passwd",
+            "2024-01-15|ls -la",
+            "2024-01-15`whoami`",
+            "{{2024-01-15}}",
+        ],
+    )
     def test_date_injection_attempts_rejected(self, malicious_date: str):
         """All date injection attempts should be rejected."""
         with pytest.raises(ValidationError):
             validate_date_filter(malicious_date, "created_after")
 
-    @pytest.mark.parametrize("invalid_date", [
-        "2024-02-30",  # Invalid day for February
-        "2024-04-31",  # Invalid day for April
-        "2024-06-31",  # Invalid day for June
-        "2024-09-31",  # Invalid day for September
-        "2024-11-31",  # Invalid day for November
-        "2023-02-29",  # Not a leap year
-    ])
+    @pytest.mark.parametrize(
+        "invalid_date",
+        [
+            "2024-02-30",  # Invalid day for February
+            "2024-04-31",  # Invalid day for April
+            "2024-06-31",  # Invalid day for June
+            "2024-09-31",  # Invalid day for September
+            "2024-11-31",  # Invalid day for November
+            "2023-02-29",  # Not a leap year
+        ],
+    )
     def test_invalid_calendar_dates_should_fail(self, invalid_date: str):
         """Dates that don't exist on calendar should ideally fail.
 
@@ -113,19 +114,23 @@ class TestDateFilterValidationConsistency:
 # FINDING 2: Label Validation Consistency Tests
 # =============================================================================
 
+
 class TestLabelValidationConsistency:
     """Tests for label validation across all uses."""
 
-    @pytest.mark.parametrize("malicious_label", [
-        "label<script>",
-        "label'; DROP TABLE--",
-        "label\x00null",
-        "label${env}",
-        "label`id`",
-        "label\ninjected",
-        "label\rcarriage",
-        "../../../etc/passwd",
-    ])
+    @pytest.mark.parametrize(
+        "malicious_label",
+        [
+            "label<script>",
+            "label'; DROP TABLE--",
+            "label\x00null",
+            "label${env}",
+            "label`id`",
+            "label\ninjected",
+            "label\rcarriage",
+            "../../../etc/passwd",
+        ],
+    )
     def test_malicious_labels_rejected(self, malicious_label: str):
         """Malicious labels should be rejected."""
         with pytest.raises(ValidationError):
@@ -171,6 +176,7 @@ class TestLabelValidationConsistency:
 # FINDING 3: Note Type Validation Tests
 # =============================================================================
 
+
 class TestNoteTypeValidation:
     """Tests for note type validation strictness."""
 
@@ -208,6 +214,7 @@ class TestNoteTypeValidation:
 # FINDING 4: Relationship Type Validation Tests
 # =============================================================================
 
+
 class TestRelationshipTypeValidation:
     """Tests for relationship type validation."""
 
@@ -237,6 +244,7 @@ class TestRelationshipTypeValidation:
 # =============================================================================
 # FINDING 5: STIX Pattern Validation Tests
 # =============================================================================
+
 
 class TestSTIXPatternValidation:
     """Tests for STIX pattern validation."""
@@ -280,6 +288,7 @@ class TestSTIXPatternValidation:
 # =============================================================================
 # FINDING 6: Observable Type Validation Tests
 # =============================================================================
+
 
 class TestObservableTypeValidation:
     """Tests for observable type validation."""
@@ -325,6 +334,7 @@ class TestObservableTypeValidation:
 # =============================================================================
 # FINDING 7: UUID Validation Tests
 # =============================================================================
+
 
 class TestUUIDValidation:
     """Tests for UUID validation."""
@@ -373,6 +383,7 @@ class TestUUIDValidation:
 # =============================================================================
 # FINDING 8: IOC Validation Edge Cases
 # =============================================================================
+
 
 class TestIOCValidationEdgeCases:
     """Edge case tests for IOC validation."""
@@ -443,7 +454,9 @@ class TestIOCValidationEdgeCases:
         # Invalid - structure
         assert not _is_domain("example")  # No TLD
         assert not _is_domain(".example.com")  # Leading dot
-        assert not _is_domain("example.com.")  # Trailing dot (actually valid in DNS but we reject)
+        assert not _is_domain(
+            "example.com."
+        )  # Trailing dot (actually valid in DNS but we reject)
         assert not _is_domain("example..com")  # Double dot
         assert not _is_domain("-example.com")  # Leading hyphen
         assert not _is_domain("example-.com")  # Trailing hyphen
@@ -482,6 +495,7 @@ class TestIOCValidationEdgeCases:
 # FINDING 9: Rate Limiter and Circuit Breaker Tests
 # =============================================================================
 
+
 class TestRateLimiterEdgeCases:
     """Edge case tests for rate limiter."""
 
@@ -490,7 +504,7 @@ class TestRateLimiterEdgeCases:
         limiter = RateLimiter(max_calls=5, window_seconds=60)
 
         for i in range(5):
-            assert limiter.check_and_record(), f"Call {i+1} should succeed"
+            assert limiter.check_and_record(), f"Call {i + 1} should succeed"
 
         assert not limiter.check_and_record(), "Call 6 should fail"
 
@@ -539,6 +553,7 @@ class TestRateLimiterEdgeCases:
 # FINDING 10: Truncation and Response Size Tests
 # =============================================================================
 
+
 class TestTruncationEdgeCases:
     """Edge case tests for response truncation."""
 
@@ -563,9 +578,11 @@ class TestTruncationEdgeCases:
     def test_mixed_nested_structure(self):
         """Mixed nested structures should be handled."""
         data = {
-            "list_of_dicts": [{"name": f"item_{i}", "data": "x" * 1000} for i in range(200)],
+            "list_of_dicts": [
+                {"name": f"item_{i}", "data": "x" * 1000} for i in range(200)
+            ],
             "dict_of_lists": {f"key_{i}": list(range(1000)) for i in range(50)},
-            "deep": {"a": {"b": {"c": {"d": {"e": "value" * 1000}}}}}
+            "deep": {"a": {"b": {"c": {"d": {"e": "value" * 1000}}}}},
         }
 
         result = truncate_response(data)
@@ -576,7 +593,7 @@ class TestTruncationEdgeCases:
         """Truncation metadata should be added."""
         data = {
             "description": "x" * 1000,  # Will be truncated
-            "items": list(range(200))  # Will be truncated
+            "items": list(range(200)),  # Will be truncated
         }
 
         result = truncate_response(data)
@@ -587,6 +604,7 @@ class TestTruncationEdgeCases:
 # =============================================================================
 # FINDING 11: Config and Secret Handling Tests
 # =============================================================================
+
 
 class TestConfigSecurityEdgeCases:
     """Edge case tests for configuration security."""
@@ -614,11 +632,11 @@ class TestConfigSecurityEdgeCases:
     def test_config_cannot_be_pickled(self):
         """Config should not be serializable."""
         config = Config(
-            opencti_url="http://localhost:8080",
-            opencti_token=SecretStr("token")
+            opencti_url="http://localhost:8080", opencti_token=SecretStr("token")
         )
 
         import pickle
+
         with pytest.raises(TypeError, match="cannot be pickled"):
             pickle.dumps(config)
 
@@ -626,7 +644,9 @@ class TestConfigSecurityEdgeCases:
         """Config should validate URL properly."""
         # Valid URLs
         Config(opencti_url="http://localhost:8080", opencti_token=SecretStr("token"))
-        Config(opencti_url="https://opencti.example.com", opencti_token=SecretStr("token"))
+        Config(
+            opencti_url="https://opencti.example.com", opencti_token=SecretStr("token")
+        )
 
         # Invalid schemes
         with pytest.raises(Exception):  # ConfigurationError
@@ -638,6 +658,7 @@ class TestConfigSecurityEdgeCases:
 # =============================================================================
 # FINDING 12: Log Sanitization Tests
 # =============================================================================
+
 
 class TestLogSanitization:
     """Tests for log sanitization."""
@@ -655,7 +676,7 @@ class TestLogSanitization:
             "password": "secret123",
             "api_key": "key123",
             "token": "token123",
-            "auth_header": "Bearer xxx"
+            "auth_header": "Bearer xxx",
         }
 
         result = sanitize_for_log(data)
@@ -674,6 +695,7 @@ class TestLogSanitization:
 # =============================================================================
 # FINDING 13: Pattern Type Validation Tests
 # =============================================================================
+
 
 class TestPatternTypeValidation:
     """Tests for pattern type validation."""
@@ -707,6 +729,7 @@ class TestPatternTypeValidation:
 # FINDING 14: Hash Normalization Tests
 # =============================================================================
 
+
 class TestHashNormalization:
     """Tests for hash normalization."""
 
@@ -722,16 +745,23 @@ class TestHashNormalization:
 
     def test_hash_case_normalization(self):
         """Hashes should be lowercased."""
-        assert normalize_hash("D41D8CD98F00B204E9800998ECF8427E") == "d41d8cd98f00b204e9800998ecf8427e"
+        assert (
+            normalize_hash("D41D8CD98F00B204E9800998ECF8427E")
+            == "d41d8cd98f00b204e9800998ecf8427e"
+        )
 
     def test_hash_whitespace_handling(self):
         """Whitespace should be stripped."""
-        assert normalize_hash("  d41d8cd98f00b204e9800998ecf8427e  ") == "d41d8cd98f00b204e9800998ecf8427e"
+        assert (
+            normalize_hash("  d41d8cd98f00b204e9800998ecf8427e  ")
+            == "d41d8cd98f00b204e9800998ecf8427e"
+        )
 
 
 # =============================================================================
 # FINDING 15: Concurrent Access Tests
 # =============================================================================
+
 
 class TestConcurrentAccess:
     """Tests for concurrent access safety."""
@@ -767,6 +797,7 @@ class TestConcurrentAccess:
 # =============================================================================
 # FINDING 16: OpenCTI Data Type Specific Tests
 # =============================================================================
+
 
 class TestOpenCTIDataTypes:
     """Tests specific to OpenCTI data types and attack vectors."""
@@ -804,26 +835,33 @@ class TestOpenCTIDataTypes:
 # FINDING 17: Unicode and Encoding Tests
 # =============================================================================
 
+
 class TestUnicodeAndEncoding:
     """Tests for Unicode handling and encoding issues."""
 
-    @pytest.mark.parametrize("homoglyph_domain", [
-        "gооgle.com",  # Cyrillic 'о'
-        "аpple.com",   # Cyrillic 'а'
-        "micrоsoft.com",  # Cyrillic 'о'
-        "paypal.cοm",  # Greek 'ο' in TLD
-    ])
+    @pytest.mark.parametrize(
+        "homoglyph_domain",
+        [
+            "gооgle.com",  # Cyrillic 'о'
+            "аpple.com",  # Cyrillic 'а'
+            "micrоsoft.com",  # Cyrillic 'о'
+            "paypal.cοm",  # Greek 'ο' in TLD
+        ],
+    )
     def test_homoglyph_domains_rejected(self, homoglyph_domain: str):
         """Homoglyph domains should be rejected."""
         assert not _is_domain(homoglyph_domain)
 
-    @pytest.mark.parametrize("special_unicode", [
-        "\u202e",  # RTL override
-        "\u200b",  # Zero-width space
-        "\u200c",  # Zero-width non-joiner
-        "\u200d",  # Zero-width joiner
-        "\ufeff",  # BOM
-    ])
+    @pytest.mark.parametrize(
+        "special_unicode",
+        [
+            "\u202e",  # RTL override
+            "\u200b",  # Zero-width space
+            "\u200c",  # Zero-width non-joiner
+            "\u200d",  # Zero-width joiner
+            "\ufeff",  # BOM
+        ],
+    )
     def test_special_unicode_in_dates_rejected(self, special_unicode: str):
         """Special Unicode characters should be rejected in dates."""
         with pytest.raises(ValidationError):
@@ -839,12 +877,13 @@ class TestUnicodeAndEncoding:
         """Mathematical alphanumeric symbols should be rejected."""
         # Mathematical bold 'a' (U+1D41A)
         with pytest.raises(ValidationError):
-            validate_note_types(["\U0001D41Anote"])
+            validate_note_types(["\U0001d41anote"])
 
 
 # =============================================================================
 # FINDING 18: Empty and Null Input Tests
 # =============================================================================
+
 
 class TestEmptyAndNullInputs:
     """Tests for empty and null input handling."""
@@ -879,6 +918,7 @@ class TestEmptyAndNullInputs:
 # =============================================================================
 # FINDING 19: Boundary Value Tests
 # =============================================================================
+
 
 class TestBoundaryValues:
     """Tests for boundary conditions."""
@@ -927,6 +967,7 @@ class TestBoundaryValues:
 # =============================================================================
 # FINDING 20: Error Message Information Leakage Tests
 # =============================================================================
+
 
 class TestErrorMessageLeakage:
     """Tests to ensure error messages don't leak sensitive info."""

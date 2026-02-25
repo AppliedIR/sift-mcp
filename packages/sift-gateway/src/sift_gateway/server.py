@@ -4,13 +4,13 @@ import asyncio
 import contextlib
 import logging
 import time
-from starlette.applications import Starlette
-from starlette.routing import Mount, Route
 
 from mcp.types import Tool
+from starlette.applications import Starlette
+from starlette.routing import Mount
 
-from sift_gateway.backends import create_backend, MCPBackend
 from sift_gateway.auth import AuthMiddleware
+from sift_gateway.backends import MCPBackend, create_backend
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import (
     ANALYST_TOOLS,
@@ -79,7 +79,9 @@ class Gateway:
             except (ConnectionError, OSError) as exc:
                 logger.error("Failed to start backend %s (connection): %s", name, exc)
             except Exception as exc:
-                logger.error("Failed to start backend %s: %s: %s", name, type(exc).__name__, exc)
+                logger.error(
+                    "Failed to start backend %s: %s: %s", name, type(exc).__name__, exc
+                )
 
         await self._build_tool_map()
 
@@ -94,7 +96,9 @@ class Gateway:
             except (ConnectionError, OSError) as exc:
                 logger.error("Error stopping backend %s (connection): %s", name, exc)
             except Exception as exc:
-                logger.error("Error stopping backend %s: %s: %s", name, type(exc).__name__, exc)
+                logger.error(
+                    "Error stopping backend %s: %s: %s", name, type(exc).__name__, exc
+                )
         self._tool_map.clear()
 
     async def _build_tool_map(self) -> None:
@@ -132,8 +136,11 @@ class Gateway:
                     prefixed = f"{bname}__{tool_name}"
                     self._tool_map[prefixed] = bname
 
-        logger.info("Tool map built: %d tools across %d backends",
-                     len(self._tool_map), len(self.backends))
+        logger.info(
+            "Tool map built: %d tools across %d backends",
+            len(self._tool_map),
+            len(self.backends),
+        )
 
     async def ensure_backend_started(self, backend_name: str) -> None:
         """Start a backend if it's not running (for lazy start mode).
@@ -164,11 +171,15 @@ class Gateway:
                 if backend.started and backend.last_tool_call > 0:
                     idle = now - backend.last_tool_call
                     if idle > timeout:
-                        logger.info("Stopping idle backend: %s (idle %.0fs)", name, idle)
+                        logger.info(
+                            "Stopping idle backend: %s (idle %.0fs)", name, idle
+                        )
                         try:
                             await backend.stop()
                         except Exception as exc:
-                            logger.error("Error stopping idle backend %s: %s", name, exc)
+                            logger.error(
+                                "Error stopping idle backend %s: %s", name, exc
+                            )
                         await self._build_tool_map()
 
     async def list_tools(self) -> dict[str, str]:
@@ -193,7 +204,7 @@ class Gateway:
                 logger.error("get_tools_list: backend error: %s", exc)
 
         tools: list[Tool] = []
-        for mapped_name, backend_name in self._tool_map.items():
+        for mapped_name in self._tool_map:
             # Strip prefix to find the original tool object
             if "__" in mapped_name:
                 original = mapped_name.split("__", 1)[1]
@@ -202,20 +213,26 @@ class Gateway:
 
             src = by_name.get(original)
             if src is None:
-                tools.append(Tool(
-                    name=mapped_name,
-                    description="",
-                    inputSchema={"type": "object", "properties": {}},
-                ))
+                tools.append(
+                    Tool(
+                        name=mapped_name,
+                        description="",
+                        inputSchema={"type": "object", "properties": {}},
+                    )
+                )
             else:
-                tools.append(Tool(
-                    name=mapped_name,
-                    description=src.description or "",
-                    inputSchema=src.inputSchema,
-                ))
+                tools.append(
+                    Tool(
+                        name=mapped_name,
+                        description=src.description or "",
+                        inputSchema=src.inputSchema,
+                    )
+                )
         return tools
 
-    async def call_tool(self, name: str, arguments: dict, examiner: str | None = None) -> list:
+    async def call_tool(
+        self, name: str, arguments: dict, examiner: str | None = None
+    ) -> list:
         """Route a tool call to the correct backend.
 
         Args:
@@ -240,7 +257,7 @@ class Gateway:
         actual_name = name
         prefix = f"{backend_name}__"
         if name.startswith(prefix):
-            actual_name = name[len(prefix):]
+            actual_name = name[len(prefix) :]
 
         # Inject examiner identity into tools that accept analyst_override.
         # Always overwrite to prevent identity spoofing.
@@ -250,12 +267,23 @@ class Gateway:
             if actual_name in ANALYST_TOOLS:
                 arguments = {**arguments, "analyst_override": examiner}
 
-        logger.info("Routing tool %s -> backend %s (examiner=%s)", actual_name, backend_name, examiner)
+        logger.info(
+            "Routing tool %s -> backend %s (examiner=%s)",
+            actual_name,
+            backend_name,
+            examiner,
+        )
         try:
-            return await asyncio.wait_for(backend.call_tool(actual_name, arguments), timeout=300.0)
-        except asyncio.TimeoutError:
-            logger.error("Tool call %s on backend %s timed out after 300s", actual_name, backend_name)
-            raise RuntimeError(f"Tool call {actual_name} timed out after 300s")
+            return await asyncio.wait_for(
+                backend.call_tool(actual_name, arguments), timeout=300.0
+            )
+        except asyncio.TimeoutError as exc:
+            logger.error(
+                "Tool call %s on backend %s timed out after 300s",
+                actual_name,
+                backend_name,
+            )
+            raise RuntimeError(f"Tool call {actual_name} timed out after 300s") from exc
 
     def create_app(self) -> Starlette:
         """Build a Starlette application with all routes and middleware.

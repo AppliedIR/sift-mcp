@@ -9,18 +9,17 @@ Requires:
 
 from __future__ import annotations
 
-import pytest
 import os
 
+import pytest
+from opencti_mcp.client import CircuitState, OpenCTIClient
 from opencti_mcp.config import Config
-from opencti_mcp.client import OpenCTIClient, CircuitState
 from opencti_mcp.feature_flags import FeatureFlags, reset_feature_flags
-
 
 # Skip unless explicitly opted in (live tests hit a real OpenCTI instance)
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_LIVE_TESTS", "false").lower() != "true",
-    reason="Live tests require RUN_LIVE_TESTS=true"
+    reason="Live tests require RUN_LIVE_TESTS=true",
 )
 
 
@@ -40,6 +39,7 @@ def live_client(live_config):
 # Startup Validation Live Tests
 # =============================================================================
 
+
 class TestLiveStartupValidation:
     """Test startup validation against live OpenCTI."""
 
@@ -47,16 +47,16 @@ class TestLiveStartupValidation:
         """Startup validation passes with live server."""
         result = live_client.validate_startup()
 
-        assert result['valid'] is True
-        assert len(result['errors']) == 0
+        assert result["valid"] is True
+        assert len(result["errors"]) == 0
 
     def test_startup_gets_version(self, live_client):
         """Startup validation retrieves server version."""
         result = live_client.validate_startup()
 
-        assert result['opencti_version'] is not None
+        assert result["opencti_version"] is not None
         # Version should be semver-like
-        assert '.' in result['opencti_version']
+        assert "." in result["opencti_version"]
 
     def test_version_check_no_critical_warnings(self, live_client):
         """No critical version warnings with current OpenCTI."""
@@ -64,8 +64,9 @@ class TestLiveStartupValidation:
 
         # With OpenCTI 6.x, we shouldn't have version incompatibility warnings
         version_warnings = [
-            w for w in result['warnings']
-            if 'older' in w.lower() or 'newer' in w.lower()
+            w
+            for w in result["warnings"]
+            if "older" in w.lower() or "newer" in w.lower()
         ]
         # Might have warnings if server is v7+, but that's expected
         # For now just verify we can get version info
@@ -75,6 +76,7 @@ class TestLiveStartupValidation:
 # Server Info Live Tests
 # =============================================================================
 
+
 class TestLiveServerInfo:
     """Test server info retrieval against live OpenCTI."""
 
@@ -82,23 +84,24 @@ class TestLiveServerInfo:
         """Get server info from live server."""
         info = live_client.get_server_info()
 
-        assert 'url' in info
-        assert 'version' in info
-        assert 'available' in info
-        assert info['available'] is True
-        assert info['version'] is not None
+        assert "url" in info
+        assert "version" in info
+        assert "available" in info
+        assert info["available"] is True
+        assert info["version"] is not None
 
     def test_server_info_includes_circuit_breaker(self, live_client):
         """Server info includes circuit breaker state."""
         info = live_client.get_server_info()
 
-        assert 'circuit_breaker_state' in info
-        assert info['circuit_breaker_state'] == 'closed'
+        assert "circuit_breaker_state" in info
+        assert info["circuit_breaker_state"] == "closed"
 
 
 # =============================================================================
 # Caching Live Tests
 # =============================================================================
+
 
 class TestLiveCaching:
     """Test caching against live OpenCTI."""
@@ -107,10 +110,9 @@ class TestLiveCaching:
         """Search works with caching enabled."""
         from unittest.mock import patch
 
-        with patch('opencti_mcp.client.get_feature_flags') as mock_flags:
+        with patch("opencti_mcp.client.get_feature_flags") as mock_flags:
             mock_flags.return_value = FeatureFlags(
-                response_caching=True,
-                graceful_degradation=True
+                response_caching=True, graceful_degradation=True
             )
             client = OpenCTIClient(live_config)
 
@@ -121,14 +123,14 @@ class TestLiveCaching:
             # Results should be a list
             assert isinstance(results1, list)
             # First call should not be from cache
-            assert metadata1['from_cache'] is False
+            assert metadata1["from_cache"] is False
 
             # Second identical search - should hit cache
             results2 = client.search_indicators("test", limit=5)
             metadata2 = client.get_last_response_metadata()
 
             # Should be from cache
-            assert metadata2['from_cache'] is True
+            assert metadata2["from_cache"] is True
             # Results should be the same
             assert results1 == results2
 
@@ -136,10 +138,9 @@ class TestLiveCaching:
         """Cache stats populated after searches."""
         from unittest.mock import patch
 
-        with patch('opencti_mcp.client.get_feature_flags') as mock_flags:
+        with patch("opencti_mcp.client.get_feature_flags") as mock_flags:
             mock_flags.return_value = FeatureFlags(
-                response_caching=True,
-                graceful_degradation=True
+                response_caching=True, graceful_degradation=True
             )
             client = OpenCTIClient(live_config)
 
@@ -149,14 +150,15 @@ class TestLiveCaching:
 
             stats = client.get_cache_stats()
 
-            assert 'search' in stats
-            assert stats['search']['hits'] >= 1
-            assert stats['search']['misses'] >= 1
+            assert "search" in stats
+            assert stats["search"]["hits"] >= 1
+            assert stats["search"]["misses"] >= 1
 
 
 # =============================================================================
 # Feature Flags Live Tests
 # =============================================================================
+
 
 class TestLiveFeatureFlags:
     """Test feature flags with live OpenCTI."""
@@ -174,18 +176,19 @@ class TestLiveFeatureFlags:
         metadata1 = client.get_last_response_metadata()
 
         # Should not be from cache with default flags
-        assert metadata1['from_cache'] is False
+        assert metadata1["from_cache"] is False
 
         results2 = client.search_indicators("test", limit=5)
         metadata2 = client.get_last_response_metadata()
 
         # Still should not be from cache
-        assert metadata2['from_cache'] is False
+        assert metadata2["from_cache"] is False
 
 
 # =============================================================================
 # Network Status Live Tests
 # =============================================================================
+
 
 class TestLiveNetworkStatus:
     """Test network status with live OpenCTI."""
@@ -194,8 +197,8 @@ class TestLiveNetworkStatus:
         """Network status shows healthy with live server."""
         status = live_client.get_network_status()
 
-        assert 'circuit_breaker' in status
-        assert status['circuit_breaker']['state'] == 'closed'
+        assert "circuit_breaker" in status
+        assert status["circuit_breaker"]["state"] == "closed"
 
     def test_adaptive_metrics_populated(self, live_client):
         """Adaptive metrics populated after queries."""
@@ -206,14 +209,15 @@ class TestLiveNetworkStatus:
         status = live_client.get_network_status()
 
         # Should have some samples
-        assert 'adaptive_metrics' in status
-        sample_count = status['adaptive_metrics'].get('sample_count', 0)
+        assert "adaptive_metrics" in status
+        sample_count = status["adaptive_metrics"].get("sample_count", 0)
         assert sample_count >= 0  # May be 0 if metrics not enabled
 
 
 # =============================================================================
 # Force Reconnect Live Tests
 # =============================================================================
+
 
 class TestLiveForceReconnect:
     """Test force reconnect with live OpenCTI."""

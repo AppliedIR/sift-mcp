@@ -45,12 +45,13 @@ def _find_catalog_dir() -> Path:
 @dataclass
 class ToolDefinition:
     """A single tool entry from the catalog."""
+
     name: str
     binary: str
     category: str
-    input_style: str = "flag"       # flag, positional, stdin
-    input_flag: str = ""            # e.g. "-f" for input file
-    output_format: str = "text"     # csv, json, text
+    input_style: str = "flag"  # flag, positional, stdin
+    input_flag: str = ""  # e.g. "-f" for input file
+    output_format: str = "text"  # csv, json, text
     timeout_seconds: int = 600
     interactive: bool = False
     description: str = ""
@@ -72,12 +73,14 @@ def load_catalog() -> dict[str, ToolDefinition]:
     try:
         yaml_files = sorted(catalog_dir.glob("*.yaml"))
     except PermissionError as e:
-        logger.warning("Permission denied reading catalog directory %s: %s", catalog_dir, e)
+        logger.warning(
+            "Permission denied reading catalog directory %s: %s", catalog_dir, e
+        )
         return _catalog_cache
 
     for yaml_file in yaml_files:
         try:
-            with open(yaml_file, "r", encoding="utf-8") as f:
+            with open(yaml_file, encoding="utf-8") as f:
                 doc = yaml.safe_load(f)
         except yaml.YAMLError as e:
             logger.warning("Failed to parse catalog YAML %s: %s", yaml_file, e)
@@ -100,7 +103,9 @@ def load_catalog() -> dict[str, ToolDefinition]:
                 continue
             name = tool_entry.get("name")
             if not name:
-                logger.warning("Tool entry in %s missing 'name' field, skipping", yaml_file)
+                logger.warning(
+                    "Tool entry in %s missing 'name' field, skipping", yaml_file
+                )
                 continue
             td = ToolDefinition(
                 name=name,
@@ -133,12 +138,14 @@ def list_tools_in_catalog(category: str | None = None) -> list[dict]:
     for td in catalog.values():
         if category and td.category != category:
             continue
-        results.append({
-            "name": td.name,
-            "binary": td.binary,
-            "category": td.category,
-            "description": td.description,
-        })
+        results.append(
+            {
+                "name": td.name,
+                "binary": td.binary,
+                "category": td.category,
+                "description": td.description,
+            }
+        )
     return results
 
 
@@ -163,7 +170,7 @@ def load_security_policy() -> dict:
     catalog_dir = _find_catalog_dir()
     security_file = catalog_dir / "security.yaml"
     try:
-        with open(security_file, "r", encoding="utf-8") as f:
+        with open(security_file, encoding="utf-8") as f:
             doc = yaml.safe_load(f)
     except (OSError, yaml.YAMLError) as e:
         logger.error("Failed to load security policy from %s: %s", security_file, e)
@@ -176,8 +183,12 @@ def load_security_policy() -> dict:
         return _security_cache
     _security_cache = {
         "dangerous_flags": set(doc.get("dangerous_flags", [])),
-        "tool_allowed_flags": {k: set(v) for k, v in doc.get("tool_allowed_flags", {}).items()},
-        "tool_blocked_flags": {k: set(v) for k, v in doc.get("tool_blocked_flags", {}).items()},
+        "tool_allowed_flags": {
+            k: set(v) for k, v in doc.get("tool_allowed_flags", {}).items()
+        },
+        "tool_blocked_flags": {
+            k: set(v) for k, v in doc.get("tool_blocked_flags", {}).items()
+        },
         "denied_binaries": frozenset(doc.get("denied_binaries", [])),
     }
     return _security_cache
