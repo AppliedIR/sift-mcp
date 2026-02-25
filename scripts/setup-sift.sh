@@ -495,42 +495,72 @@ fi
 # --- windows-triage database setup ---
 
 if $INSTALL_TRIAGE; then
+    WT_DIR="$INSTALL_DIR/packages/windows-triage"
+    DB_SCRIPT="$WT_DIR/scripts/download-databases.sh"
+
     if [[ "$MODE" == "custom" ]]; then
         echo ""
         echo "windows-triage needs Windows baseline databases."
-        echo "  Set up now: clone data repos + import (takes 30-60 minutes)"
-        echo "  Skip:       see $INSTALL_DIR/packages/windows-triage/SETUP.md"
+        echo "  1. Download standard   (~1.2 GB -- known_good.db + context.db)"
+        echo "  2. Download full       (~1.7 GB -- adds registry database)"
+        echo "  3. Build from source   (clone repos + import, 30-60 minutes)"
+        echo "  4. Skip"
         echo ""
-        if prompt_yn "Set up databases now?" "n"; then
-            WT_DIR="$INSTALL_DIR/packages/windows-triage"
-            DATA_DIR="$WT_DIR/data/sources"
-            mkdir -p "$DATA_DIR"
-
-            info "Cloning VanillaWindowsReference..."
-            if [[ ! -d "$DATA_DIR/VanillaWindowsReference" ]]; then
-                git clone --quiet https://github.com/AndrewRathbun/VanillaWindowsReference.git "$DATA_DIR/VanillaWindowsReference"
-            fi
-
-            info "Cloning LOLBAS, LOLDrivers, HijackLibs..."
-            for repo in LOLBAS LOLDrivers HijackLibs; do
-                if [[ ! -d "$DATA_DIR/$repo" ]]; then
-                    git clone --quiet "https://github.com/LOLBAS-Project/$repo.git" "$DATA_DIR/$repo" 2>/dev/null || \
-                    git clone --quiet "https://github.com/magicsword-io/$repo.git" "$DATA_DIR/$repo" 2>/dev/null || \
-                    warn "Could not clone $repo"
+        DB_CHOICE=$(prompt "Choose" "1")
+        case "$DB_CHOICE" in
+            1)
+                info "Downloading standard databases..."
+                if bash "$DB_SCRIPT"; then
+                    ok "Triage databases downloaded"
+                else
+                    warn "Database download failed -- retry later with: bash $DB_SCRIPT"
                 fi
-            done
+                ;;
+            2)
+                info "Downloading full databases (includes registry)..."
+                if bash "$DB_SCRIPT" --full; then
+                    ok "Triage databases downloaded (full)"
+                else
+                    warn "Database download failed -- retry later with: bash $DB_SCRIPT --full"
+                fi
+                ;;
+            3)
+                DATA_DIR="$WT_DIR/data/sources"
+                mkdir -p "$DATA_DIR"
 
-            info "Initializing databases and importing..."
-            (cd "$WT_DIR" && "$VENV_PYTHON" scripts/init_databases.py && \
-                "$VENV_PYTHON" scripts/import_all.py --skip-registry) && \
-                ok "Databases imported" || warn "Database import had issues -- see output above"
-        else
-            info "Skipping database setup."
-        fi
+                info "Cloning VanillaWindowsReference..."
+                if [[ ! -d "$DATA_DIR/VanillaWindowsReference" ]]; then
+                    git clone --quiet https://github.com/AndrewRathbun/VanillaWindowsReference.git "$DATA_DIR/VanillaWindowsReference"
+                fi
+
+                info "Cloning LOLBAS, LOLDrivers, HijackLibs..."
+                for repo in LOLBAS LOLDrivers HijackLibs; do
+                    if [[ ! -d "$DATA_DIR/$repo" ]]; then
+                        git clone --quiet "https://github.com/LOLBAS-Project/$repo.git" "$DATA_DIR/$repo" 2>/dev/null || \
+                        git clone --quiet "https://github.com/magicsword-io/$repo.git" "$DATA_DIR/$repo" 2>/dev/null || \
+                        warn "Could not clone $repo"
+                    fi
+                done
+
+                info "Initializing databases and importing..."
+                (cd "$WT_DIR" && "$VENV_PYTHON" scripts/init_databases.py && \
+                    "$VENV_PYTHON" scripts/import_all.py --skip-registry) && \
+                    ok "Databases imported" || warn "Database import had issues -- see output above"
+                ;;
+            *)
+                info "Skipping database setup."
+                info "  Download later: bash $DB_SCRIPT"
+                info "  See: $INSTALL_DIR/packages/windows-triage/SETUP.md"
+                ;;
+        esac
     else
         echo ""
-        info "windows-triage: databases can be imported later"
-        info "  See: $INSTALL_DIR/packages/windows-triage/SETUP.md"
+        info "Downloading windows-triage databases..."
+        if bash "$DB_SCRIPT"; then
+            ok "Triage databases downloaded"
+        else
+            warn "Database download failed -- retry later with: bash $DB_SCRIPT"
+        fi
     fi
 fi
 
@@ -1042,9 +1072,6 @@ if $INSTALL_RAG && [[ "$MODE" != "custom" ]]; then
     echo ""
     echo "Deferred setup:"
     echo "  RAG index:   $VENV_PYTHON -m rag_mcp.build"
-fi
-if $INSTALL_TRIAGE && [[ "$MODE" != "custom" ]]; then
-    echo "  Triage DBs:  see $INSTALL_DIR/packages/windows-triage/SETUP.md"
 fi
 
 echo ""

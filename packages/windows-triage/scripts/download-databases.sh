@@ -7,6 +7,7 @@
 #
 # Usage:
 #   ./scripts/download-databases.sh              # Download latest release
+#   ./scripts/download-databases.sh --full       # Include registry database (~500MB)
 #   ./scripts/download-databases.sh v2025.02     # Download specific version
 #
 # Requirements: curl, zstd, sha256sum
@@ -20,10 +21,21 @@ set -euo pipefail
 REPO="AppliedIR/sift-mcp"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="${SCRIPT_DIR}/../data"
-VERSION="${1:-latest}"
+FULL_INSTALL=false
+VERSION="latest"
+
+for arg in "$@"; do
+    case "$arg" in
+        --full) FULL_INSTALL=true ;;
+        *)      VERSION="$arg" ;;
+    esac
+done
 
 # Expected files in the release
 ASSETS=("known_good.db.zst" "context.db.zst" "checksums.sha256")
+if $FULL_INSTALL; then
+    ASSETS=("known_good.db.zst" "context.db.zst" "known_good_registry.db.zst" "checksums.sha256")
+fi
 
 # Colors (only when stdout is a terminal)
 if [[ -t 1 ]] && [[ "${TERM:-dumb}" != "dumb" ]]; then
@@ -42,6 +54,9 @@ fi
 
 echo -e "${BOLD}Windows Triage Database Download${NC}"
 echo "════════════════════════════════════════"
+if $FULL_INSTALL; then
+    echo -e "Mode: ${BOLD}Full${NC} (includes registry database)"
+fi
 echo ""
 
 # Check dependencies
@@ -63,6 +78,12 @@ if [[ -f "${DATA_DIR}/known_good.db" ]]; then
         echo "Aborted."
         exit 0
     fi
+fi
+
+if $FULL_INSTALL && [[ -f "${DATA_DIR}/known_good_registry.db" ]]; then
+    existing_size=$(stat -c%s "${DATA_DIR}/known_good_registry.db" 2>/dev/null || echo "0")
+    existing_mb=$((existing_size / 1024 / 1024))
+    echo -e "${YELLOW}Note: known_good_registry.db already exists (${existing_mb}MB) — will be overwritten${NC}"
 fi
 
 # =============================================================================
@@ -174,8 +195,7 @@ verify_checksums() {
         expected_hash=$(echo "$line" | awk '{print $1}')
         file_name=$(echo "$line" | awk '{print $2}')
         if [[ ! -f "$file_name" ]]; then
-            echo -e "  ${RED}MISSING: ${file_name}${NC}"
-            failed=true
+            echo -e "  ${YELLOW}SKIP: ${file_name} (not downloaded)${NC}"
             continue
         fi
         local actual_hash
@@ -242,7 +262,12 @@ done
 
 echo "Decompressing..."
 
-for asset in "known_good.db.zst" "context.db.zst"; do
+DBS=("known_good.db.zst" "context.db.zst")
+if $FULL_INSTALL; then
+    DBS+=("known_good_registry.db.zst")
+fi
+
+for asset in "${DBS[@]}"; do
     if [[ -f "${TEMP_DIR}/${asset}" ]]; then
         db_name="${asset%.zst}"
         echo -n "  ${db_name}..."
@@ -275,6 +300,22 @@ if [[ -f "${DATA_DIR}/known_good.db" ]]; then
 else
     echo -e "  ${RED}known_good.db: missing${NC}"
     ERRORS=$((ERRORS + 1))
+fi
+
+# Check known_good_registry.db (full install only)
+if $FULL_INSTALL; then
+    if [[ -f "${DATA_DIR}/known_good_registry.db" ]]; then
+        count=$(sqlite3 "${DATA_DIR}/known_good_registry.db" "SELECT COUNT(*) FROM baseline_registry" 2>/dev/null || echo "0")
+        if [[ "$count" -gt 1000000 ]]; then
+            echo -e "  ${GREEN}known_good_registry.db: ${count} entries${NC}"
+        else
+            echo -e "  ${RED}known_good_registry.db: only ${count} entries (expected 1M+)${NC}"
+            ERRORS=$((ERRORS + 1))
+        fi
+    else
+        echo -e "  ${RED}known_good_registry.db: missing${NC}"
+        ERRORS=$((ERRORS + 1))
+    fi
 fi
 
 # Check context.db
