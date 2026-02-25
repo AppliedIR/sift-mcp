@@ -178,8 +178,11 @@ class TestAuditWriter:
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         assert writer.get_entries() == []
 
-    def test_get_entries_no_case_dir(self, monkeypatch):
+    def test_get_entries_no_case_dir(self, monkeypatch, tmp_path):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.delenv("AIIR_AUDIT_DIR", raising=False)
+        monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         writer = AuditWriter("test-mcp")
         assert writer.get_entries() == []
 

@@ -78,7 +78,15 @@ class AuditWriter:
         else:
             case_dir = os.environ.get("AIIR_CASE_DIR")
             if not case_dir:
-                return None
+                # Fallback: read active case pointer file
+                try:
+                    case_dir = (
+                        Path.home() / ".aiir" / "active_case"
+                    ).read_text().strip()
+                except OSError:
+                    return None
+                if not case_dir:
+                    return None
             path = Path(case_dir)
             if not path.is_dir():
                 logger.warning(
