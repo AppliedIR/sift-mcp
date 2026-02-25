@@ -43,7 +43,7 @@ trap _cleanup EXIT
 # =============================================================================
 
 AUTO_YES=false
-MODE=""  # minimal, recommended, custom, or "" (show menu)
+MODE=""  # quick, recommended, custom, or "" (show menu)
 INSTALL_DIR_ARG=""
 EXAMINER_ARG=""
 MANUAL_START=false
@@ -54,7 +54,7 @@ REMOTE_MODE=false
 for arg in "$@"; do
     case "$arg" in
         -y|--yes)          AUTO_YES=true ;;
-        --quick|--minimal) MODE="minimal" ;;
+        --quick|--minimal) MODE="quick" ;;
         --recommended)     MODE="recommended" ;;
         --full|--custom)   MODE="custom" ;;
         --manual-start)    MANUAL_START=true ;;
@@ -165,7 +165,7 @@ if [[ -z "$MODE" ]]; then
         echo ""
         CHOICE=$(prompt "Choose" "2")
         case "$CHOICE" in
-            1) MODE="minimal" ;;
+            1) MODE="quick" ;;
             3) MODE="custom" ;;
             *) MODE="recommended" ;;
         esac
@@ -174,7 +174,7 @@ fi
 
 # Translate mode names for display
 case "$MODE" in
-    minimal)     TIER_DISPLAY="Quickstart" ;;
+    quick)       TIER_DISPLAY="Quickstart" ;;
     recommended) TIER_DISPLAY="Recommended" ;;
     custom)      TIER_DISPLAY="Custom" ;;
 esac
@@ -254,7 +254,7 @@ INSTALL_TRIAGE=false
 INSTALL_OPENCTI=false
 
 case "$MODE" in
-    minimal)
+    quick)
         # Quickstart: core only (FK, sift-common, forensic-mcp, sift-mcp, gateway)
         ;;
     recommended)
@@ -976,14 +976,28 @@ elif $AIIR_CLI_INSTALLED; then
             --examiner="$EXAMINER" \
             -y && CLIENT_CONFIGURED=true || warn "Client configuration failed"
     elif $AUTO_YES; then
-        # Non-interactive without --client: skip (require --client for unattended)
-        echo ""
-        info "No --client specified -- skipping LLM client configuration"
-        echo "  Configure later: aiir setup client --sift=http://127.0.0.1:$GATEWAY_PORT"
+        if [[ "$MODE" == "quick" ]]; then
+            # Quick + unattended: auto-configure with defaults
+            header "LLM Client Configuration"
+            "$AIIR_CLI" setup client \
+                --sift="http://127.0.0.1:$GATEWAY_PORT" \
+                --examiner="$EXAMINER" -y && CLIENT_CONFIGURED=true || warn "Client configuration failed"
+        else
+            # Non-interactive without --client: skip (require --client for unattended)
+            echo ""
+            info "No --client specified -- skipping LLM client configuration"
+            echo "  Configure later: aiir setup client --sift=http://127.0.0.1:$GATEWAY_PORT"
+        fi
     else
-        # Interactive: always ask
+        # Interactive: tier-dependent
         header "LLM Client Configuration"
-        if prompt_yn "Working from this machine? Configure LLM client now?" "y"; then
+        if [[ "$MODE" == "quick" ]]; then
+            # Quick tier: auto-configure, no prompt
+            info "Configuring LLM client for local use..."
+            "$AIIR_CLI" setup client \
+                --sift="http://127.0.0.1:$GATEWAY_PORT" \
+                --examiner="$EXAMINER" -y && CLIENT_CONFIGURED=true || warn "Client configuration failed"
+        elif prompt_yn "Working from this machine? Configure LLM client now?" "y"; then
             "$AIIR_CLI" setup client \
                 --sift="http://127.0.0.1:$GATEWAY_PORT" \
                 --examiner="$EXAMINER" && CLIENT_CONFIGURED=true || warn "Client configuration failed"

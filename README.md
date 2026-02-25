@@ -183,6 +183,11 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 - Python 3.11+
 - Forensic tools installed via SIFT package or manually
 
+### External Dependencies
+
+- **Zeltser IR Writing MCP** (https://website-mcp.zeltser.com/mcp) — Required for report generation. The `aiir setup client` wizard configures this automatically. HTTPS, no authentication required.
+- **MS Learn MCP** (https://learn.microsoft.com/api/mcp) — Optional. Provides Microsoft documentation search.
+
 ## Quick Start
 
 ```bash
@@ -234,7 +239,7 @@ All AIIR components are assumed to run on a private forensic network, protected 
 
 Any data loaded into the system or its component VMs, computers, or instances runs the risk of being exposed to the underlying AI. Only place data on these systems that you are willing to send to your AI provider.
 
-While outgoing connections to the Internet are used for some optional components (OpenCTI, MS Learn MCP, Zeltser IR Writing MCP), no incoming connections from external systems should be allowed.
+Outgoing Internet connections are required for report generation (Zeltser IR Writing MCP) and optionally used for threat intelligence (OpenCTI) and documentation (MS Learn MCP). No incoming connections from external systems should be allowed.
 
 When choosing an LLM client, we recommend constrained clients that are limited to chat and MCP functionality. AIIR is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. AI clients with the ability to run arbitrary commands on the host system can bypass those safeguards. Such clients can still interact with AIIR, but they can also conduct activities outside the scope of the platform's controls. AIIR is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
 
