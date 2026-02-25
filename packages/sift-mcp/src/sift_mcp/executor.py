@@ -75,29 +75,45 @@ def execute(
         stderr_chunks: list[bytes] = []
         total = [0]  # shared mutable counter across both pipes
 
-        # Read stderr in a thread to avoid deadlock
+        # Read both pipes in threads to avoid deadlock and allow
+        # proc.wait() in the main thread to enforce the timeout.
+        stdout_thread = threading.Thread(
+            target=_read_pipe,
+            args=(proc.stdout, stdout_chunks, max_bytes, total),
+        )
         stderr_thread = threading.Thread(
             target=_read_pipe,
             args=(proc.stderr, stderr_chunks, max_bytes, total),
         )
+        stdout_thread.start()
         stderr_thread.start()
 
-        # Read stdout in main thread
-        _read_pipe(proc.stdout, stdout_chunks, max_bytes, total)
+        # Poll for completion, checking byte limit periodically
+        deadline = start + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                proc.kill()
+                proc.wait(timeout=5)
+                raise subprocess.TimeoutExpired(cmd_list, timeout)
+            if total[0] >= max_bytes:
+                truncated = True
+                proc.kill()
+                proc.wait(timeout=5)
+                break
+            try:
+                proc.wait(timeout=min(0.1, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                continue
 
-        # If limit reached, kill the process
-        if total[0] >= max_bytes:
-            truncated = True
-            proc.kill()
-
+        stdout_thread.join(timeout=5)
         stderr_thread.join(timeout=5)
 
-        try:
-            proc.wait(timeout=max(0, timeout - (time.monotonic() - start)))
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=5)
-            raise
+        # Check truncation after threads finish (process may have
+        # exited before the polling loop detected the byte limit)
+        if total[0] >= max_bytes:
+            truncated = True
 
         elapsed = time.monotonic() - start
 
