@@ -385,7 +385,10 @@ install_pkg "sift-gateway" "$INSTALL_DIR/packages/sift-gateway" || exit 1
 # 6. case-mcp
 install_pkg "case-mcp" "$INSTALL_DIR/packages/case-mcp" || exit 1
 
-# 7. windows-triage-mcp (optional, depends on 2)
+# 7. report-mcp
+install_pkg "report-mcp" "$INSTALL_DIR/packages/report-mcp" || exit 1
+
+# 8. windows-triage-mcp (optional, depends on 2)
 if $INSTALL_TRIAGE; then
     install_pkg "windows-triage-mcp" "$INSTALL_DIR/packages/windows-triage" || {
         warn "windows-triage install failed. Continuing without it."
@@ -432,6 +435,7 @@ smoke_test "forensic-mcp"       "forensic_mcp"
 smoke_test "sift-mcp"           "sift_mcp"
 smoke_test "sift-gateway"       "sift_gateway"
 smoke_test "case-mcp"           "case_mcp"
+smoke_test "report-mcp"         "report_mcp"
 $INSTALL_TRIAGE  && smoke_test "windows-triage-mcp" "windows_triage"
 $INSTALL_RAG     && smoke_test "rag-mcp"            "rag_mcp"
 $INSTALL_OPENCTI && smoke_test "opencti-mcp"        "opencti_mcp"
@@ -688,6 +692,7 @@ core_backends = [
     ("forensic-mcp", "forensic_mcp"),
     ("sift-mcp", "sift_mcp"),
     ("case-mcp", "case_mcp"),
+    ("report-mcp", "report_mcp"),
 ]
 
 # Optional backends
@@ -711,6 +716,8 @@ for name, module in core_backends + optional:
         },
         "enabled": True,
     }
+    if name in ('case-mcp', 'report-mcp'):
+        entry['env']['AIIR_CASES_DIR'] = '\${AIIR_CASES_DIR}'
     if name == "opencti-mcp":
         octi_url = "$OPENCTI_URL"
         octi_token = "$OPENCTI_TOKEN"
@@ -749,6 +756,7 @@ pkg_list = [
     ("forensic-mcp", "forensic_mcp"),
     ("sift-mcp", "sift_mcp"),
     ("case-mcp", "case_mcp"),
+    ("report-mcp", "report_mcp"),
     ("sift-gateway", "sift_gateway"),
 ]
 
@@ -1009,6 +1017,7 @@ ok "sift-common"
 ok "forensic-mcp"
 ok "sift-mcp"
 ok "case-mcp"
+ok "report-mcp"
 ok "sift-gateway"
 $INSTALL_TRIAGE  && ok "windows-triage-mcp"
 $INSTALL_RAG     && ok "rag-mcp (forensic-rag)"

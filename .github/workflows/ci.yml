@@ -47,6 +47,7 @@ jobs:
           pip install -e packages/opencti
           pip install -e packages/sift-gateway
           pip install -e packages/case-mcp
+          pip install -e packages/report-mcp
 
       - name: Install test dependencies
         run: pip install pytest pytest-asyncio pytest-timeout pytest-cov
