@@ -781,6 +781,8 @@ for name, module in backends:
         },
         'enabled': True,
     }
+    if name in ('case-mcp', 'report-mcp'):
+        entry['env']['AIIR_CASES_DIR'] = '\${AIIR_CASES_DIR}'
     if name == 'opencti':
         url = os.environ.get('_INST_OPENCTI_URL', '')
         token = os.environ.get('_INST_OPENCTI_TOKEN', '')

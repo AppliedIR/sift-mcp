@@ -24,6 +24,8 @@ STRIPPED_FINDING_FIELDS = {
     "rejection_reason",
     "verification",
     "created_by",
+    "examiner_notes",
+    "examiner_modifications",
 }
 
 PROFILES: dict[str, dict] = {
