@@ -58,7 +58,7 @@ def audit(monkeypatch):
 def _valid_finding(**overrides):
     base = {
         "title": "Test finding",
-        "evidence_ids": ["ev-001"],
+        "evidence_ids": ["ev-tester-20260225-001"],
         "observation": "Observed something",
         "interpretation": "Interpreted something",
         "confidence": "MEDIUM",
@@ -122,18 +122,18 @@ class TestClassifyProvenance:
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "sift-mcp.jsonl").write_text(
-            json.dumps({"evidence_id": "sift-001", "tool": "run_command"}) + "\n"
+            json.dumps({"evidence_id": "sift-tester-20260225-099", "tool": "run_command"}) + "\n"
         )
         result = manager._classify_provenance(
-            ["sift-001", "shell-fake-001"], case_dir
+            ["sift-tester-20260225-099", "shell-fake-20260225-001"], case_dir
         )
         assert result["summary"] == "MIXED"
-        assert "sift-001" in result["mcp"]
-        assert "shell-fake-001" in result["none"]
+        assert "sift-tester-20260225-099" in result["mcp"]
+        assert "shell-fake-20260225-001" in result["none"]
 
     def test_all_none(self, manager, active_case):
         case_dir = Path(active_case["path"])
-        result = manager._classify_provenance(["unknown-001", "unknown-002"], case_dir)
+        result = manager._classify_provenance(["unknown-tester-20260225-001", "unknown-tester-20260225-002"], case_dir)
         assert result["summary"] == "NONE"
         assert len(result["none"]) == 2
 
@@ -142,24 +142,24 @@ class TestClassifyProvenance:
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "claude-code.jsonl").write_text(
-            json.dumps({"evidence_id": "dual-001"}) + "\n"
+            json.dumps({"evidence_id": "dual-tester-20260225-001"}) + "\n"
         )
         (audit_dir / "sift-mcp.jsonl").write_text(
-            json.dumps({"evidence_id": "dual-001", "tool": "run_command"}) + "\n"
+            json.dumps({"evidence_id": "dual-tester-20260225-001", "tool": "run_command"}) + "\n"
         )
-        result = manager._classify_provenance(["dual-001"], case_dir)
+        result = manager._classify_provenance(["dual-tester-20260225-001"], case_dir)
         assert result["summary"] == "MCP"
-        assert "dual-001" in result["mcp"]
+        assert "dual-tester-20260225-001" in result["mcp"]
 
     def test_mixed_with_none(self, manager, active_case):
         """MCP + NONE = MIXED (not NONE)."""
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "sift-mcp.jsonl").write_text(
-            json.dumps({"evidence_id": "sift-001"}) + "\n"
+            json.dumps({"evidence_id": "sift-tester-20260225-099"}) + "\n"
         )
         result = manager._classify_provenance(
-            ["sift-001", "unknown-001"], case_dir
+            ["sift-tester-20260225-099", "unknown-tester-20260225-001"], case_dir
         )
         assert result["summary"] == "MIXED"
 
@@ -211,14 +211,14 @@ class TestRecordFindingProvenance:
 
     def test_hard_gate_none_rejected(self, manager, active_case):
         """All NONE + no supporting_commands -> REJECTED."""
-        finding = _valid_finding(evidence_ids=["unknown-001"])
+        finding = _valid_finding(evidence_ids=["unknown-tester-20260225-001"])
         result = manager.record_finding(finding)
         assert result["status"] == "REJECTED"
         assert "no provenance" in result["error"]
 
     def test_shell_only_stages_ok(self, manager, active_case, audit):
         """With supporting_commands but no MCP IDs -> STAGED."""
-        finding = _valid_finding(evidence_ids=["unknown-001"])
+        finding = _valid_finding(evidence_ids=["unknown-tester-20260225-001"])
         cmds = [
             {
                 "command": "strings /evidence/file.exe",

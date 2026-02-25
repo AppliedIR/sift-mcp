@@ -46,9 +46,9 @@ def _seed_audit(audit_dir):
     import json as _json
 
     entries = [
-        {"evidence_id": "ev-001", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
-        {"evidence_id": "ev-002", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
-        {"evidence_id": "ev-003", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
+        {"evidence_id": "ev-tester-20260225-001", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
+        {"evidence_id": "ev-tester-20260225-002", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
+        {"evidence_id": "ev-tester-20260225-003", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
     ]
     with open(audit_dir / "test-fixtures.jsonl", "w") as f:
         for entry in entries:
@@ -292,7 +292,7 @@ class TestDisciplineTools:
     async def test_validate_finding_valid(self, server):
         finding = {
             "title": "Test",
-            "evidence_ids": ["ev-001"],
+            "evidence_ids": ["ev-tester-20260225-001"],
             "observation": "obs",
             "interpretation": "interp",
             "confidence": "MEDIUM",
@@ -432,7 +432,7 @@ class TestEnhancedResponses:
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         finding = {
             "title": "Suspicious binary found",
-            "evidence_ids": ["ev-001", "ev-002"],
+            "evidence_ids": ["ev-tester-20260225-001", "ev-tester-20260225-002"],
             "observation": "Binary found in temp directory",
             "interpretation": "Possible malware staging",
             "confidence": "HIGH",
@@ -458,7 +458,7 @@ class TestEnhancedResponses:
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         finding = {
             "title": "APT29 attribution",
-            "evidence_ids": ["ev-001", "ev-002", "ev-003"],
+            "evidence_ids": ["ev-tester-20260225-001", "ev-tester-20260225-002", "ev-tester-20260225-003"],
             "observation": "TTPs match APT29",
             "interpretation": "Likely APT29",
             "confidence": "HIGH",
@@ -500,7 +500,7 @@ class TestGroundingInResponse:
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         finding = {
             "title": "Suspicious binary",
-            "evidence_ids": ["ev-001", "ev-002"],
+            "evidence_ids": ["ev-tester-20260225-001", "ev-tester-20260225-002"],
             "observation": "Binary in temp",
             "interpretation": "Possible malware",
             "confidence": "MEDIUM",

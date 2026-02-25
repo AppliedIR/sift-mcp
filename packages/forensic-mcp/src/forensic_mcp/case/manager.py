@@ -44,16 +44,15 @@ def _atomic_write(path: Path, content: str) -> None:
 CASES_DIR_ENV = "AIIR_CASES_DIR"
 DEFAULT_CASES_DIR = "cases"
 
-# Protected fields that cannot be overridden by user-supplied data
-_PROTECTED_FINDING_FIELDS = {
-    "id",
-    "status",
-    "staged",
-    "modified_at",
-    "created_by",
-    "examiner",
-    "provenance",
-    "content_hash",
+# Evidence ID format: prefix-examiner-YYYYMMDD-NNN (all lowercase alphanumeric + hyphens)
+_EVIDENCE_ID_PATTERN = re.compile(r"^[a-z]+-[a-z0-9]+-\d{8}-\d{3,}$")
+
+# Allowlist: only these fields pass through from user-supplied finding data
+_ALLOWED_FINDING_FIELDS = {
+    "title", "observation", "interpretation", "confidence",
+    "confidence_justification", "type", "evidence_ids",
+    "mitre_ids", "iocs", "supporting_commands",
+    "event_type", "artifact_ref", "related_findings",
 }
 _PROTECTED_EVENT_FIELDS = {
     "id",
@@ -328,9 +327,9 @@ class CaseManager:
         now = datetime.now(timezone.utc).isoformat()
         today = datetime.now(timezone.utc).strftime("%Y%m%d")
 
-        # Strip protected fields from user input for defense-in-depth
+        # Allowlist: only accepted fields pass through from user input
         sanitized = {
-            k: v for k, v in finding.items() if k not in _PROTECTED_FINDING_FIELDS
+            k: v for k, v in finding.items() if k in _ALLOWED_FINDING_FIELDS
         }
 
         # Process supporting_commands — generate shell evidence IDs
@@ -721,8 +720,10 @@ class CaseManager:
         Scans audit/*.jsonl to determine where each evidence_id came from:
         - MCP: found in any audit file except claude-code.jsonl
         - HOOK: found in claude-code.jsonl
-        - SHELL: evidence_id starts with "shell-"
-        - NONE: not found in any audit file
+        - NONE: not found in any audit file or malformed ID
+
+        Evidence IDs must match the format: prefix-examiner-YYYYMMDD-NNN.
+        Malformed IDs (path traversal, unicode, injection) are classified as NONE.
 
         Returns {"summary": tier, "mcp": [...], "hook": [...], "shell": [...], "none": [...]}.
         """
@@ -763,6 +764,10 @@ class CaseManager:
             "none": [],
         }
         for eid in evidence_ids:
+            # Reject malformed evidence IDs (path traversal, homoglyphs, injection)
+            if not _EVIDENCE_ID_PATTERN.match(eid):
+                result["none"].append(eid)
+                continue
             source = eid_source.get(eid)
             if source:
                 result[source.lower()].append(eid)

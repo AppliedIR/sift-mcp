@@ -15,12 +15,12 @@ def _seed_audit_entries(audit_dir: Path) -> None:
     This ensures record_finding() passes the provenance hard gate.
     """
     entries = [
-        {"evidence_id": "ev-001", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
-        {"evidence_id": "ev-002", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
-        {"evidence_id": "ev-003", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
-        {"evidence_id": "wt-2026-0219-001", "tool": "test", "ts": "2026-02-19T00:00:00Z"},
-        {"evidence_id": "wt-20260219-001", "tool": "test", "ts": "2026-02-19T00:00:00Z"},
-        {"evidence_id": "rag-20260219-002", "tool": "test", "ts": "2026-02-19T00:00:00Z"},
+        {"evidence_id": "ev-tester-20260225-001", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
+        {"evidence_id": "ev-tester-20260225-002", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
+        {"evidence_id": "ev-tester-20260225-003", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
+        {"evidence_id": "wt-tester-20260219-001", "tool": "test", "ts": "2026-02-19T00:00:00Z"},
+        {"evidence_id": "wt-tester-20260219-001", "tool": "test", "ts": "2026-02-19T00:00:00Z"},
+        {"evidence_id": "rag-tester-20260219-002", "tool": "test", "ts": "2026-02-19T00:00:00Z"},
     ]
     with open(audit_dir / "test-fixtures.jsonl", "w") as f:
         for entry in entries:
@@ -160,7 +160,7 @@ class TestRecords:
     def test_record_finding_valid(self, manager, active_case):
         finding = {
             "title": "Suspicious process",
-            "evidence_ids": ["wt-2026-0219-001"],
+            "evidence_ids": ["wt-tester-20260219-001"],
             "observation": "svchost.exe spawned from cmd.exe",
             "interpretation": "Unusual parent-child relationship",
             "confidence": "MEDIUM",
@@ -174,7 +174,7 @@ class TestRecords:
     def test_record_finding_assigns_sequential_ids(self, manager, active_case):
         finding = {
             "title": "Finding",
-            "evidence_ids": ["ev-001"],
+            "evidence_ids": ["ev-tester-20260225-001"],
             "observation": "obs",
             "interpretation": "interp",
             "confidence": "MEDIUM",
@@ -195,7 +195,7 @@ class TestRecords:
         manager.record_finding(
             {
                 "title": "Test Finding",
-                "evidence_ids": ["ev-001"],
+                "evidence_ids": ["ev-tester-20260225-001"],
                 "observation": "obs",
                 "interpretation": "interp",
                 "confidence": "MEDIUM",
@@ -236,12 +236,12 @@ class TestRecords:
             {
                 "timestamp": "2026-02-19T11:00:00Z",
                 "description": "Credential dumping observed",
-                "evidence_ids": ["wt-20260219-001", "rag-20260219-002"],
+                "evidence_ids": ["wt-tester-20260219-001", "rag-tester-20260219-002"],
                 "source": "Memory analysis",
             }
         )
         timeline = json.loads((Path(active_case["path"]) / "timeline.json").read_text())
-        assert "wt-20260219-001" in timeline[0]["evidence_ids"]
+        assert "wt-tester-20260219-001" in timeline[0]["evidence_ids"]
         assert timeline[0]["source"] == "Memory analysis"
 
     def test_record_timeline_event_missing_fields(self, manager, active_case):
@@ -251,7 +251,7 @@ class TestRecords:
     def test_get_findings_filter(self, manager, active_case):
         finding = {
             "title": "Test",
-            "evidence_ids": ["ev-001"],
+            "evidence_ids": ["ev-tester-20260225-001"],
             "observation": "obs",
             "interpretation": "interp",
             "confidence": "MEDIUM",
@@ -347,7 +347,7 @@ class TestMultiExaminer:
         """created_by is set from resolve_examiner() (AIIR_EXAMINER)."""
         finding = {
             "title": "Test",
-            "evidence_ids": ["ev-001"],
+            "evidence_ids": ["ev-tester-20260225-001"],
             "observation": "obs",
             "interpretation": "interp",
             "confidence": "MEDIUM",
@@ -364,7 +364,7 @@ class TestMultiExaminer:
 
         finding = {
             "title": "Test",
-            "evidence_ids": ["ev-001"],
+            "evidence_ids": ["ev-tester-20260225-001"],
             "observation": "obs",
             "interpretation": "interp",
             "confidence": "MEDIUM",
@@ -391,7 +391,7 @@ class TestMultiExaminer:
         """Two examiners record to same flat files; reads show both."""
         finding = {
             "title": "Test",
-            "evidence_ids": ["ev-001"],
+            "evidence_ids": ["ev-tester-20260225-001"],
             "observation": "obs",
             "interpretation": "interp",
             "confidence": "MEDIUM",
@@ -420,7 +420,7 @@ class TestAtomicWrites:
         """Rapid sequential writes should always produce valid JSON."""
         finding_template = {
             "title": "Finding",
-            "evidence_ids": ["ev-001"],
+            "evidence_ids": ["ev-tester-20260225-001"],
             "observation": "obs",
             "interpretation": "interp",
             "confidence": "MEDIUM",
@@ -441,7 +441,7 @@ class TestAtomicWrites:
         case_dir = Path(active_case["path"])
         finding = {
             "title": "Test",
-            "evidence_ids": ["ev-001"],
+            "evidence_ids": ["ev-tester-20260225-001"],
             "observation": "obs",
             "interpretation": "interp",
             "confidence": "MEDIUM",
@@ -677,7 +677,7 @@ class TestProtectedFieldOverride:
         """User-supplied status='APPROVED' must be overwritten to DRAFT."""
         finding = {
             "title": "Injected status",
-            "evidence_ids": ["ev-001"],
+            "evidence_ids": ["ev-tester-20260225-001"],
             "observation": "obs",
             "interpretation": "interp",
             "confidence": "MEDIUM",
@@ -741,7 +741,7 @@ class TestExaminerOverride:
         """record_finding with examiner_override='alice' sets examiner and created_by to alice."""
         finding = {
             "title": "Alice finding",
-            "evidence_ids": ["ev-001"],
+            "evidence_ids": ["ev-tester-20260225-001"],
             "observation": "obs",
             "interpretation": "interp",
             "confidence": "MEDIUM",
