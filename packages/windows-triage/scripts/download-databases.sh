@@ -195,7 +195,13 @@ verify_checksums() {
         expected_hash=$(echo "$line" | awk '{print $1}')
         file_name=$(echo "$line" | awk '{print $2}')
         if [[ ! -f "$file_name" ]]; then
-            echo -e "  ${YELLOW}SKIP: ${file_name} (not downloaded)${NC}"
+            # Only skip files not in our download set
+            if printf '%s\n' "${ASSETS[@]}" | grep -qx "$file_name"; then
+                echo -e "  ${RED}MISSING: ${file_name}${NC}"
+                failed=true
+            else
+                echo -e "  ${YELLOW}SKIP: ${file_name} (not downloaded)${NC}"
+            fi
             continue
         fi
         local actual_hash

@@ -125,20 +125,25 @@ def main():
     # Import registry extractions
     if not args.skip_registry:
         # Auto-extract ZIPs if needed
+        skip_registry = False
         registry_dir = sources_dir / "VanillaWindowsRegistryHives"
         if registry_dir.exists():
             zips = list(registry_dir.rglob("RegistryHivesJSON.zip"))
             jsons = list(registry_dir.rglob("*_ROOT.json"))
             if zips and not jsons:
-                run_script("extract_registry_zips.py", [], "Extracting registry ZIPs")
+                if not run_script("extract_registry_zips.py", [], "Extracting registry ZIPs"):
+                    print("WARNING: Registry ZIP extraction failed, skipping registry import")
+                    results['registry'] = False
+                    skip_registry = True
 
-        extra_args = ["--verbose"] if args.verbose else []
-        success = run_script(
-            "import_registry_extractions.py",
-            extra_args,
-            "Extracting services/tasks/autoruns from VanillaWindowsRegistryHives"
-        )
-        results['registry'] = success
+        if not skip_registry:
+            extra_args = ["--verbose"] if args.verbose else []
+            success = run_script(
+                "import_registry_extractions.py",
+                extra_args,
+                "Extracting services/tasks/autoruns from VanillaWindowsRegistryHives"
+            )
+            results['registry'] = success
 
     # Summary
     print("\n" + "=" * 60)
