@@ -116,6 +116,67 @@ _BLOCKED_DIRECTORIES = (
 )
 
 
+def get_output_flags() -> frozenset:
+    """Return the set of flags that take output path values."""
+    return _get_policy()["output_flags"]
+
+
+# Directories blocked for output (superset of _BLOCKED_DIRECTORIES)
+_OUTPUT_BLOCKED_DIRECTORIES = _BLOCKED_DIRECTORIES + (
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/lib",
+    "/var",
+    "/home",
+)
+
+
+def validate_output_path(path: str) -> str:
+    """Validate that an output path is safe to write to.
+
+    Stricter than validate_input_path. When AIIR_CASE_DIR is set, the
+    output path must be inside the case directory. When not set, only
+    /tmp and the current working directory are allowed.
+
+    Case-dir containment is checked first so that case directories
+    under /home are allowed.
+    """
+    resolved = str(Path(path).resolve())
+
+    # Case-dir containment: if inside case dir, it's allowed
+    case_dir = os.environ.get("AIIR_CASE_DIR", "")
+    if case_dir:
+        case_resolved = str(Path(case_dir).resolve())
+        if resolved == case_resolved or resolved.startswith(case_resolved + "/"):
+            return resolved
+        raise ValueError(
+            f"Output path '{path}' resolves to '{resolved}' which is "
+            f"outside the case directory '{case_resolved}'"
+        )
+
+    # No case dir: allow /tmp and cwd before checking blocked dirs
+    if resolved.startswith("/tmp/") or resolved == "/tmp":
+        return resolved
+    cwd = str(Path.cwd().resolve())
+    if resolved == cwd or resolved.startswith(cwd + "/"):
+        return resolved
+
+    # Block system directories
+    for blocked in _OUTPUT_BLOCKED_DIRECTORIES:
+        if resolved == blocked or resolved.startswith(blocked + "/"):
+            raise ValueError(
+                f"Output denied: path '{path}' resolves to '{resolved}' "
+                f"which is inside blocked directory '{blocked}'"
+            )
+
+    raise ValueError(
+        f"Output denied: path '{path}' resolves to '{resolved}'. "
+        f"Without an active case, output is only allowed in /tmp or "
+        f"the current working directory"
+    )
+
+
 def validate_input_path(path: str) -> str:
     """Validate that an input file path is not in a blocked system directory.
 

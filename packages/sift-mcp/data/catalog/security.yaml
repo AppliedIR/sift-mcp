@@ -42,6 +42,14 @@ tool_blocked_flags:
     - "-o"
     - "-n"
 
+output_flags:
+  - "--csv"
+  - "--csvf"
+  - "-o"
+  - "--output"
+  - "--json"
+  - "--jsonl"
+
 denied_binaries:
   - "mkfs"
   - "mkfs.ext4"

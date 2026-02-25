@@ -4,9 +4,11 @@ import os
 
 import pytest
 from sift_mcp.security import (
+    get_output_flags,
     is_denied,
     sanitize_extra_args,
     validate_input_path,
+    validate_output_path,
     validate_rm_targets,
 )
 
@@ -175,6 +177,108 @@ class TestValidateInputPath:
         assert result.endswith("evidence.img")
 
 
+# --- Output path validation ---
+
+
+class TestValidateOutputPath:
+    """validate_output_path must restrict where tools can write."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_case_dir(self, monkeypatch):
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+
+    def test_blocks_etc(self):
+        with pytest.raises(ValueError, match="Output denied"):
+            validate_output_path("/etc/cron.d/")
+
+    def test_blocks_usr(self):
+        with pytest.raises(ValueError, match="Output denied"):
+            validate_output_path("/usr/local/bin/backdoor")
+
+    def test_blocks_var(self):
+        with pytest.raises(ValueError, match="Output denied"):
+            validate_output_path("/var/spool/cron/evil")
+
+    def test_blocks_home(self):
+        with pytest.raises(ValueError, match="Output denied"):
+            validate_output_path("/home/user/.bashrc")
+
+    def test_blocks_bin(self):
+        with pytest.raises(ValueError, match="Output denied"):
+            validate_output_path("/bin/sh")
+
+    def test_blocks_sbin(self):
+        with pytest.raises(ValueError, match="Output denied"):
+            validate_output_path("/sbin/init")
+
+    def test_blocks_lib(self):
+        with pytest.raises(ValueError, match="Output denied"):
+            validate_output_path("/lib/x86_64-linux-gnu/libc.so")
+
+    def test_allows_tmp(self):
+        result = validate_output_path("/tmp/output.csv")
+        assert result.endswith("output.csv")
+
+    def test_allows_cwd(self):
+        cwd = os.getcwd()
+        result = validate_output_path(cwd + "/output.csv")
+        assert result.endswith("output.csv")
+
+    def test_case_dir_allows_inside(self, tmp_path, monkeypatch):
+        case_dir = tmp_path / "case-001"
+        case_dir.mkdir()
+        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        result = validate_output_path(str(case_dir / "output.csv"))
+        assert result.endswith("output.csv")
+
+    def test_case_dir_blocks_outside(self, tmp_path, monkeypatch):
+        case_dir = tmp_path / "case-001"
+        case_dir.mkdir()
+        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        with pytest.raises(ValueError, match="outside the case directory"):
+            validate_output_path("/tmp/output.csv")
+
+    def test_case_dir_under_home_allowed(self, tmp_path, monkeypatch):
+        """Case dirs under /home must be allowed (containment check before /home block)."""
+        case_dir = tmp_path / "home" / "user" / "cases" / "case-001"
+        case_dir.mkdir(parents=True)
+        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        result = validate_output_path(str(case_dir / "results" / "output.csv"))
+        assert result.endswith("output.csv")
+
+    def test_blocks_arbitrary_path(self):
+        with pytest.raises(ValueError, match="Without an active case"):
+            validate_output_path("/opt/sneaky/output.csv")
+
+    def test_symlink_to_blocked_dir(self, tmp_path):
+        link = tmp_path / "sneaky_link"
+        os.symlink("/etc/cron.d", str(link))
+        with pytest.raises(ValueError, match="Output denied"):
+            validate_output_path(str(link))
+
+
+class TestGetOutputFlags:
+    """get_output_flags() returns the configured output flag set."""
+
+    def test_returns_frozenset(self):
+        flags = get_output_flags()
+        assert isinstance(flags, frozenset)
+
+    def test_contains_csv_flag(self):
+        flags = get_output_flags()
+        assert "--csv" in flags
+
+    def test_contains_output_flag(self):
+        flags = get_output_flags()
+        assert "-o" in flags
+        assert "--output" in flags
+
+    def test_contains_json_flags(self):
+        flags = get_output_flags()
+        assert "--json" in flags
+        assert "--jsonl" in flags
+
+
 # --- Zeek script blocking ---
 
 
@@ -324,5 +428,9 @@ class TestSecurityPolicyYAML:
         assert "-exec" in policy["tool_blocked_flags"]["find"]
         assert "sed" in policy["tool_blocked_flags"]
         assert "-i" in policy["tool_blocked_flags"]["sed"]
+
+        assert isinstance(policy["output_flags"], frozenset)
+        assert "--csv" in policy["output_flags"]
+        assert "-o" in policy["output_flags"]
 
         clear_catalog_cache()

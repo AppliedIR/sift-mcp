@@ -8,9 +8,11 @@ from sift_mcp.environment import find_binary
 from sift_mcp.exceptions import DeniedBinaryError, ExecutionError
 from sift_mcp.executor import execute
 from sift_mcp.security import (
+    get_output_flags,
     is_denied,
     sanitize_extra_args,
     validate_input_path,
+    validate_output_path,
     validate_rm_targets,
 )
 
@@ -55,19 +57,31 @@ def run_command(
         validate_rm_targets(command[1:])
 
     # Validate any arguments that look like file paths
+    output_flags = get_output_flags()
+    prev_was_output_flag = False
     for arg in command[1:]:
         # Check flag=value arguments for path values
         if "=" in arg and arg.startswith("-"):
+            flag_part = arg.split("=", 1)[0]
             value = arg.split("=", 1)[1]
             if value and (
                 value.startswith("/") or value.startswith("..") or "/" in value
             ):
-                validate_input_path(value)
+                if flag_part in output_flags:
+                    validate_output_path(value)
+                else:
+                    validate_input_path(value)
+            prev_was_output_flag = False
             continue
         if arg.startswith("-") and "=" not in arg:
+            prev_was_output_flag = arg in output_flags
             continue
         if arg.startswith("/") or arg.startswith("..") or "/" in arg:
-            validate_input_path(arg)
+            if prev_was_output_flag:
+                validate_output_path(arg)
+            else:
+                validate_input_path(arg)
+        prev_was_output_flag = False
 
     # Resolve binary via find_binary to prevent absolute path bypass
     resolved = find_binary(binary)

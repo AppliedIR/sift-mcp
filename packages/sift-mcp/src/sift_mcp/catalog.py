@@ -162,7 +162,8 @@ def load_security_policy() -> dict:
     """Load security policy from security.yaml in the catalog directory.
 
     Returns dict with keys: dangerous_flags (set), tool_allowed_flags (dict of sets),
-    tool_blocked_flags (dict of sets), denied_binaries (frozenset).
+    tool_blocked_flags (dict of sets), denied_binaries (frozenset),
+    output_flags (frozenset).
     """
     global _security_cache
     if _security_cache is not None:
@@ -179,6 +180,7 @@ def load_security_policy() -> dict:
             "tool_allowed_flags": {},
             "tool_blocked_flags": {},
             "denied_binaries": frozenset(),
+            "output_flags": frozenset(),
         }
         return _security_cache
     _security_cache = {
@@ -190,6 +192,7 @@ def load_security_policy() -> dict:
             k: set(v) for k, v in doc.get("tool_blocked_flags", {}).items()
         },
         "denied_binaries": frozenset(doc.get("denied_binaries", [])),
+        "output_flags": frozenset(doc.get("output_flags", [])),
     }
     return _security_cache
 
