@@ -67,7 +67,7 @@ If you ran `aiir setup client` during installation, your LLM client is already c
 
 Ask your LLM client to analyze evidence:
 
-```
+```text
 "Parse the Amcache hive at /cases/evidence/Amcache.hve"
 "What tools should I use to investigate lateral movement?"
 "Run hayabusa against the evtx logs and show critical alerts"
@@ -103,7 +103,7 @@ aiir report --full --save report.json
 
 Or ask the LLM to generate a report using report-mcp:
 
-```
+```text
 "Generate an executive summary report for this case"
 ```
 
@@ -123,7 +123,7 @@ Resolution order: `--examiner` flag > `AIIR_EXAMINER` env var > `~/.aiir/config.
 
 Each case has a flat directory with all data files:
 
-```
+```text
 cases/INC-2026-0225/
 ├── CASE.yaml              # Case metadata
 ├── findings.json          # Investigation findings

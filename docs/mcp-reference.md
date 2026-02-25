@@ -141,7 +141,7 @@ Forensic tool execution on Linux/SIFT. A small denylist blocks destructive syste
 
 ### Execution Pipeline
 
-```
+```text
 MCP tool call → Denylist Check → subprocess.run(shell=False) → Parse Output → Catalog? → FK Enrichment → Response Envelope → Audit Entry
 ```
 
@@ -221,7 +221,7 @@ Forensic tool execution on Windows. Catalog-gated — only tools defined in YAML
 
 ### Security Model
 
-```
+```text
 Tool call → Hardcoded Denylist (20+ binaries) → YAML Catalog Allowlist → Argument Sanitization → subprocess.run(shell=False)
 ```
 

@@ -8,7 +8,7 @@ AIIR uses MCP (Model Context Protocol) to connect LLM clients to forensic tools.
 2. **MCP backends** — Specialized servers for different forensic functions
 3. **Tool layer** — Actual forensic tool execution (subprocess-based)
 
-```
+```text
 LLM Client
     │
     │  MCP Streamable HTTP (POST /mcp, SSE responses)
@@ -55,7 +55,7 @@ The gateway uses the low-level MCP `Server` class (not FastMCP) because tools ar
 
 Available per-backend endpoints:
 
-```
+```text
 http://localhost:4508/mcp/forensic-mcp
 http://localhost:4508/mcp/case-mcp
 http://localhost:4508/mcp/report-mcp
@@ -103,7 +103,7 @@ Read-only threat intelligence from OpenCTI. IOC lookup, threat actor search, mal
 
 One SIFT workstation. The LLM client, aiir CLI, gateway, and all MCPs run on the same machine.
 
-```
+```text
 ┌─────────────────────── SIFT Workstation ───────────────────────┐
 │                                                                │
 │  LLM Client ──streamable-http──► sift-gateway :4508            │
@@ -121,7 +121,7 @@ One SIFT workstation. The LLM client, aiir CLI, gateway, and all MCPs run on the
 
 SIFT workstation plus a Windows forensic VM. The LLM client makes two separate HTTP connections.
 
-```
+```text
 ┌─────────────────────── SIFT Workstation ───────────────────────┐
 │                                                                │
 │  LLM Client ──streamable-http──► sift-gateway :4508 ──► MCPs  │
@@ -155,7 +155,7 @@ Install with `--remote` to enable TLS:
 
 Each examiner runs their own full stack on their own SIFT workstation. Collaboration is merge-based using JSON export/import.
 
-```
+```text
 ┌─ Examiner 1 — SIFT Workstation ─┐
 │ LLM Client + aiir CLI            │
 │ sift-gateway :4508 ──► MCPs      │
@@ -177,7 +177,7 @@ Finding and timeline IDs include the examiner name (e.g., `F-alice-001`, `T-bob-
 
 Flat layout. All data files at case root.
 
-```
+```text
 cases/INC-2026-0225/
 ├── CASE.yaml                    # Case metadata (name, status, examiner)
 ├── evidence/                    # Original evidence (read-only after registration)

@@ -21,7 +21,7 @@ wintools-mcp must only be installed on dedicated forensic workstations. Never in
 
 Bearer token authentication on all MCP and REST endpoints (health check excepted). Tokens use the `aiir_gw_` prefix with 24 hex characters (96 bits of entropy).
 
-```
+```text
 Authorization: Bearer aiir_gw_a1b2c3d4e5f6a1b2c3d4e5f6
 ```
 
@@ -132,7 +132,7 @@ These are defense-in-depth measures. Proper evidence integrity depends on verifi
 
 Every MCP tool call is logged to a per-backend JSONL file in the case `audit/` directory:
 
-```
+```text
 audit/
 ├── forensic-mcp.jsonl
 ├── case-mcp.jsonl

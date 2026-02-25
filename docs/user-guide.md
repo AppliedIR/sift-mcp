@@ -183,7 +183,7 @@ Reports are generated through report-mcp (via the LLM) or the aiir CLI.
 ### Via LLM (report-mcp)
 
 Ask the LLM:
-```
+```text
 "Generate a full incident response report"
 "Create an executive summary for management"
 "Generate an IOC report with MITRE mappings"
