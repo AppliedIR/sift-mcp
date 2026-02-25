@@ -43,7 +43,7 @@ class TestParseCsv:
         rows = "\n".join(str(i) for i in range(100))
         result = parse_csv(header + rows, max_rows=10)
         assert len(result["rows"]) == 10
-        assert result["total_rows"] >= 90  # exact count depends on trailing newline
+        assert result["total_rows"] == 99
         assert result["truncated"] is True
 
     def test_byte_budget(self):

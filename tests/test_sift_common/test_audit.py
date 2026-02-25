@@ -71,7 +71,6 @@ class TestResolveExaminer:
         # With no env vars set, falls back to OS username
         result = resolve_examiner()
         assert len(result) > 0
-        assert result != "unknown" or True  # OS user might be anything
 
     def test_sanitizes_result(self, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "Alice Smith")

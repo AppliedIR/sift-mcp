@@ -97,36 +97,32 @@ class TestResolveCaseDir:
 
     def test_active_case_file_absolute(self, tmp_path, monkeypatch):
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        fake_home = tmp_path / "fakehome"
+        (fake_home / ".aiir").mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
         case_dir = tmp_path / "my-case"
         case_dir.mkdir()
-        active_file = Path.home() / ".aiir" / "active_case"
-        active_file.parent.mkdir(parents=True, exist_ok=True)
-        active_file.write_text(str(case_dir))
-        try:
-            result = _resolve_case_dir()
-            assert result == case_dir
-        finally:
-            active_file.unlink(missing_ok=True)
+        (fake_home / ".aiir" / "active_case").write_text(str(case_dir))
+        result = _resolve_case_dir()
+        assert result == case_dir
 
     def test_active_case_file_relative(self, tmp_path, monkeypatch):
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        fake_home = tmp_path / "fakehome"
+        (fake_home / ".aiir").mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
         case_id = "INC-2026-rel"
         (tmp_path / case_id).mkdir()
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
-        active_file = Path.home() / ".aiir" / "active_case"
-        active_file.parent.mkdir(parents=True, exist_ok=True)
-        active_file.write_text(case_id)
-        try:
-            result = _resolve_case_dir()
-            assert result == tmp_path / case_id
-        finally:
-            active_file.unlink(missing_ok=True)
+        (fake_home / ".aiir" / "active_case").write_text(case_id)
+        result = _resolve_case_dir()
+        assert result == tmp_path / case_id
 
     def test_no_active_case(self, tmp_path, monkeypatch):
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
-        active_file = Path.home() / ".aiir" / "active_case"
-        if active_file.exists():
-            active_file.unlink()
+        fake_home = tmp_path / "fakehome"
+        (fake_home / ".aiir").mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
         with pytest.raises(ValueError, match="No active case"):
             _resolve_case_dir()
 
@@ -149,14 +145,12 @@ class TestResolveCaseDir:
 
     def test_active_file_traversal_rejected(self, tmp_path, monkeypatch):
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
-        active_file = Path.home() / ".aiir" / "active_case"
-        active_file.parent.mkdir(parents=True, exist_ok=True)
-        active_file.write_text("../../etc/shadow")
-        try:
-            with pytest.raises(ValueError, match="Invalid case ID in active_case"):
-                _resolve_case_dir()
-        finally:
-            active_file.unlink(missing_ok=True)
+        fake_home = tmp_path / "fakehome"
+        (fake_home / ".aiir").mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
+        (fake_home / ".aiir" / "active_case").write_text("../../etc/shadow")
+        with pytest.raises(ValueError, match="Invalid case ID in active_case"):
+            _resolve_case_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +182,8 @@ class TestCaseActivate:
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
         result = json.loads(tools["case_activate"](case_id=case_dir["case_id"]))
-        assert "case_dir" in result or "error" not in result
+        assert "error" not in result
+        assert "case_dir" in result
 
     def test_nonexistent_case(self, case_dir, monkeypatch):
         srv = create_server()
@@ -202,10 +197,8 @@ class TestCaseList:
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
         result = json.loads(tools["case_list"]())
-        assert isinstance(result, (list, dict))
-        # Should not be an error
-        if isinstance(result, dict):
-            assert "error" not in result or isinstance(result.get("cases"), list)
+        assert isinstance(result, dict), f"Expected dict, got {type(result)}"
+        assert "error" not in result
 
 
 class TestCaseStatus:
@@ -223,9 +216,9 @@ class TestCaseStatus:
 
     def test_no_case_returns_error(self, tmp_path, monkeypatch):
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
-        active_file = Path.home() / ".aiir" / "active_case"
-        if active_file.exists():
-            active_file.unlink()
+        fake_home = tmp_path / "fakehome"
+        (fake_home / ".aiir").mkdir(parents=True)
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
         result = json.loads(tools["case_status"]())
