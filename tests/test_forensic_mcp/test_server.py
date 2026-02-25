@@ -19,7 +19,10 @@ def _setup_test_case(manager, cases_dir):
     (case_dir / "evidence").mkdir()
     (case_dir / "extractions").mkdir()
     (case_dir / "reports").mkdir()
-    (case_dir / "audit").mkdir()
+    audit_dir = case_dir / "audit"
+    audit_dir.mkdir()
+    # Seed audit entries for evidence IDs used in tests (provenance hard gate)
+    _seed_audit(audit_dir)
     case_meta = {
         "case_id": case_id,
         "name": "Test",
@@ -38,6 +41,20 @@ def _setup_test_case(manager, cases_dir):
 
     os.environ["AIIR_CASE_DIR"] = str(case_dir)
     os.environ["AIIR_ACTIVE_CASE"] = case_id
+
+
+def _seed_audit(audit_dir):
+    """Write audit entries so record_finding passes the provenance hard gate."""
+    import json as _json
+
+    entries = [
+        {"evidence_id": "ev-001", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
+        {"evidence_id": "ev-002", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
+        {"evidence_id": "ev-003", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
+    ]
+    with open(audit_dir / "test-fixtures.jsonl", "w") as f:
+        for entry in entries:
+            f.write(_json.dumps(entry) + "\n")
 
 
 @pytest.fixture

@@ -9,6 +9,24 @@ import yaml as _yaml
 from forensic_mcp.case.manager import CaseManager
 
 
+def _seed_audit_entries(audit_dir: Path) -> None:
+    """Write audit entries for evidence IDs used across tests.
+
+    This ensures record_finding() passes the provenance hard gate.
+    """
+    entries = [
+        {"evidence_id": "ev-001", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
+        {"evidence_id": "ev-002", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
+        {"evidence_id": "ev-003", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
+        {"evidence_id": "wt-2026-0219-001", "tool": "test", "ts": "2026-02-19T00:00:00Z"},
+        {"evidence_id": "wt-20260219-001", "tool": "test", "ts": "2026-02-19T00:00:00Z"},
+        {"evidence_id": "rag-20260219-002", "tool": "test", "ts": "2026-02-19T00:00:00Z"},
+    ]
+    with open(audit_dir / "test-fixtures.jsonl", "w") as f:
+        for entry in entries:
+            f.write(json.dumps(entry) + "\n")
+
+
 @pytest.fixture
 def manager(tmp_path, monkeypatch):
     """CaseManager with temp cases directory."""
@@ -30,7 +48,9 @@ def active_case(manager, tmp_path, monkeypatch):
     (case_dir / "evidence").mkdir()
     (case_dir / "extractions").mkdir()
     (case_dir / "reports").mkdir()
-    (case_dir / "audit").mkdir()
+    audit_dir = case_dir / "audit"
+    audit_dir.mkdir()
+    _seed_audit_entries(audit_dir)
     case_meta = {
         "case_id": case_id,
         "name": "Test Incident",
