@@ -35,8 +35,8 @@ jobs:
           pip install -e packages/sift-common
           pip install -e packages/forensic-knowledge
 
-      - name: Install aiir-cli (case-mcp dependency, private repo)
-        run: pip install "aiir-cli @ git+https://${{ secrets.GH_PAT }}@github.com/AppliedIR/aiir.git"
+      - name: Install aiir-cli (case-mcp dependency)
+        run: pip install "aiir-cli @ git+https://github.com/AppliedIR/aiir.git"
 
       - name: Install remaining packages
         run: |
