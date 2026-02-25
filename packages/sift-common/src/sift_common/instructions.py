@@ -122,3 +122,13 @@ CASE_MCP = (
     "sets files read-only for integrity. All evidence modifications require "
     "examiner confirmation. Query case_status for investigation progress."
 )
+
+REPORT_MCP = (
+    "Report generation tools for the AIIR forensic investigation platform. "
+    "Only approved findings and timeline events appear in reports. "
+    "Provenance, confidence, and content hashes are internal working notes "
+    "for the pre-approval review process — they do not appear in reports. "
+    "Use Zeltser IR Writing MCP tools as guided by the zeltser_guidance section "
+    "in generate_report output. Set case metadata incrementally as information "
+    "emerges during the investigation. Save reports with descriptive filenames."
+)
