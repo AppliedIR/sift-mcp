@@ -2,10 +2,10 @@
 
 Monorepo for all SIFT-side AIIR components. 10 packages: forensic-mcp (15 tools + 14 resources), case-mcp (13 tools), report-mcp (6 tools), sift-mcp (6 tools), sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, and sift-common. Part of the [AIIR](https://github.com/AppliedIR/aiir) platform.
 
-**[Documentation](https://appliedir.github.io/sift-mcp/)** ·
-[Getting Started](https://appliedir.github.io/sift-mcp/getting-started/) ·
-[CLI Reference](https://appliedir.github.io/sift-mcp/cli-reference/) ·
-[MCP Reference](https://appliedir.github.io/sift-mcp/mcp-reference/)
+**[Documentation](https://appliedir.github.io/aiir/)** ·
+[Getting Started](https://appliedir.github.io/aiir/getting-started/) ·
+[CLI Reference](https://appliedir.github.io/aiir/cli-reference/) ·
+[MCP Reference](https://appliedir.github.io/aiir/mcp-reference/)
 
 ## Architecture
 
