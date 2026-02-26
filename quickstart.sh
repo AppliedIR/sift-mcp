@@ -3,8 +3,7 @@
 # quickstart.sh — AIIR Platform Quick Start
 #
 # One command to go from zero to a working AIIR platform.
-# Downloads setup-sift.sh and runs it with quick tier. Prompts for
-# examiner identity and LLM client selection.
+# Auto-selects quick tier. Prompts for examiner identity and LLM client.
 #
 # Usage:
 #   curl -sSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/aiir-quickstart.sh && bash /tmp/aiir-quickstart.sh

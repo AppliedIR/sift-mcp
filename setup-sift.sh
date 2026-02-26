@@ -1131,15 +1131,12 @@ fi
 
 header "LLM Client Configuration"
 
-if [[ -n "$CLIENT" ]] && $AUTO_YES; then
-    "$VENV_DIR/bin/aiir" setup client --client="$CLIENT" -y
-elif [[ -n "$CLIENT" ]]; then
-    "$VENV_DIR/bin/aiir" setup client --client="$CLIENT"
-elif $AUTO_YES; then
-    info "Skipping client config (no --client specified with -y)"
-    info "  Run later: aiir setup client"
+# Pass --sift and -y so only the client type is prompted.
+# _resolve_client() always prompts when --client is not set.
+if [[ -n "$CLIENT" ]]; then
+    "$VENV_DIR/bin/aiir" setup client --client="$CLIENT" --sift="http://127.0.0.1:$GATEWAY_PORT" -y
 else
-    "$VENV_DIR/bin/aiir" setup client
+    "$VENV_DIR/bin/aiir" setup client --sift="http://127.0.0.1:$GATEWAY_PORT" -y
 fi
 
 # Global deployment message for claude-code
