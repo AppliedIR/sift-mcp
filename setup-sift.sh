@@ -133,6 +133,18 @@ prompt_yn() {
     [[ "${answer,,}" == "y" ]]
 }
 
+prompt_yn_strict() {
+    local msg="$1"
+    while true; do
+        read -rp "$(echo -e "${BOLD}$msg${NC} [y/n]: ")" answer
+        case "${answer,,}" in
+            y) return 0 ;;
+            n) return 1 ;;
+            *) echo "    Please enter y or n." ;;
+        esac
+    done
+}
+
 # =============================================================================
 # Platform Check
 # =============================================================================
@@ -172,7 +184,7 @@ if ${UNINSTALL_MODE:-false}; then
         echo -e "${BOLD}[1] Client forensic controls${NC}"
         echo "    MCP config, hooks, permissions, discipline docs"
         echo ""
-        if prompt_yn "    Remove client forensic controls?" "y"; then
+        if prompt_yn_strict "    Remove client forensic controls?"; then
             "$AIIR_CMD" setup client --uninstall
         else
             info "Skipped client controls."
@@ -195,7 +207,7 @@ if ${UNINSTALL_MODE:-false}; then
         echo "    Service: $SERVICE_NAME"
         echo "    Status: $(systemctl --user is-active "$SERVICE_NAME" 2>/dev/null || echo 'unknown')"
         echo ""
-        if prompt_yn "    Stop and disable gateway service?" "y"; then
+        if prompt_yn_strict "    Stop and disable gateway service?"; then
             systemctl --user stop "$SERVICE_NAME" 2>/dev/null || true
             systemctl --user disable "$SERVICE_NAME" 2>/dev/null || true
             if [[ -f "$UNIT_FILE" ]]; then
@@ -217,7 +229,7 @@ if ${UNINSTALL_MODE:-false}; then
         echo "    Path: $VENV_DIR"
         echo "    Size: $VENV_SIZE"
         echo ""
-        if prompt_yn "    Remove virtual environment?" "y"; then
+        if prompt_yn_strict "    Remove virtual environment?"; then
             rm -rf "$VENV_DIR"
             ok "Virtual environment removed."
         else
@@ -234,7 +246,7 @@ if ${UNINSTALL_MODE:-false}; then
         echo "    Path: $SRC_DIR"
         echo "    Size: $SRC_SIZE"
         echo ""
-        if prompt_yn "    Remove source code?" "y"; then
+        if prompt_yn_strict "    Remove source code?"; then
             rm -rf "$SRC_DIR"
             ok "Source code removed."
         else
@@ -256,7 +268,7 @@ if ${UNINSTALL_MODE:-false}; then
         done
         [[ -d "$TLS_DIR" ]] && echo "    $TLS_DIR/ (TLS certificates)"
         echo ""
-        if prompt_yn "    Remove gateway config and credentials?" "y"; then
+        if prompt_yn_strict "    Remove gateway config and credentials?"; then
             for f in "${CONFIG_FILES[@]}"; do
                 rm -f "$f"
             done
@@ -282,7 +294,7 @@ if ${UNINSTALL_MODE:-false}; then
                 echo "    ... and $((REMAINING_COUNT - 5)) more"
             fi
             echo ""
-            if prompt_yn "    Remove remaining ~/.aiir/ contents?" "n"; then
+            if prompt_yn_strict "    Remove remaining ~/.aiir/ contents?"; then
                 rm -rf "$AIIR_DIR"
                 ok "~/.aiir/ removed."
             else
