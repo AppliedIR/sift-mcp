@@ -134,17 +134,6 @@ prompt_yn() {
 }
 
 # =============================================================================
-# Banner
-# =============================================================================
-
-echo ""
-echo -e "${BOLD}============================================================${NC}"
-echo -e "${BOLD}  AIIR — SIFT Platform Installer${NC}"
-echo -e "${BOLD}  Artificial Intelligence Incident Response${NC}"
-echo -e "${BOLD}============================================================${NC}"
-echo ""
-
-# =============================================================================
 # Platform Check
 # =============================================================================
 
@@ -164,6 +153,10 @@ fi
 # =============================================================================
 
 if ${UNINSTALL_MODE:-false}; then
+    # Deletion on a forensics machine requires human approval per component.
+    # Never allow -y to bypass uninstall prompts.
+    AUTO_YES=false
+
     echo ""
     echo -e "${BOLD}============================================================${NC}"
     echo -e "${BOLD}  AIIR — Platform Uninstall${NC}"
@@ -314,6 +307,17 @@ if ${UNINSTALL_MODE:-false}; then
     echo -e "${BOLD}Uninstall complete.${NC}"
     exit 0
 fi
+
+# =============================================================================
+# Banner
+# =============================================================================
+
+echo ""
+echo -e "${BOLD}============================================================${NC}"
+echo -e "${BOLD}  AIIR — SIFT Platform Installer${NC}"
+echo -e "${BOLD}  Artificial Intelligence Incident Response${NC}"
+echo -e "${BOLD}============================================================${NC}"
+echo ""
 
 # =============================================================================
 # Phase 1: Prerequisites
