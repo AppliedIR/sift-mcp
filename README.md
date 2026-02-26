@@ -162,7 +162,7 @@ Every tool response is wrapped in a structured envelope enriched by forensic-kno
 
 ## Execution Security
 
-A small denylist blocks catastrophic system-destructive operations (mkfs, dd, fdisk, shutdown, etc.). All other binaries can execute. This follows the REMnux MCP philosophy: VM/container isolation is the security boundary, not in-band command filtering.
+A denylist blocks destructive system commands (mkfs, dd, fdisk, shutdown, etc.). When Claude Code is the LLM client, additional deny rules block Edit/Write to case data files (findings.json, timeline.json, approvals.jsonl, etc.), a PreToolUse hook guards against Bash redirections to protected files, and case data files are set to chmod 444 after every write. All other binaries can execute. This follows the REMnux MCP philosophy: VM/container isolation is the security boundary, not in-band command filtering.
 
 Additional protections:
 - `subprocess.run(shell=False)` — no shell, no arbitrary command chains

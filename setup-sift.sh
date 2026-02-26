@@ -425,10 +425,15 @@ fi
 
 if [ ! -d /var/lib/aiir/verification ]; then
     info "Creating verification ledger directory (requires sudo)..."
-    sudo mkdir -p /var/lib/aiir/verification
-    sudo chown "$USER:$USER" /var/lib/aiir/verification
-    sudo chmod 700 /var/lib/aiir/verification
-    ok "Verification ledger: /var/lib/aiir/verification/"
+    if sudo mkdir -p /var/lib/aiir/verification && \
+       sudo chown "$USER:$USER" /var/lib/aiir/verification && \
+       sudo chmod 700 /var/lib/aiir/verification; then
+        ok "Verification ledger: /var/lib/aiir/verification/"
+    else
+        warn "Could not create /var/lib/aiir/verification/ (sudo required)"
+        warn "HMAC verification ledger will not be available until this directory is created."
+        warn "To create manually: sudo mkdir -p /var/lib/aiir/verification && sudo chown $USER:$USER /var/lib/aiir/verification && sudo chmod 700 /var/lib/aiir/verification"
+    fi
 fi
 
 # =============================================================================
