@@ -420,6 +420,18 @@ else
 fi
 
 # =============================================================================
+# Phase 1b: Verification Ledger Directory
+# =============================================================================
+
+if [ ! -d /var/lib/aiir/verification ]; then
+    info "Creating verification ledger directory (requires sudo)..."
+    sudo mkdir -p /var/lib/aiir/verification
+    sudo chown "$USER:$USER" /var/lib/aiir/verification
+    sudo chmod 700 /var/lib/aiir/verification
+    ok "Verification ledger: /var/lib/aiir/verification/"
+fi
+
+# =============================================================================
 # Phase 2: Tier Selection
 # =============================================================================
 

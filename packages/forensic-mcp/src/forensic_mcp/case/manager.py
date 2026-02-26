@@ -41,6 +41,25 @@ def _atomic_write(path: Path, content: str) -> None:
         raise
 
 
+def _protected_write(path: Path, content: str) -> None:
+    """Write to a chmod-444-protected case data file.
+
+    Unlocks (0o644) before write, locks (0o444) after. This is a speed bump
+    — the LLM process can chmod — but combined with deny rules and the
+    PreToolUse hook it adds defense-in-depth.
+    """
+    try:
+        if path.exists():
+            os.chmod(path, 0o644)
+    except OSError:
+        pass  # May already be writable or on non-POSIX fs
+    _atomic_write(path, content)
+    try:
+        os.chmod(path, 0o444)
+    except OSError:
+        pass  # Non-POSIX filesystem
+
+
 CASES_DIR_ENV = "AIIR_CASES_DIR"
 DEFAULT_CASES_DIR = "cases"
 
@@ -822,7 +841,7 @@ class CaseManager:
         return self._load_json_file(case_dir / "findings.json", [])
 
     def _save_findings(self, case_dir: Path, findings: list[dict]) -> None:
-        _atomic_write(
+        _protected_write(
             case_dir / "findings.json", json.dumps(findings, indent=2, default=str)
         )
 
@@ -830,7 +849,7 @@ class CaseManager:
         return self._load_json_file(case_dir / "timeline.json", [])
 
     def _save_timeline(self, case_dir: Path, timeline: list[dict]) -> None:
-        _atomic_write(
+        _protected_write(
             case_dir / "timeline.json", json.dumps(timeline, indent=2, default=str)
         )
 
@@ -838,7 +857,7 @@ class CaseManager:
         return self._load_json_file(case_dir / "todos.json", [])
 
     def _save_todos(self, case_dir: Path, todos: list[dict]) -> None:
-        _atomic_write(case_dir / "todos.json", json.dumps(todos, indent=2, default=str))
+        _protected_write(case_dir / "todos.json", json.dumps(todos, indent=2, default=str))
 
     def _load_evidence_registry(self, case_dir: Path) -> dict:
         return self._load_json_file(case_dir / "evidence.json", {"files": []})

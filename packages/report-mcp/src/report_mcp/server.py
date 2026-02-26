@@ -168,6 +168,20 @@ def _atomic_write(path: Path, content: str) -> None:
         raise
 
 
+def _protected_write(path: Path, content: str) -> None:
+    """Write to a chmod-444-protected case data file."""
+    try:
+        if path.exists():
+            os.chmod(path, 0o644)
+    except OSError:
+        pass
+    _atomic_write(path, content)
+    try:
+        os.chmod(path, 0o444)
+    except OSError:
+        pass
+
+
 def _strip_finding(finding: dict) -> dict:
     """Remove internal fields from a finding for report output."""
     return {k: v for k, v in finding.items() if k not in STRIPPED_FINDING_FIELDS}
@@ -496,7 +510,72 @@ def _generate(
     if zeltser_guidance:
         result["zeltser_guidance"] = zeltser_guidance
 
+    # Verification ledger reconciliation
+    case_id = metadata.get("case_id", "")
+    if case_id:
+        try:
+            alerts = _reconcile_verification(
+                case_id, approved_findings, approved_timeline
+            )
+            if alerts:
+                result["verification_alerts"] = alerts
+        except Exception:
+            pass  # Non-fatal — ledger may not be available
+
     return result
+
+
+VERIFICATION_DIR = Path("/var/lib/aiir/verification")
+
+
+def _reconcile_verification(
+    case_id: str,
+    approved_findings: list[dict],
+    approved_timeline: list[dict],
+) -> list[dict]:
+    """Bidirectional check: approved items vs verification ledger.
+
+    No PIN needed — this checks structural consistency (item counts,
+    description text matches) not cryptographic HMAC validity.
+    """
+    ledger_path = VERIFICATION_DIR / f"{case_id}.jsonl"
+    if not ledger_path.exists():
+        return [{"alert": "NO_VERIFICATION_LEDGER", "detail": "No ledger found"}]
+
+    ledger_entries: list[dict] = []
+    try:
+        for line in ledger_path.read_text().splitlines():
+            if line.strip():
+                ledger_entries.append(json.loads(line))
+    except (OSError, json.JSONDecodeError):
+        return [{"alert": "LEDGER_READ_ERROR", "detail": "Could not read ledger"}]
+
+    ledger_by_id = {e["finding_id"]: e for e in ledger_entries}
+    all_approved = approved_findings + approved_timeline
+    items_by_id = {i["id"]: i for i in all_approved}
+    all_ids = set(items_by_id) | set(ledger_by_id)
+
+    results: list[dict] = []
+    for item_id in sorted(all_ids):
+        item = items_by_id.get(item_id)
+        entry = ledger_by_id.get(item_id)
+        if item and not entry:
+            results.append({"id": item_id, "status": "APPROVED_NO_VERIFICATION"})
+        elif entry and not item:
+            results.append({"id": item_id, "status": "VERIFICATION_NO_FINDING"})
+        elif item and entry:
+            if item.get("description", "") != entry.get("description_snapshot", ""):
+                results.append({"id": item_id, "status": "DESCRIPTION_MISMATCH"})
+            else:
+                results.append({"id": item_id, "status": "VERIFIED"})
+
+    if len(all_approved) != len(ledger_entries):
+        results.append({
+            "id": "_summary",
+            "status": "COUNT_MISMATCH",
+            "detail": f"approved={len(all_approved)}, ledger={len(ledger_entries)}",
+        })
+    return results
 
 
 def _validate_iso8601(value: str) -> bool:
@@ -630,7 +709,7 @@ def create_server() -> FastMCP:
             meta = load_case_meta(case_dir)
             meta[field] = value
 
-            _atomic_write(
+            _protected_write(
                 meta_file, yaml.dump(meta, default_flow_style=False)
             )
 

@@ -299,8 +299,8 @@ failures:
    pointing to forensic-audit.sh.
 
 3. **Permission guardrails**: In the same settings.json, verify
-   `permissions.deny` contains entries blocking destructive commands
-   (rm -rf, mkfs, dd).
+   `permissions.deny` contains Edit/Write deny rules for case data files
+   (findings.json, timeline.json, approvals.jsonl, etc.).
 
 4. **Sandbox**: Verify `sandbox.enabled` is true and
    `sandbox.allowUnsandboxedCommands` is false.
@@ -313,7 +313,7 @@ Report results as a brief status block:
 ```
 ✓ MCP servers: connected (forensic-mcp, case-mcp, sift-mcp)
 ✓ Audit hook: active (forensic-audit.sh)
-✓ Permission guardrails: active (3 deny rules)
+✓ Permission guardrails: active (case data deny rules)
 ✓ Sandbox: enabled
 ✓ Forensic discipline: loaded
 ```
