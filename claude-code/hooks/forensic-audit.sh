@@ -64,7 +64,13 @@ EVIDENCE_ID="hook-${EXAMINER}-${TODAY}-$(printf '%03d' "$SEQ")"
 # 6. Compute SHA-256 of command + output
 TOOL_RESPONSE=$(printf '%s' "$PARSED" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_response',''))" 2>/dev/null) || TOOL_RESPONSE=""
 HASH_INPUT="${COMMAND}${TOOL_RESPONSE}"
-OUTPUT_HASH=$(printf '%s' "$HASH_INPUT" | sha256sum | cut -d' ' -f1 2>/dev/null) || OUTPUT_HASH=""
+if command -v sha256sum >/dev/null 2>&1; then
+    OUTPUT_HASH=$(printf '%s' "$HASH_INPUT" | sha256sum | cut -d' ' -f1 2>/dev/null) || OUTPUT_HASH=""
+elif command -v shasum >/dev/null 2>&1; then
+    OUTPUT_HASH=$(printf '%s' "$HASH_INPUT" | shasum -a 256 | cut -d' ' -f1 2>/dev/null) || OUTPUT_HASH=""
+else
+    OUTPUT_HASH=""
+fi
 
 # 7. Build and write audit entry
 TOOL_USE_ID=$(printf '%s' "$PARSED" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_use_id',''))" 2>/dev/null) || TOOL_USE_ID=""

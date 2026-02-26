@@ -74,26 +74,64 @@ something is misconfigured:
 
 ## MCP Backends
 
-### forensic-mcp (Case Management)
-Case lifecycle, findings, timeline, evidence, todos, audit trail.
+### forensic-mcp (Investigation Records + Discipline)
+Findings, timeline, todos, evidence listing, and forensic discipline.
 All findings are DRAFT until approved by the examiner via `aiir approve`.
 
-**Case workflow:**
+**Investigation records:**
 - `get_case_status` — investigation summary
+- `list_cases` — all cases with status
 - `record_finding` — stage finding as DRAFT (requires human approval)
 - `record_timeline_event` — stage event as DRAFT (requires human approval)
-- `record_action` — log action to case audit trail
 - `get_findings`, `get_timeline`, `get_actions` — retrieve case data
-- `add_todo`, `list_todos`, `update_todo`, `complete_todo` — investigation task tracking
+- `add_todo`, `list_todos`, `update_todo`, `complete_todo` — task tracking
 - `list_evidence` — evidence index with integrity status
 
-**Reasoning and analysis aids:**
-- `log_reasoning` — record analysis notes to audit trail
-- `validate_finding` — check proposed finding against methodology standards
+**Forensic discipline:**
+- `get_investigation_framework` — principles, HITL checkpoints, workflow
+- `get_rules` — all forensic discipline rules
+- `get_checkpoint_requirements` — what's required before a specific action
+- `validate_finding` — check finding against methodology standards
+- `get_evidence_standards`, `get_confidence_definitions` — classification levels
+- `get_anti_patterns` — common forensic mistakes to avoid
 - `get_evidence_template` — required evidence presentation format
 - `get_tool_guidance` — interpret results from a specific forensic tool
+- `get_false_positive_context` — common false positives for a tool/finding
 - `get_corroboration_suggestions` — cross-reference suggestions
 - `list_playbooks`, `get_playbook` — investigation procedures
+- `get_collection_checklist` — evidence collection checklist per artifact
+
+### case-mcp (Case Lifecycle + Audit)
+Case creation, evidence management, export/import, and audit logging.
+
+**Case lifecycle:**
+- `case_init` — create new case directory
+- `case_activate` — switch active case pointer
+- `case_list` — list all cases with status
+- `case_status` — detailed case status
+
+**Evidence management:**
+- `evidence_register` — register evidence file with hash
+- `evidence_list` — list registered evidence
+- `evidence_verify` — verify evidence integrity
+
+**Collaboration and audit:**
+- `export_bundle` — export case data as JSON bundle
+- `import_bundle` — import case data from bundle
+- `audit_summary` — audit trail statistics
+- `record_action` — log action to case audit trail
+- `log_reasoning` — record analysis notes to audit trail
+- `log_external_action` — capture non-MCP tool execution
+
+### report-mcp (Report Generation)
+Data-driven investigation reports with profile-based formatting.
+
+- `generate_report` — generate report from case data (profiles: full, executive, timeline, ioc, findings, status)
+- `set_case_metadata` — set report metadata (organization, classification, etc.)
+- `get_case_metadata` — retrieve report metadata
+- `list_profiles` — available report profiles with descriptions
+- `save_report` — save generated report to file
+- `list_reports` — list saved reports
 
 ### sift-mcp (SIFT Tool Execution)
 Runs forensic tools installed on the SIFT workstation. A denylist

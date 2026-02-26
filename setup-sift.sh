@@ -749,9 +749,21 @@ if $INSTALL_OPENCTI; then
     echo ""
     OPENCTI_URL=$(prompt "OpenCTI URL (e.g., https://opencti.example.com)" "")
     if [[ -n "$OPENCTI_URL" ]]; then
-        read -rsp "OpenCTI API Token: " OPENCTI_TOKEN
-        echo ""
-    else
+        # Validate URL — reject quotes/backslashes that would break Python heredoc
+        if [[ "$OPENCTI_URL" =~ [\"\'\\] ]]; then
+            err "OpenCTI URL contains invalid characters (quotes or backslashes)"
+            OPENCTI_URL=""
+        else
+            read -rsp "OpenCTI API Token: " OPENCTI_TOKEN
+            echo ""
+            if [[ "$OPENCTI_TOKEN" =~ [\"\'\\] ]]; then
+                err "OpenCTI token contains invalid characters (quotes or backslashes)"
+                OPENCTI_URL=""
+                OPENCTI_TOKEN=""
+            fi
+        fi
+    fi
+    if [[ -z "$OPENCTI_URL" ]]; then
         info "Skipping. Set OPENCTI_URL and OPENCTI_TOKEN in gateway.yaml later."
         OPENCTI_URL=""
         OPENCTI_TOKEN=""
