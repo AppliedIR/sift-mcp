@@ -164,15 +164,155 @@ fi
 # =============================================================================
 
 if ${UNINSTALL_MODE:-false}; then
+    echo ""
+    echo -e "${BOLD}============================================================${NC}"
+    echo -e "${BOLD}  AIIR — Platform Uninstall${NC}"
+    echo -e "${BOLD}============================================================${NC}"
+    echo ""
+
+    # [1] Client forensic controls (while venv still exists)
     AIIR_CMD="$HOME/.aiir/venv/bin/aiir"
     if [[ ! -x "$AIIR_CMD" ]]; then
         AIIR_CMD=$(command -v aiir 2>/dev/null || true)
     fi
-    if [[ -z "$AIIR_CMD" ]]; then
-        err "aiir CLI not found. Cannot uninstall."
-        exit 1
+    if [[ -n "$AIIR_CMD" ]]; then
+        echo -e "${BOLD}[1] Client forensic controls${NC}"
+        echo "    MCP config, hooks, permissions, discipline docs"
+        echo ""
+        if prompt_yn "    Remove client forensic controls?" "y"; then
+            "$AIIR_CMD" setup client --uninstall
+        else
+            info "Skipped client controls."
+        fi
+        echo ""
+    else
+        warn "aiir CLI not found. Client forensic controls must be removed manually:"
+        echo "    ~/.claude.json (MCP entries)"
+        echo "    ~/.claude/settings.json (hooks, permissions)"
+        echo "    ~/.aiir/hooks/forensic-audit.sh"
+        echo "    ~/.claude/CLAUDE.md, ~/.claude/rules/"
+        echo ""
     fi
-    exec "$AIIR_CMD" setup client --uninstall
+
+    # [2] Gateway systemd service
+    SERVICE_NAME="aiir-gateway"
+    UNIT_FILE="$HOME/.config/systemd/user/${SERVICE_NAME}.service"
+    if systemctl --user is-enabled "$SERVICE_NAME" &>/dev/null 2>&1 || [[ -f "$UNIT_FILE" ]]; then
+        echo -e "${BOLD}[2] Gateway systemd service${NC}"
+        echo "    Service: $SERVICE_NAME"
+        echo "    Status: $(systemctl --user is-active "$SERVICE_NAME" 2>/dev/null || echo 'unknown')"
+        echo ""
+        if prompt_yn "    Stop and disable gateway service?" "y"; then
+            systemctl --user stop "$SERVICE_NAME" 2>/dev/null || true
+            systemctl --user disable "$SERVICE_NAME" 2>/dev/null || true
+            if [[ -f "$UNIT_FILE" ]]; then
+                rm -f "$UNIT_FILE"
+                systemctl --user daemon-reload 2>/dev/null || true
+            fi
+            ok "Gateway service stopped and removed."
+        else
+            info "Skipped gateway service."
+        fi
+        echo ""
+    fi
+
+    # [3] Virtual environment
+    VENV_DIR="$HOME/.aiir/venv"
+    if [[ -d "$VENV_DIR" ]]; then
+        VENV_SIZE=$(du -sh "$VENV_DIR" 2>/dev/null | cut -f1 || echo "unknown")
+        echo -e "${BOLD}[3] Virtual environment${NC}"
+        echo "    Path: $VENV_DIR"
+        echo "    Size: $VENV_SIZE"
+        echo ""
+        if prompt_yn "    Remove virtual environment?" "y"; then
+            rm -rf "$VENV_DIR"
+            ok "Virtual environment removed."
+        else
+            info "Skipped virtual environment."
+        fi
+        echo ""
+    fi
+
+    # [4] Source code
+    SRC_DIR="$HOME/.aiir/src"
+    if [[ -d "$SRC_DIR" ]]; then
+        SRC_SIZE=$(du -sh "$SRC_DIR" 2>/dev/null | cut -f1 || echo "unknown")
+        echo -e "${BOLD}[4] Source code${NC}"
+        echo "    Path: $SRC_DIR"
+        echo "    Size: $SRC_SIZE"
+        echo ""
+        if prompt_yn "    Remove source code?" "y"; then
+            rm -rf "$SRC_DIR"
+            ok "Source code removed."
+        else
+            info "Skipped source code."
+        fi
+        echo ""
+    fi
+
+    # [5] Gateway config and credentials
+    CONFIG_FILES=()
+    for f in gateway.yaml manifest.json config.yaml; do
+        [[ -f "$HOME/.aiir/$f" ]] && CONFIG_FILES+=("$HOME/.aiir/$f")
+    done
+    TLS_DIR="$HOME/.aiir/tls"
+    if [[ ${#CONFIG_FILES[@]} -gt 0 ]] || [[ -d "$TLS_DIR" ]]; then
+        echo -e "${BOLD}[5] Gateway config and credentials${NC}"
+        for f in "${CONFIG_FILES[@]}"; do
+            echo "    $f"
+        done
+        [[ -d "$TLS_DIR" ]] && echo "    $TLS_DIR/ (TLS certificates)"
+        echo ""
+        if prompt_yn "    Remove gateway config and credentials?" "y"; then
+            for f in "${CONFIG_FILES[@]}"; do
+                rm -f "$f"
+            done
+            [[ -d "$TLS_DIR" ]] && rm -rf "$TLS_DIR"
+            ok "Gateway config removed."
+        else
+            info "Skipped gateway config."
+        fi
+        echo ""
+    fi
+
+    # [6] Remaining ~/.aiir/ contents (hooks, logs)
+    AIIR_DIR="$HOME/.aiir"
+    if [[ -d "$AIIR_DIR" ]]; then
+        REMAINING=$(find "$AIIR_DIR" -mindepth 1 -maxdepth 1 2>/dev/null | head -5)
+        if [[ -n "$REMAINING" ]]; then
+            echo -e "${BOLD}[6] Remaining ~/.aiir/ contents${NC}"
+            while IFS= read -r item; do
+                echo "    $(basename "$item")"
+            done <<< "$REMAINING"
+            REMAINING_COUNT=$(find "$AIIR_DIR" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
+            if (( REMAINING_COUNT > 5 )); then
+                echo "    ... and $((REMAINING_COUNT - 5)) more"
+            fi
+            echo ""
+            if prompt_yn "    Remove remaining ~/.aiir/ contents?" "n"; then
+                rm -rf "$AIIR_DIR"
+                ok "~/.aiir/ removed."
+            else
+                info "Skipped. Directory preserved at $AIIR_DIR"
+            fi
+        else
+            rmdir "$AIIR_DIR" 2>/dev/null || true
+        fi
+        echo ""
+    fi
+
+    # Case data warning
+    CASES_DIR="$HOME/cases"
+    if [[ -d "$CASES_DIR" ]]; then
+        echo -e "${YELLOW}${BOLD}Case data preserved${NC}"
+        echo "    $CASES_DIR"
+        echo "    Case data is never removed by uninstall."
+        echo "    Back up and remove manually if needed."
+        echo ""
+    fi
+
+    echo -e "${BOLD}Uninstall complete.${NC}"
+    exit 0
 fi
 
 # =============================================================================
@@ -771,6 +911,7 @@ venv_python = "$VENV_PYTHON"
 remote = "$REMOTE_MODE" == "true"
 token = "$TOKEN"
 port = int("$GATEWAY_PORT")
+examiner = "$EXAMINER_NAME"
 
 config = {
     "gateway": {
@@ -780,7 +921,7 @@ config = {
     },
     "api_keys": {
         token: {
-            "examiner": "default",
+            "examiner": examiner,
             "role": "lead",
         },
     },
