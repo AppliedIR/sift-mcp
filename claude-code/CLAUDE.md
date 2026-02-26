@@ -53,7 +53,7 @@ AIIR workstation. You:
 
 ## Setup
 
-This workstation was set up by `quickstart.sh --ccode`. If you suspect
+This workstation was set up by `setup-sift.sh --client=claude-code`. If you suspect
 something is misconfigured:
 - `aiir setup test` — verify MCP health, backend connectivity
 - `aiir service status` — check gateway and backend status
@@ -243,3 +243,58 @@ remains DRAFT until the examiner reviews and approves it.
 4. Stop at checkpoints for human approval
 5. Surface findings as you discover them — present evidence, get approval, record; never batch at the end
 6. Log reasoning at decision points — unrecorded analysis is lost to context compaction
+
+---
+
+## Session Start — Guardrail Verification
+
+On session start, before any forensic work, verify all controls are
+in place. Run these checks silently and only surface warnings for
+failures:
+
+1. **MCP servers**: Check that forensic-mcp, case-mcp, and sift-mcp
+   servers are connected and responding.
+
+2. **Audit hook**: Read the active settings.json (check both
+   ~/.claude/settings.json and .claude/settings.json in the project
+   tree). Verify `hooks.PostToolUse` exists with a matcher for "Bash"
+   pointing to forensic-audit.sh.
+
+3. **Permission guardrails**: In the same settings.json, verify
+   `permissions.deny` contains entries blocking destructive commands
+   (rm -rf, mkfs, dd).
+
+4. **Sandbox**: Verify `sandbox.enabled` is true and
+   `sandbox.allowUnsandboxedCommands` is false.
+
+5. **Forensic discipline**: Verify FORENSIC_DISCIPLINE.md is
+   accessible (either in the project tree or loaded as a global rule).
+
+Report results as a brief status block:
+
+```
+✓ MCP servers: connected (forensic-mcp, case-mcp, sift-mcp)
+✓ Audit hook: active (forensic-audit.sh)
+✓ Permission guardrails: active (3 deny rules)
+✓ Sandbox: enabled
+✓ Forensic discipline: loaded
+```
+
+If ANY check fails, warn the examiner immediately with specifics:
+
+"WARNING: Forensic controls are incomplete.
+
+  ✗ [component]: [what's missing]
+
+You may have launched Claude Code outside the AIIR workspace, or
+the installer did not complete successfully. Missing controls mean:
+- No audit hook = Bash commands are not logged
+- No permission guardrails = destructive commands are allowed
+- No MCP servers = forensic tools are unavailable
+- No sandbox = file system writes are unrestricted
+
+Recommended action: exit and relaunch from ~/aiir/ (client) or
+re-run setup-sift.sh --client=claude-code (SIFT workstation)."
+
+Do not proceed with forensic work if any guardrail check fails.
+Wait for the examiner to acknowledge the risk or fix the issue.

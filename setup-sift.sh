@@ -32,6 +32,7 @@ INSTALL_DIR=""
 VENV_DIR=""
 GATEWAY_PORT=4508
 MANUAL_START=false
+UNINSTALL_MODE=false
 EXAMINER_NAME=""
 CLIENT=""
 
@@ -43,6 +44,7 @@ for arg in "$@"; do
         --custom)          MODE="custom" ;;
         --remote)          REMOTE_MODE=true ;;
         --manual-start)    MANUAL_START=true ;;
+        --uninstall)       UNINSTALL_MODE=true ;;
         --examiner=*)      EXAMINER_NAME="${arg#*=}" ;;
         --client=*)        CLIENT="${arg#*=}" ;;
         --install-dir=*)   INSTALL_DIR="${arg#*=}" ;;
@@ -63,6 +65,7 @@ for arg in "$@"; do
             echo "  --install-dir=X   Override source clone dir (default: ~/.aiir/src/sift-mcp)"
             echo "  --venv=X          Override venv path (default: ~/.aiir/venv)"
             echo "  --port=N          Override gateway port (default: 4508)"
+            echo "  --uninstall       Uninstall AIIR forensic controls (delegates to aiir setup client)"
             echo "  --manual-start    Skip auto-start/systemd"
             echo "  -y, --yes         Accept all defaults (non-interactive)"
             echo "  -h, --help        Show this help"
@@ -154,6 +157,22 @@ if [[ "$PLATFORM" != "Linux" ]]; then
         err "Unsupported platform: $PLATFORM"
         exit 1
     fi
+fi
+
+# =============================================================================
+# Uninstall passthrough
+# =============================================================================
+
+if ${UNINSTALL_MODE:-false}; then
+    AIIR_CMD="$HOME/.aiir/venv/bin/aiir"
+    if [[ ! -x "$AIIR_CMD" ]]; then
+        AIIR_CMD=$(command -v aiir 2>/dev/null || true)
+    fi
+    if [[ -z "$AIIR_CMD" ]]; then
+        err "aiir CLI not found. Cannot uninstall."
+        exit 1
+    fi
+    exec "$AIIR_CMD" setup client --uninstall
 fi
 
 # =============================================================================
@@ -1121,6 +1140,14 @@ elif $AUTO_YES; then
     info "  Run later: aiir setup client"
 else
     "$VENV_DIR/bin/aiir" setup client
+fi
+
+# Global deployment message for claude-code
+if [[ "$CLIENT" == "claude-code" ]]; then
+    echo ""
+    echo -e "${BOLD}Forensic controls deployed globally.${NC}"
+    echo "Claude Code can be launched from any directory on this machine."
+    echo "Audit logging, permission guardrails, and MCP tools will always apply."
 fi
 
 # =============================================================================

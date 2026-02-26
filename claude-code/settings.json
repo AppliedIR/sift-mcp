@@ -23,6 +23,13 @@
       }
     ]
   },
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(mkfs*)",
+      "Bash(dd *)"
+    ]
+  },
   "sandbox": {
     "enabled": true,
     "allowUnsandboxedCommands": false
