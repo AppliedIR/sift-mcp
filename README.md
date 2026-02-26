@@ -205,7 +205,7 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 
 ```bash
 # One-command quickstart
-curl -sSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh | bash
+curl -sSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/aiir-quickstart.sh && bash /tmp/aiir-quickstart.sh
 ```
 
 Or step by step:
