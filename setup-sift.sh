@@ -75,6 +75,12 @@ for arg in "$@"; do
     esac
 done
 
+# Validate --port
+if ! [[ "$GATEWAY_PORT" =~ ^[0-9]+$ ]] || (( GATEWAY_PORT < 1 || GATEWAY_PORT > 65535 )); then
+    echo "Invalid port: $GATEWAY_PORT (must be 1-65535)"
+    exit 1
+fi
+
 # Defaults
 [[ -z "$INSTALL_DIR" ]] && INSTALL_DIR="$HOME/.aiir/src/sift-mcp"
 [[ -z "$VENV_DIR" ]] && VENV_DIR="$HOME/.aiir/venv"
@@ -985,7 +991,7 @@ After=network.target
 [Service]
 ExecStart=$VENV_DIR/bin/python -m sift_gateway --config $GATEWAY_CONFIG
 Environment=AIIR_CASE_DIR=$CASE_DIR
-Environment=AIIR_EXAMINER=default
+Environment=AIIR_EXAMINER=$EXAMINER_NAME
 Restart=on-failure
 RestartSec=5
 
