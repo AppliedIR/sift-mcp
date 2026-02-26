@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
-# sift-install.sh — AIIR SIFT Platform Installer
+# setup-sift.sh — AIIR SIFT Platform Installer
 #
-# Installs MCP servers, the gateway, and all dependencies from the sift-mcp
-# monorepo into a shared virtual environment at ~/.aiir/venv/.
+# Installs MCP servers, the gateway, aiir CLI, and all dependencies into a
+# shared virtual environment at ~/.aiir/venv/. Includes examiner identity
+# setup and LLM client configuration.
 #
 # Three install tiers:
 #   Quick        — Core platform only (~3 min)
@@ -11,12 +12,12 @@
 #   Custom       — Choose individual packages (+ OpenCTI)
 #
 # Usage:
-#   ./sift-install.sh                    # Interactive (default: Recommended)
-#   ./sift-install.sh --quick -y         # Unattended quick install
-#   ./sift-install.sh --custom           # Interactive package picker
-#   ./sift-install.sh --remote           # Enable TLS + bind 0.0.0.0
-#   ./sift-install.sh --manual-start     # Skip auto-start/systemd
-#   ./sift-install.sh -h                 # Help
+#   ./setup-sift.sh                      # Interactive (default: Recommended)
+#   ./setup-sift.sh --quick -y           # Unattended quick install
+#   ./setup-sift.sh --custom             # Interactive package picker
+#   ./setup-sift.sh --remote             # Enable TLS + bind 0.0.0.0
+#   ./setup-sift.sh --manual-start       # Skip auto-start/systemd
+#   ./setup-sift.sh -h                   # Help
 #
 set -euo pipefail
 
@@ -31,6 +32,8 @@ INSTALL_DIR=""
 VENV_DIR=""
 GATEWAY_PORT=4508
 MANUAL_START=false
+EXAMINER_NAME=""
+CLIENT=""
 
 for arg in "$@"; do
     case "$arg" in
@@ -40,11 +43,13 @@ for arg in "$@"; do
         --custom)          MODE="custom" ;;
         --remote)          REMOTE_MODE=true ;;
         --manual-start)    MANUAL_START=true ;;
+        --examiner=*)      EXAMINER_NAME="${arg#*=}" ;;
+        --client=*)        CLIENT="${arg#*=}" ;;
         --install-dir=*)   INSTALL_DIR="${arg#*=}" ;;
         --venv=*)          VENV_DIR="${arg#*=}" ;;
         --port=*)          GATEWAY_PORT="${arg#*=}" ;;
         -h|--help)
-            echo "Usage: sift-install.sh [OPTIONS]"
+            echo "Usage: setup-sift.sh [OPTIONS]"
             echo ""
             echo "Tiers (pick one):"
             echo "  --quick         Core platform only (~3 min)"
@@ -53,6 +58,8 @@ for arg in "$@"; do
             echo ""
             echo "Options:"
             echo "  --remote          Enable TLS + bind 0.0.0.0 (for remote clients)"
+            echo "  --examiner=NAME   Set examiner identity (non-interactive)"
+            echo "  --client=CLIENT   Set LLM client (claude-code, claude-desktop, cursor, etc.)"
             echo "  --install-dir=X   Override source clone dir (default: ~/.aiir/src/sift-mcp)"
             echo "  --venv=X          Override venv path (default: ~/.aiir/venv)"
             echo "  --port=N          Override gateway port (default: 4508)"
@@ -323,6 +330,31 @@ else
     ok "Repository cloned to $INSTALL_DIR"
 fi
 
+# Clone aiir (for aiir-cli — required before case-mcp/report-mcp)
+AIIR_DIR="$(dirname "$INSTALL_DIR")/aiir"
+AIIR_REPO_URL="https://github.com/AppliedIR/aiir.git"
+
+if [[ -d "$AIIR_DIR/.git" ]]; then
+    info "aiir repository exists at $AIIR_DIR. Pulling latest..."
+    if (cd "$AIIR_DIR" && git pull --quiet); then
+        ok "aiir repository updated"
+    else
+        warn "Could not update aiir repository. Continuing with existing code."
+    fi
+elif [[ -d "$AIIR_DIR" ]] && [[ ! -d "$AIIR_DIR/.git" ]]; then
+    err "$AIIR_DIR exists but is not a git repository"
+    echo "  Remove it or choose a different --install-dir"
+    exit 1
+else
+    info "Cloning aiir..."
+    if ! git clone --quiet "$AIIR_REPO_URL" "$AIIR_DIR"; then
+        err "Failed to clone aiir repository"
+        echo "  Check network access and try again"
+        exit 1
+    fi
+    ok "aiir repository cloned to $AIIR_DIR"
+fi
+
 # =============================================================================
 # Phase 4: Virtual Environment + Package Installation
 # =============================================================================
@@ -382,10 +414,13 @@ install_pkg "sift-mcp" "$INSTALL_DIR/packages/sift-mcp" || exit 1
 # 5. sift-gateway (depends on 2)
 install_pkg "sift-gateway" "$INSTALL_DIR/packages/sift-gateway" || exit 1
 
-# 6. case-mcp
+# 6. aiir-cli (from aiir repo — must be installed before case-mcp/report-mcp)
+install_pkg "aiir-cli" "$AIIR_DIR" || exit 1
+
+# 7. case-mcp (depends on aiir-cli)
 install_pkg "case-mcp" "$INSTALL_DIR/packages/case-mcp" || exit 1
 
-# 7. report-mcp
+# 8. report-mcp (depends on aiir-cli)
 install_pkg "report-mcp" "$INSTALL_DIR/packages/report-mcp" || exit 1
 
 # 8. windows-triage-mcp (optional, depends on 2)
@@ -434,6 +469,7 @@ smoke_test "sift-common"        "sift_common"
 smoke_test "forensic-mcp"       "forensic_mcp"
 smoke_test "sift-mcp"           "sift_mcp"
 smoke_test "sift-gateway"       "sift_gateway"
+smoke_test "aiir-cli"           "aiir_cli"
 smoke_test "case-mcp"           "case_mcp"
 smoke_test "report-mcp"         "report_mcp"
 $INSTALL_TRIAGE  && smoke_test "windows-triage-mcp" "windows_triage"
@@ -554,7 +590,52 @@ if $INSTALL_OPENCTI; then
 fi
 
 # =============================================================================
-# Phase 6: Generate Bearer Token
+# Phase 6: Examiner Identity
+# =============================================================================
+
+header "Examiner Identity"
+
+if [[ -z "$EXAMINER_NAME" ]]; then
+    DEFAULT_EXAMINER=$(whoami | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | head -c 40)
+    EXAMINER_NAME=$(prompt "Examiner identity (name slug)" "$DEFAULT_EXAMINER")
+fi
+
+# Clean the slug: lowercase, alphanumeric + dash, max 40 chars
+EXAMINER_NAME=$(echo "$EXAMINER_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | head -c 40)
+[[ -z "$EXAMINER_NAME" ]] && EXAMINER_NAME="examiner"
+ok "Examiner: $EXAMINER_NAME"
+
+# Write to config.yaml
+AIIR_CONFIG="$HOME/.aiir/config.yaml"
+mkdir -p "$HOME/.aiir"
+if [[ -f "$AIIR_CONFIG" ]]; then
+    # Update examiner in existing config
+    if grep -q "^examiner:" "$AIIR_CONFIG" 2>/dev/null; then
+        sed -i "s/^examiner:.*/examiner: $EXAMINER_NAME/" "$AIIR_CONFIG"
+    else
+        echo "examiner: $EXAMINER_NAME" >> "$AIIR_CONFIG"
+    fi
+else
+    echo "examiner: $EXAMINER_NAME" > "$AIIR_CONFIG"
+    chmod 600 "$AIIR_CONFIG"
+fi
+
+# Write AIIR_EXAMINER to shell profile
+SHELL_RC_EXAMINER=""
+if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC_EXAMINER="$HOME/.bashrc";
+elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC_EXAMINER="$HOME/.zshrc"; fi
+
+if [[ -n "$SHELL_RC_EXAMINER" ]]; then
+    if grep -q "AIIR_EXAMINER" "$SHELL_RC_EXAMINER" 2>/dev/null; then
+        sed -i "s/^export AIIR_EXAMINER=.*/export AIIR_EXAMINER=\"$EXAMINER_NAME\"/" "$SHELL_RC_EXAMINER"
+    else
+        echo "export AIIR_EXAMINER=\"$EXAMINER_NAME\"" >> "$SHELL_RC_EXAMINER"
+    fi
+fi
+export AIIR_EXAMINER="$EXAMINER_NAME"
+
+# =============================================================================
+# Phase 7: Generate Bearer Token
 # =============================================================================
 
 echo ""
@@ -586,7 +667,7 @@ else
 fi
 
 # =============================================================================
-# Phase 7: TLS Certificates (--remote only)
+# Phase 8: TLS Certificates (--remote only)
 # =============================================================================
 
 if $REMOTE_MODE; then
@@ -644,7 +725,7 @@ if $REMOTE_MODE; then
 fi
 
 # =============================================================================
-# Phase 8: Gateway Configuration
+# Phase 9: Gateway Configuration
 # =============================================================================
 
 header "Gateway Configuration"
@@ -734,7 +815,7 @@ PYEOF
 fi
 
 # =============================================================================
-# Phase 9: Manifest
+# Phase 10: Manifest
 # =============================================================================
 
 MANIFEST="$HOME/.aiir/manifest.json"
@@ -758,6 +839,7 @@ pkg_list = [
     ("case-mcp", "case_mcp"),
     ("report-mcp", "report_mcp"),
     ("sift-gateway", "sift_gateway"),
+    ("aiir-cli", "aiir_cli"),
 ]
 
 if "$INSTALL_TRIAGE" == "true":
@@ -799,7 +881,7 @@ PYEOF
 ok "Manifest written: $MANIFEST"
 
 # =============================================================================
-# Phase 10: Default Case Directory
+# Phase 11: Default Case Directory
 # =============================================================================
 
 CASE_DIR="$HOME/cases"
@@ -811,7 +893,7 @@ else
 fi
 
 # =============================================================================
-# Phase 11: Add venv to PATH
+# Phase 12: Add venv to PATH
 # =============================================================================
 
 AIIR_BIN="$VENV_DIR/bin"
@@ -832,7 +914,7 @@ if [[ ":$PATH:" != *":$AIIR_BIN:"* ]]; then
 fi
 
 # =============================================================================
-# Phase 12: Systemd Service + Gateway Start
+# Phase 13: Systemd Service + Gateway Start
 # =============================================================================
 
 header "Starting Gateway"
@@ -944,7 +1026,7 @@ else
 fi
 
 # =============================================================================
-# Phase 8b: Multi-Machine Setup (remote mode only)
+# Phase 13b: Multi-Machine Setup (remote mode only)
 # =============================================================================
 
 if $REMOTE_MODE; then
@@ -965,12 +1047,25 @@ if $REMOTE_MODE; then
         JOIN_CODE=$(echo "$JOIN_OUTPUT" | grep "Join code:" | awk '{print $3}')
 
         if [[ -n "$JOIN_CODE" ]]; then
+            GW_URL="https://$HOST_IP:$GATEWAY_PORT"
             echo ""
-            echo -e "${BOLD}Remote LLM Client${NC}"
-            echo "  On the machine running your LLM client (Claude Code, Cursor, etc.):"
+            echo -e "${BOLD}Remote client setup${NC} (run on the machine where your LLM client runs):"
             echo ""
-            echo -e "    ${BOLD}aiir join --sift $HOST_IP:$GATEWAY_PORT --code $JOIN_CODE${NC}"
+            echo "  Linux (full support):"
+            echo "    curl -sSL https://raw.githubusercontent.com/AppliedIR/aiir/main/setup-client-linux.sh \\"
+            echo "      | bash -s -- --sift=$GW_URL --code=$JOIN_CODE"
             echo ""
+            echo "  macOS:"
+            echo "    curl -sSL https://raw.githubusercontent.com/AppliedIR/aiir/main/setup-client-macos.sh \\"
+            echo "      | bash -s -- --sift=$GW_URL --code=$JOIN_CODE"
+            echo ""
+            echo "  Windows (PowerShell):"
+            echo "    Invoke-WebRequest -Uri https://raw.githubusercontent.com/AppliedIR/aiir/main/setup-client-windows.ps1 -OutFile setup-client-windows.ps1"
+            echo "    .\\setup-client-windows.ps1 -Sift $GW_URL -Code $JOIN_CODE"
+            echo ""
+            echo "  Note: Your LLM client must run locally on your machine to reach the"
+            echo "  SIFT gateway. Cloud-hosted LLM services cannot connect to internal"
+            echo "  network addresses."
 
             # Offer to generate a second join code for Windows wintools
             if prompt_yn "Will you connect a Windows forensic workstation?" "n"; then
@@ -981,7 +1076,7 @@ if $REMOTE_MODE; then
                     echo -e "${BOLD}Windows Workstation${NC}"
                     echo "  On the Windows machine with wintools-mcp:"
                     echo ""
-                    echo -e "    ${BOLD}aiir join --sift $HOST_IP:$GATEWAY_PORT --code $WIN_CODE --wintools${NC}"
+                    echo -e "    ${BOLD}aiir join --sift $GW_URL --code $WIN_CODE --wintools${NC}"
                     echo ""
                 fi
             fi
@@ -1006,6 +1101,23 @@ if $REMOTE_MODE; then
 fi
 
 # =============================================================================
+# Phase 14: LLM Client Configuration
+# =============================================================================
+
+header "LLM Client Configuration"
+
+if [[ -n "$CLIENT" ]] && $AUTO_YES; then
+    "$VENV_DIR/bin/aiir" setup client --client="$CLIENT" -y
+elif [[ -n "$CLIENT" ]]; then
+    "$VENV_DIR/bin/aiir" setup client --client="$CLIENT"
+elif $AUTO_YES; then
+    info "Skipping client config (no --client specified with -y)"
+    info "  Run later: aiir setup client"
+else
+    "$VENV_DIR/bin/aiir" setup client
+fi
+
+# =============================================================================
 # Summary
 # =============================================================================
 
@@ -1016,6 +1128,7 @@ ok "forensic-knowledge"
 ok "sift-common"
 ok "forensic-mcp"
 ok "sift-mcp"
+ok "aiir-cli"
 ok "case-mcp"
 ok "report-mcp"
 ok "sift-gateway"
@@ -1032,6 +1145,7 @@ fi
 
 echo ""
 echo "Tier:        $TIER_DISPLAY"
+echo "Examiner:    $EXAMINER_NAME"
 echo "Source:      $INSTALL_DIR"
 echo "Venv:        $VENV_DIR"
 echo "Config:      $GATEWAY_CONFIG"
@@ -1047,7 +1161,7 @@ fi
 echo ""
 if $REMOTE_MODE; then
     echo -e "${BOLD}Bearer token:${NC} $TOKEN"
-    echo "  (Stored in gateway config. Remote clients use 'aiir join' instead.)"
+    echo "  (Stored in gateway config. Remote clients use join codes instead.)"
     echo ""
     echo -e "${BOLD}TLS CA certificate:${NC}"
     echo "  $HOME/.aiir/tls/ca-cert.pem"
@@ -1058,25 +1172,11 @@ fi
 
 echo ""
 echo "Next steps:"
-STEP=1
-echo "  $STEP. Restart your shell (or: source ${SHELL_RC:-~/.bashrc})"
-STEP=$((STEP + 1))
+echo "  1. Restart your shell (or: source ${SHELL_RC:-~/.bashrc})"
+echo "  2. Verify installation:  aiir setup test"
 if $REMOTE_MODE; then
-    echo "  $STEP. On your LLM client machine, install the aiir CLI:"
-    echo "     curl -sSL https://raw.githubusercontent.com/AppliedIR/aiir/main/aiir-install.sh | bash"
-    STEP=$((STEP + 1))
-    echo "  $STEP. Run the 'aiir join' command shown above"
-    STEP=$((STEP + 1))
-    echo "  $STEP. Configure your LLM client:  aiir setup client --remote"
-else
-    echo "  $STEP. Install the aiir CLI:"
-    echo "     curl -sSL https://raw.githubusercontent.com/AppliedIR/aiir/main/aiir-install.sh | bash"
-    echo "     (or: ./aiir-install.sh if you have the repo)"
-    STEP=$((STEP + 1))
-    echo "  $STEP. Configure your LLM client:  aiir setup client"
+    echo "  3. Run the remote client setup commands shown above on each client machine"
 fi
-STEP=$((STEP + 1))
-echo "  $STEP. Verify installation:         aiir setup test"
 
 if $INSTALL_RAG || $INSTALL_TRIAGE; then
     echo ""
@@ -1090,7 +1190,7 @@ if $INSTALL_TRIAGE; then
 fi
 
 echo ""
-echo -e "${BOLD}Documentation:${NC} $INSTALL_DIR/AGENTS.md"
+echo -e "${BOLD}Documentation:${NC} https://appliedir.github.io/aiir/"
 echo ""
 
 # Exit with error if smoke tests failed

@@ -212,14 +212,12 @@ Or step by step:
 
 ```bash
 git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
-./sift-install.sh          # Install MCP servers + gateway
-cd .. && git clone https://github.com/AppliedIR/aiir.git && cd aiir
-./aiir-install.sh          # Install aiir CLI + configure client
+./setup-sift.sh
 ```
 
-When you select Claude Code during `aiir setup client`, the installer deploys additional forensic controls: kernel-level sandbox (restricts Bash writes), PostToolUse audit hook (captures every Bash command to the case audit trail), provenance enforcement (findings without an evidence trail are rejected), and PIN-gated human approval. Non-shell clients (Claude Desktop, Cursor, etc.) get MCP config only.
+The installer handles everything: MCP servers, gateway, aiir CLI, examiner identity, and LLM client configuration. When you select Claude Code, additional forensic controls are deployed (kernel-level sandbox, PostToolUse audit hook, provenance enforcement, PIN-gated human approval). Non-shell clients (Claude Desktop, Cursor, etc.) get MCP config only.
 
-The quickstart installs all core components, starts the gateway, and runs the aiir setup wizard. For tier selection (quick, recommended, custom) or remote access with TLS, run `sift-install.sh` directly.
+For tier selection (quick, recommended, custom) or remote access with TLS, run `setup-sift.sh` directly.
 
 ## Configuration
 
@@ -234,12 +232,9 @@ The quickstart installs all core components, starts the gateway, and runs the ai
 
 ### Remote Access (TLS + Auth)
 
-When installed with `--remote`, `sift-install.sh` generates a local CA and gateway certificate at `~/.aiir/tls/`. The gateway binds to `0.0.0.0:4508` with TLS enabled. A bearer token (`aiir_gw_` prefix) is generated and written to `gateway.yaml`.
+When installed with `--remote`, `setup-sift.sh` generates a local CA and gateway certificate at `~/.aiir/tls/`. The gateway binds to `0.0.0.0:4508` with TLS enabled. A bearer token (`aiir_gw_` prefix) is generated and written to `gateway.yaml`.
 
-Clients on other machines need:
-1. The CA certificate (`~/.aiir/tls/ca-cert.pem`) imported into their OS trust store
-2. The bearer token from the installer output
-3. `aiir setup client --remote` to generate client config with the token
+Remote clients join via platform-specific setup scripts. The installer prints per-OS commands with a join code. See the [Deployment Guide](https://appliedir.github.io/aiir/deployment/) for details.
 
 Without `--remote`, the gateway listens on `127.0.0.1` only. Auth tokens are still generated but optional for localhost.
 
