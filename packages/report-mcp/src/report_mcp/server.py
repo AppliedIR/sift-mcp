@@ -564,7 +564,12 @@ def _reconcile_verification(
         elif entry and not item:
             results.append({"id": item_id, "status": "VERIFICATION_NO_FINDING"})
         elif item and entry:
-            if item.get("description", "") != entry.get("description_snapshot", ""):
+            # Construct text the same way approve.py does for HMAC signing
+            if item_id.startswith("T-"):
+                live_text = item.get("description", "")
+            else:
+                live_text = item.get("observation", "") + "\n" + item.get("interpretation", "")
+            if live_text != entry.get("description_snapshot", ""):
                 results.append({"id": item_id, "status": "DESCRIPTION_MISMATCH"})
             else:
                 results.append({"id": item_id, "status": "VERIFIED"})

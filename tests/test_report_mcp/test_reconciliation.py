@@ -36,13 +36,13 @@ def test_all_verified(verification_dir):
 
     case_id = "INC-2026-TEST"
     _write_ledger(verification_dir, case_id, [
-        {"finding_id": "F-001", "description_snapshot": "Finding one"},
-        {"finding_id": "F-002", "description_snapshot": "Finding two"},
+        {"finding_id": "F-001", "description_snapshot": "Obs one\nInterp one"},
+        {"finding_id": "F-002", "description_snapshot": "Obs two\nInterp two"},
     ])
 
     findings = [
-        {"id": "F-001", "description": "Finding one", "status": "APPROVED"},
-        {"id": "F-002", "description": "Finding two", "status": "APPROVED"},
+        {"id": "F-001", "observation": "Obs one", "interpretation": "Interp one", "status": "APPROVED"},
+        {"id": "F-002", "observation": "Obs two", "interpretation": "Interp two", "status": "APPROVED"},
     ]
     results = _reconcile_verification(case_id, findings, [])
 
@@ -58,12 +58,12 @@ def test_approved_no_verification(verification_dir):
 
     case_id = "INC-2026-TEST"
     _write_ledger(verification_dir, case_id, [
-        {"finding_id": "F-001", "description_snapshot": "Finding one"},
+        {"finding_id": "F-001", "description_snapshot": "Obs one\nInterp one"},
     ])
 
     findings = [
-        {"id": "F-001", "description": "Finding one", "status": "APPROVED"},
-        {"id": "F-002", "description": "Finding two", "status": "APPROVED"},
+        {"id": "F-001", "observation": "Obs one", "interpretation": "Interp one", "status": "APPROVED"},
+        {"id": "F-002", "observation": "Obs two", "interpretation": "Interp two", "status": "APPROVED"},
     ]
     results = _reconcile_verification(case_id, findings, [])
 
@@ -79,12 +79,12 @@ def test_verification_no_finding(verification_dir):
 
     case_id = "INC-2026-TEST"
     _write_ledger(verification_dir, case_id, [
-        {"finding_id": "F-001", "description_snapshot": "Finding one"},
+        {"finding_id": "F-001", "description_snapshot": "Obs one\nInterp one"},
         {"finding_id": "F-002", "description_snapshot": "Ghost finding"},
     ])
 
     findings = [
-        {"id": "F-001", "description": "Finding one", "status": "APPROVED"},
+        {"id": "F-001", "observation": "Obs one", "interpretation": "Interp one", "status": "APPROVED"},
     ]
     results = _reconcile_verification(case_id, findings, [])
 
@@ -100,11 +100,11 @@ def test_description_mismatch(verification_dir):
 
     case_id = "INC-2026-TEST"
     _write_ledger(verification_dir, case_id, [
-        {"finding_id": "F-001", "description_snapshot": "Original description"},
+        {"finding_id": "F-001", "description_snapshot": "Original obs\nOriginal interp"},
     ])
 
     findings = [
-        {"id": "F-001", "description": "Tampered description", "status": "APPROVED"},
+        {"id": "F-001", "observation": "Tampered obs", "interpretation": "Tampered interp", "status": "APPROVED"},
     ]
     results = _reconcile_verification(case_id, findings, [])
 
@@ -118,13 +118,13 @@ def test_count_mismatch(verification_dir):
 
     case_id = "INC-2026-TEST"
     _write_ledger(verification_dir, case_id, [
-        {"finding_id": "F-001", "description_snapshot": "One"},
+        {"finding_id": "F-001", "description_snapshot": "Obs\nInterp"},
         {"finding_id": "F-002", "description_snapshot": "Two"},
         {"finding_id": "F-003", "description_snapshot": "Three"},
     ])
 
     findings = [
-        {"id": "F-001", "description": "One", "status": "APPROVED"},
+        {"id": "F-001", "observation": "Obs", "interpretation": "Interp", "status": "APPROVED"},
     ]
     results = _reconcile_verification(case_id, findings, [])
 
@@ -149,11 +149,11 @@ def test_timeline_included(verification_dir):
 
     case_id = "INC-2026-TEST"
     _write_ledger(verification_dir, case_id, [
-        {"finding_id": "F-001", "description_snapshot": "Finding"},
+        {"finding_id": "F-001", "description_snapshot": "Obs\nInterp"},
         {"finding_id": "T-001", "description_snapshot": "Event"},
     ])
 
-    findings = [{"id": "F-001", "description": "Finding", "status": "APPROVED"}]
+    findings = [{"id": "F-001", "observation": "Obs", "interpretation": "Interp", "status": "APPROVED"}]
     timeline = [{"id": "T-001", "description": "Event", "status": "APPROVED"}]
     results = _reconcile_verification(case_id, findings, timeline)
 
