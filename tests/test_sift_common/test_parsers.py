@@ -1,14 +1,10 @@
 """Unit tests for sift_common.parsers — CSV, JSON, JSONL, text parsing."""
 
 import json
-from pathlib import Path
-
-import pytest
 
 from sift_common.parsers.csv_parser import parse_csv, parse_csv_file
 from sift_common.parsers.json_parser import parse_json, parse_jsonl
 from sift_common.parsers.text_parser import extract_lines, parse_text
-
 
 # ---------------------------------------------------------------------------
 # CSV parser

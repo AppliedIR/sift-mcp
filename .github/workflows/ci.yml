@@ -43,13 +43,15 @@ jobs:
           pip install -e packages/forensic-mcp
           pip install -e packages/sift-mcp
           pip install -e packages/windows-triage
-          pip install -e packages/forensic-rag
           pip install -e packages/opencti
           pip install -e packages/sift-gateway
           pip install -e packages/case-mcp
           pip install -e packages/report-mcp
 
+      # forensic-rag skipped: chromadb has fragile transitive deps (opentelemetry)
+      # that break across Python versions. Run forensic-rag tests locally.
+
       - name: Install test dependencies
         run: pip install pytest pytest-asyncio pytest-timeout pytest-cov
 
-      - run: pytest tests/ -v --tb=short
+      - run: pytest tests/ -v --tb=short --ignore=tests/test_forensic_rag

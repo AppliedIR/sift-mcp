@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import pytest
-
 from sift_common import resolve_share_path
 
 

@@ -1,7 +1,6 @@
 """Tests for provenance classification and enforcement in forensic-mcp."""
 
 import json
-import os
 from pathlib import Path
 
 import pytest

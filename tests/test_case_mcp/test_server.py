@@ -3,13 +3,11 @@
 import json
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import yaml
-
 from case_mcp.server import _resolve_case_dir, create_server
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

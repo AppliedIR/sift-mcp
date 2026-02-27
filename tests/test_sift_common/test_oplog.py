@@ -4,7 +4,6 @@ import json
 import logging
 
 import pytest
-
 from sift_common.oplog import _StructuredFormatter, setup_logging
 
 

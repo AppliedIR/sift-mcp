@@ -357,7 +357,7 @@ class CaseManager:
         shell_evidence_ids: list[str] = []
         validated_commands: list[dict] = []
         if supporting_commands:
-            for i, cmd in enumerate(supporting_commands[:5]):
+            for _i, cmd in enumerate(supporting_commands[:5]):
                 if not isinstance(cmd, dict):
                     continue
                 command = cmd.get("command", "")

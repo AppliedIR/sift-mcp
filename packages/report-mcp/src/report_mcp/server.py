@@ -24,7 +24,7 @@ from aiir_cli.case_io import (
 )
 from aiir_cli.commands.evidence import list_evidence_data
 from mcp.server.fastmcp import FastMCP
-from sift_common.audit import AuditWriter, resolve_examiner
+from sift_common.audit import AuditWriter
 from sift_common.instructions import REPORT_MCP as _INSTRUCTIONS
 from sift_common.oplog import setup_logging
 
@@ -787,7 +787,7 @@ def create_server() -> FastMCP:
             _validate_str_length(filename, "filename", _MAX_FILENAME)
             if len(content.encode("utf-8", errors="replace")) > _MAX_REPORT_BYTES:
                 return json.dumps(
-                    {"error": f"Report content exceeds maximum size of 10 MB."}
+                    {"error": "Report content exceeds maximum size of 10 MB."}
                 )
             # Block path traversal
             if ".." in filename or "/" in filename or "\\" in filename:

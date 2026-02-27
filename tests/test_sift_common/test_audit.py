@@ -1,11 +1,8 @@
 """Unit tests for sift_common.audit — AuditWriter, resolve_examiner, _sanitize_slug."""
 
 import json
-import os
-from pathlib import Path
 
 import pytest
-
 from sift_common.audit import AuditWriter, _sanitize_slug, resolve_examiner
 
 

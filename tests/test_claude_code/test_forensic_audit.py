@@ -5,9 +5,6 @@ import os
 import subprocess
 from pathlib import Path
 
-import pytest
-
-
 HOOK_SCRIPT = Path(__file__).parent.parent.parent / "claude-code" / "hooks" / "forensic-audit.sh"
 
 
