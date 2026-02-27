@@ -21,7 +21,7 @@ if [ "$PWD" = "$HOME" ]; then
     echo "  cd ~/cases/INC-2026-001 && claude"
 fi
 
-PROTECTED="findings\.json|timeline\.json|approvals\.jsonl|todos\.json|CASE\.yaml|actions\.jsonl"
+PROTECTED="findings\.json|timeline\.json|approvals\.jsonl|CASE\.yaml"
 
 # Block redirections, tee, cp, mv targeting protected files
 if echo "$CMD" | grep -qEi "(>|>>|tee\s|cp\s|mv\s).*($PROTECTED)"; then

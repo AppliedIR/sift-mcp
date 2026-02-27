@@ -857,7 +857,7 @@ class CaseManager:
         return self._load_json_file(case_dir / "todos.json", [])
 
     def _save_todos(self, case_dir: Path, todos: list[dict]) -> None:
-        _protected_write(case_dir / "todos.json", json.dumps(todos, indent=2, default=str))
+        _atomic_write(case_dir / "todos.json", json.dumps(todos, indent=2, default=str))
 
     def _load_evidence_registry(self, case_dir: Path) -> dict:
         return self._load_json_file(case_dir / "evidence.json", {"files": []})

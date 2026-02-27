@@ -709,7 +709,7 @@ def create_server() -> FastMCP:
             meta = load_case_meta(case_dir)
             meta[field] = value
 
-            _protected_write(
+            _atomic_write(
                 meta_file, yaml.dump(meta, default_flow_style=False)
             )
 
