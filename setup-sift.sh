@@ -527,7 +527,7 @@ if command -v bwrap &>/dev/null; then
     elif [[ -f "$BWRAP_PROFILE" ]]; then
         # Profile exists but bwrap still fails — something else is wrong
         warn "AppArmor bwrap profile exists at $BWRAP_PROFILE but sandbox test failed"
-        echo "  Try: sudo apparmor_parser -r $BWRAP_PROFILE"
+        echo "  Try: sudo apparmor_parser -rT $BWRAP_PROFILE (or reboot)"
     else
         # bwrap fails and no profile installed — check if AppArmor userns restriction is the cause
         APPARMOR_USERNS=$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo "")
@@ -539,12 +539,11 @@ if command -v bwrap &>/dev/null; then
             echo "  Claude Code's kernel sandbox (L9) from isolating Bash commands."
             echo ""
             echo "  Recommended fix: install a targeted AppArmor profile that grants"
-            echo "  only /usr/bin/bwrap the 'userns' permission. This does NOT weaken"
-            echo "  AppArmor for any other process on the system."
+            echo "  only /usr/bin/bwrap the 'userns' permission. This only affects"
+            echo "  /usr/bin/bwrap — other processes are not changed."
             echo ""
             echo "  Profile location: $BWRAP_PROFILE"
             echo "  Side effect:      Any process using /usr/bin/bwrap gains user namespace access."
-            echo "                    On a dedicated forensic workstation this is expected."
             echo ""
 
             if prompt_yn "  Install AppArmor profile for bwrap? (requires sudo)" "y"; then
@@ -563,19 +562,35 @@ profile bwrap /usr/bin/bwrap flags=(unconfined) {
 }
 APPARMOR
             then
-                if sudo apparmor_parser -r "$BWRAP_PROFILE" 2>/dev/null || sudo systemctl reload apparmor 2>/dev/null; then
+                # Try multiple loading methods — SIFT (live-image) may not support systemctl reload
+                PARSER_OUTPUT=""
+                if PARSER_OUTPUT=$(sudo apparmor_parser -rT "$BWRAP_PROFILE" 2>&1); then
+                    PROFILE_LOADED=true
+                elif PARSER_OUTPUT=$(sudo apparmor_parser -r "$BWRAP_PROFILE" 2>&1); then
+                    PROFILE_LOADED=true
+                elif sudo systemctl reload apparmor 2>/dev/null; then
+                    PROFILE_LOADED=true
+                else
+                    PROFILE_LOADED=false
+                fi
+
+                if $PROFILE_LOADED; then
                     # Verify the fix works
                     if bwrap --unshare-user -- true 2>/dev/null; then
                         ok "AppArmor bwrap profile installed and verified"
                     else
-                        warn "AppArmor profile installed but bwrap test failed"
-                        echo "  The kernel sandbox (L9) may not function correctly."
-                        echo "  Manual fix: sudo apparmor_parser -r $BWRAP_PROFILE"
+                        warn "AppArmor profile installed and loaded but bwrap test still fails"
+                        echo "  This may require a reboot to take effect."
+                        echo "  After reboot, verify: bwrap --unshare-user -- true"
                     fi
                 else
-                    warn "Could not reload AppArmor. Profile written but not active."
-                    echo "  Run: sudo systemctl reload apparmor"
-                    echo "  The kernel sandbox (L9) will not function until AppArmor reloads."
+                    warn "Could not load AppArmor profile."
+                    if [[ -n "$PARSER_OUTPUT" ]]; then
+                        echo "  apparmor_parser: $PARSER_OUTPUT"
+                    fi
+                    echo "  Profile written to $BWRAP_PROFILE but not active."
+                    echo "  Try: sudo apparmor_parser -rT $BWRAP_PROFILE"
+                    echo "  Or reboot to load the profile automatically."
                 fi
             else
                 warn "Could not write AppArmor profile (sudo required)."
