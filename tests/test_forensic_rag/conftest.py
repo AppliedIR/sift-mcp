@@ -25,7 +25,9 @@ except ImportError:
     DEFAULT_INDEX_DIR = ""
 
 _SKIP_MSG = "RAG index not built. Run `python -m rag_mcp.build` to enable these tests."
-_MISSING_MSG = "rag_mcp not installed (chromadb dependency chain). Install locally to run."
+_MISSING_MSG = (
+    "rag_mcp not installed (chromadb dependency chain). Install locally to run."
+)
 
 
 def _chroma_dir() -> Path:
