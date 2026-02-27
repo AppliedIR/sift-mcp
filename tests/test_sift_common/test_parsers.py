@@ -10,6 +10,7 @@ from sift_common.parsers.text_parser import extract_lines, parse_text
 # CSV parser
 # ---------------------------------------------------------------------------
 
+
 class TestParseCsv:
     def test_basic_csv(self):
         text = "name,age\nAlice,30\nBob,25\n"
@@ -77,6 +78,7 @@ class TestParseCsvFile:
         # Create a file > 50MB via truncate (sparse)
         csv_file.write_text("x")
         import os
+
         os.truncate(str(csv_file), 60_000_000)
         result = parse_csv_file(str(csv_file))
         assert "error" in result
@@ -95,6 +97,7 @@ class TestParseCsvFile:
 # JSON parser
 # ---------------------------------------------------------------------------
 
+
 class TestParseJson:
     def test_single_object(self):
         result = parse_json('{"key": "value"}')
@@ -103,7 +106,7 @@ class TestParseJson:
         assert result["truncated"] is False
 
     def test_array(self):
-        result = parse_json('[1, 2, 3]')
+        result = parse_json("[1, 2, 3]")
         assert result["data"] == [1, 2, 3]
         assert result["total_entries"] == 3
 
@@ -176,6 +179,7 @@ class TestParseJsonl:
 # ---------------------------------------------------------------------------
 # Text parser
 # ---------------------------------------------------------------------------
+
 
 class TestParseText:
     def test_basic_text(self):

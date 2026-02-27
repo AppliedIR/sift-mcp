@@ -5,7 +5,9 @@ import os
 import subprocess
 from pathlib import Path
 
-HOOK_SCRIPT = Path(__file__).parent.parent.parent / "claude-code" / "hooks" / "forensic-audit.sh"
+HOOK_SCRIPT = (
+    Path(__file__).parent.parent.parent / "claude-code" / "hooks" / "forensic-audit.sh"
+)
 
 
 def _make_active_case(tmp_path):
@@ -38,13 +40,21 @@ def _make_env(tmp_path, examiner="tester"):
     return env
 
 
-def _hook_input(command="ls -la", tool_response="file1\nfile2", tool_use_id="tu_123", session_id="sess_456", cwd="/tmp"):
-    return json.dumps({
-        "tool_input": {"command": command, "cwd": cwd},
-        "tool_response": tool_response,
-        "tool_use_id": tool_use_id,
-        "session_id": session_id,
-    })
+def _hook_input(
+    command="ls -la",
+    tool_response="file1\nfile2",
+    tool_use_id="tu_123",
+    session_id="sess_456",
+    cwd="/tmp",
+):
+    return json.dumps(
+        {
+            "tool_input": {"command": command, "cwd": cwd},
+            "tool_response": tool_response,
+            "tool_use_id": tool_use_id,
+            "session_id": session_id,
+        }
+    )
 
 
 class TestWithActiveCase:

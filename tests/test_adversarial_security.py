@@ -191,7 +191,10 @@ class TestProvenanceGate:
 
     def test_gate_rejects_fake_evidence_ids(self, manager):
         """Fabricated evidence IDs not in audit trail must be classified NONE."""
-        finding = {**self._valid_finding(), "evidence_ids": ["sift-tester-20260225-999"]}
+        finding = {
+            **self._valid_finding(),
+            "evidence_ids": ["sift-tester-20260225-999"],
+        }
         result = manager.record_finding(finding)
         assert result["status"] == "REJECTED"
 
@@ -226,7 +229,11 @@ class TestProvenanceGate:
         """Commands missing command or purpose are skipped, leaving validated_commands empty."""
         finding = self._valid_finding()
         cmds = [
-            {"command": "", "output_excerpt": "data", "purpose": "test"},  # empty command
+            {
+                "command": "",
+                "output_excerpt": "data",
+                "purpose": "test",
+            },  # empty command
             {"command": "ls", "output_excerpt": "data", "purpose": ""},  # empty purpose
             {"output_excerpt": "data"},  # missing both
         ]
@@ -258,14 +265,20 @@ class TestProvenanceGate:
         finding = self._valid_finding()
         long_output = "A" * 5000
         cmds = [
-            {"command": "cat big.log", "output_excerpt": long_output, "purpose": "Check log"}
+            {
+                "command": "cat big.log",
+                "output_excerpt": long_output,
+                "purpose": "Check log",
+            }
         ]
         audit = MagicMock()
         audit.log = MagicMock(return_value="shell-tester-20260225-001")
         result = manager.record_finding(finding, supporting_commands=cmds, audit=audit)
         assert result["status"] == "STAGED"
         # Verify the stored command has truncated output
-        findings = json.loads((Path(os.environ["AIIR_CASE_DIR"]) / "findings.json").read_text())
+        findings = json.loads(
+            (Path(os.environ["AIIR_CASE_DIR"]) / "findings.json").read_text()
+        )
         stored_cmd = findings[0]["supporting_commands"][0]
         assert len(stored_cmd["output_excerpt"]) == 2000
 
@@ -459,7 +472,9 @@ class TestJoinCodeAtomicity:
 
         # Redirect state file to tmp
         monkeypatch.setattr("sift_gateway.join._STATE_DIR", tmp_path)
-        monkeypatch.setattr("sift_gateway.join._STATE_FILE", tmp_path / ".join_state.json")
+        monkeypatch.setattr(
+            "sift_gateway.join._STATE_FILE", tmp_path / ".join_state.json"
+        )
 
         code = "TEST-CODE"
         store_join_code(code, expires_hours=1)

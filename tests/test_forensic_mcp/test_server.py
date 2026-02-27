@@ -46,9 +46,21 @@ def _seed_audit(audit_dir):
     import json as _json
 
     entries = [
-        {"evidence_id": "ev-tester-20260225-001", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
-        {"evidence_id": "ev-tester-20260225-002", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
-        {"evidence_id": "ev-tester-20260225-003", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
+        {
+            "evidence_id": "ev-tester-20260225-001",
+            "tool": "test",
+            "ts": "2026-01-01T00:00:00Z",
+        },
+        {
+            "evidence_id": "ev-tester-20260225-002",
+            "tool": "test",
+            "ts": "2026-01-01T00:00:00Z",
+        },
+        {
+            "evidence_id": "ev-tester-20260225-003",
+            "tool": "test",
+            "ts": "2026-01-01T00:00:00Z",
+        },
     ]
     with open(audit_dir / "test-fixtures.jsonl", "w") as f:
         for entry in entries:
@@ -458,7 +470,11 @@ class TestEnhancedResponses:
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         finding = {
             "title": "APT29 attribution",
-            "evidence_ids": ["ev-tester-20260225-001", "ev-tester-20260225-002", "ev-tester-20260225-003"],
+            "evidence_ids": [
+                "ev-tester-20260225-001",
+                "ev-tester-20260225-002",
+                "ev-tester-20260225-003",
+            ],
             "observation": "TTPs match APT29",
             "interpretation": "Likely APT29",
             "confidence": "HIGH",

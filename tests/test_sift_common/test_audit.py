@@ -19,6 +19,7 @@ def _clean_env(monkeypatch):
 # _sanitize_slug
 # ---------------------------------------------------------------------------
 
+
 class TestSanitizeSlug:
     def test_lowercase(self):
         assert _sanitize_slug("Alice") == "alice"
@@ -50,6 +51,7 @@ class TestSanitizeSlug:
 # resolve_examiner
 # ---------------------------------------------------------------------------
 
+
 class TestResolveExaminer:
     def test_aiir_examiner_env(self, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "alice")
@@ -77,6 +79,7 @@ class TestResolveExaminer:
 # ---------------------------------------------------------------------------
 # AuditWriter
 # ---------------------------------------------------------------------------
+
 
 class TestAuditWriter:
     def test_creates_audit_file(self, tmp_path, monkeypatch):
@@ -106,10 +109,7 @@ class TestAuditWriter:
         audit_dir.mkdir()
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
-        ids = [
-            writer.log(tool="t", params={}, result_summary="ok")
-            for _ in range(3)
-        ]
+        ids = [writer.log(tool="t", params={}, result_summary="ok") for _ in range(3)]
         assert ids[0].endswith("-001")
         assert ids[1].endswith("-002")
         assert ids[2].endswith("-003")
@@ -120,7 +120,9 @@ class TestAuditWriter:
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         eid = writer.log(
-            tool="t", params={}, result_summary="ok",
+            tool="t",
+            params={},
+            result_summary="ok",
             evidence_id="custom-id-001",
         )
         assert eid == "custom-id-001"
@@ -205,10 +207,19 @@ class TestAuditWriter:
         audit_dir.mkdir()
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         log_file = audit_dir / "test-mcp.jsonl"
-        log_file.write_text("not json\n" + json.dumps({
-            "ts": "2026-01-01", "tool": "t", "mcp": "test-mcp",
-            "evidence_id": "test-001", "examiner": "tester",
-        }) + "\n")
+        log_file.write_text(
+            "not json\n"
+            + json.dumps(
+                {
+                    "ts": "2026-01-01",
+                    "tool": "t",
+                    "mcp": "test-mcp",
+                    "evidence_id": "test-001",
+                    "examiner": "tester",
+                }
+            )
+            + "\n"
+        )
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         entries = writer.get_entries()
         assert len(entries) == 1
@@ -273,8 +284,10 @@ class TestAuditWriter:
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         log_file = audit_dir / "test-mcp.jsonl"
         log_file.write_text(
-            json.dumps({"ts": "2026-01-01T00:00:00", "tool": "old"}) + "\n"
-            + json.dumps({"ts": "2026-02-01T00:00:00", "tool": "new"}) + "\n"
+            json.dumps({"ts": "2026-01-01T00:00:00", "tool": "old"})
+            + "\n"
+            + json.dumps({"ts": "2026-02-01T00:00:00", "tool": "new"})
+            + "\n"
         )
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         entries = writer.get_entries(since="2026-01-15T00:00:00")

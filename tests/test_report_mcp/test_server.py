@@ -72,7 +72,11 @@ def case_dir(tmp_path, monkeypatch):
             "approved_at": "2026-02-25T14:00:00+00:00",
             "approved_by": "tester",
             "created_by": "tester",
-            "iocs": {"SHA256": ["aabbccddee1122334455667788990011aabbccddee1122334455667788990011"]},
+            "iocs": {
+                "SHA256": [
+                    "aabbccddee1122334455667788990011aabbccddee1122334455667788990011"
+                ]
+            },
             "mitre_techniques": [{"id": "T1486", "name": "Data Encrypted for Impact"}],
         },
         {
@@ -83,7 +87,9 @@ def case_dir(tmp_path, monkeypatch):
             "confidence": "MEDIUM",
             "provenance": "HOOK",
             "iocs": {"Domain": ["evil.example.com"]},
-            "mitre_techniques": [{"id": "T1566.001", "name": "Spearphishing Attachment"}],
+            "mitre_techniques": [
+                {"id": "T1566.001", "name": "Spearphishing Attachment"}
+            ],
         },
         {
             "id": "F-tester-004",
@@ -148,8 +154,16 @@ def case_dir(tmp_path, monkeypatch):
     # evidence.json (registry format: {"files": [...]})
     evidence = {
         "files": [
-            {"path": "/evidence/disk.E01", "sha256": "aaa", "description": "Disk image"},
-            {"path": "/evidence/memory.raw", "sha256": "bbb", "description": "Memory dump"},
+            {
+                "path": "/evidence/disk.E01",
+                "sha256": "aaa",
+                "description": "Disk image",
+            },
+            {
+                "path": "/evidence/memory.raw",
+                "sha256": "bbb",
+                "description": "Memory dump",
+            },
         ]
     }
     with open(case / "evidence.json", "w") as f:
@@ -171,6 +185,7 @@ class TestGenerateReport:
 
     def test_full_profile(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "generate_report", profile="full")
 
@@ -192,6 +207,7 @@ class TestGenerateReport:
 
     def test_executive_profile(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "generate_report", profile="executive")
 
@@ -207,6 +223,7 @@ class TestGenerateReport:
 
     def test_status_profile(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "generate_report", profile="status")
 
@@ -219,6 +236,7 @@ class TestGenerateReport:
 
     def test_timeline_profile_date_filter(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(
             s,
@@ -237,6 +255,7 @@ class TestGenerateReport:
 
     def test_findings_profile_filter_ids(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(
             s,
@@ -252,6 +271,7 @@ class TestGenerateReport:
     def test_approved_only(self, case_dir):
         """DRAFT and REJECTED findings excluded from all profiles."""
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "generate_report", profile="full")
 
@@ -264,6 +284,7 @@ class TestGenerateReport:
     def test_strips_internal_fields(self, case_dir):
         """Internal fields removed from findings in output."""
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "generate_report", profile="full")
 
@@ -295,6 +316,7 @@ class TestGenerateReport:
     def test_ioc_aggregation(self, case_dir):
         """IOCs deduplicated and cross-referenced to source findings."""
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "generate_report", profile="full")
 
@@ -308,6 +330,7 @@ class TestGenerateReport:
     def test_mitre_mapping(self, case_dir):
         """MITRE techniques grouped by ID with finding cross-references."""
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "generate_report", profile="full")
 
@@ -321,6 +344,7 @@ class TestGenerateReport:
     def test_zeltser_guidance_full(self, case_dir):
         """Full profile has Zeltser guidance with all 4 tools."""
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "generate_report", profile="full")
 
@@ -338,6 +362,7 @@ class TestGenerateReport:
     def test_zeltser_guidance_ioc_empty(self, case_dir):
         """IOC profile has no Zeltser guidance."""
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "generate_report", profile="ioc")
 
@@ -346,6 +371,7 @@ class TestGenerateReport:
     def test_zeltser_metadata_params(self, case_dir):
         """Zeltser guidance parameters derived from case metadata."""
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "generate_report", profile="full")
 
@@ -355,6 +381,7 @@ class TestGenerateReport:
 
     def test_invalid_profile(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "generate_report", profile="nonexistent")
 
@@ -364,6 +391,7 @@ class TestGenerateReport:
     def test_sections_in_output(self, case_dir):
         """Sections template included in output."""
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "generate_report", profile="full")
 
@@ -379,10 +407,9 @@ class TestSetCaseMetadata:
 
     def test_valid_enum(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
-        result = _call_tool(
-            s, "set_case_metadata", field="incident_type", value="bec"
-        )
+        result = _call_tool(s, "set_case_metadata", field="incident_type", value="bec")
 
         assert result["status"] == "set"
         assert result["field"] == "incident_type"
@@ -394,16 +421,16 @@ class TestSetCaseMetadata:
 
     def test_invalid_enum(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
-        result = _call_tool(
-            s, "set_case_metadata", field="incident_type", value="foo"
-        )
+        result = _call_tool(s, "set_case_metadata", field="incident_type", value="foo")
 
         assert "error" in result
         assert "foo" in result["error"]
 
     def test_valid_datetime(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(
             s,
@@ -418,16 +445,16 @@ class TestSetCaseMetadata:
 
     def test_protected_field_rejected(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
-        result = _call_tool(
-            s, "set_case_metadata", field="case_id", value="hacked"
-        )
+        result = _call_tool(s, "set_case_metadata", field="case_id", value="hacked")
 
         assert "error" in result
         assert "protected" in result["error"].lower()
 
     def test_unknown_field_accepted(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(
             s, "set_case_metadata", field="custom_field", value="custom_value"
@@ -439,6 +466,7 @@ class TestSetCaseMetadata:
 
     def test_list_field(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(
             s,
@@ -453,6 +481,7 @@ class TestSetCaseMetadata:
 
     def test_list_field_rejects_string(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(
             s, "set_case_metadata", field="affected_systems", value="not-a-list"
@@ -467,6 +496,7 @@ class TestGetCaseMetadata:
 
     def test_get_all(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "get_case_metadata")
 
@@ -476,6 +506,7 @@ class TestGetCaseMetadata:
 
     def test_get_single_field(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "get_case_metadata", field="incident_type")
 
@@ -484,6 +515,7 @@ class TestGetCaseMetadata:
 
     def test_get_missing_field(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "get_case_metadata", field="nonexistent")
 
@@ -496,6 +528,7 @@ class TestSaveReport:
 
     def test_basic_save(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(
             s,
@@ -515,6 +548,7 @@ class TestSaveReport:
 
     def test_path_traversal_blocked(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(
             s,
@@ -528,6 +562,7 @@ class TestSaveReport:
 
     def test_filename_sanitization(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(
             s,
@@ -542,9 +577,11 @@ class TestSaveReport:
     def test_creates_reports_dir(self, case_dir):
         """Reports dir created if missing."""
         import shutil
+
         shutil.rmtree(case_dir / "reports")
 
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(
             s,
@@ -562,6 +599,7 @@ class TestListReports:
 
     def test_empty(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "list_reports")
 
@@ -572,6 +610,7 @@ class TestListReports:
         (case_dir / "reports" / "report2.md").write_text("Report 2 content")
 
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "list_reports")
 
@@ -589,6 +628,7 @@ class TestListProfiles:
 
     def test_returns_all_profiles(self, case_dir):
         from report_mcp.server import create_server
+
         s = create_server()
         result = _call_tool(s, "list_profiles")
 

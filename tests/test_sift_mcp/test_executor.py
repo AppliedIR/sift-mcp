@@ -175,7 +175,11 @@ class TestByteLimit:
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
         monkeypatch.setenv("SIFT_MAX_OUTPUT", "2000")
         result = execute(
-            ["python3", "-c", "import sys;\nwhile True: sys.stdout.buffer.write(b'A' * 1024)"]
+            [
+                "python3",
+                "-c",
+                "import sys;\nwhile True: sys.stdout.buffer.write(b'A' * 1024)",
+            ]
         )
         assert result["truncated"] is True
         assert result["stdout_total_bytes"] <= 2000

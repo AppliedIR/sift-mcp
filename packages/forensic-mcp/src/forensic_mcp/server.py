@@ -165,8 +165,14 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         if isinstance(finding, dict):
             _validate_str_length(finding.get("title"), "title", _MAX_TITLE)
             _validate_str_length(finding.get("observation"), "observation", _MAX_TEXT)
-            _validate_str_length(finding.get("interpretation"), "interpretation", _MAX_TEXT)
-            _validate_str_length(finding.get("confidence_justification"), "confidence_justification", _MAX_TEXT)
+            _validate_str_length(
+                finding.get("interpretation"), "interpretation", _MAX_TEXT
+            )
+            _validate_str_length(
+                finding.get("confidence_justification"),
+                "confidence_justification",
+                _MAX_TEXT,
+            )
         # Coerce JSON string to list (LLMs often serialize list[dict] as a string)
         if isinstance(supporting_commands, str):
             try:
@@ -178,8 +184,12 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         if supporting_commands:
             for cmd in supporting_commands[:5]:
                 if isinstance(cmd, dict):
-                    _validate_str_length(cmd.get("command"), "supporting_commands.command", _MAX_TEXT)
-                    _validate_str_length(cmd.get("purpose"), "supporting_commands.purpose", _MAX_TEXT)
+                    _validate_str_length(
+                        cmd.get("command"), "supporting_commands.command", _MAX_TEXT
+                    )
+                    _validate_str_length(
+                        cmd.get("purpose"), "supporting_commands.purpose", _MAX_TEXT
+                    )
         result = manager.record_finding(
             finding,
             examiner_override=analyst_override,

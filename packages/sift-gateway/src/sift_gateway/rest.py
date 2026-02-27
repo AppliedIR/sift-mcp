@@ -436,9 +436,7 @@ def _atomic_yaml_write(config_path, config: dict) -> None:
     import yaml
 
     config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd, tmp_path = tempfile.mkstemp(
-        dir=str(config_path.parent), suffix=".tmp"
-    )
+    fd, tmp_path = tempfile.mkstemp(dir=str(config_path.parent), suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
             yaml.dump(config, f, default_flow_style=False)

@@ -136,15 +136,11 @@ def _resolve_case_dir(case_id: str = "") -> Path:
                 case_dir = Path(content)
             else:
                 if ".." in content or "/" in content or "\\" in content:
-                    raise ValueError(
-                        f"Invalid case ID in active_case: {content}"
-                    )
+                    raise ValueError(f"Invalid case ID in active_case: {content}")
                 cases_dir = Path(os.environ.get("AIIR_CASES_DIR", "cases"))
                 case_dir = cases_dir / content
             if not case_dir.is_dir():
-                raise ValueError(
-                    f"Case directory does not exist: {case_dir}"
-                )
+                raise ValueError(f"Case directory does not exist: {case_dir}")
             os.environ["AIIR_CASE_DIR"] = str(case_dir)
             return case_dir
 
@@ -229,13 +225,9 @@ def _extract_all_iocs(
                 collected.setdefault(("IPv4", ip), set()).add(fid)
         for h in re.findall(r"\b[a-fA-F0-9]{64}\b", text):
             collected.setdefault(("SHA256", h.lower()), set()).add(fid)
-        for h in re.findall(
-            r"(?<![a-fA-F0-9])[a-fA-F0-9]{40}(?![a-fA-F0-9])", text
-        ):
+        for h in re.findall(r"(?<![a-fA-F0-9])[a-fA-F0-9]{40}(?![a-fA-F0-9])", text):
             collected.setdefault(("SHA1", h.lower()), set()).add(fid)
-        for h in re.findall(
-            r"(?<![a-fA-F0-9])[a-fA-F0-9]{32}(?![a-fA-F0-9])", text
-        ):
+        for h in re.findall(r"(?<![a-fA-F0-9])[a-fA-F0-9]{32}(?![a-fA-F0-9])", text):
             collected.setdefault(("MD5", h.lower()), set()).add(fid)
         for fp in re.findall(r"[A-Z]:\\(?:[^\s,;]+)", text):
             collected.setdefault(("File", fp), set()).add(fid)
@@ -297,12 +289,8 @@ def _build_summary(
 ) -> dict:
     """Build summary counts."""
     all_findings = findings  # Already loaded (may include non-approved for total count)
-    approved_findings = [
-        f for f in findings if f.get("status") == "APPROVED"
-    ]
-    approved_timeline = [
-        t for t in timeline if t.get("status") == "APPROVED"
-    ]
+    approved_findings = [f for f in findings if f.get("status") == "APPROVED"]
+    approved_timeline = [t for t in timeline if t.get("status") == "APPROVED"]
     ioc_count = sum(len(v) for v in iocs.values())
     open_todos = sum(1 for t in todos if t.get("status") == "open")
 
@@ -316,9 +304,7 @@ def _build_summary(
     }
 
 
-def _build_zeltser_guidance(
-    profile_name: str, profile: dict, metadata: dict
-) -> dict:
+def _build_zeltser_guidance(profile_name: str, profile: dict, metadata: dict) -> dict:
     """Construct Zeltser IR Writing MCP guidance for a profile."""
     tools = profile.get("zeltser_tools", [])
     if not tools:
@@ -340,9 +326,7 @@ def _build_zeltser_guidance(
     # Derive parameters from metadata
     incident_type = metadata.get("incident_type", "")
     if incident_type:
-        guidance["parameters"]["ir_load_context"] = {
-            "incident_type": incident_type
-        }
+        guidance["parameters"]["ir_load_context"] = {"incident_type": incident_type}
 
     # Map profile to guidelines topic
     topic_map = {
@@ -385,12 +369,8 @@ def _generate(
     evidence_count = len(evidence_list)
 
     # Filter approved only
-    approved_findings = [
-        f for f in all_findings if f.get("status") == "APPROVED"
-    ]
-    approved_timeline = [
-        t for t in all_timeline if t.get("status") == "APPROVED"
-    ]
+    approved_findings = [f for f in all_findings if f.get("status") == "APPROVED"]
+    approved_timeline = [t for t in all_timeline if t.get("status") == "APPROVED"]
 
     # Apply findings_mode
     findings_mode = profile.get("findings_mode", "all")
@@ -409,9 +389,7 @@ def _generate(
     # Apply finding_ids filter (findings profile)
     if finding_ids and profile.get("filterable", {}).get("finding_ids"):
         id_set = set(finding_ids)
-        report_findings = [
-            f for f in report_findings if f.get("id") in id_set
-        ]
+        report_findings = [f for f in report_findings if f.get("id") in id_set]
 
     # Apply timeline_mode
     timeline_mode = profile.get("timeline_mode", "all")
@@ -429,15 +407,11 @@ def _generate(
     # Apply date filters (timeline profile)
     if start_date and profile.get("filterable", {}).get("start_date"):
         report_timeline = [
-            t
-            for t in report_timeline
-            if t.get("timestamp", "") >= start_date
+            t for t in report_timeline if t.get("timestamp", "") >= start_date
         ]
     if end_date and profile.get("filterable", {}).get("end_date"):
         report_timeline = [
-            t
-            for t in report_timeline
-            if t.get("timestamp", "") <= end_date
+            t for t in report_timeline if t.get("timestamp", "") <= end_date
         ]
 
     # Strip internal fields from findings
@@ -453,9 +427,7 @@ def _generate(
     open_todos = [t for t in todos if t.get("status") == "open"]
 
     # Build summary with all findings (not just report-filtered)
-    summary = _build_summary(
-        all_findings, all_timeline, todos, evidence_count, iocs
-    )
+    summary = _build_summary(all_findings, all_timeline, todos, evidence_count, iocs)
 
     # Assemble report_data based on profile's data_keys
     data_keys = profile.get("data_keys", [])
@@ -497,9 +469,7 @@ def _generate(
     sections = profile.get("sections", [])
 
     # Build Zeltser guidance
-    zeltser_guidance = _build_zeltser_guidance(
-        profile_name, profile, metadata
-    )
+    zeltser_guidance = _build_zeltser_guidance(profile_name, profile, metadata)
 
     result: dict = {
         "profile": profile_name,
@@ -568,18 +538,22 @@ def _reconcile_verification(
             if item_id.startswith("T-"):
                 live_text = item.get("description", "")
             else:
-                live_text = item.get("observation", "") + "\n" + item.get("interpretation", "")
+                live_text = (
+                    item.get("observation", "") + "\n" + item.get("interpretation", "")
+                )
             if live_text != entry.get("description_snapshot", ""):
                 results.append({"id": item_id, "status": "DESCRIPTION_MISMATCH"})
             else:
                 results.append({"id": item_id, "status": "VERIFIED"})
 
     if len(all_approved) != len(ledger_entries):
-        results.append({
-            "id": "_summary",
-            "status": "COUNT_MISMATCH",
-            "detail": f"approved={len(all_approved)}, ledger={len(ledger_entries)}",
-        })
+        results.append(
+            {
+                "id": "_summary",
+                "status": "COUNT_MISMATCH",
+                "detail": f"approved={len(all_approved)}, ledger={len(ledger_entries)}",
+            }
+        )
     return results
 
 
@@ -631,9 +605,7 @@ def create_server() -> FastMCP:
                     }
                 )
             case_dir = _resolve_case_dir(case_id)
-            result = _generate(
-                profile, case_dir, finding_ids, start_date, end_date
-            )
+            result = _generate(profile, case_dir, finding_ids, start_date, end_date)
             audit.log(
                 tool="generate_report",
                 params={
@@ -644,9 +616,7 @@ def create_server() -> FastMCP:
                 },
                 result_summary={
                     "profile": profile,
-                    "findings": len(
-                        result.get("report_data", {}).get("findings", [])
-                    ),
+                    "findings": len(result.get("report_data", {}).get("findings", [])),
                 },
             )
             return json.dumps(result, default=str)
@@ -704,9 +674,7 @@ def create_server() -> FastMCP:
             if field in _LIST_FIELDS:
                 if not isinstance(value, list):
                     return json.dumps(
-                        {
-                            "error": f"Field '{field}' requires a list value."
-                        }
+                        {"error": f"Field '{field}' requires a list value."}
                     )
 
             case_dir = _resolve_case_dir()
@@ -714,9 +682,7 @@ def create_server() -> FastMCP:
             meta = load_case_meta(case_dir)
             meta[field] = value
 
-            _atomic_write(
-                meta_file, yaml.dump(meta, default_flow_style=False)
-            )
+            _atomic_write(meta_file, yaml.dump(meta, default_flow_style=False))
 
             audit.log(
                 tool="set_case_metadata",
@@ -747,9 +713,7 @@ def create_server() -> FastMCP:
             if not field:
                 return json.dumps(meta, default=str)
 
-            return json.dumps(
-                {"field": field, "value": meta.get(field)}, default=str
-            )
+            return json.dumps({"field": field, "value": meta.get(field)}, default=str)
         except (ValueError, OSError) as e:
             return json.dumps({"error": str(e)})
 
@@ -775,9 +739,7 @@ def create_server() -> FastMCP:
     # Tool 5: save_report
     # ------------------------------------------------------------------
     @server.tool()
-    def save_report(
-        filename: str, content: str, profile: str = ""
-    ) -> str:
+    def save_report(filename: str, content: str, profile: str = "") -> str:
         """Persist a rendered report to the case reports/ directory.
 
         Filename is sanitized: only alphanumeric characters, hyphens,

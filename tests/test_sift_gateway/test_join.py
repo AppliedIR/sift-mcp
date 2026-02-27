@@ -183,7 +183,10 @@ class TestJoinGatewayCallOrder:
         client = TestClient(app, raise_server_exceptions=False)
 
         with (
-            patch("sift_gateway.rest.validate_and_consume_join_code", mock_validate_and_consume),
+            patch(
+                "sift_gateway.rest.validate_and_consume_join_code",
+                mock_validate_and_consume,
+            ),
             patch("sift_gateway.rest._add_api_key_to_config", mock_add_api_key),
             patch("sift_gateway.rest.generate_gateway_token", mock_generate_token),
             patch("sift_gateway.rest.check_join_rate_limit", return_value=True),

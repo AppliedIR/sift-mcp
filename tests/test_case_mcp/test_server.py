@@ -13,6 +13,7 @@ from case_mcp.server import _resolve_case_dir, create_server
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
     """Ensure no env leakage between tests."""
@@ -69,6 +70,7 @@ def server(case_dir):
 # ---------------------------------------------------------------------------
 # _resolve_case_dir
 # ---------------------------------------------------------------------------
+
 
 class TestResolveCaseDir:
     def test_explicit_case_id(self, tmp_path, monkeypatch):
@@ -155,6 +157,7 @@ class TestResolveCaseDir:
 # Tool handlers — lifecycle
 # ---------------------------------------------------------------------------
 
+
 class TestCaseInit:
     def test_creates_case(self, case_dir, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
@@ -227,23 +230,24 @@ class TestCaseStatus:
 # Tool handlers — evidence
 # ---------------------------------------------------------------------------
 
+
 class TestEvidenceRegister:
     def test_registers_file(self, case_dir):
         evidence_file = case_dir["path"] / "evidence" / "disk.e01"
         evidence_file.write_text("fake evidence content")
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["evidence_register"](
-            path=str(evidence_file), description="Test disk image"
-        ))
+        result = json.loads(
+            tools["evidence_register"](
+                path=str(evidence_file), description="Test disk image"
+            )
+        )
         assert "error" not in result
 
     def test_missing_file_returns_error(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["evidence_register"](
-            path="/nonexistent/file.e01"
-        ))
+        result = json.loads(tools["evidence_register"](path="/nonexistent/file.e01"))
         assert "error" in result
 
 
@@ -266,6 +270,7 @@ class TestEvidenceVerify:
 # ---------------------------------------------------------------------------
 # Tool handlers — export / import
 # ---------------------------------------------------------------------------
+
 
 class TestExportBundle:
     def test_export_empty_case(self, case_dir):
@@ -316,6 +321,7 @@ class TestImportBundle:
 # Tool handlers — audit
 # ---------------------------------------------------------------------------
 
+
 class TestAuditSummary:
     def test_returns_summary(self, case_dir):
         srv = create_server()
@@ -328,13 +334,12 @@ class TestAuditSummary:
 # Tool handlers — action logging
 # ---------------------------------------------------------------------------
 
+
 class TestRecordAction:
     def test_records_action(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["record_action"](
-            description="Ran volatility pslist"
-        ))
+        result = json.loads(tools["record_action"](description="Ran volatility pslist"))
         assert result["status"] == "recorded"
         assert "timestamp" in result
         # Verify JSONL was written
@@ -344,11 +349,13 @@ class TestRecordAction:
     def test_records_with_tool_and_command(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["record_action"](
-            description="Analyzed registry",
-            tool="RECmd.exe",
-            command="RECmd.exe -f NTUSER.DAT --csv out",
-        ))
+        result = json.loads(
+            tools["record_action"](
+                description="Analyzed registry",
+                tool="RECmd.exe",
+                command="RECmd.exe -f NTUSER.DAT --csv out",
+            )
+        )
         assert result["status"] == "recorded"
         content = (case_dir["path"] / "actions.jsonl").read_text()
         entry = json.loads(content.strip().split("\n")[-1])
@@ -369,9 +376,9 @@ class TestLogReasoning:
     def test_logs_reasoning(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["log_reasoning"](
-            text="Hypothesis: lateral movement via PsExec"
-        ))
+        result = json.loads(
+            tools["log_reasoning"](text="Hypothesis: lateral movement via PsExec")
+        )
         assert result["status"] == "logged"
 
     def test_audit_entry_written(self, case_dir):
@@ -381,7 +388,11 @@ class TestLogReasoning:
         # Check audit JSONL
         audit_file = case_dir["path"] / "audit" / "case-mcp.jsonl"
         assert audit_file.exists()
-        entries = [json.loads(l) for l in audit_file.read_text().strip().split("\n") if l.strip()]
+        entries = [
+            json.loads(l)
+            for l in audit_file.read_text().strip().split("\n")
+            if l.strip()
+        ]
         reasoning_entries = [e for e in entries if e["tool"] == "log_reasoning"]
         assert len(reasoning_entries) >= 1
         assert reasoning_entries[0]["source"] == "orchestrator"
@@ -391,11 +402,13 @@ class TestLogExternalAction:
     def test_logs_external_action(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["log_external_action"](
-            command="grep -r 'password' /evidence/",
-            output_summary="Found 3 matches in config files",
-            purpose="Search for hardcoded credentials",
-        ))
+        result = json.loads(
+            tools["log_external_action"](
+                command="grep -r 'password' /evidence/",
+                output_summary="Found 3 matches in config files",
+                purpose="Search for hardcoded credentials",
+            )
+        )
         assert result["status"] == "logged"
         assert result["evidence_id"].startswith("case-")
         assert "not independently verified" in result["note"]
@@ -407,7 +420,11 @@ class TestLogExternalAction:
             command="ls", output_summary="files", purpose="listing"
         )
         audit_file = case_dir["path"] / "audit" / "case-mcp.jsonl"
-        entries = [json.loads(l) for l in audit_file.read_text().strip().split("\n") if l.strip()]
+        entries = [
+            json.loads(l)
+            for l in audit_file.read_text().strip().split("\n")
+            if l.strip()
+        ]
         ext_entries = [e for e in entries if e["tool"] == "log_external_action"]
         assert ext_entries[0]["source"] == "orchestrator_voluntary"
 
@@ -415,6 +432,7 @@ class TestLogExternalAction:
 # ---------------------------------------------------------------------------
 # Security: path traversal via tool parameters
 # ---------------------------------------------------------------------------
+
 
 class TestSecurity:
     def test_case_activate_traversal(self, case_dir):
@@ -433,24 +451,23 @@ class TestSecurity:
         """evidence_register with a path outside the case should fail."""
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["evidence_register"](
-            path="/etc/passwd", description="system file"
-        ))
+        result = json.loads(
+            tools["evidence_register"](path="/etc/passwd", description="system file")
+        )
         assert "error" in result
 
     def test_import_bundle_traversal(self, case_dir, tmp_path):
         """import_bundle with traversal path should fail or return error."""
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["import_bundle"](
-            bundle_path="../../etc/passwd"
-        ))
+        result = json.loads(tools["import_bundle"](bundle_path="../../etc/passwd"))
         assert "error" in result
 
 
 # ---------------------------------------------------------------------------
 # Server creation
 # ---------------------------------------------------------------------------
+
 
 class TestCreateServer:
     def test_server_has_13_tools(self, case_dir):
@@ -462,10 +479,19 @@ class TestCreateServer:
         srv = create_server()
         tool_names = set(srv._tool_manager._tools.keys())
         expected = {
-            "case_init", "case_activate", "case_list", "case_status",
-            "evidence_register", "evidence_list", "evidence_verify",
-            "export_bundle", "import_bundle", "audit_summary",
-            "record_action", "log_reasoning", "log_external_action",
+            "case_init",
+            "case_activate",
+            "case_list",
+            "case_status",
+            "evidence_register",
+            "evidence_list",
+            "evidence_verify",
+            "export_bundle",
+            "import_bundle",
+            "audit_summary",
+            "record_action",
+            "log_reasoning",
+            "log_external_action",
         }
         assert tool_names == expected
 

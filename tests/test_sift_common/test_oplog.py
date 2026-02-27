@@ -17,8 +17,13 @@ class TestStructuredFormatter:
     def test_json_output(self):
         formatter = _StructuredFormatter("test-svc")
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="test.py",
-            lineno=1, msg="hello", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="hello",
+            args=(),
+            exc_info=None,
         )
         output = formatter.format(record)
         parsed = json.loads(output)
@@ -30,8 +35,13 @@ class TestStructuredFormatter:
     def test_warning_includes_location(self):
         formatter = _StructuredFormatter("test-svc")
         record = logging.LogRecord(
-            name="test", level=logging.WARNING, pathname="test.py",
-            lineno=42, msg="warn", args=(), exc_info=None,
+            name="test",
+            level=logging.WARNING,
+            pathname="test.py",
+            lineno=42,
+            msg="warn",
+            args=(),
+            exc_info=None,
         )
         output = formatter.format(record)
         parsed = json.loads(output)
@@ -41,8 +51,13 @@ class TestStructuredFormatter:
     def test_info_no_location(self):
         formatter = _StructuredFormatter("test-svc")
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="test.py",
-            lineno=1, msg="info", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1,
+            msg="info",
+            args=(),
+            exc_info=None,
         )
         output = formatter.format(record)
         parsed = json.loads(output)
@@ -54,10 +69,16 @@ class TestStructuredFormatter:
             raise ValueError("test error")
         except ValueError:
             import sys
+
             exc_info = sys.exc_info()
         record = logging.LogRecord(
-            name="test", level=logging.ERROR, pathname="test.py",
-            lineno=1, msg="error", args=(), exc_info=exc_info,
+            name="test",
+            level=logging.ERROR,
+            pathname="test.py",
+            lineno=1,
+            msg="error",
+            args=(),
+            exc_info=exc_info,
         )
         output = formatter.format(record)
         parsed = json.loads(output)
@@ -83,7 +104,9 @@ class TestSetupLogging:
         setup_logging("test-svc3", log_to_file=False)
         logger = logging.getLogger("test_svc3")
         # Only stderr handler, no file handler
-        file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
+        file_handlers = [
+            h for h in logger.handlers if isinstance(h, logging.FileHandler)
+        ]
         assert len(file_handlers) == 0
 
     def test_no_propagation(self):

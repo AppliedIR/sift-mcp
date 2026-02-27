@@ -29,7 +29,9 @@ def _sanitize_slug(raw: str) -> str:
     """
     slug = re.sub(r"[^a-z0-9-]", "-", raw.lower()).strip("-")
     if len(slug) > 40:
-        logger.warning("Examiner slug truncated from %d to 40 chars: %s", len(slug), slug[:40])
+        logger.warning(
+            "Examiner slug truncated from %d to 40 chars: %s", len(slug), slug[:40]
+        )
         slug = slug[:40]
     if not slug:
         return "unknown"
@@ -84,8 +86,8 @@ class AuditWriter:
                 # Fallback: read active case pointer file
                 try:
                     case_dir = (
-                        Path.home() / ".aiir" / "active_case"
-                    ).read_text().strip()
+                        (Path.home() / ".aiir" / "active_case").read_text().strip()
+                    )
                 except OSError:
                     return None
                 if not case_dir:

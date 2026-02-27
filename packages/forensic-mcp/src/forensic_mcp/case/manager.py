@@ -68,10 +68,19 @@ _EVIDENCE_ID_PATTERN = re.compile(r"^[a-z]+-[a-z0-9]+-[0-9]{8}-[0-9]{3,}\Z")
 
 # Allowlist: only these fields pass through from user-supplied finding data
 _ALLOWED_FINDING_FIELDS = {
-    "title", "observation", "interpretation", "confidence",
-    "confidence_justification", "type", "evidence_ids",
-    "mitre_ids", "iocs", "supporting_commands",
-    "event_type", "artifact_ref", "related_findings",
+    "title",
+    "observation",
+    "interpretation",
+    "confidence",
+    "confidence_justification",
+    "type",
+    "evidence_ids",
+    "mitre_ids",
+    "iocs",
+    "supporting_commands",
+    "event_type",
+    "artifact_ref",
+    "related_findings",
 }
 _PROTECTED_EVENT_FIELDS = {
     "id",
@@ -349,9 +358,7 @@ class CaseManager:
         today = datetime.now(timezone.utc).strftime("%Y%m%d")
 
         # Allowlist: only accepted fields pass through from user input
-        sanitized = {
-            k: v for k, v in finding.items() if k in _ALLOWED_FINDING_FIELDS
-        }
+        sanitized = {k: v for k, v in finding.items() if k in _ALLOWED_FINDING_FIELDS}
 
         # Process supporting_commands — generate shell evidence IDs
         shell_evidence_ids: list[str] = []
@@ -451,7 +458,7 @@ class CaseManager:
                                 eid = entry.get("evidence_id", "")
                                 if eid.startswith(prefix):
                                     try:
-                                        num = int(eid[len(prefix):])
+                                        num = int(eid[len(prefix) :])
                                         max_num = max(max_num, num)
                                     except ValueError:
                                         pass
@@ -733,9 +740,7 @@ class CaseManager:
     # Provenance tier priority: MCP > HOOK > SHELL
     _PROVENANCE_TIERS = ("MCP", "HOOK", "SHELL")
 
-    def _classify_provenance(
-        self, evidence_ids: list[str], case_dir: Path
-    ) -> dict:
+    def _classify_provenance(self, evidence_ids: list[str], case_dir: Path) -> dict:
         """Classify evidence IDs by provenance tier.
 
         Scans audit/*.jsonl to determine where each evidence_id came from:

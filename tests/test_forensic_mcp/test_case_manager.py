@@ -15,12 +15,36 @@ def _seed_audit_entries(audit_dir: Path) -> None:
     This ensures record_finding() passes the provenance hard gate.
     """
     entries = [
-        {"evidence_id": "ev-tester-20260225-001", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
-        {"evidence_id": "ev-tester-20260225-002", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
-        {"evidence_id": "ev-tester-20260225-003", "tool": "test", "ts": "2026-01-01T00:00:00Z"},
-        {"evidence_id": "wt-tester-20260219-001", "tool": "test", "ts": "2026-02-19T00:00:00Z"},
-        {"evidence_id": "wt-tester-20260219-001", "tool": "test", "ts": "2026-02-19T00:00:00Z"},
-        {"evidence_id": "rag-tester-20260219-002", "tool": "test", "ts": "2026-02-19T00:00:00Z"},
+        {
+            "evidence_id": "ev-tester-20260225-001",
+            "tool": "test",
+            "ts": "2026-01-01T00:00:00Z",
+        },
+        {
+            "evidence_id": "ev-tester-20260225-002",
+            "tool": "test",
+            "ts": "2026-01-01T00:00:00Z",
+        },
+        {
+            "evidence_id": "ev-tester-20260225-003",
+            "tool": "test",
+            "ts": "2026-01-01T00:00:00Z",
+        },
+        {
+            "evidence_id": "wt-tester-20260219-001",
+            "tool": "test",
+            "ts": "2026-02-19T00:00:00Z",
+        },
+        {
+            "evidence_id": "wt-tester-20260219-001",
+            "tool": "test",
+            "ts": "2026-02-19T00:00:00Z",
+        },
+        {
+            "evidence_id": "rag-tester-20260219-002",
+            "tool": "test",
+            "ts": "2026-02-19T00:00:00Z",
+        },
     ]
     with open(audit_dir / "test-fixtures.jsonl", "w") as f:
         for entry in entries:

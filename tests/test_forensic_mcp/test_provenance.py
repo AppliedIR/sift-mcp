@@ -76,12 +76,12 @@ class TestClassifyProvenance:
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "sift-mcp.jsonl").write_text(
-            json.dumps({"evidence_id": "sift-tester-20260225-001", "tool": "run_command"})
+            json.dumps(
+                {"evidence_id": "sift-tester-20260225-001", "tool": "run_command"}
+            )
             + "\n"
         )
-        result = manager._classify_provenance(
-            ["sift-tester-20260225-001"], case_dir
-        )
+        result = manager._classify_provenance(["sift-tester-20260225-001"], case_dir)
         assert result["summary"] == "MCP"
         assert "sift-tester-20260225-001" in result["mcp"]
         assert len(result["none"]) == 0
@@ -90,12 +90,15 @@ class TestClassifyProvenance:
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "claude-code.jsonl").write_text(
-            json.dumps({"evidence_id": "hook-tester-20260225-001", "source": "claude-code-hook"})
+            json.dumps(
+                {
+                    "evidence_id": "hook-tester-20260225-001",
+                    "source": "claude-code-hook",
+                }
+            )
             + "\n"
         )
-        result = manager._classify_provenance(
-            ["hook-tester-20260225-001"], case_dir
-        )
+        result = manager._classify_provenance(["hook-tester-20260225-001"], case_dir)
         assert result["summary"] == "HOOK"
         assert "hook-tester-20260225-001" in result["hook"]
 
@@ -111,7 +114,13 @@ class TestClassifyProvenance:
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "forensic-mcp.jsonl").write_text(
-            json.dumps({"evidence_id": "shell-tester-20260225-001", "tool": "supporting_command"}) + "\n"
+            json.dumps(
+                {
+                    "evidence_id": "shell-tester-20260225-001",
+                    "tool": "supporting_command",
+                }
+            )
+            + "\n"
         )
         result = manager._classify_provenance(["shell-tester-20260225-001"], case_dir)
         assert result["summary"] == "MCP"
@@ -121,7 +130,10 @@ class TestClassifyProvenance:
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "sift-mcp.jsonl").write_text(
-            json.dumps({"evidence_id": "sift-tester-20260225-099", "tool": "run_command"}) + "\n"
+            json.dumps(
+                {"evidence_id": "sift-tester-20260225-099", "tool": "run_command"}
+            )
+            + "\n"
         )
         result = manager._classify_provenance(
             ["sift-tester-20260225-099", "shell-fake-20260225-001"], case_dir
@@ -132,7 +144,9 @@ class TestClassifyProvenance:
 
     def test_all_none(self, manager, active_case):
         case_dir = Path(active_case["path"])
-        result = manager._classify_provenance(["unknown-tester-20260225-001", "unknown-tester-20260225-002"], case_dir)
+        result = manager._classify_provenance(
+            ["unknown-tester-20260225-001", "unknown-tester-20260225-002"], case_dir
+        )
         assert result["summary"] == "NONE"
         assert len(result["none"]) == 2
 
@@ -144,7 +158,10 @@ class TestClassifyProvenance:
             json.dumps({"evidence_id": "dual-tester-20260225-001"}) + "\n"
         )
         (audit_dir / "sift-mcp.jsonl").write_text(
-            json.dumps({"evidence_id": "dual-tester-20260225-001", "tool": "run_command"}) + "\n"
+            json.dumps(
+                {"evidence_id": "dual-tester-20260225-001", "tool": "run_command"}
+            )
+            + "\n"
         )
         result = manager._classify_provenance(["dual-tester-20260225-001"], case_dir)
         assert result["summary"] == "MCP"
@@ -167,7 +184,9 @@ class TestClassifyProvenance:
 
 
 class TestRecordFindingProvenance:
-    def test_supporting_commands_creates_shell_entries(self, manager, active_case, audit):
+    def test_supporting_commands_creates_shell_entries(
+        self, manager, active_case, audit
+    ):
         cmds = [
             {
                 "command": "vol.py -f mem.raw pslist",
@@ -225,30 +244,20 @@ class TestRecordFindingProvenance:
                 "purpose": "Extract strings",
             }
         ]
-        result = manager.record_finding(
-            finding, supporting_commands=cmds, audit=audit
-        )
+        result = manager.record_finding(finding, supporting_commands=cmds, audit=audit)
         assert result["status"] == "STAGED"
 
     def test_stores_content_hash(self, manager, active_case, audit):
-        cmds = [
-            {"command": "ls", "output_excerpt": "files", "purpose": "List files"}
-        ]
-        manager.record_finding(
-            _valid_finding(), supporting_commands=cmds, audit=audit
-        )
+        cmds = [{"command": "ls", "output_excerpt": "files", "purpose": "List files"}]
+        manager.record_finding(_valid_finding(), supporting_commands=cmds, audit=audit)
         case_dir = Path(active_case["path"])
         findings = json.loads((case_dir / "findings.json").read_text())
         assert "content_hash" in findings[0]
         assert len(findings[0]["content_hash"]) == 64
 
     def test_stores_provenance(self, manager, active_case, audit):
-        cmds = [
-            {"command": "ls", "output_excerpt": "files", "purpose": "List files"}
-        ]
-        manager.record_finding(
-            _valid_finding(), supporting_commands=cmds, audit=audit
-        )
+        cmds = [{"command": "ls", "output_excerpt": "files", "purpose": "List files"}]
+        manager.record_finding(_valid_finding(), supporting_commands=cmds, audit=audit)
         case_dir = Path(active_case["path"])
         findings = json.loads((case_dir / "findings.json").read_text())
         assert "provenance" in findings[0]
@@ -256,11 +265,13 @@ class TestRecordFindingProvenance:
 
     def test_stores_supporting_commands(self, manager, active_case, audit):
         cmds = [
-            {"command": "ps aux", "output_excerpt": "pid list", "purpose": "Check procs"}
+            {
+                "command": "ps aux",
+                "output_excerpt": "pid list",
+                "purpose": "Check procs",
+            }
         ]
-        manager.record_finding(
-            _valid_finding(), supporting_commands=cmds, audit=audit
-        )
+        manager.record_finding(_valid_finding(), supporting_commands=cmds, audit=audit)
         case_dir = Path(active_case["path"])
         findings = json.loads((case_dir / "findings.json").read_text())
         assert "supporting_commands" in findings[0]
@@ -271,14 +282,18 @@ class TestRecordFindingProvenance:
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "sift-mcp.jsonl").write_text(
-            json.dumps({"evidence_id": "sift-tester-20260225-001", "tool": "run_command"})
+            json.dumps(
+                {"evidence_id": "sift-tester-20260225-001", "tool": "run_command"}
+            )
             + "\n"
         )
         finding = _valid_finding(evidence_ids=["sift-tester-20260225-001"])
         result = manager.record_finding(finding)
         assert result["status"] == "STAGED"
 
-    def test_protected_fields_provenance_content_hash(self, manager, active_case, audit):
+    def test_protected_fields_provenance_content_hash(
+        self, manager, active_case, audit
+    ):
         """User can't inject fake provenance or content_hash."""
         finding = _valid_finding(
             evidence_ids=["sift-tester-20260225-001"],
@@ -296,7 +311,9 @@ class TestRecordFindingProvenance:
         assert findings[0]["provenance"] != "FAKE"
         assert findings[0]["content_hash"] != "fake_hash"
 
-    def test_supporting_commands_missing_fields_skipped(self, manager, active_case, audit):
+    def test_supporting_commands_missing_fields_skipped(
+        self, manager, active_case, audit
+    ):
         """Commands missing required fields are skipped."""
         cmds = [
             {"command": "ls"},  # Missing purpose
