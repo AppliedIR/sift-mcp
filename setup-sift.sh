@@ -309,6 +309,23 @@ if ${UNINSTALL_MODE:-false}; then
         echo ""
     fi
 
+    # [7] Verification ledger (/var/lib/aiir)
+    VERIF_DIR="/var/lib/aiir"
+    if [[ -d "$VERIF_DIR" ]]; then
+        echo -e "${BOLD}[7] Verification ledger${NC}"
+        echo "    Path: $VERIF_DIR/verification/"
+        LEDGER_COUNT=$(find "$VERIF_DIR/verification" -name "*.jsonl" 2>/dev/null | wc -l)
+        echo "    Ledger files: $LEDGER_COUNT"
+        echo -e "    ${YELLOW}Contains HMAC approval records for case findings.${NC}"
+        echo ""
+        if prompt_yn_strict "    Remove verification ledger? (requires sudo)"; then
+            sudo rm -rf "$VERIF_DIR" && ok "Verification ledger removed." || warn "Could not remove $VERIF_DIR (sudo required)"
+        else
+            info "Skipped. Ledger preserved at $VERIF_DIR"
+        fi
+        echo ""
+    fi
+
     # Case data warning
     CASES_DIR="$HOME/cases"
     if [[ -d "$CASES_DIR" ]]; then
