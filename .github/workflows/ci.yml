@@ -49,9 +49,9 @@ jobs:
           pip install -e packages/report-mcp
 
       # forensic-rag: not installed in CI (chromadb has fragile transitive
-      # deps). conftest.py guards imports so tests skip gracefully.
+      # deps). Tests and conftest import rag_mcp at module level.
 
       - name: Install test dependencies
         run: pip install pytest pytest-asyncio pytest-timeout pytest-cov
 
-      - run: pytest tests/ -v --tb=short
+      - run: pytest tests/ -v --tb=short --ignore=tests/test_forensic_rag
