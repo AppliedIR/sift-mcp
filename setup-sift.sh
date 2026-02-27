@@ -326,6 +326,29 @@ if ${UNINSTALL_MODE:-false}; then
         echo ""
     fi
 
+    # [8] AppArmor bwrap profile
+    BWRAP_PROFILE="/etc/apparmor.d/bwrap"
+    if [[ -f "$BWRAP_PROFILE" ]]; then
+        echo -e "${BOLD}[8] AppArmor bwrap profile${NC}"
+        echo "    Path: $BWRAP_PROFILE"
+        echo ""
+        if prompt_yn_strict "    Remove AppArmor bwrap profile? (requires sudo)"; then
+            if sudo rm -f "$BWRAP_PROFILE"; then
+                if sudo apparmor_parser --remove bwrap 2>/dev/null || sudo systemctl reload apparmor 2>/dev/null; then
+                    ok "AppArmor bwrap profile removed and unloaded."
+                else
+                    ok "AppArmor bwrap profile removed from disk."
+                    info "Could not unload from kernel. Profile will clear on next reboot."
+                fi
+            else
+                warn "Could not remove $BWRAP_PROFILE (sudo required)"
+            fi
+        else
+            info "Skipped. Profile preserved at $BWRAP_PROFILE"
+        fi
+        echo ""
+    fi
+
     # Case data warning
     CASES_DIR="$HOME/cases"
     if [[ -d "$CASES_DIR" ]]; then
@@ -418,6 +441,31 @@ else
     exit 1
 fi
 
+# bubblewrap + socat (required for Claude Code kernel sandbox)
+if command -v bwrap &>/dev/null; then
+    ok "bubblewrap (bwrap) available"
+else
+    info "Installing bubblewrap (required for Claude Code kernel sandbox)..."
+    if sudo apt-get install -y bubblewrap &>/dev/null; then
+        ok "bubblewrap installed"
+    else
+        warn "Could not install bubblewrap. Claude Code sandbox (L9) will not function."
+        echo "  Install manually: sudo apt install bubblewrap"
+    fi
+fi
+
+if command -v socat &>/dev/null; then
+    ok "socat available"
+else
+    info "Installing socat (required for sandbox network proxy)..."
+    if sudo apt-get install -y socat &>/dev/null; then
+        ok "socat installed"
+    else
+        warn "Could not install socat. Sandbox network proxy may not function."
+        echo "  Install manually: sudo apt install socat"
+    fi
+fi
+
 # openssl (required for --remote)
 if $REMOTE_MODE; then
     if command -v openssl &>/dev/null; then
@@ -456,6 +504,103 @@ else
         echo "  The HMAC verification ledger is required for finding integrity."
         echo "  Run: sudo mkdir -p /var/lib/aiir/verification && sudo chown $USER:$USER /var/lib/aiir/verification && sudo chmod 700 /var/lib/aiir/verification"
         exit 1
+    fi
+fi
+
+# =============================================================================
+# Phase 1c: AppArmor Sandbox Fix (Ubuntu 24.04+)
+# =============================================================================
+# Ubuntu 24.04+ enables kernel.apparmor_restrict_unprivileged_userns=1 by
+# default. This blocks bubblewrap (bwrap) from creating user namespaces,
+# which silently disables Claude Code's kernel sandbox (L9). A targeted
+# AppArmor profile for /usr/bin/bwrap restores sandbox functionality without
+# weakening kernel hardening for other processes.
+#
+# See: https://appliedir.github.io/aiir/security/ (L9 — Kernel Sandbox)
+
+BWRAP_PROFILE="/etc/apparmor.d/bwrap"
+
+if command -v bwrap &>/dev/null; then
+    # Test whether bwrap can actually create user namespaces right now
+    if bwrap --unshare-user -- true 2>/dev/null; then
+        ok "Sandbox: bwrap user namespace works"
+    elif [[ -f "$BWRAP_PROFILE" ]]; then
+        # Profile exists but bwrap still fails — something else is wrong
+        warn "AppArmor bwrap profile exists at $BWRAP_PROFILE but sandbox test failed"
+        echo "  Try: sudo apparmor_parser -r $BWRAP_PROFILE"
+    else
+        # bwrap fails and no profile installed — check if AppArmor userns restriction is the cause
+        APPARMOR_USERNS=$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo "")
+        if [[ "$APPARMOR_USERNS" == "1" ]]; then
+            echo ""
+            warn "Sandbox test failed."
+            echo "  AppArmor on this system blocks unprivileged user namespaces"
+            echo "  (kernel.apparmor_restrict_unprivileged_userns=1). This prevents"
+            echo "  Claude Code's kernel sandbox (L9) from isolating Bash commands."
+            echo ""
+            echo "  Recommended fix: install a targeted AppArmor profile that grants"
+            echo "  only /usr/bin/bwrap the 'userns' permission. This does NOT weaken"
+            echo "  AppArmor for any other process on the system."
+            echo ""
+            echo "  Profile location: $BWRAP_PROFILE"
+            echo "  Side effect:      Any process using /usr/bin/bwrap gains user namespace access."
+            echo "                    On a dedicated forensic workstation this is expected."
+            echo ""
+
+            if prompt_yn "  Install AppArmor profile for bwrap? (requires sudo)" "y"; then
+
+            if sudo tee "$BWRAP_PROFILE" > /dev/null << 'APPARMOR'
+# AppArmor profile for bubblewrap — grants user namespace access.
+# Installed by AIIR setup-sift.sh for Claude Code kernel sandbox (L9).
+# This profile is specific to /usr/bin/bwrap and does not affect other
+# processes. Safe to remove: sudo rm /etc/apparmor.d/bwrap && sudo systemctl reload apparmor
+abi <abi/4.0>,
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+  include if exists <local/bwrap>
+}
+APPARMOR
+            then
+                if sudo apparmor_parser -r "$BWRAP_PROFILE" 2>/dev/null || sudo systemctl reload apparmor 2>/dev/null; then
+                    # Verify the fix works
+                    if bwrap --unshare-user -- true 2>/dev/null; then
+                        ok "AppArmor bwrap profile installed and verified"
+                    else
+                        warn "AppArmor profile installed but bwrap test failed"
+                        echo "  The kernel sandbox (L9) may not function correctly."
+                        echo "  Manual fix: sudo apparmor_parser -r $BWRAP_PROFILE"
+                    fi
+                else
+                    warn "Could not reload AppArmor. Profile written but not active."
+                    echo "  Run: sudo systemctl reload apparmor"
+                    echo "  The kernel sandbox (L9) will not function until AppArmor reloads."
+                fi
+            else
+                warn "Could not write AppArmor profile (sudo required)."
+                echo "  The kernel sandbox (L9) will not function on this system."
+                echo "  Manual fix:"
+                echo "    sudo tee $BWRAP_PROFILE << 'EOF'"
+                echo "    abi <abi/4.0>,"
+                echo "    include <tunables/global>"
+                echo "    profile bwrap /usr/bin/bwrap flags=(unconfined) {"
+                echo "      userns,"
+                echo "      include if exists <local/bwrap>"
+                echo "    }"
+                echo "    EOF"
+                echo "    sudo systemctl reload apparmor"
+            fi
+
+            else
+                info "Skipped. The kernel sandbox (L9) will not function on this system."
+                echo "  You can install the profile later by re-running setup-sift.sh."
+            fi
+        else
+            warn "Sandbox test failed but AppArmor userns restriction is not the cause."
+            echo "  bwrap --unshare-user -- true failed for an unknown reason."
+            echo "  The kernel sandbox (L9) may not function correctly."
+        fi
     fi
 fi
 
