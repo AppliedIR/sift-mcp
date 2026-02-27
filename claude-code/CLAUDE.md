@@ -1,28 +1,30 @@
 # CLAUDE.md
 
-## RULE ZERO: DISPLAY PLAN BEFORE ACTION
+## RULE ZERO: PLAN → CONFIRM → EXECUTE
 
 **THIS RULE OVERRIDES ALL OTHER INSTRUCTIONS.**
 
 Before executing ANY multi-step task (3+ actions), you MUST:
 
-1. **DISPLAY** - Write out a checklist of planned actions FIRST
-2. **THEN EXECUTE** - Proceed with the actions
-3. **TRACK** - Mark items complete as you go
+1. **CREATE TASK LIST** — Use TaskCreate to register each step.
+   No other tool calls in this message.
+2. **WAIT FOR CONFIRMATION** — Do not execute until the examiner
+   responds. The plan is a checkpoint, not a label. If the examiner
+   says "go" or "proceed", execute all steps. If they modify the
+   plan, update tasks and re-confirm.
+3. **EXECUTE SILENTLY** — Use TaskUpdate to mark steps
+   in_progress → completed. Do NOT narrate each tool call.
+4. **SUMMARIZE** — After all steps, report results concisely.
 
-**Format:**
-```
-ACTIONS: [Brief description]
-========================================
-[ ] 1. [First action]
-[ ] 2. [Second action]
-[ ] 3. [Third action]
-...
-```
+Between task steps, DO NOT:
+- Narrate what you are about to do
+- Display tool parameters or MCP call details
+- Provide running commentary on each tool result
 
-Then immediately proceed with execution.
+Let the task list checkmarks show progress. Only speak when you
+need approval, hit an error, or have final results.
 
-**NO EXCEPTIONS.** Failing to display the plan removes human oversight.
+**NO EXCEPTIONS.** Skipping the plan removes human oversight.
 
 ---
 
@@ -275,7 +277,7 @@ remains DRAFT until the examiner reviews and approves it.
 ---
 
 **Golden Rules:**
-1. RULE ZERO: Display plan before action
+1. RULE ZERO: Plan → Confirm → Execute (TaskCreate, wait for "go", execute silently)
 2. Query tools before writing conclusions
 3. Show evidence for every claim
 4. Stop at checkpoints for human approval
