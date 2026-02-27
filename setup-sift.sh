@@ -136,7 +136,10 @@ prompt_yn() {
 prompt_yn_strict() {
     local msg="$1"
     while true; do
-        read -rp "$(echo -e "${BOLD}$msg${NC} [y/n]: ")" answer
+        if ! read -rp "$(echo -e "${BOLD}$msg${NC} [y/n]: ")" answer; then
+            echo ""
+            return 1
+        fi
         case "${answer,,}" in
             y) return 0 ;;
             n) return 1 ;;
@@ -565,6 +568,11 @@ header "Installing Packages"
 VENV_DIR=$(realpath -m "$VENV_DIR")
 mkdir -p "$(dirname "$VENV_DIR")"
 
+if [[ -d "$VENV_DIR" && ! -f "$VENV_DIR/bin/python" ]]; then
+    warn "Broken virtual environment detected at $VENV_DIR — recreating..."
+    rm -rf "$VENV_DIR"
+fi
+
 if [[ ! -d "$VENV_DIR" ]]; then
     info "Creating virtual environment at $VENV_DIR..."
     if ! $PYTHON -m venv "$VENV_DIR"; then
@@ -575,7 +583,7 @@ if [[ ! -d "$VENV_DIR" ]]; then
 fi
 
 if [[ ! -f "$VENV_DIR/bin/python" ]]; then
-    err "Virtual environment created but python not found at $VENV_DIR/bin/python"
+    err "Virtual environment at $VENV_DIR is missing python binary"
     exit 1
 fi
 
@@ -1266,11 +1274,11 @@ if $REMOTE_MODE; then
             echo -e "${BOLD}Remote client setup${NC} (run on the machine where your LLM client runs):"
             echo ""
             echo "  Linux (full support):"
-            echo "    curl -sSL https://raw.githubusercontent.com/AppliedIR/aiir/main/setup-client-linux.sh \\"
+            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/aiir/main/setup-client-linux.sh \\"
             echo "      | bash -s -- --sift=$GW_URL --code=$JOIN_CODE"
             echo ""
             echo "  macOS:"
-            echo "    curl -sSL https://raw.githubusercontent.com/AppliedIR/aiir/main/setup-client-macos.sh \\"
+            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/aiir/main/setup-client-macos.sh \\"
             echo "      | bash -s -- --sift=$GW_URL --code=$JOIN_CODE"
             echo ""
             echo "  Windows (PowerShell):"

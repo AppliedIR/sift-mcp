@@ -6,14 +6,14 @@
 # Auto-selects quick tier. Prompts for examiner identity and LLM client.
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/aiir-quickstart.sh && bash /tmp/aiir-quickstart.sh
+#   curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/aiir-quickstart.sh && bash /tmp/aiir-quickstart.sh
 #
 set -euo pipefail
 
 SETUP_SCRIPT=$(mktemp /tmp/aiir-setup-XXXXXX.sh)
 trap 'rm -f "$SETUP_SCRIPT"' EXIT
 
-curl -sSL "https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/setup-sift.sh" \
+curl -fsSL "https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/setup-sift.sh" \
     -o "$SETUP_SCRIPT"
 
 bash "$SETUP_SCRIPT" --quick "$@"
