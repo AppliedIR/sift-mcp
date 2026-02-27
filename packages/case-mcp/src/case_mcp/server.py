@@ -189,11 +189,9 @@ def create_server() -> FastMCP:
     @server.tool()
     def evidence_register(path: str, description: str = "") -> str:
         """Register an evidence file with the active case. Computes
-        SHA-256 hash, sets file to read-only (chmod 444), and adds to
-        evidence registry.
+        SHA-256 hash and adds to evidence registry.
 
-        Confirm with the examiner before registering — this modifies
-        file permissions and is difficult to undo.
+        Confirm with the examiner before registering.
         """
         try:
             _validate_str_length(description, "description", _MAX_TEXT)
