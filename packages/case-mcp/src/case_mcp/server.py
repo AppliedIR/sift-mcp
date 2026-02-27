@@ -382,25 +382,28 @@ def create_server() -> FastMCP:
     @server.tool()
     def log_external_action(command: str, output_summary: str, purpose: str) -> str:
         """Record a tool execution performed outside this MCP server
-        (e.g., via Bash or another backend). Without this record, the
-        action has no audit entry and findings cannot reference it."""
+        (e.g., via Bash or another backend). Response includes an evidence_id
+        field that can be used in record_finding's evidence_ids list. Without
+        this record, the action has no audit entry and findings cannot
+        reference it."""
         _validate_str_length(command, "command", _MAX_TEXT)
         _validate_str_length(output_summary, "output_summary", _MAX_TEXT)
         _validate_str_length(purpose, "purpose", _MAX_TEXT)
-        result = {
-            "status": "logged",
-            "note": "orchestrator_voluntary -- not independently verified",
-        }
-        audit.log(
+        evidence_id = audit.log(
             tool="log_external_action",
             params={
                 "command": command,
                 "output_summary": output_summary,
                 "purpose": purpose,
             },
-            result_summary=result,
+            result_summary={"status": "logged"},
             source="orchestrator_voluntary",
         )
+        result = {
+            "status": "logged",
+            "evidence_id": evidence_id,
+            "note": "orchestrator_voluntary -- not independently verified",
+        }
         return json.dumps(result)
 
     return server

@@ -141,13 +141,40 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         analyst_override: str = "",
         supporting_commands: list[dict] | None = None,
     ) -> dict:
-        """Stage finding as DRAFT for human review. Required fields in finding dict: title (str), description (str), confidence (LOW/MEDIUM/HIGH), evidence_ids (list of str, non-empty). Optional: type, mitre_attack, iocs, source, supporting_commands (list of {command, output_excerpt, purpose} for Bash-sourced evidence). Requires human approval via 'aiir approve'."""
+        """Stage finding as DRAFT for human review.
+
+        Required fields in finding dict:
+        - title (str): brief summary
+        - observation (str): factual evidence — what was seen
+        - interpretation (str): analytical meaning — what it implies
+        - confidence (SPECULATIVE/LOW/MEDIUM/HIGH)
+        - confidence_justification (str): why this confidence level
+        - type: finding, conclusion, attribution, or exclusion
+        - evidence_ids (list of str): registered evidence IDs or audit-trail IDs
+
+        Optional fields:
+        - mitre_ids (list of str): ATT&CK technique IDs (e.g. ["T1055", "T1053.005"])
+        - iocs (list of str): indicators of compromise
+        - event_type, artifact_ref, related_findings
+
+        supporting_commands (separate parameter, list of dicts): for evidence obtained
+        via Bash rather than MCP tools. Each dict: {command, output_excerpt, purpose}.
+
+        Requires human approval via 'aiir approve'."""
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
         if isinstance(finding, dict):
             _validate_str_length(finding.get("title"), "title", _MAX_TITLE)
             _validate_str_length(finding.get("observation"), "observation", _MAX_TEXT)
             _validate_str_length(finding.get("interpretation"), "interpretation", _MAX_TEXT)
             _validate_str_length(finding.get("confidence_justification"), "confidence_justification", _MAX_TEXT)
+        # Coerce JSON string to list (LLMs often serialize list[dict] as a string)
+        if isinstance(supporting_commands, str):
+            try:
+                supporting_commands = json.loads(supporting_commands)
+            except (json.JSONDecodeError, TypeError):
+                supporting_commands = None
+        if not isinstance(supporting_commands, list):
+            supporting_commands = None
         if supporting_commands:
             for cmd in supporting_commands[:5]:
                 if isinstance(cmd, dict):
