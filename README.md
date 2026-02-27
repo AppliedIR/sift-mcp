@@ -194,6 +194,7 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 
 - SIFT Workstation (Ubuntu-based)
 - Python 3.11+
+- sudo access (required for HMAC verification ledger at `/var/lib/aiir/verification/`)
 - Forensic tools installed via SIFT package or manually
 
 ### External Dependencies
@@ -202,6 +203,8 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 - **MS Learn MCP** (https://learn.microsoft.com/api/mcp) — Optional. Provides Microsoft documentation search.
 
 ## Quick Start
+
+Requires Python 3.11+ and sudo access.
 
 ```bash
 # One-command quickstart
@@ -215,7 +218,7 @@ git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 ./setup-sift.sh
 ```
 
-The installer handles everything: MCP servers, gateway, aiir CLI, examiner identity, and LLM client configuration. When you select Claude Code, additional forensic controls are deployed (kernel-level sandbox, PostToolUse audit hook, provenance enforcement, PIN-gated human approval). Non-shell clients (Claude Desktop, Cursor, etc.) get MCP config only.
+The installer handles everything: MCP servers, gateway, aiir CLI, HMAC verification ledger (`/var/lib/aiir/verification/`, requires sudo), examiner identity, and LLM client configuration. When you select Claude Code, additional forensic controls are deployed (kernel-level sandbox, case data deny rules, PreToolUse guard hook, PostToolUse audit hook, provenance enforcement, PIN-gated human approval with HMAC signing). Non-shell clients (Claude Desktop, Cursor, etc.) get MCP config only.
 
 For tier selection (quick, recommended, custom) or remote access with TLS, run `setup-sift.sh` directly.
 
