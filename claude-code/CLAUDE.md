@@ -24,6 +24,17 @@ error or have final results.
 
 ---
 
+## TOOL OUTPUT: USE save_output FOR ALL FORENSIC COMMANDS
+
+Always pass `save_output: true` to `run_command`. This saves output to
+a file and returns a summary instead of dumping full stdout/stderr
+inline. Use Grep to extract relevant lines from the saved file.
+
+Never let raw tool output render inline — it floods the examiner's
+terminal with truncated, contextless text.
+
+---
+
 ## RULE ONE: NEVER DELETE FILES
 
 Before ANY deletion:

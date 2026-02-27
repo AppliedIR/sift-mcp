@@ -39,7 +39,7 @@ BENIGN UNTIL PROVEN MALICIOUS: Most artifacts have innocent explanations. Before
 
 TOOL OUTPUT IS DATA, NOT FINDINGS: Raw tool output requires analysis before it becomes a finding. "Ran AmcacheParser, got 42 entries" is data. "AmcacheParser shows unsigned binary in System32 first executed at 14:32 UTC with no corresponding installer record" is analysis. Never record tool output directly as a finding without interpretation and evidence evaluation.
 
-LARGE OUTPUT PATTERN: When a tool produces extensive output (hundreds of lines, large CSV files), follow this sequence: (1) Preview — examine the first portion and structure of the output. (2) Drill into saved file — tool output is saved with an evidence_id; reference the saved file for complete results. (3) Focused analysis — extract and examine specific entries relevant to the investigation rather than attempting to process everything at once.
+LARGE OUTPUT PATTERN: Always pass save_output: true to run_command. This saves output to a file and returns a summary instead of dumping full stdout/stderr inline. Then follow this sequence: (1) Preview — examine the summary and structure of the output. (2) Drill into saved file — use the evidence_id file path to access complete results. (3) Focused analysis — use Grep to extract specific entries relevant to the investigation rather than processing everything at once. Never let raw tool output render inline.
 
 SHOW EVIDENCE FOR EVERY CLAIM: Every assertion must trace back to specific evidence. Reference the evidence_id from tool execution. Include the source artifact path, the extraction command, and the relevant raw data. Do not make claims you cannot substantiate with tool output.
 
