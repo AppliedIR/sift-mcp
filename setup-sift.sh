@@ -1261,6 +1261,18 @@ for pip_name, module in pkg_list:
         pass
     packages[pip_name] = {"module": module, "version": version}
 
+git_hashes = {}
+for repo_name, repo_dir in [("sift-mcp", install_dir), ("aiir", os.path.join(os.path.dirname(install_dir), "aiir"))]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", repo_dir, "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            git_hashes[repo_name] = result.stdout.strip()
+    except Exception:
+        pass
+
 manifest = {
     "version": "1.0",
     "installed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -1270,6 +1282,7 @@ manifest = {
     "gateway_port": port,
     "packages": packages,
     "case_dir": os.path.expanduser("~/cases"),
+    "git": git_hashes,
 }
 
 with open("$MANIFEST", "w") as f:
