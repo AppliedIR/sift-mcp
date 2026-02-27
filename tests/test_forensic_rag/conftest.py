@@ -15,10 +15,17 @@ import os
 from pathlib import Path
 
 import pytest
-from rag_mcp.index import DEFAULT_INDEX_DIR, RAGIndex
-from rag_mcp.server import RAGServer
+
+try:
+    from rag_mcp.index import DEFAULT_INDEX_DIR, RAGIndex
+    from rag_mcp.server import RAGServer
+except ImportError:
+    RAGIndex = None  # type: ignore[assignment,misc]
+    RAGServer = None  # type: ignore[assignment,misc]
+    DEFAULT_INDEX_DIR = ""
 
 _SKIP_MSG = "RAG index not built. Run `python -m rag_mcp.build` to enable these tests."
+_MISSING_MSG = "rag_mcp not installed (chromadb dependency chain). Install locally to run."
 
 
 def _chroma_dir() -> Path:
@@ -43,6 +50,8 @@ def rag_index():
 
     Skips the entire test if the ChromaDB index hasn't been built.
     """
+    if RAGIndex is None:
+        pytest.skip(_MISSING_MSG)
     if not rag_index_available():
         pytest.skip(_SKIP_MSG)
     idx = RAGIndex()
@@ -57,6 +66,8 @@ def rag_server():
     Skips when the index isn't built because most server operations
     (search, list_sources, get_stats) call ``index.load()`` internally.
     """
+    if RAGServer is None:
+        pytest.skip(_MISSING_MSG)
     if not rag_index_available():
         pytest.skip(_SKIP_MSG)
     return RAGServer()

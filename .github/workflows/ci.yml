@@ -48,10 +48,10 @@ jobs:
           pip install -e packages/case-mcp
           pip install -e packages/report-mcp
 
-      # forensic-rag skipped: chromadb has fragile transitive deps (opentelemetry)
-      # that break across Python versions. Run forensic-rag tests locally.
+      # forensic-rag: not installed in CI (chromadb has fragile transitive
+      # deps). conftest.py guards imports so tests skip gracefully.
 
       - name: Install test dependencies
         run: pip install pytest pytest-asyncio pytest-timeout pytest-cov
 
-      - run: pytest tests/ -v --tb=short --ignore=tests/test_forensic_rag
+      - run: pytest tests/ -v --tb=short
