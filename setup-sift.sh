@@ -1344,17 +1344,24 @@ elif ! $MANUAL_START; then
     info "Starting gateway on port $GATEWAY_PORT..."
     "$VENV_DIR/bin/python" -m sift_gateway --config "$GATEWAY_CONFIG" &
     GATEWAY_PID=$!
-    sleep 2
 
-    if kill -0 "$GATEWAY_PID" 2>/dev/null; then
+    # Wait for health endpoint (backends need time to start)
+    GW_READY=false
+    for i in 1 2 3 4 5 6; do
+        sleep 1
+        if ! kill -0 "$GATEWAY_PID" 2>/dev/null; then
+            warn "Gateway failed to start. Check $GATEWAY_CONFIG"
+            GATEWAY_PID=""
+            break
+        fi
         if curl -sf ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
             ok "Gateway running on port $GATEWAY_PORT"
-        else
-            warn "Gateway started but health check failed"
+            GW_READY=true
+            break
         fi
-    else
-        warn "Gateway failed to start. Check $GATEWAY_CONFIG"
-        GATEWAY_PID=""
+    done
+    if [[ -n "${GATEWAY_PID:-}" ]] && ! $GW_READY; then
+        warn "Gateway process running but health check not responding after 6s"
     fi
 fi
 
