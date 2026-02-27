@@ -44,7 +44,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | Component | Purpose |
 |-----------|---------|
 | **sift-gateway** | Aggregates SIFT-local MCPs. Starts each as a stdio subprocess. Exposes all their tools via `/mcp` (Streamable HTTP) and `/api/v1/tools` (REST). API key → examiner identity mapping for multi-user. |
-| **forensic-mcp** | Findings, timeline, evidence, TODOs, discipline rules. The investigation state machine. 15 tools + 14 MCP resources. |
+| **forensic-mcp** | Findings, timeline, evidence, TODOs, discipline rules. The investigation state machine. 12 tools + 14 MCP resources (or 26 tools in tools mode for clients without resource support). |
 | **case-mcp** | Case lifecycle and status. Init, activate, close, migrate, list cases, case info, evidence summary, timeline summary, findings summary, recent activity, disk usage, export, import. 13 tools. |
 | **report-mcp** | Report generation with data-driven profiles (full, executive, timeline, ioc, findings, status). Aggregates approved findings, IOCs, MITRE mappings, and Zeltser IR Writing guidance. 6 tools. |
 | **sift-mcp** | Authenticated, denylist-protected forensic tool execution on Linux/SIFT. Zimmerman suite, Volatility, Sleuth Kit, Hayabusa, etc. FK-enriched response envelopes. 6 core tools, 65+ catalog entries. |
