@@ -23,17 +23,15 @@ RIGHT: [Tool 1, Tool 2, Tool 3] -> wait once -> all results
 
 ## Backend Availability
 
-Not all backends are installed on every deployment. Check what's
-available before planning a workflow:
+Lite mode runs MCP servers directly (no gateway). Check what's
+available by calling each MCP's health tool:
 
-| Backend | Quick tier | Recommended tier | How to check |
-|---------|-----------|-----------------|--------------|
-| forensic-mcp | Always | Always | `aiir service status` |
-| sift-mcp | Always | Always | `aiir service status` |
-| windows-triage | No | Yes | `aiir service status` |
-| forensic-rag | No | Yes | `aiir service status` |
-| opencti-mcp | No | If configured | `aiir service status` |
-| remnux-mcp | No | User-provided | `aiir service status` |
+| Backend | Default | Optional | How to check |
+|---------|---------|----------|--------------|
+| forensic-rag | Yes | — | MCP tool `get_stats` |
+| windows-triage | Yes | — | MCP tool `get_health` |
+| opencti-mcp | No | `--opencti` flag | MCP tool `get_health` |
+| remnux-mcp | No | User-provided | MCP tool `check_tools` |
 
 If a backend is unavailable, skip its steps in workflows below and
 note the gap. Do not fail the investigation — degrade gracefully.
@@ -69,7 +67,7 @@ User Question
                                                         +-------------+       | YES          | NO
                                                                               v              v
                                                                        +--------------+ +----------+
-                                                                       | windows-     | | sift-mcp |
+                                                                       | windows-     | | Bash     |
                                                                        | triage       | | tools    |
                                                                        +--------------+ +----------+
 ```
@@ -97,7 +95,7 @@ User Question
 | IOC Extraction from File | remnux-mcp `extract_iocs` | `bulk_extractor` |
 | Specific REMnux Tool | remnux-mcp `run_tool` | — |
 | Run forensic tool | Bash (see FORENSIC_TOOLS.md) | — |
-| Tool recommendations | sift-mcp `suggest_tools` | forensic-mcp `get_tool_guidance` |
+| Tool recommendations | forensic-rag `search` | FORENSIC_TOOLS.md |
 | EVTX Analysis | `EvtxECmd` | — |
 | Memory Analysis | `vol` (Volatility 3) | — |
 | Disk Forensics | `fls`, `mmls`, `icat` | — |
@@ -108,15 +106,10 @@ User Question
 
 ## Trigger Keywords
 
-### forensic-mcp
-- "record", "finding", "timeline", "case", "todo", "evidence"
-- "status", "audit", "action log"
-- Investigation management and documentation
-
-### sift-mcp
+### Bash (forensic tools)
 - Tool names: fls, mmls, icat, vol, strings, yara, exiftool, grep, etc.
 - "run", "execute", "analyze disk", "extract file", "parse"
-- "what tools", "suggest tools for", "how to use [tool]"
+- See FORENSIC_TOOLS.md for syntax and usage
 
 ### windows-triage
 - ANY filename (e.g., "scvhost.exe", "svchost.exe")
@@ -334,8 +327,8 @@ vol -f memory.dmp windows.svcscan
 ### MCP Failures
 | Error | Action |
 |-------|--------|
-| Tool not found | Check `aiir service status`, restart backend |
-| Connection refused | `aiir service restart [backend]` |
+| Tool not found | Check MCP server is running, restart Claude Code |
+| Connection refused | Restart Claude Code to reconnect MCP servers |
 | Timeout | Retry with simpler query or smaller scope |
 | Empty results | Try broader query, different source |
 | Backend unavailable | Note gap, use fallback from matrix above |
