@@ -186,6 +186,46 @@ body {
 .tab-panel.active { display: flex; }
 .tab-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; width: 100%; color: var(--text-muted); font-size: 16px; }
 
+/* Dashboard tab */
+.dashboard-content { padding: 24px; overflow-y: auto; width: 100%; }
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.dash-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+.dash-card h3 { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+.dash-stat { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+.dash-detail { font-size: 13px; color: var(--text-secondary); line-height: 1.8; }
+.dash-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 8px; background: var(--bg-tertiary); }
+.dash-bar-seg { height: 100%; transition: width 0.3s; }
+.dash-meta { margin-top: 16px; }
+.dash-meta-row { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.dash-meta-row:last-child { border-bottom: none; }
+.dash-meta-label { color: var(--text-secondary); min-width: 100px; }
+.btn-start-review { margin-top: 16px; background: var(--accent); color: white; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
+.btn-start-review:hover { background: var(--accent-hover); }
+
+/* Evidence/TODO tables */
+.tab-table-wrap { padding: 16px; overflow: auto; width: 100%; }
+.tab-table-controls { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+.tab-table-controls select, .tab-table-controls input { background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); padding: 4px 8px; border-radius: 4px; font-size: 13px; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th { text-align: left; padding: 8px 12px; background: var(--bg-secondary); border-bottom: 2px solid var(--border); color: var(--text-secondary); font-weight: 500; cursor: pointer; white-space: nowrap; user-select: none; }
+.data-table th:hover { color: var(--text-primary); }
+.data-table th.sorted-asc::after { content: ' \u25b2'; font-size: 10px; }
+.data-table th.sorted-desc::after { content: ' \u25bc'; font-size: 10px; }
+.data-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.data-table tr:hover { background: var(--bg-hover); }
+.data-table .hash { font-family: monospace; font-size: 12px; color: var(--text-muted); }
+.data-table .ref-link { color: var(--accent); cursor: pointer; text-decoration: none; }
+.data-table .ref-link:hover { text-decoration: underline; }
+.verify-btn { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.verify-btn:hover { background: var(--bg-hover); }
+.verify-ok { color: var(--green); font-weight: 500; }
+.verify-fail { color: var(--red); font-weight: 500; }
+.priority-high { color: var(--red); font-weight: 500; }
+.priority-medium { color: var(--amber); }
+.priority-low { color: var(--text-muted); }
+.status-open { color: var(--amber); }
+.status-completed { color: var(--green); }
+
 /* Keyboard overlay */
 .shortcuts-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
 .shortcuts-overlay.visible { display: flex; }
@@ -327,7 +367,10 @@ body {
 
   <!-- Tab panels -->
   <div class="tab-panel" data-panel="dashboard">
-    <div class="tab-placeholder">Dashboard tab — coming soon</div>
+    <div class="dashboard-content" id="dashboardContent">
+      <div class="dash-grid" id="dashGrid"></div>
+      <div class="dash-meta" id="dashMeta"></div>
+    </div>
   </div>
 
   <div class="tab-panel active" data-panel="findings">
@@ -370,11 +413,47 @@ body {
   </div>
 
   <div class="tab-panel" data-panel="evidence">
-    <div class="tab-placeholder">Evidence tab — coming soon</div>
+    <div class="tab-table-wrap">
+      <h3 style="margin-bottom:12px;font-size:15px;">Evidence Registry</h3>
+      <table class="data-table" id="evidenceTable">
+        <thead>
+          <tr>
+            <th data-sort="path">Path</th>
+            <th data-sort="sha256">SHA-256</th>
+            <th data-sort="description">Description</th>
+            <th data-sort="registered_at">Registered</th>
+            <th data-sort="registered_by">By</th>
+            <th>Referenced By</th>
+            <th>Verify</th>
+          </tr>
+        </thead>
+        <tbody id="evidenceBody"></tbody>
+      </table>
+    </div>
   </div>
 
   <div class="tab-panel" data-panel="todos">
-    <div class="tab-placeholder">TODOs tab — coming soon</div>
+    <div class="tab-table-wrap">
+      <h3 style="margin-bottom:12px;font-size:15px;">TODO Items</h3>
+      <div class="tab-table-controls">
+        <select id="todoFilterPriority"><option value="">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+        <select id="todoFilterStatus"><option value="">All statuses</option><option value="open">Open</option><option value="completed">Completed</option></select>
+      </div>
+      <table class="data-table" id="todosTable">
+        <thead>
+          <tr>
+            <th data-sort="todo_id">ID</th>
+            <th data-sort="description">Description</th>
+            <th data-sort="priority">Priority</th>
+            <th data-sort="assignee">Assignee</th>
+            <th data-sort="status">Status</th>
+            <th>Related</th>
+            <th data-sort="created_at">Created</th>
+          </tr>
+        </thead>
+        <tbody id="todosBody"></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Footer -->
@@ -472,6 +551,13 @@ let filterConf = '';
 let filterType = '';
 let filterProv = '';
 let filterExaminer = '';
+let evidenceData = [];
+let todosData = [];
+let summaryData = null;
+let evidenceSortCol = 'path';
+let evidenceSortAsc = true;
+let todosSortCol = 'priority';
+let todosSortAsc = true;
 
 /* === Token extraction === */
 (function extractToken() {
@@ -1503,6 +1589,9 @@ function updateRefreshBadge() {
 function switchTab(tabName) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tabName));
+  if (tabName === 'dashboard') loadDashboard();
+  else if (tabName === 'evidence') loadEvidence();
+  else if (tabName === 'todos') loadTodos();
 }
 
 /* === Helpers === */
@@ -1528,6 +1617,10 @@ document.addEventListener('keydown', function(e) {
     return;
   }
 
+  // Skip finding shortcuts if not on findings tab
+  const activeTab = document.querySelector('.tab.active');
+  const onFindings = activeTab && activeTab.dataset.tab === 'findings';
+
   // Skip if dialog is open
   if (document.querySelector('.dialog-overlay.visible')) {
     if (e.key === 'Escape') {
@@ -1543,6 +1636,13 @@ document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' || e.key === '?') toggleShortcuts();
     return;
   }
+
+  // Global shortcuts (all tabs)
+  if (e.key === '?') { e.preventDefault(); toggleShortcuts(); return; }
+  if (e.key === 'Escape') { e.preventDefault(); if (editingField) cancelEdit(); return; }
+
+  // Finding-specific shortcuts (findings tab only)
+  if (!onFindings) return;
 
   switch (e.key) {
     case 'j':
@@ -1587,14 +1687,6 @@ document.addEventListener('keydown', function(e) {
       e.preventDefault();
       document.getElementById('searchBox').focus();
       break;
-    case 'Escape':
-      e.preventDefault();
-      if (editingField) cancelEdit();
-      break;
-    case '?':
-      e.preventDefault();
-      toggleShortcuts();
-      break;
   }
 });
 
@@ -1608,6 +1700,240 @@ function navigateSidebar(dir) {
   // Scroll sidebar item into view
   const items = document.querySelectorAll('.sidebar-item');
   if (items[next]) items[next].scrollIntoView({ block: 'nearest' });
+}
+
+/* === Dashboard tab === */
+async function loadDashboard() {
+  try {
+    summaryData = await apiFetch('/api/summary');
+    renderDashboard(summaryData);
+  } catch (e) {
+    document.getElementById('dashGrid').innerHTML =
+      '<div class="dash-card"><h3>Error</h3><p>' + escapeHtml(e.message) + '</p></div>';
+  }
+}
+
+function renderDashboard(summary) {
+  const f = summary.findings || {};
+  const t = summary.timeline || {};
+  const byStatus = f.by_status || {};
+  const draft = byStatus.DRAFT || 0;
+  const approved = byStatus.APPROVED || 0;
+  const rejected = byStatus.REJECTED || 0;
+  const total = f.total || 0;
+
+  const openTodos = (summary.todos || {}).open || 0;
+  const totalTodos = (summary.todos || {}).total || 0;
+
+  // Status bar widths
+  const pctApp = total ? (approved / total * 100) : 0;
+  const pctRej = total ? (rejected / total * 100) : 0;
+  const pctDraft = total ? (draft / total * 100) : 0;
+
+  let grid = '';
+  // Findings card
+  grid += '<div class="dash-card"><h3>Findings</h3>';
+  grid += '<div class="dash-stat">' + total + '</div>';
+  grid += '<div class="dash-detail">' + draft + ' draft, ' + approved + ' approved, ' + rejected + ' rejected</div>';
+  grid += '<div class="dash-bar">';
+  grid += '<div class="dash-bar-seg" style="width:' + pctApp + '%;background:var(--green)"></div>';
+  grid += '<div class="dash-bar-seg" style="width:' + pctRej + '%;background:var(--red)"></div>';
+  grid += '<div class="dash-bar-seg" style="width:' + pctDraft + '%;background:var(--amber)"></div>';
+  grid += '</div></div>';
+
+  // Timeline card
+  const tlTotal = t.total || 0;
+  const tlByStatus = t.by_status || {};
+  grid += '<div class="dash-card"><h3>Timeline</h3>';
+  grid += '<div class="dash-stat">' + tlTotal + '</div>';
+  grid += '<div class="dash-detail">';
+  grid += (tlByStatus.DRAFT || 0) + ' draft, ' + (tlByStatus.APPROVED || 0) + ' approved';
+  grid += '</div></div>';
+
+  // Evidence card
+  grid += '<div class="dash-card"><h3>Evidence</h3>';
+  const evTotal = (summary.evidence || {}).total || 0;
+  grid += '<div class="dash-stat">' + evTotal + '</div>';
+  grid += '<div class="dash-detail">' + evTotal + ' registered file(s)</div></div>';
+
+  // TODOs card
+  grid += '<div class="dash-card"><h3>TODOs</h3>';
+  grid += '<div class="dash-stat">' + openTodos + ' open</div>';
+  grid += '<div class="dash-detail">' + totalTodos + ' total</div></div>';
+
+  document.getElementById('dashGrid').innerHTML = grid;
+
+  // Case metadata
+  let meta = '';
+  if (caseMeta.case_id) {
+    const rows = [
+      ['Case ID', caseMeta.case_id],
+      ['Name', caseMeta.name || ''],
+      ['Status', caseMeta.status || ''],
+      ['Created', formatTime(caseMeta.created_at)],
+      ['Description', caseMeta.description || ''],
+    ];
+    rows.forEach(function(r) {
+      if (r[1]) meta += '<div class="dash-meta-row"><span class="dash-meta-label">' + escapeHtml(r[0]) + '</span><span>' + escapeHtml(String(r[1])) + '</span></div>';
+    });
+  }
+  if (draft > 0) {
+    meta += '<button class="btn-start-review" onclick="switchTab(\'findings\')">Review ' + draft + ' draft finding(s)</button>';
+  }
+  document.getElementById('dashMeta').innerHTML = meta;
+}
+
+/* === Evidence tab === */
+async function loadEvidence() {
+  try {
+    evidenceData = await apiFetch('/api/evidence');
+    renderEvidence();
+  } catch (e) {
+    document.getElementById('evidenceBody').innerHTML =
+      '<tr><td colspan="7" style="color:var(--red)">' + escapeHtml(e.message) + '</td></tr>';
+  }
+}
+
+function renderEvidence() {
+  const sorted = [...evidenceData].sort(function(a, b) {
+    const av = a[evidenceSortCol] || '';
+    const bv = b[evidenceSortCol] || '';
+    const cmp = String(av).localeCompare(String(bv));
+    return evidenceSortAsc ? cmp : -cmp;
+  });
+
+  // Update sort indicators
+  document.querySelectorAll('#evidenceTable th').forEach(function(th) {
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    if (th.dataset.sort === evidenceSortCol) {
+      th.classList.add(evidenceSortAsc ? 'sorted-asc' : 'sorted-desc');
+    }
+  });
+
+  let html = '';
+  sorted.forEach(function(ev) {
+    const eid = ev.evidence_id || ev.id || '';
+    const path = ev.path || '';
+    const sha = ev.sha256 || '';
+    const desc = ev.description || '';
+    const regAt = formatTime(ev.registered_at);
+    const regBy = ev.registered_by || '';
+    const refs = ev.referenced_by || [];
+
+    html += '<tr>';
+    html += '<td>' + escapeHtml(path) + '</td>';
+    html += '<td class="hash" title="' + escapeHtml(sha) + '">' + escapeHtml(sha.substring(0, 12)) + '...</td>';
+    html += '<td>' + escapeHtml(desc) + '</td>';
+    html += '<td>' + escapeHtml(regAt) + '</td>';
+    html += '<td>' + escapeHtml(regBy) + '</td>';
+    html += '<td>';
+    refs.forEach(function(rid) {
+      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeHtml(rid).replace(/'/g, '\\&#39;') + '\')">' + escapeHtml(rid) + '</a> ';
+    });
+    html += '</td>';
+    const evIdx = evidenceData.indexOf(ev);
+    html += '<td id="ev-' + evIdx + '"><button class="verify-btn" onclick="verifyEvidence(' + evIdx + ')">Verify</button></td>';
+    html += '</tr>';
+  });
+
+  if (!sorted.length) {
+    html = '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:24px">No evidence registered</td></tr>';
+  }
+  document.getElementById('evidenceBody').innerHTML = html;
+}
+
+async function verifyEvidence(idx) {
+  const ev = evidenceData[idx];
+  if (!ev) return;
+  const cell = document.getElementById('ev-' + idx);
+  if (cell) cell.innerHTML = 'Checking...';
+  try {
+    const result = await apiFetch('/api/evidence/' + encodeURIComponent(ev.path || '') + '/verify', { method: 'POST' });
+    if (!cell) return;
+    if (result.status === 'verified') {
+      cell.innerHTML = '<span class="verify-ok">Verified</span>';
+    } else if (result.status === 'failed') {
+      cell.innerHTML = '<span class="verify-fail">FAILED</span>';
+    } else {
+      cell.innerHTML = '<span style="color:var(--text-muted)">' + escapeHtml(result.status) + '</span>';
+    }
+  } catch (e) {
+    if (cell) cell.innerHTML = '<span class="verify-fail">Error</span>';
+  }
+}
+
+/* === TODOs tab === */
+async function loadTodos() {
+  try {
+    todosData = await apiFetch('/api/todos');
+    renderTodos();
+  } catch (e) {
+    document.getElementById('todosBody').innerHTML =
+      '<tr><td colspan="7" style="color:var(--red)">' + escapeHtml(e.message) + '</td></tr>';
+  }
+}
+
+function renderTodos() {
+  const filterPrio = document.getElementById('todoFilterPriority').value;
+  const filterStatus = document.getElementById('todoFilterStatus').value;
+
+  let filtered = todosData;
+  if (filterPrio) filtered = filtered.filter(function(t) { return t.priority === filterPrio; });
+  if (filterStatus) filtered = filtered.filter(function(t) { return t.status === filterStatus; });
+
+  // Priority sort order
+  const prioOrder = { high: 0, medium: 1, low: 2 };
+
+  const sorted = [...filtered].sort(function(a, b) {
+    let av, bv;
+    if (todosSortCol === 'priority') {
+      av = prioOrder[a.priority] !== undefined ? prioOrder[a.priority] : 9;
+      bv = prioOrder[b.priority] !== undefined ? prioOrder[b.priority] : 9;
+    } else {
+      av = a[todosSortCol] || '';
+      bv = b[todosSortCol] || '';
+    }
+    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    return todosSortAsc ? cmp : -cmp;
+  });
+
+  // Update sort indicators
+  document.querySelectorAll('#todosTable th').forEach(function(th) {
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    if (th.dataset.sort === todosSortCol) {
+      th.classList.add(todosSortAsc ? 'sorted-asc' : 'sorted-desc');
+    }
+  });
+
+  let html = '';
+  sorted.forEach(function(t) {
+    const tid = t.todo_id || t.id || '';
+    const desc = t.description || '';
+    const prio = t.priority || 'medium';
+    const assignee = t.assignee || '';
+    const status = t.status || 'open';
+    const related = t.related_findings || [];
+    const created = formatTime(t.created_at);
+
+    html += '<tr>';
+    html += '<td>' + escapeHtml(tid) + '</td>';
+    html += '<td>' + escapeHtml(desc) + '</td>';
+    html += '<td class="priority-' + escapeHtml(prio) + '">' + escapeHtml(prio) + '</td>';
+    html += '<td>' + escapeHtml(assignee) + '</td>';
+    html += '<td class="status-' + escapeHtml(status) + '">' + escapeHtml(status) + '</td>';
+    html += '<td>';
+    related.forEach(function(rid) {
+      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeHtml(rid).replace(/'/g, '\\&#39;') + '\')">' + escapeHtml(rid) + '</a> ';
+    });
+    html += '</td>';
+    html += '<td>' + escapeHtml(created) + '</td>';
+    html += '</tr>';
+  });
+
+  if (!sorted.length) {
+    html = '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:24px">No TODOs</td></tr>';
+  }
+  document.getElementById('todosBody').innerHTML = html;
 }
 
 /* === Event listeners === */
@@ -1656,6 +1982,30 @@ document.getElementById('searchBox').addEventListener('input', function() {
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
 });
+
+// Evidence table sorting
+document.querySelectorAll('#evidenceTable th[data-sort]').forEach(th => {
+  th.addEventListener('click', function() {
+    const col = this.dataset.sort;
+    if (evidenceSortCol === col) evidenceSortAsc = !evidenceSortAsc;
+    else { evidenceSortCol = col; evidenceSortAsc = true; }
+    renderEvidence();
+  });
+});
+
+// TODOs table sorting
+document.querySelectorAll('#todosTable th[data-sort]').forEach(th => {
+  th.addEventListener('click', function() {
+    const col = this.dataset.sort;
+    if (todosSortCol === col) todosSortAsc = !todosSortAsc;
+    else { todosSortCol = col; todosSortAsc = true; }
+    renderTodos();
+  });
+});
+
+// TODO filters
+document.getElementById('todoFilterPriority').addEventListener('change', renderTodos);
+document.getElementById('todoFilterStatus').addEventListener('change', renderTodos);
 
 /* === Init === */
 initTheme();
