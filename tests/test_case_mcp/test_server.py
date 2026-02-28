@@ -548,9 +548,8 @@ class TestOpenCaseDashboard:
         with patch("webbrowser.open"):
             result = self._call_tool(case_dir)
 
-        assert (
-            result["url"] == "http://10.0.0.5:9000/dashboard/#token=aiir_gw_testtoken"
-        )
+        # Token stripped from MCP response (LLM should not see bearer token)
+        assert result["url"] == "http://10.0.0.5:9000/dashboard/"
 
     def test_picks_correct_examiner_token(self, case_dir, tmp_path, monkeypatch):
         """Multi-examiner: picks the token matching current examiner."""
@@ -570,7 +569,9 @@ class TestOpenCaseDashboard:
         with patch("webbrowser.open"):
             result = self._call_tool(case_dir)
 
-        assert "#token=aiir_gw_bob" in result["url"]
+        # Token stripped from MCP response (LLM should not see bearer token)
+        assert "#token=" not in result["url"]
+        assert "dashboard/" in result["url"]
 
     def test_falls_back_to_first_key(self, case_dir, tmp_path, monkeypatch):
         """Examiner not in api_keys → falls back to first key."""
@@ -587,7 +588,9 @@ class TestOpenCaseDashboard:
         with patch("webbrowser.open"):
             result = self._call_tool(case_dir)
 
-        assert "#token=aiir_gw_only" in result["url"]
+        # Token stripped from MCP response (LLM should not see bearer token)
+        assert "#token=" not in result["url"]
+        assert "dashboard/" in result["url"]
 
     def test_tls_uses_https(self, case_dir, tmp_path, monkeypatch):
         """TLS configured → scheme is https."""

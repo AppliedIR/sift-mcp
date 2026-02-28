@@ -576,14 +576,20 @@ function apiHeaders() {
 }
 
 async function apiFetch(path, opts) {
-  const headers = apiHeaders();
-  if (opts && opts.headers) Object.assign(headers, opts.headers);
-  const res = await fetch('/dashboard' + path, { ...opts, headers });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || res.statusText);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const headers = apiHeaders();
+    if (opts && opts.headers) Object.assign(headers, opts.headers);
+    const res = await fetch('/dashboard' + path, { ...opts, headers, signal: controller.signal });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || res.statusText);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 /* === Data loading === */
@@ -764,7 +770,7 @@ function renderSidebar() {
     let actionHtml = '';
     if (de) {
       const action = de.action;
-      actionHtml = '<span class="action-pill ' + action + '">' + action.toUpperCase() + '</span>';
+      actionHtml = '<span class="action-pill ' + escapeHtml(action) + '">' + escapeHtml(action).toUpperCase() + '</span>';
     }
 
     const checked = batchSelected.has(f.id) ? ' checked' : '';
@@ -861,7 +867,7 @@ function renderFinding(id) {
   if (de) {
     const hasMods = de.modifications && Object.keys(de.modifications).length > 0;
     const label = de.action.toUpperCase() + (hasMods ? ' (modified)' : '');
-    html += '<div class="delta-indicator ' + de.action + '">' + label + '</div>';
+    html += '<div class="delta-indicator ' + escapeHtml(de.action) + '">' + escapeHtml(label) + '</div>';
   }
 
   // Stale warning
@@ -872,9 +878,9 @@ function renderFinding(id) {
   // Header
   html += '<div class="card-header">';
   html += '<span class="card-id">' + escapeHtml(f.id) + '</span>';
-  html += '<span class="badge ' + typeClass + '">' + type + '</span>';
-  html += '<span class="badge ' + statusClass + '">' + status + '</span>';
-  html += '<span class="' + verifClass + '" title="Integrity: ' + verif + '">' + verifLabel + '</span>';
+  html += '<span class="badge ' + escapeHtml(typeClass) + '">' + escapeHtml(type) + '</span>';
+  html += '<span class="badge ' + escapeHtml(statusClass) + '">' + escapeHtml(status) + '</span>';
+  html += '<span class="' + escapeHtml(verifClass) + '" title="Integrity: ' + escapeHtml(verif) + '">' + escapeHtml(verifLabel) + '</span>';
   html += '</div>';
 
   // Title
@@ -920,7 +926,7 @@ function renderFinding(id) {
   if (f.evidence_ids && f.evidence_ids.length > 0) {
     html += '<div class="field-section"><div class="field-label">Evidence</div>';
     html += '<div class="tag-list">' + f.evidence_ids.map(eid =>
-      '<span class="tag clickable" onclick="scrollToEvidence(\'' + escapeHtml(eid) + '\')">' + escapeHtml(eid) + '</span>'
+      '<span class="tag clickable" onclick="scrollToEvidence(\'' + escapeHtml(eid).replace(/'/g, "\\'") + '\')">' + escapeHtml(eid) + '</span>'
     ).join('') + '</div></div>';
   }
 
@@ -942,7 +948,7 @@ function renderFinding(id) {
   if (f.related_findings && f.related_findings.length > 0) {
     html += '<div class="field-section"><div class="field-label">Related Findings</div>';
     html += '<div class="tag-list">' + f.related_findings.map(rid =>
-      '<span class="tag clickable" onclick="selectFinding(\'' + escapeHtml(rid) + '\')">' + escapeHtml(rid) + '</span>'
+      '<span class="tag clickable" onclick="selectFinding(\'' + escapeHtml(rid).replace(/'/g, "\\'") + '\')">' + escapeHtml(rid) + '</span>'
     ).join('') + '</div></div>';
   }
 
@@ -1186,14 +1192,14 @@ async function doSkip() {
   if (!selectedId) return;
   const de = getDeltaEntry(selectedId);
   if (de) {
-    // Remove locally (no scheduleSave — DELETE handles server-side)
-    delta.items = delta.items.filter(i => i.id !== selectedId);
-    delta.modified_at = new Date().toISOString();
     try {
       await apiFetch('/api/delta/' + encodeURIComponent(selectedId), { method: 'DELETE' });
+      delta.items = delta.items.filter(i => i.id !== selectedId);
+      delta.modified_at = new Date().toISOString();
       setSaveStatus('saved');
     } catch (e) {
       console.warn('DELETE delta item failed:', e);
+      return;
     }
   }
   renderSidebar();

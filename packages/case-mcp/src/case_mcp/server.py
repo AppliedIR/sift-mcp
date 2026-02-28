@@ -465,7 +465,10 @@ def create_server() -> FastMCP:
             params={},
             result_summary={"status": status},
         )
-        return json.dumps({"url": url, "status": status})
+        # Strip token from response — LLM should not see the bearer token.
+        # The browser already received it via webbrowser.open().
+        display_url = url.split("#")[0] if "#" in url else url
+        return json.dumps({"url": display_url, "status": status})
 
     return server
 
