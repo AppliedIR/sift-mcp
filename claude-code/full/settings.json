@@ -66,6 +66,8 @@
       "Write(**/audit/*.jsonl)",
       "Edit(**/evidence.json)",
       "Write(**/evidence.json)",
+      "Edit(**/pending-reviews.json)",
+      "Write(**/pending-reviews.json)",
       "Read(/var/lib/aiir/**)",
       "Edit(/var/lib/aiir/**)",
       "Write(/var/lib/aiir/**)",
