@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "forensic-knowledge"
-version = "0.1.0"
+version = "0.5.0"
 description = "Community-curated forensic artifact, tool, and discipline knowledge — YAML-backed, pip-installable"
 requires-python = ">=3.10"
 license = {text = "MIT"}

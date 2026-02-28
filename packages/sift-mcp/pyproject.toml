@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sift-mcp"
-version = "0.1.0"
+version = "0.5.0"
 description = "SIFT workstation MCP: forensic tool execution with proactive artifact knowledge"
 requires-python = ">=3.10"
 license = {text = "MIT"}
