@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 HOOK_SCRIPT = (
-    Path(__file__).parent.parent.parent / "claude-code" / "hooks" / "forensic-audit.sh"
+    Path(__file__).parent.parent.parent / "claude-code" / "shared" / "hooks" / "forensic-audit.sh"
 )
 
 
