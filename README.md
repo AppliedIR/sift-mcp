@@ -9,6 +9,85 @@ Monorepo for all SIFT-side AIIR components. 10 packages: forensic-mcp (12 tools 
 [CLI Reference](https://appliedir.github.io/aiir/cli-reference/) ·
 [MCP Reference](https://appliedir.github.io/aiir/mcp-reference/)
 
+## AIIR Lite — Get Started in Minutes
+
+In its simplest form, AIIR Lite provides Claude Code with forensic knowledge and instructions on how to enforce forensic rigor, present findings for human review, and audit actions taken. MCP servers enhance accuracy by providing authoritative information — a forensic knowledge RAG and a Windows triage database — plus optional OpenCTI threat intelligence and REMnux malware analysis.
+
+```bash
+# Quick start
+git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
+./quickstart-lite.sh
+
+# Then launch Claude Code and verify
+claude
+/welcome
+```
+
+### What You Get
+
+- **Forensic discipline** — CLAUDE.md + FORENSIC_DISCIPLINE.md + reference docs
+- **Prompt reinforcement** — forensic rules injected on every prompt
+- **Audit trail** — JSONL logs with SHA-256 hashes for every Bash command and MCP query
+- **RAG search** — 23K+ forensic records (Sigma, MITRE ATT&CK, LOLBAS, Atomic Red Team, and more)
+- **Windows baseline validation** — offline file/process validation against known_good.db
+- **Case management** — `/case init`, `/case open`, `/case status`, `/case list`, `/case close`
+- **Post-install verification** — `/welcome` validates setup and orients you
+- **Optional add-ons** — OpenCTI, REMnux, Microsoft Learn, Zeltser IR Writing
+
+No gateway, no sandbox, no deny rules. Claude runs forensic tools directly via Bash. Forensic discipline is suggested and reinforced via prompt hooks and reference documents.
+
+### Optional Add-ons
+
+```bash
+./quickstart-lite.sh --opencti              # Live threat intelligence
+./quickstart-lite.sh --remnux=HOST:PORT     # Automated malware analysis
+./quickstart-lite.sh --mslearn              # Microsoft documentation search
+./quickstart-lite.sh --zeltser              # IR writing guidelines
+```
+
+## Full AIIR — Structural Enforcement
+
+For use cases where more definitive human-in-the-loop approval is desired, the full AIIR suite can be deployed to ensure accountability and enforce human review of findings through cryptographic signing, PIN-gated approvals, and multiple layered controls.
+
+Full AIIR is **LLM client agnostic** — connect any MCP-compatible client through the gateway. Supported clients include Claude Code, Claude Desktop, Cursor, LibreChat, ChatGPT, and any client that speaks MCP. Forensic discipline is enforced structurally at the gateway and MCP layer, not through client-specific prompt engineering, so the same rigor applies regardless of which AI model or client drives the investigation.
+
+### What Full AIIR Adds
+
+- LLM client agnostic (Claude Code, Desktop, Cursor, LibreChat, ChatGPT, any MCP client)
+- Gateway with auth + lifecycle management (63 tools across 7 backends)
+- Structured JSON case files with integrity verification
+- Formal report generation (6 profiles)
+
+When Claude Code is the client, additional controls are deployed:
+
+- Bubblewrap sandbox — kernel-level filesystem isolation, Bash restricted to project directory
+- 21 permission deny rules — Edit/Write blocked on case data files (findings.json, timeline.json, approvals.jsonl, etc.)
+- PreToolUse guard hook — blocks Bash redirections (>, >>, tee) to protected case files
+- HMAC-signed findings — PIN-gated approval with PBKDF2-derived cryptographic signing
+- Provenance enforcement — rejects findings that lack an evidence trail in the audit log
+- PostToolUse audit hook — every Bash command logged to JSONL with SHA-256 hashes
+- Prompt hook — forensic discipline reminders injected on every prompt
+
+### Quick Start (Full)
+
+Requires Python 3.11+ and sudo access.
+
+```bash
+# One-command quickstart
+curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/aiir-quickstart.sh && bash /tmp/aiir-quickstart.sh
+```
+
+Or step by step:
+
+```bash
+git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
+./setup-sift.sh
+```
+
+The installer handles everything: MCP servers, gateway, aiir CLI, HMAC verification ledger (`/var/lib/aiir/verification/`, requires sudo), examiner identity, and LLM client configuration. When you select Claude Code, additional forensic controls are deployed (kernel-level sandbox, case data deny rules, PreToolUse guard hook, PostToolUse audit hook, provenance enforcement, PIN-gated human approval with HMAC signing). Non-shell clients (Claude Desktop, Cursor, etc.) get MCP config only.
+
+For tier selection (quick, recommended, custom) or remote access with TLS, run `setup-sift.sh` directly.
+
 ## Architecture
 
 This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, case-mcp, report-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, and sift-common. Each MCP runs as a stdio subprocess of the sift-gateway. The LLM client and aiir CLI are the two human-facing tools. The aiir CLI always runs on the SIFT workstation — it requires direct filesystem access to the case directory. When the LLM client runs on a separate machine, the examiner must have SSH access to SIFT for all CLI operations. The LLM client connects to the gateway over Streamable HTTP. It never talks to MCP backends directly.
@@ -85,6 +164,10 @@ graph LR
     BASIC --> RESP
     RESP --> AUDIT["Audit Entry"]
 ```
+
+## Upgrading from Lite to Full
+
+Both modes share the same knowledge base, MCPs, and audit format. Upgrading adds the gateway, sandbox, enforcement layer, and structured case management. Note: lite case data (markdown files) does not auto-migrate to full case data (structured JSON). Start fresh or transfer findings manually.
 
 ## MCP Tools
 
@@ -194,35 +277,16 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 
 ## Prerequisites
 
-- SIFT Workstation (Ubuntu-based)
+- SIFT Workstation (Ubuntu-based) — for full AIIR
+- Any Linux/macOS machine — for AIIR Lite
 - Python 3.11+
-- sudo access (required for HMAC verification ledger at `/var/lib/aiir/verification/`)
+- sudo access (required for full AIIR's HMAC verification ledger at `/var/lib/aiir/verification/`)
 - Forensic tools installed via SIFT package or manually
 
 ### External Dependencies
 
-- **Zeltser IR Writing MCP** (https://website-mcp.zeltser.com/mcp) — Required for report generation. The `aiir setup client` wizard configures this automatically. HTTPS, no authentication required.
+- **Zeltser IR Writing MCP** (https://website-mcp.zeltser.com/mcp) — Required for report generation (full AIIR). The `aiir setup client` wizard configures this automatically. HTTPS, no authentication required.
 - **MS Learn MCP** (https://learn.microsoft.com/api/mcp) — Optional. Provides Microsoft documentation search.
-
-## Quick Start
-
-Requires Python 3.11+ and sudo access.
-
-```bash
-# One-command quickstart
-curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/aiir-quickstart.sh && bash /tmp/aiir-quickstart.sh
-```
-
-Or step by step:
-
-```bash
-git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
-./setup-sift.sh
-```
-
-The installer handles everything: MCP servers, gateway, aiir CLI, HMAC verification ledger (`/var/lib/aiir/verification/`, requires sudo), examiner identity, and LLM client configuration. When you select Claude Code, additional forensic controls are deployed (kernel-level sandbox, case data deny rules, PreToolUse guard hook, PostToolUse audit hook, provenance enforcement, PIN-gated human approval with HMAC signing). Non-shell clients (Claude Desktop, Cursor, etc.) get MCP config only.
-
-For tier selection (quick, recommended, custom) or remote access with TLS, run `setup-sift.sh` directly.
 
 ## Configuration
 
