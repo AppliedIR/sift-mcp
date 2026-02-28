@@ -11,6 +11,7 @@
 #   ./quickstart-lite.sh --remnux=HOST:PORT       # Add REMnux MCP
 #   ./quickstart-lite.sh --mslearn                # Add Microsoft Learn MCP
 #   ./quickstart-lite.sh --zeltser                # Add Zeltser IR Writing MCP
+#   ./quickstart-lite.sh --registry               # Download registry baseline
 #   ./quickstart-lite.sh -y                       # Non-interactive (skip prompts)
 #
 set -euo pipefail
@@ -29,6 +30,17 @@ warn() { echo -e "  ${YELLOW}!${NC} $1"; }
 fail() { echo -e "  ${RED}✗${NC} $1"; exit 1; }
 header() { echo -e "\n${BOLD}=== $1 ===${NC}"; }
 
+_validate_credential() {
+    # Reject quotes and backslashes that would break JSON output.
+    # Returns 0 if valid, 1 if invalid. Matches setup-sift.sh:995,1001.
+    local val="$1" label="$2"
+    if [[ "$val" =~ [\"\'\\] ]]; then
+        warn "$label contains invalid characters (quotes or backslashes). Skipped."
+        return 1
+    fi
+    return 0
+}
+
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
@@ -36,6 +48,7 @@ YES=false
 INSTALL_OPENCTI=false
 INSTALL_MSLEARN=false
 INSTALL_ZELTSER=false
+INSTALL_REGISTRY=false
 REMNUX_ADDR=""
 
 for arg in "$@"; do
@@ -44,6 +57,7 @@ for arg in "$@"; do
         --opencti) INSTALL_OPENCTI=true ;;
         --mslearn) INSTALL_MSLEARN=true ;;
         --zeltser) INSTALL_ZELTSER=true ;;
+        --registry) INSTALL_REGISTRY=true ;;
         --remnux=*) REMNUX_ADDR="${arg#--remnux=}" ;;
         -h|--help)
             echo "Usage: $0 [options]"
@@ -54,6 +68,7 @@ for arg in "$@"; do
             echo "  --remnux=HOST:PORT   Add REMnux malware analysis MCP"
             echo "  --mslearn            Add Microsoft Learn documentation MCP"
             echo "  --zeltser            Add Zeltser IR Writing MCP"
+            echo "  --registry           Download optional registry baseline (large)"
             echo "  -h, --help           Show this help"
             exit 0
             ;;
@@ -116,17 +131,6 @@ for pkg in sift-common forensic-knowledge forensic-rag windows-triage; do
     fi
 done
 
-# Optional MCPs
-if [[ "$INSTALL_OPENCTI" == "true" ]]; then
-    pkg_dir="$SCRIPT_DIR/packages/opencti"
-    if [[ -d "$pkg_dir" ]]; then
-        "$VENV_DIR/bin/pip" install --quiet -e "$pkg_dir"
-        ok "Installed opencti-mcp"
-    else
-        warn "opencti-mcp not found at $pkg_dir"
-    fi
-fi
-
 # ==========================================================================
 # Phase 2: Triage Databases
 # ==========================================================================
@@ -137,8 +141,8 @@ mkdir -p "$DB_DIR"
 if [[ -s "$DB_DIR/known_good.db" ]] && [[ -s "$DB_DIR/context.db" ]]; then
     ok "Triage databases already present"
 else
-    "$VENV_PYTHON" -m windows_triage.scripts.download_databases --db-dir "$DB_DIR" || \
-        warn "Database download failed. Run manually: $VENV_PYTHON -m windows_triage.scripts.download_databases --db-dir $DB_DIR"
+    "$VENV_PYTHON" -m windows_triage.scripts.download_databases --dest "$DB_DIR" || \
+        warn "Database download failed. Run manually: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
 fi
 
 # Validate
@@ -259,11 +263,13 @@ sed -e "s|__VENV__|$VENV_DIR|g" \
     -e "s|__DB_DIR__|$DB_DIR|g" \
     -e "s|__CASE_DIR__|$PROJECT_DIR|g" \
     "$LITE_DIR/mcp.json.example" > "$MCP_JSON"
+chmod 600 "$MCP_JSON"
 ok "Generated .mcp.json"
 
 # ==========================================================================
 # Phase 5: Optional MCPs
 # ==========================================================================
+header "Phase 5: Optional MCPs"
 
 _add_mcp_server() {
     # Add a server entry to .mcp.json
@@ -279,13 +285,46 @@ with open('$MCP_JSON', 'w') as f:
 " "$name" "$json_fragment"
 }
 
+INSTALLED_OPENCTI=false
+INSTALLED_REMNUX=false
+INSTALLED_MSLEARN=false
+INSTALLED_ZELTSER=false
+
+# --- OpenCTI ---
+if [[ "$INSTALL_OPENCTI" != "true" ]] && [[ "$YES" != "true" ]]; then
+    echo ""
+    echo "  OpenCTI provides live threat intelligence from your OpenCTI instance."
+    echo "  Requires OpenCTI URL and API token."
+    read -rp "  Install OpenCTI MCP? [y/N] " reply
+    [[ "$reply" =~ ^[Yy] ]] && INSTALL_OPENCTI=true
+fi
+
 if [[ "$INSTALL_OPENCTI" == "true" ]]; then
-    header "Optional: OpenCTI MCP"
+    # Install opencti package
+    pkg_dir="$SCRIPT_DIR/packages/opencti"
+    if [[ -d "$pkg_dir" ]]; then
+        "$VENV_DIR/bin/pip" install --quiet -e "$pkg_dir"
+        ok "Installed opencti-mcp"
+    else
+        warn "opencti-mcp not found at $pkg_dir"
+    fi
+
     OPENCTI_URL=""
     OPENCTI_TOKEN=""
     if [[ "$YES" != "true" ]]; then
         read -rp "  OpenCTI URL (e.g., https://opencti.example.com): " OPENCTI_URL
-        read -rp "  OpenCTI API token: " OPENCTI_TOKEN
+        if [[ -n "$OPENCTI_URL" ]]; then
+            if ! _validate_credential "$OPENCTI_URL" "OpenCTI URL"; then
+                OPENCTI_URL=""
+            else
+                read -rsp "  OpenCTI API token: " OPENCTI_TOKEN
+                echo ""
+                if ! _validate_credential "$OPENCTI_TOKEN" "OpenCTI token"; then
+                    OPENCTI_URL=""
+                    OPENCTI_TOKEN=""
+                fi
+            fi
+        fi
     fi
     if [[ -n "$OPENCTI_URL" ]] && [[ -n "$OPENCTI_TOKEN" ]]; then
         _add_mcp_server "opencti-mcp" "{
@@ -299,41 +338,93 @@ if [[ "$INSTALL_OPENCTI" == "true" ]]; then
             }
         }"
         ok "Added opencti-mcp to .mcp.json"
+        INSTALLED_OPENCTI=true
     else
         warn "OpenCTI URL or token not provided. Skipped."
     fi
 fi
 
+# --- REMnux ---
 if [[ -n "$REMNUX_ADDR" ]]; then
-    header "Optional: REMnux MCP"
+    if ! _validate_credential "$REMNUX_ADDR" "REMnux address"; then
+        REMNUX_ADDR=""
+    fi
+fi
+
+if [[ -z "$REMNUX_ADDR" ]] && [[ "$YES" != "true" ]]; then
+    echo ""
+    echo "  REMnux provides automated malware analysis from a REMnux workstation."
+    echo "  Requires REMnux address (HOST:PORT) and bearer token."
+    read -rp "  Install REMnux MCP? [y/N] " reply
+    if [[ "$reply" =~ ^[Yy] ]]; then
+        read -rp "  REMnux address (HOST:PORT): " REMNUX_ADDR
+        if [[ -n "$REMNUX_ADDR" ]] && ! _validate_credential "$REMNUX_ADDR" "REMnux address"; then
+            REMNUX_ADDR=""
+        fi
+    fi
+fi
+
+if [[ -n "$REMNUX_ADDR" ]]; then
     REMNUX_TOKEN=""
     if [[ "$YES" != "true" ]]; then
-        read -rp "  REMnux bearer token: " REMNUX_TOKEN
+        read -rsp "  REMnux bearer token: " REMNUX_TOKEN
+        echo ""
+        if [[ -n "$REMNUX_TOKEN" ]] && ! _validate_credential "$REMNUX_TOKEN" "REMnux token"; then
+            REMNUX_TOKEN=""
+        fi
     fi
-    _add_mcp_server "remnux-mcp" "{
-        \"type\": \"streamable-http\",
-        \"url\": \"http://$REMNUX_ADDR/mcp\",
-        \"headers\": {\"Authorization\": \"Bearer $REMNUX_TOKEN\"}
-    }"
-    ok "Added remnux-mcp to .mcp.json"
+    if [[ -n "$REMNUX_TOKEN" ]]; then
+        _add_mcp_server "remnux-mcp" "{
+            \"type\": \"streamable-http\",
+            \"url\": \"http://$REMNUX_ADDR/mcp\",
+            \"headers\": {\"Authorization\": \"Bearer $REMNUX_TOKEN\"}
+        }"
+        ok "Added remnux-mcp to .mcp.json"
+        INSTALLED_REMNUX=true
+    elif [[ "$YES" == "true" ]]; then
+        warn "REMnux token cannot be provided non-interactively. Run without -y to configure."
+    else
+        warn "REMnux token not provided. Skipped."
+    fi
+fi
+
+# --- Microsoft Learn ---
+if [[ "$INSTALL_MSLEARN" != "true" ]] && [[ "$YES" != "true" ]]; then
+    echo ""
+    echo "  Microsoft Learn provides documentation search (requires Internet)."
+    read -rp "  Install Microsoft Learn MCP? [y/N] " reply
+    [[ "$reply" =~ ^[Yy] ]] && INSTALL_MSLEARN=true
 fi
 
 if [[ "$INSTALL_MSLEARN" == "true" ]]; then
-    header "Optional: Microsoft Learn MCP"
     _add_mcp_server "microsoft-learn" "{
-        \"command\": \"npx\",
-        \"args\": [\"-y\", \"@anthropic-ai/microsoft-learn-mcp-server\"]
+        \"type\": \"streamable-http\",
+        \"url\": \"https://learn.microsoft.com/api/mcp\"
     }"
     ok "Added microsoft-learn to .mcp.json"
+    INSTALLED_MSLEARN=true
+fi
+
+# --- Zeltser IR Writing ---
+if [[ "$INSTALL_ZELTSER" != "true" ]] && [[ "$YES" != "true" ]]; then
+    echo ""
+    echo "  Zeltser IR Writing provides IR report writing guidelines (requires Internet)."
+    read -rp "  Install Zeltser IR Writing MCP? [y/N] " reply
+    [[ "$reply" =~ ^[Yy] ]] && INSTALL_ZELTSER=true
 fi
 
 if [[ "$INSTALL_ZELTSER" == "true" ]]; then
-    header "Optional: Zeltser IR Writing MCP"
     _add_mcp_server "zeltser-ir-writing" "{
-        \"command\": \"npx\",
-        \"args\": [\"-y\", \"@anthropic-ai/zeltser-ir-writing-mcp-server\"]
+        \"type\": \"streamable-http\",
+        \"url\": \"https://website-mcp.zeltser.com/mcp\"
     }"
     ok "Added zeltser-ir-writing to .mcp.json"
+    INSTALLED_ZELTSER=true
+fi
+
+# --- Registry baseline (deferred) ---
+if [[ "$INSTALL_REGISTRY" == "true" ]]; then
+    warn "Registry baseline download is not yet available. Flag accepted for forward compatibility."
 fi
 
 # ==========================================================================
@@ -345,10 +436,10 @@ echo ""
 echo "Installed:"
 ok "forensic-rag (knowledge search)"
 ok "windows-triage (baseline validation)"
-[[ "$INSTALL_OPENCTI" == "true" ]] && ok "opencti-mcp (threat intelligence)"
-[[ -n "$REMNUX_ADDR" ]] && ok "remnux-mcp (malware analysis)"
-[[ "$INSTALL_MSLEARN" == "true" ]] && ok "microsoft-learn (documentation)"
-[[ "$INSTALL_ZELTSER" == "true" ]] && ok "zeltser-ir-writing (IR writing)"
+[[ "$INSTALLED_OPENCTI" == "true" ]] && ok "opencti-mcp (threat intelligence)"
+[[ "$INSTALLED_REMNUX" == "true" ]] && ok "remnux-mcp (malware analysis)"
+[[ "$INSTALLED_MSLEARN" == "true" ]] && ok "microsoft-learn (documentation)"
+[[ "$INSTALLED_ZELTSER" == "true" ]] && ok "zeltser-ir-writing (IR writing)"
 
 echo ""
 echo "Project directory: $PROJECT_DIR"
