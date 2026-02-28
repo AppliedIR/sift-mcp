@@ -1350,6 +1350,19 @@ if [[ ":$PATH:" != *":$AIIR_BIN:"* ]]; then
     export PATH="$AIIR_BIN:$PATH"
 fi
 
+# Tab completion
+if [[ -z "${SHELL_RC:-}" ]]; then
+    if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC="$HOME/.bashrc";
+    elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC="$HOME/.zshrc"; fi
+fi
+if command -v register-python-argcomplete &>/dev/null; then
+    COMP_LINE='eval "$(register-python-argcomplete aiir)"'
+    if [[ -n "$SHELL_RC" ]] && ! grep -q "register-python-argcomplete aiir" "$SHELL_RC" 2>/dev/null; then
+        echo "$COMP_LINE" >> "$SHELL_RC"
+        ok "Added aiir tab completion to $SHELL_RC"
+    fi
+fi
+
 # =============================================================================
 # Phase 13: Systemd Service + Gateway Start
 # =============================================================================
