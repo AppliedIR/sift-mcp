@@ -15,7 +15,7 @@
       "args": ["-m", "windows_triage.server"],
       "env": {
         "PYTHONPATH": "__SRC__/packages/windows-triage/src",
-        "TRIAGE_DB_DIR": "__DB_DIR__",
+        "WT_DATA_DIR": "__DB_DIR__",
         "AIIR_CASE_DIR": "__CASE_DIR__"
       }
     }

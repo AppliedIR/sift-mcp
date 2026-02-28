@@ -7,7 +7,10 @@ description: Post-install verification and onboarding for AIIR lite
 
 **IMPORTANT:** All MCP checks in this skill MUST use MCP tool calls,
 not Bash subprocess. If an MCP tool is unavailable, report it as a
-failure — do not try to work around it with subprocess.
+failure — do not try to work around it with subprocess, filesystem
+reads, or any other method. The ONLY acceptable action for an
+unavailable MCP tool is to report the failure message specified below.
+Do NOT attempt to infer status by other means.
 
 Run these steps in order. Report results as you go. Stop and warn on
 any failure.

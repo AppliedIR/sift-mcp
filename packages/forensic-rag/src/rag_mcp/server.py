@@ -332,12 +332,12 @@ class RAGServer:
         return {"status": "ok", **stats}
 
     async def run(self) -> None:
-        """Run the MCP server."""
-        # Load index at startup
-        logger.info("Loading RAG index...")
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, self.index.load)
-        logger.info("RAG index loaded, starting MCP server...")
+        """Run the MCP server.
+
+        Index loads lazily on first tool call (search/list_sources/get_stats)
+        so the stdio handshake completes immediately.
+        """
+        logger.info("Starting MCP server (index loads on first query)...")
 
         async with stdio_server() as (read_stream, write_stream):
             await self.server.run(

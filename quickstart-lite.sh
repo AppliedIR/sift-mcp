@@ -378,7 +378,7 @@ if [[ -n "$REMNUX_ADDR" ]]; then
     fi
     if [[ -n "$REMNUX_TOKEN" ]]; then
         _add_mcp_server "remnux-mcp" "{
-            \"type\": \"streamable-http\",
+            \"type\": \"http\",
             \"url\": \"http://$REMNUX_ADDR/mcp\",
             \"headers\": {\"Authorization\": \"Bearer $REMNUX_TOKEN\"}
         }"
@@ -401,7 +401,7 @@ fi
 
 if [[ "$INSTALL_MSLEARN" == "true" ]]; then
     _add_mcp_server "microsoft-learn" "{
-        \"type\": \"streamable-http\",
+        \"type\": \"http\",
         \"url\": \"https://learn.microsoft.com/api/mcp\"
     }"
     ok "Added microsoft-learn to .mcp.json"
@@ -418,7 +418,7 @@ fi
 
 if [[ "$INSTALL_ZELTSER" == "true" ]]; then
     _add_mcp_server "zeltser-ir-writing" "{
-        \"type\": \"streamable-http\",
+        \"type\": \"http\",
         \"url\": \"https://website-mcp.zeltser.com/mcp\"
     }"
     ok "Added zeltser-ir-writing to .mcp.json"
