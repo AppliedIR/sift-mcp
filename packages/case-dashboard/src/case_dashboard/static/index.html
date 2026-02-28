@@ -5,16 +5,1186 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AIIR Case Dashboard</title>
 <style>
-body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-.container { text-align: center; }
-h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-p { color: #999; }
+:root {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --bg-hover: #475569;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border: #334155;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --green: #22c55e;
+  --green-bg: #052e16;
+  --red: #ef4444;
+  --red-bg: #450a0a;
+  --amber: #f59e0b;
+  --amber-bg: #451a03;
+  --blue: #3b82f6;
+  --blue-bg: #172554;
+  --slate: #94a3b8;
+  --gray: #6b7280;
+}
+
+.light {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #e2e8f0;
+  --bg-hover: #cbd5e1;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --border: #e2e8f0;
+  --green-bg: #dcfce7;
+  --red-bg: #fef2f2;
+  --amber-bg: #fffbeb;
+  --blue-bg: #eff6ff;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Layout */
+.app { display: flex; flex-direction: column; height: 100vh; }
+.header { background: var(--bg-secondary); border-bottom: 1px solid var(--border); padding: 8px 16px; flex-shrink: 0; }
+.header-row { display: flex; align-items: center; justify-content: space-between; }
+.header-title { font-size: 16px; font-weight: 600; }
+.header-actions { display: flex; gap: 8px; align-items: center; }
+.header-actions button { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.header-actions button:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* Tabs */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--bg-secondary); padding: 0 16px; flex-shrink: 0; }
+.tab { padding: 8px 16px; cursor: pointer; color: var(--text-secondary); border-bottom: 2px solid transparent; font-size: 13px; font-weight: 500; }
+.tab:hover { color: var(--text-primary); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Progress bar */
+.progress-bar { background: var(--bg-secondary); padding: 6px 16px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.progress-track { flex: 1; height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
+
+/* Main content */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* Sidebar */
+.sidebar { width: 260px; min-width: 260px; background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.sidebar-controls { padding: 8px; border-bottom: 1px solid var(--border); }
+.sidebar-controls select, .sidebar-controls input {
+  width: 100%; padding: 5px 8px; background: var(--bg-tertiary); border: 1px solid var(--border);
+  color: var(--text-primary); border-radius: 4px; font-size: 12px; margin-bottom: 4px;
+}
+.filter-presets { display: flex; gap: 4px; margin-bottom: 4px; }
+.filter-preset { padding: 3px 8px; font-size: 11px; border-radius: 3px; cursor: pointer; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-secondary); }
+.filter-preset.active { background: var(--accent); color: white; border-color: var(--accent); }
+.sidebar-list { flex: 1; overflow-y: auto; }
+.sidebar-item { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.sidebar-item:hover { background: var(--bg-tertiary); }
+.sidebar-item.active { background: var(--bg-tertiary); border-left: 3px solid var(--accent); }
+.sidebar-item .badge-indicator { width: 10px; font-size: 14px; color: var(--text-muted); flex-shrink: 0; }
+.sidebar-item .item-id { font-family: monospace; color: var(--text-secondary); flex-shrink: 0; }
+.sidebar-item .item-conf { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; margin-left: auto; }
+.sidebar-stats { padding: 8px 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); }
+.sidebar-stats div { margin-bottom: 2px; }
+.save-status { padding: 6px 12px; border-top: 1px solid var(--border); font-size: 11px; }
+.save-status.saved { color: var(--green); }
+.save-status.saving { color: var(--amber); }
+
+/* Content area */
+.content { flex: 1; overflow-y: auto; padding: 16px 24px; }
+
+/* Finding card */
+.finding-card { max-width: 900px; }
+.card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.card-id { font-family: monospace; font-size: 15px; font-weight: 600; }
+.card-title { font-size: 16px; font-weight: 600; }
+.card-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.badge-draft { background: var(--bg-tertiary); color: var(--text-secondary); }
+.badge-approved { background: var(--green-bg); color: var(--green); }
+.badge-rejected { background: var(--red-bg); color: var(--red); }
+.badge-finding { background: var(--blue-bg); color: var(--blue); }
+.badge-conclusion { background: var(--amber-bg); color: var(--amber); }
+.badge-timeline { background: var(--bg-tertiary); color: var(--slate); }
+.badge-attribution, .badge-exclusion { background: var(--bg-tertiary); color: var(--text-secondary); }
+
+/* Confidence badges */
+.conf-high { background: var(--red-bg); color: var(--red); }
+.conf-medium { background: var(--amber-bg); color: var(--amber); }
+.conf-low { background: var(--bg-tertiary); color: var(--gray); }
+.conf-speculative { background: var(--bg-tertiary); color: var(--slate); }
+
+/* Provenance */
+.prov-mcp, .prov-hook { color: var(--green); }
+.prov-shell, .prov-mixed { color: var(--amber); }
+.prov-none { color: var(--red); }
+
+/* Verification */
+.verif-confirmed { color: var(--green); }
+.verif-tampered { color: var(--red); }
+.verif-draft { color: var(--text-muted); }
+.verif-unverified { color: var(--text-muted); }
+.verif-no-approval-record { color: var(--amber); }
+
+/* Field sections */
+.field-section { margin-bottom: 12px; }
+.field-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.field-value { color: var(--text-primary); white-space: pre-wrap; }
+.field-value.mono { font-family: monospace; font-size: 13px; }
+
+/* Tags */
+.tag-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag { display: inline-block; padding: 2px 8px; background: var(--bg-tertiary); border-radius: 3px; font-size: 12px; color: var(--text-secondary); }
+.tag.clickable { cursor: pointer; }
+.tag.clickable:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* Action bar */
+.action-bar { display: flex; gap: 8px; margin: 16px 0; padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; flex-wrap: wrap; }
+.action-btn { padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); display: flex; align-items: center; gap: 6px; }
+.action-btn:hover { background: var(--bg-hover); }
+.action-btn .key { font-size: 10px; padding: 1px 5px; background: var(--bg-primary); border-radius: 3px; font-family: monospace; color: var(--text-muted); }
+.action-btn.approve:hover { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+.action-btn.reject:hover { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+.action-btn.todo:hover { background: var(--blue-bg); color: var(--blue); border-color: var(--blue); }
+
+/* Action overlay on sidebar item */
+.action-pill { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+.action-pill.approve { background: var(--green-bg); color: var(--green); }
+.action-pill.reject { background: var(--red-bg); color: var(--red); }
+.action-pill.todo { background: var(--blue-bg); color: var(--blue); }
+
+/* Delta overlay on finding card */
+.delta-indicator { margin-bottom: 12px; padding: 8px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+.delta-indicator.approve { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
+.delta-indicator.reject { background: var(--red-bg); color: var(--red); border: 1px solid var(--red); }
+.delta-indicator.todo { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue); }
+
+/* Modified field display */
+.modified-original { text-decoration: line-through; color: var(--red); opacity: 0.7; }
+.modified-new { color: var(--green); }
+
+/* Empty states */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); text-align: center; padding: 40px; }
+.empty-state h2 { font-size: 18px; margin-bottom: 8px; color: var(--text-secondary); }
+.empty-state p { font-size: 14px; max-width: 400px; }
+
+/* Tab panels */
+.tab-panel { display: none; height: 100%; }
+.tab-panel.active { display: flex; }
+.tab-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; width: 100%; color: var(--text-muted); font-size: 16px; }
+
+/* Keyboard overlay */
+.shortcuts-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+.shortcuts-overlay.visible { display: flex; }
+.shortcuts-panel { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 24px; max-width: 500px; width: 90%; }
+.shortcuts-panel h3 { margin-bottom: 16px; }
+.shortcut-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+.shortcut-key { font-family: monospace; background: var(--bg-tertiary); padding: 2px 8px; border-radius: 3px; font-size: 12px; }
+
+/* Reject dialog */
+.dialog-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 90; align-items: center; justify-content: center; }
+.dialog-overlay.visible { display: flex; }
+.dialog { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 20px; max-width: 450px; width: 90%; }
+.dialog h3 { margin-bottom: 12px; }
+.dialog-templates { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.dialog-template { padding: 8px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 13px; text-align: left; color: var(--text-primary); }
+.dialog-template:hover { background: var(--bg-hover); }
+.dialog textarea { width: 100%; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-size: 13px; font-family: inherit; resize: vertical; min-height: 60px; }
+.dialog-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+.dialog-actions button { padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; border: 1px solid var(--border); }
+.btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-cancel { background: var(--bg-tertiary); color: var(--text-primary); }
+.btn-cancel:hover { background: var(--bg-hover); }
+
+/* Note / Todo dialogs */
+.dialog input[type="text"] { width: 100%; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-size: 13px; margin-bottom: 8px; }
+.dialog select { padding: 6px 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-size: 13px; }
+
+/* Optional fields */
+.optional-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+
+/* Stale warning */
+.stale-warning { background: var(--amber-bg); color: var(--amber); padding: 8px 12px; border-radius: 4px; font-size: 12px; margin-bottom: 12px; border: 1px solid var(--amber); }
+
+/* Refresh badge */
+.refresh-badge { background: var(--accent); color: white; font-size: 10px; padding: 1px 6px; border-radius: 10px; margin-left: 4px; }
+
+/* Footer */
+.footer { background: var(--bg-secondary); border-top: 1px solid var(--border); padding: 6px 16px; font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; flex-shrink: 0; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
 </style>
 </head>
 <body>
-<div class="container">
-<h1>AIIR Case Dashboard</h1>
-<p>Frontend loading in next commit.</p>
+<div class="app" id="app">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-row">
+      <span class="header-title" id="headerTitle">AIIR Case Dashboard</span>
+      <div class="header-actions">
+        <button id="btnRefresh" title="Refresh findings">&#8635; Refresh</button>
+        <span id="refreshBadge" class="refresh-badge" style="display:none"></span>
+        <button id="btnShortcuts" title="Keyboard shortcuts">?</button>
+        <button id="btnTheme" title="Toggle theme">&#9790;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab" data-tab="dashboard">Dashboard</div>
+    <div class="tab active" data-tab="findings">Findings</div>
+    <div class="tab" data-tab="evidence">Evidence</div>
+    <div class="tab" data-tab="todos">TODOs</div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-bar" id="progressBar">
+    <span id="progressText">0 of 0 reviewed</span>
+    <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  </div>
+
+  <!-- Tab panels -->
+  <div class="tab-panel" data-panel="dashboard">
+    <div class="tab-placeholder">Dashboard tab — coming soon</div>
+  </div>
+
+  <div class="tab-panel active" data-panel="findings">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-controls">
+        <select id="sortSelect">
+          <option value="conf-desc">Confidence (High → Low)</option>
+          <option value="conf-asc">Confidence (Low → High)</option>
+          <option value="chrono">Chronological</option>
+          <option value="id">ID</option>
+          <option value="status">Status (unreviewed first)</option>
+        </select>
+        <div class="filter-presets">
+          <button class="filter-preset active" data-filter="needs-review">Needs review</button>
+          <button class="filter-preset" data-filter="reviewed">Reviewed</button>
+          <button class="filter-preset" data-filter="all">All</button>
+        </div>
+        <input type="text" id="searchBox" placeholder="Search findings..." />
+      </div>
+      <div class="sidebar-list" id="sidebarList"></div>
+      <div class="sidebar-stats" id="sidebarStats"></div>
+      <div class="save-status saved" id="saveStatus">All saved &#10003;</div>
+    </div>
+
+    <!-- Content -->
+    <div class="content" id="findingContent">
+      <div class="empty-state" id="emptyState">
+        <h2>No findings to display</h2>
+        <p>Select a finding from the sidebar, or wait for the LLM to stage findings during investigation.</p>
+      </div>
+      <div class="finding-card" id="findingCard" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="evidence">
+    <div class="tab-placeholder">Evidence tab — coming soon</div>
+  </div>
+
+  <div class="tab-panel" data-panel="todos">
+    <div class="tab-placeholder">TODOs tab — coming soon</div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span>Ready to commit? Terminal: <code>aiir approve --review</code></span>
+    <span id="footerShortcuts" style="cursor:pointer">? Shortcuts</span>
+  </div>
 </div>
+
+<!-- Keyboard shortcuts overlay -->
+<div class="shortcuts-overlay" id="shortcutsOverlay">
+  <div class="shortcuts-panel">
+    <h3>Keyboard Shortcuts</h3>
+    <div class="shortcut-row"><span>Next finding</span><span class="shortcut-key">j / ↓</span></div>
+    <div class="shortcut-row"><span>Previous finding</span><span class="shortcut-key">k / ↑</span></div>
+    <div class="shortcut-row"><span>Approve</span><span class="shortcut-key">a</span></div>
+    <div class="shortcut-row"><span>Reject</span><span class="shortcut-key">r</span></div>
+    <div class="shortcut-row"><span>Edit interpretation</span><span class="shortcut-key">e</span></div>
+    <div class="shortcut-row"><span>Add note</span><span class="shortcut-key">n</span></div>
+    <div class="shortcut-row"><span>Create todo</span><span class="shortcut-key">t</span></div>
+    <div class="shortcut-row"><span>Skip</span><span class="shortcut-key">s</span></div>
+    <div class="shortcut-row"><span>Focus search</span><span class="shortcut-key">/</span></div>
+    <div class="shortcut-row"><span>Close / cancel</span><span class="shortcut-key">Esc</span></div>
+    <div class="shortcut-row"><span>This help</span><span class="shortcut-key">?</span></div>
+    <div style="margin-top: 12px; text-align: right;">
+      <button class="btn-cancel" onclick="toggleShortcuts()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reject dialog -->
+<div class="dialog-overlay" id="rejectDialog">
+  <div class="dialog">
+    <h3>Reject Finding</h3>
+    <div class="dialog-templates">
+      <button class="dialog-template" data-reason="False positive — benign activity">False positive — benign activity</button>
+      <button class="dialog-template" data-reason="duplicate">Duplicate of <span style="color:var(--text-muted)">(enter ID)</span></button>
+      <button class="dialog-template" data-reason="Insufficient evidence">Insufficient evidence</button>
+    </div>
+    <textarea id="rejectReason" placeholder="Custom reason..."></textarea>
+    <div class="dialog-actions">
+      <button class="btn-cancel" onclick="closeRejectDialog()">Cancel</button>
+      <button class="btn-primary" onclick="submitReject()">Reject</button>
+    </div>
+  </div>
+</div>
+
+<!-- Note dialog -->
+<div class="dialog-overlay" id="noteDialog">
+  <div class="dialog">
+    <h3>Add Note</h3>
+    <textarea id="noteText" placeholder="Enter note..."></textarea>
+    <div class="dialog-actions">
+      <button class="btn-cancel" onclick="closeNoteDialog()">Cancel</button>
+      <button class="btn-primary" onclick="submitNote()">Add Note</button>
+    </div>
+  </div>
+</div>
+
+<!-- Todo dialog -->
+<div class="dialog-overlay" id="todoDialog">
+  <div class="dialog">
+    <h3>Create TODO</h3>
+    <input type="text" id="todoDescription" placeholder="TODO description..." />
+    <select id="todoPriority">
+      <option value="high">High priority</option>
+      <option value="medium" selected>Medium priority</option>
+      <option value="low">Low priority</option>
+    </select>
+    <div class="dialog-actions">
+      <button class="btn-cancel" onclick="closeTodoDialog()">Cancel</button>
+      <button class="btn-primary" onclick="submitTodo()">Create</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* === State === */
+let token = null;
+let findings = [];
+let delta = { version: 1, case_id: '', items: [] };
+let caseMeta = {};
+let selectedId = null;
+let currentFilter = 'needs-review';
+let currentSort = 'conf-desc';
+let searchQuery = '';
+let saveTimer = null;
+let previousFindingIds = new Set();
+let newFindingsCount = 0;
+
+/* === Token extraction === */
+(function extractToken() {
+  const hash = window.location.hash;
+  if (hash.startsWith('#token=')) {
+    token = hash.slice(7);
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+  }
+})();
+
+/* === API helpers === */
+function apiHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  return h;
+}
+
+async function apiFetch(path, opts) {
+  const headers = apiHeaders();
+  if (opts && opts.headers) Object.assign(headers, opts.headers);
+  const res = await fetch('/dashboard' + path, { ...opts, headers });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || res.statusText);
+  }
+  return res.json();
+}
+
+/* === Data loading === */
+async function loadAll() {
+  try {
+    const [f, d, c] = await Promise.all([
+      apiFetch('/api/findings'),
+      apiFetch('/api/delta'),
+      apiFetch('/api/case'),
+    ]);
+    const newIds = new Set(f.map(x => x.id));
+    if (previousFindingIds.size > 0) {
+      newFindingsCount = [...newIds].filter(id => !previousFindingIds.has(id)).length;
+      updateRefreshBadge();
+    }
+    previousFindingIds = newIds;
+    findings = f;
+    delta = d && d.items ? d : { version: 1, case_id: '', items: [] };
+    caseMeta = c || {};
+    if (caseMeta.case_id) {
+      document.getElementById('headerTitle').textContent = 'AIIR \u2014 ' + caseMeta.case_id;
+      document.title = 'AIIR \u2014 ' + caseMeta.case_id;
+      if (!delta.case_id) delta.case_id = caseMeta.case_id;
+    }
+    renderSidebar();
+    updateProgress();
+    if (selectedId) renderFinding(selectedId);
+    else showEmptyOrFirst();
+  } catch (e) {
+    document.getElementById('emptyState').innerHTML =
+      '<h2>Error loading case data</h2><p>' + escapeHtml(e.message) + '</p>';
+    document.getElementById('emptyState').style.display = '';
+    document.getElementById('findingCard').style.display = 'none';
+  }
+}
+
+function showEmptyOrFirst() {
+  const filtered = getFilteredFindings();
+  if (findings.length === 0) {
+    document.getElementById('emptyState').innerHTML =
+      '<h2>No findings staged yet</h2><p>The LLM will stage findings during investigation.</p>';
+    document.getElementById('emptyState').style.display = '';
+    document.getElementById('findingCard').style.display = 'none';
+  } else if (filtered.length === 0) {
+    const allReviewed = findings.length > 0 && findings.every(f => getDeltaEntry(f.id));
+    if (allReviewed && currentFilter === 'needs-review') {
+      document.getElementById('emptyState').innerHTML =
+        '<h2>All findings reviewed!</h2><p>Run <code>aiir approve --review</code> in your terminal to commit.</p>';
+    } else {
+      document.getElementById('emptyState').innerHTML =
+        '<h2>No findings match current filter</h2><p>Try changing the filter or search.</p>';
+    }
+    document.getElementById('emptyState').style.display = '';
+    document.getElementById('findingCard').style.display = 'none';
+  } else {
+    selectFinding(filtered[0].id);
+  }
+}
+
+/* === Delta management === */
+function getDeltaEntry(id) {
+  return delta.items.find(i => i.id === id) || null;
+}
+
+function setDeltaEntry(entry) {
+  const idx = delta.items.findIndex(i => i.id === entry.id);
+  if (idx >= 0) delta.items[idx] = entry;
+  else delta.items.push(entry);
+  delta.modified_at = new Date().toISOString();
+  if (!delta.created_at) delta.created_at = delta.modified_at;
+  scheduleSave();
+}
+
+function removeDeltaEntry(id) {
+  delta.items = delta.items.filter(i => i.id !== id);
+  delta.modified_at = new Date().toISOString();
+  scheduleSave();
+}
+
+function scheduleSave() {
+  setSaveStatus('saving');
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveDelta, 1000);
+}
+
+async function saveDelta() {
+  try {
+    await apiFetch('/api/delta', { method: 'POST', body: JSON.stringify(delta) });
+    setSaveStatus('saved');
+  } catch (e) {
+    setSaveStatus('error');
+    console.error('Save failed:', e);
+  }
+}
+
+function setSaveStatus(state) {
+  const el = document.getElementById('saveStatus');
+  if (state === 'saved') { el.textContent = 'All saved \u2713'; el.className = 'save-status saved'; }
+  else if (state === 'saving') { el.textContent = 'Saving...'; el.className = 'save-status saving'; }
+  else { el.textContent = 'Save error'; el.className = 'save-status'; el.style.color = 'var(--red)'; }
+}
+
+/* === Filtering & sorting === */
+const CONF_ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2, SPECULATIVE: 3 };
+
+function getFilteredFindings() {
+  let list = [...findings];
+
+  // Filter
+  if (currentFilter === 'needs-review') {
+    list = list.filter(f => !getDeltaEntry(f.id));
+  } else if (currentFilter === 'reviewed') {
+    list = list.filter(f => getDeltaEntry(f.id));
+  }
+
+  // Search
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    list = list.filter(f =>
+      (f.title || '').toLowerCase().includes(q) ||
+      (f.observation || '').toLowerCase().includes(q) ||
+      (f.interpretation || '').toLowerCase().includes(q) ||
+      (f.id || '').toLowerCase().includes(q)
+    );
+  }
+
+  // Sort
+  list.sort((a, b) => {
+    switch (currentSort) {
+      case 'conf-desc': return (CONF_ORDER[a.confidence] || 9) - (CONF_ORDER[b.confidence] || 9);
+      case 'conf-asc': return (CONF_ORDER[b.confidence] || 9) - (CONF_ORDER[a.confidence] || 9);
+      case 'chrono': return (a.staged || '').localeCompare(b.staged || '');
+      case 'id': return (a.id || '').localeCompare(b.id || '');
+      case 'status': {
+        const aR = getDeltaEntry(a.id) ? 1 : 0;
+        const bR = getDeltaEntry(b.id) ? 1 : 0;
+        return aR - bR || (CONF_ORDER[a.confidence] || 9) - (CONF_ORDER[b.confidence] || 9);
+      }
+      default: return 0;
+    }
+  });
+  return list;
+}
+
+/* === Rendering === */
+function renderSidebar() {
+  const list = document.getElementById('sidebarList');
+  const filtered = getFilteredFindings();
+  list.innerHTML = '';
+
+  filtered.forEach(f => {
+    const de = getDeltaEntry(f.id);
+    const hasMods = de && de.modifications && Object.keys(de.modifications).length > 0;
+    const indicator = de ? (hasMods ? '\u25CF' : '\u2591') : '';
+
+    const div = document.createElement('div');
+    div.className = 'sidebar-item' + (f.id === selectedId ? ' active' : '');
+    div.onclick = () => selectFinding(f.id);
+
+    const conf = (f.confidence || 'LOW').toUpperCase();
+    const confClass = 'conf-' + conf.toLowerCase();
+
+    let actionHtml = '';
+    if (de) {
+      const action = de.action;
+      actionHtml = '<span class="action-pill ' + action + '">' + action.toUpperCase() + '</span>';
+    }
+
+    div.innerHTML =
+      '<span class="badge-indicator">' + indicator + '</span>' +
+      '<span class="item-id">' + escapeHtml(f.id) + '</span>' +
+      actionHtml +
+      '<span class="item-conf badge ' + confClass + '">' + conf + '</span>';
+    list.appendChild(div);
+  });
+
+  updateSidebarStats();
+}
+
+function updateSidebarStats() {
+  const total = findings.length;
+  const reviewed = delta.items.length;
+  const approved = delta.items.filter(i => i.action === 'approve').length;
+  const rejected = delta.items.filter(i => i.action === 'reject').length;
+  const todoCount = delta.items.filter(i => i.action === 'todo').length;
+  const modified = delta.items.filter(i => i.modifications && Object.keys(i.modifications).length > 0).length;
+  const remaining = total - reviewed;
+
+  document.getElementById('sidebarStats').innerHTML =
+    '<div>' + total + ' total</div>' +
+    '<div>' + reviewed + ' reviewed</div>' +
+    (approved ? '<div>&nbsp;&nbsp;' + approved + ' approved</div>' : '') +
+    (modified ? '<div>&nbsp;&nbsp;' + modified + ' modified</div>' : '') +
+    (rejected ? '<div>&nbsp;&nbsp;' + rejected + ' rejected</div>' : '') +
+    (todoCount ? '<div>&nbsp;&nbsp;' + todoCount + ' todo</div>' : '') +
+    '<div>' + remaining + ' remaining</div>';
+}
+
+function updateProgress() {
+  const total = findings.length;
+  const reviewed = delta.items.length;
+  const pct = total > 0 ? Math.round((reviewed / total) * 100) : 0;
+  document.getElementById('progressText').textContent = reviewed + ' of ' + total + ' reviewed';
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+function selectFinding(id) {
+  selectedId = id;
+  renderFinding(id);
+  renderSidebar();
+}
+
+function renderFinding(id) {
+  const f = findings.find(x => x.id === id);
+  if (!f) return;
+
+  const de = getDeltaEntry(id);
+  const card = document.getElementById('findingCard');
+  document.getElementById('emptyState').style.display = 'none';
+  card.style.display = '';
+
+  // Compute effective values (base + delta overlay)
+  const eff = { ...f };
+  if (de && de.modifications) {
+    for (const [key, mod] of Object.entries(de.modifications)) {
+      eff[key] = mod.modified;
+    }
+  }
+
+  const status = (f.status || 'DRAFT').toUpperCase();
+  const statusClass = 'badge-' + status.toLowerCase();
+  const type = f.type || 'finding';
+  const typeClass = 'badge-' + type.toLowerCase();
+  const verif = f.verification || 'draft';
+  const verifClass = 'verif-' + verif.replace(/ /g, '-');
+  const verifLabel = verif === 'confirmed' ? '\u2713 confirmed'
+    : verif === 'tampered' ? '\u26A0 tampered'
+    : verif === 'no approval record' ? '\u26A0 no record'
+    : verif === 'unverified' ? '\u2014 unverified'
+    : '\u2014 draft';
+
+  const conf = (eff.confidence || 'LOW').toUpperCase();
+  const confClass = 'conf-' + conf.toLowerCase();
+
+  const prov = f.provenance && f.provenance.summary ? f.provenance.summary : 'NONE';
+  const provClass = 'prov-' + prov.toLowerCase();
+  const provIcon = (prov === 'MCP' || prov === 'HOOK') ? '\uD83D\uDEE1\uFE0F' : '';
+
+  const examiner = f.examiner || f.created_by || 'unknown';
+  const staged = f.staged ? formatTime(f.staged) : '';
+
+  let html = '';
+
+  // Delta indicator
+  if (de) {
+    const hasMods = de.modifications && Object.keys(de.modifications).length > 0;
+    const label = de.action.toUpperCase() + (hasMods ? ' (modified)' : '');
+    html += '<div class="delta-indicator ' + de.action + '">' + label + '</div>';
+  }
+
+  // Stale warning
+  if (de && de.content_hash_at_review && f.content_hash && de.content_hash_at_review !== f.content_hash) {
+    html += '<div class="stale-warning">\u26A0 This finding was modified after you reviewed it. Re-review recommended.</div>';
+  }
+
+  // Header
+  html += '<div class="card-header">';
+  html += '<span class="card-id">' + escapeHtml(f.id) + '</span>';
+  html += '<span class="badge ' + typeClass + '">' + type + '</span>';
+  html += '<span class="badge ' + statusClass + '">' + status + '</span>';
+  html += '<span class="' + verifClass + '" title="Integrity: ' + verif + '">' + verifLabel + '</span>';
+  html += '</div>';
+
+  // Title
+  html += '<div class="card-title" style="margin-bottom:8px">' + escapeHtml(f.title || '') + '</div>';
+
+  // Meta
+  html += '<div class="card-meta">Staged by ' + escapeHtml(examiner) + (staged ? ' \u00B7 ' + staged : '');
+  if (f.event_type) html += ' \u00B7 <span class="badge badge-timeline">' + escapeHtml(f.event_type) + '</span>';
+  html += '</div>';
+
+  // Confidence
+  html += '<div class="field-section"><div class="field-label">Confidence</div>';
+  if (de && de.modifications && de.modifications.confidence) {
+    html += '<span class="modified-original badge ' + confClassFor(de.modifications.confidence.original) + '">' +
+      escapeHtml(de.modifications.confidence.original) + '</span> \u2192 ';
+  }
+  html += '<span class="badge ' + confClass + '">' + conf + '</span>';
+  html += ' <span class="' + provClass + '">' + provIcon + ' ' + prov + '</span>';
+  html += '</div>';
+
+  // Confidence justification
+  if (f.confidence_justification) {
+    html += '<div class="field-section"><div class="field-label">Justification</div>';
+    html += '<div class="field-value">' + escapeHtml(f.confidence_justification) + '</div></div>';
+  }
+
+  // Observation
+  html += '<div class="field-section"><div class="field-label">Observation</div>';
+  html += renderFieldWithDelta('observation', eff.observation || '', de);
+  html += '</div>';
+
+  // Interpretation
+  html += '<div class="field-section"><div class="field-label">Interpretation</div>';
+  html += renderFieldWithDelta('interpretation', eff.interpretation || '', de);
+  html += '</div>';
+
+  // Evidence IDs
+  if (f.evidence_ids && f.evidence_ids.length > 0) {
+    html += '<div class="field-section"><div class="field-label">Evidence</div>';
+    html += '<div class="tag-list">' + f.evidence_ids.map(eid =>
+      '<span class="tag">' + escapeHtml(eid) + '</span>'
+    ).join('') + '</div></div>';
+  }
+
+  // MITRE IDs
+  if (f.mitre_ids && f.mitre_ids.length > 0) {
+    html += '<div class="field-section"><div class="field-label">MITRE ATT&CK</div>';
+    html += '<div class="tag-list">' + f.mitre_ids.map(m =>
+      '<span class="tag">' + escapeHtml(m) + '</span>'
+    ).join('') + '</div></div>';
+  }
+
+  // IOCs
+  if (f.iocs && f.iocs.length > 0) {
+    html += '<div class="field-section"><div class="field-label">IOCs</div>';
+    html += '<div class="tag-list">' + f.iocs.map(ioc =>
+      '<span class="tag">' + escapeHtml(ioc) + '</span>'
+    ).join('') + '</div></div>';
+  }
+
+  // Related findings
+  if (f.related_findings && f.related_findings.length > 0) {
+    html += '<div class="field-section"><div class="field-label">Related Findings</div>';
+    html += '<div class="tag-list">' + f.related_findings.map(rid =>
+      '<span class="tag clickable" onclick="selectFinding(\'' + escapeHtml(rid) + '\')">' + escapeHtml(rid) + '</span>'
+    ).join('') + '</div></div>';
+  }
+
+  // Artifact ref
+  if (f.artifact_ref) {
+    html += '<div class="field-section"><div class="field-label">Artifact Reference</div>';
+    html += '<div class="field-value mono">' + escapeHtml(f.artifact_ref) + '</div></div>';
+  }
+
+  // Action bar
+  html += '<div class="action-bar">';
+  html += '<button class="action-btn approve" onclick="doApprove()"><span class="key">a</span> Approve</button>';
+  html += '<button class="action-btn reject" onclick="openRejectDialog()"><span class="key">r</span> Reject</button>';
+  html += '<button class="action-btn" onclick="openNoteDialog()"><span class="key">n</span> Note</button>';
+  html += '<button class="action-btn todo" onclick="openTodoDialog()"><span class="key">t</span> Todo</button>';
+  html += '<button class="action-btn" onclick="doSkip()"><span class="key">s</span> Skip</button>';
+  html += '</div>';
+
+  // Examiner notes (if any)
+  if (f.examiner_notes && f.examiner_notes.length > 0) {
+    html += '<div class="optional-section"><div class="field-label">Examiner Notes</div>';
+    f.examiner_notes.forEach(n => {
+      html += '<div style="margin-bottom:6px"><span style="color:var(--text-muted)">' +
+        escapeHtml(n.by || '') + ' \u00B7 ' + formatTime(n.at || '') + '</span><br>' +
+        escapeHtml(n.note || n.text || '') + '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Delta note (pending)
+  if (de && de.note) {
+    html += '<div class="optional-section"><div class="field-label">Pending Note</div>';
+    html += '<div class="field-value">' + escapeHtml(de.note) + '</div></div>';
+  }
+
+  // Examiner modifications history
+  if (f.examiner_modifications && Object.keys(f.examiner_modifications).length > 0) {
+    html += '<div class="optional-section"><div class="field-label">Modification History</div>';
+    for (const [field, mod] of Object.entries(f.examiner_modifications)) {
+      html += '<div style="margin-bottom:4px"><strong>' + escapeHtml(field) + '</strong>: ' +
+        '<span class="modified-original">' + escapeHtml(String(mod.original || '')) + '</span> \u2192 ' +
+        '<span class="modified-new">' + escapeHtml(String(mod.modified || '')) + '</span>';
+      if (mod.modified_by) html += ' <span style="color:var(--text-muted)">by ' + escapeHtml(mod.modified_by) + '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  // Approval/rejection info
+  if (f.approved_by) {
+    html += '<div class="optional-section"><div class="field-label">Approved</div>';
+    html += '<div class="field-value">By ' + escapeHtml(f.approved_by) + (f.approved_at ? ' \u00B7 ' + formatTime(f.approved_at) : '') + '</div></div>';
+  }
+  if (f.rejected_by) {
+    html += '<div class="optional-section"><div class="field-label">Rejected</div>';
+    html += '<div class="field-value">By ' + escapeHtml(f.rejected_by) + (f.rejected_at ? ' \u00B7 ' + formatTime(f.rejected_at) : '') + '</div></div>';
+  }
+  if (f.rejection_reason) {
+    html += '<div class="optional-section"><div class="field-label">Rejection Reason</div>';
+    html += '<div class="field-value">' + escapeHtml(f.rejection_reason) + '</div></div>';
+  }
+
+  // Content hash (collapsed)
+  if (f.content_hash) {
+    html += '<details style="margin-top:12px;color:var(--text-muted);font-size:12px"><summary>Technical Details</summary>';
+    html += '<div style="margin-top:4px;font-family:monospace">Content hash: ' + escapeHtml(f.content_hash.slice(0, 12)) + '...</div>';
+    if (f.modified_at) html += '<div style="font-family:monospace">Modified: ' + escapeHtml(f.modified_at) + '</div>';
+    html += '</details>';
+  }
+
+  card.innerHTML = html;
+}
+
+function renderFieldWithDelta(field, value, de) {
+  if (de && de.modifications && de.modifications[field]) {
+    const mod = de.modifications[field];
+    return '<div class="modified-original">' + escapeHtml(String(mod.original || '')) + '</div>' +
+           '<div class="modified-new">' + escapeHtml(String(mod.modified || '')) + '</div>';
+  }
+  return '<div class="field-value">' + escapeHtml(String(value)) + '</div>';
+}
+
+function confClassFor(conf) {
+  return 'conf-' + (conf || 'low').toLowerCase();
+}
+
+/* === Actions === */
+function doApprove() {
+  if (!selectedId) return;
+  const f = findings.find(x => x.id === selectedId);
+  if (!f) return;
+
+  const existing = getDeltaEntry(selectedId);
+  setDeltaEntry({
+    id: selectedId,
+    type: f.type || 'finding',
+    action: 'approve',
+    content_hash_at_review: f.content_hash || '',
+    modifications: existing ? existing.modifications || {} : {},
+    note: existing ? existing.note || null : null,
+  });
+  renderSidebar();
+  updateProgress();
+  renderFinding(selectedId);
+  advanceToNext();
+}
+
+function openRejectDialog() {
+  if (!selectedId) return;
+  document.getElementById('rejectReason').value = '';
+  document.getElementById('rejectDialog').classList.add('visible');
+
+  // Wire up templates
+  document.querySelectorAll('#rejectDialog .dialog-template').forEach(btn => {
+    btn.onclick = () => {
+      const reason = btn.dataset.reason;
+      if (reason === 'duplicate') {
+        const dupId = prompt('Enter duplicate finding ID:');
+        if (dupId) document.getElementById('rejectReason').value = 'Duplicate of ' + dupId;
+      } else {
+        document.getElementById('rejectReason').value = reason;
+      }
+    };
+  });
+}
+
+function closeRejectDialog() {
+  document.getElementById('rejectDialog').classList.remove('visible');
+}
+
+function submitReject() {
+  if (!selectedId) return;
+  const reason = document.getElementById('rejectReason').value.trim();
+  if (!reason) { document.getElementById('rejectReason').focus(); return; }
+
+  const f = findings.find(x => x.id === selectedId);
+  if (!f) return;
+
+  setDeltaEntry({
+    id: selectedId,
+    type: f.type || 'finding',
+    action: 'reject',
+    content_hash_at_review: f.content_hash || '',
+    reason: reason,
+  });
+  closeRejectDialog();
+  renderSidebar();
+  updateProgress();
+  renderFinding(selectedId);
+  advanceToNext();
+}
+
+function openNoteDialog() {
+  if (!selectedId) return;
+  const de = getDeltaEntry(selectedId);
+  document.getElementById('noteText').value = de && de.note ? de.note : '';
+  document.getElementById('noteDialog').classList.add('visible');
+  document.getElementById('noteText').focus();
+}
+
+function closeNoteDialog() {
+  document.getElementById('noteDialog').classList.remove('visible');
+}
+
+function submitNote() {
+  if (!selectedId) return;
+  const note = document.getElementById('noteText').value.trim();
+  if (!note) return;
+
+  const f = findings.find(x => x.id === selectedId);
+  if (!f) return;
+
+  const existing = getDeltaEntry(selectedId) || {
+    id: selectedId,
+    type: f.type || 'finding',
+    action: 'approve',
+    content_hash_at_review: f.content_hash || '',
+    modifications: {},
+  };
+  existing.note = note;
+  setDeltaEntry(existing);
+  closeNoteDialog();
+  renderSidebar();
+  updateProgress();
+  renderFinding(selectedId);
+}
+
+function openTodoDialog() {
+  if (!selectedId) return;
+  document.getElementById('todoDescription').value = '';
+  document.getElementById('todoPriority').value = 'medium';
+  document.getElementById('todoDialog').classList.add('visible');
+  document.getElementById('todoDescription').focus();
+}
+
+function closeTodoDialog() {
+  document.getElementById('todoDialog').classList.remove('visible');
+}
+
+function submitTodo() {
+  if (!selectedId) return;
+  const desc = document.getElementById('todoDescription').value.trim();
+  if (!desc) { document.getElementById('todoDescription').focus(); return; }
+  const priority = document.getElementById('todoPriority').value;
+
+  const f = findings.find(x => x.id === selectedId);
+  if (!f) return;
+
+  setDeltaEntry({
+    id: selectedId,
+    type: f.type || 'finding',
+    action: 'todo',
+    content_hash_at_review: f.content_hash || '',
+    todo_description: desc,
+    todo_priority: priority,
+  });
+  closeTodoDialog();
+  renderSidebar();
+  updateProgress();
+  renderFinding(selectedId);
+  advanceToNext();
+}
+
+async function doSkip() {
+  if (!selectedId) return;
+  const de = getDeltaEntry(selectedId);
+  if (de) {
+    // Remove locally (no scheduleSave — DELETE handles server-side)
+    delta.items = delta.items.filter(i => i.id !== selectedId);
+    delta.modified_at = new Date().toISOString();
+    try {
+      await apiFetch('/api/delta/' + encodeURIComponent(selectedId), { method: 'DELETE' });
+      setSaveStatus('saved');
+    } catch (e) {
+      console.warn('DELETE delta item failed:', e);
+    }
+  }
+  renderSidebar();
+  updateProgress();
+  renderFinding(selectedId);
+}
+
+function advanceToNext() {
+  if (currentFilter !== 'needs-review') return;
+  const filtered = getFilteredFindings();
+  if (filtered.length > 0) {
+    selectFinding(filtered[0].id);
+  }
+}
+
+/* === Theme === */
+function initTheme() {
+  const saved = localStorage.getItem('aiir-theme');
+  if (saved === 'light') document.body.classList.add('light');
+  updateThemeButton();
+}
+
+function toggleTheme() {
+  document.body.classList.toggle('light');
+  localStorage.setItem('aiir-theme', document.body.classList.contains('light') ? 'light' : 'dark');
+  updateThemeButton();
+}
+
+function updateThemeButton() {
+  document.getElementById('btnTheme').textContent = document.body.classList.contains('light') ? '\u263E' : '\u2600';
+}
+
+/* === Shortcuts === */
+function toggleShortcuts() {
+  document.getElementById('shortcutsOverlay').classList.toggle('visible');
+}
+
+/* === Refresh === */
+function updateRefreshBadge() {
+  const badge = document.getElementById('refreshBadge');
+  if (newFindingsCount > 0) {
+    badge.textContent = newFindingsCount + ' new';
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+/* === Tabs === */
+function switchTab(tabName) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tabName));
+}
+
+/* === Helpers === */
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function formatTime(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
+  } catch { return iso; }
+}
+
+/* === Keyboard === */
+document.addEventListener('keydown', function(e) {
+  // Skip if typing in input/textarea
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+    if (e.key === 'Escape') { e.target.blur(); e.preventDefault(); }
+    return;
+  }
+
+  // Skip if dialog is open
+  if (document.querySelector('.dialog-overlay.visible')) {
+    if (e.key === 'Escape') {
+      closeRejectDialog();
+      closeNoteDialog();
+      closeTodoDialog();
+    }
+    return;
+  }
+
+  // Shortcuts overlay
+  if (document.getElementById('shortcutsOverlay').classList.contains('visible')) {
+    if (e.key === 'Escape' || e.key === '?') toggleShortcuts();
+    return;
+  }
+
+  switch (e.key) {
+    case 'j':
+    case 'ArrowDown':
+      e.preventDefault();
+      navigateSidebar(1);
+      break;
+    case 'k':
+    case 'ArrowUp':
+      e.preventDefault();
+      navigateSidebar(-1);
+      break;
+    case 'a':
+      e.preventDefault();
+      doApprove();
+      break;
+    case 'r':
+      e.preventDefault();
+      openRejectDialog();
+      break;
+    case 'e':
+      e.preventDefault();
+      // Edit — will be wired in commit 3
+      break;
+    case 'n':
+      e.preventDefault();
+      openNoteDialog();
+      break;
+    case 't':
+      e.preventDefault();
+      openTodoDialog();
+      break;
+    case 's':
+      e.preventDefault();
+      doSkip();
+      break;
+    case '/':
+      e.preventDefault();
+      document.getElementById('searchBox').focus();
+      break;
+    case 'Escape':
+      e.preventDefault();
+      break;
+    case '?':
+      e.preventDefault();
+      toggleShortcuts();
+      break;
+  }
+});
+
+function navigateSidebar(dir) {
+  const filtered = getFilteredFindings();
+  if (filtered.length === 0) return;
+  const idx = filtered.findIndex(f => f.id === selectedId);
+  const next = Math.max(0, Math.min(filtered.length - 1, idx + dir));
+  selectFinding(filtered[next].id);
+
+  // Scroll sidebar item into view
+  const items = document.querySelectorAll('.sidebar-item');
+  if (items[next]) items[next].scrollIntoView({ block: 'nearest' });
+}
+
+/* === Event listeners === */
+document.getElementById('btnRefresh').addEventListener('click', () => {
+  newFindingsCount = 0;
+  updateRefreshBadge();
+  loadAll();
+});
+document.getElementById('btnShortcuts').addEventListener('click', toggleShortcuts);
+document.getElementById('footerShortcuts').addEventListener('click', toggleShortcuts);
+document.getElementById('btnTheme').addEventListener('click', toggleTheme);
+
+document.getElementById('sortSelect').addEventListener('change', function() {
+  currentSort = this.value;
+  renderSidebar();
+  showEmptyOrFirst();
+});
+
+document.querySelectorAll('.filter-preset').forEach(btn => {
+  btn.addEventListener('click', function() {
+    currentFilter = this.dataset.filter;
+    document.querySelectorAll('.filter-preset').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    renderSidebar();
+    showEmptyOrFirst();
+  });
+});
+
+document.getElementById('searchBox').addEventListener('input', function() {
+  searchQuery = this.value;
+  renderSidebar();
+  showEmptyOrFirst();
+});
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+/* === Init === */
+initTheme();
+loadAll();
+</script>
 </body>
 </html>
