@@ -25,6 +25,9 @@ htmlcov/
 # Audit logs (generated at runtime)
 *.jsonl
 
+# Triage databases (downloaded at runtime)
+packages/windows-triage/data/*.db
+
 # Claude Code
 .claude/
 CLAUDE.md
