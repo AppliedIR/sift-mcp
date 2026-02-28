@@ -126,12 +126,20 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     @server.tool()
     def get_case_status(case_id: str = "") -> dict:
         """Get investigation summary: findings by status, evidence count, timeline span."""
-        return manager.get_case_status(case_id or None)
+        try:
+            return manager.get_case_status(case_id or None)
+        except Exception as e:
+            logger.error("get_case_status failed: %s", e)
+            return {"error": str(e)}
 
     @server.tool()
     def list_cases() -> list[dict]:
         """List all cases with status."""
-        return manager.list_cases()
+        try:
+            return manager.list_cases()
+        except Exception as e:
+            logger.error("list_cases failed: %s", e)
+            return [{"error": str(e)}]
 
     # --- Investigation Records ---
 
@@ -190,12 +198,16 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
                     _validate_str_length(
                         cmd.get("purpose"), "supporting_commands.purpose", _MAX_TEXT
                     )
-        result = manager.record_finding(
-            finding,
-            examiner_override=analyst_override,
-            supporting_commands=supporting_commands,
-            audit=audit,
-        )
+        try:
+            result = manager.record_finding(
+                finding,
+                examiner_override=analyst_override,
+                supporting_commands=supporting_commands,
+                audit=audit,
+            )
+        except Exception as e:
+            logger.error("record_finding failed: %s", e)
+            return {"error": str(e)}
         audit.log(
             tool="record_finding", params={"finding": finding}, result_summary=result
         )
@@ -240,9 +252,13 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         if isinstance(event, dict):
             _validate_str_length(event.get("description"), "description", _MAX_TEXT)
             _validate_str_length(event.get("source"), "source", _MAX_TITLE)
-        result = manager.record_timeline_event(
-            event, examiner_override=analyst_override
-        )
+        try:
+            result = manager.record_timeline_event(
+                event, examiner_override=analyst_override
+            )
+        except Exception as e:
+            logger.error("record_timeline_event failed: %s", e)
+            return {"error": str(e)}
         audit.log(
             tool="record_timeline_event", params={"event": event}, result_summary=result
         )
@@ -251,7 +267,11 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     @server.tool()
     def get_findings(status: str = "") -> list[dict]:
         """Return findings, optionally filtered by DRAFT/APPROVED/REJECTED."""
-        return manager.get_findings(status or None)
+        try:
+            return manager.get_findings(status or None)
+        except Exception as e:
+            logger.error("get_findings failed: %s", e)
+            return [{"error": str(e)}]
 
     @server.tool()
     def get_timeline(
@@ -272,19 +292,27 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - end_date: ISO date/datetime upper bound on timestamp
         - event_type: process, network, file, registry, auth, persistence, lateral, execution, other
         """
-        return manager.get_timeline(
-            status=status or None,
-            source=source or None,
-            examiner=examiner or None,
-            start_date=start_date or None,
-            end_date=end_date or None,
-            event_type=event_type or None,
-        )
+        try:
+            return manager.get_timeline(
+                status=status or None,
+                source=source or None,
+                examiner=examiner or None,
+                start_date=start_date or None,
+                end_date=end_date or None,
+                event_type=event_type or None,
+            )
+        except Exception as e:
+            logger.error("get_timeline failed: %s", e)
+            return [{"error": str(e)}]
 
     @server.tool()
     def get_actions(limit: int = 50) -> list[dict]:
         """Return recent actions from the case actions log."""
-        return manager.get_actions(limit)
+        try:
+            return manager.get_actions(limit)
+        except Exception as e:
+            logger.error("get_actions failed: %s", e)
+            return [{"error": str(e)}]
 
     # --- TODOs ---
 
@@ -300,13 +328,17 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         _validate_str_length(description, "description", _MAX_TEXT)
         _validate_str_length(assignee, "assignee", _MAX_SHORT)
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
-        result = manager.add_todo(
-            description,
-            assignee,
-            priority,
-            related_findings,
-            examiner_override=analyst_override,
-        )
+        try:
+            result = manager.add_todo(
+                description,
+                assignee,
+                priority,
+                related_findings,
+                examiner_override=analyst_override,
+            )
+        except Exception as e:
+            logger.error("add_todo failed: %s", e)
+            return {"error": str(e)}
         audit.log(
             tool="add_todo",
             params={"description": description, "assignee": assignee},
@@ -317,7 +349,11 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     @server.tool()
     def list_todos(status: str = "open", assignee: str = "") -> list[dict]:
         """List TODO items. Status: open/completed/all."""
-        return manager.list_todos(status, assignee)
+        try:
+            return manager.list_todos(status, assignee)
+        except Exception as e:
+            logger.error("list_todos failed: %s", e)
+            return [{"error": str(e)}]
 
     @server.tool()
     def update_todo(
@@ -332,14 +368,18 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         _validate_str_length(note, "note", _MAX_TEXT)
         _validate_str_length(assignee, "assignee", _MAX_SHORT)
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
-        result = manager.update_todo(
-            todo_id,
-            status,
-            note,
-            assignee,
-            priority,
-            examiner_override=analyst_override,
-        )
+        try:
+            result = manager.update_todo(
+                todo_id,
+                status,
+                note,
+                assignee,
+                priority,
+                examiner_override=analyst_override,
+            )
+        except Exception as e:
+            logger.error("update_todo failed: %s", e)
+            return {"error": str(e)}
         audit.log(
             tool="update_todo", params={"todo_id": todo_id}, result_summary=result
         )
@@ -348,7 +388,11 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     @server.tool()
     def complete_todo(todo_id: str, analyst_override: str = "") -> dict:
         """Mark a TODO as completed."""
-        result = manager.complete_todo(todo_id, examiner_override=analyst_override)
+        try:
+            result = manager.complete_todo(todo_id, examiner_override=analyst_override)
+        except Exception as e:
+            logger.error("complete_todo failed: %s", e)
+            return {"error": str(e)}
         audit.log(
             tool="complete_todo", params={"todo_id": todo_id}, result_summary=result
         )
@@ -359,7 +403,11 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     @server.tool()
     def list_evidence() -> list[dict]:
         """Return evidence index with registration timestamps and integrity status."""
-        return manager.list_evidence()
+        try:
+            return manager.list_evidence()
+        except Exception as e:
+            logger.error("list_evidence failed: %s", e)
+            return [{"error": str(e)}]
 
     # --- Discipline Reference Data ---
 

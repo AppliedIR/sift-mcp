@@ -886,7 +886,7 @@ if $INSTALL_RAG; then
         echo ""
         if prompt_yn "Build index now?" "y"; then
             info "Building forensic-rag index (this may take a few minutes)..."
-            "$VENV_PYTHON" -m rag_mcp.build && \
+            ANONYMIZED_TELEMETRY=False "$VENV_PYTHON" -m rag_mcp.build && \
                 ok "Index built" || warn "Index build failed. You can retry later."
         else
             info "Skipping index build."
@@ -1231,6 +1231,8 @@ for name, module in core_backends + optional:
         octi_token = "$OPENCTI_TOKEN"
         entry["env"]["OPENCTI_URL"] = octi_url if octi_url else "\${OPENCTI_URL}"
         entry["env"]["OPENCTI_TOKEN"] = octi_token if octi_token else "\${OPENCTI_TOKEN}"
+    if name == "forensic-rag-mcp":
+        entry["env"]["ANONYMIZED_TELEMETRY"] = "False"
     config["backends"][name] = entry
 
 with open("$GATEWAY_CONFIG", "w") as f:

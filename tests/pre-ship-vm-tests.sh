@@ -116,6 +116,7 @@ fi
 info "Gateway token: ${TOKEN:0:10}..."
 info "Backing up $CLAUDE_JSON"
 cp "$CLAUDE_JSON" "$BACKUP" 2>/dev/null || info "No existing .claude.json to back up"
+trap 'if [ -f "$BACKUP" ]; then cp "$BACKUP" "$CLAUDE_JSON"; rm "$BACKUP"; fi' EXIT
 
 echo ""
 echo "--- Test 1: First-Launch Preservation ---"
@@ -180,18 +181,6 @@ remove_mcp_entry "aiir-type-test-shttp"
 # --- Restore and Report ---
 
 echo ""
-echo "--- Cleanup ---"
-echo ""
-
-if [ -f "$BACKUP" ]; then
-    cp "$BACKUP" "$CLAUDE_JSON"
-    rm "$BACKUP"
-    info "Restored ~/.claude.json from backup"
-else
-    info "No backup to restore"
-fi
-
-echo ""
 echo "==============================="
 echo "  RESULTS SUMMARY"
 echo "==============================="
@@ -201,8 +190,8 @@ PASS_COUNT=0
 FAIL_COUNT=0
 for r in "${RESULTS[@]}"; do
     echo "  $r"
-    if [[ "$r" == PASS* ]]; then ((PASS_COUNT++)); fi
-    if [[ "$r" == FAIL* ]]; then ((FAIL_COUNT++)); fi
+    if [[ "$r" == PASS* ]]; then ((PASS_COUNT+=1)); fi
+    if [[ "$r" == FAIL* ]]; then ((FAIL_COUNT+=1)); fi
 done
 
 echo ""

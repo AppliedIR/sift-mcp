@@ -231,9 +231,7 @@ def create_mcp_server(gateway: Any) -> Server:
             return [TextContent(type="text", text=f"Error: unknown tool {name}")]
         except (RuntimeError, ConnectionError, OSError) as e:
             logger.error("MCP call_tool backend error for %s: %s", name, e)
-            return [
-                TextContent(type="text", text=f"Error: backend failure for {name}: {e}")
-            ]
+            return [TextContent(type="text", text=f"Error: backend failure for {name}")]
         except Exception as e:
             logger.error(
                 "MCP call_tool unexpected error for %s: %s: %s",
@@ -241,7 +239,9 @@ def create_mcp_server(gateway: Any) -> Server:
                 type(e).__name__,
                 e,
             )
-            return [TextContent(type="text", text=f"Error: {type(e).__name__}: {e}")]
+            return [
+                TextContent(type="text", text=f"Error: unexpected failure for {name}")
+            ]
 
         # Normalise to list of TextContent for the MCP protocol
         contents: list[TextContent] = []
@@ -304,9 +304,7 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
             logger.error(
                 "Per-backend call_tool error for %s/%s: %s", backend_name, name, e
             )
-            return [
-                TextContent(type="text", text=f"Error: backend failure for {name}: {e}")
-            ]
+            return [TextContent(type="text", text=f"Error: backend failure for {name}")]
         except Exception as e:
             logger.error(
                 "Per-backend call_tool unexpected error for %s/%s: %s: %s",
@@ -315,7 +313,9 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
                 type(e).__name__,
                 e,
             )
-            return [TextContent(type="text", text=f"Error: {type(e).__name__}: {e}")]
+            return [
+                TextContent(type="text", text=f"Error: unexpected failure for {name}")
+            ]
 
         # Normalise to list of TextContent
         contents: list[TextContent] = []
