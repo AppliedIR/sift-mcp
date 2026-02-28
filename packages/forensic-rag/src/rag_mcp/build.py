@@ -122,7 +122,7 @@ def build(
     # =========================================================================
     if not skip_online:
         logger.info("=" * 60)
-        logger.info("Phase 1: Online Sources")
+        logger.info("Phase 1: Online Sources (clones ~20 repos, may take several minutes)")
         logger.info("=" * 60)
 
         disabled = load_disabled_sources()
@@ -259,7 +259,7 @@ def build(
 
     logger.info("")
     logger.info("=" * 60)
-    logger.info("Phase 4: Building ChromaDB Index")
+    logger.info("Phase 4: Building ChromaDB Index (slowest step, ~5-15 minutes depending on CPU)")
     logger.info("=" * 60)
 
     if not all_records:
@@ -321,7 +321,7 @@ def build(
     batch_size = 100
     total = len(all_records)
 
-    logger.info(f"  Embedding {total} records...")
+    logger.info(f"  Embedding {total} records (this takes 5-15 minutes)...")
 
     augmented_count = 0
     for i in range(0, total, batch_size):

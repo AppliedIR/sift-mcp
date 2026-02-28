@@ -5,6 +5,10 @@ description: Post-install verification and onboarding for AIIR lite
 
 # /welcome — Post-Install Verification and Onboarding
 
+**IMPORTANT:** All MCP checks in this skill MUST use MCP tool calls,
+not Bash subprocess. If an MCP tool is unavailable, report it as a
+failure — do not try to work around it with subprocess.
+
 Run these steps in order. Report results as you go. Stop and warn on
 any failure.
 
@@ -13,16 +17,20 @@ any failure.
 ## Step 1: Verify MCP Health
 
 **forensic-rag:**
-- Call `get_stats` on the forensic-rag MCP
+- Use the `forensic-rag` MCP tool `get_stats` (do NOT use subprocess
+  or Bash — use the MCP tool directly)
 - Report: document count, source count, index status
-- If document count is 0: warn "RAG index may be empty. Run:
-  `python -m rag_mcp.build` from the project directory."
+- If the MCP tool is not available or errors, report: "forensic-rag
+  MCP not responding. The RAG index may not be built. Run:
+  `RAG_INDEX_DIR=~/.aiir/rag-index python -m rag_mcp.build`"
 
 **windows-triage:**
-- Call `get_health` on the windows-triage MCP
+- Use the `windows-triage` MCP tool `get_health` (do NOT use
+  subprocess or Bash — use the MCP tool directly)
 - Report: database status, record counts per database
-- If databases are missing: warn "Triage databases not loaded. Run:
-  `python -m windows_triage.scripts.download_databases`"
+- If the MCP tool is not available or errors, report: "windows-triage
+  MCP not responding. Check that triage databases exist at
+  ~/.aiir/triage-db/"
 
 Report status:
 ```
@@ -151,6 +159,30 @@ If any optional MCPs are already configured, report them as active.
 
 ---
 
+## Step 8: Bash Permission Preference
+
+Present this to the user:
+
+> Lite mode runs forensic tools through Bash. You have two options:
+>
+> 1. **Approve each command** — Claude asks permission before every
+>    Bash command. More oversight, more friction during investigations.
+> 2. **Auto-allow Bash** — Commands run without prompting. The audit
+>    hook still logs every command regardless of this setting.
+>
+> Which do you prefer?
+
+If the user chooses option 2:
+- Add `"Bash(*)"` to the `permissions.allow` array in the project's
+  `.claude/settings.json`
+
+If the user chooses option 1:
+- No changes needed (this is the default)
+- Tell the user: "You can change this later by adding `Bash(*)` to
+  permissions.allow in `.claude/settings.json`."
+
+---
+
 ## Summary
 
 After all steps, produce a summary:
@@ -162,6 +194,11 @@ forensic-rag:     [OK/WARN] (X records)
 windows-triage:   [OK/WARN] (databases)
 Audit hook:       [OK/WARN/NO CASE]
 Config conflicts:  [OK/WARN]
-
-Ready for forensic work. Run /case init <name> to begin.
 ```
+
+If the user chose option 2 (auto-allow Bash) in Step 8, end with:
+"Settings updated. Restart Claude Code to apply, then run
+`/case init <name>` to begin."
+
+Otherwise end with:
+"Ready for forensic work. Run `/case init <name>` to begin."

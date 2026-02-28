@@ -121,9 +121,12 @@ fi
 
 "$VENV_DIR/bin/pip" install --quiet --upgrade pip
 
-for pkg in sift-common forensic-knowledge forensic-rag windows-triage; do
+for pkg in sift-common forensic-rag windows-triage; do
     pkg_dir="$SCRIPT_DIR/packages/$pkg"
     if [[ -d "$pkg_dir" ]]; then
+        if [[ "$pkg" == "forensic-rag" ]]; then
+            echo "  Installing $pkg (downloads ML dependencies, may take several minutes)..."
+        fi
         "$VENV_DIR/bin/pip" install --quiet -e "$pkg_dir"
         ok "Installed $pkg"
     else
@@ -167,15 +170,15 @@ header "Phase 3: RAG Index"
 mkdir -p "$INDEX_DIR"
 
 # Check if index already exists
-INDEX_COUNT=$("$VENV_PYTHON" -m rag_mcp.status --json --no-check 2>/dev/null | \
+INDEX_COUNT=$(RAG_INDEX_DIR="$INDEX_DIR" "$VENV_PYTHON" -m rag_mcp.status --json --no-check 2>/dev/null | \
     "$VENV_PYTHON" -c "import sys,json; print(json.load(sys.stdin).get('document_count',0))" 2>/dev/null) || INDEX_COUNT=0
 
 if [[ "$INDEX_COUNT" -gt 0 ]] 2>/dev/null; then
     ok "RAG index already built ($INDEX_COUNT records)"
 else
     echo "  Building RAG index (this takes 15-25 minutes)..."
-    if "$VENV_PYTHON" -m rag_mcp.build 2>/dev/null; then
-        INDEX_COUNT=$("$VENV_PYTHON" -m rag_mcp.status --json --no-check 2>/dev/null | \
+    if RAG_INDEX_DIR="$INDEX_DIR" ANONYMIZED_TELEMETRY=False "$VENV_PYTHON" -m rag_mcp.build 2>/dev/null; then
+        INDEX_COUNT=$(RAG_INDEX_DIR="$INDEX_DIR" "$VENV_PYTHON" -m rag_mcp.status --json --no-check 2>/dev/null | \
             "$VENV_PYTHON" -c "import sys,json; print(json.load(sys.stdin).get('document_count',0))" 2>/dev/null) || INDEX_COUNT=0
         if [[ "$INDEX_COUNT" -gt 0 ]] 2>/dev/null; then
             ok "RAG index built ($INDEX_COUNT records)"

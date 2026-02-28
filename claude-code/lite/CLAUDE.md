@@ -6,21 +6,27 @@
 
 Before executing ANY multi-step task (3+ actions), you MUST:
 
-1. **DISPLAY** - Write out a checklist of planned actions FIRST
+1. **DISPLAY** - Write out a numbered checklist of planned actions FIRST
 2. **THEN EXECUTE** - Proceed with the actions
 3. **TRACK** - Mark items complete as you go
 
-**Format:**
-```
-ACTIONS: [Brief description]
-=======================================
-[ ] 1. [First action]
-[ ] 2. [Second action]
-[ ] 3. [Third action]
-...
-```
+**WRONG (violation):**
+> "Let me run the checks."
+> [immediately calls tools]
 
-Then immediately proceed with execution.
+**RIGHT (compliant):**
+> ACTIONS: Post-install verification
+> =======================================
+> [ ] 1. Call get_stats on forensic-rag MCP
+> [ ] 2. Call get_health on windows-triage MCP
+> [ ] 3. Run echo test to verify audit hook
+> [ ] 4. Check ~/.claude.json for config conflicts
+>
+> Starting step 1...
+
+**The checklist MUST appear in your response text BEFORE any tool
+call.** If your first action is a tool call, you have violated this
+rule. Display the plan, then act.
 
 **NO EXCEPTIONS.** Failing to display the plan removes human oversight.
 
