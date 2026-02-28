@@ -58,13 +58,27 @@ class TestFetchRelease:
         mock_resp.__exit__ = MagicMock(return_value=False)
         return mock_resp
 
-    def test_latest_succeeds_directly(self):
-        """When /releases/latest works, use it."""
-        release = {"tag_name": "v1.0", "assets": []}
+    def _db_release(self, tag="triage-db-v2026.02.25"):
+        """Helper: a triage-db release with .db.zst assets."""
+        return {
+            "tag_name": tag,
+            "assets": [
+                {"name": "known_good.db.zst", "url": "https://x"},
+                {"name": "context.db.zst", "url": "https://x"},
+            ],
+        }
+
+    def test_latest_finds_triage_db_release(self):
+        """Finds triage-db release among mixed releases."""
+        releases = [
+            {"tag_name": "v0.5.0", "assets": []},
+            self._db_release("triage-db-v2026.02.25"),
+            self._db_release("triage-db-v2026.01.15"),
+        ]
         with (
             patch(
                 "windows_triage.scripts.download_databases.urllib.request.urlopen",
-                return_value=self._mock_urlopen(release),
+                return_value=self._mock_urlopen(releases),
             ),
             patch(
                 "windows_triage.scripts.download_databases._github_headers",
@@ -72,27 +86,18 @@ class TestFetchRelease:
             ),
         ):
             result = _fetch_release("latest")
-        assert result["tag_name"] == "v1.0"
+        assert result["tag_name"] == "triage-db-v2026.02.25"
 
-    def test_latest_falls_back_to_releases_list(self):
-        """When /releases/latest returns 404, fall back to /releases list."""
-        import urllib.error
-
-        releases_list = [{"tag_name": "triage-db-v2025.02", "assets": []}]
-
-        call_count = 0
-
-        def mock_urlopen(req, timeout=30):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
-            return self._mock_urlopen(releases_list)
-
+    def test_latest_skips_releases_without_assets(self):
+        """Triage-db tag without .db.zst assets is skipped."""
+        releases = [
+            {"tag_name": "triage-db-v2026.03.01", "assets": []},
+            self._db_release("triage-db-v2026.02.25"),
+        ]
         with (
             patch(
                 "windows_triage.scripts.download_databases.urllib.request.urlopen",
-                side_effect=mock_urlopen,
+                return_value=self._mock_urlopen(releases),
             ),
             patch(
                 "windows_triage.scripts.download_databases._github_headers",
@@ -100,34 +105,48 @@ class TestFetchRelease:
             ),
         ):
             result = _fetch_release("latest")
-        assert result["tag_name"] == "triage-db-v2025.02"
-        assert call_count == 2
+        assert result["tag_name"] == "triage-db-v2026.02.25"
 
-    def test_latest_no_releases_raises(self):
-        """When /releases/latest 404s and /releases is empty, raise ValueError."""
-        import urllib.error
-
-        call_count = 0
-
-        def mock_urlopen(req, timeout=30):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
-            return self._mock_urlopen([])
-
+    def test_latest_no_matching_releases(self):
+        """No triage-db releases raises ValueError."""
+        releases = [
+            {"tag_name": "v0.5.0", "assets": []},
+            {"tag_name": "v0.4.0", "assets": []},
+        ]
         with (
             patch(
                 "windows_triage.scripts.download_databases.urllib.request.urlopen",
-                side_effect=mock_urlopen,
+                return_value=self._mock_urlopen(releases),
             ),
             patch(
                 "windows_triage.scripts.download_databases._github_headers",
                 return_value={"Accept": "application/vnd.github+json"},
             ),
         ):
-            with pytest.raises(ValueError, match="No releases found"):
+            with pytest.raises(ValueError, match="No triage database releases"):
                 _fetch_release("latest")
+
+    def test_latest_skips_code_releases(self):
+        """Code release (v0.5.0) is not returned even if it has assets."""
+        releases = [
+            {
+                "tag_name": "v0.5.0",
+                "assets": [{"name": "source.tar.gz", "url": "https://x"}],
+            },
+            self._db_release("triage-db-v2026.02.25"),
+        ]
+        with (
+            patch(
+                "windows_triage.scripts.download_databases.urllib.request.urlopen",
+                return_value=self._mock_urlopen(releases),
+            ),
+            patch(
+                "windows_triage.scripts.download_databases._github_headers",
+                return_value={"Accept": "application/vnd.github+json"},
+            ),
+        ):
+            result = _fetch_release("latest")
+        assert result["tag_name"] == "triage-db-v2026.02.25"
 
     def test_specific_tag(self):
         """Specific tag hits /releases/tags/<tag> directly."""

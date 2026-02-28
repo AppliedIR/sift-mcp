@@ -59,26 +59,32 @@ def _github_headers() -> dict[str, str]:
 def _fetch_release(tag: str = "latest") -> dict:
     """Fetch release metadata from GitHub API.
 
-    When tag is "latest", tries ``/releases/latest`` first. If that returns 404
-    (no release marked as Latest), falls back to the first item in ``/releases``.
+    When tag is "latest", finds the most recent triage-db-* release
+    that contains .db.zst assets. Otherwise fetches the exact tag.
     """
     headers = _github_headers()
 
     if tag == "latest":
-        url = f"https://api.github.com/repos/{REPO}/releases/latest"
+        # Find most recent triage DB release by tag prefix.
+        # per_page=100 prevents pagination issues as code releases
+        # accumulate (default is 30).
+        url = f"https://api.github.com/repos/{REPO}/releases?per_page=100"
         req = urllib.request.Request(url, headers=headers)
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                return json.loads(resp.read())
-        except urllib.error.HTTPError:
-            # No "Latest" release — fall back to most recent release
-            url = f"https://api.github.com/repos/{REPO}/releases"
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                releases = json.loads(resp.read())
-                if releases:
-                    return releases[0]
-                raise ValueError("No releases found in repository") from None
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            releases = json.loads(resp.read())
+            matching = [
+                r for r in releases
+                if r["tag_name"].startswith("triage-db-")
+                and any(a["name"].endswith(".db.zst")
+                        for a in r.get("assets", []))
+            ]
+            if matching:
+                return matching[0]  # GitHub returns most recent first
+            raise ValueError(
+                "No triage database releases found. "
+                "Expected releases with tag prefix 'triage-db-' "
+                "containing .db.zst assets."
+            )
     else:
         url = f"https://api.github.com/repos/{REPO}/releases/tags/{tag}"
         req = urllib.request.Request(url, headers=headers)
