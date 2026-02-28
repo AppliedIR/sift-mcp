@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "case-dashboard"
+version = "0.5.0"
+description = "AIIR case dashboard — web-based finding review interface"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "AppliedIncidentResponse.com"}]
+keywords = ["mcp", "forensics", "dashboard", "dfir"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+dependencies = [
+    "sift-common",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/case_dashboard"]

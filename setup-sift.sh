@@ -809,7 +809,10 @@ install_pkg "case-mcp" "$INSTALL_DIR/packages/case-mcp" || exit 1
 # 8. report-mcp (depends on aiir-cli)
 install_pkg "report-mcp" "$INSTALL_DIR/packages/report-mcp" || exit 1
 
-# 8. windows-triage-mcp (optional, depends on 2)
+# 9. case-dashboard (depends on sift-common, optional for gateway)
+install_pkg "case-dashboard" "$INSTALL_DIR/packages/case-dashboard" || exit 1
+
+# 10. windows-triage-mcp (optional, depends on 2)
 if $INSTALL_TRIAGE; then
     install_pkg "windows-triage-mcp" "$INSTALL_DIR/packages/windows-triage" || {
         warn "windows-triage install failed. Continuing without it."

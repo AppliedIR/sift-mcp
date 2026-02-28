@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # Paths exempt from authentication.
 # /mcp is handled by its own ASGI-level auth (MCPAuthASGIApp) because
 # BaseHTTPMiddleware buffers responses and breaks SSE streaming.
-_PUBLIC_PATHS = {"/health", "/health/", "/mcp", "/api/v1/setup/join"}
+_PUBLIC_PATHS = {"/health", "/health/", "/mcp", "/api/v1/setup/join", "/dashboard", "/dashboard/"}
 
 # Maximum length for bearer tokens (DoS protection against megabyte-sized headers)
 _MAX_TOKEN_LENGTH = 1024

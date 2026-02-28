@@ -333,6 +333,15 @@ class Gateway:
         routes = []
         routes.extend(health_routes())
         routes.extend(rest_routes())
+
+        # Case dashboard (optional — installed separately)
+        try:
+            from case_dashboard.routes import create_dashboard_app
+
+            routes.append(Mount("/dashboard", app=create_dashboard_app()))
+        except ImportError:
+            pass
+
         # Per-backend routes BEFORE aggregate (Starlette matches first)
         routes.extend(per_backend_routes)
         routes.append(Mount("/mcp", app=mcp_asgi_app))
