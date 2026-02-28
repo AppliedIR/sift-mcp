@@ -53,6 +53,8 @@ markers = []
 [tool.coverage.run]
 source = [
     "packages/forensic-mcp/src",
+    "packages/case-mcp/src",
+    "packages/report-mcp/src",
     "packages/sift-mcp/src",
     "packages/sift-common/src",
     "packages/forensic-knowledge/src",
@@ -60,5 +62,6 @@ source = [
     "packages/forensic-rag/src",
     "packages/windows-triage/src",
     "packages/opencti/src",
+    "packages/case-dashboard/src",
 ]
 branch = true

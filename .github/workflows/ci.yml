@@ -47,6 +47,7 @@ jobs:
           pip install -e packages/sift-gateway
           pip install -e packages/case-mcp
           pip install -e packages/report-mcp
+          pip install -e packages/case-dashboard
 
       # forensic-rag: not installed in CI (chromadb has fragile transitive
       # deps). Tests and conftest import rag_mcp at module level.

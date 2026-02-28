@@ -59,7 +59,7 @@ Full AIIR is **LLM client agnostic** — connect any MCP-compatible client throu
 ### What Full AIIR Adds
 
 - LLM client agnostic (Claude Code, Desktop, Cursor, LibreChat, ChatGPT, any MCP client)
-- Gateway with auth + lifecycle management (63 tools across 7 backends)
+- Gateway with auth + lifecycle management (64 tools across 7 backends)
 - Structured JSON case files with integrity verification
 - Formal report generation (6 profiles)
 

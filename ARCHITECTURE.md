@@ -34,6 +34,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | forensic-rag-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | windows-triage-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | opencti-mcp | SIFT | — | (via gateway) | stdio subprocess |
+| case-dashboard | SIFT | — | (via gateway /dashboard/*) | — |
 | wintools-mcp | Windows | 4624 | Streamable HTTP MCP | — |
 | aiir CLI | SIFT | — | — (filesystem) | — |
 | sift-common | SIFT | — | — (internal package) | — |
@@ -45,7 +46,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 |-----------|---------|
 | **sift-gateway** | Aggregates SIFT-local MCPs. Starts each as a stdio subprocess. Exposes all their tools via `/mcp` (Streamable HTTP) and `/api/v1/tools` (REST). API key → examiner identity mapping for multi-user. |
 | **forensic-mcp** | Findings, timeline, evidence, TODOs, discipline rules. The investigation state machine. 12 tools + 14 MCP resources (or 26 tools in tools mode for clients without resource support). |
-| **case-mcp** | Case lifecycle and status. Init, activate, close, migrate, list cases, case info, evidence summary, timeline summary, findings summary, recent activity, disk usage, export, import. 13 tools. |
+| **case-mcp** | Case lifecycle and status. Init, activate, close, migrate, list cases, case info, evidence summary, timeline summary, findings summary, recent activity, disk usage, export, import, open dashboard. 14 tools. |
 | **report-mcp** | Report generation with data-driven profiles (full, executive, timeline, ioc, findings, status). Aggregates approved findings, IOCs, MITRE mappings, and Zeltser IR Writing guidance. 6 tools. |
 | **sift-mcp** | Authenticated, denylist-protected forensic tool execution on Linux/SIFT. Zimmerman suite, Volatility, Sleuth Kit, Hayabusa, etc. FK-enriched response envelopes. 6 core tools, 65+ catalog entries. |
 | **forensic-rag-mcp** | Semantic search across Sigma rules, MITRE ATT&CK, Atomic Red Team, Splunk, KAPE, Velociraptor, LOLBAS, GTFOBins. |
@@ -54,6 +55,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | **wintools-mcp** | Catalog-gated forensic tool execution on Windows. Zimmerman suite, Hayabusa. FK-enriched response envelopes. Denylist blocks dangerous binaries. 7 tools, 22 catalog entries. |
 | **aiir CLI** | Human-only actions: approve/reject findings, review case status, manage evidence, generate reports, audit trail queries, case lifecycle (init/close/activate/migrate), execute forensic commands with audit trail, configure examiner identity. Not callable by AI. |
 | **sift-common** | Shared internal package. Canonical AuditWriter, operational logging (oplog), CSV/JSON/text output parsers. Used by all SIFT MCPs. |
+| **case-dashboard** | Browser-based case review UI, mounted at `/dashboard/*` on the gateway. Displays findings, timeline, evidence, and pending review deltas. |
 | **forensic-knowledge** | Shared YAML data package. Tool guidance, artifact knowledge, discipline rules, playbooks, collection checklists. No runtime state. |
 
 ---
@@ -233,7 +235,7 @@ Generated `.mcp.json` example:
 
 | Repo | GitHub | Purpose |
 |------|--------|---------|
-| [sift-mcp](https://github.com/AppliedIR/sift-mcp) | AppliedIR/sift-mcp | SIFT monorepo: 10 packages (forensic-mcp, case-mcp, report-mcp, sift-mcp, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, sift-common), SIFT installer, platform docs |
+| [sift-mcp](https://github.com/AppliedIR/sift-mcp) | AppliedIR/sift-mcp | SIFT monorepo: 11 packages (forensic-mcp, case-mcp, report-mcp, sift-mcp, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, sift-common, case-dashboard), SIFT installer, platform docs |
 | [wintools-mcp](https://github.com/AppliedIR/wintools-mcp) | AppliedIR/wintools-mcp | Windows tool execution MCP + Windows installer |
 | [aiir](https://github.com/AppliedIR/aiir) | AppliedIR/aiir | CLI + this architecture doc |
 
