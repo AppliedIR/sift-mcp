@@ -226,6 +226,61 @@ body {
 /* Footer */
 .footer { background: var(--bg-secondary); border-top: 1px solid var(--border); padding: 6px 16px; font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; flex-shrink: 0; }
 
+/* Inline editing */
+.inline-edit { margin-top: 4px; }
+.inline-edit textarea { width: 100%; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px; font-size: 13px; font-family: inherit; resize: vertical; min-height: 60px; }
+.inline-edit select { padding: 5px 8px; background: var(--bg-tertiary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px; font-size: 13px; }
+.inline-edit .edit-actions { display: flex; gap: 6px; margin-top: 6px; }
+.inline-edit .edit-actions button { padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; border: 1px solid var(--border); }
+.tag-input { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 4px; background: var(--bg-tertiary); border: 1px solid var(--accent); border-radius: 4px; min-height: 32px; }
+.tag-input .tag { display: inline-flex; align-items: center; gap: 4px; }
+.tag-input .tag .tag-remove { cursor: pointer; color: var(--red); font-weight: bold; padding: 0 2px; }
+.tag-input input { border: none; background: transparent; color: var(--text-primary); font-size: 12px; outline: none; min-width: 80px; flex: 1; }
+
+/* Batch toolbar */
+.batch-toolbar { display: none; padding: 8px 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); align-items: center; gap: 8px; font-size: 13px; flex-shrink: 0; }
+.batch-toolbar.visible { display: flex; }
+.batch-toolbar button { padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); }
+.batch-toolbar .batch-approve:hover { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+.batch-toolbar .batch-reject:hover { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+.sidebar-item .batch-check { width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; accent-color: var(--accent); }
+
+/* Filter dimensions */
+.filter-dims { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.filter-dims select { padding: 3px 6px; font-size: 11px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 3px; }
+
+/* Evidence panel */
+.evidence-panel { margin-top: 16px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.evidence-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.evidence-panel-header button { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 11px; }
+.evidence-item { border-bottom: 1px solid var(--border); }
+.evidence-item:last-child { border-bottom: none; }
+.evidence-item-header { padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.evidence-item-header:hover { background: var(--bg-tertiary); }
+.evidence-item-header .chevron { transition: transform 0.2s; color: var(--text-muted); }
+.evidence-item-header .chevron.open { transform: rotate(90deg); }
+.evidence-item-body { padding: 8px 12px 12px 28px; font-size: 12px; display: none; }
+.evidence-item-body.open { display: block; }
+.evidence-item-body pre { background: var(--bg-primary); padding: 8px; border-radius: 4px; font-family: monospace; font-size: 11px; overflow-x: auto; white-space: pre-wrap; margin-top: 4px; color: var(--text-primary); }
+.evidence-item-body .ev-field { margin-bottom: 6px; }
+.evidence-item-body .ev-label { color: var(--text-muted); font-size: 11px; }
+
+/* Grounding summary */
+.grounding { padding: 8px 12px; font-size: 12px; border-top: 1px solid var(--border); }
+.grounding-item { display: inline-block; margin-right: 12px; }
+.grounding-check { color: var(--green); }
+.grounding-miss { color: var(--red); }
+
+/* Timeline context */
+.timeline-context { margin-top: 16px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.timeline-context-header { padding: 8px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.timeline-event { padding: 6px 12px; font-size: 12px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; }
+.timeline-event:last-child { border-bottom: none; }
+.timeline-event.current { background: var(--accent); background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--accent); }
+.timeline-event .tl-time { color: var(--text-muted); font-family: monospace; flex-shrink: 0; white-space: nowrap; }
+.timeline-event .tl-desc { flex: 1; }
+.timeline-event .tl-marker { color: var(--accent); flex-shrink: 0; }
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg-primary); }
@@ -262,6 +317,14 @@ body {
     <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
   </div>
 
+  <!-- Batch toolbar -->
+  <div class="batch-toolbar" id="batchToolbar">
+    <span id="batchCount">0 selected:</span>
+    <button class="batch-approve" onclick="batchApprove()">Approve All</button>
+    <button class="batch-reject" onclick="batchReject()">Reject All</button>
+    <button onclick="batchClear()">Clear</button>
+  </div>
+
   <!-- Tab panels -->
   <div class="tab-panel" data-panel="dashboard">
     <div class="tab-placeholder">Dashboard tab — coming soon</div>
@@ -282,6 +345,12 @@ body {
           <button class="filter-preset active" data-filter="needs-review">Needs review</button>
           <button class="filter-preset" data-filter="reviewed">Reviewed</button>
           <button class="filter-preset" data-filter="all">All</button>
+        </div>
+        <div class="filter-dims">
+          <select id="filterConf" title="Confidence"><option value="">Confidence</option><option value="HIGH">HIGH</option><option value="MEDIUM">MEDIUM</option><option value="LOW">LOW</option><option value="SPECULATIVE">SPECULATIVE</option></select>
+          <select id="filterType" title="Type"><option value="">Type</option><option value="finding">Finding</option><option value="conclusion">Conclusion</option><option value="attribution">Attribution</option><option value="exclusion">Exclusion</option></select>
+          <select id="filterProv" title="Provenance"><option value="">Provenance</option><option value="MCP">MCP</option><option value="HOOK">HOOK</option><option value="SHELL">Shell</option><option value="MIXED">Mixed</option><option value="NONE">Ungrounded</option></select>
+          <select id="filterExaminer" title="Examiner"><option value="">Examiner</option></select>
         </div>
         <input type="text" id="searchBox" placeholder="Search findings..." />
       </div>
@@ -395,6 +464,14 @@ let searchQuery = '';
 let saveTimer = null;
 let previousFindingIds = new Set();
 let newFindingsCount = 0;
+let batchSelected = new Set();
+let timelineEvents = [];
+let auditCache = {};
+let editingField = null;
+let filterConf = '';
+let filterType = '';
+let filterProv = '';
+let filterExaminer = '';
 
 /* === Token extraction === */
 (function extractToken() {
@@ -426,10 +503,11 @@ async function apiFetch(path, opts) {
 /* === Data loading === */
 async function loadAll() {
   try {
-    const [f, d, c] = await Promise.all([
+    const [f, d, c, tl] = await Promise.all([
       apiFetch('/api/findings'),
       apiFetch('/api/delta'),
       apiFetch('/api/case'),
+      apiFetch('/api/timeline'),
     ]);
     const newIds = new Set(f.map(x => x.id));
     if (previousFindingIds.size > 0) {
@@ -438,13 +516,16 @@ async function loadAll() {
     }
     previousFindingIds = newIds;
     findings = f;
+    timelineEvents = tl || [];
     delta = d && d.items ? d : { version: 1, case_id: '', items: [] };
     caseMeta = c || {};
+    auditCache = {};
     if (caseMeta.case_id) {
       document.getElementById('headerTitle').textContent = 'AIIR \u2014 ' + caseMeta.case_id;
       document.title = 'AIIR \u2014 ' + caseMeta.case_id;
       if (!delta.case_id) delta.case_id = caseMeta.case_id;
     }
+    populateExaminerFilter();
     renderSidebar();
     updateProgress();
     if (selectedId) renderFinding(selectedId);
@@ -536,6 +617,17 @@ function getFilteredFindings() {
     list = list.filter(f => getDeltaEntry(f.id));
   }
 
+  // Dimension filters
+  if (filterConf) list = list.filter(f => (f.confidence || '').toUpperCase() === filterConf);
+  if (filterType) list = list.filter(f => (f.type || 'finding') === filterType);
+  if (filterProv) {
+    list = list.filter(f => {
+      const p = f.provenance && f.provenance.summary ? f.provenance.summary : 'NONE';
+      return p === filterProv;
+    });
+  }
+  if (filterExaminer) list = list.filter(f => (f.examiner || f.created_by || '') === filterExaminer);
+
   // Search
   if (searchQuery) {
     const q = searchQuery.toLowerCase();
@@ -589,11 +681,16 @@ function renderSidebar() {
       actionHtml = '<span class="action-pill ' + action + '">' + action.toUpperCase() + '</span>';
     }
 
+    const checked = batchSelected.has(f.id) ? ' checked' : '';
     div.innerHTML =
+      '<input type="checkbox" class="batch-check"' + checked + ' data-id="' + escapeHtml(f.id) + '" />' +
       '<span class="badge-indicator">' + indicator + '</span>' +
       '<span class="item-id">' + escapeHtml(f.id) + '</span>' +
       actionHtml +
       '<span class="item-conf badge ' + confClass + '">' + conf + '</span>';
+    // Wire checkbox
+    const cb = div.querySelector('.batch-check');
+    cb.addEventListener('click', function(e) { e.stopPropagation(); toggleBatchItem(f.id, this.checked); });
     list.appendChild(div);
   });
 
@@ -704,11 +801,16 @@ function renderFinding(id) {
 
   // Confidence
   html += '<div class="field-section"><div class="field-label">Confidence</div>';
-  if (de && de.modifications && de.modifications.confidence) {
-    html += '<span class="modified-original badge ' + confClassFor(de.modifications.confidence.original) + '">' +
-      escapeHtml(de.modifications.confidence.original) + '</span> \u2192 ';
+  if (editingField === 'confidence') {
+    html += renderEditableField('confidence', eff.confidence || 'LOW', f, de);
+  } else {
+    if (de && de.modifications && de.modifications.confidence) {
+      html += '<span class="modified-original badge ' + confClassFor(de.modifications.confidence.original) + '">' +
+        escapeHtml(de.modifications.confidence.original) + '</span> \u2192 ';
+    }
+    html += '<span class="badge ' + confClass + '">' + conf + '</span>';
+    html += ' <button style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px" onclick="startEdit(\'confidence\')">Edit</button>';
   }
-  html += '<span class="badge ' + confClass + '">' + conf + '</span>';
   html += ' <span class="' + provClass + '">' + provIcon + ' ' + prov + '</span>';
   html += '</div>';
 
@@ -720,36 +822,34 @@ function renderFinding(id) {
 
   // Observation
   html += '<div class="field-section"><div class="field-label">Observation</div>';
-  html += renderFieldWithDelta('observation', eff.observation || '', de);
+  html += renderEditableField('observation', eff.observation || '', f, de);
   html += '</div>';
 
   // Interpretation
   html += '<div class="field-section"><div class="field-label">Interpretation</div>';
-  html += renderFieldWithDelta('interpretation', eff.interpretation || '', de);
+  html += renderEditableField('interpretation', eff.interpretation || '', f, de);
   html += '</div>';
 
   // Evidence IDs
   if (f.evidence_ids && f.evidence_ids.length > 0) {
     html += '<div class="field-section"><div class="field-label">Evidence</div>';
     html += '<div class="tag-list">' + f.evidence_ids.map(eid =>
-      '<span class="tag">' + escapeHtml(eid) + '</span>'
+      '<span class="tag clickable" onclick="scrollToEvidence(\'' + escapeHtml(eid) + '\')">' + escapeHtml(eid) + '</span>'
     ).join('') + '</div></div>';
   }
 
   // MITRE IDs
-  if (f.mitre_ids && f.mitre_ids.length > 0) {
+  if ((f.mitre_ids && f.mitre_ids.length > 0) || editingField === 'mitre_ids') {
     html += '<div class="field-section"><div class="field-label">MITRE ATT&CK</div>';
-    html += '<div class="tag-list">' + f.mitre_ids.map(m =>
-      '<span class="tag">' + escapeHtml(m) + '</span>'
-    ).join('') + '</div></div>';
+    html += renderEditableField('mitre_ids', eff.mitre_ids || [], f, de);
+    html += '</div>';
   }
 
   // IOCs
-  if (f.iocs && f.iocs.length > 0) {
+  if ((f.iocs && f.iocs.length > 0) || editingField === 'iocs') {
     html += '<div class="field-section"><div class="field-label">IOCs</div>';
-    html += '<div class="tag-list">' + f.iocs.map(ioc =>
-      '<span class="tag">' + escapeHtml(ioc) + '</span>'
-    ).join('') + '</div></div>';
+    html += renderEditableField('iocs', eff.iocs || [], f, de);
+    html += '</div>';
   }
 
   // Related findings
@@ -774,6 +874,18 @@ function renderFinding(id) {
   html += '<button class="action-btn todo" onclick="openTodoDialog()"><span class="key">t</span> Todo</button>';
   html += '<button class="action-btn" onclick="doSkip()"><span class="key">s</span> Skip</button>';
   html += '</div>';
+
+  // Evidence panel
+  if (f.evidence_ids && f.evidence_ids.length > 0) {
+    html += '<div class="evidence-panel" id="evidencePanel">';
+    html += '<div class="evidence-panel-header"><span>Evidence</span><button onclick="toggleAllEvidence()">collapse all</button></div>';
+    html += '<div id="evidenceItems">Loading evidence...</div>';
+    html += '<div class="grounding" id="groundingSummary"></div>';
+    html += '</div>';
+  }
+
+  // Timeline context
+  html += '<div id="timelineContext"></div>';
 
   // Examiner notes (if any)
   if (f.examiner_notes && f.examiner_notes.length > 0) {
@@ -828,6 +940,10 @@ function renderFinding(id) {
   }
 
   card.innerHTML = html;
+
+  // Load evidence + timeline async
+  if (f.evidence_ids && f.evidence_ids.length > 0) loadEvidencePanel(f);
+  renderTimelineContext(f);
 }
 
 function renderFieldWithDelta(field, value, de) {
@@ -1007,6 +1123,349 @@ function advanceToNext() {
   }
 }
 
+/* === Filter dimensions === */
+function populateExaminerFilter() {
+  const examiners = new Set();
+  findings.forEach(f => { if (f.examiner || f.created_by) examiners.add(f.examiner || f.created_by); });
+  const sel = document.getElementById('filterExaminer');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Examiner</option>';
+  [...examiners].sort().forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e; opt.textContent = e;
+    if (e === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+/* === Batch operations === */
+function toggleBatchItem(id, checked) {
+  if (checked) batchSelected.add(id); else batchSelected.delete(id);
+  updateBatchToolbar();
+}
+
+function updateBatchToolbar() {
+  const tb = document.getElementById('batchToolbar');
+  if (batchSelected.size >= 2) {
+    tb.classList.add('visible');
+    document.getElementById('batchCount').textContent = batchSelected.size + ' selected:';
+  } else {
+    tb.classList.remove('visible');
+  }
+}
+
+function batchApprove() {
+  batchSelected.forEach(id => {
+    const f = findings.find(x => x.id === id);
+    if (!f) return;
+    const existing = getDeltaEntry(id);
+    setDeltaEntry({
+      id, type: f.type || 'finding', action: 'approve',
+      content_hash_at_review: f.content_hash || '',
+      modifications: existing ? existing.modifications || {} : {},
+      note: existing ? existing.note || null : null,
+    });
+  });
+  batchSelected.clear();
+  updateBatchToolbar();
+  renderSidebar();
+  updateProgress();
+  if (selectedId) renderFinding(selectedId);
+}
+
+function batchReject() {
+  const reason = prompt('Rejection reason for all selected:');
+  if (!reason) return;
+  batchSelected.forEach(id => {
+    const f = findings.find(x => x.id === id);
+    if (!f) return;
+    setDeltaEntry({
+      id, type: f.type || 'finding', action: 'reject',
+      content_hash_at_review: f.content_hash || '', reason,
+    });
+  });
+  batchSelected.clear();
+  updateBatchToolbar();
+  renderSidebar();
+  updateProgress();
+  if (selectedId) renderFinding(selectedId);
+}
+
+function batchClear() {
+  batchSelected.clear();
+  updateBatchToolbar();
+  renderSidebar();
+}
+
+/* === Inline editing === */
+function startEdit(field) {
+  if (!selectedId) return;
+  editingField = field;
+  renderFinding(selectedId);
+  // Focus the edit input after render
+  setTimeout(() => {
+    const el = document.getElementById('editInput-' + field);
+    if (el) el.focus();
+  }, 50);
+}
+
+function cancelEdit() {
+  editingField = null;
+  if (selectedId) renderFinding(selectedId);
+}
+
+function saveEdit(field) {
+  const f = findings.find(x => x.id === selectedId);
+  if (!f) return;
+
+  let newValue;
+  if (field === 'confidence') {
+    newValue = document.getElementById('editInput-confidence').value;
+  } else if (field === 'mitre_ids' || field === 'iocs') {
+    newValue = getTagInputValues(field);
+  } else {
+    newValue = document.getElementById('editInput-' + field).value;
+  }
+
+  const original = f[field];
+  if (JSON.stringify(newValue) === JSON.stringify(original)) { cancelEdit(); return; }
+
+  const existing = getDeltaEntry(selectedId) || {
+    id: selectedId, type: f.type || 'finding', action: 'approve',
+    content_hash_at_review: f.content_hash || '', modifications: {},
+  };
+  if (!existing.modifications) existing.modifications = {};
+  existing.modifications[field] = { original, modified: newValue };
+  setDeltaEntry(existing);
+  editingField = null;
+  renderSidebar();
+  updateProgress();
+  renderFinding(selectedId);
+}
+
+function getTagInputValues(field) {
+  const tags = [];
+  document.querySelectorAll('#tagInput-' + field + ' .tag-value').forEach(el => tags.push(el.textContent));
+  return tags;
+}
+
+function renderEditableField(field, value, f, de) {
+  if (editingField === field) {
+    if (field === 'confidence') {
+      const opts = ['SPECULATIVE', 'LOW', 'MEDIUM', 'HIGH'];
+      let html = '<div class="inline-edit"><select id="editInput-confidence">';
+      opts.forEach(o => html += '<option value="' + o + '"' + (o === value ? ' selected' : '') + '>' + o + '</option>');
+      html += '</select><div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'confidence\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
+      return html;
+    } else if (field === 'mitre_ids' || field === 'iocs') {
+      const items = Array.isArray(value) ? value : [];
+      let html = '<div class="inline-edit"><div class="tag-input" id="tagInput-' + field + '">';
+      items.forEach(t => html += '<span class="tag"><span class="tag-value">' + escapeHtml(t) + '</span><span class="tag-remove" onclick="removeTag(\'' + field + '\', this)">&times;</span></span>');
+      html += '<input type="text" placeholder="Add + Enter" onkeydown="addTag(event, \'' + field + '\')" />';
+      html += '</div><div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'' + field + '\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
+      return html;
+    } else {
+      return '<div class="inline-edit"><textarea id="editInput-' + field + '">' + escapeHtml(String(value)) + '</textarea>' +
+        '<div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'' + field + '\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
+    }
+  }
+  // Not editing — show value with edit button
+  let display = renderFieldWithDelta(field, value, de);
+  display += ' <button style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px" onclick="startEdit(\'' + field + '\')">Edit</button>';
+  return display;
+}
+
+function addTag(e, field) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const val = e.target.value.trim();
+  if (!val) return;
+  const span = document.createElement('span');
+  span.className = 'tag';
+  span.innerHTML = '<span class="tag-value">' + escapeHtml(val) + '</span><span class="tag-remove" onclick="removeTag(\'' + field + '\', this)">&times;</span>';
+  e.target.parentNode.insertBefore(span, e.target);
+  e.target.value = '';
+}
+
+function removeTag(field, el) {
+  el.parentNode.remove();
+}
+
+/* === Evidence panel === */
+async function loadEvidencePanel(finding) {
+  const container = document.getElementById('evidenceItems');
+  const groundingEl = document.getElementById('groundingSummary');
+  if (!container) return;
+
+  const fid = finding.id;
+  let auditData;
+  if (auditCache[fid]) {
+    auditData = auditCache[fid];
+  } else {
+    try {
+      auditData = await apiFetch('/api/audit/' + encodeURIComponent(fid));
+      auditCache[fid] = auditData;
+    } catch (e) {
+      container.innerHTML = '<div style="padding:12px;color:var(--text-muted)">Could not load evidence data.</div>';
+      return;
+    }
+  }
+
+  const eids = finding.evidence_ids || [];
+  if (eids.length === 0) { container.innerHTML = ''; return; }
+
+  // Group audit entries by evidence_id
+  const byEid = {};
+  auditData.forEach(entry => {
+    const eid = entry.evidence_id || '';
+    if (!byEid[eid]) byEid[eid] = [];
+    byEid[eid].push(entry);
+  });
+
+  let html = '';
+  eids.forEach((eid, idx) => {
+    const entries = byEid[eid] || [];
+    const entry = entries[0] || {};
+    const backend = entry._backend || 'unknown';
+    const isShell = backend.includes('exec') || (entry.source || '').includes('shell');
+    const openClass = idx === 0 ? ' open' : '';
+
+    html += '<div class="evidence-item" id="ev-' + eid.replace(/"/g, '&quot;') + '">';
+    html += '<div class="evidence-item-header" onclick="toggleEvidence(this)">';
+    html += '<span class="chevron' + openClass + '">&#9654;</span> ';
+    html += '<strong>' + escapeHtml(eid) + '</strong>';
+    html += ' <span style="color:var(--text-muted)">(' + escapeHtml(backend) + ')</span>';
+    html += '</div>';
+    html += '<div class="evidence-item-body' + openClass + '">';
+
+    if (isShell) {
+      // Shell evidence
+      if (entry.params && entry.params.command) {
+        html += '<div class="ev-field"><span class="ev-label">Command:</span><pre>' + escapeHtml(entry.params.command) + '</pre></div>';
+      }
+      if (entry.result_summary) {
+        html += '<div class="ev-field"><span class="ev-label">Output:</span><pre>' + escapeHtml(entry.result_summary) + '</pre></div>';
+      }
+      if (entry.params && entry.params.purpose) {
+        html += '<div class="ev-field"><span class="ev-label">Purpose:</span> ' + escapeHtml(entry.params.purpose) + '</div>';
+      }
+    } else {
+      // MCP evidence
+      if (entry.tool) {
+        html += '<div class="ev-field"><span class="ev-label">Tool:</span> ' + escapeHtml(entry.tool) + '</div>';
+      }
+      if (entry.params) {
+        html += '<div class="ev-field"><span class="ev-label">Params:</span><pre>' + escapeHtml(JSON.stringify(entry.params, null, 2)) + '</pre></div>';
+      }
+      if (entry.result_summary) {
+        html += '<div class="ev-field"><span class="ev-label">Result:</span><pre>' + escapeHtml(entry.result_summary) + '</pre></div>';
+      }
+      if (entry.elapsed_ms) {
+        html += '<div class="ev-field"><span class="ev-label">Elapsed:</span> ' + escapeHtml(String(entry.elapsed_ms)) + 'ms</div>';
+      }
+    }
+    html += '</div></div>';
+  });
+  container.innerHTML = html;
+
+  // Grounding summary — show backends found in audit data
+  const backends = new Set();
+  auditData.forEach(e => { if (e._backend) backends.add(e._backend); });
+  let groundingHtml = '<strong>Grounding:</strong> ';
+  if (backends.size > 0) {
+    [...backends].sort().forEach(b => {
+      groundingHtml += '<span class="grounding-item"><span class="grounding-check">&#10003;</span> ' + escapeHtml(b) + '</span>';
+    });
+  } else {
+    groundingHtml += '<span style="color:var(--text-muted)">No audit data</span>';
+  }
+  if (groundingEl) groundingEl.innerHTML = groundingHtml;
+}
+
+function toggleEvidence(header) {
+  const body = header.nextElementSibling;
+  const chevron = header.querySelector('.chevron');
+  body.classList.toggle('open');
+  chevron.classList.toggle('open');
+}
+
+function toggleAllEvidence() {
+  const items = document.querySelectorAll('.evidence-item-body');
+  const allOpen = [...items].every(i => i.classList.contains('open'));
+  items.forEach(i => { if (allOpen) i.classList.remove('open'); else i.classList.add('open'); });
+  document.querySelectorAll('.evidence-item-header .chevron').forEach(c => {
+    if (allOpen) c.classList.remove('open'); else c.classList.add('open');
+  });
+  const btn = document.querySelector('.evidence-panel-header button');
+  if (btn) btn.textContent = allOpen ? 'expand all' : 'collapse all';
+}
+
+/* === Timeline context === */
+function renderTimelineContext(finding) {
+  const container = document.getElementById('timelineContext');
+  if (!container) return;
+  if (timelineEvents.length === 0) { container.innerHTML = ''; return; }
+
+  // Find nearby events (±5 by timestamp proximity)
+  const fTime = finding.staged || '';
+  if (!fTime) { container.innerHTML = ''; return; }
+
+  // Sort timeline by timestamp
+  const sorted = [...timelineEvents].sort((a, b) => (a.timestamp || a.staged || '').localeCompare(b.timestamp || b.staged || ''));
+
+  // Find the closest event index
+  let closestIdx = 0;
+  let closestDiff = Infinity;
+  sorted.forEach((ev, idx) => {
+    const evTime = ev.timestamp || ev.staged || '';
+    const diff = Math.abs(new Date(evTime) - new Date(fTime));
+    if (diff < closestDiff) { closestDiff = diff; closestIdx = idx; }
+  });
+
+  // Take ±5 events
+  const start = Math.max(0, closestIdx - 5);
+  const end = Math.min(sorted.length, closestIdx + 6);
+  const nearby = sorted.slice(start, end);
+
+  if (nearby.length === 0) { container.innerHTML = ''; return; }
+
+  let html = '<div class="timeline-context">';
+  html += '<div class="timeline-context-header">Timeline Context</div>';
+  nearby.forEach(ev => {
+    const evTime = ev.timestamp || ev.staged || '';
+    const isCurrent = Math.abs(new Date(evTime) - new Date(fTime)) < 1000;
+    html += '<div class="timeline-event' + (isCurrent ? ' current' : '') + '">';
+    html += '<span class="tl-time">' + formatTimeShort(evTime) + '</span>';
+    html += '<span class="tl-desc">' + escapeHtml(ev.title || ev.description || ev.id || '') + '</span>';
+    if (isCurrent) html += '<span class="tl-marker">&#9668; this</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function scrollToEvidence(eid) {
+  const el = document.getElementById('ev-' + eid);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Expand if collapsed
+    const body = el.querySelector('.evidence-item-body');
+    const chevron = el.querySelector('.chevron');
+    if (body && !body.classList.contains('open')) {
+      body.classList.add('open');
+      if (chevron) chevron.classList.add('open');
+    }
+  }
+}
+
+function formatTimeShort(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toISOString().slice(11, 19) + ' UTC';
+  } catch { return iso; }
+}
+
 /* === Theme === */
 function initTheme() {
   const saved = localStorage.getItem('aiir-theme');
@@ -1050,7 +1509,7 @@ function switchTab(tabName) {
 function escapeHtml(s) {
   const d = document.createElement('div');
   d.textContent = s;
-  return d.innerHTML;
+  return d.innerHTML.replace(/'/g, '&#39;');
 }
 
 function formatTime(iso) {
@@ -1106,7 +1565,11 @@ document.addEventListener('keydown', function(e) {
       break;
     case 'e':
       e.preventDefault();
-      // Edit — will be wired in commit 3
+      startEdit('interpretation');
+      break;
+    case 'Enter':
+      e.preventDefault();
+      toggleAllEvidence();
       break;
     case 'n':
       e.preventDefault();
@@ -1126,6 +1589,7 @@ document.addEventListener('keydown', function(e) {
       break;
     case 'Escape':
       e.preventDefault();
+      if (editingField) cancelEdit();
       break;
     case '?':
       e.preventDefault();
@@ -1176,6 +1640,17 @@ document.getElementById('searchBox').addEventListener('input', function() {
   searchQuery = this.value;
   renderSidebar();
   showEmptyOrFirst();
+});
+
+['filterConf', 'filterType', 'filterProv', 'filterExaminer'].forEach(id => {
+  document.getElementById(id).addEventListener('change', function() {
+    if (id === 'filterConf') filterConf = this.value;
+    else if (id === 'filterType') filterType = this.value;
+    else if (id === 'filterProv') filterProv = this.value;
+    else if (id === 'filterExaminer') filterExaminer = this.value;
+    renderSidebar();
+    showEmptyOrFirst();
+  });
 });
 
 document.querySelectorAll('.tab').forEach(tab => {
