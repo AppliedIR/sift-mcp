@@ -89,7 +89,7 @@ Explain how case management works in lite mode:
 cases/<name>/
   CASE.yaml           # Metadata (name, description, status)
   evidence/           # Source evidence (read from here)
-  extracted/          # Tool output (write here)
+  extractions/        # Tool output (write here)
   audit/              # JSONL audit logs (auto-created)
   reports/
     ACTIONS.md        # Timestamped action log
@@ -97,7 +97,7 @@ cases/<name>/
     TIMELINE.md       # Chronological events
 ```
 
-The state file at `.claude/active_case` tracks which case is active
+The state file at `~/.aiir/active_case` tracks which case is active
 across sessions.
 
 ---
