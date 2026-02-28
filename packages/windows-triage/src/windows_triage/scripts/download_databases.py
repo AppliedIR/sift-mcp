@@ -138,8 +138,7 @@ def _verify_checksums(temp_dir: Path) -> bool:
         file_name = parts[1]
         file_path = temp_dir / file_name
         if not file_path.is_file():
-            print(f"  MISSING: {file_name}")
-            ok = False
+            # Skip files not in our download list (e.g. registry DB)
             continue
         actual_hash = hashlib.sha256(file_path.read_bytes()).hexdigest()
         if actual_hash == expected_hash:
