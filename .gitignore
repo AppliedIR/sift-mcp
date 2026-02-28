@@ -28,6 +28,7 @@ htmlcov/
 # Claude Code
 .claude/
 CLAUDE.md
+!claude-code/**/CLAUDE.md
 
 # IDE
 .vscode/

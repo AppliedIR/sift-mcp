@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "forensic-rag": {
+      "command": "VENV/bin/python",
+      "args": ["-m", "rag_mcp.server"],
+      "env": {
+        "PYTHONPATH": "SRC/packages/forensic-rag/src",
+        "RAG_INDEX_DIR": "INDEX_DIR",
+        "AIIR_CASE_DIR": "CASE_DIR"
+      }
+    },
+    "windows-triage": {
+      "command": "VENV/bin/python",
+      "args": ["-m", "windows_triage.server"],
+      "env": {
+        "PYTHONPATH": "SRC/packages/windows-triage/src",
+        "TRIAGE_DB_DIR": "DB_DIR",
+        "AIIR_CASE_DIR": "CASE_DIR"
+      }
+    }
+  }
+}
