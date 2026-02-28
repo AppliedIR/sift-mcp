@@ -470,10 +470,10 @@ class TestSecurity:
 
 
 class TestCreateServer:
-    def test_server_has_13_tools(self, case_dir):
+    def test_server_has_14_tools(self, case_dir):
         srv = create_server()
         tool_names = list(srv._tool_manager._tools.keys())
-        assert len(tool_names) == 13
+        assert len(tool_names) == 14
 
     def test_expected_tool_names(self, case_dir):
         srv = create_server()
@@ -492,6 +492,7 @@ class TestCreateServer:
             "record_action",
             "log_reasoning",
             "log_external_action",
+            "open_case_dashboard",
         }
         assert tool_names == expected
 
@@ -499,3 +500,136 @@ class TestCreateServer:
         srv = create_server()
         assert hasattr(srv, "_audit")
         assert srv._audit.mcp_name == "case-mcp"
+
+
+class TestOpenCaseDashboard:
+    """Tests for the open_case_dashboard tool."""
+
+    def _call_tool(self, case_dir):
+        srv = create_server()
+        tool_fn = srv._tool_manager._tools["open_case_dashboard"].fn
+        return json.loads(tool_fn())
+
+    def test_missing_gateway_yaml(self, case_dir, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "nohome")
+        srv = create_server()
+        tool_fn = srv._tool_manager._tools["open_case_dashboard"].fn
+        result = json.loads(tool_fn())
+        assert "error" in result
+        assert "gateway.yaml" in result["error"]
+
+    def test_builds_url_no_auth(self, case_dir, tmp_path, monkeypatch):
+        """No api_keys → URL without token fragment."""
+        home = tmp_path / "home"
+        (home / ".aiir").mkdir(parents=True)
+        config = {"gateway": {"host": "127.0.0.1", "port": 4508}}
+        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        monkeypatch.setattr(Path, "home", lambda: home)
+
+        with patch("webbrowser.open") as mock_open:
+            result = self._call_tool(case_dir)
+
+        assert result["url"] == "http://127.0.0.1:4508/dashboard/"
+        assert result["status"] == "opened"
+        mock_open.assert_called_once_with("http://127.0.0.1:4508/dashboard/")
+
+    def test_builds_url_with_token(self, case_dir, tmp_path, monkeypatch):
+        """api_keys present → URL includes #token= fragment."""
+        home = tmp_path / "home"
+        (home / ".aiir").mkdir(parents=True)
+        config = {
+            "gateway": {"host": "10.0.0.5", "port": 9000},
+            "api_keys": {"aiir_gw_testtoken": {"examiner": "alice", "role": "lead"}},
+        }
+        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        monkeypatch.setattr(Path, "home", lambda: home)
+        monkeypatch.setenv("AIIR_EXAMINER", "alice")
+
+        with patch("webbrowser.open"):
+            result = self._call_tool(case_dir)
+
+        assert result["url"] == "http://10.0.0.5:9000/dashboard/#token=aiir_gw_testtoken"
+
+    def test_picks_correct_examiner_token(self, case_dir, tmp_path, monkeypatch):
+        """Multi-examiner: picks the token matching current examiner."""
+        home = tmp_path / "home"
+        (home / ".aiir").mkdir(parents=True)
+        config = {
+            "gateway": {"host": "127.0.0.1", "port": 4508},
+            "api_keys": {
+                "aiir_gw_alice": {"examiner": "alice", "role": "lead"},
+                "aiir_gw_bob": {"examiner": "bob", "role": "examiner"},
+            },
+        }
+        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        monkeypatch.setattr(Path, "home", lambda: home)
+        monkeypatch.setenv("AIIR_EXAMINER", "bob")
+
+        with patch("webbrowser.open"):
+            result = self._call_tool(case_dir)
+
+        assert "#token=aiir_gw_bob" in result["url"]
+
+    def test_falls_back_to_first_key(self, case_dir, tmp_path, monkeypatch):
+        """Examiner not in api_keys → falls back to first key."""
+        home = tmp_path / "home"
+        (home / ".aiir").mkdir(parents=True)
+        config = {
+            "gateway": {"host": "127.0.0.1", "port": 4508},
+            "api_keys": {"aiir_gw_only": {"examiner": "alice", "role": "lead"}},
+        }
+        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        monkeypatch.setattr(Path, "home", lambda: home)
+        monkeypatch.setenv("AIIR_EXAMINER", "unknown_user")
+
+        with patch("webbrowser.open"):
+            result = self._call_tool(case_dir)
+
+        assert "#token=aiir_gw_only" in result["url"]
+
+    def test_tls_uses_https(self, case_dir, tmp_path, monkeypatch):
+        """TLS configured → scheme is https."""
+        home = tmp_path / "home"
+        (home / ".aiir").mkdir(parents=True)
+        config = {
+            "gateway": {
+                "host": "sift.local",
+                "port": 4508,
+                "tls": {"certfile": "/etc/ssl/cert.pem", "keyfile": "/etc/ssl/key.pem"},
+            },
+        }
+        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        monkeypatch.setattr(Path, "home", lambda: home)
+
+        with patch("webbrowser.open"):
+            result = self._call_tool(case_dir)
+
+        assert result["url"].startswith("https://")
+
+    def test_zero_host_becomes_localhost(self, case_dir, tmp_path, monkeypatch):
+        """0.0.0.0 → 127.0.0.1 for browser access."""
+        home = tmp_path / "home"
+        (home / ".aiir").mkdir(parents=True)
+        config = {"gateway": {"host": "0.0.0.0", "port": 4508}}
+        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        monkeypatch.setattr(Path, "home", lambda: home)
+
+        with patch("webbrowser.open"):
+            result = self._call_tool(case_dir)
+
+        assert "127.0.0.1" in result["url"]
+        assert "0.0.0.0" not in result["url"]
+
+    def test_browser_failure_returns_url(self, case_dir, tmp_path, monkeypatch):
+        """webbrowser.open fails → status=browser_failed, URL still returned."""
+        home = tmp_path / "home"
+        (home / ".aiir").mkdir(parents=True)
+        config = {"gateway": {"host": "127.0.0.1", "port": 4508}}
+        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        monkeypatch.setattr(Path, "home", lambda: home)
+
+        with patch("webbrowser.open", side_effect=OSError("no display")):
+            result = self._call_tool(case_dir)
+
+        assert result["status"] == "browser_failed"
+        assert result["url"] == "http://127.0.0.1:4508/dashboard/"

@@ -1,6 +1,6 @@
 """AIIR case management MCP server.
 
-Exposes 10 tools wrapping aiir CLI _data() functions for LLM-callable
+Exposes 14 tools wrapping aiir CLI _data() functions for LLM-callable
 case management. No new logic — thin wrappers around tested code.
 """
 
@@ -403,6 +403,67 @@ def create_server() -> FastMCP:
             "note": "orchestrator_voluntary -- not independently verified",
         }
         return json.dumps(result)
+
+    # ------------------------------------------------------------------
+    # Tool 14: open_case_dashboard (SAFE)
+    # ------------------------------------------------------------------
+    @server.tool()
+    def open_case_dashboard() -> str:
+        """Open the case review dashboard in the examiner's browser.
+
+        Reads gateway config to build the dashboard URL with an auth
+        token. The URL is always returned so it can be displayed as a
+        clickable link even if the browser fails to open.
+        """
+        import webbrowser
+
+        import yaml
+
+        config_path = Path.home() / ".aiir" / "gateway.yaml"
+        if not config_path.is_file():
+            return json.dumps({"error": "Gateway config not found (~/.aiir/gateway.yaml)"})
+
+        try:
+            config = yaml.safe_load(config_path.read_text()) or {}
+        except (yaml.YAMLError, OSError) as e:
+            return json.dumps({"error": f"Cannot read gateway config: {e}"})
+
+        gw = config.get("gateway", {})
+        host = gw.get("host", "127.0.0.1")
+        port = gw.get("port", 4508)
+        tls = gw.get("tls", {})
+        scheme = "https" if tls.get("certfile") else "http"
+
+        if host == "0.0.0.0":
+            host = "127.0.0.1"
+
+        url = f"{scheme}://{host}:{port}/dashboard/"
+
+        # Append bearer token as URL fragment, matching current examiner
+        api_keys = config.get("api_keys", {})
+        if isinstance(api_keys, dict) and api_keys:
+            examiner = resolve_examiner()
+            token = None
+            for key, info in api_keys.items():
+                if isinstance(info, dict) and info.get("examiner") == examiner:
+                    token = key
+                    break
+            if token is None:
+                token = next(iter(api_keys))
+            url += f"#token={token}"
+
+        try:
+            webbrowser.open(url)
+            status = "opened"
+        except Exception:
+            status = "browser_failed"
+
+        audit.log(
+            tool="open_case_dashboard",
+            params={},
+            result_summary={"status": status},
+        )
+        return json.dumps({"url": url, "status": status})
 
     return server
 
