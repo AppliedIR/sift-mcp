@@ -421,7 +421,9 @@ def create_server() -> FastMCP:
 
         config_path = Path.home() / ".aiir" / "gateway.yaml"
         if not config_path.is_file():
-            return json.dumps({"error": "Gateway config not found (~/.aiir/gateway.yaml)"})
+            return json.dumps(
+                {"error": "Gateway config not found (~/.aiir/gateway.yaml)"}
+            )
 
         try:
             config = yaml.safe_load(config_path.read_text()) or {}

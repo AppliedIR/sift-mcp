@@ -143,9 +143,9 @@ def _verify_findings(case_dir: Path, findings: list[dict]) -> list[dict]:
                 recomputed = _compute_content_hash(f)
                 finding_hash = f.get("content_hash")
                 approval_hash = record.get("content_hash")
-                if finding_hash and recomputed != finding_hash:
-                    result["verification"] = "tampered"
-                elif approval_hash and recomputed != approval_hash:
+                if (finding_hash and recomputed != finding_hash) or (
+                    approval_hash and recomputed != approval_hash
+                ):
                     result["verification"] = "tampered"
                 elif finding_hash or approval_hash:
                     result["verification"] = "confirmed"
@@ -297,12 +297,14 @@ async def get_summary(request: Request) -> JSONResponse:
 
     open_todos = sum(1 for t in todos if t.get("status", "open") == "open")
 
-    return JSONResponse({
-        "findings": {"total": len(findings), "by_status": status_counts},
-        "timeline": {"total": len(timeline), "by_status": timeline_counts},
-        "evidence": {"total": len(evidence)},
-        "todos": {"total": len(todos), "open": open_todos},
-    })
+    return JSONResponse(
+        {
+            "findings": {"total": len(findings), "by_status": status_counts},
+            "timeline": {"total": len(timeline), "by_status": timeline_counts},
+            "evidence": {"total": len(evidence)},
+            "todos": {"total": len(todos), "open": open_todos},
+        }
+    )
 
 
 async def post_delta(request: Request) -> JSONResponse:
@@ -434,19 +436,23 @@ async def verify_evidence(request: Request) -> JSONResponse:
             break
 
     if stored_hash is None:
-        return JSONResponse({
-            "path": rel_path,
-            "computed_sha256": computed_hash,
-            "status": "not_registered",
-        })
+        return JSONResponse(
+            {
+                "path": rel_path,
+                "computed_sha256": computed_hash,
+                "status": "not_registered",
+            }
+        )
 
     match = computed_hash == stored_hash
-    return JSONResponse({
-        "path": rel_path,
-        "computed_sha256": computed_hash,
-        "stored_sha256": stored_hash,
-        "status": "verified" if match else "failed",
-    })
+    return JSONResponse(
+        {
+            "path": rel_path,
+            "computed_sha256": computed_hash,
+            "stored_sha256": stored_hash,
+            "status": "verified" if match else "failed",
+        }
+    )
 
 
 async def serve_index(request: Request) -> FileResponse:

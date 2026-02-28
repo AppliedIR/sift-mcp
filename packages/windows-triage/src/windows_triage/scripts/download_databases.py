@@ -73,10 +73,10 @@ def _fetch_release(tag: str = "latest") -> dict:
         with urllib.request.urlopen(req, timeout=30) as resp:
             releases = json.loads(resp.read())
             matching = [
-                r for r in releases
+                r
+                for r in releases
                 if r["tag_name"].startswith("triage-db-")
-                and any(a["name"].endswith(".db.zst")
-                        for a in r.get("assets", []))
+                and any(a["name"].endswith(".db.zst") for a in r.get("assets", []))
             ]
             if matching:
                 return matching[0]  # GitHub returns most recent first

@@ -548,7 +548,9 @@ class TestOpenCaseDashboard:
         with patch("webbrowser.open"):
             result = self._call_tool(case_dir)
 
-        assert result["url"] == "http://10.0.0.5:9000/dashboard/#token=aiir_gw_testtoken"
+        assert (
+            result["url"] == "http://10.0.0.5:9000/dashboard/#token=aiir_gw_testtoken"
+        )
 
     def test_picks_correct_examiner_token(self, case_dir, tmp_path, monkeypatch):
         """Multi-examiner: picks the token matching current examiner."""
