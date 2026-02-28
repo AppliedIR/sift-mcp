@@ -4,21 +4,26 @@
 set -e
 
 # 1. Read active case directory
-ACTIVE_CASE_FILE="$HOME/.aiir/active_case"
-if [ ! -f "$ACTIVE_CASE_FILE" ]; then
-    exit 0
-fi
-CASE_DIR=$(cat "$ACTIVE_CASE_FILE" 2>/dev/null)
-if [ -z "$CASE_DIR" ]; then
-    exit 0
-fi
-# If not absolute path, skip (legacy bare ID without cases dir)
-case "$CASE_DIR" in
-    /*) ;;
-    *) exit 0 ;;
-esac
-if [ ! -d "$CASE_DIR" ]; then
-    exit 0
+# Priority: AIIR_CASE_DIR env var > ~/.aiir/active_case file
+if [ -n "$AIIR_CASE_DIR" ] && [ -d "$AIIR_CASE_DIR" ]; then
+    CASE_DIR="$AIIR_CASE_DIR"
+else
+    ACTIVE_CASE_FILE="$HOME/.aiir/active_case"
+    if [ ! -f "$ACTIVE_CASE_FILE" ]; then
+        exit 0
+    fi
+    CASE_DIR=$(cat "$ACTIVE_CASE_FILE" 2>/dev/null)
+    if [ -z "$CASE_DIR" ]; then
+        exit 0
+    fi
+    # If not absolute path, skip (legacy bare ID without cases dir)
+    case "$CASE_DIR" in
+        /*) ;;
+        *) exit 0 ;;
+    esac
+    if [ ! -d "$CASE_DIR" ]; then
+        exit 0
+    fi
 fi
 
 # 2. Examiner identity
@@ -47,7 +52,11 @@ if [ -z "$COMMAND" ]; then
 fi
 
 # 4. Ensure audit directory exists
-AUDIT_DIR="$CASE_DIR/audit"
+if [ -n "$AIIR_AUDIT_DIR" ] && [ -d "$AIIR_AUDIT_DIR" ]; then
+    AUDIT_DIR="$AIIR_AUDIT_DIR"
+else
+    AUDIT_DIR="$CASE_DIR/audit"
+fi
 mkdir -p "$AUDIT_DIR" 2>/dev/null || exit 0
 
 AUDIT_FILE="$AUDIT_DIR/claude-code.jsonl"

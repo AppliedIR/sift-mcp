@@ -37,6 +37,9 @@ def _make_env(tmp_path, examiner="tester"):
     env = dict(os.environ)
     env["HOME"] = str(tmp_path)
     env["AIIR_EXAMINER"] = examiner
+    # Remove env vars that would override active_case file resolution
+    env.pop("AIIR_CASE_DIR", None)
+    env.pop("AIIR_AUDIT_DIR", None)
     return env
 
 
@@ -105,6 +108,47 @@ class TestWithActiveCase:
         audit_file = case_dir / "audit" / "claude-code.jsonl"
         entry = json.loads(audit_file.read_text().strip())
         assert len(entry["output_excerpt"]) <= 2000
+
+
+class TestAiirCaseDirEnvVar:
+    def test_env_var_takes_priority(self, tmp_path):
+        """AIIR_CASE_DIR should be used instead of ~/.aiir/active_case."""
+        # Set up active_case pointing to one dir
+        file_case = _make_active_case(tmp_path)
+        # Set up AIIR_CASE_DIR pointing to another dir
+        env_case = tmp_path / "env-case"
+        env_case.mkdir(parents=True)
+        env = _make_env(tmp_path)
+        env["AIIR_CASE_DIR"] = str(env_case)
+        result = _run_hook(_hook_input(), env)
+        assert result.returncode == 0
+        # Audit should be in AIIR_CASE_DIR, not active_case dir
+        assert (env_case / "audit" / "claude-code.jsonl").exists()
+        assert not (file_case / "audit").exists()
+
+    def test_env_var_without_active_case_file(self, tmp_path):
+        """AIIR_CASE_DIR works even without ~/.aiir/active_case."""
+        env_case = tmp_path / "env-case"
+        env_case.mkdir(parents=True)
+        env = _make_env(tmp_path)
+        env["AIIR_CASE_DIR"] = str(env_case)
+        result = _run_hook(_hook_input(), env)
+        assert result.returncode == 0
+        assert (env_case / "audit" / "claude-code.jsonl").exists()
+
+    def test_audit_dir_override(self, tmp_path):
+        """AIIR_AUDIT_DIR overrides the default case_dir/audit path."""
+        env_case = tmp_path / "env-case"
+        env_case.mkdir(parents=True)
+        custom_audit = tmp_path / "custom-audit"
+        custom_audit.mkdir(parents=True)
+        env = _make_env(tmp_path)
+        env["AIIR_CASE_DIR"] = str(env_case)
+        env["AIIR_AUDIT_DIR"] = str(custom_audit)
+        result = _run_hook(_hook_input(), env)
+        assert result.returncode == 0
+        assert (custom_audit / "claude-code.jsonl").exists()
+        assert not (env_case / "audit").exists()
 
 
 class TestWithoutActiveCase:
