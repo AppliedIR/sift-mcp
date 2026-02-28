@@ -896,7 +896,7 @@ if $INSTALL_RAG; then
 fi
 
 # Validate RAG index (after all build/skip paths)
-if command -v "$VENV_PYTHON" &>/dev/null; then
+if $INSTALL_RAG && command -v "$VENV_PYTHON" &>/dev/null; then
     INDEX_COUNT=$("$VENV_PYTHON" -m rag_mcp.status --json --no-check 2>/dev/null | \
         "$VENV_PYTHON" -c "import sys,json; print(json.load(sys.stdin).get('document_count',0))" 2>/dev/null)
     if [ "$INDEX_COUNT" -gt 0 ] 2>/dev/null; then
