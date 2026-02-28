@@ -13,7 +13,7 @@ Monorepo for all SIFT-side AIIR components. 10 packages: forensic-mcp (12 tools 
 
 In its simplest form, AIIR Lite provides Claude Code with forensic knowledge and instructions on how to enforce forensic rigor, present findings for human review, and audit actions taken. MCP servers enhance accuracy by providing authoritative information — a forensic knowledge RAG and a Windows triage database — plus optional OpenCTI threat intelligence and REMnux malware analysis.
 
-```bash
+```
 git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 ./quickstart-lite.sh
 ```
