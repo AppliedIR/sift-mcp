@@ -94,15 +94,15 @@ User Question
 | Vulnerable Drivers | windows-triage `check_hash` | forensic-rag `search` (loldrivers) |
 | Malware File Analysis | remnux-mcp `analyze_file` | forensic-rag `search` (sigma, mbc) |
 | Document Macro Analysis | remnux-mcp `analyze_file` | — |
-| IOC Extraction from File | remnux-mcp `extract_iocs` | sift-mcp `run_command` (bulk_extractor) |
+| IOC Extraction from File | remnux-mcp `extract_iocs` | `bulk_extractor` |
 | Specific REMnux Tool | remnux-mcp `run_tool` | — |
-| Run forensic tool | sift-mcp `run_command` | — |
+| Run forensic tool | Bash (see FORENSIC_TOOLS.md) | — |
 | Tool recommendations | sift-mcp `suggest_tools` | forensic-mcp `get_tool_guidance` |
-| EVTX Analysis | sift-mcp `run_command` (EvtxECmd) | — |
-| Memory Analysis | sift-mcp `run_command` (vol) | — |
-| Disk Forensics | sift-mcp `run_command` (fls, mmls, icat) | — |
-| Registry Analysis | sift-mcp `run_command` (regripper, RECmd) | — |
-| Timeline Creation | sift-mcp `run_command` (log2timeline, psort) | mactime |
+| EVTX Analysis | `EvtxECmd` | — |
+| Memory Analysis | `vol` (Volatility 3) | — |
+| Disk Forensics | `fls`, `mmls`, `icat` | — |
+| Registry Analysis | `regripper`, `RECmd` | — |
+| Timeline Creation | `log2timeline.py`, `psort.py` | `mactime` |
 
 ---
 
@@ -221,49 +221,49 @@ Use `depth="quick"` for batch triage, `depth="deep"` for known-malicious or evas
 
 ### Workflow 7: Disk Image Analysis
 ```bash
-sift-mcp run_command:
-  mmls disk.dd                              # Partitions
-  fls -r -o OFFSET disk.dd                  # List files recursively
-  fls -r -m "/" -o OFFSET disk.dd > body    # Create bodyfile
-  mactime -b body -d > timeline.csv         # Timeline from bodyfile
-  icat -o OFFSET disk.dd INODE > file       # Extract specific file
+# Run via Bash:
+mmls disk.dd                              # Partitions
+fls -r -o OFFSET disk.dd                  # List files recursively
+fls -r -m "/" -o OFFSET disk.dd > body    # Create bodyfile
+mactime -b body -d > timeline.csv         # Timeline from bodyfile
+icat -o OFFSET disk.dd INODE > file       # Extract specific file
 ```
 
 ### Workflow 8: Windows Artifact Analysis
 ```bash
-sift-mcp run_command:
-  AmcacheParser -f Amcache.hve --csv /out/  # Amcache
-  MFTECmd -f '$MFT' --csv /out/             # MFT parsing
-  EvtxECmd -d /evtx/ --csv /out/            # EVTX parsing
-  PECmd -d /prefetch/ --csv /out/           # Prefetch
-  regripper -r SYSTEM -a                    # Registry
+# Run via Bash:
+AmcacheParser -f Amcache.hve --csv /out/  # Amcache
+MFTECmd -f '$MFT' --csv /out/             # MFT parsing
+EvtxECmd -d /evtx/ --csv /out/            # EVTX parsing
+PECmd -d /prefetch/ --csv /out/           # Prefetch
+regripper -r SYSTEM -a                    # Registry
 ```
 
 ### Workflow 9: Supertimeline
 ```bash
-sift-mcp run_command:
-  log2timeline.py timeline.plaso /evidence/
-  psort.py -o l2tcsv timeline.plaso -w timeline.csv
-  psort.py -o l2tcsv timeline.plaso "date > '2024-01-01'" -w filtered.csv
+# Run via Bash:
+log2timeline.py timeline.plaso /evidence/
+psort.py -o l2tcsv timeline.plaso -w timeline.csv
+psort.py -o l2tcsv timeline.plaso "date > '2024-01-01'" -w filtered.csv
 ```
 
 ### Workflow 10: Network Traffic
 ```bash
-sift-mcp run_command:
-  tshark -r capture.pcap -T fields ...      # Extract fields
-  bulk_extractor -o /out/ capture.pcap      # Extract artifacts
+# Run via Bash:
+tshark -r capture.pcap -T fields ...      # Extract fields
+bulk_extractor -o /out/ capture.pcap      # Extract artifacts
 ```
 Then check IOCs with `opencti-mcp lookup_ioc`
 
 ### Workflow 11: Memory Analysis
 ```bash
-sift-mcp run_command:
-  vol -f memory.dmp windows.info
-  vol -f memory.dmp windows.pstree
-  vol -f memory.dmp windows.cmdline
-  vol -f memory.dmp windows.netscan
-  vol -f memory.dmp windows.malfind
-  vol -f memory.dmp windows.svcscan
+# Run via Bash:
+vol -f memory.dmp windows.info
+vol -f memory.dmp windows.pstree
+vol -f memory.dmp windows.cmdline
+vol -f memory.dmp windows.netscan
+vol -f memory.dmp windows.malfind
+vol -f memory.dmp windows.svcscan
 ```
 
 ### Workflow 12: File/Process Validation
