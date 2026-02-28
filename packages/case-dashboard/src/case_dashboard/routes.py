@@ -4,10 +4,13 @@ import hashlib
 import json
 import logging
 import os
+import tempfile
 from pathlib import Path
 
 import yaml
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
@@ -314,11 +317,14 @@ async def post_delta(request: Request) -> JSONResponse:
 
     # Size check
     content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > _MAX_DELTA_SIZE:
-        return JSONResponse(
-            {"error": "Request body too large (max 1 MB)"},
-            status_code=413,
-        )
+    try:
+        if content_length and int(content_length) > _MAX_DELTA_SIZE:
+            return JSONResponse(
+                {"error": "Request body too large (max 1 MB)"},
+                status_code=413,
+            )
+    except ValueError:
+        pass
 
     body = await request.body()
     if len(body) > _MAX_DELTA_SIZE:
@@ -333,6 +339,12 @@ async def post_delta(request: Request) -> JSONResponse:
     except json.JSONDecodeError:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
 
+    if not isinstance(data, dict):
+        return JSONResponse({"error": "Expected JSON object"}, status_code=400)
+    items = data.get("items")
+    if items is not None and not isinstance(items, list):
+        return JSONResponse({"error": "'items' must be a list"}, status_code=400)
+
     delta_path = case_dir / "pending-reviews.json"
 
     # Symlink protection
@@ -343,7 +355,17 @@ async def post_delta(request: Request) -> JSONResponse:
         )
 
     try:
-        delta_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=str(case_dir), suffix=".tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp_path, str(delta_path))
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
     except OSError as e:
         logger.error("Failed to write delta file: %s", e)
         return JSONResponse({"error": "Write failed"}, status_code=500)
@@ -358,6 +380,14 @@ async def delete_delta_item(request: Request) -> JSONResponse:
 
     item_id = request.path_params["id"]
     delta_path = case_dir / "pending-reviews.json"
+
+    # Symlink protection
+    if delta_path.exists() and os.path.islink(delta_path):
+        return JSONResponse(
+            {"error": "Refusing to write: target is a symlink"},
+            status_code=403,
+        )
+
     delta = _load_json(delta_path)
 
     if delta is None or not isinstance(delta, dict):
@@ -374,7 +404,17 @@ async def delete_delta_item(request: Request) -> JSONResponse:
 
     delta["items"] = new_items
     try:
-        delta_path.write_text(json.dumps(delta, indent=2), encoding="utf-8")
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=str(case_dir), suffix=".tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                json.dump(delta, f, indent=2)
+            os.replace(tmp_path, str(delta_path))
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
     except OSError as e:
         logger.error("Failed to write delta file: %s", e)
         return JSONResponse({"error": "Write failed"}, status_code=500)
@@ -421,8 +461,9 @@ async def verify_evidence(request: Request) -> JSONResponse:
             for chunk in iter(lambda: f.read(65536), b""):
                 h.update(chunk)
     except OSError as e:
+        logger.error("Cannot read evidence file %s: %s", target, e)
         return JSONResponse(
-            {"error": f"Cannot read file: {e}"},
+            {"error": "Cannot read file"},
             status_code=500,
         )
     computed_hash = h.hexdigest()
@@ -465,21 +506,37 @@ async def serve_index(request: Request) -> FileResponse:
     return FileResponse(index_path, media_type="text/html")
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'; "
+            "script-src 'unsafe-inline'; "
+            "style-src 'unsafe-inline'; "
+            "img-src 'self'; "
+            "connect-src 'self'"
+        )
+        return response
+
+
 def create_dashboard_app() -> Starlette:
     """Create the dashboard sub-app for mounting on the gateway."""
     routes = [
-        Route("/api/findings", get_findings),
-        Route("/api/findings/{id}", get_finding_by_id),
-        Route("/api/timeline", get_timeline),
-        Route("/api/evidence", get_evidence),
-        Route("/api/audit/{finding_id}", get_audit_for_finding),
+        Route("/api/findings", get_findings, methods=["GET"]),
+        Route("/api/findings/{id}", get_finding_by_id, methods=["GET"]),
+        Route("/api/timeline", get_timeline, methods=["GET"]),
+        Route("/api/evidence", get_evidence, methods=["GET"]),
+        Route("/api/audit/{finding_id}", get_audit_for_finding, methods=["GET"]),
         Route("/api/delta", get_delta, methods=["GET"]),
         Route("/api/delta", post_delta, methods=["POST"]),
         Route("/api/delta/{id}", delete_delta_item, methods=["DELETE"]),
-        Route("/api/case", get_case),
-        Route("/api/todos", get_todos),
-        Route("/api/summary", get_summary),
+        Route("/api/case", get_case, methods=["GET"]),
+        Route("/api/todos", get_todos, methods=["GET"]),
+        Route("/api/summary", get_summary, methods=["GET"]),
         Route("/api/evidence/{path:path}/verify", verify_evidence, methods=["POST"]),
-        Route("/", serve_index),
+        Route("/", serve_index, methods=["GET"]),
     ]
-    return Starlette(routes=routes)
+    return Starlette(routes=routes, middleware=[Middleware(SecurityHeadersMiddleware)])
