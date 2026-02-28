@@ -1564,6 +1564,8 @@ if [[ "$CLIENT" == "claude-code" ]]; then
     echo -e "${BOLD}Forensic controls deployed globally.${NC}"
     echo "Claude Code can be launched from any directory on this machine."
     echo "Audit logging, permission guardrails, and MCP tools will always apply."
+    echo ""
+    echo "Run /welcome in Claude Code to verify your installation and get oriented."
 fi
 
 # =============================================================================
