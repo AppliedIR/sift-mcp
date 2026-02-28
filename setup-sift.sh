@@ -895,6 +895,17 @@ if $INSTALL_RAG; then
     fi
 fi
 
+# Validate RAG index (after all build/skip paths)
+if command -v "$VENV_PYTHON" &>/dev/null; then
+    INDEX_COUNT=$("$VENV_PYTHON" -m rag_mcp.status --json --no-check 2>/dev/null | \
+        "$VENV_PYTHON" -c "import sys,json; print(json.load(sys.stdin).get('document_count',0))" 2>/dev/null)
+    if [ "$INDEX_COUNT" -gt 0 ] 2>/dev/null; then
+        ok "RAG index validated ($INDEX_COUNT records)"
+    else
+        warn "RAG index may be empty. Run: $VENV_PYTHON -m rag_mcp.status"
+    fi
+fi
+
 # --- windows-triage database setup ---
 if $INSTALL_TRIAGE; then
     WT_DIR="$INSTALL_DIR/packages/windows-triage"
@@ -954,6 +965,20 @@ if $INSTALL_TRIAGE; then
             info "  Download later: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
             ;;
     esac
+
+    # Validate triage databases (after all download/build/skip paths)
+    for db in known_good.db context.db; do
+        db_path="$DB_DIR/$db"
+        if [ -s "$db_path" ]; then
+            if "$VENV_PYTHON" -c "import sqlite3; sqlite3.connect('$db_path').execute('SELECT 1')" 2>/dev/null; then
+                ok "$db valid"
+            else
+                warn "$db exists but is not valid SQLite"
+            fi
+        else
+            warn "$db missing or empty"
+        fi
+    done
 fi
 
 # --- OpenCTI credential wizard ---
