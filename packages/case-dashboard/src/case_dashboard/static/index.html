@@ -105,7 +105,7 @@ body {
 .content { flex: 1; overflow-y: auto; padding: 16px 24px; }
 
 /* Finding card */
-.finding-card { max-width: 900px; }
+.finding-card { max-width: 900px; padding-bottom: 40px; }
 .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .card-id { font-family: monospace; font-size: 15px; font-weight: 600; }
 .card-title { font-size: 16px; font-weight: 600; }
@@ -391,15 +391,15 @@ body {
           <button class="filter-preset" data-filter="reviewed">Reviewed</button>
           <button class="filter-preset" data-filter="all">All</button>
         </div>
+        <select id="sortSelect">
+          <option value="conf-desc">Confidence (High → Low)</option>
+          <option value="conf-asc">Confidence (Low → High)</option>
+          <option value="chrono">Chronological</option>
+          <option value="id">ID</option>
+          <option value="status">Status (unreviewed first)</option>
+        </select>
         <details>
           <summary style="font-size:11px;color:var(--text-muted);cursor:pointer;margin-bottom:4px">Filters</summary>
-          <select id="sortSelect">
-            <option value="conf-desc">Confidence (High → Low)</option>
-            <option value="conf-asc">Confidence (Low → High)</option>
-            <option value="chrono">Chronological</option>
-            <option value="id">ID</option>
-            <option value="status">Status (unreviewed first)</option>
-          </select>
           <div class="filter-dims">
             <select id="filterConf" title="Confidence"><option value="">Confidence</option><option value="HIGH">HIGH</option><option value="MEDIUM">MEDIUM</option><option value="LOW">LOW</option><option value="SPECULATIVE">SPECULATIVE</option></select>
             <select id="filterType" title="Type"><option value="">Type</option><option value="finding">Finding</option><option value="conclusion">Conclusion</option><option value="attribution">Attribution</option><option value="exclusion">Exclusion</option></select>
@@ -483,7 +483,6 @@ body {
     <div class="shortcut-row"><span>Approve</span><span class="shortcut-key">a</span></div>
     <div class="shortcut-row"><span>Reject</span><span class="shortcut-key">r</span></div>
     <div class="shortcut-row"><span>Edit interpretation</span><span class="shortcut-key">e</span></div>
-    <div class="shortcut-row"><span>Add note</span><span class="shortcut-key">n</span></div>
     <div class="shortcut-row"><span>Create todo</span><span class="shortcut-key">t</span></div>
     <div class="shortcut-row"><span>Skip</span><span class="shortcut-key">s</span></div>
     <div class="shortcut-row"><span>Focus search</span><span class="shortcut-key">/</span></div>
@@ -512,17 +511,6 @@ body {
   </div>
 </div>
 
-<!-- Note dialog -->
-<div class="dialog-overlay" id="noteDialog">
-  <div class="dialog">
-    <h3>Add Note</h3>
-    <textarea id="noteText" placeholder="Enter note..."></textarea>
-    <div class="dialog-actions">
-      <button class="btn-cancel" onclick="closeNoteDialog()">Cancel</button>
-      <button class="btn-primary" onclick="submitNote()">Add Note</button>
-    </div>
-  </div>
-</div>
 
 <!-- Todo dialog -->
 <div class="dialog-overlay" id="todoDialog">
@@ -575,7 +563,10 @@ let todosSortAsc = true;
   const hash = window.location.hash;
   if (hash.startsWith('#token=')) {
     token = hash.slice(7);
+    try { sessionStorage.setItem('aiir_dashboard_token', token); } catch (e) {}
     history.replaceState(null, '', window.location.pathname + window.location.search);
+  } else {
+    try { token = sessionStorage.getItem('aiir_dashboard_token'); } catch (e) {}
   }
 })();
 
@@ -825,6 +816,8 @@ function selectFinding(id) {
   selectedId = id;
   renderFinding(id);
   renderSidebar();
+  var content = document.getElementById('findingContent');
+  if (content) content.scrollTop = 0;
 }
 
 function renderFinding(id) {
@@ -880,8 +873,10 @@ function renderFinding(id) {
   html += '<span class="badge ' + escapeHtml(statusClass) + '">' + escapeHtml(status) + '</span>';
   html += '</div>';
 
-  // Title
-  html += '<div class="card-title" style="margin-bottom:8px">' + escapeHtml(f.title || '') + '</div>';
+  // Title (editable)
+  html += '<div class="field-section" style="margin-bottom:8px"><div class="card-title" style="display:inline">';
+  html += renderEditableField('title', eff.title || '', f, de);
+  html += '</div></div>';
 
   // Meta
   html += '<div class="card-meta">Staged by ' + escapeHtml(examiner) + (staged ? ' \u00B7 ' + staged : '');
@@ -999,7 +994,6 @@ function renderFinding(id) {
   html += '<div class="action-bar">';
   html += '<button class="action-btn approve" onclick="doApprove()"><span class="key">a</span> Approve</button>';
   html += '<button class="action-btn reject" onclick="openRejectDialog()"><span class="key">r</span> Reject</button>';
-  html += '<button class="action-btn" onclick="openNoteDialog()"><span class="key">n</span> Note</button>';
   html += '<button class="action-btn todo" onclick="openTodoDialog()"><span class="key">t</span> Todo</button>';
   html += '<button class="action-btn" onclick="doSkip()"><span class="key">s</span> Skip</button>';
   html += '</div>';
@@ -1027,11 +1021,6 @@ function renderFinding(id) {
     html += '</div>';
   }
 
-  // Delta note (pending)
-  if (de && de.note) {
-    html += '<div class="optional-section"><div class="field-label">Pending Note</div>';
-    html += '<div class="field-value">' + escapeHtml(de.note) + '</div></div>';
-  }
 
   // Examiner modifications history
   if (f.examiner_modifications && Object.keys(f.examiner_modifications).length > 0) {
@@ -1093,7 +1082,6 @@ function doApprove() {
     action: 'approve',
     content_hash_at_review: f.content_hash || '',
     modifications: existing ? existing.modifications || {} : {},
-    note: existing ? existing.note || null : null,
   });
   renderSidebar();
   updateProgress();
@@ -1146,40 +1134,6 @@ function submitReject() {
   advanceToNext();
 }
 
-function openNoteDialog() {
-  if (!selectedId) return;
-  const de = getDeltaEntry(selectedId);
-  document.getElementById('noteText').value = de && de.note ? de.note : '';
-  document.getElementById('noteDialog').classList.add('visible');
-  document.getElementById('noteText').focus();
-}
-
-function closeNoteDialog() {
-  document.getElementById('noteDialog').classList.remove('visible');
-}
-
-function submitNote() {
-  if (!selectedId) return;
-  const note = document.getElementById('noteText').value.trim();
-  if (!note) return;
-
-  const f = findings.find(x => x.id === selectedId);
-  if (!f) return;
-
-  const existing = getDeltaEntry(selectedId) || {
-    id: selectedId,
-    type: f.type || 'finding',
-    action: 'approve',
-    content_hash_at_review: f.content_hash || '',
-    modifications: {},
-  };
-  existing.note = note;
-  setDeltaEntry(existing);
-  closeNoteDialog();
-  renderSidebar();
-  updateProgress();
-  renderFinding(selectedId);
-}
 
 function openTodoDialog() {
   if (!selectedId) return;
@@ -1284,7 +1238,6 @@ function batchApprove() {
       id, type: f.type || 'finding', action: 'approve',
       content_hash_at_review: f.content_hash || '',
       modifications: existing ? existing.modifications || {} : {},
-      note: existing ? existing.note || null : null,
     });
   });
   batchSelected.clear();
@@ -1686,7 +1639,6 @@ document.addEventListener('keydown', function(e) {
   if (document.querySelector('.dialog-overlay.visible')) {
     if (e.key === 'Escape') {
       closeRejectDialog();
-      closeNoteDialog();
       closeTodoDialog();
     }
     return;
@@ -1731,10 +1683,6 @@ document.addEventListener('keydown', function(e) {
     case 'Enter':
       e.preventDefault();
       toggleAllEvidence();
-      break;
-    case 'n':
-      e.preventDefault();
-      openNoteDialog();
       break;
     case 't':
       e.preventDefault();
@@ -1998,10 +1946,20 @@ function renderTodos() {
 }
 
 /* === Event listeners === */
-document.getElementById('btnRefresh').addEventListener('click', () => {
+document.getElementById('btnRefresh').addEventListener('click', function() {
+  var btn = this;
+  var orig = btn.textContent;
+  btn.textContent = 'Refreshing...';
+  btn.disabled = true;
   newFindingsCount = 0;
   updateRefreshBadge();
-  loadAll();
+  loadAll().then(function() {
+    btn.textContent = '\u2713 Refreshed';
+    setTimeout(function() { btn.textContent = orig; btn.disabled = false; }, 1200);
+  }).catch(function() {
+    btn.textContent = orig;
+    btn.disabled = false;
+  });
 });
 document.getElementById('btnShortcuts').addEventListener('click', toggleShortcuts);
 document.getElementById('footerShortcuts').addEventListener('click', toggleShortcuts);
