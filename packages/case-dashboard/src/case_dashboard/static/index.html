@@ -326,6 +326,14 @@ body {
 ::-webkit-scrollbar-track { background: var(--bg-primary); }
 ::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
+
+/* Evidence artifacts on finding cards */
+.evidence-artifact { margin: 8px 0; padding: 8px; background: var(--bg-tertiary); border-radius: 4px; border-left: 3px solid var(--accent); }
+.ev-source { font-family: monospace; font-size: 12px; color: var(--text-muted); }
+.ev-extraction { font-family: monospace; font-size: 12px; color: var(--accent); margin: 4px 0; }
+.ev-content { margin: 4px 0; padding: 8px; background: var(--bg-primary); border-radius: 2px; font-size: 12px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; }
+.ev-purpose { font-size: 11px; color: var(--text-muted); font-style: italic; }
+.badge-muted { background: var(--bg-tertiary); color: var(--text-muted); }
 </style>
 </head>
 <body>
@@ -377,25 +385,28 @@ body {
     <!-- Sidebar -->
     <div class="sidebar">
       <div class="sidebar-controls">
-        <select id="sortSelect">
-          <option value="conf-desc">Confidence (High → Low)</option>
-          <option value="conf-asc">Confidence (Low → High)</option>
-          <option value="chrono">Chronological</option>
-          <option value="id">ID</option>
-          <option value="status">Status (unreviewed first)</option>
-        </select>
+        <input type="text" id="searchBox" placeholder="Search findings..." />
         <div class="filter-presets">
           <button class="filter-preset active" data-filter="needs-review">Needs review</button>
           <button class="filter-preset" data-filter="reviewed">Reviewed</button>
           <button class="filter-preset" data-filter="all">All</button>
         </div>
-        <div class="filter-dims">
-          <select id="filterConf" title="Confidence"><option value="">Confidence</option><option value="HIGH">HIGH</option><option value="MEDIUM">MEDIUM</option><option value="LOW">LOW</option><option value="SPECULATIVE">SPECULATIVE</option></select>
-          <select id="filterType" title="Type"><option value="">Type</option><option value="finding">Finding</option><option value="conclusion">Conclusion</option><option value="attribution">Attribution</option><option value="exclusion">Exclusion</option></select>
-          <select id="filterProv" title="Provenance"><option value="">Provenance</option><option value="MCP">MCP</option><option value="HOOK">HOOK</option><option value="SHELL">Shell</option><option value="MIXED">Mixed</option><option value="NONE">Ungrounded</option></select>
-          <select id="filterExaminer" title="Examiner"><option value="">Examiner</option></select>
-        </div>
-        <input type="text" id="searchBox" placeholder="Search findings..." />
+        <details>
+          <summary style="font-size:11px;color:var(--text-muted);cursor:pointer;margin-bottom:4px">Filters</summary>
+          <select id="sortSelect">
+            <option value="conf-desc">Confidence (High → Low)</option>
+            <option value="conf-asc">Confidence (Low → High)</option>
+            <option value="chrono">Chronological</option>
+            <option value="id">ID</option>
+            <option value="status">Status (unreviewed first)</option>
+          </select>
+          <div class="filter-dims">
+            <select id="filterConf" title="Confidence"><option value="">Confidence</option><option value="HIGH">HIGH</option><option value="MEDIUM">MEDIUM</option><option value="LOW">LOW</option><option value="SPECULATIVE">SPECULATIVE</option></select>
+            <select id="filterType" title="Type"><option value="">Type</option><option value="finding">Finding</option><option value="conclusion">Conclusion</option><option value="attribution">Attribution</option><option value="exclusion">Exclusion</option></select>
+            <select id="filterProv" title="Provenance"><option value="">Provenance</option><option value="MCP">MCP</option><option value="HOOK">HOOK</option><option value="SHELL">Shell</option><option value="MIXED">Mixed</option><option value="NONE">Ungrounded</option></select>
+            <select id="filterExaminer" title="Examiner"><option value="">Examiner</option></select>
+          </div>
+        </details>
       </div>
       <div class="sidebar-list" id="sidebarList"></div>
       <div class="sidebar-stats" id="sidebarStats"></div>
@@ -799,13 +810,7 @@ function updateSidebarStats() {
   const remaining = total - reviewed;
 
   document.getElementById('sidebarStats').innerHTML =
-    '<div>' + total + ' total</div>' +
-    '<div>' + reviewed + ' reviewed</div>' +
-    (approved ? '<div>&nbsp;&nbsp;' + approved + ' approved</div>' : '') +
-    (modified ? '<div>&nbsp;&nbsp;' + modified + ' modified</div>' : '') +
-    (rejected ? '<div>&nbsp;&nbsp;' + rejected + ' rejected</div>' : '') +
-    (todoCount ? '<div>&nbsp;&nbsp;' + todoCount + ' todo</div>' : '') +
-    '<div>' + remaining + ' remaining</div>';
+    '<div>' + total + ' total \u00B7 ' + reviewed + ' reviewed \u00B7 ' + remaining + ' remaining</div>';
 }
 
 function updateProgress() {
@@ -845,18 +850,11 @@ function renderFinding(id) {
   const typeClass = 'badge-' + type.toLowerCase();
   const verif = f.verification || 'draft';
   const verifClass = 'verif-' + verif.replace(/ /g, '-');
-  const verifLabel = verif === 'confirmed' ? '\u2713 confirmed'
-    : verif === 'tampered' ? '\u26A0 tampered'
-    : verif === 'no approval record' ? '\u26A0 no record'
-    : verif === 'unverified' ? '\u2014 unverified'
-    : '\u2014 draft';
-
   const conf = (eff.confidence || 'LOW').toUpperCase();
   const confClass = 'conf-' + conf.toLowerCase();
 
   const prov = f.provenance && f.provenance.summary ? f.provenance.summary : 'NONE';
   const provClass = 'prov-' + prov.toLowerCase();
-  const provIcon = (prov === 'MCP' || prov === 'HOOK') ? '\uD83D\uDEE1\uFE0F' : '';
 
   const examiner = f.examiner || f.created_by || 'unknown';
   const staged = f.staged ? formatTime(f.staged) : '';
@@ -880,7 +878,6 @@ function renderFinding(id) {
   html += '<span class="card-id">' + escapeHtml(f.id) + '</span>';
   html += '<span class="badge ' + escapeHtml(typeClass) + '">' + escapeHtml(type) + '</span>';
   html += '<span class="badge ' + escapeHtml(statusClass) + '">' + escapeHtml(status) + '</span>';
-  html += '<span class="' + escapeHtml(verifClass) + '" title="Integrity: ' + escapeHtml(verif) + '">' + escapeHtml(verifLabel) + '</span>';
   html += '</div>';
 
   // Title
@@ -903,14 +900,12 @@ function renderFinding(id) {
     html += '<span class="badge ' + confClass + '">' + conf + '</span>';
     html += ' <button style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px" onclick="startEdit(\'confidence\')">Edit</button>';
   }
-  html += ' <span class="' + provClass + '">' + provIcon + ' ' + prov + '</span>';
   html += '</div>';
 
-  // Confidence justification
-  if (f.confidence_justification) {
-    html += '<div class="field-section"><div class="field-label">Justification</div>';
-    html += '<div class="field-value">' + escapeHtml(f.confidence_justification) + '</div></div>';
-  }
+  // Confidence justification (editable)
+  html += '<div class="field-section"><div class="field-label">Justification</div>';
+  html += renderEditableField('confidence_justification', eff.confidence_justification || '', f, de);
+  html += '</div>';
 
   // Observation
   html += '<div class="field-section"><div class="field-label">Observation</div>';
@@ -922,11 +917,44 @@ function renderFinding(id) {
   html += renderEditableField('interpretation', eff.interpretation || '', f, de);
   html += '</div>';
 
+  // Artifacts (primary evidence display)
+  if (f.artifacts && f.artifacts.length) {
+    html += '<div class="field-section"><div class="field-label">Evidence</div>';
+    f.artifacts.forEach(function(art) {
+      html += '<div class="evidence-artifact">';
+      html += '<div class="ev-source">' + escapeHtml(art.source || '') + '</div>';
+      html += '<div class="ev-extraction">$ ' + escapeHtml(art.extraction || '') + '</div>';
+      html += '<pre class="ev-content">' + escapeHtml(art.content || '') + '</pre>';
+      if (art.content_type) {
+        html += '<span class="badge badge-muted">' + escapeHtml(art.content_type) + '</span>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Fallback: supporting_commands (for findings without artifacts)
+  if ((!f.artifacts || !f.artifacts.length) && f.supporting_commands && f.supporting_commands.length) {
+    html += '<div class="field-section"><div class="field-label">Supporting Commands</div>';
+    f.supporting_commands.forEach(function(cmd) {
+      html += '<div class="evidence-artifact">';
+      html += '<div class="ev-extraction">$ ' + escapeHtml(cmd.command || '') + '</div>';
+      if (cmd.output_excerpt) {
+        html += '<pre class="ev-content">' + escapeHtml(cmd.output_excerpt) + '</pre>';
+      }
+      if (cmd.purpose) {
+        html += '<div class="ev-purpose">' + escapeHtml(cmd.purpose) + '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
   // Evidence IDs
   if (f.evidence_ids && f.evidence_ids.length > 0) {
-    html += '<div class="field-section"><div class="field-label">Evidence</div>';
+    html += '<div class="field-section"><div class="field-label">Evidence IDs</div>';
     html += '<div class="tag-list">' + f.evidence_ids.map(eid =>
-      '<span class="tag clickable" onclick="scrollToEvidence(\'' + escapeHtml(eid).replace(/'/g, "\\'") + '\')">' + escapeHtml(eid) + '</span>'
+      '<span class="tag clickable" onclick="scrollToEvidence(\'' + escapeHtml(eid) + '\')">' + escapeHtml(eid) + '</span>'
     ).join('') + '</div></div>';
   }
 
@@ -948,7 +976,7 @@ function renderFinding(id) {
   if (f.related_findings && f.related_findings.length > 0) {
     html += '<div class="field-section"><div class="field-label">Related Findings</div>';
     html += '<div class="tag-list">' + f.related_findings.map(rid =>
-      '<span class="tag clickable" onclick="selectFinding(\'' + escapeHtml(rid).replace(/'/g, "\\'") + '\')">' + escapeHtml(rid) + '</span>'
+      '<span class="tag clickable" onclick="selectFinding(\'' + escapeHtml(rid) + '\')">' + escapeHtml(rid) + '</span>'
     ).join('') + '</div></div>';
   }
 
@@ -957,6 +985,15 @@ function renderFinding(id) {
     html += '<div class="field-section"><div class="field-label">Artifact Reference</div>';
     html += '<div class="field-value mono">' + escapeHtml(f.artifact_ref) + '</div></div>';
   }
+
+  // Integrity (collapsed — verification, provenance, hash)
+  html += '<details style="margin-top:12px;color:var(--text-muted);font-size:12px">';
+  html += '<summary>Integrity</summary>';
+  html += '<div style="margin-top:4px">Verification: <span class="' + escapeHtml(verifClass) + '">' + escapeHtml(verif) + '</span>';
+  html += ' | Provenance: <span class="' + escapeHtml(provClass) + '">' + escapeHtml(prov) + '</span></div>';
+  if (f.content_hash) html += '<div style="font-family:monospace">Content hash: ' + escapeHtml(f.content_hash.slice(0, 16)) + '...</div>';
+  if (f.modified_at) html += '<div style="font-family:monospace">Modified: ' + escapeHtml(f.modified_at) + '</div>';
+  html += '</details>';
 
   // Action bar
   html += '<div class="action-bar">';
@@ -1021,14 +1058,6 @@ function renderFinding(id) {
   if (f.rejection_reason) {
     html += '<div class="optional-section"><div class="field-label">Rejection Reason</div>';
     html += '<div class="field-value">' + escapeHtml(f.rejection_reason) + '</div></div>';
-  }
-
-  // Content hash (collapsed)
-  if (f.content_hash) {
-    html += '<details style="margin-top:12px;color:var(--text-muted);font-size:12px"><summary>Technical Details</summary>';
-    html += '<div style="margin-top:4px;font-family:monospace">Content hash: ' + escapeHtml(f.content_hash.slice(0, 12)) + '...</div>';
-    if (f.modified_at) html += '<div style="font-family:monospace">Modified: ' + escapeHtml(f.modified_at) + '</div>';
-    html += '</details>';
   }
 
   card.innerHTML = html;
@@ -1383,6 +1412,32 @@ function removeTag(field, el) {
   el.parentNode.remove();
 }
 
+function renderResultSummary(summary) {
+  if (!summary) return '';
+  if (typeof summary === 'string') return escapeHtml(summary);
+  var html = '';
+  if (summary.exit_code !== undefined) {
+    var cls = summary.exit_code === 0 ? 'conf-high' : 'conf-low';
+    html += '<div><span class="ev-label">Exit:</span> <span class="' + cls + '">' + summary.exit_code + '</span></div>';
+  }
+  if (summary.output_file) {
+    html += '<div><span class="ev-label">File:</span> <span class="mono">' + escapeHtml(summary.output_file) + '</span></div>';
+  }
+  if (summary.output_sha256) {
+    html += '<div><span class="ev-label">SHA-256:</span> <span class="mono">' + escapeHtml(summary.output_sha256.slice(0, 16)) + '...</span></div>';
+  }
+  if (summary.stdout_bytes) {
+    html += '<div><span class="ev-label">Size:</span> ' + summary.stdout_bytes + ' bytes</div>';
+  }
+  if (summary.stdout_head) {
+    html += '<div><span class="ev-label">Output:</span><pre>' + escapeHtml(summary.stdout_head) + '</pre></div>';
+  }
+  if (!html) {
+    html = '<pre>' + escapeHtml(JSON.stringify(summary, null, 2)) + '</pre>';
+  }
+  return html;
+}
+
 /* === Evidence panel === */
 async function loadEvidencePanel(finding) {
   const container = document.getElementById('evidenceItems');
@@ -1436,7 +1491,7 @@ async function loadEvidencePanel(finding) {
         html += '<div class="ev-field"><span class="ev-label">Command:</span><pre>' + escapeHtml(entry.params.command) + '</pre></div>';
       }
       if (entry.result_summary) {
-        html += '<div class="ev-field"><span class="ev-label">Output:</span><pre>' + escapeHtml(entry.result_summary) + '</pre></div>';
+        html += '<div class="ev-field"><span class="ev-label">Output:</span>' + renderResultSummary(entry.result_summary) + '</div>';
       }
       if (entry.params && entry.params.purpose) {
         html += '<div class="ev-field"><span class="ev-label">Purpose:</span> ' + escapeHtml(entry.params.purpose) + '</div>';
@@ -1450,7 +1505,7 @@ async function loadEvidencePanel(finding) {
         html += '<div class="ev-field"><span class="ev-label">Params:</span><pre>' + escapeHtml(JSON.stringify(entry.params, null, 2)) + '</pre></div>';
       }
       if (entry.result_summary) {
-        html += '<div class="ev-field"><span class="ev-label">Result:</span><pre>' + escapeHtml(entry.result_summary) + '</pre></div>';
+        html += '<div class="ev-field"><span class="ev-label">Result:</span>' + renderResultSummary(entry.result_summary) + '</div>';
       }
       if (entry.elapsed_ms) {
         html += '<div class="ev-field"><span class="ev-label">Elapsed:</span> ' + escapeHtml(String(entry.elapsed_ms)) + 'ms</div>';
@@ -1834,7 +1889,7 @@ function renderEvidence() {
     html += '<td>' + escapeHtml(regBy) + '</td>';
     html += '<td>';
     refs.forEach(function(rid) {
-      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeHtml(rid).replace(/'/g, "\\'") + '\')">' + escapeHtml(rid) + '</a> ';
+      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeHtml(rid) + '\')">' + escapeHtml(rid) + '</a> ';
     });
     html += '</td>';
     const evIdx = evidenceData.indexOf(ev);
@@ -1929,7 +1984,7 @@ function renderTodos() {
     html += '<td class="status-' + escapeHtml(status) + '">' + escapeHtml(status) + '</td>';
     html += '<td>';
     related.forEach(function(rid) {
-      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeHtml(rid).replace(/'/g, "\\'") + '\')">' + escapeHtml(rid) + '</a> ';
+      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeHtml(rid) + '\')">' + escapeHtml(rid) + '</a> ';
     });
     html += '</td>';
     html += '<td>' + escapeHtml(created) + '</td>';
