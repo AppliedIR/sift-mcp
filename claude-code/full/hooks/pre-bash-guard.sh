@@ -22,6 +22,9 @@ if [ "$PWD" = "$HOME" ]; then
 fi
 
 PROTECTED="findings\.json|timeline\.json|approvals\.jsonl|CASE\.yaml"
+PROTECTED="$PROTECTED|settings\.json|pre-bash-guard\.sh|forensic-audit\.sh"
+PROTECTED="$PROTECTED|CLAUDE\.md|FORENSIC_DISCIPLINE\.md|TOOL_REFERENCE\.md"
+PROTECTED="$PROTECTED|active_case|gateway\.yaml"
 
 # Block redirections, tee, cp, mv targeting protected files
 if echo "$CMD" | grep -qEi "(>|>>|tee\s|cp\s|mv\s).*($PROTECTED)"; then

@@ -72,7 +72,19 @@
       "Edit(/var/lib/aiir/**)",
       "Write(/var/lib/aiir/**)",
       "Bash(aiir approve*)",
-      "Bash(aiir reject*)"
+      "Bash(aiir reject*)",
+      "Edit(**/.claude/settings.json)",
+      "Write(**/.claude/settings.json)",
+      "Edit(**/.claude/CLAUDE.md)",
+      "Write(**/.claude/CLAUDE.md)",
+      "Edit(**/.claude/rules/**)",
+      "Write(**/.claude/rules/**)",
+      "Edit(**/.aiir/hooks/**)",
+      "Write(**/.aiir/hooks/**)",
+      "Edit(**/.aiir/active_case)",
+      "Write(**/.aiir/active_case)",
+      "Edit(**/.aiir/gateway.yaml)",
+      "Write(**/.aiir/gateway.yaml)"
     ]
   },
   "sandbox": {
