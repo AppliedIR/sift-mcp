@@ -232,7 +232,7 @@ class TestRecordFindingProvenance:
         finding = _valid_finding(evidence_ids=["unknown-tester-20260225-001"])
         result = manager.record_finding(finding)
         assert result["status"] == "REJECTED"
-        assert "no provenance" in result["error"]
+        assert "no evidence trail" in result["error"]
 
     def test_shell_only_stages_ok(self, manager, active_case, audit):
         """With supporting_commands but no MCP IDs -> STAGED."""

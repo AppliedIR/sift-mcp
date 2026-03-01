@@ -77,8 +77,6 @@ _ALLOWED_FINDING_FIELDS = {
     "evidence_ids",
     "mitre_ids",
     "iocs",
-    "supporting_commands",
-    "artifacts",
     "event_type",
     "artifact_ref",
     "related_findings",
@@ -353,6 +351,13 @@ class CaseManager:
             }
 
         exam = self._effective_examiner(examiner_override)
+
+        # Auto-extract supporting_commands/artifacts if LLM passed them inline
+        if supporting_commands is None and isinstance(finding.get("supporting_commands"), list):
+            supporting_commands = finding.pop("supporting_commands")
+        if artifacts is None and isinstance(finding.get("artifacts"), list):
+            artifacts = finding.pop("artifacts")
+
         findings = self._load_findings(case_dir)
         seq = _next_seq(findings, "id", "F", exam)
         finding_id = f"F-{exam}-{seq:03d}"
@@ -411,6 +416,8 @@ class CaseManager:
                 source = art.get("source", "").strip()
                 extraction = art.get("extraction", "").strip()
                 content = art.get("content", "").strip()
+                if not content:
+                    content = art.get("raw_data", "").strip()
                 if not source or not extraction or not content:
                     continue
                 validated_artifacts.append({
@@ -424,6 +431,7 @@ class CaseManager:
             sanitized["artifacts"] = validated_artifacts
         else:
             sanitized.pop("artifacts", None)
+        dropped_artifact_count = len(raw_artifacts) - len(validated_artifacts) if isinstance(raw_artifacts, list) else 0
 
         # Extend evidence_ids with shell evidence IDs
         evidence_ids = list(sanitized.get("evidence_ids", []))
@@ -438,9 +446,12 @@ class CaseManager:
             return {
                 "status": "REJECTED",
                 "error": (
-                    "Finding rejected: no provenance. Provide supporting_commands "
-                    "with the Bash commands used, or re-run analysis through MCP "
-                    "tools to create an audited evidence trail."
+                    "Finding rejected: no evidence trail. Every finding needs provenance. "
+                    "Options: (1) Pass evidence_ids from MCP tool responses. "
+                    "(2) Pass supporting_commands as a SEPARATE PARAMETER (not inside the finding dict) "
+                    "with command, purpose, and output_excerpt for each shell command used. "
+                    "(3) For analytical findings without tool evidence, use "
+                    "command='analytical reasoning' in supporting_commands."
                 ),
             }
 
@@ -465,11 +476,17 @@ class CaseManager:
         findings.append(finding_record)
         self._save_findings(case_dir, findings)
 
-        return {
+        result = {
             "status": "STAGED",
             "finding_id": finding_id,
             "provenance_detail": provenance,
         }
+        if dropped_artifact_count > 0:
+            result["warning"] = (
+                f"{dropped_artifact_count} artifact(s) dropped — each artifact requires "
+                "source, extraction, and content fields (not raw_data)."
+            )
+        return result
 
     def _next_shell_seq(self, case_dir: Path, examiner: str, today: str) -> int:
         """Find next sequence number for shell-{examiner}-{today}-NNN evidence IDs."""

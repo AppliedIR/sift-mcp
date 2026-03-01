@@ -152,29 +152,52 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     ) -> dict:
         """Stage finding as DRAFT for human review.
 
+        Every finding needs an evidence trail (provenance). There are three ways:
+
+        1. MCP evidence: Pass evidence_ids from MCP tool responses (the evidence_id
+           field in tool results). This is the strongest provenance.
+        2. Shell evidence: Pass supporting_commands as a SEPARATE PARAMETER (not
+           inside the finding dict) with the Bash commands you ran. Each command
+           generates an audited evidence ID automatically.
+        3. Analytical: For hypotheses without tool evidence (SPECULATIVE/LOW), pass
+           a supporting_commands entry with command="analytical reasoning",
+           output_excerpt describing what you observed, and purpose explaining your
+           reasoning chain.
+
+        Findings with no evidence trail and no supporting_commands are rejected.
+
         Required fields in finding dict:
-        - title (str): brief summary
-        - observation (str): factual evidence — what was seen
-        - interpretation (str): analytical meaning — what it implies
-        - confidence (SPECULATIVE/LOW/MEDIUM/HIGH)
-        - confidence_justification (str): why this confidence level
+        - title (str): brief summary (max 500 chars)
+        - observation (str): factual evidence — what was seen (max 10000 chars)
+        - interpretation (str): analytical meaning — what it implies (max 10000 chars)
+        - confidence: SPECULATIVE, LOW, MEDIUM, or HIGH
+        - confidence_justification (str): why this confidence level — REQUIRED, not optional (max 10000 chars)
         - type: finding, conclusion, attribution, or exclusion
-        - evidence_ids (list of str): registered evidence IDs or audit-trail IDs
+        - evidence_ids (list[str]): IDs from MCP tool responses (format: prefix-examiner-YYYYMMDD-NNN).
+          Use [] for SPECULATIVE/LOW findings without MCP evidence, but then you MUST provide
+          supporting_commands.
 
-        Optional fields:
-        - mitre_ids (list of str): ATT&CK technique IDs (e.g. ["T1055", "T1053.005"])
-        - iocs (list of str): indicators of compromise
-        - event_type, artifact_ref, related_findings
+        Optional fields in finding dict:
+        - mitre_ids (list[str]): ATT&CK technique IDs (e.g. ["T1055", "T1053.005"])
+        - iocs (list[str]): indicators of compromise
+        - event_type (str): process, network, file, registry, auth, persistence, lateral, execution, or other
+        - artifact_ref, related_findings
 
-        supporting_commands (separate parameter, list of dicts): for evidence obtained
-        via Bash rather than MCP tools. Each dict: {command, output_excerpt, purpose}.
+        supporting_commands (SEPARATE PARAMETER, not inside finding dict):
+        List of dicts, each with:
+        - command (str, required): the command that was run, or "analytical reasoning" for hypotheses
+        - purpose (str, required): why this command was run / what reasoning was applied
+        - output_excerpt (str, optional): relevant output snippet (max 2000 chars)
+        Max 5 commands. Each generates an audited shell evidence ID.
 
-        artifacts (separate parameter, list of dicts): raw evidence the examiner reviewed.
-        Each dict: {source (file path of artifact), extraction (full command used),
-        content (literal raw data — NOT a summary or paraphrase), content_type (optional:
-        csv_row/log_entry/registry_key/process_tree/network_capture/file_metadata/raw_text),
-        purpose (optional: why this extraction was performed)}.
-        source, extraction, and content are required per artifact.
+        artifacts (SEPARATE PARAMETER, not inside finding dict):
+        Raw evidence the examiner reviewed. List of dicts, each with:
+        - source (str, required): file path of the artifact
+        - extraction (str, required): full command used to extract it
+        - content (str, required): the literal raw data — NOT a summary. Use the field name 'content', not 'raw_data'.
+        - content_type (str, optional): csv_row, log_entry, registry_key, process_tree, network_capture, file_metadata, raw_text
+        - purpose (str, optional): why this extraction was performed
+        Max 10 artifacts, content truncated to 5000 chars.
 
         Requires human approval via 'aiir approve'."""
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
@@ -283,7 +306,19 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
 
     @server.tool()
     def get_findings(status: str = "") -> list[dict]:
-        """Return findings, optionally filtered by DRAFT/APPROVED/REJECTED."""
+        """Return findings, optionally filtered by DRAFT/APPROVED/REJECTED.
+
+        Each finding dict contains:
+        - id, title, observation, interpretation, confidence, confidence_justification, type
+        - evidence_ids: list of evidence trail IDs
+        - status: DRAFT, APPROVED, or REJECTED
+        - provenance: MCP, HOOK, SHELL, or NONE (string — how evidence was obtained)
+        - content_hash: SHA-256 for integrity verification
+        - artifacts: list of {source, extraction, content, content_type, purpose} (if provided)
+        - supporting_commands: list of {command, output_excerpt, purpose} (if provided)
+        - Optional: mitre_ids, iocs, event_type, artifact_ref, related_findings
+        - Metadata: staged, modified_at, created_by, examiner
+        """
         try:
             return manager.get_findings(status or None)
         except Exception as e:
