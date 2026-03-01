@@ -611,8 +611,8 @@ fi
 if [[ "$INSTALL_MSLEARN" != "true" ]] && [[ "$YES" != "true" ]] && [[ "$SKIP_OPTIONAL_MCPS" != "true" ]]; then
     echo ""
     echo "  Microsoft Learn provides documentation search (requires Internet)."
-    read -rp "  Install Microsoft Learn MCP? [y/N] " reply
-    [[ "$reply" =~ ^[Yy] ]] && INSTALL_MSLEARN=true
+    read -rp "  Install Microsoft Learn MCP? [Y/n] " reply
+    [[ ! "$reply" =~ ^[Nn] ]] && INSTALL_MSLEARN=true
 fi
 
 if [[ "$INSTALL_MSLEARN" == "true" ]]; then
@@ -628,8 +628,8 @@ fi
 if [[ "$INSTALL_ZELTSER" != "true" ]] && [[ "$YES" != "true" ]] && [[ "$SKIP_OPTIONAL_MCPS" != "true" ]]; then
     echo ""
     echo "  Zeltser IR Writing provides IR report writing guidelines (requires Internet)."
-    read -rp "  Install Zeltser IR Writing MCP? [y/N] " reply
-    [[ "$reply" =~ ^[Yy] ]] && INSTALL_ZELTSER=true
+    read -rp "  Install Zeltser IR Writing MCP? [Y/n] " reply
+    [[ ! "$reply" =~ ^[Nn] ]] && INSTALL_ZELTSER=true
 fi
 
 if [[ "$INSTALL_ZELTSER" == "true" ]]; then
