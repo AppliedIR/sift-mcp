@@ -12,7 +12,7 @@ Created: [DATE]
 ## Format Guide
 
 Log every investigative action immediately after execution:
-- **Timestamp:** Full UTC timestamp (YYYY-MM-DD HH:MM:SS)
+- **Timestamp:** Full UTC timestamp (YYYY-MM-DDTHH:MM:SSZ)
 - **Action:** What was done (tool run, file examined, query made)
 - **Tool/Command:** Exact command or tool invocation used
 - **Result:** Outcome (found X, no results, error)

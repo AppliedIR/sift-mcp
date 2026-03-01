@@ -11,7 +11,7 @@ Created: [DATE]
 
 ## Format Guide
 
-- **Timestamp:** Full UTC date and time (YYYY-MM-DD HH:MM:SS)
+- **Timestamp:** Full UTC date and time (YYYY-MM-DDTHH:MM:SSZ)
 - **System:** Which system/host the event occurred on
 - **Event:** What happened (brief description)
 - **Source Artifact:** File path where this was found
