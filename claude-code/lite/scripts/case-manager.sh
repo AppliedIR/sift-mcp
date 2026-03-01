@@ -107,12 +107,42 @@ EOF
 # ── open ─────────────────────────────────────────────────────────────
 
 _cmd_open() {
-    local name="${1:-}"
-    [[ -n "$name" ]] || _die "Usage: case-manager.sh open <name>"
+    local name="" reopen=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --reopen) reopen=true; shift ;;
+            *)
+                if [[ -z "$name" ]]; then
+                    name="$1"; shift
+                else
+                    _die "Unexpected argument: $1"
+                fi
+                ;;
+        esac
+    done
+
+    [[ -n "$name" ]] || _die "Usage: case-manager.sh open <name> [--reopen]"
 
     local case_dir="$CASES_DIR/$name"
     local yaml="$case_dir/CASE.yaml"
     [[ -f "$yaml" ]] || _die "Case not found: $name (no CASE.yaml)"
+
+    # Check if case is closed
+    local current_status
+    current_status=$(_read_yaml_field "$yaml" "status")
+    if [[ "$current_status" == "closed" ]]; then
+        local closed_at
+        closed_at=$(_read_yaml_field "$yaml" "closed")
+        if [[ "$reopen" != "true" ]]; then
+            echo "Case \"$name\" is closed ($closed_at)."
+            echo "To reopen, run: case-manager.sh open $name --reopen"
+            exit 1
+        fi
+        # Reopen: flip status and remove closed field
+        sed -i "s/^status: closed$/status: open/" "$yaml"
+        sed -i "/^closed: /d" "$yaml"
+    fi
 
     # Write state file
     mkdir -p "$(dirname "$STATE_FILE")"
@@ -127,7 +157,11 @@ _cmd_open() {
     ex_path=$(_read_yaml_field "$yaml" "  extracted")
     rp_path=$(_read_yaml_field "$yaml" "  reports")
 
-    echo "Active case: $name"
+    if [[ "$reopen" == "true" ]]; then
+        echo "Reopened case: $name"
+    else
+        echo "Active case: $name"
+    fi
     echo "Description: $desc"
     echo "Status: $status"
     echo "Created: $created"
@@ -300,7 +334,7 @@ case "$action" in
         echo ""
         echo "Actions:"
         echo "  init   <name> [--description \"text\"]  Create a new case"
-        echo "  open   <name>                          Set active case"
+        echo "  open   <name> [--reopen]               Set active case"
         echo "  status                                 Show active case"
         echo "  list                                   List all cases"
         echo "  close  [name]                          Close a case"

@@ -43,8 +43,11 @@ file operations deterministically.
 ### `open <name>`
 
 1. Run: `bash ~/.aiir/bin/case-manager.sh open <name>`
-2. Tell the user the case is active and summarize the paths
-3. Remind: READ from evidence, WRITE to extractions, UPDATE reports
+2. If the script says the case is closed, tell the user and ask if they
+   want to reopen it. If yes, run with `--reopen`:
+   `bash ~/.aiir/bin/case-manager.sh open <name> --reopen`
+3. Tell the user the case is active and summarize the paths
+4. Remind: READ from evidence, WRITE to extractions, UPDATE reports
 
 ### `status`
 
