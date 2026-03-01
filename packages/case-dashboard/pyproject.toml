@@ -21,6 +21,7 @@ classifiers = [
 ]
 dependencies = [
     "sift-common",
+    "starlette>=0.40",
 ]
 
 [tool.hatch.build.targets.wheel]
