@@ -73,25 +73,32 @@ When Claude Code is the client, additional controls are deployed:
 - PostToolUse audit hook — every Bash command logged to JSONL with SHA-256 hashes
 - Prompt hook — forensic discipline reminders injected on every prompt
 
-### Quick Start (Full)
+### AIIR Installation
 
-Requires Python 3.11+ and sudo access.
+Requires Python 3.11+ and sudo access. The installer handles everything: MCP servers, gateway, aiir CLI, HMAC verification ledger, examiner identity, and LLM client configuration. When you select Claude Code, the forensic controls listed above are deployed automatically.
 
-```bash
-# One-command quickstart
+**Quick** — Core platform only, no databases (~70 MB):
+
+```
 curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/aiir-quickstart.sh && bash /tmp/aiir-quickstart.sh
 ```
 
-Or step by step:
+**Recommended** — Adds the RAG knowledge base (22,000+ records from 23 security sources) and Windows triage databases (2.6M baseline records), downloaded as pre-built snapshots. Requires ~14 GB disk space:
 
-```bash
+- ~7 GB — ML dependencies (PyTorch, CUDA) required by the RAG embedding model
+- ~6 GB — Windows triage baseline databases (2.6M rows, decompressed)
+- ~1 GB — RAG index, source code, and everything else
+
+```
+curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/aiir-quickstart.sh && bash /tmp/aiir-quickstart.sh --recommended
+```
+
+**Custom** — Individual package selection, OpenCTI integration, or remote access with TLS:
+
+```
 git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 ./setup-sift.sh
 ```
-
-The installer handles everything: MCP servers, gateway, aiir CLI, HMAC verification ledger (`/var/lib/aiir/verification/`, requires sudo), examiner identity, and LLM client configuration. When you select Claude Code, additional forensic controls are deployed (kernel-level sandbox, case data deny rules, PreToolUse guard hook, PostToolUse audit hook, provenance enforcement, PIN-gated human approval with HMAC signing). Non-shell clients (Claude Desktop, Cursor, etc.) get MCP config only.
-
-For tier selection (quick, recommended, custom) or remote access with TLS, run `setup-sift.sh` directly.
 
 ## Architecture
 

@@ -872,11 +872,17 @@ fi
 
 # 7. rag-mcp (optional, depends on 2)
 if $INSTALL_RAG; then
+    echo ""
+    info "Installing rag-mcp..."
     echo "  (downloads ML model + dependencies, may take several minutes)"
-    install_pkg "rag-mcp" "$INSTALL_DIR/packages/forensic-rag" || {
+    if ! $VENV_PIP install --progress-bar off -e "$INSTALL_DIR/packages/forensic-rag" >/dev/null; then
+        err "Failed to install rag-mcp"
+        echo "  Check pip output: $VENV_PIP install -e $INSTALL_DIR/packages/forensic-rag"
         warn "forensic-rag install failed. Continuing without it."
         INSTALL_RAG=false
-    }
+    else
+        ok "rag-mcp installed"
+    fi
 fi
 
 # 8. opencti-mcp (optional, depends on 2)
@@ -1448,7 +1454,7 @@ if curl -sf ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
     ok "Gateway already running on port $GATEWAY_PORT"
 elif ! $MANUAL_START; then
     info "Starting gateway on port $GATEWAY_PORT..."
-    "$VENV_DIR/bin/python" -m sift_gateway --config "$GATEWAY_CONFIG" &
+    "$VENV_DIR/bin/python" -m sift_gateway --config "$GATEWAY_CONFIG" >/dev/null 2>&1 &
     GATEWAY_PID=$!
 
     # Wait for health endpoint (backends need time to start)
