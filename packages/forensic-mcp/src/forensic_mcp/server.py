@@ -563,103 +563,161 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def get_investigation_framework() -> dict:
         """Return the full investigation framework: principles, HITL checkpoints, workflow, golden rules, self-check."""
-        from forensic_mcp.discipline.rules import get_investigation_framework as _get_fw
+        try:
+            from forensic_mcp.discipline.rules import (
+                get_investigation_framework as _get_fw,
+            )
 
-        result = _get_fw()
-        audit.log(
-            tool="get_investigation_framework",
-            params={},
-            result_summary={"keys": list(result.keys())},
-        )
-        return result
+            result = _get_fw()
+            audit.log(
+                tool="get_investigation_framework",
+                params={},
+                result_summary={"keys": list(result.keys())},
+            )
+            return result
+        except Exception as e:
+            logger.error("get_investigation_framework failed: %s", e)
+            return {"error": str(e)}
 
     @server.tool()
     def get_rules() -> list[dict]:
         """Return all forensic discipline rules as structured data."""
-        from forensic_mcp.discipline.rules import get_all_rules
+        try:
+            from forensic_mcp.discipline.rules import get_all_rules
 
-        return get_all_rules()
+            return get_all_rules()
+        except Exception as e:
+            logger.error("get_rules failed: %s", e)
+            return [{"error": str(e)}]
 
     @server.tool()
     def get_checkpoint_requirements(action_type: str) -> dict:
         """What's required before a specific action (attribution, root cause, exclusion, etc.)."""
-        from forensic_mcp.discipline.rules import get_checkpoint
+        try:
+            from forensic_mcp.discipline.rules import get_checkpoint
 
-        return get_checkpoint(action_type)
+            return get_checkpoint(action_type)
+        except Exception as e:
+            logger.error("get_checkpoint_requirements failed: %s", e)
+            return {"error": str(e)}
 
     @server.tool()
     def validate_finding(finding_json: dict) -> dict:
         """Check a proposed finding against format and methodology standards."""
-        from forensic_mcp.discipline.validation import validate
+        try:
+            from forensic_mcp.discipline.validation import validate
 
-        return validate(finding_json)
+            return validate(finding_json)
+        except Exception as e:
+            logger.error("validate_finding failed: %s", e)
+            return {"error": str(e)}
 
     @server.tool()
     def get_evidence_standards() -> dict:
         """Evidence classification levels with definitions."""
-        from forensic_mcp.discipline.rules import get_evidence_standards_data
+        try:
+            from forensic_mcp.discipline.rules import get_evidence_standards_data
 
-        return get_evidence_standards_data()
+            return get_evidence_standards_data()
+        except Exception as e:
+            logger.error("get_evidence_standards failed: %s", e)
+            return {"error": str(e)}
 
     @server.tool()
     def get_confidence_definitions() -> dict:
         """Confidence levels (HIGH/MEDIUM/LOW/SPECULATIVE) with criteria."""
-        from forensic_mcp.discipline.rules import get_confidence_definitions_data
+        try:
+            from forensic_mcp.discipline.rules import get_confidence_definitions_data
 
-        return get_confidence_definitions_data()
+            return get_confidence_definitions_data()
+        except Exception as e:
+            logger.error("get_confidence_definitions failed: %s", e)
+            return {"error": str(e)}
 
     @server.tool()
     def get_anti_patterns() -> list[dict]:
         """Common forensic mistakes to avoid."""
-        from forensic_mcp.discipline.rules import get_anti_patterns_data
+        try:
+            from forensic_mcp.discipline.rules import get_anti_patterns_data
 
-        return get_anti_patterns_data()
+            return get_anti_patterns_data()
+        except Exception as e:
+            logger.error("get_anti_patterns failed: %s", e)
+            return [{"error": str(e)}]
 
     @server.tool()
     def get_evidence_template() -> dict:
         """Required evidence presentation format."""
-        from forensic_mcp.discipline.rules import get_evidence_template_data
+        try:
+            from forensic_mcp.discipline.rules import get_evidence_template_data
 
-        return get_evidence_template_data()
+            return get_evidence_template_data()
+        except Exception as e:
+            logger.error("get_evidence_template failed: %s", e)
+            return {"error": str(e)}
 
     @server.tool()
     def get_tool_guidance(tool_name: str) -> dict:
         """How to interpret results from a specific forensic tool."""
-        from forensic_mcp.discipline.guidance import get_guidance
+        try:
+            from forensic_mcp.discipline.guidance import get_guidance
 
-        return get_guidance(tool_name)
+            return get_guidance(tool_name)
+        except Exception as e:
+            logger.error("get_tool_guidance failed: %s", e)
+            return {"error": str(e)}
 
     @server.tool()
     def get_false_positive_context(tool_name: str, finding_type: str) -> dict:
         """Common false positives for a tool/finding combination."""
-        from forensic_mcp.discipline.guidance import get_false_positives
+        try:
+            from forensic_mcp.discipline.guidance import get_false_positives
 
-        return get_false_positives(tool_name, finding_type)
+            return get_false_positives(tool_name, finding_type)
+        except Exception as e:
+            logger.error("get_false_positive_context failed: %s", e)
+            return {"error": str(e)}
 
     @server.tool()
     def get_corroboration_suggestions(finding_type: str) -> list[dict]:
         """Cross-reference suggestions based on finding type."""
-        from forensic_mcp.discipline.guidance import get_corroboration
+        try:
+            from forensic_mcp.discipline.guidance import get_corroboration
 
-        return get_corroboration(finding_type)
+            return get_corroboration(finding_type)
+        except Exception as e:
+            logger.error("get_corroboration_suggestions failed: %s", e)
+            return [{"error": str(e)}]
 
     @server.tool()
     def list_playbooks() -> list[dict]:
         """Available investigation playbooks."""
-        from forensic_mcp.discipline.playbooks import list_all
+        try:
+            from forensic_mcp.discipline.playbooks import list_all
 
-        return list_all()
+            return list_all()
+        except Exception as e:
+            logger.error("list_playbooks failed: %s", e)
+            return [{"error": str(e)}]
 
     @server.tool()
     def get_playbook(name: str) -> dict:
         """Step-by-step procedure for a specific investigation type."""
-        from forensic_mcp.discipline.playbooks import get_by_name
+        try:
+            from forensic_mcp.discipline.playbooks import get_by_name
 
-        return get_by_name(name)
+            return get_by_name(name)
+        except Exception as e:
+            logger.error("get_playbook failed: %s", e)
+            return {"error": str(e)}
 
     @server.tool()
     def get_collection_checklist(artifact_type: str) -> dict:
         """Evidence collection checklist per artifact type."""
-        from forensic_mcp.discipline.playbooks import get_checklist
+        try:
+            from forensic_mcp.discipline.playbooks import get_checklist
 
-        return get_checklist(artifact_type)
+            return get_checklist(artifact_type)
+        except Exception as e:
+            logger.error("get_collection_checklist failed: %s", e)
+            return {"error": str(e)}

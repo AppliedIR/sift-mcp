@@ -1834,7 +1834,7 @@ function renderEvidence() {
     html += '<td>' + escapeHtml(regBy) + '</td>';
     html += '<td>';
     refs.forEach(function(rid) {
-      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeHtml(rid).replace(/'/g, '\\&#39;') + '\')">' + escapeHtml(rid) + '</a> ';
+      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeHtml(rid).replace(/'/g, "\\'") + '\')">' + escapeHtml(rid) + '</a> ';
     });
     html += '</td>';
     const evIdx = evidenceData.indexOf(ev);
@@ -1929,7 +1929,7 @@ function renderTodos() {
     html += '<td class="status-' + escapeHtml(status) + '">' + escapeHtml(status) + '</td>';
     html += '<td>';
     related.forEach(function(rid) {
-      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeHtml(rid).replace(/'/g, '\\&#39;') + '\')">' + escapeHtml(rid) + '</a> ';
+      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeHtml(rid).replace(/'/g, "\\'") + '\')">' + escapeHtml(rid) + '</a> ';
     });
     html += '</td>';
     html += '<td>' + escapeHtml(created) + '</td>';
