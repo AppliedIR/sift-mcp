@@ -199,7 +199,8 @@ async def get_evidence(request: Request) -> JSONResponse:
     case_dir = _resolve_case_dir()
     if not case_dir:
         return _no_case_response()
-    evidence = _load_json(case_dir / "evidence.json") or []
+    raw = _load_json(case_dir / "evidence.json")
+    evidence = raw.get("files", []) if isinstance(raw, dict) else (raw or [])
 
     # Build referenced_by reverse index from findings
     findings = _load_json(case_dir / "findings.json") or []
@@ -285,7 +286,8 @@ async def get_summary(request: Request) -> JSONResponse:
 
     findings = _load_json(case_dir / "findings.json") or []
     timeline = _load_json(case_dir / "timeline.json") or []
-    evidence = _load_json(case_dir / "evidence.json") or []
+    raw_ev = _load_json(case_dir / "evidence.json")
+    evidence = raw_ev.get("files", []) if isinstance(raw_ev, dict) else (raw_ev or [])
     todos = _load_json(case_dir / "todos.json") or []
 
     status_counts = {}
@@ -469,7 +471,8 @@ async def verify_evidence(request: Request) -> JSONResponse:
     computed_hash = h.hexdigest()
 
     # Compare against evidence registry
-    evidence = _load_json(case_dir / "evidence.json") or []
+    raw_ev = _load_json(case_dir / "evidence.json")
+    evidence = raw_ev.get("files", []) if isinstance(raw_ev, dict) else (raw_ev or [])
     stored_hash = None
     for item in evidence:
         if item.get("path") == rel_path:
