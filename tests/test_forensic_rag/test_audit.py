@@ -29,6 +29,7 @@ class TestAuditWriter:
     def test_monotonic_sequence(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("forensic-rag-mcp")
         ids = [
             writer.log(tool="search", params={}, result_summary={}) for _ in range(5)
@@ -51,6 +52,7 @@ class TestAuditWriter:
     def test_writes_jsonl(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("forensic-rag-mcp")
         writer.log(
             tool="search", params={"query": "mimikatz"}, result_summary={"count": 5}
@@ -70,6 +72,7 @@ class TestAuditWriter:
     def test_appends_multiple(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("forensic-rag-mcp")
         for _ in range(3):
             writer.log(tool="search", params={}, result_summary={})
@@ -91,6 +94,7 @@ class TestAuditWriter:
     def test_thread_safe_sequence(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("forensic-rag-mcp")
         ids = []
         lock = threading.Lock()
@@ -112,6 +116,7 @@ class TestAuditWriter:
     def test_resumes_after_restart(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer1 = AuditWriter("forensic-rag-mcp")
         writer1.log(tool="search", params={}, result_summary={})
         writer1.log(tool="search", params={}, result_summary={})
@@ -123,6 +128,7 @@ class TestAuditWriter:
     def test_get_entries(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("forensic-rag-mcp")
         writer.log(tool="search", params={"q": "a"}, result_summary={})
         writer.log(tool="list_sources", params={}, result_summary={})
@@ -135,6 +141,7 @@ class TestAuditWriter:
     def test_elapsed_ms(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("forensic-rag-mcp")
         writer.log(tool="search", params={}, result_summary={}, elapsed_ms=42.567)
 
@@ -202,6 +209,7 @@ class TestWrapResponse:
     def test_writes_audit_when_case_dir_set(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         server = self._make_server_instance()
         result = {"status": "ok"}
         server._wrap_response("search", {"query": "test"}, result)

@@ -81,7 +81,14 @@ class AuditWriter:
         elif os.environ.get("AIIR_AUDIT_DIR"):
             audit_dir = Path(os.environ["AIIR_AUDIT_DIR"])
         else:
-            case_dir = os.environ.get("AIIR_CASE_DIR")
+            case_dir = os.environ.get("AIIR_CASE_DIR", "").strip()
+            # Validate: must be a directory with CASE.yaml
+            if case_dir:
+                path = Path(case_dir)
+                if path.is_dir() and (path / "CASE.yaml").exists():
+                    audit_dir = path / "audit"
+                else:
+                    case_dir = ""  # set-but-wrong, try active_case
             if not case_dir:
                 # Fallback: read active case pointer file
                 try:
@@ -92,13 +99,14 @@ class AuditWriter:
                     return None
                 if not case_dir:
                     return None
-            path = Path(case_dir)
-            if not path.is_dir():
-                logger.warning(
-                    "AIIR_CASE_DIR=%s is not a directory, skipping audit", case_dir
-                )
-                return None
-            audit_dir = path / "audit"
+                path = Path(case_dir)
+                if not path.is_dir() or not (path / "CASE.yaml").exists():
+                    logger.warning(
+                        "AIIR_CASE_DIR=%s is not a case directory, skipping audit",
+                        case_dir,
+                    )
+                    return None
+                audit_dir = path / "audit"
         try:
             audit_dir.mkdir(parents=True, exist_ok=True)
         except OSError as e:

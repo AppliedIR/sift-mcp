@@ -157,6 +157,7 @@ class TestAudit:
 
         case_dir = tmp_path / "test-case"
         case_dir.mkdir()
+        (case_dir / "CASE.yaml").touch()
         monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
 
@@ -187,6 +188,7 @@ class TestAudit:
 
         case_dir = tmp_path / "test-case"
         case_dir.mkdir()
+        (case_dir / "CASE.yaml").touch()
         monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
 
@@ -210,6 +212,7 @@ class TestAudit:
 
         case_dir = tmp_path / "test-case"
         case_dir.mkdir()
+        (case_dir / "CASE.yaml").touch()
         monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
 

@@ -29,6 +29,7 @@ class TestAuditWriter:
     def test_monotonic_sequence(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("windows-triage-mcp")
         ids = [
             writer.log(tool="check_file", params={}, result_summary={})
@@ -52,6 +53,7 @@ class TestAuditWriter:
     def test_writes_jsonl(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("windows-triage-mcp")
         writer.log(
             tool="check_file",
@@ -73,6 +75,7 @@ class TestAuditWriter:
     def test_appends_multiple(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("windows-triage-mcp")
         for _ in range(3):
             writer.log(tool="check_file", params={}, result_summary={})
@@ -94,6 +97,7 @@ class TestAuditWriter:
     def test_thread_safe_sequence(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("windows-triage-mcp")
         ids = []
         lock = threading.Lock()
@@ -115,6 +119,7 @@ class TestAuditWriter:
     def test_resumes_after_restart(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer1 = AuditWriter("windows-triage-mcp")
         writer1.log(tool="check_file", params={}, result_summary={})
         writer1.log(tool="check_file", params={}, result_summary={})
@@ -126,6 +131,7 @@ class TestAuditWriter:
     def test_get_entries(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("windows-triage-mcp")
         writer.log(tool="check_file", params={}, result_summary={})
         writer.log(tool="check_hash", params={}, result_summary={})
@@ -209,6 +215,7 @@ class TestWrapResponse:
     def test_writes_audit_when_case_dir_set(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         server = self._make_server_instance()
         server._wrap_response(
             "check_file", {"path": "test.exe"}, {"verdict": "UNKNOWN"}

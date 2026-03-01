@@ -258,11 +258,34 @@ class TestAuditWriter:
         """AIIR_CASE_DIR/audit/ used when no explicit dir."""
         case_dir = tmp_path / "case"
         case_dir.mkdir()
+        (case_dir / "CASE.yaml").touch()
         monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp")
         writer.log(tool="t", params={}, result_summary="ok")
         assert (case_dir / "audit" / "test-mcp.jsonl").exists()
+
+    def test_audit_dir_fallthrough_to_active_case(self, tmp_path, monkeypatch):
+        """AIIR_CASE_DIR without CASE.yaml falls through to active_case."""
+        # Parent dir (no CASE.yaml) — simulates the BUG-027 scenario
+        parent_dir = tmp_path / "cases"
+        parent_dir.mkdir()
+        monkeypatch.setenv("AIIR_CASE_DIR", str(parent_dir))
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        # Real case dir with CASE.yaml
+        real_case = tmp_path / "cases" / "INC-001"
+        real_case.mkdir()
+        (real_case / "CASE.yaml").touch()
+        # Write active_case pointer
+        aiir_dir = tmp_path / ".aiir"
+        aiir_dir.mkdir()
+        (aiir_dir / "active_case").write_text(str(real_case))
+        monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
+        writer = AuditWriter("test-mcp")
+        writer.log(tool="t", params={}, result_summary="ok")
+        # Audit should land in the real case dir, not the parent
+        assert (real_case / "audit" / "test-mcp.jsonl").exists()
+        assert not (parent_dir / "audit").exists()
 
     def test_mcp_name_prefix_generation(self, tmp_path, monkeypatch):
         """Evidence ID prefix strips -mcp and hyphens."""
