@@ -1,6 +1,12 @@
 template:
   title: "string — concise description of the evidence"
   evidence_ids: ["list of evidence_id strings from tool calls"]
+  artifacts:
+    - source: "string — file path of the evidence artifact"
+      extraction: "string — full command used to extract this data"
+      content: "string — actual raw data (NOT a summary)"
+      content_type: "csv_row | log_entry | registry_key | process_tree | network_capture | file_metadata | raw_text"
+      purpose: "string — why this extraction was performed (optional)"
   observation: "string — factual description of what the data shows (no interpretation)"
   interpretation: "string — what it might mean (labeled as interpretation)"
   confidence: "HIGH | MEDIUM | LOW | SPECULATIVE"

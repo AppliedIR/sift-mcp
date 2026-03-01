@@ -40,8 +40,6 @@ class TestProfileDefinitions:
         """All spec'd internal fields are in the strip set."""
         required = {
             "provenance",
-            "confidence",
-            "supporting_commands",
             "content_hash",
             "evidence_ids",
             "staged",

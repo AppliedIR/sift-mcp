@@ -290,9 +290,6 @@ class TestGenerateReport:
 
         stripped = {
             "provenance",
-            "confidence",
-            "confidence_justification",
-            "supporting_commands",
             "content_hash",
             "evidence_ids",
             "staged",

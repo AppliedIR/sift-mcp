@@ -161,27 +161,29 @@ Use `/case init <name>` to create a new case with template files.
 
 ## Evidence Presentation (Summary)
 
-Every finding must include:
+Every finding must include artifacts with the actual evidence:
 
 ```
-EVIDENCE: [Title]
-========================================
-Source:      [File path of artifact]
-Extraction:  [Tool and command used]
+artifacts: [{
+  source:      File path of the evidence artifact
+  extraction:  Full command used to extract this data
+  content:     The actual log entry / record / content (NOT a summary)
+  content_type: csv_row | log_entry | registry_key | process_tree | etc.
+}]
+```
 
-Raw Data:
-----------------------------------------
-[Actual log entry / record / content - NOT a summary]
-----------------------------------------
-
-Observation:    [Fact - what the evidence shows]
-Interpretation: [What it might mean - clearly labeled]
-Confidence:     [HIGH/MEDIUM/LOW + justification]
+Plus:
+  observation:    What the evidence shows (factual)
+  interpretation: What it might mean (analytical)
+  confidence:     HIGH/MEDIUM/LOW with justification
 
 > Human: Review the evidence above. [Specific question for approval]
-```
 
-**If you cannot show the evidence, you cannot make the claim.**
+Use `supporting_commands` for data processing tools only (iconv, grep,
+find, sort, awk). Forensic tool output goes in `artifacts`.
+
+**If you cannot show the evidence in artifacts.content, you cannot
+make the claim.**
 
 ---
 

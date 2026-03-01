@@ -10,9 +10,6 @@ from __future__ import annotations
 # a finding stands on its own merits.
 STRIPPED_FINDING_FIELDS = {
     "provenance",
-    "confidence",
-    "confidence_justification",
-    "supporting_commands",
     "content_hash",
     "evidence_ids",
     "staged",

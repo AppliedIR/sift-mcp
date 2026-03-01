@@ -258,28 +258,30 @@ case data in structured JSON with full audit trail.
 
 ## Evidence Presentation
 
-Every finding must include:
+Every finding must include artifacts with the actual evidence:
 
 ```
-EVIDENCE: [Title]
-========================================
-Source:      [File path of artifact]
-Extraction:  [Tool and command used]
-
-Raw Data:
-----------------------------------------
-[Actual log entry / record / content - NOT a summary]
-----------------------------------------
-
-Observation:    [Fact - what the evidence shows]
-Interpretation: [What it might mean - clearly labeled]
-Confidence:     [HIGH/MEDIUM/LOW + justification]
+artifacts: [{
+  source:      File path of the evidence artifact
+  extraction:  Full command used to extract this data
+  content:     The actual log entry / record / content (NOT a summary)
+  content_type: csv_row | log_entry | registry_key | process_tree | etc.
+}]
 ```
 
-**If you cannot show the evidence, you cannot make the claim.**
+Plus:
+  observation:    What the evidence shows (factual)
+  interpretation: What it might mean (analytical)
+  confidence:     HIGH/MEDIUM/LOW with justification
 
-Use `record_finding` to stage findings with this structure. The finding
-remains DRAFT until the examiner reviews and approves it.
+Use `supporting_commands` for data processing tools only (iconv, grep,
+find, sort, awk). Forensic tool output goes in `artifacts`.
+
+**If you cannot show the evidence in artifacts.content, you cannot
+make the claim.**
+
+Use `record_finding` with the `artifacts` parameter to stage findings.
+The finding remains DRAFT until the examiner reviews and approves it.
 
 ---
 

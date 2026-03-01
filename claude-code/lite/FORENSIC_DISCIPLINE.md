@@ -45,17 +45,17 @@ Every finding must include:
 ```
 EVIDENCE: [Title]
 ════════════════════════════════════════════════════════════════════════════════
-Source:     [File path of artifact]
-Extraction: [Tool and command used]
+Source:     [File path of artifact]            → artifacts[].source
+Extraction: [Tool and command used]            → artifacts[].extraction
 
-Raw Data:
+Raw Data:                                      → artifacts[].content
 ───────────────────────────────────────────────────────────────────────────────
 [Actual log entry / record / content - NOT a summary]
 ───────────────────────────────────────────────────────────────────────────────
 
-Observation:    [Fact - what the evidence shows]
-Interpretation: [What it might mean - clearly labeled]
-Confidence:     [HIGH/MEDIUM/LOW + justification]
+Observation:    [Fact]                         → finding.observation
+Interpretation: [What it might mean]           → finding.interpretation
+Confidence:     [HIGH/MEDIUM/LOW + why]        → finding.confidence
 
 → Human: Review the evidence above. [Specific question for approval]
 ```
@@ -68,10 +68,10 @@ IOC DISCOVERED
 IOC Value:  [The actual IOC]
 IOC Type:   [IP/Hash/Domain/URL/Path]
 
-Source:     [Artifact file path]
-Extraction: [Command used]
+Source:     [Artifact file path]               → artifacts[].source
+Extraction: [Command used]                     → artifacts[].extraction
 
-Raw Evidence:
+Raw Evidence:                                  → artifacts[].content
 ───────────────────────────────────────────────────────────────────────────────
 [The actual log/record containing the IOC]
 ───────────────────────────────────────────────────────────────────────────────
@@ -81,13 +81,17 @@ Threat Intel:
   Result:     [Status, confidence, description]
   Source:     [Intel source]
 
-Observation:    [Fact]
-Interpretation: [Assessment - labeled]
+Observation:    [Fact]                         → finding.observation
+Interpretation: [Assessment - labeled]         → finding.interpretation
 Alternatives:   [Other explanations]
 
 → Human: Review raw evidence and threat intel. Validate before pursuing?
 ════════════════════════════════════════════════════════════════════════════════
 ```
+
+When recording: pass artifacts as a separate parameter to record_finding.
+Use supporting_commands for data processing tools only (iconv, grep, find,
+sort, awk). Forensic tool output goes in artifacts.
 
 **Rule: If you cannot show the evidence, you cannot make the claim.**
 
