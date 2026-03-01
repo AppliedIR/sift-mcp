@@ -13,24 +13,34 @@ Follow these phases in order. Report results as you go. Stop on failure.
 
 ### Step 1: Backend Inventory
 
-Run `aiir setup test` via Bash. It hits the gateway `/health` endpoint
-and returns per-backend status with tool counts. Report the results.
+Run `aiir setup test` via Bash. If `aiir` is not in PATH (common on
+fresh installs before shell restart), use `~/.aiir/venv/bin/aiir`
+instead. Do NOT warn about PATH — the installer already told the user
+to restart their shell.
+
+It hits the gateway `/health` endpoint and returns per-backend status
+with tool counts. Report the results.
 
 If the gateway is not responding, stop immediately:
 "Gateway not reachable. Check: `aiir service status`"
 
 ### Step 2: Forensic Capabilities
 
-Call `list_available_tools` on sift-mcp. Group by category:
-- **Memory:** vol, strings, bulk_extractor...
-- **Filesystem:** fls, mmls, icat, MFTECmd...
-- **Registry:** RECmd, regripper...
-- **Event logs:** EvtxECmd, evtxexport...
-- **Timeline:** log2timeline.py, psort.py, mactime...
-- **Network:** tshark, tcpdump, ngrep...
-- **Imaging:** dc3dd, ewfacquire, ewfinfo...
+Call `list_available_tools` on sift-mcp. Do NOT display the raw tool list.
+Summarize as a single line with count and categories:
 
-Highlight missing expected tools and suggest alternatives.
+```
+Forensic tools:   N available (memory, filesystem, registry, timeline, network, imaging)
+```
+
+Only mention tools that are MISSING from expected categories. Do not
+list individual tools unless they are absent. Do NOT show install
+commands for missing tools — missing tools are a SIFT distribution
+issue, not an AIIR problem.
+
+Zimmerman tools that only run on Windows (PECmd, SrumECmd) are not
+expected on Linux. Do not flag them as missing. If the examiner needs
+prefetch or SRUM parsing, mention WinTools MCP as the solution.
 
 ### Step 3: Knowledge and Baselines
 
@@ -53,15 +63,15 @@ as returned by the tool.
 
 Explain:
 ```
-AIIR is conversation-driven. Ask Claude to do anything:
+AIIR is conversation driven. Ask Claude to do anything:
 - "Create a case called incident-001"
 - "Register this evidence file"
 - "Run volatility on this memory dump"
 - "What artifacts indicate credential dumping?"
 - "Generate an executive report"
 
-Claude handles everything through MCP tools. You never need to
-memorize commands or tool names.
+Claude handles almost everything through MCP tools. No need to
+memorize lots of commands or tool names.
 
 The only CLI-only operations:
   aiir approve            Approve findings (HMAC-signed with your PIN)
@@ -74,20 +84,23 @@ These require YOUR terminal confirmation. By design, Claude cannot
 approve its own findings or manage your PIN.
 ```
 
+Do NOT add PATH warnings, export suggestions, or notes about `aiir`
+not being in PATH. The installer already handles PATH messaging.
+
 ### Step 6: The Finding Workflow
 
-Explain the HMAC approval chain:
+Explain the approval workflow:
 ```
 How findings work:
 1. Claude discovers evidence and presents it to you
 2. You discuss and refine the interpretation
 3. Claude calls record_finding() — staged as DRAFT
-4. You review: aiir review --findings
-5. You approve: aiir approve <id>
-   - Requires your PIN (set via aiir config --setup-pin)
-   - Creates HMAC-signed approval record
+4. Open the case dashboard to review: http://localhost:4508/dashboard/
+5. Approve, edit, or reject findings from the dashboard
+6. Finalize: aiir approve --review (requires your PIN)
+   - Applies your dashboard decisions
+   - Creates HMAC-signed approval records
    - Status: DRAFT → APPROVED
-6. aiir review --verify confirms cryptographic integrity
 
 The AI proposes, the human validates. No finding is final
 until you sign it.
@@ -103,10 +116,13 @@ To begin your first investigation:
 2. Exit this session (/exit or Ctrl+C)
 3. cd into the case directory: cd cases/incident-001
 4. Start Claude Code again: claude
+   Tip: claude --continue resumes your most recent session.
+        claude --resume lets you pick from past sessions.
 
-Starting from the case directory means the sandbox restricts all
-Bash commands to this directory tree. Evidence from other cases
-cannot be accessed or modified — each investigation is isolated.
+*** IMPORTANT: Always start Claude Code from within the case    ***
+*** directory. The sandbox restricts all commands to this        ***
+*** directory tree. Launching from elsewhere bypasses case       ***
+*** isolation and forensic controls.                            ***
 
 5. You do not need to run /welcome again.
 
@@ -124,14 +140,17 @@ Run via Bash:
 bwrap --unshare-user -- true
 ```
 - Exit code 0: sandbox functional
-- If fails: check AppArmor (`aa-status 2>/dev/null | grep bwrap`).
-  Suggest the AIIR deployment guide for profile configuration.
+- If fails: this is common on fresh installs (AppArmor may need a
+  reboot). Do NOT display a warning. Do NOT create a separate section
+  about sandbox fixes. Do NOT suggest AppArmor commands or action
+  items. Just note "Sandbox: needs reboot" in the summary block.
+  The installer already informed the user.
 
 ### Step 9: Controls Summary
 
 Read settings.json (both `~/.claude/settings.json` and project
 `.claude/settings.json`). Verify:
-- **21 deny rules** active
+- **Deny rules** present (report actual count found)
 - **Pre-bash guard** hook present
 - **Audit hook** present
 - **Prompt hook** present
@@ -172,9 +191,15 @@ Forensic tools:   N available (memory, filesystem, registry, ...)
 Knowledge base:   N records across M sources
 
 Controls:
-  Sandbox:        OK     Deny rules:    OK (21)
-  Audit hook:     OK     Pre-bash guard: OK
+  Sandbox:        [OK/needs reboot]
+  Deny rules:     OK (N)
+  Audit hook:     OK
+  Pre-bash guard: OK
 
 To start: ask Claude to create a case, then exit, cd into the
 case directory, and restart Claude Code.
 ```
+
+The summary block above is the COMPLETE output for Phase 4. Do NOT
+add Action Items, PATH instructions, sandbox fix commands, or any
+other sections after the summary.
