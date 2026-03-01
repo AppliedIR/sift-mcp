@@ -48,9 +48,8 @@ def _resolve_case_dir() -> Path | None:
     env_dir = os.environ.get("AIIR_CASE_DIR", "").strip()
     if env_dir:
         p = Path(env_dir)
-        if p.is_dir():
+        if p.is_dir() and (p / "CASE.yaml").exists():
             return p
-        return None
 
     active_case_file = Path.home() / ".aiir" / "active_case"
     if active_case_file.exists():
