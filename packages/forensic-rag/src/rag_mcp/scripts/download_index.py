@@ -216,9 +216,16 @@ def _verify_index(data_dir: Path) -> bool:
         print(f"  ChromaDB load failed: {e}")
         return False
 
-    # HNSW test query
+    # HNSW test query — suppress noisy model loading output
     try:
-        model = SentenceTransformer(DEFAULT_MODEL_NAME)
+        import logging
+        import warnings
+
+        for _name in ("sentence_transformers", "transformers", "huggingface_hub"):
+            logging.getLogger(_name).setLevel(logging.ERROR)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = SentenceTransformer(DEFAULT_MODEL_NAME)
         test_embedding = model.encode("test").tolist()
         results = collection.query(query_embeddings=[test_embedding], n_results=1)
         if not results["ids"][0]:

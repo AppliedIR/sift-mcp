@@ -18,6 +18,12 @@ curl -fsSL "https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/setup-sift
 
 bash "$SETUP_SCRIPT" --quick "$@"
 
-echo ""
-echo "Quick start complete. Restart your shell, then: aiir setup test"
-echo ""
+# Don't print install message on uninstall
+case "$*" in
+    *--uninstall*) ;;
+    *)
+        echo ""
+        echo "Quick start complete. Restart your shell, then: aiir setup test"
+        echo ""
+        ;;
+esac

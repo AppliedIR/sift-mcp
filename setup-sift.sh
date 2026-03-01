@@ -105,6 +105,13 @@ warn()   { echo -e "${YELLOW}[WARN]${NC} $*"; }
 err()    { echo -e "${RED}[ERROR]${NC} $*"; }
 header() { echo -e "\n${BOLD}=== $* ===${NC}\n"; }
 
+# When running via curl | bash, stdin is the pipe. Read from /dev/tty instead.
+if [[ -t 0 ]]; then
+    READ_FROM="/dev/stdin"
+else
+    READ_FROM="/dev/tty"
+fi
+
 prompt() {
     local msg="$1" default="${2:-}"
     if $AUTO_YES && [[ -n "$default" ]]; then
@@ -112,10 +119,10 @@ prompt() {
         return
     fi
     if [[ -n "$default" ]]; then
-        read -rp "$(echo -e "${BOLD}$msg${NC} [$default]: ")" answer
+        read -rp "$(echo -e "${BOLD}$msg${NC} [$default]: ")" answer < "$READ_FROM"
         echo "${answer:-$default}"
     else
-        read -rp "$(echo -e "${BOLD}$msg${NC}: ")" answer
+        read -rp "$(echo -e "${BOLD}$msg${NC}: ")" answer < "$READ_FROM"
         echo "$answer"
     fi
 }
@@ -128,7 +135,7 @@ prompt_yn() {
     fi
     local suffix
     if [[ "$default" == "y" ]]; then suffix="[Y/n]"; else suffix="[y/N]"; fi
-    read -rp "$(echo -e "${BOLD}$msg${NC} $suffix: ")" answer
+    read -rp "$(echo -e "${BOLD}$msg${NC} $suffix: ")" answer < "$READ_FROM"
     answer="${answer:-$default}"
     [[ "${answer,,}" == "y" ]]
 }
@@ -136,7 +143,7 @@ prompt_yn() {
 prompt_yn_strict() {
     local msg="$1"
     while true; do
-        if ! read -rp "$(echo -e "${BOLD}$msg${NC} [y/n]: ")" answer; then
+        if ! read -rp "$(echo -e "${BOLD}$msg${NC} [y/n]: ")" answer < "$READ_FROM"; then
             echo ""
             return 1
         fi
@@ -241,13 +248,34 @@ if ${UNINSTALL_MODE:-false}; then
         echo ""
     fi
 
-    # [4] Source code
+    # [4] Source code (includes RAG index and triage databases via editable install)
     SRC_DIR="$HOME/.aiir/src"
     if [[ -d "$SRC_DIR" ]]; then
         SRC_SIZE=$(du -sh "$SRC_DIR" 2>/dev/null | cut -f1 || echo "unknown")
         echo -e "${BOLD}[4] Source code${NC}"
         echo "    Path: $SRC_DIR"
         echo "    Size: $SRC_SIZE"
+
+        # Surface RAG index and triage DB sizes if present
+        INCLUDES=""
+        RAG_DIR="$SRC_DIR/sift-mcp/packages/forensic-rag/data"
+        if [[ -d "$RAG_DIR/chroma" ]]; then
+            RAG_SIZE=$(du -sh "$RAG_DIR" 2>/dev/null | cut -f1)
+            [[ -n "$RAG_SIZE" ]] && INCLUDES="RAG index (~$RAG_SIZE)"
+        fi
+        TRIAGE_DIR="$SRC_DIR/sift-mcp/packages/windows-triage/data"
+        if [[ -f "$TRIAGE_DIR/known_good.db" ]]; then
+            TRIAGE_SIZE=$(du -sh "$TRIAGE_DIR" 2>/dev/null | cut -f1)
+            if [[ -n "$TRIAGE_SIZE" ]]; then
+                if [[ -n "$INCLUDES" ]]; then
+                    INCLUDES="$INCLUDES, triage databases (~$TRIAGE_SIZE)"
+                else
+                    INCLUDES="triage databases (~$TRIAGE_SIZE)"
+                fi
+            fi
+        fi
+        [[ -n "$INCLUDES" ]] && echo "    Includes: $INCLUDES"
+
         echo ""
         if prompt_yn_strict "    Remove source code?"; then
             rm -rf "$SRC_DIR"
@@ -258,14 +286,36 @@ if ${UNINSTALL_MODE:-false}; then
         echo ""
     fi
 
-    # [5] Gateway config and credentials
+    # [5] Shell profile
+    SHELL_RC=""
+    if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC="$HOME/.bashrc";
+    elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC="$HOME/.zshrc"; fi
+
+    if [[ -n "$SHELL_RC" ]] && grep -q "AIIR" "$SHELL_RC" 2>/dev/null; then
+        echo -e "${BOLD}[5] Shell profile${NC}"
+        echo "    File: $SHELL_RC"
+        echo "    Lines: AIIR_EXAMINER, PATH, argcomplete"
+        echo ""
+        if prompt_yn_strict "    Remove AIIR lines from $SHELL_RC?"; then
+            sed -i '/# AIIR Platform/d' "$SHELL_RC"
+            sed -i '/AIIR_EXAMINER/d' "$SHELL_RC"
+            sed -i '\|\.aiir/venv/bin|d' "$SHELL_RC"
+            sed -i '/register-python-argcomplete aiir/d' "$SHELL_RC"
+            ok "Shell profile cleaned."
+        else
+            info "Skipped. Remove manually if needed."
+        fi
+        echo ""
+    fi
+
+    # [6] Gateway config and credentials
     CONFIG_FILES=()
     for f in gateway.yaml manifest.json config.yaml; do
         [[ -f "$HOME/.aiir/$f" ]] && CONFIG_FILES+=("$HOME/.aiir/$f")
     done
     TLS_DIR="$HOME/.aiir/tls"
     if [[ ${#CONFIG_FILES[@]} -gt 0 ]] || [[ -d "$TLS_DIR" ]]; then
-        echo -e "${BOLD}[5] Gateway config and credentials${NC}"
+        echo -e "${BOLD}[6] Gateway config and credentials${NC}"
         for f in "${CONFIG_FILES[@]}"; do
             echo "    $f"
         done
@@ -283,12 +333,12 @@ if ${UNINSTALL_MODE:-false}; then
         echo ""
     fi
 
-    # [6] Remaining ~/.aiir/ contents (hooks, logs)
+    # [7] Remaining ~/.aiir/ contents (hooks, logs)
     AIIR_DIR="$HOME/.aiir"
     if [[ -d "$AIIR_DIR" ]]; then
         REMAINING=$(find "$AIIR_DIR" -mindepth 1 -maxdepth 1 2>/dev/null | head -5)
         if [[ -n "$REMAINING" ]]; then
-            echo -e "${BOLD}[6] Remaining ~/.aiir/ contents${NC}"
+            echo -e "${BOLD}[7] Remaining ~/.aiir/ contents${NC}"
             while IFS= read -r item; do
                 echo "    $(basename "$item")"
             done <<< "$REMAINING"
@@ -309,10 +359,10 @@ if ${UNINSTALL_MODE:-false}; then
         echo ""
     fi
 
-    # [7] Verification ledger (/var/lib/aiir)
+    # [8] Verification ledger (/var/lib/aiir)
     VERIF_DIR="/var/lib/aiir"
     if [[ -d "$VERIF_DIR" ]]; then
-        echo -e "${BOLD}[7] Verification ledger${NC}"
+        echo -e "${BOLD}[8] Verification ledger${NC}"
         echo "    Path: $VERIF_DIR/verification/"
         LEDGER_COUNT=$(find "$VERIF_DIR/verification" -name "*.jsonl" 2>/dev/null | wc -l)
         echo "    Ledger files: $LEDGER_COUNT"
@@ -326,10 +376,10 @@ if ${UNINSTALL_MODE:-false}; then
         echo ""
     fi
 
-    # [8] AppArmor bwrap profile
+    # [9] AppArmor bwrap profile
     BWRAP_PROFILE="/etc/apparmor.d/bwrap"
     if [[ -f "$BWRAP_PROFILE" ]]; then
-        echo -e "${BOLD}[8] AppArmor bwrap profile${NC}"
+        echo -e "${BOLD}[9] AppArmor bwrap profile${NC}"
         echo "    Path: $BWRAP_PROFILE"
         echo ""
         if prompt_yn_strict "    Remove AppArmor bwrap profile? (requires sudo)"; then
@@ -822,6 +872,7 @@ fi
 
 # 7. rag-mcp (optional, depends on 2)
 if $INSTALL_RAG; then
+    echo "  (downloads ML model + dependencies, may take several minutes)"
     install_pkg "rag-mcp" "$INSTALL_DIR/packages/forensic-rag" || {
         warn "forensic-rag install failed. Continuing without it."
         INSTALL_RAG=false
@@ -998,7 +1049,7 @@ if $INSTALL_OPENCTI; then
             err "OpenCTI URL contains invalid characters (quotes or backslashes)"
             OPENCTI_URL=""
         else
-            read -rsp "OpenCTI API Token: " OPENCTI_TOKEN
+            read -rsp "OpenCTI API Token: " OPENCTI_TOKEN < "$READ_FROM"
             echo ""
             if [[ "$OPENCTI_TOKEN" =~ [\"\'\\] ]]; then
                 err "OpenCTI token contains invalid characters (quotes or backslashes)"
@@ -1591,19 +1642,6 @@ fi
 
 header "Installation Complete"
 
-echo "Installed packages:"
-ok "forensic-knowledge"
-ok "sift-common"
-ok "forensic-mcp"
-ok "sift-mcp"
-ok "aiir-cli"
-ok "case-mcp"
-ok "report-mcp"
-ok "sift-gateway"
-$INSTALL_TRIAGE  && ok "windows-triage-mcp"
-$INSTALL_RAG     && ok "rag-mcp (forensic-rag)"
-$INSTALL_OPENCTI && ok "opencti-mcp"
-
 PROTOCOL="http"
 BIND_ADDR="127.0.0.1"
 if $REMOTE_MODE; then
@@ -1611,13 +1649,8 @@ if $REMOTE_MODE; then
     BIND_ADDR="0.0.0.0"
 fi
 
-echo ""
 echo "Tier:        $TIER_DISPLAY"
 echo "Examiner:    $EXAMINER_NAME"
-echo "Source:      $INSTALL_DIR"
-echo "Venv:        $VENV_DIR"
-echo "Config:      $GATEWAY_CONFIG"
-echo "Manifest:    $MANIFEST"
 echo "Case dir:    $CASE_DIR"
 echo "Gateway:     $PROTOCOL://$BIND_ADDR:$GATEWAY_PORT"
 if $AUTOSTART; then
@@ -1634,12 +1667,31 @@ if $REMOTE_MODE; then
     echo -e "${BOLD}TLS CA certificate:${NC}"
     echo "  $HOME/.aiir/tls/ca-cert.pem"
 else
-    echo -e "${BOLD}Bearer token:${NC} $TOKEN"
-    echo "  Use this token to authenticate LLM clients to the gateway."
+    echo "Token:       stored in $GATEWAY_CONFIG"
 fi
 
-# Post-install: RAG freshness check
+# =============================================================================
+# Data Maintenance
+# =============================================================================
+
+if $INSTALL_RAG || $INSTALL_TRIAGE; then
+    echo ""
+    echo "── Data Maintenance ──────────────────────────────────────────"
+    echo ""
+    echo "AIIR ships pre-built database snapshots so you can start working"
+    echo "immediately. The underlying sources update at different rates."
+fi
+
 if $INSTALL_RAG; then
+    echo ""
+    echo -e "${BOLD}RAG knowledge base${NC} — 23 online sources (Sigma rules, MITRE ATT&CK,"
+    echo "LOLBAS, Atomic Red Team, etc.) that update frequently."
+    echo "  Check status:  $VENV_PYTHON -m rag_mcp.status"
+    echo "  Refresh:       $VENV_PYTHON -m rag_mcp.refresh"
+    echo "  Time: a few minutes to a couple of hours, depending on how"
+    echo "  many sources changed and available CPU."
+
+    # Check for stale sources
     RAG_STALE_COUNT=$(timeout 60 bash -c "\"$VENV_PYTHON\" -m rag_mcp.status --json 2>/dev/null" | \
         "$VENV_PYTHON" -c "
 import sys, json
@@ -1649,46 +1701,45 @@ print(sum(1 for s in data.get('online_sources', []) if s.get('has_update')))
 
     if [[ -n "$RAG_STALE_COUNT" ]] && [[ "$RAG_STALE_COUNT" -gt 0 ]] 2>/dev/null; then
         echo ""
-        echo "── RAG Knowledge Base ──────────────────────────────────────────"
-        echo "The RAG index relies on online sources (Sigma rules, MITRE ATT&CK,"
-        echo "LOLBAS, etc.) that update frequently. You can refresh at any time:"
-        echo ""
-        echo "    $VENV_PYTHON -m rag_mcp.refresh"
-        echo ""
-        echo "Currently, $RAG_STALE_COUNT of 23 sources have updates available."
-        echo "Depending on the number of sources, internet speed, and available"
-        echo "CPU, this could take several minutes to a couple of hours."
+        echo "  $RAG_STALE_COUNT of 23 sources have updates available."
         if ! $AUTO_YES; then
-            if prompt_yn "Refresh now?" "n"; then
+            if prompt_yn "  Refresh now?" "n"; then
                 ANONYMIZED_TELEMETRY=False "$VENV_PYTHON" -m rag_mcp.refresh
             fi
         fi
     elif [[ -n "$RAG_STALE_COUNT" ]] && [[ "$RAG_STALE_COUNT" -eq 0 ]] 2>/dev/null; then
-        ok "RAG knowledge base is up to date (23 sources current)"
+        echo "  All 23 sources are current."
     fi
 fi
 
-echo ""
-echo "Next steps:"
-echo "  1. Restart your shell (or: source ${SHELL_RC:-~/.bashrc})"
-echo "  2. Verify installation:  aiir setup test"
-if $REMOTE_MODE; then
-    echo "  3. Run the remote client setup commands shown above on each client machine"
+if $INSTALL_TRIAGE; then
+    echo ""
+    echo -e "${BOLD}Triage databases${NC} — Windows baseline data updated periodically."
+    echo "  Re-download:   $VENV_PYTHON -m windows_triage.scripts.download_databases"
 fi
 
 if $INSTALL_RAG || $INSTALL_TRIAGE; then
     echo ""
-    echo "Deferred setup:"
 fi
-if $INSTALL_RAG; then
-    echo "  RAG index:   $VENV_PYTHON -m rag_mcp.refresh"
-fi
-if $INSTALL_TRIAGE; then
-    echo "  Triage DBs:  $VENV_PYTHON -m windows_triage.scripts.download_databases"
-fi
+
+# =============================================================================
+# Next Steps (always last)
+# =============================================================================
 
 echo ""
 echo -e "${BOLD}Documentation:${NC} https://appliedir.github.io/aiir/"
+
+NEXT_STEP=1
+echo ""
+echo "Next steps:"
+echo "  $NEXT_STEP. Restart your shell (or: source ${SHELL_RC:-~/.bashrc})"
+NEXT_STEP=$((NEXT_STEP + 1))
+echo "  $NEXT_STEP. Verify installation:  aiir setup test"
+NEXT_STEP=$((NEXT_STEP + 1))
+if $REMOTE_MODE; then
+    echo "  $NEXT_STEP. Run the remote client setup commands shown above on each client machine"
+    NEXT_STEP=$((NEXT_STEP + 1))
+fi
 echo ""
 
 # Exit with error if smoke tests failed
