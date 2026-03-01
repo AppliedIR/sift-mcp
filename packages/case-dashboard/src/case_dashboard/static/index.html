@@ -716,7 +716,7 @@ function getFilteredFindings() {
   if (filterType) list = list.filter(f => (f.type || 'finding') === filterType);
   if (filterProv) {
     list = list.filter(f => {
-      const p = f.provenance && f.provenance.summary ? f.provenance.summary : 'NONE';
+      const p = typeof f.provenance === 'string' ? f.provenance : (f.provenance && f.provenance.summary ? f.provenance.summary : 'NONE');
       return p === filterProv;
     });
   }
@@ -736,14 +736,14 @@ function getFilteredFindings() {
   // Sort
   list.sort((a, b) => {
     switch (currentSort) {
-      case 'conf-desc': return (CONF_ORDER[a.confidence] || 9) - (CONF_ORDER[b.confidence] || 9);
-      case 'conf-asc': return (CONF_ORDER[b.confidence] || 9) - (CONF_ORDER[a.confidence] || 9);
+      case 'conf-desc': return (CONF_ORDER[(a.confidence || '').toUpperCase()] || 9) - (CONF_ORDER[(b.confidence || '').toUpperCase()] || 9);
+      case 'conf-asc': return (CONF_ORDER[(b.confidence || '').toUpperCase()] || 9) - (CONF_ORDER[(a.confidence || '').toUpperCase()] || 9);
       case 'chrono': return (a.staged || '').localeCompare(b.staged || '');
       case 'id': return (a.id || '').localeCompare(b.id || '');
       case 'status': {
         const aR = getDeltaEntry(a.id) ? 1 : 0;
         const bR = getDeltaEntry(b.id) ? 1 : 0;
-        return aR - bR || (CONF_ORDER[a.confidence] || 9) - (CONF_ORDER[b.confidence] || 9);
+        return aR - bR || (CONF_ORDER[(a.confidence || '').toUpperCase()] || 9) - (CONF_ORDER[(b.confidence || '').toUpperCase()] || 9);
       }
       default: return 0;
     }
@@ -846,7 +846,7 @@ function renderFinding(id) {
   const conf = (eff.confidence || 'LOW').toUpperCase();
   const confClass = 'conf-' + conf.toLowerCase();
 
-  const prov = f.provenance && f.provenance.summary ? f.provenance.summary : 'NONE';
+  const prov = typeof f.provenance === 'string' ? f.provenance : (f.provenance && f.provenance.summary ? f.provenance.summary : 'NONE');
   const provClass = 'prov-' + prov.toLowerCase();
 
   const examiner = f.examiner || f.created_by || 'unknown';
@@ -1506,38 +1506,57 @@ function renderTimelineContext(finding) {
   if (!container) return;
   if (timelineEvents.length === 0) { container.innerHTML = ''; return; }
 
-  // Find nearby events (±5 by timestamp proximity)
-  const fTime = finding.staged || '';
-  if (!fTime) { container.innerHTML = ''; return; }
-
-  // Sort timeline by timestamp
+  // Find related timeline events, then nearby by timestamp proximity
   const sorted = [...timelineEvents].sort((a, b) => (a.timestamp || a.staged || '').localeCompare(b.timestamp || b.staged || ''));
 
-  // Find the closest event index
-  let closestIdx = 0;
-  let closestDiff = Infinity;
-  sorted.forEach((ev, idx) => {
-    const evTime = ev.timestamp || ev.staged || '';
-    const diff = Math.abs(new Date(evTime) - new Date(fTime));
-    if (diff < closestDiff) { closestDiff = diff; closestIdx = idx; }
+  // First: find events that reference this finding or are referenced by it
+  var relatedIds = new Set(finding.related_findings || []);
+  var linkedEvents = sorted.filter(function(ev) {
+    // Timeline event references this finding
+    if (ev.related_findings && ev.related_findings.indexOf(finding.id) >= 0) return true;
+    // Finding references this timeline event
+    if (relatedIds.has(ev.id)) return true;
+    return false;
   });
 
-  // Take ±5 events
-  const start = Math.max(0, closestIdx - 5);
-  const end = Math.min(sorted.length, closestIdx + 6);
-  const nearby = sorted.slice(start, end);
+  var nearby;
+  var highlightId = null;
+  if (linkedEvents.length > 0) {
+    // Show linked events ±2 context
+    var centerIdx = sorted.indexOf(linkedEvents[0]);
+    var start = Math.max(0, centerIdx - 2);
+    var end = Math.min(sorted.length, centerIdx + linkedEvents.length + 2);
+    nearby = sorted.slice(start, end);
+    highlightId = linkedEvents[0].id;
+  } else {
+    // Fallback: timestamp proximity (use finding.timestamp if available, then staged)
+    var fTime = finding.timestamp || finding.staged || '';
+    if (!fTime) { container.innerHTML = ''; return; }
+
+    var closestIdx = 0;
+    var closestDiff = Infinity;
+    sorted.forEach(function(ev, idx) {
+      var evTime = ev.timestamp || ev.staged || '';
+      var diff = Math.abs(new Date(evTime) - new Date(fTime));
+      if (diff < closestDiff) { closestDiff = diff; closestIdx = idx; }
+    });
+
+    var start = Math.max(0, closestIdx - 5);
+    var end = Math.min(sorted.length, closestIdx + 6);
+    nearby = sorted.slice(start, end);
+  }
 
   if (nearby.length === 0) { container.innerHTML = ''; return; }
 
-  let html = '<div class="timeline-context">';
+  var html = '<div class="timeline-context">';
   html += '<div class="timeline-context-header">Timeline Context</div>';
-  nearby.forEach(ev => {
-    const evTime = ev.timestamp || ev.staged || '';
-    const isCurrent = Math.abs(new Date(evTime) - new Date(fTime)) < 1000;
+  nearby.forEach(function(ev) {
+    var evTime = ev.timestamp || ev.staged || '';
+    var isCurrent = (highlightId && ev.id === highlightId) || (!highlightId && finding.timestamp && Math.abs(new Date(evTime) - new Date(finding.timestamp)) < 1000);
     html += '<div class="timeline-event' + (isCurrent ? ' current' : '') + '">';
     html += '<span class="tl-time">' + formatTimeShort(evTime) + '</span>';
     html += '<span class="tl-desc">' + escapeHtml(ev.title || ev.description || ev.id || '') + '</span>';
-    if (isCurrent) html += '<span class="tl-marker">&#9668; this</span>';
+    if (isCurrent) html += '<span class="tl-marker">&#9668;</span>';
     html += '</div>';
   });
   html += '</div>';
