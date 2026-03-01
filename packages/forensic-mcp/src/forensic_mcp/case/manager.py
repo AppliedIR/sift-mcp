@@ -78,6 +78,7 @@ _ALLOWED_FINDING_FIELDS = {
     "mitre_ids",
     "iocs",
     "supporting_commands",
+    "artifacts",
     "event_type",
     "artifact_ref",
     "related_findings",
@@ -329,6 +330,7 @@ class CaseManager:
         finding: dict,
         examiner_override: str = "",
         supporting_commands: list[dict] | None = None,
+        artifacts: list[dict] | None = None,
         audit: Any | None = None,
     ) -> dict:
         """Validate and stage finding as DRAFT.
@@ -393,6 +395,35 @@ class CaseManager:
                         source="shell_self_report",
                         evidence_id=shell_eid,
                     )
+
+        # Validate artifacts — parameter wins over finding dict (dedup)
+        validated_artifacts: list[dict] = []
+        raw_artifacts = artifacts if artifacts is not None else sanitized.get("artifacts", [])
+        if isinstance(raw_artifacts, str):
+            try:
+                raw_artifacts = json.loads(raw_artifacts)
+            except (json.JSONDecodeError, TypeError):
+                raw_artifacts = []
+        if isinstance(raw_artifacts, list):
+            for art in raw_artifacts[:10]:
+                if not isinstance(art, dict):
+                    continue
+                source = art.get("source", "").strip()
+                extraction = art.get("extraction", "").strip()
+                content = art.get("content", "").strip()
+                if not source or not extraction or not content:
+                    continue
+                validated_artifacts.append({
+                    "source": source[:500],
+                    "extraction": extraction[:2000],
+                    "content": content[:5000],
+                    "content_type": str(art.get("content_type", ""))[:50],
+                    "purpose": str(art.get("purpose", ""))[:500],
+                })
+        if validated_artifacts:
+            sanitized["artifacts"] = validated_artifacts
+        else:
+            sanitized.pop("artifacts", None)
 
         # Extend evidence_ids with shell evidence IDs
         evidence_ids = list(sanitized.get("evidence_ids", []))

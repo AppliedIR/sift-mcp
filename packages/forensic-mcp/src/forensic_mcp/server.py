@@ -148,6 +148,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         finding: dict,
         analyst_override: str = "",
         supporting_commands: list[dict] | None = None,
+        artifacts: list[dict] | None = None,
     ) -> dict:
         """Stage finding as DRAFT for human review.
 
@@ -167,6 +168,13 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
 
         supporting_commands (separate parameter, list of dicts): for evidence obtained
         via Bash rather than MCP tools. Each dict: {command, output_excerpt, purpose}.
+
+        artifacts (separate parameter, list of dicts): raw evidence the examiner reviewed.
+        Each dict: {source (file path of artifact), extraction (full command used),
+        content (literal raw data — NOT a summary or paraphrase), content_type (optional:
+        csv_row/log_entry/registry_key/process_tree/network_capture/file_metadata/raw_text),
+        purpose (optional: why this extraction was performed)}.
+        source, extraction, and content are required per artifact.
 
         Requires human approval via 'aiir approve'."""
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
@@ -198,11 +206,20 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
                     _validate_str_length(
                         cmd.get("purpose"), "supporting_commands.purpose", _MAX_TEXT
                     )
+        # Coerce artifacts JSON string to list
+        if isinstance(artifacts, str):
+            try:
+                artifacts = json.loads(artifacts)
+            except (json.JSONDecodeError, TypeError):
+                artifacts = None
+        if not isinstance(artifacts, list):
+            artifacts = None
         try:
             result = manager.record_finding(
                 finding,
                 examiner_override=analyst_override,
                 supporting_commands=supporting_commands,
+                artifacts=artifacts,
                 audit=audit,
             )
         except Exception as e:
