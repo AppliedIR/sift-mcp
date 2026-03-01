@@ -166,13 +166,19 @@ Every finding must include:
 ```
 EVIDENCE: [Title]
 ========================================
-Source:      [File path]
-Extraction:  [Tool and command]
-Raw Data:    [Actual content - not summarized]
+Source:      [File path of artifact]
+Extraction:  [Tool and command used]
+
+Raw Data:
 ----------------------------------------
-Observation:    [Fact - what it shows]
-Interpretation: [What it might mean - labeled]
+[Actual log entry / record / content - NOT a summary]
+----------------------------------------
+
+Observation:    [Fact - what the evidence shows]
+Interpretation: [What it might mean - clearly labeled]
 Confidence:     [HIGH/MEDIUM/LOW + justification]
+
+> Human: Review the evidence above. [Specific question for approval]
 ```
 
 **If you cannot show the evidence, you cannot make the claim.**

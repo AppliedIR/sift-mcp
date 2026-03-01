@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat << 'EOF'\n<forensic-rules>\nPLAN before 3+ steps (display numbered checklist BEFORE any tool call) | EVIDENCE for claims | APPROVAL before conclusions\nRECORD actions in ACTIONS.md | NO DELETE without approval\n</forensic-rules>\nEOF"
+            "command": "cat << 'EOF'\n<forensic-rules>\nPLAN before 3+ steps (display numbered checklist BEFORE any tool call) | APPROVAL before conclusions\nEVIDENCE FORMAT: Source | Extraction | Raw Data | Observation | Interpretation | Confidence | Ask human\nRECORD actions in ACTIONS.md | NO DELETE without approval\n</forensic-rules>\nEOF"
           }
         ]
       }
