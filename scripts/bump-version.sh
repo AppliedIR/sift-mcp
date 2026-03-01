@@ -5,8 +5,8 @@
 # Usage:
 #   ./scripts/bump-version.sh 0.5.1
 #
-# Updates pyproject.toml in the sift-mcp monorepo (12 files) and
-# the aiir repo (1 file) if present at ../aiir.
+# Updates pyproject.toml and __init__.py version strings in the
+# sift-mcp monorepo and the aiir repo (if present at ../aiir).
 #
 set -euo pipefail
 
@@ -40,6 +40,15 @@ while IFS= read -r file; do
         count=$((count + 1))
     fi
 done < <(find "$REPO_ROOT" -name pyproject.toml -not -path "*/.*")
+
+# Update __version__ in __init__.py files in sift-mcp
+while IFS= read -r file; do
+    if grep -q '^__version__ = "' "$file"; then
+        sed -i "s/^__version__ = \"[^\"]*\"/__version__ = \"${VERSION}\"/" "$file"
+        echo "  Updated: ${file#$REPO_ROOT/}"
+        count=$((count + 1))
+    fi
+done < <(find "$REPO_ROOT" -name "__init__.py" -not -path "*/.*")
 
 # Update aiir if present
 if [[ -f "$AIIR_DIR/pyproject.toml" ]]; then
