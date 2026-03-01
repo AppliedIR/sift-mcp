@@ -440,6 +440,14 @@ if [[ -d "$LITE_DIR/case-templates" ]]; then
     ok "Deployed case templates"
 fi
 
+# Deploy case manager script
+if [[ -f "$LITE_DIR/scripts/case-manager.sh" ]]; then
+    mkdir -p "$HOME/.aiir/bin"
+    cp "$LITE_DIR/scripts/case-manager.sh" "$HOME/.aiir/bin/"
+    chmod +x "$HOME/.aiir/bin/case-manager.sh"
+    ok "Deployed case manager script"
+fi
+
 # Generate .mcp.json — merge managed entries into existing config
 MCP_JSON="$PROJECT_DIR/.mcp.json"
 _MANAGED_SERVERS='["forensic-rag", "windows-triage"]'
