@@ -137,7 +137,7 @@ def create_server() -> FastMCP:
                     "output_file": exec_result.get("output_file", ""),
                     "output_sha256": exec_result.get("output_sha256", ""),
                     "stdout_bytes": exec_result.get("stdout_total_bytes", 0),
-                    "stdout_head": exec_result.get("stdout", "")[:500],
+                    "stdout_head": (exec_result.get("stdout") or "")[:500],
                 },
                 evidence_id=evidence_id,
                 elapsed_ms=elapsed * 1000,
