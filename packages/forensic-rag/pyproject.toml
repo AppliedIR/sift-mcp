@@ -28,6 +28,7 @@ dependencies = [
     "pyyaml>=6.0",
     "toml>=0.10",
     "sift-common",
+    "zstandard>=0.20",
 ]
 
 [project.optional-dependencies]

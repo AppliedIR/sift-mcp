@@ -382,6 +382,8 @@ def build(
         "version": "2.0.0",
         "created": datetime.now().isoformat(),
         "model": model_name,
+        "install_method": "build",
+        "chromadb_version": chromadb.__version__,
         "record_count": total,
         "source_count": len(all_sources),
         "sources": sorted(all_sources),

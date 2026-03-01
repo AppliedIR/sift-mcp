@@ -49,6 +49,8 @@ class StatusResult:
     document_count: int
     source_count: int
     model: str
+    install_method: str
+    bundle_tag: str
     online_sources: list[dict]
     watched_documents: list[dict]
     ingested_documents: list[dict]
@@ -82,6 +84,8 @@ def get_status(
         document_count=0,
         source_count=0,
         model="",
+        install_method="",
+        bundle_tag="",
         online_sources=[],
         watched_documents=[],
         ingested_documents=[],
@@ -105,6 +109,8 @@ def get_status(
             with open(metadata_path, encoding="utf-8") as f:
                 metadata = json.load(f)
                 result.model = metadata.get("model", "unknown")
+                result.install_method = metadata.get("install_method", "")
+                result.bundle_tag = metadata.get("bundle_tag", "") or ""
                 result.source_count = metadata.get("source_count", 0)
         except (OSError, json.JSONDecodeError) as e:
             result.warnings.append(f"Could not read metadata.json: {e}")
@@ -202,6 +208,11 @@ def format_status(status: StatusResult, verbose: bool = False) -> str:
         return "\n".join(lines)
 
     lines.append(f"Index: {status.document_count:,} documents | Model: {status.model}")
+    if status.install_method:
+        method_str = status.install_method
+        if status.bundle_tag:
+            method_str += f" ({status.bundle_tag})"
+        lines.append(f"Install method: {method_str}")
     lines.append("")
 
     # Online sources
