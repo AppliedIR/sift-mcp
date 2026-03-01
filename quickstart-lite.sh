@@ -53,13 +53,14 @@ marker = {
     'installed_at': sys.argv[3],
     'source_dir': sys.argv[4],
     'rag': sys.argv[5] == 'true',
-    'triage': sys.argv[6] == 'true',
+    'rag_method': sys.argv[6],
+    'triage': sys.argv[7] == 'true',
 }
-with open(sys.argv[7], 'w') as f:
+with open(sys.argv[8], 'w') as f:
     json.dump(marker, f, indent=2)
     f.write('\n')
 " "$version" "$commit" "$installed_at" "$SCRIPT_DIR" \
-  "$INSTALL_RAG" "$INSTALL_TRIAGE" "$marker"
+  "$INSTALL_RAG" "${RAG_METHOD:-skipped}" "$INSTALL_TRIAGE" "$marker"
 }
 
 _validate_credential() {
@@ -339,6 +340,8 @@ fi
 # ==========================================================================
 header "Phase 3: RAG Index"
 
+RAG_METHOD="skipped"
+
 if [[ "$INSTALL_RAG" == "true" ]]; then
     mkdir -p "$INDEX_DIR"
 
@@ -352,21 +355,32 @@ if [[ "$INSTALL_RAG" == "true" ]]; then
     INDEX_COUNT=$(RAG_INDEX_DIR="$INDEX_DIR" "$VENV_PYTHON" -m rag_mcp.status --json --no-check 2>/dev/null | \
         "$VENV_PYTHON" -c "import sys,json; print(json.load(sys.stdin).get('document_count',0))" 2>/dev/null) || INDEX_COUNT=0
 
-    if [[ "$INDEX_COUNT" -gt 0 ]] 2>/dev/null; then
-        ok "RAG index already built ($INDEX_COUNT records)"
-    else
-        echo "  Building RAG index (this takes 15-25 minutes)..."
-        if RAG_INDEX_DIR="$INDEX_DIR" ANONYMIZED_TELEMETRY=False "$VENV_PYTHON" -m rag_mcp.build 2>/dev/null; then
-            INDEX_COUNT=$(RAG_INDEX_DIR="$INDEX_DIR" "$VENV_PYTHON" -m rag_mcp.status --json --no-check 2>/dev/null | \
-                "$VENV_PYTHON" -c "import sys,json; print(json.load(sys.stdin).get('document_count',0))" 2>/dev/null) || INDEX_COUNT=0
-            if [[ "$INDEX_COUNT" -gt 0 ]] 2>/dev/null; then
-                ok "RAG index built ($INDEX_COUNT records)"
+    if [[ "${REBUILD_RAG:-}" == "true" ]] || [[ "$INDEX_COUNT" -eq 0 ]] 2>/dev/null; then
+        # Try download first (unless rebuild requested)
+        if [[ "${REBUILD_RAG:-}" != "true" ]]; then
+            echo "  Downloading pre-built RAG index..."
+            if RAG_INDEX_DIR="$INDEX_DIR" ANONYMIZED_TELEMETRY=False \
+                    "$VENV_PYTHON" -m rag_mcp.scripts.download_index --dest "$INDEX_DIR" 2>&1; then
+                RAG_METHOD="download"
+                ok "RAG index downloaded"
             else
-                warn "RAG index appears empty. Run: $VENV_PYTHON -m rag_mcp.build"
+                warn "Download failed, building from source..."
             fi
-        else
-            warn "RAG index build failed. Run manually: $VENV_PYTHON -m rag_mcp.build"
         fi
+        # Build from source (rebuild or download fallback)
+        if [[ "$RAG_METHOD" != "download" ]]; then
+            echo "  Building RAG index (this takes 15 minutes to 3 hours)..."
+            if RAG_INDEX_DIR="$INDEX_DIR" ANONYMIZED_TELEMETRY=False \
+                    "$VENV_PYTHON" -m rag_mcp.build 2>/dev/null; then
+                RAG_METHOD="build"
+                ok "RAG index built"
+            else
+                warn "RAG index build failed. Run manually: $VENV_PYTHON -m rag_mcp.build"
+            fi
+        fi
+    else
+        RAG_METHOD="exists"
+        ok "RAG index already built ($INDEX_COUNT records)"
     fi
 else
     ok "RAG index skipped"
@@ -644,6 +658,40 @@ fi
 # --- Registry baseline (deferred) ---
 if [[ "$INSTALL_REGISTRY" == "true" ]]; then
     warn "Registry baseline download is not yet available. Flag accepted for forward compatibility."
+fi
+
+# ==========================================================================
+# Post-install: RAG freshness check
+# ==========================================================================
+if [[ "$INSTALL_RAG" == "true" ]] && [[ "$RAG_METHOD" != "skipped" ]]; then
+    STALE_COUNT=$(timeout 60 bash -c "RAG_INDEX_DIR=\"$INDEX_DIR\" \"$VENV_PYTHON\" -m rag_mcp.status --json 2>/dev/null" | \
+        "$VENV_PYTHON" -c "
+import sys, json
+data = json.load(sys.stdin)
+print(sum(1 for s in data.get('online_sources', []) if s.get('has_update')))
+" 2>/dev/null) || STALE_COUNT=""
+
+    if [[ -n "$STALE_COUNT" ]] && [[ "$STALE_COUNT" -gt 0 ]] 2>/dev/null; then
+        echo ""
+        echo "── RAG Knowledge Base ──────────────────────────────────────────"
+        echo "The RAG index relies on online sources (Sigma rules, MITRE ATT&CK,"
+        echo "LOLBAS, etc.) that update frequently. You can refresh at any time:"
+        echo ""
+        echo "    $VENV_PYTHON -m rag_mcp.refresh"
+        echo ""
+        echo "Currently, $STALE_COUNT of 23 sources have updates available."
+        echo "Depending on the number of sources, internet speed, and available"
+        echo "CPU, this could take several minutes to a couple of hours."
+        if [[ "$YES" != "true" ]]; then
+            read -rp "  Would you like to refresh now? [y/N] " reply
+            if [[ "$reply" =~ ^[Yy] ]]; then
+                RAG_INDEX_DIR="$INDEX_DIR" ANONYMIZED_TELEMETRY=False \
+                    "$VENV_PYTHON" -m rag_mcp.refresh
+            fi
+        fi
+    elif [[ -n "$STALE_COUNT" ]] && [[ "$STALE_COUNT" -eq 0 ]] 2>/dev/null; then
+        ok "RAG knowledge base is up to date (23 sources current)"
+    fi
 fi
 
 # ==========================================================================

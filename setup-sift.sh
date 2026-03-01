@@ -877,35 +877,34 @@ if $INSTALL_RAG || $INSTALL_TRIAGE; then
     header "Post-Install Setup"
 fi
 
-# --- forensic-rag index build ---
+# --- forensic-rag index ---
 if $INSTALL_RAG; then
-    if ! $AUTO_YES; then
-        echo "forensic-rag needs to build a search index (~2GB disk for ML model)."
-        echo "  Build now:  downloads model + builds index (takes a few minutes)"
-        echo "  Skip:       build later with: $VENV_PYTHON -m rag_mcp.build"
-        echo ""
-        if prompt_yn "Build index now?" "y"; then
-            info "Building forensic-rag index (this may take a few minutes)..."
-            ANONYMIZED_TELEMETRY=False "$VENV_PYTHON" -m rag_mcp.build && \
-                ok "Index built" || warn "Index build failed. You can retry later."
-        else
-            info "Skipping index build."
-        fi
-    else
-        echo ""
-        info "forensic-rag: index will build on first use (~2 min, ~2GB download)"
-        info "  Or build now: $VENV_PYTHON -m rag_mcp.build"
-    fi
-fi
-
-# Validate RAG index (after all build/skip paths)
-if $INSTALL_RAG && command -v "$VENV_PYTHON" &>/dev/null; then
     INDEX_COUNT=$("$VENV_PYTHON" -m rag_mcp.status --json --no-check 2>/dev/null | \
-        "$VENV_PYTHON" -c "import sys,json; print(json.load(sys.stdin).get('document_count',0))" 2>/dev/null)
+        "$VENV_PYTHON" -c "import sys,json; print(json.load(sys.stdin).get('document_count',0))" \
+        2>/dev/null) || INDEX_COUNT=0
+
     if [ "$INDEX_COUNT" -gt 0 ] 2>/dev/null; then
-        ok "RAG index validated ($INDEX_COUNT records)"
+        ok "RAG index exists ($INDEX_COUNT records)"
     else
-        warn "RAG index may be empty. Run: $VENV_PYTHON -m rag_mcp.status"
+        echo "  Downloading pre-built RAG index..."
+        if ANONYMIZED_TELEMETRY=False "$VENV_PYTHON" -m rag_mcp.scripts.download_index 2>&1; then
+            ok "RAG index downloaded"
+        else
+            if ! $AUTO_YES; then
+                echo "Download failed. Build from source instead?"
+                echo "  This takes 15 minutes to 3 hours depending on CPU."
+                echo "  Skip: build later with: $VENV_PYTHON -m rag_mcp.build"
+                if prompt_yn "Build index now?" "y"; then
+                    info "Building from source..."
+                    ANONYMIZED_TELEMETRY=False "$VENV_PYTHON" -m rag_mcp.build && \
+                        ok "Index built" || warn "Build failed. Retry later."
+                else
+                    info "Skipping index build."
+                fi
+            else
+                warn "RAG index download failed. Build manually: $VENV_PYTHON -m rag_mcp.build"
+            fi
+        fi
     fi
 fi
 
@@ -1639,6 +1638,36 @@ else
     echo "  Use this token to authenticate LLM clients to the gateway."
 fi
 
+# Post-install: RAG freshness check
+if $INSTALL_RAG; then
+    RAG_STALE_COUNT=$(timeout 60 bash -c "\"$VENV_PYTHON\" -m rag_mcp.status --json 2>/dev/null" | \
+        "$VENV_PYTHON" -c "
+import sys, json
+data = json.load(sys.stdin)
+print(sum(1 for s in data.get('online_sources', []) if s.get('has_update')))
+" 2>/dev/null) || RAG_STALE_COUNT=""
+
+    if [[ -n "$RAG_STALE_COUNT" ]] && [[ "$RAG_STALE_COUNT" -gt 0 ]] 2>/dev/null; then
+        echo ""
+        echo "── RAG Knowledge Base ──────────────────────────────────────────"
+        echo "The RAG index relies on online sources (Sigma rules, MITRE ATT&CK,"
+        echo "LOLBAS, etc.) that update frequently. You can refresh at any time:"
+        echo ""
+        echo "    $VENV_PYTHON -m rag_mcp.refresh"
+        echo ""
+        echo "Currently, $RAG_STALE_COUNT of 23 sources have updates available."
+        echo "Depending on the number of sources, internet speed, and available"
+        echo "CPU, this could take several minutes to a couple of hours."
+        if ! $AUTO_YES; then
+            if prompt_yn "Refresh now?" "n"; then
+                ANONYMIZED_TELEMETRY=False "$VENV_PYTHON" -m rag_mcp.refresh
+            fi
+        fi
+    elif [[ -n "$RAG_STALE_COUNT" ]] && [[ "$RAG_STALE_COUNT" -eq 0 ]] 2>/dev/null; then
+        ok "RAG knowledge base is up to date (23 sources current)"
+    fi
+fi
+
 echo ""
 echo "Next steps:"
 echo "  1. Restart your shell (or: source ${SHELL_RC:-~/.bashrc})"
@@ -1652,7 +1681,7 @@ if $INSTALL_RAG || $INSTALL_TRIAGE; then
     echo "Deferred setup:"
 fi
 if $INSTALL_RAG; then
-    echo "  RAG index:   ~/.aiir/venv/bin/python -m rag_mcp.build"
+    echo "  RAG index:   $VENV_PYTHON -m rag_mcp.refresh"
 fi
 if $INSTALL_TRIAGE; then
     echo "  Triage DBs:  $VENV_PYTHON -m windows_triage.scripts.download_databases"
