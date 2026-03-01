@@ -10,7 +10,7 @@
 #   ./scripts/build-release.sh --output /tmp/rel   # Custom output directory
 #
 # Upload with gh CLI:
-#   gh release create v2025.02 release/*.zst release/checksums.sha256 \
+#   gh release create triage-db-v2025.02 --latest=false release/*.zst release/checksums.sha256 \
 #     --title "Triage Databases v2025.02" \
 #     --notes "Pre-built triage databases for windows-triage"
 #
@@ -121,6 +121,6 @@ echo "Files:"
 ls -lh "${OUTPUT_DIR}/"
 echo ""
 echo "To create a GitHub release:"
-echo "  gh release create vYYYY.MM ${OUTPUT_DIR}/*.zst ${OUTPUT_DIR}/checksums.sha256 ${OUTPUT_DIR}/metadata.json \\"
+echo "  gh release create triage-db-vYYYY.MM --latest=false ${OUTPUT_DIR}/*.zst ${OUTPUT_DIR}/checksums.sha256 ${OUTPUT_DIR}/metadata.json \\"
 echo "    --title 'Triage Databases vYYYY.MM' \\"
 echo "    --notes-file RELEASE_NOTES.md"

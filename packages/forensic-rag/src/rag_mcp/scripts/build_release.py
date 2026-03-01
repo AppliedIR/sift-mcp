@@ -160,7 +160,7 @@ def main() -> None:
     print(f"  Records:    {record_count:,}")
     print("")
     print("Upload to GitHub Release:")
-    print(f"  gh release create {tag} \\")
+    print(f"  gh release create {tag} --latest=false \\")
     print(f"    {tarball_path} \\")
     print(f"    {output_dir / 'rag-checksums.sha256'} \\")
     if attr_dest.exists():
