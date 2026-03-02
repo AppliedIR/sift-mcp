@@ -6,7 +6,8 @@
 #   ./scripts/bump-version.sh 0.5.1
 #
 # Updates pyproject.toml and __init__.py version strings in the
-# sift-mcp monorepo and the aiir repo (if present at ../aiir).
+# sift-mcp monorepo, aiir, and wintools-mcp (if present at ../aiir
+# and ../wintools-mcp).
 #
 set -euo pipefail
 
@@ -20,6 +21,7 @@ VERSION="$1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 AIIR_DIR="$REPO_ROOT/../aiir"
+WINTOOLS_DIR="$REPO_ROOT/../wintools-mcp"
 
 # Validate version format
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -57,12 +59,19 @@ if [[ -f "$AIIR_DIR/pyproject.toml" ]]; then
     count=$((count + 1))
 fi
 
+# Update wintools-mcp if present
+if [[ -f "$WINTOOLS_DIR/pyproject.toml" ]]; then
+    sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" "$WINTOOLS_DIR/pyproject.toml"
+    echo "  Updated: ../wintools-mcp/pyproject.toml"
+    count=$((count + 1))
+fi
+
 echo ""
 echo "$count files updated to $VERSION"
 echo ""
-echo "Next steps:"
+echo "Next steps (repeat for each repo: sift-mcp, aiir, wintools-mcp):"
 echo "  1. Review:  git diff"
 echo "  2. Commit:  git commit -am 'bump version to $VERSION'"
 echo "  3. Tag:     git tag v$VERSION"
 echo "  4. Push:    git push && git push --tags"
-echo "  5. Release: gh release create v$VERSION --title 'v$VERSION' --generate-notes"
+echo "  5. Release: gh release create v$VERSION --title 'v$VERSION' --generate-notes --latest"
