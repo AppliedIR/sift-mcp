@@ -39,10 +39,18 @@ _MAX_REPORT_BYTES = 10 * 1024 * 1024  # 10 MB
 # Duplicated from aiir-cli case_io.py — report-mcp does NOT depend on
 # aiir-cli. Kept in sync manually.
 _HASH_EXCLUDE_KEYS = {
-    "status", "approved_at", "approved_by", "rejected_at",
-    "rejected_by", "rejection_reason", "examiner_notes",
-    "examiner_modifications", "content_hash", "verification",
-    "modified_at", "provenance",
+    "status",
+    "approved_at",
+    "approved_by",
+    "rejected_at",
+    "rejected_by",
+    "rejection_reason",
+    "examiner_notes",
+    "examiner_modifications",
+    "content_hash",
+    "verification",
+    "modified_at",
+    "provenance",
 }
 
 

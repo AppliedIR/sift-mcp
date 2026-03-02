@@ -277,7 +277,9 @@ def refresh(
 
             metadata = {
                 "version": existing_metadata.get("version", "2.0.0"),
-                "created": existing_metadata.get("created", datetime.now(timezone.utc).isoformat()),
+                "created": existing_metadata.get(
+                    "created", datetime.now(timezone.utc).isoformat()
+                ),
                 "refreshed": datetime.now(timezone.utc).isoformat(),
                 "model": existing_metadata.get("model", model_name),
                 "install_method": existing_metadata.get("install_method", "build"),

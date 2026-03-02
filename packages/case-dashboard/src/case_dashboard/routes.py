@@ -39,9 +39,15 @@ _HASH_EXCLUDE_KEYS = {
 }
 
 _VALID_DELTA_KEYS = {
-    "id", "type", "action", "content_hash_at_review",
-    "modifications", "rejection_reason", "note",
-    "todo_description", "todo_priority",
+    "id",
+    "type",
+    "action",
+    "content_hash_at_review",
+    "modifications",
+    "rejection_reason",
+    "note",
+    "todo_description",
+    "todo_priority",
 }
 
 _REQUIRED_DELTA_KEYS = {"id", "type", "action"}
@@ -363,17 +369,23 @@ async def post_delta(request: Request) -> JSONResponse:
     if items:
         for item in items:
             if not isinstance(item, dict):
-                return JSONResponse({"error": "Each item must be a dict"}, status_code=400)
+                return JSONResponse(
+                    {"error": "Each item must be a dict"}, status_code=400
+                )
             unknown = set(item.keys()) - _VALID_DELTA_KEYS
             if unknown:
                 return JSONResponse(
-                    {"error": f"Unknown fields in delta item: {', '.join(sorted(unknown))}"},
+                    {
+                        "error": f"Unknown fields in delta item: {', '.join(sorted(unknown))}"
+                    },
                     status_code=400,
                 )
             missing = _REQUIRED_DELTA_KEYS - set(item.keys())
             if missing:
                 return JSONResponse(
-                    {"error": f"Missing required fields in delta item: {', '.join(sorted(missing))}"},
+                    {
+                        "error": f"Missing required fields in delta item: {', '.join(sorted(missing))}"
+                    },
                     status_code=400,
                 )
 

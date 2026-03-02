@@ -32,6 +32,8 @@ class _NormalizeMCPPath:
             if scope.get("raw_path"):
                 scope["raw_path"] = scope["raw_path"] + b"/"
         await self.app(scope, receive, send)
+
+
 from sift_gateway.backends import MCPBackend, create_backend
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import (

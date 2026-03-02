@@ -353,7 +353,9 @@ class CaseManager:
         exam = self._effective_examiner(examiner_override)
 
         # Auto-extract supporting_commands/artifacts if LLM passed them inline
-        if supporting_commands is None and isinstance(finding.get("supporting_commands"), list):
+        if supporting_commands is None and isinstance(
+            finding.get("supporting_commands"), list
+        ):
             supporting_commands = finding.pop("supporting_commands")
         if artifacts is None and isinstance(finding.get("artifacts"), list):
             artifacts = finding.pop("artifacts")
@@ -403,7 +405,9 @@ class CaseManager:
 
         # Validate artifacts — parameter wins over finding dict (dedup)
         validated_artifacts: list[dict] = []
-        raw_artifacts = artifacts if artifacts is not None else sanitized.get("artifacts", [])
+        raw_artifacts = (
+            artifacts if artifacts is not None else sanitized.get("artifacts", [])
+        )
         if isinstance(raw_artifacts, str):
             try:
                 raw_artifacts = json.loads(raw_artifacts)
@@ -420,18 +424,24 @@ class CaseManager:
                     content = art.get("raw_data", "").strip()
                 if not source or not extraction or not content:
                     continue
-                validated_artifacts.append({
-                    "source": source[:500],
-                    "extraction": extraction[:2000],
-                    "content": content[:5000],
-                    "content_type": str(art.get("content_type", ""))[:50],
-                    "purpose": str(art.get("purpose", ""))[:500],
-                })
+                validated_artifacts.append(
+                    {
+                        "source": source[:500],
+                        "extraction": extraction[:2000],
+                        "content": content[:5000],
+                        "content_type": str(art.get("content_type", ""))[:50],
+                        "purpose": str(art.get("purpose", ""))[:500],
+                    }
+                )
         if validated_artifacts:
             sanitized["artifacts"] = validated_artifacts
         else:
             sanitized.pop("artifacts", None)
-        dropped_artifact_count = len(raw_artifacts) - len(validated_artifacts) if isinstance(raw_artifacts, list) else 0
+        dropped_artifact_count = (
+            len(raw_artifacts) - len(validated_artifacts)
+            if isinstance(raw_artifacts, list)
+            else 0
+        )
 
         # Extend evidence_ids with shell evidence IDs
         evidence_ids = list(sanitized.get("evidence_ids", []))
@@ -487,7 +497,11 @@ class CaseManager:
                 f"{dropped_artifact_count} artifact(s) dropped — each artifact requires "
                 "source, extraction, and content fields (not raw_data)."
             )
-        dropped_cmd_count = len(supporting_commands) - len(validated_commands) if supporting_commands else 0
+        dropped_cmd_count = (
+            len(supporting_commands) - len(validated_commands)
+            if supporting_commands
+            else 0
+        )
         if dropped_cmd_count > 0:
             warnings.append(
                 f"{dropped_cmd_count} supporting_command(s) dropped (missing command or purpose)"
