@@ -1,6 +1,6 @@
 [project]
 name = "sift-mcp-workspace"
-version = "0.5.0"
+version = "0.5.1"
 description = "AIIR forensic investigation platform — SIFT workstation monorepo"
 requires-python = ">=3.10"
 

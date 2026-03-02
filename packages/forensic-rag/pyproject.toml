@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rag-mcp"
-version = "0.5.0"
+version = "0.5.1"
 description = "MCP server for IR knowledge base semantic search over 23 authoritative sources"
 license = "MIT"
 authors = [
