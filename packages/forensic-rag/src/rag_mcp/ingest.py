@@ -12,7 +12,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -573,7 +573,7 @@ def update_watched_state(rel_path: str, path: Path, record_ids: list[str]) -> No
         "id_prefix": f"user_{path.stem}",
         "records": len(record_ids),
         "record_ids": record_ids,
-        "processed_at": datetime.now().isoformat(),
+        "processed_at": datetime.now(timezone.utc).isoformat(),
     }
     save_user_state(state)
 
@@ -636,7 +636,7 @@ def ingest_document(path: Path, name: str) -> IngestResult:
             "original_filename": path.name,
             "records": len(records),
             "record_ids": record_ids,
-            "ingested_at": datetime.now().isoformat(),
+            "ingested_at": datetime.now(timezone.utc).isoformat(),
         }
         save_ingested_state(state)
 

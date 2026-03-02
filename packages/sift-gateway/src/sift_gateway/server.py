@@ -10,6 +10,28 @@ from starlette.applications import Starlette
 from starlette.routing import Mount
 
 from sift_gateway.auth import AuthMiddleware
+
+
+class _NormalizeMCPPath:
+    """Append trailing slash to per-backend MCP paths.
+
+    Starlette Mount("/mcp/name") returns a 307 redirect for the exact
+    path /mcp/name (no trailing slash). MCP streaming clients don't
+    follow redirects, so the request falls through to the aggregate
+    /mcp mount instead. This middleware rewrites the path in-place.
+    """
+
+    def __init__(self, app, backend_paths: frozenset[str] = frozenset()):
+        self.app = app
+        self.backend_paths = backend_paths
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("path", "") in self.backend_paths:
+            scope = dict(scope)
+            scope["path"] += "/"
+            if scope.get("raw_path"):
+                scope["raw_path"] = scope["raw_path"] + b"/"
+        await self.app(scope, receive, send)
 from sift_gateway.backends import MCPBackend, create_backend
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import (
@@ -356,5 +378,9 @@ class Gateway:
 
         # Add auth middleware (skips /mcp — handled by MCPAuthASGIApp)
         app.add_middleware(AuthMiddleware, api_keys=api_keys)
+
+        # Normalize per-backend MCP paths (must be outermost = added last)
+        backend_paths = frozenset(f"/mcp/{name}" for name in self.backends)
+        app.add_middleware(_NormalizeMCPPath, backend_paths=backend_paths)
 
         return app

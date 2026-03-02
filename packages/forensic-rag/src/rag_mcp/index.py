@@ -610,12 +610,12 @@ class RAGIndex:
 
         # Log structured JSON summary for easy parsing
         import json
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         summary_logger = logging.getLogger("rag_mcp.query_summary")
         top_sources = list(set(r.get("source", "unknown") for r in results[:5]))
         summary = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "query_type": query_type,
             "query_length": len(original_query),
             "top_score": round(top_score, 3),

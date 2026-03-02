@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from sift_gateway.auth import AuthMiddleware
+from sift_gateway.server import _NormalizeMCPPath
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import (
     MCPAuthASGIApp,
@@ -67,6 +68,8 @@ def _make_app_with_mcp(gw: Gateway) -> Starlette:
     app = Starlette(routes=routes, lifespan=lifespan)
     app.state.gateway = gw
     app.add_middleware(AuthMiddleware, api_keys=api_keys)
+    backend_paths = frozenset(f"/mcp/{name}" for name in gw.backends)
+    app.add_middleware(_NormalizeMCPPath, backend_paths=backend_paths)
     return app
 
 

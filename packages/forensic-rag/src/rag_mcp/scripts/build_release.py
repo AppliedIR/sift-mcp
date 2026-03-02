@@ -23,7 +23,7 @@ import os
 import shutil
 import sys
 import tarfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import zstandard as zstd
@@ -146,7 +146,7 @@ def main() -> None:
         print("  WARNING: ATTRIBUTION.md not found in package root")
 
     # Suggested tag
-    today = datetime.now().strftime("%Y.%m.%d")
+    today = datetime.now(timezone.utc).strftime("%Y.%m.%d")
     tag = f"rag-index-v{today}"
 
     print("")

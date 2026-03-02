@@ -36,6 +36,15 @@ _MAX_FILENAME = 200
 _MAX_FIELD = 500
 _MAX_REPORT_BYTES = 10 * 1024 * 1024  # 10 MB
 
+# Duplicated from aiir-cli case_io.py — report-mcp does NOT depend on
+# aiir-cli. Kept in sync manually.
+_HASH_EXCLUDE_KEYS = {
+    "status", "approved_at", "approved_by", "rejected_at",
+    "rejected_by", "rejection_reason", "examiner_notes",
+    "examiner_modifications", "content_hash", "verification",
+    "modified_at", "provenance",
+}
+
 
 def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
     """Reject strings exceeding max_len or containing null bytes."""
@@ -534,14 +543,10 @@ def _reconcile_verification(
         elif entry and not item:
             results.append({"id": item_id, "status": "VERIFICATION_NO_FINDING"})
         elif item and entry:
-            # Construct text the same way approve.py does for HMAC signing
-            if item_id.startswith("T-"):
-                live_text = item.get("description", "")
-            else:
-                live_text = (
-                    item.get("observation", "") + "\n" + item.get("interpretation", "")
-                )
-            if live_text != entry.get("description_snapshot", ""):
+            # Reconstruct hmac_text: canonical JSON of all substantive fields
+            hashable = {k: v for k, v in item.items() if k not in _HASH_EXCLUDE_KEYS}
+            live_text = json.dumps(hashable, sort_keys=True, default=str)
+            if live_text != entry.get("content_snapshot", ""):
                 results.append({"id": item_id, "status": "DESCRIPTION_MISMATCH"})
             else:
                 results.append({"id": item_id, "status": "VERIFIED"})
@@ -583,7 +588,7 @@ def create_server() -> FastMCP:
         finding_ids: list[str] | None = None,
         start_date: str = "",
         end_date: str = "",
-    ) -> str:
+    ) -> dict:
         """Generate a structured report with case data filtered by profile.
 
         Available profiles: full, executive, timeline, ioc, findings, status.
@@ -598,12 +603,10 @@ def create_server() -> FastMCP:
         """
         try:
             if profile not in PROFILES:
-                return json.dumps(
-                    {
-                        "error": f"Unknown profile: {profile}. "
-                        f"Valid profiles: {', '.join(sorted(PROFILES))}"
-                    }
-                )
+                return {
+                    "error": f"Unknown profile: {profile}. "
+                    f"Valid profiles: {', '.join(sorted(PROFILES))}"
+                }
             case_dir = _resolve_case_dir(case_id)
             result = _generate(profile, case_dir, finding_ids, start_date, end_date)
             audit.log(
@@ -619,15 +622,15 @@ def create_server() -> FastMCP:
                     "findings": len(result.get("report_data", {}).get("findings", [])),
                 },
             )
-            return json.dumps(result, default=str)
+            return result
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 2: set_case_metadata
     # ------------------------------------------------------------------
     @server.tool()
-    def set_case_metadata(field: str, value: str | list = "") -> str:
+    def set_case_metadata(field: str, value: str | list = "") -> dict:
         """Set a single metadata field in CASE.yaml.
 
         Validated fields: incident_type, severity, tlp (enums);
@@ -642,40 +645,32 @@ def create_server() -> FastMCP:
             if isinstance(value, str):
                 _validate_str_length(value, "value", 10_000)
             if field in _PROTECTED_FIELDS:
-                return json.dumps(
-                    {
-                        "error": f"Field '{field}' is protected and cannot "
-                        f"be set via this tool. Protected fields: "
-                        f"{', '.join(sorted(_PROTECTED_FIELDS))}"
-                    }
-                )
+                return {
+                    "error": f"Field '{field}' is protected and cannot "
+                    f"be set via this tool. Protected fields: "
+                    f"{', '.join(sorted(_PROTECTED_FIELDS))}"
+                }
 
             # Validate enum fields
             if field in _ENUM_FIELDS:
                 if value not in _ENUM_FIELDS[field]:
-                    return json.dumps(
-                        {
-                            "error": f"Invalid value for {field}: {value}. "
-                            f"Valid values: {', '.join(sorted(_ENUM_FIELDS[field]))}"
-                        }
-                    )
+                    return {
+                        "error": f"Invalid value for {field}: {value}. "
+                        f"Valid values: {', '.join(sorted(_ENUM_FIELDS[field]))}"
+                    }
 
             # Validate date fields
             if field in _DATE_FIELDS:
                 if not isinstance(value, str) or not _validate_iso8601(value):
-                    return json.dumps(
-                        {
-                            "error": f"Field '{field}' requires an ISO 8601 "
-                            f"datetime string."
-                        }
-                    )
+                    return {
+                        "error": f"Field '{field}' requires an ISO 8601 "
+                        f"datetime string."
+                    }
 
             # Validate list fields
             if field in _LIST_FIELDS:
                 if not isinstance(value, list):
-                    return json.dumps(
-                        {"error": f"Field '{field}' requires a list value."}
-                    )
+                    return {"error": f"Field '{field}' requires a list value."}
 
             case_dir = _resolve_case_dir()
             meta_file = case_dir / "CASE.yaml"
@@ -689,18 +684,15 @@ def create_server() -> FastMCP:
                 params={"field": field, "value": value},
                 result_summary={"status": "set", "field": field},
             )
-            return json.dumps(
-                {"status": "set", "field": field, "value": value},
-                default=str,
-            )
+            return {"status": "set", "field": field, "value": value}
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 3: get_case_metadata
     # ------------------------------------------------------------------
     @server.tool()
-    def get_case_metadata(field: str = "") -> str:
+    def get_case_metadata(field: str = "") -> dict:
         """Retrieve case metadata from CASE.yaml.
 
         If field is empty, returns all metadata. If field is specified,
@@ -711,17 +703,17 @@ def create_server() -> FastMCP:
             meta = load_case_meta(case_dir)
 
             if not field:
-                return json.dumps(meta, default=str)
+                return meta
 
-            return json.dumps({"field": field, "value": meta.get(field)}, default=str)
+            return {"field": field, "value": meta.get(field)}
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 4: list_profiles
     # ------------------------------------------------------------------
     @server.tool()
-    def list_profiles() -> str:
+    def list_profiles() -> dict:
         """List available report profiles with descriptions and
         Zeltser tool mappings."""
         profiles = []
@@ -733,13 +725,13 @@ def create_server() -> FastMCP:
                     "zeltser_tools": profile.get("zeltser_tools", []),
                 }
             )
-        return json.dumps({"profiles": profiles})
+        return {"profiles": profiles}
 
     # ------------------------------------------------------------------
     # Tool 5: save_report
     # ------------------------------------------------------------------
     @server.tool()
-    def save_report(filename: str, content: str, profile: str = "") -> str:
+    def save_report(filename: str, content: str, profile: str = "") -> dict:
         """Persist a rendered report to the case reports/ directory.
 
         Filename is sanitized: only alphanumeric characters, hyphens,
@@ -748,19 +740,15 @@ def create_server() -> FastMCP:
         try:
             _validate_str_length(filename, "filename", _MAX_FILENAME)
             if len(content.encode("utf-8", errors="replace")) > _MAX_REPORT_BYTES:
-                return json.dumps(
-                    {"error": "Report content exceeds maximum size of 10 MB."}
-                )
+                return {"error": "Report content exceeds maximum size of 10 MB."}
             # Block path traversal
             if ".." in filename or "/" in filename or "\\" in filename:
-                return json.dumps(
-                    {"error": "Invalid filename: path traversal not allowed."}
-                )
+                return {"error": "Invalid filename: path traversal not allowed."}
 
             # Sanitize filename
             sanitized = re.sub(r"[^a-zA-Z0-9._-]", "_", filename)
             if not sanitized:
-                return json.dumps({"error": "Filename is empty after sanitization."})
+                return {"error": "Filename is empty after sanitization."}
 
             case_dir = _resolve_case_dir()
             reports_dir = case_dir / "reports"
@@ -779,30 +767,28 @@ def create_server() -> FastMCP:
                 },
                 result_summary={"status": "saved", "filename": sanitized},
             )
-            return json.dumps(
-                {
-                    "status": "saved",
-                    "path": str(report_path),
-                    "filename": sanitized,
-                    "profile": profile,
-                    "characters": len(content),
-                }
-            )
+            return {
+                "status": "saved",
+                "path": str(report_path),
+                "filename": sanitized,
+                "profile": profile,
+                "characters": len(content),
+            }
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 6: list_reports
     # ------------------------------------------------------------------
     @server.tool()
-    def list_reports() -> str:
+    def list_reports() -> dict:
         """List saved reports in the case reports/ directory."""
         try:
             case_dir = _resolve_case_dir()
             reports_dir = case_dir / "reports"
 
             if not reports_dir.exists():
-                return json.dumps({"reports": []})
+                return {"reports": []}
 
             reports = []
             for p in sorted(reports_dir.iterdir()):
@@ -817,9 +803,9 @@ def create_server() -> FastMCP:
                             ).isoformat(),
                         }
                     )
-            return json.dumps({"reports": reports})
+            return {"reports": reports}
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     return server
 

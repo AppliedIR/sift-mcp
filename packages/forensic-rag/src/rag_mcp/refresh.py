@@ -16,7 +16,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -235,7 +235,7 @@ def refresh(
                     "id_prefix": f"user_{path.stem}",
                     "records": len(records),
                     "record_ids": ids,
-                    "processed_at": datetime.now().isoformat(),
+                    "processed_at": datetime.now(timezone.utc).isoformat(),
                 }
 
         save_user_state(state)
@@ -277,8 +277,8 @@ def refresh(
 
             metadata = {
                 "version": existing_metadata.get("version", "2.0.0"),
-                "created": existing_metadata.get("created", datetime.now().isoformat()),
-                "refreshed": datetime.now().isoformat(),
+                "created": existing_metadata.get("created", datetime.now(timezone.utc).isoformat()),
+                "refreshed": datetime.now(timezone.utc).isoformat(),
                 "model": existing_metadata.get("model", model_name),
                 "install_method": existing_metadata.get("install_method", "build"),
                 "bundle_tag": existing_metadata.get("bundle_tag"),
@@ -342,10 +342,10 @@ def refresh(
 def _log_refresh_summary(result: RefreshResult, check_only: bool) -> None:
     """Log structured refresh summary for monitoring/alerting."""
     import json
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     summary = {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "operation": "check" if check_only else "refresh",
         "status": result.status,
         "sources_checked": result.sources_checked,

@@ -32,7 +32,7 @@ rules:
     severity: "high"
     description: "Every confidence level must include a justification citing specific evidence"
     enforcement: "forensic_mcp_validates_on_stage"
-    when_to_apply: "When setting the confidence field on any finding (LOW, MEDIUM, HIGH, CRITICAL)"
+    when_to_apply: "When setting the confidence field on any finding (SPECULATIVE, LOW, MEDIUM, HIGH)"
     how_to_apply: "Write a confidence_justification that names the specific evidence_ids and explains why they support the chosen level. Higher confidence requires more independent sources."
   - id: "FD-006"
     name: "no_premature_exclusion"

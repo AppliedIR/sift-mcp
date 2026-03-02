@@ -17,7 +17,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import chromadb
@@ -207,7 +207,7 @@ def build(
                 "id_prefix": f"user_{path.stem}",
                 "records": len(records),
                 "record_ids": [r["id"] for r in records],
-                "processed_at": datetime.now().isoformat(),
+                "processed_at": datetime.now(timezone.utc).isoformat(),
             }
 
     if not scan.supported:
@@ -380,7 +380,7 @@ def build(
     # Save metadata
     metadata = {
         "version": "2.0.0",
-        "created": datetime.now().isoformat(),
+        "created": datetime.now(timezone.utc).isoformat(),
         "model": model_name,
         "install_method": "build",
         "chromadb_version": chromadb.__version__,

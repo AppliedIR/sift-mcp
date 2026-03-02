@@ -173,10 +173,12 @@ def case_dir(tmp_path, monkeypatch):
 
 
 def _call_tool(server, name, **kwargs):
-    """Call a tool on the server and parse the JSON response."""
+    """Call a tool on the server and return the parsed response."""
     tools = {t.name: t for t in server._tool_manager.list_tools()}
     tool = tools[name]
     result = tool.fn(**kwargs)
+    if isinstance(result, (dict, list)):
+        return result
     return json.loads(result)
 
 

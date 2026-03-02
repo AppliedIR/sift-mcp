@@ -107,7 +107,7 @@ def create_server() -> FastMCP:
     # Tool 1: case_init (CONFIRM)
     # ------------------------------------------------------------------
     @server.tool()
-    def case_init(name: str, description: str = "") -> str:
+    def case_init(name: str, description: str = "") -> dict:
         """Create a new case directory with the given name. The case ID
         is generated from the name and current timestamp.
 
@@ -129,15 +129,15 @@ def create_server() -> FastMCP:
                 params={"name": name, "description": description},
                 result_summary=result,
             )
-            return json.dumps(result)
+            return result
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 2: case_activate (CONFIRM)
     # ------------------------------------------------------------------
     @server.tool()
-    def case_activate(case_id: str) -> str:
+    def case_activate(case_id: str) -> dict:
         """Switch the active case pointer to the specified case ID.
 
         Confirm with the examiner before switching cases — this changes
@@ -151,43 +151,43 @@ def create_server() -> FastMCP:
                 params={"case_id": case_id},
                 result_summary=result,
             )
-            return json.dumps(result)
+            return result
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 3: case_list (SAFE)
     # ------------------------------------------------------------------
     @server.tool()
-    def case_list() -> str:
+    def case_list() -> dict:
         """List all cases in the cases directory with their status
         (open/closed) and whether each is the active case."""
         try:
             result = _case_list_data()
-            return json.dumps(result)
+            return result
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 4: case_status (SAFE)
     # ------------------------------------------------------------------
     @server.tool()
-    def case_status(case_id: str = "") -> str:
+    def case_status(case_id: str = "") -> dict:
         """Get detailed status of a case including finding counts,
         timeline entries, and TODO progress. Defaults to the active
         case if no case_id is provided."""
         try:
             case_dir = _resolve_case_dir(case_id)
             result = _case_status_data(case_dir)
-            return json.dumps(result)
+            return result
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 5: evidence_register (CONFIRM)
     # ------------------------------------------------------------------
     @server.tool()
-    def evidence_register(path: str, description: str = "") -> str:
+    def evidence_register(path: str, description: str = "") -> dict:
         """Register an evidence file with the active case. Computes
         SHA-256 hash and adds to evidence registry.
 
@@ -208,44 +208,44 @@ def create_server() -> FastMCP:
                 params={"path": path, "description": description},
                 result_summary=result,
             )
-            return json.dumps(result, default=str)
+            return result
         except (ValueError, FileNotFoundError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 6: evidence_list (SAFE)
     # ------------------------------------------------------------------
     @server.tool()
-    def evidence_list() -> str:
+    def evidence_list() -> dict:
         """List all registered evidence files in the active case with
         their SHA-256 hashes, registration dates, and descriptions."""
         try:
             case_dir = _resolve_case_dir()
             result = list_evidence_data(case_dir)
-            return json.dumps(result, default=str)
+            return result
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 7: evidence_verify (SAFE)
     # ------------------------------------------------------------------
     @server.tool()
-    def evidence_verify() -> str:
+    def evidence_verify() -> dict:
         """Verify integrity of all registered evidence files by comparing
         current SHA-256 hashes against the registry. Reports OK, MODIFIED,
         MISSING, or ERROR for each file."""
         try:
             case_dir = _resolve_case_dir()
             result = verify_evidence_data(case_dir)
-            return json.dumps(result)
+            return result
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 8: export_bundle (SAFE)
     # ------------------------------------------------------------------
     @server.tool()
-    def export_bundle(since: str = "") -> str:
+    def export_bundle(since: str = "") -> dict:
         """Export case findings and timeline as a JSON bundle for
         collaboration. Optionally filter to items modified since a
         given ISO timestamp."""
@@ -260,15 +260,15 @@ def create_server() -> FastMCP:
                     "timeline": len(result.get("timeline", [])),
                 },
             )
-            return json.dumps(result, default=str)
+            return result
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 9: import_bundle (CONFIRM)
     # ------------------------------------------------------------------
     @server.tool()
-    def import_bundle(bundle_path: str) -> str:
+    def import_bundle(bundle_path: str) -> dict:
         """Import a case data bundle from a JSON file, merging findings
         and timeline with the active case using last-write-wins.
 
@@ -279,7 +279,7 @@ def create_server() -> FastMCP:
             case_dir = _resolve_case_dir()
             bundle_file = Path(bundle_path)
             if not bundle_file.exists():
-                return json.dumps({"error": f"Bundle file not found: {bundle_path}"})
+                return {"error": f"Bundle file not found: {bundle_path}"}
             bundle_data = json.loads(bundle_file.read_text())
             result = _import_bundle(case_dir, bundle_data)
             audit.log(
@@ -287,23 +287,23 @@ def create_server() -> FastMCP:
                 params={"bundle_path": bundle_path},
                 result_summary=result,
             )
-            return json.dumps(result)
+            return result
         except (ValueError, FileNotFoundError, OSError, json.JSONDecodeError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 10: audit_summary (SAFE)
     # ------------------------------------------------------------------
     @server.tool()
-    def audit_summary() -> str:
+    def audit_summary() -> dict:
         """Get audit trail statistics for the active case including
         total entries, evidence IDs, and breakdowns by MCP and tool."""
         try:
             case_dir = _resolve_case_dir()
             result = audit_summary_data(case_dir)
-            return json.dumps(result)
+            return result
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 11: record_action (SAFE — auto-committed, no approval)
@@ -313,7 +313,7 @@ def create_server() -> FastMCP:
         description: str,
         tool: str = "",
         command: str = "",
-    ) -> str:
+    ) -> dict:
         """Log a supplemental action note to the case record.
         Auto-committed, no approval needed. Note: MCP tool calls are
         already captured by the automatic audit trail."""
@@ -342,24 +342,22 @@ def create_server() -> FastMCP:
                     f.flush()
                     os.fsync(f.fileno())
             except OSError as e:
-                return json.dumps(
-                    {"status": "write_failed", "timestamp": ts, "error": str(e)}
-                )
+                return {"status": "write_failed", "timestamp": ts, "error": str(e)}
 
             audit.log(
                 tool="record_action",
                 params={"description": description},
                 result_summary={"status": "recorded", "timestamp": ts},
             )
-            return json.dumps({"status": "recorded", "timestamp": ts})
+            return {"status": "recorded", "timestamp": ts}
         except (ValueError, OSError) as e:
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
     # ------------------------------------------------------------------
     # Tool 12: log_reasoning (SAFE — audit-only, no approval)
     # ------------------------------------------------------------------
     @server.tool()
-    def log_reasoning(text: str) -> str:
+    def log_reasoning(text: str) -> dict:
         """Record analytical reasoning to the audit trail (no approval
         needed). Call when choosing what to examine next, forming a
         hypothesis, revising an interpretation, or ruling something out.
@@ -372,13 +370,13 @@ def create_server() -> FastMCP:
             result_summary=result,
             source="orchestrator",
         )
-        return json.dumps(result)
+        return result
 
     # ------------------------------------------------------------------
     # Tool 13: log_external_action (SAFE — audit-only, no approval)
     # ------------------------------------------------------------------
     @server.tool()
-    def log_external_action(command: str, output_summary: str, purpose: str) -> str:
+    def log_external_action(command: str, output_summary: str, purpose: str) -> dict:
         """Record a tool execution performed outside this MCP server
         (e.g., via Bash or another backend). Response includes an evidence_id
         field that can be used in record_finding's evidence_ids list. Without
@@ -402,13 +400,13 @@ def create_server() -> FastMCP:
             "evidence_id": evidence_id,
             "note": "orchestrator_voluntary -- not independently verified",
         }
-        return json.dumps(result)
+        return result
 
     # ------------------------------------------------------------------
     # Tool 14: open_case_dashboard (SAFE)
     # ------------------------------------------------------------------
     @server.tool()
-    def open_case_dashboard() -> str:
+    def open_case_dashboard() -> dict:
         """Open the case review dashboard in the examiner's browser.
 
         Reads gateway config to build the dashboard URL with an auth
@@ -421,14 +419,12 @@ def create_server() -> FastMCP:
 
         config_path = Path.home() / ".aiir" / "gateway.yaml"
         if not config_path.is_file():
-            return json.dumps(
-                {"error": "Gateway config not found (~/.aiir/gateway.yaml)"}
-            )
+            return {"error": "Gateway config not found (~/.aiir/gateway.yaml)"}
 
         try:
             config = yaml.safe_load(config_path.read_text()) or {}
         except (yaml.YAMLError, OSError) as e:
-            return json.dumps({"error": f"Cannot read gateway config: {e}"})
+            return {"error": f"Cannot read gateway config: {e}"}
 
         gw = config.get("gateway", {})
         host = gw.get("host", "127.0.0.1")
@@ -468,7 +464,7 @@ def create_server() -> FastMCP:
         # Strip token from response — LLM should not see the bearer token.
         # The browser already received it via webbrowser.open().
         display_url = url.split("#")[0] if "#" in url else url
-        return json.dumps({"url": display_url, "status": status})
+        return {"url": display_url, "status": status}
 
     return server
 

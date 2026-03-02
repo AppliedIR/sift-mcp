@@ -22,7 +22,7 @@ import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from socket import timeout as SocketTimeout
 from typing import Any
@@ -2557,7 +2557,7 @@ def sync_source(name: str, force: bool = False) -> FetchResult:
     if result.status == "success":
         state.setdefault("sources", {})[name] = {
             "version": result.version,
-            "last_sync": datetime.now().isoformat(),
+            "last_sync": datetime.now(timezone.utc).isoformat(),
             "records": result.records,
             "cache_hash": result.cache_hash,
         }

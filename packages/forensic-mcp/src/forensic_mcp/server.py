@@ -281,12 +281,17 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     def record_timeline_event(event: dict, analyst_override: str = "") -> dict:
         """Stage timeline event as DRAFT. Requires human approval via 'aiir approve'.
 
-        Optional fields on the event dict (pass through automatically):
+        Required fields in event dict:
+        - timestamp (str): ISO 8601 datetime (e.g. "2026-03-01T14:32:00Z")
+        - description (str): what happened at this time
+
+        Recommended fields:
+        - source (str): origin artifact or tool (e.g. "Security.evtx", "Prefetch")
+
+        Optional fields (pass through automatically):
         - related_findings: list of finding IDs this event supports (e.g. ["F-001", "F-003"])
-        - event_type: classification hint — "process", "network", "file", "registry",
-          "auth", "persistence", "lateral", "execution", or "other"
-        - artifact_ref: deduplication hint — unique artifact identifier
-          (e.g. "prefetch:EVIL.EXE-{hash}", "evtx:Security:4624:12345")
+        - event_type: process, network, file, registry, auth, persistence, lateral, execution, or other
+        - artifact_ref: deduplication hint (e.g. "prefetch:EVIL.EXE-{hash}", "evtx:Security:4624:12345")
         """
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
         if isinstance(event, dict):
@@ -498,7 +503,7 @@ def _register_discipline_resources(server: FastMCP) -> None:
 
     @server.resource("forensic-mcp://checkpoint/{action_type}")
     def checkpoint_resource(action_type: str) -> str:
-        """Requirements before a specific action (attribution, root_cause, exclusion, scope_change)."""
+        """Requirements before a specific action (attribution, root_cause, exclusion, clean_declaration)."""
         from forensic_mcp.discipline.rules import get_checkpoint
 
         return json.dumps(get_checkpoint(action_type))

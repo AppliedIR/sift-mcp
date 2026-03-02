@@ -95,7 +95,7 @@ GATEWAY = (
 
 WINDOWS_TRIAGE = (
     "Baseline validation service for Windows artifacts. "
-    "Returns KNOWN_GOOD, KNOWN_BAD, or UNKNOWN for files, processes, "
+    "Returns SUSPICIOUS, EXPECTED_LOLBIN, EXPECTED, or UNKNOWN for files, processes, "
     "services, drivers, and autorun entries. UNKNOWN means 'not in the "
     "baseline database' — it is a neutral result, not an indicator of "
     "malice. Do not escalate based on UNKNOWN alone. "

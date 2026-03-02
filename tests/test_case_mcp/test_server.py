@@ -9,6 +9,13 @@ import pytest
 import yaml
 from case_mcp.server import _resolve_case_dir, create_server
 
+
+def _parse(result):
+    """Parse tool result — handles both dict returns and legacy JSON strings."""
+    if isinstance(result, (dict, list)):
+        return result
+    return json.loads(result)
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -163,7 +170,7 @@ class TestCaseInit:
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["case_init"](name="Incident Alpha"))
+        result = _parse(tools["case_init"](name="Incident Alpha"))
         assert "case_id" in result
         assert "case_dir" in result
         assert result["case_id"].startswith("INC-")
@@ -173,7 +180,7 @@ class TestCaseInit:
         with patch("case_mcp.server._case_init_data", side_effect=ValueError("bad")):
             srv = create_server()
             tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-            result = json.loads(tools["case_init"](name="fail"))
+            result = _parse(tools["case_init"](name="fail"))
         assert "error" in result
         assert "bad" in result["error"]
 
@@ -182,14 +189,14 @@ class TestCaseActivate:
     def test_activates_case(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["case_activate"](case_id=case_dir["case_id"]))
+        result = _parse(tools["case_activate"](case_id=case_dir["case_id"]))
         assert "error" not in result
         assert "case_dir" in result
 
     def test_nonexistent_case(self, case_dir, monkeypatch):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["case_activate"](case_id="NONEXISTENT-999"))
+        result = _parse(tools["case_activate"](case_id="NONEXISTENT-999"))
         assert "error" in result
 
 
@@ -197,7 +204,7 @@ class TestCaseList:
     def test_lists_cases(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["case_list"]())
+        result = _parse(tools["case_list"]())
         assert isinstance(result, dict), f"Expected dict, got {type(result)}"
         assert "error" not in result
 
@@ -206,13 +213,13 @@ class TestCaseStatus:
     def test_active_case_status(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["case_status"]())
+        result = _parse(tools["case_status"]())
         assert "error" not in result
 
     def test_explicit_case_id(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["case_status"](case_id=case_dir["case_id"]))
+        result = _parse(tools["case_status"](case_id=case_dir["case_id"]))
         assert "error" not in result
 
     def test_no_case_returns_error(self, tmp_path, monkeypatch):
@@ -222,7 +229,7 @@ class TestCaseStatus:
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["case_status"]())
+        result = _parse(tools["case_status"]())
         assert "error" in result
 
 
@@ -237,7 +244,7 @@ class TestEvidenceRegister:
         evidence_file.write_text("fake evidence content")
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(
+        result = _parse(
             tools["evidence_register"](
                 path=str(evidence_file), description="Test disk image"
             )
@@ -247,7 +254,7 @@ class TestEvidenceRegister:
     def test_missing_file_returns_error(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["evidence_register"](path="/nonexistent/file.e01"))
+        result = _parse(tools["evidence_register"](path="/nonexistent/file.e01"))
         assert "error" in result
 
 
@@ -255,7 +262,7 @@ class TestEvidenceList:
     def test_empty_list(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["evidence_list"]())
+        result = _parse(tools["evidence_list"]())
         assert "error" not in result
 
 
@@ -263,7 +270,7 @@ class TestEvidenceVerify:
     def test_empty_verify(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["evidence_verify"]())
+        result = _parse(tools["evidence_verify"]())
         assert "error" not in result
 
 
@@ -276,13 +283,13 @@ class TestExportBundle:
     def test_export_empty_case(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["export_bundle"]())
+        result = _parse(tools["export_bundle"]())
         assert "error" not in result
 
     def test_export_with_since(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["export_bundle"](since="2026-01-01T00:00:00"))
+        result = _parse(tools["export_bundle"](since="2026-01-01T00:00:00"))
         assert "error" not in result
 
 
@@ -290,7 +297,7 @@ class TestImportBundle:
     def test_missing_bundle_file(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["import_bundle"](bundle_path="/nonexistent.json"))
+        result = _parse(tools["import_bundle"](bundle_path="/nonexistent.json"))
         assert "error" in result
         assert "not found" in result["error"]
 
@@ -299,7 +306,7 @@ class TestImportBundle:
         bad_bundle.write_text("not valid json {{{")
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["import_bundle"](bundle_path=str(bad_bundle)))
+        result = _parse(tools["import_bundle"](bundle_path=str(bad_bundle)))
         assert "error" in result
 
     def test_valid_bundle_import(self, case_dir, tmp_path):
@@ -313,7 +320,7 @@ class TestImportBundle:
         bundle_file.write_text(json.dumps(bundle))
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["import_bundle"](bundle_path=str(bundle_file)))
+        result = _parse(tools["import_bundle"](bundle_path=str(bundle_file)))
         assert "error" not in result
 
 
@@ -326,7 +333,7 @@ class TestAuditSummary:
     def test_returns_summary(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["audit_summary"]())
+        result = _parse(tools["audit_summary"]())
         assert "error" not in result
 
 
@@ -339,7 +346,7 @@ class TestRecordAction:
     def test_records_action(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["record_action"](description="Ran volatility pslist"))
+        result = _parse(tools["record_action"](description="Ran volatility pslist"))
         assert result["status"] == "recorded"
         assert "timestamp" in result
         # Verify JSONL was written
@@ -349,7 +356,7 @@ class TestRecordAction:
     def test_records_with_tool_and_command(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(
+        result = _parse(
             tools["record_action"](
                 description="Analyzed registry",
                 tool="RECmd.exe",
@@ -376,7 +383,7 @@ class TestLogReasoning:
     def test_logs_reasoning(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(
+        result = _parse(
             tools["log_reasoning"](text="Hypothesis: lateral movement via PsExec")
         )
         assert result["status"] == "logged"
@@ -402,7 +409,7 @@ class TestLogExternalAction:
     def test_logs_external_action(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(
+        result = _parse(
             tools["log_external_action"](
                 command="grep -r 'password' /evidence/",
                 output_summary="Found 3 matches in config files",
@@ -438,20 +445,20 @@ class TestSecurity:
     def test_case_activate_traversal(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["case_activate"](case_id="../../etc/passwd"))
+        result = _parse(tools["case_activate"](case_id="../../etc/passwd"))
         assert "error" in result
 
     def test_case_status_traversal(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["case_status"](case_id="../../../etc/shadow"))
+        result = _parse(tools["case_status"](case_id="../../../etc/shadow"))
         assert "error" in result
 
     def test_evidence_register_outside_case(self, case_dir):
         """evidence_register with a path outside the case should fail."""
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(
+        result = _parse(
             tools["evidence_register"](path="/etc/passwd", description="system file")
         )
         assert "error" in result
@@ -460,7 +467,7 @@ class TestSecurity:
         """import_bundle with traversal path should fail or return error."""
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = json.loads(tools["import_bundle"](bundle_path="../../etc/passwd"))
+        result = _parse(tools["import_bundle"](bundle_path="../../etc/passwd"))
         assert "error" in result
 
 
@@ -508,13 +515,13 @@ class TestOpenCaseDashboard:
     def _call_tool(self, case_dir):
         srv = create_server()
         tool_fn = srv._tool_manager._tools["open_case_dashboard"].fn
-        return json.loads(tool_fn())
+        return _parse(tool_fn())
 
     def test_missing_gateway_yaml(self, case_dir, tmp_path, monkeypatch):
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "nohome")
         srv = create_server()
         tool_fn = srv._tool_manager._tools["open_case_dashboard"].fn
-        result = json.loads(tool_fn())
+        result = _parse(tool_fn())
         assert "error" in result
         assert "gateway.yaml" in result["error"]
 

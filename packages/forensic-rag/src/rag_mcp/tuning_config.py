@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -133,7 +133,7 @@ class TuningConfig:
         reason: str,
     ) -> None:
         """Record a change in the audit trail."""
-        self.last_modified = datetime.now().isoformat()
+        self.last_modified = datetime.now(timezone.utc).isoformat()
         self.last_modified_by = approved_by
         self.modification_history.append(
             {

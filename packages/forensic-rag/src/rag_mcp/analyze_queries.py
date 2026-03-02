@@ -27,7 +27,7 @@ import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -215,7 +215,7 @@ def analyze_logs(
         AnalysisResult with statistics and recommendations
     """
     result = AnalysisResult()
-    cutoff_time = datetime.now() - since if since else None
+    cutoff_time = datetime.now(timezone.utc) - since if since else None
     config = current_config or TuningConfig()
 
     # Find log files
