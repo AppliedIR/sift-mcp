@@ -46,7 +46,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: system-ui, -apple-system, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-size: 14px;
@@ -105,7 +105,7 @@ body {
 .content { flex: 1; overflow-y: auto; padding: 16px 24px; }
 
 /* Finding card */
-.finding-card { max-width: 900px; padding-bottom: 40px; }
+.finding-card { max-width: 900px; padding-bottom: 16px; }
 .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .card-id { font-family: monospace; font-size: 15px; font-weight: 600; }
 .card-title { font-size: 16px; font-weight: 600; }
@@ -182,7 +182,7 @@ body {
 .empty-state p { font-size: 14px; max-width: 400px; }
 
 /* Tab panels */
-.tab-panel { display: none; height: 100%; }
+.tab-panel { display: none; flex: 1; min-height: 0; overflow: hidden; }
 .tab-panel.active { display: flex; }
 .tab-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; width: 100%; color: var(--text-muted); font-size: 16px; }
 
@@ -321,7 +321,12 @@ body {
 .timeline-event .tl-desc { flex: 1; }
 .timeline-event .tl-marker { color: var(--accent); flex-shrink: 0; }
 
-/* Scrollbar */
+/* Scrollbar — standard (Firefox 64+) */
+.sidebar-list, .content, .dashboard-content, .tab-table-wrap, .ev-content {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-tertiary) var(--bg-primary);
+}
+/* Scrollbar — WebKit (Chromium) */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg-primary); }
 ::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 3px; }
@@ -334,6 +339,15 @@ body {
 .ev-content { margin: 4px 0; padding: 8px; background: var(--bg-primary); border-radius: 2px; font-size: 12px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; }
 .ev-purpose { font-size: 11px; color: var(--text-muted); font-style: italic; }
 .badge-muted { background: var(--bg-tertiary); color: var(--text-muted); }
+
+/* Toast notifications */
+.toast { position: fixed; bottom: 20px; right: 20px; padding: 10px 16px;
+  border-radius: 6px; font-size: 13px; opacity: 0; transition: opacity 0.3s;
+  z-index: 10000; }
+.toast.show { opacity: 1; }
+.toast-success { background: var(--green); color: #fff; }
+.toast-error { background: var(--red); color: #fff; }
+.toast-info { background: var(--bg-tertiary); color: var(--text-primary); }
 </style>
 </head>
 <body>
@@ -352,11 +366,15 @@ body {
   </div>
 
   <!-- Tabs -->
-  <div class="tabs">
-    <div class="tab" data-tab="dashboard">Dashboard</div>
-    <div class="tab active" data-tab="findings">Findings</div>
-    <div class="tab" data-tab="evidence">Evidence</div>
-    <div class="tab" data-tab="todos">TODOs</div>
+  <div class="tabs" role="tablist">
+    <div class="tab" data-tab="dashboard" role="tab" tabindex="0"
+      aria-selected="false" id="tab-dashboard" aria-controls="panel-dashboard">Dashboard</div>
+    <div class="tab active" data-tab="findings" role="tab" tabindex="0"
+      aria-selected="true" id="tab-findings" aria-controls="panel-findings">Findings</div>
+    <div class="tab" data-tab="evidence" role="tab" tabindex="0"
+      aria-selected="false" id="tab-evidence" aria-controls="panel-evidence">Evidence</div>
+    <div class="tab" data-tab="todos" role="tab" tabindex="0"
+      aria-selected="false" id="tab-todos" aria-controls="panel-todos">TODOs</div>
   </div>
 
   <!-- Progress -->
@@ -374,14 +392,16 @@ body {
   </div>
 
   <!-- Tab panels -->
-  <div class="tab-panel" data-panel="dashboard">
+  <div class="tab-panel" data-panel="dashboard" role="tabpanel"
+    id="panel-dashboard" aria-labelledby="tab-dashboard">
     <div class="dashboard-content" id="dashboardContent">
       <div class="dash-grid" id="dashGrid"></div>
       <div class="dash-meta" id="dashMeta"></div>
     </div>
   </div>
 
-  <div class="tab-panel active" data-panel="findings">
+  <div class="tab-panel active" data-panel="findings" role="tabpanel"
+    id="panel-findings" aria-labelledby="tab-findings">
     <!-- Sidebar -->
     <div class="sidebar">
       <div class="sidebar-controls">
@@ -408,14 +428,15 @@ body {
           </div>
         </details>
       </div>
-      <div class="sidebar-list" id="sidebarList"></div>
+      <div class="sidebar-list" id="sidebarList" role="listbox" aria-label="Findings list"></div>
       <div class="sidebar-stats" id="sidebarStats"></div>
       <div class="save-status saved" id="saveStatus">All saved &#10003;</div>
     </div>
 
     <!-- Content -->
     <div class="content" id="findingContent">
-      <div class="empty-state" id="emptyState">
+      <div id="loadingState" style="display:flex;align-items:center;justify-content:center;height:200px;color:var(--text-muted)">Loading case data...</div>
+      <div class="empty-state" id="emptyState" style="display:none">
         <h2>No findings to display</h2>
         <p>Select a finding from the sidebar, or wait for the LLM to stage findings during investigation.</p>
       </div>
@@ -423,7 +444,8 @@ body {
     </div>
   </div>
 
-  <div class="tab-panel" data-panel="evidence">
+  <div class="tab-panel" data-panel="evidence" role="tabpanel"
+    id="panel-evidence" aria-labelledby="tab-evidence">
     <div class="tab-table-wrap">
       <h3 style="margin-bottom:12px;font-size:15px;">Evidence Registry</h3>
       <table class="data-table" id="evidenceTable">
@@ -443,7 +465,8 @@ body {
     </div>
   </div>
 
-  <div class="tab-panel" data-panel="todos">
+  <div class="tab-panel" data-panel="todos" role="tabpanel"
+    id="panel-todos" aria-labelledby="tab-todos">
     <div class="tab-table-wrap">
       <h3 style="margin-bottom:12px;font-size:15px;">TODO Items</h3>
       <div class="tab-table-controls">
@@ -475,9 +498,10 @@ body {
 </div>
 
 <!-- Keyboard shortcuts overlay -->
-<div class="shortcuts-overlay" id="shortcutsOverlay">
+<div class="shortcuts-overlay" id="shortcutsOverlay" role="dialog" aria-modal="true"
+  aria-labelledby="shortcutsTitle">
   <div class="shortcuts-panel">
-    <h3>Keyboard Shortcuts</h3>
+    <h3 id="shortcutsTitle">Keyboard Shortcuts</h3>
     <div class="shortcut-row"><span>Next finding</span><span class="shortcut-key">j / ↓</span></div>
     <div class="shortcut-row"><span>Previous finding</span><span class="shortcut-key">k / ↑</span></div>
     <div class="shortcut-row"><span>Approve</span><span class="shortcut-key">a</span></div>
@@ -495,9 +519,10 @@ body {
 </div>
 
 <!-- Reject dialog -->
-<div class="dialog-overlay" id="rejectDialog">
+<div class="dialog-overlay" id="rejectDialog" role="dialog" aria-modal="true"
+  aria-labelledby="rejectDialogTitle">
   <div class="dialog">
-    <h3>Reject Finding</h3>
+    <h3 id="rejectDialogTitle">Reject Finding</h3>
     <div class="dialog-templates">
       <button class="dialog-template" data-reason="False positive — benign activity">False positive — benign activity</button>
       <button class="dialog-template" data-reason="duplicate">Duplicate of <span style="color:var(--text-muted)">(enter ID)</span></button>
@@ -513,9 +538,10 @@ body {
 
 
 <!-- Todo dialog -->
-<div class="dialog-overlay" id="todoDialog">
+<div class="dialog-overlay" id="todoDialog" role="dialog" aria-modal="true"
+  aria-labelledby="todoDialogTitle">
   <div class="dialog">
-    <h3>Create TODO</h3>
+    <h3 id="todoDialogTitle">Create TODO</h3>
     <input type="text" id="todoDescription" placeholder="TODO description..." />
     <select id="todoPriority">
       <option value="high">High priority</option>
@@ -553,6 +579,7 @@ let filterExaminer = '';
 let evidenceData = [];
 let todosData = [];
 let summaryData = null;
+var isLoading = false;
 let evidenceSortCol = 'path';
 let evidenceSortAsc = true;
 let todosSortCol = 'priority';
@@ -596,7 +623,11 @@ async function apiFetch(path, opts) {
 
 /* === Data loading === */
 async function loadAll() {
+  if (isLoading) return;
+  isLoading = true;
   try {
+    var loading = document.getElementById('loadingState');
+    if (loading) loading.style.display = 'none';
     const [f, d, c, tl] = await Promise.all([
       apiFetch('/api/findings'),
       apiFetch('/api/delta'),
@@ -625,10 +656,14 @@ async function loadAll() {
     if (selectedId) renderFinding(selectedId);
     else showEmptyOrFirst();
   } catch (e) {
+    var loading = document.getElementById('loadingState');
+    if (loading) loading.style.display = 'none';
     document.getElementById('emptyState').innerHTML =
       '<h2>Error loading case data</h2><p>' + escapeHtml(e.message) + '</p>';
     document.getElementById('emptyState').style.display = '';
     document.getElementById('findingCard').style.display = 'none';
+  } finally {
+    isLoading = false;
   }
 }
 
@@ -680,6 +715,20 @@ function scheduleSave() {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(saveDelta, 1000);
 }
+
+window.addEventListener('beforeunload', function() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    var headers = apiHeaders();
+    headers['Content-Type'] = 'application/json';
+    fetch('/dashboard/api/delta', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(delta),
+      keepalive: true
+    });
+  }
+});
 
 async function saveDelta() {
   try {
@@ -764,6 +813,8 @@ function renderSidebar() {
 
     const div = document.createElement('div');
     div.className = 'sidebar-item' + (f.id === selectedId ? ' active' : '');
+    div.setAttribute('role', 'option');
+    div.setAttribute('aria-selected', String(f.id === selectedId));
     div.onclick = () => selectFinding(f.id);
 
     const conf = (f.confidence || 'LOW').toUpperCase();
@@ -1069,6 +1120,16 @@ function confClassFor(conf) {
   return 'conf-' + (conf || 'low').toLowerCase();
 }
 
+/* === Toast === */
+function showToast(msg, type) {
+  var t = document.createElement('div');
+  t.className = 'toast toast-' + (type || 'info');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function() { t.classList.add('show'); }, 10);
+  setTimeout(function() { t.remove(); }, 2500);
+}
+
 /* === Actions === */
 function doApprove() {
   if (!selectedId) return;
@@ -1086,6 +1147,7 @@ function doApprove() {
   renderSidebar();
   updateProgress();
   renderFinding(selectedId);
+  showToast('Finding approved', 'success');
   advanceToNext();
 }
 
@@ -1131,6 +1193,7 @@ function submitReject() {
   renderSidebar();
   updateProgress();
   renderFinding(selectedId);
+  showToast('Finding rejected', 'success');
   advanceToNext();
 }
 
@@ -1188,6 +1251,7 @@ async function doSkip() {
   renderSidebar();
   updateProgress();
   renderFinding(selectedId);
+  showToast('Finding skipped', 'info');
 }
 
 function advanceToNext() {
@@ -1582,7 +1646,7 @@ function formatTimeShort(iso) {
   try {
     const d = new Date(iso);
     return d.toISOString().slice(11, 19) + ' UTC';
-  } catch { return iso; }
+  } catch (_e) { return iso; }
 }
 
 /* === Theme === */
@@ -1620,7 +1684,11 @@ function updateRefreshBadge() {
 
 /* === Tabs === */
 function switchTab(tabName) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+  document.querySelectorAll('.tab').forEach(t => {
+    const isActive = t.dataset.tab === tabName;
+    t.classList.toggle('active', isActive);
+    t.setAttribute('aria-selected', String(isActive));
+  });
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tabName));
   if (tabName === 'dashboard') loadDashboard();
   else if (tabName === 'evidence') loadEvidence();
@@ -1639,7 +1707,7 @@ function formatTime(iso) {
   try {
     const d = new Date(iso);
     return d.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
-  } catch { return iso; }
+  } catch (_e) { return iso; }
 }
 
 /* === Keyboard === */
@@ -2019,6 +2087,9 @@ document.getElementById('searchBox').addEventListener('input', function() {
 
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  tab.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchTab(tab.dataset.tab); }
+  });
 });
 
 // Evidence table sorting
@@ -2048,6 +2119,14 @@ document.getElementById('todoFilterStatus').addEventListener('change', renderTod
 /* === Init === */
 initTheme();
 loadAll();
+
+// Auto-refresh every 15s — skip if loading, dialog open, or editing
+setInterval(function() {
+  if (isLoading) return;
+  if (document.querySelector('.dialog-overlay.visible')) return;
+  if (editingField) return;
+  loadAll().catch(function(e) { console.error('Auto-refresh failed:', e); });
+}, 15000);
 </script>
 </body>
 </html>

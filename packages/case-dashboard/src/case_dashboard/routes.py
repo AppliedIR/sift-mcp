@@ -44,6 +44,8 @@ _VALID_DELTA_KEYS = {
     "todo_description", "todo_priority",
 }
 
+_REQUIRED_DELTA_KEYS = {"id", "type", "action"}
+
 
 def _resolve_case_dir() -> Path | None:
     """Resolve case directory per-request.
@@ -92,14 +94,16 @@ def _load_json(path: Path) -> list | dict | None:
 
 
 def _load_yaml(path: Path) -> dict | None:
-    """Load a YAML file, return None on missing/corrupt."""
+    """Load a YAML file. Returns None if missing. Raises ValueError on corrupt/unreadable."""
     if not path.exists():
         return None
     try:
         with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
-    except (yaml.YAMLError, OSError):
-        return None
+    except yaml.YAMLError as e:
+        raise ValueError(f"Corrupt YAML: {path}: {e}") from e
+    except OSError as e:
+        raise ValueError(f"Cannot read YAML: {path}: {e}") from e
 
 
 def _load_jsonl(path: Path) -> list[dict]:
@@ -126,7 +130,7 @@ def _verify_findings(case_dir: Path, findings: list[dict]) -> list[dict]:
     """Add computed verification field to each finding.
 
     Reimplements content-hash comparison from case_io.py.
-    Four states: confirmed, tampered, no approval record, draft.
+    Five states: confirmed, tampered, unverified, no approval record, draft.
     """
     approvals = _load_jsonl(case_dir / "approvals.jsonl")
 
@@ -270,7 +274,11 @@ async def get_case(request: Request) -> JSONResponse:
     case_dir = _resolve_case_dir()
     if not case_dir:
         return _no_case_response()
-    meta = _load_yaml(case_dir / "CASE.yaml")
+    try:
+        meta = _load_yaml(case_dir / "CASE.yaml")
+    except ValueError as e:
+        logger.error("Corrupt CASE.yaml: %s", e)
+        return JSONResponse({"error": str(e)}, status_code=500)
     if meta is None:
         return JSONResponse({})
     return JSONResponse(meta)
@@ -360,6 +368,12 @@ async def post_delta(request: Request) -> JSONResponse:
             if unknown:
                 return JSONResponse(
                     {"error": f"Unknown fields in delta item: {', '.join(sorted(unknown))}"},
+                    status_code=400,
+                )
+            missing = _REQUIRED_DELTA_KEYS - set(item.keys())
+            if missing:
+                return JSONResponse(
+                    {"error": f"Missing required fields in delta item: {', '.join(sorted(missing))}"},
                     status_code=400,
                 )
 
