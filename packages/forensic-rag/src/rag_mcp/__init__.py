@@ -14,7 +14,7 @@ Architecture:
     - Network fetch hardening (HTTPS, size limits, retry)
 
 Modules:
-    server: MCP server exposing search, list_sources, get_stats tools
+    server: MCP server exposing search_knowledge, list_knowledge_sources, get_knowledge_stats tools
     index: ChromaDB and embedding model wrapper
     sources: Online source management (23 authoritative sources)
     ingest: User document ingestion (watched and one-time)

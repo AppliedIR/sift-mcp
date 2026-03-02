@@ -481,11 +481,19 @@ class CaseManager:
             "finding_id": finding_id,
             "provenance_detail": provenance,
         }
+        warnings = []
         if dropped_artifact_count > 0:
-            result["warning"] = (
+            warnings.append(
                 f"{dropped_artifact_count} artifact(s) dropped — each artifact requires "
                 "source, extraction, and content fields (not raw_data)."
             )
+        dropped_cmd_count = len(supporting_commands) - len(validated_commands) if supporting_commands else 0
+        if dropped_cmd_count > 0:
+            warnings.append(
+                f"{dropped_cmd_count} supporting_command(s) dropped (missing command or purpose)"
+            )
+        if warnings:
+            result["warning"] = " ".join(warnings)
         return result
 
     def _next_shell_seq(self, case_dir: Path, examiner: str, today: str) -> int:

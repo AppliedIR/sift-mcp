@@ -594,6 +594,10 @@ def create_server() -> FastMCP:
         Available profiles: full, executive, timeline, ioc, findings, status.
         Use list_profiles() to see descriptions and Zeltser tool mappings.
 
+        Workflow: 1) set_case_metadata with incident details, 2) generate_report
+        to create draft, 3) review output, 4) save_report to persist.
+        Metadata must be set before generation — the report uses it for context.
+
         Returns structured JSON with report_data, sections template, and
         Zeltser IR Writing MCP guidance for narrative sections.
 

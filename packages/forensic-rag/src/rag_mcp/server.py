@@ -6,9 +6,9 @@ Exposes the RAG knowledge base (23K+ records from 23 authoritative security
 sources) as MCP tools for Claude Code integration.
 
 Tools:
-    search: Semantic search with optional filters (source, technique, platform)
-    list_sources: Get available knowledge sources
-    get_stats: Get index statistics
+    search_knowledge: Semantic search with optional filters (source, technique, platform)
+    list_knowledge_sources: Get available knowledge sources
+    get_knowledge_stats: Get index statistics
 
 Usage:
     # Run directly
@@ -117,7 +117,7 @@ class RAGServer:
         async def list_tools() -> list[Tool]:
             return [
                 Tool(
-                    name="search",
+                    name="search_knowledge",
                     description=(
                         "Semantic search across 23K+ incident response knowledge records. "
                         "Sources include: Sigma rules, MITRE ATT&CK, Atomic Red Team, "
@@ -154,7 +154,7 @@ class RAGServer:
                                 "description": (
                                     "Filter by exact source IDs (deterministic). Examples: "
                                     "['sigma', 'mitre_attack'], ['velociraptor', 'kape']. "
-                                    "Use list_sources to see valid IDs. Takes precedence over 'source'."
+                                    "Use list_knowledge_sources to see valid IDs. Takes precedence over 'source'."
                                 ),
                             },
                             "technique": {
@@ -171,15 +171,15 @@ class RAGServer:
                     },
                 ),
                 Tool(
-                    name="list_sources",
+                    name="list_knowledge_sources",
                     description=(
                         "List all available knowledge sources in the RAG index. "
-                        "Use this to discover what sources can be used with the 'source' filter."
+                        "Use this to discover what sources can be used with the 'source' filter in search_knowledge."
                     ),
                     inputSchema={"type": "object", "properties": {}},
                 ),
                 Tool(
-                    name="get_stats",
+                    name="get_knowledge_stats",
                     description="Get RAG index statistics (document count, sources, model info).",
                     inputSchema={"type": "object", "properties": {}},
                 ),
@@ -192,11 +192,11 @@ class RAGServer:
             evidence_id = self._audit._next_evidence_id()
             start = time.monotonic()
             try:
-                if name == "search":
+                if name == "search_knowledge":
                     result = await self._search(arguments)
-                elif name == "list_sources":
+                elif name == "list_knowledge_sources":
                     result = await self._list_sources()
-                elif name == "get_stats":
+                elif name == "get_knowledge_stats":
                     result = await self._get_stats()
                 else:
                     result = {"error": f"Unknown tool: {name}"}
@@ -308,7 +308,7 @@ class RAGServer:
             else:
                 response["warning"] = (
                     f"No sources match filter '{source}'. "
-                    "Use list_sources tool to see available sources."
+                    "Use list_knowledge_sources tool to see available sources."
                 )
 
         return response
