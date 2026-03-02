@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 
 import pytest
 from sift_gateway.auth import AuthMiddleware
-from sift_gateway.server import _NormalizeMCPPath
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import (
     MCPAuthASGIApp,
@@ -14,7 +13,7 @@ from sift_gateway.mcp_endpoint import (
     create_session_manager,
 )
 from sift_gateway.rest import rest_routes
-from sift_gateway.server import Gateway
+from sift_gateway.server import Gateway, _NormalizeMCPPath
 from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.testclient import TestClient

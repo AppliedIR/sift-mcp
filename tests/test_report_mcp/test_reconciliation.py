@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from report_mcp.server import _HASH_EXCLUDE_KEYS
 
 
