@@ -137,7 +137,7 @@ Place evidence in the evidence/ subdirectory before starting.
 
 Run via Bash:
 ```bash
-bwrap --unshare-user -- true
+bwrap --ro-bind / / --unshare-net -- /bin/true
 ```
 - Exit code 0: sandbox functional
 - If fails: this is common on fresh installs (AppArmor may need a

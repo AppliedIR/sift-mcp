@@ -156,12 +156,12 @@ tools get FK-enriched responses.
 
 ### forensic-rag (Knowledge Search)
 Semantic search over 23K+ incident response knowledge records.
-All indexed sources are authoritative. Use `list_sources` to discover
+All indexed sources are authoritative. Use `list_knowledge_sources` to discover
 available source_ids for filtering.
 
-- `search` — query with source_ids, technique, platform filters
-- `list_sources` — available knowledge sources
-- `get_stats` — index statistics
+- `search_knowledge` — query with source_ids, technique, platform filters
+- `list_knowledge_sources` — available knowledge sources
+- `get_knowledge_stats` — index statistics
 
 ### windows-triage (Baseline Validation)
 Offline Windows file/process validation. UNKNOWN = not in database (neutral).

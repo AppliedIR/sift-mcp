@@ -558,47 +558,100 @@ else
 fi
 
 # =============================================================================
-# Phase 1c: AppArmor Sandbox Fix (Ubuntu 24.04+)
+# Phase 1c: Sandbox Diagnostic + AppArmor Fix
 # =============================================================================
-# Ubuntu 24.04+ enables kernel.apparmor_restrict_unprivileged_userns=1 by
-# default. This blocks bubblewrap (bwrap) from creating user namespaces,
-# which silently disables Claude Code's kernel sandbox (L9). A targeted
-# AppArmor profile for /usr/bin/bwrap restores sandbox functionality without
-# weakening kernel hardening for other processes.
+# Claude Code's kernel sandbox (L9) uses bubblewrap to isolate Bash commands
+# in network and PID namespaces. On non-setuid bwrap (all Ubuntu 18.10+),
+# this requires unprivileged user namespace support in the kernel.
+#
+# Multiple mechanisms can block user namespaces:
+#   - AppArmor restrict_unprivileged_userns (Ubuntu 23.10+)
+#   - kernel.unprivileged_userns_clone=0 (older Ubuntu, hardened kernels)
+#   - Container restrictions (Docker, LXC without nesting)
+#   - WSL1 (no namespace support)
+#   - user.max_user_namespaces=0
 #
 # See: https://appliedir.github.io/aiir/security/ (L9 — Kernel Sandbox)
 
 BWRAP_PROFILE="/etc/apparmor.d/bwrap"
 
+# Container detection — covers Docker, Podman, LXC, nspawn, Kubernetes
+_is_container() {
+    if command -v systemd-detect-virt &>/dev/null; then
+        local virt
+        virt=$(systemd-detect-virt --container 2>/dev/null)
+        # Exclude "wsl" — handled by dedicated WSL check in cascade
+        [[ $? -eq 0 && "$virt" != "wsl" ]] && return 0
+    fi
+    [[ -f /.dockerenv ]] && return 0
+    [[ -f /run/.containerenv ]] && return 0
+    grep -qE '/(docker|lxc|containerd|kubepods)' /proc/1/cgroup 2>/dev/null && return 0
+    return 1
+}
+
 if command -v bwrap &>/dev/null; then
-    # Test whether bwrap can actually create user namespaces right now
-    if bwrap --unshare-user -- true 2>/dev/null; then
-        ok "Sandbox: bwrap user namespace works"
+    # Test what the sandbox actually does: network namespace isolation
+    BWRAP_ERR=$(timeout 5 bwrap --ro-bind / / --unshare-net -- /bin/true 2>&1)
+    BWRAP_RC=$?
+
+    if [[ $BWRAP_RC -eq 0 ]]; then
+        ok "Sandbox: bwrap network namespace works"
+
+    # --- Timeout? (RC=124 from timeout command) ---
+    elif [[ $BWRAP_RC -eq 124 ]]; then
+        warn "Sandbox test timed out (5s)."
+        echo "  bwrap may be hanging on a kernel call."
+        echo "  Run: timeout 5 bwrap --ro-bind / / --unshare-net -- /bin/true"
+
+    # --- Container? (check first — overrides everything else) ---
+    elif _is_container; then
+        warn "Sandbox test failed — running inside a container."
+        [[ -n "$BWRAP_ERR" ]] && echo "  bwrap: $BWRAP_ERR"
+        echo "  Containers restrict namespace creation by default."
+        echo ""
+        echo "  Docker:  run with --privileged or --security-opt seccomp=unconfined"
+        echo "  LXC/LXD: set security.nesting=true on the container profile"
+        echo "  Podman:  podman run --privileged or --security-opt label=disable"
+        echo ""
+        echo "  If you cannot enable privileged namespaces, Claude Code's"
+        echo "  enableWeakerNestedSandbox provides partial isolation (network +"
+        echo "  filesystem restrictions remain; process isolation is reduced)."
+        echo "  Set in settings.json: \"sandbox\": {\"enableWeakerNestedSandbox\": true}"
+        echo "  WARNING: This weakens process isolation. Only use inside containers."
+
+    # --- WSL1? ---
+    elif [[ "$(uname -r)" == *Microsoft* || "$(uname -r)" == *WSL* ]] \
+         && [[ "$(uname -r)" != *microsoft-standard-WSL2* ]]; then
+        warn "Sandbox test failed — WSL1 does not support user namespaces."
+        [[ -n "$BWRAP_ERR" ]] && echo "  bwrap: $BWRAP_ERR"
+        echo "  Upgrade to WSL2: wsl --set-version <distro> 2"
+
+    # --- AppArmor bwrap profile already installed but test still fails? ---
     elif [[ -f "$BWRAP_PROFILE" ]]; then
-        # Profile exists but bwrap still fails — something else is wrong
-        warn "AppArmor bwrap profile exists at $BWRAP_PROFILE but sandbox test failed"
+        warn "AppArmor bwrap profile exists at $BWRAP_PROFILE but sandbox test failed."
+        [[ -n "$BWRAP_ERR" ]] && echo "  bwrap: $BWRAP_ERR"
         echo "  Try: sudo apparmor_parser -rT $BWRAP_PROFILE (or reboot)"
-    else
-        # bwrap fails and no profile installed — check if AppArmor userns restriction is the cause
-        APPARMOR_USERNS=$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || echo "")
-        if [[ "$APPARMOR_USERNS" == "1" ]]; then
-            echo ""
-            warn "Sandbox test failed."
-            echo "  AppArmor on this system blocks unprivileged user namespaces"
-            echo "  (kernel.apparmor_restrict_unprivileged_userns=1). This prevents"
-            echo "  Claude Code's kernel sandbox (L9) from isolating Bash commands."
-            echo ""
-            echo "  Recommended fix: install a targeted AppArmor profile that grants"
-            echo "  only /usr/bin/bwrap the 'userns' permission. This only affects"
-            echo "  /usr/bin/bwrap — other processes are not changed."
-            echo ""
-            echo "  Profile location: $BWRAP_PROFILE"
-            echo "  Side effect:      Any process using /usr/bin/bwrap gains user namespace access."
-            echo ""
 
-            if prompt_yn "  Install AppArmor profile for bwrap? (requires sudo)" "y"; then
+    # --- AppArmor userns restriction? (Ubuntu 23.10+) ---
+    elif [[ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null)" == "1" ]]; then
+        echo ""
+        warn "Sandbox test failed."
+        echo "  AppArmor on this system blocks unprivileged user namespaces"
+        echo "  (kernel.apparmor_restrict_unprivileged_userns=1). This prevents"
+        echo "  Claude Code's kernel sandbox (L9) from isolating Bash commands."
+        echo ""
+        echo "  Recommended fix: install a targeted AppArmor profile that grants"
+        echo "  only /usr/bin/bwrap the 'userns' permission. This only affects"
+        echo "  /usr/bin/bwrap — other processes are not changed."
+        echo ""
+        echo "  Profile location: $BWRAP_PROFILE"
+        echo "  Side effect:      Any process using /usr/bin/bwrap gains user namespace access."
+        echo ""
 
-            if sudo tee "$BWRAP_PROFILE" > /dev/null << 'APPARMOR'
+        if ! prompt_yn "  Install AppArmor profile for bwrap? (requires sudo)" "y"; then
+            info "Skipped. The kernel sandbox (L9) will not function on this system."
+            echo "  You can install the profile later by re-running setup-sift.sh."
+        elif ! sudo tee "$BWRAP_PROFILE" > /dev/null << 'APPARMOR'
 # AppArmor profile for bubblewrap — grants user namespace access.
 # Installed by AIIR setup-sift.sh for Claude Code kernel sandbox (L9).
 # This profile is specific to /usr/bin/bwrap and does not affect other
@@ -611,61 +664,79 @@ profile bwrap /usr/bin/bwrap flags=(unconfined) {
   include if exists <local/bwrap>
 }
 APPARMOR
-            then
-                # Try multiple loading methods — SIFT (live-image) may not support systemctl reload
-                PARSER_OUTPUT=""
-                if PARSER_OUTPUT=$(sudo apparmor_parser -rT "$BWRAP_PROFILE" 2>&1); then
-                    PROFILE_LOADED=true
-                elif PARSER_OUTPUT=$(sudo apparmor_parser -r "$BWRAP_PROFILE" 2>&1); then
-                    PROFILE_LOADED=true
-                elif sudo systemctl reload apparmor 2>/dev/null; then
-                    PROFILE_LOADED=true
-                else
-                    PROFILE_LOADED=false
-                fi
-
-                if $PROFILE_LOADED; then
-                    # Verify the fix works
-                    if bwrap --unshare-user -- true 2>/dev/null; then
-                        ok "AppArmor bwrap profile installed and verified"
-                    else
-                        warn "AppArmor profile installed and loaded but bwrap test still fails"
-                        echo "  This may require a reboot to take effect."
-                        echo "  After reboot, verify: bwrap --unshare-user -- true"
-                    fi
-                else
-                    warn "Could not load AppArmor profile."
-                    if [[ -n "$PARSER_OUTPUT" ]]; then
-                        echo "  apparmor_parser: $PARSER_OUTPUT"
-                    fi
-                    echo "  Profile written to $BWRAP_PROFILE but not active."
-                    echo "  Try: sudo apparmor_parser -rT $BWRAP_PROFILE"
-                    echo "  Or reboot to load the profile automatically."
-                fi
-            else
-                warn "Could not write AppArmor profile (sudo required)."
-                echo "  The kernel sandbox (L9) will not function on this system."
-                echo "  Manual fix:"
-                echo "    sudo tee $BWRAP_PROFILE << 'EOF'"
-                echo "    abi <abi/4.0>,"
-                echo "    include <tunables/global>"
-                echo "    profile bwrap /usr/bin/bwrap flags=(unconfined) {"
-                echo "      userns,"
-                echo "      include if exists <local/bwrap>"
-                echo "    }"
-                echo "    EOF"
-                echo "    sudo systemctl reload apparmor"
-            fi
-
-            else
-                info "Skipped. The kernel sandbox (L9) will not function on this system."
-                echo "  You can install the profile later by re-running setup-sift.sh."
-            fi
+        then
+            warn "Could not write AppArmor profile (sudo required)."
+            echo "  The kernel sandbox (L9) will not function on this system."
+            echo "  Manual fix:"
+            echo "    sudo tee $BWRAP_PROFILE << 'EOF'"
+            echo "    abi <abi/4.0>,"
+            echo "    include <tunables/global>"
+            echo "    profile bwrap /usr/bin/bwrap flags=(unconfined) {"
+            echo "      userns,"
+            echo "      include if exists <local/bwrap>"
+            echo "    }"
+            echo "    EOF"
+            echo "    sudo systemctl reload apparmor"
         else
-            warn "Sandbox test failed but AppArmor userns restriction is not the cause."
-            echo "  bwrap --unshare-user -- true failed for an unknown reason."
-            echo "  The kernel sandbox (L9) may not function correctly."
+            # Profile written — try to load it
+            PARSER_OUTPUT=""
+            if PARSER_OUTPUT=$(sudo apparmor_parser -rT "$BWRAP_PROFILE" 2>&1); then
+                PROFILE_LOADED=true
+            elif PARSER_OUTPUT=$(sudo apparmor_parser -r "$BWRAP_PROFILE" 2>&1); then
+                PROFILE_LOADED=true
+            elif sudo systemctl reload apparmor 2>/dev/null; then
+                PROFILE_LOADED=true
+            else
+                PROFILE_LOADED=false
+            fi
+
+            if $PROFILE_LOADED; then
+                if bwrap --ro-bind / / --unshare-net -- /bin/true 2>/dev/null; then
+                    ok "AppArmor bwrap profile installed and verified"
+                else
+                    warn "AppArmor profile installed and loaded but sandbox test still fails."
+                    echo "  This may require a reboot to take effect."
+                    echo "  After reboot, verify: bwrap --ro-bind / / --unshare-net -- /bin/true"
+                fi
+            else
+                warn "Could not load AppArmor profile."
+                if [[ -n "$PARSER_OUTPUT" ]]; then
+                    echo "  apparmor_parser: $PARSER_OUTPUT"
+                fi
+                echo "  Profile written to $BWRAP_PROFILE but not active."
+                echo "  Try: sudo apparmor_parser -rT $BWRAP_PROFILE"
+                echo "  Or reboot to load the profile automatically."
+            fi
         fi
+
+    # --- unprivileged_userns_clone=0? (pre-23.10 mechanism, hardened kernels) ---
+    elif [[ "$(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null)" == "0" ]]; then
+        warn "Sandbox test failed — user namespaces disabled by sysctl."
+        [[ -n "$BWRAP_ERR" ]] && echo "  bwrap: $BWRAP_ERR"
+        echo "  kernel.unprivileged_userns_clone=0 prevents bwrap from creating"
+        echo "  the namespaces needed for Claude Code's kernel sandbox (L9)."
+        echo ""
+        echo "  Temporary fix:"
+        echo "    sudo sysctl -w kernel.unprivileged_userns_clone=1"
+        echo ""
+        echo "  Permanent fix:"
+        echo "    echo 'kernel.unprivileged_userns_clone=1' | sudo tee /etc/sysctl.d/60-userns.conf"
+        echo "    sudo sysctl --system"
+
+    # --- user.max_user_namespaces=0? ---
+    elif [[ "$(sysctl -n user.max_user_namespaces 2>/dev/null)" == "0" ]]; then
+        warn "Sandbox test failed — user namespace limit is zero."
+        [[ -n "$BWRAP_ERR" ]] && echo "  bwrap: $BWRAP_ERR"
+        echo "  Fix: sudo sysctl -w user.max_user_namespaces=15000"
+
+    # --- Unknown cause ---
+    else
+        warn "Sandbox test failed."
+        if [[ -n "$BWRAP_ERR" ]]; then
+            echo "  bwrap: $BWRAP_ERR"
+        fi
+        echo "  Run manually to diagnose: bwrap --ro-bind / / --unshare-net -- /bin/true"
+        echo "  The kernel sandbox (L9) may not function correctly."
     fi
 fi
 
