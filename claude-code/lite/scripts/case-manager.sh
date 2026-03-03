@@ -82,7 +82,8 @@ _cmd_init() {
 
     # Write CASE.yaml via heredoc
     # Single-quote description for YAML safety (# in value would be parsed as comment)
-    local yaml_desc="${description//\'/\'\'}"
+    local yaml_desc="${description//$'\n'/ }"
+    yaml_desc="${yaml_desc//\'/\'\'}"
     cat > "$case_dir/CASE.yaml" << EOF
 name: $name
 description: '$yaml_desc'

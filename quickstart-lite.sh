@@ -169,7 +169,7 @@ Data can be built/downloaded later:
 HELPEOF
             exit 0
             ;;
-        *) warn "Unknown option: $arg" ;;
+        *) warn "Unknown option: $arg"; exit 1 ;;
     esac
 done
 

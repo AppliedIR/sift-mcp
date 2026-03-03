@@ -614,7 +614,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     """Register discipline reference data as MCP tools.
 
     Used when the client doesn't support MCP resources. All 14 functions
-    appear in the tool list alongside the 15 active tools.
+    appear in the tool list alongside the 12 active tools.
     """
 
     @server.tool()

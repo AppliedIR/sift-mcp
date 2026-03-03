@@ -70,7 +70,7 @@ def _resolve_case_dir() -> Path | None:
         case_path = active_case_file.read_text().strip()
         if case_path:
             p = Path(case_path)
-            if p.is_dir():
+            if p.is_dir() and (p / "CASE.yaml").exists():
                 return p
     return None
 
