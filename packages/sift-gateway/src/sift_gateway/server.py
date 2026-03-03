@@ -320,6 +320,7 @@ class Gateway:
         """
         gateway = self
         api_keys = self.config.get("api_keys", {})
+        self._api_keys = api_keys
 
         # Build aggregate MCP endpoint components
         mcp_server = create_mcp_server(gateway)

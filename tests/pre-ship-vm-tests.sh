@@ -105,7 +105,8 @@ fi
 TOKEN=$(python3 -c "
 import yaml
 with open('$GATEWAY_YAML') as f: gw = yaml.safe_load(f)
-print(gw.get('auth', {}).get('token', ''))
+keys = gw.get('api_keys', {})
+print(next(iter(keys)) if keys else '')
 ")
 
 if [ -z "$TOKEN" ]; then

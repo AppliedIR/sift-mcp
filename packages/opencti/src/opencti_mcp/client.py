@@ -694,7 +694,8 @@ class OpenCTIClient:
         self.clear_health_cache()
         self._circuit_breaker.reset()
         self._adaptive_metrics.reset()
-        self._client = None  # Force fresh connect() on next request
+        with self._client_lock:
+            self._client = None  # Force fresh connect() on next request
         logger.info(
             "Reconnection complete - caches cleared, client reset, circuit breaker reset"
         )

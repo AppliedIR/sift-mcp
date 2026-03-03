@@ -1187,7 +1187,7 @@ function submitReject() {
     type: f.type || 'finding',
     action: 'reject',
     content_hash_at_review: f.content_hash || '',
-    reason: reason,
+    rejection_reason: reason,
   });
   closeRejectDialog();
   renderSidebar();
@@ -1319,7 +1319,7 @@ function batchReject() {
     if (!f) return;
     setDeltaEntry({
       id, type: f.type || 'finding', action: 'reject',
-      content_hash_at_review: f.content_hash || '', reason,
+      content_hash_at_review: f.content_hash || '', rejection_reason: reason,
     });
   });
   batchSelected.clear();

@@ -485,15 +485,9 @@ def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
                 status_code=500, detail="Failed to save configuration"
             ) from e
 
-    # Also update the in-memory gateway auth keys
-    if hasattr(gateway, "_app"):
-        # Walk middleware stack to find AuthMiddleware
-        app = gateway._app
-        while hasattr(app, "app"):
-            if hasattr(app, "api_keys"):
-                app.api_keys[token] = {"examiner": examiner, "role": "examiner"}
-                break
-            app = app.app
+    # Also update the in-memory gateway auth keys (shared dict reference)
+    if hasattr(gateway, "_api_keys"):
+        gateway._api_keys[token] = {"examiner": examiner, "role": "examiner"}
 
 
 def _add_wintools_backend(gateway, url: str, token: str) -> None:
