@@ -222,7 +222,9 @@ async def start_service(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"Start timed out for {name}"}, status_code=504)
     except Exception as e:
         logger.error("Failed to start service %s: %s", name, e)
-        return JSONResponse({"error": f"Failed to start: {e}"}, status_code=500)
+        return JSONResponse(
+            {"error": f"Failed to start service {name}"}, status_code=500
+        )
 
     await gateway._build_tool_map()
     return JSONResponse({"status": "started", "name": name})
@@ -246,7 +248,9 @@ async def stop_service(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"Stop timed out for {name}"}, status_code=504)
     except Exception as e:
         logger.error("Failed to stop service %s: %s", name, e)
-        return JSONResponse({"error": f"Failed to stop: {e}"}, status_code=500)
+        return JSONResponse(
+            {"error": f"Failed to stop service {name}"}, status_code=500
+        )
 
     await gateway._build_tool_map()
     return JSONResponse({"status": "stopped", "name": name})
@@ -269,7 +273,8 @@ async def restart_service(request: Request) -> JSONResponse:
         except Exception as e:
             logger.error("Failed to stop service %s during restart: %s", name, e)
             return JSONResponse(
-                {"error": f"Failed to stop during restart: {e}"}, status_code=500
+                {"error": f"Failed to stop service {name} during restart"},
+                status_code=500,
             )
 
     # Start
@@ -282,7 +287,7 @@ async def restart_service(request: Request) -> JSONResponse:
         logger.error("Failed to start service %s during restart: %s", name, e)
         await gateway._build_tool_map()
         return JSONResponse(
-            {"error": f"Failed to start during restart: {e}"}, status_code=500
+            {"error": f"Failed to start service {name} during restart"}, status_code=500
         )
 
     await gateway._build_tool_map()
@@ -358,7 +363,7 @@ async def join_gateway(request: Request) -> JSONResponse:
     wintools_url = body.get("wintools_url")
     wintools_token = body.get("wintools_token")
 
-    matched_hash = validate_and_consume_join_code(code)
+    matched_hash = await validate_and_consume_join_code(code)
     if not matched_hash:
         record_join_failure(client_ip)
         return JSONResponse(

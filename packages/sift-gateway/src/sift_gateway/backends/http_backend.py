@@ -144,13 +144,12 @@ class HttpMCPBackend(MCPBackend):
 
     async def health_check(self) -> dict:
         if not self._started or not self._session:
-            return {"status": "stopped", "type": "http", "url": self.config.get("url")}
+            return {"status": "stopped", "type": "http"}
         try:
             await self.list_tools()
             return {
                 "status": "ok",
                 "type": "http",
-                "url": self.config.get("url"),
                 "tools": len(self._tools_cache or []),
             }
         except Exception as exc:
@@ -163,6 +162,5 @@ class HttpMCPBackend(MCPBackend):
             return {
                 "status": "error",
                 "type": "http",
-                "url": self.config.get("url"),
-                "error": str(exc),
+                "error": type(exc).__name__,
             }

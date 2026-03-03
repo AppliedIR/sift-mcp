@@ -124,6 +124,14 @@ class StdioMCPBackend(MCPBackend):
             return result.content
         except (ConnectionError, OSError):
             self._tools_cache = None
+            self._session = None
+            self._started = False
+            if self._exit_stack:
+                try:
+                    await self._exit_stack.aclose()
+                except Exception:
+                    pass
+                self._exit_stack = None
             raise
 
     async def health_check(self) -> dict:
@@ -143,4 +151,4 @@ class StdioMCPBackend(MCPBackend):
                 type(exc).__name__,
                 exc,
             )
-            return {"status": "error", "type": "stdio", "error": str(exc)}
+            return {"status": "error", "type": "stdio", "error": type(exc).__name__}

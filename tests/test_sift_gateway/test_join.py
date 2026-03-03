@@ -163,7 +163,7 @@ class TestJoinGatewayCallOrder:
 
         call_order = []
 
-        def mock_validate_and_consume(code):
+        async def mock_validate_and_consume(code):
             call_order.append("validate_and_consume")
             return "fake_hash"
 

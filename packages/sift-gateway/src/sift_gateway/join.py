@@ -9,6 +9,7 @@ State file: ~/.aiir/.join_state.json
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -135,16 +136,23 @@ def mark_code_used(code: str) -> None:
             continue
 
 
-def validate_and_consume_join_code(code: str) -> str | None:
-    """Atomically validate and mark a join code as used. Thread-safe."""
-    with _join_code_lock:
-        matched_hash = validate_join_code(code)
+_join_code_lock = asyncio.Lock()
+
+
+async def validate_and_consume_join_code(code: str) -> str | None:
+    """Atomically validate and mark a join code as used.
+
+    Uses asyncio.Lock (not threading.Lock) to avoid blocking the event
+    loop during bcrypt comparisons. The CPU-bound bcrypt work runs in a
+    thread executor.
+    """
+    loop = asyncio.get_running_loop()
+    async with _join_code_lock:
+        matched_hash = await loop.run_in_executor(None, validate_join_code, code)
         if matched_hash:
-            mark_code_used(code)
+            await loop.run_in_executor(None, mark_code_used, code)
         return matched_hash
 
-
-_join_code_lock = threading.Lock()
 
 _join_failures: dict[str, list[float]] = {}
 _join_failures_lock = threading.Lock()

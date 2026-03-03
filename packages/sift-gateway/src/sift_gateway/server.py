@@ -59,6 +59,7 @@ class Gateway:
         self.config = config
         self.backends: dict[str, MCPBackend] = {}
         self._tool_map: dict[str, str] = {}  # tool_name -> backend_name
+        self._start_locks: dict[str, asyncio.Lock] = {}
 
         # Create backend instances from config
         backends_config = config.get("backends", {})
@@ -145,10 +146,10 @@ class Gateway:
             except Exception as exc:
                 logger.error("Failed to list tools for %s: %s", name, exc)
 
-        self._tool_map.clear()
+        new_map: dict[str, str] = {}
         for tool_name, backend_names in raw_map.items():
             if len(backend_names) == 1:
-                self._tool_map[tool_name] = backend_names[0]
+                new_map[tool_name] = backend_names[0]
             else:
                 # Collision: prefix with backend name
                 logger.warning(
@@ -158,7 +159,9 @@ class Gateway:
                 )
                 for bname in backend_names:
                     prefixed = f"{bname}__{tool_name}"
-                    self._tool_map[prefixed] = bname
+                    new_map[prefixed] = bname
+
+        self._tool_map = new_map  # atomic reference swap
 
         logger.info(
             "Tool map built: %d tools across %d backends",
@@ -169,6 +172,8 @@ class Gateway:
     async def ensure_backend_started(self, backend_name: str) -> None:
         """Start a backend if it's not running (for lazy start mode).
 
+        Uses a per-backend asyncio.Lock with double-check to prevent
+        concurrent requests from spawning duplicate subprocesses.
         Also rebuilds the tool map after starting.
         """
         backend = self.backends.get(backend_name)
@@ -177,10 +182,15 @@ class Gateway:
         if backend.started:
             backend.last_tool_call = time.monotonic()
             return
-        logger.info("Lazy-starting backend: %s", backend_name)
-        await asyncio.wait_for(backend.start(), timeout=30.0)
-        backend.last_tool_call = time.monotonic()
-        await self._build_tool_map()
+        lock = self._start_locks.setdefault(backend_name, asyncio.Lock())
+        async with lock:
+            if backend.started:
+                backend.last_tool_call = time.monotonic()
+                return
+            logger.info("Lazy-starting backend: %s", backend_name)
+            await asyncio.wait_for(backend.start(), timeout=30.0)
+            backend.last_tool_call = time.monotonic()
+            await self._build_tool_map()
 
     async def _idle_reaper(self) -> None:
         """Background task that stops backends idle longer than the timeout."""
@@ -191,6 +201,7 @@ class Gateway:
         while True:
             await asyncio.sleep(60)
             now = time.monotonic()
+            reaped = False
             for name, backend in list(self.backends.items()):
                 if backend.started and backend.last_tool_call > 0:
                     idle = now - backend.last_tool_call
@@ -200,11 +211,13 @@ class Gateway:
                         )
                         try:
                             await backend.stop()
+                            reaped = True
                         except Exception as exc:
                             logger.error(
                                 "Error stopping idle backend %s: %s", name, exc
                             )
-                        await self._build_tool_map()
+            if reaped:
+                await self._build_tool_map()
 
     async def list_tools(self) -> dict[str, str]:
         """Return the current tool map (tool_name -> backend_name)."""
@@ -290,6 +303,8 @@ class Gateway:
         if examiner:
             if actual_name in ANALYST_TOOLS:
                 arguments = {**arguments, "analyst_override": examiner}
+
+        backend.last_tool_call = time.monotonic()
 
         logger.info(
             "Routing tool %s -> backend %s (examiner=%s)",

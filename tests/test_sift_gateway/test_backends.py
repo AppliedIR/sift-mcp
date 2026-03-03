@@ -78,7 +78,7 @@ class TestHttpNotStarted:
         )
         result = await backend.health_check()
         assert result["status"] == "stopped"
-        assert "url" in result
+        assert "url" not in result  # F-132-13: no internal URLs in health
 
     async def test_start_without_url_raises(self):
         backend = HttpMCPBackend("test", {"type": "http"})

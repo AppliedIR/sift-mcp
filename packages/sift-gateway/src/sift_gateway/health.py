@@ -28,22 +28,19 @@ async def health_endpoint(request: Request) -> JSONResponse:
     """
     gateway = request.app.state.gateway
 
-    backend_health = {}
-    for name, backend in gateway.backends.items():
+    async def _check_one(name: str, backend) -> tuple[str, dict]:
         try:
-            backend_health[name] = await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 backend.health_check(), timeout=_HEALTH_CHECK_TIMEOUT
             )
+            return name, result
         except asyncio.TimeoutError:
             logger.warning(
                 "Health check timed out for backend %s after %ds",
                 name,
                 _HEALTH_CHECK_TIMEOUT,
             )
-            backend_health[name] = {
-                "status": "error",
-                "error": "health check timed out",
-            }
+            return name, {"status": "error", "error": "health check timed out"}
         except Exception as exc:
             logger.warning(
                 "Health check failed for backend %s: %s: %s",
@@ -51,7 +48,12 @@ async def health_endpoint(request: Request) -> JSONResponse:
                 type(exc).__name__,
                 exc,
             )
-            backend_health[name] = {"status": "error", "error": type(exc).__name__}
+            return name, {"status": "error", "error": type(exc).__name__}
+
+    results = await asyncio.gather(
+        *(_check_one(n, b) for n, b in gateway.backends.items())
+    )
+    backend_health = dict(results)
 
     tools_count = len(gateway._tool_map)
     all_ok = all(h.get("status") == "ok" for h in backend_health.values())
