@@ -101,6 +101,10 @@ class RAGServer:
             evidence_id=evidence_id,
             elapsed_ms=elapsed_ms,
         )
+        if evidence_id is None:
+            audit_warn = "Audit write failed — action not recorded"
+            existing = result.get("warning")
+            result["warning"] = f"{existing} | {audit_warn}" if existing else audit_warn
         meta = TOOL_METADATA.get(tool_name, DEFAULT_METADATA)
 
         result["evidence_id"] = evidence_id

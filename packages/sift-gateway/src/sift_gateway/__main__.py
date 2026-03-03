@@ -91,7 +91,7 @@ def main():
         ssl_kwargs["ssl_certfile"] = certfile
         ssl_kwargs["ssl_keyfile"] = keyfile
 
-    host = args.host or gw_config.get("host", "0.0.0.0" if ssl_kwargs else "127.0.0.1")
+    host = args.host or gw_config.get("host", "127.0.0.1")
     port = args.port or gw_config.get("port", 4508)
     if not isinstance(port, int):
         logger.error("Config 'gateway.port' must be an integer, got %r", port)

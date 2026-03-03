@@ -39,12 +39,15 @@ class TestAuditWriter:
 
     def test_reset_counter(self, monkeypatch, tmp_path):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
-        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
-        monkeypatch.delenv("AIIR_AUDIT_DIR", raising=False)
-        monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
+        monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("forensic-rag-mcp")
         writer.log(tool="search", params={}, result_summary={})
         writer.log(tool="search", params={}, result_summary={})
+        # Remove audit file so reset_counter rescans from empty
+        audit_file = tmp_path / "audit" / "forensic-rag-mcp.jsonl"
+        if audit_file.exists():
+            audit_file.unlink()
         writer.reset_counter()
         eid = writer.log(tool="search", params={}, result_summary={})
         assert eid.endswith("-001")
@@ -88,7 +91,7 @@ class TestAuditWriter:
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         writer = AuditWriter("forensic-rag-mcp")
         eid = writer.log(tool="search", params={}, result_summary={})
-        assert eid  # still returns evidence ID
+        assert eid is None
         assert not (tmp_path / "examiners").exists()
 
     def test_thread_safe_sequence(self, tmp_path, monkeypatch):

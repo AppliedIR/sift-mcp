@@ -179,7 +179,7 @@ class TestAudit:
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         writer = AuditWriter("sift-mcp")
         eid = writer.log(tool="test", params={}, result_summary={})
-        assert eid.startswith("sift-")  # Still returns an ID
+        assert eid is None
 
     def test_canonical_fields(self, tmp_path, monkeypatch):
         import json

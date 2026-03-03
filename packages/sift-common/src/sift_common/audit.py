@@ -18,21 +18,21 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_EXAMINER_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+_EXAMINER_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,19}$")
 
 
 def _sanitize_slug(raw: str) -> str:
     """Sanitize a raw string into a valid examiner slug.
 
     Lowercases, replaces invalid characters with hyphens, strips leading/trailing
-    hyphens, and truncates to 40 characters.
+    hyphens, and truncates to 20 characters.
     """
     slug = re.sub(r"[^a-z0-9-]", "-", raw.lower()).strip("-")
-    if len(slug) > 40:
+    if len(slug) > 20:
         logger.warning(
-            "Examiner slug truncated from %d to 40 chars: %s", len(slug), slug[:40]
+            "Examiner slug truncated from %d to 20 chars: %s", len(slug), slug[:20]
         )
-        slug = slug[:40]
+        slug = slug[:20]
     if not slug:
         return "unknown"
     slug = slug.lstrip("-")
@@ -176,8 +176,8 @@ class AuditWriter:
         evidence_id: str | None = None,
         case_id: str | None = None,
         elapsed_ms: float | None = None,
-    ) -> str:
-        """Write an audit entry. Returns the evidence_id."""
+    ) -> str | None:
+        """Write an audit entry. Returns the evidence_id, or None on write failure."""
         if evidence_id is None:
             evidence_id = self._next_evidence_id()
 
@@ -195,7 +195,12 @@ class AuditWriter:
         if elapsed_ms is not None:
             entry["elapsed_ms"] = round(elapsed_ms, 1)
 
-        self._write_entry(entry)
+        if not self._write_entry(entry):
+            logger.warning(
+                "Audit write failed for evidence_id=%s — returning None",
+                evidence_id,
+            )
+            return None
         return evidence_id
 
     def _write_entry(self, entry: dict) -> bool:

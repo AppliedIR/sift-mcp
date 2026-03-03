@@ -39,8 +39,8 @@ class TestTLSConfig:
                 main()
             assert exc_info.value.code == 1
 
-    def test_tls_default_host_0000(self, tmp_path):
-        """With TLS enabled and no explicit host, default is 0.0.0.0."""
+    def test_tls_default_host_localhost(self, tmp_path):
+        """With TLS enabled and no explicit host, default is 127.0.0.1."""
         cert = tmp_path / "cert.pem"
         key = tmp_path / "key.pem"
         cert.write_text("fake cert")
@@ -66,8 +66,8 @@ class TestTLSConfig:
                             "host",
                             call_kwargs.args[1] if len(call_kwargs.args) > 1 else None,
                         )
-                        == "0.0.0.0"
-                        or call_kwargs[1]["host"] == "0.0.0.0"
+                        == "127.0.0.1"
+                        or call_kwargs[1]["host"] == "127.0.0.1"
                     )
 
     def test_no_tls_default_host_localhost(self, tmp_path):

@@ -451,7 +451,7 @@ class TestSetCaseMetadata:
         assert "error" in result
         assert "protected" in result["error"].lower()
 
-    def test_unknown_field_accepted(self, case_dir):
+    def test_unknown_field_rejected(self, case_dir):
         from report_mcp.server import create_server
 
         s = create_server()
@@ -459,9 +459,8 @@ class TestSetCaseMetadata:
             s, "set_case_metadata", field="custom_field", value="custom_value"
         )
 
-        assert result["status"] == "set"
-        meta = yaml.safe_load((case_dir / "CASE.yaml").read_text())
-        assert meta["custom_field"] == "custom_value"
+        assert "error" in result
+        assert "Unknown metadata field" in result["error"]
 
     def test_list_field(self, case_dir):
         from report_mcp.server import create_server

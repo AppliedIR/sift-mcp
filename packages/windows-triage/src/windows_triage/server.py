@@ -241,6 +241,8 @@ class WindowsTriageServer:
             evidence_id=evidence_id,
             elapsed_ms=elapsed_ms,
         )
+        if evidence_id is None:
+            result["warning"] = "Audit write failed — action not recorded"
         meta = TOOL_METADATA.get(tool_name, DEFAULT_METADATA)
 
         result["evidence_id"] = evidence_id

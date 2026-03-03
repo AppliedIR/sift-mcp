@@ -328,11 +328,12 @@ def create_server() -> FastMCP:
             examiner = resolve_examiner()
             ts = datetime.now(timezone.utc).isoformat()
 
-            # Match actions.jsonl format from CaseManager.record_action()
+            # Write to actions.jsonl (adds source field not in CaseManager)
             entry: dict = {
                 "ts": ts,
                 "description": description,
                 "examiner": examiner,
+                "source": "mcp",
             }
             if tool:
                 entry["tool"] = tool
@@ -403,6 +404,8 @@ def create_server() -> FastMCP:
             "evidence_id": evidence_id,
             "note": "orchestrator_voluntary -- not independently verified",
         }
+        if evidence_id is None:
+            result["warning"] = "Audit write failed — action not recorded"
         return result
 
     # ------------------------------------------------------------------

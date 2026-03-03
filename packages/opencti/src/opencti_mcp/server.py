@@ -595,6 +595,8 @@ class OpenCTIMCPServer:
             evidence_id=evidence_id,
             elapsed_ms=elapsed_ms,
         )
+        if evidence_id is None:
+            result["warning"] = "Audit write failed — action not recorded"
         # For search_entity, resolve metadata by the underlying entity type
         meta_key = tool_name
         if tool_name == "search_entity":

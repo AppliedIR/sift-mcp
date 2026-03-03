@@ -129,7 +129,7 @@ def create_server() -> FastMCP:
                 response["full_output_sha256"] = exec_result.get("output_sha256")
                 response["full_output_bytes"] = exec_result.get("stdout_total_bytes")
 
-            audit.log(
+            logged_id = audit.log(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
                 result_summary={
@@ -142,6 +142,8 @@ def create_server() -> FastMCP:
                 evidence_id=evidence_id,
                 elapsed_ms=elapsed * 1000,
             )
+            if logged_id is None:
+                response["warning"] = "Audit write failed — action not recorded"
             return response
 
         except SiftError as e:
@@ -153,13 +155,15 @@ def create_server() -> FastMCP:
                 evidence_id=evidence_id,
                 error=str(e),
             )
-            audit.log(
+            logged_id = audit.log(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": str(e)},
                 evidence_id=evidence_id,
                 elapsed_ms=elapsed * 1000,
             )
+            if logged_id is None:
+                response["warning"] = "Audit write failed — action not recorded"
             return response
         except (ValueError, OSError, RuntimeError) as e:
             elapsed = time.monotonic() - start
@@ -171,13 +175,15 @@ def create_server() -> FastMCP:
                 evidence_id=evidence_id,
                 error=str(e),
             )
-            audit.log(
+            logged_id = audit.log(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": str(e)},
                 evidence_id=evidence_id,
                 elapsed_ms=elapsed * 1000,
             )
+            if logged_id is None:
+                response["warning"] = "Audit write failed — action not recorded"
             return response
         except Exception as e:
             elapsed = time.monotonic() - start
@@ -189,13 +195,15 @@ def create_server() -> FastMCP:
                 evidence_id=evidence_id,
                 error=f"Unexpected error: {type(e).__name__}",
             )
-            audit.log(
+            logged_id = audit.log(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": f"{type(e).__name__}: {e}"},
                 evidence_id=evidence_id,
                 elapsed_ms=elapsed * 1000,
             )
+            if logged_id is None:
+                response["warning"] = "Audit write failed — action not recorded"
             return response
 
     # --- Missing Tools ---

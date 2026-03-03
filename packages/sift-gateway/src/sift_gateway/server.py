@@ -290,6 +290,10 @@ class Gateway:
         backend_name = self._tool_map[name]
         backend = self.backends[backend_name]
 
+        # Lazy recovery — restart backend if it crashed
+        if not backend.started:
+            await self.ensure_backend_started(backend_name)
+
         # If the tool was prefixed due to collision, strip the prefix for the actual call
         actual_name = name
         prefix = f"{backend_name}__"

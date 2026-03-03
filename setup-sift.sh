@@ -1168,12 +1168,12 @@ fi
 header "Examiner Identity"
 
 if [[ -z "$EXAMINER_NAME" ]]; then
-    DEFAULT_EXAMINER=$(whoami | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | head -c 40)
+    DEFAULT_EXAMINER=$(whoami | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | head -c 20)
     EXAMINER_NAME=$(prompt "Examiner identity (name slug)" "$DEFAULT_EXAMINER")
 fi
 
-# Clean the slug: lowercase, alphanumeric + dash, max 40 chars
-EXAMINER_NAME=$(echo "$EXAMINER_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | head -c 40)
+# Clean the slug: lowercase, alphanumeric + dash, max 20 chars
+EXAMINER_NAME=$(echo "$EXAMINER_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | head -c 20)
 [[ -z "$EXAMINER_NAME" ]] && EXAMINER_NAME="examiner"
 ok "Examiner: $EXAMINER_NAME"
 

@@ -736,16 +736,16 @@ async function saveDelta() {
     await apiFetch('/api/delta', { method: 'POST', body: JSON.stringify(delta) });
     setSaveStatus('saved');
   } catch (e) {
-    setSaveStatus('error');
+    setSaveStatus('error', e.message);
     console.error('Save failed:', e);
   }
 }
 
-function setSaveStatus(state) {
+function setSaveStatus(state, detail) {
   const el = document.getElementById('saveStatus');
   if (state === 'saved') { el.textContent = 'All saved \u2713'; el.className = 'save-status saved'; }
   else if (state === 'saving') { el.textContent = 'Saving...'; el.className = 'save-status saving'; }
-  else { el.textContent = 'Save error'; el.className = 'save-status'; el.style.color = 'var(--red)'; }
+  else { el.textContent = 'Save error' + (detail ? ': ' + detail : ''); el.className = 'save-status'; el.style.color = 'var(--red)'; }
 }
 
 /* === Filtering & sorting === */

@@ -650,7 +650,7 @@ def create_server() -> FastMCP:
         affected_systems, tags, etc. (lists).
 
         Protected fields (case_id, status, name, etc.) are rejected.
-        Unknown fields are accepted and stored as-is.
+        Unknown fields are rejected with a list of valid options.
         """
         try:
             _validate_str_length(field, "field", _MAX_FIELD)
@@ -683,6 +683,20 @@ def create_server() -> FastMCP:
             if field in _LIST_FIELDS:
                 if not isinstance(value, list):
                     return {"error": f"Field '{field}' requires a list value."}
+
+            # Reject unknown fields
+            _ALLOWED_FIELDS = (
+                _PROTECTED_FIELDS
+                | set(_ENUM_FIELDS)
+                | set(_DATE_FIELDS)
+                | set(_LIST_FIELDS)
+                | set(_TEXT_FIELDS)
+            )
+            if field not in _ALLOWED_FIELDS:
+                return {
+                    "error": f"Unknown metadata field: '{field}'. "
+                    f"Allowed fields: {sorted(_ALLOWED_FIELDS - _PROTECTED_FIELDS)}"
+                }
 
             case_dir = _resolve_case_dir()
             meta_file = case_dir / "CASE.yaml"
