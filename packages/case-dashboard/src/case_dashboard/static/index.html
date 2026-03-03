@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:">
 <title>AIIR Case Dashboard</title>
 <style>
 :root {
@@ -1000,7 +1001,7 @@ function renderFinding(id) {
   if (f.evidence_ids && f.evidence_ids.length > 0) {
     html += '<div class="field-section"><div class="field-label">Evidence IDs</div>';
     html += '<div class="tag-list">' + f.evidence_ids.map(eid =>
-      '<span class="tag clickable" onclick="scrollToEvidence(\'' + escapeHtml(eid) + '\')">' + escapeHtml(eid) + '</span>'
+      '<span class="tag clickable" onclick="scrollToEvidence(\'' + escapeJsString(eid) + '\')">' + escapeHtml(eid) + '</span>'
     ).join('') + '</div></div>';
   }
 
@@ -1022,7 +1023,7 @@ function renderFinding(id) {
   if (f.related_findings && f.related_findings.length > 0) {
     html += '<div class="field-section"><div class="field-label">Related Findings</div>';
     html += '<div class="tag-list">' + f.related_findings.map(rid =>
-      '<span class="tag clickable" onclick="selectFinding(\'' + escapeHtml(rid) + '\')">' + escapeHtml(rid) + '</span>'
+      '<span class="tag clickable" onclick="selectFinding(\'' + escapeJsString(rid) + '\')">' + escapeHtml(rid) + '</span>'
     ).join('') + '</div></div>';
   }
 
@@ -1494,7 +1495,7 @@ async function loadEvidencePanel(finding) {
     const isShell = backend.includes('exec') || (entry.source || '').includes('shell');
     const openClass = idx === 0 ? ' open' : '';
 
-    html += '<div class="evidence-item" id="ev-' + eid.replace(/"/g, '&quot;') + '">';
+    html += '<div class="evidence-item" id="ev-' + escapeHtml(eid) + '">';
     html += '<div class="evidence-item-header" onclick="toggleEvidence(this)">';
     html += '<span class="chevron' + openClass + '">&#9654;</span> ';
     html += '<strong>' + escapeHtml(eid) + '</strong>';
@@ -1700,6 +1701,11 @@ function escapeHtml(s) {
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML.replace(/'/g, '&#39;');
+}
+
+function escapeJsString(s) {
+  return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"')
+    .replace(/</g, '\\x3c').replace(/>/g, '\\x3e').replace(/&/g, '\\x26');
 }
 
 function formatTime(iso) {
@@ -1924,7 +1930,7 @@ function renderEvidence() {
     html += '<td>' + escapeHtml(regBy) + '</td>';
     html += '<td>';
     refs.forEach(function(rid) {
-      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeHtml(rid) + '\')">' + escapeHtml(rid) + '</a> ';
+      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeJsString(rid) + '\')">' + escapeHtml(rid) + '</a> ';
     });
     html += '</td>';
     const evIdx = evidenceData.indexOf(ev);
@@ -2019,7 +2025,7 @@ function renderTodos() {
     html += '<td class="status-' + escapeHtml(status) + '">' + escapeHtml(status) + '</td>';
     html += '<td>';
     related.forEach(function(rid) {
-      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeHtml(rid) + '\')">' + escapeHtml(rid) + '</a> ';
+      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeJsString(rid) + '\')">' + escapeHtml(rid) + '</a> ';
     });
     html += '</td>';
     html += '<td>' + escapeHtml(created) + '</td>';
