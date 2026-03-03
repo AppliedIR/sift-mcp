@@ -84,7 +84,11 @@
       "Edit(**/.aiir/active_case)",
       "Write(**/.aiir/active_case)",
       "Edit(**/.aiir/gateway.yaml)",
-      "Write(**/.aiir/gateway.yaml)"
+      "Write(**/.aiir/gateway.yaml)",
+      "Edit(**/.aiir/config.yaml)",
+      "Write(**/.aiir/config.yaml)",
+      "Edit(**/.aiir/.pin_lockout)",
+      "Write(**/.aiir/.pin_lockout)"
     ]
   },
   "sandbox": {

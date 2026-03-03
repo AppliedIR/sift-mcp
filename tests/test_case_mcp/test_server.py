@@ -298,9 +298,16 @@ class TestImportBundle:
     def test_missing_bundle_file(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
-        result = _parse(tools["import_bundle"](bundle_path="/nonexistent.json"))
+        result = _parse(tools["import_bundle"](bundle_path="/tmp/nonexistent.json"))
         assert "error" in result
         assert "not found" in result["error"]
+
+    def test_bundle_outside_allowed_dirs(self, case_dir):
+        srv = create_server()
+        tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
+        result = _parse(tools["import_bundle"](bundle_path="/etc/passwd"))
+        assert "error" in result
+        assert "must be within" in result["error"]
 
     def test_invalid_json_bundle(self, case_dir, tmp_path):
         bad_bundle = tmp_path / "bad.json"

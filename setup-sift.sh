@@ -558,6 +558,25 @@ else
 fi
 
 # =============================================================================
+# Phase 1b2: PIN Storage Directory
+# =============================================================================
+
+if [ -d /var/lib/aiir/pins ]; then
+    ok "PIN storage: /var/lib/aiir/pins/"
+else
+    info "Creating PIN storage directory (requires sudo)..."
+    if sudo mkdir -p /var/lib/aiir/pins && \
+       sudo chown "$USER:$USER" /var/lib/aiir/pins && \
+       sudo chmod 700 /var/lib/aiir/pins; then
+        ok "PIN storage: /var/lib/aiir/pins/"
+    else
+        err "Could not create /var/lib/aiir/pins/"
+        echo "  Run: sudo mkdir -p /var/lib/aiir/pins && sudo chown $USER:$USER /var/lib/aiir/pins && sudo chmod 700 /var/lib/aiir/pins"
+        exit 1
+    fi
+fi
+
+# =============================================================================
 # Phase 1c: Sandbox Diagnostic + AppArmor Fix
 # =============================================================================
 # Claude Code's kernel sandbox (L9) uses bubblewrap to isolate Bash commands

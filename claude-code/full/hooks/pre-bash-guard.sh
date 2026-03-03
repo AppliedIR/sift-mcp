@@ -5,12 +5,22 @@
 
 set -euo pipefail
 
-# Read JSON from stdin
+# Read JSON from stdin, extract fields with python3 (always on SIFT)
 INPUT=$(cat)
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
+TOOL_NAME=$(python3 -c "
+import json, sys
+d = json.loads(sys.stdin.read())
+print(d.get('tool_name', ''))
+" <<< "$INPUT") || { echo "WARNING: pre-bash-guard could not parse hook input"; exit 0; }
+
 [ "$TOOL_NAME" = "Bash" ] || exit 0
 
-CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+CMD=$(python3 -c "
+import json, sys
+d = json.loads(sys.stdin.read())
+print(d.get('tool_input', {}).get('command', ''))
+" <<< "$INPUT") || { echo "WARNING: pre-bash-guard could not parse hook input"; exit 0; }
+
 [ -n "$CMD" ] || exit 0
 
 # CWD == HOME warning (not a block).

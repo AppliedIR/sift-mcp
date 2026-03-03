@@ -84,10 +84,10 @@ something is misconfigured:
 
 ### forensic-rag (Knowledge Search)
 Semantic search over 23K+ authoritative IR sources. All indexed sources
-are authoritative. Use `list_sources` to see available source_ids for
+are authoritative. Use `list_knowledge_sources` to see available source_ids for
 filtering.
-- `search` - query with source_ids, technique, platform filters
-- `list_sources`, `get_stats` - index info
+- `search_knowledge` - query with source_ids, technique, platform filters
+- `list_knowledge_sources`, `get_knowledge_stats` - index info
 
 ### windows-triage (Baseline Validation)
 Offline Windows file/process validation. UNKNOWN = not in database (neutral).

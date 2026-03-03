@@ -403,6 +403,8 @@ async def post_delta(request: Request) -> JSONResponse:
         try:
             with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
             os.replace(tmp_path, str(delta_path))
         except Exception:
             try:

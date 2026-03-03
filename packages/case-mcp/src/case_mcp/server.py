@@ -277,7 +277,10 @@ def create_server() -> FastMCP:
         """
         try:
             case_dir = _resolve_case_dir()
-            bundle_file = Path(bundle_path)
+            bundle_file = Path(bundle_path).resolve()
+            allowed_parents = [case_dir, Path("/tmp")]
+            if not any(bundle_file.is_relative_to(p) for p in allowed_parents):
+                return {"error": "Bundle path must be within case directory or /tmp"}
             if not bundle_file.exists():
                 return {"error": f"Bundle file not found: {bundle_path}"}
             bundle_data = json.loads(bundle_file.read_text())
