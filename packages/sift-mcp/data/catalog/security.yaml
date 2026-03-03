@@ -70,3 +70,7 @@ denied_binaries:
   - "kill"
   - "killall"
   - "pkill"
+  - "env"
+  - "printenv"
+  - "set"
+  - "export"

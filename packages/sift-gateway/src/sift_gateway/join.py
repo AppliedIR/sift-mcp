@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import secrets
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -61,9 +62,20 @@ def _load_state() -> dict:
 
 def _save_state(state: dict) -> None:
     _STATE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(str(_STATE_FILE), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(state, f, indent=2)
+    fd, tmp = tempfile.mkstemp(dir=str(_STATE_DIR), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(state, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, str(_STATE_FILE))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def generate_join_code() -> str:
@@ -144,13 +156,21 @@ def check_join_rate_limit(client_ip: str) -> bool:
         now = time.monotonic()
         timestamps = _join_failures.get(client_ip, [])
         recent = [t for t in timestamps if now - t < _FAILURE_WINDOW_SECONDS]
-        _join_failures[client_ip] = recent
+        if recent:
+            _join_failures[client_ip] = recent
+        elif client_ip in _join_failures:
+            del _join_failures[client_ip]
         return len(recent) < _MAX_FAILURES
+
+
+_MAX_TRACKED_IPS = 10_000
 
 
 def record_join_failure(client_ip: str) -> None:
     """Record a failed join attempt. In-memory, thread-safe."""
     with _join_failures_lock:
+        if len(_join_failures) >= _MAX_TRACKED_IPS and client_ip not in _join_failures:
+            return
         if client_ip not in _join_failures:
             _join_failures[client_ip] = []
         _join_failures[client_ip].append(time.monotonic())
