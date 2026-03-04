@@ -326,6 +326,7 @@ def create_server() -> FastMCP:
         description: str,
         tool: str = "",
         command: str = "",
+        analyst_override: str = "",
     ) -> dict:
         """Log a supplemental action note to the case record.
         Auto-committed, no approval needed. Note: MCP tool calls are
@@ -334,8 +335,9 @@ def create_server() -> FastMCP:
             _validate_str_length(description, "description", _MAX_TEXT)
             _validate_str_length(tool, "tool", _MAX_SHORT)
             _validate_str_length(command, "command", _MAX_TEXT)
+            _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
             case_dir = _resolve_case_dir()
-            examiner = resolve_examiner()
+            examiner = analyst_override or resolve_examiner()
             ts = datetime.now(timezone.utc).isoformat()
 
             # Write to actions.jsonl (adds source field not in CaseManager)
@@ -374,16 +376,17 @@ def create_server() -> FastMCP:
     # Tool 12: log_reasoning (SAFE — audit-only, no approval)
     # ------------------------------------------------------------------
     @server.tool()
-    def log_reasoning(text: str) -> dict:
+    def log_reasoning(text: str, analyst_override: str = "") -> dict:
         """Record analytical reasoning to the audit trail (no approval
         needed). Call when choosing what to examine next, forming a
         hypothesis, revising an interpretation, or ruling something out.
         Unrecorded reasoning is lost during context compaction."""
         _validate_str_length(text, "text", _MAX_TEXT)
+        _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
         result = {"status": "logged"}
         logged_id = audit.log(
             tool="log_reasoning",
-            params={"text": text},
+            params={"text": text, "analyst_override": analyst_override},
             result_summary=result,
             source="orchestrator",
         )
@@ -396,7 +399,9 @@ def create_server() -> FastMCP:
     # Tool 13: log_external_action (SAFE — audit-only, no approval)
     # ------------------------------------------------------------------
     @server.tool()
-    def log_external_action(command: str, output_summary: str, purpose: str) -> dict:
+    def log_external_action(
+        command: str, output_summary: str, purpose: str, analyst_override: str = ""
+    ) -> dict:
         """Record a tool execution performed outside this MCP server
         (e.g., via Bash or another backend). Response includes an evidence_id
         field that can be used in record_finding's evidence_ids list. Without
@@ -405,12 +410,14 @@ def create_server() -> FastMCP:
         _validate_str_length(command, "command", _MAX_TEXT)
         _validate_str_length(output_summary, "output_summary", _MAX_TEXT)
         _validate_str_length(purpose, "purpose", _MAX_TEXT)
+        _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
         evidence_id = audit.log(
             tool="log_external_action",
             params={
                 "command": command,
                 "output_summary": output_summary,
                 "purpose": purpose,
+                "analyst_override": analyst_override,
             },
             result_summary={"status": "logged"},
             source="orchestrator_voluntary",
