@@ -34,9 +34,11 @@ def create_server() -> FastMCP:
         from sift_mcp.tools.discovery import get_tool_help as _help
 
         result = _help(tool_name)
-        audit.log(
+        logged_id = audit.log(
             tool="get_tool_help", params={"tool_name": tool_name}, result_summary=result
         )
+        if logged_id is None:
+            result["warning"] = "Audit write failed — action not recorded"
         return result
 
     @server.tool()
@@ -52,11 +54,13 @@ def create_server() -> FastMCP:
         from sift_mcp.tools.discovery import suggest_tools as _suggest
 
         result = _suggest(artifact_type, question)
-        audit.log(
+        logged_id = audit.log(
             tool="suggest_tools",
             params={"artifact_type": artifact_type},
             result_summary=result,
         )
+        if logged_id is None:
+            result["warning"] = "Audit write failed — action not recorded"
         return result
 
     # --- Generic Execution ---

@@ -124,11 +124,13 @@ def create_server() -> FastMCP:
                 description=description,
             )
             os.environ["AIIR_CASE_DIR"] = result["case_dir"]
-            audit.log(
+            logged_id = audit.log(
                 tool="case_init",
                 params={"name": name, "description": description},
                 result_summary=result,
             )
+            if logged_id is None:
+                result["warning"] = "Audit write failed — action not recorded"
             return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}
@@ -146,11 +148,13 @@ def create_server() -> FastMCP:
         try:
             result = _case_activate_data(case_id)
             os.environ["AIIR_CASE_DIR"] = result["case_dir"]
-            audit.log(
+            logged_id = audit.log(
                 tool="case_activate",
                 params={"case_id": case_id},
                 result_summary=result,
             )
+            if logged_id is None:
+                result["warning"] = "Audit write failed — action not recorded"
             return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}
@@ -203,11 +207,13 @@ def create_server() -> FastMCP:
                 examiner=examiner,
                 description=description,
             )
-            audit.log(
+            logged_id = audit.log(
                 tool="evidence_register",
                 params={"path": path, "description": description},
                 result_summary=result,
             )
+            if logged_id is None:
+                result["warning"] = "Audit write failed — action not recorded"
             return result
         except (ValueError, FileNotFoundError, OSError) as e:
             return {"error": str(e)}
@@ -252,7 +258,7 @@ def create_server() -> FastMCP:
         try:
             case_dir = _resolve_case_dir()
             result = _export_bundle(case_dir, since=since)
-            audit.log(
+            logged_id = audit.log(
                 tool="export_bundle",
                 params={"since": since},
                 result_summary={
@@ -260,6 +266,8 @@ def create_server() -> FastMCP:
                     "timeline": len(result.get("timeline", [])),
                 },
             )
+            if logged_id is None:
+                result["warning"] = "Audit write failed — action not recorded"
             return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}
@@ -285,11 +293,13 @@ def create_server() -> FastMCP:
                 return {"error": f"Bundle file not found: {bundle_path}"}
             bundle_data = json.loads(bundle_file.read_text())
             result = _import_bundle(case_dir, bundle_data)
-            audit.log(
+            logged_id = audit.log(
                 tool="import_bundle",
                 params={"bundle_path": bundle_path},
                 result_summary=result,
             )
+            if logged_id is None:
+                result["warning"] = "Audit write failed — action not recorded"
             return result
         except (ValueError, FileNotFoundError, OSError, json.JSONDecodeError) as e:
             return {"error": str(e)}
@@ -348,12 +358,15 @@ def create_server() -> FastMCP:
             except OSError as e:
                 return {"status": "write_failed", "timestamp": ts, "error": str(e)}
 
-            audit.log(
+            logged_id = audit.log(
                 tool="record_action",
                 params={"description": description},
                 result_summary={"status": "recorded", "timestamp": ts},
             )
-            return {"status": "recorded", "timestamp": ts}
+            result = {"status": "recorded", "timestamp": ts}
+            if logged_id is None:
+                result["warning"] = "Audit write failed — action not recorded"
+            return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}
 
@@ -368,12 +381,15 @@ def create_server() -> FastMCP:
         Unrecorded reasoning is lost during context compaction."""
         _validate_str_length(text, "text", _MAX_TEXT)
         result = {"status": "logged"}
-        audit.log(
+        logged_id = audit.log(
             tool="log_reasoning",
             params={"text": text},
             result_summary=result,
             source="orchestrator",
         )
+        if logged_id is None:
+            result["status"] = "write_failed"
+            result["warning"] = "Audit write failed — reasoning not recorded"
         return result
 
     # ------------------------------------------------------------------
@@ -462,7 +478,7 @@ def create_server() -> FastMCP:
         except Exception:
             status = "browser_failed"
 
-        audit.log(
+        logged_id = audit.log(
             tool="open_case_dashboard",
             params={},
             result_summary={"status": status},
@@ -470,7 +486,10 @@ def create_server() -> FastMCP:
         # Strip token from response — LLM should not see the bearer token.
         # The browser already received it via webbrowser.open().
         display_url = url.split("#")[0] if "#" in url else url
-        return {"url": display_url, "status": status}
+        result = {"url": display_url, "status": status}
+        if logged_id is None:
+            result["warning"] = "Audit write failed — action not recorded"
+        return result
 
     return server
 

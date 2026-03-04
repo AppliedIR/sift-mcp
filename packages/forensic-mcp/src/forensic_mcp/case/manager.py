@@ -372,6 +372,7 @@ class CaseManager:
         # Process supporting_commands — generate shell evidence IDs
         shell_evidence_ids: list[str] = []
         validated_commands: list[dict] = []
+        audit_warnings: list[str] = []
         if supporting_commands:
             for _i, cmd in enumerate(supporting_commands[:5]):
                 if not isinstance(cmd, dict):
@@ -395,13 +396,17 @@ class CaseManager:
                 validated_commands.append(validated_cmd)
                 # Write audit entry for this shell command
                 if audit:
-                    audit.log(
+                    logged_id = audit.log(
                         tool="supporting_command",
                         params={"command": command, "purpose": purpose},
                         result_summary={"output_excerpt": output_excerpt[:200]},
                         source="shell_self_report",
                         evidence_id=shell_eid,
                     )
+                    if logged_id is None:
+                        audit_warnings.append(
+                            f"Audit write failed for shell evidence {shell_eid}"
+                        )
 
         # Validate artifacts — parameter wins over finding dict (dedup)
         validated_artifacts: list[dict] = []
@@ -506,6 +511,7 @@ class CaseManager:
             warnings.append(
                 f"{dropped_cmd_count} supporting_command(s) dropped (missing command or purpose)"
             )
+        warnings.extend(audit_warnings)
         if warnings:
             result["warning"] = " ".join(warnings)
         return result

@@ -255,7 +255,12 @@ def create_mcp_server(gateway: Any) -> Server:
             return [TextContent(type="text", text=f"Error: unknown tool {name}")]
         except (RuntimeError, ConnectionError, OSError) as e:
             logger.error("MCP call_tool backend error for %s: %s", name, e)
-            return [TextContent(type="text", text=f"Error: backend failure for {name}")]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Error: backend failure for {name} — backend will auto-restart on next call, retry once",
+                )
+            ]
         except Exception as e:
             logger.error(
                 "MCP call_tool unexpected error for %s: %s: %s",
@@ -264,7 +269,10 @@ def create_mcp_server(gateway: Any) -> Server:
                 e,
             )
             return [
-                TextContent(type="text", text=f"Error: unexpected failure for {name}")
+                TextContent(
+                    type="text",
+                    text=f"Error: unexpected failure for {name} — if this persists, report to examiner",
+                )
             ]
 
         # Normalise to list of TextContent for the MCP protocol
@@ -334,7 +342,12 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
             logger.error(
                 "Per-backend call_tool error for %s/%s: %s", backend_name, name, e
             )
-            return [TextContent(type="text", text=f"Error: backend failure for {name}")]
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Error: backend failure for {name} — backend will auto-restart on next call, retry once",
+                )
+            ]
         except Exception as e:
             logger.error(
                 "Per-backend call_tool unexpected error for %s/%s: %s: %s",
@@ -344,7 +357,10 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
                 e,
             )
             return [
-                TextContent(type="text", text=f"Error: unexpected failure for {name}")
+                TextContent(
+                    type="text",
+                    text=f"Error: unexpected failure for {name} — if this persists, report to examiner",
+                )
             ]
 
         # Normalise to list of TextContent

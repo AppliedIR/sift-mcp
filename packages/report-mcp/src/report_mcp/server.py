@@ -621,7 +621,7 @@ def create_server() -> FastMCP:
                 }
             case_dir = _resolve_case_dir(case_id)
             result = _generate(profile, case_dir, finding_ids, start_date, end_date)
-            audit.log(
+            logged_id = audit.log(
                 tool="generate_report",
                 params={
                     "profile": profile,
@@ -634,6 +634,8 @@ def create_server() -> FastMCP:
                     "findings": len(result.get("report_data", {}).get("findings", [])),
                 },
             )
+            if logged_id is None:
+                result["warning"] = "Audit write failed — action not recorded"
             return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}
@@ -705,12 +707,15 @@ def create_server() -> FastMCP:
 
             _atomic_write(meta_file, yaml.dump(meta, default_flow_style=False))
 
-            audit.log(
+            logged_id = audit.log(
                 tool="set_case_metadata",
                 params={"field": field, "value": value},
                 result_summary={"status": "set", "field": field},
             )
-            return {"status": "set", "field": field, "value": value}
+            result = {"status": "set", "field": field, "value": value}
+            if logged_id is None:
+                result["warning"] = "Audit write failed — action not recorded"
+            return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}
 
@@ -784,7 +789,7 @@ def create_server() -> FastMCP:
 
             _atomic_write(report_path, content)
 
-            audit.log(
+            logged_id = audit.log(
                 tool="save_report",
                 params={
                     "filename": sanitized,
@@ -793,13 +798,16 @@ def create_server() -> FastMCP:
                 },
                 result_summary={"status": "saved", "filename": sanitized},
             )
-            return {
+            result = {
                 "status": "saved",
                 "path": str(report_path),
                 "filename": sanitized,
                 "profile": profile,
                 "characters": len(content),
             }
+            if logged_id is None:
+                result["warning"] = "Audit write failed — action not recorded"
+            return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}
 

@@ -224,9 +224,11 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         except Exception as e:
             logger.error("record_finding failed: %s", e)
             return {"error": str(e)}
-        audit.log(
+        logged_id = audit.log(
             tool="record_finding", params={"finding": finding}, result_summary=result
         )
+        if logged_id is None:
+            result["warning"] = "Audit write failed — action not recorded"
 
         # Enrich with considerations when staging succeeds
         if result.get("status") == "STAGED":
@@ -280,9 +282,11 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         except Exception as e:
             logger.error("record_timeline_event failed: %s", e)
             return {"error": str(e)}
-        audit.log(
+        logged_id = audit.log(
             tool="record_timeline_event", params={"event": event}, result_summary=result
         )
+        if logged_id is None:
+            result["warning"] = "Audit write failed — action not recorded"
         return result
 
     @server.tool()
@@ -372,11 +376,13 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         except Exception as e:
             logger.error("add_todo failed: %s", e)
             return {"error": str(e)}
-        audit.log(
+        logged_id = audit.log(
             tool="add_todo",
             params={"description": description, "assignee": assignee},
             result_summary=result,
         )
+        if logged_id is None:
+            result["warning"] = "Audit write failed — action not recorded"
         return result
 
     @server.tool()
@@ -413,9 +419,11 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         except Exception as e:
             logger.error("update_todo failed: %s", e)
             return {"error": str(e)}
-        audit.log(
+        logged_id = audit.log(
             tool="update_todo", params={"todo_id": todo_id}, result_summary=result
         )
+        if logged_id is None:
+            result["warning"] = "Audit write failed — action not recorded"
         return result
 
     @server.tool()
@@ -426,9 +434,11 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         except Exception as e:
             logger.error("complete_todo failed: %s", e)
             return {"error": str(e)}
-        audit.log(
+        logged_id = audit.log(
             tool="complete_todo", params={"todo_id": todo_id}, result_summary=result
         )
+        if logged_id is None:
+            result["warning"] = "Audit write failed — action not recorded"
         return result
 
     # --- Evidence ---
@@ -602,11 +612,13 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
             )
 
             result = _get_fw()
-            audit.log(
+            logged_id = audit.log(
                 tool="get_investigation_framework",
                 params={},
                 result_summary={"keys": list(result.keys())},
             )
+            if logged_id is None:
+                result["warning"] = "Audit write failed — action not recorded"
             return result
         except Exception as e:
             logger.error("get_investigation_framework failed: %s", e)
