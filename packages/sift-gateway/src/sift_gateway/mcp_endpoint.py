@@ -20,13 +20,36 @@ from typing import Any
 from mcp.server.lowlevel.server import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.types import TextContent, Tool
-from sift_common.instructions import GATEWAY as _GATEWAY_INSTRUCTIONS
+from sift_common.instructions import (
+    CASE_MCP,
+    FORENSIC_MCP,
+    FORENSIC_RAG,
+    GATEWAY as _GATEWAY_INSTRUCTIONS,
+    OPENCTI,
+    REPORT_MCP,
+    SIFT_MCP,
+    WINDOWS_TRIAGE,
+)
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from sift_gateway.rate_limit import check_rate_limit
 
 logger = logging.getLogger(__name__)
+
+# Static instruction map for known local backends.
+# Used by create_backend_mcp_server() so per-backend MCP endpoints deliver
+# backend-specific instructions to clients during the Initialize handshake,
+# regardless of whether the backend subprocess has started yet.
+_BACKEND_INSTRUCTIONS: dict[str, str] = {
+    "forensic-mcp": FORENSIC_MCP,
+    "sift-mcp": SIFT_MCP,
+    "case-mcp": CASE_MCP,
+    "report-mcp": REPORT_MCP,
+    "forensic-rag-mcp": FORENSIC_RAG,
+    "windows-triage-mcp": WINDOWS_TRIAGE,
+    "opencti-mcp": OPENCTI,
+}
 
 # Tools that accept analyst_override for identity injection.
 ANALYST_TOOLS: frozenset[str] = frozenset(
@@ -269,7 +292,10 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
     so that MCP sessions are isolated per backend.
     """
     backend = gateway.backends[backend_name]
-    server = Server(f"sift-gateway/{backend_name}")
+    instructions = _BACKEND_INSTRUCTIONS.get(backend_name)
+    if instructions is None:
+        instructions = backend.instructions
+    server = Server(f"sift-gateway/{backend_name}", instructions=instructions)
 
     @server.list_tools()
     async def _list_tools() -> list[Tool]:

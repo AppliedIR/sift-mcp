@@ -18,7 +18,7 @@ class TestInstructionConstants:
         assert isinstance(FORENSIC_MCP, str)
         assert len(FORENSIC_MCP) > 100
         assert "RULE ZERO" in FORENSIC_MCP
-        assert "investigation-framework" in FORENSIC_MCP
+        assert "get_investigation_framework" in FORENSIC_MCP
 
     def test_sift_mcp_has_evidence_sovereign(self):
         assert isinstance(SIFT_MCP, str)
@@ -36,7 +36,7 @@ class TestInstructionConstants:
         assert len(GATEWAY) > 50
         assert "forensic-mcp" in GATEWAY
         assert "sift-mcp" in GATEWAY
-        assert "investigation-framework" in GATEWAY
+        assert "get_investigation_framework" in GATEWAY
 
     def test_windows_triage_explains_unknown(self):
         assert isinstance(WINDOWS_TRIAGE, str)

@@ -16,6 +16,7 @@ class MCPBackend(ABC):
         self.name = name
         self.config = config
         self._started = False
+        self._instructions: str | None = None
         self.last_tool_call: float = 0.0  # time.monotonic() of last activity
 
     @property
@@ -25,6 +26,11 @@ class MCPBackend(ABC):
     @property
     def started(self) -> bool:
         return self._started
+
+    @property
+    def instructions(self) -> str | None:
+        """Instructions captured from the backend during initialize()."""
+        return self._instructions
 
     @abstractmethod
     async def start(self) -> None:

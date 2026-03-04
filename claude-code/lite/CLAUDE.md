@@ -175,7 +175,7 @@ artifacts: [{
 Plus:
   observation:    What the evidence shows (factual)
   interpretation: What it might mean (analytical)
-  confidence:     HIGH/MEDIUM/LOW with justification
+  confidence:     SPECULATIVE/LOW/MEDIUM/HIGH with justification
 
 > Human: Review the evidence above. [Specific question for approval]
 

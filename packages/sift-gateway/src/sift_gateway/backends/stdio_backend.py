@@ -60,7 +60,8 @@ class StdioMCPBackend(MCPBackend):
             self._session = await self._exit_stack.enter_async_context(
                 ClientSession(read_stream, write_stream)
             )
-            await self._session.initialize()
+            result = await self._session.initialize()
+            self._instructions = result.instructions
             self._started = True
             logger.info("Backend %s started (stdio)", self.name)
         except Exception as exc:

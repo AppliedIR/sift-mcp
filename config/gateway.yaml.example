@@ -28,7 +28,7 @@ backends:
   forensic-mcp:
     type: stdio
     command: "python"
-    args: ["-m", "forensic_mcp"]
+    args: ["-m", "forensic_mcp", "--deferred-tools"]
     env:
       AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
       AIIR_ACTIVE_CASE: "${AIIR_ACTIVE_CASE}"

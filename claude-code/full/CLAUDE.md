@@ -274,7 +274,7 @@ artifacts: [{
 Plus:
   observation:    What the evidence shows (factual)
   interpretation: What it might mean (analytical)
-  confidence:     HIGH/MEDIUM/LOW with justification
+  confidence:     SPECULATIVE/LOW/MEDIUM/HIGH with justification
 
 Use `supporting_commands` for data processing tools only (iconv, grep,
 find, sort, awk). Forensic tool output goes in `artifacts`.

@@ -48,14 +48,14 @@ EVIDENCE: [Title]
 Source:     [File path of artifact]            → artifacts[].source
 Extraction: [Tool and command used]            → artifacts[].extraction
 
-Raw Data:                                      → artifacts[].content
+Content:                                       → artifacts[].content
 ───────────────────────────────────────────────────────────────────────────────
 [Actual log entry / record / content - NOT a summary]
 ───────────────────────────────────────────────────────────────────────────────
 
 Observation:    [Fact]                         → finding.observation
 Interpretation: [What it might mean]           → finding.interpretation
-Confidence:     [HIGH/MEDIUM/LOW + why]        → finding.confidence
+Confidence:     [SPECULATIVE/LOW/MEDIUM/HIGH + why]  → finding.confidence
 
 → Human: Review the evidence above. [Specific question for approval]
 ```
@@ -232,7 +232,7 @@ Prevention:
 #### Artifact: [Name]
 - Source: [Path]
 - Extraction: [Command]
-- Raw Data:
+- Content:
   ```
   [Actual content]
   ```
@@ -244,7 +244,7 @@ Prevention:
 ### Interpretation
 [What evidence suggests - labeled as interpretation]
 
-### Confidence: [HIGH/MEDIUM/LOW]
+### Confidence: [SPECULATIVE/LOW/MEDIUM/HIGH]
 - Supporting: [Evidence references]
 - Gaps: [Missing evidence]
 - Contradictions: [Conflicts]

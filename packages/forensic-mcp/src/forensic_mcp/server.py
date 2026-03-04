@@ -152,52 +152,28 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     ) -> dict:
         """Stage finding as DRAFT for human review.
 
-        Every finding needs an evidence trail (provenance). There are three ways:
-
-        1. MCP evidence: Pass evidence_ids from MCP tool responses (the evidence_id
-           field in tool results). This is the strongest provenance.
-        2. Shell evidence: Pass supporting_commands as a SEPARATE PARAMETER (not
-           inside the finding dict) with the Bash commands you ran. Each command
-           generates an audited evidence ID automatically.
-        3. Analytical: For hypotheses without tool evidence (SPECULATIVE/LOW), pass
-           a supporting_commands entry with command="analytical reasoning",
-           output_excerpt describing what you observed, and purpose explaining your
-           reasoning chain.
-
-        Findings with no evidence trail and no supporting_commands are rejected.
+        Findings require an evidence trail (provenance). Provide evidence_ids from
+        MCP tool responses, or pass supporting_commands for shell-based evidence,
+        or both. Findings with no evidence trail are rejected.
 
         Required fields in finding dict:
-        - title (str): brief summary (max 500 chars)
-        - observation (str): factual evidence — what was seen (max 10000 chars)
-        - interpretation (str): analytical meaning — what it implies (max 10000 chars)
+        - title (str): brief summary
+        - observation (str): factual evidence — what was seen
+        - interpretation (str): analytical meaning — what it implies
         - confidence: SPECULATIVE, LOW, MEDIUM, or HIGH
-        - confidence_justification (str): why this confidence level — REQUIRED, not optional (max 10000 chars)
+        - confidence_justification (str): why this confidence level
         - type: finding, conclusion, attribution, or exclusion
-        - evidence_ids (list[str]): IDs from MCP tool responses (format: prefix-examiner-YYYYMMDD-NNN).
-          Use [] for SPECULATIVE/LOW findings without MCP evidence, but then you MUST provide
-          supporting_commands.
+        - evidence_ids (list[str]): IDs from MCP tool responses. Use [] if providing
+          supporting_commands only.
 
-        Optional fields in finding dict:
-        - mitre_ids (list[str]): ATT&CK technique IDs (e.g. ["T1055", "T1053.005"])
-        - iocs (list[str]): indicators of compromise
-        - event_type (str): process, network, file, registry, auth, persistence, lateral, execution, or other
-        - artifact_ref, related_findings
+        Optional: mitre_ids, iocs, event_type, artifact_ref, related_findings
 
-        supporting_commands (SEPARATE PARAMETER, not inside finding dict):
-        List of dicts, each with:
-        - command (str, required): the command that was run, or "analytical reasoning" for hypotheses
-        - purpose (str, required): why this command was run / what reasoning was applied
-        - output_excerpt (str, optional): relevant output snippet (max 2000 chars)
-        Max 5 commands. Each generates an audited shell evidence ID.
+        supporting_commands (separate parameter, list of dicts): Bash commands used.
+        Each dict: {command, purpose, output_excerpt}. Use command="analytical reasoning"
+        for hypothesis-only findings.
 
-        artifacts (SEPARATE PARAMETER, not inside finding dict):
-        Raw evidence the examiner reviewed. List of dicts, each with:
-        - source (str, required): file path of the artifact
-        - extraction (str, required): full command used to extract it
-        - content (str, required): the literal raw data — NOT a summary. Use the field name 'content', not 'raw_data'.
-        - content_type (str, optional): csv_row, log_entry, registry_key, process_tree, network_capture, file_metadata, raw_text
-        - purpose (str, optional): why this extraction was performed
-        Max 10 artifacts, content truncated to 5000 chars.
+        artifacts (separate parameter, list of dicts): raw evidence reviewed.
+        Each dict: {source, extraction, content, content_type (optional), purpose (optional)}.
 
         Requires human approval via 'aiir approve'."""
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
