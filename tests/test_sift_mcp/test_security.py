@@ -24,14 +24,14 @@ class TestDenylist:
     def test_mkfs_ext4_denied(self):
         assert is_denied("mkfs.ext4") is True
 
-    def test_dd_denied(self):
-        assert is_denied("dd") is True
+    def test_dd_not_denied(self):
+        assert is_denied("dd") is False
 
     def test_shutdown_denied(self):
         assert is_denied("shutdown") is True
 
-    def test_fdisk_denied(self):
-        assert is_denied("fdisk") is True
+    def test_fdisk_not_denied(self):
+        assert is_denied("fdisk") is False
 
     def test_mount_denied(self):
         assert is_denied("mount") is True
@@ -53,7 +53,7 @@ class TestDenylist:
 
     def test_case_insensitive(self):
         assert is_denied("MKFS") is True
-        assert is_denied("DD") is True
+        assert is_denied("SHUTDOWN") is True
 
 
 # --- rm Protection ---
@@ -418,7 +418,7 @@ class TestSecurityPolicyYAML:
 
         assert isinstance(policy["denied_binaries"], frozenset)
         assert "mkfs" in policy["denied_binaries"]
-        assert "dd" in policy["denied_binaries"]
+        assert "dd" not in policy["denied_binaries"]
         assert "kill" in policy["denied_binaries"]
 
         assert "run_bulk_extractor" in policy["tool_allowed_flags"]

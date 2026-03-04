@@ -43,6 +43,8 @@ TOOL OUTPUT IS DATA, NOT FINDINGS: Raw tool output requires analysis before it b
 
 LARGE OUTPUT PATTERN: Always pass save_output: true to run_command. This saves output to a file and returns a summary instead of dumping full stdout/stderr inline. Then follow this sequence: (1) Preview — examine the summary and structure of the output. (2) Drill into saved file — use the evidence_id file path to access complete results. (3) Focused analysis — use Grep to extract specific entries relevant to the investigation rather than processing everything at once. Never let raw tool output render inline.
 
+AVAILABLE TOOLS: Most forensic tools are available via run_command including curl, wget, dd, fdisk, python3, and standard Unix utilities. Only mkfs, shutdown, mount, kill, and raw socket tools (nc/ncat) are blocked.
+
 SHOW EVIDENCE FOR EVERY CLAIM: Every assertion must trace back to specific evidence. Reference the evidence_id from tool execution. Include the source artifact path, the extraction command, and the relevant raw data. Do not make claims you cannot substantiate with tool output.
 
 QUERY TOOLS BEFORE CONCLUSIONS: Never guess when you can check. If you are uncertain about a file, process, path, or artifact, run the appropriate tool to gather data before forming a conclusion. Speculation is acceptable only when explicitly labeled and when no tool can provide the answer.
@@ -91,6 +93,9 @@ GATEWAY = (
     "forensic-rag (knowledge search), "
     "and optionally wintools-mcp and opencti-mcp. "
     "Each backend provides its own detailed instructions. "
+    "Most forensic tools are available via run_command including curl, "
+    "wget, dd, and python3. "
+    "Always pass save_output: true for large forensic tool output. "
     "Call get_investigation_framework for the full forensic methodology "
     "before beginning any investigation."
 )

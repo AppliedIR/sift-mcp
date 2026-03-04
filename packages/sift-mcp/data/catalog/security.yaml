@@ -51,36 +51,28 @@ output_flags:
   - "--jsonl"
 
 denied_binaries:
+  # Filesystem destruction — no forensic use, no unblocked equivalent
   - "mkfs"
   - "mkfs.ext4"
   - "mkfs.xfs"
   - "mkfs.btrfs"
   - "mkfs.ntfs"
-  - "dd"
-  - "fdisk"
-  - "parted"
-  - "gdisk"
+  # System state — no forensic use
   - "shutdown"
   - "reboot"
   - "poweroff"
   - "halt"
   - "init"
+  # Filesystem mounts — LLM should use fls/icat, not kernel mounts
   - "mount"
   - "umount"
+  # Process termination — timeouts handle hung tools
   - "kill"
   - "killall"
   - "pkill"
+  # Environment leak — dumps gateway tokens
   - "env"
   - "printenv"
-  - "set"
-  - "export"
-  - "curl"
-  - "wget"
+  # Raw sockets — no forensic use via run_command
   - "nc"
   - "ncat"
-  - "perl"
-  - "ruby"
-  - "node"
-  - "xargs"
-  - "chmod"
-  - "chown"

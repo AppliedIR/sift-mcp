@@ -103,6 +103,8 @@ Live threat intel from OpenCTI instance.
 - **Recent:** get_recent_indicators
 - **System:** get_health
 
+**Note:** OpenCTI queries are sent to your configured OpenCTI instance. Avoid embedding case-specific PII or credentials in search queries — use IOC values (hashes, IPs, domains) directly.
+
 ### remnux-mcp (Malware Analysis) - optional
 Automated malware analysis via REMnux instance. 200+ tools, isolated execution.
 Results return inline (no file retrieval needed for standard analysis).

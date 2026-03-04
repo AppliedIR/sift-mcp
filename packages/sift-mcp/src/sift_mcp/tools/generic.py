@@ -48,7 +48,7 @@ def run_command(
     # Denylist check — hard block on catastrophic binaries
     if is_denied(binary):
         raise DeniedBinaryError(
-            f"Binary '{binary}' is blocked (system-destructive operation). "
+            f"Binary '{binary}' is blocked by security policy. "
             f"This restriction cannot be overridden."
         )
 

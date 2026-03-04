@@ -143,9 +143,11 @@ Data-driven investigation reports with profile-based formatting.
 - `list_reports` — list saved reports
 
 ### sift-mcp (SIFT Tool Execution)
-Runs forensic tools installed on the SIFT workstation. A denylist
-blocks dangerous binaries; all other tools can execute. Cataloged
-tools get FK-enriched responses.
+Runs forensic tools installed on the SIFT workstation. Most tools are
+available including curl, wget, dd, fdisk, python3, and standard Unix
+utilities. Only mkfs, shutdown, mount, kill, and raw socket tools
+(nc/ncat) are blocked. Cataloged tools get FK-enriched responses.
+Always pass save_output: true for large outputs.
 
 - `run_command` — execute forensic tool, returns output + evidence_id
 - `list_available_tools` — tools on this system with availability
@@ -179,7 +181,7 @@ Live threat intel from OpenCTI instance.
 - **Recent:** `get_recent_indicators`
 - **System:** `get_health`
 
-**IMPORTANT:** OpenCTI queries are sent to an external server. Never include case-specific sensitive data (passwords, PII, internal IPs) in search queries. Use generic threat indicators only.
+**Note:** OpenCTI queries are sent to your configured OpenCTI instance. Avoid embedding case-specific PII or credentials in search queries — use IOC values (hashes, IPs, domains) directly.
 
 ### remnux-mcp (Malware Analysis) — optional, user-provided
 Automated malware analysis via a separate REMnux VM. 200+ tools,

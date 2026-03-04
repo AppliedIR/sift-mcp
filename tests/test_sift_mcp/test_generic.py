@@ -20,10 +20,6 @@ class TestGenericRunCommand:
         with pytest.raises(DeniedBinaryError, match="blocked"):
             run_command(["mkfs", "/dev/sda1"])
 
-    def test_rejects_dd(self):
-        with pytest.raises(DeniedBinaryError, match="blocked"):
-            run_command(["dd", "if=/dev/zero", "of=/dev/sda"])
-
     def test_rejects_shutdown(self):
         with pytest.raises(DeniedBinaryError, match="blocked"):
             run_command(["shutdown", "-h", "now"])
@@ -62,7 +58,7 @@ class TestGenericRunCommand:
     def test_denied_binary_error_message(self):
         """Verify the error message for denied binaries."""
         with pytest.raises(DeniedBinaryError) as exc_info:
-            run_command(["fdisk", "/dev/sda"])
+            run_command(["mkfs.ext4", "/dev/sda"])
         assert "cannot be overridden" in str(exc_info.value)
 
     def test_rm_blocks_root(self):
