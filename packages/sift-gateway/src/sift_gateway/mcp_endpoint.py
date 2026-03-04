@@ -24,12 +24,12 @@ from sift_common.instructions import (
     CASE_MCP,
     FORENSIC_MCP,
     FORENSIC_RAG,
-    GATEWAY as _GATEWAY_INSTRUCTIONS,
     OPENCTI,
     REPORT_MCP,
     SIFT_MCP,
     WINDOWS_TRIAGE,
 )
+from sift_common.instructions import GATEWAY as _GATEWAY_INSTRUCTIONS
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 

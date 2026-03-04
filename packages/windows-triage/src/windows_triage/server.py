@@ -306,7 +306,7 @@ class WindowsTriageServer:
             return [
                 Tool(
                     name="check_file",
-                    description="Check a file path/name against Windows baseline. Returns whether the file is expected on a clean Windows system.",
+                    description="Check a file path against the Windows baseline database. Returns verdict: EXPECTED, EXPECTED_LOLBIN (legitimate but abusable), SUSPICIOUS, or UNKNOWN (not in database — neutral, not an indicator). Pass os_version for version-specific baselines. For hash-based checks, use check_hash instead.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -328,7 +328,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_process_tree",
-                    description="Validate process parent-child relationship against expectations database.",
+                    description="Validate a process parent-child relationship against the Windows process tree baseline. Returns verdict: EXPECTED, SUSPICIOUS (unexpected parent for this child), or UNKNOWN. Example: svchost.exe should have services.exe as parent — any other parent is SUSPICIOUS. Pass path and user for more precise matching.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -354,7 +354,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_service",
-                    description="Check if a Windows service exists in the baseline for a specific OS version. OS version is REQUIRED because services vary significantly between Windows versions - a legitimate service on Windows 10 1507 may not exist on Windows 11 and could indicate malicious activity if found there.",
+                    description="Check a Windows service against the baseline for a specific OS version. Returns verdict: EXPECTED, SUSPICIOUS, or UNKNOWN. OS version is REQUIRED — services vary between Windows versions. Pass binary_path for service binary hijacking detection. For persistence via registry autoruns, use check_autorun instead.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -376,7 +376,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_scheduled_task",
-                    description="Check if a scheduled task exists in the Windows baseline for a specific OS version. OS version is REQUIRED because scheduled tasks vary between Windows versions - legacy tasks may not exist on modern Windows.",
+                    description="Check a scheduled task against the Windows baseline. Returns verdict: EXPECTED, SUSPICIOUS, or UNKNOWN. OS version is REQUIRED — scheduled tasks vary between Windows versions. Use the full task path (e.g., '\\\\Microsoft\\\\Windows\\\\UpdateOrchestrator\\\\Schedule Scan').",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -394,7 +394,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_autorun",
-                    description="Check if a registry autorun entry exists in the baseline for a specific OS version. OS version is REQUIRED because autorun entries vary between Windows versions.",
+                    description="Check a registry autorun/persistence entry against the baseline. Returns verdict: EXPECTED, SUSPICIOUS, or UNKNOWN. OS version is REQUIRED. Covers Run/RunOnce keys and other persistence locations. For general registry key lookups, use check_registry instead.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -416,7 +416,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_registry",
-                    description="Check if a registry key or value exists in the full registry baseline. Requires the optional known_good_registry.db (12GB). For persistence checks, use check_autorun instead.",
+                    description="Check a registry key or value against the full registry baseline (requires known_good_registry.db, 12GB). Returns verdict: EXPECTED, SUSPICIOUS, or UNKNOWN. For autorun/persistence checks specifically, use check_autorun instead — it's faster and doesn't require the large DB.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -442,7 +442,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_hash",
-                    description="Check file hash against vulnerable driver database (LOLDrivers). For threat intelligence, use opencti-mcp separately.",
+                    description="Check a file hash (MD5/SHA1/SHA256) against the LOLDrivers vulnerable driver database. Returns verdict: SUSPICIOUS (known vulnerable driver) or UNKNOWN (not in LOLDrivers database). For broader threat intel (malware hashes, IOCs), use opencti-mcp lookup_hash instead. For filename-based analysis, use check_file.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -456,7 +456,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="analyze_filename",
-                    description="Analyze a filename for suspicious characteristics: Unicode evasion, typosquatting, double extensions, known tools.",
+                    description="Analyze a filename for deception techniques: Unicode homoglyph evasion, typosquatting of system binaries, double extensions (e.g., doc.exe), and known attacker tools. Returns a list of detected suspicious characteristics with severity. Does not check file content — for path-based baseline checks use check_file.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -470,7 +470,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_lolbin",
-                    description="Check if a filename is a known LOLBin (Living Off The Land Binary) and get abuse information.",
+                    description="Check if a binary is a known LOLBin (Living Off The Land Binary) that attackers abuse for execution, download, or persistence. Returns abuse techniques and MITRE ATT&CK mappings if known. A LOLBin match is not inherently malicious — check the execution context (parent process, command line arguments).",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -484,7 +484,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_hijackable_dll",
-                    description="Check if a DLL is vulnerable to DLL hijacking attacks.",
+                    description="Check if a DLL name is known to be vulnerable to DLL search-order hijacking. Returns the legitimate owner application and hijack context if vulnerable. Finding a hijackable DLL in an unexpected location is a persistence indicator.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -498,7 +498,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_pipe",
-                    description="Check if a named pipe is suspicious (C2 indicator) or a known Windows pipe.",
+                    description="Check a named pipe against known Windows pipes and known C2 framework pipes. Returns verdict: EXPECTED (standard Windows pipe), SUSPICIOUS (matches known C2 pipe patterns from Cobalt Strike, Metasploit, etc.), or UNKNOWN. Named pipes are a common C2 communication channel.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -512,12 +512,12 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="get_db_stats",
-                    description="Get database statistics.",
+                    description="Get statistics for all loaded baseline databases: record counts, OS versions available, last update timestamps. Use to verify which databases are loaded and their coverage before running checks.",
                     inputSchema={"type": "object", "properties": {}},
                 ),
                 Tool(
                     name="get_health",
-                    description="Get server health status including uptime, database connectivity, and cache statistics.",
+                    description="Get server health: uptime, database connectivity, cache hit rates, and memory usage. Use to diagnose slow responses or verify the server is operational.",
                     inputSchema={"type": "object", "properties": {}},
                 ),
             ]
