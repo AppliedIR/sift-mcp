@@ -232,7 +232,6 @@ if ${UNINSTALL_MODE:-false}; then
     fi
 
     # [3] Virtual environment
-    VENV_DIR="$HOME/.aiir/venv"
     if [[ -d "$VENV_DIR" ]]; then
         VENV_SIZE=$(du -sh "$VENV_DIR" 2>/dev/null | cut -f1 || echo "unknown")
         echo -e "${BOLD}[3] Virtual environment${NC}"
@@ -249,7 +248,7 @@ if ${UNINSTALL_MODE:-false}; then
     fi
 
     # [4] Source code (includes RAG index and triage databases via editable install)
-    SRC_DIR="$HOME/.aiir/src"
+    SRC_DIR="$(dirname "$INSTALL_DIR")"
     if [[ -d "$SRC_DIR" ]]; then
         SRC_SIZE=$(du -sh "$SRC_DIR" 2>/dev/null | cut -f1 || echo "unknown")
         echo -e "${BOLD}[4] Source code${NC}"
@@ -299,6 +298,7 @@ if ${UNINSTALL_MODE:-false}; then
         if prompt_yn_strict "    Remove AIIR lines from $SHELL_RC?"; then
             sed -i '/# AIIR Platform/d' "$SHELL_RC"
             sed -i '/AIIR_EXAMINER/d' "$SHELL_RC"
+            sed -i '/# aiir-path/d' "$SHELL_RC"
             sed -i '\|\.aiir/venv/bin|d' "$SHELL_RC"
             sed -i '/register-python-argcomplete aiir/d' "$SHELL_RC"
             ok "Shell profile cleaned."
@@ -960,7 +960,7 @@ if $INSTALL_TRIAGE; then
     }
 fi
 
-# 7. rag-mcp (optional, depends on 2)
+# 11. rag-mcp (optional, depends on 2)
 if $INSTALL_RAG; then
     echo ""
     info "Installing rag-mcp..."
@@ -975,7 +975,7 @@ if $INSTALL_RAG; then
     fi
 fi
 
-# 8. opencti-mcp (optional, depends on 2)
+# 12. opencti-mcp (optional, depends on 2)
 if $INSTALL_OPENCTI; then
     install_pkg "opencti-mcp" "$INSTALL_DIR/packages/opencti" || {
         warn "opencti install failed. Continuing without it."
@@ -1008,6 +1008,7 @@ smoke_test "sift-gateway"       "sift_gateway"
 smoke_test "aiir-cli"           "aiir_cli"
 smoke_test "case-mcp"           "case_mcp"
 smoke_test "report-mcp"         "report_mcp"
+smoke_test "case-dashboard"     "case_dashboard"
 $INSTALL_TRIAGE  && smoke_test "windows-triage-mcp" "windows_triage"
 $INSTALL_RAG     && smoke_test "rag-mcp"            "rag_mcp"
 $INSTALL_OPENCTI && smoke_test "opencti-mcp"        "opencti_mcp"
@@ -1201,6 +1202,11 @@ if [[ -n "$SHELL_RC_EXAMINER" ]]; then
     if grep -q "AIIR_EXAMINER" "$SHELL_RC_EXAMINER" 2>/dev/null; then
         sed -i "s/^export AIIR_EXAMINER=.*/export AIIR_EXAMINER=\"$EXAMINER_NAME\"/" "$SHELL_RC_EXAMINER"
     else
+        # Prepend marker if not already present (Phase 12 will add PATH under it)
+        if ! grep -q "# AIIR Platform" "$SHELL_RC_EXAMINER" 2>/dev/null; then
+            echo "" >> "$SHELL_RC_EXAMINER"
+            echo "# AIIR Platform" >> "$SHELL_RC_EXAMINER"
+        fi
         echo "export AIIR_EXAMINER=\"$EXAMINER_NAME\"" >> "$SHELL_RC_EXAMINER"
     fi
 fi
@@ -1466,6 +1472,7 @@ with open("$MANIFEST", "w") as f:
     f.write("\n")
 PYEOF
 
+chmod 600 "$MANIFEST"
 ok "Manifest written: $MANIFEST"
 
 # =============================================================================
@@ -1485,19 +1492,33 @@ fi
 # =============================================================================
 
 AIIR_BIN="$VENV_DIR/bin"
-if [[ ":$PATH:" != *":$AIIR_BIN:"* ]]; then
-    SHELL_RC=""
-    if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC="$HOME/.bashrc";
-    elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC="$HOME/.zshrc"; fi
+SHELL_RC=""
+if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC="$HOME/.bashrc";
+elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC="$HOME/.zshrc"; fi
 
-    if [[ -n "$SHELL_RC" ]]; then
-        if ! grep -q "$VENV_DIR/bin" "$SHELL_RC" 2>/dev/null; then
-            echo "" >> "$SHELL_RC"
-            echo "# AIIR Platform" >> "$SHELL_RC"
-            echo "export PATH=\"$AIIR_BIN:\$PATH\"" >> "$SHELL_RC"
-            ok "Added venv to PATH in $SHELL_RC"
+if [[ -n "$SHELL_RC" ]]; then
+    if grep -q "# AIIR Platform" "$SHELL_RC" 2>/dev/null; then
+        # Marker exists — update PATH line in-place (handles changed venv path)
+        if grep -q '# aiir-path' "$SHELL_RC" 2>/dev/null; then
+            sed -i "s|^export PATH=.*# aiir-path|export PATH=\"$AIIR_BIN:\$PATH\"  # aiir-path|" "$SHELL_RC"
+        elif grep -q '\.aiir/venv/bin' "$SHELL_RC" 2>/dev/null; then
+            # Legacy install without tag — replace and add tag
+            sed -i "s|^export PATH=.*\.aiir/venv/bin.*|export PATH=\"$AIIR_BIN:\$PATH\"  # aiir-path|" "$SHELL_RC"
+        else
+            # Marker exists but no PATH line — append after marker
+            echo "export PATH=\"$AIIR_BIN:\$PATH\"  # aiir-path" >> "$SHELL_RC"
         fi
+        ok "Updated venv PATH in $SHELL_RC"
+    else
+        echo "" >> "$SHELL_RC"
+        echo "# AIIR Platform" >> "$SHELL_RC"
+        echo "export PATH=\"$AIIR_BIN:\$PATH\"  # aiir-path" >> "$SHELL_RC"
+        ok "Added venv to PATH in $SHELL_RC"
     fi
+else
+    warn "No .bashrc or .zshrc found. Add to your shell profile: export PATH=\"$AIIR_BIN:\$PATH\""
+fi
+if [[ ":$PATH:" != *":$AIIR_BIN:"* ]]; then
     export PATH="$AIIR_BIN:$PATH"
 fi
 
@@ -1525,6 +1546,9 @@ GATEWAY_START="$HOME/.aiir/start-gateway.sh"
 cat > "$GATEWAY_START" << SCRIPT
 #!/usr/bin/env bash
 # Start AIIR Gateway
+export AIIR_CASE_DIR="$CASE_DIR"
+export AIIR_EXAMINER="$EXAMINER_NAME"
+export AIIR_CASES_DIR="$CASE_DIR"
 exec "$VENV_DIR/bin/python" -m sift_gateway --config "$GATEWAY_CONFIG"
 SCRIPT
 chmod +x "$GATEWAY_START"
@@ -1540,7 +1564,7 @@ fi
 
 # Check if gateway is already running
 GATEWAY_PID=""
-if curl -sf ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
+if curl -sf ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" 2>/dev/null | grep -q "aiir"; then
     ok "Gateway already running on port $GATEWAY_PORT"
 elif ! $MANUAL_START; then
     info "Starting gateway on port $GATEWAY_PORT..."
@@ -1594,6 +1618,7 @@ After=network.target
 ExecStart=$VENV_DIR/bin/python -m sift_gateway --config $GATEWAY_CONFIG
 Environment=AIIR_CASE_DIR=$CASE_DIR
 Environment=AIIR_EXAMINER=$EXAMINER_NAME
+Environment=AIIR_CASES_DIR=$CASE_DIR
 Restart=on-failure
 RestartSec=5
 
@@ -1716,14 +1741,22 @@ header "LLM Client Configuration"
 
 # Pass --sift and -y so only the client type is prompted.
 # _resolve_client() always prompts when --client is not set.
-if [[ -n "$CLIENT" ]]; then
-    "$VENV_DIR/bin/aiir" setup client --client="$CLIENT" --sift="http://127.0.0.1:$GATEWAY_PORT" -y
+if $REMOTE_MODE; then
+    SIFT_URL="https://127.0.0.1:$GATEWAY_PORT"
 else
-    "$VENV_DIR/bin/aiir" setup client --sift="http://127.0.0.1:$GATEWAY_PORT" -y
+    SIFT_URL="http://127.0.0.1:$GATEWAY_PORT"
+fi
+
+if [[ -n "$CLIENT" ]]; then
+    "$VENV_DIR/bin/aiir" setup client --client="$CLIENT" --sift="$SIFT_URL" -y \
+        || warn "Client configuration failed. Run manually: aiir setup client"
+else
+    "$VENV_DIR/bin/aiir" setup client --sift="$SIFT_URL" -y \
+        || warn "Client configuration failed. Run manually: aiir setup client"
 fi
 
 # Global deployment message for claude-code
-if [[ "$CLIENT" == "claude-code" ]]; then
+if grep -q '"sift-gateway"' "$HOME/.claude.json" 2>/dev/null; then
     echo ""
     echo -e "${BOLD}Forensic controls deployed globally.${NC}"
     echo "Claude Code can be launched from any directory on this machine."

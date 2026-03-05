@@ -191,13 +191,11 @@ case "$MODE" in
             echo ""
             echo -e "${BOLD}Always installed:${NC}"
             echo "  sift-common       — Shared audit and logging"
-            echo "  forensic-rag      — Knowledge search MCP (package only)"
-            echo "  windows-triage    — Baseline validation MCP (package only)"
             echo ""
-            echo -e "${BOLD}Optional data:${NC}"
-            read -rp "  Download triage databases (~1.1 GB)? [Y/n] " reply
+            echo -e "${BOLD}Optional packages + data:${NC}"
+            read -rp "  Install windows-triage + databases (~1.1 GB download, ~6 GB on disk)? [Y/n] " reply
             [[ "$reply" =~ ^[Nn] ]] && INSTALL_TRIAGE=false
-            read -rp "  Build RAG index (~15-25 min)? [Y/n] " reply
+            read -rp "  Install forensic-rag + build index (~7 GB ML deps, ~15-25 min)? [Y/n] " reply
             [[ "$reply" =~ ^[Nn] ]] && INSTALL_RAG=false
         fi
         ;;
@@ -278,18 +276,35 @@ fi
 
 "$VENV_DIR/bin/pip" install --quiet --upgrade pip
 
-for pkg in sift-common forensic-rag windows-triage; do
-    pkg_dir="$SCRIPT_DIR/packages/$pkg"
+# sift-common always installed
+pkg_dir="$SCRIPT_DIR/packages/sift-common"
+if [[ -d "$pkg_dir" ]]; then
+    "$VENV_DIR/bin/pip" install --quiet -e "$pkg_dir"
+    ok "Installed sift-common"
+else
+    warn "sift-common not found at $pkg_dir"
+fi
+
+if [[ "$INSTALL_RAG" == "true" ]]; then
+    pkg_dir="$SCRIPT_DIR/packages/forensic-rag"
     if [[ -d "$pkg_dir" ]]; then
-        if [[ "$pkg" == "forensic-rag" ]]; then
-            echo "  Installing $pkg (downloads ML dependencies, may take several minutes)..."
-        fi
+        echo "  Installing forensic-rag (downloads ML dependencies, may take several minutes)..."
         "$VENV_DIR/bin/pip" install --quiet -e "$pkg_dir"
-        ok "Installed $pkg"
+        ok "Installed forensic-rag"
     else
-        warn "$pkg not found at $pkg_dir"
+        warn "forensic-rag not found at $pkg_dir"
     fi
-done
+fi
+
+if [[ "$INSTALL_TRIAGE" == "true" ]]; then
+    pkg_dir="$SCRIPT_DIR/packages/windows-triage"
+    if [[ -d "$pkg_dir" ]]; then
+        "$VENV_DIR/bin/pip" install --quiet -e "$pkg_dir"
+        ok "Installed windows-triage"
+    else
+        warn "windows-triage not found at $pkg_dir"
+    fi
+fi
 
 if [[ "${VENV_ONLY:-}" == "true" ]]; then
     echo ""
@@ -464,13 +479,29 @@ fi
 
 # Generate .mcp.json — merge managed entries into existing config
 MCP_JSON="$PROJECT_DIR/.mcp.json"
-_MANAGED_SERVERS='["forensic-rag", "windows-triage"]'
+
+# Build server list based on what was actually installed
+_MANAGED_LIST=""
+[[ "$INSTALL_RAG" == "true" ]] && _MANAGED_LIST="$_MANAGED_LIST\"forensic-rag\","
+[[ "$INSTALL_TRIAGE" == "true" ]] && _MANAGED_LIST="$_MANAGED_LIST\"windows-triage\","
+_MANAGED_LIST="${_MANAGED_LIST%,}"  # strip trailing comma
+_MANAGED_SERVERS="[$_MANAGED_LIST]"
+
 _NEW_CORE=$(sed -e "s|__VENV__|$VENV_DIR|g" \
     -e "s|__SRC__|$SCRIPT_DIR|g" \
     -e "s|__INDEX_DIR__|$INDEX_DIR|g" \
     -e "s|__DB_DIR__|$DB_DIR|g" \
     -e "s|__CASE_DIR__|$PROJECT_DIR|g" \
     "$LITE_DIR/mcp.json.example")
+
+# Filter template to only include managed servers
+_NEW_CORE=$("$VENV_PYTHON" -c "
+import json, sys
+core = json.loads(sys.argv[1])
+managed = json.loads(sys.argv[2])
+filtered = {k: v for k, v in core.get('mcpServers', {}).items() if k in managed}
+print(json.dumps({'mcpServers': filtered}))
+" "$_NEW_CORE" "$_MANAGED_SERVERS")
 
 "$VENV_PYTHON" -c "
 import json, sys, os
@@ -702,8 +733,9 @@ header "Installation Complete"
 
 echo ""
 echo "Installed:"
-ok "forensic-rag (knowledge search)"
-ok "windows-triage (baseline validation)"
+ok "sift-common (audit and logging)"
+[[ "$INSTALL_RAG" == "true" ]] && ok "forensic-rag (knowledge search)"
+[[ "$INSTALL_TRIAGE" == "true" ]] && ok "windows-triage (baseline validation)"
 [[ "$INSTALLED_OPENCTI" == "true" ]] && ok "opencti-mcp (threat intelligence)"
 [[ "$INSTALLED_REMNUX" == "true" ]] && ok "remnux-mcp (malware analysis)"
 [[ "$INSTALLED_MSLEARN" == "true" ]] && ok "microsoft-learn (documentation)"
