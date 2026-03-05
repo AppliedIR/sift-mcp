@@ -473,8 +473,9 @@ body {
       <div class="sidebar-controls">
         <input type="text" id="searchBox" placeholder="Search findings..." />
         <div class="filter-presets">
-          <button class="filter-preset active" data-filter="needs-review">Needs review</button>
-          <button class="filter-preset" data-filter="reviewed">Reviewed</button>
+          <button class="filter-preset active" data-filter="pending">Pending</button>
+          <button class="filter-preset" data-filter="approved">Approved</button>
+          <button class="filter-preset" data-filter="rejected">Rejected</button>
           <button class="filter-preset" data-filter="all">All</button>
         </div>
         <select id="sortSelect">
@@ -561,8 +562,9 @@ body {
     <div class="timeline-panel">
       <div class="timeline-controls">
         <div class="filter-presets">
-          <button class="filter-preset active" data-tl-filter="needs-review">Needs review</button>
-          <button class="filter-preset" data-tl-filter="reviewed">Reviewed</button>
+          <button class="filter-preset active" data-tl-filter="pending">Pending</button>
+          <button class="filter-preset" data-tl-filter="approved">Approved</button>
+          <button class="filter-preset" data-tl-filter="rejected">Rejected</button>
           <button class="filter-preset" data-tl-filter="all">All</button>
         </div>
         <select id="timelineTypeFilter" title="Event type">
@@ -645,7 +647,7 @@ let findings = [];
 let delta = { version: 1, case_id: '', items: [] };
 let caseMeta = {};
 let selectedId = null;
-let currentFilter = 'needs-review';
+let currentFilter = 'pending';
 let currentSort = 'conf-desc';
 let searchQuery = '';
 let saveTimer = null;
@@ -668,7 +670,7 @@ let evidenceSortAsc = true;
 let todosSortCol = 'priority';
 let todosSortAsc = true;
 let focusedTimelineId = null;
-let timelineFilter = 'needs-review';
+let timelineFilter = 'pending';
 let timelineTypeFilter = '';
 let batchTimelineSelected = new Set();
 
@@ -763,10 +765,13 @@ function showEmptyOrFirst() {
     document.getElementById('emptyState').style.display = '';
     document.getElementById('findingCard').style.display = 'none';
   } else if (filtered.length === 0) {
-    const allReviewed = findings.length > 0 && findings.every(f => getDeltaEntry(f.id));
-    if (allReviewed && currentFilter === 'needs-review') {
+    const allReviewed = findings.length > 0 && findings.every(f => {
+      var de = getDeltaEntry(f.id);
+      return de && de.action !== 'edit';
+    });
+    if (allReviewed && currentFilter === 'pending') {
       document.getElementById('emptyState').innerHTML =
-        '<h2>All findings reviewed!</h2><p>Run <code>aiir approve --review</code> in your terminal to commit.</p>';
+        '<h2>No pending findings remaining</h2><p>Run <code>aiir approve --review</code> in your terminal to commit.</p>';
     } else {
       document.getElementById('emptyState').innerHTML =
         '<h2>No findings match current filter</h2><p>Try changing the filter or search.</p>';
@@ -842,10 +847,21 @@ function getFilteredFindings() {
   let list = [...findings];
 
   // Filter
-  if (currentFilter === 'needs-review') {
-    list = list.filter(f => !getDeltaEntry(f.id));
-  } else if (currentFilter === 'reviewed') {
-    list = list.filter(f => getDeltaEntry(f.id));
+  if (currentFilter === 'pending') {
+    list = list.filter(f => {
+      var de = getDeltaEntry(f.id);
+      return !de || de.action === 'edit';
+    });
+  } else if (currentFilter === 'approved') {
+    list = list.filter(f => {
+      var de = getDeltaEntry(f.id);
+      return de && de.action === 'approve';
+    });
+  } else if (currentFilter === 'rejected') {
+    list = list.filter(f => {
+      var de = getDeltaEntry(f.id);
+      return de && de.action === 'reject';
+    });
   }
 
   // Dimension filters
@@ -933,11 +949,13 @@ function renderSidebar() {
 function updateSidebarStats() {
   var total = findings.length;
   var findingIds = new Set(findings.map(function(f) { return f.id; }));
-  var reviewed = delta.items.filter(function(d) { return findingIds.has(d.id); }).length;
-  var remaining = total - reviewed;
+  var decided = delta.items.filter(function(d) {
+    return findingIds.has(d.id) && d.action !== 'edit';
+  }).length;
+  var pending = total - decided;
 
   document.getElementById('sidebarStats').innerHTML =
-    '<div>' + total + ' total \u00B7 ' + reviewed + ' reviewed \u00B7 ' + remaining + ' remaining</div>';
+    '<div>' + total + ' total \u00B7 ' + pending + ' pending</div>';
 }
 
 function updateProgress() {
@@ -953,7 +971,9 @@ function updateProgress() {
   }
   var total = items.length;
   var itemIds = new Set(items.map(function(i) { return i.id; }));
-  var reviewed = delta.items.filter(function(d) { return itemIds.has(d.id); }).length;
+  var reviewed = delta.items.filter(function(d) {
+    return itemIds.has(d.id) && d.action !== 'edit';
+  }).length;
   var pct = total > 0 ? Math.round((reviewed / total) * 100) : 0;
   document.getElementById('progressText').textContent =
     reviewed + ' of ' + total + ' ' + label + ' reviewed';
@@ -1328,7 +1348,7 @@ async function doSkip() {
 }
 
 function advanceToNext() {
-  if (currentFilter !== 'needs-review') return;
+  if (currentFilter !== 'pending') return;
   const filtered = getFilteredFindings();
   if (filtered.length > 0) {
     selectFinding(filtered[0].id);
@@ -1442,7 +1462,7 @@ function saveEdit(field) {
   if (JSON.stringify(newValue) === JSON.stringify(original)) { cancelEdit(); return; }
 
   const existing = getDeltaEntry(selectedId) || {
-    id: selectedId, type: f.type || 'finding', action: 'approve',
+    id: selectedId, type: f.type || 'finding', action: 'edit',
     content_hash_at_review: f.content_hash || '', modifications: {},
   };
   if (!existing.modifications) existing.modifications = {};
@@ -2154,10 +2174,21 @@ function renderTodos() {
 
 function getFilteredTimelineEvents() {
   var events = timelineEvents.slice();
-  if (timelineFilter === 'needs-review') {
-    events = events.filter(function(ev) { return !getDeltaEntry(ev.id); });
-  } else if (timelineFilter === 'reviewed') {
-    events = events.filter(function(ev) { return !!getDeltaEntry(ev.id); });
+  if (timelineFilter === 'pending') {
+    events = events.filter(function(ev) {
+      var de = getDeltaEntry(ev.id);
+      return !de || de.action === 'edit';
+    });
+  } else if (timelineFilter === 'approved') {
+    events = events.filter(function(ev) {
+      var de = getDeltaEntry(ev.id);
+      return de && de.action === 'approve';
+    });
+  } else if (timelineFilter === 'rejected') {
+    events = events.filter(function(ev) {
+      var de = getDeltaEntry(ev.id);
+      return de && de.action === 'reject';
+    });
   }
   if (timelineTypeFilter) {
     events = events.filter(function(ev) {
@@ -2349,8 +2380,8 @@ function renderTimeline() {
     return;
   }
   if (filtered.length === 0) {
-    var msg = timelineFilter === 'needs-review'
-      ? 'All events reviewed! Run <code>aiir approve --review</code> to apply.'
+    var msg = timelineFilter === 'pending'
+      ? 'No pending events remaining. Run <code>aiir approve --review</code> to apply.'
       : 'No events match current filters.';
     container.innerHTML = '<div class="tl-empty"><h2>' + msg + '</h2></div>';
     updateTimelineSummary();
@@ -2394,7 +2425,9 @@ function updateTimelineSummary() {
   });
   var total = timelineEvents.length;
   var eventIds = new Set(timelineEvents.map(function(e) { return e.id; }));
-  var reviewed = delta.items.filter(function(d) { return eventIds.has(d.id); }).length;
+  var reviewed = delta.items.filter(function(d) {
+    return eventIds.has(d.id) && d.action !== 'edit';
+  }).length;
 
   var first = sorted[0].timestamp || sorted[0].staged || '';
   var last = sorted[sorted.length - 1].timestamp || sorted[sorted.length - 1].staged || '';
@@ -2430,7 +2463,7 @@ function navigateTimeline(dir) {
 }
 
 function advanceToNextTimeline() {
-  if (timelineFilter !== 'needs-review') return;
+  if (timelineFilter !== 'pending') return;
   var filtered = getFilteredTimelineEvents();
   if (filtered.length > 0) {
     focusTimelineEvent(filtered[0].id);
@@ -2545,7 +2578,7 @@ function saveTimelineEdit(field) {
   if (newValue === (original || '')) { cancelTimelineEdit(); return; }
 
   var existing = getDeltaEntry(focusedTimelineId) || {
-    id: focusedTimelineId, type: ev.type || 'timeline_event', action: 'approve',
+    id: focusedTimelineId, type: ev.type || 'timeline_event', action: 'edit',
     content_hash_at_review: ev.content_hash || '', modifications: {},
   };
   if (!existing.modifications) existing.modifications = {};
