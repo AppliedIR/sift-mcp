@@ -132,8 +132,8 @@ def _load_jsonl(path: Path) -> list[dict]:
     return entries
 
 
-def _verify_findings(case_dir: Path, findings: list[dict]) -> list[dict]:
-    """Add computed verification field to each finding.
+def _verify_items(case_dir: Path, items: list[dict]) -> list[dict]:
+    """Add computed verification field to each item (finding or timeline event).
 
     Reimplements content-hash comparison from case_io.py.
     Five states: confirmed, tampered, unverified, no approval record, draft.
@@ -148,7 +148,7 @@ def _verify_findings(case_dir: Path, findings: list[dict]) -> list[dict]:
             last_approval[item_id] = record
 
     results = []
-    for f in findings:
+    for f in items:
         result = dict(f)
         status = f.get("status", "DRAFT")
         fid = f.get("id", "")
@@ -185,7 +185,7 @@ async def get_findings(request: Request) -> JSONResponse:
     if not case_dir:
         return _no_case_response()
     findings = _load_json(case_dir / "findings.json") or []
-    verified = _verify_findings(case_dir, findings)
+    verified = _verify_items(case_dir, findings)
     return JSONResponse(verified)
 
 
@@ -195,7 +195,7 @@ async def get_finding_by_id(request: Request) -> JSONResponse:
         return _no_case_response()
     finding_id = request.path_params["id"]
     findings = _load_json(case_dir / "findings.json") or []
-    verified = _verify_findings(case_dir, findings)
+    verified = _verify_items(case_dir, findings)
     for f in verified:
         if f.get("id") == finding_id:
             return JSONResponse(f)
@@ -207,7 +207,8 @@ async def get_timeline(request: Request) -> JSONResponse:
     if not case_dir:
         return _no_case_response()
     timeline = _load_json(case_dir / "timeline.json") or []
-    return JSONResponse(timeline)
+    verified = _verify_items(case_dir, timeline)
+    return JSONResponse(verified)
 
 
 async def get_evidence(request: Request) -> JSONResponse:

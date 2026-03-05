@@ -574,6 +574,7 @@ class CaseManager:
             "created_by": exam,
             "examiner": exam,
         }
+        event_record["content_hash"] = _compute_content_hash(event_record)
         timeline.append(event_record)
         self._save_timeline(case_dir, timeline)
 
