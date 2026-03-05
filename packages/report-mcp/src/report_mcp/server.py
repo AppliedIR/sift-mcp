@@ -54,6 +54,84 @@ _HASH_EXCLUDE_KEYS = {
 }
 
 
+_WRITING_GUIDANCE = """Report Writing Guidance (forensic-specific):
+
+1. DRAFT STATUS: This is a draft for human curation. Sections marked in
+   human_review_required need placeholder guidance, not fabrication. Write
+   "[HUMAN INPUT NEEDED: ...]" with specific prompts for what to add.
+
+2. FINDING SYNTHESIS: Group findings by MITRE ATT&CK technique or kill
+   chain phase. Tell a coherent attack narrative, not a disconnected list.
+   Cross-reference related findings by ID.
+
+3. CONFIDENCE COMMUNICATION:
+   - HIGH: State as established fact ("The attacker exfiltrated...")
+   - MEDIUM: Use evidential language ("Evidence suggests...",
+     "Analysis indicates...")
+   - LOW: Use preliminary framing ("Preliminary indicators suggest...",
+     "Initial analysis points to...")
+
+4. MITRE ATT&CK IN PROSE: Weave technique references into the narrative
+   ("The attacker used credential dumping (T1003) to harvest..."). Do not
+   just table-dump technique IDs.
+
+5. IOC PRESENTATION: For executive profile, summarize IOC categories and
+   counts. For full/IOC profiles, present structured tables with
+   cross-references to source findings.
+
+6. INTEGRITY: If an integrity_warning key is present in this response,
+   include a conspicuous integrity statement in the report. Do not bury it.
+
+7. AUDIENCE: Executive summary uses business impact language, no technical
+   jargon. Technical sections use forensic precision. Adjust vocabulary
+   per section, not per report.
+
+8. CONTEXT FIELD: When a finding includes a 'context' field with examiner
+   notes, incorporate that context into the narrative. These are
+   examiner-verified observations about data exposure, business impact,
+   or third-party relevance. Cite them authoritatively.
+
+9. EVIDENCE: Reference evidence in general terms ("forensic analysis of
+   the Exchange server logs revealed..."). Do not fabricate specific
+   evidence file names or paths not present in the data."""
+
+_HUMAN_REVIEW_REQUIRED = [
+    {
+        "section": "Business Impact",
+        "reason": "Requires organizational knowledge of affected business processes, revenue impact, and regulatory exposure.",
+        "prompt": "Describe the business impact: affected operations, estimated financial impact, regulatory implications, customer/partner exposure.",
+    },
+    {
+        "section": "Third-Party Involvement",
+        "reason": "Requires knowledge of vendor relationships, shared infrastructure, and contractual obligations.",
+        "prompt": "List involved third parties, their role in the incident, notification status, and any contractual obligations triggered.",
+    },
+    {
+        "section": "What Went Well",
+        "reason": "Requires organizational context about response effectiveness.",
+        "prompt": "Describe what worked well in detection, containment, and response. Include team coordination and tool effectiveness.",
+    },
+    {
+        "section": "Action Items",
+        "reason": "Requires management input for owners, deadlines, and budget.",
+        "prompt": "Assign owners and deadlines to each recommendation. Include budget estimates where applicable.",
+    },
+    {
+        "section": "Report Changelog",
+        "reason": "Human revision tracking — not applicable to initial draft.",
+        "prompt": "Track revisions: date, author, sections changed, reason for change.",
+    },
+]
+
+_GENERATION_CONSTRAINTS = (
+    "This report data contains ONLY approved findings and timeline "
+    "events. Never reference, count, or speculate about unapproved, "
+    "draft, or rejected items in report output. The summary.findings_total "
+    "count is for internal tracking only — use summary.findings_approved "
+    "as the authoritative count in all report text."
+)
+
+
 def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
     """Reject strings exceeding max_len or containing null bytes."""
     if value is not None and isinstance(value, str):
@@ -497,6 +575,10 @@ def _generate(
     if zeltser_guidance:
         result["zeltser_guidance"] = zeltser_guidance
 
+    result["writing_guidance"] = _WRITING_GUIDANCE
+    result["human_review_required"] = _HUMAN_REVIEW_REQUIRED
+    result["generation_constraints"] = _GENERATION_CONSTRAINTS
+
     # Verification ledger reconciliation
     case_id = metadata.get("case_id", "")
     if case_id:
@@ -797,6 +879,21 @@ def create_server() -> FastMCP:
             reports_dir.mkdir(exist_ok=True)
 
             report_path = reports_dir / sanitized
+
+            # Version: never overwrite existing reports
+            if report_path.exists():
+                stem = report_path.stem
+                suffix = report_path.suffix
+                version = 2
+                while True:
+                    versioned = reports_dir / f"{stem}_v{version}{suffix}"
+                    if not versioned.exists():
+                        report_path = versioned
+                        sanitized = versioned.name
+                        break
+                    version += 1
+                    if version > 999:
+                        return {"error": "Too many report versions (max 999)."}
 
             _atomic_write(report_path, content)
 

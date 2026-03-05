@@ -964,6 +964,14 @@ function renderFinding(id) {
   html += renderEditableField('interpretation', eff.interpretation || '', f, de);
   html += '</div>';
 
+  // Context (collapsible)
+  html += '<div class="context-section" style="margin: 12px 0;">';
+  html += '<button onclick="toggleContext(\'' + escapeJsString(id) + '\')" class="btn btn-sm" style="background: #2a2a3e; color: #8b949e; border: 1px solid #3a3a4e;">Context ▾</button>';
+  html += '<div id="contextPanel-' + escapeJsString(id) + '" style="display: none; margin-top: 8px;">';
+  html += '<div class="field-section"><div class="field-label">Context</div>';
+  html += renderEditableField('context', eff.context || '', f, de);
+  html += '</div></div></div>';
+
   // Artifacts (primary evidence display)
   if (f.artifacts && f.artifacts.length) {
     html += '<div class="field-section"><div class="field-label">Evidence</div>';
@@ -1403,6 +1411,9 @@ function renderEditableField(field, value, f, de) {
       html += '<input type="text" placeholder="Add + Enter" onkeydown="addTag(event, \'' + field + '\')" />';
       html += '</div><div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'' + field + '\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
       return html;
+    } else if (field === 'context') {
+      return '<div class="inline-edit"><textarea id="editInput-context" rows="5" placeholder="Add examiner context: data exposure, business impact, third-party relevance, chain of custody notes, or any finding-specific observations the report should reflect.">' + escapeHtml(String(value)) + '</textarea>' +
+        '<div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'context\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
     } else {
       return '<div class="inline-edit"><textarea id="editInput-' + field + '">' + escapeHtml(String(value)) + '</textarea>' +
         '<div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'' + field + '\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
@@ -1412,6 +1423,18 @@ function renderEditableField(field, value, f, de) {
   let display = renderFieldWithDelta(field, value, de);
   display += ' <button style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px" onclick="startEdit(\'' + field + '\')">Edit</button>';
   return display;
+}
+
+function toggleContext(id) {
+  const panel = document.getElementById('contextPanel-' + id);
+  const btn = panel.previousElementSibling;
+  if (panel.style.display === 'none') {
+    panel.style.display = 'block';
+    btn.textContent = 'Context \u25b4';
+  } else {
+    panel.style.display = 'none';
+    btn.textContent = 'Context \u25be';
+  }
 }
 
 function addTag(e, field) {
