@@ -13,15 +13,28 @@ Monorepo for all SIFT-side AIIR components. 11 packages: forensic-mcp (12 tools 
 
 In its simplest form, AIIR Lite provides Claude Code with forensic knowledge and instructions on how to enforce forensic rigor, present findings for human review, and audit actions taken. MCP servers enhance accuracy by providing authoritative information — a forensic knowledge RAG and a Windows triage database — plus optional OpenCTI threat intelligence and REMnux malware analysis.
 
+**Quick** — Forensic discipline, MCP packages, and config. No databases (<70 MB):
+
 ```
-git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
+git clone https://github.com/AppliedIR/sift-mcp.git
+cd sift-mcp
+./quickstart-lite.sh --quick
+```
+
+**Recommended** — Adds the RAG knowledge base (22,000+ records from 23 security sources) and Windows triage databases (2.6M baseline records). Requires ~14 GB disk space:
+
+- ~7 GB — ML dependencies (PyTorch, CUDA) required by the RAG embedding model
+- ~6 GB — Windows triage baseline databases (2.6M rows, decompressed)
+- ~1 GB — RAG index, source code, and everything else
+
+```
+git clone https://github.com/AppliedIR/sift-mcp.git
+cd sift-mcp
 ./quickstart-lite.sh
 ```
 
-The installer downloads triage databases (~1.1 GB compressed) and builds
-a RAG index over 22,000+ forensic knowledge records. This one-time setup
-takes approximately 15-30 minutes depending on internet speed and CPU.
-Subsequent runs reuse existing databases and index.
+This one-time setup takes approximately 15-30 minutes depending on
+internet speed and CPU. Subsequent runs reuse existing databases and index.
 
 ```bash
 claude
