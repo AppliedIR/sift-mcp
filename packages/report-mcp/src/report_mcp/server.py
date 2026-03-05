@@ -506,8 +506,19 @@ def _generate(
             )
             if alerts:
                 result["verification_alerts"] = alerts
-        except Exception:
-            pass  # Non-fatal — ledger may not be available
+                has_mismatch = any(
+                    a.get("status") == "DESCRIPTION_MISMATCH" for a in alerts
+                )
+                if has_mismatch:
+                    result["integrity_warning"] = (
+                        "One or more approved findings have been modified since "
+                        "approval. Verify integrity before including in report. "
+                        "Mismatched findings may contain unauthorized changes."
+                    )
+        except Exception as e:
+            result["verification_alerts"] = [
+                {"alert": "RECONCILIATION_ERROR", "detail": str(e)}
+            ]
 
     return result
 
