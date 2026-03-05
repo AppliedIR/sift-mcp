@@ -160,7 +160,6 @@ body {
 .action-btn .key { font-size: 10px; padding: 1px 5px; background: var(--bg-primary); border-radius: 3px; font-family: monospace; color: var(--text-muted); }
 .action-btn.approve:hover { background: var(--green-bg); color: var(--green); border-color: var(--green); }
 .action-btn.reject:hover { background: var(--red-bg); color: var(--red); border-color: var(--red); }
-.action-btn.todo:hover { background: var(--blue-bg); color: var(--blue); border-color: var(--blue); }
 
 /* Action overlay on sidebar item */
 .action-pill { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
@@ -192,6 +191,7 @@ body {
 .dashboard-content { padding: 24px; overflow-y: auto; width: 100%; }
 .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
 .dash-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+.dash-card:hover { border-color: var(--accent); }
 .dash-card h3 { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
 .dash-stat { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
 .dash-detail { font-size: 13px; color: var(--text-secondary); line-height: 1.8; }
@@ -286,6 +286,7 @@ body {
 .batch-toolbar .batch-approve:hover { background: var(--green-bg); color: var(--green); border-color: var(--green); }
 .batch-toolbar .batch-reject:hover { background: var(--red-bg); color: var(--red); border-color: var(--red); }
 .sidebar-item .batch-check { width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; accent-color: var(--accent); }
+.tl-card-actions .batch-check { width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; accent-color: var(--accent); }
 
 /* Filter dimensions */
 .filter-dims { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
@@ -607,8 +608,7 @@ body {
     <div class="shortcut-row"><span>Approve</span><span class="shortcut-key">a</span></div>
     <div class="shortcut-row"><span>Reject</span><span class="shortcut-key">r</span></div>
     <div class="shortcut-row"><span>Edit interpretation</span><span class="shortcut-key">e</span></div>
-    <div class="shortcut-row"><span>Create todo</span><span class="shortcut-key">t</span></div>
-    <div class="shortcut-row"><span>Skip</span><span class="shortcut-key">s</span></div>
+    <div class="shortcut-row"><span>Undo review</span><span class="shortcut-key">s</span></div>
     <div class="shortcut-row"><span>Focus search</span><span class="shortcut-key">/</span></div>
     <div class="shortcut-row"><span>Close / cancel</span><span class="shortcut-key">Esc</span></div>
     <div class="shortcut-row"><span>This help</span><span class="shortcut-key">?</span></div>
@@ -637,23 +637,6 @@ body {
 </div>
 
 
-<!-- Todo dialog -->
-<div class="dialog-overlay" id="todoDialog" role="dialog" aria-modal="true"
-  aria-labelledby="todoDialogTitle">
-  <div class="dialog">
-    <h3 id="todoDialogTitle">Create TODO</h3>
-    <input type="text" id="todoDescription" placeholder="TODO description..." />
-    <select id="todoPriority">
-      <option value="high">High priority</option>
-      <option value="medium" selected>Medium priority</option>
-      <option value="low">Low priority</option>
-    </select>
-    <div class="dialog-actions">
-      <button class="btn-cancel" onclick="closeTodoDialog()">Cancel</button>
-      <button class="btn-primary" onclick="submitTodo()">Create</button>
-    </div>
-  </div>
-</div>
 
 <script>
 /* === State === */
@@ -1167,8 +1150,9 @@ function renderFinding(id) {
   html += '<div class="action-bar">';
   html += '<button class="action-btn approve" onclick="doApprove()"><span class="key">a</span> Approve</button>';
   html += '<button class="action-btn reject" onclick="openRejectDialog()"><span class="key">r</span> Reject</button>';
-  html += '<button class="action-btn todo" onclick="openTodoDialog()"><span class="key">t</span> Todo</button>';
-  html += '<button class="action-btn" onclick="doSkip()"><span class="key">s</span> Skip</button>';
+  if (de) {
+    html += '<button class="action-btn undo" onclick="doSkip()"><span class="key">s</span> Undo</button>';
+  }
   html += '</div>';
 
   // Evidence panel
@@ -1323,62 +1307,24 @@ function submitReject() {
 }
 
 
-function openTodoDialog() {
-  if (!selectedId) return;
-  document.getElementById('todoDescription').value = '';
-  document.getElementById('todoPriority').value = 'medium';
-  var btn = document.querySelector('#todoDialog .btn-primary');
-  btn.onclick = submitTodo;
-  document.getElementById('todoDialog').classList.add('visible');
-  document.getElementById('todoDescription').focus();
-}
-
-function closeTodoDialog() {
-  document.getElementById('todoDialog').classList.remove('visible');
-}
-
-function submitTodo() {
-  if (!selectedId) return;
-  const desc = document.getElementById('todoDescription').value.trim();
-  if (!desc) { document.getElementById('todoDescription').focus(); return; }
-  const priority = document.getElementById('todoPriority').value;
-
-  const f = findings.find(x => x.id === selectedId);
-  if (!f) return;
-
-  setDeltaEntry({
-    id: selectedId,
-    type: f.type || 'finding',
-    action: 'todo',
-    content_hash_at_review: f.content_hash || '',
-    todo_description: desc,
-    todo_priority: priority,
-  });
-  closeTodoDialog();
-  renderSidebar();
-  updateProgress();
-  renderFinding(selectedId);
-  advanceToNext();
-}
 
 async function doSkip() {
   if (!selectedId) return;
   const de = getDeltaEntry(selectedId);
-  if (de) {
-    try {
-      await apiFetch('/api/delta/' + encodeURIComponent(selectedId), { method: 'DELETE' });
-      delta.items = delta.items.filter(i => i.id !== selectedId);
-      delta.modified_at = new Date().toISOString();
-      setSaveStatus('saved');
-    } catch (e) {
-      console.warn('DELETE delta item failed:', e);
-      return;
-    }
+  if (!de) return;
+  try {
+    await apiFetch('/api/delta/' + encodeURIComponent(selectedId), { method: 'DELETE' });
+    delta.items = delta.items.filter(i => i.id !== selectedId);
+    delta.modified_at = new Date().toISOString();
+    setSaveStatus('saved');
+  } catch (e) {
+    console.warn('DELETE delta item failed:', e);
+    return;
   }
   renderSidebar();
   updateProgress();
   renderFinding(selectedId);
-  showToast('Finding skipped', 'info');
+  showToast('Review undone', 'info');
 }
 
 function advanceToNext() {
@@ -1882,7 +1828,6 @@ document.addEventListener('keydown', function(e) {
   if (document.querySelector('.dialog-overlay.visible')) {
     if (e.key === 'Escape') {
       closeRejectDialog();
-      closeTodoDialog();
     }
     return;
   }
@@ -1934,10 +1879,6 @@ document.addEventListener('keydown', function(e) {
       break;
     case 'Enter':
       if (!isTimeline) { e.preventDefault(); toggleAllEvidence(); }
-      break;
-    case 't':
-      e.preventDefault();
-      isTimeline ? openTimelineTodoDialog() : openTodoDialog();
       break;
     case 's':
       e.preventDefault();
@@ -2021,6 +1962,20 @@ function renderDashboard(summary) {
   grid += '<div class="dash-detail">' + totalTodos + ' total</div></div>';
 
   document.getElementById('dashGrid').innerHTML = grid;
+
+  document.querySelectorAll('.dash-card').forEach(function(card) {
+    var title = card.querySelector('h3');
+    if (!title) return;
+    var text = title.textContent.trim();
+    var tab = text === 'Findings' ? 'findings'
+            : text === 'Timeline' ? 'timeline'
+            : text === 'Evidence' ? 'evidence'
+            : text === 'TODOs' ? 'todos' : null;
+    if (tab) {
+      card.style.cursor = 'pointer';
+      card.onclick = function() { switchTab(tab); };
+    }
+  });
 
   // Case metadata
   let meta = '';
@@ -2240,7 +2195,7 @@ function editPencil(evId, field) {
 
 function renderTimelineEditField(field, value, evId) {
   var isMultiline = (field === 'description');
-  var html = '<div class="inline-edit" style="margin-top:4px">';
+  var html = '<div class="inline-edit" style="margin-top:4px" onclick="event.stopPropagation()">';
   if (!isMultiline) {
     html += '<label style="font-size:11px;color:var(--text-muted)">' +
       escapeHtml(field) + ':</label> ';
@@ -2361,8 +2316,9 @@ function renderTimelineCard(ev, de, isFocused) {
   html += '</div>';
 
   html += '<div class="tl-card-actions">';
-  html += '<label style="display:inline-flex;align-items:center;cursor:pointer">' +
-    '<input type="checkbox" onchange="event.stopPropagation();' +
+  html += '<label style="display:inline-flex;align-items:center;cursor:pointer" ' +
+    'onclick="event.stopPropagation()">' +
+    '<input type="checkbox" class="batch-check" onclick="event.stopPropagation();' +
     'toggleTimelineBatchItem(\'' + evId + '\',this.checked)"' +
     (batchTimelineSelected.has(ev.id) ? ' checked' : '') + '></label>';
   html += '<button class="btn-approve" onclick="event.stopPropagation();' +
@@ -2371,10 +2327,10 @@ function renderTimelineCard(ev, de, isFocused) {
     'openTimelineRejectDialog(\'' + evId + '\')">Reject</button>';
   html += '<button onclick="event.stopPropagation();' +
     'startTimelineEdit(\'' + evId + '\',\'description\')">Edit</button>';
-  html += '<button onclick="event.stopPropagation();' +
-    'openTimelineTodoDialog(\'' + evId + '\')">Todo</button>';
-  html += '<button onclick="event.stopPropagation();' +
-    'doTimelineSkip(\'' + evId + '\')">Skip</button>';
+  if (de) {
+    html += '<button onclick="event.stopPropagation();' +
+      'doTimelineSkip(\'' + evId + '\')">Undo</button>';
+  }
   html += '</div>';
 
   html += '</div>';
@@ -2460,6 +2416,7 @@ function updateTimelineSummary() {
 }
 
 function focusTimelineEvent(id) {
+  if (focusedTimelineId === id) return;
   focusedTimelineId = id;
   renderTimeline();
 }
@@ -2542,57 +2499,25 @@ function submitTimelineReject() {
   advanceToNextTimeline();
 }
 
-function openTimelineTodoDialog(id) {
-  id = id || focusedTimelineId;
-  if (!id) return;
-  focusedTimelineId = id;
-  document.getElementById('todoDescription').value = '';
-  document.getElementById('todoPriority').value = 'medium';
-  var btn = document.querySelector('#todoDialog .btn-primary');
-  btn.onclick = submitTimelineTodo;
-  document.getElementById('todoDialog').classList.add('visible');
-  document.getElementById('todoDescription').focus();
-}
-
-function submitTimelineTodo() {
-  if (!focusedTimelineId) return;
-  var desc = document.getElementById('todoDescription').value.trim();
-  if (!desc) { document.getElementById('todoDescription').focus(); return; }
-  var ev = timelineEvents.find(function(x) { return x.id === focusedTimelineId; });
-  if (!ev) return;
-  setDeltaEntry({
-    id: focusedTimelineId,
-    type: ev.type || 'timeline_event',
-    action: 'todo',
-    content_hash_at_review: ev.content_hash || '',
-    todo_description: desc,
-    todo_priority: document.getElementById('todoPriority').value,
-  });
-  closeTodoDialog();
-  renderTimeline();
-  updateProgress();
-  advanceToNextTimeline();
-}
 
 async function doTimelineSkip(id) {
   id = id || focusedTimelineId;
   if (!id) return;
   focusedTimelineId = id;
   var de = getDeltaEntry(id);
-  if (de) {
-    try {
-      await apiFetch('/api/delta/' + encodeURIComponent(id), { method: 'DELETE' });
-      delta.items = delta.items.filter(function(i) { return i.id !== id; });
-      delta.modified_at = new Date().toISOString();
-      setSaveStatus('saved');
-    } catch (e) {
-      console.warn('DELETE delta item failed:', e);
-      return;
-    }
+  if (!de) return;
+  try {
+    await apiFetch('/api/delta/' + encodeURIComponent(id), { method: 'DELETE' });
+    delta.items = delta.items.filter(function(i) { return i.id !== id; });
+    delta.modified_at = new Date().toISOString();
+    setSaveStatus('saved');
+  } catch (e) {
+    console.warn('DELETE delta item failed:', e);
+    return;
   }
   renderTimeline();
   updateProgress();
-  showToast('Event skipped', 'info');
+  showToast('Review undone', 'info');
 }
 
 function startTimelineEdit(id, field) {
