@@ -120,18 +120,17 @@ git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 
 ## Architecture
 
-This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, case-mcp, report-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, and sift-common. Each MCP runs as a stdio subprocess of the sift-gateway. The LLM client, the case dashboard, and the aiir CLI are the three human-facing interfaces. The **case dashboard** is served by the gateway and provides browser-based review, approval, and commit with challenge-response authentication. The **aiir CLI** runs on SIFT for case management, evidence handling, and verification. When the LLM client runs on a separate machine, the examiner accesses the dashboard through the gateway (HTTPS) and only needs SSH for CLI-exclusive operations (case init, evidence register, unlock, exec, verify). The LLM client connects to the gateway over Streamable HTTP. It never talks to MCP backends directly.
+This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, case-mcp, report-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, and sift-common. Each MCP runs as a stdio subprocess of the sift-gateway. The LLM client, the case dashboard, and the aiir CLI are the three human-facing interfaces. The **case dashboard** is served by the gateway and provides browser-based review, approval, and commit with challenge-response authentication. The **aiir CLI** runs on SIFT for case management, evidence handling, and verification. When the LLM client runs on a separate machine, the examiner accesses the dashboard through the gateway (HTTPS). The LLM client connects to the gateway over Streamable HTTP. It never talks to MCP backends directly.
 
 ```mermaid
 graph LR
     subgraph analyst ["Analyst Machine (if remote)"]
         CC["LLM Client<br/>(human interface)"]
-        BR["Browser<br/>(dashboard)"]
-        SSH["SSH Session<br/>(setup only)"]
+        BR["Browser<br/>(human interface)"]
     end
 
     subgraph sift ["SIFT Workstation"]
-        CLI["aiir CLI<br/>(human interface)"]
+        CLI["aiir CLI"]
         GW["sift-gateway<br/>:4508"]
         FM["forensic-mcp"]
         CM["case-mcp"]
@@ -158,12 +157,9 @@ graph LR
 
     CC -->|"streamable-http"| GW
     BR -->|"HTTPS"| GW
-    SSH -.->|"SSH"| CLI
-    style SSH fill:#e0e0e0,stroke:#999,color:#333
-    style BR fill:#e8f5e9,stroke:#4caf50,color:#333
 ```
 
-In co-located deployments, everything runs on SIFT — no remote access needed. In production, the LLM client typically runs on a separate machine and connects to the gateway over the network with TLS and bearer token auth. The examiner reviews and commits findings through the case dashboard in their browser (also served by the gateway). SSH is only needed for CLI-exclusive operations (case init, evidence register, unlock, exec, verify).
+In co-located deployments, everything runs on SIFT — no remote access needed. In production, the LLM client and browser run on the analyst machine. The LLM client connects to the gateway over streamable-http; the browser connects via HTTPS for the case dashboard.
 
 The gateway exposes each backend as a separate MCP endpoint. Clients can connect to the aggregate endpoint or to individual backends:
 
