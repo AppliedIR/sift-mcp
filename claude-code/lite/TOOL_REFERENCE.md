@@ -32,6 +32,7 @@ available by calling each MCP's health tool:
 | windows-triage | Yes | — | MCP tool `get_health` |
 | opencti-mcp | No | `--opencti` flag | MCP tool `get_health` |
 | remnux-mcp | No | User-provided | MCP tool `check_tools` |
+| wintools-mcp | No | User-provided | MCP tool `check_tools` |
 
 If a backend is unavailable, skip its steps in workflows below and
 note the gap. Do not fail the investigation — degrade gracefully.
@@ -94,6 +95,7 @@ User Question
 | Document Macro Analysis | remnux-mcp `analyze_file` | — |
 | IOC Extraction from File | remnux-mcp `extract_iocs` | `bulk_extractor` |
 | Specific REMnux Tool | remnux-mcp `run_tool` | — |
+| Run Windows forensic tool | wintools-mcp `run_command` | Bash (see FORENSIC_TOOLS.md) |
 | Run forensic tool | Bash (see FORENSIC_TOOLS.md) | — |
 | Tool recommendations | forensic-rag `search` | FORENSIC_TOOLS.md |
 | EVTX Analysis | `EvtxECmd` | — |
@@ -134,6 +136,12 @@ User Question
 - "analyze this file", "malware analysis", "run capa", "run yara"
 - "oletools", "pdfparser", "what capabilities", "suspicious file/document"
 - File extensions: .exe, .dll, .doc, .xls, .pdf, .elf, .js, .vbs, .ps1
+
+### wintools-mcp (if available)
+- Zimmerman tool names: AmcacheParser, EvtxECmd, MFTECmd, PECmd, RECmd, etc.
+- "run on Windows", "parse on the Windows box", "execute on Windows"
+- Hayabusa, autorunsc, sigcheck, winpmem, dumpit
+- Windows artifacts that need native Windows tools to parse
 
 ---
 

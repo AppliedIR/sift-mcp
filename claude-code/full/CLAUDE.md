@@ -207,6 +207,25 @@ download_file(file_path="output/<artifact>")           # Retrieve artifacts
 until proven malicious." Corroborate findings with opencti-mcp and
 forensic-rag.
 
+### wintools-mcp (Windows Forensic Tools) — optional, user-provided
+Runs forensic tools on a remote Windows workstation. Catalog-gated: only
+tools defined in YAML catalog files can execute. 20+ dangerous binaries
+hardcoded-blocked (cmd, powershell, wscript, mshta, rundll32, etc.).
+Configure during `aiir setup client` by providing the Windows host and
+port (default 4624).
+
+- `run_command` — execute cataloged forensic tool on Windows
+- `list_available_tools` — tools on the Windows workstation
+- `list_missing_tools` — catalog tools not installed
+- `check_tools` — verify tool installation status
+- `get_tool_help` — usage info for a specific tool
+- `suggest_tools` — recommend tools for an artifact type
+- `scan_tools` — scan system for all known forensic tools
+
+**Note:** Unlike sift-mcp (which allows uncataloged tools), wintools-mcp
+uses a strict allowlist. Only tools defined in catalog YAML files can
+execute. This is the primary security control on the Windows side.
+
 ---
 
 ## Human-in-the-Loop Checkpoints

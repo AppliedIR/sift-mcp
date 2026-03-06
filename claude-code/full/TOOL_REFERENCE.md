@@ -34,6 +34,7 @@ available before planning a workflow:
 | forensic-rag | No | Yes | `aiir service status` |
 | opencti-mcp | No | If configured | `aiir service status` |
 | remnux-mcp | No | User-provided | `aiir service status` |
+| wintools-mcp | No | User-provided | `aiir service status` |
 
 If a backend is unavailable, skip its steps in workflows below and
 note the gap. Do not fail the investigation — degrade gracefully.
@@ -96,6 +97,7 @@ User Question
 | Document Macro Analysis | remnux-mcp `analyze_file` | — |
 | IOC Extraction from File | remnux-mcp `extract_iocs` | sift-mcp `run_command` (bulk_extractor) |
 | Specific REMnux Tool | remnux-mcp `run_tool` | — |
+| Run Windows forensic tool | wintools-mcp `run_command` | sift-mcp `run_command` |
 | Run forensic tool | sift-mcp `run_command` | — |
 | Tool recommendations | sift-mcp `suggest_tools` | forensic-mcp `get_tool_guidance` |
 | EVTX Analysis | sift-mcp `run_command` (EvtxECmd) | — |
@@ -141,6 +143,12 @@ User Question
 - "analyze this file", "malware analysis", "run capa", "run yara"
 - "oletools", "pdfparser", "what capabilities", "suspicious file/document"
 - File extensions: .exe, .dll, .doc, .xls, .pdf, .elf, .js, .vbs, .ps1
+
+### wintools-mcp (if available)
+- Zimmerman tool names: AmcacheParser, EvtxECmd, MFTECmd, PECmd, RECmd, etc.
+- "run on Windows", "parse on the Windows box", "execute on Windows"
+- Hayabusa, autorunsc, sigcheck, winpmem, dumpit
+- Windows artifacts that need native Windows tools to parse
 
 ---
 

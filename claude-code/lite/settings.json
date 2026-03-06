@@ -5,6 +5,7 @@
       "mcp__windows-triage__*",
       "mcp__opencti-mcp__*",
       "mcp__remnux-mcp__*",
+      "mcp__wintools-mcp__*",
       "mcp__microsoft-learn__*",
       "mcp__zeltser-ir-writing__*"
     ]

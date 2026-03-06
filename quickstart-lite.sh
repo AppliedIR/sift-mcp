@@ -13,6 +13,7 @@
 #   ./quickstart-lite.sh --rebuild-rag            # Force rebuild RAG index
 #   ./quickstart-lite.sh --opencti                # Add OpenCTI MCP
 #   ./quickstart-lite.sh --remnux=HOST:PORT       # Add REMnux MCP
+#   ./quickstart-lite.sh --wintools=IP:PORT       # Add WinTools MCP
 #   ./quickstart-lite.sh -y                       # Non-interactive
 #   ./quickstart-lite.sh -h                       # Full help
 #
@@ -84,6 +85,7 @@ INSTALL_MSLEARN=false
 INSTALL_ZELTSER=false
 INSTALL_REGISTRY=false
 REMNUX_ADDR=""
+WINTOOLS_ADDR=""
 
 for arg in "$@"; do
     case "$arg" in
@@ -93,6 +95,7 @@ for arg in "$@"; do
         --zeltser) INSTALL_ZELTSER=true ;;
         --registry) INSTALL_REGISTRY=true ;;
         --remnux=*) REMNUX_ADDR="${arg#--remnux=}" ;;
+        --wintools=*) WINTOOLS_ADDR="${arg#--wintools=}" ;;
         --quick)   MODE="quick" ;;
         --custom)  MODE="custom" ;;
         --no-rag)     NO_RAG=true ;;
@@ -107,12 +110,12 @@ _quickstart_lite() {
     local opts="--quick --custom --no-rag --no-triage --rebuild-rag
         --rebuild-triage --venv-only --opencti --mslearn
         --zeltser --registry --yes --help --completions"
-    if [[ "$cur" == --remnux=* ]]; then
+    if [[ "$cur" == --remnux=* ]] || [[ "$cur" == --wintools=* ]]; then
         return 0
     fi
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "$opts --remnux=" -- "$cur") )
-        if [[ ${#COMPREPLY[@]} -eq 1 && "${COMPREPLY[0]}" == "--remnux=" ]]; then
+        COMPREPLY=( $(compgen -W "$opts --remnux= --wintools=" -- "$cur") )
+        if [[ ${#COMPREPLY[@]} -eq 1 ]] && [[ "${COMPREPLY[0]}" == *"=" ]]; then
             compopt -o nospace
         fi
     fi
@@ -146,6 +149,7 @@ Scope:
 Optional MCPs:
   --opencti           Add OpenCTI threat intelligence MCP
   --remnux=HOST:PORT  Add REMnux malware analysis MCP
+  --wintools=IP:PORT  Add Windows forensic tool execution MCP
   --mslearn           Add Microsoft Learn documentation MCP
   --zeltser           Add Zeltser IR Writing MCP
   --registry          Download optional registry baseline (large)
@@ -161,6 +165,7 @@ Examples:
   ./quickstart-lite.sh --no-rag               # Full install but skip RAG build
   ./quickstart-lite.sh --rebuild-rag          # Force fresh RAG index
   ./quickstart-lite.sh --opencti --mslearn    # Add optional MCPs
+  ./quickstart-lite.sh --wintools=10.0.0.10:4624  # Add Windows tools
   ./quickstart-lite.sh --quick --opencti      # Quick + add OpenCTI
 
 Data can be built/downloaded later:
@@ -551,6 +556,7 @@ with open('$MCP_JSON', 'w') as f:
 
 INSTALLED_OPENCTI=false
 INSTALLED_REMNUX=false
+INSTALLED_WINTOOLS=false
 INSTALLED_MSLEARN=false
 INSTALLED_ZELTSER=false
 
@@ -652,6 +658,51 @@ if [[ -n "$REMNUX_ADDR" ]]; then
     fi
 fi
 
+# --- WinTools ---
+if [[ -n "$WINTOOLS_ADDR" ]]; then
+    if ! _validate_credential "$WINTOOLS_ADDR" "WinTools address"; then
+        WINTOOLS_ADDR=""
+    fi
+fi
+
+if [[ -z "$WINTOOLS_ADDR" ]] && [[ "$YES" != "true" ]] && [[ "$SKIP_OPTIONAL_MCPS" != "true" ]]; then
+    echo ""
+    echo "  WinTools provides forensic tool execution on a Windows workstation."
+    echo "  Requires the Windows machine address (IP:PORT) and bearer token."
+    echo "  wintools-mcp must already be installed and running on the Windows machine."
+    read -rp "  Install WinTools MCP? [y/N] " reply
+    if [[ "$reply" =~ ^[Yy] ]]; then
+        read -rp "  WinTools address (IP:PORT): " WINTOOLS_ADDR
+        if [[ -n "$WINTOOLS_ADDR" ]] && ! _validate_credential "$WINTOOLS_ADDR" "WinTools address"; then
+            WINTOOLS_ADDR=""
+        fi
+    fi
+fi
+
+if [[ -n "$WINTOOLS_ADDR" ]]; then
+    WINTOOLS_TOKEN=""
+    if [[ "$YES" != "true" ]]; then
+        read -rsp "  WinTools bearer token: " WINTOOLS_TOKEN
+        echo ""
+        if [[ -n "$WINTOOLS_TOKEN" ]] && ! _validate_credential "$WINTOOLS_TOKEN" "WinTools token"; then
+            WINTOOLS_TOKEN=""
+        fi
+    fi
+    if [[ -n "$WINTOOLS_TOKEN" ]]; then
+        _add_mcp_server "wintools-mcp" "{
+            \"type\": \"http\",
+            \"url\": \"http://$WINTOOLS_ADDR/mcp\",
+            \"headers\": {\"Authorization\": \"Bearer $WINTOOLS_TOKEN\"}
+        }"
+        ok "Added wintools-mcp to .mcp.json"
+        INSTALLED_WINTOOLS=true
+    elif [[ "$YES" == "true" ]]; then
+        warn "WinTools token cannot be provided non-interactively. Run without -y to configure."
+    else
+        warn "WinTools token not provided. Skipped."
+    fi
+fi
+
 # --- Microsoft Learn ---
 if [[ "$INSTALL_MSLEARN" != "true" ]] && [[ "$YES" != "true" ]] && [[ "$SKIP_OPTIONAL_MCPS" != "true" ]]; then
     echo ""
@@ -738,6 +789,7 @@ ok "sift-common (audit and logging)"
 [[ "$INSTALL_TRIAGE" == "true" ]] && ok "windows-triage (baseline validation)"
 [[ "$INSTALLED_OPENCTI" == "true" ]] && ok "opencti-mcp (threat intelligence)"
 [[ "$INSTALLED_REMNUX" == "true" ]] && ok "remnux-mcp (malware analysis)"
+[[ "$INSTALLED_WINTOOLS" == "true" ]] && ok "wintools-mcp (Windows forensic tools)"
 [[ "$INSTALLED_MSLEARN" == "true" ]] && ok "microsoft-learn (documentation)"
 [[ "$INSTALLED_ZELTSER" == "true" ]] && ok "zeltser-ir-writing (IR writing)"
 

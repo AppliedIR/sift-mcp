@@ -155,6 +155,7 @@ Check which optional MCPs are configured and list what's available:
 **Not installed (add with quickstart-lite.sh flags):**
 - OpenCTI: `./quickstart-lite.sh --opencti` — Live threat intelligence
 - REMnux: `./quickstart-lite.sh --remnux=HOST:PORT` — Automated malware analysis
+- WinTools: `./quickstart-lite.sh --wintools=IP:PORT` — Windows forensic tool execution
 - MS Learn: `./quickstart-lite.sh --mslearn` — Microsoft documentation search
 - Zeltser: `./quickstart-lite.sh --zeltser` — IR writing guidelines
 

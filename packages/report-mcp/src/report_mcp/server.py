@@ -615,7 +615,7 @@ def _reconcile_verification(
 ) -> list[dict]:
     """Bidirectional check: approved items vs verification ledger.
 
-    No PIN needed — this checks structural consistency (item counts,
+    No password needed — this checks structural consistency (item counts,
     description text matches) not cryptographic HMAC validity.
     """
     ledger_path = VERIFICATION_DIR / f"{case_id}.jsonl"
