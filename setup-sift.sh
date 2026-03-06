@@ -558,20 +558,20 @@ else
 fi
 
 # =============================================================================
-# Phase 1b2: PIN Storage Directory
+# Phase 1b2: Password Storage Directory
 # =============================================================================
 
-if [ -d /var/lib/aiir/pins ]; then
-    ok "PIN storage: /var/lib/aiir/pins/"
+if [ -d /var/lib/aiir/passwords ]; then
+    ok "Password storage: /var/lib/aiir/passwords/"
 else
-    info "Creating PIN storage directory (requires sudo)..."
-    if sudo mkdir -p /var/lib/aiir/pins && \
-       sudo chown "$USER:$USER" /var/lib/aiir/pins && \
-       sudo chmod 700 /var/lib/aiir/pins; then
-        ok "PIN storage: /var/lib/aiir/pins/"
+    info "Creating password storage directory (requires sudo)..."
+    if sudo mkdir -p /var/lib/aiir/passwords && \
+       sudo chown "$USER:$USER" /var/lib/aiir/passwords && \
+       sudo chmod 700 /var/lib/aiir/passwords; then
+        ok "Password storage: /var/lib/aiir/passwords/"
     else
-        err "Could not create /var/lib/aiir/pins/"
-        echo "  Run: sudo mkdir -p /var/lib/aiir/pins && sudo chown $USER:$USER /var/lib/aiir/pins && sudo chmod 700 /var/lib/aiir/pins"
+        err "Could not create /var/lib/aiir/passwords/"
+        echo "  Run: sudo mkdir -p /var/lib/aiir/passwords && sudo chown $USER:$USER /var/lib/aiir/passwords && sudo chmod 700 /var/lib/aiir/passwords"
         exit 1
     fi
 fi
@@ -1211,6 +1211,22 @@ if [[ -n "$SHELL_RC_EXAMINER" ]]; then
     fi
 fi
 export AIIR_EXAMINER="$EXAMINER_NAME"
+
+# --- Password setup ---
+# setup_password() reads from /dev/tty and requires termios.
+# Skip in non-interactive mode (AUTO_YES / no terminal).
+if [[ -t 0 ]]; then
+    echo ""
+    echo "Setting up your approval password..."
+    echo "This password is required when committing reviews (dashboard or CLI)."
+    echo "Minimum 8 characters. Choose something memorable."
+    echo ""
+    "$VENV_DIR/bin/aiir" config --setup-password
+else
+    echo ""
+    warn "No terminal detected — skipping password setup."
+    echo "  Set your password later with: aiir config --setup-password"
+fi
 
 # =============================================================================
 # Phase 7: Generate Bearer Token
