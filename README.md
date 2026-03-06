@@ -67,11 +67,11 @@ No gateway, no sandbox, no deny rules. Claude runs forensic tools directly via B
 
 For use cases where more definitive human-in-the-loop approval is desired, the full AIIR suite can be deployed to ensure accountability and enforce human review of findings through cryptographic signing, PIN-gated approvals, and multiple layered controls.
 
-Full AIIR is **LLM client agnostic** — connect any MCP-compatible client through the gateway. Supported clients include Claude Code, Claude Desktop, Cursor, LibreChat, ChatGPT, and any client that can speak to a local MCP. Forensic discipline is provided structurally at the gateway and MCP layer, not through client-specific prompt engineering, so the same rigor applies regardless of which AI model or client drives the investigation.
+Full AIIR is **LLM client agnostic** — connect any MCP-compatible client through the gateway. Supported clients include Claude Code, Claude Desktop, LibreChat, Cherry Studio, and any MCP-only client that supports Streamable HTTP transport with Bearer token authentication. Forensic discipline is provided structurally at the gateway and MCP layer, not through client-specific prompt engineering, so the same rigor applies regardless of which AI model or client drives the investigation.
 
 ### What Full AIIR Adds
 
-- LLM client agnostic (Claude Code, Desktop, Cursor, LibreChat, ChatGPT, any MCP client)
+- LLM client agnostic (Claude Code, Desktop, LibreChat, Cherry Studio, any MCP client)
 - Gateway with auth + lifecycle management (64 tools across 7 backends)
 - Structured JSON case files with integrity verification
 - Formal report generation (6 profiles)

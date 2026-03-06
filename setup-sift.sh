@@ -61,7 +61,7 @@ for arg in "$@"; do
             echo "Options:"
             echo "  --remote          Enable TLS + bind 0.0.0.0 (for remote clients)"
             echo "  --examiner=NAME   Set examiner identity (non-interactive)"
-            echo "  --client=CLIENT   Set LLM client (claude-code, claude-desktop, cursor, etc.)"
+            echo "  --client=CLIENT   Set LLM client (claude-code, claude-desktop, librechat, other)"
             echo "  --install-dir=X   Override source clone dir (default: ~/.aiir/src/sift-mcp)"
             echo "  --venv=X          Override venv path (default: ~/.aiir/venv)"
             echo "  --port=N          Override gateway port (default: 4508)"

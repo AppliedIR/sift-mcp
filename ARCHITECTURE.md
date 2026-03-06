@@ -15,7 +15,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 4. **Clients connect to two endpoints at most:** the gateway (for all SIFT tools) and wintools-mcp (for Windows tools). These are separate, unrelated connections.
 5. **The case directory is local per examiner.** Each examiner has their own flat case directory on their SIFT machine. forensic-mcp and the aiir CLI both read and write it. Multi-examiner collaboration uses export/merge (not shared filesystem).
 6. **Human approval is structural.** Findings stage as DRAFT. Only the aiir CLI (human, interactive, /dev/tty) can move them to APPROVED or REJECTED. The AI cannot approve its own work.
-7. **AGENTS.md is the source of truth for forensic rules.** It is LLM-agnostic. Per-client config files (CLAUDE.md, .cursorrules) are copies/derivatives, not sources.
+7. **AGENTS.md is the source of truth for forensic rules.** It is LLM-agnostic. Per-client config files (CLAUDE.md) are copies/derivatives, not sources.
 8. **forensic-knowledge is a shared data package.** It is a pip-installable YAML package. forensic-mcp, sift-mcp, and wintools-mcp all depend on it. It has no runtime state.
 
 ---

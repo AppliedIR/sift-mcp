@@ -44,7 +44,7 @@ def main():
         logger.error("Config file not found: %s", args.config)
         print(f"ERROR: Config file not found: {args.config}", file=sys.stderr)
         print(
-            "Create gateway.yaml using 'aiir setup' or see sift-gateway documentation.",
+            "Create gateway.yaml using 'aiir setup client' or see sift-gateway documentation.",
             file=sys.stderr,
         )
         sys.exit(1)
