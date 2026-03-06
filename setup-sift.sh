@@ -1218,7 +1218,12 @@ export AIIR_EXAMINER="$EXAMINER_NAME"
 if [[ -t 0 ]]; then
     echo ""
     echo "Setting up your approval password..."
-    echo "This password is required when committing reviews (dashboard or CLI)."
+    echo ""
+    echo "This password protects finding approvals and HMAC signing."
+    echo "You will need it every time you commit reviews (dashboard or CLI)."
+    echo "It cannot be recovered if lost — you would need to reset it and"
+    echo "re-sign all previously approved findings."
+    echo ""
     echo "Minimum 8 characters. Choose something memorable."
     echo ""
     "$VENV_DIR/bin/aiir" config --setup-password
