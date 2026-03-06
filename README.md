@@ -73,8 +73,13 @@ Full AIIR is **LLM client agnostic** — connect any MCP-compatible client throu
 
 - LLM client agnostic (Claude Code, Desktop, LibreChat, Cherry Studio, any MCP client)
 - Gateway with auth + lifecycle management (64 tools across 7 backends)
+- Case dashboard — browser-based review, approval, and commit with challenge-response authentication
 - Structured JSON case files with integrity verification
 - Formal report generation (6 profiles)
+
+![Dashboard — Findings](docs/images/dashboard.png)
+
+![Dashboard — Timeline](docs/images/timeline.png)
 
 When Claude Code is the client, additional controls are deployed:
 
@@ -115,13 +120,14 @@ git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 
 ## Architecture
 
-This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, case-mcp, report-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, and sift-common. Each MCP runs as a stdio subprocess of the sift-gateway. The LLM client and aiir CLI are the two human-facing tools. The aiir CLI always runs on the SIFT workstation — it requires direct filesystem access to the case directory. When the LLM client runs on a separate machine, the examiner must have SSH access to SIFT for all CLI operations. The LLM client connects to the gateway over Streamable HTTP. It never talks to MCP backends directly.
+This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, case-mcp, report-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, and sift-common. Each MCP runs as a stdio subprocess of the sift-gateway. The LLM client, the case dashboard, and the aiir CLI are the three human-facing interfaces. The **case dashboard** is served by the gateway and provides browser-based review, approval, and commit with challenge-response authentication. The **aiir CLI** runs on SIFT for case management, evidence handling, and verification. When the LLM client runs on a separate machine, the examiner accesses the dashboard through the gateway (HTTPS) and only needs SSH for CLI-exclusive operations (case init, evidence register, unlock, exec, verify). The LLM client connects to the gateway over Streamable HTTP. It never talks to MCP backends directly.
 
 ```mermaid
 graph LR
     subgraph analyst ["Analyst Machine (if remote)"]
         CC["LLM Client<br/>(human interface)"]
-        SSH["SSH Session<br/>(human interface)"]
+        BR["Browser<br/>(dashboard)"]
+        SSH["SSH Session<br/>(setup only)"]
     end
 
     subgraph sift ["SIFT Workstation"]
@@ -151,11 +157,13 @@ graph LR
     end
 
     CC -->|"streamable-http"| GW
+    BR -->|"HTTPS"| GW
     SSH -.->|"SSH"| CLI
     style SSH fill:#e0e0e0,stroke:#999,color:#333
+    style BR fill:#e8f5e9,stroke:#4caf50,color:#333
 ```
 
-In co-located deployments, the LLM client also runs on SIFT and no SSH is needed. In production, the LLM client typically runs on a separate machine and connects to the gateway over the network with TLS and bearer token auth. The examiner must have SSH access to SIFT for CLI operations (approve, review, report, etc.).
+In co-located deployments, everything runs on SIFT — no remote access needed. In production, the LLM client typically runs on a separate machine and connects to the gateway over the network with TLS and bearer token auth. The examiner reviews and commits findings through the case dashboard in their browser (also served by the gateway). SSH is only needed for CLI-exclusive operations (case init, evidence register, unlock, exec, verify).
 
 The gateway exposes each backend as a separate MCP endpoint. Clients can connect to the aggregate endpoint or to individual backends:
 
