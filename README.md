@@ -65,7 +65,7 @@ No gateway, no sandbox, no deny rules. Claude runs forensic tools directly via B
 
 ## Full AIIR — Structural Enforcement
 
-For use cases where more definitive human-in-the-loop approval is desired, the full AIIR suite can be deployed to ensure accountability and enforce human review of findings through cryptographic signing, PIN-gated approvals, and multiple layered controls.
+For use cases where more definitive human-in-the-loop approval is desired, the full AIIR suite can be deployed to ensure accountability and enforce human review of findings through cryptographic signing, password-gated approvals, and multiple layered controls.
 
 Full AIIR is **LLM client agnostic** — connect any MCP-compatible client through the gateway. Supported clients include Claude Code, Claude Desktop, LibreChat, Cherry Studio, and any MCP-only client that supports Streamable HTTP transport with Bearer token authentication. Forensic discipline is provided structurally at the gateway and MCP layer, not through client-specific prompt engineering, so the same rigor applies regardless of which AI model or client drives the investigation.
 
@@ -81,7 +81,7 @@ When Claude Code is the client, additional controls are deployed:
 - Bubblewrap sandbox — kernel-level filesystem isolation, Bash restricted to project directory
 - 21 permission deny rules — Edit/Write blocked on case data files (findings.json, timeline.json, approvals.jsonl, etc.)
 - PreToolUse guard hook — blocks Bash redirections (>, >>, tee) to protected case files
-- HMAC-signed findings — PIN-gated approval with PBKDF2-derived cryptographic signing
+- HMAC-signed findings — password-gated approval with PBKDF2-derived cryptographic signing
 - Provenance enforcement — rejects findings that lack an evidence trail in the audit log
 - PostToolUse audit hook — every Bash command logged to JSONL with SHA-256 hashes
 - Prompt hook — forensic discipline reminders injected on every prompt

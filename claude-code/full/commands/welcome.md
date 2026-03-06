@@ -74,14 +74,14 @@ Claude handles almost everything through MCP tools. No need to
 memorize lots of commands or tool names.
 
 The only CLI-only operations:
-  aiir approve            Approve findings (HMAC-signed with your PIN)
+  aiir approve            Approve findings (HMAC-signed with your password)
   aiir reject             Reject findings with reason
   aiir exec               Run forensic command with TTY confirmation
-  aiir config --setup-pin Set your approval PIN
-  aiir config --reset-pin Change your approval PIN
+  aiir config --setup-password Set your approval password
+  aiir config --reset-password Change your approval password
 
 These require YOUR terminal confirmation. By design, Claude cannot
-approve its own findings or manage your PIN.
+approve its own findings or manage your password.
 ```
 
 Do NOT add PATH warnings, export suggestions, or notes about `aiir`
@@ -97,7 +97,7 @@ How findings work:
 3. Claude calls record_finding() — staged as DRAFT
 4. Open the case dashboard to review: http://localhost:4508/dashboard/
 5. Approve, edit, or reject findings from the dashboard
-6. Finalize: aiir approve --review (requires your PIN)
+6. Finalize: aiir approve --review or dashboard Commit (requires your password)
    - Applies your dashboard decisions
    - Creates HMAC-signed approval records
    - Status: DRAFT → APPROVED
