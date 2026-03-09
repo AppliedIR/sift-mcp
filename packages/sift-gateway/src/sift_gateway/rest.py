@@ -565,10 +565,9 @@ def _get_gateway_url(gateway) -> str:
     if host == "0.0.0.0":
         # UDP connect trick: queries routing table without sending packets
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            host = s.getsockname()[0]
-            s.close()
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                host = s.getsockname()[0]
         except OSError:
             host = "127.0.0.1"
 
