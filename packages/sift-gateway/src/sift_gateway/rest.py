@@ -15,6 +15,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from sift_gateway.auth import resolve_examiner
+from sift_gateway.backends import create_backend
 from sift_gateway.join import (
     check_join_rate_limit,
     generate_join_code,
@@ -381,8 +382,9 @@ async def join_gateway(request: Request) -> JSONResponse:
     else:
         new_token = None
 
-    # If wintools: add wintools backend to config
+    # If wintools: add wintools backend to config and hot-load
     wintools_registered = False
+    restart_required = False
     if machine_type == "wintools" and wintools_url and wintools_token:
         parsed = urlparse(wintools_url)
         if parsed.scheme not in ("http", "https"):
@@ -395,10 +397,31 @@ async def join_gateway(request: Request) -> JSONResponse:
                 {"error": "wintools_url must include a hostname"},
                 status_code=400,
             )
+        # Write to disk
         _add_wintools_backend(gateway, wintools_url, wintools_token)
         wintools_registered = True
 
-    # Build response
+        # Hot-load the new backend into the running gateway
+        backend_config = {
+            "type": "http",
+            "url": wintools_url,
+            "bearer_token": wintools_token,
+            "enabled": True,
+        }
+        try:
+            backend = create_backend("wintools-mcp", backend_config)
+            gateway.backends["wintools-mcp"] = backend
+            await asyncio.wait_for(backend.start(), timeout=30.0)
+            await gateway._build_tool_map()
+            logger.info("Hot-loaded wintools-mcp backend from %s", wintools_url)
+        except Exception as exc:
+            logger.error("Failed to hot-load wintools-mcp: %s", exc)
+            # Remove broken backend from memory; config on disk is fine for restart
+            gateway.backends.pop("wintools-mcp", None)
+            await gateway._build_tool_map()
+            restart_required = True
+
+    # Build response (after hot-load so backends list is current)
     backends = list(gateway.backends.keys())
     gw_url = _get_gateway_url(gateway)
 
@@ -412,7 +435,8 @@ async def join_gateway(request: Request) -> JSONResponse:
 
     if wintools_registered:
         response["wintools_registered"] = True
-        response["restart_required"] = True
+        if restart_required:
+            response["restart_required"] = True
 
     return JSONResponse(response)
 
@@ -539,9 +563,13 @@ def _get_gateway_url(gateway) -> str:
     tls = gw_config.get("tls", {})
 
     if host == "0.0.0.0":
+        # UDP connect trick: queries routing table without sending packets
         try:
-            host = socket.gethostbyname(socket.gethostname())
-        except socket.gaierror:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            host = s.getsockname()[0]
+            s.close()
+        except OSError:
             host = "127.0.0.1"
 
     scheme = "https" if tls.get("certfile") else "http"
