@@ -94,7 +94,7 @@ When Claude Code is the client, additional controls are deployed:
 
 ### AIIR Installation
 
-Requires Python 3.11+ and sudo access. The installer handles everything: MCP servers, gateway, aiir CLI, HMAC verification ledger, examiner identity, and LLM client configuration. When you select Claude Code, the forensic controls listed above are deployed automatically.
+Requires Python 3.10+ and sudo access. The installer handles everything: MCP servers, gateway, aiir CLI, HMAC verification ledger, examiner identity, and LLM client configuration. When you select Claude Code, the forensic controls listed above are deployed automatically.
 
 **Quick** — Core platform only, no databases (~70 MB):
 
@@ -309,7 +309,7 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 
 - SIFT Workstation (Ubuntu-based) — for full AIIR
 - Any Linux/macOS machine — for AIIR Lite
-- Python 3.11+
+- Python 3.10+
 - sudo access (required for full AIIR's HMAC verification ledger at `/var/lib/aiir/verification/`)
 - Forensic tools installed via SIFT package or manually
 

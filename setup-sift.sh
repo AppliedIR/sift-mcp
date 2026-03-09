@@ -1585,6 +1585,7 @@ fi
 
 # Check if gateway is already running
 GATEWAY_PID=""
+GW_DIRECT_FAILED=false
 if curl -sf ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" 2>/dev/null | grep -q "aiir"; then
     ok "Gateway already running on port $GATEWAY_PORT"
 elif ! $MANUAL_START; then
@@ -1593,11 +1594,13 @@ elif ! $MANUAL_START; then
     GATEWAY_PID=$!
 
     # Wait for health endpoint (backends need time to start)
+    # Don't warn here — systemd fallback may recover. Track failure silently.
     GW_READY=false
+    GW_DIRECT_FAILED=false
     for i in 1 2 3 4 5 6; do
         sleep 1
         if ! kill -0 "$GATEWAY_PID" 2>/dev/null; then
-            warn "Gateway failed to start. Check $GATEWAY_CONFIG"
+            GW_DIRECT_FAILED=true
             GATEWAY_PID=""
             break
         fi
@@ -1608,7 +1611,7 @@ elif ! $MANUAL_START; then
         fi
     done
     if [[ -n "${GATEWAY_PID:-}" ]] && ! $GW_READY; then
-        warn "Gateway process running but health check not responding after 6s"
+        GW_DIRECT_FAILED=true
     fi
 fi
 
@@ -1656,9 +1659,12 @@ SERVICE
         systemctl --user daemon-reload 2>/dev/null
         systemctl --user enable aiir-gateway.service 2>/dev/null && \
             ok "Systemd service enabled (auto-start at login)"
-        systemctl --user start aiir-gateway.service 2>/dev/null && \
-            ok "Gateway started via systemd" || \
-            warn "Could not start via systemd. Use $GATEWAY_START manually."
+        if systemctl --user start aiir-gateway.service 2>/dev/null; then
+            ok "Gateway started via systemd"
+        else
+            warn "Gateway failed to start. Check $GATEWAY_CONFIG"
+            info "Manual start: $GATEWAY_START"
+        fi
 
         # Enable lingering so service runs without active login session
         if command -v loginctl &>/dev/null; then
@@ -1667,8 +1673,11 @@ SERVICE
         fi
     else
         warn "systemd user sessions not available (WSL or container?)"
+        if $GW_DIRECT_FAILED; then
+            warn "Gateway failed to start. Check $GATEWAY_CONFIG"
+        fi
         ok "Use startup script: $GATEWAY_START"
-        if [[ -n "${GATEWAY_PID:-}" ]]; then
+        if [[ -n "${GATEWAY_PID:-}" ]] && ! $GW_DIRECT_FAILED; then
             info "Gateway is running now (PID $GATEWAY_PID). Will stop on logout."
         fi
     fi
