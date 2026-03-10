@@ -437,6 +437,11 @@ async def join_gateway(request: Request) -> JSONResponse:
         response["wintools_registered"] = True
         if restart_required:
             response["restart_required"] = True
+        samba_config = _load_samba_config()
+        if samba_config:
+            response["smb_share"] = samba_config["share_name"]
+            response["smb_user"] = samba_config["smb_user"]
+            response["smb_host"] = _get_sift_ip()
 
     return JSONResponse(response)
 
@@ -573,6 +578,37 @@ def _get_gateway_url(gateway) -> str:
 
     scheme = "https" if tls.get("certfile") else "http"
     return f"{scheme}://{host}:{port}"
+
+
+def _load_samba_config() -> dict | None:
+    """Read ~/.aiir/samba.yaml if it exists."""
+    from pathlib import Path
+
+    import yaml
+
+    path = Path.home() / ".aiir" / "samba.yaml"
+    if not path.is_file():
+        return None
+    try:
+        return yaml.safe_load(path.read_text())
+    except Exception:
+        return None
+
+
+def _get_sift_ip() -> str | None:
+    """Read static IP from ~/.aiir/network.yaml."""
+    from pathlib import Path
+
+    import yaml
+
+    path = Path.home() / ".aiir" / "network.yaml"
+    if not path.is_file():
+        return None
+    try:
+        doc = yaml.safe_load(path.read_text())
+        return doc.get("static_ip")
+    except Exception:
+        return None
 
 
 def rest_routes() -> list[Route]:
