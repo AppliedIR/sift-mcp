@@ -612,8 +612,9 @@ _is_container() {
 
 if command -v bwrap &>/dev/null; then
     # Test what the sandbox actually does: network namespace isolation
-    BWRAP_ERR=$(timeout 5 bwrap --ro-bind / / --unshare-net -- /bin/true 2>&1)
-    BWRAP_RC=$?
+    # Capture exit code without letting set -e kill the script on failure
+    BWRAP_RC=0
+    BWRAP_ERR=$(timeout 5 bwrap --ro-bind / / --unshare-net -- /bin/true 2>&1) || BWRAP_RC=$?
 
     if [[ $BWRAP_RC -eq 0 ]]; then
         ok "Sandbox: bwrap network namespace works"
