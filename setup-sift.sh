@@ -50,6 +50,7 @@ for arg in "$@"; do
         --install-dir=*)   INSTALL_DIR="${arg#*=}" ;;
         --venv=*)          VENV_DIR="${arg#*=}" ;;
         --port=*)          GATEWAY_PORT="${arg#*=}" ;;
+        --cases-dir=*)     CASE_DIR="${arg#--cases-dir=}" ;;
         -h|--help)
             echo "Usage: setup-sift.sh [OPTIONS]"
             echo ""
@@ -65,6 +66,7 @@ for arg in "$@"; do
             echo "  --install-dir=X   Override source clone dir (default: ~/.aiir/src/sift-mcp)"
             echo "  --venv=X          Override venv path (default: ~/.aiir/venv)"
             echo "  --port=N          Override gateway port (default: 4508)"
+            echo "  --cases-dir=X     Override cases root directory (default: ~/cases)"
             echo "  --uninstall       Uninstall AIIR forensic controls (delegates to aiir setup client)"
             echo "  --manual-start    Skip auto-start/systemd"
             echo "  -y, --yes         Accept all defaults (non-interactive)"
@@ -1500,12 +1502,47 @@ ok "Manifest written: $MANIFEST"
 # Phase 11: Default Case Directory
 # =============================================================================
 
-CASE_DIR="$HOME/cases"
+CASE_DIR="${CASE_DIR:-$HOME/cases}"
 if [[ ! -d "$CASE_DIR" ]]; then
     mkdir -p "$CASE_DIR"
     ok "Created default case directory: $CASE_DIR"
 else
     ok "Case directory exists: $CASE_DIR"
+fi
+
+# =============================================================================
+# Phase 11.5: Wintools Integration (optional)
+# =============================================================================
+
+if [ "$MODE" = "recommended" ] || [ "$MODE" = "custom" ]; then
+  if [[ "$AUTO_YES" != "true" ]]; then
+    echo ""
+    echo "Do you plan to use a Windows forensic workstation with AIIR?"
+    echo "This sets up Samba file sharing for case data."
+    read -p "Configure wintools integration? [y/N] " WINTOOLS_SETUP
+    if [[ "${WINTOOLS_SETUP,,}" == "y" ]]; then
+        # Install Samba
+        sudo apt-get install -y samba >/dev/null 2>&1 || true
+        # Create sift group + aiir-smb user
+        sudo groupadd -f sift
+        sudo useradd -r -s /usr/sbin/nologin -M -G sift aiir-smb 2>/dev/null || \
+            sudo usermod -aG sift aiir-smb
+        # Add current user to sift group
+        sudo usermod -aG sift "$(whoami)"
+        # Static IP
+        CURRENT_IP=$(hostname -I | awk '{print $1}')
+        read -p "Enter static IP for this machine [$CURRENT_IP]: " STATIC_IP
+        STATIC_IP="${STATIC_IP:-$CURRENT_IP}"
+        mkdir -p "$HOME/.aiir"
+        cat > "$HOME/.aiir/network.yaml" <<YAML
+static_ip: $STATIC_IP
+interface: $(ip route get 8.8.8.8 2>/dev/null | grep -oP 'dev \K\S+' || echo "eth0")
+configured_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+YAML
+        ok "Samba installed, sift group configured, static IP stored"
+        info "Run 'aiir setup join-code' after setup to complete wintools integration"
+    fi
+  fi
 fi
 
 # =============================================================================
