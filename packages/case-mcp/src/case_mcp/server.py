@@ -24,11 +24,13 @@ from aiir_cli.commands.evidence import (
     register_evidence_data,
     verify_evidence_data,
 )
+from aiir_cli.commands.join import notify_wintools_case_activated
 from aiir_cli.main import (
     _case_activate_data,
     _case_init_data,
     _case_list_data,
     _case_status_data,
+    _set_case_wintools_permissions,
 )
 from mcp.server.fastmcp import FastMCP
 from sift_common.audit import AuditWriter, resolve_examiner
@@ -40,6 +42,20 @@ logger = logging.getLogger(__name__)
 _MAX_NAME = 200
 _MAX_TEXT = 10_000
 _MAX_SHORT = 200
+
+
+def _wintools_configured() -> bool:
+    """Check if Samba sharing is set up (samba.yaml exists with share_name)."""
+    import yaml
+
+    p = Path.home() / ".aiir" / "samba.yaml"
+    if not p.is_file():
+        return False
+    try:
+        doc = yaml.safe_load(p.read_text())
+        return bool(doc and doc.get("share_name"))
+    except Exception:
+        return False
 
 
 def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
@@ -107,12 +123,23 @@ def create_server() -> FastMCP:
     # Tool 1: case_init (CONFIRM)
     # ------------------------------------------------------------------
     @server.tool()
-    def case_init(name: str, description: str = "") -> dict:
+    def case_init(
+        name: str,
+        description: str = "",
+        share_wintools: bool = False,
+        cases_dir: str = "",
+    ) -> dict:
         """Create a new case directory with the given name. The case ID
         is generated from the name and current timestamp.
 
         Confirm with the examiner before creating a case — this creates
         a permanent directory with case metadata.
+
+        Args:
+            name: Case name.
+            description: Optional case description.
+            share_wintools: Set case permissions for wintools access.
+            cases_dir: Override cases root directory.
         """
         try:
             _validate_str_length(name, "name", _MAX_NAME)
@@ -122,8 +149,20 @@ def create_server() -> FastMCP:
                 name=name,
                 examiner=examiner,
                 description=description,
+                cases_dir=cases_dir or None,
             )
             os.environ["AIIR_CASE_DIR"] = result["case_dir"]
+
+            if share_wintools and _wintools_configured():
+                try:
+                    _set_case_wintools_permissions(Path(result["case_dir"]))
+                    notify_wintools_case_activated(result["case_id"])
+                    result["wintools_shared"] = True
+                except Exception as e:
+                    result["wintools_warning"] = (
+                        f"Failed to set up wintools sharing: {e}"
+                    )
+
             logged_id = audit.log(
                 tool="case_init",
                 params={"name": name, "description": description},
@@ -148,6 +187,20 @@ def create_server() -> FastMCP:
         try:
             result = _case_activate_data(case_id)
             os.environ["AIIR_CASE_DIR"] = result["case_dir"]
+
+            # Notify wintools if this case is shared
+            case_path = Path(result["case_dir"])
+            if (
+                _wintools_configured()
+                and (case_path / "extractions" / "wintools").is_dir()
+            ):
+                try:
+                    notify_wintools_case_activated(case_id)
+                except Exception as e:
+                    result["wintools_warning"] = (
+                        f"Failed to notify wintools of case change: {e}"
+                    )
+
             logged_id = audit.log(
                 tool="case_activate",
                 params={"case_id": case_id},
