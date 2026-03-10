@@ -24,7 +24,11 @@ from aiir_cli.commands.evidence import (
     register_evidence_data,
     verify_evidence_data,
 )
-from aiir_cli.commands.join import notify_wintools_case_activated
+from aiir_cli.commands.join import (
+    _repoint_samba_share,
+    notify_wintools_case_activated,
+    notify_wintools_case_deactivated,
+)
 from aiir_cli.main import (
     _case_activate_data,
     _case_init_data,
@@ -59,12 +63,14 @@ def _wintools_configured() -> bool:
 
 
 def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
-    """Reject strings exceeding max_len or containing null bytes."""
+    """Reject strings exceeding max_len, containing null bytes, or path traversal."""
     if value is not None and isinstance(value, str):
         if len(value) > max_len:
             raise ValueError(f"{field} exceeds maximum length of {max_len} characters")
         if "\x00" in value:
             raise ValueError(f"{field} contains invalid null byte")
+        if ".." in value:
+            raise ValueError(f"{field} contains invalid path traversal")
 
 
 def _resolve_case_dir(case_id: str = "") -> Path:
@@ -144,6 +150,7 @@ def create_server() -> FastMCP:
         try:
             _validate_str_length(name, "name", _MAX_NAME)
             _validate_str_length(description, "description", _MAX_TEXT)
+            _validate_str_length(cases_dir, "cases_dir", _MAX_NAME)
             examiner = resolve_examiner()
             result = _case_init_data(
                 name=name,
@@ -156,6 +163,7 @@ def create_server() -> FastMCP:
             if share_wintools and _wintools_configured():
                 try:
                     _set_case_wintools_permissions(Path(result["case_dir"]))
+                    _repoint_samba_share(Path(result["case_dir"]))
                     notify_wintools_case_activated(result["case_id"])
                     result["wintools_shared"] = True
                 except Exception as e:
@@ -178,28 +186,34 @@ def create_server() -> FastMCP:
     # Tool 2: case_activate (CONFIRM)
     # ------------------------------------------------------------------
     @server.tool()
-    def case_activate(case_id: str) -> dict:
+    def case_activate(case_id: str, cases_dir: str = "") -> dict:
         """Switch the active case pointer to the specified case ID.
 
         Confirm with the examiner before switching cases — this changes
         which case all subsequent operations apply to.
+
+        Args:
+            case_id: Case ID to activate.
+            cases_dir: Override cases root directory.
         """
         try:
-            result = _case_activate_data(case_id)
+            _validate_str_length(cases_dir, "cases_dir", _MAX_NAME)
+            result = _case_activate_data(case_id, cases_dir=cases_dir or None)
             os.environ["AIIR_CASE_DIR"] = result["case_dir"]
 
-            # Notify wintools if this case is shared
+            # Repoint share and notify wintools
             case_path = Path(result["case_dir"])
-            if (
-                _wintools_configured()
-                and (case_path / "extractions" / "wintools").is_dir()
-            ):
+            if _wintools_configured():
                 try:
-                    notify_wintools_case_activated(case_id)
+                    if (case_path / "extractions" / "wintools").is_dir():
+                        _repoint_samba_share(case_path)
+                        notify_wintools_case_activated(case_id)
+                        result["wintools_shared"] = True
+                    else:
+                        _repoint_samba_share(None)
+                        notify_wintools_case_deactivated()
                 except Exception as e:
-                    result["wintools_warning"] = (
-                        f"Failed to notify wintools of case change: {e}"
-                    )
+                    result["wintools_warning"] = f"Failed to update wintools share: {e}"
 
             logged_id = audit.log(
                 tool="case_activate",

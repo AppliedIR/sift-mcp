@@ -13,7 +13,6 @@
 #   ./quickstart-lite.sh --rebuild-rag            # Force rebuild RAG index
 #   ./quickstart-lite.sh --opencti                # Add OpenCTI MCP
 #   ./quickstart-lite.sh --remnux=HOST:PORT       # Add REMnux MCP
-#   ./quickstart-lite.sh --wintools=IP:PORT       # Add WinTools MCP
 #   ./quickstart-lite.sh -y                       # Non-interactive
 #   ./quickstart-lite.sh -h                       # Full help
 #

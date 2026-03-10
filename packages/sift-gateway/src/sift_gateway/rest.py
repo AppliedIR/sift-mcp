@@ -439,9 +439,13 @@ async def join_gateway(request: Request) -> JSONResponse:
             response["restart_required"] = True
         samba_config = _load_samba_config()
         if samba_config:
-            response["smb_share"] = samba_config["share_name"]
-            response["smb_user"] = samba_config["smb_user"]
-            response["smb_host"] = _get_sift_ip()
+            smb_host = _get_sift_ip()
+            share_name = samba_config.get("share_name", "")
+            smb_user = samba_config.get("smb_user", "")
+            if smb_host and share_name and smb_user:
+                response["smb_share"] = share_name
+                response["smb_user"] = smb_user
+                response["smb_host"] = smb_host
 
     return JSONResponse(response)
 
