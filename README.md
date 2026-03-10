@@ -50,7 +50,7 @@ claude
 - **Windows baseline validation** — offline file/process validation against known_good.db
 - **Case management** — `/case init`, `/case open`, `/case status`, `/case list`, `/case close`
 - **Post-install verification** — `/welcome` validates setup and orients you
-- **Optional add-ons** — OpenCTI, REMnux, WinTools, Microsoft Learn, Zeltser IR Writing
+- **Optional add-ons** — OpenCTI, REMnux, Microsoft Learn, Zeltser IR Writing
 
 No gateway, no sandbox, no deny rules. Claude runs forensic tools directly via Bash. Forensic discipline is suggested and reinforced via prompt hooks and reference documents, but Claude Code can choose to ignore them.
 
@@ -59,7 +59,6 @@ No gateway, no sandbox, no deny rules. Claude runs forensic tools directly via B
 ```bash
 ./quickstart-lite.sh --opencti              # Live threat intelligence
 ./quickstart-lite.sh --remnux=HOST:PORT     # Automated malware analysis
-./quickstart-lite.sh --wintools=IP:PORT     # Windows forensic tool execution
 ./quickstart-lite.sh --mslearn              # Microsoft documentation search
 ./quickstart-lite.sh --zeltser              # IR writing guidelines
 ```
