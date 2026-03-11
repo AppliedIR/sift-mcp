@@ -1530,17 +1530,8 @@ if [ "$MODE" = "recommended" ] || [ "$MODE" = "custom" ]; then
             sudo usermod -aG sift aiir-smb
         # Add current user to sift group
         sudo usermod -aG sift "$(whoami)"
-        # Static IP
-        CURRENT_IP=$(hostname -I | awk '{print $1}')
-        STATIC_IP=$(prompt "Enter static IP for this machine" "$CURRENT_IP")
-        mkdir -p "$HOME/.aiir"
-        cat > "$HOME/.aiir/network.yaml" <<YAML
-static_ip: $STATIC_IP
-interface: $(ip route get 8.8.8.8 2>/dev/null | grep -oP 'dev \K\S+' || echo "eth0")
-configured_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)
-YAML
-        ok "Samba installed, sift group configured, static IP stored"
-        info "Run 'aiir setup join-code' after setup to complete wintools integration"
+        ok "Samba installed, sift group configured"
+        info "Run 'aiir setup join-code' after setup to configure static IP and complete wintools integration"
     fi
   fi
 fi
