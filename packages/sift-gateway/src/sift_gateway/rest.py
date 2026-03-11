@@ -363,6 +363,7 @@ async def join_gateway(request: Request) -> JSONResponse:
     hostname = body.get("hostname", "")
     wintools_url = body.get("wintools_url")
     wintools_token = body.get("wintools_token")
+    wintools_cert = body.get("wintools_cert")
 
     matched_hash = await validate_and_consume_join_code(code)
     if not matched_hash:
@@ -397,8 +398,25 @@ async def join_gateway(request: Request) -> JSONResponse:
                 {"error": "wintools_url must include a hostname"},
                 status_code=400,
             )
+        # Store pinned TLS cert if provided
+        cert_path_str = None
+        if wintools_cert:
+            from pathlib import Path
+
+            cert_path = Path.home() / ".aiir" / "tls" / "wintools-cert.pem"
+            cert_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if wintools_cert.strip().startswith("-----BEGIN CERTIFICATE-----"):
+                cert_path.write_text(wintools_cert)
+                os.chmod(str(cert_path), 0o600)
+                cert_path_str = str(cert_path)
+                logger.info("Stored wintools TLS cert at %s", cert_path)
+            else:
+                logger.warning("Invalid wintools_cert in join body (not PEM)")
+
         # Write to disk
-        _add_wintools_backend(gateway, wintools_url, wintools_token)
+        _add_wintools_backend(
+            gateway, wintools_url, wintools_token, tls_cert=cert_path_str
+        )
         wintools_registered = True
 
         # Hot-load the new backend into the running gateway
@@ -408,6 +426,8 @@ async def join_gateway(request: Request) -> JSONResponse:
             "bearer_token": wintools_token,
             "enabled": True,
         }
+        if cert_path_str:
+            backend_config["tls_cert"] = cert_path_str
         try:
             backend = create_backend("wintools-mcp", backend_config)
             gateway.backends["wintools-mcp"] = backend
@@ -528,7 +548,9 @@ def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
         gateway._api_keys[token] = {"examiner": examiner, "role": "examiner"}
 
 
-def _add_wintools_backend(gateway, url: str, token: str) -> None:
+def _add_wintools_backend(
+    gateway, url: str, token: str, tls_cert: str | None = None
+) -> None:
     """Add a wintools-mcp HTTP backend to the gateway config."""
     from pathlib import Path
 
@@ -554,6 +576,8 @@ def _add_wintools_backend(gateway, url: str, token: str) -> None:
             "bearer_token": token,
             "enabled": True,
         }
+        if tls_cert:
+            config["backends"]["wintools-mcp"]["tls_cert"] = tls_cert
 
         try:
             _atomic_yaml_write(config_path, config)

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from contextlib import AsyncExitStack
 from urllib.parse import urlparse
 
@@ -17,6 +18,31 @@ logger = logging.getLogger(__name__)
 _TOOL_LIST_TIMEOUT = 30
 _TOOL_CALL_TIMEOUT = 300
 _STOP_TIMEOUT = 15
+
+
+def _make_pinned_tls_factory(cert_path: str):
+    """Return an httpx_client_factory that pins TLS verification to a specific cert."""
+    import httpx
+    from mcp.shared._httpx_utils import (
+        MCP_DEFAULT_SSE_READ_TIMEOUT,
+        MCP_DEFAULT_TIMEOUT,
+    )
+
+    def factory(headers=None, timeout=None, auth=None):
+        kwargs = {"follow_redirects": True, "verify": cert_path}
+        if headers is not None:
+            kwargs["headers"] = headers
+        if timeout is None:
+            kwargs["timeout"] = httpx.Timeout(
+                MCP_DEFAULT_TIMEOUT, read=MCP_DEFAULT_SSE_READ_TIMEOUT
+            )
+        else:
+            kwargs["timeout"] = timeout
+        if auth is not None:
+            kwargs["auth"] = auth
+        return httpx.AsyncClient(**kwargs)
+
+    return factory
 
 
 class HttpMCPBackend(MCPBackend):
@@ -54,8 +80,20 @@ class HttpMCPBackend(MCPBackend):
 
         self._exit_stack = AsyncExitStack()
         try:
+            client_factory_kwargs = {}
+            tls_cert = self.config.get("tls_cert")
+            if tls_cert:
+                tls_cert = os.path.expanduser(tls_cert)
+                client_factory_kwargs["httpx_client_factory"] = (
+                    _make_pinned_tls_factory(tls_cert)
+                )
+
             transport = await self._exit_stack.enter_async_context(
-                streamablehttp_client(url, headers=headers if headers else None)
+                streamablehttp_client(
+                    url,
+                    headers=headers if headers else None,
+                    **client_factory_kwargs,
+                )
             )
             read_stream, write_stream, _ = transport
             self._session = await self._exit_stack.enter_async_context(
