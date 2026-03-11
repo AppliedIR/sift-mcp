@@ -242,6 +242,7 @@ if ${UNINSTALL_MODE:-false}; then
     fi
 
     # [3] Virtual environment
+    KEPT_VENV=false
     if [[ -d "$VENV_DIR" ]]; then
         VENV_SIZE=$(du -sh "$VENV_DIR" 2>/dev/null | cut -f1 || echo "unknown")
         echo -e "${BOLD}[3] Virtual environment${NC}"
@@ -252,12 +253,14 @@ if ${UNINSTALL_MODE:-false}; then
             rm -rf "$VENV_DIR"
             ok "Virtual environment removed."
         else
+            KEPT_VENV=true
             info "Skipped virtual environment."
         fi
         echo ""
     fi
 
     # [4] Source code (includes RAG index and triage databases via editable install)
+    KEPT_SRC=false
     SRC_DIR="$(dirname "$INSTALL_DIR")"
     if [[ -d "$SRC_DIR" ]]; then
         SRC_SIZE=$(du -sh "$SRC_DIR" 2>/dev/null | cut -f1 || echo "unknown")
@@ -290,6 +293,7 @@ if ${UNINSTALL_MODE:-false}; then
             rm -rf "$SRC_DIR"
             ok "Source code removed."
         else
+            KEPT_SRC=true
             info "Skipped source code."
         fi
         echo ""
@@ -343,27 +347,34 @@ if ${UNINSTALL_MODE:-false}; then
         echo ""
     fi
 
-    # [7] Remaining ~/.aiir/ contents (hooks, logs)
+    # [7] Remaining ~/.aiir/ contents (hooks, logs, start-gateway.sh)
+    # Exclude items the user chose to keep in steps 3-4
     AIIR_DIR="$HOME/.aiir"
     if [[ -d "$AIIR_DIR" ]]; then
-        REMAINING=$(find "$AIIR_DIR" -mindepth 1 -maxdepth 1 2>/dev/null | head -5)
+        EXCLUDE_ARGS=()
+        $KEPT_VENV && EXCLUDE_ARGS+=(! -name "venv")
+        $KEPT_SRC  && EXCLUDE_ARGS+=(! -name "src")
+
+        REMAINING=$(find "$AIIR_DIR" -mindepth 1 -maxdepth 1 "${EXCLUDE_ARGS[@]}" 2>/dev/null | head -5)
         if [[ -n "$REMAINING" ]]; then
             echo -e "${BOLD}[7] Remaining ~/.aiir/ contents${NC}"
             while IFS= read -r item; do
                 echo "    $(basename "$item")"
             done <<< "$REMAINING"
-            REMAINING_COUNT=$(find "$AIIR_DIR" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
+            REMAINING_COUNT=$(find "$AIIR_DIR" -mindepth 1 -maxdepth 1 "${EXCLUDE_ARGS[@]}" 2>/dev/null | wc -l)
             if (( REMAINING_COUNT > 5 )); then
                 echo "    ... and $((REMAINING_COUNT - 5)) more"
             fi
             echo ""
             if prompt_yn_strict "    Remove remaining ~/.aiir/ contents?"; then
-                rm -rf "$AIIR_DIR"
-                ok "~/.aiir/ removed."
+                # Remove only items not preserved in earlier steps
+                find "$AIIR_DIR" -mindepth 1 -maxdepth 1 "${EXCLUDE_ARGS[@]}" -exec rm -rf {} +
+                ok "Remaining ~/.aiir/ contents removed."
             else
                 info "Skipped. Directory preserved at $AIIR_DIR"
             fi
         else
+            # Only remove directory if truly empty
             rmdir "$AIIR_DIR" 2>/dev/null || true
         fi
         echo ""
@@ -1289,6 +1300,46 @@ else
 fi
 
 # =============================================================================
+# Phase 7b: Static IP Configuration (--remote only)
+# =============================================================================
+
+if $REMOTE_MODE; then
+    header "Network Configuration"
+
+    echo "  The SIFT gateway connects to remote clients by IP address."
+    echo "  A static IP prevents the address from changing after reboot."
+    echo ""
+
+    # _ensure_static_ip() is interactive (prompts + reads stdin) and prints
+    # status to stdout. We run it directly (not captured) so the user sees
+    # prompts, then read the result from ~/.aiir/network.yaml afterward.
+    "$VENV_PYTHON" -c "
+from aiir_cli.commands.join import _ensure_static_ip
+_ensure_static_ip()
+" || true
+
+    # Read the configured IP from network.yaml (written by _apply_static_ip)
+    STATIC_IP=""
+    NETWORK_YAML="$HOME/.aiir/network.yaml"
+    if [[ -f "$NETWORK_YAML" ]]; then
+        STATIC_IP=$("$VENV_PYTHON" -c "
+import yaml
+with open('$NETWORK_YAML') as f:
+    doc = yaml.safe_load(f) or {}
+ip = doc.get('static_ip', '')
+if ip:
+    print(ip)
+" 2>/dev/null || true)
+    fi
+
+    if [[ -n "$STATIC_IP" ]]; then
+        ok "Static IP: $STATIC_IP"
+    else
+        info "Skipped static IP. Current address may change after reboot."
+    fi
+fi
+
+# =============================================================================
 # Phase 8: TLS Certificates (--remote only)
 # =============================================================================
 
@@ -1298,8 +1349,9 @@ if $REMOTE_MODE; then
     TLS_DIR="$HOME/.aiir/tls"
     mkdir -p "$TLS_DIR"
 
-    # Determine SAN entries
+    # Determine SAN entries — use static IP if configured, else detect
     HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+    [[ -n "$STATIC_IP" ]] && HOST_IP="$STATIC_IP"
     HOST_NAME=$(hostname 2>/dev/null || echo "localhost")
 
     SAN="IP:$HOST_IP,DNS:$HOST_NAME,DNS:localhost,IP:127.0.0.1"
@@ -1947,7 +1999,7 @@ case "$CLIENT" in
 esac
 echo ""
 echo "  To connect a Windows forensic workstation:"
-echo "    aiir setup join-code"
+echo "    Run setup-windows.ps1 on the Windows machine and follow the prompts."
 
 if $REMOTE_MODE; then
     echo ""
