@@ -1531,30 +1531,6 @@ else
     ok "Case directory exists: $CASE_DIR"
 fi
 
-# =============================================================================
-# Phase 11.5: Wintools Integration (optional)
-# =============================================================================
-
-if [ "$MODE" = "recommended" ] || [ "$MODE" = "custom" ]; then
-  if [[ "$AUTO_YES" != "true" ]]; then
-    echo ""
-    echo "Will you use AIIR with a wintools-mcp instance on a separate Windows machine?"
-    echo "If so, we can configure Samba file sharing for case data now."
-    echo "You can also set this up later with: aiir setup join-code"
-    if prompt_yn "Configure wintools integration now?" "n"; then
-        # Install Samba
-        sudo apt-get install -y samba >/dev/null 2>&1 || true
-        # Create sift group + aiir-smb user
-        sudo groupadd -f sift
-        sudo useradd -r -s /usr/sbin/nologin -M -G sift aiir-smb 2>/dev/null || \
-            sudo usermod -aG sift aiir-smb
-        # Add current user to sift group
-        sudo usermod -aG sift "$(whoami)"
-        ok "Samba installed, sift group configured"
-        info "Run 'aiir setup join-code' after setup to configure static IP and complete wintools integration"
-    fi
-  fi
-fi
 
 # =============================================================================
 # Phase 12: Add venv to PATH
