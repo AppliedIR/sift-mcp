@@ -125,46 +125,38 @@ git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 
 ## Architecture
 
-This is a monorepo containing all SIFT-side AIIR components: forensic-mcp, case-mcp, report-mcp, sift-mcp tools, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, and sift-common. Each MCP runs as a stdio subprocess of the sift-gateway. The LLM client, the case dashboard, and the aiir CLI are the three human-facing interfaces. The **case dashboard** is served by the gateway and provides browser-based review, approval, and commit with challenge-response authentication. The **aiir CLI** runs on SIFT for case management, evidence handling, and verification. When the LLM client runs on a separate machine, the examiner accesses the dashboard through the gateway (HTTPS). The LLM client connects to the gateway over Streamable HTTP. It never talks to MCP backends directly.
+Each MCP backend runs as a stdio subprocess of the sift-gateway, aggregated behind a single HTTP endpoint. The case dashboard is served by the gateway for browser-based review and approval. See the [aiir README](https://github.com/AppliedIR/aiir#deployment-overview) for the full deployment topology including REMnux and Windows VMs.
 
 ```mermaid
 graph LR
-    subgraph analyst ["Analyst Machine (if remote)"]
-        CC["LLM Client<br/>(human interface)"]
-        BR["Browser<br/>(human interface)"]
-    end
+    GW["sift-gateway :4508"]
 
-    subgraph sift ["SIFT Workstation"]
-        CLI["aiir CLI"]
-        GW["sift-gateway<br/>:4508"]
-        FM["forensic-mcp"]
-        CM["case-mcp"]
-        RM["report-mcp"]
-        SM["sift-mcp"]
-        RAG["forensic-rag"]
-        WT["windows-triage"]
-        OC["opencti"]
-        FK["forensic-knowledge"]
-        CASE["Case Directory"]
+    FM["forensic-mcp<br/>12 tools · findings, timeline,<br/>evidence, discipline"]
+    CM["case-mcp<br/>14 tools · case management,<br/>audit queries"]
+    RM["report-mcp<br/>6 tools · report generation,<br/>IOC aggregation"]
+    SM["sift-mcp<br/>6 tools · Linux forensic<br/>tool execution"]
+    RAG["forensic-rag<br/>3 tools · semantic search<br/>23K records"]
+    WT["windows-triage<br/>13 tools · offline baseline<br/>validation"]
+    OC["opencti<br/>10 tools · threat<br/>intelligence"]
+    CD["case-dashboard<br/>browser review + commit"]
+    FK["forensic-knowledge<br/>shared YAML data"]
+    CASE["Case Directory"]
 
-        GW -->|stdio| FM
-        GW -->|stdio| CM
-        GW -->|stdio| RM
-        GW -->|stdio| SM
-        GW -->|stdio| RAG
-        GW -->|stdio| WT
-        GW -->|stdio| OC
-        FM --> CASE
-        CM --> CASE
-        RM --> CASE
-        CLI --> CASE
-    end
-
-    CC -->|"streamable-http"| GW
-    BR -->|"HTTPS"| GW
+    GW -->|stdio| FM
+    GW -->|stdio| CM
+    GW -->|stdio| RM
+    GW -->|stdio| SM
+    GW -->|stdio| RAG
+    GW -->|stdio| WT
+    GW -->|stdio| OC
+    GW --> CD
+    FM --> FK
+    SM --> FK
+    FM --> CASE
+    CM --> CASE
+    RM --> CASE
+    CD --> CASE
 ```
-
-In co-located deployments, everything runs on SIFT — no remote access needed. In production, the LLM client and browser run on the analyst machine. The LLM client connects to the gateway over streamable-http; the browser connects via HTTPS for the case dashboard.
 
 The gateway exposes each backend as a separate MCP endpoint. Clients can connect to the aggregate endpoint or to individual backends:
 
