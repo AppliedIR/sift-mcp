@@ -86,6 +86,14 @@ if ! [[ "$GATEWAY_PORT" =~ ^[0-9]+$ ]] || (( GATEWAY_PORT < 1 || GATEWAY_PORT > 
     exit 1
 fi
 
+# Reject running as root — $HOME becomes /root, breaking all user-dir paths.
+# The script uses sudo internally only where needed (apt, samba, apparmor).
+if [[ "$(id -u)" -eq 0 ]]; then
+    echo "[ERROR] Do not run this script with sudo. It prompts for sudo when needed."
+    echo "  Run: $(basename "$0") ${*}"
+    exit 1
+fi
+
 # Defaults
 [[ -z "$INSTALL_DIR" ]] && INSTALL_DIR="$HOME/.aiir/src/sift-mcp"
 [[ -z "$VENV_DIR" ]] && VENV_DIR="$HOME/.aiir/venv"
