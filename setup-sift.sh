@@ -1518,10 +1518,10 @@ fi
 if [ "$MODE" = "recommended" ] || [ "$MODE" = "custom" ]; then
   if [[ "$AUTO_YES" != "true" ]]; then
     echo ""
-    echo "Do you plan to use a Windows forensic workstation with AIIR?"
-    echo "This sets up Samba file sharing for case data."
-    read -p "Configure wintools integration? [y/N] " WINTOOLS_SETUP
-    if [[ "${WINTOOLS_SETUP,,}" == "y" ]]; then
+    echo "Will you use AIIR with a wintools-mcp instance on a separate Windows machine?"
+    echo "If so, we can configure Samba file sharing for case data now."
+    echo "You can also set this up later with: aiir setup join-code"
+    if prompt_yn "Configure wintools integration now?" "n"; then
         # Install Samba
         sudo apt-get install -y samba >/dev/null 2>&1 || true
         # Create sift group + aiir-smb user
@@ -1532,8 +1532,7 @@ if [ "$MODE" = "recommended" ] || [ "$MODE" = "custom" ]; then
         sudo usermod -aG sift "$(whoami)"
         # Static IP
         CURRENT_IP=$(hostname -I | awk '{print $1}')
-        read -p "Enter static IP for this machine [$CURRENT_IP]: " STATIC_IP
-        STATIC_IP="${STATIC_IP:-$CURRENT_IP}"
+        STATIC_IP=$(prompt "Enter static IP for this machine" "$CURRENT_IP")
         mkdir -p "$HOME/.aiir"
         cat > "$HOME/.aiir/network.yaml" <<YAML
 static_ip: $STATIC_IP
@@ -1873,22 +1872,12 @@ fi
 
 if $INSTALL_RAG || $INSTALL_TRIAGE; then
     echo ""
-    echo "── Data Maintenance ──────────────────────────────────────────"
+    echo "Checking installed data for updates..."
     echo ""
-    echo "AIIR ships pre-built database snapshots so you can start working"
-    echo "immediately. The underlying sources update at different rates."
 fi
 
+RAG_STALE_COUNT=""
 if $INSTALL_RAG; then
-    echo ""
-    echo -e "${BOLD}RAG knowledge base${NC} — 23 online sources (Sigma rules, MITRE ATT&CK,"
-    echo "LOLBAS, Atomic Red Team, etc.) that update frequently."
-    echo "  Check status:  $VENV_PYTHON -m rag_mcp.status"
-    echo "  Refresh:       $VENV_PYTHON -m rag_mcp.refresh"
-    echo "  Time: a few minutes to a couple of hours, depending on how"
-    echo "  many sources changed and available CPU."
-
-    # Check for stale sources
     RAG_STALE_COUNT=$(timeout 60 bash -c "\"$VENV_PYTHON\" -m rag_mcp.status --json 2>/dev/null" | \
         "$VENV_PYTHON" -c "
 import sys, json
@@ -1897,22 +1886,23 @@ print(sum(1 for s in data.get('online_sources', []) if s.get('has_update')))
 " 2>/dev/null) || RAG_STALE_COUNT=""
 
     if [[ -n "$RAG_STALE_COUNT" ]] && [[ "$RAG_STALE_COUNT" -gt 0 ]] 2>/dev/null; then
-        echo ""
-        echo "  $RAG_STALE_COUNT of 23 sources have updates available."
+        echo -e "  ${BOLD}RAG knowledge base:${NC} $RAG_STALE_COUNT of 23 sources have updates available."
+        echo "  Refresh now or later with: $VENV_PYTHON -m rag_mcp.refresh"
+        echo "  Time: a few minutes to a couple of hours depending on changes and CPU."
         if ! $AUTO_YES; then
             if prompt_yn "  Refresh now?" "n"; then
                 ANONYMIZED_TELEMETRY=False "$VENV_PYTHON" -m rag_mcp.refresh
             fi
         fi
     elif [[ -n "$RAG_STALE_COUNT" ]] && [[ "$RAG_STALE_COUNT" -eq 0 ]] 2>/dev/null; then
-        echo "  All 23 sources are current."
+        ok "RAG knowledge base: all 23 sources are current."
+    else
+        warn "Could not check RAG status. Check later with: $VENV_PYTHON -m rag_mcp.status"
     fi
 fi
 
 if $INSTALL_TRIAGE; then
-    echo ""
-    echo -e "${BOLD}Triage databases${NC} — Windows baseline data updated periodically."
-    echo "  Re-download:   $VENV_PYTHON -m windows_triage.scripts.download_databases"
+    ok "Triage databases: installed. Re-download when needed: $VENV_PYTHON -m windows_triage.scripts.download_databases"
 fi
 
 if $INSTALL_RAG || $INSTALL_TRIAGE; then
@@ -1926,16 +1916,42 @@ fi
 echo ""
 echo -e "${BOLD}Documentation:${NC} https://appliedir.github.io/aiir/"
 
-NEXT_STEP=1
 echo ""
-echo "Next steps:"
-echo "  $NEXT_STEP. Restart your shell (or: source ${SHELL_RC:-~/.bashrc})"
-NEXT_STEP=$((NEXT_STEP + 1))
-echo "  $NEXT_STEP. Verify installation:  aiir setup test"
-NEXT_STEP=$((NEXT_STEP + 1))
+echo "Get started:"
+echo "  1. source ${SHELL_RC:-~/.bashrc}"
+echo "  2. aiir setup test"
+echo "  3. aiir case init <case-name>"
+echo "  4. Place evidence in the case's evidence/ directory"
+
+case "$CLIENT" in
+    claude-code)
+        echo "  5. cd into the case directory (printed by step 3)"
+        echo "  6. claude"
+        echo "  7. Type /welcome inside Claude Code for an introduction"
+        echo ""
+        echo "Always launch Claude Code from inside a case directory."
+        echo "The sandbox restricts commands to that directory tree."
+        ;;
+    claude-desktop)
+        echo "  5. Open Claude Desktop and start a conversation"
+        echo "  6. Ask Claude to activate the case you created in step 3"
+        echo ""
+        echo "Claude Desktop runs on macOS/Windows. The SIFT gateway"
+        echo "handles tool execution remotely."
+        ;;
+    librechat)
+        echo "  5. Open LibreChat in your browser"
+        echo "  6. Ask Claude to activate the case you created in step 3"
+        ;;
+    *)
+        echo "  5. Connect your MCP client to the gateway"
+        echo "  6. Ask the LLM to activate the case you created in step 3"
+        ;;
+esac
+
 if $REMOTE_MODE; then
-    echo "  $NEXT_STEP. Run the remote client setup commands shown above on each client machine"
-    NEXT_STEP=$((NEXT_STEP + 1))
+    echo ""
+    echo "Remote clients: run the setup commands shown above on each client machine."
 fi
 echo ""
 

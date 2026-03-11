@@ -22,11 +22,12 @@ def create_server() -> FastMCP:
     # --- Discovery ---
 
     @server.tool()
-    def list_available_tools(category: str = "") -> list[dict]:
+    def list_available_tools(category: str = "") -> dict:
         """List forensic tools available on this SIFT workstation, with availability status."""
         from sift_mcp.tools.discovery import list_available_tools as _list
 
-        return _list(category=category or None)
+        tools = _list(category=category or None)
+        return {"tools": tools, "count": len(tools)}
 
     @server.tool()
     def get_tool_help(tool_name: str) -> dict:
@@ -214,11 +215,12 @@ def create_server() -> FastMCP:
     # --- Missing Tools ---
 
     @server.tool()
-    def list_missing_tools(category: str = "") -> list[dict]:
+    def list_missing_tools(category: str = "") -> dict:
         """List catalog tools not currently installed on this system."""
         from sift_mcp.tools.discovery import list_available_tools as _list
 
         all_tools = _list(category=category or None)
-        return [t for t in all_tools if not t.get("available", False)]
+        missing = [t for t in all_tools if not t.get("available", False)]
+        return {"tools": missing, "count": len(missing)}
 
     return server
