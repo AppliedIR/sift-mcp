@@ -1075,7 +1075,19 @@ if $INSTALL_TRIAGE; then
     # Ensure zstandard is available for the download module
     "$VENV_PYTHON" -m pip install --quiet zstandard 2>/dev/null || true
 
-    if ! $AUTO_YES; then
+    # Check if databases already exist
+    DB_EXISTS=false
+    if [[ -s "$DB_DIR/known_good.db" ]] && [[ -s "$DB_DIR/context.db" ]]; then
+        if "$VENV_PYTHON" -c "import sqlite3; sqlite3.connect('$DB_DIR/known_good.db').execute('SELECT 1')" 2>/dev/null; then
+            DB_EXISTS=true
+        fi
+    fi
+
+    if $DB_EXISTS; then
+        DB_SIZE=$(du -sh "$DB_DIR" 2>/dev/null | cut -f1 || echo "unknown")
+        ok "Triage databases exist ($DB_SIZE)"
+        DB_CHOICE="3"  # skip
+    elif ! $AUTO_YES; then
         echo ""
         echo "windows-triage needs Windows baseline databases."
         echo "  1. Download pre-built databases (recommended, ~1.2 GB download)"
