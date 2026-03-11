@@ -1809,6 +1809,18 @@ else
         || warn "Client configuration failed. Run manually: aiir setup client"
 fi
 
+# Detect which client was configured (interactive choice isn't returned to shell)
+if [[ -z "$CLIENT" ]]; then
+    if [[ -f "$HOME/.claude.json" ]]; then
+        CLIENT="claude-code"
+    elif [[ -f "$HOME/.config/Claude/claude_desktop_config.json" ]] || \
+         [[ -f "$HOME/Library/Application Support/Claude/claude_desktop_config.json" ]]; then
+        CLIENT="claude-desktop"
+    elif [[ -f "$HOME/.config/librechat/librechat_mcp.yaml" ]]; then
+        CLIENT="librechat"
+    fi
+fi
+
 # Global deployment message for claude-code
 if grep -q '"sift-gateway"' "$HOME/.claude.json" 2>/dev/null; then
     echo ""
@@ -1904,37 +1916,38 @@ echo ""
 echo -e "${BOLD}Documentation:${NC} https://appliedir.github.io/aiir/"
 
 echo ""
-echo "Get started:"
-echo "  1. source ${SHELL_RC:-~/.bashrc}"
-echo "  2. aiir setup test"
-echo "  3. aiir case init <case-name>"
-echo "  4. Place evidence in the case's evidence/ directory"
+echo -e "${BOLD}Next steps:${NC}"
+echo "  source ${SHELL_RC:-~/.bashrc}"
+echo ""
 
 case "$CLIENT" in
     claude-code)
-        echo "  5. cd into the case directory (printed by step 3)"
-        echo "  6. claude"
-        echo "  7. Type /welcome inside Claude Code for an introduction"
+        echo "  To start an investigation:"
+        echo "    aiir case init <case-name>"
+        echo "    cd ~/cases/<case-name>"
+        echo "    claude"
         echo ""
-        echo "Always launch Claude Code from inside a case directory."
-        echo "The sandbox restricts commands to that directory tree."
+        echo "  Type /welcome inside Claude Code for an introduction."
         ;;
     claude-desktop)
-        echo "  5. Open Claude Desktop and start a conversation"
-        echo "  6. Ask Claude to activate the case you created in step 3"
-        echo ""
-        echo "Claude Desktop runs on macOS/Windows. The SIFT gateway"
-        echo "handles tool execution remotely."
+        echo "  To start an investigation:"
+        echo "    aiir case init <case-name>"
+        echo "  Then open Claude Desktop and ask it to activate the case."
         ;;
     librechat)
-        echo "  5. Open LibreChat in your browser"
-        echo "  6. Ask Claude to activate the case you created in step 3"
+        echo "  To start an investigation:"
+        echo "    aiir case init <case-name>"
+        echo "  Then open LibreChat and ask the LLM to activate the case."
         ;;
     *)
-        echo "  5. Connect your MCP client to the gateway"
-        echo "  6. Ask the LLM to activate the case you created in step 3"
+        echo "  To start an investigation:"
+        echo "    aiir case init <case-name>"
+        echo "  Then connect your MCP client and ask the LLM to activate the case."
         ;;
 esac
+echo ""
+echo "  To connect a Windows forensic workstation:"
+echo "    aiir setup join-code"
 
 if $REMOTE_MODE; then
     echo ""
