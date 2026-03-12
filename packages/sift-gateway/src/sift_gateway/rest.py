@@ -401,6 +401,11 @@ async def join_gateway(request: Request) -> JSONResponse:
         # Store pinned TLS cert if provided
         cert_path_str = None
         if wintools_cert:
+            # Accept string or dict with "cert" key (PowerShell may serialize either)
+            if isinstance(wintools_cert, dict):
+                wintools_cert = wintools_cert.get("cert", "")
+            if not isinstance(wintools_cert, str):
+                wintools_cert = ""
             from pathlib import Path
 
             cert_path = Path.home() / ".aiir" / "tls" / "wintools-cert.pem"
