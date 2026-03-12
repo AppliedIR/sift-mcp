@@ -1249,7 +1249,7 @@ export AIIR_EXAMINER="$EXAMINER_NAME"
 # --- Password setup ---
 # setup_password() reads from /dev/tty and requires termios.
 # Skip in non-interactive mode (AUTO_YES / no terminal).
-if [[ -t 0 ]]; then
+if [[ -t 0 ]] && ! $AUTO_YES; then
     echo ""
     echo "Setting up your approval password..."
     echo ""
@@ -1260,10 +1260,13 @@ if [[ -t 0 ]]; then
     echo ""
     echo "Minimum 8 characters. Choose something memorable."
     echo ""
-    "$VENV_DIR/bin/aiir" config --setup-password
+    "$VENV_DIR/bin/aiir" config --setup-password || {
+        warn "Password setup failed or was cancelled."
+        echo "  Set your password later with: aiir config --setup-password"
+    }
 else
     echo ""
-    warn "No terminal detected — skipping password setup."
+    warn "Skipping password setup (non-interactive mode)."
     echo "  Set your password later with: aiir config --setup-password"
 fi
 
@@ -1782,7 +1785,7 @@ if $REMOTE_MODE; then
 
     if $JOIN_READY; then
         # Generate join code for the remote LLM client machine
-        JOIN_OUTPUT=$("$VENV_DIR/bin/python" -m aiir_cli setup join-code 2>&1) || true
+        JOIN_OUTPUT=$("$VENV_DIR/bin/aiir" setup join-code 2>&1) || true
         JOIN_CODE=$(echo "$JOIN_OUTPUT" | grep "Join code:" | awk '{print $3}')
 
         if [[ -n "$JOIN_CODE" ]]; then
@@ -1808,7 +1811,7 @@ if $REMOTE_MODE; then
 
             # Offer to generate a second join code for Windows wintools
             if prompt_yn "Will you connect a Windows forensic workstation?" "n"; then
-                WIN_OUTPUT=$("$VENV_DIR/bin/python" -m aiir_cli setup join-code 2>&1) || true
+                WIN_OUTPUT=$("$VENV_DIR/bin/aiir" setup join-code 2>&1) || true
                 WIN_CODE=$(echo "$WIN_OUTPUT" | grep "Join code:" | awk '{print $3}')
                 if [[ -n "$WIN_CODE" ]]; then
                     echo ""

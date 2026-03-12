@@ -624,18 +624,31 @@ def _load_samba_config() -> dict | None:
 
 
 def _get_sift_ip() -> str | None:
-    """Read static IP from ~/.aiir/network.yaml."""
+    """Read static IP from ~/.aiir/network.yaml, fall back to primary interface IP."""
     from pathlib import Path
 
     import yaml
 
     path = Path.home() / ".aiir" / "network.yaml"
-    if not path.is_file():
-        return None
+    if path.is_file():
+        try:
+            doc = yaml.safe_load(path.read_text())
+            ip = doc.get("static_ip")
+            if ip:
+                return ip
+        except Exception:
+            pass
+    # Fall back to primary interface IP (same as hostname -I)
+    import socket
+
     try:
-        doc = yaml.safe_load(path.read_text())
-        return doc.get("static_ip")
-    except Exception:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+        finally:
+            s.close()
+    except OSError:
         return None
 
 

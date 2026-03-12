@@ -174,15 +174,10 @@ def load_security_policy() -> dict:
         with open(security_file, encoding="utf-8") as f:
             doc = yaml.safe_load(f)
     except (OSError, yaml.YAMLError) as e:
-        logger.error("Failed to load security policy from %s: %s", security_file, e)
-        _security_cache = {
-            "dangerous_flags": set(),
-            "tool_allowed_flags": {},
-            "tool_blocked_flags": {},
-            "denied_binaries": frozenset(),
-            "output_flags": frozenset(),
-        }
-        return _security_cache
+        raise RuntimeError(
+            f"Failed to load security policy from {security_file}: {e}. "
+            "Security policy is required — cannot start with empty denylists."
+        ) from e
     _security_cache = {
         "dangerous_flags": set(doc.get("dangerous_flags", [])),
         "tool_allowed_flags": {
