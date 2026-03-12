@@ -61,7 +61,7 @@ def _protected_write(path: Path, content: str) -> None:
 
 
 CASES_DIR_ENV = "AIIR_CASES_DIR"
-DEFAULT_CASES_DIR = "cases"
+DEFAULT_CASES_DIR = str(Path.home() / "cases")
 
 # Evidence ID format: prefix-examiner-YYYYMMDD-NNN (all lowercase alphanumeric + hyphens)
 _EVIDENCE_ID_PATTERN = re.compile(r"^[a-z]+-[a-z0-9]+-[0-9]{8}-[0-9]{3,}\Z")

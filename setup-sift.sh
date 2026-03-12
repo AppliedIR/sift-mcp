@@ -307,11 +307,12 @@ if ${UNINSTALL_MODE:-false}; then
     if [[ -n "$SHELL_RC" ]] && grep -q "AIIR" "$SHELL_RC" 2>/dev/null; then
         echo -e "${BOLD}[5] Shell profile${NC}"
         echo "    File: $SHELL_RC"
-        echo "    Lines: AIIR_EXAMINER, PATH, argcomplete"
+        echo "    Lines: AIIR_EXAMINER, AIIR_CASES_DIR, PATH, argcomplete"
         echo ""
         if prompt_yn_strict "    Remove AIIR lines from $SHELL_RC?"; then
             sed -i '/# AIIR Platform/d' "$SHELL_RC"
             sed -i '/AIIR_EXAMINER/d' "$SHELL_RC"
+            sed -i '/AIIR_CASES_DIR/d' "$SHELL_RC"
             sed -i '/# aiir-path/d' "$SHELL_RC"
             sed -i '\|\.aiir/venv/bin|d' "$SHELL_RC"
             sed -i '/register-python-argcomplete aiir/d' "$SHELL_RC"
@@ -1475,7 +1476,7 @@ for name, module in core_backends + optional:
         },
         "enabled": True,
     }
-    if name in ('case-mcp', 'report-mcp'):
+    if name in ('case-mcp', 'report-mcp', 'forensic-mcp'):
         entry['env']['AIIR_CASES_DIR'] = '\${AIIR_CASES_DIR}'
     if name == "opencti-mcp":
         octi_url = "$OPENCTI_URL"
@@ -1615,12 +1616,20 @@ if [[ -n "$SHELL_RC" ]]; then
         echo "export PATH=\"$AIIR_BIN:\$PATH\"  # aiir-path" >> "$SHELL_RC"
         ok "Added venv to PATH in $SHELL_RC"
     fi
+
+    # AIIR_CASES_DIR — so aiir CLI resolves ~/cases (or custom --cases-dir)
+    if grep -q "AIIR_CASES_DIR" "$SHELL_RC" 2>/dev/null; then
+        sed -i "s|^export AIIR_CASES_DIR=.*|export AIIR_CASES_DIR=\"$CASE_DIR\"|" "$SHELL_RC"
+    else
+        echo "export AIIR_CASES_DIR=\"$CASE_DIR\"" >> "$SHELL_RC"
+    fi
 else
     warn "No .bashrc or .zshrc found. Add to your shell profile: export PATH=\"$AIIR_BIN:\$PATH\""
 fi
 if [[ ":$PATH:" != *":$AIIR_BIN:"* ]]; then
     export PATH="$AIIR_BIN:$PATH"
 fi
+export AIIR_CASES_DIR="$CASE_DIR"
 
 # Tab completion
 if [[ -z "${SHELL_RC:-}" ]]; then
@@ -1646,7 +1655,6 @@ GATEWAY_START="$HOME/.aiir/start-gateway.sh"
 cat > "$GATEWAY_START" << SCRIPT
 #!/usr/bin/env bash
 # Start AIIR Gateway
-export AIIR_CASE_DIR="$CASE_DIR"
 export AIIR_EXAMINER="$EXAMINER_NAME"
 export AIIR_CASES_DIR="$CASE_DIR"
 exec "$VENV_DIR/bin/python" -m sift_gateway --config "$GATEWAY_CONFIG"
@@ -1719,7 +1727,6 @@ After=network.target
 
 [Service]
 ExecStart=$VENV_DIR/bin/python -m sift_gateway --config $GATEWAY_CONFIG
-Environment=AIIR_CASE_DIR=$CASE_DIR
 Environment=AIIR_EXAMINER=$EXAMINER_NAME
 Environment=AIIR_CASES_DIR=$CASE_DIR
 Restart=on-failure

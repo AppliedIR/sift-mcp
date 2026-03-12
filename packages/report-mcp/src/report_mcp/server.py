@@ -32,6 +32,7 @@ from report_mcp.profiles import PROFILES, STRIPPED_FINDING_FIELDS
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_CASES_DIR = str(Path.home() / "cases")
 _MAX_FILENAME = 200
 _MAX_FIELD = 500
 _MAX_REPORT_BYTES = 10 * 1024 * 1024  # 10 MB
@@ -209,7 +210,7 @@ def _resolve_case_dir(case_id: str = "") -> Path:
     if case_id:
         if ".." in case_id or "/" in case_id or "\\" in case_id:
             raise ValueError(f"Invalid case ID: {case_id}")
-        cases_dir = Path(os.environ.get("AIIR_CASES_DIR", "cases"))
+        cases_dir = Path(os.environ.get("AIIR_CASES_DIR", _DEFAULT_CASES_DIR))
         case_dir = cases_dir / case_id
         if not case_dir.exists():
             raise ValueError(f"Case not found: {case_id}")
@@ -232,7 +233,7 @@ def _resolve_case_dir(case_id: str = "") -> Path:
             else:
                 if ".." in content or "/" in content or "\\" in content:
                     raise ValueError(f"Invalid case ID in active_case: {content}")
-                cases_dir = Path(os.environ.get("AIIR_CASES_DIR", "cases"))
+                cases_dir = Path(os.environ.get("AIIR_CASES_DIR", _DEFAULT_CASES_DIR))
                 case_dir = cases_dir / content
             if not case_dir.is_dir():
                 raise ValueError(f"Case directory does not exist: {case_dir}")
