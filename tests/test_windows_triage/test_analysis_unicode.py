@@ -185,6 +185,13 @@ class TestDetectTyposquatting:
         findings = detect_typosquatting("notepad.exe", ["svchost.exe"])
         assert len(findings) == 0
 
+    def test_best_match_on_tie(self):
+        # scvhost is distance 2 from both sihost and svchost;
+        # svchost wins because same length (smaller len_diff)
+        findings = detect_typosquatting("scvhost.exe", ["sihost.exe", "svchost.exe"])
+        assert len(findings) == 1
+        assert findings[0]["target_process"] == "svchost.exe"
+
     def test_case_insensitive(self):
         findings = detect_typosquatting("SVCHOTS.EXE", ["svchost.exe"])
         assert len(findings) == 1

@@ -387,6 +387,7 @@ def detect_typosquatting(
     if text_lower in [p.lower() for p in protected_names]:
         return findings
 
+    matches = []
     for protected in protected_names:
         protected_lower = protected.lower()
 
@@ -397,17 +398,23 @@ def detect_typosquatting(
         distance = levenshtein_distance(text_lower, protected_lower)
 
         if 0 < distance <= max_distance:
-            findings.append(
-                {
-                    "type": "typosquatting",
-                    "severity": "high",
-                    "target_process": protected,
-                    "actual_name": text,
-                    "edit_distance": distance,
-                    "description": f"Possible typosquatting of {protected} (edit distance: {distance})",
-                }
+            matches.append(
+                (distance, abs(len(text_lower) - len(protected_lower)), protected)
             )
-            break  # Only report first match
+
+    if matches:
+        matches.sort()  # (distance, len_diff, name) — all ascending
+        best_dist, _, best_name = matches[0]
+        findings.append(
+            {
+                "type": "typosquatting",
+                "severity": "high",
+                "target_process": best_name,
+                "actual_name": text,
+                "edit_distance": best_dist,
+                "description": f"Possible typosquatting of {best_name} (edit distance: {best_dist})",
+            }
+        )
 
     return findings
 

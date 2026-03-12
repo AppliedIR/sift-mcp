@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sift_mcp.config import get_config
+from sift_mcp.config import get_config, resolve_case_dir
 from sift_mcp.exceptions import ExecutionError, ExecutionTimeoutError
 
 logger = logging.getLogger(__name__)
@@ -135,7 +135,7 @@ def execute(
             response["truncated"] = True
 
         # Threshold-based save: auto-save when output exceeds response budget
-        case_dir = os.environ.get("AIIR_CASE_DIR", "")
+        case_dir = resolve_case_dir()
         exceeds_budget = stdout_byte_count > config.response_byte_budget
 
         if exceeds_budget and case_dir:
@@ -210,8 +210,8 @@ def _save_output(
     ):
         raise ExecutionError(f"Refusing to write output to system directory: {out_dir}")
 
-    # When AIIR_CASE_DIR is set, restrict save_dir to within the case directory
-    case_dir = os.environ.get("AIIR_CASE_DIR")
+    # When case dir is known, restrict save_dir to within the case directory
+    case_dir = resolve_case_dir() or None
     if case_dir:
         try:
             case_resolved = Path(case_dir).resolve()

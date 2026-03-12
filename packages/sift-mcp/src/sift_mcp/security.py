@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 from sift_mcp.catalog import load_security_policy
+from sift_mcp.config import resolve_case_dir
 
 _DANGEROUS_PATTERNS = [";", "&&", "||", "`", "$(", "${"]
 
@@ -99,7 +100,7 @@ def validate_rm_targets(args: list[str]) -> None:
                 raise ValueError(
                     f"Blocked: rm targeting protected evidence directory '{protected}'"
                 )
-        case_dir = os.environ.get("AIIR_CASE_DIR", "")
+        case_dir = resolve_case_dir()
         if case_dir:
             case_resolved = str(Path(case_dir).resolve())
             if resolved == case_resolved or resolved.startswith(case_resolved + "/"):
@@ -145,7 +146,7 @@ def validate_output_path(path: str) -> str:
     resolved = str(Path(path).resolve())
 
     # Case-dir containment: if inside case dir, it's allowed
-    case_dir = os.environ.get("AIIR_CASE_DIR", "")
+    case_dir = resolve_case_dir()
     if case_dir:
         case_resolved = str(Path(case_dir).resolve())
         if resolved == case_resolved or resolved.startswith(case_resolved + "/"):
