@@ -1848,33 +1848,38 @@ fi
 
 header "LLM Client Configuration"
 
-# Pass --sift and -y so only the client type is prompted.
-# _resolve_client() always prompts when --client is not set.
 if $REMOTE_MODE; then
     SIFT_URL="https://127.0.0.1:$GATEWAY_PORT"
 else
     SIFT_URL="http://127.0.0.1:$GATEWAY_PORT"
 fi
 
-if [[ -n "$CLIENT" ]]; then
-    "$VENV_DIR/bin/aiir" setup client --client="$CLIENT" --sift="$SIFT_URL" -y \
-        || warn "Client configuration failed. Run manually: aiir setup client"
-else
-    "$VENV_DIR/bin/aiir" setup client --sift="$SIFT_URL" -y \
-        || warn "Client configuration failed. Run manually: aiir setup client"
+# Prompt for client if not set via --client flag
+if [[ -z "$CLIENT" ]] && ! $AUTO_YES; then
+    echo ""
+    echo "Which LLM client will connect to AIIR?"
+    echo ""
+    echo "  1. Claude Code      CLI agent (full forensic controls)"
+    echo "  2. Claude Desktop   Desktop app (MCP-only)"
+    echo "  3. LibreChat        Web UI (MCP-only)"
+    echo "  4. Other / manual   Raw config for any MCP client"
+    echo ""
+    CLIENT_CHOICE=$(prompt "Choose" "1")
+    case "$CLIENT_CHOICE" in
+        1) CLIENT="claude-code" ;;
+        2) CLIENT="claude-desktop" ;;
+        3) CLIENT="librechat" ;;
+        4) CLIENT="other" ;;
+        *) CLIENT="other" ;;
+    esac
+elif [[ -z "$CLIENT" ]]; then
+    # -y mode: default to claude-code
+    CLIENT="claude-code"
 fi
 
-# Detect which client was configured (interactive choice isn't returned to shell)
-if [[ -z "$CLIENT" ]]; then
-    if [[ -f "$HOME/.claude.json" ]]; then
-        CLIENT="claude-code"
-    elif [[ -f "$HOME/.config/Claude/claude_desktop_config.json" ]] || \
-         [[ -f "$HOME/Library/Application Support/Claude/claude_desktop_config.json" ]]; then
-        CLIENT="claude-desktop"
-    elif [[ -f "$HOME/.config/librechat/librechat_mcp.yaml" ]]; then
-        CLIENT="librechat"
-    fi
-fi
+"$VENV_DIR/bin/aiir" setup client --client="$CLIENT" --sift="$SIFT_URL" -y \
+    || warn "Client configuration failed. Run manually: aiir setup client"
+
 
 # Global deployment message for claude-code
 if grep -q '"sift-gateway"' "$HOME/.claude.json" 2>/dev/null; then
