@@ -1476,6 +1476,8 @@ for name, module in core_backends + optional:
         },
         "enabled": True,
     }
+    if name == 'forensic-mcp':
+        entry['args'].append('--deferred-tools')
     if name in ('case-mcp', 'report-mcp', 'forensic-mcp'):
         entry['env']['AIIR_CASES_DIR'] = '\${AIIR_CASES_DIR}'
     if name == "opencti-mcp":
