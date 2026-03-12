@@ -366,7 +366,12 @@ class Gateway:
             async with contextlib.AsyncExitStack() as stack:
                 await stack.enter_async_context(session_manager.run())
                 for b_sm in backend_session_managers:
-                    await stack.enter_async_context(b_sm.run())
+                    try:
+                        await stack.enter_async_context(b_sm.run())
+                    except Exception as exc:
+                        logger.error(
+                            "Per-backend session manager failed to start: %s", exc
+                        )
                 yield
             if reaper_task is not None:
                 reaper_task.cancel()

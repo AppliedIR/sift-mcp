@@ -1823,9 +1823,13 @@ if $REMOTE_MODE; then
                 if [[ -n "$WIN_CODE" ]]; then
                     echo ""
                     echo -e "${BOLD}Windows Workstation${NC}"
-                    echo "  On the Windows machine with wintools-mcp:"
+                    echo "  The Windows installer will prompt for:"
+                    echo "    Join code:  $WIN_CODE"
+                    echo "    SIFT IP:    $HOST_IP"
+                    echo "    Port:       $GATEWAY_PORT"
                     echo ""
-                    echo -e "    ${BOLD}aiir join --sift $GW_URL --code $WIN_CODE --wintools${NC}"
+                    echo "  If the installer is not already running:"
+                    echo "    .\\setup-windows.ps1"
                     echo ""
                 fi
             fi
