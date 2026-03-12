@@ -206,16 +206,17 @@ class AuditWriter:
     def _write_entry(self, entry: dict) -> bool:
         """Write a single audit entry to the JSONL file with fsync.
 
-        Returns True if the entry was written successfully, False otherwise.
+        Returns True if the entry was written or no case is active (normal skip).
+        Returns False only on actual write errors.
         """
         audit_dir = self._get_audit_dir()
         if not audit_dir:
             logger.debug(
-                "No AIIR_CASE_DIR set, audit entry not written: %s/%s",
+                "No active case, audit entry not written: %s/%s",
                 self.mcp_name,
                 entry.get("tool"),
             )
-            return False
+            return True
         try:
             log_file = audit_dir / f"{self.mcp_name}.jsonl"
             with open(log_file, "a", encoding="utf-8") as f:

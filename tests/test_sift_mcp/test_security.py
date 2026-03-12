@@ -186,6 +186,7 @@ class TestValidateOutputPath:
     @pytest.fixture(autouse=True)
     def _clear_case_dir(self, monkeypatch):
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.setattr("sift_mcp.security.resolve_case_dir", lambda: "")
 
     def test_blocks_etc(self):
         with pytest.raises(ValueError, match="Output denied"):
@@ -227,14 +228,14 @@ class TestValidateOutputPath:
     def test_case_dir_allows_inside(self, tmp_path, monkeypatch):
         case_dir = tmp_path / "case-001"
         case_dir.mkdir()
-        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        monkeypatch.setattr("sift_mcp.security.resolve_case_dir", lambda: str(case_dir))
         result = validate_output_path(str(case_dir / "output.csv"))
         assert result.endswith("output.csv")
 
     def test_case_dir_blocks_outside(self, tmp_path, monkeypatch):
         case_dir = tmp_path / "case-001"
         case_dir.mkdir()
-        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        monkeypatch.setattr("sift_mcp.security.resolve_case_dir", lambda: str(case_dir))
         with pytest.raises(ValueError, match="outside the case directory"):
             validate_output_path("/tmp/output.csv")
 
@@ -242,7 +243,7 @@ class TestValidateOutputPath:
         """Case dirs under /home must be allowed (containment check before /home block)."""
         case_dir = tmp_path / "home" / "user" / "cases" / "case-001"
         case_dir.mkdir(parents=True)
-        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        monkeypatch.setattr("sift_mcp.security.resolve_case_dir", lambda: str(case_dir))
         result = validate_output_path(str(case_dir / "results" / "output.csv"))
         assert result.endswith("output.csv")
 

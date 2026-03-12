@@ -85,22 +85,15 @@ def _resolve_case_dir() -> Path | None:
     """Resolve case directory per-request.
 
     Priority: AIIR_CASE_DIR env var > ~/.aiir/active_case file.
-    Returns None if no case is active.
+    Returns None if no case is active or directory lacks CASE.yaml.
     """
-    env_dir = os.environ.get("AIIR_CASE_DIR", "").strip()
-    if env_dir:
-        p = Path(env_dir)
-        if p.is_dir() and (p / "CASE.yaml").exists():
-            return p
+    from sift_common import resolve_case_dir
 
-    active_case_file = Path.home() / ".aiir" / "active_case"
-    if active_case_file.exists():
-        case_path = active_case_file.read_text().strip()
-        if case_path:
-            p = Path(case_path)
-            if p.is_dir() and (p / "CASE.yaml").exists():
-                return p
-    return None
+    d = resolve_case_dir()
+    if not d:
+        return None
+    p = Path(d)
+    return p if p.is_dir() and (p / "CASE.yaml").exists() else None
 
 
 def _no_case_response() -> JSONResponse:

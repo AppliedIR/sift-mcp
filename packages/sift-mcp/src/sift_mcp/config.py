@@ -4,23 +4,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from pathlib import Path
 
-
-def resolve_case_dir() -> str:
-    """Resolve the active case directory.
-
-    Resolution order: AIIR_CASE_DIR env var → ~/.aiir/active_case file → "".
-    """
-    case_dir = os.environ.get("AIIR_CASE_DIR", "")
-    if case_dir:
-        return case_dir
-    active_file = Path.home() / ".aiir" / "active_case"
-    if active_file.is_file():
-        content = active_file.read_text().strip()
-        if content and os.path.isdir(content):
-            return content
-    return ""
+from sift_common import resolve_case_dir  # noqa: F401
 
 
 @dataclass
