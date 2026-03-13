@@ -401,11 +401,14 @@ async def join_gateway(request: Request) -> JSONResponse:
         # Store pinned TLS cert if provided
         cert_path_str = None
         if wintools_cert:
+            logger.debug("wintools_cert first 50 chars: %r", wintools_cert[:50])
             # Accept string or dict with "cert" key (PowerShell may serialize either)
             if isinstance(wintools_cert, dict):
                 wintools_cert = wintools_cert.get("cert", "")
             if not isinstance(wintools_cert, str):
                 wintools_cert = ""
+            # Strip UTF-8 BOM that PowerShell 5.1 Get-Content -Raw may prepend
+            wintools_cert = wintools_cert.lstrip("\ufeff")
             from pathlib import Path
 
             cert_path = Path.home() / ".aiir" / "tls" / "wintools-cert.pem"
