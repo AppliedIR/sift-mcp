@@ -656,6 +656,8 @@ async def reload_backends(request: Request) -> JSONResponse:
     """
     from pathlib import Path
 
+    import yaml
+
     from sift_gateway.config import load_config
 
     gateway = request.app.state.gateway
@@ -664,7 +666,7 @@ async def reload_backends(request: Request) -> JSONResponse:
         return JSONResponse({"status": "no_config", "pending": []})
     try:
         config = load_config(str(config_path))
-    except (ValueError, OSError):
+    except (ValueError, yaml.YAMLError, OSError):
         return JSONResponse({"error": "failed to read gateway.yaml"}, status_code=500)
 
     pending = []
