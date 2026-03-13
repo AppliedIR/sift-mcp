@@ -447,6 +447,7 @@ async def join_gateway(request: Request) -> JSONResponse:
         "gateway_url": gw_url,
         "backends": backends,
         "examiner": examiner_name,
+        "sift_examiner": os.environ.get("AIIR_EXAMINER", ""),
     }
     if new_token:
         response["gateway_token"] = new_token
