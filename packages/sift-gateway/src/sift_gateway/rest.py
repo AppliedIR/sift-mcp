@@ -15,7 +15,6 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from sift_gateway.auth import resolve_examiner
-from sift_gateway.backends import create_backend
 from sift_gateway.join import (
     check_join_rate_limit,
     generate_join_code,
@@ -426,9 +425,9 @@ async def join_gateway(request: Request) -> JSONResponse:
         )
         wintools_registered = True
 
-        # Hot-load in background with retries.  The Windows server
-        # typically starts ~10-30s after the join (Phase 6 vs Phase 5),
-        # so the first attempt will fail.  Retry until it comes online.
+        # Schedule background loading.  The backend loader retries until
+        # wintools-mcp is online (Windows installer starts it after
+        # receiving this join response).
         backend_config = {
             "type": "http",
             "url": wintools_url,
@@ -437,33 +436,8 @@ async def join_gateway(request: Request) -> JSONResponse:
         }
         if cert_path_str:
             backend_config["tls_cert"] = cert_path_str
-
-        async def _try_hot_load():
-            for attempt in range(6):
-                if attempt > 0:
-                    try:
-                        await asyncio.sleep(10)
-                    except asyncio.CancelledError:
-                        return
-                try:
-                    bk = create_backend("wintools-mcp", backend_config)
-                    gateway.backends["wintools-mcp"] = bk
-                    await asyncio.wait_for(bk.start(), timeout=10.0)
-                    await gateway._build_tool_map()
-                    logger.info("Hot-loaded wintools-mcp backend from %s", wintools_url)
-                    return
-                except asyncio.CancelledError:
-                    gateway.backends.pop("wintools-mcp", None)
-                    return
-                except Exception as exc:
-                    logger.debug("Hot-load attempt %d/6: %s", attempt + 1, exc)
-                    gateway.backends.pop("wintools-mcp", None)
-            logger.warning(
-                "Could not hot-load wintools-mcp after retries — "
-                "restart gateway to load it"
-            )
-
-        asyncio.create_task(_try_hot_load())
+        gateway._pending_backends["wintools-mcp"] = backend_config
+        gateway._reload_event.set()
 
     # Build response (after hot-load so backends list is current)
     backends = list(gateway.backends.keys())
@@ -674,12 +648,48 @@ def _get_sift_ip() -> str | None:
         return None
 
 
+async def reload_backends(request: Request) -> JSONResponse:
+    """POST /api/v1/backends/reload — schedule loading of new backends.
+
+    Re-reads gateway.yaml and starts any backends not yet loaded.
+    Does not restart existing backends (safe for active sessions).
+    """
+    from pathlib import Path
+
+    import yaml
+
+    gateway = request.app.state.gateway
+    config_path = Path.home() / ".aiir" / "gateway.yaml"
+    if not config_path.exists():
+        return JSONResponse({"status": "no_config", "pending": []})
+    try:
+        with open(config_path) as f:
+            config = yaml.safe_load(f) or {}
+    except (yaml.YAMLError, OSError):
+        return JSONResponse({"error": "failed to read gateway.yaml"}, status_code=500)
+
+    pending = []
+    for name, conf in config.get("backends", {}).items():
+        if not conf.get("enabled", True):
+            continue
+        existing = gateway.backends.get(name)
+        if existing and existing.started:
+            continue
+        gateway._pending_backends[name] = conf
+        pending.append(name)
+
+    if pending:
+        gateway._reload_event.set()
+    return JSONResponse({"status": "reload_scheduled", "pending": pending})
+
+
 def rest_routes() -> list[Route]:
     """Return REST API v1 routes."""
     return [
         Route("/api/v1/tools", list_tools, methods=["GET"]),
         Route("/api/v1/tools/{tool_name}", call_tool, methods=["POST"]),
         Route("/api/v1/backends", list_backends, methods=["GET"]),
+        Route("/api/v1/backends/reload", reload_backends, methods=["POST"]),
         Route("/api/v1/services", list_services, methods=["GET"]),
         Route("/api/v1/services/{name}/start", start_service, methods=["POST"]),
         Route("/api/v1/services/{name}/stop", stop_service, methods=["POST"]),

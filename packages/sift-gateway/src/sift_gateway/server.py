@@ -5,6 +5,7 @@ import contextlib
 import logging
 import time
 
+import anyio
 from mcp.types import Tool
 from starlette.applications import Starlette
 from starlette.routing import Mount
@@ -60,6 +61,8 @@ class Gateway:
         self.backends: dict[str, MCPBackend] = {}
         self._tool_map: dict[str, str] = {}  # tool_name -> backend_name
         self._start_locks: dict[str, asyncio.Lock] = {}
+        self._reload_event = asyncio.Event()
+        self._pending_backends: dict[str, dict] = {}
 
         # Create backend instances from config
         backends_config = config.get("backends", {})
@@ -219,6 +222,59 @@ class Gateway:
             if reaped:
                 await self._build_tool_map()
 
+    async def _backend_loader(self) -> None:
+        """Start backends added after gateway boot (e.g. wintools after join).
+
+        Runs inside an anyio task group so that streamablehttp_client's
+        cancel scopes are properly managed.  Backends started here are
+        stopped in the finally block (same task) to avoid cancel-scope
+        mismatch between start() and stop().
+        """
+        dynamic: dict[str, MCPBackend] = {}
+        try:
+            while True:
+                await self._reload_event.wait()
+                self._reload_event.clear()
+                pending = dict(self._pending_backends)
+                for name, conf in pending.items():
+                    loaded = False
+                    for attempt in range(6):
+                        if attempt > 0:
+                            await anyio.sleep(10)
+                        try:
+                            bk = create_backend(name, conf)
+                            self.backends[name] = bk
+                            with anyio.fail_after(10):
+                                await bk.start()
+                            await self._build_tool_map()
+                            dynamic[name] = bk
+                            loaded = True
+                            logger.info("Loaded backend: %s", name)
+                            break
+                        except Exception as exc:
+                            self.backends.pop(name, None)
+                            logger.debug(
+                                "Backend %s attempt %d/6: %s",
+                                name,
+                                attempt + 1,
+                                exc,
+                            )
+                    self._pending_backends.pop(name, None)
+                    if not loaded:
+                        logger.warning(
+                            "Could not load %s after retries — "
+                            "restart gateway to load it",
+                            name,
+                        )
+        finally:
+            for _name, bk in dynamic.items():
+                if not bk.started:
+                    continue
+                try:
+                    await bk.stop()
+                except Exception:
+                    pass
+
     async def list_tools(self) -> dict[str, str]:
         """Return the current tool map (tool_name -> backend_name)."""
         return dict(self._tool_map)
@@ -372,7 +428,12 @@ class Gateway:
                         logger.error(
                             "Per-backend session manager failed to start: %s", exc
                         )
-                yield
+                # Backend loader runs in anyio task group so that
+                # streamablehttp_client cancel scopes are properly managed.
+                async with anyio.create_task_group() as loader_tg:
+                    loader_tg.start_soon(gateway._backend_loader)
+                    yield
+                    loader_tg.cancel_scope.cancel()
             if reaper_task is not None:
                 reaper_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
