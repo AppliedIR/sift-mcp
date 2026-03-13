@@ -130,7 +130,7 @@ async def call_tool(request: Request) -> JSONResponse:
             {"error": f"Tool not found: {tool_name}"},
             status_code=404,
         )
-    except Exception as exc:
+    except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
         logger.error(
             "Tool call failed: %s — %s: %s",
             tool_name,
@@ -159,7 +159,7 @@ async def list_backends(request: Request) -> JSONResponse:
         except (RuntimeError, ConnectionError, OSError) as e:
             logger.warning("Health check failed for backend %s: %s", name, e)
             health = {"status": "error", "detail": str(e)}
-        except Exception as e:
+        except (Exception, asyncio.CancelledError, BaseExceptionGroup) as e:
             logger.warning("Health check unexpected error for backend %s: %s", name, e)
             health = {"status": "error"}
 
@@ -188,7 +188,7 @@ async def list_services(request: Request) -> JSONResponse:
     for name, backend in gateway.backends.items():
         try:
             health = await backend.health_check()
-        except Exception as e:
+        except (Exception, asyncio.CancelledError, BaseExceptionGroup) as e:
             logger.warning("Health check failed for service %s: %s", name, e)
             health = {"status": "error"}
 
@@ -220,7 +220,7 @@ async def start_service(request: Request) -> JSONResponse:
         await asyncio.wait_for(backend.start(), timeout=30.0)
     except asyncio.TimeoutError:
         return JSONResponse({"error": f"Start timed out for {name}"}, status_code=504)
-    except Exception as e:
+    except (Exception, asyncio.CancelledError, BaseExceptionGroup) as e:
         logger.error("Failed to start service %s: %s", name, e)
         return JSONResponse(
             {"error": f"Failed to start service {name}"}, status_code=500
@@ -246,7 +246,7 @@ async def stop_service(request: Request) -> JSONResponse:
         await asyncio.wait_for(backend.stop(), timeout=10.0)
     except asyncio.TimeoutError:
         return JSONResponse({"error": f"Stop timed out for {name}"}, status_code=504)
-    except Exception as e:
+    except (Exception, asyncio.CancelledError, BaseExceptionGroup) as e:
         logger.error("Failed to stop service %s: %s", name, e)
         return JSONResponse(
             {"error": f"Failed to stop service {name}"}, status_code=500
@@ -270,7 +270,7 @@ async def restart_service(request: Request) -> JSONResponse:
     if backend.started:
         try:
             await asyncio.wait_for(backend.stop(), timeout=10.0)
-        except Exception as e:
+        except (Exception, asyncio.CancelledError, BaseExceptionGroup) as e:
             logger.error("Failed to stop service %s during restart: %s", name, e)
             return JSONResponse(
                 {"error": f"Failed to stop service {name} during restart"},
@@ -283,7 +283,7 @@ async def restart_service(request: Request) -> JSONResponse:
     except asyncio.TimeoutError:
         await gateway._build_tool_map()
         return JSONResponse({"error": f"Start timed out for {name}"}, status_code=504)
-    except Exception as e:
+    except (Exception, asyncio.CancelledError, BaseExceptionGroup) as e:
         logger.error("Failed to start service %s during restart: %s", name, e)
         await gateway._build_tool_map()
         return JSONResponse(

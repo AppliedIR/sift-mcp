@@ -41,7 +41,7 @@ async def health_endpoint(request: Request) -> JSONResponse:
                 _HEALTH_CHECK_TIMEOUT,
             )
             return name, {"status": "error", "error": "health check timed out"}
-        except Exception as exc:
+        except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
             logger.warning(
                 "Health check failed for backend %s: %s: %s",
                 name,

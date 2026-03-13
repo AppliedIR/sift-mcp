@@ -73,7 +73,7 @@ class Gateway:
             try:
                 backend = create_backend(name, backend_conf)
                 self.backends[name] = backend
-            except Exception as exc:
+            except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
                 logger.error("Failed to create backend %s: %s", name, exc)
 
     @property
@@ -106,7 +106,7 @@ class Gateway:
                 logger.error("Backend %s start timed out after 30s", name)
             except (ConnectionError, OSError) as exc:
                 logger.error("Failed to start backend %s (connection): %s", name, exc)
-            except Exception as exc:
+            except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
                 logger.error(
                     "Failed to start backend %s: %s: %s", name, type(exc).__name__, exc
                 )
@@ -123,7 +123,7 @@ class Gateway:
                 logger.error("Backend %s stop timed out after 10s", name)
             except (ConnectionError, OSError) as exc:
                 logger.error("Error stopping backend %s (connection): %s", name, exc)
-            except Exception as exc:
+            except BaseException as exc:
                 logger.error(
                     "Error stopping backend %s: %s: %s", name, type(exc).__name__, exc
                 )
@@ -146,7 +146,7 @@ class Gateway:
                     raw_map.setdefault(tool.name, []).append(name)
             except asyncio.TimeoutError:
                 logger.error("Timeout listing tools for backend %s", name)
-            except Exception as exc:
+            except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
                 logger.error("Failed to list tools for %s: %s", name, exc)
 
         new_map: dict[str, str] = {}
@@ -215,7 +215,11 @@ class Gateway:
                         try:
                             await backend.stop()
                             reaped = True
-                        except Exception as exc:
+                        except (
+                            Exception,
+                            asyncio.CancelledError,
+                            BaseExceptionGroup,
+                        ) as exc:
                             logger.error(
                                 "Error stopping idle backend %s: %s", name, exc
                             )
@@ -251,7 +255,11 @@ class Gateway:
                             loaded = True
                             logger.info("Loaded backend: %s", name)
                             break
-                        except Exception as exc:
+                        except (
+                            Exception,
+                            asyncio.CancelledError,
+                            BaseExceptionGroup,
+                        ) as exc:
                             self.backends.pop(name, None)
                             logger.debug(
                                 "Backend %s attempt %d/6: %s",
@@ -272,7 +280,7 @@ class Gateway:
                     continue
                 try:
                     await bk.stop()
-                except Exception:
+                except BaseException:
                     pass
 
     async def list_tools(self) -> dict[str, str]:
@@ -293,7 +301,7 @@ class Gateway:
             try:
                 for t in await backend.list_tools():
                     by_name[t.name] = t
-            except Exception as exc:
+            except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
                 logger.error("get_tools_list: backend error: %s", exc)
 
         tools: list[Tool] = []
@@ -424,7 +432,11 @@ class Gateway:
                 for b_sm in backend_session_managers:
                     try:
                         await stack.enter_async_context(b_sm.run())
-                    except Exception as exc:
+                    except (
+                        Exception,
+                        asyncio.CancelledError,
+                        BaseExceptionGroup,
+                    ) as exc:
                         logger.error(
                             "Per-backend session manager failed to start: %s", exc
                         )

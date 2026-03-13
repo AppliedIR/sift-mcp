@@ -261,7 +261,7 @@ def create_mcp_server(gateway: Any) -> Server:
                     text=f"Error: backend failure for {name} — backend will auto-restart on next call, retry once",
                 )
             ]
-        except Exception as e:
+        except (Exception, asyncio.CancelledError, BaseExceptionGroup) as e:
             logger.error(
                 "MCP call_tool unexpected error for %s: %s: %s",
                 name,
@@ -348,7 +348,7 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
                     text=f"Error: backend failure for {name} — backend will auto-restart on next call, retry once",
                 )
             ]
-        except Exception as e:
+        except (Exception, asyncio.CancelledError, BaseExceptionGroup) as e:
             logger.error(
                 "Per-backend call_tool unexpected error for %s/%s: %s: %s",
                 backend_name,

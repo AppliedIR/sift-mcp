@@ -103,7 +103,7 @@ class HttpMCPBackend(MCPBackend):
             self._instructions = result.instructions
             self._started = True
             logger.info("Backend %s started (http -> %s)", self.name, url)
-        except Exception as exc:
+        except BaseException as exc:
             logger.error(
                 "Backend %s failed to start (http -> %s): %s: %s",
                 self.name,
@@ -113,7 +113,7 @@ class HttpMCPBackend(MCPBackend):
             )
             try:
                 await self._exit_stack.aclose()
-            except Exception as cleanup_exc:
+            except BaseException as cleanup_exc:
                 logger.warning(
                     "Backend %s cleanup after failed start also failed: %s",
                     self.name,
@@ -133,7 +133,7 @@ class HttpMCPBackend(MCPBackend):
                 logger.warning(
                     "Backend %s stop timed out after %ds", self.name, _STOP_TIMEOUT
                 )
-            except Exception as exc:
+            except BaseException as exc:
                 logger.error(
                     "Backend %s error during stop: %s: %s",
                     self.name,
@@ -176,7 +176,7 @@ class HttpMCPBackend(MCPBackend):
             if self._exit_stack:
                 try:
                     await self._exit_stack.aclose()
-                except Exception:
+                except BaseException:
                     pass
                 self._exit_stack = None
             raise
@@ -191,7 +191,7 @@ class HttpMCPBackend(MCPBackend):
                 "type": "http",
                 "tools": len(self._tools_cache or []),
             }
-        except Exception as exc:
+        except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
             logger.warning(
                 "Backend %s health check failed: %s: %s",
                 self.name,

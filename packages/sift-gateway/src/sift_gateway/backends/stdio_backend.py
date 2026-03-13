@@ -64,13 +64,13 @@ class StdioMCPBackend(MCPBackend):
             self._instructions = result.instructions
             self._started = True
             logger.info("Backend %s started (stdio)", self.name)
-        except Exception as exc:
+        except BaseException as exc:
             logger.error(
                 "Backend %s failed to start: %s: %s", self.name, type(exc).__name__, exc
             )
             try:
                 await self._exit_stack.aclose()
-            except Exception as cleanup_exc:
+            except BaseException as cleanup_exc:
                 logger.warning(
                     "Backend %s cleanup after failed start also failed: %s",
                     self.name,
@@ -90,7 +90,7 @@ class StdioMCPBackend(MCPBackend):
                 logger.warning(
                     "Backend %s stop timed out after %ds", self.name, _STOP_TIMEOUT
                 )
-            except Exception as exc:
+            except BaseException as exc:
                 logger.error(
                     "Backend %s error during stop: %s: %s",
                     self.name,
@@ -130,7 +130,7 @@ class StdioMCPBackend(MCPBackend):
             if self._exit_stack:
                 try:
                     await self._exit_stack.aclose()
-                except Exception:
+                except BaseException:
                     pass
                 self._exit_stack = None
             raise
@@ -145,7 +145,7 @@ class StdioMCPBackend(MCPBackend):
                 "type": "stdio",
                 "tools": len(self._tools_cache or []),
             }
-        except Exception as exc:
+        except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
             logger.warning(
                 "Backend %s health check failed: %s: %s",
                 self.name,
