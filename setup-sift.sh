@@ -1417,8 +1417,67 @@ header "Gateway Configuration"
 mkdir -p "$HOME/.aiir"
 
 if [[ -f "$GATEWAY_CONFIG" ]]; then
-    info "Existing gateway config found. Preserving: $GATEWAY_CONFIG"
-    echo "  Delete $GATEWAY_CONFIG and re-run to regenerate."
+    info "Existing gateway config found — checking for new backends..."
+
+    # Merge any newly installed backends into existing config
+    MERGE_CONFIG="$GATEWAY_CONFIG" \
+    MERGE_VENV="$VENV_PYTHON" \
+    MERGE_TRIAGE="${INSTALL_TRIAGE:-false}" \
+    MERGE_RAG="${INSTALL_RAG:-false}" \
+    MERGE_OPENCTI="${INSTALL_OPENCTI:-false}" \
+    "$VENV_PYTHON" << 'MERGE_EOF'
+import os, yaml
+
+config_path = os.environ["MERGE_CONFIG"]
+venv_python = os.environ["MERGE_VENV"]
+
+with open(config_path) as f:
+    config = yaml.safe_load(f) or {}
+
+existing = set(config.get("backends", {}).keys())
+
+# Same backend list as initial generation
+expected = [("forensic-mcp", "forensic_mcp"), ("sift-mcp", "sift_mcp"),
+            ("case-mcp", "case_mcp"), ("report-mcp", "report_mcp")]
+if os.environ.get("MERGE_TRIAGE") == "true":
+    expected.append(("windows-triage-mcp", "windows_triage"))
+if os.environ.get("MERGE_RAG") == "true":
+    expected.append(("forensic-rag-mcp", "rag_mcp"))
+if os.environ.get("MERGE_OPENCTI") == "true":
+    expected.append(("opencti-mcp", "opencti_mcp"))
+
+added = []
+for name, module in expected:
+    if name not in existing:
+        entry = {
+            "type": "stdio",
+            "command": venv_python,
+            "args": ["-m", module],
+            "env": {
+                "AIIR_CASE_DIR": "${AIIR_CASE_DIR}",
+                "AIIR_ACTIVE_CASE": "${AIIR_ACTIVE_CASE}",
+                "AIIR_EXAMINER": "${AIIR_EXAMINER}",
+            },
+            "enabled": True,
+        }
+        if name == "forensic-mcp":
+            entry["args"].append("--deferred-tools")
+        if name in ("case-mcp", "report-mcp", "forensic-mcp"):
+            entry["env"]["AIIR_CASES_DIR"] = "${AIIR_CASES_DIR}"
+        if name == "forensic-rag-mcp":
+            entry["env"]["ANONYMIZED_TELEMETRY"] = "False"
+        config.setdefault("backends", {})[name] = entry
+        added.append(name)
+
+if added:
+    with open(config_path, "w") as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    for n in added:
+        print(f"  Added backend: {n}")
+else:
+    print("  All expected backends already present.")
+MERGE_EOF
+
 else
     info "Generating gateway configuration..."
 
@@ -1681,7 +1740,7 @@ fi
 # Check if gateway is already running
 GATEWAY_PID=""
 GW_DIRECT_FAILED=false
-if curl -sf ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" 2>/dev/null | grep -q "aiir"; then
+if curl -sf ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
     ok "Gateway already running on port $GATEWAY_PORT"
 elif ! $MANUAL_START; then
     info "Starting gateway on port $GATEWAY_PORT..."
@@ -1753,7 +1812,11 @@ SERVICE
         systemctl --user daemon-reload 2>/dev/null
         systemctl --user enable aiir-gateway.service 2>/dev/null && \
             ok "Systemd service enabled (auto-start at login)"
-        if systemctl --user start aiir-gateway.service 2>/dev/null; then
+        if systemctl --user is-active aiir-gateway.service &>/dev/null; then
+            systemctl --user restart aiir-gateway.service 2>/dev/null && \
+                ok "Gateway restarted via systemd" || \
+                warn "Gateway restart failed. Check $GATEWAY_CONFIG"
+        elif systemctl --user start aiir-gateway.service 2>/dev/null; then
             ok "Gateway started via systemd"
         else
             warn "Gateway failed to start. Check $GATEWAY_CONFIG"
@@ -1901,7 +1964,7 @@ fi
 
 
 # Global deployment message for claude-code
-if grep -q '"sift-gateway"' "$HOME/.claude.json" 2>/dev/null; then
+if grep -qE '"forensic-mcp"|"aiir"' "$HOME/.claude.json" 2>/dev/null; then
     echo ""
     echo -e "${BOLD}Forensic controls deployed globally.${NC}"
     echo "Claude Code can be launched from any directory on this machine."

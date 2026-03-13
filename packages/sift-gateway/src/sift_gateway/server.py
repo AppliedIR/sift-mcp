@@ -261,7 +261,7 @@ class Gateway:
                             BaseExceptionGroup,
                         ) as exc:
                             self.backends.pop(name, None)
-                            logger.debug(
+                            logger.warning(
                                 "Backend %s attempt %d/6: %s",
                                 name,
                                 attempt + 1,
