@@ -17,9 +17,10 @@ _PUBLIC_PATHS = {
     "/health/",
     "/mcp",
     "/api/v1/setup/join",
-    "/dashboard",
-    "/dashboard/",
 }
+
+# Paths matched by prefix (all sub-paths are public)
+_PUBLIC_PREFIXES = ("/dashboard",)
 
 # Maximum length for bearer tokens (DoS protection against megabyte-sized headers)
 _MAX_TOKEN_LENGTH = 1024
@@ -42,7 +43,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Public paths skip auth
         # /mcp and /mcp/* are handled by MCPAuthASGIApp (ASGI-level auth)
-        if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/mcp/"):
+        if (
+            request.url.path in _PUBLIC_PATHS
+            or request.url.path.startswith("/mcp/")
+            or request.url.path.startswith(_PUBLIC_PREFIXES)
+        ):
             request.state.examiner = None
             request.state.role = None
             return await call_next(request)

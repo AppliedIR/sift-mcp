@@ -134,7 +134,9 @@ class HttpMCPBackend(MCPBackend):
                     "Backend %s stop timed out after %ds", self.name, _STOP_TIMEOUT
                 )
             except BaseException as exc:
-                logger.error(
+                level = logging.DEBUG if "cancel scope" in str(exc) else logging.ERROR
+                logger.log(
+                    level,
                     "Backend %s error during stop: %s: %s",
                     self.name,
                     type(exc).__name__,

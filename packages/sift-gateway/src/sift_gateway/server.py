@@ -248,8 +248,7 @@ class Gateway:
                         try:
                             bk = create_backend(name, conf)
                             self.backends[name] = bk
-                            with anyio.fail_after(10):
-                                await bk.start()
+                            await bk.start()
                             await self._build_tool_map()
                             dynamic[name] = bk
                             loaded = True
