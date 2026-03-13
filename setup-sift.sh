@@ -1996,7 +1996,8 @@ echo -e "${BOLD}Documentation:${NC} https://appliedir.github.io/aiir/"
 
 echo ""
 echo -e "${BOLD}Next steps:${NC}"
-echo "  source ${SHELL_RC:-~/.bashrc}"
+echo "  Reload your shell profile (new terminals load it automatically):"
+echo "    source ${SHELL_RC:-~/.bashrc}"
 echo ""
 
 case "$CLIENT" in
