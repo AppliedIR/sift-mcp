@@ -179,8 +179,8 @@ class TestAudit:
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         writer = AuditWriter("sift-mcp")
         eid = writer.log(tool="test", params={}, result_summary={})
-        # No case active = silent skip, evidence_id still returned
-        assert eid is not None
+        # No case active = no audit entry, no evidence_id
+        assert eid is None
 
     def test_canonical_fields(self, tmp_path, monkeypatch):
         import json

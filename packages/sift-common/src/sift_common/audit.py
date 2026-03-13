@@ -177,7 +177,9 @@ class AuditWriter:
         case_id: str | None = None,
         elapsed_ms: float | None = None,
     ) -> str | None:
-        """Write an audit entry. Returns the evidence_id, or None on write failure."""
+        """Write an audit entry. Returns the evidence_id, or None when no case is active."""
+        if not self._get_audit_dir():
+            return None
         if evidence_id is None:
             evidence_id = self._next_evidence_id()
 

@@ -31,6 +31,7 @@ class TestExecutor:
 
     def test_save_output(self, tmp_path, monkeypatch):
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.setattr("sift_mcp.executor.resolve_case_dir", lambda: "")
         result = execute(
             ["echo", "saved output"],
             save_output=True,
@@ -82,6 +83,7 @@ class TestAutoSave:
     def test_no_save_without_case_dir(self, monkeypatch):
         """Output > budget but no AIIR_CASE_DIR → no file saved."""
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.setattr("sift_mcp.executor.resolve_case_dir", lambda: "")
         monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "10")
         result = execute(["python3", "-c", "print('x' * 500)"])
         assert "output_file" not in result
@@ -89,6 +91,7 @@ class TestAutoSave:
     def test_explicit_save_output_still_works(self, tmp_path, monkeypatch):
         """save_output=True always saves regardless of budget."""
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.setattr("sift_mcp.executor.resolve_case_dir", lambda: "")
         result = execute(["echo", "small"], save_output=True, save_dir=str(tmp_path))
         assert "output_file" in result
 
@@ -123,6 +126,7 @@ class TestSaveOutputBlockedPrefixes:
     def test_save_to_etc_backup_allowed(self, tmp_path, monkeypatch):
         """Saving to /etc-backup/ should NOT be blocked (partial match)."""
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.setattr("sift_mcp.executor.resolve_case_dir", lambda: "")
         etc_backup = tmp_path / "etc-backup"
         etc_backup.mkdir()
         result = execute(["echo", "test"], save_output=True, save_dir=str(etc_backup))

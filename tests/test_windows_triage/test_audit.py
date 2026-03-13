@@ -94,8 +94,8 @@ class TestAuditWriter:
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         writer = AuditWriter("windows-triage-mcp")
         eid = writer.log(tool="check_file", params={}, result_summary={})
-        # No case active = silent skip, evidence_id still returned
-        assert eid is not None
+        # No case active = no audit entry, no evidence_id
+        assert eid is None
         assert not (tmp_path / "examiners").exists()
 
     def test_thread_safe_sequence(self, tmp_path, monkeypatch):
