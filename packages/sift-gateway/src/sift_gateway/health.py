@@ -48,7 +48,7 @@ async def health_endpoint(request: Request) -> JSONResponse:
                 type(exc).__name__,
                 exc,
             )
-            return name, {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
+            return name, {"status": "error", "error": "backend unavailable"}
 
     results = await asyncio.gather(
         *(_check_one(n, b) for n, b in gateway.backends.items())

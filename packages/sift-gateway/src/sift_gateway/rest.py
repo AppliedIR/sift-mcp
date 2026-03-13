@@ -385,7 +385,6 @@ async def join_gateway(request: Request) -> JSONResponse:
 
     # If wintools: add wintools backend to config and hot-load
     wintools_registered = False
-    restart_required = False
     if machine_type == "wintools" and wintools_url and wintools_token:
         parsed = urlparse(wintools_url)
         if parsed.scheme not in ("http", "https"):
@@ -427,12 +426,9 @@ async def join_gateway(request: Request) -> JSONResponse:
         )
         wintools_registered = True
 
-        # Hot-load the new backend in background — don't block the join
-        # response.  The Windows server may not be running yet (join happens
-        # in Phase 5, server starts in Phase 6), so blocking here causes
-        # the installer to time out and Starlette to cancel the handler
-        # (CancelledError is BaseException in Python 3.12, bypasses except
-        # Exception, and the handler never returns a response → 500).
+        # Hot-load in background with retries.  The Windows server
+        # typically starts ~10-30s after the join (Phase 6 vs Phase 5),
+        # so the first attempt will fail.  Retry until it comes online.
         backend_config = {
             "type": "http",
             "url": wintools_url,
@@ -443,22 +439,31 @@ async def join_gateway(request: Request) -> JSONResponse:
             backend_config["tls_cert"] = cert_path_str
 
         async def _try_hot_load():
-            try:
-                bk = create_backend("wintools-mcp", backend_config)
-                gateway.backends["wintools-mcp"] = bk
-                await asyncio.wait_for(bk.start(), timeout=30.0)
-                await gateway._build_tool_map()
-                logger.info("Hot-loaded wintools-mcp backend from %s", wintools_url)
-            except BaseException as exc:
-                logger.error("Failed to hot-load wintools-mcp: %s", exc)
-                gateway.backends.pop("wintools-mcp", None)
+            for attempt in range(6):
+                if attempt > 0:
+                    try:
+                        await asyncio.sleep(10)
+                    except asyncio.CancelledError:
+                        return
                 try:
+                    bk = create_backend("wintools-mcp", backend_config)
+                    gateway.backends["wintools-mcp"] = bk
+                    await asyncio.wait_for(bk.start(), timeout=10.0)
                     await gateway._build_tool_map()
-                except BaseException:
-                    pass
+                    logger.info("Hot-loaded wintools-mcp backend from %s", wintools_url)
+                    return
+                except asyncio.CancelledError:
+                    gateway.backends.pop("wintools-mcp", None)
+                    return
+                except Exception as exc:
+                    logger.debug("Hot-load attempt %d/6: %s", attempt + 1, exc)
+                    gateway.backends.pop("wintools-mcp", None)
+            logger.warning(
+                "Could not hot-load wintools-mcp after retries — "
+                "restart gateway to load it"
+            )
 
         asyncio.create_task(_try_hot_load())
-        restart_required = True
 
     # Build response (after hot-load so backends list is current)
     backends = list(gateway.backends.keys())
@@ -474,8 +479,6 @@ async def join_gateway(request: Request) -> JSONResponse:
 
     if wintools_registered:
         response["wintools_registered"] = True
-        if restart_required:
-            response["restart_required"] = True
         samba_config = _load_samba_config()
         if samba_config:
             smb_host = _get_sift_ip()
