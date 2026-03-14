@@ -158,8 +158,10 @@ body {
 .action-btn { padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); display: flex; align-items: center; gap: 6px; }
 .action-btn:hover { background: var(--bg-hover); }
 .action-btn .key { font-size: 10px; padding: 1px 5px; background: var(--bg-primary); border-radius: 3px; font-family: monospace; color: var(--text-muted); }
-.action-btn.approve:hover { background: var(--green-bg); color: var(--green); border-color: var(--green); }
-.action-btn.reject:hover { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+.action-btn.approve { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+.action-btn.approve:hover { filter: brightness(1.2); }
+.action-btn.reject { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+.action-btn.reject:hover { filter: brightness(1.2); }
 
 /* Action overlay on sidebar item */
 .action-pill { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
@@ -285,8 +287,10 @@ body {
 .batch-toolbar { display: none; padding: 8px 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); align-items: center; gap: 8px; font-size: 13px; flex-shrink: 0; }
 .batch-toolbar.visible { display: flex; }
 .batch-toolbar button { padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); }
-.batch-toolbar .batch-approve:hover { background: var(--green-bg); color: var(--green); border-color: var(--green); }
-.batch-toolbar .batch-reject:hover { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+.batch-toolbar .batch-approve { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+.batch-toolbar .batch-approve:hover { filter: brightness(1.2); }
+.batch-toolbar .batch-reject { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+.batch-toolbar .batch-reject:hover { filter: brightness(1.2); }
 .sidebar-item .batch-check { width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; accent-color: var(--accent); }
 .tl-card-actions .batch-check { width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; accent-color: var(--accent); }
 
@@ -359,8 +363,10 @@ body {
   background: var(--bg-tertiary); color: var(--text-primary);
   border: 1px solid var(--border); cursor: pointer; }
 .tl-card-actions button:hover { background: var(--bg-hover); }
-.tl-card-actions .btn-approve { color: var(--green); }
-.tl-card-actions .btn-reject { color: var(--red); }
+.tl-card-actions .btn-approve { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+.tl-card-actions .btn-approve:hover { filter: brightness(1.2); }
+.tl-card-actions .btn-reject { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+.tl-card-actions .btn-reject:hover { filter: brightness(1.2); }
 .tl-type { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; }
 .tl-type-auth { background: rgba(59,130,246,0.15); color: #6ea8fe; }
 .tl-type-execution, .tl-type-process { background: rgba(255,159,10,0.15); color: #ffb347; }
