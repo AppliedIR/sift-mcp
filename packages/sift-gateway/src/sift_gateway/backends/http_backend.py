@@ -150,7 +150,7 @@ class HttpMCPBackend(MCPBackend):
 
     async def list_tools(self) -> list[Tool]:
         if not self._started or not self._session:
-            raise RuntimeError(f"Backend {self.name} is not started")
+            await self.start()
 
         if self._tools_cache is None:
             result = await asyncio.wait_for(
@@ -173,7 +173,7 @@ class HttpMCPBackend(MCPBackend):
 
     async def call_tool(self, name: str, arguments: dict) -> list:
         if not self._started or not self._session:
-            raise RuntimeError(f"Backend {self.name} is not started")
+            await self.start()
 
         try:
             result = await asyncio.wait_for(
