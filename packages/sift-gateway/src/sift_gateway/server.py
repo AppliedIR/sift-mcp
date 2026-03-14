@@ -98,7 +98,7 @@ class Gateway:
             logger.info("Lazy start enabled. Backends start on first request.")
             return
 
-        for name, backend in self.backends.items():
+        async def _start_one(name: str, backend) -> None:
             try:
                 await asyncio.wait_for(backend.start(), timeout=60.0)
                 logger.info("Started backend: %s", name)
@@ -108,9 +108,15 @@ class Gateway:
                 logger.error("Failed to start backend %s (connection): %s", name, exc)
             except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
                 logger.error(
-                    "Failed to start backend %s: %s: %s", name, type(exc).__name__, exc
+                    "Failed to start backend %s: %s: %s",
+                    name,
+                    type(exc).__name__,
+                    exc,
                 )
 
+        await asyncio.gather(
+            *(_start_one(name, bk) for name, bk in self.backends.items())
+        )
         await self._build_tool_map()
 
     async def stop(self) -> None:
