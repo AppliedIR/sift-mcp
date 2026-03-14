@@ -336,8 +336,11 @@ failures:
    `permissions.deny` contains Edit/Write deny rules for case data files
    (findings.json, timeline.json, approvals.jsonl, etc.).
 
-4. **Sandbox**: Verify `sandbox.enabled` is true and
-   `sandbox.allowUnsandboxedCommands` is false.
+4. **Sandbox**: Verify `sandbox.enabled` is true,
+   `sandbox.allowUnsandboxedCommands` is false, and
+   `sandbox.filesystem.denyWrite` contains protected paths
+   (gateway.yaml, config.yaml, active_case, hooks, settings.json,
+   CLAUDE.md, rules).
 
 5. **Forensic discipline**: Verify FORENSIC_DISCIPLINE.md is
    accessible (either in the project tree or loaded as a global rule).
@@ -348,7 +351,7 @@ Report results as a brief status block:
 ✓ MCP servers: connected (forensic-mcp, case-mcp, sift-mcp)
 ✓ Audit hook: active (forensic-audit.sh)
 ✓ Permission guardrails: active (case data deny rules)
-✓ Sandbox: enabled
+✓ Sandbox: enabled (denyWrite active)
 ✓ Forensic discipline: loaded
 ```
 
@@ -363,7 +366,7 @@ the installer did not complete successfully. Missing controls mean:
 - No audit hook = Bash commands are not logged
 - No permission guardrails = destructive commands are allowed
 - No MCP servers = forensic tools are unavailable
-- No sandbox = file system writes are unrestricted
+- No sandbox/denyWrite = protected files can be modified via Bash
 
 Recommended action: exit and relaunch from ~/aiir/ (client) or
 re-run setup-sift.sh --client=claude-code (SIFT workstation)."

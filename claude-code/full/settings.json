@@ -22,17 +22,6 @@
         ]
       }
     ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pre-bash-guard.sh"
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
         "matcher": "Bash",
@@ -106,6 +95,19 @@
   },
   "sandbox": {
     "enabled": true,
-    "allowUnsandboxedCommands": false
+    "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "denyWrite": [
+        "~/.aiir/gateway.yaml",
+        "~/.aiir/config.yaml",
+        "~/.aiir/active_case",
+        "~/.aiir/hooks",
+        "~/.aiir/.password_lockout",
+        "~/.aiir/.pin_lockout",
+        "~/.claude/settings.json",
+        "~/.claude/CLAUDE.md",
+        "~/.claude/rules"
+      ]
+    }
   }
 }
