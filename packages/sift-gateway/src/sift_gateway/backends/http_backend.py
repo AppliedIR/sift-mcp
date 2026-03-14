@@ -189,12 +189,29 @@ class HttpMCPBackend(MCPBackend):
         except Exception as exc:
             exc_str = str(exc).lower()
             if "session terminated" in exc_str or "session not found" in exc_str:
+                # Session went stale — reconnect and retry once instead of
+                # tearing down and cascading through the lazy-restart cycle.
                 logger.warning(
-                    "Backend %s session terminated, will reconnect on next call: %s",
+                    "Backend %s session terminated, reconnecting: %s",
                     self.name,
                     exc,
                 )
                 await self._teardown()
+                try:
+                    await self.start()
+                    result = await asyncio.wait_for(
+                        self._session.call_tool(name, arguments),
+                        timeout=_TOOL_CALL_TIMEOUT,
+                    )
+                    return result.content
+                except Exception as retry_exc:
+                    logger.error(
+                        "Backend %s retry after reconnect failed: %s",
+                        self.name,
+                        retry_exc,
+                    )
+                    await self._teardown()
+                    raise retry_exc from exc
             raise
 
     async def health_check(self) -> dict:
