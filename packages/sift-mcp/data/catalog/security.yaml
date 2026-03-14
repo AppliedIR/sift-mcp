@@ -63,9 +63,6 @@ denied_binaries:
   - "poweroff"
   - "halt"
   - "init"
-  # Filesystem mounts — LLM should use fls/icat, not kernel mounts
-  - "mount"
-  - "umount"
   # Process termination — timeouts handle hung tools
   - "kill"
   - "killall"

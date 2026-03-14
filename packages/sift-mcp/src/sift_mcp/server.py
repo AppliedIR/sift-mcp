@@ -73,7 +73,7 @@ def create_server() -> FastMCP:
         """Execute a forensic tool on this SIFT workstation.
 
         Most SIFT-installed tools can be executed including curl, wget, dd,
-        fdisk, and python3. Only mkfs, shutdown, mount, kill, and raw socket
+        fdisk, and python3. Only mkfs, shutdown, kill, and raw socket
         tools (nc/ncat) are blocked. Tools in the forensic catalog
         get enriched responses with caveats and corroboration suggestions.
 

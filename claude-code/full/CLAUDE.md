@@ -145,7 +145,7 @@ Data-driven investigation reports with profile-based formatting.
 ### sift-mcp (SIFT Tool Execution)
 Runs forensic tools installed on the SIFT workstation. Most tools are
 available including curl, wget, dd, fdisk, python3, and standard Unix
-utilities. Only mkfs, shutdown, mount, kill, and raw socket tools
+utilities. Only mkfs, shutdown, kill, and raw socket tools
 (nc/ncat) are blocked. Cataloged tools get FK-enriched responses.
 Always pass save_output: true for large outputs.
 
