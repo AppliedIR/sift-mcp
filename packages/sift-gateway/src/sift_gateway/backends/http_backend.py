@@ -92,6 +92,7 @@ class HttpMCPBackend(MCPBackend):
                 streamablehttp_client(
                     url,
                     headers=headers if headers else None,
+                    terminate_on_close=False,
                     **client_factory_kwargs,
                 )
             )
@@ -101,6 +102,10 @@ class HttpMCPBackend(MCPBackend):
             )
             result = await self._session.initialize()
             self._instructions = result.instructions
+            # Verify session is usable before declaring started — prevents
+            # race where initialize() succeeds but call_tool() gets 404.
+            tools_result = await self._session.list_tools()
+            self._tools_cache = tools_result.tools
             self._started = True
             logger.info("Backend %s started (http -> %s)", self.name, url)
         except BaseException as exc:

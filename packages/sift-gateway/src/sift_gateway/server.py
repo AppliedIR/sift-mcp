@@ -100,10 +100,10 @@ class Gateway:
 
         for name, backend in self.backends.items():
             try:
-                await asyncio.wait_for(backend.start(), timeout=30.0)
+                await asyncio.wait_for(backend.start(), timeout=60.0)
                 logger.info("Started backend: %s", name)
             except asyncio.TimeoutError:
-                logger.error("Backend %s start timed out after 30s", name)
+                logger.error("Backend %s start timed out after 60s", name)
             except (ConnectionError, OSError) as exc:
                 logger.error("Failed to start backend %s (connection): %s", name, exc)
             except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
@@ -191,7 +191,7 @@ class Gateway:
                 backend.last_tool_call = time.monotonic()
                 return
             logger.info("Lazy-starting backend: %s", backend_name)
-            await asyncio.wait_for(backend.start(), timeout=30.0)
+            await asyncio.wait_for(backend.start(), timeout=60.0)
             backend.last_tool_call = time.monotonic()
             await self._build_tool_map()
 
