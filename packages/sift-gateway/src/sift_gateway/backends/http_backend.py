@@ -159,6 +159,18 @@ class HttpMCPBackend(MCPBackend):
             self._tools_cache = result.tools
         return self._tools_cache
 
+    async def _teardown(self) -> None:
+        """Clean up session state so the backend can be restarted."""
+        self._tools_cache = None
+        self._session = None
+        self._started = False
+        if self._exit_stack:
+            try:
+                await self._exit_stack.aclose()
+            except BaseException:
+                pass
+            self._exit_stack = None
+
     async def call_tool(self, name: str, arguments: dict) -> list:
         if not self._started or not self._session:
             raise RuntimeError(f"Backend {self.name} is not started")
@@ -172,15 +184,17 @@ class HttpMCPBackend(MCPBackend):
             logger.error(
                 "Backend %s connection lost during call_tool: %s", self.name, exc
             )
-            self._tools_cache = None
-            self._session = None
-            self._started = False
-            if self._exit_stack:
-                try:
-                    await self._exit_stack.aclose()
-                except BaseException:
-                    pass
-                self._exit_stack = None
+            await self._teardown()
+            raise
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            if "session terminated" in exc_str or "session not found" in exc_str:
+                logger.warning(
+                    "Backend %s session terminated, will reconnect on next call: %s",
+                    self.name,
+                    exc,
+                )
+                await self._teardown()
             raise
 
     async def health_check(self) -> dict:
