@@ -151,7 +151,7 @@ bwrap --ro-bind / / --unshare-net -- /bin/true
 Read settings.json (both `~/.claude/settings.json` and project
 `.claude/settings.json`). Verify:
 - **Deny rules** present (report actual count found)
-- **Pre-bash guard** hook present
+- **Sandbox denyWrite** paths present (gateway.yaml, config.yaml, etc.)
 - **Audit hook** present
 - **Prompt hook** present
 
@@ -194,7 +194,7 @@ Controls:
   Sandbox:        [OK/needs reboot]
   Deny rules:     OK (N)
   Audit hook:     OK
-  Pre-bash guard: OK
+  Sandbox denyWrite: OK (N paths)
 
 To start: ask Claude to create a case, then exit, cd into the
 case directory, and restart Claude Code.

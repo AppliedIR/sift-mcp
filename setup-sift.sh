@@ -1006,6 +1006,13 @@ if $INSTALL_OPENCTI; then
     }
 fi
 
+# Fix opentelemetry version conflict: pycti pins ~=1.35.0 but chromadb needs
+# newer. Both work at >=1.40. Upgrade after both are installed.
+if $INSTALL_RAG && $INSTALL_OPENCTI; then
+    $VENV_PIP install --progress-bar off --quiet \
+        "opentelemetry-sdk>=1.40" "opentelemetry-api>=1.40" >/dev/null 2>&1 || true
+fi
+
 # =============================================================================
 # Phase 5: Smoke Tests
 # =============================================================================
