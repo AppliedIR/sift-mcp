@@ -1,6 +1,6 @@
 """AIIR case management MCP server.
 
-Exposes 14 tools wrapping aiir CLI _data() functions for LLM-callable
+Exposes 15 tools wrapping aiir CLI _data() functions for LLM-callable
 case management. No new logic — thin wrappers around tested code.
 """
 
@@ -500,7 +500,54 @@ def create_server() -> FastMCP:
         return result
 
     # ------------------------------------------------------------------
-    # Tool 14: open_case_dashboard (SAFE)
+    # Tool 15: backup_case (CONFIRM)
+    # ------------------------------------------------------------------
+    @server.tool()
+    def backup_case(destination: str, purpose: str = "") -> dict:
+        """Back up case data files to a destination directory.
+
+        Creates a timestamped backup of case metadata, findings, timeline,
+        approvals, audit trails, and reports. Does NOT include evidence or
+        extraction files (use 'aiir backup --all' for full backups).
+
+        Confirm with the examiner before creating a backup.
+
+        Args:
+            destination: Directory to create the backup in.
+            purpose: Why the backup is being made (audit trail).
+        """
+        from aiir_cli.commands.backup import create_backup_data
+
+        try:
+            _validate_str_length(destination, "destination", _MAX_NAME)
+            _validate_str_length(purpose, "purpose", _MAX_TEXT)
+            case_dir = _resolve_case_dir()
+            examiner = resolve_examiner()
+
+            result = create_backup_data(
+                case_dir=case_dir,
+                destination=destination,
+                examiner=examiner,
+                purpose=purpose,
+            )
+
+            # Strip CLI-only fields from MCP response
+            result.pop("symlinks", None)
+            result.pop("ledger_note", None)
+
+            logged_id = audit.log(
+                tool="backup_case",
+                params={"destination": destination, "purpose": purpose},
+                result_summary=result,
+            )
+            if logged_id is None:
+                result["warning"] = "Audit write failed — action not recorded"
+            return result
+        except (ValueError, OSError) as e:
+            return {"error": str(e)}
+
+    # ------------------------------------------------------------------
+    # Tool 16: open_case_dashboard (SAFE)
     # ------------------------------------------------------------------
     @server.tool()
     def open_case_dashboard() -> dict:
