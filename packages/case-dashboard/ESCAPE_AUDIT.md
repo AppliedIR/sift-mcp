@@ -1,15 +1,17 @@
-# escapeHtml Audit — Dashboard v1 (Sprint 0 Gate)
+# escapeHtml Audit — Dashboard v2 (Post Sprint A/B)
 
 **Date:** 2026-03-16
-**File:** `static/index.html` (2934 lines)
+**Files:** `static/v2/index.html` (3209 lines), `static/index.html` (v1, unchanged)
 **Result:** PASS — all innerHTML assignments use escapeHtml on user-controllable strings
 
-## Counts
+## Counts (v2)
 
-- innerHTML assignments: 34
-- escapeHtml() calls: 92
+- innerHTML assignments: ~45
+- escapeHtml() calls: ~110
+- escapeJsString() calls in onclick: ~25
 - insertAdjacentHTML calls: 0
 - document.write calls: 0
+- eval/Function calls: 0
 
 ## Test Vector
 
@@ -21,12 +23,19 @@
 
 **Result: payload does NOT execute.**
 
-## Hardening Opportunities (non-exploitable)
+## Hardening Applied (Sprint B review)
 
-- `renderResultSummary()`: `summary.exit_code` and `summary.stdout_bytes`
-  inserted without escapeHtml(). Always numeric from server-side audit JSONL.
-  Non-exploitable but inconsistent with the escaping discipline elsewhere.
+- `renderResultSummary()`: `exit_code` and `stdout_bytes` now wrapped in
+  `escapeHtml(String(...))`. Previously unescaped (numeric, non-exploitable).
+- `formatTime()`/`formatTimeShort()`: all innerHTML usages now wrapped in
+  `escapeHtml()`. Fallback path returns raw input on parse failure.
+- `confClass`/`confClassFor()`: class attribute values now escaped.
+- `field` parameter in onclick: all instances now use `escapeJsString(field)`.
+- `de.modifications` iteration: changed from `for..in` to `Object.keys()` to
+  prevent prototype pollution.
+- Error banner uses `textContent` (not innerHTML).
+- `_snapshot` stripped before POST via `deltaForSave()` (in-memory only).
 
 ## Re-audit Required
 
-After any Sprint A/B changes that add new innerHTML rendering code.
+After any changes that add new innerHTML rendering code.

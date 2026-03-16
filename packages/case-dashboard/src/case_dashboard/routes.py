@@ -54,7 +54,6 @@ _VALID_DELTA_KEYS = {
     "note",
     "todo_description",
     "todo_priority",
-    "_snapshot",
 }
 
 _REQUIRED_DELTA_KEYS = {"id", "type", "action"}
@@ -203,7 +202,7 @@ def _verify_items(case_dir: Path, items: list[dict]) -> list[dict]:
 # --- Commit helpers ---
 
 
-_EXAMINER_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+_EXAMINER_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,19}$")
 
 
 def _resolve_examiner(request: Request) -> str | None:
