@@ -896,17 +896,19 @@ function scheduleSave() {
 }
 
 window.addEventListener('beforeunload', function() {
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    var headers = apiHeaders();
-    headers['Content-Type'] = 'application/json';
-    fetch(API_BASE + '/api/delta', {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(deltaForSave()),
-      keepalive: true
-    });
-  }
+  try {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      var headers = apiHeaders();
+      headers['Content-Type'] = 'application/json';
+      fetch(API_BASE + '/api/delta', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(deltaForSave()),
+        keepalive: true
+      });
+    }
+  } catch(_) {}
 });
 
 function deltaForSave() {
@@ -1596,8 +1598,8 @@ async function submitCommit() {
     await saveDelta();
     await loadAll();
     updateCommitButton();
-    showToast('Committed: ' + result.approved + ' approved, ' +
-      result.rejected + ' rejected, ' + result.edited + ' edited', 'success');
+    showToast('Committed: ' + (result.approved || 0) + ' approved, ' +
+      (result.rejected || 0) + ' rejected, ' + (result.edited || 0) + ' edited', 'success');
 
   } catch (e) {
     document.getElementById('commitPasswordRow').style.display = '';
@@ -1731,11 +1733,15 @@ function saveEdit(field) {
 
   let newValue;
   if (field === 'confidence') {
-    newValue = document.getElementById('editInput-confidence').value;
+    var confEl = document.getElementById('editInput-confidence');
+    if (!confEl) return;
+    newValue = confEl.value;
   } else if (field === 'mitre_ids' || field === 'iocs') {
     newValue = getTagInputValues(field);
   } else {
-    newValue = document.getElementById('editInput-' + field).value;
+    var editEl = document.getElementById('editInput-' + field);
+    if (!editEl) return;
+    newValue = editEl.value;
   }
 
   const original = f[field];
@@ -1793,6 +1799,7 @@ function renderEditableField(field, value, f, de) {
 
 function toggleContext(id) {
   const panel = document.getElementById('contextPanel-' + id);
+  if (!panel) return;
   const btn = panel.previousElementSibling;
   if (panel.style.display === 'none') {
     panel.style.display = 'block';
@@ -1862,7 +1869,7 @@ async function loadToolInvocations(finding) {
       return;
     }
   }
-  if (!auditData || auditData.length === 0) {
+  if (!Array.isArray(auditData) || auditData.length === 0) {
     container.innerHTML = '<span style="color:var(--text-muted)">No tool invocations recorded.</span>';
     return;
   }
@@ -1899,6 +1906,7 @@ async function loadEvidencePanel(finding) {
     }
   }
 
+  if (!Array.isArray(auditData)) { container.innerHTML = ''; return; }
   const eids = finding.evidence_ids || [];
   if (eids.length === 0) { container.innerHTML = ''; return; }
 
@@ -2075,14 +2083,15 @@ function formatTimeShort(iso) {
 
 /* === Theme === */
 function initTheme() {
-  const saved = localStorage.getItem('aiir-theme');
+  var saved;
+  try { saved = localStorage.getItem('aiir-theme'); } catch(_) {}
   if (saved === 'light') document.body.classList.add('light');
   updateThemeButton();
 }
 
 function toggleTheme() {
   document.body.classList.toggle('light');
-  localStorage.setItem('aiir-theme', document.body.classList.contains('light') ? 'light' : 'dark');
+  try { localStorage.setItem('aiir-theme', document.body.classList.contains('light') ? 'light' : 'dark'); } catch(_) {}
   updateThemeButton();
 }
 
@@ -2636,7 +2645,7 @@ function formatGap(minutes) {
 
 function editPencil(evId, field) {
   return '<span style="color:var(--text-muted);cursor:pointer;font-size:11px" ' +
-    'onclick="event.stopPropagation();startTimelineEdit(\'' + evId +
+    'onclick="event.stopPropagation();startTimelineEdit(\'' + escapeJsString(evId) +
     '\',\'' + escapeJsString(field) + '\')">\u270E</span>';
 }
 
@@ -2675,7 +2684,7 @@ function renderTimelineEditField(field, value, evId) {
 function renderTimelineCompactRow(ev, de, isFocused) {
   var status = (ev.status || 'DRAFT').toUpperCase();
   var evType = ev.event_type || 'other';
-  var evId = escapeJsString(ev.id);
+  var evId = ev.id;
 
   var eff = Object.assign({}, ev);
   if (de && de.modifications) {
@@ -2686,7 +2695,7 @@ function renderTimelineCompactRow(ev, de, isFocused) {
 
   var ts = eff.timestamp || ev.staged || '';
   var shortTime = '';
-  try { var d = new Date(ts); shortTime = d.toTimeString().slice(0,5); } catch(e) {}
+  try { var d = new Date(ts); if (!isNaN(d.getTime())) shortTime = d.toTimeString().slice(0,5); } catch(e) {}
 
   var descMod = de && de.modifications && de.modifications.description;
   var desc = eff.description || ev.id || '';
@@ -2696,7 +2705,7 @@ function renderTimelineCompactRow(ev, de, isFocused) {
   var html = '<div class="tl-row status-' + status.toLowerCase() +
     (isFocused ? ' focused' : '') +
     '" data-id="' + escapeHtml(ev.id) +
-    '" onclick="focusTimelineEvent(\'' + evId + '\')">';
+    '" onclick="focusTimelineEvent(\'' + escapeJsString(evId) + '\')">';
   html += '<span class="tl-dot"></span>';
   html += '<span class="tl-time">' + escapeHtml(shortTime) + '</span>';
   html += '<span class="tl-type tl-type-' + escapeHtml(evType) + '">' +
@@ -2791,17 +2800,17 @@ function renderTimelineCompactRow(ev, de, isFocused) {
     html += '<label style="display:inline-flex;align-items:center;cursor:pointer" ' +
       'onclick="event.stopPropagation()">' +
       '<input type="checkbox" class="batch-check" onclick="event.stopPropagation();' +
-      'toggleTimelineBatchItem(\'' + evId + '\',this.checked)"' +
+      'toggleTimelineBatchItem(\'' + escapeJsString(evId) + '\',this.checked)"' +
       (batchTimelineSelected.has(ev.id) ? ' checked' : '') + '></label>';
     html += '<button class="btn-include" onclick="event.stopPropagation();' +
-      'doTimelineApprove(\'' + evId + '\')">Include</button>';
+      'doTimelineApprove(\'' + escapeJsString(evId) + '\')">Include</button>';
     html += '<button class="btn-exclude" onclick="event.stopPropagation();' +
-      'openTimelineRejectDialog(\'' + evId + '\')">Exclude</button>';
+      'openTimelineRejectDialog(\'' + escapeJsString(evId) + '\')">Exclude</button>';
     html += '<button onclick="event.stopPropagation();' +
-      'startTimelineEdit(\'' + evId + '\',\'description\')">Edit</button>';
+      'startTimelineEdit(\'' + escapeJsString(evId) + '\',\'description\')">Edit</button>';
     if (de) {
       html += '<button onclick="event.stopPropagation();' +
-        'doTimelineSkip(\'' + evId + '\')">Undo</button>';
+        'doTimelineSkip(\'' + escapeJsString(evId) + '\')">Undo</button>';
     }
     html += '</div>';
 
@@ -3017,7 +3026,9 @@ function cancelTimelineEdit() {
 function saveTimelineEdit(field) {
   var ev = timelineEvents.find(function(x) { return x.id === focusedTimelineId; });
   if (!ev) return;
-  var newValue = document.getElementById('editInput-' + field).value;
+  var el = document.getElementById('editInput-' + field);
+  if (!el) return;
+  var newValue = el.value;
   var original = ev[field];
   if (newValue === (original || '')) { cancelTimelineEdit(); return; }
 

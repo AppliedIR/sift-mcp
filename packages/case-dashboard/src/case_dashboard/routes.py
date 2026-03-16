@@ -264,6 +264,8 @@ def _record_commit_failure(examiner: str) -> None:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w") as f:
             json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, str(lockout_file))
     except BaseException:
         try:
@@ -287,6 +289,8 @@ def _clear_commit_failures(examiner: str) -> None:
             os.fchmod(fd, 0o600)
             with os.fdopen(fd, "w") as f:
                 json.dump(data, f)
+                f.flush()
+                os.fsync(f.fileno())
             os.replace(tmp, str(lockout_file))
         except BaseException:
             try:
@@ -976,6 +980,8 @@ async def delete_delta_item(request: Request) -> JSONResponse:
         try:
             with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
                 json.dump(delta, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
             os.replace(tmp_path, str(delta_path))
         except Exception:
             try:
@@ -1153,7 +1159,11 @@ async def post_commit(request: Request) -> JSONResponse:
     if not entry:
         return JSONResponse({"error": "No password configured"}, status_code=403)
 
-    stored_hash = bytes.fromhex(entry["hash"])
+    try:
+        stored_hash = bytes.fromhex(entry["hash"])
+    except (ValueError, KeyError):
+        logger.error("Corrupt password entry for examiner %s", examiner)
+        return JSONResponse({"error": "Password data corrupted"}, status_code=500)
     expected = hmac_mod.new(
         stored_hash, challenge["nonce"].encode(), "sha256"
     ).hexdigest()
