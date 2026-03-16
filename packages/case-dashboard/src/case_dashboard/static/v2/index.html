@@ -99,6 +99,7 @@ body {
 .sidebar-item.active { background: var(--bg-tertiary); border-left: 3px solid var(--accent); }
 .sidebar-item .badge-indicator { width: 10px; font-size: 14px; color: var(--text-muted); flex-shrink: 0; }
 .sidebar-item .item-id { font-family: monospace; color: var(--text-secondary); flex-shrink: 0; }
+.sidebar-item .item-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); min-width: 0; }
 .sidebar-item .item-conf { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; margin-left: auto; }
 .sidebar-stats { padding: 8px 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); }
 .sidebar-stats div { margin-bottom: 2px; }
@@ -112,7 +113,9 @@ body {
 /* Finding card */
 .finding-card { padding-bottom: 16px; }
 .card-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.finding-sticky-bar { position: sticky; top: 0; z-index: 10; background: var(--bg-primary); padding: 10px 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.finding-sticky-bar { position: sticky; top: 0; z-index: 10; background: var(--bg-primary); padding: 10px 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.finding-sticky-bar .sticky-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.finding-sticky-bar .sticky-title { font-size: 15px; font-weight: 600; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .finding-sticky-bar .action-bar { margin: 0; padding: 0; border: none; background: none; }
 /* Two-zone layout */
 .zone1 { margin-bottom: 16px; }
@@ -346,7 +349,7 @@ body {
   align-items: center; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .timeline-controls select { background: var(--bg-secondary); color: var(--text-primary);
   border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 12px; }
-.timeline-stream { flex: 1; overflow-y: auto; padding: 16px 24px 16px 40px; }
+.timeline-stream { flex: 1; overflow-y: auto; padding: 16px 16px 16px 20px; }
 .timeline-summary { padding: 8px 16px; border-top: 1px solid var(--border);
   font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
 /* Compact timeline rows */
@@ -359,7 +362,7 @@ body {
 .tl-row.status-approved .tl-dot { background: var(--green); }
 .tl-row.status-rejected .tl-dot { background: var(--red); }
 .tl-row .tl-time { font-family: monospace; font-size: 12px; color: var(--text-muted);
-  white-space: nowrap; flex-shrink: 0; width: 52px; }
+  white-space: nowrap; flex-shrink: 0; width: 110px; }
 .tl-row .tl-desc { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-row .tl-desc.modified { color: var(--amber); }
 .tl-row .tl-delta-pill { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
@@ -383,6 +386,7 @@ body {
 .tl-exp-actions .btn-include:hover { filter: brightness(1.2); }
 .tl-exp-actions .btn-exclude { background: var(--red-bg); color: var(--red); border-color: var(--red); }
 .tl-exp-actions .btn-exclude:hover { filter: brightness(1.2); }
+.tl-date-header { padding: 8px 8px 4px; font-size: 11px; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border); margin-top: 8px; letter-spacing: 0.5px; }
 .tl-type { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; }
 .tl-type-auth { background: rgba(59,130,246,0.15); color: #6ea8fe; }
 .tl-type-execution, .tl-type-process { background: rgba(255,159,10,0.15); color: #ffb347; }
@@ -582,9 +586,10 @@ body {
         <thead>
           <tr>
             <th data-sort="todo_id">ID</th>
+            <th data-sort="title">Title</th>
             <th data-sort="description">Description</th>
             <th data-sort="priority">Priority</th>
-            <th data-sort="assignee">Assignee</th>
+            <th data-sort="examiner">Examiner</th>
             <th data-sort="status">Status</th>
             <th>Related</th>
             <th data-sort="created_at">Created</th>
@@ -654,7 +659,7 @@ body {
     <div class="shortcut-row"><span>Undo review</span><span class="shortcut-key">s</span></div>
     <div class="shortcut-row"><span>Focus search</span><span class="shortcut-key">/</span></div>
     <div class="shortcut-row"><span>Close / cancel</span><span class="shortcut-key">Esc</span></div>
-    <div class="shortcut-row"><span>Commit reviews</span><span class="shortcut-key">C</span></div>
+    <div class="shortcut-row"><span>Commit reviews</span><span class="shortcut-key">Shift+C</span></div>
     <div class="shortcut-row"><span>Expand/collapse timeline row</span><span class="shortcut-key">Enter / Space</span></div>
     <div class="shortcut-row"><span>Switch to tab 1-5</span><span class="shortcut-key">1-5</span></div>
     <div class="shortcut-row"><span>This help</span><span class="shortcut-key">?</span></div>
@@ -993,7 +998,7 @@ function getFilteredFindings() {
     switch (currentSort) {
       case 'conf-desc': return (CONF_ORDER[(a.confidence || '').toUpperCase()] || 9) - (CONF_ORDER[(b.confidence || '').toUpperCase()] || 9);
       case 'conf-asc': return (CONF_ORDER[(b.confidence || '').toUpperCase()] || 9) - (CONF_ORDER[(a.confidence || '').toUpperCase()] || 9);
-      case 'chrono': return (a.staged || '').localeCompare(b.staged || '');
+      case 'chrono': return (a.event_timestamp || a.created_at || '').localeCompare(b.event_timestamp || b.created_at || '');
       case 'id': return (a.id || '').localeCompare(b.id || '');
       case 'status': {
         const aR = getDeltaEntry(a.id) ? 1 : 0;
@@ -1033,10 +1038,12 @@ function renderSidebar() {
     }
 
     const checked = batchSelected.has(f.id) ? ' checked' : '';
+    var shortTitle = (f.title || '').length > 30 ? f.title.slice(0, 27) + '...' : (f.title || '');
     div.innerHTML =
       '<input type="checkbox" class="batch-check"' + checked + ' data-id="' + escapeHtml(f.id) + '" />' +
       '<span class="badge-indicator">' + indicator + '</span>' +
       '<span class="item-id">' + escapeHtml(f.id) + '</span>' +
+      '<span class="item-title">' + escapeHtml(shortTitle) + '</span>' +
       actionHtml +
       '<span class="item-conf badge ' + escapeHtml(confClass) + '">' + escapeHtml(conf) + '</span>';
     // Wire checkbox
@@ -1148,12 +1155,14 @@ function renderFinding(id) {
     html += '</div>';
   }
 
-  // Sticky bar: header + actions
+  // Sticky bar: header + title + confidence + actions
   html += '<div class="finding-sticky-bar">';
+  html += '<div class="sticky-row">';
   html += '<div class="card-header">';
   html += '<span class="card-id">' + escapeHtml(f.id) + '</span>';
   html += '<span class="badge ' + escapeHtml(typeClass) + '">' + escapeHtml(type) + '</span>';
   html += '<span class="badge ' + escapeHtml(statusClass) + '">' + escapeHtml(status) + '</span>';
+  html += '<span class="badge ' + escapeHtml(confClass) + '">' + escapeHtml(conf) + '</span>';
   html += '</div>';
   html += '<div class="action-bar">';
   html += '<button class="action-btn approve" onclick="doApprove()"><span class="key">a</span> Approve</button>';
@@ -1162,6 +1171,8 @@ function renderFinding(id) {
     html += '<button class="action-btn undo" onclick="doSkip()"><span class="key">s</span> Undo</button>';
   }
   html += '</div>';
+  html += '</div>';
+  html += '<div class="sticky-title">' + escapeHtml(eff.title || '') + '</div>';
   html += '</div>';
 
   // === Zone 1: Decision fields ===
@@ -1217,7 +1228,7 @@ function renderFinding(id) {
   html += '</div>'; // end zone1
 
   // === Zone 2: Evidence & context (collapsible) ===
-  html += '<details class="zone2" open>';
+  html += '<details class="zone2">';
   html += '<summary class="zone2-toggle">Evidence & Context</summary>';
   html += '<div class="zone2-content">';
 
@@ -1240,8 +1251,8 @@ function renderFinding(id) {
     html += '</div>';
   }
 
-  // Fallback: supporting_commands (for findings without artifacts)
-  if ((!f.artifacts || !f.artifacts.length) && f.supporting_commands && f.supporting_commands.length) {
+  // Supporting commands (shown alongside artifacts when both exist)
+  if (f.supporting_commands && f.supporting_commands.length) {
     html += '<div class="field-section"><div class="field-label">Supporting Commands</div>';
     f.supporting_commands.forEach(function(cmd) {
       html += '<div class="evidence-artifact">';
@@ -1300,6 +1311,14 @@ function renderFinding(id) {
     html += '<div class="field-section"><div class="field-label">IOCs</div>';
     html += renderEditableField('iocs', eff.iocs || [], f, de);
     html += '</div>';
+  }
+
+  // Tags
+  if (f.tags && f.tags.length > 0) {
+    html += '<div class="field-section"><div class="field-label">Tags</div>';
+    html += '<div class="tag-list">' + f.tags.map(function(tag) {
+      return '<span class="tag">' + escapeHtml(tag) + '</span>';
+    }).join('') + '</div></div>';
   }
 
   // Related findings
@@ -2025,8 +2044,8 @@ function renderTimelineContext(finding) {
     nearby = sorted.slice(start, end);
     highlightId = linkedEvents[0].id;
   } else {
-    // Fallback: timestamp proximity (use finding.timestamp if available, then staged)
-    var fTime = finding.timestamp || finding.staged || '';
+    // Fallback: timestamp proximity (use event_timestamp, timestamp, created_at)
+    var fTime = finding.event_timestamp || finding.timestamp || finding.created_at || '';
     if (!fTime) { container.innerHTML = ''; return; }
 
     var closestIdx = 0;
@@ -2131,9 +2150,19 @@ function updateTabBadges() {
   }).length;
   var pendingEvents = timelineEvents.length - reviewedEvents;
 
+  // Count evidence items
+  var evidenceCount = evidenceData.length;
+
+  // Count open todos
+  var openTodos = todosData.filter(function(t) {
+    return (t.status || 'open') === 'open';
+  }).length;
+
   // Update badges
   setBadge('tab-findings', pendingFindings);
   setBadge('tab-timeline', pendingEvents);
+  setBadge('tab-evidence', evidenceCount);
+  setBadge('tab-todos', openTodos);
 }
 
 function setBadge(tabId, count) {
@@ -2305,8 +2334,7 @@ document.addEventListener('keydown', function(e) {
       if (isTimeline) {
         // Toggle expand/collapse on focused timeline row
         if (focusedTimelineId) {
-          focusedTimelineId = null;
-          renderTimeline();
+          focusTimelineEvent(focusedTimelineId);
         }
       } else {
         toggleAllEvidence();
@@ -2436,7 +2464,7 @@ function renderDashboard(summary) {
     meta += '<button class="btn-start-review" onclick="switchTab(\'timeline\')">Curate ' + tlDraft + ' timeline event(s)</button>';
   } else if (openTodos > 0) {
     meta += '<button class="btn-start-review" onclick="switchTab(\'todos\')">' + openTodos + ' open TODO(s) remaining</button>';
-  } else if (findings.length > 0 && delta.items.length > 0) {
+  } else if (findings.length > 0 && delta.items.some(function(d) { return d.action === 'approve' || d.action === 'reject'; })) {
     meta += '<button class="btn-start-review" onclick="openCommitDialog()">All reviewed \u2014 ready to commit</button>';
   }
   document.getElementById('dashMeta').innerHTML = meta;
@@ -2567,18 +2595,20 @@ function renderTodos() {
   let html = '';
   sorted.forEach(function(t) {
     const tid = t.todo_id || t.id || '';
+    const title = t.title || '';
     const desc = t.description || '';
     const prio = t.priority || 'medium';
-    const assignee = t.assignee || '';
+    const examinerName = t.examiner || t.assignee || '';
     const status = t.status || 'open';
     const related = t.related_findings || [];
     const created = formatTime(t.created_at);
 
     html += '<tr>';
     html += '<td>' + escapeHtml(tid) + '</td>';
+    html += '<td>' + escapeHtml(title) + '</td>';
     html += '<td>' + escapeHtml(desc) + '</td>';
     html += '<td class="priority-' + escapeHtml(prio) + '">' + escapeHtml(prio) + '</td>';
-    html += '<td>' + escapeHtml(assignee) + '</td>';
+    html += '<td>' + escapeHtml(examinerName) + '</td>';
     html += '<td class="status-' + escapeHtml(status) + '">' + escapeHtml(status) + '</td>';
     html += '<td>';
     related.forEach(function(rid) {
@@ -2590,7 +2620,7 @@ function renderTodos() {
   });
 
   if (!sorted.length) {
-    html = '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:24px">No TODOs</td></tr>';
+    html = '<tr><td colspan="8" style="color:var(--text-muted);text-align:center;padding:24px">No TODOs</td></tr>';
   }
   document.getElementById('todosBody').innerHTML = html;
 }
@@ -2695,7 +2725,10 @@ function renderTimelineCompactRow(ev, de, isFocused) {
 
   var ts = eff.timestamp || ev.staged || '';
   var shortTime = '';
-  try { var d = new Date(ts); if (!isNaN(d.getTime())) shortTime = d.toTimeString().slice(0,5); } catch(e) {}
+  try { var d = new Date(ts); if (!isNaN(d.getTime())) {
+    var mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+    shortTime = mon + '-' + String(d.getDate()).padStart(2,'0') + ' ' + d.toTimeString().slice(0,5);
+  } } catch(e) {}
 
   var descMod = de && de.modifications && de.modifications.description;
   var desc = eff.description || ev.id || '';
@@ -2842,10 +2875,27 @@ function renderTimeline() {
 
   var html = '';
   var prevTimestamp = null;
+  var prevDateStr = null;
 
   filtered.forEach(function(ev) {
+    // Date header when day changes
+    var evTs = ev.timestamp || ev.staged || '';
+    var evDateStr = '';
+    try {
+      var dd = new Date(evTs);
+      if (!isNaN(dd.getTime())) {
+        var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        evDateStr = days[dd.getDay()] + ', ' + months[dd.getMonth()] + ' ' + dd.getDate() + ', ' + dd.getFullYear();
+      }
+    } catch(_) {}
+    if (evDateStr && evDateStr !== prevDateStr) {
+      html += '<div class="tl-date-header">' + escapeHtml(evDateStr) + '</div>';
+      prevDateStr = evDateStr;
+    }
+
     if (prevTimestamp) {
-      var gap = computeGap(prevTimestamp, ev.timestamp || ev.staged);
+      var gap = computeGap(prevTimestamp, evTs);
       if (gap && gap.minutes >= 5) {
         html += '<div class="tl-gap' + (gap.minutes >= 60 ? ' large' : '') + '">';
         html += '\u2014 ' + formatGap(gap.minutes) + ' \u2014';
@@ -2854,7 +2904,7 @@ function renderTimeline() {
     }
     var de = getDeltaEntry(ev.id);
     html += renderTimelineCompactRow(ev, de, ev.id === focusedTimelineId);
-    prevTimestamp = ev.timestamp || ev.staged;
+    prevTimestamp = evTs;
   });
 
   container.innerHTML = html;
