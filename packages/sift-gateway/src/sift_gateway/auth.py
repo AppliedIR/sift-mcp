@@ -20,6 +20,8 @@ _PUBLIC_PATHS = {
     # Dashboard HTML only — API endpoints require auth
     "/dashboard",
     "/dashboard/",
+    "/dashboard/v2",
+    "/dashboard/v2/",
 }
 
 # Paths matched by prefix (all sub-paths are public)

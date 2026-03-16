@@ -17,7 +17,7 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
@@ -1170,11 +1170,24 @@ async def post_commit(request: Request) -> JSONResponse:
     return JSONResponse(result)
 
 
-async def serve_index(request: Request) -> FileResponse:
+async def serve_index(request: Request) -> Response:
     index_path = _STATIC_DIR / "index.html"
     if not index_path.exists():
         return JSONResponse(
             {"error": "Dashboard not built yet"},
+            status_code=404,
+        )
+    return FileResponse(index_path, media_type="text/html")
+
+
+_V2_STATIC_DIR = _STATIC_DIR / "v2"
+
+
+async def serve_v2_index(request: Request) -> Response:
+    index_path = _V2_STATIC_DIR / "index.html"
+    if not index_path.exists():
+        return JSONResponse(
+            {"error": "Dashboard v2 not built yet"},
             status_code=404,
         )
     return FileResponse(index_path, media_type="text/html")
@@ -1196,9 +1209,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
-def create_dashboard_app() -> Starlette:
-    """Create the dashboard sub-app for mounting on the gateway."""
-    routes = [
+def _dashboard_api_routes() -> list[Route]:
+    """API routes shared by v1 and v2 dashboard apps."""
+    return [
         Route("/api/findings", get_findings, methods=["GET"]),
         Route("/api/findings/{id}", get_finding_by_id, methods=["GET"]),
         Route("/api/timeline", get_timeline, methods=["GET"]),
@@ -1213,6 +1226,18 @@ def create_dashboard_app() -> Starlette:
         Route("/api/evidence/{path:path}/verify", verify_evidence, methods=["POST"]),
         Route("/api/commit/challenge", get_commit_challenge, methods=["GET"]),
         Route("/api/commit", post_commit, methods=["POST"]),
-        Route("/", serve_index, methods=["GET"]),
     ]
+
+
+def create_dashboard_app() -> Starlette:
+    """Create the v1 dashboard sub-app for mounting on the gateway."""
+    routes = _dashboard_api_routes()
+    routes.append(Route("/", serve_index, methods=["GET"]))
+    return Starlette(routes=routes, middleware=[Middleware(SecurityHeadersMiddleware)])
+
+
+def create_dashboard_v2_app() -> Starlette:
+    """Create the v2 dashboard sub-app for mounting on the gateway."""
+    routes = _dashboard_api_routes()
+    routes.append(Route("/", serve_v2_index, methods=["GET"]))
     return Starlette(routes=routes, middleware=[Middleware(SecurityHeadersMiddleware)])

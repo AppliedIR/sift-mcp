@@ -1,0 +1,2935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIIR Case Dashboard</title>
+<style>
+:root {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --bg-hover: #475569;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border: #334155;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --green: #22c55e;
+  --green-bg: #052e16;
+  --red: #ef4444;
+  --red-bg: #450a0a;
+  --amber: #f59e0b;
+  --amber-bg: #451a03;
+  --blue: #3b82f6;
+  --blue-bg: #172554;
+  --slate: #94a3b8;
+  --gray: #6b7280;
+}
+
+.light {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #e2e8f0;
+  --bg-hover: #cbd5e1;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --border: #e2e8f0;
+  --green-bg: #dcfce7;
+  --red-bg: #fef2f2;
+  --amber-bg: #fffbeb;
+  --blue-bg: #eff6ff;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Layout */
+.app { display: flex; flex-direction: column; height: 100vh; }
+.header { background: var(--bg-secondary); border-bottom: 1px solid var(--border); padding: 8px 16px; flex-shrink: 0; }
+.header-row { display: flex; align-items: center; justify-content: space-between; }
+.header-title { font-size: 16px; font-weight: 600; }
+.header-actions { display: flex; gap: 8px; align-items: center; }
+.header-actions button { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.header-actions button:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* Tabs */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--bg-secondary); padding: 0 16px; flex-shrink: 0; }
+.tab { padding: 8px 16px; cursor: pointer; color: var(--text-secondary); border-bottom: 2px solid transparent; font-size: 13px; font-weight: 500; }
+.tab:hover { color: var(--text-primary); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Progress bar */
+.progress-bar { background: var(--bg-secondary); padding: 6px 16px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.progress-track { flex: 1; height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
+
+/* Main content */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* Sidebar */
+.sidebar { width: 260px; min-width: 260px; background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.sidebar-controls { padding: 8px; border-bottom: 1px solid var(--border); }
+.sidebar-controls select, .sidebar-controls input {
+  width: 100%; padding: 5px 8px; background: var(--bg-tertiary); border: 1px solid var(--border);
+  color: var(--text-primary); border-radius: 4px; font-size: 12px; margin-bottom: 4px;
+}
+.filter-presets { display: flex; gap: 4px; margin-bottom: 4px; }
+.filter-preset { padding: 3px 8px; font-size: 11px; border-radius: 3px; cursor: pointer; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-secondary); }
+.filter-preset.active { background: var(--accent); color: white; border-color: var(--accent); }
+.sidebar-list { flex: 1; overflow-y: auto; }
+.sidebar-item { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.sidebar-item:hover { background: var(--bg-tertiary); }
+.sidebar-item.active { background: var(--bg-tertiary); border-left: 3px solid var(--accent); }
+.sidebar-item .badge-indicator { width: 10px; font-size: 14px; color: var(--text-muted); flex-shrink: 0; }
+.sidebar-item .item-id { font-family: monospace; color: var(--text-secondary); flex-shrink: 0; }
+.sidebar-item .item-conf { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; margin-left: auto; }
+.sidebar-stats { padding: 8px 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); }
+.sidebar-stats div { margin-bottom: 2px; }
+.save-status { padding: 6px 12px; border-top: 1px solid var(--border); font-size: 11px; }
+.save-status.saved { color: var(--green); }
+.save-status.saving { color: var(--amber); }
+
+/* Content area */
+.content { flex: 1; overflow-y: auto; padding: 16px 24px; }
+
+/* Finding card */
+.finding-card { max-width: 900px; padding-bottom: 16px; }
+.card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.card-id { font-family: monospace; font-size: 15px; font-weight: 600; }
+.card-title { font-size: 16px; font-weight: 600; }
+.card-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.badge-draft { background: var(--bg-tertiary); color: var(--text-secondary); }
+.badge-approved { background: var(--green-bg); color: var(--green); }
+.badge-rejected { background: var(--red-bg); color: var(--red); }
+.badge-finding { background: var(--blue-bg); color: var(--blue); }
+.badge-conclusion { background: var(--amber-bg); color: var(--amber); }
+.badge-timeline { background: var(--bg-tertiary); color: var(--slate); }
+.badge-attribution, .badge-exclusion { background: var(--bg-tertiary); color: var(--text-secondary); }
+
+/* Confidence badges */
+.conf-high { background: var(--red-bg); color: var(--red); }
+.conf-medium { background: var(--amber-bg); color: var(--amber); }
+.conf-low { background: var(--bg-tertiary); color: var(--gray); }
+.conf-speculative { background: var(--bg-tertiary); color: var(--slate); }
+
+/* Provenance */
+.prov-mcp, .prov-hook { color: var(--green); }
+.prov-shell, .prov-mixed { color: var(--amber); }
+.prov-none { color: var(--red); }
+
+/* Verification */
+.verif-confirmed { color: var(--green); }
+.verif-tampered { color: var(--red); }
+.verif-draft { color: var(--text-muted); }
+.verif-unverified { color: var(--text-muted); }
+.verif-no-approval-record { color: var(--amber); }
+
+/* Field sections */
+.field-section { margin-bottom: 12px; }
+.field-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.field-value { color: var(--text-primary); white-space: pre-wrap; }
+.field-value.mono { font-family: monospace; font-size: 13px; }
+
+/* Tags */
+.tag-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag { display: inline-block; padding: 2px 8px; background: var(--bg-tertiary); border-radius: 3px; font-size: 12px; color: var(--text-secondary); }
+.tag.clickable { cursor: pointer; }
+.tag.clickable:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* Action bar */
+.action-bar { display: flex; gap: 8px; margin: 16px 0; padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; flex-wrap: wrap; }
+.action-btn { padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); display: flex; align-items: center; gap: 6px; }
+.action-btn:hover { background: var(--bg-hover); }
+.action-btn .key { font-size: 10px; padding: 1px 5px; background: var(--bg-primary); border-radius: 3px; font-family: monospace; color: var(--text-muted); }
+.action-btn.approve { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+.action-btn.approve:hover { filter: brightness(1.2); }
+.action-btn.reject { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+.action-btn.reject:hover { filter: brightness(1.2); }
+
+/* Action overlay on sidebar item */
+.action-pill { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+.action-pill.approve { background: var(--green-bg); color: var(--green); }
+.action-pill.reject { background: var(--red-bg); color: var(--red); }
+.action-pill.todo { background: var(--blue-bg); color: var(--blue); }
+
+/* Delta overlay on finding card */
+.delta-indicator { margin-bottom: 12px; padding: 8px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+.delta-indicator.approve { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
+.delta-indicator.reject { background: var(--red-bg); color: var(--red); border: 1px solid var(--red); }
+.delta-indicator.todo { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue); }
+
+/* Modified field display */
+.modified-original { text-decoration: line-through; color: var(--red); opacity: 0.7; }
+.modified-new { color: var(--green); }
+
+/* Empty states */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); text-align: center; padding: 40px; }
+.empty-state h2 { font-size: 18px; margin-bottom: 8px; color: var(--text-secondary); }
+.empty-state p { font-size: 14px; max-width: 400px; }
+
+/* Tab panels */
+.tab-panel { display: none; flex: 1; min-height: 0; overflow: hidden; }
+.tab-panel.active { display: flex; }
+.tab-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; width: 100%; color: var(--text-muted); font-size: 16px; }
+
+/* Dashboard tab */
+.dashboard-content { padding: 24px; overflow-y: auto; width: 100%; }
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.dash-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+.dash-card:hover { border-color: var(--accent); }
+.dash-card h3 { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+.dash-stat { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+.dash-detail { font-size: 13px; color: var(--text-secondary); line-height: 1.8; }
+.dash-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 8px; background: var(--bg-tertiary); }
+.dash-bar-seg { height: 100%; transition: width 0.3s; }
+.dash-meta { margin-top: 16px; }
+.dash-meta-row { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.dash-meta-row:last-child { border-bottom: none; }
+.dash-meta-label { color: var(--text-secondary); min-width: 100px; }
+.btn-start-review { margin-top: 16px; background: var(--accent); color: white; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
+.btn-start-review:hover { background: var(--accent-hover); }
+
+/* Evidence/TODO tables */
+.tab-table-wrap { padding: 16px; overflow: auto; width: 100%; }
+.tab-table-controls { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+.tab-table-controls select, .tab-table-controls input { background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); padding: 4px 8px; border-radius: 4px; font-size: 13px; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th { text-align: left; padding: 8px 12px; background: var(--bg-secondary); border-bottom: 2px solid var(--border); color: var(--text-secondary); font-weight: 500; cursor: pointer; white-space: nowrap; user-select: none; }
+.data-table th:hover { color: var(--text-primary); }
+.data-table th.sorted-asc::after { content: ' \u25b2'; font-size: 10px; }
+.data-table th.sorted-desc::after { content: ' \u25bc'; font-size: 10px; }
+.data-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.data-table tr:hover { background: var(--bg-hover); }
+.data-table .hash { font-family: monospace; font-size: 12px; color: var(--text-muted); }
+.data-table .ref-link { color: var(--accent); cursor: pointer; text-decoration: none; }
+.data-table .ref-link:hover { text-decoration: underline; }
+.verify-btn { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.verify-btn:hover { background: var(--bg-hover); }
+.verify-ok { color: var(--green); font-weight: 500; }
+.verify-fail { color: var(--red); font-weight: 500; }
+.priority-high { color: var(--red); font-weight: 500; }
+.priority-medium { color: var(--amber); }
+.priority-low { color: var(--text-muted); }
+.status-open { color: var(--amber); }
+.status-completed { color: var(--green); }
+
+/* Keyboard overlay */
+.shortcuts-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+.shortcuts-overlay.visible { display: flex; }
+.shortcuts-panel { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 24px; max-width: 500px; width: 90%; }
+.shortcuts-panel h3 { margin-bottom: 16px; }
+.shortcut-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+.shortcut-key { font-family: monospace; background: var(--bg-tertiary); padding: 2px 8px; border-radius: 3px; font-size: 12px; }
+
+/* Reject dialog */
+.dialog-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 90; align-items: center; justify-content: center; }
+.dialog-overlay.visible { display: flex; }
+.dialog { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 20px; max-width: 450px; width: 90%; }
+.dialog h3 { margin-bottom: 12px; }
+.dialog-templates { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.dialog-template { padding: 8px 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 13px; text-align: left; color: var(--text-primary); }
+.dialog-template:hover { background: var(--bg-hover); }
+.dialog textarea { width: 100%; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-size: 13px; font-family: inherit; resize: vertical; min-height: 60px; }
+.dialog-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+.dialog-actions button { padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; border: 1px solid var(--border); }
+.btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-cancel { background: var(--bg-tertiary); color: var(--text-primary); }
+.btn-cancel:hover { background: var(--bg-hover); }
+#commitDialog input:focus { border-color: var(--accent); outline: none; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Note / Todo dialogs */
+.dialog input[type="text"] { width: 100%; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-size: 13px; margin-bottom: 8px; }
+.dialog select { padding: 6px 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary); border-radius: 4px; font-size: 13px; }
+
+/* Optional fields */
+.optional-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+
+/* Stale warning */
+.stale-warning { background: var(--amber-bg); color: var(--amber); padding: 8px 12px; border-radius: 4px; font-size: 12px; margin-bottom: 12px; border: 1px solid var(--amber); }
+
+/* Refresh badge */
+.refresh-badge { background: var(--accent); color: white; font-size: 10px; padding: 1px 6px; border-radius: 10px; margin-left: 4px; }
+
+/* Footer */
+.footer { background: var(--bg-secondary); border-top: 1px solid var(--border); padding: 6px 16px; font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; flex-shrink: 0; }
+
+/* Inline editing */
+.inline-edit { margin-top: 4px; }
+.inline-edit textarea { width: 100%; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px; font-size: 13px; font-family: inherit; resize: vertical; min-height: 60px; }
+.inline-edit select { padding: 5px 8px; background: var(--bg-tertiary); border: 1px solid var(--accent); color: var(--text-primary); border-radius: 4px; font-size: 13px; }
+.inline-edit .edit-actions { display: flex; gap: 6px; margin-top: 6px; }
+.inline-edit .edit-actions button { padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; border: 1px solid var(--border); }
+.tag-input { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 4px; background: var(--bg-tertiary); border: 1px solid var(--accent); border-radius: 4px; min-height: 32px; }
+.tag-input .tag { display: inline-flex; align-items: center; gap: 4px; }
+.tag-input .tag .tag-remove { cursor: pointer; color: var(--red); font-weight: bold; padding: 0 2px; }
+.tag-input input { border: none; background: transparent; color: var(--text-primary); font-size: 12px; outline: none; min-width: 80px; flex: 1; }
+
+/* Batch toolbar */
+.batch-toolbar { display: none; padding: 8px 16px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); align-items: center; gap: 8px; font-size: 13px; flex-shrink: 0; }
+.batch-toolbar.visible { display: flex; }
+.batch-toolbar button { padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); }
+.batch-toolbar .batch-approve { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+.batch-toolbar .batch-approve:hover { filter: brightness(1.2); }
+.batch-toolbar .batch-reject { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+.batch-toolbar .batch-reject:hover { filter: brightness(1.2); }
+.sidebar-item .batch-check { width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; accent-color: var(--accent); }
+.tl-card-actions .batch-check { width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; accent-color: var(--accent); }
+
+/* Filter dimensions */
+.filter-dims { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.filter-dims select { padding: 3px 6px; font-size: 11px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 3px; }
+
+/* Evidence panel */
+.evidence-panel { margin-top: 16px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.evidence-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.evidence-panel-header button { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 11px; }
+.evidence-item { border-bottom: 1px solid var(--border); }
+.evidence-item:last-child { border-bottom: none; }
+.evidence-item-header { padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.evidence-item-header:hover { background: var(--bg-tertiary); }
+.evidence-item-header .chevron { transition: transform 0.2s; color: var(--text-muted); }
+.evidence-item-header .chevron.open { transform: rotate(90deg); }
+.evidence-item-body { padding: 8px 12px 12px 28px; font-size: 12px; display: none; }
+.evidence-item-body.open { display: block; }
+.evidence-item-body pre { background: var(--bg-primary); padding: 8px; border-radius: 4px; font-family: monospace; font-size: 11px; overflow-x: auto; white-space: pre-wrap; margin-top: 4px; color: var(--text-primary); }
+.evidence-item-body .ev-field { margin-bottom: 6px; }
+.evidence-item-body .ev-label { color: var(--text-muted); font-size: 11px; }
+
+/* Grounding summary */
+.grounding { padding: 8px 12px; font-size: 12px; border-top: 1px solid var(--border); }
+.grounding-item { display: inline-block; margin-right: 12px; }
+.grounding-check { color: var(--green); }
+.grounding-miss { color: var(--red); }
+
+/* Timeline context */
+.timeline-context { margin-top: 16px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.timeline-context-header { padding: 8px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.timeline-event { padding: 6px 12px; font-size: 12px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; }
+.timeline-event:last-child { border-bottom: none; }
+.timeline-event.current { background: var(--accent); background: rgba(59, 130, 246, 0.1); border-left: 3px solid var(--accent); }
+.timeline-event .tl-time { color: var(--text-muted); font-family: monospace; flex-shrink: 0; white-space: nowrap; }
+.timeline-event .tl-desc { flex: 1; }
+.timeline-event .tl-marker { color: var(--accent); flex-shrink: 0; }
+
+/* Timeline stream panel */
+.timeline-panel { display: flex; flex-direction: column; height: 100%; }
+.timeline-controls { padding: 12px 16px; display: flex; gap: 8px;
+  align-items: center; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.timeline-controls select { background: var(--bg-secondary); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font-size: 12px; }
+.timeline-stream { flex: 1; overflow-y: auto; padding: 16px 24px 16px 40px; }
+.timeline-summary { padding: 8px 16px; border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+.tl-card { position: relative; padding: 10px 14px; margin-bottom: 2px;
+  border-left: 2px solid var(--border); border-radius: 0 4px 4px 0; cursor: pointer; }
+.tl-card:hover { background: var(--bg-hover); }
+.tl-card.focused { background: rgba(59, 130, 246, 0.08); border-left-color: var(--accent); }
+.tl-card::before { content: ''; position: absolute; left: -7px; top: 14px;
+  width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--border);
+  background: var(--bg-primary); }
+.tl-card.status-approved::before { background: var(--green); border-color: var(--green); }
+.tl-card.status-rejected::before { background: var(--red); border-color: var(--red); }
+.tl-card.status-draft::before { background: var(--amber); border-color: var(--amber); }
+.tl-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.tl-card-header .tl-timestamp { font-family: monospace; font-size: 12px;
+  color: var(--text-muted); }
+.tl-card-header .tl-evid { font-family: monospace; font-size: 11px; color: var(--text-muted); }
+.tl-card-body { font-size: 13px; }
+.tl-card-body .tl-description { margin-bottom: 4px; }
+.tl-card .modified { color: var(--amber); }
+.tl-card-meta { display: flex; gap: 12px; font-size: 11px; color: var(--text-muted);
+  flex-wrap: wrap; }
+.tl-card-actions { margin-top: 8px; display: flex; gap: 6px; align-items: center; }
+.tl-card-actions button { font-size: 11px; padding: 2px 8px; border-radius: 3px;
+  background: var(--bg-tertiary); color: var(--text-primary);
+  border: 1px solid var(--border); cursor: pointer; }
+.tl-card-actions button:hover { background: var(--bg-hover); }
+.tl-card-actions .btn-approve { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+.tl-card-actions .btn-approve:hover { filter: brightness(1.2); }
+.tl-card-actions .btn-reject { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+.tl-card-actions .btn-reject:hover { filter: brightness(1.2); }
+.tl-type { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; }
+.tl-type-auth { background: rgba(59,130,246,0.15); color: #6ea8fe; }
+.tl-type-execution, .tl-type-process { background: rgba(255,159,10,0.15); color: #ffb347; }
+.tl-type-lateral { background: rgba(255,69,58,0.15); color: #ff6b6b; }
+.tl-type-file { background: rgba(99,230,190,0.15); color: #63e6be; }
+.tl-type-network { background: rgba(178,102,255,0.15); color: #b266ff; }
+.tl-type-persistence { background: rgba(255,214,10,0.15); color: #ffd60a; }
+.tl-type-registry { background: rgba(172,142,104,0.15); color: #ac8e68; }
+.tl-type-other { background: var(--bg-tertiary); color: var(--text-muted); }
+.light .tl-type-auth { color: #1d4ed8; }
+.light .tl-type-execution, .light .tl-type-process { color: #c2410c; }
+.light .tl-type-lateral { color: #dc2626; }
+.light .tl-type-file { color: #0f766e; }
+.light .tl-type-network { color: #7c3aed; }
+.light .tl-type-persistence { color: #a16207; }
+.light .tl-type-registry { color: #57534e; }
+.tl-gap { border-left: 2px dashed var(--border); padding: 6px 0 6px 14px;
+  font-size: 11px; color: var(--text-muted); font-style: italic; }
+.tl-gap.large { color: var(--amber); font-weight: 600; }
+.tl-finding-ref { display: inline-block; font-size: 10px; padding: 1px 6px;
+  background: rgba(59,130,246,0.1); color: var(--accent); border-radius: 3px;
+  cursor: pointer; }
+.tl-finding-ref:hover { background: rgba(59,130,246,0.2); }
+.tl-empty { padding: 40px; text-align: center; color: var(--text-muted); }
+.tl-empty h2 { font-size: 16px; margin-bottom: 8px; }
+
+/* Scrollbar — standard (Firefox 64+) */
+.sidebar-list, .content, .dashboard-content, .tab-table-wrap, .ev-content, .timeline-stream {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-tertiary) var(--bg-primary);
+}
+/* Scrollbar — WebKit (Chromium) */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--bg-hover); }
+
+/* Evidence artifacts on finding cards */
+.evidence-artifact { margin: 8px 0; padding: 8px; background: var(--bg-tertiary); border-radius: 4px; border-left: 3px solid var(--accent); }
+.ev-source { font-family: monospace; font-size: 12px; color: var(--text-muted); }
+.ev-extraction { font-family: monospace; font-size: 12px; color: var(--accent); margin: 4px 0; }
+.ev-content { margin: 4px 0; padding: 8px; background: var(--bg-primary); border-radius: 2px; font-size: 12px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; }
+.ev-purpose { font-size: 11px; color: var(--text-muted); font-style: italic; }
+.badge-muted { background: var(--bg-tertiary); color: var(--text-muted); }
+
+/* Toast notifications */
+.toast { position: fixed; bottom: 20px; right: 20px; padding: 10px 16px;
+  border-radius: 6px; font-size: 13px; opacity: 0; transition: opacity 0.3s;
+  z-index: 10000; }
+.toast.show { opacity: 1; }
+.toast-success { background: var(--green); color: #fff; }
+.toast-error { background: var(--red); color: #fff; }
+.toast-info { background: var(--bg-tertiary); color: var(--text-primary); }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-row">
+      <span class="header-title" id="headerTitle">AIIR Case Dashboard</span>
+      <div class="header-actions">
+        <button id="btnRefresh" title="Refresh findings">&#8635; Refresh</button>
+        <span id="refreshBadge" class="refresh-badge" style="display:none"></span>
+        <button id="btnShortcuts" title="Keyboard shortcuts">?</button>
+        <button id="btnTheme" title="Toggle theme">&#9790;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs" role="tablist">
+    <div class="tab" data-tab="dashboard" role="tab" tabindex="0"
+      aria-selected="false" id="tab-dashboard" aria-controls="panel-dashboard">Dashboard</div>
+    <div class="tab active" data-tab="findings" role="tab" tabindex="0"
+      aria-selected="true" id="tab-findings" aria-controls="panel-findings">Findings</div>
+    <div class="tab" data-tab="evidence" role="tab" tabindex="0"
+      aria-selected="false" id="tab-evidence" aria-controls="panel-evidence">Evidence</div>
+    <div class="tab" data-tab="todos" role="tab" tabindex="0"
+      aria-selected="false" id="tab-todos" aria-controls="panel-todos">TODOs</div>
+    <div class="tab" data-tab="timeline" role="tab" tabindex="0"
+      aria-selected="false" id="tab-timeline" aria-controls="panel-timeline">Timeline</div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-bar" id="progressBar">
+    <span id="progressText">0 of 0 reviewed</span>
+    <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  </div>
+
+  <!-- Batch toolbar -->
+  <div class="batch-toolbar" id="batchToolbar">
+    <span id="batchCount">0 selected:</span>
+    <button class="batch-approve" onclick="batchApprove()">Approve All</button>
+    <button class="batch-reject" onclick="batchReject()">Reject All</button>
+    <button onclick="batchClear()">Clear</button>
+  </div>
+
+  <!-- Tab panels -->
+  <div class="tab-panel" data-panel="dashboard" role="tabpanel"
+    id="panel-dashboard" aria-labelledby="tab-dashboard">
+    <div class="dashboard-content" id="dashboardContent">
+      <div class="dash-grid" id="dashGrid"></div>
+      <div class="dash-meta" id="dashMeta"></div>
+    </div>
+  </div>
+
+  <div class="tab-panel active" data-panel="findings" role="tabpanel"
+    id="panel-findings" aria-labelledby="tab-findings">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-controls">
+        <input type="text" id="searchBox" placeholder="Search findings..." />
+        <div class="filter-presets">
+          <button class="filter-preset active" data-filter="pending">Pending</button>
+          <button class="filter-preset" data-filter="approved">Approved</button>
+          <button class="filter-preset" data-filter="rejected">Rejected</button>
+          <button class="filter-preset" data-filter="all">All</button>
+        </div>
+        <select id="sortSelect">
+          <option value="conf-desc">Confidence (High → Low)</option>
+          <option value="conf-asc">Confidence (Low → High)</option>
+          <option value="chrono">Chronological</option>
+          <option value="id">ID</option>
+          <option value="status">Status (unreviewed first)</option>
+        </select>
+        <details>
+          <summary style="font-size:11px;color:var(--text-muted);cursor:pointer;margin-bottom:4px">Filters</summary>
+          <div class="filter-dims">
+            <select id="filterConf" title="Confidence"><option value="">Confidence</option><option value="HIGH">HIGH</option><option value="MEDIUM">MEDIUM</option><option value="LOW">LOW</option><option value="SPECULATIVE">SPECULATIVE</option></select>
+            <select id="filterType" title="Type"><option value="">Type</option><option value="finding">Finding</option><option value="conclusion">Conclusion</option><option value="attribution">Attribution</option><option value="exclusion">Exclusion</option></select>
+            <select id="filterProv" title="Provenance"><option value="">Provenance</option><option value="MCP">MCP</option><option value="HOOK">HOOK</option><option value="SHELL">Shell</option><option value="MIXED">Mixed</option><option value="NONE">Ungrounded</option></select>
+            <select id="filterExaminer" title="Examiner"><option value="">Examiner</option></select>
+          </div>
+        </details>
+      </div>
+      <div class="sidebar-list" id="sidebarList" role="listbox" aria-label="Findings list"></div>
+      <div class="sidebar-stats" id="sidebarStats"></div>
+      <div class="save-status saved" id="saveStatus">All saved &#10003;</div>
+    </div>
+
+    <!-- Content -->
+    <div class="content" id="findingContent">
+      <div id="loadingState" style="display:flex;align-items:center;justify-content:center;height:200px;color:var(--text-muted)">Loading case data...</div>
+      <div class="empty-state" id="emptyState" style="display:none">
+        <h2>No findings to display</h2>
+        <p>Select a finding from the sidebar, or wait for the LLM to stage findings during investigation.</p>
+      </div>
+      <div class="finding-card" id="findingCard" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="evidence" role="tabpanel"
+    id="panel-evidence" aria-labelledby="tab-evidence">
+    <div class="tab-table-wrap">
+      <h3 style="margin-bottom:12px;font-size:15px;">Evidence Registry</h3>
+      <table class="data-table" id="evidenceTable">
+        <thead>
+          <tr>
+            <th data-sort="path">Path</th>
+            <th data-sort="sha256">SHA-256</th>
+            <th data-sort="description">Description</th>
+            <th data-sort="registered_at">Registered</th>
+            <th data-sort="registered_by">By</th>
+            <th>Referenced By</th>
+            <th>Verify</th>
+          </tr>
+        </thead>
+        <tbody id="evidenceBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="todos" role="tabpanel"
+    id="panel-todos" aria-labelledby="tab-todos">
+    <div class="tab-table-wrap">
+      <h3 style="margin-bottom:12px;font-size:15px;">TODO Items</h3>
+      <div class="tab-table-controls">
+        <select id="todoFilterPriority"><option value="">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+        <select id="todoFilterStatus"><option value="">All statuses</option><option value="open">Open</option><option value="completed">Completed</option></select>
+      </div>
+      <table class="data-table" id="todosTable">
+        <thead>
+          <tr>
+            <th data-sort="todo_id">ID</th>
+            <th data-sort="description">Description</th>
+            <th data-sort="priority">Priority</th>
+            <th data-sort="assignee">Assignee</th>
+            <th data-sort="status">Status</th>
+            <th>Related</th>
+            <th data-sort="created_at">Created</th>
+          </tr>
+        </thead>
+        <tbody id="todosBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="timeline" role="tabpanel"
+    id="panel-timeline" aria-labelledby="tab-timeline">
+    <div class="timeline-panel">
+      <div class="timeline-controls">
+        <div class="filter-presets">
+          <button class="filter-preset active" data-tl-filter="pending">Pending</button>
+          <button class="filter-preset" data-tl-filter="approved">Approved</button>
+          <button class="filter-preset" data-tl-filter="rejected">Rejected</button>
+          <button class="filter-preset" data-tl-filter="all">All</button>
+        </div>
+        <select id="timelineTypeFilter" title="Event type">
+          <option value="">All types</option>
+          <option value="auth">auth</option>
+          <option value="execution">execution</option>
+          <option value="process">process</option>
+          <option value="file">file</option>
+          <option value="network">network</option>
+          <option value="lateral">lateral</option>
+          <option value="persistence">persistence</option>
+          <option value="registry">registry</option>
+          <option value="other">other</option>
+        </select>
+      </div>
+      <div class="batch-toolbar" id="timelineBatchToolbar">
+        <span id="timelineBatchCount">0 selected:</span>
+        <button onclick="batchTimelineApprove()">Approve All</button>
+        <button onclick="batchTimelineReject()">Reject All</button>
+        <button onclick="batchTimelineClear()">Clear</button>
+      </div>
+      <div class="timeline-stream" id="timelineStream">
+        <div class="tl-empty"><h2>Loading timeline...</h2></div>
+      </div>
+      <div class="timeline-summary" id="timelineSummary"></div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <button id="commitBtn" class="btn-primary" onclick="openCommitDialog()"
+      style="font-size:12px;padding:4px 12px" disabled>Commit</button>
+    <span id="footerHint" style="font-size:11px;color:var(--text-muted)">
+      Or terminal: <code>aiir approve --review</code></span>
+    <span id="footerShortcuts" style="cursor:pointer">? Shortcuts</span>
+  </div>
+</div>
+
+<!-- Keyboard shortcuts overlay -->
+<div class="shortcuts-overlay" id="shortcutsOverlay" role="dialog" aria-modal="true"
+  aria-labelledby="shortcutsTitle">
+  <div class="shortcuts-panel">
+    <h3 id="shortcutsTitle">Keyboard Shortcuts</h3>
+    <div class="shortcut-row"><span>Next finding</span><span class="shortcut-key">j / ↓</span></div>
+    <div class="shortcut-row"><span>Previous finding</span><span class="shortcut-key">k / ↑</span></div>
+    <div class="shortcut-row"><span>Approve</span><span class="shortcut-key">a</span></div>
+    <div class="shortcut-row"><span>Reject</span><span class="shortcut-key">r</span></div>
+    <div class="shortcut-row"><span>Edit interpretation</span><span class="shortcut-key">e</span></div>
+    <div class="shortcut-row"><span>Undo review</span><span class="shortcut-key">s</span></div>
+    <div class="shortcut-row"><span>Focus search</span><span class="shortcut-key">/</span></div>
+    <div class="shortcut-row"><span>Close / cancel</span><span class="shortcut-key">Esc</span></div>
+    <div class="shortcut-row"><span>Commit reviews</span><span class="shortcut-key">C</span></div>
+    <div class="shortcut-row"><span>This help</span><span class="shortcut-key">?</span></div>
+    <div style="margin-top: 12px; text-align: right;">
+      <button class="btn-cancel" onclick="toggleShortcuts()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reject dialog -->
+<div class="dialog-overlay" id="rejectDialog" role="dialog" aria-modal="true"
+  aria-labelledby="rejectDialogTitle">
+  <div class="dialog">
+    <h3 id="rejectDialogTitle">Reject Finding</h3>
+    <div class="dialog-templates">
+      <button class="dialog-template" data-reason="False positive — benign activity">False positive — benign activity</button>
+      <button class="dialog-template" data-reason="duplicate">Duplicate of <span style="color:var(--text-muted)">(enter ID)</span></button>
+      <button class="dialog-template" data-reason="Insufficient evidence">Insufficient evidence</button>
+    </div>
+    <textarea id="rejectReason" placeholder="Custom reason..."></textarea>
+    <div class="dialog-actions">
+      <button class="btn-cancel" onclick="closeRejectDialog()">Cancel</button>
+      <button class="btn-primary" onclick="submitReject()">Reject</button>
+    </div>
+  </div>
+</div>
+
+<!-- Commit dialog -->
+<div class="dialog-overlay" id="commitDialog" role="dialog" aria-modal="true"
+  aria-labelledby="commitDialogTitle">
+  <div class="dialog" style="max-width:400px">
+    <h3 id="commitDialogTitle">Commit Reviews</h3>
+    <div id="commitSummary" style="font-size:13px;margin-bottom:12px"></div>
+    <div id="commitPasswordRow">
+      <label for="commitPassword" style="font-size:12px;color:var(--text-secondary)">
+        Enter password to confirm:</label>
+      <input type="password" id="commitPassword" autocomplete="off"
+        style="width:100%;margin-top:4px;padding:8px;font-size:14px;
+        background:var(--bg-primary);color:var(--text-primary);
+        border:1px solid var(--border);border-radius:4px">
+    </div>
+    <div id="commitError" style="color:var(--red);font-size:12px;margin-top:8px;display:none"></div>
+    <div id="commitProgress" style="display:none;margin-top:8px">
+      <div style="font-size:12px;color:var(--text-muted)">
+        Deriving key<span id="commitDots">...</span>
+      </div>
+    </div>
+    <div class="dialog-actions" style="margin-top:12px">
+      <button class="btn-cancel" onclick="closeCommitDialog()">Cancel</button>
+      <button class="btn-primary" id="commitSubmitBtn" onclick="submitCommit()">Commit</button>
+    </div>
+  </div>
+</div>
+
+
+<script>
+/* === State === */
+let token = null;
+let findings = [];
+let delta = { version: 1, case_id: '', items: [] };
+let caseMeta = {};
+let selectedId = null;
+let currentFilter = 'pending';
+let currentSort = 'conf-desc';
+let searchQuery = '';
+let saveTimer = null;
+let previousFindingIds = new Set();
+let newFindingsCount = 0;
+let batchSelected = new Set();
+let timelineEvents = [];
+let auditCache = {};
+let editingField = null;
+let filterConf = '';
+let filterType = '';
+let filterProv = '';
+let filterExaminer = '';
+let evidenceData = [];
+let todosData = [];
+let summaryData = null;
+var isLoading = false;
+let evidenceSortCol = 'path';
+let evidenceSortAsc = true;
+let todosSortCol = 'priority';
+let todosSortAsc = true;
+let focusedTimelineId = null;
+let timelineFilter = 'pending';
+let timelineTypeFilter = '';
+let batchTimelineSelected = new Set();
+
+/* === Token extraction === */
+(function extractToken() {
+  const hash = window.location.hash;
+  if (hash.startsWith('#token=')) {
+    token = hash.slice(7);
+    try { sessionStorage.setItem('aiir_dashboard_token', token); } catch (e) {}
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+  } else {
+    try { token = sessionStorage.getItem('aiir_dashboard_token'); } catch (e) {}
+  }
+})();
+
+/* === API helpers === */
+var API_BASE = window.location.pathname.replace(/\/+$/, '');
+
+function apiHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  return h;
+}
+
+async function apiFetch(path, opts) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const headers = apiHeaders();
+    if (opts && opts.headers) Object.assign(headers, opts.headers);
+    const res = await fetch(API_BASE + path, { ...opts, headers, signal: controller.signal });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || res.statusText);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* === Data loading === */
+async function loadAll() {
+  if (isLoading) return;
+  isLoading = true;
+  try {
+    var loading = document.getElementById('loadingState');
+    if (loading) loading.style.display = 'none';
+    const [f, d, c, tl] = await Promise.all([
+      apiFetch('/api/findings'),
+      apiFetch('/api/delta'),
+      apiFetch('/api/case'),
+      apiFetch('/api/timeline'),
+    ]);
+    const newIds = new Set(f.map(x => x.id));
+    if (previousFindingIds.size > 0) {
+      newFindingsCount = [...newIds].filter(id => !previousFindingIds.has(id)).length;
+      updateRefreshBadge();
+    }
+    previousFindingIds = newIds;
+    findings = f;
+    timelineEvents = tl || [];
+    delta = d && d.items ? d : { version: 1, case_id: '', items: [] };
+    caseMeta = c || {};
+    auditCache = {};
+    if (caseMeta.case_id) {
+      document.getElementById('headerTitle').textContent = 'AIIR \u2014 ' + caseMeta.case_id;
+      document.title = 'AIIR \u2014 ' + caseMeta.case_id;
+      if (!delta.case_id) delta.case_id = caseMeta.case_id;
+    }
+    populateExaminerFilter();
+    renderSidebar();
+    renderTimeline();
+    updateProgress();
+    updateCommitButton();
+    if (selectedId) renderFinding(selectedId);
+    else showEmptyOrFirst();
+  } catch (e) {
+    var loading = document.getElementById('loadingState');
+    if (loading) loading.style.display = 'none';
+    document.getElementById('emptyState').innerHTML =
+      '<h2>Error loading case data</h2><p>' + escapeHtml(e.message) + '</p>';
+    document.getElementById('emptyState').style.display = '';
+    document.getElementById('findingCard').style.display = 'none';
+  } finally {
+    isLoading = false;
+  }
+}
+
+function showEmptyOrFirst() {
+  const filtered = getFilteredFindings();
+  if (findings.length === 0) {
+    document.getElementById('emptyState').innerHTML =
+      '<h2>No findings staged yet</h2><p>The LLM will stage findings during investigation.</p>';
+    document.getElementById('emptyState').style.display = '';
+    document.getElementById('findingCard').style.display = 'none';
+  } else if (filtered.length === 0) {
+    const allReviewed = findings.length > 0 && findings.every(f => {
+      var de = getDeltaEntry(f.id);
+      return de && de.action !== 'edit';
+    });
+    if (allReviewed && currentFilter === 'pending') {
+      document.getElementById('emptyState').innerHTML =
+        '<h2>No pending findings remaining</h2><p>Run <code>aiir approve --review</code> in your terminal to commit.</p>';
+    } else {
+      document.getElementById('emptyState').innerHTML =
+        '<h2>No findings match current filter</h2><p>Try changing the filter or search.</p>';
+    }
+    document.getElementById('emptyState').style.display = '';
+    document.getElementById('findingCard').style.display = 'none';
+  } else {
+    selectFinding(filtered[0].id);
+  }
+}
+
+/* === Delta management === */
+function getDeltaEntry(id) {
+  return delta.items.find(i => i.id === id) || null;
+}
+
+function setDeltaEntry(entry) {
+  const idx = delta.items.findIndex(i => i.id === entry.id);
+  if (idx >= 0) delta.items[idx] = entry;
+  else delta.items.push(entry);
+  delta.modified_at = new Date().toISOString();
+  if (!delta.created_at) delta.created_at = delta.modified_at;
+  scheduleSave();
+  updateCommitButton();
+}
+
+function removeDeltaEntry(id) {
+  delta.items = delta.items.filter(i => i.id !== id);
+  delta.modified_at = new Date().toISOString();
+  scheduleSave();
+  updateCommitButton();
+}
+
+function scheduleSave() {
+  setSaveStatus('saving');
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveDelta, 1000);
+}
+
+window.addEventListener('beforeunload', function() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    var headers = apiHeaders();
+    headers['Content-Type'] = 'application/json';
+    fetch(API_BASE + '/api/delta', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(delta),
+      keepalive: true
+    });
+  }
+});
+
+async function saveDelta() {
+  try {
+    await apiFetch('/api/delta', { method: 'POST', body: JSON.stringify(delta) });
+    setSaveStatus('saved');
+  } catch (e) {
+    setSaveStatus('error', e.message);
+    console.error('Save failed:', e);
+  }
+}
+
+function setSaveStatus(state, detail) {
+  const el = document.getElementById('saveStatus');
+  if (state === 'saved') { el.textContent = 'All saved \u2713'; el.className = 'save-status saved'; }
+  else if (state === 'saving') { el.textContent = 'Saving...'; el.className = 'save-status saving'; }
+  else { el.textContent = 'Save error' + (detail ? ': ' + detail : ''); el.className = 'save-status'; el.style.color = 'var(--red)'; }
+}
+
+/* === Filtering & sorting === */
+const CONF_ORDER = { HIGH: 1, MEDIUM: 2, LOW: 3, SPECULATIVE: 4 };
+
+function getFilteredFindings() {
+  let list = [...findings];
+
+  // Filter
+  if (currentFilter === 'pending') {
+    list = list.filter(f => {
+      var de = getDeltaEntry(f.id);
+      return !de || de.action === 'edit';
+    });
+  } else if (currentFilter === 'approved') {
+    list = list.filter(f => {
+      var de = getDeltaEntry(f.id);
+      return de && de.action === 'approve';
+    });
+  } else if (currentFilter === 'rejected') {
+    list = list.filter(f => {
+      var de = getDeltaEntry(f.id);
+      return de && de.action === 'reject';
+    });
+  }
+
+  // Dimension filters
+  if (filterConf) list = list.filter(f => (f.confidence || '').toUpperCase() === filterConf);
+  if (filterType) list = list.filter(f => (f.type || 'finding') === filterType);
+  if (filterProv) {
+    list = list.filter(f => {
+      const p = typeof f.provenance === 'string' ? f.provenance : (f.provenance && f.provenance.summary ? f.provenance.summary : 'NONE');
+      return p === filterProv;
+    });
+  }
+  if (filterExaminer) list = list.filter(f => (f.examiner || f.created_by || '') === filterExaminer);
+
+  // Search
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    list = list.filter(f =>
+      (f.title || '').toLowerCase().includes(q) ||
+      (f.observation || '').toLowerCase().includes(q) ||
+      (f.interpretation || '').toLowerCase().includes(q) ||
+      (f.id || '').toLowerCase().includes(q)
+    );
+  }
+
+  // Sort
+  list.sort((a, b) => {
+    switch (currentSort) {
+      case 'conf-desc': return (CONF_ORDER[(a.confidence || '').toUpperCase()] || 9) - (CONF_ORDER[(b.confidence || '').toUpperCase()] || 9);
+      case 'conf-asc': return (CONF_ORDER[(b.confidence || '').toUpperCase()] || 9) - (CONF_ORDER[(a.confidence || '').toUpperCase()] || 9);
+      case 'chrono': return (a.staged || '').localeCompare(b.staged || '');
+      case 'id': return (a.id || '').localeCompare(b.id || '');
+      case 'status': {
+        const aR = getDeltaEntry(a.id) ? 1 : 0;
+        const bR = getDeltaEntry(b.id) ? 1 : 0;
+        return aR - bR || (CONF_ORDER[(a.confidence || '').toUpperCase()] || 9) - (CONF_ORDER[(b.confidence || '').toUpperCase()] || 9);
+      }
+      default: return 0;
+    }
+  });
+  return list;
+}
+
+/* === Rendering === */
+function renderSidebar() {
+  const list = document.getElementById('sidebarList');
+  const filtered = getFilteredFindings();
+  list.innerHTML = '';
+
+  filtered.forEach(f => {
+    const de = getDeltaEntry(f.id);
+    const hasMods = de && de.modifications && Object.keys(de.modifications).length > 0;
+    const indicator = de ? (hasMods ? '\u25CF' : '\u2591') : '';
+
+    const div = document.createElement('div');
+    div.className = 'sidebar-item' + (f.id === selectedId ? ' active' : '');
+    div.setAttribute('role', 'option');
+    div.setAttribute('aria-selected', String(f.id === selectedId));
+    div.onclick = () => selectFinding(f.id);
+
+    const conf = (f.confidence || 'LOW').toUpperCase();
+    const confClass = 'conf-' + conf.toLowerCase();
+
+    let actionHtml = '';
+    if (de) {
+      const action = de.action;
+      actionHtml = '<span class="action-pill ' + escapeHtml(action) + '">' + escapeHtml(action).toUpperCase() + '</span>';
+    }
+
+    const checked = batchSelected.has(f.id) ? ' checked' : '';
+    div.innerHTML =
+      '<input type="checkbox" class="batch-check"' + checked + ' data-id="' + escapeHtml(f.id) + '" />' +
+      '<span class="badge-indicator">' + indicator + '</span>' +
+      '<span class="item-id">' + escapeHtml(f.id) + '</span>' +
+      actionHtml +
+      '<span class="item-conf badge ' + confClass + '">' + conf + '</span>';
+    // Wire checkbox
+    const cb = div.querySelector('.batch-check');
+    cb.addEventListener('click', function(e) { e.stopPropagation(); toggleBatchItem(f.id, this.checked); });
+    list.appendChild(div);
+  });
+
+  updateSidebarStats();
+}
+
+function updateSidebarStats() {
+  var total = findings.length;
+  var findingIds = new Set(findings.map(function(f) { return f.id; }));
+  var decided = delta.items.filter(function(d) {
+    return findingIds.has(d.id) && d.action !== 'edit';
+  }).length;
+  var pending = total - decided;
+
+  document.getElementById('sidebarStats').innerHTML =
+    '<div>' + total + ' total \u00B7 ' + pending + ' pending</div>';
+}
+
+function updateProgress() {
+  var activeTab = document.querySelector('.tab.active');
+  var tabName = activeTab ? activeTab.dataset.tab : '';
+  var items, label;
+  if (tabName === 'timeline') {
+    items = timelineEvents;
+    label = 'events';
+  } else {
+    items = findings;
+    label = 'findings';
+  }
+  var total = items.length;
+  var itemIds = new Set(items.map(function(i) { return i.id; }));
+  var reviewed = delta.items.filter(function(d) {
+    return itemIds.has(d.id) && d.action !== 'edit';
+  }).length;
+  var pct = total > 0 ? Math.round((reviewed / total) * 100) : 0;
+  document.getElementById('progressText').textContent =
+    reviewed + ' of ' + total + ' ' + label + ' reviewed';
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+function selectFinding(id) {
+  selectedId = id;
+  renderFinding(id);
+  renderSidebar();
+  var content = document.getElementById('findingContent');
+  if (content) content.scrollTop = 0;
+}
+
+function renderFinding(id) {
+  const f = findings.find(x => x.id === id);
+  if (!f) return;
+
+  const de = getDeltaEntry(id);
+  const card = document.getElementById('findingCard');
+  document.getElementById('emptyState').style.display = 'none';
+  card.style.display = '';
+
+  // Compute effective values (base + delta overlay)
+  const eff = { ...f };
+  if (de && de.modifications) {
+    for (const [key, mod] of Object.entries(de.modifications)) {
+      eff[key] = mod.modified;
+    }
+  }
+
+  const status = (f.status || 'DRAFT').toUpperCase();
+  const statusClass = 'badge-' + status.toLowerCase();
+  const type = f.type || 'finding';
+  const typeClass = 'badge-' + type.toLowerCase();
+  const verif = f.verification || 'draft';
+  const verifClass = 'verif-' + verif.replace(/ /g, '-');
+  const conf = (eff.confidence || 'LOW').toUpperCase();
+  const confClass = 'conf-' + conf.toLowerCase();
+
+  const prov = typeof f.provenance === 'string' ? f.provenance : (f.provenance && f.provenance.summary ? f.provenance.summary : 'NONE');
+  const provClass = 'prov-' + prov.toLowerCase();
+
+  const examiner = f.examiner || f.created_by || 'unknown';
+  const staged = f.staged ? formatTime(f.staged) : '';
+
+  let html = '';
+
+  // Delta indicator
+  if (de) {
+    const hasMods = de.modifications && Object.keys(de.modifications).length > 0;
+    const label = de.action.toUpperCase() + (hasMods ? ' (modified)' : '');
+    html += '<div class="delta-indicator ' + escapeHtml(de.action) + '">' + escapeHtml(label) + '</div>';
+  }
+
+  // Stale warning
+  if (de && de.content_hash_at_review && f.content_hash && de.content_hash_at_review !== f.content_hash) {
+    html += '<div class="stale-warning">\u26A0 This finding was modified after you reviewed it. Re-review recommended.</div>';
+  }
+
+  // Header
+  html += '<div class="card-header">';
+  html += '<span class="card-id">' + escapeHtml(f.id) + '</span>';
+  html += '<span class="badge ' + escapeHtml(typeClass) + '">' + escapeHtml(type) + '</span>';
+  html += '<span class="badge ' + escapeHtml(statusClass) + '">' + escapeHtml(status) + '</span>';
+  html += '</div>';
+
+  // Title (editable)
+  html += '<div class="field-section" style="margin-bottom:8px"><div class="card-title" style="display:inline">';
+  html += renderEditableField('title', eff.title || '', f, de);
+  html += '</div></div>';
+
+  // Meta
+  html += '<div class="card-meta">Staged by ' + escapeHtml(examiner) + (staged ? ' \u00B7 ' + staged : '');
+  if (f.event_type) html += ' \u00B7 <span class="badge badge-timeline">' + escapeHtml(f.event_type) + '</span>';
+  html += '</div>';
+
+  // Confidence
+  html += '<div class="field-section"><div class="field-label">Confidence</div>';
+  if (editingField === 'confidence') {
+    html += renderEditableField('confidence', eff.confidence || 'LOW', f, de);
+  } else {
+    if (de && de.modifications && de.modifications.confidence) {
+      html += '<span class="modified-original badge ' + confClassFor(de.modifications.confidence.original) + '">' +
+        escapeHtml(de.modifications.confidence.original) + '</span> \u2192 ';
+    }
+    html += '<span class="badge ' + confClass + '">' + conf + '</span>';
+    html += ' <button style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px" onclick="startEdit(\'confidence\')">Edit</button>';
+  }
+  html += '</div>';
+
+  // Confidence justification (editable)
+  html += '<div class="field-section"><div class="field-label">Justification</div>';
+  html += renderEditableField('confidence_justification', eff.confidence_justification || '', f, de);
+  html += '</div>';
+
+  // Observation
+  html += '<div class="field-section"><div class="field-label">Observation</div>';
+  html += renderEditableField('observation', eff.observation || '', f, de);
+  html += '</div>';
+
+  // Interpretation
+  html += '<div class="field-section"><div class="field-label">Interpretation</div>';
+  html += renderEditableField('interpretation', eff.interpretation || '', f, de);
+  html += '</div>';
+
+  // Context (collapsible)
+  html += '<div class="context-section" style="margin: 12px 0;">';
+  html += '<button onclick="toggleContext(\'' + escapeJsString(id) + '\')" class="btn btn-sm" style="background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border);">Context ▾</button>';
+  html += '<div id="contextPanel-' + escapeJsString(id) + '" style="display: none; margin-top: 8px;">';
+  html += '<div class="field-section"><div class="field-label">Context</div>';
+  html += renderEditableField('context', eff.context || '', f, de);
+  html += '</div></div></div>';
+
+  // Artifacts (primary evidence display)
+  if (f.artifacts && f.artifacts.length) {
+    html += '<div class="field-section"><div class="field-label">Evidence</div>';
+    f.artifacts.forEach(function(art) {
+      html += '<div class="evidence-artifact">';
+      html += '<div class="ev-source">' + escapeHtml(art.source || '') + '</div>';
+      html += '<div class="ev-extraction">$ ' + escapeHtml(art.extraction || '') + '</div>';
+      html += '<pre class="ev-content">' + escapeHtml(art.content || '') + '</pre>';
+      if (art.content_type) {
+        html += '<span class="badge badge-muted">' + escapeHtml(art.content_type) + '</span>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Fallback: supporting_commands (for findings without artifacts)
+  if ((!f.artifacts || !f.artifacts.length) && f.supporting_commands && f.supporting_commands.length) {
+    html += '<div class="field-section"><div class="field-label">Supporting Commands</div>';
+    f.supporting_commands.forEach(function(cmd) {
+      html += '<div class="evidence-artifact">';
+      html += '<div class="ev-extraction">$ ' + escapeHtml(cmd.command || '') + '</div>';
+      if (cmd.output_excerpt) {
+        html += '<pre class="ev-content">' + escapeHtml(cmd.output_excerpt) + '</pre>';
+      }
+      if (cmd.purpose) {
+        html += '<div class="ev-purpose">' + escapeHtml(cmd.purpose) + '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Evidence IDs
+  if (f.evidence_ids && f.evidence_ids.length > 0) {
+    html += '<div class="field-section"><div class="field-label">Evidence IDs</div>';
+    html += '<div class="tag-list">' + f.evidence_ids.map(eid =>
+      '<span class="tag clickable" onclick="scrollToEvidence(\'' + escapeJsString(eid) + '\')">' + escapeHtml(eid) + '</span>'
+    ).join('') + '</div></div>';
+  }
+
+  // MITRE IDs
+  if ((f.mitre_ids && f.mitre_ids.length > 0) || editingField === 'mitre_ids') {
+    html += '<div class="field-section"><div class="field-label">MITRE ATT&CK</div>';
+    html += renderEditableField('mitre_ids', eff.mitre_ids || [], f, de);
+    html += '</div>';
+  }
+
+  // IOCs
+  if ((f.iocs && f.iocs.length > 0) || editingField === 'iocs') {
+    html += '<div class="field-section"><div class="field-label">IOCs</div>';
+    html += renderEditableField('iocs', eff.iocs || [], f, de);
+    html += '</div>';
+  }
+
+  // Related findings
+  if (f.related_findings && f.related_findings.length > 0) {
+    html += '<div class="field-section"><div class="field-label">Related Findings</div>';
+    html += '<div class="tag-list">' + f.related_findings.map(rid =>
+      '<span class="tag clickable" onclick="selectFinding(\'' + escapeJsString(rid) + '\')">' + escapeHtml(rid) + '</span>'
+    ).join('') + '</div></div>';
+  }
+
+  // Artifact ref
+  if (f.artifact_ref) {
+    html += '<div class="field-section"><div class="field-label">Artifact Reference</div>';
+    html += '<div class="field-value mono">' + escapeHtml(f.artifact_ref) + '</div></div>';
+  }
+
+  // Integrity (collapsed — verification, provenance, hash)
+  html += '<details style="margin-top:12px;color:var(--text-muted);font-size:12px">';
+  html += '<summary>Integrity</summary>';
+  html += '<div style="margin-top:4px">Verification: <span class="' + escapeHtml(verifClass) + '">' + escapeHtml(verif) + '</span>';
+  html += ' | Provenance: <span class="' + escapeHtml(provClass) + '">' + escapeHtml(prov) + '</span></div>';
+  if (f.content_hash) html += '<div style="font-family:monospace">Content hash: ' + escapeHtml(f.content_hash.slice(0, 16)) + '...</div>';
+  if (f.modified_at) html += '<div style="font-family:monospace">Modified: ' + escapeHtml(f.modified_at) + '</div>';
+  html += '</details>';
+
+  // Action bar
+  html += '<div class="action-bar">';
+  html += '<button class="action-btn approve" onclick="doApprove()"><span class="key">a</span> Approve</button>';
+  html += '<button class="action-btn reject" onclick="openRejectDialog()"><span class="key">r</span> Reject</button>';
+  if (de) {
+    html += '<button class="action-btn undo" onclick="doSkip()"><span class="key">s</span> Undo</button>';
+  }
+  html += '</div>';
+
+  // Evidence panel
+  if (f.evidence_ids && f.evidence_ids.length > 0) {
+    html += '<div class="evidence-panel" id="evidencePanel">';
+    html += '<div class="evidence-panel-header"><span>Evidence</span><button onclick="toggleAllEvidence()">collapse all</button></div>';
+    html += '<div id="evidenceItems">Loading evidence...</div>';
+    html += '<div class="grounding" id="groundingSummary"></div>';
+    html += '</div>';
+  }
+
+  // Timeline context
+  html += '<div id="timelineContext"></div>';
+
+  // Examiner notes (if any)
+  if (f.examiner_notes && f.examiner_notes.length > 0) {
+    html += '<div class="optional-section"><div class="field-label">Examiner Notes</div>';
+    f.examiner_notes.forEach(n => {
+      html += '<div style="margin-bottom:6px"><span style="color:var(--text-muted)">' +
+        escapeHtml(n.by || '') + ' \u00B7 ' + formatTime(n.at || '') + '</span><br>' +
+        escapeHtml(n.note || n.text || '') + '</div>';
+    });
+    html += '</div>';
+  }
+
+
+  // Examiner modifications history
+  if (f.examiner_modifications && Object.keys(f.examiner_modifications).length > 0) {
+    html += '<div class="optional-section"><div class="field-label">Modification History</div>';
+    for (const [field, mod] of Object.entries(f.examiner_modifications)) {
+      html += '<div style="margin-bottom:4px"><strong>' + escapeHtml(field) + '</strong>: ' +
+        '<span class="modified-original">' + escapeHtml(String(mod.original || '')) + '</span> \u2192 ' +
+        '<span class="modified-new">' + escapeHtml(String(mod.modified || '')) + '</span>';
+      if (mod.modified_by) html += ' <span style="color:var(--text-muted)">by ' + escapeHtml(mod.modified_by) + '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  // Approval/rejection info
+  if (f.approved_by) {
+    html += '<div class="optional-section"><div class="field-label">Approved</div>';
+    html += '<div class="field-value">By ' + escapeHtml(f.approved_by) + (f.approved_at ? ' \u00B7 ' + formatTime(f.approved_at) : '') + '</div></div>';
+  }
+  if (f.rejected_by) {
+    html += '<div class="optional-section"><div class="field-label">Rejected</div>';
+    html += '<div class="field-value">By ' + escapeHtml(f.rejected_by) + (f.rejected_at ? ' \u00B7 ' + formatTime(f.rejected_at) : '') + '</div></div>';
+  }
+  if (f.rejection_reason) {
+    html += '<div class="optional-section"><div class="field-label">Rejection Reason</div>';
+    html += '<div class="field-value">' + escapeHtml(f.rejection_reason) + '</div></div>';
+  }
+
+  card.innerHTML = html;
+
+  // Load evidence + timeline async
+  if (f.evidence_ids && f.evidence_ids.length > 0) loadEvidencePanel(f);
+  renderTimelineContext(f);
+}
+
+function renderFieldWithDelta(field, value, de) {
+  if (de && de.modifications && de.modifications[field]) {
+    const mod = de.modifications[field];
+    return '<div class="modified-original">' + escapeHtml(String(mod.original || '')) + '</div>' +
+           '<div class="modified-new">' + escapeHtml(String(mod.modified || '')) + '</div>';
+  }
+  return '<div class="field-value">' + escapeHtml(String(value)) + '</div>';
+}
+
+function confClassFor(conf) {
+  return 'conf-' + (conf || 'low').toLowerCase();
+}
+
+/* === Toast === */
+function showToast(msg, type) {
+  var t = document.createElement('div');
+  t.className = 'toast toast-' + (type || 'info');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function() { t.classList.add('show'); }, 10);
+  setTimeout(function() { t.remove(); }, 2500);
+}
+
+/* === Actions === */
+function doApprove() {
+  if (!selectedId) return;
+  const f = findings.find(x => x.id === selectedId);
+  if (!f) return;
+
+  const existing = getDeltaEntry(selectedId);
+  setDeltaEntry({
+    id: selectedId,
+    type: f.type || 'finding',
+    action: 'approve',
+    content_hash_at_review: f.content_hash || '',
+    modifications: existing ? existing.modifications || {} : {},
+  });
+  renderSidebar();
+  updateProgress();
+  renderFinding(selectedId);
+  showToast('Finding approved', 'success');
+  advanceToNext();
+}
+
+function openRejectDialog() {
+  if (!selectedId) return;
+  document.getElementById('rejectReason').value = '';
+  document.getElementById('rejectDialogTitle').textContent = 'Reject Finding';
+  var btn = document.querySelector('#rejectDialog .btn-primary');
+  btn.onclick = submitReject;
+  document.getElementById('rejectDialog').classList.add('visible');
+
+  // Wire up templates
+  document.querySelectorAll('#rejectDialog .dialog-template').forEach(btn => {
+    btn.onclick = () => {
+      const reason = btn.dataset.reason;
+      if (reason === 'duplicate') {
+        const dupId = prompt('Enter duplicate finding ID:');
+        if (dupId) document.getElementById('rejectReason').value = 'Duplicate of ' + dupId;
+      } else {
+        document.getElementById('rejectReason').value = reason;
+      }
+    };
+  });
+}
+
+function closeRejectDialog() {
+  document.getElementById('rejectDialog').classList.remove('visible');
+}
+
+function submitReject() {
+  if (!selectedId) return;
+  const reason = document.getElementById('rejectReason').value.trim();
+  if (!reason) { document.getElementById('rejectReason').focus(); return; }
+
+  const f = findings.find(x => x.id === selectedId);
+  if (!f) return;
+
+  setDeltaEntry({
+    id: selectedId,
+    type: f.type || 'finding',
+    action: 'reject',
+    content_hash_at_review: f.content_hash || '',
+    rejection_reason: reason,
+  });
+  closeRejectDialog();
+  renderSidebar();
+  updateProgress();
+  renderFinding(selectedId);
+  showToast('Finding rejected', 'success');
+  advanceToNext();
+}
+
+
+
+async function doSkip() {
+  if (!selectedId) return;
+  const de = getDeltaEntry(selectedId);
+  if (!de) return;
+  try {
+    await apiFetch('/api/delta/' + encodeURIComponent(selectedId), { method: 'DELETE' });
+    delta.items = delta.items.filter(i => i.id !== selectedId);
+    delta.modified_at = new Date().toISOString();
+    setSaveStatus('saved');
+  } catch (e) {
+    console.warn('DELETE delta item failed:', e);
+    return;
+  }
+  updateCommitButton();
+  renderSidebar();
+  updateProgress();
+  renderFinding(selectedId);
+  showToast('Review undone', 'info');
+}
+
+function advanceToNext() {
+  if (currentFilter !== 'pending') return;
+  const filtered = getFilteredFindings();
+  if (filtered.length > 0) {
+    selectFinding(filtered[0].id);
+  }
+}
+
+/* === Commit === */
+function openCommitDialog() {
+  if (!delta.items || delta.items.length === 0) return;
+
+  var counts = { approve: 0, reject: 0, edit: 0 };
+  delta.items.forEach(function(d) { counts[d.action] = (counts[d.action] || 0) + 1; });
+  var parts = [];
+  if (counts.approve) parts.push(counts.approve + ' approved');
+  if (counts.reject) parts.push(counts.reject + ' rejected');
+  if (counts.edit) parts.push(counts.edit + ' edited');
+  document.getElementById('commitSummary').textContent =
+    'Committing ' + delta.items.length + ' review(s): ' + parts.join(', ');
+
+  document.getElementById('commitPassword').value = '';
+  document.getElementById('commitError').style.display = 'none';
+  document.getElementById('commitProgress').style.display = 'none';
+  document.getElementById('commitPasswordRow').style.display = '';
+  document.getElementById('commitSubmitBtn').disabled = false;
+  document.getElementById('commitDialog').classList.add('visible');
+  setTimeout(function() { document.getElementById('commitPassword').focus(); }, 50);
+}
+
+function closeCommitDialog() {
+  document.getElementById('commitDialog').classList.remove('visible');
+}
+
+async function submitCommit() {
+  var pw = document.getElementById('commitPassword').value;
+  if (!pw) {
+    showCommitError('Password required.');
+    return;
+  }
+
+  document.getElementById('commitSubmitBtn').disabled = true;
+  document.getElementById('commitPasswordRow').style.display = 'none';
+  document.getElementById('commitProgress').style.display = '';
+  document.getElementById('commitError').style.display = 'none';
+
+  try {
+    // 1. Get challenge
+    var challenge = await apiFetch('/api/commit/challenge');
+
+    // 2. Derive key via Web Crypto (PBKDF2)
+    var enc = new TextEncoder();
+    var keyMaterial = await crypto.subtle.importKey(
+      'raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']
+    );
+    var salt = hexToBytes(challenge.salt);
+    var derivedBits = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', salt: salt, iterations: challenge.iterations,
+        hash: challenge.hash_algorithm },
+      keyMaterial, 256
+    );
+
+    // 3. HMAC-SHA256(derived_key, nonce)
+    var hmacKey = await crypto.subtle.importKey(
+      'raw', derivedBits, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+    );
+    var sig = await crypto.subtle.sign('HMAC', hmacKey, enc.encode(challenge.nonce));
+    var response = bytesToHex(new Uint8Array(sig));
+
+    // 4. Submit
+    var result = await apiFetch('/api/commit', {
+      method: 'POST',
+      body: JSON.stringify({
+        challenge_id: challenge.challenge_id,
+        response: response,
+      }),
+    });
+
+    closeCommitDialog();
+
+    // 5. Clear delta and refresh
+    delta = { version: 1, case_id: delta.case_id || '', items: [], created_at: new Date().toISOString(), modified_at: new Date().toISOString() };
+    await saveDelta();
+    await loadAll();
+    updateCommitButton();
+    showToast('Committed: ' + result.approved + ' approved, ' +
+      result.rejected + ' rejected, ' + result.edited + ' edited', 'success');
+
+  } catch (e) {
+    document.getElementById('commitPasswordRow').style.display = '';
+    document.getElementById('commitProgress').style.display = 'none';
+    document.getElementById('commitSubmitBtn').disabled = false;
+    showCommitError(e.message || 'Commit failed');
+  }
+}
+
+function showCommitError(msg) {
+  var el = document.getElementById('commitError');
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+function hexToBytes(hex) {
+  var bytes = new Uint8Array(hex.length / 2);
+  for (var i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  }
+  return bytes;
+}
+
+function bytesToHex(bytes) {
+  return Array.from(bytes).map(function(b) {
+    return ('0' + b.toString(16)).slice(-2);
+  }).join('');
+}
+
+function updateCommitButton() {
+  var btn = document.getElementById('commitBtn');
+  if (!btn) return;
+  btn.disabled = !delta.items || delta.items.length === 0;
+}
+
+/* === Filter dimensions === */
+function populateExaminerFilter() {
+  const examiners = new Set();
+  findings.forEach(f => { if (f.examiner || f.created_by) examiners.add(f.examiner || f.created_by); });
+  const sel = document.getElementById('filterExaminer');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Examiner</option>';
+  [...examiners].sort().forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e; opt.textContent = e;
+    if (e === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+/* === Batch operations === */
+function toggleBatchItem(id, checked) {
+  if (checked) batchSelected.add(id); else batchSelected.delete(id);
+  updateBatchToolbar();
+}
+
+function updateBatchToolbar() {
+  const tb = document.getElementById('batchToolbar');
+  if (batchSelected.size >= 2) {
+    tb.classList.add('visible');
+    document.getElementById('batchCount').textContent = batchSelected.size + ' selected:';
+  } else {
+    tb.classList.remove('visible');
+  }
+}
+
+function batchApprove() {
+  batchSelected.forEach(id => {
+    const f = findings.find(x => x.id === id);
+    if (!f) return;
+    const existing = getDeltaEntry(id);
+    setDeltaEntry({
+      id, type: f.type || 'finding', action: 'approve',
+      content_hash_at_review: f.content_hash || '',
+      modifications: existing ? existing.modifications || {} : {},
+    });
+  });
+  batchSelected.clear();
+  updateBatchToolbar();
+  renderSidebar();
+  updateProgress();
+  if (selectedId) renderFinding(selectedId);
+}
+
+function batchReject() {
+  const reason = prompt('Rejection reason for all selected:');
+  if (!reason) return;
+  batchSelected.forEach(id => {
+    const f = findings.find(x => x.id === id);
+    if (!f) return;
+    setDeltaEntry({
+      id, type: f.type || 'finding', action: 'reject',
+      content_hash_at_review: f.content_hash || '', rejection_reason: reason,
+    });
+  });
+  batchSelected.clear();
+  updateBatchToolbar();
+  renderSidebar();
+  updateProgress();
+  if (selectedId) renderFinding(selectedId);
+}
+
+function batchClear() {
+  batchSelected.clear();
+  updateBatchToolbar();
+  renderSidebar();
+}
+
+/* === Inline editing === */
+function startEdit(field) {
+  if (!selectedId) return;
+  editingField = field;
+  renderFinding(selectedId);
+  // Focus the edit input after render
+  setTimeout(() => {
+    const el = document.getElementById('editInput-' + field);
+    if (el) el.focus();
+  }, 50);
+}
+
+function cancelEdit() {
+  editingField = null;
+  if (selectedId) renderFinding(selectedId);
+}
+
+function saveEdit(field) {
+  const f = findings.find(x => x.id === selectedId);
+  if (!f) return;
+
+  let newValue;
+  if (field === 'confidence') {
+    newValue = document.getElementById('editInput-confidence').value;
+  } else if (field === 'mitre_ids' || field === 'iocs') {
+    newValue = getTagInputValues(field);
+  } else {
+    newValue = document.getElementById('editInput-' + field).value;
+  }
+
+  const original = f[field];
+  if (JSON.stringify(newValue) === JSON.stringify(original)) { cancelEdit(); return; }
+
+  const existing = getDeltaEntry(selectedId) || {
+    id: selectedId, type: f.type || 'finding', action: 'edit',
+    content_hash_at_review: f.content_hash || '', modifications: {},
+  };
+  if (!existing.modifications) existing.modifications = {};
+  existing.modifications[field] = { original, modified: newValue };
+  setDeltaEntry(existing);
+  editingField = null;
+  renderSidebar();
+  updateProgress();
+  renderFinding(selectedId);
+}
+
+function getTagInputValues(field) {
+  const tags = [];
+  document.querySelectorAll('#tagInput-' + field + ' .tag-value').forEach(el => tags.push(el.textContent));
+  return tags;
+}
+
+function renderEditableField(field, value, f, de) {
+  if (editingField === field) {
+    if (field === 'confidence') {
+      const opts = ['SPECULATIVE', 'LOW', 'MEDIUM', 'HIGH'];
+      let html = '<div class="inline-edit"><select id="editInput-confidence">';
+      opts.forEach(o => html += '<option value="' + o + '"' + (o === value ? ' selected' : '') + '>' + o + '</option>');
+      html += '</select><div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'confidence\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
+      return html;
+    } else if (field === 'mitre_ids' || field === 'iocs') {
+      const items = Array.isArray(value) ? value : [];
+      let html = '<div class="inline-edit"><div class="tag-input" id="tagInput-' + field + '">';
+      items.forEach(t => html += '<span class="tag"><span class="tag-value">' + escapeHtml(t) + '</span><span class="tag-remove" onclick="removeTag(\'' + field + '\', this)">&times;</span></span>');
+      html += '<input type="text" placeholder="Add + Enter" onkeydown="addTag(event, \'' + field + '\')" />';
+      html += '</div><div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'' + field + '\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
+      return html;
+    } else if (field === 'context') {
+      return '<div class="inline-edit"><textarea id="editInput-context" rows="5" placeholder="Add examiner context: data exposure, business impact, third-party relevance, chain of custody notes, or any finding-specific observations the report should reflect.">' + escapeHtml(String(value)) + '</textarea>' +
+        '<div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'context\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
+    } else {
+      return '<div class="inline-edit"><textarea id="editInput-' + field + '">' + escapeHtml(String(value)) + '</textarea>' +
+        '<div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'' + field + '\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
+    }
+  }
+  // Not editing — show value with edit button
+  let display = renderFieldWithDelta(field, value, de);
+  display += ' <button style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px" onclick="startEdit(\'' + field + '\')">Edit</button>';
+  return display;
+}
+
+function toggleContext(id) {
+  const panel = document.getElementById('contextPanel-' + id);
+  const btn = panel.previousElementSibling;
+  if (panel.style.display === 'none') {
+    panel.style.display = 'block';
+    btn.textContent = 'Context \u25b4';
+  } else {
+    panel.style.display = 'none';
+    btn.textContent = 'Context \u25be';
+  }
+}
+
+function addTag(e, field) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const val = e.target.value.trim();
+  if (!val) return;
+  const span = document.createElement('span');
+  span.className = 'tag';
+  span.innerHTML = '<span class="tag-value">' + escapeHtml(val) + '</span><span class="tag-remove" onclick="removeTag(\'' + field + '\', this)">&times;</span>';
+  e.target.parentNode.insertBefore(span, e.target);
+  e.target.value = '';
+}
+
+function removeTag(field, el) {
+  el.parentNode.remove();
+}
+
+function renderResultSummary(summary) {
+  if (!summary) return '';
+  if (typeof summary === 'string') return escapeHtml(summary);
+  var html = '';
+  if (summary.exit_code !== undefined) {
+    var cls = summary.exit_code === 0 ? 'conf-high' : 'conf-low';
+    html += '<div><span class="ev-label">Exit:</span> <span class="' + cls + '">' + summary.exit_code + '</span></div>';
+  }
+  if (summary.output_file) {
+    html += '<div><span class="ev-label">File:</span> <span class="mono">' + escapeHtml(summary.output_file) + '</span></div>';
+  }
+  if (summary.output_sha256) {
+    html += '<div><span class="ev-label">SHA-256:</span> <span class="mono">' + escapeHtml(summary.output_sha256.slice(0, 16)) + '...</span></div>';
+  }
+  if (summary.stdout_bytes) {
+    html += '<div><span class="ev-label">Size:</span> ' + summary.stdout_bytes + ' bytes</div>';
+  }
+  if (summary.stdout_head) {
+    html += '<div><span class="ev-label">Output:</span><pre>' + escapeHtml(summary.stdout_head) + '</pre></div>';
+  }
+  if (!html) {
+    html = '<pre>' + escapeHtml(JSON.stringify(summary, null, 2)) + '</pre>';
+  }
+  return html;
+}
+
+/* === Evidence panel === */
+async function loadEvidencePanel(finding) {
+  const container = document.getElementById('evidenceItems');
+  const groundingEl = document.getElementById('groundingSummary');
+  if (!container) return;
+
+  const fid = finding.id;
+  let auditData;
+  if (auditCache[fid]) {
+    auditData = auditCache[fid];
+  } else {
+    try {
+      auditData = await apiFetch('/api/audit/' + encodeURIComponent(fid));
+      auditCache[fid] = auditData;
+    } catch (e) {
+      container.innerHTML = '<div style="padding:12px;color:var(--text-muted)">Could not load evidence data.</div>';
+      return;
+    }
+  }
+
+  const eids = finding.evidence_ids || [];
+  if (eids.length === 0) { container.innerHTML = ''; return; }
+
+  // Group audit entries by evidence_id
+  const byEid = {};
+  auditData.forEach(entry => {
+    const eid = entry.evidence_id || '';
+    if (!byEid[eid]) byEid[eid] = [];
+    byEid[eid].push(entry);
+  });
+
+  let html = '';
+  eids.forEach((eid, idx) => {
+    const entries = byEid[eid] || [];
+    const entry = entries[0] || {};
+    const backend = entry._backend || 'unknown';
+    const isShell = backend.includes('exec') || (entry.source || '').includes('shell');
+    const openClass = idx === 0 ? ' open' : '';
+
+    html += '<div class="evidence-item" id="ev-' + escapeHtml(eid) + '">';
+    html += '<div class="evidence-item-header" onclick="toggleEvidence(this)">';
+    html += '<span class="chevron' + openClass + '">&#9654;</span> ';
+    html += '<strong>' + escapeHtml(eid) + '</strong>';
+    html += ' <span style="color:var(--text-muted)">(' + escapeHtml(backend) + ')</span>';
+    html += '</div>';
+    html += '<div class="evidence-item-body' + openClass + '">';
+
+    if (isShell) {
+      // Shell evidence
+      if (entry.params && entry.params.command) {
+        html += '<div class="ev-field"><span class="ev-label">Command:</span><pre>' + escapeHtml(entry.params.command) + '</pre></div>';
+      }
+      if (entry.result_summary) {
+        html += '<div class="ev-field"><span class="ev-label">Output:</span>' + renderResultSummary(entry.result_summary) + '</div>';
+      }
+      if (entry.params && entry.params.purpose) {
+        html += '<div class="ev-field"><span class="ev-label">Purpose:</span> ' + escapeHtml(entry.params.purpose) + '</div>';
+      }
+    } else {
+      // MCP evidence
+      if (entry.tool) {
+        html += '<div class="ev-field"><span class="ev-label">Tool:</span> ' + escapeHtml(entry.tool) + '</div>';
+      }
+      if (entry.params) {
+        html += '<div class="ev-field"><span class="ev-label">Params:</span><pre>' + escapeHtml(JSON.stringify(entry.params, null, 2)) + '</pre></div>';
+      }
+      if (entry.result_summary) {
+        html += '<div class="ev-field"><span class="ev-label">Result:</span>' + renderResultSummary(entry.result_summary) + '</div>';
+      }
+      if (entry.elapsed_ms) {
+        html += '<div class="ev-field"><span class="ev-label">Elapsed:</span> ' + escapeHtml(String(entry.elapsed_ms)) + 'ms</div>';
+      }
+    }
+    html += '</div></div>';
+  });
+  container.innerHTML = html;
+
+  // Grounding summary — show backends found in audit data
+  const backends = new Set();
+  auditData.forEach(e => { if (e._backend) backends.add(e._backend); });
+  let groundingHtml = '<strong>Grounding:</strong> ';
+  if (backends.size > 0) {
+    [...backends].sort().forEach(b => {
+      groundingHtml += '<span class="grounding-item"><span class="grounding-check">&#10003;</span> ' + escapeHtml(b) + '</span>';
+    });
+  } else {
+    groundingHtml += '<span style="color:var(--text-muted)">No audit data</span>';
+  }
+  if (groundingEl) groundingEl.innerHTML = groundingHtml;
+}
+
+function toggleEvidence(header) {
+  const body = header.nextElementSibling;
+  const chevron = header.querySelector('.chevron');
+  body.classList.toggle('open');
+  chevron.classList.toggle('open');
+}
+
+function toggleAllEvidence() {
+  const items = document.querySelectorAll('.evidence-item-body');
+  const allOpen = [...items].every(i => i.classList.contains('open'));
+  items.forEach(i => { if (allOpen) i.classList.remove('open'); else i.classList.add('open'); });
+  document.querySelectorAll('.evidence-item-header .chevron').forEach(c => {
+    if (allOpen) c.classList.remove('open'); else c.classList.add('open');
+  });
+  const btn = document.querySelector('.evidence-panel-header button');
+  if (btn) btn.textContent = allOpen ? 'expand all' : 'collapse all';
+}
+
+/* === Timeline context === */
+function renderTimelineContext(finding) {
+  const container = document.getElementById('timelineContext');
+  if (!container) return;
+  if (timelineEvents.length === 0) { container.innerHTML = ''; return; }
+
+  // Find related timeline events, then nearby by timestamp proximity
+  const sorted = [...timelineEvents].sort((a, b) => (a.timestamp || a.staged || '').localeCompare(b.timestamp || b.staged || ''));
+
+  // First: find events that reference this finding or are referenced by it
+  var relatedIds = new Set(finding.related_findings || []);
+  var linkedEvents = sorted.filter(function(ev) {
+    // Timeline event references this finding
+    if (ev.related_findings && ev.related_findings.indexOf(finding.id) >= 0) return true;
+    // Finding references this timeline event
+    if (relatedIds.has(ev.id)) return true;
+    return false;
+  });
+
+  var nearby;
+  var highlightId = null;
+  if (linkedEvents.length > 0) {
+    // Show linked events ±2 context
+    var centerIdx = sorted.indexOf(linkedEvents[0]);
+    var start = Math.max(0, centerIdx - 2);
+    var end = Math.min(sorted.length, centerIdx + linkedEvents.length + 2);
+    nearby = sorted.slice(start, end);
+    highlightId = linkedEvents[0].id;
+  } else {
+    // Fallback: timestamp proximity (use finding.timestamp if available, then staged)
+    var fTime = finding.timestamp || finding.staged || '';
+    if (!fTime) { container.innerHTML = ''; return; }
+
+    var closestIdx = 0;
+    var closestDiff = Infinity;
+    sorted.forEach(function(ev, idx) {
+      var evTime = ev.timestamp || ev.staged || '';
+      var diff = Math.abs(new Date(evTime) - new Date(fTime));
+      if (diff < closestDiff) { closestDiff = diff; closestIdx = idx; }
+    });
+
+    var start = Math.max(0, closestIdx - 5);
+    var end = Math.min(sorted.length, closestIdx + 6);
+    nearby = sorted.slice(start, end);
+  }
+
+  if (nearby.length === 0) { container.innerHTML = ''; return; }
+
+  var html = '<div class="timeline-context">';
+  html += '<div class="timeline-context-header">Timeline Context</div>';
+  nearby.forEach(function(ev) {
+    var evTime = ev.timestamp || ev.staged || '';
+    var isCurrent = (highlightId && ev.id === highlightId) || (!highlightId && finding.timestamp && Math.abs(new Date(evTime) - new Date(finding.timestamp)) < 1000);
+    html += '<div class="timeline-event' + (isCurrent ? ' current' : '') + '">';
+    html += '<span class="tl-time">' + formatTimeShort(evTime) + '</span>';
+    html += '<span class="tl-desc">' + escapeHtml(ev.title || ev.description || ev.id || '') + '</span>';
+    if (isCurrent) html += '<span class="tl-marker">&#9668;</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function scrollToEvidence(eid) {
+  const el = document.getElementById('ev-' + eid);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Expand if collapsed
+    const body = el.querySelector('.evidence-item-body');
+    const chevron = el.querySelector('.chevron');
+    if (body && !body.classList.contains('open')) {
+      body.classList.add('open');
+      if (chevron) chevron.classList.add('open');
+    }
+  }
+}
+
+function formatTimeShort(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toISOString().slice(11, 19) + ' UTC';
+  } catch (_e) { return iso; }
+}
+
+/* === Theme === */
+function initTheme() {
+  const saved = localStorage.getItem('aiir-theme');
+  if (saved === 'light') document.body.classList.add('light');
+  updateThemeButton();
+}
+
+function toggleTheme() {
+  document.body.classList.toggle('light');
+  localStorage.setItem('aiir-theme', document.body.classList.contains('light') ? 'light' : 'dark');
+  updateThemeButton();
+}
+
+function updateThemeButton() {
+  document.getElementById('btnTheme').textContent = document.body.classList.contains('light') ? '\u263E' : '\u2600';
+}
+
+/* === Shortcuts === */
+function toggleShortcuts() {
+  document.getElementById('shortcutsOverlay').classList.toggle('visible');
+}
+
+/* === Refresh === */
+function updateRefreshBadge() {
+  const badge = document.getElementById('refreshBadge');
+  if (newFindingsCount > 0) {
+    badge.textContent = newFindingsCount + ' new';
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+/* === Tabs === */
+function switchTab(tabName) {
+  document.querySelectorAll('.tab').forEach(function(t) {
+    var isActive = t.dataset.tab === tabName;
+    t.classList.toggle('active', isActive);
+    t.setAttribute('aria-selected', String(isActive));
+  });
+  document.querySelectorAll('.tab-panel').forEach(function(p) {
+    p.classList.toggle('active', p.dataset.panel === tabName);
+  });
+  editingField = null;
+  updateProgress();
+  if (tabName === 'dashboard') loadDashboard();
+  else if (tabName === 'evidence') loadEvidence();
+  else if (tabName === 'todos') loadTodos();
+  else if (tabName === 'timeline') {
+    if (!focusedTimelineId) {
+      var filtered = getFilteredTimelineEvents();
+      if (filtered.length > 0) focusedTimelineId = filtered[0].id;
+    }
+    renderTimeline();
+  }
+}
+
+/* === Helpers === */
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML.replace(/'/g, '&#39;');
+}
+
+function escapeJsString(s) {
+  return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"')
+    .replace(/</g, '\\x3c').replace(/>/g, '\\x3e').replace(/&/g, '\\x26');
+}
+
+function formatTime(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
+  } catch (_e) { return iso; }
+}
+
+/* === Keyboard === */
+document.addEventListener('keydown', function(e) {
+  // Skip if typing in input/textarea
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+    if (e.key === 'Escape') { e.target.blur(); e.preventDefault(); }
+    return;
+  }
+
+  var activeTab = document.querySelector('.tab.active');
+
+  // Commit dialog — must come BEFORE the generic .dialog-overlay.visible check
+  if (document.getElementById('commitDialog').classList.contains('visible')) {
+    if (e.key === 'Escape') closeCommitDialog();
+    if (e.key === 'Enter') submitCommit();
+    return;
+  }
+
+  // Skip if dialog is open
+  if (document.querySelector('.dialog-overlay.visible')) {
+    if (e.key === 'Escape') {
+      closeRejectDialog();
+    }
+    return;
+  }
+
+  // Shortcuts overlay
+  if (document.getElementById('shortcutsOverlay').classList.contains('visible')) {
+    if (e.key === 'Escape' || e.key === '?') toggleShortcuts();
+    return;
+  }
+
+  // Global shortcuts (all tabs)
+  if (e.key === '?') { e.preventDefault(); toggleShortcuts(); return; }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    if (editingField) {
+      var tab = activeTab ? activeTab.dataset.tab : '';
+      tab === 'timeline' ? cancelTimelineEdit() : cancelEdit();
+    }
+    return;
+  }
+
+  // Review shortcuts (findings + timeline tabs only)
+  var onReviewTab = activeTab && (
+    activeTab.dataset.tab === 'findings' || activeTab.dataset.tab === 'timeline');
+  if (!onReviewTab) return;
+
+  var isTimeline = activeTab.dataset.tab === 'timeline';
+
+  switch (e.key) {
+    case 'j': case 'ArrowDown':
+      e.preventDefault();
+      isTimeline ? navigateTimeline(1) : navigateSidebar(1);
+      break;
+    case 'k': case 'ArrowUp':
+      e.preventDefault();
+      isTimeline ? navigateTimeline(-1) : navigateSidebar(-1);
+      break;
+    case 'a':
+      e.preventDefault();
+      isTimeline ? doTimelineApprove() : doApprove();
+      break;
+    case 'r':
+      e.preventDefault();
+      isTimeline ? openTimelineRejectDialog() : openRejectDialog();
+      break;
+    case 'e':
+      e.preventDefault();
+      isTimeline ? startTimelineEdit(null, 'description') : startEdit('interpretation');
+      break;
+    case 'Enter':
+      if (!isTimeline) { e.preventDefault(); toggleAllEvidence(); }
+      break;
+    case 's':
+      e.preventDefault();
+      isTimeline ? doTimelineSkip() : doSkip();
+      break;
+    case '/':
+      if (!isTimeline) { e.preventDefault(); document.getElementById('searchBox').focus(); }
+      break;
+    case 'C':  // Shift+C
+      if (!e.shiftKey) break;
+      e.preventDefault();
+      openCommitDialog();
+      break;
+  }
+});
+
+function navigateSidebar(dir) {
+  const filtered = getFilteredFindings();
+  if (filtered.length === 0) return;
+  const idx = filtered.findIndex(f => f.id === selectedId);
+  const next = Math.max(0, Math.min(filtered.length - 1, idx + dir));
+  selectFinding(filtered[next].id);
+
+  // Scroll sidebar item into view
+  const items = document.querySelectorAll('.sidebar-item');
+  if (items[next]) items[next].scrollIntoView({ block: 'nearest' });
+}
+
+/* === Dashboard tab === */
+async function loadDashboard() {
+  try {
+    summaryData = await apiFetch('/api/summary');
+    renderDashboard(summaryData);
+  } catch (e) {
+    document.getElementById('dashGrid').innerHTML =
+      '<div class="dash-card"><h3>Error</h3><p>' + escapeHtml(e.message) + '</p></div>';
+  }
+}
+
+function renderDashboard(summary) {
+  const f = summary.findings || {};
+  const t = summary.timeline || {};
+  const byStatus = f.by_status || {};
+  const draft = byStatus.DRAFT || 0;
+  const approved = byStatus.APPROVED || 0;
+  const rejected = byStatus.REJECTED || 0;
+  const total = f.total || 0;
+
+  const openTodos = (summary.todos || {}).open || 0;
+  const totalTodos = (summary.todos || {}).total || 0;
+
+  // Status bar widths
+  const pctApp = total ? (approved / total * 100) : 0;
+  const pctRej = total ? (rejected / total * 100) : 0;
+  const pctDraft = total ? (draft / total * 100) : 0;
+
+  let grid = '';
+  // Findings card
+  grid += '<div class="dash-card"><h3>Findings</h3>';
+  grid += '<div class="dash-stat">' + total + '</div>';
+  grid += '<div class="dash-detail">' + draft + ' draft, ' + approved + ' approved, ' + rejected + ' rejected</div>';
+  grid += '<div class="dash-bar">';
+  grid += '<div class="dash-bar-seg" style="width:' + pctApp + '%;background:var(--green)"></div>';
+  grid += '<div class="dash-bar-seg" style="width:' + pctRej + '%;background:var(--red)"></div>';
+  grid += '<div class="dash-bar-seg" style="width:' + pctDraft + '%;background:var(--amber)"></div>';
+  grid += '</div></div>';
+
+  // Timeline card
+  const tlTotal = t.total || 0;
+  const tlByStatus = t.by_status || {};
+  grid += '<div class="dash-card"><h3>Timeline</h3>';
+  grid += '<div class="dash-stat">' + tlTotal + '</div>';
+  grid += '<div class="dash-detail">';
+  grid += (tlByStatus.DRAFT || 0) + ' draft, ' + (tlByStatus.APPROVED || 0) + ' approved';
+  grid += '</div></div>';
+
+  // Evidence card
+  grid += '<div class="dash-card"><h3>Evidence</h3>';
+  const evTotal = (summary.evidence || {}).total || 0;
+  grid += '<div class="dash-stat">' + evTotal + '</div>';
+  grid += '<div class="dash-detail">' + evTotal + ' registered file(s)</div></div>';
+
+  // TODOs card
+  grid += '<div class="dash-card"><h3>TODOs</h3>';
+  grid += '<div class="dash-stat">' + openTodos + ' open</div>';
+  grid += '<div class="dash-detail">' + totalTodos + ' total</div></div>';
+
+  document.getElementById('dashGrid').innerHTML = grid;
+
+  document.querySelectorAll('.dash-card').forEach(function(card) {
+    var title = card.querySelector('h3');
+    if (!title) return;
+    var text = title.textContent.trim();
+    var tab = text === 'Findings' ? 'findings'
+            : text === 'Timeline' ? 'timeline'
+            : text === 'Evidence' ? 'evidence'
+            : text === 'TODOs' ? 'todos' : null;
+    if (tab) {
+      card.style.cursor = 'pointer';
+      card.onclick = function() { switchTab(tab); };
+    }
+  });
+
+  // Case metadata
+  let meta = '';
+  if (caseMeta.case_id) {
+    const rows = [
+      ['Case ID', caseMeta.case_id],
+      ['Name', caseMeta.name || ''],
+      ['Status', caseMeta.status || ''],
+      ['Created', formatTime(caseMeta.created_at)],
+      ['Description', caseMeta.description || ''],
+    ];
+    rows.forEach(function(r) {
+      if (r[1]) meta += '<div class="dash-meta-row"><span class="dash-meta-label">' + escapeHtml(r[0]) + '</span><span>' + escapeHtml(String(r[1])) + '</span></div>';
+    });
+  }
+  if (draft > 0) {
+    meta += '<button class="btn-start-review" onclick="switchTab(\'findings\')">Review ' + draft + ' draft finding(s)</button>';
+  }
+  document.getElementById('dashMeta').innerHTML = meta;
+}
+
+/* === Evidence tab === */
+async function loadEvidence() {
+  try {
+    evidenceData = await apiFetch('/api/evidence');
+    renderEvidence();
+  } catch (e) {
+    document.getElementById('evidenceBody').innerHTML =
+      '<tr><td colspan="7" style="color:var(--red)">' + escapeHtml(e.message) + '</td></tr>';
+  }
+}
+
+function renderEvidence() {
+  const sorted = [...evidenceData].sort(function(a, b) {
+    const av = a[evidenceSortCol] || '';
+    const bv = b[evidenceSortCol] || '';
+    const cmp = String(av).localeCompare(String(bv));
+    return evidenceSortAsc ? cmp : -cmp;
+  });
+
+  // Update sort indicators
+  document.querySelectorAll('#evidenceTable th').forEach(function(th) {
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    if (th.dataset.sort === evidenceSortCol) {
+      th.classList.add(evidenceSortAsc ? 'sorted-asc' : 'sorted-desc');
+    }
+  });
+
+  let html = '';
+  sorted.forEach(function(ev) {
+    const eid = ev.evidence_id || ev.id || '';
+    const path = ev.path || '';
+    const sha = ev.sha256 || '';
+    const desc = ev.description || '';
+    const regAt = formatTime(ev.registered_at);
+    const regBy = ev.registered_by || '';
+    const refs = ev.referenced_by || [];
+
+    html += '<tr>';
+    html += '<td>' + escapeHtml(path) + '</td>';
+    html += '<td class="hash" title="' + escapeHtml(sha) + '">' + escapeHtml(sha.substring(0, 12)) + '...</td>';
+    html += '<td>' + escapeHtml(desc) + '</td>';
+    html += '<td>' + escapeHtml(regAt) + '</td>';
+    html += '<td>' + escapeHtml(regBy) + '</td>';
+    html += '<td>';
+    refs.forEach(function(rid) {
+      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeJsString(rid) + '\')">' + escapeHtml(rid) + '</a> ';
+    });
+    html += '</td>';
+    const evIdx = evidenceData.indexOf(ev);
+    html += '<td id="ev-' + evIdx + '"><button class="verify-btn" onclick="verifyEvidence(' + evIdx + ')">Verify</button></td>';
+    html += '</tr>';
+  });
+
+  if (!sorted.length) {
+    html = '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:24px">No evidence registered</td></tr>';
+  }
+  document.getElementById('evidenceBody').innerHTML = html;
+}
+
+async function verifyEvidence(idx) {
+  const ev = evidenceData[idx];
+  if (!ev) return;
+  const cell = document.getElementById('ev-' + idx);
+  if (cell) cell.innerHTML = 'Checking...';
+  try {
+    const result = await apiFetch('/api/evidence/' + encodeURIComponent(ev.path || '') + '/verify', { method: 'POST' });
+    if (!cell) return;
+    if (result.status === 'verified') {
+      cell.innerHTML = '<span class="verify-ok">Verified</span>';
+    } else if (result.status === 'failed') {
+      cell.innerHTML = '<span class="verify-fail">FAILED</span>';
+    } else {
+      cell.innerHTML = '<span style="color:var(--text-muted)">' + escapeHtml(result.status) + '</span>';
+    }
+  } catch (e) {
+    if (cell) cell.innerHTML = '<span class="verify-fail">Error</span>';
+  }
+}
+
+/* === TODOs tab === */
+async function loadTodos() {
+  try {
+    todosData = await apiFetch('/api/todos');
+    renderTodos();
+  } catch (e) {
+    document.getElementById('todosBody').innerHTML =
+      '<tr><td colspan="7" style="color:var(--red)">' + escapeHtml(e.message) + '</td></tr>';
+  }
+}
+
+function renderTodos() {
+  const filterPrio = document.getElementById('todoFilterPriority').value;
+  const filterStatus = document.getElementById('todoFilterStatus').value;
+
+  let filtered = todosData;
+  if (filterPrio) filtered = filtered.filter(function(t) { return t.priority === filterPrio; });
+  if (filterStatus) filtered = filtered.filter(function(t) { return t.status === filterStatus; });
+
+  // Priority sort order
+  const prioOrder = { high: 0, medium: 1, low: 2 };
+
+  const sorted = [...filtered].sort(function(a, b) {
+    let av, bv;
+    if (todosSortCol === 'priority') {
+      av = prioOrder[a.priority] !== undefined ? prioOrder[a.priority] : 9;
+      bv = prioOrder[b.priority] !== undefined ? prioOrder[b.priority] : 9;
+    } else {
+      av = a[todosSortCol] || '';
+      bv = b[todosSortCol] || '';
+    }
+    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    return todosSortAsc ? cmp : -cmp;
+  });
+
+  // Update sort indicators
+  document.querySelectorAll('#todosTable th').forEach(function(th) {
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    if (th.dataset.sort === todosSortCol) {
+      th.classList.add(todosSortAsc ? 'sorted-asc' : 'sorted-desc');
+    }
+  });
+
+  let html = '';
+  sorted.forEach(function(t) {
+    const tid = t.todo_id || t.id || '';
+    const desc = t.description || '';
+    const prio = t.priority || 'medium';
+    const assignee = t.assignee || '';
+    const status = t.status || 'open';
+    const related = t.related_findings || [];
+    const created = formatTime(t.created_at);
+
+    html += '<tr>';
+    html += '<td>' + escapeHtml(tid) + '</td>';
+    html += '<td>' + escapeHtml(desc) + '</td>';
+    html += '<td class="priority-' + escapeHtml(prio) + '">' + escapeHtml(prio) + '</td>';
+    html += '<td>' + escapeHtml(assignee) + '</td>';
+    html += '<td class="status-' + escapeHtml(status) + '">' + escapeHtml(status) + '</td>';
+    html += '<td>';
+    related.forEach(function(rid) {
+      html += '<a class="ref-link" onclick="switchTab(\'findings\');selectFinding(\'' + escapeJsString(rid) + '\')">' + escapeHtml(rid) + '</a> ';
+    });
+    html += '</td>';
+    html += '<td>' + escapeHtml(created) + '</td>';
+    html += '</tr>';
+  });
+
+  if (!sorted.length) {
+    html = '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:24px">No TODOs</td></tr>';
+  }
+  document.getElementById('todosBody').innerHTML = html;
+}
+
+/* === Timeline === */
+
+function getFilteredTimelineEvents() {
+  var events = timelineEvents.slice();
+  if (timelineFilter === 'pending') {
+    events = events.filter(function(ev) {
+      var de = getDeltaEntry(ev.id);
+      return !de || de.action === 'edit';
+    });
+  } else if (timelineFilter === 'approved') {
+    events = events.filter(function(ev) {
+      var de = getDeltaEntry(ev.id);
+      return de && de.action === 'approve';
+    });
+  } else if (timelineFilter === 'rejected') {
+    events = events.filter(function(ev) {
+      var de = getDeltaEntry(ev.id);
+      return de && de.action === 'reject';
+    });
+  }
+  if (timelineTypeFilter) {
+    events = events.filter(function(ev) {
+      return (ev.event_type || 'other') === timelineTypeFilter;
+    });
+  }
+  events.sort(function(a, b) {
+    return (a.timestamp || a.staged || '').localeCompare(b.timestamp || b.staged || '');
+  });
+  return events;
+}
+
+function computeGap(prevTimestamp, currTimestamp) {
+  try {
+    var diffMs = new Date(currTimestamp) - new Date(prevTimestamp);
+    if (isNaN(diffMs) || diffMs < 0) return null;
+    return { minutes: diffMs / 60000 };
+  } catch (e) { return null; }
+}
+
+function formatGap(minutes) {
+  if (minutes < 60) return Math.round(minutes) + ' min';
+  var hours = Math.floor(minutes / 60);
+  var mins = Math.round(minutes % 60);
+  if (hours < 24) return hours + 'h' + (mins > 0 ? ' ' + mins + 'm' : '');
+  var days = Math.floor(hours / 24);
+  return days + 'd ' + (hours % 24) + 'h';
+}
+
+function editPencil(evId, field) {
+  return '<span style="color:var(--text-muted);cursor:pointer;font-size:11px" ' +
+    'onclick="event.stopPropagation();startTimelineEdit(\'' + evId +
+    '\',\'' + field + '\')">\u270E</span>';
+}
+
+function renderTimelineEditField(field, value, evId) {
+  var isMultiline = (field === 'description');
+  var html = '<div class="inline-edit" style="margin-top:4px" onclick="event.stopPropagation()">';
+  if (!isMultiline) {
+    html += '<label style="font-size:11px;color:var(--text-muted)">' +
+      escapeHtml(field) + ':</label> ';
+  }
+  if (isMultiline) {
+    html += '<textarea id="editInput-' + field + '" rows="3" ' +
+      'style="width:100%;font-size:13px;background:var(--bg-primary);' +
+      'color:var(--text-primary);border:1px solid var(--accent);' +
+      'border-radius:4px;padding:6px">' + escapeHtml(value) + '</textarea>';
+  } else {
+    html += '<input id="editInput-' + field + '" type="text" value="' +
+      escapeHtml(value) + '" style="font-size:12px;background:var(--bg-primary);' +
+      'color:var(--text-primary);border:1px solid var(--accent);' +
+      'border-radius:4px;padding:4px;width:260px">';
+  }
+  html += '<div style="margin-top:4px;display:flex;gap:6px">';
+  html += '<button onclick="saveTimelineEdit(\'' + field + '\')" ' +
+    'style="font-size:11px;padding:2px 8px;background:var(--accent);' +
+    'color:#fff;border:none;border-radius:3px;cursor:pointer">Save</button>';
+  html += '<button onclick="cancelTimelineEdit()" ' +
+    'style="font-size:11px;padding:2px 8px;background:var(--bg-tertiary);' +
+    'color:var(--text-primary);border:1px solid var(--border);' +
+    'border-radius:3px;cursor:pointer">Cancel</button>';
+  html += '</div></div>';
+  return html;
+}
+
+function renderTimelineCard(ev, de, isFocused) {
+  var status = (ev.status || 'DRAFT').toUpperCase();
+  var verif = ev.verification || 'draft';
+  var evType = ev.event_type || 'other';
+  var evId = escapeJsString(ev.id);
+
+  var eff = Object.assign({}, ev);
+  if (de && de.modifications) {
+    for (var key in de.modifications) {
+      eff[key] = de.modifications[key].modified;
+    }
+  }
+
+  var html = '<div class="tl-card status-' + status.toLowerCase() +
+    (isFocused ? ' focused' : '') +
+    '" data-id="' + escapeHtml(ev.id) +
+    '" onclick="focusTimelineEvent(\'' + evId + '\')">';
+
+  if (de) {
+    var hasMods = de.modifications && Object.keys(de.modifications).length > 0;
+    var label = de.action.toUpperCase() + (hasMods ? ' (modified)' : '');
+    html += '<div class="delta-indicator ' + escapeHtml(de.action) + '">' +
+      escapeHtml(label) + '</div>';
+  }
+
+  if (de && de.content_hash_at_review && ev.content_hash &&
+      de.content_hash_at_review !== ev.content_hash) {
+    html += '<div class="stale-warning">\u26A0 This event was modified after ' +
+      'you reviewed it. Re-review recommended.</div>';
+  }
+
+  html += '<div class="tl-card-header">';
+  html += '<span class="tl-evid">' + escapeHtml(ev.id) + '</span>';
+  html += '<span class="tl-timestamp">' +
+    escapeHtml(formatTime(eff.timestamp || ev.staged || '')) + '</span>';
+  html += '<span class="tl-type tl-type-' + escapeHtml(evType) + '">' +
+    escapeHtml(evType) + '</span>';
+  html += '<span class="badge badge-' + status.toLowerCase() + '">' +
+    escapeHtml(status) + '</span>';
+  html += '<span class="verif-' + verif.replace(/ /g, '-') +
+    '" style="font-size:10px">' + escapeHtml(verif) + '</span>';
+  html += '</div>';
+
+  html += '<div class="tl-card-body">';
+
+  if (isFocused && editingField === 'description') {
+    html += renderTimelineEditField('description', eff.description || '', evId);
+  } else {
+    var descMod = de && de.modifications && de.modifications.description;
+    html += '<div class="tl-description' + (descMod ? ' modified' : '') + '">' +
+      escapeHtml(eff.description || ev.id);
+    if (isFocused) html += ' ' + editPencil(evId, 'description');
+    html += '</div>';
+  }
+
+  if (isFocused && editingField === 'timestamp') {
+    html += renderTimelineEditField('timestamp', eff.timestamp || '', evId);
+  }
+
+  if (isFocused && editingField === 'source') {
+    html += renderTimelineEditField('source', eff.source || '', evId);
+  }
+
+  html += '<div class="tl-card-meta">';
+  if (eff.source && editingField !== 'source') {
+    var srcMod = de && de.modifications && de.modifications.source;
+    html += '<span' + (srcMod ? ' class="modified"' : '') + '>Source: ' +
+      escapeHtml(eff.source);
+    if (isFocused) html += ' ' + editPencil(evId, 'source');
+    html += '</span>';
+  }
+  if (isFocused && editingField !== 'timestamp') {
+    html += '<span>' + editPencil(evId, 'timestamp') + ' Timestamp</span>';
+  }
+  if (ev.artifact_ref) {
+    html += '<span>Ref: ' + escapeHtml(ev.artifact_ref) + '</span>';
+  }
+  if (ev.evidence_ids && ev.evidence_ids.length) {
+    html += '<span>Evidence: ' + ev.evidence_ids.map(function(eid) {
+      return escapeHtml(eid);
+    }).join(', ') + '</span>';
+  }
+  if (ev.related_findings && ev.related_findings.length) {
+    ev.related_findings.forEach(function(fid) {
+      html += ' <span class="tl-finding-ref" onclick="event.stopPropagation();' +
+        'switchTab(\'findings\');selectFinding(\'' + escapeJsString(fid) +
+        '\')">' + escapeHtml(fid) + '</span>';
+    });
+  }
+  html += '</div>';
+  html += '</div>';
+
+  html += '<div class="tl-card-actions">';
+  html += '<label style="display:inline-flex;align-items:center;cursor:pointer" ' +
+    'onclick="event.stopPropagation()">' +
+    '<input type="checkbox" class="batch-check" onclick="event.stopPropagation();' +
+    'toggleTimelineBatchItem(\'' + evId + '\',this.checked)"' +
+    (batchTimelineSelected.has(ev.id) ? ' checked' : '') + '></label>';
+  html += '<button class="btn-approve" onclick="event.stopPropagation();' +
+    'doTimelineApprove(\'' + evId + '\')">Approve</button>';
+  html += '<button class="btn-reject" onclick="event.stopPropagation();' +
+    'openTimelineRejectDialog(\'' + evId + '\')">Reject</button>';
+  html += '<button onclick="event.stopPropagation();' +
+    'startTimelineEdit(\'' + evId + '\',\'description\')">Edit</button>';
+  if (de) {
+    html += '<button onclick="event.stopPropagation();' +
+      'doTimelineSkip(\'' + evId + '\')">Undo</button>';
+  }
+  html += '</div>';
+
+  html += '</div>';
+  return html;
+}
+
+function renderTimeline() {
+  var container = document.getElementById('timelineStream');
+  if (!container) return;
+  var filtered = getFilteredTimelineEvents();
+
+  if (timelineEvents.length === 0) {
+    container.innerHTML = '<div class="tl-empty"><h2>No timeline events staged yet</h2>' +
+      '<p>The LLM will record timeline events during investigation.</p></div>';
+    updateTimelineSummary();
+    return;
+  }
+  if (filtered.length === 0) {
+    var msg = timelineFilter === 'pending'
+      ? 'No pending events remaining. Run <code>aiir approve --review</code> to apply.'
+      : 'No events match current filters.';
+    container.innerHTML = '<div class="tl-empty"><h2>' + msg + '</h2></div>';
+    updateTimelineSummary();
+    return;
+  }
+
+  var html = '';
+  var prevTimestamp = null;
+
+  filtered.forEach(function(ev) {
+    if (prevTimestamp) {
+      var gap = computeGap(prevTimestamp, ev.timestamp || ev.staged);
+      if (gap && gap.minutes >= 5) {
+        html += '<div class="tl-gap' + (gap.minutes >= 60 ? ' large' : '') + '">';
+        html += '\u2014 ' + formatGap(gap.minutes) + ' \u2014';
+        html += '</div>';
+      }
+    }
+    var de = getDeltaEntry(ev.id);
+    html += renderTimelineCard(ev, de, ev.id === focusedTimelineId);
+    prevTimestamp = ev.timestamp || ev.staged;
+  });
+
+  container.innerHTML = html;
+  updateTimelineSummary();
+
+  if (focusedTimelineId) {
+    var card = container.querySelector(
+      '.tl-card[data-id="' + CSS.escape(focusedTimelineId) + '"]');
+    if (card) card.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function updateTimelineSummary() {
+  var el = document.getElementById('timelineSummary');
+  if (!el) return;
+  if (timelineEvents.length === 0) { el.textContent = ''; return; }
+
+  var sorted = timelineEvents.slice().sort(function(a, b) {
+    return (a.timestamp || a.staged || '').localeCompare(b.timestamp || b.staged || '');
+  });
+  var total = timelineEvents.length;
+  var eventIds = new Set(timelineEvents.map(function(e) { return e.id; }));
+  var reviewed = delta.items.filter(function(d) {
+    return eventIds.has(d.id) && d.action !== 'edit';
+  }).length;
+
+  var first = sorted[0].timestamp || sorted[0].staged || '';
+  var last = sorted[sorted.length - 1].timestamp || sorted[sorted.length - 1].staged || '';
+
+  var largeGaps = 0;
+  for (var i = 1; i < sorted.length; i++) {
+    var diffMs = new Date(sorted[i].timestamp || sorted[i].staged) -
+                 new Date(sorted[i-1].timestamp || sorted[i-1].staged);
+    if (diffMs >= 3600000) largeGaps++;
+  }
+
+  var text = total + ' events';
+  if (first && last) text += ' \u00B7 ' + formatTimeShort(first) + ' \u2013 ' +
+    formatTimeShort(last);
+  if (largeGaps > 0) text += ' \u00B7 ' + largeGaps + ' gap' +
+    (largeGaps > 1 ? 's' : '') + ' > 1hr';
+  text += ' \u00B7 ' + reviewed + ' of ' + total + ' reviewed';
+  el.textContent = text;
+}
+
+function focusTimelineEvent(id) {
+  if (focusedTimelineId === id) return;
+  focusedTimelineId = id;
+  renderTimeline();
+}
+
+function navigateTimeline(dir) {
+  var filtered = getFilteredTimelineEvents();
+  if (filtered.length === 0) return;
+  var idx = filtered.findIndex(function(ev) { return ev.id === focusedTimelineId; });
+  var next = Math.max(0, Math.min(filtered.length - 1, idx + dir));
+  focusTimelineEvent(filtered[next].id);
+}
+
+function advanceToNextTimeline() {
+  if (timelineFilter !== 'pending') return;
+  var filtered = getFilteredTimelineEvents();
+  if (filtered.length > 0) {
+    focusTimelineEvent(filtered[0].id);
+  }
+}
+
+function doTimelineApprove(id) {
+  id = id || focusedTimelineId;
+  if (!id) return;
+  var ev = timelineEvents.find(function(x) { return x.id === id; });
+  if (!ev) return;
+  focusedTimelineId = id;
+  var existing = getDeltaEntry(id);
+  setDeltaEntry({
+    id: id,
+    type: ev.type || 'timeline_event',
+    action: 'approve',
+    content_hash_at_review: ev.content_hash || '',
+    modifications: existing ? existing.modifications || {} : {},
+  });
+  renderTimeline();
+  updateProgress();
+  showToast('Event approved', 'success');
+  advanceToNextTimeline();
+}
+
+function openTimelineRejectDialog(id) {
+  id = id || focusedTimelineId;
+  if (!id) return;
+  focusedTimelineId = id;
+  document.getElementById('rejectReason').value = '';
+  document.getElementById('rejectDialogTitle').textContent = 'Reject Event';
+  var btn = document.querySelector('#rejectDialog .btn-primary');
+  btn.onclick = submitTimelineReject;
+  document.getElementById('rejectDialog').classList.add('visible');
+  document.querySelectorAll('#rejectDialog .dialog-template').forEach(function(tmpl) {
+    tmpl.onclick = function() {
+      var reason = tmpl.dataset.reason;
+      if (reason === 'duplicate') {
+        var dupId = prompt('Enter duplicate event ID:');
+        if (dupId) document.getElementById('rejectReason').value = 'Duplicate of ' + dupId;
+      } else {
+        document.getElementById('rejectReason').value = reason;
+      }
+    };
+  });
+}
+
+function submitTimelineReject() {
+  if (!focusedTimelineId) return;
+  var reason = document.getElementById('rejectReason').value.trim();
+  if (!reason) { document.getElementById('rejectReason').focus(); return; }
+  var ev = timelineEvents.find(function(x) { return x.id === focusedTimelineId; });
+  if (!ev) return;
+  setDeltaEntry({
+    id: focusedTimelineId,
+    type: ev.type || 'timeline_event',
+    action: 'reject',
+    content_hash_at_review: ev.content_hash || '',
+    rejection_reason: reason,
+  });
+  closeRejectDialog();
+  renderTimeline();
+  updateProgress();
+  showToast('Event rejected', 'success');
+  advanceToNextTimeline();
+}
+
+
+async function doTimelineSkip(id) {
+  id = id || focusedTimelineId;
+  if (!id) return;
+  focusedTimelineId = id;
+  var de = getDeltaEntry(id);
+  if (!de) return;
+  try {
+    await apiFetch('/api/delta/' + encodeURIComponent(id), { method: 'DELETE' });
+    delta.items = delta.items.filter(function(i) { return i.id !== id; });
+    delta.modified_at = new Date().toISOString();
+    setSaveStatus('saved');
+  } catch (e) {
+    console.warn('DELETE delta item failed:', e);
+    return;
+  }
+  updateCommitButton();
+  renderTimeline();
+  updateProgress();
+  showToast('Review undone', 'info');
+}
+
+function startTimelineEdit(id, field) {
+  id = id || focusedTimelineId;
+  if (!id) return;
+  focusedTimelineId = id;
+  editingField = field;
+  renderTimeline();
+  setTimeout(function() {
+    var el = document.getElementById('editInput-' + field);
+    if (el) el.focus();
+  }, 50);
+}
+
+function cancelTimelineEdit() {
+  editingField = null;
+  renderTimeline();
+}
+
+function saveTimelineEdit(field) {
+  var ev = timelineEvents.find(function(x) { return x.id === focusedTimelineId; });
+  if (!ev) return;
+  var newValue = document.getElementById('editInput-' + field).value;
+  var original = ev[field];
+  if (newValue === (original || '')) { cancelTimelineEdit(); return; }
+
+  var existing = getDeltaEntry(focusedTimelineId) || {
+    id: focusedTimelineId, type: ev.type || 'timeline_event', action: 'edit',
+    content_hash_at_review: ev.content_hash || '', modifications: {},
+  };
+  if (!existing.modifications) existing.modifications = {};
+  existing.modifications[field] = { original: original, modified: newValue };
+  setDeltaEntry(existing);
+  editingField = null;
+  renderTimeline();
+  updateProgress();
+}
+
+function toggleTimelineBatchItem(id, checked) {
+  if (checked) batchTimelineSelected.add(id);
+  else batchTimelineSelected.delete(id);
+  updateTimelineBatchToolbar();
+}
+
+function updateTimelineBatchToolbar() {
+  var tb = document.getElementById('timelineBatchToolbar');
+  if (batchTimelineSelected.size >= 2) {
+    tb.classList.add('visible');
+    document.getElementById('timelineBatchCount').textContent =
+      batchTimelineSelected.size + ' selected:';
+  } else {
+    tb.classList.remove('visible');
+  }
+}
+
+function batchTimelineApprove() {
+  batchTimelineSelected.forEach(function(id) {
+    var ev = timelineEvents.find(function(x) { return x.id === id; });
+    if (!ev) return;
+    var existing = getDeltaEntry(id);
+    setDeltaEntry({
+      id: id, type: ev.type || 'timeline_event', action: 'approve',
+      content_hash_at_review: ev.content_hash || '',
+      modifications: existing ? existing.modifications || {} : {},
+    });
+  });
+  batchTimelineSelected.clear();
+  updateTimelineBatchToolbar();
+  renderTimeline();
+  updateProgress();
+}
+
+function batchTimelineReject() {
+  var reason = prompt('Rejection reason for all selected:');
+  if (!reason) return;
+  batchTimelineSelected.forEach(function(id) {
+    var ev = timelineEvents.find(function(x) { return x.id === id; });
+    if (!ev) return;
+    setDeltaEntry({
+      id: id, type: ev.type || 'timeline_event', action: 'reject',
+      content_hash_at_review: ev.content_hash || '',
+      rejection_reason: reason,
+    });
+  });
+  batchTimelineSelected.clear();
+  updateTimelineBatchToolbar();
+  renderTimeline();
+  updateProgress();
+}
+
+function batchTimelineClear() {
+  batchTimelineSelected.clear();
+  updateTimelineBatchToolbar();
+  renderTimeline();
+}
+
+/* === Event listeners === */
+document.getElementById('btnRefresh').addEventListener('click', function() {
+  var btn = this;
+  var orig = btn.textContent;
+  btn.textContent = 'Refreshing...';
+  btn.disabled = true;
+  newFindingsCount = 0;
+  updateRefreshBadge();
+  loadAll().then(function() {
+    btn.textContent = '\u2713 Refreshed';
+    setTimeout(function() { btn.textContent = orig; btn.disabled = false; }, 1200);
+  }).catch(function() {
+    btn.textContent = orig;
+    btn.disabled = false;
+  });
+});
+document.getElementById('btnShortcuts').addEventListener('click', toggleShortcuts);
+document.getElementById('footerShortcuts').addEventListener('click', toggleShortcuts);
+document.getElementById('btnTheme').addEventListener('click', toggleTheme);
+
+document.getElementById('sortSelect').addEventListener('change', function() {
+  currentSort = this.value;
+  renderSidebar();
+  showEmptyOrFirst();
+});
+
+document.querySelectorAll('.filter-preset[data-filter]').forEach(btn => {
+  btn.addEventListener('click', function() {
+    currentFilter = this.dataset.filter;
+    document.querySelectorAll('.filter-preset[data-filter]').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    renderSidebar();
+    showEmptyOrFirst();
+  });
+});
+
+document.getElementById('searchBox').addEventListener('input', function() {
+  searchQuery = this.value;
+  renderSidebar();
+  showEmptyOrFirst();
+});
+
+['filterConf', 'filterType', 'filterProv', 'filterExaminer'].forEach(id => {
+  document.getElementById(id).addEventListener('change', function() {
+    if (id === 'filterConf') filterConf = this.value;
+    else if (id === 'filterType') filterType = this.value;
+    else if (id === 'filterProv') filterProv = this.value;
+    else if (id === 'filterExaminer') filterExaminer = this.value;
+    renderSidebar();
+    showEmptyOrFirst();
+  });
+});
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  tab.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchTab(tab.dataset.tab); }
+  });
+});
+
+// Evidence table sorting
+document.querySelectorAll('#evidenceTable th[data-sort]').forEach(th => {
+  th.addEventListener('click', function() {
+    const col = this.dataset.sort;
+    if (evidenceSortCol === col) evidenceSortAsc = !evidenceSortAsc;
+    else { evidenceSortCol = col; evidenceSortAsc = true; }
+    renderEvidence();
+  });
+});
+
+// TODOs table sorting
+document.querySelectorAll('#todosTable th[data-sort]').forEach(th => {
+  th.addEventListener('click', function() {
+    const col = this.dataset.sort;
+    if (todosSortCol === col) todosSortAsc = !todosSortAsc;
+    else { todosSortCol = col; todosSortAsc = true; }
+    renderTodos();
+  });
+});
+
+// TODO filters
+document.getElementById('todoFilterPriority').addEventListener('change', renderTodos);
+document.getElementById('todoFilterStatus').addEventListener('change', renderTodos);
+
+// Timeline filters
+document.querySelectorAll('[data-tl-filter]').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('[data-tl-filter]').forEach(function(b) {
+      b.classList.remove('active');
+    });
+    btn.classList.add('active');
+    timelineFilter = btn.dataset.tlFilter;
+    renderTimeline();
+    updateProgress();
+  });
+});
+
+document.getElementById('timelineTypeFilter').addEventListener('change', function() {
+  timelineTypeFilter = this.value;
+  renderTimeline();
+});
+
+/* === Init === */
+initTheme();
+loadAll();
+
+// Auto-refresh every 15s — skip if loading, dialog open, or editing
+setInterval(function() {
+  if (isLoading) return;
+  if (document.querySelector('.dialog-overlay.visible')) return;
+  if (editingField) return;
+  loadAll().catch(function(e) { console.error('Auto-refresh failed:', e); });
+}, 15000);
+</script>
+</body>
+</html>
