@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "windows-triage-mcp"
-version = "0.5.1"
+version = "0.5.2"
 description = "MCP server: offline Windows file/process/persistence triage against curated baselines"
 requires-python = ">=3.10"
 license = "MIT"

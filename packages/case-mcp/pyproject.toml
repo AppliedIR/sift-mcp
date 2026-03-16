@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "case-mcp"
-version = "0.5.1"
+version = "0.5.2"
 description = "AIIR case management MCP server"
 requires-python = ">=3.10"
 license = {text = "MIT"}
