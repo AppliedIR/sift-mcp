@@ -13,7 +13,7 @@ from rag_mcp.tool_metadata import DEFAULT_METADATA, TOOL_METADATA
 class TestAuditWriter:
     """AuditWriter class tests."""
 
-    def test_evidence_id_format(self, monkeypatch):
+    def test_audit_id_format(self, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         writer = AuditWriter("forensic-rag-mcp")
         eid = writer.log(
@@ -186,18 +186,18 @@ class TestWrapResponse:
         server = self._make_server_instance()
         result = {"status": "ok", "query": "test", "results": []}
         wrapped = server._wrap_response("search", {"query": "test"}, result)
-        assert "evidence_id" in wrapped
+        assert "audit_id" in wrapped
         assert "examiner" in wrapped
         assert "caveats" in wrapped
         assert "interpretation_constraint" in wrapped
         assert wrapped["status"] == "ok"
         assert wrapped["query"] == "test"
 
-    def test_error_result_gets_evidence_id_but_no_caveats(self):
+    def test_error_result_gets_audit_id_but_no_caveats(self):
         server = self._make_server_instance()
         result = {"error": "Unknown tool: bad"}
         wrapped = server._wrap_response("bad", {}, result)
-        assert "evidence_id" in wrapped
+        assert "audit_id" in wrapped
         assert "examiner" in wrapped
         assert "caveats" not in wrapped
         assert wrapped["error"] == "Unknown tool: bad"

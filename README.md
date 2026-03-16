@@ -245,7 +245,7 @@ Every tool response is wrapped in a structured envelope enriched by forensic-kno
   "tool": "run_command",
   "data": {"output": {"rows": ["..."], "total_rows": 42}},
   "data_provenance": "tool_output_may_contain_untrusted_evidence",
-  "evidence_id": "sift-steve-20260220-001",
+  "audit_id": "sift-steve-20260220-001",
   "examiner": "steve",
   "caveats": [
     "Amcache entries indicate file presence, not execution"
@@ -264,7 +264,7 @@ Every tool response is wrapped in a structured envelope enriched by forensic-kno
 
 | Field | Description |
 |-------|-------------|
-| `evidence_id` | Unique ID for referencing in findings (`sift-{examiner}-YYYYMMDD-NNN`) |
+| `audit_id` | Unique ID for referencing in findings (`sift-{examiner}-YYYYMMDD-NNN`) |
 | `caveats` | Tool-specific limitations from FK |
 | `advisories` | What the artifact does NOT prove, common misinterpretations |
 | `corroboration` | Suggested cross-references grouped by purpose |
@@ -285,7 +285,7 @@ Additional protections:
 
 ## Forensic Catalog (Enrichment)
 
-Tools listed in YAML catalog files get enriched responses with forensic-knowledge data (caveats, corroboration suggestions, field meanings, discipline reminders). Uncataloged tools execute with basic response envelopes (evidence_id, audit, discipline reminder).
+Tools listed in YAML catalog files get enriched responses with forensic-knowledge data (caveats, corroboration suggestions, field meanings, discipline reminders). Uncataloged tools execute with basic response envelopes (audit_id, audit, discipline reminder).
 
 | File | Tools |
 |------|-------|

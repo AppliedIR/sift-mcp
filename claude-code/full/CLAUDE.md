@@ -149,7 +149,7 @@ utilities. Only mkfs, shutdown, kill, and raw socket tools
 (nc/ncat) are blocked. Cataloged tools get FK-enriched responses.
 Always pass save_output: true for large outputs.
 
-- `run_command` — execute forensic tool, returns output + evidence_id
+- `run_command` — execute forensic tool, returns output + audit_id
 - `list_available_tools` — tools on this system with availability
 - `suggest_tools` — recommend tools for an artifact type
 - `get_tool_help` — usage info, flags, caveats for a tool

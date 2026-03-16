@@ -13,7 +13,7 @@ from windows_triage.tool_metadata import DEFAULT_METADATA, TOOL_METADATA
 class TestAuditWriter:
     """AuditWriter class tests."""
 
-    def test_evidence_id_format(self, monkeypatch):
+    def test_audit_id_format(self, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         writer = AuditWriter("windows-triage-mcp")
         eid = writer.log(
@@ -94,7 +94,7 @@ class TestAuditWriter:
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         writer = AuditWriter("windows-triage-mcp")
         eid = writer.log(tool="check_file", params={}, result_summary={})
-        # No case active = no audit entry, no evidence_id
+        # No case active = no audit entry, no audit_id
         assert eid is None
         assert not (tmp_path / "examiners").exists()
 
@@ -195,17 +195,17 @@ class TestWrapResponse:
         wrapped = server._wrap_response(
             "check_file", {"path": "C:\\Windows\\System32\\cmd.exe"}, result
         )
-        assert "evidence_id" in wrapped
+        assert "audit_id" in wrapped
         assert "examiner" in wrapped
         assert "caveats" in wrapped
         assert "interpretation_constraint" in wrapped
         assert wrapped["verdict"] == "EXPECTED"
 
-    def test_error_result_gets_evidence_id_but_no_caveats(self):
+    def test_error_result_gets_audit_id_but_no_caveats(self):
         server = self._make_server_instance()
         result = {"error": "Unknown tool: bad"}
         wrapped = server._wrap_response("bad", {}, result)
-        assert "evidence_id" in wrapped
+        assert "audit_id" in wrapped
         assert "examiner" in wrapped
         assert "caveats" not in wrapped
 

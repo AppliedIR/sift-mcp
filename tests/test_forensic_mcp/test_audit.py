@@ -58,7 +58,7 @@ class TestAuditRoundTrip:
         entries = writer.get_entries()
         assert len(entries) == 1
         assert entries[0]["tool"] == "test_tool"
-        assert entries[0]["evidence_id"] == eid
+        assert entries[0]["audit_id"] == eid
         assert entries[0]["params"] == {"key": "val"}
 
 

@@ -1,6 +1,6 @@
 template:
   title: "string — concise description of the evidence"
-  evidence_ids: ["list of evidence_id strings from tool calls"]
+  audit_ids: ["list of audit_id strings from tool calls"]
   artifacts:
     - source: "string — file path of the evidence artifact"
       extraction: "string — full command used to extract this data"

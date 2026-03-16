@@ -13,7 +13,7 @@ from opencti_mcp.tool_metadata import DEFAULT_METADATA, TOOL_METADATA
 class TestAuditWriter:
     """AuditWriter class tests."""
 
-    def test_evidence_id_format(self, monkeypatch):
+    def test_audit_id_format(self, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         writer = AuditWriter("opencti-mcp")
         eid = writer.log(
@@ -208,18 +208,18 @@ class TestWrapResponse:
         wrapped = server._wrap_response(
             "search_threat_actor", {"query": "APT29"}, result
         )
-        assert "evidence_id" in wrapped
-        assert wrapped["evidence_id"].startswith("opencti-")
+        assert "audit_id" in wrapped
+        assert wrapped["audit_id"].startswith("opencti-")
         assert "examiner" in wrapped
         assert "caveats" in wrapped
         assert "interpretation_constraint" in wrapped
         assert wrapped["results"] == []
 
-    def test_error_result_gets_evidence_id_but_no_caveats(self):
+    def test_error_result_gets_audit_id_but_no_caveats(self):
         server = self._make_server_instance()
         result = {"error": "validation_error", "message": "bad input"}
         wrapped = server._wrap_response("bad", {}, result)
-        assert "evidence_id" in wrapped
+        assert "audit_id" in wrapped
         assert "examiner" in wrapped
         assert "caveats" not in wrapped
 

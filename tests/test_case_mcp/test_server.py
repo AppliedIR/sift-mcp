@@ -425,7 +425,7 @@ class TestLogExternalAction:
             )
         )
         assert result["status"] == "logged"
-        assert result["evidence_id"].startswith("case-")
+        assert result["audit_id"].startswith("case-")
         assert "not independently verified" in result["note"]
 
     def test_audit_entry_source(self, case_dir):

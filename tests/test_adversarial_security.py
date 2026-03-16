@@ -22,17 +22,17 @@ import pytest
 # ============================================================
 
 
-class TestEvidenceIdValidation:
-    """Probe _EVIDENCE_ID_PATTERN with adversarial inputs."""
+class TestAuditIdValidation:
+    """Probe _AUDIT_ID_PATTERN with adversarial inputs."""
 
     @pytest.fixture
     def pattern(self):
-        from forensic_mcp.case.manager import _EVIDENCE_ID_PATTERN
+        from forensic_mcp.case.manager import _AUDIT_ID_PATTERN
 
-        return _EVIDENCE_ID_PATTERN
+        return _AUDIT_ID_PATTERN
 
     def test_valid_ids(self, pattern):
-        """Baseline: normal evidence IDs accepted."""
+        """Baseline: normal audit IDs accepted."""
         assert pattern.match("sift-alice-20260225-001")
         assert pattern.match("forensic-bob-20260225-123")
         assert pattern.match("windowstriage-testuser-20260225-9999")
@@ -178,29 +178,29 @@ class TestProvenanceGate:
         }
 
     def test_gate_rejects_no_evidence(self, manager):
-        """Finding with no evidence_ids and no supporting_commands must be rejected."""
+        """Finding with no audit_ids and no supporting_commands must be rejected."""
         result = manager.record_finding(self._valid_finding())
         assert result["status"] == "REJECTED"
         assert "provenance" in result["error"].lower()
 
     def test_gate_rejects_empty_evidence_list(self, manager):
-        """Empty evidence_ids list must trigger NONE provenance."""
-        finding = {**self._valid_finding(), "evidence_ids": []}
+        """Empty audit_ids list must trigger NONE provenance."""
+        finding = {**self._valid_finding(), "audit_ids": []}
         result = manager.record_finding(finding)
         assert result["status"] == "REJECTED"
 
-    def test_gate_rejects_fake_evidence_ids(self, manager):
+    def test_gate_rejects_fake_audit_ids(self, manager):
         """Fabricated evidence IDs not in audit trail must be classified NONE."""
         finding = {
             **self._valid_finding(),
-            "evidence_ids": ["sift-tester-20260225-999"],
+            "audit_ids": ["sift-tester-20260225-999"],
         }
         result = manager.record_finding(finding)
         assert result["status"] == "REJECTED"
 
-    def test_gate_rejects_malformed_evidence_ids(self, manager):
+    def test_gate_rejects_malformed_audit_ids(self, manager):
         """Malformed evidence IDs bypass format check -> NONE."""
-        finding = {**self._valid_finding(), "evidence_ids": ["not-a-valid-id"]}
+        finding = {**self._valid_finding(), "audit_ids": ["not-a-valid-id"]}
         result = manager.record_finding(finding)
         assert result["status"] == "REJECTED"
 
@@ -311,7 +311,7 @@ class TestFieldAllowlist:
 
         # Create fake audit entry so evidence ID is found
         audit_entry = {
-            "evidence_id": "sift-tester-20260225-001",
+            "audit_id": "sift-tester-20260225-001",
             "tool": "test_tool",
             "mcp": "sift-mcp",
         }
@@ -335,7 +335,7 @@ class TestFieldAllowlist:
             "confidence": "low",
             "confidence_justification": "Evidence supports this",
             "type": "finding",
-            "evidence_ids": ["sift-tester-20260225-001"],
+            "audit_ids": ["sift-tester-20260225-001"],
         }
 
     def test_injected_id_stripped(self, manager):

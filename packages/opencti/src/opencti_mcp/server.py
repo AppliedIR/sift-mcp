@@ -397,7 +397,7 @@ class OpenCTIMCPServer:
 
         @self.server.call_tool()
         async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-            evidence_id = self._audit._next_evidence_id()
+            audit_id = self._audit._next_audit_id()
             start = time.monotonic()
             try:
                 result = await self._dispatch_tool(name, arguments)
@@ -406,7 +406,7 @@ class OpenCTIMCPServer:
                     name,
                     arguments,
                     result,
-                    evidence_id=evidence_id,
+                    audit_id=audit_id,
                     elapsed_ms=elapsed_ms,
                 )
                 return [
@@ -430,7 +430,7 @@ class OpenCTIMCPServer:
                     name,
                     arguments,
                     error_result,
-                    evidence_id=evidence_id,
+                    audit_id=audit_id,
                     elapsed_ms=elapsed_ms,
                 )
                 return [TextContent(type="text", text=json.dumps(error_result))]
@@ -454,7 +454,7 @@ class OpenCTIMCPServer:
                     name,
                     arguments,
                     error_result,
-                    evidence_id=evidence_id,
+                    audit_id=audit_id,
                     elapsed_ms=elapsed_ms,
                 )
                 return [TextContent(type="text", text=json.dumps(error_result))]
@@ -470,7 +470,7 @@ class OpenCTIMCPServer:
                     name,
                     arguments,
                     error_result,
-                    evidence_id=evidence_id,
+                    audit_id=audit_id,
                     elapsed_ms=elapsed_ms,
                 )
                 return [TextContent(type="text", text=json.dumps(error_result))]
@@ -493,7 +493,7 @@ class OpenCTIMCPServer:
                     name,
                     arguments,
                     error_result,
-                    evidence_id=evidence_id,
+                    audit_id=audit_id,
                     elapsed_ms=elapsed_ms,
                 )
                 return [TextContent(type="text", text=json.dumps(error_result))]
@@ -512,7 +512,7 @@ class OpenCTIMCPServer:
                     name,
                     arguments,
                     error_result,
-                    evidence_id=evidence_id,
+                    audit_id=audit_id,
                     elapsed_ms=elapsed_ms,
                 )
                 return [TextContent(type="text", text=json.dumps(error_result))]
@@ -575,22 +575,22 @@ class OpenCTIMCPServer:
         tool_name: str,
         arguments: dict[str, Any],
         result: dict[str, Any],
-        evidence_id: str | None = None,
+        audit_id: str | None = None,
         elapsed_ms: float | None = None,
     ) -> dict[str, Any]:
         """Wrap tool result with evidence ID, caveats, and audit trail.
 
-        Always generates evidence_id and writes audit -- including for errors.
+        Always generates audit_id and writes audit -- including for errors.
         """
         summary = result if "error" not in result else {"error": result["error"]}
-        evidence_id = self._audit.log(
+        audit_id = self._audit.log(
             tool=tool_name,
             params=arguments,
             result_summary=summary,
-            evidence_id=evidence_id,
+            audit_id=audit_id,
             elapsed_ms=elapsed_ms,
         )
-        if evidence_id is None:
+        if audit_id is None:
             result["warning"] = "Audit write failed — action not recorded"
         # For search_entity, resolve metadata by the underlying entity type
         meta_key = tool_name
@@ -618,7 +618,7 @@ class OpenCTIMCPServer:
             meta_key = _type_to_meta_key.get(entity_type, tool_name)
         meta = TOOL_METADATA.get(meta_key, DEFAULT_METADATA)
 
-        result["evidence_id"] = evidence_id
+        result["audit_id"] = audit_id
         result["examiner"] = resolve_examiner()
         if "error" not in result:
             result["caveats"] = meta["caveats"]

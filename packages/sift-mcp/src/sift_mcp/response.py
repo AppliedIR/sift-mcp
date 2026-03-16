@@ -25,9 +25,9 @@ DISCIPLINE_REMINDERS = [
     "Absence of evidence ≠ evidence of absence — record the gap explicitly, check if logs were cleared or never enabled",
     "Correlation ≠ causation — look for a mechanism connecting events, consider coincidence and common causes",
     "Benign until proven malicious — check baseline expectations first, require positive evidence of malice",
-    "Show evidence for every claim — every sentence in a finding must trace back to a specific evidence_id",
+    "Show evidence for every claim — every sentence in a finding must trace back to a specific audit_id",
     "Stop at HITL checkpoints — stage as DRAFT and tell the examiner before: attribution, root cause, exclusion, scope",
-    "Query tools before conclusions — run the relevant tool first, cite the evidence_id, never guess when you can check",
+    "Query tools before conclusions — run the relevant tool first, cite the audit_id, never guess when you can check",
     "UNKNOWN from triage is neutral — investigate further with other tools, do not escalate based on UNKNOWN alone",
     "Verify field meanings — cross-check values against documentation, flag anomalies, do not assume field semantics",
     "Consider alternatives — after forming a hypothesis, search for contradicting evidence before corroborating evidence",
@@ -46,7 +46,7 @@ def build_response(
     tool_name: str,
     success: bool,
     data: Any,
-    evidence_id: str,
+    audit_id: str,
     output_format: str = "text",
     elapsed_seconds: float | None = None,
     exit_code: int | None = None,
@@ -62,7 +62,7 @@ def build_response(
         tool_name: The MCP tool name (e.g., "run_amcacheparser")
         success: Whether execution succeeded
         data: Parsed tool output
-        evidence_id: Audit evidence ID
+        audit_id: Audit evidence ID
         output_format: Format of data (text, parsed_csv, json, etc.)
         elapsed_seconds: Execution time
         exit_code: Process exit code
@@ -78,7 +78,7 @@ def build_response(
         "data": data,
         "data_provenance": "tool_output_may_contain_untrusted_evidence",
         "output_format": output_format,
-        "evidence_id": evidence_id,
+        "audit_id": audit_id,
         "examiner": resolve_examiner(),
     }
 

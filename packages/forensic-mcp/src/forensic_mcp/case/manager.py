@@ -63,8 +63,8 @@ def _protected_write(path: Path, content: str) -> None:
 CASES_DIR_ENV = "AIIR_CASES_DIR"
 DEFAULT_CASES_DIR = str(Path.home() / "cases")
 
-# Evidence ID format: prefix-examiner-YYYYMMDD-NNN (all lowercase alphanumeric + hyphens)
-_EVIDENCE_ID_PATTERN = re.compile(r"^[a-z]+-[a-z0-9]+-[0-9]{8}-[0-9]{3,}\Z")
+# Audit ID format: prefix-examiner-YYYYMMDD-NNN (all lowercase alphanumeric + hyphens)
+_AUDIT_ID_PATTERN = re.compile(r"^[a-z]+-[a-z0-9]+-[0-9]{8}-[0-9]{3,}\Z")
 
 # Allowlist: only these fields pass through from user-supplied finding data
 _ALLOWED_FINDING_FIELDS = {
@@ -74,7 +74,7 @@ _ALLOWED_FINDING_FIELDS = {
     "confidence",
     "confidence_justification",
     "type",
-    "evidence_ids",
+    "audit_ids",
     "mitre_ids",
     "iocs",
     "event_type",
@@ -338,7 +338,7 @@ class CaseManager:
             examiner_override: Override examiner identity.
             supporting_commands: List of shell commands that produced evidence.
                 Each dict must have command, output_excerpt, purpose.
-            audit: AuditWriter instance (needed for shell evidence ID generation).
+            audit: AuditWriter instance (needed for shell audit ID generation).
         """
         case_dir = self._require_active_case()
 
@@ -369,8 +369,8 @@ class CaseManager:
         # Allowlist: only accepted fields pass through from user input
         sanitized = {k: v for k, v in finding.items() if k in _ALLOWED_FINDING_FIELDS}
 
-        # Process supporting_commands — generate shell evidence IDs
-        shell_evidence_ids: list[str] = []
+        # Process supporting_commands — generate shell audit IDs
+        shell_audit_ids: list[str] = []
         validated_commands: list[dict] = []
         audit_warnings: list[str] = []
         if supporting_commands:
@@ -387,7 +387,7 @@ class CaseManager:
                     output_excerpt = output_excerpt[:2000]
                 shell_seq = self._next_shell_seq(case_dir, exam, today)
                 shell_eid = f"shell-{exam}-{today}-{shell_seq:03d}"
-                shell_evidence_ids.append(shell_eid)
+                shell_audit_ids.append(shell_eid)
                 validated_cmd = {
                     "command": command,
                     "output_excerpt": output_excerpt,
@@ -401,7 +401,7 @@ class CaseManager:
                         params={"command": command, "purpose": purpose},
                         result_summary={"output_excerpt": output_excerpt[:200]},
                         source="shell_self_report",
-                        evidence_id=shell_eid,
+                        audit_id=shell_eid,
                     )
                     if logged_id is None:
                         audit_warnings.append(
@@ -448,13 +448,13 @@ class CaseManager:
             else 0
         )
 
-        # Extend evidence_ids with shell evidence IDs
-        evidence_ids = list(sanitized.get("evidence_ids", []))
-        evidence_ids.extend(shell_evidence_ids)
-        sanitized["evidence_ids"] = evidence_ids
+        # Extend audit_ids with shell audit IDs
+        audit_ids = list(sanitized.get("audit_ids", []))
+        audit_ids.extend(shell_audit_ids)
+        sanitized["audit_ids"] = audit_ids
 
         # Classify provenance
-        provenance = self._classify_provenance(evidence_ids, case_dir)
+        provenance = self._classify_provenance(audit_ids, case_dir)
 
         # Hard gate: reject if all NONE and no supporting_commands
         if provenance["summary"] == "NONE" and not validated_commands:
@@ -462,7 +462,7 @@ class CaseManager:
                 "status": "REJECTED",
                 "error": (
                     "Finding rejected: no evidence trail. Every finding needs provenance. "
-                    "Options: (1) Pass evidence_ids from MCP tool responses. "
+                    "Options: (1) Pass audit_ids from MCP tool responses. "
                     "(2) Pass supporting_commands as a SEPARATE PARAMETER (not inside the finding dict) "
                     "with command, purpose, and output_excerpt for each shell command used. "
                     "(3) For analytical findings without tool evidence, use "
@@ -517,7 +517,7 @@ class CaseManager:
         return result
 
     def _next_shell_seq(self, case_dir: Path, examiner: str, today: str) -> int:
-        """Find next sequence number for shell-{examiner}-{today}-NNN evidence IDs."""
+        """Find next sequence number for shell-{examiner}-{today}-NNN audit IDs."""
         audit_dir = case_dir / "audit"
         prefix = f"shell-{examiner}-{today}-"
         max_num = 0
@@ -531,7 +531,7 @@ class CaseManager:
                                 continue
                             try:
                                 entry = json.loads(line)
-                                eid = entry.get("evidence_id", "")
+                                eid = entry.get("audit_id", "")
                                 if eid.startswith(prefix):
                                     try:
                                         num = int(eid[len(prefix) :])
@@ -817,10 +817,10 @@ class CaseManager:
     # Provenance tier priority: MCP > HOOK > SHELL
     _PROVENANCE_TIERS = ("MCP", "HOOK", "SHELL")
 
-    def _classify_provenance(self, evidence_ids: list[str], case_dir: Path) -> dict:
-        """Classify evidence IDs by provenance tier.
+    def _classify_provenance(self, audit_ids: list[str], case_dir: Path) -> dict:
+        """Classify audit IDs by provenance tier.
 
-        Scans audit/*.jsonl to determine where each evidence_id came from:
+        Scans audit/*.jsonl to determine where each audit_id came from:
         - MCP: found in any audit file except claude-code.jsonl
         - HOOK: found in claude-code.jsonl
         - NONE: not found in any audit file or malformed ID
@@ -832,7 +832,7 @@ class CaseManager:
         """
         audit_dir = case_dir / "audit"
 
-        # Build evidence_id -> source lookup from audit files
+        # Build audit_id -> source lookup from audit files
         eid_source: dict[str, str] = {}
         if audit_dir.is_dir():
             for jsonl_file in audit_dir.glob("*.jsonl"):
@@ -845,7 +845,7 @@ class CaseManager:
                                 continue
                             try:
                                 entry = json.loads(line)
-                                eid = entry.get("evidence_id", "")
+                                eid = entry.get("audit_id", "")
                                 if not eid:
                                     continue
                                 existing = eid_source.get(eid)
@@ -859,16 +859,16 @@ class CaseManager:
                 except OSError:
                     continue
 
-        # Classify each evidence_id
+        # Classify each audit_id
         result: dict[str, list[str]] = {
             "mcp": [],
             "hook": [],
             "shell": [],
             "none": [],
         }
-        for eid in evidence_ids:
-            # Reject malformed evidence IDs (path traversal, homoglyphs, injection)
-            if not _EVIDENCE_ID_PATTERN.match(eid):
+        for eid in audit_ids:
+            # Reject malformed audit IDs (path traversal, homoglyphs, injection)
+            if not _AUDIT_ID_PATTERN.match(eid):
                 result["none"].append(eid)
                 continue
             source = eid_source.get(eid)

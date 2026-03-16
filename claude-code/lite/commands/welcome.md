@@ -120,7 +120,7 @@ cases/<name>/audit/
 ```
 
 **JSONL format:** Each line is a JSON object with timestamp, command,
-evidence_id, output hash, and session ID. The audit trail is automatic
+audit_id, output hash, and session ID. The audit trail is automatic
 and tamper-evident (SHA-256 hashes of command + output).
 
 ---

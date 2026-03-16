@@ -11,7 +11,7 @@ from __future__ import annotations
 STRIPPED_FINDING_FIELDS = {
     "provenance",
     "content_hash",
-    "evidence_ids",
+    "audit_ids",
     "staged",
     "modified_at",
     "approved_by",

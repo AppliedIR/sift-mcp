@@ -134,7 +134,7 @@ class TestDiscipline:
         conf = loader.get_confidence_definitions()
         assert "HIGH" in conf
         assert "SPECULATIVE" in conf
-        assert conf["HIGH"]["min_evidence_ids"] == 2
+        assert conf["HIGH"]["min_audit_ids"] == 2
 
     def test_get_anti_patterns(self):
         patterns = loader.get_anti_patterns()
@@ -156,13 +156,13 @@ class TestDiscipline:
     def test_get_evidence_template(self):
         tmpl = loader.get_evidence_template()
         assert "title" in tmpl
-        assert "evidence_ids" in tmpl
+        assert "audit_ids" in tmpl
         assert "confidence" in tmpl
 
     def test_get_checkpoint_attribution(self):
         cp = loader.get_checkpoint("attribution")
         assert cp is not None
-        assert cp["min_evidence_ids"] == 3
+        assert cp["min_audit_ids"] == 3
         assert cp["human_approval"] is True
 
     def test_get_checkpoint_missing(self):

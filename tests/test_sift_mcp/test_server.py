@@ -88,7 +88,7 @@ class TestRunCommandEnvelope:
             tool_name="run_command",
             success=True,
             data={"stdout": "ok"},
-            evidence_id="sift-test-20260223-001",
+            audit_id="sift-test-20260223-001",
             extractions=extractions,
         )
         assert response["extractions"] == extractions
@@ -102,7 +102,7 @@ class TestRunCommandEnvelope:
             tool_name="run_command",
             success=True,
             data={"stdout": "ok"},
-            evidence_id="sift-test-20260223-001",
+            audit_id="sift-test-20260223-001",
         )
         assert "extractions" not in response
 

@@ -743,17 +743,23 @@ async def get_evidence(request: Request) -> JSONResponse:
     raw = _load_json(case_dir / "evidence.json")
     evidence = raw.get("files", []) if isinstance(raw, dict) else (raw or [])
 
-    # Build referenced_by reverse index from findings
+    # Build referenced_by reverse index: evidence path → finding IDs
     findings = _load_json(case_dir / "findings.json") or []
     ref_index: dict[str, list[str]] = {}
     for f in findings:
-        for eid in f.get("evidence_ids", []):
-            ref_index.setdefault(eid, []).append(f.get("id", ""))
+        fid = f.get("id", "")
+        if not fid:
+            continue
+        # Link via artifact source paths
+        for art in f.get("artifacts", []):
+            src = art.get("source", "")
+            if src:
+                ref_index.setdefault(src, []).append(fid)
 
     # Enrich evidence items
     for item in evidence:
-        eid = item.get("evidence_id", item.get("id", ""))
-        item["referenced_by"] = ref_index.get(eid, [])
+        path = item.get("path", "")
+        item["referenced_by"] = ref_index.get(path, [])
 
     return JSONResponse(evidence)
 
@@ -764,18 +770,18 @@ async def get_audit_for_finding(request: Request) -> JSONResponse:
         return _no_case_response()
     finding_id = request.path_params["finding_id"]
 
-    # Get the finding's evidence_ids
+    # Get the finding's audit_ids
     findings = _load_json(case_dir / "findings.json") or []
-    evidence_ids: set[str] = set()
+    audit_ids: set[str] = set()
     for f in findings:
         if f.get("id") == finding_id:
-            evidence_ids = set(f.get("evidence_ids", []))
+            audit_ids = set(f.get("audit_ids", []))
             break
 
-    if not evidence_ids:
+    if not audit_ids:
         return JSONResponse([])
 
-    # Scan audit/*.jsonl for matching evidence_ids
+    # Scan audit/*.jsonl for matching audit_ids
     audit_dir = case_dir / "audit"
     if not audit_dir.is_dir():
         return JSONResponse([])
@@ -784,8 +790,8 @@ async def get_audit_for_finding(request: Request) -> JSONResponse:
     for audit_file in sorted(audit_dir.glob("*.jsonl")):
         backend = audit_file.stem
         for entry in _load_jsonl(audit_file):
-            entry_eid = entry.get("evidence_id", "")
-            if entry_eid in evidence_ids:
+            entry_eid = entry.get("audit_id", "")
+            if entry_eid in audit_ids:
                 entry["_backend"] = backend
                 matches.append(entry)
 

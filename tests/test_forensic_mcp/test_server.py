@@ -47,17 +47,17 @@ def _seed_audit(audit_dir):
 
     entries = [
         {
-            "evidence_id": "ev-tester-20260225-001",
+            "audit_id": "ev-tester-20260225-001",
             "tool": "test",
             "ts": "2026-01-01T00:00:00Z",
         },
         {
-            "evidence_id": "ev-tester-20260225-002",
+            "audit_id": "ev-tester-20260225-002",
             "tool": "test",
             "ts": "2026-01-01T00:00:00Z",
         },
         {
-            "evidence_id": "ev-tester-20260225-003",
+            "audit_id": "ev-tester-20260225-003",
             "tool": "test",
             "ts": "2026-01-01T00:00:00Z",
         },
@@ -251,7 +251,7 @@ class TestResourceContent:
         )
         for key in (
             "title",
-            "evidence_ids",
+            "audit_ids",
             "observation",
             "interpretation",
             "confidence",
@@ -276,7 +276,7 @@ class TestResourceContent:
         data = json.loads(
             result[0].content if hasattr(result[0], "content") else result[0].text
         )
-        assert data["min_evidence_ids"] == 3
+        assert data["min_audit_ids"] == 3
         assert data["human_approval"] is True
 
 
@@ -304,7 +304,7 @@ class TestDisciplineTools:
     async def test_validate_finding_valid(self, server):
         finding = {
             "title": "Test",
-            "evidence_ids": ["ev-tester-20260225-001"],
+            "audit_ids": ["ev-tester-20260225-001"],
             "observation": "obs",
             "interpretation": "interp",
             "confidence": "MEDIUM",
@@ -352,7 +352,7 @@ class TestDisciplineTools:
         )
         text = result[0].text
         data = json.loads(text)
-        assert data["min_evidence_ids"] == 3
+        assert data["min_audit_ids"] == 3
         assert data["human_approval"] is True
 
     @pytest.mark.asyncio
@@ -388,7 +388,7 @@ class TestDisciplineTools:
         data = json.loads(text)
         for key in (
             "title",
-            "evidence_ids",
+            "audit_ids",
             "observation",
             "interpretation",
             "confidence",
@@ -444,7 +444,7 @@ class TestEnhancedResponses:
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         finding = {
             "title": "Suspicious binary found",
-            "evidence_ids": ["ev-tester-20260225-001", "ev-tester-20260225-002"],
+            "audit_ids": ["ev-tester-20260225-001", "ev-tester-20260225-002"],
             "observation": "Binary found in temp directory",
             "interpretation": "Possible malware staging",
             "confidence": "HIGH",
@@ -470,7 +470,7 @@ class TestEnhancedResponses:
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         finding = {
             "title": "APT29 attribution",
-            "evidence_ids": [
+            "audit_ids": [
                 "ev-tester-20260225-001",
                 "ev-tester-20260225-002",
                 "ev-tester-20260225-003",
@@ -516,7 +516,7 @@ class TestGroundingInResponse:
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         finding = {
             "title": "Suspicious binary",
-            "evidence_ids": ["ev-tester-20260225-001", "ev-tester-20260225-002"],
+            "audit_ids": ["ev-tester-20260225-001", "ev-tester-20260225-002"],
             "observation": "Binary in temp",
             "interpretation": "Possible malware",
             "confidence": "MEDIUM",

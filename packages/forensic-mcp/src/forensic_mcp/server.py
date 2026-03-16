@@ -70,7 +70,7 @@ def _build_finding_considerations(finding: dict) -> list[str]:
     confidence_defs = loader.get_confidence_definitions()
     if confidence in confidence_defs:
         cd = confidence_defs[confidence]
-        min_ev = cd.get("min_evidence_ids", 0)
+        min_ev = cd.get("min_audit_ids", 0)
         if min_ev >= 2:
             considerations.append(
                 f"{confidence} confidence requires {min_ev}+ independent corroborating sources "
@@ -90,9 +90,9 @@ def _build_validation_guidance(errors: list[str]) -> list[str]:
     """Enrich validation errors with rule citations."""
     guidance: list[str] = []
     for err in errors:
-        if "evidence_id" in err.lower():
+        if "audit_id" in err.lower():
             guidance.append(
-                "FD-001: Every claim must reference at least one evidence_id from an actual tool call"
+                "FD-001: Every claim must reference at least one audit_id from an actual tool call"
             )
         if "confidence_justification" in err.lower():
             guidance.append(
@@ -152,7 +152,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     ) -> dict:
         """Stage finding as DRAFT for human review.
 
-        Findings require an evidence trail (provenance). Provide evidence_ids from
+        Findings require an evidence trail (provenance). Provide audit_ids from
         MCP tool responses, or pass supporting_commands for shell-based evidence,
         or both. Findings with no evidence trail are rejected.
 
@@ -163,7 +163,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - confidence: SPECULATIVE, LOW, MEDIUM, or HIGH
         - confidence_justification (str): why this confidence level
         - type: finding, conclusion, attribution, or exclusion
-        - evidence_ids (list[str]): IDs from MCP tool responses. Use [] if providing
+        - audit_ids (list[str]): IDs from MCP tool responses. Use [] if providing
           supporting_commands only.
 
         Optional: mitre_ids, iocs, event_type, artifact_ref, related_findings
@@ -295,7 +295,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
 
         Each finding dict contains:
         - id, title, observation, interpretation, confidence, confidence_justification, type
-        - evidence_ids: list of evidence trail IDs
+        - audit_ids: list of evidence trail IDs
         - status: DRAFT, APPROVED, or REJECTED
         - provenance: MCP, HOOK, SHELL, or NONE (string — how evidence was obtained)
         - content_hash: SHA-256 for integrity verification
@@ -509,17 +509,17 @@ def _register_discipline_resources(server: FastMCP) -> None:
                 "interpretation",
                 "confidence",
                 "type",
-                "evidence_ids",
+                "audit_ids",
                 "confidence_justification",
             ],
             "valid_types": sorted(VALID_TYPES),
             "confidence_levels": {
-                level: {"min_evidence_ids": defs.get("min_evidence_ids", 1)}
+                level: {"min_audit_ids": defs.get("min_audit_ids", 1)}
                 for level, defs in confidence_defs.items()
             },
             "rules": [
-                "FD-001: Every claim must reference at least one evidence_id from an actual tool call",
-                "FD-003: Attribution requires at least 3 evidence_ids from multiple corroborating TTPs",
+                "FD-001: Every claim must reference at least one audit_id from an actual tool call",
+                "FD-003: Attribution requires at least 3 audit_ids from multiple corroborating TTPs",
                 "FD-005: Confidence must be justified with specific evidence citations",
             ],
         }

@@ -471,15 +471,15 @@ def create_server() -> FastMCP:
         command: str, output_summary: str, purpose: str, analyst_override: str = ""
     ) -> dict:
         """Record a tool execution performed outside this MCP server
-        (e.g., via Bash or another backend). Response includes an evidence_id
-        field that can be used in record_finding's evidence_ids list. Without
+        (e.g., via Bash or another backend). Response includes an audit_id
+        field that can be used in record_finding's audit_ids list. Without
         this record, the action has no audit entry and findings cannot
         reference it."""
         _validate_str_length(command, "command", _MAX_TEXT)
         _validate_str_length(output_summary, "output_summary", _MAX_TEXT)
         _validate_str_length(purpose, "purpose", _MAX_TEXT)
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
-        evidence_id = audit.log(
+        audit_id = audit.log(
             tool="log_external_action",
             params={
                 "command": command,
@@ -492,10 +492,10 @@ def create_server() -> FastMCP:
         )
         result = {
             "status": "logged",
-            "evidence_id": evidence_id,
+            "audit_id": audit_id,
             "note": "orchestrator_voluntary -- not independently verified",
         }
-        if evidence_id is None:
+        if audit_id is None:
             result["warning"] = "Audit write failed — action not recorded"
         return result
 

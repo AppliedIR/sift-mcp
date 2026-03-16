@@ -75,7 +75,7 @@ class TestWithActiveCase:
         entry = json.loads(audit_file.read_text().strip())
         assert entry["source"] == "claude-code-hook"
         assert entry["command"] == "ls -la"
-        assert entry["evidence_id"].startswith("hook-tester-")
+        assert entry["audit_id"].startswith("hook-tester-")
         assert entry["tool_use_id"] == "tu_123"
         assert entry["session_id"] == "sess_456"
 
@@ -88,7 +88,7 @@ class TestWithActiveCase:
         assert result.returncode == 0
         assert (case_dir / "audit" / "claude-code.jsonl").exists()
 
-    def test_evidence_id_sequencing(self, tmp_path):
+    def test_audit_id_sequencing(self, tmp_path):
         case_dir = _make_active_case(tmp_path)
         env = _make_env(tmp_path)
         # Run twice
@@ -100,8 +100,8 @@ class TestWithActiveCase:
         e1 = json.loads(lines[0])
         e2 = json.loads(lines[1])
         # Second should have higher sequence
-        assert e1["evidence_id"].endswith("-001")
-        assert e2["evidence_id"].endswith("-002")
+        assert e1["audit_id"].endswith("-001")
+        assert e2["audit_id"].endswith("-002")
 
     def test_output_truncation(self, tmp_path):
         case_dir = _make_active_case(tmp_path)

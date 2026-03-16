@@ -57,7 +57,7 @@ def audit(monkeypatch):
 def _valid_finding(**overrides):
     base = {
         "title": "Test finding",
-        "evidence_ids": ["ev-tester-20260225-001"],
+        "audit_ids": ["ev-tester-20260225-001"],
         "observation": "Observed something",
         "interpretation": "Interpreted something",
         "confidence": "MEDIUM",
@@ -72,13 +72,11 @@ def _valid_finding(**overrides):
 
 
 class TestClassifyProvenance:
-    def test_mcp_evidence_ids(self, manager, active_case):
+    def test_mcp_audit_ids(self, manager, active_case):
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "sift-mcp.jsonl").write_text(
-            json.dumps(
-                {"evidence_id": "sift-tester-20260225-001", "tool": "run_command"}
-            )
+            json.dumps({"audit_id": "sift-tester-20260225-001", "tool": "run_command"})
             + "\n"
         )
         result = manager._classify_provenance(["sift-tester-20260225-001"], case_dir)
@@ -86,13 +84,13 @@ class TestClassifyProvenance:
         assert "sift-tester-20260225-001" in result["mcp"]
         assert len(result["none"]) == 0
 
-    def test_hook_evidence_ids(self, manager, active_case):
+    def test_hook_audit_ids(self, manager, active_case):
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "claude-code.jsonl").write_text(
             json.dumps(
                 {
-                    "evidence_id": "hook-tester-20260225-001",
+                    "audit_id": "hook-tester-20260225-001",
                     "source": "claude-code-hook",
                 }
             )
@@ -116,7 +114,7 @@ class TestClassifyProvenance:
         (audit_dir / "forensic-mcp.jsonl").write_text(
             json.dumps(
                 {
-                    "evidence_id": "shell-tester-20260225-001",
+                    "audit_id": "shell-tester-20260225-001",
                     "tool": "supporting_command",
                 }
             )
@@ -126,13 +124,11 @@ class TestClassifyProvenance:
         assert result["summary"] == "MCP"
         assert "shell-tester-20260225-001" in result["mcp"]
 
-    def test_mixed_evidence_ids(self, manager, active_case):
+    def test_mixed_audit_ids(self, manager, active_case):
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "sift-mcp.jsonl").write_text(
-            json.dumps(
-                {"evidence_id": "sift-tester-20260225-099", "tool": "run_command"}
-            )
+            json.dumps({"audit_id": "sift-tester-20260225-099", "tool": "run_command"})
             + "\n"
         )
         result = manager._classify_provenance(
@@ -155,12 +151,10 @@ class TestClassifyProvenance:
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "claude-code.jsonl").write_text(
-            json.dumps({"evidence_id": "dual-tester-20260225-001"}) + "\n"
+            json.dumps({"audit_id": "dual-tester-20260225-001"}) + "\n"
         )
         (audit_dir / "sift-mcp.jsonl").write_text(
-            json.dumps(
-                {"evidence_id": "dual-tester-20260225-001", "tool": "run_command"}
-            )
+            json.dumps({"audit_id": "dual-tester-20260225-001", "tool": "run_command"})
             + "\n"
         )
         result = manager._classify_provenance(["dual-tester-20260225-001"], case_dir)
@@ -172,7 +166,7 @@ class TestClassifyProvenance:
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "sift-mcp.jsonl").write_text(
-            json.dumps({"evidence_id": "sift-tester-20260225-099"}) + "\n"
+            json.dumps({"audit_id": "sift-tester-20260225-099"}) + "\n"
         )
         result = manager._classify_provenance(
             ["sift-tester-20260225-099", "unknown-tester-20260225-001"], case_dir
@@ -201,7 +195,7 @@ class TestRecordFindingProvenance:
         # Shell evidence ID should be in the finding
         case_dir = Path(active_case["path"])
         findings = json.loads((case_dir / "findings.json").read_text())
-        eids = findings[0]["evidence_ids"]
+        eids = findings[0]["audit_ids"]
         shell_eids = [e for e in eids if e.startswith("shell-")]
         assert len(shell_eids) == 1
 
@@ -229,14 +223,14 @@ class TestRecordFindingProvenance:
 
     def test_hard_gate_none_rejected(self, manager, active_case):
         """All NONE + no supporting_commands -> REJECTED."""
-        finding = _valid_finding(evidence_ids=["unknown-tester-20260225-001"])
+        finding = _valid_finding(audit_ids=["unknown-tester-20260225-001"])
         result = manager.record_finding(finding)
         assert result["status"] == "REJECTED"
         assert "no evidence trail" in result["error"]
 
     def test_shell_only_stages_ok(self, manager, active_case, audit):
         """With supporting_commands but no MCP IDs -> STAGED."""
-        finding = _valid_finding(evidence_ids=["unknown-tester-20260225-001"])
+        finding = _valid_finding(audit_ids=["unknown-tester-20260225-001"])
         cmds = [
             {
                 "command": "strings /evidence/file.exe",
@@ -282,12 +276,10 @@ class TestRecordFindingProvenance:
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "sift-mcp.jsonl").write_text(
-            json.dumps(
-                {"evidence_id": "sift-tester-20260225-001", "tool": "run_command"}
-            )
+            json.dumps({"audit_id": "sift-tester-20260225-001", "tool": "run_command"})
             + "\n"
         )
-        finding = _valid_finding(evidence_ids=["sift-tester-20260225-001"])
+        finding = _valid_finding(audit_ids=["sift-tester-20260225-001"])
         result = manager.record_finding(finding)
         assert result["status"] == "STAGED"
 
@@ -296,14 +288,14 @@ class TestRecordFindingProvenance:
     ):
         """User can't inject fake provenance or content_hash."""
         finding = _valid_finding(
-            evidence_ids=["sift-tester-20260225-001"],
+            audit_ids=["sift-tester-20260225-001"],
         )
         finding["provenance"] = "FAKE"
         finding["content_hash"] = "fake_hash"
         case_dir = Path(active_case["path"])
         audit_dir = case_dir / "audit"
         (audit_dir / "sift-mcp.jsonl").write_text(
-            json.dumps({"evidence_id": "sift-tester-20260225-001"}) + "\n"
+            json.dumps({"audit_id": "sift-tester-20260225-001"}) + "\n"
         )
         result = manager.record_finding(finding)
         assert result["status"] == "STAGED"

@@ -89,7 +89,7 @@ def create_server() -> FastMCP:
         from sift_mcp.tools.generic import run_command as _run
 
         start = time.monotonic()
-        evidence_id = audit._next_evidence_id()
+        audit_id = audit._next_audit_id()
 
         try:
             exec_result = _run(
@@ -117,7 +117,7 @@ def create_server() -> FastMCP:
                 tool_name="run_command",
                 success=exec_result["exit_code"] == 0,
                 data=resp_data,
-                evidence_id=evidence_id,
+                audit_id=audit_id,
                 output_format=resp_format,
                 elapsed_seconds=elapsed,
                 exit_code=exec_result["exit_code"],
@@ -145,7 +145,7 @@ def create_server() -> FastMCP:
                     "stdout_bytes": exec_result.get("stdout_total_bytes", 0),
                     "stdout_head": (exec_result.get("stdout") or "")[:500],
                 },
-                evidence_id=evidence_id,
+                audit_id=audit_id,
                 elapsed_ms=elapsed * 1000,
             )
             if logged_id is None:
@@ -158,14 +158,14 @@ def create_server() -> FastMCP:
                 tool_name="run_command",
                 success=False,
                 data=None,
-                evidence_id=evidence_id,
+                audit_id=audit_id,
                 error=str(e),
             )
             logged_id = audit.log(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": str(e)},
-                evidence_id=evidence_id,
+                audit_id=audit_id,
                 elapsed_ms=elapsed * 1000,
             )
             if logged_id is None:
@@ -178,14 +178,14 @@ def create_server() -> FastMCP:
                 tool_name="run_command",
                 success=False,
                 data=None,
-                evidence_id=evidence_id,
+                audit_id=audit_id,
                 error=str(e),
             )
             logged_id = audit.log(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": str(e)},
-                evidence_id=evidence_id,
+                audit_id=audit_id,
                 elapsed_ms=elapsed * 1000,
             )
             if logged_id is None:
@@ -198,14 +198,14 @@ def create_server() -> FastMCP:
                 tool_name="run_command",
                 success=False,
                 data=None,
-                evidence_id=evidence_id,
+                audit_id=audit_id,
                 error=f"Unexpected error: {type(e).__name__}",
             )
             logged_id = audit.log(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": f"{type(e).__name__}: {e}"},
-                evidence_id=evidence_id,
+                audit_id=audit_id,
                 elapsed_ms=elapsed * 1000,
             )
             if logged_id is None:

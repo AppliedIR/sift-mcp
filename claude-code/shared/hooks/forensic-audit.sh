@@ -61,7 +61,7 @@ mkdir -p "$AUDIT_DIR" 2>/dev/null || exit 0
 
 AUDIT_FILE="$AUDIT_DIR/claude-code.jsonl"
 
-# 5. Generate evidence_id with sequence number
+# 5. Generate audit_id with sequence number
 SEQ=1
 if [ -f "$AUDIT_FILE" ]; then
     EXISTING=$(grep -c '"hook-' "$AUDIT_FILE" 2>/dev/null) || EXISTING=0
@@ -98,7 +98,7 @@ entry = {
     'ts': '$TS',
     'source': 'claude-code-hook',
     'tool_use_id': sys.argv[1],
-    'evidence_id': sys.argv[2],
+    'audit_id': sys.argv[2],
     'command': sys.argv[3],
     'output_hash': sys.argv[4],
     'output_excerpt': sys.argv[5][:2000],

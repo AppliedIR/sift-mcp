@@ -95,7 +95,7 @@ class TestAuditWriter:
         assert entry["tool"] == "test_tool"
         assert entry["examiner"] == "tester"
 
-    def test_returns_evidence_id(self, tmp_path, monkeypatch):
+    def test_returns_audit_id(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
@@ -104,7 +104,7 @@ class TestAuditWriter:
         assert eid.startswith("test-tester-")
         assert eid.endswith("-001")
 
-    def test_sequential_evidence_ids(self, tmp_path, monkeypatch):
+    def test_sequential_audit_ids(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
@@ -114,7 +114,7 @@ class TestAuditWriter:
         assert ids[1].endswith("-002")
         assert ids[2].endswith("-003")
 
-    def test_explicit_evidence_id(self, tmp_path, monkeypatch):
+    def test_explicit_audit_id(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
@@ -123,7 +123,7 @@ class TestAuditWriter:
             tool="t",
             params={},
             result_summary="ok",
-            evidence_id="custom-id-001",
+            audit_id="custom-id-001",
         )
         assert eid == "custom-id-001"
 
@@ -214,7 +214,7 @@ class TestAuditWriter:
                     "ts": "2026-01-01",
                     "tool": "t",
                     "mcp": "test-mcp",
-                    "evidence_id": "test-001",
+                    "audit_id": "test-001",
                     "examiner": "tester",
                 }
             )

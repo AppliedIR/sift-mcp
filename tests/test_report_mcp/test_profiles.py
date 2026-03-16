@@ -41,7 +41,7 @@ class TestProfileDefinitions:
         required = {
             "provenance",
             "content_hash",
-            "evidence_ids",
+            "audit_ids",
             "staged",
             "modified_at",
             "approved_by",

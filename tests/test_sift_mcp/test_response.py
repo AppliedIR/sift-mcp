@@ -17,11 +17,11 @@ class TestBuildResponse:
             tool_name="test_tool",
             success=True,
             data={"output": "test"},
-            evidence_id="sift-20260220-001",
+            audit_id="sift-20260220-001",
         )
         assert resp["success"] is True
         assert resp["tool"] == "test_tool"
-        assert resp["evidence_id"] == "sift-20260220-001"
+        assert resp["audit_id"] == "sift-20260220-001"
         assert "discipline_reminder" in resp
 
     def test_error_response(self):
@@ -29,7 +29,7 @@ class TestBuildResponse:
             tool_name="test_tool",
             success=False,
             data=None,
-            evidence_id="sift-20260220-002",
+            audit_id="sift-20260220-002",
             error="Tool not found",
         )
         assert resp["success"] is False
@@ -40,7 +40,7 @@ class TestBuildResponse:
             tool_name="test_tool",
             success=True,
             data={},
-            evidence_id="sift-20260220-003",
+            audit_id="sift-20260220-003",
             elapsed_seconds=2.345,
             exit_code=0,
             command=["echo", "hello"],
@@ -57,7 +57,7 @@ class TestKnowledgeEnrichment:
             tool_name="run_amcacheparser",
             success=True,
             data={"rows": []},
-            evidence_id="sift-20260220-010",
+            audit_id="sift-20260220-010",
             fk_tool_name="AmcacheParser",
         )
         assert "caveats" in resp
@@ -72,7 +72,7 @@ class TestKnowledgeEnrichment:
             tool_name="run_amcacheparser",
             success=True,
             data={},
-            evidence_id="sift-20260220-011",
+            audit_id="sift-20260220-011",
             fk_tool_name="AmcacheParser",
         )
         assert "corroboration" in resp
@@ -83,7 +83,7 @@ class TestKnowledgeEnrichment:
             tool_name="run_amcacheparser",
             success=True,
             data={},
-            evidence_id="sift-20260220-012",
+            audit_id="sift-20260220-012",
             fk_tool_name="AmcacheParser",
         )
         assert "field_notes" in resp
@@ -95,7 +95,7 @@ class TestKnowledgeEnrichment:
             tool_name="run_amcacheparser",
             success=True,
             data={},
-            evidence_id="sift-20260220-030",
+            audit_id="sift-20260220-030",
             fk_tool_name="AmcacheParser",
         )
         # AmcacheParser parses amcache artifact, which should have cross_mcp_checks
@@ -113,7 +113,7 @@ class TestKnowledgeEnrichment:
             tool_name="unknown_tool",
             success=True,
             data={},
-            evidence_id="sift-20260220-020",
+            audit_id="sift-20260220-020",
         )
         # Should still work, just without enrichment
         assert resp["success"] is True
@@ -128,7 +128,7 @@ class TestDisciplineReminders:
                 tool_name="test",
                 success=True,
                 data={},
-                evidence_id=f"sift-20260220-{100 + i:03d}",
+                audit_id=f"sift-20260220-{100 + i:03d}",
             )
             reminders.append(resp["discipline_reminder"])
 
@@ -143,7 +143,7 @@ class TestDisciplineReminders:
                 tool_name="test",
                 success=True,
                 data={},
-                evidence_id=f"sift-20260220-{200 + i:03d}",
+                audit_id=f"sift-20260220-{200 + i:03d}",
             )
         # (n+1)th call (counter=n+1) → index (n+1) % n == 1
         assert resp["discipline_reminder"] == DISCIPLINE_REMINDERS[1]
@@ -169,7 +169,7 @@ class TestAudit:
         assert log_file.exists()
         entry = json.loads(log_file.read_text().strip())
         assert entry["tool"] == "test_tool"
-        assert entry["evidence_id"] == eid
+        assert entry["audit_id"] == eid
 
     def test_audit_no_case_dir(self, monkeypatch, tmp_path):
         from sift_mcp.audit import AuditWriter
@@ -179,7 +179,7 @@ class TestAudit:
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         writer = AuditWriter("sift-mcp")
         eid = writer.log(tool="test", params={}, result_summary={})
-        # No case active = no audit entry, no evidence_id
+        # No case active = no audit entry, no audit_id
         assert eid is None
 
     def test_canonical_fields(self, tmp_path, monkeypatch):

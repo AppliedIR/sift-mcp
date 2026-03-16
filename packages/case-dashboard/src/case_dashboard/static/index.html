@@ -1162,10 +1162,10 @@ function renderFinding(id) {
     html += '</div>';
   }
 
-  // Evidence IDs
-  if (f.evidence_ids && f.evidence_ids.length > 0) {
-    html += '<div class="field-section"><div class="field-label">Evidence IDs</div>';
-    html += '<div class="tag-list">' + f.evidence_ids.map(eid =>
+  // Audit IDs
+  if (f.audit_ids && f.audit_ids.length > 0) {
+    html += '<div class="field-section"><div class="field-label">Audit IDs</div>';
+    html += '<div class="tag-list">' + f.audit_ids.map(eid =>
       '<span class="tag clickable" onclick="scrollToEvidence(\'' + escapeJsString(eid) + '\')">' + escapeHtml(eid) + '</span>'
     ).join('') + '</div></div>';
   }
@@ -1217,7 +1217,7 @@ function renderFinding(id) {
   html += '</div>';
 
   // Evidence panel
-  if (f.evidence_ids && f.evidence_ids.length > 0) {
+  if (f.audit_ids && f.audit_ids.length > 0) {
     html += '<div class="evidence-panel" id="evidencePanel">';
     html += '<div class="evidence-panel-header"><span>Evidence</span><button onclick="toggleAllEvidence()">collapse all</button></div>';
     html += '<div id="evidenceItems">Loading evidence...</div>';
@@ -1270,7 +1270,7 @@ function renderFinding(id) {
   card.innerHTML = html;
 
   // Load evidence + timeline async
-  if (f.evidence_ids && f.evidence_ids.length > 0) loadEvidencePanel(f);
+  if (f.audit_ids && f.audit_ids.length > 0) loadEvidencePanel(f);
   renderTimelineContext(f);
 }
 
@@ -1739,13 +1739,13 @@ async function loadEvidencePanel(finding) {
     }
   }
 
-  const eids = finding.evidence_ids || [];
+  const eids = finding.audit_ids || [];
   if (eids.length === 0) { container.innerHTML = ''; return; }
 
-  // Group audit entries by evidence_id
+  // Group audit entries by audit_id
   const byEid = {};
   auditData.forEach(entry => {
-    const eid = entry.evidence_id || '';
+    const eid = entry.audit_id || '';
     if (!byEid[eid]) byEid[eid] = [];
     byEid[eid].push(entry);
   });
@@ -2214,7 +2214,7 @@ function renderEvidence() {
 
   let html = '';
   sorted.forEach(function(ev) {
-    const eid = ev.evidence_id || ev.id || '';
+    const eid = ev.id || '';
     const path = ev.path || '';
     const sha = ev.sha256 || '';
     const desc = ev.description || '';
@@ -2499,8 +2499,8 @@ function renderTimelineCard(ev, de, isFocused) {
   if (ev.artifact_ref) {
     html += '<span>Ref: ' + escapeHtml(ev.artifact_ref) + '</span>';
   }
-  if (ev.evidence_ids && ev.evidence_ids.length) {
-    html += '<span>Evidence: ' + ev.evidence_ids.map(function(eid) {
+  if (ev.audit_ids && ev.audit_ids.length) {
+    html += '<span>Evidence: ' + ev.audit_ids.map(function(eid) {
       return escapeHtml(eid);
     }).join(', ') + '</span>';
   }

@@ -32,11 +32,11 @@ def validate(finding: dict) -> dict:
         if not finding.get(field):
             errors.append(f"Missing required field: {field}")
 
-    # evidence_ids must be present and non-empty
-    evidence_ids = finding.get("evidence_ids", [])
-    if not isinstance(evidence_ids, list):
-        errors.append("evidence_ids must be a list")
-        evidence_ids = []
+    # audit_ids must be present and non-empty
+    audit_ids = finding.get("audit_ids", [])
+    if not isinstance(audit_ids, list):
+        errors.append("audit_ids must be a list")
+        audit_ids = []
 
     # Type validation
     finding_type = finding.get("type", "")
@@ -61,17 +61,17 @@ def validate(finding: dict) -> dict:
 
     # Evidence count by confidence level (FD-001, FD-007)
     if confidence in confidence_defs and not errors:
-        min_required = confidence_defs[confidence]["min_evidence_ids"]
-        if len(evidence_ids) < min_required:
+        min_required = confidence_defs[confidence]["min_audit_ids"]
+        if len(audit_ids) < min_required:
             errors.append(
-                f"Confidence {confidence} requires at least {min_required} evidence_id(s), "
-                f"got {len(evidence_ids)}"
+                f"Confidence {confidence} requires at least {min_required} audit_id(s), "
+                f"got {len(audit_ids)}"
             )
 
     # Attribution requires 3+ evidence sources (FD-003)
-    if finding_type == "attribution" and len(evidence_ids) < 3:
+    if finding_type == "attribution" and len(audit_ids) < 3:
         errors.append(
-            f"Attribution requires at least 3 evidence_ids (FD-003), got {len(evidence_ids)}"
+            f"Attribution requires at least 3 audit_ids (FD-003), got {len(audit_ids)}"
         )
 
     if errors:
