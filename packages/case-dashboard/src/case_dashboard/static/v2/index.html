@@ -70,6 +70,10 @@ body {
 .tab { padding: 8px 16px; cursor: pointer; color: var(--text-secondary); border-bottom: 2px solid transparent; font-size: 13px; font-weight: 500; }
 .tab:hover { color: var(--text-primary); }
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-badge { display: inline-block; min-width: 16px; height: 16px; line-height: 16px; padding: 0 5px;
+  margin-left: 6px; border-radius: 8px; font-size: 10px; font-weight: 600; text-align: center;
+  background: var(--amber); color: #000; }
+.tab-badge.zero { display: none; }
 
 /* Progress bar */
 .progress-bar { background: var(--bg-secondary); padding: 6px 16px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
@@ -106,8 +110,16 @@ body {
 .content { flex: 1; overflow-y: auto; padding: 16px 24px; }
 
 /* Finding card */
-.finding-card { max-width: 900px; padding-bottom: 16px; }
-.card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.finding-card { padding-bottom: 16px; }
+.card-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.finding-sticky-bar { position: sticky; top: 0; z-index: 10; background: var(--bg-primary); padding: 10px 0 8px; border-bottom: 1px solid var(--border); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.finding-sticky-bar .action-bar { margin: 0; padding: 0; border: none; background: none; }
+/* Two-zone layout */
+.zone1 { margin-bottom: 16px; }
+.zone2-toggle { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-secondary); padding: 8px 0; }
+.zone2-content { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 8px; }
+@media (min-width: 900px) { .zone2-content { grid-template-columns: 1fr 1fr; } }
+.zone2-left, .zone2-right { min-width: 0; }
 .card-id { font-family: monospace; font-size: 15px; font-weight: 600; }
 .card-title { font-size: 16px; font-weight: 600; }
 .card-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; }
@@ -291,7 +303,6 @@ body {
 .batch-toolbar .batch-reject { background: var(--red-bg); color: var(--red); border-color: var(--red); }
 .batch-toolbar .batch-reject:hover { filter: brightness(1.2); }
 .sidebar-item .batch-check { width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; accent-color: var(--accent); }
-.tl-card-actions .batch-check { width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; accent-color: var(--accent); }
 
 /* Filter dimensions */
 .filter-dims { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
@@ -338,34 +349,40 @@ body {
 .timeline-stream { flex: 1; overflow-y: auto; padding: 16px 24px 16px 40px; }
 .timeline-summary { padding: 8px 16px; border-top: 1px solid var(--border);
   font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
-.tl-card { position: relative; padding: 10px 14px; margin-bottom: 2px;
-  border-left: 2px solid var(--border); border-radius: 0 4px 4px 0; cursor: pointer; }
-.tl-card:hover { background: var(--bg-hover); }
-.tl-card.focused { background: rgba(59, 130, 246, 0.08); border-left-color: var(--accent); }
-.tl-card::before { content: ''; position: absolute; left: -7px; top: 14px;
-  width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--border);
-  background: var(--bg-primary); }
-.tl-card.status-approved::before { background: var(--green); border-color: var(--green); }
-.tl-card.status-rejected::before { background: var(--red); border-color: var(--red); }
-.tl-card.status-draft::before { background: var(--amber); border-color: var(--amber); }
-.tl-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.tl-card-header .tl-timestamp { font-family: monospace; font-size: 12px;
-  color: var(--text-muted); }
-.tl-card-header .tl-evid { font-family: monospace; font-size: 11px; color: var(--text-muted); }
-.tl-card-body { font-size: 13px; }
-.tl-card-body .tl-description { margin-bottom: 4px; }
-.tl-card .modified { color: var(--amber); }
-.tl-card-meta { display: flex; gap: 12px; font-size: 11px; color: var(--text-muted);
-  flex-wrap: wrap; }
-.tl-card-actions { margin-top: 8px; display: flex; gap: 6px; align-items: center; }
-.tl-card-actions button { font-size: 11px; padding: 2px 8px; border-radius: 3px;
+/* Compact timeline rows */
+.tl-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; min-height: 32px;
+  border-left: 2px solid var(--border); cursor: pointer; font-size: 13px; }
+.tl-row:hover { background: var(--bg-hover); }
+.tl-row.focused { background: rgba(59, 130, 246, 0.08); border-left-color: var(--accent); }
+.tl-row .tl-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: var(--amber); }
+.tl-row.status-approved .tl-dot { background: var(--green); }
+.tl-row.status-rejected .tl-dot { background: var(--red); }
+.tl-row .tl-time { font-family: monospace; font-size: 12px; color: var(--text-muted);
+  white-space: nowrap; flex-shrink: 0; width: 52px; }
+.tl-row .tl-desc { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-row .tl-desc.modified { color: var(--amber); }
+.tl-row .tl-delta-pill { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+.tl-row .tl-delta-pill.approve { background: var(--green-bg); color: var(--green); }
+.tl-row .tl-delta-pill.reject { background: var(--red-bg); color: var(--red); }
+.tl-row .tl-delta-pill.edit { background: var(--amber-bg); color: var(--amber); }
+/* Expanded detail below compact row */
+.tl-expanded { padding: 8px 8px 12px 26px; border-left: 2px solid var(--accent);
+  background: var(--bg-secondary); font-size: 13px; }
+.tl-expanded .tl-exp-header { display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px; flex-wrap: wrap; }
+.tl-expanded .tl-exp-body { margin-bottom: 8px; }
+.tl-expanded .tl-exp-meta { display: flex; gap: 12px; font-size: 11px;
+  color: var(--text-muted); flex-wrap: wrap; margin-bottom: 8px; }
+.tl-expanded .tl-exp-actions { display: flex; gap: 6px; align-items: center; }
+.tl-exp-actions button { font-size: 11px; padding: 2px 8px; border-radius: 3px;
   background: var(--bg-tertiary); color: var(--text-primary);
   border: 1px solid var(--border); cursor: pointer; }
-.tl-card-actions button:hover { background: var(--bg-hover); }
-.tl-card-actions .btn-approve { background: var(--green-bg); color: var(--green); border-color: var(--green); }
-.tl-card-actions .btn-approve:hover { filter: brightness(1.2); }
-.tl-card-actions .btn-reject { background: var(--red-bg); color: var(--red); border-color: var(--red); }
-.tl-card-actions .btn-reject:hover { filter: brightness(1.2); }
+.tl-exp-actions button:hover { background: var(--bg-hover); }
+.tl-exp-actions .btn-include { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+.tl-exp-actions .btn-include:hover { filter: brightness(1.2); }
+.tl-exp-actions .btn-exclude { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+.tl-exp-actions .btn-exclude:hover { filter: brightness(1.2); }
 .tl-type { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; }
 .tl-type-auth { background: rgba(59,130,246,0.15); color: #6ea8fe; }
 .tl-type-execution, .tl-type-process { background: rgba(255,159,10,0.15); color: #ffb347; }
@@ -783,6 +800,7 @@ async function loadAll() {
     renderTimeline();
     updateProgress();
     updateCommitButton();
+    updateTabBadges();
     if (selectedId) renderFinding(selectedId);
     else showEmptyOrFirst();
   } catch (e) {
@@ -836,6 +854,7 @@ function setDeltaEntry(entry) {
   if (!delta.created_at) delta.created_at = delta.modified_at;
   scheduleSave();
   updateCommitButton();
+  updateTabBadges();
 }
 
 function removeDeltaEntry(id) {
@@ -843,6 +862,7 @@ function removeDeltaEntry(id) {
   delta.modified_at = new Date().toISOString();
   scheduleSave();
   updateCommitButton();
+  updateTabBadges();
 }
 
 function scheduleSave() {
@@ -1076,12 +1096,24 @@ function renderFinding(id) {
     html += '<div class="stale-warning">\u26A0 This finding was modified after you reviewed it. Re-review recommended.</div>';
   }
 
-  // Header
+  // Sticky bar: header + actions
+  html += '<div class="finding-sticky-bar">';
   html += '<div class="card-header">';
   html += '<span class="card-id">' + escapeHtml(f.id) + '</span>';
   html += '<span class="badge ' + escapeHtml(typeClass) + '">' + escapeHtml(type) + '</span>';
   html += '<span class="badge ' + escapeHtml(statusClass) + '">' + escapeHtml(status) + '</span>';
   html += '</div>';
+  html += '<div class="action-bar">';
+  html += '<button class="action-btn approve" onclick="doApprove()"><span class="key">a</span> Approve</button>';
+  html += '<button class="action-btn reject" onclick="openRejectDialog()"><span class="key">r</span> Reject</button>';
+  if (de) {
+    html += '<button class="action-btn undo" onclick="doSkip()"><span class="key">s</span> Undo</button>';
+  }
+  html += '</div>';
+  html += '</div>';
+
+  // === Zone 1: Decision fields ===
+  html += '<div class="zone1">';
 
   // Title (editable)
   html += '<div class="field-section" style="margin-bottom:8px"><div class="card-title" style="display:inline">';
@@ -1124,11 +1156,21 @@ function renderFinding(id) {
 
   // Context (collapsible)
   html += '<div class="context-section" style="margin: 12px 0;">';
-  html += '<button onclick="toggleContext(\'' + escapeJsString(id) + '\')" class="btn btn-sm" style="background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border);">Context ▾</button>';
+  html += '<button onclick="toggleContext(\'' + escapeJsString(id) + '\')" class="btn btn-sm" style="background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border);">Context \u25BE</button>';
   html += '<div id="contextPanel-' + escapeJsString(id) + '" style="display: none; margin-top: 8px;">';
   html += '<div class="field-section"><div class="field-label">Context</div>';
   html += renderEditableField('context', eff.context || '', f, de);
   html += '</div></div></div>';
+
+  html += '</div>'; // end zone1
+
+  // === Zone 2: Evidence & context (collapsible) ===
+  html += '<details class="zone2" open>';
+  html += '<summary class="zone2-toggle">Evidence & Context</summary>';
+  html += '<div class="zone2-content">';
+
+  // Zone 2 left: evidence artifacts + audit trail
+  html += '<div class="zone2-left">';
 
   // Artifacts (primary evidence display)
   if (f.artifacts && f.artifacts.length) {
@@ -1162,6 +1204,23 @@ function renderFinding(id) {
     });
     html += '</div>';
   }
+
+  // Evidence panel (audit trail)
+  if (f.evidence_ids && f.evidence_ids.length > 0) {
+    html += '<div class="evidence-panel" id="evidencePanel">';
+    html += '<div class="evidence-panel-header"><span>Audit Trail</span><button onclick="toggleAllEvidence()">collapse all</button></div>';
+    html += '<div id="evidenceItems">Loading evidence...</div>';
+    html += '<div class="grounding" id="groundingSummary"></div>';
+    html += '</div>';
+  }
+
+  html += '</div>'; // end zone2-left
+
+  // Zone 2 right: timeline context + metadata
+  html += '<div class="zone2-right">';
+
+  // Timeline context
+  html += '<div id="timelineContext"></div>';
 
   // Evidence IDs
   if (f.evidence_ids && f.evidence_ids.length > 0) {
@@ -1208,26 +1267,9 @@ function renderFinding(id) {
   if (f.modified_at) html += '<div style="font-family:monospace">Modified: ' + escapeHtml(f.modified_at) + '</div>';
   html += '</details>';
 
-  // Action bar
-  html += '<div class="action-bar">';
-  html += '<button class="action-btn approve" onclick="doApprove()"><span class="key">a</span> Approve</button>';
-  html += '<button class="action-btn reject" onclick="openRejectDialog()"><span class="key">r</span> Reject</button>';
-  if (de) {
-    html += '<button class="action-btn undo" onclick="doSkip()"><span class="key">s</span> Undo</button>';
-  }
-  html += '</div>';
-
-  // Evidence panel
-  if (f.evidence_ids && f.evidence_ids.length > 0) {
-    html += '<div class="evidence-panel" id="evidencePanel">';
-    html += '<div class="evidence-panel-header"><span>Evidence</span><button onclick="toggleAllEvidence()">collapse all</button></div>';
-    html += '<div id="evidenceItems">Loading evidence...</div>';
-    html += '<div class="grounding" id="groundingSummary"></div>';
-    html += '</div>';
-  }
-
-  // Timeline context
-  html += '<div id="timelineContext"></div>';
+  html += '</div>'; // end zone2-right
+  html += '</div>'; // end zone2-content
+  html += '</details>'; // end zone2
 
   // Examiner notes (if any)
   if (f.examiner_notes && f.examiner_notes.length > 0) {
@@ -1947,6 +1989,40 @@ function updateRefreshBadge() {
   }
 }
 
+/* === Tab badges === */
+function updateTabBadges() {
+  // Count pending (unreviewed) findings
+  var findingIds = new Set(findings.map(function(f) { return f.id; }));
+  var reviewedFindings = delta.items.filter(function(d) {
+    return findingIds.has(d.id) && d.action !== 'edit';
+  }).length;
+  var pendingFindings = findings.length - reviewedFindings;
+
+  // Count pending timeline events
+  var eventIds = new Set(timelineEvents.map(function(e) { return e.id; }));
+  var reviewedEvents = delta.items.filter(function(d) {
+    return eventIds.has(d.id) && d.action !== 'edit';
+  }).length;
+  var pendingEvents = timelineEvents.length - reviewedEvents;
+
+  // Update badges
+  setBadge('tab-findings', pendingFindings);
+  setBadge('tab-timeline', pendingEvents);
+}
+
+function setBadge(tabId, count) {
+  var tab = document.getElementById(tabId);
+  if (!tab) return;
+  var badge = tab.querySelector('.tab-badge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'tab-badge';
+    tab.appendChild(badge);
+  }
+  badge.textContent = String(count);
+  badge.classList.toggle('zero', count === 0);
+}
+
 /* === Tabs === */
 function switchTab(tabName) {
   document.querySelectorAll('.tab').forEach(function(t) {
@@ -2061,8 +2137,17 @@ document.addEventListener('keydown', function(e) {
       e.preventDefault();
       isTimeline ? startTimelineEdit(null, 'description') : startEdit('interpretation');
       break;
-    case 'Enter':
-      if (!isTimeline) { e.preventDefault(); toggleAllEvidence(); }
+    case 'Enter': case ' ':
+      e.preventDefault();
+      if (isTimeline) {
+        // Toggle expand/collapse on focused timeline row
+        if (focusedTimelineId) {
+          focusedTimelineId = null;
+          renderTimeline();
+        }
+      } else {
+        toggleAllEvidence();
+      }
       break;
     case 's':
       e.preventDefault();
@@ -2180,8 +2265,16 @@ function renderDashboard(summary) {
       if (r[1]) meta += '<div class="dash-meta-row"><span class="dash-meta-label">' + escapeHtml(r[0]) + '</span><span>' + escapeHtml(String(r[1])) + '</span></div>';
     });
   }
+  // Next action prompt
+  var tlDraft = tlByStatus.DRAFT || 0;
   if (draft > 0) {
     meta += '<button class="btn-start-review" onclick="switchTab(\'findings\')">Review ' + draft + ' draft finding(s)</button>';
+  } else if (tlDraft > 0) {
+    meta += '<button class="btn-start-review" onclick="switchTab(\'timeline\')">Curate ' + tlDraft + ' timeline event(s)</button>';
+  } else if (openTodos > 0) {
+    meta += '<button class="btn-start-review" onclick="switchTab(\'todos\')">' + openTodos + ' open TODO(s) remaining</button>';
+  } else if (findings.length > 0 && delta.items.length > 0) {
+    meta += '<button class="btn-start-review" onclick="openCommitDialog()">All reviewed \u2014 ready to commit</button>';
   }
   document.getElementById('dashMeta').innerHTML = meta;
 }
@@ -2423,9 +2516,8 @@ function renderTimelineEditField(field, value, evId) {
   return html;
 }
 
-function renderTimelineCard(ev, de, isFocused) {
+function renderTimelineCompactRow(ev, de, isFocused) {
   var status = (ev.status || 'DRAFT').toUpperCase();
-  var verif = ev.verification || 'draft';
   var evType = ev.event_type || 'other';
   var evId = escapeJsString(ev.id);
 
@@ -2436,104 +2528,130 @@ function renderTimelineCard(ev, de, isFocused) {
     }
   }
 
-  var html = '<div class="tl-card status-' + status.toLowerCase() +
+  var ts = eff.timestamp || ev.staged || '';
+  var shortTime = '';
+  try { var d = new Date(ts); shortTime = d.toTimeString().slice(0,5); } catch(e) {}
+
+  var descMod = de && de.modifications && de.modifications.description;
+  var desc = eff.description || ev.id || '';
+  if (desc.length > 90) desc = desc.slice(0, 87) + '...';
+
+  // Compact row
+  var html = '<div class="tl-row status-' + status.toLowerCase() +
     (isFocused ? ' focused' : '') +
     '" data-id="' + escapeHtml(ev.id) +
     '" onclick="focusTimelineEvent(\'' + evId + '\')">';
-
-  if (de) {
-    var hasMods = de.modifications && Object.keys(de.modifications).length > 0;
-    var label = de.action.toUpperCase() + (hasMods ? ' (modified)' : '');
-    html += '<div class="delta-indicator ' + escapeHtml(de.action) + '">' +
-      escapeHtml(label) + '</div>';
-  }
-
-  if (de && de.content_hash_at_review && ev.content_hash &&
-      de.content_hash_at_review !== ev.content_hash) {
-    html += '<div class="stale-warning">\u26A0 This event was modified after ' +
-      'you reviewed it. Re-review recommended.</div>';
-  }
-
-  html += '<div class="tl-card-header">';
-  html += '<span class="tl-evid">' + escapeHtml(ev.id) + '</span>';
-  html += '<span class="tl-timestamp">' +
-    escapeHtml(formatTime(eff.timestamp || ev.staged || '')) + '</span>';
+  html += '<span class="tl-dot"></span>';
+  html += '<span class="tl-time">' + escapeHtml(shortTime) + '</span>';
   html += '<span class="tl-type tl-type-' + escapeHtml(evType) + '">' +
-    escapeHtml(evType) + '</span>';
-  html += '<span class="badge badge-' + status.toLowerCase() + '">' +
-    escapeHtml(status) + '</span>';
-  html += '<span class="verif-' + verif.replace(/ /g, '-') +
-    '" style="font-size:10px">' + escapeHtml(verif) + '</span>';
-  html += '</div>';
-
-  html += '<div class="tl-card-body">';
-
-  if (isFocused && editingField === 'description') {
-    html += renderTimelineEditField('description', eff.description || '', evId);
-  } else {
-    var descMod = de && de.modifications && de.modifications.description;
-    html += '<div class="tl-description' + (descMod ? ' modified' : '') + '">' +
-      escapeHtml(eff.description || ev.id);
-    if (isFocused) html += ' ' + editPencil(evId, 'description');
-    html += '</div>';
-  }
-
-  if (isFocused && editingField === 'timestamp') {
-    html += renderTimelineEditField('timestamp', eff.timestamp || '', evId);
-  }
-
-  if (isFocused && editingField === 'source') {
-    html += renderTimelineEditField('source', eff.source || '', evId);
-  }
-
-  html += '<div class="tl-card-meta">';
-  if (eff.source && editingField !== 'source') {
-    var srcMod = de && de.modifications && de.modifications.source;
-    html += '<span' + (srcMod ? ' class="modified"' : '') + '>Source: ' +
-      escapeHtml(eff.source);
-    if (isFocused) html += ' ' + editPencil(evId, 'source');
-    html += '</span>';
-  }
-  if (isFocused && editingField !== 'timestamp') {
-    html += '<span>' + editPencil(evId, 'timestamp') + ' Timestamp</span>';
-  }
-  if (ev.artifact_ref) {
-    html += '<span>Ref: ' + escapeHtml(ev.artifact_ref) + '</span>';
-  }
-  if (ev.evidence_ids && ev.evidence_ids.length) {
-    html += '<span>Evidence: ' + ev.evidence_ids.map(function(eid) {
-      return escapeHtml(eid);
-    }).join(', ') + '</span>';
-  }
-  if (ev.related_findings && ev.related_findings.length) {
-    ev.related_findings.forEach(function(fid) {
-      html += ' <span class="tl-finding-ref" onclick="event.stopPropagation();' +
-        'switchTab(\'findings\');selectFinding(\'' + escapeJsString(fid) +
-        '\')">' + escapeHtml(fid) + '</span>';
-    });
-  }
-  html += '</div>';
-  html += '</div>';
-
-  html += '<div class="tl-card-actions">';
-  html += '<label style="display:inline-flex;align-items:center;cursor:pointer" ' +
-    'onclick="event.stopPropagation()">' +
-    '<input type="checkbox" class="batch-check" onclick="event.stopPropagation();' +
-    'toggleTimelineBatchItem(\'' + evId + '\',this.checked)"' +
-    (batchTimelineSelected.has(ev.id) ? ' checked' : '') + '></label>';
-  html += '<button class="btn-approve" onclick="event.stopPropagation();' +
-    'doTimelineApprove(\'' + evId + '\')">Approve</button>';
-  html += '<button class="btn-reject" onclick="event.stopPropagation();' +
-    'openTimelineRejectDialog(\'' + evId + '\')">Reject</button>';
-  html += '<button onclick="event.stopPropagation();' +
-    'startTimelineEdit(\'' + evId + '\',\'description\')">Edit</button>';
+    escapeHtml(evType.toUpperCase().slice(0,4)) + '</span>';
+  html += '<span class="tl-desc' + (descMod ? ' modified' : '') + '">' +
+    escapeHtml(desc) + '</span>';
   if (de) {
-    html += '<button onclick="event.stopPropagation();' +
-      'doTimelineSkip(\'' + evId + '\')">Undo</button>';
+    html += '<span class="tl-delta-pill ' + escapeHtml(de.action) + '">' +
+      escapeHtml(de.action.toUpperCase()) + '</span>';
   }
   html += '</div>';
 
-  html += '</div>';
+  // Expanded detail (only when focused)
+  if (isFocused) {
+    html += '<div class="tl-expanded">';
+
+    // Header with full ID, timestamp, type, status, verification
+    var verif = ev.verification || 'draft';
+    html += '<div class="tl-exp-header">';
+    html += '<span style="font-family:monospace;font-size:11px;color:var(--text-muted)">' +
+      escapeHtml(ev.id) + '</span>';
+    html += '<span style="font-family:monospace;font-size:12px">' +
+      escapeHtml(formatTime(eff.timestamp || ev.staged || '')) + '</span>';
+    html += '<span class="tl-type tl-type-' + escapeHtml(evType) + '">' +
+      escapeHtml(evType) + '</span>';
+    html += '<span class="badge badge-' + status.toLowerCase() + '">' +
+      escapeHtml(status) + '</span>';
+    html += '<span class="verif-' + verif.replace(/ /g, '-') +
+      '" style="font-size:10px">' + escapeHtml(verif) + '</span>';
+    html += '</div>';
+
+    // Delta + stale warnings
+    if (de) {
+      var hasMods = de.modifications && Object.keys(de.modifications).length > 0;
+      var label = de.action.toUpperCase() + (hasMods ? ' (modified)' : '');
+      html += '<div class="delta-indicator ' + escapeHtml(de.action) + '">' +
+        escapeHtml(label) + '</div>';
+    }
+    if (de && de.content_hash_at_review && ev.content_hash &&
+        de.content_hash_at_review !== ev.content_hash) {
+      html += '<div class="stale-warning">\u26A0 Modified after review. Re-review recommended.</div>';
+    }
+
+    // Description (editable)
+    html += '<div class="tl-exp-body">';
+    if (editingField === 'description') {
+      html += renderTimelineEditField('description', eff.description || '', evId);
+    } else {
+      html += '<div' + (descMod ? ' class="modified"' : '') + '>' +
+        escapeHtml(eff.description || ev.id) + ' ' +
+        editPencil(evId, 'description') + '</div>';
+    }
+    html += '</div>';
+
+    // Inline edit fields for timestamp and source
+    if (editingField === 'timestamp') {
+      html += renderTimelineEditField('timestamp', eff.timestamp || '', evId);
+    }
+    if (editingField === 'source') {
+      html += renderTimelineEditField('source', eff.source || '', evId);
+    }
+
+    // Meta: source, timestamp edit, artifact ref, evidence IDs, related findings
+    html += '<div class="tl-exp-meta">';
+    if (eff.source && editingField !== 'source') {
+      var srcMod = de && de.modifications && de.modifications.source;
+      html += '<span' + (srcMod ? ' class="modified"' : '') + '>Source: ' +
+        escapeHtml(eff.source) + ' ' + editPencil(evId, 'source') + '</span>';
+    }
+    if (editingField !== 'timestamp') {
+      html += '<span>' + editPencil(evId, 'timestamp') + ' Timestamp</span>';
+    }
+    if (ev.artifact_ref) {
+      html += '<span>Ref: ' + escapeHtml(ev.artifact_ref) + '</span>';
+    }
+    if (ev.evidence_ids && ev.evidence_ids.length) {
+      html += '<span>Evidence: ' + ev.evidence_ids.map(function(eid) {
+        return escapeHtml(eid);
+      }).join(', ') + '</span>';
+    }
+    if (ev.related_findings && ev.related_findings.length) {
+      ev.related_findings.forEach(function(fid) {
+        html += ' <span class="tl-finding-ref" onclick="event.stopPropagation();' +
+          'switchTab(\'findings\');selectFinding(\'' + escapeJsString(fid) +
+          '\')">' + escapeHtml(fid) + '</span>';
+      });
+    }
+    html += '</div>';
+
+    // Actions: batch checkbox, include, exclude, edit, undo
+    html += '<div class="tl-exp-actions">';
+    html += '<label style="display:inline-flex;align-items:center;cursor:pointer" ' +
+      'onclick="event.stopPropagation()">' +
+      '<input type="checkbox" class="batch-check" onclick="event.stopPropagation();' +
+      'toggleTimelineBatchItem(\'' + evId + '\',this.checked)"' +
+      (batchTimelineSelected.has(ev.id) ? ' checked' : '') + '></label>';
+    html += '<button class="btn-include" onclick="event.stopPropagation();' +
+      'doTimelineApprove(\'' + evId + '\')">Include</button>';
+    html += '<button class="btn-exclude" onclick="event.stopPropagation();' +
+      'openTimelineRejectDialog(\'' + evId + '\')">Exclude</button>';
+    html += '<button onclick="event.stopPropagation();' +
+      'startTimelineEdit(\'' + evId + '\',\'description\')">Edit</button>';
+    if (de) {
+      html += '<button onclick="event.stopPropagation();' +
+        'doTimelineSkip(\'' + evId + '\')">Undo</button>';
+    }
+    html += '</div>';
+
+    html += '</div>'; // end tl-expanded
+  }
+
   return html;
 }
 
@@ -2570,7 +2688,7 @@ function renderTimeline() {
       }
     }
     var de = getDeltaEntry(ev.id);
-    html += renderTimelineCard(ev, de, ev.id === focusedTimelineId);
+    html += renderTimelineCompactRow(ev, de, ev.id === focusedTimelineId);
     prevTimestamp = ev.timestamp || ev.staged;
   });
 
@@ -2578,9 +2696,9 @@ function renderTimeline() {
   updateTimelineSummary();
 
   if (focusedTimelineId) {
-    var card = container.querySelector(
-      '.tl-card[data-id="' + CSS.escape(focusedTimelineId) + '"]');
-    if (card) card.scrollIntoView({ block: 'nearest' });
+    var row = container.querySelector(
+      '.tl-row[data-id="' + CSS.escape(focusedTimelineId) + '"]');
+    if (row) row.scrollIntoView({ block: 'nearest' });
   }
 }
 
@@ -2618,8 +2736,8 @@ function updateTimelineSummary() {
 }
 
 function focusTimelineEvent(id) {
-  if (focusedTimelineId === id) return;
-  focusedTimelineId = id;
+  // Toggle: collapse if clicking the already-focused row
+  focusedTimelineId = (focusedTimelineId === id) ? null : id;
   renderTimeline();
 }
 
