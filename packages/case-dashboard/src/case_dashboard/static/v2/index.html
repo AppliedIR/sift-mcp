@@ -436,9 +436,23 @@ body {
 .toast-success { background: var(--green); color: #fff; }
 .toast-error { background: var(--red); color: #fff; }
 .toast-info { background: var(--bg-tertiary); color: var(--text-primary); }
+
+/* Skeleton loading */
+@keyframes skeleton-pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 0.8; } }
+.skeleton { background: var(--bg-tertiary); border-radius: 4px; animation: skeleton-pulse 1.5s ease-in-out infinite; }
+.skeleton-line { height: 14px; margin-bottom: 8px; }
+.skeleton-line:nth-child(odd) { width: 80%; }
+.skeleton-line:nth-child(even) { width: 60%; }
+.skeleton-block { height: 80px; margin-bottom: 12px; }
+
+/* Error banner */
+.error-banner { display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  padding: 8px 16px; background: var(--red); color: #fff; text-align: center; font-size: 13px; }
+.error-banner.visible { display: block; }
 </style>
 </head>
 <body>
+<div class="error-banner" id="errorBanner"></div>
 <div class="app" id="app">
   <!-- Header -->
   <div class="header">
@@ -641,6 +655,8 @@ body {
     <div class="shortcut-row"><span>Focus search</span><span class="shortcut-key">/</span></div>
     <div class="shortcut-row"><span>Close / cancel</span><span class="shortcut-key">Esc</span></div>
     <div class="shortcut-row"><span>Commit reviews</span><span class="shortcut-key">C</span></div>
+    <div class="shortcut-row"><span>Expand/collapse timeline row</span><span class="shortcut-key">Enter / Space</span></div>
+    <div class="shortcut-row"><span>Switch to tab 1-5</span><span class="shortcut-key">1-5</span></div>
     <div class="shortcut-row"><span>This help</span><span class="shortcut-key">?</span></div>
     <div style="margin-top: 12px; text-align: right;">
       <button class="btn-cancel" onclick="toggleShortcuts()">Close</button>
@@ -772,13 +788,18 @@ async function loadAll() {
   isLoading = true;
   try {
     var loading = document.getElementById('loadingState');
-    if (loading) loading.style.display = 'none';
+    if (loading && !findings.length) {
+      loading.innerHTML = '<div style="width:300px"><div class="skeleton skeleton-line"></div>' +
+        '<div class="skeleton skeleton-line"></div><div class="skeleton skeleton-block"></div></div>';
+    }
     const [f, d, c, tl] = await Promise.all([
       apiFetch('/api/findings'),
       apiFetch('/api/delta'),
       apiFetch('/api/case'),
       apiFetch('/api/timeline'),
     ]);
+    if (loading) loading.style.display = 'none';
+    hideErrorBanner();
     const newIds = new Set(f.map(x => x.id));
     if (previousFindingIds.size > 0) {
       newFindingsCount = [...newIds].filter(id => !previousFindingIds.has(id)).length;
@@ -806,10 +827,13 @@ async function loadAll() {
   } catch (e) {
     var loading = document.getElementById('loadingState');
     if (loading) loading.style.display = 'none';
-    document.getElementById('emptyState').innerHTML =
-      '<h2>Error loading case data</h2><p>' + escapeHtml(e.message) + '</p>';
-    document.getElementById('emptyState').style.display = '';
-    document.getElementById('findingCard').style.display = 'none';
+    showErrorBanner(e.message);
+    if (!findings.length) {
+      document.getElementById('emptyState').innerHTML =
+        '<h2>Error loading case data</h2><p>' + escapeHtml(e.message) + '</p>';
+      document.getElementById('emptyState').style.display = '';
+      document.getElementById('findingCard').style.display = 'none';
+    }
   } finally {
     isLoading = false;
   }
@@ -1091,9 +1115,21 @@ function renderFinding(id) {
     html += '<div class="delta-indicator ' + escapeHtml(de.action) + '">' + escapeHtml(label) + '</div>';
   }
 
-  // Stale warning
+  // Stale warning with field-level detail
   if (de && de.content_hash_at_review && f.content_hash && de.content_hash_at_review !== f.content_hash) {
-    html += '<div class="stale-warning">\u26A0 This finding was modified after you reviewed it. Re-review recommended.</div>';
+    html += '<div class="stale-warning">\u26A0 This finding was modified after you reviewed it. Re-review recommended.';
+    if (de._snapshot) {
+      var changedFields = [];
+      var contentKeys = ['title','description','observation','interpretation','confidence',
+        'mitre_ids','iocs','evidence_ids','related_findings','context','artifact_refs'];
+      contentKeys.forEach(function(k) {
+        if (JSON.stringify(f[k]) !== JSON.stringify(de._snapshot[k])) changedFields.push(k);
+      });
+      if (changedFields.length > 0) {
+        html += '<br>Fields changed: ' + changedFields.map(escapeHtml).join(', ') + '.';
+      }
+    }
+    html += '</div>';
   }
 
   // Sticky bar: header + actions
@@ -1230,6 +1266,12 @@ function renderFinding(id) {
     ).join('') + '</div></div>';
   }
 
+  // Tool Invocations (from audit trail)
+  html += '<details class="tool-invocations" id="toolInvocations">';
+  html += '<summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Tool Invocations</summary>';
+  html += '<div id="toolInvocationsList" style="margin-top:4px;font-size:12px"></div>';
+  html += '</details>';
+
   // MITRE IDs
   if ((f.mitre_ids && f.mitre_ids.length > 0) || editingField === 'mitre_ids') {
     html += '<div class="field-section"><div class="field-label">MITRE ATT&CK</div>';
@@ -1312,8 +1354,9 @@ function renderFinding(id) {
 
   card.innerHTML = html;
 
-  // Load evidence + timeline async
+  // Load evidence + timeline + tool invocations async
   if (f.evidence_ids && f.evidence_ids.length > 0) loadEvidencePanel(f);
+  loadToolInvocations(f);
   renderTimelineContext(f);
 }
 
@@ -1340,6 +1383,26 @@ function showToast(msg, type) {
   setTimeout(function() { t.remove(); }, 2500);
 }
 
+/* === Error banner === */
+function showErrorBanner(msg) {
+  var el = document.getElementById('errorBanner');
+  if (el) { el.textContent = 'Connection lost: ' + msg; el.classList.add('visible'); }
+}
+function hideErrorBanner() {
+  var el = document.getElementById('errorBanner');
+  if (el) el.classList.remove('visible');
+}
+
+/* === Snapshot for stale detection === */
+var _CONTENT_KEYS = ['title','description','observation','interpretation','confidence',
+  'mitre_ids','iocs','evidence_ids','related_findings','context','artifact_refs'];
+
+function snapshotFields(obj) {
+  var snap = {};
+  _CONTENT_KEYS.forEach(function(k) { if (obj[k] !== undefined) snap[k] = JSON.parse(JSON.stringify(obj[k])); });
+  return snap;
+}
+
 /* === Actions === */
 function doApprove() {
   if (!selectedId) return;
@@ -1353,6 +1416,7 @@ function doApprove() {
     action: 'approve',
     content_hash_at_review: f.content_hash || '',
     modifications: existing ? existing.modifications || {} : {},
+    _snapshot: snapshotFields(f),
   });
   renderSidebar();
   updateProgress();
@@ -1401,6 +1465,7 @@ function submitReject() {
     action: 'reject',
     content_hash_at_review: f.content_hash || '',
     rejection_reason: reason,
+    _snapshot: snapshotFields(f),
   });
   closeRejectDialog();
   renderSidebar();
@@ -1594,6 +1659,7 @@ function batchApprove() {
       id, type: f.type || 'finding', action: 'approve',
       content_hash_at_review: f.content_hash || '',
       modifications: existing ? existing.modifications || {} : {},
+      _snapshot: snapshotFields(f),
     });
   });
   batchSelected.clear();
@@ -1612,6 +1678,7 @@ function batchReject() {
     setDeltaEntry({
       id, type: f.type || 'finding', action: 'reject',
       content_hash_at_review: f.content_hash || '', rejection_reason: reason,
+      _snapshot: snapshotFields(f),
     });
   });
   batchSelected.clear();
@@ -1663,6 +1730,7 @@ function saveEdit(field) {
   const existing = getDeltaEntry(selectedId) || {
     id: selectedId, type: f.type || 'finding', action: 'edit',
     content_hash_at_review: f.content_hash || '', modifications: {},
+    _snapshot: snapshotFields(f),
   };
   if (!existing.modifications) existing.modifications = {};
   existing.modifications[field] = { original, modified: newValue };
@@ -1760,6 +1828,40 @@ function renderResultSummary(summary) {
     html = '<pre>' + escapeHtml(JSON.stringify(summary, null, 2)) + '</pre>';
   }
   return html;
+}
+
+/* === Tool invocations panel === */
+async function loadToolInvocations(finding) {
+  var container = document.getElementById('toolInvocationsList');
+  if (!container) return;
+  var fid = finding.id;
+  var auditData;
+  if (auditCache[fid]) {
+    auditData = auditCache[fid];
+  } else {
+    try {
+      auditData = await apiFetch('/api/audit/' + encodeURIComponent(fid));
+      auditCache[fid] = auditData;
+    } catch (_e) {
+      container.innerHTML = '<span style="color:var(--text-muted)">Could not load.</span>';
+      return;
+    }
+  }
+  if (!auditData || auditData.length === 0) {
+    container.innerHTML = '<span style="color:var(--text-muted)">No tool invocations recorded.</span>';
+    return;
+  }
+  var html = '';
+  auditData.forEach(function(entry) {
+    var tool = entry.tool || entry.mcp || 'unknown';
+    var ts = formatTimeShort(entry.timestamp || '');
+    html += '<div style="padding:2px 0;border-bottom:1px solid var(--border)">';
+    html += '<span style="font-family:monospace">' + escapeHtml(ts) + '</span> ';
+    html += '<strong>' + escapeHtml(tool) + '</strong>';
+    if (entry.evidence_id) html += ' <span style="color:var(--text-muted)">' + escapeHtml(entry.evidence_id) + '</span>';
+    html += '</div>';
+  });
+  container.innerHTML = html;
 }
 
 /* === Evidence panel === */
@@ -2025,6 +2127,14 @@ function setBadge(tabId, count) {
 
 /* === Tabs === */
 function switchTab(tabName) {
+  // Save scroll position of current tab
+  var currentTab = document.querySelector('.tab.active');
+  if (currentTab) {
+    var currentPanel = document.querySelector('.tab-panel.active');
+    if (currentPanel) {
+      try { sessionStorage.setItem('scroll_' + currentTab.dataset.tab, String(currentPanel.scrollTop)); } catch(_) {}
+    }
+  }
   document.querySelectorAll('.tab').forEach(function(t) {
     var isActive = t.dataset.tab === tabName;
     t.classList.toggle('active', isActive);
@@ -2044,6 +2154,14 @@ function switchTab(tabName) {
       if (filtered.length > 0) focusedTimelineId = filtered[0].id;
     }
     renderTimeline();
+  }
+  // Restore scroll position of new tab
+  var newPanel = document.querySelector('.tab-panel.active');
+  if (newPanel) {
+    try {
+      var saved = sessionStorage.getItem('scroll_' + tabName);
+      if (saved) newPanel.scrollTop = parseInt(saved, 10);
+    } catch(_) {}
   }
 }
 
@@ -2108,6 +2226,10 @@ document.addEventListener('keydown', function(e) {
     }
     return;
   }
+
+  // Tab switching: 1-5
+  var tabKeys = { '1': 'dashboard', '2': 'findings', '3': 'evidence', '4': 'todos', '5': 'timeline' };
+  if (tabKeys[e.key]) { e.preventDefault(); switchTab(tabKeys[e.key]); return; }
 
   // Review shortcuts (findings + timeline tabs only)
   var onReviewTab = activeTab && (

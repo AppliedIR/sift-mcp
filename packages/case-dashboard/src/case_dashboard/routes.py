@@ -6,6 +6,7 @@ import hmac as hmac_mod
 import json
 import logging
 import os
+import re
 import secrets
 import tempfile
 import time
@@ -53,6 +54,7 @@ _VALID_DELTA_KEYS = {
     "note",
     "todo_description",
     "todo_priority",
+    "_snapshot",
 }
 
 _REQUIRED_DELTA_KEYS = {"id", "type", "action"}
@@ -201,13 +203,21 @@ def _verify_items(case_dir: Path, items: list[dict]) -> list[dict]:
 # --- Commit helpers ---
 
 
+_EXAMINER_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
 def _resolve_examiner(request: Request) -> str | None:
     """Get examiner from auth middleware, fall back to env var."""
     examiner = getattr(request.state, "examiner", None)
     if examiner and examiner != "anonymous":
+        if not _EXAMINER_RE.match(examiner):
+            return None
         return examiner
     # Single-user fallback
-    return os.environ.get("AIIR_EXAMINER")
+    env_examiner = os.environ.get("AIIR_EXAMINER")
+    if env_examiner and not _EXAMINER_RE.match(env_examiner):
+        return None
+    return env_examiner
 
 
 def _load_password_entry(examiner: str) -> dict | None:
