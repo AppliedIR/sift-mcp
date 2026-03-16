@@ -17,10 +17,13 @@ _PUBLIC_PATHS = {
     "/health/",
     "/mcp",
     "/api/v1/setup/join",
+    # Dashboard HTML only — API endpoints require auth
+    "/dashboard",
+    "/dashboard/",
 }
 
 # Paths matched by prefix (all sub-paths are public)
-_PUBLIC_PREFIXES = ("/dashboard",)
+_PUBLIC_PREFIXES: tuple[str, ...] = ()
 
 # Maximum length for bearer tokens (DoS protection against megabyte-sized headers)
 _MAX_TOKEN_LENGTH = 1024
