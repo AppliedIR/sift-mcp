@@ -52,6 +52,9 @@ _HASH_EXCLUDE_KEYS = {
     "verification",
     "modified_at",
     "provenance",
+    "provenance_warnings",
+    "timeline_event_id",
+    "source_evidence",
 }
 
 

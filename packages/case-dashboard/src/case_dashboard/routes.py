@@ -42,6 +42,9 @@ _HASH_EXCLUDE_KEYS = {
     "verification",
     "modified_at",
     "provenance",
+    "provenance_warnings",
+    "timeline_event_id",
+    "source_evidence",
 }
 
 _VALID_DELTA_KEYS = {
@@ -677,12 +680,34 @@ def _apply_delta(case_dir: Path, examiner: str, derived_key: bytes) -> dict:
                 item["approved_at"] = now
                 item["approved_by"] = examiner
                 item["modified_at"] = now
+                new_hash = _compute_content_hash(item)
+                item["content_hash"] = new_hash
+                approved_count += 1
+                approved_items.append(item)
+                log_entries.append(
+                    (
+                        item["id"],
+                        "APPROVED",
+                        {"content_hash": new_hash, "coupled_from": auto_from},
+                    )
+                )
             elif source.get("status") == "REJECTED" and item.get("status") == "DRAFT":
                 item["status"] = "REJECTED"
                 item["rejected_at"] = now
                 item["rejected_by"] = examiner
                 item["rejection_reason"] = "Source finding rejected"
                 item["modified_at"] = now
+                rejected_count += 1
+                log_entries.append(
+                    (
+                        item["id"],
+                        "REJECTED",
+                        {
+                            "reason": "Source finding rejected",
+                            "coupled_from": auto_from,
+                        },
+                    )
+                )
 
         # ============================================================
         # Disk writes — CLI ordering (approve.py:1066-1113):

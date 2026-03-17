@@ -110,6 +110,7 @@ _HASH_EXCLUDE_KEYS = {
     "provenance",
     "provenance_warnings",
     "timeline_event_id",
+    "source_evidence",
 }
 
 
