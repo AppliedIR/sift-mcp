@@ -2077,12 +2077,14 @@ async function loadToolInvocations(finding) {
   }
 
   Object.keys(groups).forEach(function(src) {
+    html += '<div style="margin-top:8px;padding:6px 8px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:4px">';
     if (src !== '_no_input') {
-      html += '<div style="margin-top:6px;font-size:11px;font-weight:600;color:var(--text-secondary)">' + escapeHtml(src.split('/').pop()) + '</div>';
+      html += '<div style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">\u25B8 ' + escapeHtml(src.split('/').pop()) + '</div>';
     }
     groups[src].forEach(function(entry) {
       html += renderEntry(entry);
     });
+    html += '</div>';
   });
   container.innerHTML = html;
 }
