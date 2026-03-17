@@ -356,6 +356,8 @@ def _write_approval_log_entry(
         entry["content_hash"] = kwargs["content_hash"]
     if kwargs.get("stale_at_approval"):
         entry["stale_at_approval"] = True
+    if kwargs.get("coupled_from"):
+        entry["coupled_from"] = kwargs["coupled_from"]
 
     # Match CLI: chmod 644 → append → chmod 444
     try:
