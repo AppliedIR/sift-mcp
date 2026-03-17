@@ -176,6 +176,10 @@ class AuditWriter:
         audit_id: str | None = None,
         case_id: str | None = None,
         elapsed_ms: float | None = None,
+        input_files: list[str] | None = None,
+        input_sha256s: list[str] | None = None,
+        input_detection_method: str = "",
+        source_evidence: str = "",
     ) -> str | None:
         """Write an audit entry. Returns the audit_id, or None when no case is active."""
         if not self._get_audit_dir():
@@ -196,6 +200,13 @@ class AuditWriter:
         }
         if elapsed_ms is not None:
             entry["elapsed_ms"] = round(elapsed_ms, 1)
+        if input_files:
+            entry["input_files"] = input_files
+            entry["input_sha256s"] = input_sha256s or []
+        if input_detection_method:
+            entry["input_detection_method"] = input_detection_method
+        if source_evidence:
+            entry["source_evidence"] = source_evidence
 
         if not self._write_entry(entry):
             logger.warning(

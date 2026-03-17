@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -80,6 +81,9 @@ _ALLOWED_FINDING_FIELDS = {
     "event_type",
     "artifact_ref",
     "related_findings",
+    "host",
+    "event_timestamp",
+    "affected_account",
 }
 _PROTECTED_EVENT_FIELDS = {
     "id",
@@ -104,6 +108,8 @@ _HASH_EXCLUDE_KEYS = {
     "verification",
     "modified_at",
     "provenance",
+    "provenance_warnings",
+    "timeline_event_id",
 }
 
 
@@ -131,6 +137,44 @@ def _next_seq(items: list[dict], id_field: str, prefix: str, examiner: str) -> i
             except ValueError:
                 pass
     return max_num + 1
+
+
+def _resolve_source_evidence_static(
+    input_files: list[str],
+    audit_entries: list[dict],
+    evidence_registry: set[str],
+    visited: set[str] | None = None,
+    depth: int = 0,
+    max_depth: int = 10,
+) -> str:
+    """Walk input files backward through audit trail to find registered evidence."""
+    if depth >= max_depth:
+        return ""
+    if visited is None:
+        visited = set()
+    for path in input_files:
+        resolved = str(Path(path).resolve())
+        if resolved in visited:
+            continue
+        visited.add(resolved)
+        if resolved in evidence_registry:
+            return resolved
+        for entry in audit_entries:
+            output = entry.get("result_summary", {}).get("output_file", "")
+            if output and str(Path(output).resolve()) == resolved:
+                parent_inputs = entry.get("input_files", [])
+                if parent_inputs:
+                    result = _resolve_source_evidence_static(
+                        parent_inputs,
+                        audit_entries,
+                        evidence_registry,
+                        visited,
+                        depth + 1,
+                        max_depth,
+                    )
+                    if result:
+                        return result
+    return ""
 
 
 def _validate_case_id(case_id: str) -> None:
@@ -436,6 +480,8 @@ class CaseManager:
                         "content": content[:5000],
                         "content_type": str(art.get("content_type", ""))[:50],
                         "purpose": str(art.get("purpose", ""))[:500],
+                        "audit_id": str(art.get("audit_id", ""))[:100],
+                        "output_ref": str(art.get("output_ref", ""))[:500],
                     }
                 )
         if validated_artifacts:
@@ -448,13 +494,126 @@ class CaseManager:
             else 0
         )
 
-        # Extend audit_ids with shell audit IDs
+        # Validate artifact audit_ids: required and must exist in audit trail
+        provenance_warnings: list[str] = []
+        if validated_artifacts:
+            # Build audit_id index from audit trail
+            audit_dir = case_dir / "audit"
+            eid_set: set[str] = set()
+            all_audit_entries: list[dict] = []
+            if audit_dir.is_dir():
+                for jsonl_file in audit_dir.glob("*.jsonl"):
+                    try:
+                        with open(jsonl_file, encoding="utf-8") as f:
+                            for line in f:
+                                line = line.strip()
+                                if not line:
+                                    continue
+                                try:
+                                    entry = json.loads(line)
+                                    aid = entry.get("audit_id", "")
+                                    if aid:
+                                        eid_set.add(aid)
+                                    all_audit_entries.append(entry)
+                                except json.JSONDecodeError:
+                                    continue
+                    except OSError:
+                        continue
+
+            for art in validated_artifacts:
+                aid = art.get("audit_id", "")
+                if not aid:
+                    return {
+                        "status": "REJECTED",
+                        "error": (
+                            "Artifact missing audit_id — pass the audit_id "
+                            "from the tool response you just received."
+                        ),
+                    }
+                if aid not in eid_set:
+                    # Two-strike: flush race condition
+                    time.sleep(0.1)
+                    eid_set.clear()
+                    if audit_dir.is_dir():
+                        for jsonl_file in audit_dir.glob("*.jsonl"):
+                            try:
+                                with open(jsonl_file, encoding="utf-8") as f:
+                                    for line in f:
+                                        line = line.strip()
+                                        if not line:
+                                            continue
+                                        try:
+                                            entry = json.loads(line)
+                                            a = entry.get("audit_id", "")
+                                            if a:
+                                                eid_set.add(a)
+                                        except json.JSONDecodeError:
+                                            continue
+                            except OSError:
+                                continue
+                    if aid not in eid_set:
+                        return {
+                            "status": "REJECTED",
+                            "error": (
+                                f"audit_id '{aid}' not found in audit trail. "
+                                "Pass the audit_id from the tool response."
+                            ),
+                        }
+
+            # Auto-merge artifact audit_ids into finding audit_ids
+            artifact_aids = [
+                a["audit_id"] for a in validated_artifacts if a.get("audit_id")
+            ]
+        else:
+            artifact_aids = []
+            all_audit_entries = []
+
+        # Extend audit_ids with shell audit IDs + artifact audit IDs
         audit_ids = list(sanitized.get("audit_ids", []))
         audit_ids.extend(shell_audit_ids)
-        sanitized["audit_ids"] = audit_ids
+        audit_ids.extend(artifact_aids)
+        sanitized["audit_ids"] = list(dict.fromkeys(audit_ids))
+
+        # Auto-resolve source_evidence from audit trail
+        if all_audit_entries and sanitized["audit_ids"]:
+            raw_ev = self._load_evidence_registry(case_dir)
+            evidence = (
+                raw_ev.get("files", []) if isinstance(raw_ev, dict) else (raw_ev or [])
+            )
+            registered = {
+                str(Path(e.get("path", "")).resolve())
+                for e in evidence
+                if e.get("path")
+            }
+            audit_by_id = {
+                e["audit_id"]: e for e in all_audit_entries if e.get("audit_id")
+            }
+            # Collect input_files from referenced audit entries
+            input_files = []
+            for aid in sanitized["audit_ids"]:
+                entry = audit_by_id.get(aid)
+                if entry:
+                    input_files.extend(entry.get("input_files", []))
+            if input_files:
+                source_ev = _resolve_source_evidence_static(
+                    input_files, all_audit_entries, registered
+                )
+                if source_ev:
+                    sanitized["source_evidence"] = source_ev
+
+            # Provenance warnings: check artifact sources against registry
+            for art in validated_artifacts:
+                src = art.get("source", "")
+                if src and str(Path(src).resolve()) not in registered:
+                    provenance_warnings.append(
+                        f"Artifact source not in evidence registry: {src}"
+                    )
+
+        if provenance_warnings:
+            sanitized["provenance_warnings"] = provenance_warnings
 
         # Classify provenance
-        provenance = self._classify_provenance(audit_ids, case_dir)
+        provenance = self._classify_provenance(sanitized["audit_ids"], case_dir)
 
         # Hard gate: reject if all NONE and no supporting_commands
         if provenance["summary"] == "NONE" and not validated_commands:

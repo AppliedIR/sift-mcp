@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from sift_common.instructions import SIFT_MCP as _INSTRUCTIONS
@@ -68,7 +69,11 @@ def create_server() -> FastMCP:
 
     @server.tool()
     def run_command(
-        command: list[str], purpose: str, timeout: int = 0, save_output: bool = False
+        command: list[str],
+        purpose: str,
+        timeout: int = 0,
+        save_output: bool = False,
+        input_files: list[str] | None = None,
     ) -> dict:
         """Execute a forensic tool on this SIFT workstation.
 
@@ -82,7 +87,11 @@ def create_server() -> FastMCP:
             purpose: Why this command is being run (audit trail).
             timeout: Override timeout in seconds (0 = default).
             save_output: Save stdout/stderr to files with SHA-256 hashes.
+            input_files: Files this command reads. Pass the paths you
+                referenced in the command. Server auto-detects as backup
+                for cataloged tools.
         """
+        import hashlib
         import time
 
         from sift_mcp.catalog import get_tool_def
@@ -90,6 +99,57 @@ def create_server() -> FastMCP:
 
         start = time.monotonic()
         audit_id = audit._next_audit_id()
+
+        # Detect input files: LLM-first, catalog-backup, parsed-fallback
+        binary = command[0].split("/")[-1] if command else ""
+        td = get_tool_def(binary)
+        detection_method = ""
+        detected_inputs: list[str] = []
+
+        if input_files:
+            detected_inputs = input_files
+            detection_method = "llm"
+        elif td and td.input_flag:
+            # Cataloged tool: find flag in command, take next element
+            try:
+                idx = command.index(td.input_flag)
+                if idx + 1 < len(command):
+                    detected_inputs = [command[idx + 1]]
+                    detection_method = "catalog"
+            except ValueError:
+                pass
+        if not detected_inputs and not detection_method:
+            # Fallback: check command tokens for existing files
+            for token in command[1:]:
+                if token.startswith("-"):
+                    continue
+                p = Path(token)
+                if p.is_file():
+                    detected_inputs.append(str(p))
+            if detected_inputs:
+                detection_method = "parsed"
+            elif td and not td.input_flag:
+                detection_method = ""  # Tool has no inputs (e.g., hostname)
+            else:
+                detection_method = "none"
+
+        # Hash input files (chunked, 1GB cap)
+        # Wrapped per-file — provenance must never block forensic work
+        input_hashes: dict[str, str] = {}
+        for fpath in detected_inputs:
+            try:
+                p = Path(fpath).resolve()
+                if p.is_file():
+                    if p.stat().st_size > 1_000_000_000:
+                        input_hashes[str(p)] = "skipped:too_large"
+                    else:
+                        h = hashlib.sha256()
+                        with open(p, "rb") as hf:
+                            for chunk in iter(lambda: hf.read(65536), b""):
+                                h.update(chunk)
+                        input_hashes[str(p)] = h.hexdigest()
+            except OSError:
+                continue
 
         try:
             exec_result = _run(
@@ -100,9 +160,7 @@ def create_server() -> FastMCP:
             )
             elapsed = time.monotonic() - start
 
-            # Determine FK tool name for knowledge enrichment
-            binary = command[0].split("/")[-1]
-            td = get_tool_def(binary)
+            # FK tool name for knowledge enrichment (td already resolved above)
             fk_name = td.knowledge_name if td else binary
 
             # Use parsed preview for large output, raw result for small
@@ -147,9 +205,17 @@ def create_server() -> FastMCP:
                 },
                 audit_id=audit_id,
                 elapsed_ms=elapsed * 1000,
+                input_files=list(input_hashes.keys()) if input_hashes else None,
+                input_sha256s=list(input_hashes.values()) if input_hashes else None,
+                input_detection_method=detection_method,
             )
             if logged_id is None:
                 response["warning"] = "Audit write failed — action not recorded"
+            if detection_method == "none":
+                response["input_files_warning"] = (
+                    "Could not detect input files — pass input_files parameter "
+                    "for provenance chain linking."
+                )
             return response
 
         except SiftError as e:

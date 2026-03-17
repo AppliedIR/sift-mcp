@@ -152,9 +152,8 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     ) -> dict:
         """Stage finding as DRAFT for human review.
 
-        Findings require an evidence trail (provenance). Provide audit_ids from
-        MCP tool responses, or pass supporting_commands for shell-based evidence,
-        or both. Findings with no evidence trail are rejected.
+        IMPORTANT: Every artifact MUST include audit_id from the tool response
+        that produced the data. Artifacts without audit_id are REJECTED.
 
         Required fields in finding dict:
         - title (str): brief summary
@@ -163,17 +162,34 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - confidence: SPECULATIVE, LOW, MEDIUM, or HIGH
         - confidence_justification (str): why this confidence level
         - type: finding, conclusion, attribution, or exclusion
-        - audit_ids (list[str]): IDs from MCP tool responses. Use [] if providing
-          supporting_commands only.
+        - audit_ids (list[str]): IDs from MCP tool responses.
+          Use [] if providing supporting_commands only.
+        - event_timestamp (str, ISO 8601): when the incident event occurred
+          (e.g., "2026-01-24T15:00:41Z"). NOT the current time — the time
+          from the evidence. Date-only accepted (e.g., "2026-01-24").
+          Required for type=finding. Optional for other types.
+
+        Context (recommended):
+        - host (str): which system, e.g., "wkstn05" or "dc01"
+        - affected_account (str): which account, e.g., "shieldbase\\wacsvc"
 
         Optional: mitre_ids, iocs, event_type, artifact_ref, related_findings
 
-        supporting_commands (separate parameter, list of dicts): Bash commands used.
-        Each dict: {command, purpose, output_excerpt}. Use command="analytical reasoning"
-        for hypothesis-only findings.
+        iocs (list[str]): indicators of compromise found in this evidence.
+          Pass ALL suspicious IPs, hashes, domains, registry keys, file paths,
+          and accounts. Types auto-detected, deduplication automatic.
+
+        supporting_commands (separate parameter, list of dicts): for shell-based
+        evidence only. Each dict: {command, purpose, output_excerpt}.
 
         artifacts (separate parameter, list of dicts): raw evidence reviewed.
-        Each dict: {source, extraction, content, content_type (optional), purpose (optional)}.
+        Each dict:
+          Required: source, extraction, content, audit_id
+          Optional: content_type, purpose, output_ref
+          audit_id: REQUIRED — copy from the tool response envelope.
+
+        Tip: stage findings soon after analysis — audit_ids from earlier tool
+        calls may be lost to context compaction.
 
         Requires human approval via 'aiir approve'."""
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)

@@ -311,7 +311,7 @@ MITRE_TECHNIQUE_QUERIES = [
     ("T1011", "exfiltration", 0.55),
     ("T1052", "physical", 0.55),
     ("T1567", "web", 0.55),
-    ("T1029", "transfer", 0.55),
+    ("T1029", "transfer", 0.50),
     # Impact
     ("T1485", "destruction", 0.55),
     ("T1486", "encrypt", 0.60),
