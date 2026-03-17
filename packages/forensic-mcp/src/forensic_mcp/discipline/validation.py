@@ -8,6 +8,8 @@ Reads confidence definitions from forensic-knowledge YAML.
 
 from __future__ import annotations
 
+import re
+
 from forensic_knowledge import loader
 
 VALID_TYPES = {"finding", "attribution", "conclusion", "exclusion"}
@@ -79,8 +81,6 @@ def validate(finding: dict) -> dict:
     event_ts = finding.get("event_timestamp", "")
     if event_ts:
         # Validate ISO 8601 or date-only (YYYY-MM-DD)
-        import re
-
         if not re.match(
             r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$",
             event_ts,

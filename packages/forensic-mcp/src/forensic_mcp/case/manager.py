@@ -393,6 +393,8 @@ class CaseManager:
                 "status": "VALIDATION_FAILED",
                 "errors": validation.get("errors", []),
             }
+        # Carry forward validation warnings
+        validation_warnings = validation.get("warnings", [])
 
         exam = self._effective_examiner(examiner_override)
 
@@ -412,6 +414,12 @@ class CaseManager:
 
         # Allowlist: only accepted fields pass through from user input
         sanitized = {k: v for k, v in finding.items() if k in _ALLOWED_FINDING_FIELDS}
+
+        # Truncate string fields with explicit limits
+        if sanitized.get("host"):
+            sanitized["host"] = str(sanitized["host"])[:200]
+        if sanitized.get("affected_account"):
+            sanitized["affected_account"] = str(sanitized["affected_account"])[:200]
 
         # Process supporting_commands — generate shell audit IDs
         shell_audit_ids: list[str] = []
@@ -722,6 +730,7 @@ class CaseManager:
                 f"{dropped_cmd_count} supporting_command(s) dropped (missing command or purpose)"
             )
         warnings.extend(audit_warnings)
+        warnings.extend(validation_warnings)
         if warnings:
             result["warning"] = " ".join(warnings)
         return result
