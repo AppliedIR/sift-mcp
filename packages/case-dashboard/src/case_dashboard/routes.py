@@ -734,15 +734,16 @@ def _apply_delta(case_dir: Path, examiner: str, derived_key: bytes) -> dict:
                 ioc["approved_at"] = now
                 ioc["approved_by"] = examiner
                 ioc["modified_at"] = now
-                new_hash = _compute_content_hash(ioc)
-                ioc["content_hash"] = new_hash
                 iocs_modified = True
                 approved_items.append(ioc)
                 log_entries.append(
                     (
                         ioc["id"],
                         "APPROVED",
-                        {"content_hash": new_hash, "coupled_from": "ioc_cascade"},
+                        {
+                            "content_hash": ioc.get("content_hash", ""),
+                            "coupled_from": "ioc_cascade",
+                        },
                     )
                 )
             elif statuses == {"REJECTED"} and ioc.get("status") != "REJECTED":
@@ -786,9 +787,9 @@ def _apply_delta(case_dir: Path, examiner: str, derived_key: bytes) -> dict:
         # Step 1: Save findings + timeline + iocs
         _save_protected(case_dir / "findings.json", findings)
         _save_protected(case_dir / "timeline.json", timeline)
-        if iocs_modified or any(
-            item["id"].startswith("IOC-") for item in approved_items
-        ):
+        # Save iocs if cascade modified OR any IOC was directly acted on
+        any_ioc_acted = any(item_id.startswith("IOC-") for item_id, _, _ in log_entries)
+        if iocs and (iocs_modified or any_ioc_acted):
             _save_protected(iocs_path, iocs)
 
         # Step 2: Write approval log entries (best-effort)
