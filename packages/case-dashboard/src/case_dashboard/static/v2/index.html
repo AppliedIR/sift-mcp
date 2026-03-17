@@ -1395,7 +1395,7 @@ function renderFinding(id) {
   // Evidence panel (audit trail)
   if (f.audit_ids && f.audit_ids.length > 0) {
     html += '<div class="evidence-panel" id="evidencePanel">';
-    html += '<div class="evidence-panel-header"><span>Audit Trail</span><button onclick="toggleAllEvidence()">collapse all</button></div>';
+    html += '<div class="evidence-panel-header"><span>Full Audit Trail</span><button onclick="toggleAllEvidence()">collapse all</button></div>';
     html += '<div id="evidenceItems">Loading evidence...</div>';
     html += '<div class="grounding" id="groundingSummary"></div>';
     html += '</div>';
@@ -1417,9 +1417,9 @@ function renderFinding(id) {
     ).join('') + '</div></div>';
   }
 
-  // Provenance Chain (from audit trail)
+  // Evidence Provenance Chain
   html += '<details class="tool-invocations" id="toolInvocations" open>';
-  html += '<summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--text-secondary)">Provenance Chain</summary>';
+  html += '<summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--text-secondary)">Evidence Provenance Chain</summary>';
   html += '<div id="toolInvocationsList" style="margin-top:4px;font-size:12px"></div>';
   html += '</details>';
 
