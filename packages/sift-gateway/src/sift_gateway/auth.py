@@ -17,11 +17,11 @@ _PUBLIC_PATHS = {
     "/health/",
     "/mcp",
     "/api/v1/setup/join",
-    # Dashboard HTML only — API endpoints require auth
+    # Examiner Portal + legacy dashboard HTML only — API endpoints require auth
+    "/portal",
+    "/portal/",
     "/dashboard",
     "/dashboard/",
-    "/dashboard/v2",
-    "/dashboard/v2/",
 }
 
 # Paths matched by prefix (all sub-paths are public)
