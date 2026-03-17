@@ -63,6 +63,7 @@
     "deny": [
       "Edit(**/findings.json)",
       "Edit(**/timeline.json)",
+      "Edit(**/iocs.json)",
       "Edit(**/approvals.jsonl)",
       "Edit(**/todos.json)",
       "Edit(**/CASE.yaml)",
@@ -70,6 +71,7 @@
       "Edit(**/audit/*.jsonl)",
       "Write(**/findings.json)",
       "Write(**/timeline.json)",
+      "Write(**/iocs.json)",
       "Write(**/approvals.jsonl)",
       "Write(**/todos.json)",
       "Write(**/CASE.yaml)",

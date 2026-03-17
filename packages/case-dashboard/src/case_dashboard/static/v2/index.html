@@ -675,6 +675,7 @@ body {
       <table class="data-table" id="iocsTable">
         <thead>
           <tr>
+            <th style="width:20px"></th>
             <th>Value</th>
             <th>Type</th>
             <th>Category</th>
@@ -2707,33 +2708,71 @@ function renderDashboard(summary) {
 
   // --- RIGHT PANEL: Getting Started ---
   html += '<div style="font-size:13px;line-height:1.7;color:var(--text-secondary)">';
-  html += '<div style="font-weight:600;font-size:15px;margin-bottom:10px;color:var(--text-primary)">Getting Started</div>';
+  html += '<div style="font-weight:600;font-size:15px;margin-bottom:10px;color:var(--text-primary)">Welcome to AIIR</div>';
 
-  html += '<div style="margin-bottom:10px"><strong>Your Role</strong><br>';
-  html += 'You are the human reviewer. The AI staged findings and timeline events during investigation. Your job: verify each one \u2014 approve what\u2019s correct, reject what\u2019s wrong, edit what needs refinement, then commit your decisions with a password signature.</div>';
+  // --- Intro ---
+  html += '<div style="margin-bottom:14px">';
+  html += 'AIIR is an AI-assisted incident response platform. An AI analyst investigates using forensic tools on your SIFT and Windows workstations, recording what it finds as structured findings and timeline events. <strong>You are the examiner</strong> \u2014 the human authority who reviews, corrects, and approves the AI\u2019s work before anything appears in a report.';
+  html += '</div>';
 
-  html += '<div style="margin-bottom:10px"><strong>Review Workflow</strong>';
-  html += '<ol style="margin:4px 0 0 18px;padding:0;font-size:12px">';
-  html += '<li><strong>Review findings</strong> (tab 2) \u2014 read evidence, check provenance chain, approve or reject</li>';
-  html += '<li><strong>Curate timeline</strong> (tab 3) \u2014 include or exclude events from the narrative</li>';
-  html += '<li><strong>Check scope</strong> (tabs 4\u20135) \u2014 verify affected hosts and accounts</li>';
-  html += '<li><strong>Verify evidence</strong> (tab 6) \u2014 confirm evidence file integrity</li>';
-  html += '<li><strong>Review IOCs</strong> (tab 7) \u2014 validate indicators for sharing</li>';
-  html += '<li><strong>Complete TODOs</strong> (tab 8) \u2014 address outstanding tasks</li>';
-  html += '<li><strong>Commit</strong> \u2014 enter password to cryptographically sign your decisions</li>';
-  html += '</ol></div>';
+  // --- How It Works (always visible) ---
+  html += '<div style="margin-bottom:14px;padding:12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px">';
+  html += '<div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--text-primary)">How It Works</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr;gap:6px;font-size:12px">';
+  html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">1.</span> <strong>AI investigates</strong> \u2014 runs forensic tools (SIFT + Windows), analyzes artifacts, records findings with evidence</div>';
+  html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">2.</span> <strong>You review</strong> \u2014 examine each finding here or in the CLI. Check the evidence, read the provenance chain, verify the interpretation</div>';
+  html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">3.</span> <strong>Approve or reject</strong> \u2014 approve what\u2019s correct, reject what\u2019s wrong, edit what needs refinement. Linked timeline events and IOCs follow automatically</div>';
+  html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">4.</span> <strong>Commit</strong> \u2014 enter your password to cryptographically sign your decisions. Committed findings appear in reports and cannot be altered</div>';
+  html += '</div></div>';
 
-  html += '<div style="margin-bottom:10px"><strong>Key Concepts</strong><br>';
-  html += '<span class="badge badge-draft">DRAFT</span> AI-staged, not yet reviewed<br>';
-  html += '<span class="badge badge-approved">\u2713 APPROVED</span> verified, pending commit<br>';
-  html += '<strong>Commit</strong> \u2014 password-signed, permanent, appears in reports<br>';
-  html += '<strong>Provenance</strong> \u2014 path from raw evidence through tools to finding<br>';
-  html += '<strong>Timeline coupling</strong> \u2014 approve a finding, its auto-created timeline event follows</div>';
+  // --- Understanding the Tabs ---
+  html += '<details style="margin-bottom:8px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text-primary)">Understanding the Tabs</summary>';
+  html += '<div style="margin-top:8px;font-size:12px;line-height:1.7">';
+  html += '<div style="margin-bottom:4px"><strong>Overview</strong> (this tab) \u2014 investigation progress at a glance: how many findings reviewed, affected scope, next action</div>';
+  html += '<div style="margin-bottom:4px"><strong>Findings</strong> \u2014 the core of your review. Each finding includes an observation backed by evidence artifacts, the AI\u2019s interpretation, and a provenance chain showing exactly which tools produced the data. Read the artifacts, verify the logic, then approve or reject</div>';
+  html += '<div style="margin-bottom:4px"><strong>Timeline</strong> \u2014 the incident narrative as a sequence of events. Findings with timestamps auto-create timeline entries. Approve a finding and its linked event follows. Use the timeline ruler to spot clusters and gaps</div>';
+  html += '<div style="margin-bottom:4px"><strong>Hosts</strong> \u2014 every system the investigation touched, aggregated from findings. Shows finding counts per host so you can verify scope coverage</div>';
+  html += '<div style="margin-bottom:4px"><strong>Accounts</strong> \u2014 user and service accounts involved in the incident. Aggregated the same way as hosts</div>';
+  html += '<div style="margin-bottom:4px"><strong>Evidence</strong> \u2014 registered evidence files with SHA-256 hashes. Verify integrity here \u2014 if a hash doesn\u2019t match, the file has been modified since registration</div>';
+  html += '<div style="margin-bottom:4px"><strong>IOCs</strong> \u2014 indicators of compromise extracted from approved findings: IPs, domains, hashes, URLs, email addresses. Review before sharing with other teams or feeding into blocklists</div>';
+  html += '<div><strong>TODOs</strong> \u2014 tasks the AI flagged during investigation: evidence to collect, leads to follow up, gaps in analysis</div>';
+  html += '</div></details>';
 
-  html += '<div style="margin-bottom:8px"><strong>Keyboard</strong><br>';
-  html += '<code>1</code>\u2013<code>8</code> tabs \u00B7 <code>j</code>/<code>k</code> navigate \u00B7 <code>a</code> approve \u00B7 <code>r</code> reject \u00B7 <code>s</code> undo \u00B7 <code>e</code> edit \u00B7 <code>Shift+C</code> commit \u00B7 <code>/</code> search \u00B7 <code>?</code> help</div>';
+  // --- Evidence & Trust ---
+  html += '<details style="margin-bottom:8px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text-primary)">Evidence & Trust</summary>';
+  html += '<div style="margin-top:8px;font-size:12px;line-height:1.7">';
+  html += '<div style="margin-bottom:6px">AIIR is designed so you never have to take the AI\u2019s word for anything:</div>';
+  html += '<div style="margin-bottom:4px"><strong>Provenance chain</strong> \u2014 every finding links back to the evidence files and tool executions that produced it. The chain panel on each finding shows: which evidence file was input, which tool processed it, and what output was extracted. You can trace any claim back to its source</div>';
+  html += '<div style="margin-bottom:4px"><strong>Audit trail</strong> \u2014 every tool execution, finding record, and approval decision is logged with timestamps and the examiner identity. The AI cannot modify or delete audit entries</div>';
+  html += '<div style="margin-bottom:4px"><strong>Content hashing</strong> \u2014 findings are hashed at creation. If a finding is modified after you reviewed it, the hash changes and the approval is flagged as stale</div>';
+  html += '<div style="margin-bottom:4px"><strong>Human-only approval</strong> \u2014 the AI stages findings as <span class="badge badge-draft">DRAFT</span>. Only a human examiner (via this dashboard or the CLI) can move them to <span class="badge badge-approved">\u2713 APPROVED</span> or <span class="badge badge-rejected">\u2717 REJECTED</span>. The AI cannot approve its own work</div>';
+  html += '<div><strong>Password-signed commits</strong> \u2014 when you commit, your password generates an HMAC signature over the approved content. This proves that a specific examiner reviewed and approved specific findings at a specific time</div>';
+  html += '</div></details>';
 
-  html += '<div style="color:var(--text-muted);font-size:12px"><strong>CLI</strong> \u00B7 <code>aiir approve --review</code> \u00B7 <code>aiir case status</code></div>';
+  // --- The Platform ---
+  html += '<details style="margin-bottom:8px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text-primary)">The AIIR Platform</summary>';
+  html += '<div style="margin-top:8px;font-size:12px;line-height:1.7">';
+  html += '<div style="margin-bottom:6px">This dashboard is one part of a larger system:</div>';
+  html += '<div style="margin-bottom:4px"><strong>SIFT Gateway</strong> \u2014 runs on your SIFT workstation. Hosts 7 MCP backends: forensic tools, case management, report generation, knowledge search, threat intelligence, and more</div>';
+  html += '<div style="margin-bottom:4px"><strong>Windows Tools</strong> \u2014 if connected, runs Zimmerman tools and Hayabusa on a Windows VM for artifact parsing that requires Windows</div>';
+  html += '<div style="margin-bottom:4px"><strong>LLM Client</strong> \u2014 any MCP-compatible AI client (Claude Code, Goose, Cursor, etc.) connects to the gateway and drives the investigation. The platform is LLM-agnostic</div>';
+  html += '<div style="margin-bottom:4px"><strong>aiir CLI</strong> \u2014 your command-line tool for case management, approval, backup, and reporting. Everything you can do in this dashboard, you can also do from the terminal with <code>aiir approve --review</code>, <code>aiir case status</code>, <code>aiir backup</code></div>';
+  html += '<div><strong>Reports</strong> \u2014 once findings are committed, generate professional IR reports: full, executive summary, timeline-only, IOC-only, or status updates</div>';
+  html += '</div></details>';
+
+  // --- Keyboard Shortcuts ---
+  html += '<details style="margin-bottom:8px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text-primary)">Keyboard Shortcuts</summary>';
+  html += '<div style="margin-top:8px;font-size:12px;line-height:1.9;font-family:var(--font-mono, monospace)">';
+  html += '<div><code style="min-width:28px;display:inline-block">1</code>\u2013<code>8</code> \u00A0Switch tabs</div>';
+  html += '<div><code style="min-width:28px;display:inline-block">j</code> / <code>k</code> \u00A0Navigate items</div>';
+  html += '<div><code style="min-width:28px;display:inline-block">a</code> \u00A0Approve selected</div>';
+  html += '<div><code style="min-width:28px;display:inline-block">r</code> \u00A0Reject selected</div>';
+  html += '<div><code style="min-width:28px;display:inline-block">s</code> \u00A0Undo (revert to DRAFT)</div>';
+  html += '<div><code style="min-width:28px;display:inline-block">e</code> \u00A0Edit selected</div>';
+  html += '<div><code>Shift+C</code> \u00A0Open commit dialog</div>';
+  html += '<div><code style="min-width:28px;display:inline-block">/</code> \u00A0Search</div>';
+  html += '<div><code style="min-width:28px;display:inline-block">?</code> \u00A0Show all shortcuts</div>';
+  html += '</div></details>';
 
   html += '</div>';
   html += '</div>'; // end two-panel grid
@@ -2906,7 +2945,7 @@ async function loadIocs() {
     renderIocs();
   } catch (e) {
     document.getElementById('iocsBody').innerHTML =
-      '<tr><td colspan="7" style="color:var(--red)">' + escapeHtml(e.message) + '</td></tr>';
+      '<tr><td colspan="8" style="color:var(--red)">' + escapeHtml(e.message) + '</td></tr>';
   }
 }
 
@@ -2932,18 +2971,26 @@ function renderIocs() {
     var statusClass = 'badge-' + status.toLowerCase();
     var confClass = 'conf-' + ((ioc.confidence || 'low').toLowerCase());
 
-    html += '<tr style="cursor:pointer" onclick="this.nextElementSibling && this.nextElementSibling.classList.toggle(\'visible\')">';
+    var hostsDisplay = '\u2014';
+    if (uniqueHosts.length > 0 && uniqueHosts.length <= 3) {
+      hostsDisplay = uniqueHosts.map(escapeHtml).join(', ');
+    } else if (uniqueHosts.length > 3) {
+      hostsDisplay = uniqueHosts.slice(0, 2).map(escapeHtml).join(', ') + ' +' + (uniqueHosts.length - 2) + ' more';
+    }
+
+    html += '<tr style="cursor:pointer" onclick="var dr=this.nextElementSibling;if(dr){dr.classList.toggle(\'visible\');this.querySelector(\'.ioc-chevron\').textContent=dr.classList.contains(\'visible\')?\'\u25BE\':\'\u25B8\'}">';
+    html += '<td style="font-size:12px;color:var(--text-muted)"><span class="ioc-chevron">\u25B8</span></td>';
     html += '<td style="font-family:monospace;font-size:11px" title="' + escapeHtml(val) + '">' + escapeHtml(shortVal) + '</td>';
     html += '<td>' + escapeHtml(ioc.type || 'unknown') + '</td>';
     html += '<td>' + escapeHtml(ioc.category || 'unknown') + '</td>';
     html += '<td><span class="badge ' + escapeHtml(confClass) + '">' + escapeHtml(ioc.confidence || '') + '</span></td>';
-    html += '<td>' + uniqueHosts.length + '</td>';
+    html += '<td>' + hostsDisplay + '</td>';
     html += '<td>' + (ioc.source_findings || []).length + '</td>';
     html += '<td><span class="badge ' + escapeHtml(statusClass) + '">' + escapeHtml(status) + '</span></td>';
     html += '</tr>';
 
     // Expandable detail row
-    html += '<tr class="ioc-detail" style="display:none"><td colspan="7" style="padding:8px 12px;background:var(--bg-secondary);font-size:12px">';
+    html += '<tr class="ioc-detail" style="display:none"><td colspan="8" style="padding:8px 12px;background:var(--bg-secondary);font-size:12px">';
     html += '<div style="font-family:monospace;word-break:break-all;margin-bottom:6px">' + escapeHtml(val) + '</div>';
     if (uniqueHosts.length > 0) {
       html += '<div><strong>Hosts:</strong> ' + uniqueHosts.map(escapeHtml).join(', ') + '</div>';
@@ -2963,7 +3010,7 @@ function renderIocs() {
   });
 
   if (!filtered.length) {
-    html = '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:24px">' +
+    html = '<tr><td colspan="8" style="color:var(--text-muted);text-align:center;padding:24px">' +
       (iocsData.length === 0 ? 'No IOCs extracted yet. IOCs are auto-extracted when findings include the iocs field.' : 'No IOCs match current filters.') +
       '</td></tr>';
   }
