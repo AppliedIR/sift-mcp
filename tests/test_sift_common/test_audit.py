@@ -127,12 +127,13 @@ class TestAuditWriter:
         )
         assert eid == "custom-id-001"
 
-    def test_no_case_dir_skips_write(self, monkeypatch):
+    def test_no_case_dir_skips_write(self, tmp_path, monkeypatch):
         """Without AIIR_CASE_DIR, audit entry not written but no error."""
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
         writer = AuditWriter("test-mcp")
         eid = writer.log(tool="t", params={}, result_summary="ok")
-        assert eid.startswith("test-tester-")
+        assert eid is None
 
     def test_elapsed_ms_recorded(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"

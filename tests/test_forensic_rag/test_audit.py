@@ -13,8 +13,10 @@ from rag_mcp.tool_metadata import DEFAULT_METADATA, TOOL_METADATA
 class TestAuditWriter:
     """AuditWriter class tests."""
 
-    def test_audit_id_format(self, monkeypatch):
+    def test_audit_id_format(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("forensic-rag-mcp")
         eid = writer.log(
             tool="search", params={"q": "test"}, result_summary={"ok": True}

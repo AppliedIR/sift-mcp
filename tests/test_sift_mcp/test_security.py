@@ -33,8 +33,9 @@ class TestDenylist:
     def test_fdisk_not_denied(self):
         assert is_denied("fdisk") is False
 
-    def test_mount_denied(self):
-        assert is_denied("mount") is True
+    def test_mount_allowed(self):
+        """mount is allowed — examiners need it for evidence images."""
+        assert is_denied("mount") is False
 
     def test_kill_denied(self):
         assert is_denied("kill") is True

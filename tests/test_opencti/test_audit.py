@@ -13,8 +13,10 @@ from opencti_mcp.tool_metadata import DEFAULT_METADATA, TOOL_METADATA
 class TestAuditWriter:
     """AuditWriter class tests."""
 
-    def test_audit_id_format(self, monkeypatch):
+    def test_audit_id_format(self, tmp_path, monkeypatch):
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer = AuditWriter("opencti-mcp")
         eid = writer.log(
             tool="lookup_ioc", params={"ioc": "8.8.8.8"}, result_summary={}
@@ -202,7 +204,10 @@ class TestWrapResponse:
             server._audit = AuditWriter("opencti-mcp")
             return server
 
-    def test_wraps_successful_result(self):
+    def test_wraps_successful_result(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        (tmp_path / "CASE.yaml").touch(exist_ok=True)
         server = self._make_server_instance()
         result = {"results": [], "total": 0}
         wrapped = server._wrap_response(

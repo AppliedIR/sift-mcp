@@ -1007,69 +1007,54 @@ async def verify_evidence(request: Request) -> JSONResponse:
     if not case_dir:
         return _no_case_response()
 
-    rel_path = request.path_params["path"]
+    req_path = request.path_params["path"]
 
-    # Path traversal protection
-    if ".." in rel_path or rel_path.startswith("/"):
+    # Look up in evidence registry — the registry is the source of truth
+    raw_ev = _load_json(case_dir / "evidence.json")
+    evidence = raw_ev.get("files", []) if isinstance(raw_ev, dict) else (raw_ev or [])
+    entry = None
+    for item in evidence:
+        if item.get("path") == req_path:
+            entry = item
+            break
+
+    if entry is None:
         return JSONResponse(
-            {"error": "Invalid path"},
-            status_code=400,
+            {"error": f"Not in evidence registry: {req_path}"},
+            status_code=404,
         )
 
-    evidence_dir = case_dir / "evidence"
-    target = (evidence_dir / rel_path).resolve()
+    stored_hash = entry.get("sha256", "")
+    file_path = Path(entry["path"])
 
-    # Ensure resolved path is under evidence directory
-    try:
-        target.relative_to(evidence_dir.resolve())
-    except ValueError:
-        return JSONResponse(
-            {"error": "Path traversal rejected"},
-            status_code=400,
-        )
+    # Path traversal protection on the registered path
+    if ".." in str(file_path):
+        return JSONResponse({"error": "Invalid path"}, status_code=400)
 
-    if not target.is_file():
+    if not file_path.is_file():
         return JSONResponse(
-            {"error": f"File not found: {rel_path}"},
+            {"error": f"File not found: {entry['path']}"},
             status_code=404,
         )
 
     # Hash the file
     h = hashlib.sha256()
     try:
-        with open(target, "rb") as f:
+        with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(65536), b""):
                 h.update(chunk)
     except OSError as e:
-        logger.error("Cannot read evidence file %s: %s", target, e)
+        logger.error("Cannot read evidence file %s: %s", file_path, e)
         return JSONResponse(
             {"error": "Cannot read file"},
             status_code=500,
         )
     computed_hash = h.hexdigest()
 
-    # Compare against evidence registry
-    raw_ev = _load_json(case_dir / "evidence.json")
-    evidence = raw_ev.get("files", []) if isinstance(raw_ev, dict) else (raw_ev or [])
-    stored_hash = None
-    for item in evidence:
-        if item.get("path") == rel_path:
-            stored_hash = item.get("sha256")
-            break
-
-    if stored_hash is None:
-        return JSONResponse(
-            {
-                "path": rel_path,
-                "computed_sha256": computed_hash,
-                "status": "not_registered",
-            }
-        )
-
     match = computed_hash == stored_hash
     return JSONResponse(
         {
-            "path": rel_path,
+            "path": entry["path"],
             "computed_sha256": computed_hash,
             "stored_sha256": stored_hash,
             "status": "verified" if match else "failed",

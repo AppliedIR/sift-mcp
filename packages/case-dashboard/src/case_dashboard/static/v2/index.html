@@ -183,6 +183,11 @@ body {
 .action-pill.reject { background: var(--red-bg); color: var(--red); }
 .action-pill.todo { background: var(--blue-bg); color: var(--blue); }
 
+/* Staged status badges (dashed border = not yet committed) */
+.badge-staged-approved { background: var(--green-bg); color: var(--green); border: 1px dashed var(--green); }
+.badge-staged-rejected { background: var(--red-bg); color: var(--red); border: 1px dashed var(--red); }
+.badge-staged-edited { background: var(--amber-bg); color: var(--amber); border: 1px dashed var(--amber); }
+
 /* Delta overlay on finding card */
 .delta-indicator { margin-bottom: 12px; padding: 8px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; }
 .delta-indicator.approve { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
@@ -1033,8 +1038,8 @@ function renderSidebar() {
 
     let actionHtml = '';
     if (de) {
-      const action = de.action;
-      actionHtml = '<span class="action-pill ' + escapeHtml(action) + '">' + escapeHtml(action).toUpperCase() + '</span>';
+      var pillIcon = de.action === 'approve' ? '\u2713 ' : de.action === 'reject' ? '\u2717 ' : '\u270E ';
+      actionHtml = '<span class="action-pill ' + escapeHtml(de.action) + '">' + pillIcon + 'PENDING</span>';
     }
 
     const checked = batchSelected.has(f.id) ? ' checked' : '';
@@ -1134,7 +1139,8 @@ function renderFinding(id) {
   // Delta indicator
   if (de) {
     const hasMods = de.modifications && Object.keys(de.modifications).length > 0;
-    const label = de.action.toUpperCase() + (hasMods ? ' (modified)' : '');
+    const pastAction = de.action === 'approve' ? '\u2713 APPROVED' : de.action === 'reject' ? '\u2717 REJECTED' : '\u270E EDITED';
+    const label = pastAction + (hasMods ? ' (modified)' : '') + ' \u2014 pending commit';
     html += '<div class="delta-indicator ' + escapeHtml(de.action) + '">' + escapeHtml(label) + '</div>';
   }
 
@@ -1161,7 +1167,16 @@ function renderFinding(id) {
   html += '<div class="card-header">';
   html += '<span class="card-id">' + escapeHtml(f.id) + '</span>';
   html += '<span class="badge ' + escapeHtml(typeClass) + '">' + escapeHtml(type) + '</span>';
-  html += '<span class="badge ' + escapeHtml(statusClass) + '">' + escapeHtml(status) + '</span>';
+  // Status badge: reflect staged action if delta exists
+  if (de && de.action === 'approve') {
+    html += '<span class="badge badge-staged-approved">\u2713 APPROVED</span>';
+  } else if (de && de.action === 'reject') {
+    html += '<span class="badge badge-staged-rejected">\u2717 REJECTED</span>';
+  } else if (de && de.action === 'edit') {
+    html += '<span class="badge badge-staged-edited">\u270E DRAFT (edited)</span>';
+  } else {
+    html += '<span class="badge ' + escapeHtml(statusClass) + '">' + escapeHtml(status) + '</span>';
+  }
   html += '<span class="badge ' + escapeHtml(confClass) + '">' + escapeHtml(conf) + '</span>';
   html += '</div>';
   html += '<div class="action-bar">';
@@ -2746,8 +2761,9 @@ function renderTimelineCompactRow(ev, de, isFocused) {
   html += '<span class="tl-desc' + (descMod ? ' modified' : '') + '">' +
     escapeHtml(desc) + '</span>';
   if (de) {
+    var tlPastLabel = de.action === 'approve' ? '\u2713 APPROVED' : de.action === 'reject' ? '\u2717 REJECTED' : '\u270E EDITED';
     html += '<span class="tl-delta-pill ' + escapeHtml(de.action) + '">' +
-      escapeHtml(de.action.toUpperCase()) + '</span>';
+      tlPastLabel + '</span>';
   }
   html += '</div>';
 
@@ -2773,7 +2789,8 @@ function renderTimelineCompactRow(ev, de, isFocused) {
     // Delta + stale warnings
     if (de) {
       var hasMods = de.modifications && Object.keys(de.modifications).length > 0;
-      var label = de.action.toUpperCase() + (hasMods ? ' (modified)' : '');
+      var pastAction = de.action === 'approve' ? '\u2713 APPROVED' : de.action === 'reject' ? '\u2717 REJECTED' : '\u270E EDITED';
+      var label = pastAction + (hasMods ? ' (modified)' : '') + ' \u2014 pending commit';
       html += '<div class="delta-indicator ' + escapeHtml(de.action) + '">' +
         escapeHtml(label) + '</div>';
     }
