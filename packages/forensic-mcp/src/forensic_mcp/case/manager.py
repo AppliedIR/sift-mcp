@@ -644,18 +644,69 @@ class CaseManager:
         if validated_commands:
             finding_record["supporting_commands"] = validated_commands
 
+        # Response warnings (accumulated through remaining steps)
+        warnings: list[str] = []
+
+        # Auto-create timeline event for type=finding with event_timestamp
+        timeline_event_id = ""
+        finding_type = sanitized.get("type", "")
+        event_ts = sanitized.get("event_timestamp", "")
+        if finding_type == "finding" and event_ts:
+            timeline = self._load_timeline(case_dir)
+            tl_seq = _next_seq(timeline, "id", "T", exam)
+            timeline_event_id = f"T-{exam}-{tl_seq:03d}"
+            finding_record["timeline_event_id"] = timeline_event_id
+        elif finding_type == "finding" and not event_ts:
+            warnings.append(
+                "type=finding without event_timestamp — no timeline event "
+                "auto-created. Include event_timestamp (ISO 8601) for when "
+                "the incident event occurred."
+            )
+
         # Compute content hash at staging
         finding_record["content_hash"] = _compute_content_hash(finding_record)
 
         findings.append(finding_record)
         self._save_findings(case_dir, findings)
 
+        # Create auto-linked timeline event (try/except — never blocks finding)
+        if timeline_event_id:
+            try:
+                tl_event = {
+                    "id": timeline_event_id,
+                    "timestamp": event_ts,
+                    "description": sanitized.get("title", ""),
+                    "source": sanitized.get("source_evidence", "")
+                    or sanitized.get("artifact_ref", "")
+                    or (
+                        sanitized.get("audit_ids", [""])[0]
+                        if sanitized.get("audit_ids")
+                        else ""
+                    ),
+                    "event_type": sanitized.get("event_type", "other"),
+                    "related_findings": [finding_id],
+                    "auto_created_from": finding_id,
+                    "status": "DRAFT",
+                    "staged": now,
+                    "modified_at": now,
+                    "created_by": exam,
+                    "examiner": exam,
+                    "audit_ids": list(sanitized.get("audit_ids", [])),
+                }
+                tl_event["content_hash"] = _compute_content_hash(tl_event)
+                timeline.append(tl_event)
+                self._save_timeline(case_dir, timeline)
+            except Exception as exc:
+                logger.warning("Auto-timeline creation failed: %s", exc)
+                warnings.append(f"Timeline auto-creation failed: {exc}")
+
         result = {
             "status": "STAGED",
             "finding_id": finding_id,
             "provenance_detail": provenance,
         }
-        warnings = []
+        if timeline_event_id:
+            result["timeline_event_id"] = timeline_event_id
         if dropped_artifact_count > 0:
             warnings.append(
                 f"{dropped_artifact_count} artifact(s) dropped — each artifact requires "
