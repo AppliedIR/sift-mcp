@@ -178,6 +178,120 @@ def _resolve_source_evidence_static(
     return ""
 
 
+# --- IOC helpers ---
+
+_CONF_RANKS = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "SPECULATIVE": 3}
+
+
+def _conf_rank(conf: str) -> int:
+    return _CONF_RANKS.get(conf.upper() if conf else "", 99)
+
+
+def _refang_ioc(value: str) -> str:
+    """Refang defanged IOC values."""
+    v = value.replace("[.]", ".").replace("hxxp", "http")
+    v = re.sub(r"\[(\W)\]", r"\1", v)
+    return v
+
+
+def _normalize_ioc(value: str) -> str:
+    """Normalize IOC value for dedup comparison."""
+    v = value.strip()
+    if re.match(r"^[a-fA-F0-9]{32,64}$", v):
+        return v.lower()
+    if "." in v and not v.replace(".", "").isdigit():
+        return v.lower().rstrip(".")
+    if "\\" in v:
+        return v.lower()
+    return v
+
+
+def _detect_ioc_type(value: str) -> tuple[str, str]:
+    """Auto-detect IOC type and category from value pattern."""
+    v = value.strip()
+
+    # URL (before domain check)
+    if re.match(r"^https?://", v, re.IGNORECASE):
+        return "url", "network"
+
+    # Email
+    if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+        return "email-addr", "network"
+
+    # File hashes (most specific first)
+    if re.match(r"^[a-fA-F0-9]{64}$", v):
+        return "file:hash:sha256", "host"
+    if re.match(r"^[a-fA-F0-9]{40}$", v):
+        return "file:hash:sha1", "host"
+    if re.match(r"^[a-fA-F0-9]{32}$", v):
+        return "file:hash:md5", "host"
+
+    # IPv4 (strip CIDR/port for detection, store original)
+    stripped = re.sub(r"[:/]\d{1,5}$", "", v)
+    if re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", stripped):
+        octets = stripped.split(".")
+        if all(0 <= int(o) <= 255 for o in octets):
+            return "ipv4-addr", "network"
+
+    # IPv6
+    if re.match(r"^[0-9a-fA-F:]{6,}$", v) and v.count(":") >= 2:
+        return "ipv6-addr", "network"
+
+    # Registry key
+    if re.match(r"^HK(EY_|LM|CU|CR|U\\)", v, re.IGNORECASE):
+        return "registry-key", "system"
+
+    # Scheduled task
+    if v.startswith("\\Microsoft\\") or v.startswith("\\Windows\\"):
+        return "scheduled-task", "system"
+
+    # User account (domain\user or UPN)
+    if re.match(r"^[a-zA-Z0-9._-]+\\[a-zA-Z0-9._-]+$", v):
+        return "user-account", "identity"
+
+    # Domain name
+    if re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9-]*\.)+[a-zA-Z]{2,}$", v):
+        return "domain-name", "network"
+
+    # Process command line
+    if ".exe " in v.lower() or ".exe\t" in v.lower():
+        return "process:command-line", "system"
+
+    # File path
+    if "/" in v or "\\" in v:
+        return "file:path", "host"
+
+    # File name (has extension)
+    if re.match(r"^[^/\\]+\.[a-zA-Z0-9]{1,10}$", v):
+        return "file:name", "host"
+
+    # Service name (strict: alphanumeric, 3-30 chars)
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9]{2,29}$", v) and (
+        v.lower().endswith("svc") or v.lower().endswith("service")
+    ):
+        return "service-name", "system"
+
+    return "unknown", "unknown"
+
+
+def _compute_ioc_hash(ioc: dict) -> str:
+    """Compute content hash for IOC using whitelist of stable fields."""
+    hashable = {
+        k: ioc.get(k)
+        for k in (
+            "value",
+            "type",
+            "category",
+            "description",
+            "tags",
+            "mitre_techniques",
+        )
+        if ioc.get(k) is not None
+    }
+    canonical = json.dumps(hashable, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
 def _validate_case_id(case_id: str) -> None:
     """Validate case_id to prevent path traversal."""
     if not case_id or not case_id.strip():
@@ -705,6 +819,13 @@ class CaseManager:
                 logger.warning("Auto-timeline creation failed: %s", exc)
                 warnings.append(f"Timeline auto-creation failed: {exc}")
 
+        # IOC auto-extraction (try/except — never blocks finding save)
+        try:
+            self._process_iocs(finding_record, case_dir)
+        except Exception as exc:
+            logger.warning("IOC processing failed: %s", exc)
+            warnings.append(f"IOC processing failed: {exc}")
+
         result = {
             "status": "STAGED",
             "finding_id": finding_id,
@@ -1152,6 +1273,87 @@ class CaseManager:
         _protected_write(
             case_dir / "timeline.json", json.dumps(timeline, indent=2, default=str)
         )
+
+    def _load_iocs(self, case_dir: Path) -> list[dict]:
+        return self._load_json_file(case_dir / "iocs.json", [])
+
+    def _save_iocs(self, case_dir: Path, iocs: list[dict]) -> None:
+        _protected_write(
+            case_dir / "iocs.json", json.dumps(iocs, indent=2, default=str)
+        )
+
+    def _process_iocs(self, finding: dict, case_dir: Path) -> None:
+        """Extract IOCs from finding, create/update IOC records."""
+        raw_iocs = finding.get("iocs", [])
+        if not raw_iocs:
+            return
+        # Flatten dict format: {"IPv4": ["10.0.1.5"]} → ["10.0.1.5"]
+        if isinstance(raw_iocs, dict):
+            raw_iocs = [
+                v
+                for vals in raw_iocs.values()
+                for v in (vals if isinstance(vals, list) else [vals])
+            ]
+        if not isinstance(raw_iocs, list):
+            return
+
+        host = finding.get("host", "")
+        finding_id = finding.get("id", "")
+        examiner = finding.get("examiner", "")
+        confidence = finding.get("confidence", "")
+        mitre_ids = finding.get("mitre_ids", [])
+        now = datetime.now(timezone.utc).isoformat()
+
+        iocs = self._load_iocs(case_dir)
+        ioc_by_value = {_normalize_ioc(ioc["value"]): ioc for ioc in iocs}
+
+        for raw in raw_iocs[:100]:
+            value = _refang_ioc(str(raw).strip())
+            if not value:
+                continue
+            dedup_key = _normalize_ioc(value)
+
+            if dedup_key in ioc_by_value:
+                existing = ioc_by_value[dedup_key]
+                if finding_id not in existing.get("source_findings", []):
+                    existing.setdefault("source_findings", []).append(finding_id)
+                sighting = {"host": host, "finding_id": finding_id}
+                if sighting not in existing.get("sightings", []):
+                    existing.setdefault("sightings", []).append(sighting)
+                if _conf_rank(confidence) < _conf_rank(existing.get("confidence", "")):
+                    existing["confidence"] = confidence
+                for mid in mitre_ids or []:
+                    if mid not in existing.get("mitre_techniques", []):
+                        existing.setdefault("mitre_techniques", []).append(mid)
+                existing["modified_at"] = now
+                existing["content_hash"] = _compute_ioc_hash(existing)
+            else:
+                ioc_type, category = _detect_ioc_type(value)
+                seq = _next_seq(iocs, "id", "IOC", examiner)
+                new_ioc = {
+                    "id": f"IOC-{examiner}-{seq:03d}",
+                    "value": value,
+                    "type": ioc_type,
+                    "category": category,
+                    "description": "",
+                    "status": "DRAFT",
+                    "confidence": confidence,
+                    "source_findings": [finding_id],
+                    "sightings": [{"host": host, "finding_id": finding_id}]
+                    if host
+                    else [{"host": "", "finding_id": finding_id}],
+                    "mitre_techniques": list(mitre_ids) if mitre_ids else [],
+                    "tags": [],
+                    "manually_reviewed": False,
+                    "examiner": examiner,
+                    "created_at": now,
+                    "modified_at": now,
+                }
+                new_ioc["content_hash"] = _compute_ioc_hash(new_ioc)
+                iocs.append(new_ioc)
+                ioc_by_value[dedup_key] = new_ioc
+
+        self._save_iocs(case_dir, iocs)
 
     def _load_todos(self, case_dir: Path) -> list[dict]:
         return self._load_json_file(case_dir / "todos.json", [])
