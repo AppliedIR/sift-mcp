@@ -218,7 +218,7 @@ body {
 
 /* Dashboard tab */
 .dashboard-content { padding: 24px; overflow-y: auto; width: 100%; }
-.dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 16px; max-width: 960px; }
 .dash-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
 .dash-card:hover { border-color: var(--accent); }
 .dash-card h3 { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -340,11 +340,8 @@ body {
 .evidence-item-body .ev-field { margin-bottom: 6px; }
 .evidence-item-body .ev-label { color: var(--text-muted); font-size: 11px; }
 
-/* Grounding summary */
+/* Sources summary */
 .grounding { padding: 8px 12px; font-size: 12px; border-top: 1px solid var(--border); }
-.grounding-item { display: inline-block; margin-right: 12px; }
-.grounding-check { color: var(--green); }
-.grounding-miss { color: var(--red); }
 
 /* Timeline context */
 .timeline-context { margin-top: 16px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
@@ -2168,18 +2165,18 @@ async function loadEvidencePanel(finding) {
   });
   container.innerHTML = html;
 
-  // Grounding summary — show backends found in audit data
+  // Sources — show backends that contributed to this finding
   const backends = new Set();
-  auditData.forEach(e => { if (e._backend) backends.add(e._backend); });
-  let groundingHtml = '<strong>Grounding:</strong> ';
+  auditData.forEach(e => { if (e.mcp) backends.add(e.mcp.replace(/-mcp$/, '')); });
+  let sourcesHtml = '<strong>Sources:</strong> ';
   if (backends.size > 0) {
-    [...backends].sort().forEach(b => {
-      groundingHtml += '<span class="grounding-item"><span class="grounding-check">&#10003;</span> ' + escapeHtml(b) + '</span>';
-    });
+    sourcesHtml += [...backends].sort().map(escapeHtml).join(', ');
+  } else if (finding.supporting_commands && finding.supporting_commands.length) {
+    sourcesHtml += 'shell only';
   } else {
-    groundingHtml += '<span style="color:var(--text-muted)">No audit data</span>';
+    sourcesHtml += '<span style="color:var(--text-muted)">none</span>';
   }
-  if (groundingEl) groundingEl.innerHTML = groundingHtml;
+  if (groundingEl) groundingEl.innerHTML = sourcesHtml;
 }
 
 function toggleEvidence(header) {
@@ -2587,115 +2584,139 @@ function renderDashboard(summary) {
   const tlByStatus = t.by_status || {};
   const tlDraft = tlByStatus.DRAFT || 0;
   const evTotal = (summary.evidence || {}).total || 0;
-  const pctApp = total ? (approved / total * 100) : 0;
-  const pctRej = total ? (rejected / total * 100) : 0;
-  const pctDraft = total ? (draft / total * 100) : 0;
+  const reviewed = approved + rejected;
+  const pctReviewed = total ? Math.round((reviewed / total) * 100) : 0;
 
-  // Count unique hosts and accounts from findings
   var hostSet = new Set();
   var acctSet = new Set();
+  var earliestTs = '', latestTs = '';
   findings.forEach(function(fi) {
     if (fi.host) hostSet.add(fi.host);
     if (fi.affected_account) acctSet.add(fi.affected_account);
+    var ts = fi.event_timestamp || '';
+    if (ts) {
+      if (!earliestTs || ts < earliestTs) earliestTs = ts;
+      if (!latestTs || ts > latestTs) latestTs = ts;
+    }
   });
-
-  // Pending commit actions
   var pendingActions = delta.items ? delta.items.filter(function(d) {
     return d.action === 'approve' || d.action === 'reject';
   }).length : 0;
 
-  let grid = '';
+  var html = '';
 
-  // === 1. CASE HEADER ===
-  grid += '<div style="margin-bottom:16px">';
+  // === COMPACT STAT CARDS (horizontal row) ===
+  html += '<div class="dash-grid" style="grid-template-columns:repeat(6, 1fr);gap:8px;margin-bottom:16px">';
+  html += '<div class="dash-card" onclick="switchTab(\'findings\')" style="cursor:pointer;padding:12px"><h3 style="margin-bottom:4px">Findings</h3><div class="dash-stat" style="font-size:22px">' + total + '</div><div class="dash-detail" style="font-size:11px">' + draft + ' draft</div></div>';
+  html += '<div class="dash-card" onclick="switchTab(\'timeline\')" style="cursor:pointer;padding:12px"><h3 style="margin-bottom:4px">Timeline</h3><div class="dash-stat" style="font-size:22px">' + tlTotal + '</div><div class="dash-detail" style="font-size:11px">' + tlDraft + ' draft</div></div>';
+  html += '<div class="dash-card" onclick="switchTab(\'hosts\')" style="cursor:pointer;padding:12px"><h3 style="margin-bottom:4px">Hosts</h3><div class="dash-stat" style="font-size:22px">' + hostSet.size + '</div><div class="dash-detail" style="font-size:11px">impacted</div></div>';
+  html += '<div class="dash-card" onclick="switchTab(\'accounts\')" style="cursor:pointer;padding:12px"><h3 style="margin-bottom:4px">Accounts</h3><div class="dash-stat" style="font-size:22px">' + acctSet.size + '</div><div class="dash-detail" style="font-size:11px">involved</div></div>';
+  html += '<div class="dash-card" onclick="switchTab(\'evidence\')" style="cursor:pointer;padding:12px"><h3 style="margin-bottom:4px">Evidence</h3><div class="dash-stat" style="font-size:22px">' + evTotal + '</div><div class="dash-detail" style="font-size:11px">files</div></div>';
+  html += '<div class="dash-card" onclick="switchTab(\'todos\')" style="cursor:pointer;padding:12px"><h3 style="margin-bottom:4px">TODOs</h3><div class="dash-stat" style="font-size:22px">' + openTodos + '</div><div class="dash-detail" style="font-size:11px">' + totalTodos + ' total</div></div>';
+  html += '</div>';
+
+  // === ACTION BAR (prominent, right below cards) ===
+  if (draft > 0 || pendingActions > 0 || tlDraft > 0) {
+    html += '<div style="margin-bottom:16px;padding:12px 16px;background:var(--bg-secondary);border:1px solid var(--accent);border-radius:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
+    if (draft > 0) {
+      html += '<button class="btn-start-review" onclick="switchTab(\'findings\')" style="margin:0">\u2192 Review ' + draft + ' draft finding' + (draft > 1 ? 's' : '') + '</button>';
+    }
+    if (pendingActions > 0) {
+      html += '<button class="btn-start-review" onclick="openCommitDialog()" style="margin:0;background:var(--green-bg);color:var(--green);border-color:var(--green)">' + pendingActions + ' pending commit \u2014 Commit now</button>';
+    }
+    if (tlDraft > 0 && draft === 0) {
+      html += '<button class="btn-start-review" onclick="switchTab(\'timeline\')" style="margin:0">\u2192 Curate ' + tlDraft + ' timeline event' + (tlDraft > 1 ? 's' : '') + '</button>';
+    }
+    html += '</div>';
+  }
+
+  // === CASE BRIEFING ===
   if (caseMeta.case_id) {
-    grid += '<h2 style="margin:0 0 4px;font-size:20px">' + escapeHtml(caseMeta.case_id);
-    if (caseMeta.name) grid += ' \u2014 ' + escapeHtml(caseMeta.name);
-    grid += '</h2>';
-    grid += '<div style="font-size:13px;color:var(--text-secondary)">';
-    if (caseMeta.status) grid += '<span class="badge badge-' + escapeHtml((caseMeta.status || '').toLowerCase()) + '">' + escapeHtml(caseMeta.status) + '</span> ';
-    grid += 'Examiner: <strong>' + escapeHtml(caseMeta.examiner || 'unknown') + '</strong>';
-    if (caseMeta.created_at) grid += ' \u00B7 Created: ' + escapeHtml(formatTime(caseMeta.created_at));
-    grid += '</div>';
+    html += '<h2 style="margin:0 0 6px;font-size:20px">' + escapeHtml(caseMeta.case_id);
+    if (caseMeta.name) html += ' \u2014 ' + escapeHtml(caseMeta.name);
+    html += '</h2>';
+    html += '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px">';
+    if (caseMeta.status) html += '<span class="badge badge-' + escapeHtml((caseMeta.status || '').toLowerCase()) + '">' + escapeHtml(caseMeta.status) + '</span> ';
+    html += 'Examiner: <strong>' + escapeHtml(caseMeta.examiner || 'unknown') + '</strong>';
+    if (caseMeta.created_at) html += ' \u00B7 Created ' + escapeHtml(formatTime(caseMeta.created_at));
+    html += '</div>';
     if (caseMeta.description) {
-      grid += '<div style="font-size:12px;color:var(--text-muted);margin-top:4px">' + escapeHtml(caseMeta.description) + '</div>';
+      html += '<p style="font-size:13px;color:var(--text-secondary);margin:4px 0 0">' + escapeHtml(caseMeta.description) + '</p>';
     }
   } else {
-    grid += '<h2 style="margin:0;font-size:20px;color:var(--text-muted)">No active case</h2>';
+    html += '<h2 style="margin:0;font-size:20px;color:var(--text-muted)">No active case</h2>';
+    html += '<p style="color:var(--text-muted);font-size:13px">Open a case with <code>aiir case activate</code> or create one with <code>aiir case init</code>.</p>';
   }
-  grid += '</div>';
 
-  // === 2. STAT CARDS ===
-  grid += '<div class="dash-grid">';
-  grid += '<div class="dash-card" onclick="switchTab(\'findings\')" style="cursor:pointer"><h3>Findings</h3>';
-  grid += '<div class="dash-stat">' + total + '</div>';
-  grid += '<div class="dash-detail">' + draft + ' draft, ' + approved + ' approved, ' + rejected + ' rejected</div>';
-  grid += '<div class="dash-bar">';
-  grid += '<div class="dash-bar-seg" style="width:' + pctApp + '%;background:var(--green)"></div>';
-  grid += '<div class="dash-bar-seg" style="width:' + pctRej + '%;background:var(--red)"></div>';
-  grid += '<div class="dash-bar-seg" style="width:' + pctDraft + '%;background:var(--amber)"></div>';
-  grid += '</div></div>';
-
-  grid += '<div class="dash-card" onclick="switchTab(\'timeline\')" style="cursor:pointer"><h3>Timeline</h3>';
-  grid += '<div class="dash-stat">' + tlTotal + '</div>';
-  grid += '<div class="dash-detail">' + tlDraft + ' draft, ' + (tlByStatus.APPROVED || 0) + ' approved</div></div>';
-
-  grid += '<div class="dash-card" onclick="switchTab(\'hosts\')" style="cursor:pointer"><h3>Hosts</h3>';
-  grid += '<div class="dash-stat">' + hostSet.size + '</div>';
-  grid += '<div class="dash-detail">impacted systems</div></div>';
-
-  grid += '<div class="dash-card" onclick="switchTab(\'accounts\')" style="cursor:pointer"><h3>Accounts</h3>';
-  grid += '<div class="dash-stat">' + acctSet.size + '</div>';
-  grid += '<div class="dash-detail">impacted accounts</div></div>';
-
-  grid += '<div class="dash-card" onclick="switchTab(\'evidence\')" style="cursor:pointer"><h3>Evidence</h3>';
-  grid += '<div class="dash-stat">' + evTotal + '</div>';
-  grid += '<div class="dash-detail">registered files</div></div>';
-
-  grid += '<div class="dash-card" onclick="switchTab(\'todos\')" style="cursor:pointer"><h3>TODOs</h3>';
-  grid += '<div class="dash-stat">' + openTodos + ' open</div>';
-  grid += '<div class="dash-detail">' + totalTodos + ' total</div></div>';
-  grid += '</div>';
-
-  // === 3. NEXT ACTION + COMMIT STATUS ===
-  grid += '<div style="margin-top:16px">';
-  if (draft > 0) {
-    grid += '<button class="btn-start-review" onclick="switchTab(\'findings\')">Review ' + draft + ' draft finding(s)</button>';
-  } else if (tlDraft > 0) {
-    grid += '<button class="btn-start-review" onclick="switchTab(\'timeline\')">Curate ' + tlDraft + ' timeline event(s)</button>';
-  } else if (openTodos > 0) {
-    grid += '<button class="btn-start-review" onclick="switchTab(\'todos\')">' + openTodos + ' open TODO(s) remaining</button>';
-  } else if (pendingActions > 0) {
-    grid += '<button class="btn-start-review" onclick="openCommitDialog()">' + pendingActions + ' action(s) pending commit</button>';
+  // === INVESTIGATION STATUS ===
+  if (total > 0 || tlTotal > 0) {
+    html += '<div style="margin-top:16px;padding:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px">';
+    html += '<div style="font-weight:600;font-size:14px;margin-bottom:10px">Investigation Status</div>';
+    html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">';
+    html += '<div style="flex:1;height:8px;background:var(--bg-tertiary);border-radius:4px;overflow:hidden">';
+    html += '<div style="height:100%;width:' + pctReviewed + '%;background:var(--accent);border-radius:4px;transition:width 0.3s"></div>';
+    html += '</div>';
+    html += '<span style="font-size:12px;color:var(--text-secondary);white-space:nowrap">' + reviewed + ' of ' + total + ' reviewed (' + pctReviewed + '%)</span>';
+    html += '</div>';
+    html += '<div style="font-size:13px;line-height:1.8;color:var(--text-secondary)">';
+    html += '<strong>' + total + ' findings</strong> staged';
+    if (hostSet.size > 0) html += ' across <strong>' + hostSet.size + ' host' + (hostSet.size > 1 ? 's' : '') + '</strong> (' + Array.from(hostSet).map(escapeHtml).join(', ') + ')';
+    html += '. ';
+    if (draft > 0) html += '<span style="color:var(--amber)">' + draft + ' pending review</span>. ';
+    if (approved > 0) html += '<span style="color:var(--green)">' + approved + ' approved</span>. ';
+    if (rejected > 0) html += '<span style="color:var(--red)">' + rejected + ' rejected</span>. ';
+    if (acctSet.size > 0) html += '<br><strong>' + acctSet.size + ' account' + (acctSet.size > 1 ? 's' : '') + '</strong> involved (' + Array.from(acctSet).map(escapeHtml).join(', ') + '). ';
+    if (earliestTs && latestTs) html += '<br>Timeline: ' + escapeHtml(formatTimeShort(earliestTs)) + ' \u2013 ' + escapeHtml(formatTimeShort(latestTs)) + '. ';
+    html += '</div>';
+    html += '<div style="margin-top:12px">';
+    if (draft > 0) {
+      html += '<button class="btn-start-review" onclick="switchTab(\'findings\')">' + '\u2192 Review ' + draft + ' draft finding' + (draft > 1 ? 's' : '') + '</button>';
+    } else if (tlDraft > 0) {
+      html += '<button class="btn-start-review" onclick="switchTab(\'timeline\')">' + '\u2192 Curate ' + tlDraft + ' timeline event' + (tlDraft > 1 ? 's' : '') + '</button>';
+    } else if (pendingActions > 0) {
+      html += '<button class="btn-start-review" onclick="openCommitDialog()">' + '\u2192 Commit ' + pendingActions + ' pending action' + (pendingActions > 1 ? 's' : '') + '</button>';
+    } else if (openTodos > 0) {
+      html += '<button class="btn-start-review" onclick="switchTab(\'todos\')">' + '\u2192 ' + openTodos + ' TODO' + (openTodos > 1 ? 's' : '') + ' remaining</button>';
+    } else if (total > 0) {
+      html += '<div style="color:var(--green);font-weight:600">\u2713 All items reviewed</div>';
+    }
+    if (pendingActions > 0 && draft > 0) {
+      html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">' + pendingActions + ' action' + (pendingActions > 1 ? 's' : '') + ' pending commit \u00B7 <span style="color:var(--accent);cursor:pointer" onclick="openCommitDialog()">Commit now</span></div>';
+    }
+    html += '</div></div>';
   }
-  if (pendingActions > 0 && draft > 0) {
-    grid += '<div style="font-size:12px;color:var(--text-muted);margin-top:4px">' + pendingActions + ' action(s) pending commit \u00B7 <span style="color:var(--accent);cursor:pointer" onclick="openCommitDialog()">Commit now</span></div>';
-  }
-  grid += '</div>';
 
-  // === 4. HOW TO USE (collapsible) ===
+  // === ONBOARDING ===
   var hasCommitted = false;
   try { hasCommitted = localStorage.getItem('aiir-has-committed') === 'true'; } catch(_) {}
   var helpOpen = (!hasCommitted && total === 0) ? ' open' : '';
+  html += '<details style="margin-top:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:16px"' + helpOpen + '>';
+  html += '<summary style="cursor:pointer;font-weight:600;font-size:14px;color:var(--text-secondary)">Getting Started</summary>';
+  html += '<div style="margin-top:12px;font-size:13px;line-height:1.7;color:var(--text-secondary)">';
+  html += '<div style="margin-bottom:12px"><strong>Your Role</strong><br>You are the human reviewer. The AI staged findings and timeline events during investigation. Your job: verify each one \u2014 approve what\u2019s correct, reject what\u2019s wrong, edit what needs refinement, then commit your decisions with a password signature.</div>';
+  html += '<div style="margin-bottom:12px"><strong>Review Workflow</strong>';
+  html += '<ol style="margin:4px 0 0 20px;padding:0">';
+  html += '<li><strong>Review findings</strong> (tab 2) \u2014 read the evidence artifacts, check the provenance chain, approve or reject</li>';
+  html += '<li><strong>Curate timeline</strong> (tab 3) \u2014 include or exclude events from the incident narrative</li>';
+  html += '<li><strong>Check scope</strong> (tabs 4\u20135) \u2014 verify which hosts and accounts are affected</li>';
+  html += '<li><strong>Verify evidence</strong> (tab 6) \u2014 confirm evidence file integrity</li>';
+  html += '<li><strong>Review IOCs</strong> (tab 7) \u2014 validate indicators for sharing</li>';
+  html += '<li><strong>Complete TODOs</strong> (tab 8) \u2014 address outstanding tasks</li>';
+  html += '<li><strong>Commit</strong> \u2014 enter password to cryptographically sign your decisions</li>';
+  html += '</ol></div>';
+  html += '<div style="margin-bottom:12px"><strong>Key Concepts</strong><br>';
+  html += '<span class="badge badge-draft">DRAFT</span> = AI-staged, not yet reviewed. ';
+  html += '<span class="badge badge-approved">\u2713 APPROVED</span> = verified, pending commit. ';
+  html += '<strong>Commit</strong> = password-signed, permanent, appears in reports. ';
+  html += '<strong>Provenance chain</strong> = path from registered evidence through tools to finding.</div>';
+  html += '<div style="margin-bottom:8px"><strong>Keyboard</strong> \u00B7 <code>1</code>\u2013<code>8</code> tabs \u00B7 <code>j</code>/<code>k</code> navigate \u00B7 <code>a</code> approve \u00B7 <code>r</code> reject \u00B7 <code>s</code> undo \u00B7 <code>Shift+C</code> commit \u00B7 <code>?</code> full list</div>';
+  html += '<div style="color:var(--text-muted)">CLI alternative: <code>aiir approve --review</code></div>';
+  html += '</div></details>';
 
-  grid += '<details style="margin-top:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:12px"' + helpOpen + '>';
-  grid += '<summary style="cursor:pointer;font-weight:600;font-size:14px;color:var(--text-secondary)">How to Use This Dashboard</summary>';
-  grid += '<div style="margin-top:8px;font-size:12px;line-height:1.6;color:var(--text-secondary)">';
-  grid += '<p><strong>Findings (2)</strong> \u2014 Review AI-staged findings. Approve, reject, or edit. Evidence artifacts and provenance chain shown per finding.</p>';
-  grid += '<p><strong>Timeline (3)</strong> \u2014 Chronological incident events. Include or exclude from the final timeline.</p>';
-  grid += '<p><strong>Hosts (4)</strong> \u2014 Which systems were affected. Click a host to filter findings.</p>';
-  grid += '<p><strong>Accounts (5)</strong> \u2014 Which accounts were involved. Click to filter.</p>';
-  grid += '<p><strong>Evidence (6)</strong> \u2014 Registered evidence files with integrity verification.</p>';
-  grid += '<p><strong>IOCs (7)</strong> \u2014 Indicators of compromise extracted from findings.</p>';
-  grid += '<p><strong>TODOs (8)</strong> \u2014 Outstanding investigation tasks.</p>';
-  grid += '<p style="margin-top:8px"><strong>Keyboard:</strong> 1-8 switch tabs, j/k navigate findings, a approve, r reject, s undo, Shift+C commit, ? full list</p>';
-  grid += '<p><strong>Workflow:</strong> Review findings \u2192 curate timeline \u2192 verify evidence \u2192 commit with password \u2192 generate report</p>';
-  grid += '<p style="color:var(--text-muted);margin-top:4px">CLI alternative: <code>aiir approve --review</code></p>';
-  grid += '</div></details>';
-
-  document.getElementById('dashGrid').innerHTML = grid;
+  document.getElementById('dashGrid').innerHTML = html;
   document.getElementById('dashMeta').innerHTML = '';
 }
+
 
 /* === Evidence tab === */
 async function loadEvidence() {
