@@ -35,12 +35,20 @@
   --bg-hover: #cbd5e1;
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-muted: #64748b;
   --border: #e2e8f0;
+  --green: #15803d;
   --green-bg: #dcfce7;
+  --red: #b91c1c;
   --red-bg: #fef2f2;
+  --amber: #92400e;
   --amber-bg: #fffbeb;
+  --blue: #1d4ed8;
   --blue-bg: #eff6ff;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --slate: #475569;
+  --gray: #374151;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -805,7 +813,6 @@ let evidenceData = [];
 let todosData = [];
 let summaryData = null;
 var isLoading = false;
-var _lastRenderedHash = '';
 let evidenceSortCol = 'path';
 let evidenceSortAsc = true;
 let todosSortCol = 'priority';
@@ -895,15 +902,10 @@ async function loadAll() {
     updateProgress();
     updateCommitButton();
     updateTabBadges();
-    // Only re-render if the selected finding changed (preserves <details> open state)
-    if (selectedId) {
-      var sf = findings.find(function(f) { return f.id === selectedId; });
-      var currentHash = sf ? (sf.content_hash + '|' + (sf.status || '')) : '';
-      if (currentHash !== _lastRenderedHash) {
-        renderFinding(selectedId);
-        _lastRenderedHash = currentHash;
-      }
-    } else {
+    // Auto-refresh: never re-render the selected finding card.
+    // Sidebar, badges, progress, timeline, hosts, accounts are updated.
+    // Finding card only re-renders on user action (click, approve, refresh button).
+    if (!selectedId) {
       showEmptyOrFirst();
     }
   } catch (e) {
@@ -1170,7 +1172,6 @@ function updateProgress() {
 
 function selectFinding(id) {
   selectedId = id;
-  _lastRenderedHash = '';  // Force re-render on selection change
   renderFinding(id);
   renderSidebar();
   var content = document.getElementById('findingContent');
@@ -1283,7 +1284,7 @@ function renderFinding(id) {
     html += '<div class="card-meta">Event: ' + escapeHtml(formatTime(f.event_timestamp)) + '</div>';
   }
   if (f.source_evidence) {
-    html += '<div class="card-meta">Source: ' + escapeHtml(f.source_evidence) + ' (registered \u2713)</div>';
+    html += '<div class="card-meta">Primary source: ' + escapeHtml(f.source_evidence) + ' (registered \u2713)</div>';
   }
   if (f.timeline_event_id) {
     html += '<div class="card-meta">Timeline: <a style="color:var(--accent);cursor:pointer" onclick="switchTab(\'timeline\');focusTimelineEvent(\'' + escapeJsString(f.timeline_event_id) + '\')">' + escapeHtml(f.timeline_event_id) + '</a></div>';
@@ -1342,7 +1343,7 @@ function renderFinding(id) {
 
   // Context (collapsible)
   html += '<div class="context-section" style="margin: 12px 0;">';
-  html += '<button onclick="toggleContext(\'' + escapeJsString(id) + '\')" class="btn btn-sm" style="background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border);">Context \u25BE</button>';
+  html += '<button onclick="toggleContext(\'' + escapeJsString(id) + '\')" class="btn btn-sm" style="background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border);">Context \u25B8</button>';
   html += '<div id="contextPanel-' + escapeJsString(id) + '" style="display: none; margin-top: 8px;">';
   html += '<div class="field-section"><div class="field-label">Context</div>';
   html += renderEditableField('context', eff.context || '', f, de);
@@ -1958,10 +1959,10 @@ function toggleContext(id) {
   const btn = panel.previousElementSibling;
   if (panel.style.display === 'none') {
     panel.style.display = 'block';
-    btn.textContent = 'Context \u25b4';
+    btn.textContent = 'Context \u25BE';
   } else {
     panel.style.display = 'none';
-    btn.textContent = 'Context \u25be';
+    btn.textContent = 'Context \u25B8';
   }
 }
 
@@ -2045,29 +2046,43 @@ async function loadToolInvocations(finding) {
     html += '<div style="font-weight:600;margin-bottom:4px">' + escapeHtml(sourceEv) + ' (registered \u2713)</div>';
   }
 
-  // Sort by timestamp and render as tree
+  // Group audit entries by primary input source for tree display
   var sorted = auditData.slice().sort(function(a, b) {
     return (a.ts || a.timestamp || '').localeCompare(b.ts || b.timestamp || '');
   });
+  var groups = {};
   sorted.forEach(function(entry) {
+    var src = (entry.input_files && entry.input_files.length) ? entry.input_files[0] : '_no_input';
+    if (!groups[src]) groups[src] = [];
+    groups[src].push(entry);
+  });
+
+  function renderEntry(entry) {
     var tool = entry.tool || entry.mcp || 'unknown';
     var cmd = '';
     if (entry.params && entry.params.command) {
       cmd = Array.isArray(entry.params.command) ? entry.params.command.join(' ') : String(entry.params.command);
     }
     var elapsed = entry.elapsed_ms ? ' \u00B7 ' + (entry.elapsed_ms / 1000).toFixed(1) + 's' : '';
-    html += '<div style="padding:3px 0 3px 16px;border-left:2px solid var(--border);margin-left:8px">';
-    html += '\u251C\u2500 <strong>' + escapeHtml(tool) + '</strong>' + elapsed;
-    if (entry.audit_id) html += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(entry.audit_id) + ']</span>';
-    if (cmd) html += '<div style="font-size:11px;color:var(--text-secondary);margin-left:16px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
-    if (entry.input_files && entry.input_files.length) {
-      html += '<div style="font-size:10px;color:var(--text-muted);margin-left:16px">input: ' + entry.input_files.map(escapeHtml).join(', ') + '</div>';
-    }
+    var h = '<div style="padding:2px 0 2px 12px;border-left:2px solid var(--border);margin-left:4px">';
+    h += '\u2193 <strong>' + escapeHtml(tool) + '</strong>' + elapsed;
+    if (entry.audit_id) h += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(entry.audit_id) + ']</span>';
+    if (cmd) h += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
     var outFile = (entry.result_summary || {}).output_file;
     if (outFile) {
-      html += '<div style="font-size:10px;color:var(--text-muted);margin-left:16px">output: ' + escapeHtml(outFile) + '</div>';
+      h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">\u2192 ' + escapeHtml(outFile.split('/').pop()) + '</div>';
     }
-    html += '</div>';
+    h += '</div>';
+    return h;
+  }
+
+  Object.keys(groups).forEach(function(src) {
+    if (src !== '_no_input') {
+      html += '<div style="margin-top:6px;font-size:11px;font-weight:600;color:var(--text-secondary)">' + escapeHtml(src.split('/').pop()) + '</div>';
+    }
+    groups[src].forEach(function(entry) {
+      html += renderEntry(entry);
+    });
   });
   container.innerHTML = html;
 }
@@ -2204,10 +2219,10 @@ function renderTimelineContext(finding) {
   var nearby;
   var highlightId = null;
   if (linkedEvents.length > 0) {
-    // Show linked events ±2 context
+    // Show linked events ±5 context
     var centerIdx = sorted.indexOf(linkedEvents[0]);
-    var start = Math.max(0, centerIdx - 2);
-    var end = Math.min(sorted.length, centerIdx + linkedEvents.length + 2);
+    var start = Math.max(0, centerIdx - 5);
+    var end = Math.min(sorted.length, centerIdx + linkedEvents.length + 5);
     nearby = sorted.slice(start, end);
     highlightId = linkedEvents[0].id;
   } else {
@@ -2230,8 +2245,17 @@ function renderTimelineContext(finding) {
 
   if (nearby.length === 0) { container.innerHTML = ''; return; }
 
-  var html = '<div class="timeline-context">';
-  html += '<div class="timeline-context-header">Timeline Context</div>';
+  // Determine the event to center on in the timeline tab
+  var centerEventId = highlightId || (nearby.length > 0 ? nearby[Math.floor(nearby.length / 2)].id : '');
+
+  var html = '<div class="timeline-context" style="max-height:250px;overflow-y:auto">';
+  html += '<div class="timeline-context-header" style="display:flex;justify-content:space-between;align-items:center">';
+  html += '<span>Timeline Context</span>';
+  if (centerEventId) {
+    html += '<button style="font-size:10px;padding:2px 6px;background:var(--bg-tertiary);color:var(--accent);border:1px solid var(--border);border-radius:3px;cursor:pointer" ' +
+      'onclick="switchTab(\'timeline\');focusTimelineEvent(\'' + escapeJsString(centerEventId) + '\')">Open in Timeline \u2192</button>';
+  }
+  html += '</div>';
   nearby.forEach(function(ev) {
     var evTime = ev.timestamp || ev.staged || '';
     var isCurrent = (highlightId && ev.id === highlightId) || (!highlightId && finding.timestamp && Math.abs(new Date(evTime) - new Date(finding.timestamp)) < 1000);

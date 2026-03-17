@@ -994,7 +994,9 @@ class CaseManager:
             return {}  # STRONG — don't clutter
 
         missing = [m for m in self._GROUNDING_MCPS if m not in consulted]
-        level = "PARTIAL" if len(consulted) == 1 else "WEAK"
+        # If finding has provenance chain to registered evidence, at least PARTIAL
+        has_provenance = bool(finding.get("source_evidence"))
+        level = "PARTIAL" if consulted or has_provenance else "WEAK"
 
         # Load corroboration suggestions from FK for unconsulted sources
         suggestions = []
