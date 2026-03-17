@@ -921,7 +921,6 @@ async function loadAll() {
     timelineEvents = tl || [];
     delta = d && d.items ? d : { version: 1, case_id: '', items: [] };
     caseMeta = c || {};
-    auditCache = {};
     if (caseMeta.case_id) {
       document.getElementById('headerTitle').textContent = 'AIIR \u2014 ' + caseMeta.case_id;
       document.title = 'AIIR \u2014 ' + caseMeta.case_id;
@@ -2398,10 +2397,14 @@ function updateTabBadges() {
     return (t.status || 'open') === 'open';
   }).length;
 
+  // Count draft IOCs
+  var draftIocs = iocsData.filter(function(i) { return (i.status || 'DRAFT') === 'DRAFT'; }).length;
+
   // Update badges
   setBadge('tab-findings', pendingFindings);
   setBadge('tab-timeline', pendingEvents);
   setBadge('tab-evidence', evidenceCount);
+  setBadge('tab-iocs', draftIocs);
   setBadge('tab-todos', openTodos);
 }
 

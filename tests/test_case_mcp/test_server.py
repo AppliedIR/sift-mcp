@@ -545,9 +545,9 @@ class TestOpenCaseDashboard:
         with patch("webbrowser.open") as mock_open:
             result = self._call_tool(case_dir)
 
-        assert result["url"] == "http://127.0.0.1:4508/dashboard/"
+        assert result["url"] == "http://127.0.0.1:4508/portal/"
         assert result["status"] == "opened"
-        mock_open.assert_called_once_with("http://127.0.0.1:4508/dashboard/")
+        mock_open.assert_called_once_with("http://127.0.0.1:4508/portal/")
 
     def test_builds_url_with_token(self, case_dir, tmp_path, monkeypatch):
         """api_keys present → URL includes #token= fragment."""
@@ -565,7 +565,7 @@ class TestOpenCaseDashboard:
             result = self._call_tool(case_dir)
 
         # Token stripped from MCP response (LLM should not see bearer token)
-        assert result["url"] == "http://10.0.0.5:9000/dashboard/"
+        assert result["url"] == "http://10.0.0.5:9000/portal/"
 
     def test_picks_correct_examiner_token(self, case_dir, tmp_path, monkeypatch):
         """Multi-examiner: picks the token matching current examiner."""
@@ -653,4 +653,4 @@ class TestOpenCaseDashboard:
             result = self._call_tool(case_dir)
 
         assert result["status"] == "browser_failed"
-        assert result["url"] == "http://127.0.0.1:4508/dashboard/"
+        assert result["url"] == "http://127.0.0.1:4508/portal/"
