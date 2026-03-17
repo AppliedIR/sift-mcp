@@ -657,6 +657,33 @@ def _apply_delta(case_dir: Path, examiner: str, derived_key: bytes) -> dict:
 
             log_entries.append((item_id, "REJECTED", {"reason": reason}))
 
+        # --- Timeline approval coupling ---
+        # Auto-created timeline events follow their finding's action
+        for item in all_items:
+            auto_from = item.get("auto_created_from", "")
+            if not auto_from:
+                continue
+            # Only cascade if timeline event is still DRAFT and unmodified
+            if item.get("status") != "DRAFT":
+                continue
+            if item.get("examiner_modifications"):
+                continue
+            # Find the source finding
+            source = item_by_id.get(auto_from)
+            if not source:
+                continue
+            if source.get("status") == "APPROVED" and item.get("status") == "DRAFT":
+                item["status"] = "APPROVED"
+                item["approved_at"] = now
+                item["approved_by"] = examiner
+                item["modified_at"] = now
+            elif source.get("status") == "REJECTED" and item.get("status") == "DRAFT":
+                item["status"] = "REJECTED"
+                item["rejected_at"] = now
+                item["rejected_by"] = examiner
+                item["rejection_reason"] = "Source finding rejected"
+                item["modified_at"] = now
+
         # ============================================================
         # Disk writes — CLI ordering (approve.py:1066-1113):
         # Step 1 (critical): Save primary data FIRST

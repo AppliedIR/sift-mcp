@@ -1274,6 +1274,9 @@ function renderFinding(id) {
   if (f.source_evidence) {
     html += '<div class="card-meta">Source: ' + escapeHtml(f.source_evidence) + ' (registered \u2713)</div>';
   }
+  if (f.timeline_event_id) {
+    html += '<div class="card-meta">Timeline: <a style="color:var(--accent);cursor:pointer" onclick="switchTab(\'timeline\');focusTimelineEvent(\'' + escapeJsString(f.timeline_event_id) + '\')">' + escapeHtml(f.timeline_event_id) + '</a></div>';
+  }
   // Provenance warnings
   if (f.provenance_warnings && f.provenance_warnings.length) {
     html += '<div style="background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:8px;margin:8px 0;font-size:12px">';
@@ -3054,6 +3057,9 @@ function renderTimelineCompactRow(ev, de, isFocused) {
       html += '<span>Evidence: ' + ev.audit_ids.map(function(eid) {
         return escapeHtml(eid);
       }).join(', ') + '</span>';
+    }
+    if (ev.auto_created_from) {
+      html += '<span style="font-size:10px;color:var(--accent)">auto-linked from <a style="cursor:pointer;color:var(--accent)" onclick="event.stopPropagation();switchTab(\'findings\');selectFinding(\'' + escapeJsString(ev.auto_created_from) + '\')">' + escapeHtml(ev.auto_created_from) + '</a></span>';
     }
     if (ev.related_findings && ev.related_findings.length) {
       ev.related_findings.forEach(function(fid) {

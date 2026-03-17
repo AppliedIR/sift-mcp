@@ -74,6 +74,30 @@ def validate(finding: dict) -> dict:
             f"Attribution requires at least 3 audit_ids (FD-003), got {len(audit_ids)}"
         )
 
+    # event_timestamp validation
+    warnings: list[str] = []
+    event_ts = finding.get("event_timestamp", "")
+    if event_ts:
+        # Validate ISO 8601 or date-only (YYYY-MM-DD)
+        import re
+
+        if not re.match(
+            r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$",
+            event_ts,
+        ):
+            errors.append(
+                f"event_timestamp '{event_ts}' is not valid ISO 8601. "
+                "Use format like '2026-01-24T15:00:41Z' or '2026-01-24'."
+            )
+    elif finding_type == "finding":
+        warnings.append(
+            "type=finding without event_timestamp — include event_timestamp "
+            "(ISO 8601) for when the incident event occurred."
+        )
+
     if errors:
         return {"valid": False, "errors": errors}
-    return {"valid": True}
+    result: dict = {"valid": True}
+    if warnings:
+        result["warnings"] = warnings
+    return result
