@@ -440,13 +440,18 @@ def _save_protected(path: Path, data: object) -> None:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, str(path))
-        os.chmod(str(path), 0o444)
     except BaseException:
         try:
             os.unlink(tmp)
         except OSError:
             pass
         raise
+    finally:
+        try:
+            if path.exists():
+                os.chmod(str(path), 0o444)
+        except OSError:
+            pass
 
 
 def _apply_delta(case_dir: Path, examiner: str, derived_key: bytes) -> dict:

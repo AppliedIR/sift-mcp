@@ -45,20 +45,24 @@ def _atomic_write(path: Path, content: str) -> None:
 def _protected_write(path: Path, content: str) -> None:
     """Write to a chmod-444-protected case data file.
 
-    Unlocks (0o644) before write, locks (0o444) after. This is a speed bump
-    — the LLM process can chmod — but combined with deny rules and the
-    PreToolUse hook it adds defense-in-depth.
+    Uses atomic write (tempfile + rename), then locks (0o444).
+    The temp file is created writable, so we only need to unlock the
+    existing file for _atomic_write's rename to succeed on the same inode.
     """
     try:
         if path.exists():
             os.chmod(path, 0o644)
     except OSError:
         pass  # May already be writable or on non-POSIX fs
-    _atomic_write(path, content)
     try:
-        os.chmod(path, 0o444)
-    except OSError:
-        pass  # Non-POSIX filesystem
+        _atomic_write(path, content)
+    finally:
+        # Always re-lock, even if the write failed partway
+        try:
+            if path.exists():
+                os.chmod(path, 0o444)
+        except OSError:
+            pass  # Non-POSIX filesystem
 
 
 CASES_DIR_ENV = "AIIR_CASES_DIR"
@@ -718,16 +722,27 @@ class CaseManager:
                 if entry:
                     input_files.extend(entry.get("input_files", []))
             if input_files:
-                source_ev = _resolve_source_evidence_static(
-                    input_files, all_audit_entries, registered
-                )
-                if source_ev:
-                    sanitized["source_evidence"] = source_ev
+                try:
+                    source_ev = _resolve_source_evidence_static(
+                        input_files, all_audit_entries, registered
+                    )
+                    if source_ev:
+                        sanitized["source_evidence"] = source_ev
+                except OSError:
+                    provenance_warnings.append(
+                        "Failed to resolve source evidence (filesystem error)"
+                    )
 
             # Provenance warnings: check artifact sources against registry
             for art in validated_artifacts:
                 src = art.get("source", "")
-                if src and str(Path(src).resolve()) not in registered:
+                if not src:
+                    continue
+                try:
+                    resolved = str(Path(src).resolve())
+                except OSError:
+                    continue
+                if resolved not in registered:
                     provenance_warnings.append(
                         f"Artifact source not in evidence registry: {src}"
                     )
@@ -1367,14 +1382,25 @@ class CaseManager:
     # --- Generic helpers ---
 
     def _load_json_file(self, path: Path, default: Any) -> Any:
-        """Load a JSON file, returning default on missing or corrupt."""
+        """Load a JSON file, returning default on missing or corrupt.
+
+        If the file exists and has content but fails to parse, raises
+        ValueError to prevent silent data loss on the next write.
+        """
         if not path.exists():
             return default
         try:
-            return json.loads(path.read_text())
-        except json.JSONDecodeError:
-            logger.error("Corrupt JSON file: %s", path)
-            return default
+            data = path.read_text()
         except OSError as e:
             logger.error("Failed to read JSON file %s: %s", path, e)
+            raise ValueError(f"Cannot read {path.name}: {e}") from e
+        if not data.strip():
             return default
+        try:
+            return json.loads(data)
+        except json.JSONDecodeError as e:
+            logger.error("Corrupt JSON file: %s", path)
+            raise ValueError(
+                f"{path.name} is corrupt (invalid JSON). "
+                f"Refusing to overwrite — fix or restore from backup."
+            ) from e

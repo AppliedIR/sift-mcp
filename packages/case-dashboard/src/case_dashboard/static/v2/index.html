@@ -1095,7 +1095,9 @@ function getFilteredFindings() {
       (f.title || '').toLowerCase().includes(q) ||
       (f.observation || '').toLowerCase().includes(q) ||
       (f.interpretation || '').toLowerCase().includes(q) ||
-      (f.id || '').toLowerCase().includes(q)
+      (f.id || '').toLowerCase().includes(q) ||
+      (f.host || '').toLowerCase().includes(q) ||
+      (f.affected_account || '').toLowerCase().includes(q)
     );
   }
 
@@ -2102,15 +2104,19 @@ async function loadToolInvocations(finding) {
     return h;
   }
 
-  Object.keys(groups).forEach(function(src) {
-    html += '<div style="margin-top:8px;padding:6px 8px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:4px">';
+  var groupKeys = Object.keys(groups);
+  groupKeys.forEach(function(src, idx) {
+    html += '<div style="margin-top:' + (idx > 0 ? '12' : '8') + 'px;padding:8px 10px;background:var(--bg-secondary);border:2px solid var(--border);border-radius:6px;border-left:3px solid var(--accent)">';
     if (src !== '_no_input') {
-      html += '<div style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:4px">\u25B8 ' + escapeHtml(src.split('/').pop()) + '</div>';
+      html += '<div style="font-size:11px;font-weight:700;color:var(--text-primary);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">\u25B8 Input: ' + escapeHtml(src.split('/').pop()) + '</div>';
     }
     groups[src].forEach(function(entry) {
       html += renderEntry(entry);
     });
     html += '</div>';
+    if (idx < groupKeys.length - 1) {
+      html += '<div style="text-align:center;font-size:10px;color:var(--text-muted);margin:4px 0">\u2502 parallel chain \u2502</div>';
+    }
   });
   container.innerHTML = html;
 }
