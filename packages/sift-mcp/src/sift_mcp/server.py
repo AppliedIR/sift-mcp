@@ -74,6 +74,7 @@ def create_server() -> FastMCP:
         timeout: int = 0,
         save_output: bool = False,
         input_files: list[str] | None = None,
+        preview_lines: int = 0,
     ) -> dict:
         """Execute a forensic tool on this SIFT workstation.
 
@@ -90,6 +91,9 @@ def create_server() -> FastMCP:
             input_files: Files this command reads. Pass the paths you
                 referenced in the command. Server auto-detects as backup
                 for cataloged tools.
+            preview_lines: Max lines in inline preview for large outputs
+                (0 = default ~10KB budget, max 200). Useful when you need
+                more context from a grep or timeline query.
         """
         import hashlib
         import time
@@ -157,6 +161,7 @@ def create_server() -> FastMCP:
                 purpose=purpose,
                 timeout=timeout or None,
                 save_output=save_output,
+                preview_lines=min(preview_lines, 200) if preview_lines else 0,
             )
             elapsed = time.monotonic() - start
 
@@ -211,7 +216,30 @@ def create_server() -> FastMCP:
             )
             if logged_id is None:
                 response["warning"] = "Audit write failed — action not recorded"
-            if detection_method == "none":
+            _NO_INPUT_CMDS = {
+                "echo",
+                "date",
+                "hostname",
+                "whoami",
+                "uname",
+                "uptime",
+                "pwd",
+                "env",
+                "id",
+                "df",
+                "free",
+                "mount",
+                "lsblk",
+                "lscpu",
+                "ps",
+                "top",
+                "w",
+                "who",
+                "last",
+                "dmesg",
+                "printenv",
+            }
+            if detection_method == "none" and binary not in _NO_INPUT_CMDS:
                 response["input_files_warning"] = (
                     "Could not detect input files — pass input_files parameter "
                     "for provenance chain linking."

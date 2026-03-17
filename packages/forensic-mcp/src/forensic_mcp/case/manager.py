@@ -835,8 +835,9 @@ class CaseManager:
                 warnings.append(f"Timeline auto-creation failed: {exc}")
 
         # IOC auto-extraction (try/except — never blocks finding save)
+        iocs_extracted = 0
         try:
-            self._process_iocs(finding_record, case_dir)
+            iocs_extracted = self._process_iocs(finding_record, case_dir)
         except Exception as exc:
             logger.warning("IOC processing failed: %s", exc)
             warnings.append(f"IOC processing failed: {exc}")
@@ -848,6 +849,8 @@ class CaseManager:
         }
         if timeline_event_id:
             result["timeline_event_id"] = timeline_event_id
+        if iocs_extracted:
+            result["iocs_extracted"] = iocs_extracted
         if dropped_artifact_count > 0:
             warnings.append(
                 f"{dropped_artifact_count} artifact(s) dropped — each artifact requires "
@@ -1117,19 +1120,29 @@ class CaseManager:
             return self._grounding_result([], finding)
 
         consulted = []
+        available = []
         for mcp_name in self._GROUNDING_MCPS:
             audit_file = audit_dir / f"{mcp_name}.jsonl"
-            if audit_file.exists() and audit_file.stat().st_size > 0:
-                consulted.append(mcp_name)
+            if audit_file.exists():
+                available.append(mcp_name)
+                if audit_file.stat().st_size > 0:
+                    consulted.append(mcp_name)
 
-        return self._grounding_result(consulted, finding)
+        return self._grounding_result(consulted, finding, available)
 
-    def _grounding_result(self, consulted: list[str], finding: dict) -> dict:
+    def _grounding_result(
+        self,
+        consulted: list[str],
+        finding: dict,
+        available: list[str] | None = None,
+    ) -> dict:
         """Build grounding score result from consulted sources list."""
         if len(consulted) >= 2:
             return {}  # STRONG — don't clutter
 
-        missing = [m for m in self._GROUNDING_MCPS if m not in consulted]
+        # Only flag backends that are actually deployed (have audit files)
+        check_set = available if available is not None else list(self._GROUNDING_MCPS)
+        missing = [m for m in check_set if m not in consulted]
         # If finding has provenance chain to registered evidence, at least PARTIAL
         has_provenance = bool(finding.get("source_evidence"))
         level = "PARTIAL" if consulted or has_provenance else "WEAK"
@@ -1297,11 +1310,11 @@ class CaseManager:
             case_dir / "iocs.json", json.dumps(iocs, indent=2, default=str)
         )
 
-    def _process_iocs(self, finding: dict, case_dir: Path) -> None:
-        """Extract IOCs from finding, create/update IOC records."""
+    def _process_iocs(self, finding: dict, case_dir: Path) -> int:
+        """Extract IOCs from finding, create/update IOC records. Returns count."""
         raw_iocs = finding.get("iocs", [])
         if not raw_iocs:
-            return
+            return 0
         # Flatten dict format: {"IPv4": ["10.0.1.5"]} → ["10.0.1.5"]
         if isinstance(raw_iocs, dict):
             raw_iocs = [
@@ -1310,7 +1323,7 @@ class CaseManager:
                 for v in (vals if isinstance(vals, list) else [vals])
             ]
         if not isinstance(raw_iocs, list):
-            return
+            return 0
 
         host = finding.get("host", "")
         finding_id = finding.get("id", "")
@@ -1326,6 +1339,10 @@ class CaseManager:
             value = _refang_ioc(str(raw).strip())
             if not value:
                 continue
+            # Strip port from IPv4 before dedup (10.0.0.1:8443 → 10.0.0.1)
+            ioc_type, category = _detect_ioc_type(value)
+            if ioc_type == "ipv4-addr" and re.search(r":\d{1,5}$", value):
+                value = re.sub(r":\d{1,5}$", "", value)
             dedup_key = _normalize_ioc(value)
 
             if dedup_key in ioc_by_value:
@@ -1343,7 +1360,6 @@ class CaseManager:
                 existing["modified_at"] = now
                 existing["content_hash"] = _compute_ioc_hash(existing)
             else:
-                ioc_type, category = _detect_ioc_type(value)
                 seq = _next_seq(iocs, "id", "IOC", examiner)
                 new_ioc = {
                     "id": f"IOC-{examiner}-{seq:03d}",
@@ -1369,6 +1385,7 @@ class CaseManager:
                 ioc_by_value[dedup_key] = new_ioc
 
         self._save_iocs(case_dir, iocs)
+        return len(raw_iocs)
 
     def _load_todos(self, case_dir: Path) -> list[dict]:
         return self._load_json_file(case_dir / "todos.json", [])

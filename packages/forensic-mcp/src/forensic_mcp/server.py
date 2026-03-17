@@ -161,7 +161,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - interpretation (str): analytical meaning — what it implies
         - confidence: SPECULATIVE, LOW, MEDIUM, or HIGH
         - confidence_justification (str): why this confidence level
-        - type: finding, conclusion, attribution, or exclusion
+        - type: finding, conclusion, attribution (requires 3+ audit_ids), or exclusion
         - audit_ids (list[str]): IDs from MCP tool responses.
           Use [] if providing supporting_commands only.
         - event_timestamp (str, ISO 8601): when the incident event occurred

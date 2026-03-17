@@ -25,6 +25,7 @@ def run_command(
     save_output: bool = False,
     save_dir: str | None = None,
     cwd: str | None = None,
+    preview_lines: int = 0,
 ) -> dict:
     """Execute a command if its binary is not on the denylist.
 
@@ -116,20 +117,29 @@ def run_command(
     # Large output — parse with byte budget
     from sift_common.parsers import csv_parser, json_parser, text_parser
 
+    # If preview_lines requested, scale budget up (assume ~200 bytes/line)
+    budget = (
+        max(cfg.response_byte_budget, preview_lines * 200)
+        if preview_lines
+        else cfg.response_byte_budget
+    )
+    ml = preview_lines or 50000
+
     if output_format == "csv":
-        parsed = csv_parser.parse_csv(stdout, byte_budget=cfg.response_byte_budget)
+        csv_kwargs = {"byte_budget": budget}
+        if preview_lines:
+            csv_kwargs["max_rows"] = ml
+        parsed = csv_parser.parse_csv(stdout, **csv_kwargs)
         exec_result["_parsed"] = parsed
         exec_result["_output_format"] = "parsed_csv"
     elif output_format == "json":
-        parsed = json_parser.parse_json(stdout, byte_budget=cfg.response_byte_budget)
+        parsed = json_parser.parse_json(stdout, byte_budget=budget)
         if parsed.get("parse_error"):
-            parsed = json_parser.parse_jsonl(
-                stdout, byte_budget=cfg.response_byte_budget
-            )
+            parsed = json_parser.parse_jsonl(stdout, byte_budget=budget)
         exec_result["_parsed"] = parsed
         exec_result["_output_format"] = "parsed_json"
     else:
-        parsed = text_parser.parse_text(stdout, byte_budget=cfg.response_byte_budget)
+        parsed = text_parser.parse_text(stdout, byte_budget=budget, max_lines=ml)
         exec_result["_parsed"] = parsed
         exec_result["_output_format"] = "parsed_text"
 
