@@ -3396,16 +3396,17 @@ function renderTimelineRuler() {
   var lblHtml = '';
   [0, 25, 50, 75, 100].forEach(function(pct) {
     var d = new Date(minT.getTime() + spanMs * pct / 100);
-    var label = useHours ? d.toTimeString().slice(0, 5) : months[d.getMonth()] + ' ' + d.getDate();
+    var label = useHours ? d.toISOString().slice(11, 16) : months[d.getUTCMonth()] + ' ' + d.getUTCDate();
     lblHtml += '<span style="position:absolute;left:' + pct + '%;transform:translateX(-50%);white-space:nowrap">' + escapeHtml(label) + '</span>';
   });
   labelsEl.innerHTML = lblHtml;
 
   // Event type color map
+  // Colors match .tl-type-* CSS badge colors
   var typeColors = {
     auth: 'rgba(59,130,246,0.8)', execution: 'rgba(255,159,10,0.8)', process: 'rgba(255,159,10,0.8)',
-    lateral: 'rgba(255,69,58,0.8)', network: 'rgba(100,200,150,0.8)', file: 'rgba(148,163,184,0.8)',
-    persistence: 'rgba(239,68,68,0.8)', registry: 'rgba(168,85,247,0.8)', other: 'rgba(148,163,184,0.6)'
+    lateral: 'rgba(255,69,58,0.8)', network: 'rgba(178,102,255,0.8)', file: 'rgba(99,230,190,0.8)',
+    persistence: 'rgba(255,214,10,0.8)', registry: 'rgba(172,142,104,0.8)', other: 'rgba(148,163,184,0.6)'
   };
 
   // Compute marker positions + cluster within 1%
@@ -3432,11 +3433,12 @@ function renderTimelineRuler() {
   clusters.forEach(function(c) {
     var color = typeColors[(c.events[0].event_type || 'other')] || typeColors.other;
     var w = c.events.length > 1 ? Math.max(6, c.events.length * 2) : 4;
-    var title = c.events.length > 1
+    var titleText = c.events.length > 1
       ? c.events.length + ' events'
-      : escapeHtml((c.events[0].description || c.events[0].id || '').slice(0, 60));
+      : (c.events[0].description || c.events[0].id || '').slice(0, 60);
+    var titleAttr = escapeHtml(titleText).replace(/"/g, '&quot;');
     var evId = c.events[0].id;
-    mrkHtml += '<span style="position:absolute;left:' + c.pct.toFixed(1) + '%;width:' + w + 'px;height:10px;background:' + color + ';border-radius:2px;top:2px;cursor:pointer;transform:translateX(-50%)" title="' + title + '" onclick="focusTimelineEvent(\'' + escapeJsString(evId) + '\')"></span>';
+    mrkHtml += '<span style="position:absolute;left:' + c.pct.toFixed(1) + '%;width:' + w + 'px;height:10px;background:' + color + ';border-radius:2px;top:2px;cursor:pointer;transform:translateX(-50%)" title="' + titleAttr + '" onclick="focusTimelineEvent(\'' + escapeJsString(evId) + '\')"></span>';
   });
   markersEl.innerHTML = mrkHtml;
 }
