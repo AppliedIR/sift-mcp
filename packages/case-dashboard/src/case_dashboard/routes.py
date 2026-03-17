@@ -76,6 +76,8 @@ _DELTA_EDITABLE_FIELDS = {
     "timestamp",
     "description",
     "source",
+    # IOC fields
+    "tags",
 }
 
 # In-memory challenge store (gateway is single-process uvicorn)
@@ -507,7 +509,9 @@ def _apply_delta(case_dir: Path, examiner: str, derived_key: bytes) -> dict:
         # Load current state
         findings = _load_json(case_dir / "findings.json") or []
         timeline = _load_json(case_dir / "timeline.json") or []
-        all_items = findings + timeline
+        iocs_path = case_dir / "iocs.json"
+        iocs = (_load_json(iocs_path) or []) if iocs_path.exists() else []
+        all_items = findings + timeline + iocs
         item_by_id = {item["id"]: item for item in all_items}
 
         identity = {
@@ -582,6 +586,8 @@ def _apply_delta(case_dir: Path, examiner: str, derived_key: bytes) -> dict:
             item["approved_at"] = now
             item["approved_by"] = examiner
             item["modified_at"] = now
+            if item_id.startswith("IOC-"):
+                item["manually_reviewed"] = True
             approved_count += 1
             approved_items.append(item)
 
@@ -655,6 +661,8 @@ def _apply_delta(case_dir: Path, examiner: str, derived_key: bytes) -> dict:
             item["rejected_by"] = examiner
             if reason:
                 item["rejection_reason"] = reason
+            if item_id.startswith("IOC-"):
+                item["manually_reviewed"] = True
             item["modified_at"] = now
             rejected_count += 1
 
@@ -709,6 +717,65 @@ def _apply_delta(case_dir: Path, examiner: str, derived_key: bytes) -> dict:
                     )
                 )
 
+        # --- IOC approval coupling ---
+        iocs_modified = False
+        for ioc in iocs:
+            if ioc.get("manually_reviewed"):
+                continue
+            source_ids = ioc.get("source_findings", [])
+            relevant = [
+                item_by_id.get(sid) for sid in source_ids if item_by_id.get(sid)
+            ]
+            if not relevant:
+                continue
+            statuses = {r.get("status", "DRAFT") for r in relevant}
+            if statuses == {"APPROVED"} and ioc.get("status") != "APPROVED":
+                ioc["status"] = "APPROVED"
+                ioc["approved_at"] = now
+                ioc["approved_by"] = examiner
+                ioc["modified_at"] = now
+                new_hash = _compute_content_hash(ioc)
+                ioc["content_hash"] = new_hash
+                iocs_modified = True
+                approved_items.append(ioc)
+                log_entries.append(
+                    (
+                        ioc["id"],
+                        "APPROVED",
+                        {"content_hash": new_hash, "coupled_from": "ioc_cascade"},
+                    )
+                )
+            elif statuses == {"REJECTED"} and ioc.get("status") != "REJECTED":
+                ioc["status"] = "REJECTED"
+                ioc["rejected_at"] = now
+                ioc["rejected_by"] = examiner
+                ioc["rejection_reason"] = "All source findings rejected"
+                ioc["modified_at"] = now
+                iocs_modified = True
+                log_entries.append(
+                    (
+                        ioc["id"],
+                        "REJECTED",
+                        {
+                            "reason": "All source findings rejected",
+                            "coupled_from": "ioc_cascade",
+                        },
+                    )
+                )
+            # Recompute confidence from non-rejected sources
+            active = [r for r in relevant if r.get("status") != "REJECTED"]
+            if active:
+                conf_ranks = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "SPECULATIVE": 3}
+                best = min(
+                    active,
+                    key=lambda r: conf_ranks.get(
+                        (r.get("confidence") or "").upper(), 99
+                    ),
+                )
+                if best.get("confidence") != ioc.get("confidence"):
+                    ioc["confidence"] = best["confidence"]
+                    iocs_modified = True
+
         # ============================================================
         # Disk writes — CLI ordering (approve.py:1066-1113):
         # Step 1 (critical): Save primary data FIRST
@@ -716,9 +783,13 @@ def _apply_delta(case_dir: Path, examiner: str, derived_key: bytes) -> dict:
         # Step 3 (best-effort): HMAC ledger
         # ============================================================
 
-        # Step 1: Save findings + timeline
+        # Step 1: Save findings + timeline + iocs
         _save_protected(case_dir / "findings.json", findings)
         _save_protected(case_dir / "timeline.json", timeline)
+        if iocs_modified or any(
+            item["id"].startswith("IOC-") for item in approved_items
+        ):
+            _save_protected(iocs_path, iocs)
 
         # Step 2: Write approval log entries (best-effort)
         for item_id, action, kwargs in log_entries:
@@ -880,6 +951,16 @@ async def get_todos(request: Request) -> JSONResponse:
         return _no_case_response()
     todos = _load_json(case_dir / "todos.json") or []
     return JSONResponse(todos)
+
+
+async def get_iocs(request: Request) -> JSONResponse:
+    case_dir = _resolve_case_dir()
+    if not case_dir:
+        return _no_case_response()
+    iocs_path = case_dir / "iocs.json"
+    if not iocs_path.exists():
+        return JSONResponse([])
+    return JSONResponse(_load_json(iocs_path) or [])
 
 
 async def get_summary(request: Request) -> JSONResponse:
@@ -1284,6 +1365,7 @@ def _dashboard_api_routes() -> list[Route]:
         Route("/api/delta/{id}", delete_delta_item, methods=["DELETE"]),
         Route("/api/case", get_case, methods=["GET"]),
         Route("/api/todos", get_todos, methods=["GET"]),
+        Route("/api/iocs", get_iocs, methods=["GET"]),
         Route("/api/summary", get_summary, methods=["GET"]),
         Route("/api/evidence/{path:path}/verify", verify_evidence, methods=["POST"]),
         Route("/api/commit/challenge", get_commit_challenge, methods=["GET"]),
