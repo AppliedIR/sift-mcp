@@ -130,6 +130,8 @@ body {
 .zone2-toggle { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-secondary); padding: 8px 0; }
 .zone2-content { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 8px; }
 @media (min-width: 900px) { .zone2-content { grid-template-columns: 1fr 1fr; } }
+.overview-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 900px) { .overview-panels { grid-template-columns: 1fr; } }
 .zone2-left, .zone2-right { min-width: 0; }
 .card-id { font-family: monospace; font-size: 15px; font-weight: 600; }
 .card-title { font-size: 16px; font-weight: 600; }
@@ -2306,8 +2308,12 @@ function scrollToEvidence(eid) {
 function formatTimeShort(iso) {
   if (!iso) return '';
   try {
+    // Date-only (YYYY-MM-DD) — don't show misleading 00:00:00
+    if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
     const d = new Date(iso);
-    return d.toISOString().slice(11, 19) + ' UTC';
+    if (isNaN(d.getTime())) return iso;
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return months[d.getUTCMonth()] + ' ' + d.getUTCDate() + ' ' + d.toISOString().slice(11, 16) + ' UTC';
   } catch (_e) { return iso; }
 }
 
@@ -2592,21 +2598,21 @@ async function loadDashboard() {
 }
 
 function renderDashboard(summary) {
-  const f = summary.findings || {};
-  const t = summary.timeline || {};
-  const byStatus = f.by_status || {};
-  const draft = byStatus.DRAFT || 0;
-  const approved = byStatus.APPROVED || 0;
-  const rejected = byStatus.REJECTED || 0;
-  const total = f.total || 0;
-  const openTodos = (summary.todos || {}).open || 0;
-  const totalTodos = (summary.todos || {}).total || 0;
-  const tlTotal = t.total || 0;
-  const tlByStatus = t.by_status || {};
-  const tlDraft = tlByStatus.DRAFT || 0;
-  const evTotal = (summary.evidence || {}).total || 0;
-  const reviewed = approved + rejected;
-  const pctReviewed = total ? Math.round((reviewed / total) * 100) : 0;
+  var f = summary.findings || {};
+  var t = summary.timeline || {};
+  var byStatus = f.by_status || {};
+  var draft = byStatus.DRAFT || 0;
+  var approved = byStatus.APPROVED || 0;
+  var rejected = byStatus.REJECTED || 0;
+  var total = f.total || 0;
+  var openTodos = (summary.todos || {}).open || 0;
+  var totalTodos = (summary.todos || {}).total || 0;
+  var tlTotal = t.total || 0;
+  var tlByStatus = t.by_status || {};
+  var tlDraft = tlByStatus.DRAFT || 0;
+  var evTotal = (summary.evidence || {}).total || 0;
+  var reviewed = approved + rejected;
+  var pctReviewed = total ? Math.round((reviewed / total) * 100) : 0;
 
   var hostSet = new Set();
   var acctSet = new Set();
@@ -2624,32 +2630,114 @@ function renderDashboard(summary) {
     return d.action === 'approve' || d.action === 'reject';
   }).length : 0;
 
-  var html = '';
+  var html = '<div style="max-width:1200px">';
 
-  // === COMPACT STAT CARDS (horizontal row) ===
-  html += '<div class="dash-grid" style="grid-template-columns:repeat(6, 1fr);gap:8px;margin-bottom:16px">';
-  html += '<div class="dash-card" onclick="switchTab(\'findings\')" style="cursor:pointer;padding:12px"><h3 style="margin-bottom:4px">Findings</h3><div class="dash-stat" style="font-size:22px">' + total + '</div><div class="dash-detail" style="font-size:11px">' + draft + ' draft</div></div>';
-  html += '<div class="dash-card" onclick="switchTab(\'timeline\')" style="cursor:pointer;padding:12px"><h3 style="margin-bottom:4px">Timeline</h3><div class="dash-stat" style="font-size:22px">' + tlTotal + '</div><div class="dash-detail" style="font-size:11px">' + tlDraft + ' draft</div></div>';
-  html += '<div class="dash-card" onclick="switchTab(\'hosts\')" style="cursor:pointer;padding:12px"><h3 style="margin-bottom:4px">Hosts</h3><div class="dash-stat" style="font-size:22px">' + hostSet.size + '</div><div class="dash-detail" style="font-size:11px">impacted</div></div>';
-  html += '<div class="dash-card" onclick="switchTab(\'accounts\')" style="cursor:pointer;padding:12px"><h3 style="margin-bottom:4px">Accounts</h3><div class="dash-stat" style="font-size:22px">' + acctSet.size + '</div><div class="dash-detail" style="font-size:11px">involved</div></div>';
-  html += '<div class="dash-card" onclick="switchTab(\'evidence\')" style="cursor:pointer;padding:12px"><h3 style="margin-bottom:4px">Evidence</h3><div class="dash-stat" style="font-size:22px">' + evTotal + '</div><div class="dash-detail" style="font-size:11px">files</div></div>';
-  html += '<div class="dash-card" onclick="switchTab(\'todos\')" style="cursor:pointer;padding:12px"><h3 style="margin-bottom:4px">TODOs</h3><div class="dash-stat" style="font-size:22px">' + openTodos + '</div><div class="dash-detail" style="font-size:11px">' + totalTodos + ' total</div></div>';
+  // === CASE HEADER (full width) ===
+  if (caseMeta.case_id) {
+    html += '<h2 style="margin:0 0 4px;font-size:20px">' + escapeHtml(caseMeta.case_id);
+    if (caseMeta.name) html += ' \u2014 ' + escapeHtml(caseMeta.name);
+    html += '</h2>';
+    html += '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px">';
+    if (caseMeta.status) html += '<span class="badge badge-' + escapeHtml((caseMeta.status||'').toLowerCase()) + '">' + escapeHtml(caseMeta.status) + '</span> ';
+    html += 'Examiner: <strong>' + escapeHtml(caseMeta.examiner || 'unknown') + '</strong>';
+    if (caseMeta.created_at) html += ' \u00B7 Created ' + escapeHtml(formatTime(caseMeta.created_at));
+    html += '</div>';
+    if (caseMeta.description) html += '<p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px">' + escapeHtml(caseMeta.description) + '</p>';
+  } else {
+    html += '<h2 style="margin:0 0 8px;font-size:20px;color:var(--text-muted)">No active case</h2>';
+    html += '<p style="color:var(--text-muted);font-size:13px">Open a case with <code>aiir case activate</code> or create one with <code>aiir case init</code>.</p>';
+  }
+
+  // === TWO-PANEL LAYOUT ===
+  html += '<div class="overview-panels" style="margin-top:8px">';
+
+  // --- LEFT PANEL: Investigation Status ---
+  html += '<div>';
+  html += '<div style="font-weight:600;font-size:15px;margin-bottom:10px">Investigation Status</div>';
+
+  // Progress bar
+  html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">';
+  html += '<div style="flex:1;height:8px;background:var(--bg-tertiary);border-radius:4px;overflow:hidden">';
+  html += '<div style="height:100%;width:' + pctReviewed + '%;background:var(--accent);border-radius:4px;transition:width 0.3s"></div>';
+  html += '</div>';
+  html += '<span style="font-size:12px;color:var(--text-secondary);white-space:nowrap">' + reviewed + ' of ' + total + ' (' + pctReviewed + '%)</span>';
   html += '</div>';
 
-  // === ACTION BAR (prominent, right below cards) ===
-  if (draft > 0 || pendingActions > 0 || tlDraft > 0) {
-    html += '<div style="margin-bottom:16px;padding:12px 16px;background:var(--bg-secondary);border:1px solid var(--accent);border-radius:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
-    if (draft > 0) {
-      html += '<button class="btn-start-review" onclick="switchTab(\'findings\')" style="margin:0">\u2192 Review ' + draft + ' draft finding' + (draft > 1 ? 's' : '') + '</button>';
-    }
-    if (pendingActions > 0) {
-      html += '<button class="btn-start-review" onclick="openCommitDialog()" style="margin:0;background:var(--green-bg);color:var(--green);border-color:var(--green)">' + pendingActions + ' pending commit \u2014 Commit now</button>';
-    }
-    if (tlDraft > 0 && draft === 0) {
-      html += '<button class="btn-start-review" onclick="switchTab(\'timeline\')" style="margin:0">\u2192 Curate ' + tlDraft + ' timeline event' + (tlDraft > 1 ? 's' : '') + '</button>';
-    }
+  // Stat tiles (2x3 grid)
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">';
+  function tile(label, count, detail, tab) {
+    return '<div class="dash-card" onclick="switchTab(\'' + tab + '\')" style="cursor:pointer;padding:10px"><h3 style="margin-bottom:2px;font-size:11px">' + label + '</h3><div style="font-size:22px;font-weight:700">' + count + '</div><div style="font-size:11px;color:var(--text-muted)">' + detail + '</div><div style="font-size:10px;color:var(--accent);margin-top:4px">\u2192 ' + label + '</div></div>';
+  }
+  html += tile('Findings', total, draft + ' draft \u00B7 ' + approved + ' approved', 'findings');
+  html += tile('Timeline', tlTotal, tlDraft + ' draft \u00B7 ' + (tlByStatus.APPROVED||0) + ' curated', 'timeline');
+  html += tile('Hosts', hostSet.size, 'impacted systems', 'hosts');
+  html += tile('Accounts', acctSet.size, 'involved accounts', 'accounts');
+  html += tile('Evidence', evTotal, 'registered files', 'evidence');
+  html += tile('TODOs', openTodos, totalTodos + ' total', 'todos');
+  html += '</div>';
+
+  // Commit status + action prompt (ONE location)
+  if (draft > 0) {
+    html += '<button class="btn-start-review" onclick="switchTab(\'findings\')">\u2192 Review ' + draft + ' draft finding' + (draft>1?'s':'') + '</button>';
+  } else if (tlDraft > 0) {
+    html += '<button class="btn-start-review" onclick="switchTab(\'timeline\')">\u2192 Curate ' + tlDraft + ' timeline event' + (tlDraft>1?'s':'') + '</button>';
+  } else if (pendingActions > 0) {
+    html += '<button class="btn-start-review" onclick="openCommitDialog()">\u2192 Commit ' + pendingActions + ' pending action' + (pendingActions>1?'s':'') + '</button>';
+  } else if (total > 0 && reviewed >= total) {
+    html += '<button class="btn-start-review" onclick="openCommitDialog()" style="background:var(--green-bg);color:var(--green);border-color:var(--green)">\u2713 All reviewed \u2014 Commit now</button>';
+  }
+  if (pendingActions > 0 && draft > 0) {
+    html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">' + pendingActions + ' pending commit \u00B7 <span style="color:var(--accent);cursor:pointer" onclick="openCommitDialog()">Commit now</span></div>';
+  }
+
+  // Scope summary
+  if (earliestTs || hostSet.size || acctSet.size) {
+    html += '<div style="margin-top:12px;font-size:12px;color:var(--text-secondary);line-height:1.6">';
+    if (earliestTs && latestTs) html += 'Timeline: ' + escapeHtml(formatTimeShort(earliestTs)) + ' \u2013 ' + escapeHtml(formatTimeShort(latestTs)) + '<br>';
+    if (hostSet.size) html += 'Hosts: ' + Array.from(hostSet).map(escapeHtml).join(', ') + '<br>';
+    if (acctSet.size) html += 'Accounts: ' + Array.from(acctSet).map(escapeHtml).join(', ');
     html += '</div>';
   }
+  html += '</div>';
+
+  // --- RIGHT PANEL: Getting Started ---
+  html += '<div style="font-size:13px;line-height:1.7;color:var(--text-secondary)">';
+  html += '<div style="font-weight:600;font-size:15px;margin-bottom:10px;color:var(--text-primary)">Getting Started</div>';
+
+  html += '<div style="margin-bottom:10px"><strong>Your Role</strong><br>';
+  html += 'You are the human reviewer. The AI staged findings and timeline events during investigation. Your job: verify each one \u2014 approve what\u2019s correct, reject what\u2019s wrong, edit what needs refinement, then commit your decisions with a password signature.</div>';
+
+  html += '<div style="margin-bottom:10px"><strong>Review Workflow</strong>';
+  html += '<ol style="margin:4px 0 0 18px;padding:0;font-size:12px">';
+  html += '<li><strong>Review findings</strong> (tab 2) \u2014 read evidence, check provenance chain, approve or reject</li>';
+  html += '<li><strong>Curate timeline</strong> (tab 3) \u2014 include or exclude events from the narrative</li>';
+  html += '<li><strong>Check scope</strong> (tabs 4\u20135) \u2014 verify affected hosts and accounts</li>';
+  html += '<li><strong>Verify evidence</strong> (tab 6) \u2014 confirm evidence file integrity</li>';
+  html += '<li><strong>Review IOCs</strong> (tab 7) \u2014 validate indicators for sharing</li>';
+  html += '<li><strong>Complete TODOs</strong> (tab 8) \u2014 address outstanding tasks</li>';
+  html += '<li><strong>Commit</strong> \u2014 enter password to cryptographically sign your decisions</li>';
+  html += '</ol></div>';
+
+  html += '<div style="margin-bottom:10px"><strong>Key Concepts</strong><br>';
+  html += '<span class="badge badge-draft">DRAFT</span> AI-staged, not yet reviewed<br>';
+  html += '<span class="badge badge-approved">\u2713 APPROVED</span> verified, pending commit<br>';
+  html += '<strong>Commit</strong> \u2014 password-signed, permanent, appears in reports<br>';
+  html += '<strong>Provenance</strong> \u2014 path from raw evidence through tools to finding<br>';
+  html += '<strong>Timeline coupling</strong> \u2014 approve a finding, its auto-created timeline event follows</div>';
+
+  html += '<div style="margin-bottom:8px"><strong>Keyboard</strong><br>';
+  html += '<code>1</code>\u2013<code>8</code> tabs \u00B7 <code>j</code>/<code>k</code> navigate \u00B7 <code>a</code> approve \u00B7 <code>r</code> reject \u00B7 <code>s</code> undo \u00B7 <code>e</code> edit \u00B7 <code>Shift+C</code> commit \u00B7 <code>/</code> search \u00B7 <code>?</code> help</div>';
+
+  html += '<div style="color:var(--text-muted);font-size:12px"><strong>CLI</strong> \u00B7 <code>aiir approve --review</code> \u00B7 <code>aiir case status</code></div>';
+
+  html += '</div>';
+  html += '</div>'; // end two-panel grid
+  html += '</div>'; // end max-width wrapper
+
+  document.getElementById('dashGrid').innerHTML = html;
+  document.getElementById('dashMeta').innerHTML = '';
+}
+
 
   // === CASE BRIEFING ===
   if (caseMeta.case_id) {
