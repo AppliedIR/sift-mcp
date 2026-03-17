@@ -829,6 +829,13 @@ let currentFilter = 'pending';
 let currentSort = 'conf-desc';
 let searchQuery = '';
 let saveTimer = null;
+
+function setFilter(value) {
+  currentFilter = value;
+  document.querySelectorAll('.filter-preset[data-filter]').forEach(function(b) { b.classList.remove('active'); });
+  var btn = document.querySelector('.filter-preset[data-filter="' + value + '"]');
+  if (btn) btn.classList.add('active');
+}
 let previousFindingIds = new Set();
 let newFindingsCount = 0;
 let batchSelected = new Set();
@@ -3017,7 +3024,7 @@ function renderIocs() {
     }
     if (ioc.source_findings && ioc.source_findings.length) {
       html += '<div><strong>Findings:</strong> ' + ioc.source_findings.map(function(fid) {
-        return '<a style="color:var(--accent);cursor:pointer" onclick="event.stopPropagation();switchTab(\'findings\');selectFinding(\'' + escapeJsString(fid) + '\')">' + escapeHtml(fid) + '</a>';
+        return '<a style="color:var(--accent);cursor:pointer" onclick="event.stopPropagation();setFilter(\'all\');switchTab(\'findings\');selectFinding(\'' + escapeJsString(fid) + '\')">' + escapeHtml(fid) + '</a>';
       }).join(', ') + '</div>';
     }
     if (ioc.mitre_techniques && ioc.mitre_techniques.length) {
@@ -3064,7 +3071,7 @@ function renderHosts() {
   hosts.forEach(function(h) {
     var statusParts = Object.keys(h.statuses).map(function(s) { return h.statuses[s] + ' ' + s.toLowerCase(); }).join(', ');
     var timeRange = h.earliest ? escapeHtml(formatTimeShort(h.earliest)) + ' \u2013 ' + escapeHtml(formatTimeShort(h.latest)) : '';
-    html += '<tr style="cursor:pointer" onclick="searchQuery=\'' + escapeJsString(h.host) + '\';document.getElementById(\'searchBox\').value=searchQuery;switchTab(\'findings\');renderSidebar();showEmptyOrFirst()">';
+    html += '<tr style="cursor:pointer" onclick="setFilter(\'all\');searchQuery=\'' + escapeJsString(h.host) + '\';document.getElementById(\'searchBox\').value=searchQuery;switchTab(\'findings\');renderSidebar();showEmptyOrFirst()">';
     html += '<td><strong>' + escapeHtml(h.host) + '</strong></td>';
     html += '<td>' + h.findings.length + '</td>';
     html += '<td>' + Array.from(h.accounts).map(escapeHtml).join(', ') + '</td>';
@@ -3104,7 +3111,7 @@ function renderAccounts() {
   accounts.forEach(function(a) {
     var statusParts = Object.keys(a.statuses).map(function(s) { return a.statuses[s] + ' ' + s.toLowerCase(); }).join(', ');
     var timeRange = a.earliest ? escapeHtml(formatTimeShort(a.earliest)) + ' \u2013 ' + escapeHtml(formatTimeShort(a.latest)) : '';
-    html += '<tr style="cursor:pointer" onclick="searchQuery=\'' + escapeJsString(a.account) + '\';document.getElementById(\'searchBox\').value=searchQuery;switchTab(\'findings\');renderSidebar();showEmptyOrFirst()">';
+    html += '<tr style="cursor:pointer" onclick="setFilter(\'all\');searchQuery=\'' + escapeJsString(a.account) + '\';document.getElementById(\'searchBox\').value=searchQuery;switchTab(\'findings\');renderSidebar();showEmptyOrFirst()">';
     html += '<td><strong>' + escapeHtml(a.account) + '</strong></td>';
     html += '<td>' + a.findings.length + '</td>';
     html += '<td>' + Array.from(a.hosts).map(escapeHtml).join(', ') + '</td>';
@@ -3753,9 +3760,7 @@ document.getElementById('sortSelect').addEventListener('change', function() {
 
 document.querySelectorAll('.filter-preset[data-filter]').forEach(btn => {
   btn.addEventListener('click', function() {
-    currentFilter = this.dataset.filter;
-    document.querySelectorAll('.filter-preset[data-filter]').forEach(b => b.classList.remove('active'));
-    this.classList.add('active');
+    setFilter(this.dataset.filter);
     renderSidebar();
     showEmptyOrFirst();
   });
