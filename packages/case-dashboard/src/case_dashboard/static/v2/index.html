@@ -30,19 +30,19 @@
 
 .light {
   --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;
-  --bg-tertiary: #e2e8f0;
-  --bg-hover: #cbd5e1;
+  --bg-secondary: #f1f5f9;
+  --bg-tertiary: #cbd5e1;
+  --bg-hover: #94a3b8;
   --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
-  --border: #e2e8f0;
+  --text-secondary: #334155;
+  --text-muted: #475569;
+  --border: #cbd5e1;
   --green: #15803d;
   --green-bg: #dcfce7;
   --red: #b91c1c;
   --red-bg: #fef2f2;
-  --amber: #92400e;
-  --amber-bg: #fffbeb;
+  --amber: #b45309;
+  --amber-bg: #fef3c7;
   --blue: #1d4ed8;
   --blue-bg: #eff6ff;
   --accent: #2563eb;
@@ -50,6 +50,10 @@
   --slate: #475569;
   --gray: #374151;
 }
+.light .tab-badge { background: #d97706; color: #fff; }
+.light .badge-draft { background: #e2e8f0; color: #334155; }
+.light .conf-low { background: #e2e8f0; color: #1e293b; }
+.light .conf-speculative { background: #e2e8f0; color: #334155; }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -92,7 +96,9 @@ body {
 .main { display: flex; flex: 1; overflow: hidden; }
 
 /* Sidebar */
-.sidebar { width: 260px; min-width: 260px; background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.sidebar { width: 260px; min-width: 180px; max-width: 50vw; background: var(--bg-secondary); border-right: none; display: flex; flex-direction: column; overflow: hidden; }
+.sidebar-resize { width: 4px; cursor: col-resize; background: var(--border); flex-shrink: 0; transition: background 0.15s; }
+.sidebar-resize:hover, .sidebar-resize.dragging { background: var(--accent); }
 .sidebar-controls { padding: 8px; border-bottom: 1px solid var(--border); }
 .sidebar-controls select, .sidebar-controls input {
   width: 100%; padding: 5px 8px; background: var(--bg-tertiary); border: 1px solid var(--border);
@@ -564,6 +570,8 @@ body {
       <div class="sidebar-stats" id="sidebarStats"></div>
       <div class="save-status saved" id="saveStatus">All saved &#10003;</div>
     </div>
+
+    <div class="sidebar-resize" id="sidebarResize"></div>
 
     <!-- Content -->
     <div class="content" id="findingContent">
@@ -1061,17 +1069,20 @@ function getFilteredFindings() {
   if (currentFilter === 'pending') {
     list = list.filter(f => {
       var de = getDeltaEntry(f.id);
-      return !de || de.action === 'edit';
+      if (de && de.action !== 'edit') return false;
+      return (f.status || 'DRAFT') === 'DRAFT';
     });
   } else if (currentFilter === 'approved') {
     list = list.filter(f => {
       var de = getDeltaEntry(f.id);
-      return de && de.action === 'approve';
+      return (de && de.action === 'approve') ||
+             (f.status || '').toUpperCase() === 'APPROVED';
     });
   } else if (currentFilter === 'rejected') {
     list = list.filter(f => {
       var de = getDeltaEntry(f.id);
-      return de && de.action === 'reject';
+      return (de && de.action === 'reject') ||
+             (f.status || '').toUpperCase() === 'REJECTED';
     });
   }
 
@@ -2725,10 +2736,10 @@ function renderDashboard(summary) {
   html += '<div style="margin-bottom:14px;padding:12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px">';
   html += '<div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--text-primary)">How It Works</div>';
   html += '<div style="display:grid;grid-template-columns:1fr;gap:6px;font-size:12px">';
-  html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">1.</span> <strong>AI investigates</strong> \u2014 runs forensic tools (SIFT + Windows), analyzes artifacts, records findings with evidence</div>';
+  html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">1.</span> <strong>AI processes</strong> \u2014 you direct the AI on what to investigate, it handles the mechanics and presents artifacts to you</div>';
   html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">2.</span> <strong>You review</strong> \u2014 examine each finding here or in the CLI. Check the evidence, read the provenance chain, verify the interpretation</div>';
   html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">3.</span> <strong>Approve or reject</strong> \u2014 approve what\u2019s correct, reject what\u2019s wrong, edit what needs refinement. Linked timeline events and IOCs follow automatically</div>';
-  html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">4.</span> <strong>Commit</strong> \u2014 enter your password to cryptographically sign your decisions. Committed findings appear in reports and cannot be altered</div>';
+  html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">4.</span> <strong>Commit</strong> \u2014 enter your password to cryptographically sign your decisions. Any post-commit alteration is detectable</div>';
   html += '</div></div>';
 
   // --- Understanding the Tabs ---
@@ -3111,17 +3122,20 @@ function getFilteredTimelineEvents() {
   if (timelineFilter === 'pending') {
     events = events.filter(function(ev) {
       var de = getDeltaEntry(ev.id);
-      return !de || de.action === 'edit';
+      if (de && de.action !== 'edit') return false;
+      return (ev.status || 'DRAFT') === 'DRAFT';
     });
   } else if (timelineFilter === 'approved') {
     events = events.filter(function(ev) {
       var de = getDeltaEntry(ev.id);
-      return de && de.action === 'approve';
+      return (de && de.action === 'approve') ||
+             (ev.status || '').toUpperCase() === 'APPROVED';
     });
   } else if (timelineFilter === 'rejected') {
     events = events.filter(function(ev) {
       var de = getDeltaEntry(ev.id);
-      return de && de.action === 'reject';
+      return (de && de.action === 'reject') ||
+             (ev.status || '').toUpperCase() === 'REJECTED';
     });
   }
   if (timelineTypeFilter) {
@@ -3818,6 +3832,38 @@ document.getElementById('timelineTypeFilter').addEventListener('change', functio
   timelineTypeFilter = this.value;
   renderTimeline();
 });
+
+/* === Sidebar resize === */
+(function() {
+  var handle = document.getElementById('sidebarResize');
+  var sidebar = document.querySelector('.sidebar');
+  if (!handle || !sidebar) return;
+  var savedW = localStorage.getItem('aiir-sidebar-width');
+  if (savedW) sidebar.style.width = savedW + 'px';
+  var startX, startW;
+  handle.addEventListener('mousedown', function(e) {
+    e.preventDefault();
+    startX = e.clientX;
+    startW = sidebar.offsetWidth;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+  function onMove(e) {
+    var w = Math.max(180, Math.min(window.innerWidth * 0.5, startW + e.clientX - startX));
+    sidebar.style.width = w + 'px';
+  }
+  function onUp() {
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    try { localStorage.setItem('aiir-sidebar-width', sidebar.offsetWidth); } catch(_) {}
+  }
+})();
 
 /* === Init === */
 initTheme();

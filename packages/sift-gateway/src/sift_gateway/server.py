@@ -462,15 +462,15 @@ class Gateway:
         routes.extend(rest_routes())
 
         # Case dashboard (optional — installed separately)
-        # v2 mount MUST come before v1 — Starlette matches by prefix
+        # v1 mount MUST come before default — Starlette matches by prefix
         try:
             from case_dashboard.routes import (
                 create_dashboard_app,
                 create_dashboard_v2_app,
             )
 
-            routes.append(Mount("/dashboard/v2", app=create_dashboard_v2_app()))
-            routes.append(Mount("/dashboard", app=create_dashboard_app()))
+            routes.append(Mount("/dashboard/v1", app=create_dashboard_app()))
+            routes.append(Mount("/dashboard", app=create_dashboard_v2_app()))
         except ImportError:
             pass
 
