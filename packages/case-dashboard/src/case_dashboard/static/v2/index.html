@@ -487,7 +487,7 @@ body {
   <!-- Tabs -->
   <div class="tabs" role="tablist">
     <div class="tab" data-tab="dashboard" role="tab" tabindex="0"
-      aria-selected="false" id="tab-dashboard" aria-controls="panel-dashboard">Dashboard</div>
+      aria-selected="false" id="tab-dashboard" aria-controls="panel-dashboard">Overview</div>
     <div class="tab active" data-tab="findings" role="tab" tabindex="0"
       aria-selected="true" id="tab-findings" aria-controls="panel-findings">Findings</div>
     <div class="tab" data-tab="timeline" role="tab" tabindex="0"
@@ -1743,6 +1743,7 @@ async function submitCommit() {
     updateCommitButton();
     showToast('Committed: ' + (result.approved || 0) + ' approved, ' +
       (result.rejected || 0) + ' rejected, ' + (result.edited || 0) + ' edited', 'success');
+    try { localStorage.setItem('aiir-has-committed', 'true'); } catch(_) {}
 
   } catch (e) {
     document.getElementById('commitPasswordRow').style.display = '';
@@ -2580,18 +2581,53 @@ function renderDashboard(summary) {
   const approved = byStatus.APPROVED || 0;
   const rejected = byStatus.REJECTED || 0;
   const total = f.total || 0;
-
   const openTodos = (summary.todos || {}).open || 0;
   const totalTodos = (summary.todos || {}).total || 0;
-
-  // Status bar widths
+  const tlTotal = t.total || 0;
+  const tlByStatus = t.by_status || {};
+  const tlDraft = tlByStatus.DRAFT || 0;
+  const evTotal = (summary.evidence || {}).total || 0;
   const pctApp = total ? (approved / total * 100) : 0;
   const pctRej = total ? (rejected / total * 100) : 0;
   const pctDraft = total ? (draft / total * 100) : 0;
 
+  // Count unique hosts and accounts from findings
+  var hostSet = new Set();
+  var acctSet = new Set();
+  findings.forEach(function(fi) {
+    if (fi.host) hostSet.add(fi.host);
+    if (fi.affected_account) acctSet.add(fi.affected_account);
+  });
+
+  // Pending commit actions
+  var pendingActions = delta.items ? delta.items.filter(function(d) {
+    return d.action === 'approve' || d.action === 'reject';
+  }).length : 0;
+
   let grid = '';
-  // Findings card
-  grid += '<div class="dash-card"><h3>Findings</h3>';
+
+  // === 1. CASE HEADER ===
+  grid += '<div style="margin-bottom:16px">';
+  if (caseMeta.case_id) {
+    grid += '<h2 style="margin:0 0 4px;font-size:20px">' + escapeHtml(caseMeta.case_id);
+    if (caseMeta.name) grid += ' \u2014 ' + escapeHtml(caseMeta.name);
+    grid += '</h2>';
+    grid += '<div style="font-size:13px;color:var(--text-secondary)">';
+    if (caseMeta.status) grid += '<span class="badge badge-' + escapeHtml((caseMeta.status || '').toLowerCase()) + '">' + escapeHtml(caseMeta.status) + '</span> ';
+    grid += 'Examiner: <strong>' + escapeHtml(caseMeta.examiner || 'unknown') + '</strong>';
+    if (caseMeta.created_at) grid += ' \u00B7 Created: ' + escapeHtml(formatTime(caseMeta.created_at));
+    grid += '</div>';
+    if (caseMeta.description) {
+      grid += '<div style="font-size:12px;color:var(--text-muted);margin-top:4px">' + escapeHtml(caseMeta.description) + '</div>';
+    }
+  } else {
+    grid += '<h2 style="margin:0;font-size:20px;color:var(--text-muted)">No active case</h2>';
+  }
+  grid += '</div>';
+
+  // === 2. STAT CARDS ===
+  grid += '<div class="dash-grid">';
+  grid += '<div class="dash-card" onclick="switchTab(\'findings\')" style="cursor:pointer"><h3>Findings</h3>';
   grid += '<div class="dash-stat">' + total + '</div>';
   grid += '<div class="dash-detail">' + draft + ' draft, ' + approved + ' approved, ' + rejected + ' rejected</div>';
   grid += '<div class="dash-bar">';
@@ -2600,68 +2636,65 @@ function renderDashboard(summary) {
   grid += '<div class="dash-bar-seg" style="width:' + pctDraft + '%;background:var(--amber)"></div>';
   grid += '</div></div>';
 
-  // Timeline card
-  const tlTotal = t.total || 0;
-  const tlByStatus = t.by_status || {};
-  grid += '<div class="dash-card"><h3>Timeline</h3>';
+  grid += '<div class="dash-card" onclick="switchTab(\'timeline\')" style="cursor:pointer"><h3>Timeline</h3>';
   grid += '<div class="dash-stat">' + tlTotal + '</div>';
-  grid += '<div class="dash-detail">';
-  grid += (tlByStatus.DRAFT || 0) + ' draft, ' + (tlByStatus.APPROVED || 0) + ' approved';
-  grid += '</div></div>';
+  grid += '<div class="dash-detail">' + tlDraft + ' draft, ' + (tlByStatus.APPROVED || 0) + ' approved</div></div>';
 
-  // Evidence card
-  grid += '<div class="dash-card"><h3>Evidence</h3>';
-  const evTotal = (summary.evidence || {}).total || 0;
+  grid += '<div class="dash-card" onclick="switchTab(\'hosts\')" style="cursor:pointer"><h3>Hosts</h3>';
+  grid += '<div class="dash-stat">' + hostSet.size + '</div>';
+  grid += '<div class="dash-detail">impacted systems</div></div>';
+
+  grid += '<div class="dash-card" onclick="switchTab(\'accounts\')" style="cursor:pointer"><h3>Accounts</h3>';
+  grid += '<div class="dash-stat">' + acctSet.size + '</div>';
+  grid += '<div class="dash-detail">impacted accounts</div></div>';
+
+  grid += '<div class="dash-card" onclick="switchTab(\'evidence\')" style="cursor:pointer"><h3>Evidence</h3>';
   grid += '<div class="dash-stat">' + evTotal + '</div>';
-  grid += '<div class="dash-detail">' + evTotal + ' registered file(s)</div></div>';
+  grid += '<div class="dash-detail">registered files</div></div>';
 
-  // TODOs card
-  grid += '<div class="dash-card"><h3>TODOs</h3>';
+  grid += '<div class="dash-card" onclick="switchTab(\'todos\')" style="cursor:pointer"><h3>TODOs</h3>';
   grid += '<div class="dash-stat">' + openTodos + ' open</div>';
   grid += '<div class="dash-detail">' + totalTodos + ' total</div></div>';
+  grid += '</div>';
+
+  // === 3. NEXT ACTION + COMMIT STATUS ===
+  grid += '<div style="margin-top:16px">';
+  if (draft > 0) {
+    grid += '<button class="btn-start-review" onclick="switchTab(\'findings\')">Review ' + draft + ' draft finding(s)</button>';
+  } else if (tlDraft > 0) {
+    grid += '<button class="btn-start-review" onclick="switchTab(\'timeline\')">Curate ' + tlDraft + ' timeline event(s)</button>';
+  } else if (openTodos > 0) {
+    grid += '<button class="btn-start-review" onclick="switchTab(\'todos\')">' + openTodos + ' open TODO(s) remaining</button>';
+  } else if (pendingActions > 0) {
+    grid += '<button class="btn-start-review" onclick="openCommitDialog()">' + pendingActions + ' action(s) pending commit</button>';
+  }
+  if (pendingActions > 0 && draft > 0) {
+    grid += '<div style="font-size:12px;color:var(--text-muted);margin-top:4px">' + pendingActions + ' action(s) pending commit \u00B7 <span style="color:var(--accent);cursor:pointer" onclick="openCommitDialog()">Commit now</span></div>';
+  }
+  grid += '</div>';
+
+  // === 4. HOW TO USE (collapsible) ===
+  var hasCommitted = false;
+  try { hasCommitted = localStorage.getItem('aiir-has-committed') === 'true'; } catch(_) {}
+  var helpOpen = (!hasCommitted && total === 0) ? ' open' : '';
+
+  grid += '<details style="margin-top:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:12px"' + helpOpen + '>';
+  grid += '<summary style="cursor:pointer;font-weight:600;font-size:14px;color:var(--text-secondary)">How to Use This Dashboard</summary>';
+  grid += '<div style="margin-top:8px;font-size:12px;line-height:1.6;color:var(--text-secondary)">';
+  grid += '<p><strong>Findings (2)</strong> \u2014 Review AI-staged findings. Approve, reject, or edit. Evidence artifacts and provenance chain shown per finding.</p>';
+  grid += '<p><strong>Timeline (3)</strong> \u2014 Chronological incident events. Include or exclude from the final timeline.</p>';
+  grid += '<p><strong>Hosts (4)</strong> \u2014 Which systems were affected. Click a host to filter findings.</p>';
+  grid += '<p><strong>Accounts (5)</strong> \u2014 Which accounts were involved. Click to filter.</p>';
+  grid += '<p><strong>Evidence (6)</strong> \u2014 Registered evidence files with integrity verification.</p>';
+  grid += '<p><strong>IOCs (7)</strong> \u2014 Indicators of compromise extracted from findings.</p>';
+  grid += '<p><strong>TODOs (8)</strong> \u2014 Outstanding investigation tasks.</p>';
+  grid += '<p style="margin-top:8px"><strong>Keyboard:</strong> 1-8 switch tabs, j/k navigate findings, a approve, r reject, s undo, Shift+C commit, ? full list</p>';
+  grid += '<p><strong>Workflow:</strong> Review findings \u2192 curate timeline \u2192 verify evidence \u2192 commit with password \u2192 generate report</p>';
+  grid += '<p style="color:var(--text-muted);margin-top:4px">CLI alternative: <code>aiir approve --review</code></p>';
+  grid += '</div></details>';
 
   document.getElementById('dashGrid').innerHTML = grid;
-
-  document.querySelectorAll('.dash-card').forEach(function(card) {
-    var title = card.querySelector('h3');
-    if (!title) return;
-    var text = title.textContent.trim();
-    var tab = text === 'Findings' ? 'findings'
-            : text === 'Timeline' ? 'timeline'
-            : text === 'Evidence' ? 'evidence'
-            : text === 'TODOs' ? 'todos' : null;
-    if (tab) {
-      card.style.cursor = 'pointer';
-      card.onclick = function() { switchTab(tab); };
-    }
-  });
-
-  // Case metadata
-  let meta = '';
-  if (caseMeta.case_id) {
-    const rows = [
-      ['Case ID', caseMeta.case_id],
-      ['Name', caseMeta.name || ''],
-      ['Status', caseMeta.status || ''],
-      ['Created', formatTime(caseMeta.created_at)],
-      ['Description', caseMeta.description || ''],
-    ];
-    rows.forEach(function(r) {
-      if (r[1]) meta += '<div class="dash-meta-row"><span class="dash-meta-label">' + escapeHtml(r[0]) + '</span><span>' + escapeHtml(String(r[1])) + '</span></div>';
-    });
-  }
-  // Next action prompt
-  var tlDraft = tlByStatus.DRAFT || 0;
-  if (draft > 0) {
-    meta += '<button class="btn-start-review" onclick="switchTab(\'findings\')">Review ' + draft + ' draft finding(s)</button>';
-  } else if (tlDraft > 0) {
-    meta += '<button class="btn-start-review" onclick="switchTab(\'timeline\')">Curate ' + tlDraft + ' timeline event(s)</button>';
-  } else if (openTodos > 0) {
-    meta += '<button class="btn-start-review" onclick="switchTab(\'todos\')">' + openTodos + ' open TODO(s) remaining</button>';
-  } else if (findings.length > 0 && delta.items.some(function(d) { return d.action === 'approve' || d.action === 'reject'; })) {
-    meta += '<button class="btn-start-review" onclick="openCommitDialog()">All reviewed \u2014 ready to commit</button>';
-  }
-  document.getElementById('dashMeta').innerHTML = meta;
+  document.getElementById('dashMeta').innerHTML = '';
 }
 
 /* === Evidence tab === */
