@@ -665,12 +665,8 @@ class CaseManager:
             tl_seq = _next_seq(timeline, "id", "T", exam)
             timeline_event_id = f"T-{exam}-{tl_seq:03d}"
             finding_record["timeline_event_id"] = timeline_event_id
-        elif finding_type == "finding" and not event_ts:
-            warnings.append(
-                "type=finding without event_timestamp — no timeline event "
-                "auto-created. Include event_timestamp (ISO 8601) for when "
-                "the incident event occurred."
-            )
+        # Warning for missing event_timestamp handled by validation.py
+        # (validation_warnings already added to warnings list)
 
         # Compute content hash at staging
         finding_record["content_hash"] = _compute_content_hash(finding_record)

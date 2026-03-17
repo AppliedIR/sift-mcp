@@ -805,6 +805,7 @@ let evidenceData = [];
 let todosData = [];
 let summaryData = null;
 var isLoading = false;
+var _lastRenderedHash = '';
 let evidenceSortCol = 'path';
 let evidenceSortAsc = true;
 let todosSortCol = 'priority';
@@ -894,8 +895,17 @@ async function loadAll() {
     updateProgress();
     updateCommitButton();
     updateTabBadges();
-    if (selectedId) renderFinding(selectedId);
-    else showEmptyOrFirst();
+    // Only re-render if the selected finding changed (preserves <details> open state)
+    if (selectedId) {
+      var sf = findings.find(function(f) { return f.id === selectedId; });
+      var currentHash = sf ? (sf.content_hash + '|' + (sf.status || '')) : '';
+      if (currentHash !== _lastRenderedHash) {
+        renderFinding(selectedId);
+        _lastRenderedHash = currentHash;
+      }
+    } else {
+      showEmptyOrFirst();
+    }
   } catch (e) {
     var loading = document.getElementById('loadingState');
     if (loading) loading.style.display = 'none';
@@ -1160,6 +1170,7 @@ function updateProgress() {
 
 function selectFinding(id) {
   selectedId = id;
+  _lastRenderedHash = '';  // Force re-render on selection change
   renderFinding(id);
   renderSidebar();
   var content = document.getElementById('findingContent');
@@ -2808,7 +2819,7 @@ function renderHosts() {
   hosts.forEach(function(h) {
     var statusParts = Object.keys(h.statuses).map(function(s) { return h.statuses[s] + ' ' + s.toLowerCase(); }).join(', ');
     var timeRange = h.earliest ? escapeHtml(formatTimeShort(h.earliest)) + ' \u2013 ' + escapeHtml(formatTimeShort(h.latest)) : '';
-    html += '<tr style="cursor:pointer" onclick="switchTab(\'findings\');document.getElementById(\'searchBox\').value=\'' + escapeJsString(h.host) + '\';searchQuery=\'' + escapeJsString(h.host) + '\';renderSidebar();showEmptyOrFirst()">';
+    html += '<tr style="cursor:pointer" onclick="searchQuery=\'' + escapeJsString(h.host) + '\';document.getElementById(\'searchBox\').value=searchQuery;switchTab(\'findings\');renderSidebar();showEmptyOrFirst()">';
     html += '<td><strong>' + escapeHtml(h.host) + '</strong></td>';
     html += '<td>' + h.findings.length + '</td>';
     html += '<td>' + Array.from(h.accounts).map(escapeHtml).join(', ') + '</td>';
@@ -2848,7 +2859,7 @@ function renderAccounts() {
   accounts.forEach(function(a) {
     var statusParts = Object.keys(a.statuses).map(function(s) { return a.statuses[s] + ' ' + s.toLowerCase(); }).join(', ');
     var timeRange = a.earliest ? escapeHtml(formatTimeShort(a.earliest)) + ' \u2013 ' + escapeHtml(formatTimeShort(a.latest)) : '';
-    html += '<tr style="cursor:pointer" onclick="switchTab(\'findings\');document.getElementById(\'searchBox\').value=\'' + escapeJsString(a.account) + '\';searchQuery=\'' + escapeJsString(a.account) + '\';renderSidebar();showEmptyOrFirst()">';
+    html += '<tr style="cursor:pointer" onclick="searchQuery=\'' + escapeJsString(a.account) + '\';document.getElementById(\'searchBox\').value=searchQuery;switchTab(\'findings\');renderSidebar();showEmptyOrFirst()">';
     html += '<td><strong>' + escapeHtml(a.account) + '</strong></td>';
     html += '<td>' + a.findings.length + '</td>';
     html += '<td>' + Array.from(a.hosts).map(escapeHtml).join(', ') + '</td>';

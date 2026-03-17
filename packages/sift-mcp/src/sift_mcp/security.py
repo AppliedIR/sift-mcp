@@ -72,10 +72,14 @@ def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]
 
 
 # Directories where rm is blocked (evidence storage, case data)
-_RM_PROTECTED_DIRS = (
-    "/cases",
-    "/evidence",
-)
+def _get_protected_dirs() -> tuple[str, ...]:
+    """Resolve protected directories at runtime from env/defaults."""
+    cases_dir = os.environ.get("AIIR_CASES_DIR", str(Path.home() / "cases"))
+    return (
+        str(Path(cases_dir).resolve()),
+        "/cases",
+        "/evidence",
+    )
 
 
 def is_denied(binary_name: str) -> bool:
@@ -95,7 +99,7 @@ def validate_rm_targets(args: list[str]) -> None:
         if resolved == "/":
             raise ValueError("Blocked: rm targeting filesystem root")
         # Block evidence storage directories
-        for protected in _RM_PROTECTED_DIRS:
+        for protected in _get_protected_dirs():
             if resolved == protected or resolved.startswith(protected + "/"):
                 raise ValueError(
                     f"Blocked: rm targeting protected evidence directory '{protected}'"
