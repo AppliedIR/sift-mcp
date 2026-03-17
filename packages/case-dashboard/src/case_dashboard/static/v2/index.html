@@ -340,6 +340,9 @@ body {
 .evidence-item-body .ev-field { margin-bottom: 6px; }
 .evidence-item-body .ev-label { color: var(--text-muted); font-size: 11px; }
 
+/* IOC detail rows */
+.ioc-detail.visible { display: table-row !important; }
+
 /* Sources summary */
 .grounding { padding: 8px 12px; font-size: 12px; border-top: 1px solid var(--border); }
 
@@ -662,9 +665,25 @@ body {
     id="panel-iocs" aria-labelledby="tab-iocs">
     <div class="tab-table-wrap">
       <h3 style="margin-bottom:12px;font-size:15px;">Indicators of Compromise</h3>
-      <div id="iocContent" style="color:var(--text-muted);padding:24px;text-align:center">
-        IOC tab available after IOC model implementation.
+      <div class="tab-table-controls" style="margin-bottom:8px">
+        <select id="iocFilterCategory"><option value="">All categories</option><option value="network">Network</option><option value="host">Host</option><option value="system">System</option><option value="identity">Identity</option><option value="unknown">Unknown</option></select>
+        <select id="iocFilterStatus"><option value="">All statuses</option><option value="DRAFT">Draft</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option></select>
+        <input type="text" id="iocSearch" placeholder="Search IOCs..." style="flex:1;padding:5px 8px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);border-radius:4px;font-size:12px">
       </div>
+      <table class="data-table" id="iocsTable">
+        <thead>
+          <tr>
+            <th>Value</th>
+            <th>Type</th>
+            <th>Category</th>
+            <th>Confidence</th>
+            <th>Hosts</th>
+            <th>Findings</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="iocsBody"></tbody>
+      </table>
     </div>
   </div>
 
@@ -808,6 +827,7 @@ let filterHost = '';
 let filterAccount = '';
 let evidenceData = [];
 let todosData = [];
+let iocsData = [];
 let summaryData = null;
 var isLoading = false;
 let evidenceSortCol = 'path';
@@ -2409,6 +2429,7 @@ function switchTab(tabName) {
   updateProgress();
   if (tabName === 'dashboard') loadDashboard();
   else if (tabName === 'evidence') loadEvidence();
+  else if (tabName === 'iocs') loadIocs();
   else if (tabName === 'todos') loadTodos();
   else if (tabName === 'timeline') {
     if (!focusedTimelineId) {
@@ -2871,6 +2892,78 @@ function renderTodos() {
     html = '<tr><td colspan="8" style="color:var(--text-muted);text-align:center;padding:24px">No TODOs</td></tr>';
   }
   document.getElementById('todosBody').innerHTML = html;
+}
+
+/* === IOCs tab === */
+async function loadIocs() {
+  try {
+    iocsData = await apiFetch('/api/iocs');
+    renderIocs();
+  } catch (e) {
+    document.getElementById('iocsBody').innerHTML =
+      '<tr><td colspan="7" style="color:var(--red)">' + escapeHtml(e.message) + '</td></tr>';
+  }
+}
+
+function renderIocs() {
+  var catFilter = document.getElementById('iocFilterCategory').value;
+  var statusFilter = document.getElementById('iocFilterStatus').value;
+  var search = (document.getElementById('iocSearch').value || '').toLowerCase();
+
+  var filtered = iocsData.filter(function(ioc) {
+    if (catFilter && (ioc.category || '') !== catFilter) return false;
+    if (statusFilter && (ioc.status || 'DRAFT') !== statusFilter) return false;
+    if (search && (ioc.value || '').toLowerCase().indexOf(search) === -1) return false;
+    return true;
+  });
+
+  var html = '';
+  filtered.forEach(function(ioc) {
+    var val = ioc.value || '';
+    var shortVal = val.length > 40 ? val.slice(0, 37) + '...' : val;
+    var hosts = (ioc.sightings || []).map(function(s) { return s.host; }).filter(Boolean);
+    var uniqueHosts = Array.from(new Set(hosts));
+    var status = (ioc.status || 'DRAFT').toUpperCase();
+    var statusClass = 'badge-' + status.toLowerCase();
+    var confClass = 'conf-' + ((ioc.confidence || 'low').toLowerCase());
+
+    html += '<tr style="cursor:pointer" onclick="this.nextElementSibling && this.nextElementSibling.classList.toggle(\'visible\')">';
+    html += '<td style="font-family:monospace;font-size:11px" title="' + escapeHtml(val) + '">' + escapeHtml(shortVal) + '</td>';
+    html += '<td>' + escapeHtml(ioc.type || 'unknown') + '</td>';
+    html += '<td>' + escapeHtml(ioc.category || 'unknown') + '</td>';
+    html += '<td><span class="badge ' + escapeHtml(confClass) + '">' + escapeHtml(ioc.confidence || '') + '</span></td>';
+    html += '<td>' + uniqueHosts.length + '</td>';
+    html += '<td>' + (ioc.source_findings || []).length + '</td>';
+    html += '<td><span class="badge ' + escapeHtml(statusClass) + '">' + escapeHtml(status) + '</span></td>';
+    html += '</tr>';
+
+    // Expandable detail row
+    html += '<tr class="ioc-detail" style="display:none"><td colspan="7" style="padding:8px 12px;background:var(--bg-secondary);font-size:12px">';
+    html += '<div style="font-family:monospace;word-break:break-all;margin-bottom:6px">' + escapeHtml(val) + '</div>';
+    if (uniqueHosts.length > 0) {
+      html += '<div><strong>Hosts:</strong> ' + uniqueHosts.map(escapeHtml).join(', ') + '</div>';
+    }
+    if (ioc.source_findings && ioc.source_findings.length) {
+      html += '<div><strong>Findings:</strong> ' + ioc.source_findings.map(function(fid) {
+        return '<a style="color:var(--accent);cursor:pointer" onclick="event.stopPropagation();switchTab(\'findings\');selectFinding(\'' + escapeJsString(fid) + '\')">' + escapeHtml(fid) + '</a>';
+      }).join(', ') + '</div>';
+    }
+    if (ioc.mitre_techniques && ioc.mitre_techniques.length) {
+      html += '<div><strong>MITRE:</strong> ' + ioc.mitre_techniques.map(escapeHtml).join(', ') + '</div>';
+    }
+    if (ioc.tags && ioc.tags.length) {
+      html += '<div><strong>Tags:</strong> ' + ioc.tags.map(escapeHtml).join(', ') + '</div>';
+    }
+    html += '</td></tr>';
+  });
+
+  if (!filtered.length) {
+    html = '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:24px">' +
+      (iocsData.length === 0 ? 'No IOCs extracted yet. IOCs are auto-extracted when findings include the iocs field.' : 'No IOCs match current filters.') +
+      '</td></tr>';
+  }
+  document.getElementById('iocsBody').innerHTML = html;
+  setBadge('tab-iocs', iocsData.filter(function(i) { return (i.status || 'DRAFT') === 'DRAFT'; }).length);
 }
 
 /* === Hosts tab === */
@@ -3572,6 +3665,11 @@ document.querySelectorAll('#todosTable th[data-sort]').forEach(th => {
 // TODO filters
 document.getElementById('todoFilterPriority').addEventListener('change', renderTodos);
 document.getElementById('todoFilterStatus').addEventListener('change', renderTodos);
+
+// IOC filters
+document.getElementById('iocFilterCategory').addEventListener('change', renderIocs);
+document.getElementById('iocFilterStatus').addEventListener('change', renderIocs);
+document.getElementById('iocSearch').addEventListener('input', renderIocs);
 
 // Timeline filters
 document.querySelectorAll('[data-tl-filter]').forEach(function(btn) {
