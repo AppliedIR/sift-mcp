@@ -681,16 +681,14 @@ def _apply_delta(case_dir: Path, examiner: str, derived_key: bytes) -> dict:
             auto_from = item.get("auto_created_from", "")
             if not auto_from:
                 continue
-            # Only cascade if timeline event is still DRAFT and unmodified
-            if item.get("status") != "DRAFT":
-                continue
+            # Only cascade if timeline event has not been manually edited
             if item.get("examiner_modifications"):
                 continue
             # Find the source finding
             source = item_by_id.get(auto_from)
             if not source:
                 continue
-            if source.get("status") == "APPROVED" and item.get("status") == "DRAFT":
+            if source.get("status") == "APPROVED" and item.get("status") != "APPROVED":
                 item["status"] = "APPROVED"
                 item["approved_at"] = now
                 item["approved_by"] = examiner
@@ -706,7 +704,9 @@ def _apply_delta(case_dir: Path, examiner: str, derived_key: bytes) -> dict:
                         {"content_hash": new_hash, "coupled_from": auto_from},
                     )
                 )
-            elif source.get("status") == "REJECTED" and item.get("status") == "DRAFT":
+            elif (
+                source.get("status") == "REJECTED" and item.get("status") != "REJECTED"
+            ):
                 item["status"] = "REJECTED"
                 item["rejected_at"] = now
                 item["rejected_by"] = examiner

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AIIR Case Dashboard</title>
+<title>AIIR — Examiner Portal</title>
 <style>
 :root {
   --bg-primary: #0f172a;
@@ -482,7 +482,7 @@ body {
   <!-- Header -->
   <div class="header">
     <div class="header-row">
-      <span class="header-title" id="headerTitle">AIIR Case Dashboard</span>
+      <span class="header-title" id="headerTitle">AIIR — Examiner Portal</span>
       <div class="header-actions">
         <button id="btnRefresh" title="Refresh findings">&#8635; Refresh</button>
         <span id="refreshBadge" class="refresh-badge" style="display:none"></span>
@@ -2738,7 +2738,7 @@ function renderDashboard(summary) {
   html += '<div style="display:grid;grid-template-columns:1fr;gap:6px;font-size:12px">';
   html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">1.</span> <strong>AI processes</strong> \u2014 you direct the AI on what to investigate, it handles the mechanics and presents artifacts to you</div>';
   html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">2.</span> <strong>You review</strong> \u2014 examine each finding here or in the CLI. Check the evidence, read the provenance chain, verify the interpretation</div>';
-  html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">3.</span> <strong>Approve or reject</strong> \u2014 approve what\u2019s correct, reject what\u2019s wrong, edit what needs refinement. Linked timeline events and IOCs follow automatically</div>';
+  html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">3.</span> <strong>Approve or reject</strong> \u2014 approve what\u2019s correct, reject what\u2019s wrong, edit what needs refinement</div>';
   html += '<div><span style="display:inline-block;width:20px;font-weight:700;color:var(--accent)">4.</span> <strong>Commit</strong> \u2014 enter your password to cryptographically sign your decisions. Any post-commit alteration is detectable</div>';
   html += '</div></div>';
 
@@ -2762,18 +2762,18 @@ function renderDashboard(summary) {
   html += '<div style="margin-bottom:4px"><strong>Provenance chain</strong> \u2014 every finding links back to the evidence files and tool executions that produced it. The chain panel on each finding shows: which evidence file was input, which tool processed it, and what output was extracted. You can trace any claim back to its source</div>';
   html += '<div style="margin-bottom:4px"><strong>Audit trail</strong> \u2014 every tool execution, finding record, and approval decision is logged with timestamps and the examiner identity. The AI cannot modify or delete audit entries</div>';
   html += '<div style="margin-bottom:4px"><strong>Content hashing</strong> \u2014 findings are hashed at creation. If a finding is modified after you reviewed it, the hash changes and the approval is flagged as stale</div>';
-  html += '<div style="margin-bottom:4px"><strong>Human-only approval</strong> \u2014 the AI stages findings as <span class="badge badge-draft">DRAFT</span>. Only a human examiner (via this dashboard or the CLI) can move them to <span class="badge badge-approved">\u2713 APPROVED</span> or <span class="badge badge-rejected">\u2717 REJECTED</span>. The AI cannot approve its own work</div>';
+  html += '<div style="margin-bottom:4px"><strong>Human-only approval</strong> \u2014 the AI stages findings as <span class="badge badge-draft">DRAFT</span>. Only a human examiner (via the Examiner Portal or the CLI) can move them to <span class="badge badge-approved">\u2713 APPROVED</span> or <span class="badge badge-rejected">\u2717 REJECTED</span>. The AI cannot approve its own work</div>';
   html += '<div><strong>Password-signed commits</strong> \u2014 when you commit, your password generates an HMAC signature over the approved content. This proves that a specific examiner reviewed and approved specific findings at a specific time</div>';
   html += '</div></details>';
 
   // --- The Platform ---
   html += '<details style="margin-bottom:8px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text-primary)">The AIIR Platform</summary>';
   html += '<div style="margin-top:8px;font-size:12px;line-height:1.7">';
-  html += '<div style="margin-bottom:6px">This dashboard is one part of a larger system:</div>';
+  html += '<div style="margin-bottom:6px">The Examiner Portal is one part of a larger system:</div>';
   html += '<div style="margin-bottom:4px"><strong>SIFT Gateway</strong> \u2014 runs on your SIFT workstation. Hosts 7 MCP backends: forensic tools, case management, report generation, knowledge search, threat intelligence, and more</div>';
   html += '<div style="margin-bottom:4px"><strong>Windows Tools</strong> \u2014 if connected, runs Zimmerman tools and Hayabusa on a Windows VM for artifact parsing that requires Windows</div>';
   html += '<div style="margin-bottom:4px"><strong>LLM Client</strong> \u2014 any MCP-compatible AI client (Claude Code, Goose, Cursor, etc.) connects to the gateway and drives the investigation. The platform is LLM-agnostic</div>';
-  html += '<div style="margin-bottom:4px"><strong>aiir CLI</strong> \u2014 your command-line tool for case management, approval, backup, and reporting. Everything you can do in this dashboard, you can also do from the terminal with <code>aiir approve --review</code>, <code>aiir case status</code>, <code>aiir backup</code></div>';
+  html += '<div style="margin-bottom:4px"><strong>aiir CLI</strong> \u2014 your command-line tool for case management, approval, backup, and reporting. Everything you can do in the Examiner Portal, you can also do from the terminal with <code>aiir approve --review</code>, <code>aiir case status</code>, <code>aiir backup</code></div>';
   html += '<div><strong>Reports</strong> \u2014 once findings are committed, generate professional IR reports: full, executive summary, timeline-only, IOC-only, or status updates</div>';
   html += '</div></details>';
 

@@ -551,9 +551,9 @@ def create_server() -> FastMCP:
     # ------------------------------------------------------------------
     @server.tool()
     def open_case_dashboard() -> dict:
-        """Open the case review dashboard in the examiner's browser.
+        """Open the Examiner Portal in the examiner's browser.
 
-        Reads gateway config to build the dashboard URL with an auth
+        Reads gateway config to build the portal URL with an auth
         token. The URL is always returned so it can be displayed as a
         clickable link even if the browser fails to open.
         """

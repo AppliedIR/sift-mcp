@@ -46,7 +46,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 |-----------|---------|
 | **sift-gateway** | Aggregates SIFT-local MCPs. Starts each as a stdio subprocess. Exposes all their tools via `/mcp` (Streamable HTTP) and `/api/v1/tools` (REST). API key → examiner identity mapping for multi-user. |
 | **forensic-mcp** | Findings, timeline, evidence, TODOs, discipline rules. The investigation state machine. 12 tools + 14 MCP resources (or 26 tools in tools mode for clients without resource support). |
-| **case-mcp** | Case lifecycle and status. Init, activate, close, migrate, list cases, case info, evidence summary, timeline summary, findings summary, recent activity, disk usage, export, import, open dashboard. 14 tools. |
+| **case-mcp** | Case lifecycle and status. Init, activate, close, migrate, list cases, case info, evidence summary, timeline summary, findings summary, recent activity, disk usage, export, import, open dashboard, backup. 15 tools. |
 | **report-mcp** | Report generation with data-driven profiles (full, executive, timeline, ioc, findings, status). Aggregates approved findings, IOCs, MITRE mappings, and Zeltser IR Writing guidance. 6 tools. |
 | **sift-mcp** | Authenticated, denylist-protected forensic tool execution on Linux/SIFT. Zimmerman suite, Volatility, Sleuth Kit, Hayabusa, etc. FK-enriched response envelopes. 6 core tools, 65+ catalog entries. |
 | **forensic-rag-mcp** | Semantic search across Sigma rules, MITRE ATT&CK, Atomic Red Team, Splunk, KAPE, Velociraptor, LOLBAS, GTFOBins. |
@@ -55,7 +55,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | **wintools-mcp** | Catalog-gated forensic tool execution on Windows. Zimmerman suite, Hayabusa. FK-enriched response envelopes. Denylist blocks dangerous binaries. 7 tools, 22 catalog entries. |
 | **aiir CLI** | Human-only actions: approve/reject findings, review case status, manage evidence, generate reports, audit trail queries, case lifecycle (init/close/activate/migrate), execute forensic commands with audit trail, configure examiner identity. Not callable by AI. |
 | **sift-common** | Shared internal package. Canonical AuditWriter, operational logging (oplog), CSV/JSON/text output parsers. Used by all SIFT MCPs. |
-| **case-dashboard** | Browser-based case review UI, mounted at `/dashboard/*` on the gateway. Displays findings, timeline, evidence, and pending review deltas. |
+| **case-dashboard** (Examiner Portal) | 8-tab browser review UI mounted at `/dashboard/` on the gateway. Tabs: overview, findings (with provenance chain), timeline (with ruler), hosts, accounts, evidence verification, IOCs, TODOs. Keyboard shortcuts, search, resizable sidebar, light/dark theme, auto-refresh, challenge-response commit. |
 | **forensic-knowledge** | Shared YAML data package. Tool guidance, artifact knowledge, discipline rules, playbooks, collection checklists. No runtime state. |
 
 ---
@@ -141,6 +141,7 @@ cases/INC-2026-0219/
 ├── findings.json                # F-alice-001, F-alice-002, ...
 ├── timeline.json                # T-alice-001, ...
 ├── todos.json                   # TODO-alice-001, ...
+├── iocs.json                    # IOC-alice-001, ... (auto-extracted from findings)
 ├── evidence.json                # Evidence registry
 ├── actions.jsonl                # Investigative actions (append-only)
 ├── evidence_access.jsonl        # Chain-of-custody log
@@ -152,7 +153,7 @@ cases/INC-2026-0219/
     └── ...
 ```
 
-ID format includes examiner name: `F-{examiner}-{seq:03d}`, `T-{examiner}-{seq:03d}`, `TODO-{examiner}-{seq:03d}`. This makes IDs globally unique across examiners without namespace prefixing.
+ID format includes examiner name: `F-{examiner}-{seq:03d}`, `T-{examiner}-{seq:03d}`, `TODO-{examiner}-{seq:03d}`, `IOC-{examiner}-{seq:03d}`. This makes IDs globally unique across examiners without namespace prefixing.
 
 ---
 

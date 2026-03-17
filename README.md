@@ -2,7 +2,7 @@
 [![CI](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/AppliedIR/sift-mcp/blob/main/LICENSE)
 
-Monorepo for all SIFT-side AIIR components. 11 packages: forensic-mcp (12 tools + 14 resources), case-mcp (14 tools), report-mcp (6 tools), sift-mcp (6 tools), sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, sift-common, and case-dashboard. Part of the [AIIR](https://github.com/AppliedIR/aiir) platform.
+Monorepo for all SIFT-side AIIR components. 11 packages: forensic-mcp (26 tools), case-mcp (15 tools), report-mcp (6 tools), sift-mcp (6 tools), sift-gateway, forensic-knowledge, forensic-rag (3 tools), windows-triage (13 tools), opencti (10 tools), sift-common, and case-dashboard. Part of the [AIIR](https://github.com/AppliedIR/aiir) platform.
 
 **[Documentation](https://appliedir.github.io/aiir/)** ·
 [Getting Started](https://appliedir.github.io/aiir/getting-started/) ·
@@ -77,8 +77,11 @@ Full AIIR is **LLM client agnostic** — connect any MCP-compatible client throu
 ### What Full AIIR Adds
 
 - LLM client agnostic (Claude Code, Desktop, LibreChat, Cherry Studio, any MCP client)
-- Gateway with auth + lifecycle management (64 tools across 7 backends)
-- Case dashboard — browser-based review, approval, and commit with challenge-response authentication
+- Gateway with auth + lifecycle management (79 tools across 7 backends)
+- Examiner Portal — 8-tab browser UI for review, approval, and commit (findings, timeline, hosts, accounts, evidence, IOCs, TODOs, overview) with keyboard shortcuts, search, provenance chain display, and challenge-response authentication
+- IOC auto-extraction from findings with approval cascade
+- Evidence provenance chain linking findings back to registered evidence through audited tool executions
+- Case backup with SHA-256 manifest and verification
 - Structured JSON case files with integrity verification
 - Formal report generation (6 profiles)
 
@@ -125,20 +128,20 @@ git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 
 ## Architecture
 
-Each MCP backend runs as a stdio subprocess of the sift-gateway, aggregated behind a single HTTP endpoint. The case dashboard is served by the gateway for browser-based review and approval. See the [aiir README](https://github.com/AppliedIR/aiir#deployment-overview) for the full deployment topology including REMnux and Windows VMs.
+Each MCP backend runs as a stdio subprocess of the sift-gateway, aggregated behind a single HTTP endpoint. The Examiner Portal is served by the gateway for browser-based review and approval. See the [aiir README](https://github.com/AppliedIR/aiir#deployment-overview) for the full deployment topology including REMnux and Windows VMs.
 
 ```mermaid
 graph LR
     GW["sift-gateway :4508"]
 
-    FM["forensic-mcp<br/>12 tools · findings, timeline,<br/>evidence, discipline"]
-    CM["case-mcp<br/>14 tools · case management,<br/>audit queries"]
+    FM["forensic-mcp<br/>26 tools · findings, timeline,<br/>evidence, discipline"]
+    CM["case-mcp<br/>15 tools · case management,<br/>audit queries, backup"]
     RM["report-mcp<br/>6 tools · report generation,<br/>IOC aggregation"]
     SM["sift-mcp<br/>6 tools · Linux forensic<br/>tool execution"]
     RAG["forensic-rag<br/>3 tools · semantic search<br/>23K records"]
     WT["windows-triage<br/>13 tools · offline baseline<br/>validation"]
     OC["opencti<br/>10 tools · threat<br/>intelligence"]
-    CD["case-dashboard<br/>browser review + commit"]
+    CD["Examiner Portal<br/>browser review + commit"]
     FK["forensic-knowledge<br/>shared YAML data"]
     CASE["Case Directory"]
 
@@ -281,7 +284,7 @@ Additional protections:
 - Path validation — kernel interfaces (/proc, /sys, /dev) blocked for input
 - `rm` protection — case directories protected from deletion
 - Output truncation — large output capped
-- Audit trail — every execution logged with evidence ID
+- Audit trail — every execution logged with audit ID
 
 ## Forensic Catalog (Enrichment)
 
