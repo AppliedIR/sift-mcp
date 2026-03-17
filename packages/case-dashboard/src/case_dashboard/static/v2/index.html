@@ -482,12 +482,18 @@ body {
       aria-selected="false" id="tab-dashboard" aria-controls="panel-dashboard">Dashboard</div>
     <div class="tab active" data-tab="findings" role="tab" tabindex="0"
       aria-selected="true" id="tab-findings" aria-controls="panel-findings">Findings</div>
-    <div class="tab" data-tab="evidence" role="tab" tabindex="0"
-      aria-selected="false" id="tab-evidence" aria-controls="panel-evidence">Evidence</div>
-    <div class="tab" data-tab="todos" role="tab" tabindex="0"
-      aria-selected="false" id="tab-todos" aria-controls="panel-todos">TODOs</div>
     <div class="tab" data-tab="timeline" role="tab" tabindex="0"
       aria-selected="false" id="tab-timeline" aria-controls="panel-timeline">Timeline</div>
+    <div class="tab" data-tab="hosts" role="tab" tabindex="0"
+      aria-selected="false" id="tab-hosts" aria-controls="panel-hosts">Hosts</div>
+    <div class="tab" data-tab="accounts" role="tab" tabindex="0"
+      aria-selected="false" id="tab-accounts" aria-controls="panel-accounts">Accounts</div>
+    <div class="tab" data-tab="evidence" role="tab" tabindex="0"
+      aria-selected="false" id="tab-evidence" aria-controls="panel-evidence">Evidence</div>
+    <div class="tab" data-tab="iocs" role="tab" tabindex="0"
+      aria-selected="false" id="tab-iocs" aria-controls="panel-iocs">IOCs</div>
+    <div class="tab" data-tab="todos" role="tab" tabindex="0"
+      aria-selected="false" id="tab-todos" aria-controls="panel-todos">TODOs</div>
   </div>
 
   <!-- Progress -->
@@ -539,6 +545,8 @@ body {
             <select id="filterType" title="Type"><option value="">Type</option><option value="finding">Finding</option><option value="conclusion">Conclusion</option><option value="attribution">Attribution</option><option value="exclusion">Exclusion</option></select>
             <select id="filterProv" title="Provenance"><option value="">Provenance</option><option value="MCP">MCP</option><option value="HOOK">HOOK</option><option value="SHELL">Shell</option><option value="MIXED">Mixed</option><option value="NONE">Ungrounded</option></select>
             <select id="filterExaminer" title="Examiner"><option value="">Examiner</option></select>
+            <select id="filterHost" title="Host"><option value="">Host</option></select>
+            <select id="filterAccount" title="Account"><option value="">Account</option></select>
           </div>
         </details>
       </div>
@@ -605,6 +613,56 @@ body {
     </div>
   </div>
 
+  <div class="tab-panel" data-panel="hosts" role="tabpanel"
+    id="panel-hosts" aria-labelledby="tab-hosts">
+    <div class="tab-table-wrap">
+      <h3 style="margin-bottom:12px;font-size:15px;">Impacted Hosts</h3>
+      <table class="data-table" id="hostsTable">
+        <thead>
+          <tr>
+            <th data-sort="host">Host</th>
+            <th data-sort="count">Findings</th>
+            <th>Accounts</th>
+            <th data-sort="confidence">Highest Confidence</th>
+            <th data-sort="timeRange">Time Range</th>
+            <th data-sort="status">Status</th>
+          </tr>
+        </thead>
+        <tbody id="hostsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="accounts" role="tabpanel"
+    id="panel-accounts" aria-labelledby="tab-accounts">
+    <div class="tab-table-wrap">
+      <h3 style="margin-bottom:12px;font-size:15px;">Impacted Accounts</h3>
+      <table class="data-table" id="accountsTable">
+        <thead>
+          <tr>
+            <th data-sort="account">Account</th>
+            <th data-sort="count">Findings</th>
+            <th>Hosts</th>
+            <th data-sort="confidence">Highest Confidence</th>
+            <th data-sort="timeRange">Time Range</th>
+            <th data-sort="status">Status</th>
+          </tr>
+        </thead>
+        <tbody id="accountsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="iocs" role="tabpanel"
+    id="panel-iocs" aria-labelledby="tab-iocs">
+    <div class="tab-table-wrap">
+      <h3 style="margin-bottom:12px;font-size:15px;">Indicators of Compromise</h3>
+      <div id="iocContent" style="color:var(--text-muted);padding:24px;text-align:center">
+        IOC tab available after IOC model implementation.
+      </div>
+    </div>
+  </div>
+
   <div class="tab-panel" data-panel="timeline" role="tabpanel"
     id="panel-timeline" aria-labelledby="tab-timeline">
     <div class="timeline-panel">
@@ -666,7 +724,7 @@ body {
     <div class="shortcut-row"><span>Close / cancel</span><span class="shortcut-key">Esc</span></div>
     <div class="shortcut-row"><span>Commit reviews</span><span class="shortcut-key">Shift+C</span></div>
     <div class="shortcut-row"><span>Expand/collapse timeline row</span><span class="shortcut-key">Enter / Space</span></div>
-    <div class="shortcut-row"><span>Switch to tab 1-5</span><span class="shortcut-key">1-5</span></div>
+    <div class="shortcut-row"><span>Switch to tab 1-8</span><span class="shortcut-key">1-8</span></div>
     <div class="shortcut-row"><span>This help</span><span class="shortcut-key">?</span></div>
     <div style="margin-top: 12px; text-align: right;">
       <button class="btn-cancel" onclick="toggleShortcuts()">Close</button>
@@ -741,6 +799,8 @@ let filterConf = '';
 let filterType = '';
 let filterProv = '';
 let filterExaminer = '';
+let filterHost = '';
+let filterAccount = '';
 let evidenceData = [];
 let todosData = [];
 let summaryData = null;
@@ -829,6 +889,8 @@ async function loadAll() {
     populateExaminerFilter();
     renderSidebar();
     renderTimeline();
+    renderHosts();
+    renderAccounts();
     updateProgress();
     updateCommitButton();
     updateTabBadges();
@@ -986,6 +1048,8 @@ function getFilteredFindings() {
     });
   }
   if (filterExaminer) list = list.filter(f => (f.examiner || f.created_by || '') === filterExaminer);
+  if (filterHost) list = list.filter(f => (f.host || '') === filterHost);
+  if (filterAccount) list = list.filter(f => (f.affected_account || '') === filterAccount);
 
   // Search
   if (searchQuery) {
@@ -1200,8 +1264,22 @@ function renderFinding(id) {
 
   // Meta
   html += '<div class="card-meta">Staged by ' + escapeHtml(examiner) + (staged ? ' \u00B7 ' + escapeHtml(staged) : '');
+  if (f.host) html += ' \u00B7 ' + escapeHtml(f.host);
+  if (f.affected_account) html += ' \u00B7 ' + escapeHtml(f.affected_account);
   if (f.event_type) html += ' \u00B7 <span class="badge badge-timeline">' + escapeHtml(f.event_type) + '</span>';
   html += '</div>';
+  if (f.event_timestamp) {
+    html += '<div class="card-meta">Event: ' + escapeHtml(formatTime(f.event_timestamp)) + '</div>';
+  }
+  if (f.source_evidence) {
+    html += '<div class="card-meta">Source: ' + escapeHtml(f.source_evidence) + ' (registered \u2713)</div>';
+  }
+  // Provenance warnings
+  if (f.provenance_warnings && f.provenance_warnings.length) {
+    html += '<div style="background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:8px;margin:8px 0;font-size:12px">';
+    f.provenance_warnings.forEach(function(w) { html += '\u26A0 ' + escapeHtml(w) + '<br>'; });
+    html += '</div>';
+  }
 
   // Confidence
   html += '<div class="field-section"><div class="field-label">Confidence</div>';
@@ -1221,6 +1299,22 @@ function renderFinding(id) {
   html += '<div class="field-section"><div class="field-label">Justification</div>';
   html += renderEditableField('confidence_justification', eff.confidence_justification || '', f, de);
   html += '</div>';
+
+  // Artifacts (the evidence — displayed before LLM narrative)
+  if (f.artifacts && f.artifacts.length) {
+    html += '<div class="field-section"><div class="field-label">Evidence Artifacts</div>';
+    f.artifacts.forEach(function(art) {
+      html += '<div class="evidence-artifact" style="margin-bottom:8px">';
+      html += '<div class="ev-source">' + escapeHtml(art.source || '') + '</div>';
+      html += '<div class="ev-extraction">$ ' + escapeHtml(art.extraction || '') + '</div>';
+      html += '<pre class="ev-content">' + escapeHtml(art.content || '') + '</pre>';
+      if (art.audit_id) {
+        html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">audit: ' + escapeHtml(art.audit_id) + '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
 
   // Observation
   html += '<div class="field-section"><div class="field-label">Observation</div>';
@@ -1308,9 +1402,9 @@ function renderFinding(id) {
     ).join('') + '</div></div>';
   }
 
-  // Tool Invocations (from audit trail)
-  html += '<details class="tool-invocations" id="toolInvocations">';
-  html += '<summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Tool Invocations</summary>';
+  // Provenance Chain (from audit trail)
+  html += '<details class="tool-invocations" id="toolInvocations" open>';
+  html += '<summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--text-secondary)">Provenance Chain</summary>';
   html += '<div id="toolInvocationsList" style="margin-top:4px;font-size:12px"></div>';
   html += '</details>';
 
@@ -1672,14 +1766,27 @@ function updateCommitButton() {
 /* === Filter dimensions === */
 function populateExaminerFilter() {
   const examiners = new Set();
-  findings.forEach(f => { if (f.examiner || f.created_by) examiners.add(f.examiner || f.created_by); });
-  const sel = document.getElementById('filterExaminer');
-  const current = sel.value;
-  sel.innerHTML = '<option value="">Examiner</option>';
-  [...examiners].sort().forEach(e => {
-    const opt = document.createElement('option');
-    opt.value = e; opt.textContent = e;
-    if (e === current) opt.selected = true;
+  const hosts = new Set();
+  const accounts = new Set();
+  findings.forEach(function(f) {
+    if (f.examiner || f.created_by) examiners.add(f.examiner || f.created_by);
+    if (f.host) hosts.add(f.host);
+    if (f.affected_account) accounts.add(f.affected_account);
+  });
+  _populateFilterSelect('filterExaminer', 'Examiner', examiners);
+  _populateFilterSelect('filterHost', 'Host', hosts);
+  _populateFilterSelect('filterAccount', 'Account', accounts);
+}
+
+function _populateFilterSelect(id, label, values) {
+  var sel = document.getElementById(id);
+  if (!sel) return;
+  var current = sel.value;
+  sel.innerHTML = '<option value="">' + escapeHtml(label) + '</option>';
+  Array.from(values).sort().forEach(function(v) {
+    var opt = document.createElement('option');
+    opt.value = v; opt.textContent = v;
+    if (v === current) opt.selected = true;
     sel.appendChild(opt);
   });
 }
@@ -1904,17 +2011,48 @@ async function loadToolInvocations(finding) {
     }
   }
   if (!Array.isArray(auditData) || auditData.length === 0) {
-    container.innerHTML = '<span style="color:var(--text-muted)">No tool invocations recorded.</span>';
+    container.innerHTML = '<span style="color:var(--text-muted)">No provenance chain recorded.</span>';
     return;
   }
+
+  // Build chain: source_evidence at root, audit entries as steps
+  var sourceEv = finding.source_evidence || '';
+  var chainStatus = sourceEv ? 'complete' : (auditData.length > 0 ? 'partial' : 'none');
+  if (!finding.artifacts || !finding.artifacts.length) {
+    if (finding.supporting_commands && finding.supporting_commands.length) chainStatus = 'shell only';
+  }
+
   var html = '';
-  auditData.forEach(function(entry) {
+  html += '<div style="font-size:11px;margin-bottom:6px;color:var(--text-muted)">Chain: ' + escapeHtml(chainStatus);
+  if (sourceEv) html += ' \u2192 ' + escapeHtml(sourceEv.split('/').pop()) + ' \u2713';
+  html += '</div>';
+
+  if (sourceEv) {
+    html += '<div style="font-weight:600;margin-bottom:4px">' + escapeHtml(sourceEv) + ' (registered \u2713)</div>';
+  }
+
+  // Sort by timestamp and render as tree
+  var sorted = auditData.slice().sort(function(a, b) {
+    return (a.ts || a.timestamp || '').localeCompare(b.ts || b.timestamp || '');
+  });
+  sorted.forEach(function(entry) {
     var tool = entry.tool || entry.mcp || 'unknown';
-    var ts = formatTimeShort(entry.timestamp || '');
-    html += '<div style="padding:2px 0;border-bottom:1px solid var(--border)">';
-    html += '<span style="font-family:monospace">' + escapeHtml(ts) + '</span> ';
-    html += '<strong>' + escapeHtml(tool) + '</strong>';
-    if (entry.audit_id) html += ' <span style="color:var(--text-muted)">' + escapeHtml(entry.audit_id) + '</span>';
+    var cmd = '';
+    if (entry.params && entry.params.command) {
+      cmd = Array.isArray(entry.params.command) ? entry.params.command.join(' ') : String(entry.params.command);
+    }
+    var elapsed = entry.elapsed_ms ? ' \u00B7 ' + (entry.elapsed_ms / 1000).toFixed(1) + 's' : '';
+    html += '<div style="padding:3px 0 3px 16px;border-left:2px solid var(--border);margin-left:8px">';
+    html += '\u251C\u2500 <strong>' + escapeHtml(tool) + '</strong>' + elapsed;
+    if (entry.audit_id) html += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(entry.audit_id) + ']</span>';
+    if (cmd) html += '<div style="font-size:11px;color:var(--text-secondary);margin-left:16px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
+    if (entry.input_files && entry.input_files.length) {
+      html += '<div style="font-size:10px;color:var(--text-muted);margin-left:16px">input: ' + entry.input_files.map(escapeHtml).join(', ') + '</div>';
+    }
+    var outFile = (entry.result_summary || {}).output_file;
+    if (outFile) {
+      html += '<div style="font-size:10px;color:var(--text-muted);margin-left:16px">output: ' + escapeHtml(outFile) + '</div>';
+    }
     html += '</div>';
   });
   container.innerHTML = html;
@@ -2196,7 +2334,8 @@ function setBadge(tabId, count) {
 /* === Tabs === */
 var _TAB_SCROLL_IDS = {
   dashboard: 'dashboardContent', findings: 'findingContent',
-  evidence: 'panel-evidence', todos: 'panel-todos', timeline: 'timelineStream'
+  timeline: 'timelineStream', hosts: 'panel-hosts', accounts: 'panel-accounts',
+  evidence: 'panel-evidence', iocs: 'panel-iocs', todos: 'panel-todos'
 };
 
 function _getScrollEl(tabName) {
@@ -2312,8 +2451,8 @@ document.addEventListener('keydown', function(e) {
     return;
   }
 
-  // Tab switching: 1-5
-  var tabKeys = { '1': 'dashboard', '2': 'findings', '3': 'evidence', '4': 'todos', '5': 'timeline' };
+  // Tab switching: 1-8
+  var tabKeys = { '1': 'dashboard', '2': 'findings', '3': 'timeline', '4': 'hosts', '5': 'accounts', '6': 'evidence', '7': 'iocs', '8': 'todos' };
   if (tabKeys[e.key]) { e.preventDefault(); switchTab(tabKeys[e.key]); return; }
 
   // Review shortcuts (findings + timeline tabs only)
@@ -2638,6 +2777,86 @@ function renderTodos() {
     html = '<tr><td colspan="8" style="color:var(--text-muted);text-align:center;padding:24px">No TODOs</td></tr>';
   }
   document.getElementById('todosBody').innerHTML = html;
+}
+
+/* === Hosts tab === */
+function renderHosts() {
+  var hostMap = {};
+  var CONF_ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2, SPECULATIVE: 3 };
+  findings.forEach(function(f) {
+    var h = f.host || '';
+    if (!h) return;
+    if (!hostMap[h]) hostMap[h] = { host: h, findings: [], accounts: new Set(), statuses: {}, bestConf: 'SPECULATIVE', earliest: '', latest: '' };
+    var entry = hostMap[h];
+    entry.findings.push(f.id);
+    if (f.affected_account) entry.accounts.add(f.affected_account);
+    var st = (f.status || 'DRAFT').toUpperCase();
+    entry.statuses[st] = (entry.statuses[st] || 0) + 1;
+    var conf = (f.confidence || 'SPECULATIVE').toUpperCase();
+    if ((CONF_ORDER[conf] || 9) < (CONF_ORDER[entry.bestConf] || 9)) entry.bestConf = conf;
+    var ts = f.event_timestamp || '';
+    if (ts) {
+      if (!entry.earliest || ts < entry.earliest) entry.earliest = ts;
+      if (!entry.latest || ts > entry.latest) entry.latest = ts;
+    }
+  });
+  var hosts = Object.values(hostMap);
+  var html = '';
+  hosts.forEach(function(h) {
+    var statusParts = Object.keys(h.statuses).map(function(s) { return h.statuses[s] + ' ' + s.toLowerCase(); }).join(', ');
+    var timeRange = h.earliest ? escapeHtml(formatTimeShort(h.earliest)) + ' \u2013 ' + escapeHtml(formatTimeShort(h.latest)) : '';
+    html += '<tr style="cursor:pointer" onclick="switchTab(\'findings\');document.getElementById(\'searchBox\').value=\'' + escapeJsString(h.host) + '\';searchQuery=\'' + escapeJsString(h.host) + '\';renderSidebar()">';
+    html += '<td><strong>' + escapeHtml(h.host) + '</strong></td>';
+    html += '<td>' + h.findings.length + '</td>';
+    html += '<td>' + Array.from(h.accounts).map(escapeHtml).join(', ') + '</td>';
+    html += '<td><span class="badge conf-' + h.bestConf.toLowerCase() + '">' + escapeHtml(h.bestConf) + '</span></td>';
+    html += '<td>' + timeRange + '</td>';
+    html += '<td>' + escapeHtml(statusParts) + '</td>';
+    html += '</tr>';
+  });
+  if (!hosts.length) html = '<tr><td colspan="6" style="color:var(--text-muted);text-align:center;padding:24px">No host data — include host field on findings</td></tr>';
+  document.getElementById('hostsBody').innerHTML = html;
+  setBadge('tab-hosts', hosts.length);
+}
+
+/* === Accounts tab === */
+function renderAccounts() {
+  var acctMap = {};
+  var CONF_ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2, SPECULATIVE: 3 };
+  findings.forEach(function(f) {
+    var a = f.affected_account || '';
+    if (!a) return;
+    if (!acctMap[a]) acctMap[a] = { account: a, findings: [], hosts: new Set(), statuses: {}, bestConf: 'SPECULATIVE', earliest: '', latest: '' };
+    var entry = acctMap[a];
+    entry.findings.push(f.id);
+    if (f.host) entry.hosts.add(f.host);
+    var st = (f.status || 'DRAFT').toUpperCase();
+    entry.statuses[st] = (entry.statuses[st] || 0) + 1;
+    var conf = (f.confidence || 'SPECULATIVE').toUpperCase();
+    if ((CONF_ORDER[conf] || 9) < (CONF_ORDER[entry.bestConf] || 9)) entry.bestConf = conf;
+    var ts = f.event_timestamp || '';
+    if (ts) {
+      if (!entry.earliest || ts < entry.earliest) entry.earliest = ts;
+      if (!entry.latest || ts > entry.latest) entry.latest = ts;
+    }
+  });
+  var accounts = Object.values(acctMap);
+  var html = '';
+  accounts.forEach(function(a) {
+    var statusParts = Object.keys(a.statuses).map(function(s) { return a.statuses[s] + ' ' + s.toLowerCase(); }).join(', ');
+    var timeRange = a.earliest ? escapeHtml(formatTimeShort(a.earliest)) + ' \u2013 ' + escapeHtml(formatTimeShort(a.latest)) : '';
+    html += '<tr style="cursor:pointer" onclick="switchTab(\'findings\');document.getElementById(\'searchBox\').value=\'' + escapeJsString(a.account) + '\';searchQuery=\'' + escapeJsString(a.account) + '\';renderSidebar()">';
+    html += '<td><strong>' + escapeHtml(a.account) + '</strong></td>';
+    html += '<td>' + a.findings.length + '</td>';
+    html += '<td>' + Array.from(a.hosts).map(escapeHtml).join(', ') + '</td>';
+    html += '<td><span class="badge conf-' + a.bestConf.toLowerCase() + '">' + escapeHtml(a.bestConf) + '</span></td>';
+    html += '<td>' + timeRange + '</td>';
+    html += '<td>' + escapeHtml(statusParts) + '</td>';
+    html += '</tr>';
+  });
+  if (!accounts.length) html = '<tr><td colspan="6" style="color:var(--text-muted);text-align:center;padding:24px">No account data — include affected_account field on findings</td></tr>';
+  document.getElementById('accountsBody').innerHTML = html;
+  setBadge('tab-accounts', accounts.length);
 }
 
 /* === Timeline === */
@@ -3211,12 +3430,16 @@ document.getElementById('searchBox').addEventListener('input', function() {
   showEmptyOrFirst();
 });
 
-['filterConf', 'filterType', 'filterProv', 'filterExaminer'].forEach(id => {
-  document.getElementById(id).addEventListener('change', function() {
+['filterConf', 'filterType', 'filterProv', 'filterExaminer', 'filterHost', 'filterAccount'].forEach(id => {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('change', function() {
     if (id === 'filterConf') filterConf = this.value;
     else if (id === 'filterType') filterType = this.value;
     else if (id === 'filterProv') filterProv = this.value;
     else if (id === 'filterExaminer') filterExaminer = this.value;
+    else if (id === 'filterHost') filterHost = this.value;
+    else if (id === 'filterAccount') filterAccount = this.value;
     renderSidebar();
     showEmptyOrFirst();
   });
