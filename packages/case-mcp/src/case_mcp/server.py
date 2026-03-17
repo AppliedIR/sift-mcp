@@ -579,7 +579,7 @@ def create_server() -> FastMCP:
         if host == "0.0.0.0":
             host = "127.0.0.1"
 
-        url = f"{scheme}://{host}:{port}/dashboard/"
+        url = f"{scheme}://{host}:{port}/portal/"
 
         # Append bearer token as URL fragment, matching current examiner
         api_keys = config.get("api_keys", {})

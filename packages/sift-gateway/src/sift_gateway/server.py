@@ -461,16 +461,15 @@ class Gateway:
         routes.extend(health_routes())
         routes.extend(rest_routes())
 
-        # Case dashboard (optional — installed separately)
-        # v1 mount MUST come before default — Starlette matches by prefix
+        # Examiner Portal + legacy dashboard (optional — installed separately)
         try:
             from case_dashboard.routes import (
                 create_dashboard_app,
                 create_dashboard_v2_app,
             )
 
-            routes.append(Mount("/dashboard/v1", app=create_dashboard_app()))
-            routes.append(Mount("/dashboard", app=create_dashboard_v2_app()))
+            routes.append(Mount("/portal", app=create_dashboard_v2_app()))
+            routes.append(Mount("/dashboard", app=create_dashboard_app()))
         except ImportError:
             pass
 

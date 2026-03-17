@@ -85,9 +85,9 @@ Full AIIR is **LLM client agnostic** — connect any MCP-compatible client throu
 - Structured JSON case files with integrity verification
 - Formal report generation (6 profiles)
 
-![Dashboard — Findings](docs/images/dashboard.png)
+![Examiner Portal — Findings](docs/images/dashboard.png)
 
-![Dashboard — Timeline](docs/images/timeline.png)
+![Examiner Portal — Timeline](docs/images/timeline.png)
 
 When Claude Code is the client, additional controls are deployed:
 
