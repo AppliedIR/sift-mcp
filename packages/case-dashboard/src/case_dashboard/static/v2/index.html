@@ -1060,6 +1060,7 @@ async function saveDelta() {
 
 function setSaveStatus(state, detail) {
   const el = document.getElementById('saveStatus');
+  if (!el) return;
   if (state === 'saved') { el.textContent = 'All saved \u2713'; el.className = 'save-status saved'; }
   else if (state === 'saving') { el.textContent = 'Saving...'; el.className = 'save-status saving'; }
   else { el.textContent = 'Save error' + (detail ? ': ' + detail : ''); el.className = 'save-status'; el.style.color = 'var(--red)'; }
@@ -1734,12 +1735,15 @@ function closeCommitDialog() {
   document.getElementById('commitDialog').classList.remove('visible');
 }
 
+var _commitInProgress = false;
 async function submitCommit() {
+  if (_commitInProgress) return;
   var pw = document.getElementById('commitPassword').value;
   if (!pw) {
     showCommitError('Password required.');
     return;
   }
+  _commitInProgress = true;
 
   document.getElementById('commitSubmitBtn').disabled = true;
   document.getElementById('commitPasswordRow').style.display = 'none';
@@ -1788,8 +1792,10 @@ async function submitCommit() {
     showToast('Committed: ' + (result.approved || 0) + ' approved, ' +
       (result.rejected || 0) + ' rejected, ' + (result.edited || 0) + ' edited', 'success');
     try { localStorage.setItem('aiir-has-committed', 'true'); } catch(_) {}
+    _commitInProgress = false;
 
   } catch (e) {
+    _commitInProgress = false;
     document.getElementById('commitPasswordRow').style.display = '';
     document.getElementById('commitProgress').style.display = 'none';
     document.getElementById('commitSubmitBtn').disabled = false;
@@ -2339,7 +2345,10 @@ function formatTimeShort(iso) {
   try {
     // Date-only (YYYY-MM-DD) — don't show misleading 00:00:00
     if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
-    const d = new Date(iso);
+    // Ensure UTC parsing — append Z if no timezone indicator
+    var normalized = iso;
+    if (!/[Zz+\-]/.test(iso.slice(-6))) normalized = iso + 'Z';
+    const d = new Date(normalized);
     if (isNaN(d.getTime())) return iso;
     var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     return months[d.getUTCMonth()] + ' ' + d.getUTCDate() + ' ' + d.toISOString().slice(11, 16) + ' UTC';

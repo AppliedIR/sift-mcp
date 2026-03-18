@@ -122,7 +122,11 @@ def _load_json(path: Path) -> list | dict | None:
         return None
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError:
+        logger.warning("Corrupt JSON file: %s", path)
+        return None
+    except OSError as e:
+        logger.warning("Failed to read %s: %s", path, e)
         return None
 
 
