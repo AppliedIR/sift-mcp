@@ -151,8 +151,13 @@ def _resolve_source_evidence_static(
     visited: set[str] | None = None,
     depth: int = 0,
     max_depth: int = 10,
+    evidence_by_hash: dict[str, str] | None = None,
 ) -> str:
-    """Walk input files backward through audit trail to find registered evidence."""
+    """Walk input files backward through audit trail to find registered evidence.
+
+    Tries path matching first, then falls back to hash matching for
+    cross-platform paths (e.g., Windows UNC vs Linux local).
+    """
     if depth >= max_depth:
         return ""
     if visited is None:
@@ -164,6 +169,16 @@ def _resolve_source_evidence_static(
         visited.add(resolved)
         if resolved in evidence_registry:
             return resolved
+        # Hash-based fallback: match input_sha256s against evidence hashes
+        if evidence_by_hash:
+            for entry in audit_entries:
+                entry_inputs = entry.get("input_files", [])
+                entry_hashes = entry.get("input_sha256s", [])
+                for i, inp in enumerate(entry_inputs):
+                    if str(Path(inp).resolve()) == resolved and i < len(entry_hashes):
+                        h = entry_hashes[i]
+                        if h and h in evidence_by_hash:
+                            return evidence_by_hash[h]
         for entry in audit_entries:
             output = entry.get("result_summary", {}).get("output_file", "")
             if output and str(Path(output).resolve()) == resolved:
@@ -176,6 +191,7 @@ def _resolve_source_evidence_static(
                         visited,
                         depth + 1,
                         max_depth,
+                        evidence_by_hash,
                     )
                     if result:
                         return result
@@ -712,6 +728,13 @@ class CaseManager:
                 for e in evidence
                 if e.get("path")
             }
+            # Hash→path lookup for cross-platform fallback (UNC → local)
+            ev_by_hash = {}
+            for e in evidence:
+                h = e.get("sha256", "")
+                p = e.get("path", "")
+                if h and p:
+                    ev_by_hash[h] = str(Path(p).resolve())
             audit_by_id = {
                 e["audit_id"]: e for e in all_audit_entries if e.get("audit_id")
             }
@@ -724,7 +747,10 @@ class CaseManager:
             if input_files:
                 try:
                     source_ev = _resolve_source_evidence_static(
-                        input_files, all_audit_entries, registered
+                        input_files,
+                        all_audit_entries,
+                        registered,
+                        evidence_by_hash=ev_by_hash,
                     )
                     if source_ev:
                         sanitized["source_evidence"] = source_ev
