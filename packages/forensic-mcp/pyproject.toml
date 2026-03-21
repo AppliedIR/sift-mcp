@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "forensic-mcp"
-version = "0.5.2"
+version = "0.5.3"
 description = "Forensic investigation MCP: case management, discipline enforcement, audit trail, evidence integrity"
 requires-python = ">=3.10"
 license = {text = "MIT"}

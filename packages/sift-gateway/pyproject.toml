@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sift-gateway"
-version = "0.5.2"
+version = "0.5.3"
 description = "HTTP gateway aggregating SIFT-local MCP servers behind one endpoint"
 requires-python = ">=3.10"
 license = {text = "MIT"}

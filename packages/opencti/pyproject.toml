@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "opencti-mcp"
-version = "0.5.2"
+version = "0.5.3"
 description = "MCP server: threat intelligence queries against OpenCTI instances"
 requires-python = ">=3.10"
 license = "MIT"
