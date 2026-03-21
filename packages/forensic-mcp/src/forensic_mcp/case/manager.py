@@ -1169,6 +1169,9 @@ class CaseManager:
         # Only flag backends that are actually deployed (have audit files)
         check_set = available if available is not None else list(self._GROUNDING_MCPS)
         missing = [m for m in check_set if m not in consulted]
+        # No deployed grounding backends — nothing to flag
+        if not consulted and not missing:
+            return {}
         # If finding has provenance chain to registered evidence, at least PARTIAL
         has_provenance = bool(finding.get("source_evidence"))
         level = "PARTIAL" if consulted or has_provenance else "WEAK"

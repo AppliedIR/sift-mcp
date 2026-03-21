@@ -587,7 +587,7 @@ class TestOpenCaseDashboard:
 
         # Token stripped from MCP response (LLM should not see bearer token)
         assert "#token=" not in result["url"]
-        assert "dashboard/" in result["url"]
+        assert "portal/" in result["url"]
 
     def test_falls_back_to_first_key(self, case_dir, tmp_path, monkeypatch):
         """Examiner not in api_keys → falls back to first key."""
@@ -606,7 +606,7 @@ class TestOpenCaseDashboard:
 
         # Token stripped from MCP response (LLM should not see bearer token)
         assert "#token=" not in result["url"]
-        assert "dashboard/" in result["url"]
+        assert "portal/" in result["url"]
 
     def test_tls_uses_https(self, case_dir, tmp_path, monkeypatch):
         """TLS configured → scheme is https."""

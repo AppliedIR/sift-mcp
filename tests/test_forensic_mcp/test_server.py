@@ -509,11 +509,15 @@ class TestEnhancedResponses:
 class TestGroundingInResponse:
     @pytest.mark.asyncio
     async def test_record_finding_includes_grounding(self, tmp_path, monkeypatch):
-        """record_finding response includes grounding key when no audit trail exists (WEAK)."""
+        """record_finding response includes grounding when backends deployed but unused."""
         monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         server = create_server()
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
+        # Simulate deployed grounding backends (empty audit files)
+        audit_dir = server._manager._active_case_path / "audit"
+        for mcp in ("forensic-rag-mcp", "windows-triage-mcp", "opencti-mcp"):
+            (audit_dir / f"{mcp}.jsonl").write_text("")
         finding = {
             "title": "Suspicious binary",
             "audit_ids": ["ev-tester-20260225-001", "ev-tester-20260225-002"],

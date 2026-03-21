@@ -485,7 +485,21 @@ class TestAtomicWrites:
 
 class TestGroundingScore:
     def test_score_grounding_no_audit(self, manager, active_case):
-        """No audit files -> WEAK."""
+        """No audit dir -> no deployed backends -> no missing sources."""
+        finding = {"type": "malware"}
+        result = manager._score_grounding(finding)
+        # No audit dir means no backends deployed — nothing to flag
+        assert result == {}
+
+    def test_score_grounding_deployed_but_unused(self, manager, active_case):
+        """Deployed backends (empty audit files) but none consulted -> WEAK."""
+        case_dir = Path(active_case["path"])
+        audit_dir = case_dir / "audit"
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        # Create empty audit files to simulate deployed-but-unused backends
+        (audit_dir / "forensic-rag-mcp.jsonl").write_text("")
+        (audit_dir / "windows-triage-mcp.jsonl").write_text("")
+        (audit_dir / "opencti-mcp.jsonl").write_text("")
         finding = {"type": "malware"}
         result = manager._score_grounding(finding)
         assert result["level"] == "WEAK"
@@ -522,7 +536,11 @@ class TestGroundingScore:
         assert result == {}
 
     def test_score_grounding_suggestions(self, manager, active_case):
-        """WEAK with finding type -> includes FK suggestions."""
+        """Deployed but unused backends with finding type -> includes FK suggestions."""
+        case_dir = Path(active_case["path"])
+        audit_dir = case_dir / "audit"
+        for mcp in ("forensic-rag-mcp", "windows-triage-mcp", "opencti-mcp"):
+            (audit_dir / f"{mcp}.jsonl").write_text("")
         finding = {"type": "persistence"}
         result = manager._score_grounding(finding)
         assert result["level"] == "WEAK"
