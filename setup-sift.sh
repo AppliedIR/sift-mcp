@@ -1268,7 +1268,7 @@ if [[ -t 0 ]] && ! $AUTO_YES; then
     echo "Setting up your approval password..."
     echo ""
     echo "This password protects finding approvals and HMAC signing."
-    echo "You will need it every time you commit reviews (Examiner Portal or CLI)."
+    echo "You will need it every time you commit reviews (dashboard or CLI)."
     echo "It cannot be recovered if lost — you would need to reset it and"
     echo "re-sign all previously approved findings."
     echo ""
