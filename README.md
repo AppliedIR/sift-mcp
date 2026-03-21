@@ -398,6 +398,10 @@ MITRE ATT&CK is a registered trademark of The MITRE Corporation. SIFT Workstatio
 
 Architecture and direction by Steve Anson. Implementation by Claude Code (Anthropic). Design inspiration drawn from Lenny Zeltser's [REMnux MCP](https://github.com/REMnux/remnux-mcp-server).
 
+## Clear Disclosure
+
+I do DFIR. I am not a developer. This project would not exist without Claude Code handling the implementation. While an immense amount of effort has gone into design, testing, and review, I fully acknowledge that I may have been working hard and not smart in places. My intent is to jumpstart discussion around ways this technology can be leveraged for efficiency in incident response while ensuring that the ultimate responsibility for accuracy remains with the human examiner.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE)
