@@ -95,10 +95,10 @@ How findings work:
 1. Claude discovers evidence and presents it to you
 2. You discuss and refine the interpretation
 3. Claude calls record_finding() — staged as DRAFT
-4. Open the case dashboard to review: http://localhost:4508/dashboard/
-5. Approve, edit, or reject findings from the dashboard
-6. Finalize: aiir approve --review or dashboard Commit (requires your password)
-   - Applies your dashboard decisions
+4. Open the Examiner Portal to review: `aiir portal` or http://localhost:4508/portal/
+5. Approve, edit, or reject findings from the portal
+6. Finalize: `aiir approve --review` or portal Commit (requires your password)
+   - Applies your portal decisions
    - Creates HMAC-signed approval records
    - Status: DRAFT → APPROVED
 

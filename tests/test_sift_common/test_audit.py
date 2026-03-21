@@ -131,6 +131,8 @@ class TestAuditWriter:
         """Without AIIR_CASE_DIR, audit entry not written but no error."""
         monkeypatch.setenv("AIIR_EXAMINER", "tester")
         monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        # Isolate from real ~/.aiir/active_case fallback
+        monkeypatch.setenv("HOME", str(tmp_path / "nohome"))
         writer = AuditWriter("test-mcp")
         eid = writer.log(tool="t", params={}, result_summary="ok")
         assert eid is None

@@ -77,7 +77,7 @@ When `record_finding()` returns a grounding suggestion, consider running the sug
 
 - Every artifact MUST include `audit_id` from the tool response that produced the data. Artifacts without audit_id are rejected.
 - Pass `input_files` on every `run_command()` call — the files the command reads. The server auto-detects as backup for cataloged tools.
-- Include `host` (which system) and `affected_account` (which account) on findings — these power the Hosts and Accounts dashboard tabs.
+- Include `host` (which system) and `affected_account` (which account) on findings — these power the Hosts and Accounts tabs in the Examiner Portal.
 - Include `event_timestamp` (ISO 8601) for when the incident event occurred — not the current time. This drives timeline auto-linkage.
 - Use `run_command()` for forensic tool calls. Reserve direct shell access for system operations (ls, cat, file). Only `run_command()` provides full provenance tracking.
 - Register all evidence files before analysis, including pre-processed outputs (KAPE triage, Hayabusa CSVs). If it's in the case, it should be in the evidence registry.
