@@ -97,7 +97,7 @@ User Question
 | Document Macro Analysis | remnux-mcp `analyze_file` | — |
 | IOC Extraction from File | remnux-mcp `extract_iocs` | sift-mcp `run_command` (bulk_extractor) |
 | Specific REMnux Tool | remnux-mcp `run_tool` | — |
-| Run Windows forensic tool | wintools-mcp `run_command` | sift-mcp `run_command` |
+| Run Windows forensic tool | wintools-mcp `run_windows_command` | sift-mcp `run_command` |
 | Run forensic tool | sift-mcp `run_command` | — |
 | Tool recommendations | sift-mcp `suggest_tools` | forensic-mcp `get_tool_guidance` |
 | EVTX Analysis | sift-mcp `run_command` (EvtxECmd) | — |

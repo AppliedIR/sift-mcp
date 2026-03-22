@@ -214,12 +214,12 @@ hardcoded-blocked (cmd, powershell, wscript, mshta, rundll32, etc.).
 Configure during `aiir setup client` by providing the Windows host and
 port (default 4624).
 
-- `run_command` — execute cataloged forensic tool on Windows
-- `list_available_tools` — tools on the Windows workstation
-- `list_missing_tools` — catalog tools not installed
-- `check_tools` — verify tool installation status
-- `get_tool_help` — usage info for a specific tool
-- `suggest_tools` — recommend tools for an artifact type
+- `run_windows_command` — execute cataloged forensic tool on Windows
+- `list_windows_tools` — tools on the Windows workstation
+- `list_missing_windows_tools` — catalog tools not installed
+- `check_windows_tools` — verify tool installation status
+- `get_windows_tool_help` — usage info for a specific tool
+- `suggest_windows_tools` — recommend tools for an artifact type
 - `scan_tools` — scan system for all known forensic tools
 
 **Note:** Unlike sift-mcp (which allows uncataloged tools), wintools-mcp

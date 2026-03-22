@@ -17,7 +17,7 @@ including evidence standards, confidence levels, and checkpoint requirements.
 - **opencti-mcp** — Threat intelligence (OpenCTI)
 - **remnux-mcp** — Malware analysis (REMnux workstation, separate deployment, optional)
 
-Call `list_available_tools()` on sift-mcp or wintools-mcp to see current forensic tool inventory.
+Call `list_available_tools()` on sift-mcp or `list_windows_tools()` on wintools-mcp to see current forensic tool inventory.
 
 ## Malware Analysis Escalation
 
