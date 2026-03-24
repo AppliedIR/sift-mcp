@@ -139,6 +139,7 @@ class TestSaveOutputBlockedPrefixes:
 
     def test_save_to_case_dir_allowed(self, tmp_path, monkeypatch):
         """Saving within AIIR_CASE_DIR should be allowed."""
+        (tmp_path / "CASE.yaml").write_text("case_id: test\n")
         monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
         out = tmp_path / "extractions"
         out.mkdir()

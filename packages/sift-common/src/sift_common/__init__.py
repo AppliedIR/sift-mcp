@@ -10,15 +10,25 @@ def resolve_case_dir() -> str:
     """Resolve the active case directory.
 
     Resolution order: AIIR_CASE_DIR env var → ~/.aiir/active_case file → "".
+    AIIR_CASE_DIR must be a directory containing CASE.yaml to be valid.
+    If set but invalid, falls through to active_case.
     """
-    case_dir = os.environ.get("AIIR_CASE_DIR", "")
+    case_dir = os.environ.get("AIIR_CASE_DIR", "").strip()
     if case_dir:
-        return case_dir
+        p = Path(case_dir)
+        if p.is_dir() and (p / "CASE.yaml").exists():
+            return case_dir
+        # Set but invalid — fall through to active_case
     active_file = Path.home() / ".aiir" / "active_case"
     if active_file.is_file():
-        content = active_file.read_text().strip()
-        if content and os.path.isdir(content):
-            return content
+        try:
+            content = active_file.read_text().strip()
+        except OSError:
+            return ""
+        if content:
+            p = Path(content)
+            if p.is_dir() and (p / "CASE.yaml").exists():
+                return content
     return ""
 
 

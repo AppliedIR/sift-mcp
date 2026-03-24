@@ -70,6 +70,7 @@ class TestGenericRunCommand:
         """rm targeting case evidence dir is blocked."""
         case_dir = tmp_path / "INC-2026-001"
         case_dir.mkdir()
+        (case_dir / "CASE.yaml").write_text("case_id: test\n")
         evidence_dir = case_dir / "evidence"
         evidence_dir.mkdir()
         monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))

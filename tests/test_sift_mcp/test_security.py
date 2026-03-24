@@ -78,6 +78,7 @@ class TestRmProtection:
     def test_rm_blocks_case_evidence(self, tmp_path, monkeypatch):
         case_dir = tmp_path / "INC-2026-001"
         case_dir.mkdir()
+        (case_dir / "CASE.yaml").write_text("case_id: test\n")
         evidence_dir = case_dir / "evidence"
         evidence_dir.mkdir()
         monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))

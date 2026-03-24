@@ -10,11 +10,14 @@ class TestSiftConfig:
         assert "/usr/local/bin" in cfg.tool_paths
         assert cfg.case_dir == ""
 
-    def test_from_env(self, monkeypatch):
-        monkeypatch.setenv("AIIR_CASE_DIR", "/tmp/test-case")
+    def test_from_env(self, monkeypatch, tmp_path):
+        case_dir = tmp_path / "test-case"
+        case_dir.mkdir()
+        (case_dir / "CASE.yaml").write_text("case_id: test\n")
+        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
         monkeypatch.setenv("SIFT_TIMEOUT", "120")
         cfg = SiftConfig.from_env()
-        assert cfg.case_dir == "/tmp/test-case"
+        assert cfg.case_dir == str(case_dir)
         assert cfg.default_timeout == 120
 
     def test_extra_tool_paths(self, monkeypatch):
