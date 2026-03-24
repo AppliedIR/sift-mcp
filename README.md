@@ -4,12 +4,12 @@
 [![CI](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/AppliedIR/sift-mcp/blob/main/LICENSE)
 
-Monorepo for all SIFT-side ValiHuntIR components. 11 packages: forensic-mcp (26 tools), case-mcp (15 tools), report-mcp (6 tools), sift-mcp (6 tools), sift-gateway, forensic-knowledge, forensic-rag (3 tools), windows-triage (13 tools), opencti (10 tools), sift-common, and case-dashboard. Part of the [ValiHuntIR](https://github.com/AppliedIR/vhir) platform.
+Monorepo for all SIFT-side ValiHuntIR components. 11 packages: forensic-mcp (26 tools), case-mcp (15 tools), report-mcp (6 tools), sift-mcp (6 tools), sift-gateway, forensic-knowledge, forensic-rag (3 tools), windows-triage (13 tools), opencti (10 tools), sift-common, and case-dashboard. Part of the [ValiHuntIR](https://github.com/AppliedIR/valihuntir) platform.
 
-**[Documentation](https://appliedir.github.io/vhir/)** ·
-[Getting Started](https://appliedir.github.io/vhir/getting-started/) ·
-[CLI Reference](https://appliedir.github.io/vhir/cli-reference/) ·
-[MCP Reference](https://appliedir.github.io/vhir/mcp-reference/)
+**[Documentation](https://appliedir.github.io/valihuntir/)** ·
+[Getting Started](https://appliedir.github.io/valihuntir/getting-started/) ·
+[CLI Reference](https://appliedir.github.io/valihuntir/cli-reference/) ·
+[MCP Reference](https://appliedir.github.io/valihuntir/mcp-reference/)
 
 > **Public Beta** — This project is undergoing active feature development.
 > Backward compatibility with future releases is not guaranteed. Consider
@@ -130,7 +130,7 @@ git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 
 ## Architecture
 
-Each MCP backend runs as a stdio subprocess of the sift-gateway, aggregated behind a single HTTP endpoint. The Examiner Portal is served by the gateway for browser-based review and approval. See the [vhir README](https://github.com/AppliedIR/vhir#deployment-overview) for the full deployment topology including REMnux and Windows VMs.
+Each MCP backend runs as a stdio subprocess of the sift-gateway, aggregated behind a single HTTP endpoint. The Examiner Portal is served by the gateway for browser-based review and approval. See the [ValiHuntIR README](https://github.com/AppliedIR/valihuntir#deployment-overview) for the full deployment topology including REMnux and Windows VMs.
 
 ```mermaid
 graph LR
@@ -334,7 +334,7 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 
 When installed with `--remote`, `setup-sift.sh` generates a local CA and gateway certificate at `~/.vhir/tls/`. The gateway binds to `0.0.0.0:4508` with TLS enabled. A bearer token (`vhir_gw_` prefix) is generated and written to `gateway.yaml`.
 
-Remote clients join via platform-specific setup scripts. The installer prints per-OS commands with a join code. See the [Deployment Guide](https://appliedir.github.io/vhir/deployment/) for details.
+Remote clients join via platform-specific setup scripts. The installer prints per-OS commands with a join code. See the [Deployment Guide](https://appliedir.github.io/valihuntir/deployment/) for details.
 
 Without `--remote`, the gateway listens on `127.0.0.1` only. Auth tokens are still generated but optional for localhost.
 

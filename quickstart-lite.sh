@@ -96,7 +96,7 @@ for arg in "$@"; do
         --wintools=*)
             echo "ERROR: Wintools integration requires Full ValiHuntIR (setup-sift.sh)."
             echo "Lite cannot share case data or retrieve large extraction results."
-            echo "See: https://appliedir.github.io/vhir/deployment/"
+            echo "See: https://appliedir.github.io/valihuntir/deployment/"
             exit 1
             ;;
         --quick)   MODE="quick" ;;

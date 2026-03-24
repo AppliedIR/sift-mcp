@@ -612,7 +612,7 @@ fi
 #   - WSL1 (no namespace support)
 #   - user.max_user_namespaces=0
 #
-# See: https://appliedir.github.io/vhir/security/ (L9 — Kernel Sandbox)
+# See: https://appliedir.github.io/valihuntir/security/ (L9 — Kernel Sandbox)
 
 BWRAP_PROFILE="/etc/apparmor.d/bwrap"
 
@@ -876,7 +876,7 @@ fi
 
 # Clone vhir (for vhir-cli — required before case-mcp/report-mcp)
 VHIR_DIR="$(dirname "$INSTALL_DIR")/vhir"
-VHIR_REPO_URL="https://github.com/AppliedIR/vhir.git"
+VHIR_REPO_URL="https://github.com/AppliedIR/valihuntir.git"
 
 if [[ -d "$VHIR_DIR/.git" ]]; then
     info "vhir repository exists at $VHIR_DIR. Pulling latest..."
@@ -1879,15 +1879,15 @@ if $REMOTE_MODE; then
             echo -e "${BOLD}Remote client setup${NC} (run on the machine where your LLM client runs):"
             echo ""
             echo "  Linux (full support):"
-            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/vhir/main/setup-client-linux.sh \\"
+            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/valihuntir/main/setup-client-linux.sh \\"
             echo "      | bash -s -- --sift=$GW_URL --code=$JOIN_CODE"
             echo ""
             echo "  macOS:"
-            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/vhir/main/setup-client-macos.sh \\"
+            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/valihuntir/main/setup-client-macos.sh \\"
             echo "      | bash -s -- --sift=$GW_URL --code=$JOIN_CODE"
             echo ""
             echo "  Windows (PowerShell):"
-            echo "    Invoke-WebRequest -Uri https://raw.githubusercontent.com/AppliedIR/vhir/main/setup-client-windows.ps1 -OutFile setup-client-windows.ps1"
+            echo "    Invoke-WebRequest -Uri https://raw.githubusercontent.com/AppliedIR/valihuntir/main/setup-client-windows.ps1 -OutFile setup-client-windows.ps1"
             echo "    .\\setup-client-windows.ps1 -Sift $GW_URL -Code $JOIN_CODE"
             echo ""
             echo "  Note: Your LLM client must run locally on your machine to reach the"
@@ -2062,7 +2062,7 @@ fi
 # =============================================================================
 
 echo ""
-echo -e "${BOLD}Documentation:${NC} https://appliedir.github.io/vhir/"
+echo -e "${BOLD}Documentation:${NC} https://appliedir.github.io/valihuntir/"
 
 echo ""
 echo -e "${BOLD}Next steps:${NC}"

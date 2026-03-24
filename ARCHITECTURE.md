@@ -238,6 +238,6 @@ Generated `.mcp.json` example:
 |------|--------|---------|
 | [sift-mcp](https://github.com/AppliedIR/sift-mcp) | AppliedIR/sift-mcp | SIFT monorepo: 11 packages (forensic-mcp, case-mcp, report-mcp, sift-mcp, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, sift-common, case-dashboard), SIFT installer, platform docs |
 | [wintools-mcp](https://github.com/AppliedIR/wintools-mcp) | AppliedIR/wintools-mcp | Windows tool execution MCP + Windows installer |
-| [vhir](https://github.com/AppliedIR/vhir) | AppliedIR/vhir | CLI + this architecture doc |
+| [ValiHuntIR](https://github.com/AppliedIR/valihuntir) | AppliedIR/valihuntir | CLI + this architecture doc |
 
 Public repos under the AppliedIR GitHub org.
