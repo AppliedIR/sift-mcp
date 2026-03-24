@@ -14,7 +14,7 @@ class TestSiftConfig:
         case_dir = tmp_path / "test-case"
         case_dir.mkdir()
         (case_dir / "CASE.yaml").write_text("case_id: test\n")
-        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
         monkeypatch.setenv("SIFT_TIMEOUT", "120")
         cfg = SiftConfig.from_env()
         assert cfg.case_dir == str(case_dir)
@@ -31,7 +31,7 @@ class TestSiftConfig:
         assert cfg.share_root == ""
 
     def test_share_root_from_env(self, monkeypatch):
-        monkeypatch.setenv("AIIR_SHARE_ROOT", "/mnt/wintools")
+        monkeypatch.setenv("VHIR_SHARE_ROOT", "/mnt/wintools")
         cfg = SiftConfig.from_env()
         assert cfg.share_root == "/mnt/wintools"
 

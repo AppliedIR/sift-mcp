@@ -4,11 +4,11 @@
 set -e
 
 # 1. Read active case directory
-# Priority: AIIR_CASE_DIR env var > ~/.aiir/active_case file
-if [ -n "$AIIR_CASE_DIR" ] && [ -d "$AIIR_CASE_DIR" ]; then
-    CASE_DIR="$AIIR_CASE_DIR"
+# Priority: VHIR_CASE_DIR env var > ~/.vhir/active_case file
+if [ -n "$VHIR_CASE_DIR" ] && [ -d "$VHIR_CASE_DIR" ]; then
+    CASE_DIR="$VHIR_CASE_DIR"
 else
-    ACTIVE_CASE_FILE="$HOME/.aiir/active_case"
+    ACTIVE_CASE_FILE="$HOME/.vhir/active_case"
     if [ ! -f "$ACTIVE_CASE_FILE" ]; then
         exit 0
     fi
@@ -27,7 +27,7 @@ else
 fi
 
 # 2. Examiner identity
-EXAMINER="${AIIR_EXAMINER:-$(whoami)}"
+EXAMINER="${VHIR_EXAMINER:-$(whoami)}"
 
 # 3. Read stdin and parse via Python one-liner
 INPUT=$(cat)
@@ -52,8 +52,8 @@ if [ -z "$COMMAND" ]; then
 fi
 
 # 4. Ensure audit directory exists
-if [ -n "$AIIR_AUDIT_DIR" ] && [ -d "$AIIR_AUDIT_DIR" ]; then
-    AUDIT_DIR="$AIIR_AUDIT_DIR"
+if [ -n "$VHIR_AUDIT_DIR" ] && [ -d "$VHIR_AUDIT_DIR" ]; then
+    AUDIT_DIR="$VHIR_AUDIT_DIR"
 else
     AUDIT_DIR="$CASE_DIR/audit"
 fi

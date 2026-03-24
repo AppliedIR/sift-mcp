@@ -90,7 +90,7 @@ _COMMIT_LOCKOUT_SECONDS = 900
 def _resolve_case_dir() -> Path | None:
     """Resolve case directory per-request.
 
-    Priority: AIIR_CASE_DIR env var > ~/.aiir/active_case file.
+    Priority: VHIR_CASE_DIR env var > ~/.vhir/active_case file.
     Returns None if no case is active or directory lacks CASE.yaml.
     """
     from sift_common import resolve_case_dir
@@ -104,7 +104,7 @@ def _resolve_case_dir() -> Path | None:
 
 def _no_case_response() -> JSONResponse:
     return JSONResponse(
-        {"error": "No active case. Run `aiir case activate` first."},
+        {"error": "No active case. Run `vhir case activate` first."},
         status_code=404,
     )
 
@@ -222,17 +222,17 @@ def _resolve_examiner(request: Request) -> str | None:
             return None
         return examiner
     # Single-user fallback
-    env_examiner = os.environ.get("AIIR_EXAMINER")
+    env_examiner = os.environ.get("VHIR_EXAMINER")
     if env_examiner and not _EXAMINER_RE.match(env_examiner):
         return None
     return env_examiner
 
 
 def _load_password_entry(examiner: str) -> dict | None:
-    """Read password entry from /var/lib/aiir/passwords/{examiner}.json."""
+    """Read password entry from /var/lib/vhir/passwords/{examiner}.json."""
     if ".." in examiner or "/" in examiner or "\\" in examiner:
         return None
-    path = Path("/var/lib/aiir/passwords") / f"{examiner}.json"
+    path = Path("/var/lib/vhir/passwords") / f"{examiner}.json"
     try:
         data = json.loads(path.read_text())
         if isinstance(data, dict) and "hash" in data and "salt" in data:
@@ -244,7 +244,7 @@ def _load_password_entry(examiner: str) -> dict | None:
 
 def _check_commit_lockout(examiner: str) -> str | None:
     """Returns error message if locked out, None if OK."""
-    lockout_file = Path.home() / ".aiir" / ".password_lockout"
+    lockout_file = Path.home() / ".vhir" / ".password_lockout"
     try:
         data = json.loads(lockout_file.read_text())
     except (OSError, json.JSONDecodeError):
@@ -261,7 +261,7 @@ def _check_commit_lockout(examiner: str) -> str | None:
 
 def _record_commit_failure(examiner: str) -> None:
     """Record a failed commit attempt to shared lockout file."""
-    lockout_file = Path.home() / ".aiir" / ".password_lockout"
+    lockout_file = Path.home() / ".vhir" / ".password_lockout"
     lockout_file.parent.mkdir(parents=True, exist_ok=True)
     try:
         data = json.loads(lockout_file.read_text())
@@ -286,7 +286,7 @@ def _record_commit_failure(examiner: str) -> None:
 
 def _clear_commit_failures(examiner: str) -> None:
     """Clear failure count on successful commit."""
-    lockout_file = Path.home() / ".aiir" / ".password_lockout"
+    lockout_file = Path.home() / ".vhir" / ".password_lockout"
     try:
         data = json.loads(lockout_file.read_text())
     except (OSError, json.JSONDecodeError):
@@ -311,7 +311,7 @@ def _clear_commit_failures(examiner: str) -> None:
 
 def _commit_failure_count(examiner: str) -> int:
     """Count recent failures for examiner."""
-    lockout_file = Path.home() / ".aiir" / ".password_lockout"
+    lockout_file = Path.home() / ".vhir" / ".password_lockout"
     try:
         data = json.loads(lockout_file.read_text())
     except (OSError, json.JSONDecodeError):
@@ -395,7 +395,7 @@ def _write_hmac_entries(
     Matches CLI pattern: per-item try/except, failures are non-fatal.
     Entry format matches CLI exactly (approve.py:447-456).
     """
-    verification_dir = Path("/var/lib/aiir/verification")
+    verification_dir = Path("/var/lib/vhir/verification")
     verification_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     ledger_path = verification_dir / f"{case_id}.jsonl"
     failures: list[str] = []
@@ -1220,7 +1220,7 @@ async def get_commit_challenge(request: Request) -> JSONResponse:
     entry = _load_password_entry(examiner)
     if not entry:
         return JSONResponse(
-            {"error": "No password configured. Run: aiir config --setup-password"},
+            {"error": "No password configured. Run: vhir config --setup-password"},
             status_code=403,
         )
 

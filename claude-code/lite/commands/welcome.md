@@ -1,6 +1,6 @@
 ---
 name: welcome
-description: Post-install verification and onboarding for AIIR lite
+description: Post-install verification and onboarding for ValiHuntIR lite
 ---
 
 # /welcome — Post-Install Verification and Onboarding
@@ -25,7 +25,7 @@ any failure.
 - Report: document count, source count, index status
 - If the MCP tool is not available or errors, report: "forensic-rag
   MCP not responding. The RAG index may not be built. Run:
-  `RAG_INDEX_DIR=~/.aiir/rag-index python -m rag_mcp.build`"
+  `RAG_INDEX_DIR=~/.vhir/rag-index python -m rag_mcp.build`"
 
 **windows-triage:**
 - Use the `windows-triage` MCP tool `get_health` (do NOT use
@@ -33,7 +33,7 @@ any failure.
 - Report: database status, record counts per database
 - If the MCP tool is not available or errors, report: "windows-triage
   MCP not responding. Check that triage databases exist at
-  ~/.aiir/triage-db/"
+  ~/.vhir/triage-db/"
 
 Report status:
 ```
@@ -49,10 +49,10 @@ MCP Health:
 1. Run a trivial Bash command: `echo audit-hook-test`
 2. Check if an audit entry was created. Look for
    `audit/claude-code.jsonl` in the active case directory
-   (check `AIIR_CASE_DIR` env var, then `~/.aiir/active_case`)
+   (check `VHIR_CASE_DIR` env var, then `~/.vhir/active_case`)
 3. If the file exists and has a recent entry: report OK
 4. If missing: warn "Audit hook not working. Check that
-   `hooks/forensic-audit.sh` exists and `AIIR_CASE_DIR` is set in
+   `hooks/forensic-audit.sh` exists and `VHIR_CASE_DIR` is set in
    your MCP configuration."
 
 Note: If no case is active, the audit hook silently skips. This is
@@ -97,7 +97,7 @@ cases/<name>/
     TIMELINE.md       # Chronological events
 ```
 
-The state file at `~/.aiir/active_case` tracks which case is active
+The state file at `~/.vhir/active_case` tracks which case is active
 across sessions.
 
 ---
@@ -192,7 +192,7 @@ If the user chooses option 1:
 After all steps, produce a summary:
 
 ```
-AIIR Lite — Installation Verified
+ValiHuntIR Lite — Installation Verified
 ==================================
 forensic-rag:     [OK/WARN] (X records)
 windows-triage:   [OK/WARN] (databases)

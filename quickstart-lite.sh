@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# quickstart-lite.sh — AIIR Lite Installer
+# quickstart-lite.sh — ValiHuntIR Lite Installer
 #
-# Installs AIIR Lite: forensic knowledge MCPs + discipline files + audit hook.
+# Installs ValiHuntIR Lite: forensic knowledge MCPs + discipline files + audit hook.
 # No gateway, no sandbox, no deny rules. Claude runs tools directly via Bash.
 #
 # Usage:
@@ -33,7 +33,7 @@ fail() { echo -e "  ${RED}✗${NC} $1"; exit 1; }
 header() { echo -e "\n${BOLD}=== $1 ===${NC}"; }
 
 _write_install_marker() {
-    local marker="$HOME/.aiir/lite-install.json"
+    local marker="$HOME/.vhir/lite-install.json"
     local version commit installed_at
     version=$("$VENV_PYTHON" -c "
 try:
@@ -94,9 +94,9 @@ for arg in "$@"; do
         --registry) INSTALL_REGISTRY=true ;;
         --remnux=*) REMNUX_ADDR="${arg#--remnux=}" ;;
         --wintools=*)
-            echo "ERROR: Wintools integration requires Full AIIR (setup-sift.sh)."
+            echo "ERROR: Wintools integration requires Full ValiHuntIR (setup-sift.sh)."
             echo "Lite cannot share case data or retrieve large extraction results."
-            echo "See: https://appliedir.github.io/aiir/deployment/"
+            echo "See: https://appliedir.github.io/vhir/deployment/"
             exit 1
             ;;
         --quick)   MODE="quick" ;;
@@ -132,7 +132,7 @@ COMP
             cat << 'HELPEOF'
 Usage: quickstart-lite.sh [options]
 
-AIIR Lite installer. Installs forensic knowledge MCPs, discipline files,
+ValiHuntIR Lite installer. Installs forensic knowledge MCPs, discipline files,
 and audit hooks for Claude Code.
 
 Modes:
@@ -230,17 +230,17 @@ if [[ ! -d "$SCRIPT_DIR/packages" ]]; then
 fi
 
 PROJECT_DIR="$(pwd)"
-VENV_DIR="$HOME/.aiir/venv"
+VENV_DIR="$HOME/.vhir/venv"
 VENV_PYTHON="$VENV_DIR/bin/python"
-DB_DIR="$HOME/.aiir/triage-db"
-INDEX_DIR="$HOME/.aiir/rag-index"
+DB_DIR="$HOME/.vhir/triage-db"
+INDEX_DIR="$HOME/.vhir/rag-index"
 
-echo -e "${BOLD}AIIR Lite Installer${NC}"
+echo -e "${BOLD}ValiHuntIR Lite Installer${NC}"
 echo "Source:  $SCRIPT_DIR"
 echo "Project: $PROJECT_DIR"
 echo "Venv:    $VENV_DIR"
 
-MARKER_FILE="$HOME/.aiir/lite-install.json"
+MARKER_FILE="$HOME/.vhir/lite-install.json"
 if [[ -f "$MARKER_FILE" ]]; then
     PREV_COMMIT=$(python3 -c "
 import json, sys
@@ -477,9 +477,9 @@ fi
 
 # Deploy case manager script
 if [[ -f "$LITE_DIR/scripts/case-manager.sh" ]]; then
-    mkdir -p "$HOME/.aiir/bin"
-    cp "$LITE_DIR/scripts/case-manager.sh" "$HOME/.aiir/bin/"
-    chmod +x "$HOME/.aiir/bin/case-manager.sh"
+    mkdir -p "$HOME/.vhir/bin"
+    cp "$LITE_DIR/scripts/case-manager.sh" "$HOME/.vhir/bin/"
+    chmod +x "$HOME/.vhir/bin/case-manager.sh"
     ok "Deployed case manager script"
 fi
 
@@ -604,7 +604,7 @@ if [[ "$INSTALL_OPENCTI" == "true" ]]; then
                 \"PYTHONPATH\": \"$SCRIPT_DIR/packages/opencti/src\",
                 \"OPENCTI_URL\": \"$OPENCTI_URL\",
                 \"OPENCTI_TOKEN\": \"$OPENCTI_TOKEN\",
-                \"AIIR_CASE_DIR\": \"$PROJECT_DIR\"
+                \"VHIR_CASE_DIR\": \"$PROJECT_DIR\"
             }
         }"
         ok "Added opencti-mcp to .mcp.json"

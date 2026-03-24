@@ -4,7 +4,7 @@ Join codes are one-time-use, time-limited tokens that allow remote machines
 to exchange for gateway credentials without pre-sharing bearer tokens.
 Codes are bcrypt-hashed before storage; plaintext is never persisted.
 
-State file: ~/.aiir/.join_state.json
+State file: ~/.vhir/.join_state.json
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ _JOIN_CHARSET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 _MAX_FAILURES = 3
 _FAILURE_WINDOW_SECONDS = 15 * 60  # 15 minutes
 
-_STATE_DIR = Path.home() / ".aiir"
+_STATE_DIR = Path.home() / ".vhir"
 _STATE_FILE = _STATE_DIR / ".join_state.json"
 
 

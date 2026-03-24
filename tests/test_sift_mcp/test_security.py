@@ -81,7 +81,7 @@ class TestRmProtection:
         (case_dir / "CASE.yaml").write_text("case_id: test\n")
         evidence_dir = case_dir / "evidence"
         evidence_dir.mkdir()
-        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
         with pytest.raises(ValueError, match="case evidence"):
             validate_rm_targets([str(evidence_dir / "file.img")])
 
@@ -187,7 +187,7 @@ class TestValidateOutputPath:
 
     @pytest.fixture(autouse=True)
     def _clear_case_dir(self, monkeypatch):
-        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
         monkeypatch.setattr("sift_mcp.security.resolve_case_dir", lambda: "")
 
     def test_blocks_etc(self):

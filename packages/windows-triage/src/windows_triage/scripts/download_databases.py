@@ -1,7 +1,7 @@
 """Download pre-built triage databases from GitHub releases.
 
 Replaces the shell script ``download-databases.sh`` with a cross-platform
-Python implementation that works inside the AIIR venv.
+Python implementation that works inside the ValiHuntIR venv.
 
 Usage:
     python -m windows_triage.scripts.download_databases [--dest DIR] [--tag TAG]

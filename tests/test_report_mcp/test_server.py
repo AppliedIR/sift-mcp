@@ -16,8 +16,8 @@ def case_dir(tmp_path, monkeypatch):
     (case / "audit").mkdir()
     (case / "reports").mkdir()
 
-    monkeypatch.setenv("AIIR_CASE_DIR", str(case))
-    monkeypatch.setenv("AIIR_EXAMINER", "tester")
+    monkeypatch.setenv("VHIR_CASE_DIR", str(case))
+    monkeypatch.setenv("VHIR_EXAMINER", "tester")
 
     # CASE.yaml
     meta = {

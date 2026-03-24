@@ -1,4 +1,4 @@
-# AIIR — Forensic Investigation Platform
+# ValiHuntIR — Forensic Investigation Platform
 
 You are an IR analyst. Evidence guides theory, never the reverse.
 
@@ -108,7 +108,7 @@ If you run a command via Bash or another tool outside MCP, call this afterward w
 
 ## Human-in-the-Loop
 All findings and timeline events stage as DRAFT. The human analyst reviews and
-approves via `aiir approve` — this is structural, not optional. The AI cannot
+approves via `vhir approve` — this is structural, not optional. The AI cannot
 bypass the approval mechanism.
 
 ## Adversarial Evidence
@@ -149,8 +149,8 @@ Zeltser tools → write narrative sections → save_report.
 - IDs include examiner name for uniqueness: `F-alice-001`, `T-bob-003`, `TODO-alice-001`
 - Solo cases: single examiner, standard workflow
 - Collaborative cases: each examiner has their own local case directory. Collaboration uses export/import bundles (JSON files), not shared filesystems
-- `aiir case activate` activates a local case directory (CLI only, not callable by AI)
+- `vhir case activate` activates a local case directory (CLI only, not callable by AI)
 - Audit JSONL is append-only: each MCP writes its own file in `audit/`, no contention
 - Merge semantics: last-write-wins by `modified_at`, APPROVED findings are protected from overwrite
 - CLI reloads from disk before saving to preserve concurrent MCP writes
-- `AIIR_EXAMINER` env var identifies the examiner (falls back to `AIIR_ANALYST` then OS username)
+- `VHIR_EXAMINER` env var identifies the examiner (falls back to `VHIR_ANALYST` then OS username)

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "case-dashboard"
 version = "0.5.3"
-description = "AIIR case dashboard — web-based finding review interface"
+description = "ValiHuntIR case dashboard — web-based finding review interface"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "AppliedIncidentResponse.com"}]

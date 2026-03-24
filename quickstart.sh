@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# quickstart.sh — AIIR Platform Quick Start
+# quickstart.sh — ValiHuntIR Platform Quick Start
 #
-# One command to go from zero to a working AIIR platform.
+# One command to go from zero to a working ValiHuntIR platform.
 # Auto-selects quick tier. Prompts for examiner identity and LLM client.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/aiir-quickstart.sh && bash /tmp/aiir-quickstart.sh
+#   curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/vhir-quickstart.sh && bash /tmp/vhir-quickstart.sh
 #
 set -euo pipefail
 
-SETUP_SCRIPT=$(mktemp /tmp/aiir-setup-XXXXXX.sh)
+SETUP_SCRIPT=$(mktemp /tmp/vhir-setup-XXXXXX.sh)
 trap 'rm -f "$SETUP_SCRIPT"' EXIT
 
 curl -fsSL "https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/setup-sift.sh" \

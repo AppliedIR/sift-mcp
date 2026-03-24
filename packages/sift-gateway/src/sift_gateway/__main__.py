@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def main():
     setup_logging("sift-gateway")
     parser = argparse.ArgumentParser(
-        description="AIIR Gateway — MCP aggregation service"
+        description="ValiHuntIR Gateway — MCP aggregation service"
     )
     parser.add_argument(
         "--config",
@@ -44,7 +44,7 @@ def main():
         logger.error("Config file not found: %s", args.config)
         print(f"ERROR: Config file not found: {args.config}", file=sys.stderr)
         print(
-            "Create gateway.yaml using 'aiir setup client' or see sift-gateway documentation.",
+            "Create gateway.yaml using 'vhir setup client' or see sift-gateway documentation.",
             file=sys.stderr,
         )
         sys.exit(1)

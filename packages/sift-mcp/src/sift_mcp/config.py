@@ -44,7 +44,7 @@ class SiftConfig:
     def from_env(cls) -> SiftConfig:
         cfg = cls()
         cfg.case_dir = resolve_case_dir()
-        cfg.share_root = os.environ.get("AIIR_SHARE_ROOT", "")
+        cfg.share_root = os.environ.get("VHIR_SHARE_ROOT", "")
 
         extra_paths = os.environ.get("SIFT_TOOL_PATHS", "")
         if extra_paths:

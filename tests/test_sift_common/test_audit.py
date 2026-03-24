@@ -8,11 +8,11 @@ from sift_common.audit import AuditWriter, _sanitize_slug, resolve_examiner
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
-    monkeypatch.delenv("AIIR_AUDIT_DIR", raising=False)
-    monkeypatch.delenv("AIIR_EXAMINER", raising=False)
-    monkeypatch.delenv("AIIR_ANALYST", raising=False)
-    monkeypatch.delenv("AIIR_ACTIVE_CASE", raising=False)
+    monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
+    monkeypatch.delenv("VHIR_AUDIT_DIR", raising=False)
+    monkeypatch.delenv("VHIR_EXAMINER", raising=False)
+    monkeypatch.delenv("VHIR_ANALYST", raising=False)
+    monkeypatch.delenv("VHIR_ACTIVE_CASE", raising=False)
 
 
 # ---------------------------------------------------------------------------
@@ -53,17 +53,17 @@ class TestSanitizeSlug:
 
 
 class TestResolveExaminer:
-    def test_aiir_examiner_env(self, monkeypatch):
-        monkeypatch.setenv("AIIR_EXAMINER", "alice")
+    def test_vhir_examiner_env(self, monkeypatch):
+        monkeypatch.setenv("VHIR_EXAMINER", "alice")
         assert resolve_examiner() == "alice"
 
-    def test_aiir_analyst_fallback(self, monkeypatch):
-        monkeypatch.setenv("AIIR_ANALYST", "bob")
+    def test_vhir_analyst_fallback(self, monkeypatch):
+        monkeypatch.setenv("VHIR_ANALYST", "bob")
         assert resolve_examiner() == "bob"
 
     def test_examiner_takes_priority(self, monkeypatch):
-        monkeypatch.setenv("AIIR_EXAMINER", "alice")
-        monkeypatch.setenv("AIIR_ANALYST", "bob")
+        monkeypatch.setenv("VHIR_EXAMINER", "alice")
+        monkeypatch.setenv("VHIR_ANALYST", "bob")
         assert resolve_examiner() == "alice"
 
     def test_os_user_fallback(self):
@@ -72,7 +72,7 @@ class TestResolveExaminer:
         assert len(result) > 0
 
     def test_sanitizes_result(self, monkeypatch):
-        monkeypatch.setenv("AIIR_EXAMINER", "Alice Smith")
+        monkeypatch.setenv("VHIR_EXAMINER", "Alice Smith")
         assert resolve_examiner() == "alice-smith"
 
 
@@ -85,7 +85,7 @@ class TestAuditWriter:
     def test_creates_audit_file(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         writer.log(tool="test_tool", params={"key": "value"}, result_summary="ok")
         log_file = audit_dir / "test-mcp.jsonl"
@@ -98,7 +98,7 @@ class TestAuditWriter:
     def test_returns_audit_id(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         eid = writer.log(tool="t", params={}, result_summary="ok")
         assert eid.startswith("test-tester-")
@@ -107,7 +107,7 @@ class TestAuditWriter:
     def test_sequential_audit_ids(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         ids = [writer.log(tool="t", params={}, result_summary="ok") for _ in range(3)]
         assert ids[0].endswith("-001")
@@ -117,7 +117,7 @@ class TestAuditWriter:
     def test_explicit_audit_id(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         eid = writer.log(
             tool="t",
@@ -128,10 +128,10 @@ class TestAuditWriter:
         assert eid == "custom-id-001"
 
     def test_no_case_dir_skips_write(self, tmp_path, monkeypatch):
-        """Without AIIR_CASE_DIR, audit entry not written but no error."""
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
-        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
-        # Isolate from real ~/.aiir/active_case fallback
+        """Without VHIR_CASE_DIR, audit entry not written but no error."""
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
+        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
+        # Isolate from real ~/.vhir/active_case fallback
         monkeypatch.setenv("HOME", str(tmp_path / "nohome"))
         writer = AuditWriter("test-mcp")
         eid = writer.log(tool="t", params={}, result_summary="ok")
@@ -140,7 +140,7 @@ class TestAuditWriter:
     def test_elapsed_ms_recorded(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         writer.log(tool="t", params={}, result_summary="ok", elapsed_ms=42.5)
         entry = json.loads((audit_dir / "test-mcp.jsonl").read_text().strip())
@@ -149,7 +149,7 @@ class TestAuditWriter:
     def test_resume_sequence_after_restart(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
 
         # Write 3 entries with first writer
         w1 = AuditWriter("test-mcp", audit_dir=str(audit_dir))
@@ -164,7 +164,7 @@ class TestAuditWriter:
     def test_get_entries(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         writer.log(tool="tool_a", params={}, result_summary="ok")
         writer.log(tool="tool_b", params={}, result_summary="ok")
@@ -176,14 +176,14 @@ class TestAuditWriter:
     def test_get_entries_empty(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         assert writer.get_entries() == []
 
     def test_get_entries_no_case_dir(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
-        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
-        monkeypatch.delenv("AIIR_AUDIT_DIR", raising=False)
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
+        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
+        monkeypatch.delenv("VHIR_AUDIT_DIR", raising=False)
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         writer = AuditWriter("test-mcp")
         assert writer.get_entries() == []
@@ -191,7 +191,7 @@ class TestAuditWriter:
     def test_reset_counter(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         writer.log(tool="t", params={}, result_summary="ok")
         writer.reset_counter()
@@ -200,7 +200,7 @@ class TestAuditWriter:
         assert eid.endswith("-002")
 
     def test_examiner_property(self, monkeypatch):
-        monkeypatch.setenv("AIIR_EXAMINER", "alice")
+        monkeypatch.setenv("VHIR_EXAMINER", "alice")
         writer = AuditWriter("test-mcp")
         assert writer.examiner == "alice"
 
@@ -208,7 +208,7 @@ class TestAuditWriter:
         """Corrupt lines in audit JSONL are skipped on read."""
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         log_file = audit_dir / "test-mcp.jsonl"
         log_file.write_text(
             "not json\n"
@@ -231,7 +231,7 @@ class TestAuditWriter:
         """Dict results pass through to audit entry."""
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         writer.log(tool="t", params={}, result_summary={"key": "val"})
         entry = json.loads((audit_dir / "test-mcp.jsonl").read_text().strip())
@@ -241,48 +241,48 @@ class TestAuditWriter:
         """List results are summarized as count."""
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         writer.log(tool="t", params={}, result_summary=[1, 2, 3])
         entry = json.loads((audit_dir / "test-mcp.jsonl").read_text().strip())
         assert entry["result_summary"] == {"count": 3, "type": "list"}
 
     def test_audit_dir_from_env(self, tmp_path, monkeypatch):
-        """AIIR_AUDIT_DIR env var takes priority over AIIR_CASE_DIR."""
+        """VHIR_AUDIT_DIR env var takes priority over VHIR_CASE_DIR."""
         audit_dir = tmp_path / "custom-audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_AUDIT_DIR", str(audit_dir))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_AUDIT_DIR", str(audit_dir))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp")
         writer.log(tool="t", params={}, result_summary="ok")
         assert (audit_dir / "test-mcp.jsonl").exists()
 
     def test_audit_dir_from_case_dir(self, tmp_path, monkeypatch):
-        """AIIR_CASE_DIR/audit/ used when no explicit dir."""
+        """VHIR_CASE_DIR/audit/ used when no explicit dir."""
         case_dir = tmp_path / "case"
         case_dir.mkdir()
         (case_dir / "CASE.yaml").touch()
-        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp")
         writer.log(tool="t", params={}, result_summary="ok")
         assert (case_dir / "audit" / "test-mcp.jsonl").exists()
 
     def test_audit_dir_fallthrough_to_active_case(self, tmp_path, monkeypatch):
-        """AIIR_CASE_DIR without CASE.yaml falls through to active_case."""
+        """VHIR_CASE_DIR without CASE.yaml falls through to active_case."""
         # Parent dir (no CASE.yaml) — simulates the BUG-027 scenario
         parent_dir = tmp_path / "cases"
         parent_dir.mkdir()
-        monkeypatch.setenv("AIIR_CASE_DIR", str(parent_dir))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_CASE_DIR", str(parent_dir))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         # Real case dir with CASE.yaml
         real_case = tmp_path / "cases" / "INC-001"
         real_case.mkdir()
         (real_case / "CASE.yaml").touch()
         # Write active_case pointer
-        aiir_dir = tmp_path / ".aiir"
-        aiir_dir.mkdir()
-        (aiir_dir / "active_case").write_text(str(real_case))
+        vhir_dir = tmp_path / ".vhir"
+        vhir_dir.mkdir()
+        (vhir_dir / "active_case").write_text(str(real_case))
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         writer = AuditWriter("test-mcp")
         writer.log(tool="t", params={}, result_summary="ok")
@@ -294,7 +294,7 @@ class TestAuditWriter:
         """Evidence ID prefix strips -mcp and hyphens."""
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("case-mcp", audit_dir=str(audit_dir))
         eid = writer.log(tool="t", params={}, result_summary="ok")
         assert eid.startswith("case-tester-")
@@ -307,7 +307,7 @@ class TestAuditWriter:
         """since parameter filters entries by timestamp."""
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         log_file = audit_dir / "test-mcp.jsonl"
         log_file.write_text(
             json.dumps({"ts": "2026-01-01T00:00:00", "tool": "old"})

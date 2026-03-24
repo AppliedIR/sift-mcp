@@ -8,12 +8,12 @@ from sift_common import resolve_share_path
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    monkeypatch.delenv("AIIR_SHARE_ROOT", raising=False)
+    monkeypatch.delenv("VHIR_SHARE_ROOT", raising=False)
 
 
 class TestResolveSharePath:
     def test_with_share_root(self, monkeypatch):
-        monkeypatch.setenv("AIIR_SHARE_ROOT", "/mnt/wintools")
+        monkeypatch.setenv("VHIR_SHARE_ROOT", "/mnt/wintools")
         result = resolve_share_path("extractions/output.csv")
         assert result == Path("/mnt/wintools/extractions/output.csv")
 
@@ -22,11 +22,11 @@ class TestResolveSharePath:
         assert result is None
 
     def test_empty_share_root(self, monkeypatch):
-        monkeypatch.setenv("AIIR_SHARE_ROOT", "")
+        monkeypatch.setenv("VHIR_SHARE_ROOT", "")
         result = resolve_share_path("file.txt")
         assert result is None
 
     def test_nested_path(self, monkeypatch):
-        monkeypatch.setenv("AIIR_SHARE_ROOT", "/mnt/share")
+        monkeypatch.setenv("VHIR_SHARE_ROOT", "/mnt/share")
         result = resolve_share_path("case1/extractions/deep/file.csv")
         assert result == Path("/mnt/share/case1/extractions/deep/file.csv")

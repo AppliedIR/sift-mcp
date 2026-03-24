@@ -1,4 +1,4 @@
-"""Audit trail writer for AIIR MCP servers.
+"""Audit trail writer for ValiHuntIR MCP servers.
 
 Each MCP writes to its own JSONL file in the case audit directory.
 Canonical implementation shared by all SIFT-platform MCPs via sift-common.
@@ -40,11 +40,11 @@ def _sanitize_slug(raw: str) -> str:
 
 
 def resolve_examiner() -> str:
-    """Resolve examiner identity: AIIR_EXAMINER > AIIR_ANALYST > OS username.
+    """Resolve examiner identity: VHIR_EXAMINER > VHIR_ANALYST > OS username.
 
     The result is validated against the slug pattern ^[a-z0-9][a-z0-9-]{0,19}$.
     """
-    examiner = os.environ.get("AIIR_EXAMINER") or os.environ.get("AIIR_ANALYST")
+    examiner = os.environ.get("VHIR_EXAMINER") or os.environ.get("VHIR_ANALYST")
     if not examiner:
         try:
             examiner = getpass.getuser()
@@ -74,14 +74,14 @@ class AuditWriter:
     def _get_audit_dir(self) -> Path | None:
         """Get the audit directory.
 
-        Priority: explicit audit_dir > AIIR_AUDIT_DIR > AIIR_CASE_DIR/audit/.
+        Priority: explicit audit_dir > VHIR_AUDIT_DIR > VHIR_CASE_DIR/audit/.
         """
         if self._explicit_audit_dir:
             audit_dir = Path(self._explicit_audit_dir)
-        elif os.environ.get("AIIR_AUDIT_DIR"):
-            audit_dir = Path(os.environ["AIIR_AUDIT_DIR"])
+        elif os.environ.get("VHIR_AUDIT_DIR"):
+            audit_dir = Path(os.environ["VHIR_AUDIT_DIR"])
         else:
-            case_dir = os.environ.get("AIIR_CASE_DIR", "").strip()
+            case_dir = os.environ.get("VHIR_CASE_DIR", "").strip()
             # Validate: must be a directory with CASE.yaml
             if case_dir:
                 path = Path(case_dir)
@@ -93,7 +93,7 @@ class AuditWriter:
                 # Fallback: read active case pointer file
                 try:
                     case_dir = (
-                        (Path.home() / ".aiir" / "active_case").read_text().strip()
+                        (Path.home() / ".vhir" / "active_case").read_text().strip()
                     )
                 except OSError:
                     return None
@@ -102,7 +102,7 @@ class AuditWriter:
                 path = Path(case_dir)
                 if not path.is_dir() or not (path / "CASE.yaml").exists():
                     logger.warning(
-                        "AIIR_CASE_DIR=%s is not a case directory, skipping audit",
+                        "VHIR_CASE_DIR=%s is not a case directory, skipping audit",
                         case_dir,
                     )
                     return None
@@ -193,7 +193,7 @@ class AuditWriter:
             "tool": tool,
             "audit_id": audit_id,
             "examiner": self.examiner,
-            "case_id": case_id or os.environ.get("AIIR_ACTIVE_CASE", ""),
+            "case_id": case_id or os.environ.get("VHIR_ACTIVE_CASE", ""),
             "source": source,
             "params": params,
             "result_summary": _summarize(result_summary),

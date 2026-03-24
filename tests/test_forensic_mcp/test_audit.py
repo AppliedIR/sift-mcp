@@ -10,8 +10,8 @@ from forensic_mcp.case.manager import CaseManager
 @pytest.fixture
 def manager(tmp_path, monkeypatch):
     """CaseManager with temp cases directory."""
-    monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
-    monkeypatch.setenv("AIIR_EXAMINER", "tester")
+    monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
+    monkeypatch.setenv("VHIR_EXAMINER", "tester")
     mgr = CaseManager()
     return mgr
 
@@ -44,8 +44,8 @@ def active_case(manager, tmp_path, monkeypatch):
     (case_dir / "evidence.json").write_text('{"files": []}')
     manager._active_case_id = case_id
     manager._active_case_path = case_dir
-    monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
-    monkeypatch.setenv("AIIR_ACTIVE_CASE", case_id)
+    monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
+    monkeypatch.setenv("VHIR_ACTIVE_CASE", case_id)
     return {"case_id": case_id, "path": str(case_dir)}
 
 

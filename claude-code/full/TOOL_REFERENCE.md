@@ -28,13 +28,13 @@ available before planning a workflow:
 
 | Backend | Quick tier | Recommended tier | How to check |
 |---------|-----------|-----------------|--------------|
-| forensic-mcp | Always | Always | `aiir service status` |
-| sift-mcp | Always | Always | `aiir service status` |
-| windows-triage | No | Yes | `aiir service status` |
-| forensic-rag | No | Yes | `aiir service status` |
-| opencti-mcp | No | If configured | `aiir service status` |
-| remnux-mcp | No | User-provided | `aiir service status` |
-| wintools-mcp | No | User-provided | `aiir service status` |
+| forensic-mcp | Always | Always | `vhir service status` |
+| sift-mcp | Always | Always | `vhir service status` |
+| windows-triage | No | Yes | `vhir service status` |
+| forensic-rag | No | Yes | `vhir service status` |
+| opencti-mcp | No | If configured | `vhir service status` |
+| remnux-mcp | No | User-provided | `vhir service status` |
+| wintools-mcp | No | User-provided | `vhir service status` |
 
 If a backend is unavailable, skip its steps in workflows below and
 note the gap. Do not fail the investigation — degrade gracefully.
@@ -342,8 +342,8 @@ sift-mcp run_command:
 ### MCP Failures
 | Error | Action |
 |-------|--------|
-| Tool not found | Check `aiir service status`, restart backend |
-| Connection refused | `aiir service restart [backend]` |
+| Tool not found | Check `vhir service status`, restart backend |
+| Connection refused | `vhir service restart [backend]` |
 | Timeout | Retry with simpler query or smaller scope |
 | Empty results | Try broader query, different source |
 | Backend unavailable | Note gap, use fallback from matrix above |

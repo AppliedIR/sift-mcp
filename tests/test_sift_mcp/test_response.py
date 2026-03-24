@@ -158,8 +158,8 @@ class TestAudit:
         case_dir = tmp_path / "test-case"
         case_dir.mkdir()
         (case_dir / "CASE.yaml").touch()
-        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
 
         writer = AuditWriter("sift-mcp")
         eid = writer.log(tool="test_tool", params={"x": 1}, result_summary={"ok": True})
@@ -174,8 +174,8 @@ class TestAudit:
     def test_audit_no_case_dir(self, monkeypatch, tmp_path):
         from sift_mcp.audit import AuditWriter
 
-        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
-        monkeypatch.delenv("AIIR_AUDIT_DIR", raising=False)
+        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
+        monkeypatch.delenv("VHIR_AUDIT_DIR", raising=False)
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
         writer = AuditWriter("sift-mcp")
         eid = writer.log(tool="test", params={}, result_summary={})
@@ -190,8 +190,8 @@ class TestAudit:
         case_dir = tmp_path / "test-case"
         case_dir.mkdir()
         (case_dir / "CASE.yaml").touch()
-        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
 
         writer = AuditWriter("sift-mcp")
         writer.log(
@@ -214,8 +214,8 @@ class TestAudit:
         case_dir = tmp_path / "test-case"
         case_dir.mkdir()
         (case_dir / "CASE.yaml").touch()
-        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
 
         writer = AuditWriter("sift-mcp")
         ids = []

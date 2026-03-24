@@ -30,13 +30,13 @@ workflow:
     when: "Before recording any finding, especially for HIGH confidence"
     how: "Use at least two independent sources. Check the corroboration suggestions in tool responses. Different tool types (triage, RAG, threat intel) count as independent."
   - step: "Record"
-    description: "record_finding() stages as DRAFT — human approves via aiir CLI"
+    description: "record_finding() stages as DRAFT — human approves via vhir CLI"
     when: "When you have corroborated evidence supporting a conclusion"
     how: "Call record_finding with observation (what you saw), interpretation (what it means), audit_ids (proof), and confidence level. The finding stages as DRAFT."
   - step: "Wait"
     description: "Do NOT treat DRAFT findings as confirmed. Approval is required."
     when: "After staging a finding and before referencing it in subsequent analysis"
-    how: "Continue investigating other leads. Do not build conclusions on top of DRAFT findings. Wait for examiner approval via aiir CLI."
+    how: "Continue investigating other leads. Do not build conclusions on top of DRAFT findings. Wait for examiner approval via vhir CLI."
 
 hitl_checkpoints:
   - action: "Concluding root cause"

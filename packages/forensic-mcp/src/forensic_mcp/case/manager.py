@@ -1,7 +1,7 @@
 """Case manager: investigation records, TODOs, evidence listing, grounding.
 
 Local-first: each examiner owns a flat case directory. Case lifecycle
-(init, close, activate) is handled by case-mcp and the aiir CLI.
+(init, close, activate) is handled by case-mcp and the vhir CLI.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ def _protected_write(path: Path, content: str) -> None:
             pass  # Non-POSIX filesystem
 
 
-CASES_DIR_ENV = "AIIR_CASES_DIR"
+CASES_DIR_ENV = "VHIR_CASES_DIR"
 DEFAULT_CASES_DIR = str(Path.home() / "cases")
 
 # Audit ID format: prefix-examiner-YYYYMMDD-NNN (all lowercase alphanumeric + hyphens)
@@ -121,8 +121,8 @@ _HASH_EXCLUDE_KEYS = {
 def _compute_content_hash(item: dict) -> str:
     """SHA-256 of canonical JSON excluding volatile fields.
 
-    Duplicated from aiir-cli case_io.py — forensic-mcp does NOT depend on
-    aiir-cli. Kept in sync manually.
+    Duplicated from vhir-cli case_io.py — forensic-mcp does NOT depend on
+    vhir-cli. Kept in sync manually.
     """
     hashable = {k: v for k, v in item.items() if k not in _HASH_EXCLUDE_KEYS}
     canonical = json.dumps(hashable, sort_keys=True, default=str)
@@ -339,7 +339,7 @@ class CaseManager:
         self._active_case_id: str | None = None
         self._active_case_path: Path | None = None
         # Read from environment if set by installer/gateway
-        env_case = os.environ.get("AIIR_ACTIVE_CASE")
+        env_case = os.environ.get("VHIR_ACTIVE_CASE")
         if env_case:
             try:
                 _validate_case_id(env_case)
@@ -347,11 +347,11 @@ class CaseManager:
                 if case_dir.is_dir():
                     self._active_case_id = env_case
                     self._active_case_path = case_dir
-                    os.environ["AIIR_CASE_DIR"] = str(case_dir)
+                    os.environ["VHIR_CASE_DIR"] = str(case_dir)
                     logger.info("Activated case from environment: %s", env_case)
             except ValueError:
                 logger.warning(
-                    "AIIR_ACTIVE_CASE contains invalid case ID: %s", env_case
+                    "VHIR_ACTIVE_CASE contains invalid case ID: %s", env_case
                 )
 
     @property
@@ -372,7 +372,7 @@ class CaseManager:
 
     def _require_active_case(self) -> Path:
         if self._active_case_id is None:
-            active_file = Path.home() / ".aiir" / "active_case"
+            active_file = Path.home() / ".vhir" / "active_case"
             if active_file.exists():
                 content = active_file.read_text().strip()
                 if os.path.isabs(content):
@@ -381,8 +381,8 @@ class CaseManager:
                     if case_dir.is_dir() and (case_dir / "CASE.yaml").exists():
                         self._active_case_id = case_dir.name
                         self._active_case_path = case_dir
-                        os.environ["AIIR_CASE_DIR"] = str(case_dir)
-                        os.environ["AIIR_ACTIVE_CASE"] = case_dir.name
+                        os.environ["VHIR_CASE_DIR"] = str(case_dir)
+                        os.environ["VHIR_ACTIVE_CASE"] = case_dir.name
                 else:
                     # Legacy: bare case ID
                     _validate_case_id(content)
@@ -390,11 +390,11 @@ class CaseManager:
                     if case_dir.is_dir() and (case_dir / "CASE.yaml").exists():
                         self._active_case_id = content
                         self._active_case_path = case_dir
-                        os.environ["AIIR_CASE_DIR"] = str(case_dir)
-                        os.environ["AIIR_ACTIVE_CASE"] = content
+                        os.environ["VHIR_CASE_DIR"] = str(case_dir)
+                        os.environ["VHIR_ACTIVE_CASE"] = content
         d = self.active_case_dir
         if d is None or not d.exists():
-            raise ValueError("No active case. Run 'aiir case activate <id>' first.")
+            raise ValueError("No active case. Run 'vhir case activate <id>' first.")
         # Safety belt: refuse closed cases
         meta_file = d / "CASE.yaml"
         if meta_file.exists():
@@ -403,8 +403,8 @@ class CaseManager:
                 if meta.get("status") == "closed":
                     raise ValueError(
                         f"Case {self._active_case_id} is closed. "
-                        f"Run 'aiir case reopen {self._active_case_id}' or "
-                        f"'aiir case activate <id>' to work on a different case."
+                        f"Run 'vhir case reopen {self._active_case_id}' or "
+                        f"'vhir case activate <id>' to work on a different case."
                     )
             except yaml.YAMLError:
                 pass

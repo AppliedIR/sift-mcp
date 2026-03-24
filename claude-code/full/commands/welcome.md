@@ -1,6 +1,6 @@
 ---
 name: welcome
-description: Post-install verification and onboarding for full AIIR
+description: Post-install verification and onboarding for full ValiHuntIR
 ---
 
 # /welcome — Post-Install Verification and Onboarding
@@ -13,8 +13,8 @@ Follow these phases in order. Report results as you go. Stop on failure.
 
 ### Step 1: Backend Inventory
 
-Run `aiir setup test` via Bash. If `aiir` is not in PATH (common on
-fresh installs before shell restart), use `~/.aiir/venv/bin/aiir`
+Run `vhir setup test` via Bash. If `vhir` is not in PATH (common on
+fresh installs before shell restart), use `~/.vhir/venv/bin/vhir`
 instead. Do NOT warn about PATH — the installer already told the user
 to restart their shell.
 
@@ -22,7 +22,7 @@ It hits the gateway `/health` endpoint and returns per-backend status
 with tool counts. Report the results.
 
 If the gateway is not responding, stop immediately:
-"Gateway not reachable. Check: `aiir service status`"
+"Gateway not reachable. Check: `vhir service status`"
 
 ### Step 2: Forensic Capabilities
 
@@ -36,7 +36,7 @@ Forensic tools:   N available (memory, filesystem, registry, timeline, network, 
 Only mention tools that are MISSING from expected categories. Do not
 list individual tools unless they are absent. Do NOT show install
 commands for missing tools — missing tools are a SIFT distribution
-issue, not an AIIR problem.
+issue, not an ValiHuntIR problem.
 
 Zimmerman tools that only run on Windows (PECmd, SrumECmd) are not
 expected on Linux. Do not flag them as missing. If the examiner needs
@@ -63,7 +63,7 @@ as returned by the tool.
 
 Explain:
 ```
-AIIR is conversation driven. Ask Claude to do anything:
+ValiHuntIR is conversation driven. Ask Claude to do anything:
 - "Create a case called incident-001"
 - "Register this evidence file"
 - "Run volatility on this memory dump"
@@ -74,17 +74,17 @@ Claude handles almost everything through MCP tools. No need to
 memorize lots of commands or tool names.
 
 The only CLI-only operations:
-  aiir approve            Approve findings (HMAC-signed with your password)
-  aiir reject             Reject findings with reason
-  aiir exec               Run forensic command with TTY confirmation
-  aiir config --setup-password Set your approval password
-  aiir config --reset-password Change your approval password
+  vhir approve            Approve findings (HMAC-signed with your password)
+  vhir reject             Reject findings with reason
+  vhir exec               Run forensic command with TTY confirmation
+  vhir config --setup-password Set your approval password
+  vhir config --reset-password Change your approval password
 
 These require YOUR terminal confirmation. By design, Claude cannot
 approve its own findings or manage your password.
 ```
 
-Do NOT add PATH warnings, export suggestions, or notes about `aiir`
+Do NOT add PATH warnings, export suggestions, or notes about `vhir`
 not being in PATH. The installer already handles PATH messaging.
 
 ### Step 6: The Finding Workflow
@@ -95,9 +95,9 @@ How findings work:
 1. Claude discovers evidence and presents it to you
 2. You discuss and refine the interpretation
 3. Claude calls record_finding() — staged as DRAFT
-4. Open the Examiner Portal to review: `aiir portal` or http://localhost:4508/portal/
+4. Open the Examiner Portal to review: `vhir portal` or http://localhost:4508/portal/
 5. Approve, edit, or reject findings from the portal
-6. Finalize: `aiir approve --review` or portal Commit (requires your password)
+6. Finalize: `vhir approve --review` or portal Commit (requires your password)
    - Applies your portal decisions
    - Creates HMAC-signed approval records
    - Status: DRAFT → APPROVED
@@ -168,7 +168,7 @@ that duplicate gateway backends. If found, warn about double-loading.
 Check if remnux-mcp is configured in the gateway backends.
 - If configured: call `get_health`, report status
 - If not: explain that REMnux (200+ malware analysis tools) can be
-  added during `aiir setup client` by providing host and port.
+  added during `vhir setup client` by providing host and port.
 
 ---
 
@@ -178,7 +178,7 @@ Check if remnux-mcp is configured in the gateway backends.
 
 Produce:
 ```
-AIIR Full — Installation Verified
+ValiHuntIR Full — Installation Verified
 ===================================
 Gateway:          OK (X tools, Y backends)
   forensic-mcp:   OK    case-mcp:       OK

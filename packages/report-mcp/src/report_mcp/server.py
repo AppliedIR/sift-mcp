@@ -1,4 +1,4 @@
-"""AIIR report generation MCP server.
+"""ValiHuntIR report generation MCP server.
 
 Exposes 6 tools for generating case reports, managing case metadata,
 and persisting rendered reports. Data-driven profiles control what
@@ -16,17 +16,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from aiir_cli.case_io import (
+from mcp.server.fastmcp import FastMCP
+from sift_common.audit import AuditWriter
+from sift_common.instructions import REPORT_MCP as _INSTRUCTIONS
+from sift_common.oplog import setup_logging
+from vhir_cli.case_io import (
     load_case_meta,
     load_findings,
     load_timeline,
     load_todos,
 )
-from aiir_cli.commands.evidence import list_evidence_data
-from mcp.server.fastmcp import FastMCP
-from sift_common.audit import AuditWriter
-from sift_common.instructions import REPORT_MCP as _INSTRUCTIONS
-from sift_common.oplog import setup_logging
+from vhir_cli.commands.evidence import list_evidence_data
 
 from report_mcp.profiles import PROFILES, STRIPPED_FINDING_FIELDS
 
@@ -37,8 +37,8 @@ _MAX_FILENAME = 200
 _MAX_FIELD = 500
 _MAX_REPORT_BYTES = 10 * 1024 * 1024  # 10 MB
 
-# Duplicated from aiir-cli case_io.py — report-mcp does NOT depend on
-# aiir-cli. Kept in sync manually.
+# Duplicated from vhir-cli case_io.py — report-mcp does NOT depend on
+# vhir-cli. Kept in sync manually.
 _HASH_EXCLUDE_KEYS = {
     "status",
     "approved_at",
@@ -204,30 +204,30 @@ _FILENAME_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 def _resolve_case_dir(case_id: str = "") -> Path:
     """Resolve case directory without sys.exit.
 
-    Same priority as aiir CLI get_case_dir(), but raises ValueError
+    Same priority as vhir CLI get_case_dir(), but raises ValueError
     instead of calling sys.exit().
 
-    Side effect: sets AIIR_CASE_DIR env var so AuditWriter can find
+    Side effect: sets VHIR_CASE_DIR env var so AuditWriter can find
     the audit directory.
     """
     if case_id:
         if ".." in case_id or "/" in case_id or "\\" in case_id:
             raise ValueError(f"Invalid case ID: {case_id}")
-        cases_dir = Path(os.environ.get("AIIR_CASES_DIR", _DEFAULT_CASES_DIR))
+        cases_dir = Path(os.environ.get("VHIR_CASES_DIR", _DEFAULT_CASES_DIR))
         case_dir = cases_dir / case_id
         if not case_dir.exists():
             raise ValueError(f"Case not found: {case_id}")
-        os.environ["AIIR_CASE_DIR"] = str(case_dir)
+        os.environ["VHIR_CASE_DIR"] = str(case_dir)
         return case_dir
 
-    env_dir = os.environ.get("AIIR_CASE_DIR")
+    env_dir = os.environ.get("VHIR_CASE_DIR")
     if env_dir:
         p = Path(env_dir)
         if not p.is_dir():
-            raise ValueError(f"AIIR_CASE_DIR does not exist: {env_dir}")
+            raise ValueError(f"VHIR_CASE_DIR does not exist: {env_dir}")
         return p
 
-    active_file = Path.home() / ".aiir" / "active_case"
+    active_file = Path.home() / ".vhir" / "active_case"
     if active_file.exists():
         content = active_file.read_text().strip()
         if content:
@@ -236,11 +236,11 @@ def _resolve_case_dir(case_id: str = "") -> Path:
             else:
                 if ".." in content or "/" in content or "\\" in content:
                     raise ValueError(f"Invalid case ID in active_case: {content}")
-                cases_dir = Path(os.environ.get("AIIR_CASES_DIR", _DEFAULT_CASES_DIR))
+                cases_dir = Path(os.environ.get("VHIR_CASES_DIR", _DEFAULT_CASES_DIR))
                 case_dir = cases_dir / content
             if not case_dir.is_dir():
                 raise ValueError(f"Case directory does not exist: {case_dir}")
-            os.environ["AIIR_CASE_DIR"] = str(case_dir)
+            os.environ["VHIR_CASE_DIR"] = str(case_dir)
             return case_dir
 
     raise ValueError("No active case. Use case_init or case_activate first.")
@@ -609,7 +609,7 @@ def _generate(
     return result
 
 
-VERIFICATION_DIR = Path("/var/lib/aiir/verification")
+VERIFICATION_DIR = Path("/var/lib/vhir/verification")
 
 
 def _reconcile_verification(

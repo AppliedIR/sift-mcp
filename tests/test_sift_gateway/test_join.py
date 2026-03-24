@@ -171,7 +171,7 @@ class TestJoinGatewayCallOrder:
             call_order.append("_add_api_key_to_config")
 
         def mock_generate_token():
-            return "aiir_gw_test123"
+            return "vhir_gw_test123"
 
         # Build minimal app
         app = Starlette(routes=rest_routes())

@@ -144,9 +144,9 @@ class TestProvenanceGate:
 
     @pytest.fixture
     def manager(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
-        monkeypatch.delenv("AIIR_AUDIT_DIR", raising=False)
-        monkeypatch.delenv("AIIR_ACTIVE_CASE", raising=False)
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
+        monkeypatch.delenv("VHIR_AUDIT_DIR", raising=False)
+        monkeypatch.delenv("VHIR_ACTIVE_CASE", raising=False)
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
 
         from forensic_mcp.case.manager import CaseManager
@@ -159,8 +159,8 @@ class TestProvenanceGate:
         (case_dir / "findings.json").write_text("[]")
         (case_dir / "timeline.json").write_text("[]")
 
-        monkeypatch.setenv("AIIR_CASES_DIR", str(cases_dir))
-        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        monkeypatch.setenv("VHIR_CASES_DIR", str(cases_dir))
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
 
         mgr = CaseManager()
         mgr._active_case_id = "test-case"
@@ -277,7 +277,7 @@ class TestProvenanceGate:
         assert result["status"] == "STAGED"
         # Verify the stored command has truncated output
         findings = json.loads(
-            (Path(os.environ["AIIR_CASE_DIR"]) / "findings.json").read_text()
+            (Path(os.environ["VHIR_CASE_DIR"]) / "findings.json").read_text()
         )
         stored_cmd = findings[0]["supporting_commands"][0]
         assert len(stored_cmd["output_excerpt"]) == 2000
@@ -293,9 +293,9 @@ class TestFieldAllowlist:
 
     @pytest.fixture
     def manager(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
-        monkeypatch.delenv("AIIR_AUDIT_DIR", raising=False)
-        monkeypatch.delenv("AIIR_ACTIVE_CASE", raising=False)
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
+        monkeypatch.delenv("VHIR_AUDIT_DIR", raising=False)
+        monkeypatch.delenv("VHIR_ACTIVE_CASE", raising=False)
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
 
         from forensic_mcp.case.manager import CaseManager
@@ -319,8 +319,8 @@ class TestFieldAllowlist:
             json.dumps(audit_entry) + "\n"
         )
 
-        monkeypatch.setenv("AIIR_CASES_DIR", str(cases_dir))
-        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        monkeypatch.setenv("VHIR_CASES_DIR", str(cases_dir))
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
 
         mgr = CaseManager()
         mgr._active_case_id = "test-case"
@@ -343,7 +343,7 @@ class TestFieldAllowlist:
         finding = {**self._finding_with_evidence(), "id": "F-attacker-999"}
         result = manager.record_finding(finding)
         assert result["status"] == "STAGED"
-        case_dir = Path(os.environ["AIIR_CASE_DIR"])
+        case_dir = Path(os.environ["VHIR_CASE_DIR"])
         findings = json.loads((case_dir / "findings.json").read_text())
         assert findings[0]["id"] != "F-attacker-999"
         assert findings[0]["id"].startswith("F-tester-")
@@ -353,7 +353,7 @@ class TestFieldAllowlist:
         finding = {**self._finding_with_evidence(), "status": "CONFIRMED"}
         result = manager.record_finding(finding)
         assert result["status"] == "STAGED"
-        case_dir = Path(os.environ["AIIR_CASE_DIR"])
+        case_dir = Path(os.environ["VHIR_CASE_DIR"])
         findings = json.loads((case_dir / "findings.json").read_text())
         assert findings[0]["status"] == "DRAFT"
 
@@ -362,7 +362,7 @@ class TestFieldAllowlist:
         finding = {**self._finding_with_evidence(), "content_hash": "fakehash123"}
         result = manager.record_finding(finding)
         assert result["status"] == "STAGED"
-        case_dir = Path(os.environ["AIIR_CASE_DIR"])
+        case_dir = Path(os.environ["VHIR_CASE_DIR"])
         findings = json.loads((case_dir / "findings.json").read_text())
         assert findings[0]["content_hash"] != "fakehash123"
 
@@ -371,7 +371,7 @@ class TestFieldAllowlist:
         finding = {**self._finding_with_evidence(), "provenance": "MCP"}
         result = manager.record_finding(finding)
         assert result["status"] == "STAGED"
-        case_dir = Path(os.environ["AIIR_CASE_DIR"])
+        case_dir = Path(os.environ["VHIR_CASE_DIR"])
         findings = json.loads((case_dir / "findings.json").read_text())
         # Provenance is set by the system, not user input
         assert findings[0]["provenance"] in ("MCP", "HOOK", "MIXED", "NONE", "SHELL")
@@ -381,7 +381,7 @@ class TestFieldAllowlist:
         finding = {**self._finding_with_evidence(), "examiner": "admin"}
         result = manager.record_finding(finding)
         assert result["status"] == "STAGED"
-        case_dir = Path(os.environ["AIIR_CASE_DIR"])
+        case_dir = Path(os.environ["VHIR_CASE_DIR"])
         findings = json.loads((case_dir / "findings.json").read_text())
         assert findings[0]["examiner"] == "tester"
 
@@ -390,7 +390,7 @@ class TestFieldAllowlist:
         finding = {**self._finding_with_evidence(), "staged": "2020-01-01T00:00:00"}
         result = manager.record_finding(finding)
         assert result["status"] == "STAGED"
-        case_dir = Path(os.environ["AIIR_CASE_DIR"])
+        case_dir = Path(os.environ["VHIR_CASE_DIR"])
         findings = json.loads((case_dir / "findings.json").read_text())
         assert findings[0]["staged"] != "2020-01-01T00:00:00"
 
@@ -404,7 +404,7 @@ class TestFieldAllowlist:
         }
         result = manager.record_finding(finding)
         assert result["status"] == "STAGED"
-        case_dir = Path(os.environ["AIIR_CASE_DIR"])
+        case_dir = Path(os.environ["VHIR_CASE_DIR"])
         findings = json.loads((case_dir / "findings.json").read_text())
         assert "__proto__" not in findings[0]
         assert "_internal" not in findings[0]
@@ -424,9 +424,9 @@ class TestGatewayAuthTimingSafety:
         from sift_gateway.auth import AuthMiddleware
 
         api_keys = {
-            f"aiir_gw_{'a' * 24}": {"examiner": "first", "role": "examiner"},
-            f"aiir_gw_{'b' * 24}": {"examiner": "second", "role": "examiner"},
-            f"aiir_gw_{'c' * 24}": {"examiner": "third", "role": "examiner"},
+            f"vhir_gw_{'a' * 24}": {"examiner": "first", "role": "examiner"},
+            f"vhir_gw_{'b' * 24}": {"examiner": "second", "role": "examiner"},
+            f"vhir_gw_{'c' * 24}": {"examiner": "third", "role": "examiner"},
         }
         middleware = AuthMiddleware(app=MagicMock(), api_keys=api_keys)
 
@@ -440,7 +440,7 @@ class TestGatewayAuthTimingSafety:
             call_count += 1
             return original_compare(a, b)
 
-        token = f"aiir_gw_{'a' * 24}"  # matches first key
+        token = f"vhir_gw_{'a' * 24}"  # matches first key
         with patch("hmac.compare_digest", side_effect=counting_compare):
             matched_key = None
             for candidate in api_keys:

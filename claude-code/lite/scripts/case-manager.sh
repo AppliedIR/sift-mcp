@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# case-manager.sh — Deterministic case management for AIIR Lite.
+# case-manager.sh — Deterministic case management for ValiHuntIR Lite.
 # Called by the /case skill. All file operations happen here so the
 # LLM never writes state files, directories, or CASE.yaml directly.
 set -euo pipefail
 
-STATE_FILE="$HOME/.aiir/active_case"
+STATE_FILE="$HOME/.vhir/active_case"
 CASES_DIR="$PWD/cases"
 TEMPLATES_DIR="$CASES_DIR/.templates"
 

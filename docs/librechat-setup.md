@@ -1,7 +1,7 @@
-# LibreChat Setup Guide for AIIR
+# LibreChat Setup Guide for ValiHuntIR
 
-Configure LibreChat as an AIIR forensic investigation client. LibreChat
-connects to the AIIR gateway via MCP (streamable-http) and gets per-backend
+Configure LibreChat as an ValiHuntIR forensic investigation client. LibreChat
+connects to the ValiHuntIR gateway via MCP (streamable-http) and gets per-backend
 forensic discipline instructions automatically.
 
 **Minimum version:** v0.8.3+ recommended (streamable-http reconnection fix,
@@ -9,7 +9,7 @@ deferred tool loading). Currently v0.8.3-rc1 — use v0.8.3+ when available.
 
 ## Two-Mode Architecture
 
-LibreChat operates in two modes with AIIR. Understanding this split is
+LibreChat operates in two modes with ValiHuntIR. Understanding this split is
 essential for correct setup.
 
 **Standard mode** uses the `modelSpecs` preset. The `promptPrefix` injects
@@ -31,8 +31,8 @@ Use Agents mode for investigations. Standard mode works as a quick fallback.
 
 ## Prerequisites
 
-1. AIIR gateway running (`aiir service status` shows backends healthy)
-2. Bearer token from `~/.aiir/gateway.yaml`
+1. ValiHuntIR gateway running (`vhir service status` shows backends healthy)
+2. Bearer token from `~/.vhir/gateway.yaml`
 3. LibreChat v0.8.3+ with MCP support enabled
 
 ## Quick Start
@@ -40,14 +40,14 @@ Use Agents mode for investigations. Standard mode works as a quick fallback.
 Generate a starting config:
 
 ```
-aiir setup client --client=librechat --sift-url=http://localhost:4508
+vhir setup client --client=librechat --sift-url=http://localhost:4508
 ```
 
 This creates `librechat_mcp.yaml` with per-backend MCP entries, timeouts,
 initTimeout, allowedDomains, and model settings. Merge it into your
 `librechat.yaml`.
 
-After merging, create an AIIR Investigation agent (see "Creating an AIIR
+After merging, create an ValiHuntIR Investigation agent (see "Creating an ValiHuntIR
 Agent" below). The generated config handles standard mode. Agents mode
 requires manual setup in the UI.
 
@@ -164,14 +164,14 @@ goes in Agent Instructions instead.
 ```
 modelSpecs:
   list:
-    - spec: aiir-investigation
-      name: "AIIR Investigation"
+    - spec: vhir-investigation
+      name: "ValiHuntIR Investigation"
       preset:
         endpoint: "anthropic"  # change if using azureOpenAI, bedrock, etc.
         maxContextTokens: 200000   # full Claude context window
         maxOutputTokens: 16384     # forensic analysis needs long output
         greeting: |
-          AIIR Investigation workspace ready. Connected backends and forensic
+          ValiHuntIR Investigation workspace ready. Connected backends and forensic
           discipline are active. Start with your investigation objective or
           evidence to analyze. All findings stage as DRAFT for your review.
         promptPrefix: |
@@ -198,7 +198,7 @@ in the modelSpec above. In Agents mode, use the lean Agent Instructions
 instead (see below).
 
 ```
-You are an IR analyst orchestrating forensic investigations on an AIIR workstation. Evidence guides theory, never the reverse.
+You are an IR analyst orchestrating forensic investigations on an ValiHuntIR workstation. Evidence guides theory, never the reverse.
 
 EVIDENCE PRESENTATION: Every finding must include: (1) Source — artifact file path. (2) Extraction — tool and command. (3) Content — actual log entry or record, never a summary. (4) Observation — factual. (5) Interpretation — analytical, clearly labeled. (6) Confidence — SPECULATIVE/LOW/MEDIUM/HIGH with justification. If you cannot show the evidence, you cannot make the claim.
 
@@ -225,8 +225,8 @@ For Claude models that support extended thinking, add these settings to a
 separate modelSpec preset:
 
 ```
-    - spec: aiir-investigation-thinking
-      name: "AIIR Investigation (Thinking)"
+    - spec: vhir-investigation-thinking
+      name: "ValiHuntIR Investigation (Thinking)"
       preset:
         endpoint: "anthropic"
         thinking: true
@@ -265,10 +265,10 @@ This matters because LibreChat supports MCP tools only — not resources.
 Without `--deferred-tools`, the LLM cannot access methodology, validation
 schemas, or playbooks.
 
-Verify with `aiir service status` — forensic-mcp should show 26 tools
+Verify with `vhir service status` — forensic-mcp should show 26 tools
 (12 base + 14 deferred).
 
-## Creating an AIIR Agent (Step-by-Step)
+## Creating an ValiHuntIR Agent (Step-by-Step)
 
 This is the single most important setup step. Agents mode with deferred
 loading is the biggest performance lever for LibreChat.
@@ -276,12 +276,12 @@ loading is the biggest performance lever for LibreChat.
 1. Open LibreChat, click the Agents panel, click Create Agent.
 
 2. Set the fields:
-   - **Name:** AIIR Investigation
+   - **Name:** ValiHuntIR Investigation
    - **Model:** claude-sonnet-4-6 (or your preferred Claude model)
    - **Instructions:** paste the Agent Instructions text below
    - **Tool Search:** ON
 
-3. Add MCP Servers: select all AIIR backends (forensic-mcp, sift-mcp,
+3. Add MCP Servers: select all ValiHuntIR backends (forensic-mcp, sift-mcp,
    case-mcp, report-mcp, forensic-rag-mcp, windows-triage-mcp, opencti-mcp).
 
 4. Configure deferred loading: for each backend's tools, click the clock
@@ -312,7 +312,7 @@ per-backend MCP instructions (tier 3) which are delivered automatically
 via `serverInstructions`.
 
 ```
-You are an incident response analyst on the AIIR forensic investigation platform.
+You are an incident response analyst on the ValiHuntIR forensic investigation platform.
 
 INVESTIGATION WORKFLOW
 Plan before acting. For any multi-step task, list your planned steps, then execute. The examiner monitors your progress and can redirect at any time.
@@ -378,7 +378,7 @@ concluding anything is malicious.
 ### Reporting Agent Instructions
 
 ```
-You are generating an incident response report using the AIIR platform.
+You are generating an incident response report using the ValiHuntIR platform.
 Only approved findings and timeline events appear in reports. Use
 search_knowledge for IR writing best practices. Use generate_report to
 draft, then save_report to persist. Set case metadata as information emerges.
@@ -425,7 +425,7 @@ default behavior.
 
 Users can create browser bookmarks for different investigation modes:
 
-- `?spec=aiir-investigation` — loads the modelSpec preset (standard mode)
+- `?spec=vhir-investigation` — loads the modelSpec preset (standard mode)
 - `?agent_id=<id>` — loads a specific agent directly
 - `?prompt=Analyze+this+evidence&submit=true` — pre-fills and auto-submits
 
@@ -463,9 +463,9 @@ first connection. Default LibreChat initTimeout is 10s — too short.
 
 ### Missing backends in tool list
 
-Run `aiir service status` to check which backends are running. Non-started
+Run `vhir service status` to check which backends are running. Non-started
 backends are excluded from generated configs. Start them with
-`aiir service start` and re-run `aiir setup client --client=librechat`.
+`vhir service start` and re-run `vhir setup client --client=librechat`.
 
 ### Timeouts on forensic tools
 
@@ -488,7 +488,7 @@ MCP resources which LibreChat cannot see.
 ## Auto-Generation
 
 ```
-aiir setup client --client=librechat --sift-url=http://localhost:4508
+vhir setup client --client=librechat --sift-url=http://localhost:4508
 ```
 
 Generates `librechat_mcp.yaml` with:
@@ -498,5 +498,5 @@ Generates `librechat_mcp.yaml` with:
 - `endpoints.agents.recursionLimit: 75`
 
 Users must create agents manually (UI only — no YAML config for agents).
-The generated config handles standard mode. Follow the "Creating an AIIR
+The generated config handles standard mode. Follow the "Creating an ValiHuntIR
 Agent" section above for agents mode setup.

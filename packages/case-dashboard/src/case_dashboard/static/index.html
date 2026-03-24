@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:">
-<title>AIIR Case Dashboard</title>
+<title>ValiHuntIR Case Dashboard</title>
 <style>
 :root {
   --bg-primary: #0f172a;
@@ -427,7 +427,7 @@ body {
   <!-- Header -->
   <div class="header">
     <div class="header-row">
-      <span class="header-title" id="headerTitle">AIIR Case Dashboard</span>
+      <span class="header-title" id="headerTitle">ValiHuntIR Case Dashboard</span>
       <div class="header-actions">
         <button id="btnRefresh" title="Refresh findings">&#8635; Refresh</button>
         <span id="refreshBadge" class="refresh-badge" style="display:none"></span>
@@ -606,7 +606,7 @@ body {
     <button id="commitBtn" class="btn-primary" onclick="openCommitDialog()"
       style="font-size:12px;padding:4px 12px" disabled>Commit</button>
     <span id="footerHint" style="font-size:11px;color:var(--text-muted)">
-      Or terminal: <code>aiir approve --review</code></span>
+      Or terminal: <code>vhir approve --review</code></span>
     <span id="footerShortcuts" style="cursor:pointer">? Shortcuts</span>
   </div>
 </div>
@@ -717,10 +717,10 @@ let batchTimelineSelected = new Set();
   const hash = window.location.hash;
   if (hash.startsWith('#token=')) {
     token = hash.slice(7);
-    try { sessionStorage.setItem('aiir_dashboard_token', token); } catch (e) {}
+    try { sessionStorage.setItem('vhir_dashboard_token', token); } catch (e) {}
     history.replaceState(null, '', window.location.pathname + window.location.search);
   } else {
-    try { token = sessionStorage.getItem('aiir_dashboard_token'); } catch (e) {}
+    try { token = sessionStorage.getItem('vhir_dashboard_token'); } catch (e) {}
   }
 })();
 
@@ -773,8 +773,8 @@ async function loadAll() {
     caseMeta = c || {};
     auditCache = {};
     if (caseMeta.case_id) {
-      document.getElementById('headerTitle').textContent = 'AIIR \u2014 ' + caseMeta.case_id;
-      document.title = 'AIIR \u2014 ' + caseMeta.case_id;
+      document.getElementById('headerTitle').textContent = 'ValiHuntIR \u2014 ' + caseMeta.case_id;
+      document.title = 'ValiHuntIR \u2014 ' + caseMeta.case_id;
       if (!delta.case_id) delta.case_id = caseMeta.case_id;
     }
     populateExaminerFilter();
@@ -810,7 +810,7 @@ function showEmptyOrFirst() {
     });
     if (allReviewed && currentFilter === 'pending') {
       document.getElementById('emptyState').innerHTML =
-        '<h2>No pending findings remaining</h2><p>Run <code>aiir approve --review</code> in your terminal to commit.</p>';
+        '<h2>No pending findings remaining</h2><p>Run <code>vhir approve --review</code> in your terminal to commit.</p>';
     } else {
       document.getElementById('emptyState').innerHTML =
         '<h2>No findings match current filter</h2><p>Try changing the filter or search.</p>';
@@ -1915,14 +1915,14 @@ function formatTimeShort(iso) {
 
 /* === Theme === */
 function initTheme() {
-  const saved = localStorage.getItem('aiir-theme');
+  const saved = localStorage.getItem('vhir-theme');
   if (saved === 'light') document.body.classList.add('light');
   updateThemeButton();
 }
 
 function toggleTheme() {
   document.body.classList.toggle('light');
-  localStorage.setItem('aiir-theme', document.body.classList.contains('light') ? 'light' : 'dark');
+  localStorage.setItem('vhir-theme', document.body.classList.contains('light') ? 'light' : 'dark');
   updateThemeButton();
 }
 
@@ -2549,7 +2549,7 @@ function renderTimeline() {
   }
   if (filtered.length === 0) {
     var msg = timelineFilter === 'pending'
-      ? 'No pending events remaining. Run <code>aiir approve --review</code> to apply.'
+      ? 'No pending events remaining. Run <code>vhir approve --review</code> to apply.'
       : 'No events match current filters.';
     container.innerHTML = '<div class="tl-empty"><h2>' + msg + '</h2></div>';
     updateTimelineSummary();

@@ -73,7 +73,7 @@ class TestGenericRunCommand:
         (case_dir / "CASE.yaml").write_text("case_id: test\n")
         evidence_dir = case_dir / "evidence"
         evidence_dir.mkdir()
-        monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
         with pytest.raises(ValueError, match="case evidence"):
             run_command(["rm", "-rf", str(evidence_dir)])
 

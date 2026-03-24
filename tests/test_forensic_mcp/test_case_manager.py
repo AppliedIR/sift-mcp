@@ -54,11 +54,11 @@ def _seed_audit_entries(audit_dir: Path) -> None:
 @pytest.fixture
 def manager(tmp_path, monkeypatch):
     """CaseManager with temp cases directory."""
-    monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
-    monkeypatch.setenv("AIIR_EXAMINER", "tester")
-    monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
-    monkeypatch.delenv("AIIR_ACTIVE_CASE", raising=False)
-    # Isolate from real ~/.aiir/active_case
+    monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
+    monkeypatch.setenv("VHIR_EXAMINER", "tester")
+    monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
+    monkeypatch.delenv("VHIR_ACTIVE_CASE", raising=False)
+    # Isolate from real ~/.vhir/active_case
     monkeypatch.setenv("HOME", str(tmp_path))
     mgr = CaseManager()
     return mgr
@@ -94,8 +94,8 @@ def active_case(manager, tmp_path, monkeypatch):
     (case_dir / "evidence.json").write_text('{"files": []}')
     manager._active_case_id = case_id
     manager._active_case_path = case_dir
-    monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
-    monkeypatch.setenv("AIIR_ACTIVE_CASE", case_id)
+    monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
+    monkeypatch.setenv("VHIR_ACTIVE_CASE", case_id)
     return {
         "case_id": case_id,
         "path": str(case_dir),
@@ -136,31 +136,31 @@ class TestCaseLifecycle:
             manager._require_active_case()
 
     def test_init_reads_active_case_from_env(self, tmp_path, monkeypatch):
-        """AIIR_ACTIVE_CASE env var activates an existing case on __init__."""
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        """VHIR_ACTIVE_CASE env var activates an existing case on __init__."""
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         # Create a case directory manually
         case_id = "INC-2026-0223120000"
         case_dir = tmp_path / case_id
         case_dir.mkdir()
-        monkeypatch.setenv("AIIR_ACTIVE_CASE", case_id)
+        monkeypatch.setenv("VHIR_ACTIVE_CASE", case_id)
         mgr = CaseManager()
         assert mgr._active_case_id == case_id
-        assert os.environ.get("AIIR_CASE_DIR") == str(case_dir)
+        assert os.environ.get("VHIR_CASE_DIR") == str(case_dir)
 
     def test_init_ignores_missing_case_dir(self, tmp_path, monkeypatch):
-        """AIIR_ACTIVE_CASE pointing to non-existent dir is ignored."""
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
-        monkeypatch.setenv("AIIR_ACTIVE_CASE", "INC-NONEXISTENT")
+        """VHIR_ACTIVE_CASE pointing to non-existent dir is ignored."""
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_ACTIVE_CASE", "INC-NONEXISTENT")
         mgr = CaseManager()
         assert mgr._active_case_id is None
 
     def test_init_ignores_invalid_case_id(self, tmp_path, monkeypatch):
-        """AIIR_ACTIVE_CASE with path traversal is rejected."""
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
-        monkeypatch.setenv("AIIR_ACTIVE_CASE", "../etc/passwd")
+        """VHIR_ACTIVE_CASE with path traversal is rejected."""
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_ACTIVE_CASE", "../etc/passwd")
         mgr = CaseManager()
         assert mgr._active_case_id is None
 
@@ -368,7 +368,7 @@ class TestTodos:
 
 class TestMultiExaminer:
     def test_finding_tracks_created_by(self, manager, active_case):
-        """created_by is set from resolve_examiner() (AIIR_EXAMINER)."""
+        """created_by is set from resolve_examiner() (VHIR_EXAMINER)."""
         finding = {
             "title": "Test",
             "audit_ids": ["ev-tester-20260225-001"],
@@ -383,8 +383,8 @@ class TestMultiExaminer:
         assert findings[0]["created_by"] == "tester"
 
     def test_finding_examiner_identity(self, manager, active_case, monkeypatch):
-        """Changing AIIR_EXAMINER changes created_by identity."""
-        monkeypatch.setenv("AIIR_EXAMINER", "steve")
+        """Changing VHIR_EXAMINER changes created_by identity."""
+        monkeypatch.setenv("VHIR_EXAMINER", "steve")
 
         finding = {
             "title": "Test",
@@ -426,7 +426,7 @@ class TestMultiExaminer:
         manager.record_finding(finding)
 
         # Switch to alice
-        monkeypatch.setenv("AIIR_EXAMINER", "alice")
+        monkeypatch.setenv("VHIR_EXAMINER", "alice")
         manager.record_finding({**finding, "title": "Second"})
 
         # Both should be in the same findings.json

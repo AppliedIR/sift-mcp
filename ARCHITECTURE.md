@@ -1,4 +1,4 @@
-# AIIR Platform Architecture
+# ValiHuntIR Platform Architecture
 
 **Status:** Definitive reference for what is built. Not aspirational.
 **Last updated:** 2026-02-25
@@ -13,8 +13,8 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 2. **The gateway runs on the SIFT workstation.** It is not optional — even solo analysts use it (on localhost). It aggregates all SIFT-local MCPs behind one HTTP endpoint.
 3. **wintools-mcp runs on a Windows machine.** It is independent of the gateway. The gateway does not manage, proxy, or coordinate with wintools-mcp in any way.
 4. **Clients connect to two endpoints at most:** the gateway (for all SIFT tools) and wintools-mcp (for Windows tools). These are separate, unrelated connections.
-5. **The case directory is local per examiner.** Each examiner has their own flat case directory on their SIFT machine. forensic-mcp and the aiir CLI both read and write it. Multi-examiner collaboration uses export/merge (not shared filesystem).
-6. **Human approval is structural.** Findings stage as DRAFT. Only the aiir CLI (human, interactive, /dev/tty) can move them to APPROVED or REJECTED. The AI cannot approve its own work.
+5. **The case directory is local per examiner.** Each examiner has their own flat case directory on their SIFT machine. forensic-mcp and the vhir CLI both read and write it. Multi-examiner collaboration uses export/merge (not shared filesystem).
+6. **Human approval is structural.** Findings stage as DRAFT. Only the vhir CLI (human, interactive, /dev/tty) can move them to APPROVED or REJECTED. The AI cannot approve its own work.
 7. **AGENTS.md is the source of truth for forensic rules.** It is LLM-agnostic. Per-client config files (CLAUDE.md) are copies/derivatives, not sources.
 8. **forensic-knowledge is a shared data package.** It is a pip-installable YAML package. forensic-mcp, sift-mcp, and wintools-mcp all depend on it. It has no runtime state.
 
@@ -36,7 +36,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | opencti-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | case-dashboard | SIFT | — | (via gateway /portal/) | — |
 | wintools-mcp | Windows | 4624 | Streamable HTTP MCP | — |
-| aiir CLI | SIFT | — | — (filesystem) | — |
+| vhir CLI | SIFT | — | — (filesystem) | — |
 | sift-common | SIFT | — | — (internal package) | — |
 | forensic-knowledge | anywhere | — | — (pip package) | — |
 
@@ -53,7 +53,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | **windows-triage-mcp** | Offline Windows baseline validation. Checks files, processes, services, scheduled tasks, registry, DLLs, pipes against known-good databases. |
 | **opencti-mcp** | Read-only threat intelligence from OpenCTI. IOC lookup, threat actor search, malware search, MITRE technique search. 10 tools. |
 | **wintools-mcp** | Catalog-gated forensic tool execution on Windows. Zimmerman suite, Hayabusa. FK-enriched response envelopes. Denylist blocks dangerous binaries. 7 tools, 31 catalog entries. |
-| **aiir CLI** | Human-only actions: approve/reject findings, review case status, manage evidence, generate reports, audit trail queries, case lifecycle (init/close/activate/migrate), execute forensic commands with audit trail, configure examiner identity. Not callable by AI. |
+| **vhir CLI** | Human-only actions: approve/reject findings, review case status, manage evidence, generate reports, audit trail queries, case lifecycle (init/close/activate/migrate), execute forensic commands with audit trail, configure examiner identity. Not callable by AI. |
 | **sift-common** | Shared internal package. Canonical AuditWriter, operational logging (oplog), CSV/JSON/text output parsers. Used by all SIFT MCPs. |
 | **case-dashboard** (Examiner Portal) | 8-tab browser review UI mounted at `/portal/` on the gateway. Tabs: overview, findings (with provenance chain), timeline (with ruler), hosts, accounts, evidence verification, IOCs, TODOs. Keyboard shortcuts, search, resizable sidebar, light/dark theme, auto-refresh, challenge-response commit. |
 | **forensic-knowledge** | Shared YAML data package. Tool guidance, artifact knowledge, discipline rules, playbooks, collection checklists. No runtime state. |
@@ -64,7 +64,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 
 ### Solo analyst
 
-One SIFT workstation. The LLM client and aiir CLI both run on SIFT.
+One SIFT workstation. The LLM client and vhir CLI both run on SIFT.
 
 ```
 ┌─────────────────────── SIFT Workstation ───────────────────────┐
@@ -75,21 +75,21 @@ One SIFT workstation. The LLM client and aiir CLI both run on SIFT.
 │                                      │                         │
 │                                  SIFT MCPs                     │
 │                                      │                         │
-│  aiir CLI ──filesystem──► Case Directory ◄── forensic-mcp ─────┘
+│  vhir CLI ──filesystem──► Case Directory ◄── forensic-mcp ─────┘
 │                                                                │
 └────────────────────────────────────────────────────────────────┘
 ```
 
 ### SIFT + Windows
 
-SIFT workstation + Windows forensic VM. The LLM client and aiir CLI run on SIFT. wintools-mcp runs on the Windows box and accesses the case directory over SMB. The LLM client makes two separate HTTP connections: one to the gateway (SIFT tools) and one to wintools-mcp (Windows tools).
+SIFT workstation + Windows forensic VM. The LLM client and vhir CLI run on SIFT. wintools-mcp runs on the Windows box and accesses the case directory over SMB. The LLM client makes two separate HTTP connections: one to the gateway (SIFT tools) and one to wintools-mcp (Windows tools).
 
 ```
 ┌─────────────────────── SIFT Workstation ───────────────────────┐
 │                                                                │
 │  LLM Client ──streamable-http──► sift-gateway :4508 ──► MCPs  │
 │                                                                │
-│  aiir CLI ──filesystem──► Case Directory                       │
+│  vhir CLI ──filesystem──► Case Directory                       │
 │                                                                │
 └────────────────────────────────────────────────────────────────┘
 
@@ -106,11 +106,11 @@ LLM Client ──streamable-http──► wintools-mcp :4624
 
 ### Multi-examiner
 
-Multiple examiners work the same case. Each examiner runs their own full stack (LLM client, aiir CLI, sift-gateway, and all MCPs) on their own SIFT workstation with a local case directory. Collaboration is merge-based: examiners export findings/timeline as JSON and import each other's contributions using last-write-wins dedup.
+Multiple examiners work the same case. Each examiner runs their own full stack (LLM client, vhir CLI, sift-gateway, and all MCPs) on their own SIFT workstation with a local case directory. Collaboration is merge-based: examiners export findings/timeline as JSON and import each other's contributions using last-write-wins dedup.
 
 ```
 ┌─ Examiner 1 — SIFT Workstation ─┐
-│ LLM Client + aiir CLI            │
+│ LLM Client + vhir CLI            │
 │ sift-gateway :4508 ──► MCPs      │
 │ Case Directory (local)            │
 └───────────────────────────────────┘
@@ -118,7 +118,7 @@ Multiple examiners work the same case. Each examiner runs their own full stack (
         │  export / merge (JSON files)
         │
 ┌─ Examiner 2 — SIFT Workstation ─┐
-│ LLM Client + aiir CLI            │
+│ LLM Client + vhir CLI            │
 │ sift-gateway :4508 ──► MCPs      │
 │ Case Directory (local)            │
 └───────────────────────────────────┘
@@ -190,9 +190,9 @@ Authentication at both endpoints uses ASGI-level wrappers (not Starlette `BaseHT
 Resolution order (highest priority first):
 
 1. `--examiner` CLI flag
-2. `AIIR_EXAMINER` environment variable
-3. `~/.aiir/config.yaml` examiner field
-4. `AIIR_ANALYST` environment variable (deprecated)
+2. `VHIR_EXAMINER` environment variable
+3. `~/.vhir/config.yaml` examiner field
+4. `VHIR_ANALYST` environment variable (deprecated)
 5. OS username (fallback, warns if unconfigured)
 
 The gateway maps API keys to examiner identities in `gateway.yaml`. The examiner name is injected into forensic-mcp tool calls for audit trail attribution.
@@ -201,24 +201,24 @@ The gateway maps API keys to examiner identities in `gateway.yaml`. The examiner
 
 ## Client Configuration
 
-`aiir setup client` generates Streamable HTTP configs. All entries use `"type": "streamable-http"`.
+`vhir setup client` generates Streamable HTTP configs. All entries use `"type": "streamable-http"`.
 
 ```bash
 # Solo (gateway on localhost)
-aiir setup client --sift=http://127.0.0.1:4508 --client=claude-code -y
+vhir setup client --sift=http://127.0.0.1:4508 --client=claude-code -y
 
 # SIFT + Windows
-aiir setup client --sift=http://SIFT_IP:4508 --windows=WIN_IP:4624
+vhir setup client --sift=http://SIFT_IP:4508 --windows=WIN_IP:4624
 
 # Interactive wizard
-aiir setup client
+vhir setup client
 ```
 
 Generated `.mcp.json` example:
 ```json
 {
   "mcpServers": {
-    "aiir": {
+    "vhir": {
       "type": "streamable-http",
       "url": "http://127.0.0.1:4508/mcp"
     },
@@ -238,6 +238,6 @@ Generated `.mcp.json` example:
 |------|--------|---------|
 | [sift-mcp](https://github.com/AppliedIR/sift-mcp) | AppliedIR/sift-mcp | SIFT monorepo: 11 packages (forensic-mcp, case-mcp, report-mcp, sift-mcp, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, sift-common, case-dashboard), SIFT installer, platform docs |
 | [wintools-mcp](https://github.com/AppliedIR/wintools-mcp) | AppliedIR/wintools-mcp | Windows tool execution MCP + Windows installer |
-| [aiir](https://github.com/AppliedIR/aiir) | AppliedIR/aiir | CLI + this architecture doc |
+| [vhir](https://github.com/AppliedIR/vhir) | AppliedIR/vhir | CLI + this architecture doc |
 
 Public repos under the AppliedIR GitHub org.

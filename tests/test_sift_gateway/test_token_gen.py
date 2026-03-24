@@ -6,7 +6,7 @@ from sift_gateway.token_gen import generate_gateway_token
 class TestGenerateGatewayToken:
     def test_prefix(self):
         token = generate_gateway_token()
-        assert token.startswith("aiir_gw_")
+        assert token.startswith("vhir_gw_")
 
     def test_length(self):
         token = generate_gateway_token()
@@ -18,5 +18,5 @@ class TestGenerateGatewayToken:
 
     def test_hex_suffix(self):
         token = generate_gateway_token()
-        suffix = token[8:]  # strip "aiir_gw_"
+        suffix = token[8:]  # strip "vhir_gw_"
         int(suffix, 16)  # should not raise

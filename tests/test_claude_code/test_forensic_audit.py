@@ -18,9 +18,9 @@ def _make_active_case(tmp_path):
     """Create active case directory and pointer file."""
     case_dir = tmp_path / "cases" / "INC-TEST"
     case_dir.mkdir(parents=True)
-    aiir_dir = tmp_path / ".aiir"
-    aiir_dir.mkdir(parents=True, exist_ok=True)
-    (aiir_dir / "active_case").write_text(str(case_dir))
+    vhir_dir = tmp_path / ".vhir"
+    vhir_dir.mkdir(parents=True, exist_ok=True)
+    (vhir_dir / "active_case").write_text(str(case_dir))
     return case_dir
 
 
@@ -37,13 +37,13 @@ def _run_hook(stdin_data: str, env: dict) -> subprocess.CompletedProcess:
 
 
 def _make_env(tmp_path, examiner="tester"):
-    """Build env dict overriding HOME and AIIR_EXAMINER."""
+    """Build env dict overriding HOME and VHIR_EXAMINER."""
     env = dict(os.environ)
     env["HOME"] = str(tmp_path)
-    env["AIIR_EXAMINER"] = examiner
+    env["VHIR_EXAMINER"] = examiner
     # Remove env vars that would override active_case file resolution
-    env.pop("AIIR_CASE_DIR", None)
-    env.pop("AIIR_AUDIT_DIR", None)
+    env.pop("VHIR_CASE_DIR", None)
+    env.pop("VHIR_AUDIT_DIR", None)
     return env
 
 
@@ -114,41 +114,41 @@ class TestWithActiveCase:
         assert len(entry["output_excerpt"]) <= 2000
 
 
-class TestAiirCaseDirEnvVar:
+class TestVhirCaseDirEnvVar:
     def test_env_var_takes_priority(self, tmp_path):
-        """AIIR_CASE_DIR should be used instead of ~/.aiir/active_case."""
+        """VHIR_CASE_DIR should be used instead of ~/.vhir/active_case."""
         # Set up active_case pointing to one dir
         file_case = _make_active_case(tmp_path)
-        # Set up AIIR_CASE_DIR pointing to another dir
+        # Set up VHIR_CASE_DIR pointing to another dir
         env_case = tmp_path / "env-case"
         env_case.mkdir(parents=True)
         env = _make_env(tmp_path)
-        env["AIIR_CASE_DIR"] = str(env_case)
+        env["VHIR_CASE_DIR"] = str(env_case)
         result = _run_hook(_hook_input(), env)
         assert result.returncode == 0
-        # Audit should be in AIIR_CASE_DIR, not active_case dir
+        # Audit should be in VHIR_CASE_DIR, not active_case dir
         assert (env_case / "audit" / "claude-code.jsonl").exists()
         assert not (file_case / "audit").exists()
 
     def test_env_var_without_active_case_file(self, tmp_path):
-        """AIIR_CASE_DIR works even without ~/.aiir/active_case."""
+        """VHIR_CASE_DIR works even without ~/.vhir/active_case."""
         env_case = tmp_path / "env-case"
         env_case.mkdir(parents=True)
         env = _make_env(tmp_path)
-        env["AIIR_CASE_DIR"] = str(env_case)
+        env["VHIR_CASE_DIR"] = str(env_case)
         result = _run_hook(_hook_input(), env)
         assert result.returncode == 0
         assert (env_case / "audit" / "claude-code.jsonl").exists()
 
     def test_audit_dir_override(self, tmp_path):
-        """AIIR_AUDIT_DIR overrides the default case_dir/audit path."""
+        """VHIR_AUDIT_DIR overrides the default case_dir/audit path."""
         env_case = tmp_path / "env-case"
         env_case.mkdir(parents=True)
         custom_audit = tmp_path / "custom-audit"
         custom_audit.mkdir(parents=True)
         env = _make_env(tmp_path)
-        env["AIIR_CASE_DIR"] = str(env_case)
-        env["AIIR_AUDIT_DIR"] = str(custom_audit)
+        env["VHIR_CASE_DIR"] = str(env_case)
+        env["VHIR_AUDIT_DIR"] = str(custom_audit)
         result = _run_hook(_hook_input(), env)
         assert result.returncode == 0
         assert (custom_audit / "claude-code.jsonl").exists()

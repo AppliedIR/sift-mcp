@@ -81,19 +81,19 @@ class TestSetupLogging:
     def test_file_handler_creates_log(self, tmp_path, monkeypatch):
         monkeypatch.setattr("sift_common.oplog.Path.home", lambda: tmp_path)
         setup_logging("test-file-svc", log_to_file=True)
-        log_file = tmp_path / ".aiir" / "logs" / "test-file-svc.jsonl"
+        log_file = tmp_path / ".vhir" / "logs" / "test-file-svc.jsonl"
         assert log_file.parent.exists()
         logger = logging.getLogger("test_file_svc")
         assert len(logger.handlers) == 2  # stderr + file
 
     def test_env_var_controls_format(self, monkeypatch):
-        monkeypatch.setenv("AIIR_LOG_FORMAT", "text")
+        monkeypatch.setenv("VHIR_LOG_FORMAT", "text")
         setup_logging("test-env-fmt", log_to_file=False)
         logger = logging.getLogger("test_env_fmt")
         assert not isinstance(logger.handlers[0].formatter, _StructuredFormatter)
 
     def test_env_var_controls_file(self, monkeypatch):
-        monkeypatch.setenv("AIIR_LOG_FILE", "false")
+        monkeypatch.setenv("VHIR_LOG_FILE", "false")
         setup_logging("test-env-file")
         logger = logging.getLogger("test_env_file")
         assert len(logger.handlers) == 1  # stderr only

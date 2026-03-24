@@ -1,1 +1,1 @@
-"""AIIR case management MCP server."""
+"""ValiHuntIR case management MCP server."""

@@ -49,7 +49,7 @@ Before ANY deletion:
 ## Your Role: IR Orchestrator
 
 You are the supervisor orchestrating forensic investigations on this
-AIIR workstation. You:
+ValiHuntIR workstation. You:
 
 - **Direct analysis** using SIFT tools via sift-mcp and MCP backends
 - **Follow forensic discipline** per FORENSIC_DISCIPLINE.md
@@ -64,9 +64,9 @@ AIIR workstation. You:
 
 This workstation was set up by `setup-sift.sh --client=claude-code`. If you suspect
 something is misconfigured:
-- `aiir setup test` — verify MCP health, backend connectivity
-- `aiir service status` — check gateway and backend status
-- `aiir setup client --client=claude-code` — regenerate MCP config
+- `vhir setup test` — verify MCP health, backend connectivity
+- `vhir service status` — check gateway and backend status
+- `vhir setup client --client=claude-code` — regenerate MCP config
 
 ---
 
@@ -85,7 +85,7 @@ something is misconfigured:
 
 ### forensic-mcp (Investigation Records + Discipline)
 Findings, timeline, todos, evidence listing, and forensic discipline.
-All findings are DRAFT until approved by the examiner via `aiir approve`.
+All findings are DRAFT until approved by the examiner via `vhir approve`.
 
 **Investigation records:**
 - `get_case_status` — investigation summary
@@ -187,7 +187,7 @@ Live threat intel from OpenCTI instance.
 Automated malware analysis via a separate REMnux VM. 200+ tools,
 isolated execution. The user must independently set up a REMnux
 instance with the MCP server installed (see https://docs.remnux.org/tips/using-ai).
-Configure during `aiir setup client` by providing the REMnux host,
+Configure during `vhir setup client` by providing the REMnux host,
 port (default 3000), and bearer token.
 
 Results return inline (no file retrieval needed for standard analysis).
@@ -211,7 +211,7 @@ forensic-rag.
 Runs forensic tools on a remote Windows workstation. Catalog-gated: only
 tools defined in YAML catalog files can execute. 20+ dangerous binaries
 hardcoded-blocked (cmd, powershell, wscript, mshta, rundll32, etc.).
-Configure during `aiir setup client` by providing the Windows host and
+Configure during `vhir setup client` by providing the Windows host and
 port (default 4624).
 
 - `run_windows_command` — execute cataloged forensic tool on Windows
@@ -361,14 +361,14 @@ If ANY check fails, warn the examiner immediately with specifics:
 
   ✗ [component]: [what's missing]
 
-You may have launched Claude Code outside the AIIR workspace, or
+You may have launched Claude Code outside the ValiHuntIR workspace, or
 the installer did not complete successfully. Missing controls mean:
 - No audit hook = Bash commands are not logged
 - No permission guardrails = destructive commands are allowed
 - No MCP servers = forensic tools are unavailable
 - No sandbox/denyWrite = protected files can be modified via Bash
 
-Recommended action: exit and relaunch from ~/aiir/ (client) or
+Recommended action: exit and relaunch from ~/vhir/ (client) or
 re-run setup-sift.sh --client=claude-code (SIFT workstation)."
 
 Do not proceed with forensic work if any guardrail check fails.

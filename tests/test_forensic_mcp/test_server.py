@@ -37,8 +37,8 @@ def _setup_test_case(manager, cases_dir, monkeypatch):
     (case_dir / "evidence.json").write_text('{"files": []}')
     manager._active_case_id = case_id
     manager._active_case_path = case_dir
-    monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
-    monkeypatch.setenv("AIIR_ACTIVE_CASE", case_id)
+    monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
+    monkeypatch.setenv("VHIR_ACTIVE_CASE", case_id)
 
 
 def _seed_audit(audit_dir):
@@ -438,8 +438,8 @@ class TestEnhancedResponses:
 
     @pytest.mark.asyncio
     async def test_record_finding_returns_considerations(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         server = create_server()
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         finding = {
@@ -464,8 +464,8 @@ class TestEnhancedResponses:
     async def test_record_finding_attribution_considerations(
         self, tmp_path, monkeypatch
     ):
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         server = create_server()
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         finding = {
@@ -493,8 +493,8 @@ class TestEnhancedResponses:
 
     @pytest.mark.asyncio
     async def test_validation_failure_includes_guidance(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         server = create_server()
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         finding = {"title": "Bad finding"}
@@ -510,8 +510,8 @@ class TestGroundingInResponse:
     @pytest.mark.asyncio
     async def test_record_finding_includes_grounding(self, tmp_path, monkeypatch):
         """record_finding response includes grounding when backends deployed but unused."""
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         server = create_server()
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         # Simulate deployed grounding backends (empty audit files)
@@ -539,8 +539,8 @@ class TestGroundingInResponse:
 class TestTodoTools:
     @pytest.mark.asyncio
     async def test_add_todo(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         server = create_server()
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         result = await server.call_tool("add_todo", {"description": "Run volatility"})
@@ -550,8 +550,8 @@ class TestTodoTools:
 
     @pytest.mark.asyncio
     async def test_list_todos(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         server = create_server()
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         await server.call_tool("add_todo", {"description": "A"})
@@ -562,8 +562,8 @@ class TestTodoTools:
 
     @pytest.mark.asyncio
     async def test_complete_todo(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         server = create_server()
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         add_result = await server.call_tool("add_todo", {"description": "A"})
@@ -578,8 +578,8 @@ class TestTodoTools:
 
     @pytest.mark.asyncio
     async def test_update_todo_with_note(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path / "cases"))
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         server = create_server()
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         add_result = await server.call_tool("add_todo", {"description": "A"})

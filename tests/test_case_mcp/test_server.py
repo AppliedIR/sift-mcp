@@ -25,11 +25,11 @@ def _parse(result):
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
     """Ensure no env leakage between tests."""
-    monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
-    monkeypatch.delenv("AIIR_CASES_DIR", raising=False)
-    monkeypatch.delenv("AIIR_ACTIVE_CASE", raising=False)
-    monkeypatch.delenv("AIIR_EXAMINER", raising=False)
-    monkeypatch.delenv("AIIR_AUDIT_DIR", raising=False)
+    monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
+    monkeypatch.delenv("VHIR_CASES_DIR", raising=False)
+    monkeypatch.delenv("VHIR_ACTIVE_CASE", raising=False)
+    monkeypatch.delenv("VHIR_EXAMINER", raising=False)
+    monkeypatch.delenv("VHIR_AUDIT_DIR", raising=False)
 
 
 @pytest.fixture
@@ -57,11 +57,11 @@ def case_dir(tmp_path, monkeypatch):
     (cd / "evidence.json").write_text('{"files": []}')
     (cd / "actions.jsonl").write_text("")
 
-    monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
-    monkeypatch.setenv("AIIR_CASE_DIR", str(cd))
-    monkeypatch.setenv("AIIR_ACTIVE_CASE", case_id)
-    monkeypatch.setenv("AIIR_EXAMINER", "tester")
-    monkeypatch.setenv("AIIR_AUDIT_DIR", str(cd / "audit"))
+    monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
+    monkeypatch.setenv("VHIR_CASE_DIR", str(cd))
+    monkeypatch.setenv("VHIR_ACTIVE_CASE", case_id)
+    monkeypatch.setenv("VHIR_EXAMINER", "tester")
+    monkeypatch.setenv("VHIR_AUDIT_DIR", str(cd / "audit"))
     return {"case_id": case_id, "path": cd, "parent": tmp_path}
 
 
@@ -84,52 +84,52 @@ class TestResolveCaseDir:
     def test_explicit_case_id(self, tmp_path, monkeypatch):
         case_id = "INC-2026-test"
         (tmp_path / case_id).mkdir()
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
         result = _resolve_case_dir(case_id)
         assert result == tmp_path / case_id
-        assert os.environ["AIIR_CASE_DIR"] == str(tmp_path / case_id)
+        assert os.environ["VHIR_CASE_DIR"] == str(tmp_path / case_id)
 
     def test_explicit_case_id_not_found(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
         with pytest.raises(ValueError, match="Case not found"):
             _resolve_case_dir("nonexistent")
 
     def test_env_var_fallback(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AIIR_CASE_DIR", str(tmp_path))
+        monkeypatch.setenv("VHIR_CASE_DIR", str(tmp_path))
         assert _resolve_case_dir() == tmp_path
 
     def test_env_var_missing_dir(self, monkeypatch):
-        monkeypatch.setenv("AIIR_CASE_DIR", "/nonexistent/path/xyz")
+        monkeypatch.setenv("VHIR_CASE_DIR", "/nonexistent/path/xyz")
         with pytest.raises(ValueError, match="does not exist"):
             _resolve_case_dir()
 
     def test_active_case_file_absolute(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
         fake_home = tmp_path / "fakehome"
-        (fake_home / ".aiir").mkdir(parents=True)
+        (fake_home / ".vhir").mkdir(parents=True)
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
         case_dir = tmp_path / "my-case"
         case_dir.mkdir()
-        (fake_home / ".aiir" / "active_case").write_text(str(case_dir))
+        (fake_home / ".vhir" / "active_case").write_text(str(case_dir))
         result = _resolve_case_dir()
         assert result == case_dir
 
     def test_active_case_file_relative(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
         fake_home = tmp_path / "fakehome"
-        (fake_home / ".aiir").mkdir(parents=True)
+        (fake_home / ".vhir").mkdir(parents=True)
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
         case_id = "INC-2026-rel"
         (tmp_path / case_id).mkdir()
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
-        (fake_home / ".aiir" / "active_case").write_text(case_id)
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
+        (fake_home / ".vhir" / "active_case").write_text(case_id)
         result = _resolve_case_dir()
         assert result == tmp_path / case_id
 
     def test_no_active_case(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
         fake_home = tmp_path / "fakehome"
-        (fake_home / ".aiir").mkdir(parents=True)
+        (fake_home / ".vhir").mkdir(parents=True)
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
         with pytest.raises(ValueError, match="No active case"):
             _resolve_case_dir()
@@ -137,26 +137,26 @@ class TestResolveCaseDir:
     # --- Security: path traversal ---
 
     def test_traversal_dotdot_rejected(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
         with pytest.raises(ValueError, match="Invalid case ID"):
             _resolve_case_dir("../etc/passwd")
 
     def test_traversal_slash_rejected(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
         with pytest.raises(ValueError, match="Invalid case ID"):
             _resolve_case_dir("foo/bar")
 
     def test_traversal_backslash_rejected(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
         with pytest.raises(ValueError, match="Invalid case ID"):
             _resolve_case_dir("foo\\bar")
 
     def test_active_file_traversal_rejected(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
         fake_home = tmp_path / "fakehome"
-        (fake_home / ".aiir").mkdir(parents=True)
+        (fake_home / ".vhir").mkdir(parents=True)
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
-        (fake_home / ".aiir" / "active_case").write_text("../../etc/shadow")
+        (fake_home / ".vhir" / "active_case").write_text("../../etc/shadow")
         with pytest.raises(ValueError, match="Invalid case ID in active_case"):
             _resolve_case_dir()
 
@@ -168,7 +168,7 @@ class TestResolveCaseDir:
 
 class TestCaseInit:
     def test_creates_case(self, case_dir, monkeypatch):
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
         result = _parse(tools["case_init"](name="Incident Alpha"))
@@ -177,7 +177,7 @@ class TestCaseInit:
         assert result["case_id"].startswith("INC-")
 
     def test_returns_error_on_failure(self, case_dir, monkeypatch):
-        monkeypatch.setenv("AIIR_EXAMINER", "tester")
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
         with patch("case_mcp.server._case_init_data", side_effect=ValueError("bad")):
             srv = create_server()
             tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
@@ -224,9 +224,9 @@ class TestCaseStatus:
         assert "error" not in result
 
     def test_no_case_returns_error(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
+        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
         fake_home = tmp_path / "fakehome"
-        (fake_home / ".aiir").mkdir(parents=True)
+        (fake_home / ".vhir").mkdir(parents=True)
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
@@ -537,9 +537,9 @@ class TestOpenCaseDashboard:
     def test_builds_url_no_auth(self, case_dir, tmp_path, monkeypatch):
         """No api_keys → URL without token fragment."""
         home = tmp_path / "home"
-        (home / ".aiir").mkdir(parents=True)
+        (home / ".vhir").mkdir(parents=True)
         config = {"gateway": {"host": "127.0.0.1", "port": 4508}}
-        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        (home / ".vhir" / "gateway.yaml").write_text(yaml.dump(config))
         monkeypatch.setattr(Path, "home", lambda: home)
 
         with patch("webbrowser.open") as mock_open:
@@ -552,14 +552,14 @@ class TestOpenCaseDashboard:
     def test_builds_url_with_token(self, case_dir, tmp_path, monkeypatch):
         """api_keys present → URL includes #token= fragment."""
         home = tmp_path / "home"
-        (home / ".aiir").mkdir(parents=True)
+        (home / ".vhir").mkdir(parents=True)
         config = {
             "gateway": {"host": "10.0.0.5", "port": 9000},
-            "api_keys": {"aiir_gw_testtoken": {"examiner": "alice", "role": "lead"}},
+            "api_keys": {"vhir_gw_testtoken": {"examiner": "alice", "role": "lead"}},
         }
-        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        (home / ".vhir" / "gateway.yaml").write_text(yaml.dump(config))
         monkeypatch.setattr(Path, "home", lambda: home)
-        monkeypatch.setenv("AIIR_EXAMINER", "alice")
+        monkeypatch.setenv("VHIR_EXAMINER", "alice")
 
         with patch("webbrowser.open"):
             result = self._call_tool(case_dir)
@@ -570,17 +570,17 @@ class TestOpenCaseDashboard:
     def test_picks_correct_examiner_token(self, case_dir, tmp_path, monkeypatch):
         """Multi-examiner: picks the token matching current examiner."""
         home = tmp_path / "home"
-        (home / ".aiir").mkdir(parents=True)
+        (home / ".vhir").mkdir(parents=True)
         config = {
             "gateway": {"host": "127.0.0.1", "port": 4508},
             "api_keys": {
-                "aiir_gw_alice": {"examiner": "alice", "role": "lead"},
-                "aiir_gw_bob": {"examiner": "bob", "role": "examiner"},
+                "vhir_gw_alice": {"examiner": "alice", "role": "lead"},
+                "vhir_gw_bob": {"examiner": "bob", "role": "examiner"},
             },
         }
-        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        (home / ".vhir" / "gateway.yaml").write_text(yaml.dump(config))
         monkeypatch.setattr(Path, "home", lambda: home)
-        monkeypatch.setenv("AIIR_EXAMINER", "bob")
+        monkeypatch.setenv("VHIR_EXAMINER", "bob")
 
         with patch("webbrowser.open"):
             result = self._call_tool(case_dir)
@@ -592,14 +592,14 @@ class TestOpenCaseDashboard:
     def test_falls_back_to_first_key(self, case_dir, tmp_path, monkeypatch):
         """Examiner not in api_keys → falls back to first key."""
         home = tmp_path / "home"
-        (home / ".aiir").mkdir(parents=True)
+        (home / ".vhir").mkdir(parents=True)
         config = {
             "gateway": {"host": "127.0.0.1", "port": 4508},
-            "api_keys": {"aiir_gw_only": {"examiner": "alice", "role": "lead"}},
+            "api_keys": {"vhir_gw_only": {"examiner": "alice", "role": "lead"}},
         }
-        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        (home / ".vhir" / "gateway.yaml").write_text(yaml.dump(config))
         monkeypatch.setattr(Path, "home", lambda: home)
-        monkeypatch.setenv("AIIR_EXAMINER", "unknown_user")
+        monkeypatch.setenv("VHIR_EXAMINER", "unknown_user")
 
         with patch("webbrowser.open"):
             result = self._call_tool(case_dir)
@@ -611,7 +611,7 @@ class TestOpenCaseDashboard:
     def test_tls_uses_https(self, case_dir, tmp_path, monkeypatch):
         """TLS configured → scheme is https."""
         home = tmp_path / "home"
-        (home / ".aiir").mkdir(parents=True)
+        (home / ".vhir").mkdir(parents=True)
         config = {
             "gateway": {
                 "host": "sift.local",
@@ -619,7 +619,7 @@ class TestOpenCaseDashboard:
                 "tls": {"certfile": "/etc/ssl/cert.pem", "keyfile": "/etc/ssl/key.pem"},
             },
         }
-        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        (home / ".vhir" / "gateway.yaml").write_text(yaml.dump(config))
         monkeypatch.setattr(Path, "home", lambda: home)
 
         with patch("webbrowser.open"):
@@ -630,9 +630,9 @@ class TestOpenCaseDashboard:
     def test_zero_host_becomes_localhost(self, case_dir, tmp_path, monkeypatch):
         """0.0.0.0 → 127.0.0.1 for browser access."""
         home = tmp_path / "home"
-        (home / ".aiir").mkdir(parents=True)
+        (home / ".vhir").mkdir(parents=True)
         config = {"gateway": {"host": "0.0.0.0", "port": 4508}}
-        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        (home / ".vhir" / "gateway.yaml").write_text(yaml.dump(config))
         monkeypatch.setattr(Path, "home", lambda: home)
 
         with patch("webbrowser.open"):
@@ -644,9 +644,9 @@ class TestOpenCaseDashboard:
     def test_browser_failure_returns_url(self, case_dir, tmp_path, monkeypatch):
         """webbrowser.open fails → status=browser_failed, URL still returned."""
         home = tmp_path / "home"
-        (home / ".aiir").mkdir(parents=True)
+        (home / ".vhir").mkdir(parents=True)
         config = {"gateway": {"host": "127.0.0.1", "port": 4508}}
-        (home / ".aiir" / "gateway.yaml").write_text(yaml.dump(config))
+        (home / ".vhir" / "gateway.yaml").write_text(yaml.dump(config))
         monkeypatch.setattr(Path, "home", lambda: home)
 
         with patch("webbrowser.open", side_effect=OSError("no display")):

@@ -31,7 +31,7 @@ class TestRunCommandEnvelope:
 
     def test_successful_execution(self, monkeypatch):
         """Verify response envelope fields on successful execution."""
-        monkeypatch.setenv("AIIR_EXAMINER", "testuser")
+        monkeypatch.setenv("VHIR_EXAMINER", "testuser")
         server = create_server()
 
         mock_result = {
@@ -71,7 +71,7 @@ class TestRunCommandEnvelope:
 
     def test_catch_all_exception_handler(self, monkeypatch):
         """Verify the catch-all exception handler in server.py."""
-        monkeypatch.setenv("AIIR_EXAMINER", "testuser")
+        monkeypatch.setenv("VHIR_EXAMINER", "testuser")
         server = create_server()
 
         # The catch-all wraps unexpected exceptions. We test by checking
@@ -80,7 +80,7 @@ class TestRunCommandEnvelope:
 
     def test_extractions_passed_to_response(self, monkeypatch):
         """Verify extractions flow into the response envelope."""
-        monkeypatch.setenv("AIIR_EXAMINER", "testuser")
+        monkeypatch.setenv("VHIR_EXAMINER", "testuser")
         from sift_mcp.response import build_response
 
         extractions = ["/cases/test/extractions/20260223_tool_stdout.txt"]
@@ -95,7 +95,7 @@ class TestRunCommandEnvelope:
 
     def test_extractions_absent_when_none(self, monkeypatch):
         """Verify extractions key omitted when not provided."""
-        monkeypatch.setenv("AIIR_EXAMINER", "testuser")
+        monkeypatch.setenv("VHIR_EXAMINER", "testuser")
         from sift_mcp.response import build_response
 
         response = build_response(
@@ -112,7 +112,7 @@ class TestListMissingTools:
 
     def test_list_missing_tools_returns_unavailable(self, monkeypatch):
         """list_missing_tools should return tools that are not installed."""
-        monkeypatch.setenv("AIIR_EXAMINER", "testuser")
+        monkeypatch.setenv("VHIR_EXAMINER", "testuser")
         from sift_mcp.tools.discovery import list_available_tools
 
         all_tools = list_available_tools()

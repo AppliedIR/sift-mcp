@@ -1,22 +1,24 @@
+![ValiHuntIR](docs/images/vhir-logo.png)
+
 # SIFT MCP
 [![CI](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/AppliedIR/sift-mcp/blob/main/LICENSE)
 
-Monorepo for all SIFT-side AIIR components. 11 packages: forensic-mcp (26 tools), case-mcp (15 tools), report-mcp (6 tools), sift-mcp (6 tools), sift-gateway, forensic-knowledge, forensic-rag (3 tools), windows-triage (13 tools), opencti (10 tools), sift-common, and case-dashboard. Part of the [AIIR](https://github.com/AppliedIR/aiir) platform.
+Monorepo for all SIFT-side ValiHuntIR components. 11 packages: forensic-mcp (26 tools), case-mcp (15 tools), report-mcp (6 tools), sift-mcp (6 tools), sift-gateway, forensic-knowledge, forensic-rag (3 tools), windows-triage (13 tools), opencti (10 tools), sift-common, and case-dashboard. Part of the [ValiHuntIR](https://github.com/AppliedIR/vhir) platform.
 
-**[Documentation](https://appliedir.github.io/aiir/)** ·
-[Getting Started](https://appliedir.github.io/aiir/getting-started/) ·
-[CLI Reference](https://appliedir.github.io/aiir/cli-reference/) ·
-[MCP Reference](https://appliedir.github.io/aiir/mcp-reference/)
+**[Documentation](https://appliedir.github.io/vhir/)** ·
+[Getting Started](https://appliedir.github.io/vhir/getting-started/) ·
+[CLI Reference](https://appliedir.github.io/vhir/cli-reference/) ·
+[MCP Reference](https://appliedir.github.io/vhir/mcp-reference/)
 
 > **Public Beta** — This project is undergoing active feature development.
 > Backward compatibility with future releases is not guaranteed. Consider
 > this a public beta for feature testing and evaluation rather than a
 > production-ready tool for real case data.
 
-## AIIR Lite — Get Started in Minutes
+## ValiHuntIR Lite — Get Started in Minutes
 
-In its simplest form, AIIR Lite provides Claude Code with forensic knowledge and instructions on how to enforce forensic rigor, present findings for human review, and audit actions taken. MCP servers enhance accuracy by providing authoritative information — a forensic knowledge RAG and a Windows triage database — plus optional OpenCTI threat intelligence and REMnux malware analysis.
+In its simplest form, ValiHuntIR Lite provides Claude Code with forensic knowledge and instructions on how to enforce forensic rigor, present findings for human review, and audit actions taken. MCP servers enhance accuracy by providing authoritative information — a forensic knowledge RAG and a Windows triage database — plus optional OpenCTI threat intelligence and REMnux malware analysis.
 
 **Quick** — Forensic discipline, MCP packages, and config. No databases (<70 MB):
 
@@ -68,13 +70,13 @@ No gateway, no sandbox, no deny rules. Claude runs forensic tools directly via B
 ./quickstart-lite.sh --zeltser              # IR writing guidelines
 ```
 
-## Full AIIR — Structural Enforcement
+## Full ValiHuntIR — Structural Enforcement
 
-For use cases where more definitive human-in-the-loop approval is desired, the full AIIR suite can be deployed to ensure accountability and enforce human review of findings through cryptographic signing, password-gated approvals, and multiple layered controls.
+For use cases where more definitive human-in-the-loop approval is desired, the full ValiHuntIR suite can be deployed to ensure accountability and enforce human review of findings through cryptographic signing, password-gated approvals, and multiple layered controls.
 
-Full AIIR is **LLM client agnostic** — connect any MCP-compatible client through the gateway. Supported clients include Claude Code, Claude Desktop, LibreChat, Cherry Studio, and any MCP-only client that supports Streamable HTTP transport with Bearer token authentication. Forensic discipline is provided structurally at the gateway and MCP layer, not through client-specific prompt engineering, so the same rigor applies regardless of which AI model or client drives the investigation.
+Full ValiHuntIR is **LLM client agnostic** — connect any MCP-compatible client through the gateway. Supported clients include Claude Code, Claude Desktop, LibreChat, Cherry Studio, and any MCP-only client that supports Streamable HTTP transport with Bearer token authentication. Forensic discipline is provided structurally at the gateway and MCP layer, not through client-specific prompt engineering, so the same rigor applies regardless of which AI model or client drives the investigation.
 
-### What Full AIIR Adds
+### What Full ValiHuntIR Adds
 
 - LLM client agnostic (Claude Code, Desktop, LibreChat, Cherry Studio, any MCP client)
 - Gateway with auth + lifecycle management (79 tools across 7 backends)
@@ -99,14 +101,14 @@ When Claude Code is the client, additional controls are deployed:
 - PostToolUse audit hook — every Bash command logged to JSONL with SHA-256 hashes
 - Prompt hook — forensic discipline reminders injected on every prompt
 
-### AIIR Installation
+### ValiHuntIR Installation
 
-Requires Python 3.10+ and sudo access. The installer handles everything: MCP servers, gateway, aiir CLI, HMAC verification ledger, examiner identity, and LLM client configuration. When you select Claude Code, the forensic controls listed above are deployed automatically.
+Requires Python 3.10+ and sudo access. The installer handles everything: MCP servers, gateway, vhir CLI, HMAC verification ledger, examiner identity, and LLM client configuration. When you select Claude Code, the forensic controls listed above are deployed automatically.
 
 **Quick** — Core platform only, no databases (~70 MB):
 
 ```
-curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/aiir-quickstart.sh && bash /tmp/aiir-quickstart.sh
+curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/vhir-quickstart.sh && bash /tmp/vhir-quickstart.sh
 ```
 
 **Recommended** — Adds the RAG knowledge base (22,000+ records from 23 security sources) and Windows triage databases (2.6M baseline records), downloaded as pre-built snapshots. Requires ~14 GB disk space:
@@ -116,7 +118,7 @@ curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.
 - ~1 GB — RAG index, source code, and everything else
 
 ```
-curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/aiir-quickstart.sh && bash /tmp/aiir-quickstart.sh --recommended
+curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/vhir-quickstart.sh && bash /tmp/vhir-quickstart.sh --recommended
 ```
 
 **Custom** — Individual package selection, OpenCTI integration, or remote access with TLS:
@@ -128,7 +130,7 @@ git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 
 ## Architecture
 
-Each MCP backend runs as a stdio subprocess of the sift-gateway, aggregated behind a single HTTP endpoint. The Examiner Portal is served by the gateway for browser-based review and approval. See the [aiir README](https://github.com/AppliedIR/aiir#deployment-overview) for the full deployment topology including REMnux and Windows VMs.
+Each MCP backend runs as a stdio subprocess of the sift-gateway, aggregated behind a single HTTP endpoint. The Examiner Portal is served by the gateway for browser-based review and approval. See the [vhir README](https://github.com/AppliedIR/vhir#deployment-overview) for the full deployment topology including REMnux and Windows VMs.
 
 ```mermaid
 graph LR
@@ -306,15 +308,15 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 
 ## Prerequisites
 
-- SIFT Workstation (Ubuntu-based) — for full AIIR
-- Any Linux/macOS machine — for AIIR Lite
+- SIFT Workstation (Ubuntu-based) — for full ValiHuntIR
+- Any Linux/macOS machine — for ValiHuntIR Lite
 - Python 3.10+
-- sudo access (required for full AIIR's HMAC verification ledger at `/var/lib/aiir/verification/`)
+- sudo access (required for full ValiHuntIR's HMAC verification ledger at `/var/lib/vhir/verification/`)
 - Forensic tools installed via SIFT package or manually
 
 ### External Dependencies
 
-- **Zeltser IR Writing MCP** (https://website-mcp.zeltser.com/mcp) — Required for report generation (full AIIR). The `aiir setup client` wizard configures this automatically. HTTPS, no authentication required.
+- **Zeltser IR Writing MCP** (https://website-mcp.zeltser.com/mcp) — Required for report generation (full ValiHuntIR). The `vhir setup client` wizard configures this automatically. HTTPS, no authentication required.
 - **MS Learn MCP** (https://learn.microsoft.com/api/mcp) — Optional. Provides Microsoft documentation search.
 
 ## Configuration
@@ -324,27 +326,27 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 | `SIFT_TIMEOUT` | `600` | Default command timeout in seconds |
 | `SIFT_TOOL_PATHS` | (none) | Extra binary search paths (colon-separated) |
 | `SIFT_HAYABUSA_DIR` | `/opt/hayabusa` | Hayabusa install location |
-| `AIIR_CASE_DIR` | (none) | Active case directory — enables audit trail. Falls back to `~/.aiir/active_case` if unset. |
-| `AIIR_CASES_DIR` | (none) | Root directory containing all cases |
-| `AIIR_EXAMINER` | (none) | Examiner identity for evidence IDs and audit |
+| `VHIR_CASE_DIR` | (none) | Active case directory — enables audit trail. Falls back to `~/.vhir/active_case` if unset. |
+| `VHIR_CASES_DIR` | (none) | Root directory containing all cases |
+| `VHIR_EXAMINER` | (none) | Examiner identity for evidence IDs and audit |
 
 ### Remote Access (TLS + Auth)
 
-When installed with `--remote`, `setup-sift.sh` generates a local CA and gateway certificate at `~/.aiir/tls/`. The gateway binds to `0.0.0.0:4508` with TLS enabled. A bearer token (`aiir_gw_` prefix) is generated and written to `gateway.yaml`.
+When installed with `--remote`, `setup-sift.sh` generates a local CA and gateway certificate at `~/.vhir/tls/`. The gateway binds to `0.0.0.0:4508` with TLS enabled. A bearer token (`vhir_gw_` prefix) is generated and written to `gateway.yaml`.
 
-Remote clients join via platform-specific setup scripts. The installer prints per-OS commands with a join code. See the [Deployment Guide](https://appliedir.github.io/aiir/deployment/) for details.
+Remote clients join via platform-specific setup scripts. The installer prints per-OS commands with a join code. See the [Deployment Guide](https://appliedir.github.io/vhir/deployment/) for details.
 
 Without `--remote`, the gateway listens on `127.0.0.1` only. Auth tokens are still generated but optional for localhost.
 
 ## Security Considerations
 
-All AIIR components are assumed to run on a private forensic network, protected by firewalls, and not exposed to incoming connections from the Internet or potentially hostile systems. The design assumes dedicated, isolated systems are used throughout.
+All ValiHuntIR components are assumed to run on a private forensic network, protected by firewalls, and not exposed to incoming connections from the Internet or potentially hostile systems. The design assumes dedicated, isolated systems are used throughout.
 
 Any data loaded into the system or its component VMs, computers, or instances runs the risk of being exposed to the underlying AI. Only place data on these systems that you are willing to send to your AI provider.
 
 Outgoing Internet connections are required for report generation (Zeltser IR Writing MCP) and optionally used for threat intelligence (OpenCTI) and documentation (MS Learn MCP). No incoming connections from external systems should be allowed.
 
-AIIR is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. Clients with direct shell access (like Claude Code) can also operate outside MCP, but `aiir setup client` deploys forensic controls for Claude Code: a kernel-level sandbox restricts Bash writes, deny rules block Edit/Write to case data files, a PreToolUse hook guards against Bash redirections to protected files, a PostToolUse hook captures every Bash command to the audit trail, provenance enforcement ensures findings are traceable to evidence, and an HMAC verification ledger provides cryptographic proof that approved findings haven't been tampered with. AIIR is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
+ValiHuntIR is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. Clients with direct shell access (like Claude Code) can also operate outside MCP, but `vhir setup client` deploys forensic controls for Claude Code: a kernel-level sandbox restricts Bash writes, deny rules block Edit/Write to case data files, a PreToolUse hook guards against Bash redirections to protected files, a PostToolUse hook captures every Bash command to the audit trail, provenance enforcement ensures findings are traceable to evidence, and an HMAC verification ledger provides cryptographic proof that approved findings haven't been tampered with. ValiHuntIR is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
 
 ## Audit Trail and Provenance
 
@@ -380,9 +382,9 @@ Report generation uses the report-mcp package (6 tools) with data-driven profile
 
 ## Evidence Handling
 
-Never place original evidence on any AIIR system. Only use working copies for which verified originals or backups exist. AIIR workstations process evidence through AI-connected tools, and any data loaded into these systems may be transmitted to the configured AI provider. Treat all AIIR systems as analysis environments, not evidence storage.
+Never place original evidence on any ValiHuntIR system. Only use working copies for which verified originals or backups exist. ValiHuntIR workstations process evidence through AI-connected tools, and any data loaded into these systems may be transmitted to the configured AI provider. Treat all ValiHuntIR systems as analysis environments, not evidence storage.
 
-Evidence integrity is verified by SHA-256 hashes recorded at registration. Examiners can optionally lock evidence to read-only via `aiir evidence lock`. Proper evidence integrity depends on verified hashes, write blockers, and chain-of-custody procedures that exist outside this platform.
+Evidence integrity is verified by SHA-256 hashes recorded at registration. Examiners can optionally lock evidence to read-only via `vhir evidence lock`. Proper evidence integrity depends on verified hashes, write blockers, and chain-of-custody procedures that exist outside this platform.
 
 Case directories can reside on external or removable media. ext4 is preferred for full permission support. NTFS and exFAT are acceptable but file permission controls (read-only protection) will be silently ineffective. FAT32 is discouraged due to the 4 GB file size limit.
 

@@ -9,8 +9,8 @@ from sift_common.oplog import _StructuredFormatter, setup_logging
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    monkeypatch.delenv("AIIR_LOG_FORMAT", raising=False)
-    monkeypatch.delenv("AIIR_LOG_FILE", raising=False)
+    monkeypatch.delenv("VHIR_LOG_FORMAT", raising=False)
+    monkeypatch.delenv("VHIR_LOG_FILE", raising=False)
 
 
 class TestStructuredFormatter:
@@ -94,13 +94,13 @@ class TestSetupLogging:
         assert isinstance(logger.handlers[0].formatter, _StructuredFormatter)
 
     def test_text_format(self, monkeypatch):
-        monkeypatch.setenv("AIIR_LOG_FORMAT", "text")
+        monkeypatch.setenv("VHIR_LOG_FORMAT", "text")
         setup_logging("test-svc2", log_to_file=False)
         logger = logging.getLogger("test_svc2")
         assert not isinstance(logger.handlers[0].formatter, _StructuredFormatter)
 
     def test_file_logging_disabled(self, monkeypatch):
-        monkeypatch.setenv("AIIR_LOG_FILE", "false")
+        monkeypatch.setenv("VHIR_LOG_FILE", "false")
         setup_logging("test-svc3", log_to_file=False)
         logger = logging.getLogger("test_svc3")
         # Only stderr handler, no file handler

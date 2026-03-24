@@ -6,7 +6,7 @@
       "env": {
         "PYTHONPATH": "__SRC__/packages/forensic-rag/src",
         "RAG_INDEX_DIR": "__INDEX_DIR__",
-        "AIIR_CASE_DIR": "__CASE_DIR__",
+        "VHIR_CASE_DIR": "__CASE_DIR__",
         "ANONYMIZED_TELEMETRY": "False"
       }
     },
@@ -16,7 +16,7 @@
       "env": {
         "PYTHONPATH": "__SRC__/packages/windows-triage/src",
         "WT_DATA_DIR": "__DB_DIR__",
-        "AIIR_CASE_DIR": "__CASE_DIR__"
+        "VHIR_CASE_DIR": "__CASE_DIR__"
       }
     }
   }

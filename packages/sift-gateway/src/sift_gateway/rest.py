@@ -335,7 +335,7 @@ async def create_join_code(request: Request) -> JSONResponse:
         {
             "code": code,
             "expires_hours": expires_hours,
-            "instructions": f"aiir join --sift {host_port} --code {code}",
+            "instructions": f"vhir join --sift {host_port} --code {code}",
         }
     )
 
@@ -409,7 +409,7 @@ async def join_gateway(request: Request) -> JSONResponse:
             wintools_cert = wintools_cert.lstrip("\ufeff")
             from pathlib import Path
 
-            cert_path = Path.home() / ".aiir" / "tls" / "wintools-cert.pem"
+            cert_path = Path.home() / ".vhir" / "tls" / "wintools-cert.pem"
             cert_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             if wintools_cert.strip().startswith("-----BEGIN CERTIFICATE-----"):
                 cert_path.write_text(wintools_cert)
@@ -447,7 +447,7 @@ async def join_gateway(request: Request) -> JSONResponse:
         "gateway_url": gw_url,
         "backends": backends,
         "examiner": examiner_name,
-        "sift_examiner": os.environ.get("AIIR_EXAMINER", ""),
+        "sift_examiner": os.environ.get("VHIR_EXAMINER", ""),
     }
     if new_token:
         response["gateway_token"] = new_token
@@ -512,7 +512,7 @@ def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
     from pathlib import Path
 
     with _CONFIG_LOCK:
-        config_path = Path.home() / ".aiir" / "gateway.yaml"
+        config_path = Path.home() / ".vhir" / "gateway.yaml"
         if config_path.exists():
             import yaml
 
@@ -554,7 +554,7 @@ def _add_wintools_backend(
     import yaml
 
     with _CONFIG_LOCK:
-        config_path = Path.home() / ".aiir" / "gateway.yaml"
+        config_path = Path.home() / ".vhir" / "gateway.yaml"
         if config_path.exists():
             try:
                 with open(config_path) as f:
@@ -606,12 +606,12 @@ def _get_gateway_url(gateway) -> str:
 
 
 def _load_samba_config() -> dict | None:
-    """Read ~/.aiir/samba.yaml if it exists."""
+    """Read ~/.vhir/samba.yaml if it exists."""
     from pathlib import Path
 
     import yaml
 
-    path = Path.home() / ".aiir" / "samba.yaml"
+    path = Path.home() / ".vhir" / "samba.yaml"
     if not path.is_file():
         return None
     try:
@@ -621,12 +621,12 @@ def _load_samba_config() -> dict | None:
 
 
 def _get_sift_ip() -> str | None:
-    """Read static IP from ~/.aiir/network.yaml, fall back to primary interface IP."""
+    """Read static IP from ~/.vhir/network.yaml, fall back to primary interface IP."""
     from pathlib import Path
 
     import yaml
 
-    path = Path.home() / ".aiir" / "network.yaml"
+    path = Path.home() / ".vhir" / "network.yaml"
     if path.is_file():
         try:
             doc = yaml.safe_load(path.read_text())
@@ -662,7 +662,7 @@ async def reload_backends(request: Request) -> JSONResponse:
     from sift_gateway.config import load_config
 
     gateway = request.app.state.gateway
-    config_path = Path.home() / ".aiir" / "gateway.yaml"
+    config_path = Path.home() / ".vhir" / "gateway.yaml"
     if not config_path.exists():
         return JSONResponse({"status": "no_config", "pending": []})
     try:

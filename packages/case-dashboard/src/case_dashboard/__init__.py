@@ -1,1 +1,1 @@
-"""AIIR case dashboard — web-based finding review interface."""
+"""ValiHuntIR case dashboard — web-based finding review interface."""

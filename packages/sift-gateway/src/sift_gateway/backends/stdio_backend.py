@@ -36,11 +36,11 @@ class StdioMCPBackend(MCPBackend):
         args = self.config.get("args", [])
         env = self.config.get("env") or None
 
-        # When config provides explicit env vars, merge AIIR_* from parent
+        # When config provides explicit env vars, merge VHIR_* from parent
         # so examiner identity and case dir propagate to backend subprocesses.
         if env is not None:
             for key, val in os.environ.items():
-                if key.startswith("AIIR_") and key not in env:
+                if key.startswith("VHIR_") and key not in env:
                     env[key] = val
             # Remove empty values (from unset ${VAR} interpolation)
             env = {k: v for k, v in env.items() if v}

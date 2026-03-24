@@ -11,10 +11,10 @@ from forensic_mcp.case.manager import CaseManager, _compute_content_hash
 
 @pytest.fixture
 def manager(tmp_path, monkeypatch):
-    monkeypatch.setenv("AIIR_CASES_DIR", str(tmp_path))
-    monkeypatch.setenv("AIIR_EXAMINER", "tester")
-    monkeypatch.delenv("AIIR_CASE_DIR", raising=False)
-    monkeypatch.delenv("AIIR_AUDIT_DIR", raising=False)
+    monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
+    monkeypatch.setenv("VHIR_EXAMINER", "tester")
+    monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
+    monkeypatch.delenv("VHIR_AUDIT_DIR", raising=False)
     monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
     return CaseManager()
 
@@ -43,14 +43,14 @@ def active_case(manager, tmp_path, monkeypatch):
     (case_dir / "evidence.json").write_text('{"files": []}')
     manager._active_case_id = case_id
     manager._active_case_path = case_dir
-    monkeypatch.setenv("AIIR_CASE_DIR", str(case_dir))
-    monkeypatch.setenv("AIIR_ACTIVE_CASE", case_id)
+    monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
+    monkeypatch.setenv("VHIR_ACTIVE_CASE", case_id)
     return {"case_id": case_id, "path": str(case_dir)}
 
 
 @pytest.fixture
 def audit(monkeypatch):
-    monkeypatch.setenv("AIIR_EXAMINER", "tester")
+    monkeypatch.setenv("VHIR_EXAMINER", "tester")
     return AuditWriter(mcp_name="forensic-mcp")
 
 

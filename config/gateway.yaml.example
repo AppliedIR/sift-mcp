@@ -1,4 +1,4 @@
-# AIIR Gateway configuration
+# ValiHuntIR Gateway configuration
 # Copy to gateway.yaml and customize for your environment.
 # Environment variables can be referenced as ${VAR_NAME}.
 
@@ -11,10 +11,10 @@ gateway:
 # Each key maps to an examiner identity and role.
 # If this section is empty or missing, auth is disabled (single-user mode).
 api_keys:
-  aiir_gw_abc123:
+  vhir_gw_abc123:
     examiner: "steve"
     role: "lead"
-  aiir_gw_def456:
+  vhir_gw_def456:
     examiner: "jane"
     role: "examiner"
 
@@ -30,9 +30,9 @@ backends:
     command: "python"
     args: ["-m", "forensic_mcp", "--deferred-tools"]
     env:
-      AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
-      AIIR_ACTIVE_CASE: "${AIIR_ACTIVE_CASE}"
-      AIIR_EXAMINER: "${AIIR_EXAMINER}"
+      VHIR_CASE_DIR: "${VHIR_CASE_DIR}"
+      VHIR_ACTIVE_CASE: "${VHIR_ACTIVE_CASE}"
+      VHIR_EXAMINER: "${VHIR_EXAMINER}"
     enabled: true
 
   sift-mcp:
@@ -40,9 +40,9 @@ backends:
     command: "python"
     args: ["-m", "sift_mcp"]
     env:
-      AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
-      AIIR_ACTIVE_CASE: "${AIIR_ACTIVE_CASE}"
-      AIIR_EXAMINER: "${AIIR_EXAMINER}"
+      VHIR_CASE_DIR: "${VHIR_CASE_DIR}"
+      VHIR_ACTIVE_CASE: "${VHIR_ACTIVE_CASE}"
+      VHIR_EXAMINER: "${VHIR_EXAMINER}"
     enabled: true
 
   case-mcp:
@@ -50,9 +50,9 @@ backends:
     command: "python"
     args: ["-m", "case_mcp"]
     env:
-      AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
-      AIIR_CASES_DIR: "${AIIR_CASES_DIR}"
-      AIIR_EXAMINER: "${AIIR_EXAMINER}"
+      VHIR_CASE_DIR: "${VHIR_CASE_DIR}"
+      VHIR_CASES_DIR: "${VHIR_CASES_DIR}"
+      VHIR_EXAMINER: "${VHIR_EXAMINER}"
     enabled: true
 
   report-mcp:
@@ -60,9 +60,9 @@ backends:
     command: "python"
     args: ["-m", "report_mcp"]
     env:
-      AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
-      AIIR_CASES_DIR: "${AIIR_CASES_DIR}"
-      AIIR_EXAMINER: "${AIIR_EXAMINER}"
+      VHIR_CASE_DIR: "${VHIR_CASE_DIR}"
+      VHIR_CASES_DIR: "${VHIR_CASES_DIR}"
+      VHIR_EXAMINER: "${VHIR_EXAMINER}"
     enabled: true
 
   forensic-rag-mcp:
@@ -70,8 +70,8 @@ backends:
     command: "python"
     args: ["-m", "rag_mcp"]
     env:
-      AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
-      AIIR_EXAMINER: "${AIIR_EXAMINER}"
+      VHIR_CASE_DIR: "${VHIR_CASE_DIR}"
+      VHIR_EXAMINER: "${VHIR_EXAMINER}"
     enabled: true
 
   windows-triage-mcp:
@@ -79,8 +79,8 @@ backends:
     command: "python"
     args: ["-m", "windows_triage"]
     env:
-      AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
-      AIIR_EXAMINER: "${AIIR_EXAMINER}"
+      VHIR_CASE_DIR: "${VHIR_CASE_DIR}"
+      VHIR_EXAMINER: "${VHIR_EXAMINER}"
     enabled: true
 
   opencti-mcp:
@@ -88,8 +88,8 @@ backends:
     command: "python"
     args: ["-m", "opencti_mcp"]
     env:
-      AIIR_CASE_DIR: "${AIIR_CASE_DIR}"
-      AIIR_EXAMINER: "${AIIR_EXAMINER}"
+      VHIR_CASE_DIR: "${VHIR_CASE_DIR}"
+      VHIR_EXAMINER: "${VHIR_EXAMINER}"
       OPENCTI_URL: "${OPENCTI_URL}"
       OPENCTI_TOKEN: "${OPENCTI_TOKEN}"
     enabled: true

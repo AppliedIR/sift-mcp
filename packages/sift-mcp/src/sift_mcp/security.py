@@ -74,7 +74,7 @@ def sanitize_extra_args(extra_args: list[str], tool_name: str = "") -> list[str]
 # Directories where rm is blocked (evidence storage, case data)
 def _get_protected_dirs() -> tuple[str, ...]:
     """Resolve protected directories at runtime from env/defaults."""
-    cases_dir = os.environ.get("AIIR_CASES_DIR", str(Path.home() / "cases"))
+    cases_dir = os.environ.get("VHIR_CASES_DIR", str(Path.home() / "cases"))
     return (
         str(Path(cases_dir).resolve()),
         "/cases",
@@ -117,7 +117,7 @@ _BLOCKED_DIRECTORIES = (
     "/sys",
     "/dev",
     "/boot",
-    os.path.expanduser("~/.aiir"),
+    os.path.expanduser("~/.vhir"),
 )
 
 
@@ -140,7 +140,7 @@ _OUTPUT_BLOCKED_DIRECTORIES = _BLOCKED_DIRECTORIES + (
 def validate_output_path(path: str) -> str:
     """Validate that an output path is safe to write to.
 
-    Stricter than validate_input_path. When AIIR_CASE_DIR is set, the
+    Stricter than validate_input_path. When VHIR_CASE_DIR is set, the
     output path must be inside the case directory. When not set, only
     /tmp and the current working directory are allowed.
 

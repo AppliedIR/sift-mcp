@@ -25,7 +25,7 @@ if [[ -z "$COMMAND" ]]; then
 fi
 
 # Resolve cases directory
-CASES_DIR="${AIIR_CASES_DIR:-$HOME/cases}"
+CASES_DIR="${VHIR_CASES_DIR:-$HOME/cases}"
 CASES_DIR_RESOLVED=$(realpath "$CASES_DIR" 2>/dev/null || echo "$CASES_DIR")
 
 # Protected file basenames within any case directory
@@ -204,8 +204,8 @@ if $BLOCKED; then
     echo ""
     echo "  Case data is protected. Options:"
     echo "  - Target .outputs/ or extractions/ for cleanup"
-    echo "  - Use 'aiir case delete' to remove a case (with backup)"
-    echo "  - Use 'aiir case close' before deletion"
+    echo "  - Use 'vhir case delete' to remove a case (with backup)"
+    echo "  - Use 'vhir case close' before deletion"
     exit 2
 fi
 

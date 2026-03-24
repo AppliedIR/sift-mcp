@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# setup-sift.sh — AIIR SIFT Platform Installer
+# setup-sift.sh — ValiHuntIR SIFT Platform Installer
 #
-# Installs MCP servers, the gateway, aiir CLI, and all dependencies into a
-# shared virtual environment at ~/.aiir/venv/. Includes examiner identity
+# Installs MCP servers, the gateway, vhir CLI, and all dependencies into a
+# shared virtual environment at ~/.vhir/venv/. Includes examiner identity
 # setup and LLM client configuration.
 #
 # Three install tiers:
@@ -63,11 +63,11 @@ for arg in "$@"; do
             echo "  --remote          Enable TLS + bind 0.0.0.0 (for remote clients)"
             echo "  --examiner=NAME   Set examiner identity (non-interactive)"
             echo "  --client=CLIENT   Set LLM client (claude-code, claude-desktop, librechat, other)"
-            echo "  --install-dir=X   Override source clone dir (default: ~/.aiir/src/sift-mcp)"
-            echo "  --venv=X          Override venv path (default: ~/.aiir/venv)"
+            echo "  --install-dir=X   Override source clone dir (default: ~/.vhir/src/sift-mcp)"
+            echo "  --venv=X          Override venv path (default: ~/.vhir/venv)"
             echo "  --port=N          Override gateway port (default: 4508)"
             echo "  --cases-dir=X     Override cases root directory (default: ~/cases)"
-            echo "  --uninstall       Uninstall AIIR forensic controls (delegates to aiir setup client)"
+            echo "  --uninstall       Uninstall ValiHuntIR forensic controls (delegates to vhir setup client)"
             echo "  --manual-start    Skip auto-start/systemd"
             echo "  -y, --yes         Accept all defaults (non-interactive)"
             echo "  -h, --help        Show this help"
@@ -95,8 +95,8 @@ if [[ "$(id -u)" -eq 0 ]]; then
 fi
 
 # Defaults
-[[ -z "$INSTALL_DIR" ]] && INSTALL_DIR="$HOME/.aiir/src/sift-mcp"
-[[ -z "$VENV_DIR" ]] && VENV_DIR="$HOME/.aiir/venv"
+[[ -z "$INSTALL_DIR" ]] && INSTALL_DIR="$HOME/.vhir/src/sift-mcp"
+[[ -z "$VENV_DIR" ]] && VENV_DIR="$HOME/.vhir/venv"
 
 # =============================================================================
 # Colors and Helpers
@@ -191,36 +191,36 @@ if ${UNINSTALL_MODE:-false}; then
 
     echo ""
     echo -e "${BOLD}============================================================${NC}"
-    echo -e "${BOLD}  AIIR — Platform Uninstall${NC}"
+    echo -e "${BOLD}  ValiHuntIR — Platform Uninstall${NC}"
     echo -e "${BOLD}============================================================${NC}"
     echo ""
 
     # [1] Client forensic controls (while venv still exists)
-    AIIR_CMD="$HOME/.aiir/venv/bin/aiir"
-    if [[ ! -x "$AIIR_CMD" ]]; then
-        AIIR_CMD=$(command -v aiir 2>/dev/null || true)
+    VHIR_CMD="$HOME/.vhir/venv/bin/vhir"
+    if [[ ! -x "$VHIR_CMD" ]]; then
+        VHIR_CMD=$(command -v vhir 2>/dev/null || true)
     fi
-    if [[ -n "$AIIR_CMD" ]]; then
+    if [[ -n "$VHIR_CMD" ]]; then
         echo -e "${BOLD}[1] Client forensic controls${NC}"
         echo "    MCP config, hooks, permissions, discipline docs"
         echo ""
         if prompt_yn_strict "    Remove client forensic controls?"; then
-            "$AIIR_CMD" setup client --uninstall
+            "$VHIR_CMD" setup client --uninstall
         else
             info "Skipped client controls."
         fi
         echo ""
     else
-        warn "aiir CLI not found. Client forensic controls must be removed manually:"
+        warn "vhir CLI not found. Client forensic controls must be removed manually:"
         echo "    ~/.claude.json (MCP entries)"
         echo "    ~/.claude/settings.json (hooks, permissions)"
-        echo "    ~/.aiir/hooks/forensic-audit.sh"
+        echo "    ~/.vhir/hooks/forensic-audit.sh"
         echo "    ~/.claude/CLAUDE.md, ~/.claude/rules/"
         echo ""
     fi
 
     # [2] Gateway systemd service
-    SERVICE_NAME="aiir-gateway"
+    SERVICE_NAME="vhir-gateway"
     UNIT_FILE="$HOME/.config/systemd/user/${SERVICE_NAME}.service"
     if systemctl --user is-enabled "$SERVICE_NAME" &>/dev/null 2>&1 || [[ -f "$UNIT_FILE" ]]; then
         echo -e "${BOLD}[2] Gateway systemd service${NC}"
@@ -304,18 +304,18 @@ if ${UNINSTALL_MODE:-false}; then
     if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC="$HOME/.bashrc";
     elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC="$HOME/.zshrc"; fi
 
-    if [[ -n "$SHELL_RC" ]] && grep -q "AIIR" "$SHELL_RC" 2>/dev/null; then
+    if [[ -n "$SHELL_RC" ]] && grep -q "ValiHuntIR" "$SHELL_RC" 2>/dev/null; then
         echo -e "${BOLD}[5] Shell profile${NC}"
         echo "    File: $SHELL_RC"
-        echo "    Lines: AIIR_EXAMINER, AIIR_CASES_DIR, PATH, argcomplete"
+        echo "    Lines: VHIR_EXAMINER, VHIR_CASES_DIR, PATH, argcomplete"
         echo ""
-        if prompt_yn_strict "    Remove AIIR lines from $SHELL_RC?"; then
-            sed -i '/# AIIR Platform/d' "$SHELL_RC"
-            sed -i '/AIIR_EXAMINER/d' "$SHELL_RC"
-            sed -i '/AIIR_CASES_DIR/d' "$SHELL_RC"
-            sed -i '/# aiir-path/d' "$SHELL_RC"
-            sed -i '\|\.aiir/venv/bin|d' "$SHELL_RC"
-            sed -i '/register-python-argcomplete aiir/d' "$SHELL_RC"
+        if prompt_yn_strict "    Remove ValiHuntIR lines from $SHELL_RC?"; then
+            sed -i '/# ValiHuntIR Platform/d' "$SHELL_RC"
+            sed -i '/VHIR_EXAMINER/d' "$SHELL_RC"
+            sed -i '/VHIR_CASES_DIR/d' "$SHELL_RC"
+            sed -i '/# vhir-path/d' "$SHELL_RC"
+            sed -i '\|\.vhir/venv/bin|d' "$SHELL_RC"
+            sed -i '/register-python-argcomplete vhir/d' "$SHELL_RC"
             ok "Shell profile cleaned."
         else
             info "Skipped. Remove manually if needed."
@@ -326,9 +326,9 @@ if ${UNINSTALL_MODE:-false}; then
     # [6] Gateway config and credentials
     CONFIG_FILES=()
     for f in gateway.yaml manifest.json config.yaml; do
-        [[ -f "$HOME/.aiir/$f" ]] && CONFIG_FILES+=("$HOME/.aiir/$f")
+        [[ -f "$HOME/.vhir/$f" ]] && CONFIG_FILES+=("$HOME/.vhir/$f")
     done
-    TLS_DIR="$HOME/.aiir/tls"
+    TLS_DIR="$HOME/.vhir/tls"
     if [[ ${#CONFIG_FILES[@]} -gt 0 ]] || [[ -d "$TLS_DIR" ]]; then
         echo -e "${BOLD}[6] Gateway config and credentials${NC}"
         for f in "${CONFIG_FILES[@]}"; do
@@ -348,41 +348,41 @@ if ${UNINSTALL_MODE:-false}; then
         echo ""
     fi
 
-    # [7] Remaining ~/.aiir/ contents (hooks, logs, start-gateway.sh)
+    # [7] Remaining ~/.vhir/ contents (hooks, logs, start-gateway.sh)
     # Exclude items the user chose to keep in steps 3-4
-    AIIR_DIR="$HOME/.aiir"
-    if [[ -d "$AIIR_DIR" ]]; then
+    VHIR_DIR="$HOME/.vhir"
+    if [[ -d "$VHIR_DIR" ]]; then
         EXCLUDE_ARGS=()
         $KEPT_VENV && EXCLUDE_ARGS+=(! -name "venv")
         $KEPT_SRC  && EXCLUDE_ARGS+=(! -name "src")
 
-        REMAINING=$(find "$AIIR_DIR" -mindepth 1 -maxdepth 1 "${EXCLUDE_ARGS[@]}" 2>/dev/null | head -5)
+        REMAINING=$(find "$VHIR_DIR" -mindepth 1 -maxdepth 1 "${EXCLUDE_ARGS[@]}" 2>/dev/null | head -5)
         if [[ -n "$REMAINING" ]]; then
-            echo -e "${BOLD}[7] Remaining ~/.aiir/ contents${NC}"
+            echo -e "${BOLD}[7] Remaining ~/.vhir/ contents${NC}"
             while IFS= read -r item; do
                 echo "    $(basename "$item")"
             done <<< "$REMAINING"
-            REMAINING_COUNT=$(find "$AIIR_DIR" -mindepth 1 -maxdepth 1 "${EXCLUDE_ARGS[@]}" 2>/dev/null | wc -l)
+            REMAINING_COUNT=$(find "$VHIR_DIR" -mindepth 1 -maxdepth 1 "${EXCLUDE_ARGS[@]}" 2>/dev/null | wc -l)
             if (( REMAINING_COUNT > 5 )); then
                 echo "    ... and $((REMAINING_COUNT - 5)) more"
             fi
             echo ""
-            if prompt_yn_strict "    Remove remaining ~/.aiir/ contents?"; then
+            if prompt_yn_strict "    Remove remaining ~/.vhir/ contents?"; then
                 # Remove only items not preserved in earlier steps
-                find "$AIIR_DIR" -mindepth 1 -maxdepth 1 "${EXCLUDE_ARGS[@]}" -exec rm -rf {} +
-                ok "Remaining ~/.aiir/ contents removed."
+                find "$VHIR_DIR" -mindepth 1 -maxdepth 1 "${EXCLUDE_ARGS[@]}" -exec rm -rf {} +
+                ok "Remaining ~/.vhir/ contents removed."
             else
-                info "Skipped. Directory preserved at $AIIR_DIR"
+                info "Skipped. Directory preserved at $VHIR_DIR"
             fi
         else
             # Only remove directory if truly empty
-            rmdir "$AIIR_DIR" 2>/dev/null || true
+            rmdir "$VHIR_DIR" 2>/dev/null || true
         fi
         echo ""
     fi
 
-    # [8] Verification ledger (/var/lib/aiir)
-    VERIF_DIR="/var/lib/aiir"
+    # [8] Verification ledger (/var/lib/vhir)
+    VERIF_DIR="/var/lib/vhir"
     if [[ -d "$VERIF_DIR" ]]; then
         echo -e "${BOLD}[8] Verification ledger${NC}"
         echo "    Path: $VERIF_DIR/verification/"
@@ -441,7 +441,7 @@ fi
 
 echo ""
 echo -e "${BOLD}============================================================${NC}"
-echo -e "${BOLD}  AIIR — SIFT Platform Installer${NC}"
+echo -e "${BOLD}  ValiHuntIR — SIFT Platform Installer${NC}"
 echo -e "${BOLD}  Artificial Intelligence Incident Response${NC}"
 echo -e "${BOLD}============================================================${NC}"
 echo ""
@@ -563,18 +563,18 @@ fi
 # Phase 1b: Verification Ledger Directory
 # =============================================================================
 
-if [ -d /var/lib/aiir/verification ]; then
-    ok "Verification ledger: /var/lib/aiir/verification/"
+if [ -d /var/lib/vhir/verification ]; then
+    ok "Verification ledger: /var/lib/vhir/verification/"
 else
     info "Creating verification ledger directory (requires sudo)..."
-    if sudo mkdir -p /var/lib/aiir/verification && \
-       sudo chown "$USER:$USER" /var/lib/aiir/verification && \
-       sudo chmod 700 /var/lib/aiir/verification; then
-        ok "Verification ledger: /var/lib/aiir/verification/"
+    if sudo mkdir -p /var/lib/vhir/verification && \
+       sudo chown "$USER:$USER" /var/lib/vhir/verification && \
+       sudo chmod 700 /var/lib/vhir/verification; then
+        ok "Verification ledger: /var/lib/vhir/verification/"
     else
-        err "Could not create /var/lib/aiir/verification/"
+        err "Could not create /var/lib/vhir/verification/"
         echo "  The HMAC verification ledger is required for finding integrity."
-        echo "  Run: sudo mkdir -p /var/lib/aiir/verification && sudo chown $USER:$USER /var/lib/aiir/verification && sudo chmod 700 /var/lib/aiir/verification"
+        echo "  Run: sudo mkdir -p /var/lib/vhir/verification && sudo chown $USER:$USER /var/lib/vhir/verification && sudo chmod 700 /var/lib/vhir/verification"
         exit 1
     fi
 fi
@@ -583,17 +583,17 @@ fi
 # Phase 1b2: Password Storage Directory
 # =============================================================================
 
-if [ -d /var/lib/aiir/passwords ]; then
-    ok "Password storage: /var/lib/aiir/passwords/"
+if [ -d /var/lib/vhir/passwords ]; then
+    ok "Password storage: /var/lib/vhir/passwords/"
 else
     info "Creating password storage directory (requires sudo)..."
-    if sudo mkdir -p /var/lib/aiir/passwords && \
-       sudo chown "$USER:$USER" /var/lib/aiir/passwords && \
-       sudo chmod 700 /var/lib/aiir/passwords; then
-        ok "Password storage: /var/lib/aiir/passwords/"
+    if sudo mkdir -p /var/lib/vhir/passwords && \
+       sudo chown "$USER:$USER" /var/lib/vhir/passwords && \
+       sudo chmod 700 /var/lib/vhir/passwords; then
+        ok "Password storage: /var/lib/vhir/passwords/"
     else
-        err "Could not create /var/lib/aiir/passwords/"
-        echo "  Run: sudo mkdir -p /var/lib/aiir/passwords && sudo chown $USER:$USER /var/lib/aiir/passwords && sudo chmod 700 /var/lib/aiir/passwords"
+        err "Could not create /var/lib/vhir/passwords/"
+        echo "  Run: sudo mkdir -p /var/lib/vhir/passwords && sudo chown $USER:$USER /var/lib/vhir/passwords && sudo chmod 700 /var/lib/vhir/passwords"
         exit 1
     fi
 fi
@@ -612,7 +612,7 @@ fi
 #   - WSL1 (no namespace support)
 #   - user.max_user_namespaces=0
 #
-# See: https://appliedir.github.io/aiir/security/ (L9 — Kernel Sandbox)
+# See: https://appliedir.github.io/vhir/security/ (L9 — Kernel Sandbox)
 
 BWRAP_PROFILE="/etc/apparmor.d/bwrap"
 
@@ -695,7 +695,7 @@ if command -v bwrap &>/dev/null; then
             echo "  You can install the profile later by re-running setup-sift.sh."
         elif ! sudo tee "$BWRAP_PROFILE" > /dev/null << 'APPARMOR'
 # AppArmor profile for bubblewrap — grants user namespace access.
-# Installed by AIIR setup-sift.sh for Claude Code kernel sandbox (L9).
+# Installed by ValiHuntIR setup-sift.sh for Claude Code kernel sandbox (L9).
 # This profile is specific to /usr/bin/bwrap and does not affect other
 # processes. Safe to remove: sudo rm /etc/apparmor.d/bwrap && sudo systemctl reload apparmor
 abi <abi/4.0>,
@@ -874,29 +874,29 @@ else
     ok "Repository cloned to $INSTALL_DIR"
 fi
 
-# Clone aiir (for aiir-cli — required before case-mcp/report-mcp)
-AIIR_DIR="$(dirname "$INSTALL_DIR")/aiir"
-AIIR_REPO_URL="https://github.com/AppliedIR/aiir.git"
+# Clone vhir (for vhir-cli — required before case-mcp/report-mcp)
+VHIR_DIR="$(dirname "$INSTALL_DIR")/vhir"
+VHIR_REPO_URL="https://github.com/AppliedIR/vhir.git"
 
-if [[ -d "$AIIR_DIR/.git" ]]; then
-    info "aiir repository exists at $AIIR_DIR. Pulling latest..."
-    if (cd "$AIIR_DIR" && git pull --quiet); then
-        ok "aiir repository updated"
+if [[ -d "$VHIR_DIR/.git" ]]; then
+    info "vhir repository exists at $VHIR_DIR. Pulling latest..."
+    if (cd "$VHIR_DIR" && git pull --quiet); then
+        ok "vhir repository updated"
     else
-        warn "Could not update aiir repository. Continuing with existing code."
+        warn "Could not update vhir repository. Continuing with existing code."
     fi
-elif [[ -d "$AIIR_DIR" ]] && [[ ! -d "$AIIR_DIR/.git" ]]; then
-    err "$AIIR_DIR exists but is not a git repository"
+elif [[ -d "$VHIR_DIR" ]] && [[ ! -d "$VHIR_DIR/.git" ]]; then
+    err "$VHIR_DIR exists but is not a git repository"
     echo "  Remove it or choose a different --install-dir"
     exit 1
 else
-    info "Cloning aiir..."
-    if ! git clone --quiet "$AIIR_REPO_URL" "$AIIR_DIR"; then
-        err "Failed to clone aiir repository"
+    info "Cloning vhir..."
+    if ! git clone --quiet "$VHIR_REPO_URL" "$VHIR_DIR"; then
+        err "Failed to clone vhir repository"
         echo "  Check network access and try again"
         exit 1
     fi
-    ok "aiir repository cloned to $AIIR_DIR"
+    ok "vhir repository cloned to $VHIR_DIR"
 fi
 
 # =============================================================================
@@ -963,13 +963,13 @@ install_pkg "sift-mcp" "$INSTALL_DIR/packages/sift-mcp" || exit 1
 # 5. sift-gateway (depends on 2)
 install_pkg "sift-gateway" "$INSTALL_DIR/packages/sift-gateway" || exit 1
 
-# 6. aiir-cli (from aiir repo — must be installed before case-mcp/report-mcp)
-install_pkg "aiir-cli" "$AIIR_DIR" || exit 1
+# 6. vhir-cli (from vhir repo — must be installed before case-mcp/report-mcp)
+install_pkg "vhir-cli" "$VHIR_DIR" || exit 1
 
-# 7. case-mcp (depends on aiir-cli)
+# 7. case-mcp (depends on vhir-cli)
 install_pkg "case-mcp" "$INSTALL_DIR/packages/case-mcp" || exit 1
 
-# 8. report-mcp (depends on aiir-cli)
+# 8. report-mcp (depends on vhir-cli)
 install_pkg "report-mcp" "$INSTALL_DIR/packages/report-mcp" || exit 1
 
 # 9. case-dashboard (depends on sift-common, optional for gateway)
@@ -1035,7 +1035,7 @@ smoke_test "sift-common"        "sift_common"
 smoke_test "forensic-mcp"       "forensic_mcp"
 smoke_test "sift-mcp"           "sift_mcp"
 smoke_test "sift-gateway"       "sift_gateway"
-smoke_test "aiir-cli"           "aiir_cli"
+smoke_test "vhir-cli"           "vhir_cli"
 smoke_test "case-mcp"           "case_mcp"
 smoke_test "report-mcp"         "report_mcp"
 smoke_test "case-dashboard"     "case_dashboard"
@@ -1227,38 +1227,38 @@ fi
 ok "Examiner: $EXAMINER_NAME"
 
 # Write to config.yaml
-AIIR_CONFIG="$HOME/.aiir/config.yaml"
-mkdir -p "$HOME/.aiir"
-if [[ -f "$AIIR_CONFIG" ]]; then
+VHIR_CONFIG="$HOME/.vhir/config.yaml"
+mkdir -p "$HOME/.vhir"
+if [[ -f "$VHIR_CONFIG" ]]; then
     # Update examiner in existing config
-    if grep -q "^examiner:" "$AIIR_CONFIG" 2>/dev/null; then
-        sed -i "s/^examiner:.*/examiner: $EXAMINER_NAME/" "$AIIR_CONFIG"
+    if grep -q "^examiner:" "$VHIR_CONFIG" 2>/dev/null; then
+        sed -i "s/^examiner:.*/examiner: $EXAMINER_NAME/" "$VHIR_CONFIG"
     else
-        echo "examiner: $EXAMINER_NAME" >> "$AIIR_CONFIG"
+        echo "examiner: $EXAMINER_NAME" >> "$VHIR_CONFIG"
     fi
 else
-    echo "examiner: $EXAMINER_NAME" > "$AIIR_CONFIG"
-    chmod 600 "$AIIR_CONFIG"
+    echo "examiner: $EXAMINER_NAME" > "$VHIR_CONFIG"
+    chmod 600 "$VHIR_CONFIG"
 fi
 
-# Write AIIR_EXAMINER to shell profile
+# Write VHIR_EXAMINER to shell profile
 SHELL_RC_EXAMINER=""
 if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC_EXAMINER="$HOME/.bashrc";
 elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC_EXAMINER="$HOME/.zshrc"; fi
 
 if [[ -n "$SHELL_RC_EXAMINER" ]]; then
-    if grep -q "AIIR_EXAMINER" "$SHELL_RC_EXAMINER" 2>/dev/null; then
-        sed -i "s/^export AIIR_EXAMINER=.*/export AIIR_EXAMINER=\"$EXAMINER_NAME\"/" "$SHELL_RC_EXAMINER"
+    if grep -q "VHIR_EXAMINER" "$SHELL_RC_EXAMINER" 2>/dev/null; then
+        sed -i "s/^export VHIR_EXAMINER=.*/export VHIR_EXAMINER=\"$EXAMINER_NAME\"/" "$SHELL_RC_EXAMINER"
     else
         # Prepend marker if not already present (Phase 12 will add PATH under it)
-        if ! grep -q "# AIIR Platform" "$SHELL_RC_EXAMINER" 2>/dev/null; then
+        if ! grep -q "# ValiHuntIR Platform" "$SHELL_RC_EXAMINER" 2>/dev/null; then
             echo "" >> "$SHELL_RC_EXAMINER"
-            echo "# AIIR Platform" >> "$SHELL_RC_EXAMINER"
+            echo "# ValiHuntIR Platform" >> "$SHELL_RC_EXAMINER"
         fi
-        echo "export AIIR_EXAMINER=\"$EXAMINER_NAME\"" >> "$SHELL_RC_EXAMINER"
+        echo "export VHIR_EXAMINER=\"$EXAMINER_NAME\"" >> "$SHELL_RC_EXAMINER"
     fi
 fi
-export AIIR_EXAMINER="$EXAMINER_NAME"
+export VHIR_EXAMINER="$EXAMINER_NAME"
 
 # --- Password setup ---
 # setup_password() reads from /dev/tty and requires termios.
@@ -1274,14 +1274,14 @@ if [[ -t 0 ]] && ! $AUTO_YES; then
     echo ""
     echo "Minimum 8 characters. Choose something memorable."
     echo ""
-    "$VENV_DIR/bin/aiir" config --setup-password || {
+    "$VENV_DIR/bin/vhir" config --setup-password || {
         warn "Password setup failed or was cancelled."
-        echo "  Set your password later with: aiir config --setup-password"
+        echo "  Set your password later with: vhir config --setup-password"
     }
 else
     echo ""
     warn "Skipping password setup (non-interactive mode)."
-    echo "  Set your password later with: aiir config --setup-password"
+    echo "  Set your password later with: vhir config --setup-password"
 fi
 
 # =============================================================================
@@ -1292,7 +1292,7 @@ echo ""
 info "Generating gateway bearer token..."
 
 # Preserve existing token if gateway.yaml already has one
-GATEWAY_CONFIG="$HOME/.aiir/gateway.yaml"
+GATEWAY_CONFIG="$HOME/.vhir/gateway.yaml"
 EXISTING_TOKEN=""
 if [[ -f "$GATEWAY_CONFIG" ]]; then
     EXISTING_TOKEN=$("$VENV_PYTHON" -c "
@@ -1329,15 +1329,15 @@ if $REMOTE_MODE; then
 
     # _ensure_static_ip() is interactive (prompts + reads stdin) and prints
     # status to stdout. We run it directly (not captured) so the user sees
-    # prompts, then read the result from ~/.aiir/network.yaml afterward.
+    # prompts, then read the result from ~/.vhir/network.yaml afterward.
     "$VENV_PYTHON" -c "
-from aiir_cli.commands.join import _ensure_static_ip
+from vhir_cli.commands.join import _ensure_static_ip
 _ensure_static_ip()
 " || true
 
     # Read the configured IP from network.yaml (written by _apply_static_ip)
     STATIC_IP=""
-    NETWORK_YAML="$HOME/.aiir/network.yaml"
+    NETWORK_YAML="$HOME/.vhir/network.yaml"
     if [[ -f "$NETWORK_YAML" ]]; then
         STATIC_IP=$("$VENV_PYTHON" -c "
 import yaml
@@ -1363,7 +1363,7 @@ fi
 if $REMOTE_MODE; then
     header "TLS Certificate Generation"
 
-    TLS_DIR="$HOME/.aiir/tls"
+    TLS_DIR="$HOME/.vhir/tls"
     mkdir -p "$TLS_DIR"
 
     # Determine SAN entries — use static IP if configured, else detect
@@ -1382,7 +1382,7 @@ if $REMOTE_MODE; then
         openssl req -new -x509 -key "$TLS_DIR/ca-key.pem" \
             -out "$TLS_DIR/ca-cert.pem" \
             -days 3650 \
-            -subj "/CN=AIIR Gateway CA" 2>/dev/null
+            -subj "/CN=ValiHuntIR Gateway CA" 2>/dev/null
         ok "CA certificate generated"
 
         info "Generating gateway certificate (1-year validity)..."
@@ -1392,7 +1392,7 @@ if $REMOTE_MODE; then
         openssl req -new \
             -key "$TLS_DIR/gateway-key.pem" \
             -out "$TLS_DIR/gateway.csr" \
-            -subj "/CN=AIIR Gateway" \
+            -subj "/CN=ValiHuntIR Gateway" \
             -addext "subjectAltName=$SAN" 2>/dev/null
 
         # Sign with CA
@@ -1421,7 +1421,7 @@ fi
 
 header "Gateway Configuration"
 
-mkdir -p "$HOME/.aiir"
+mkdir -p "$HOME/.vhir"
 
 if [[ -f "$GATEWAY_CONFIG" ]]; then
     info "Existing gateway config found — checking for new backends..."
@@ -1461,16 +1461,16 @@ for name, module in expected:
             "command": venv_python,
             "args": ["-m", module],
             "env": {
-                "AIIR_CASE_DIR": "${AIIR_CASE_DIR}",
-                "AIIR_ACTIVE_CASE": "${AIIR_ACTIVE_CASE}",
-                "AIIR_EXAMINER": "${AIIR_EXAMINER}",
+                "VHIR_CASE_DIR": "${VHIR_CASE_DIR}",
+                "VHIR_ACTIVE_CASE": "${VHIR_ACTIVE_CASE}",
+                "VHIR_EXAMINER": "${VHIR_EXAMINER}",
             },
             "enabled": True,
         }
         if name == "forensic-mcp":
             entry["args"].append("--deferred-tools")
         if name in ("case-mcp", "report-mcp", "forensic-mcp"):
-            entry["env"]["AIIR_CASES_DIR"] = "${AIIR_CASES_DIR}"
+            entry["env"]["VHIR_CASES_DIR"] = "${VHIR_CASES_DIR}"
         if name == "forensic-rag-mcp":
             entry["env"]["ANONYMIZED_TELEMETRY"] = "False"
         config.setdefault("backends", {})[name] = entry
@@ -1515,8 +1515,8 @@ config = {
 
 if remote:
     config["gateway"]["tls"] = {
-        "certfile": os.path.expanduser("~/.aiir/tls/gateway-cert.pem"),
-        "keyfile": os.path.expanduser("~/.aiir/tls/gateway-key.pem"),
+        "certfile": os.path.expanduser("~/.vhir/tls/gateway-cert.pem"),
+        "keyfile": os.path.expanduser("~/.vhir/tls/gateway-key.pem"),
     }
 
 # Core backends (always installed)
@@ -1542,16 +1542,16 @@ for name, module in core_backends + optional:
         "command": venv_python,
         "args": ["-m", module],
         "env": {
-            "AIIR_CASE_DIR": "\${AIIR_CASE_DIR}",
-            "AIIR_ACTIVE_CASE": "\${AIIR_ACTIVE_CASE}",
-            "AIIR_EXAMINER": "\${AIIR_EXAMINER}",
+            "VHIR_CASE_DIR": "\${VHIR_CASE_DIR}",
+            "VHIR_ACTIVE_CASE": "\${VHIR_ACTIVE_CASE}",
+            "VHIR_EXAMINER": "\${VHIR_EXAMINER}",
         },
         "enabled": True,
     }
     if name == 'forensic-mcp':
         entry['args'].append('--deferred-tools')
     if name in ('case-mcp', 'report-mcp', 'forensic-mcp'):
-        entry['env']['AIIR_CASES_DIR'] = '\${AIIR_CASES_DIR}'
+        entry['env']['VHIR_CASES_DIR'] = '\${VHIR_CASES_DIR}'
     if name == "opencti-mcp":
         octi_url = "$OPENCTI_URL"
         octi_token = "$OPENCTI_TOKEN"
@@ -1573,7 +1573,7 @@ fi
 # Phase 10: Manifest
 # =============================================================================
 
-MANIFEST="$HOME/.aiir/manifest.json"
+MANIFEST="$HOME/.vhir/manifest.json"
 info "Writing manifest..."
 
 "$VENV_PYTHON" << PYEOF
@@ -1594,7 +1594,7 @@ pkg_list = [
     ("case-mcp", "case_mcp"),
     ("report-mcp", "report_mcp"),
     ("sift-gateway", "sift_gateway"),
-    ("aiir-cli", "aiir_cli"),
+    ("vhir-cli", "vhir_cli"),
 ]
 
 if "$INSTALL_TRIAGE" == "true":
@@ -1618,7 +1618,7 @@ for pip_name, module in pkg_list:
     packages[pip_name] = {"module": module, "version": version}
 
 git_hashes = {}
-for repo_name, repo_dir in [("sift-mcp", install_dir), ("aiir", os.path.join(os.path.dirname(install_dir), "aiir"))]:
+for repo_name, repo_dir in [("sift-mcp", install_dir), ("vhir", os.path.join(os.path.dirname(install_dir), "vhir"))]:
     try:
         result = subprocess.run(
             ["git", "-C", repo_dir, "rev-parse", "HEAD"],
@@ -1666,44 +1666,44 @@ fi
 # Phase 12: Add venv to PATH
 # =============================================================================
 
-AIIR_BIN="$VENV_DIR/bin"
+VHIR_BIN="$VENV_DIR/bin"
 SHELL_RC=""
 if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC="$HOME/.bashrc";
 elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC="$HOME/.zshrc"; fi
 
 if [[ -n "$SHELL_RC" ]]; then
-    if grep -q "# AIIR Platform" "$SHELL_RC" 2>/dev/null; then
+    if grep -q "# ValiHuntIR Platform" "$SHELL_RC" 2>/dev/null; then
         # Marker exists — update PATH line in-place (handles changed venv path)
-        if grep -q '# aiir-path' "$SHELL_RC" 2>/dev/null; then
-            sed -i "s|^export PATH=.*# aiir-path|export PATH=\"$AIIR_BIN:\$PATH\"  # aiir-path|" "$SHELL_RC"
-        elif grep -q '\.aiir/venv/bin' "$SHELL_RC" 2>/dev/null; then
+        if grep -q '# vhir-path' "$SHELL_RC" 2>/dev/null; then
+            sed -i "s|^export PATH=.*# vhir-path|export PATH=\"$VHIR_BIN:\$PATH\"  # vhir-path|" "$SHELL_RC"
+        elif grep -q '\.vhir/venv/bin' "$SHELL_RC" 2>/dev/null; then
             # Legacy install without tag — replace and add tag
-            sed -i "s|^export PATH=.*\.aiir/venv/bin.*|export PATH=\"$AIIR_BIN:\$PATH\"  # aiir-path|" "$SHELL_RC"
+            sed -i "s|^export PATH=.*\.vhir/venv/bin.*|export PATH=\"$VHIR_BIN:\$PATH\"  # vhir-path|" "$SHELL_RC"
         else
             # Marker exists but no PATH line — append after marker
-            echo "export PATH=\"$AIIR_BIN:\$PATH\"  # aiir-path" >> "$SHELL_RC"
+            echo "export PATH=\"$VHIR_BIN:\$PATH\"  # vhir-path" >> "$SHELL_RC"
         fi
         ok "Updated venv PATH in $SHELL_RC"
     else
         echo "" >> "$SHELL_RC"
-        echo "# AIIR Platform" >> "$SHELL_RC"
-        echo "export PATH=\"$AIIR_BIN:\$PATH\"  # aiir-path" >> "$SHELL_RC"
+        echo "# ValiHuntIR Platform" >> "$SHELL_RC"
+        echo "export PATH=\"$VHIR_BIN:\$PATH\"  # vhir-path" >> "$SHELL_RC"
         ok "Added venv to PATH in $SHELL_RC"
     fi
 
-    # AIIR_CASES_DIR — so aiir CLI resolves ~/cases (or custom --cases-dir)
-    if grep -q "AIIR_CASES_DIR" "$SHELL_RC" 2>/dev/null; then
-        sed -i "s|^export AIIR_CASES_DIR=.*|export AIIR_CASES_DIR=\"$CASE_DIR\"|" "$SHELL_RC"
+    # VHIR_CASES_DIR — so vhir CLI resolves ~/cases (or custom --cases-dir)
+    if grep -q "VHIR_CASES_DIR" "$SHELL_RC" 2>/dev/null; then
+        sed -i "s|^export VHIR_CASES_DIR=.*|export VHIR_CASES_DIR=\"$CASE_DIR\"|" "$SHELL_RC"
     else
-        echo "export AIIR_CASES_DIR=\"$CASE_DIR\"" >> "$SHELL_RC"
+        echo "export VHIR_CASES_DIR=\"$CASE_DIR\"" >> "$SHELL_RC"
     fi
 else
-    warn "No .bashrc or .zshrc found. Add to your shell profile: export PATH=\"$AIIR_BIN:\$PATH\""
+    warn "No .bashrc or .zshrc found. Add to your shell profile: export PATH=\"$VHIR_BIN:\$PATH\""
 fi
-if [[ ":$PATH:" != *":$AIIR_BIN:"* ]]; then
-    export PATH="$AIIR_BIN:$PATH"
+if [[ ":$PATH:" != *":$VHIR_BIN:"* ]]; then
+    export PATH="$VHIR_BIN:$PATH"
 fi
-export AIIR_CASES_DIR="$CASE_DIR"
+export VHIR_CASES_DIR="$CASE_DIR"
 
 # Tab completion
 if [[ -z "${SHELL_RC:-}" ]]; then
@@ -1711,10 +1711,10 @@ if [[ -z "${SHELL_RC:-}" ]]; then
     elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC="$HOME/.zshrc"; fi
 fi
 if command -v register-python-argcomplete &>/dev/null; then
-    COMP_LINE='eval "$(register-python-argcomplete aiir)"'
-    if [[ -n "$SHELL_RC" ]] && ! grep -q "register-python-argcomplete aiir" "$SHELL_RC" 2>/dev/null; then
+    COMP_LINE='eval "$(register-python-argcomplete vhir)"'
+    if [[ -n "$SHELL_RC" ]] && ! grep -q "register-python-argcomplete vhir" "$SHELL_RC" 2>/dev/null; then
         echo "$COMP_LINE" >> "$SHELL_RC"
-        ok "Added aiir tab completion to $SHELL_RC"
+        ok "Added vhir tab completion to $SHELL_RC"
     fi
 fi
 
@@ -1725,12 +1725,12 @@ fi
 header "Starting Gateway"
 
 # Generate startup script (always regenerate — contains paths)
-GATEWAY_START="$HOME/.aiir/start-gateway.sh"
+GATEWAY_START="$HOME/.vhir/start-gateway.sh"
 cat > "$GATEWAY_START" << SCRIPT
 #!/usr/bin/env bash
-# Start AIIR Gateway
-export AIIR_EXAMINER="$EXAMINER_NAME"
-export AIIR_CASES_DIR="$CASE_DIR"
+# Start ValiHuntIR Gateway
+export VHIR_EXAMINER="$EXAMINER_NAME"
+export VHIR_CASES_DIR="$CASE_DIR"
 exec "$VENV_DIR/bin/python" -m sift_gateway --config "$GATEWAY_CONFIG"
 SCRIPT
 chmod +x "$GATEWAY_START"
@@ -1794,15 +1794,15 @@ if $AUTOSTART; then
         SYSTEMD_DIR="$HOME/.config/systemd/user"
         mkdir -p "$SYSTEMD_DIR"
 
-        cat > "$SYSTEMD_DIR/aiir-gateway.service" << SERVICE
+        cat > "$SYSTEMD_DIR/vhir-gateway.service" << SERVICE
 [Unit]
-Description=AIIR Gateway
+Description=ValiHuntIR Gateway
 After=network.target
 
 [Service]
 ExecStart=$VENV_DIR/bin/python -m sift_gateway --config $GATEWAY_CONFIG
-Environment=AIIR_EXAMINER=$EXAMINER_NAME
-Environment=AIIR_CASES_DIR=$CASE_DIR
+Environment=VHIR_EXAMINER=$EXAMINER_NAME
+Environment=VHIR_CASES_DIR=$CASE_DIR
 Restart=on-failure
 RestartSec=5
 
@@ -1817,13 +1817,13 @@ SERVICE
         fi
 
         systemctl --user daemon-reload 2>/dev/null
-        systemctl --user enable aiir-gateway.service 2>/dev/null && \
+        systemctl --user enable vhir-gateway.service 2>/dev/null && \
             ok "Systemd service enabled (auto-start at login)"
-        if systemctl --user is-active aiir-gateway.service &>/dev/null; then
-            systemctl --user restart aiir-gateway.service 2>/dev/null && \
+        if systemctl --user is-active vhir-gateway.service &>/dev/null; then
+            systemctl --user restart vhir-gateway.service 2>/dev/null && \
                 ok "Gateway restarted via systemd" || \
                 warn "Gateway restart failed. Check $GATEWAY_CONFIG"
-        elif systemctl --user start aiir-gateway.service 2>/dev/null; then
+        elif systemctl --user start vhir-gateway.service 2>/dev/null; then
             ok "Gateway started via systemd"
         else
             warn "Gateway failed to start. Check $GATEWAY_CONFIG"
@@ -1870,7 +1870,7 @@ if $REMOTE_MODE; then
 
     if $JOIN_READY; then
         # Generate join code for the remote LLM client machine
-        JOIN_OUTPUT=$("$VENV_DIR/bin/aiir" setup join-code 2>&1) || true
+        JOIN_OUTPUT=$("$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
         JOIN_CODE=$(echo "$JOIN_OUTPUT" | grep "Join code:" | awk '{print $3}')
 
         if [[ -n "$JOIN_CODE" ]]; then
@@ -1879,15 +1879,15 @@ if $REMOTE_MODE; then
             echo -e "${BOLD}Remote client setup${NC} (run on the machine where your LLM client runs):"
             echo ""
             echo "  Linux (full support):"
-            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/aiir/main/setup-client-linux.sh \\"
+            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/vhir/main/setup-client-linux.sh \\"
             echo "      | bash -s -- --sift=$GW_URL --code=$JOIN_CODE"
             echo ""
             echo "  macOS:"
-            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/aiir/main/setup-client-macos.sh \\"
+            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/vhir/main/setup-client-macos.sh \\"
             echo "      | bash -s -- --sift=$GW_URL --code=$JOIN_CODE"
             echo ""
             echo "  Windows (PowerShell):"
-            echo "    Invoke-WebRequest -Uri https://raw.githubusercontent.com/AppliedIR/aiir/main/setup-client-windows.ps1 -OutFile setup-client-windows.ps1"
+            echo "    Invoke-WebRequest -Uri https://raw.githubusercontent.com/AppliedIR/vhir/main/setup-client-windows.ps1 -OutFile setup-client-windows.ps1"
             echo "    .\\setup-client-windows.ps1 -Sift $GW_URL -Code $JOIN_CODE"
             echo ""
             echo "  Note: Your LLM client must run locally on your machine to reach the"
@@ -1896,7 +1896,7 @@ if $REMOTE_MODE; then
 
             # Offer to generate a second join code for Windows wintools
             if prompt_yn "Will you connect a Windows forensic workstation?" "n"; then
-                WIN_OUTPUT=$("$VENV_DIR/bin/aiir" setup join-code 2>&1) || true
+                WIN_OUTPUT=$("$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
                 WIN_CODE=$(echo "$WIN_OUTPUT" | grep "Join code:" | awk '{print $3}')
                 if [[ -n "$WIN_CODE" ]]; then
                     echo ""
@@ -1914,15 +1914,15 @@ if $REMOTE_MODE; then
 
             echo ""
             echo "  Join codes expire in 2 hours. Generate new codes with:"
-            echo "    aiir setup join-code"
+            echo "    vhir setup join-code"
         else
             warn "Could not generate join code. Generate one later with:"
-            echo "    aiir setup join-code"
+            echo "    vhir setup join-code"
         fi
     else
         warn "Gateway not responding. Start it first, then generate join codes:"
         echo "    $GATEWAY_START"
-        echo "    aiir setup join-code"
+        echo "    vhir setup join-code"
     fi
 
     echo ""
@@ -1946,7 +1946,7 @@ fi
 # Prompt for client if not set via --client flag
 if [[ -z "$CLIENT" ]] && ! $AUTO_YES; then
     echo ""
-    echo "Which LLM client will connect to AIIR?"
+    echo "Which LLM client will connect to ValiHuntIR?"
     echo ""
     echo "  1. Claude Code      CLI agent (full forensic controls)"
     echo "  2. Claude Desktop   Desktop app (MCP-only)"
@@ -1966,12 +1966,12 @@ elif [[ -z "$CLIENT" ]]; then
     CLIENT="claude-code"
 fi
 
-"$VENV_DIR/bin/aiir" setup client --client="$CLIENT" --sift="$SIFT_URL" -y \
-    || warn "Client configuration failed. Run manually: aiir setup client"
+"$VENV_DIR/bin/vhir" setup client --client="$CLIENT" --sift="$SIFT_URL" -y \
+    || warn "Client configuration failed. Run manually: vhir setup client"
 
 
 # Global deployment message for claude-code
-if grep -qE '"forensic-mcp"|"aiir"' "$HOME/.claude.json" 2>/dev/null; then
+if grep -qE '"forensic-mcp"|"vhir"' "$HOME/.claude.json" 2>/dev/null; then
     echo ""
     echo -e "${BOLD}Forensic controls deployed globally.${NC}"
     echo "Claude Code can be launched from any directory on this machine."
@@ -2009,7 +2009,7 @@ if $REMOTE_MODE; then
     echo "  (Stored in gateway config. Remote clients use join codes instead.)"
     echo ""
     echo -e "${BOLD}TLS CA certificate:${NC}"
-    echo "  $HOME/.aiir/tls/ca-cert.pem"
+    echo "  $HOME/.vhir/tls/ca-cert.pem"
 else
     echo "Token:       stored in $GATEWAY_CONFIG"
 fi
@@ -2062,7 +2062,7 @@ fi
 # =============================================================================
 
 echo ""
-echo -e "${BOLD}Documentation:${NC} https://appliedir.github.io/aiir/"
+echo -e "${BOLD}Documentation:${NC} https://appliedir.github.io/vhir/"
 
 echo ""
 echo -e "${BOLD}Next steps:${NC}"
@@ -2073,7 +2073,7 @@ echo ""
 case "$CLIENT" in
     claude-code)
         echo "  To start an investigation:"
-        echo "    aiir case init <case-name>"
+        echo "    vhir case init <case-name>"
         echo "    cd ~/cases/<case-name>"
         echo "    claude"
         echo ""
@@ -2081,17 +2081,17 @@ case "$CLIENT" in
         ;;
     claude-desktop)
         echo "  To start an investigation:"
-        echo "    aiir case init <case-name>"
+        echo "    vhir case init <case-name>"
         echo "  Then open Claude Desktop and ask it to activate the case."
         ;;
     librechat)
         echo "  To start an investigation:"
-        echo "    aiir case init <case-name>"
+        echo "    vhir case init <case-name>"
         echo "  Then open LibreChat and ask the LLM to activate the case."
         ;;
     *)
         echo "  To start an investigation:"
-        echo "    aiir case init <case-name>"
+        echo "    vhir case init <case-name>"
         echo "  Then connect your MCP client and ask the LLM to activate the case."
         ;;
 esac

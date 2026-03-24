@@ -1,4 +1,4 @@
-"""Streamable HTTP MCP endpoint for the AIIR gateway.
+"""Streamable HTTP MCP endpoint for the ValiHuntIR gateway.
 
 Exposes the gateway's aggregated tools via the MCP protocol using a
 low-level ``Server`` that proxies through the gateway's existing backend

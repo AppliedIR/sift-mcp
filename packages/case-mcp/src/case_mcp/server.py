@@ -1,6 +1,6 @@
-"""AIIR case management MCP server.
+"""ValiHuntIR case management MCP server.
 
-Exposes 15 tools wrapping aiir CLI _data() functions for LLM-callable
+Exposes 15 tools wrapping vhir CLI _data() functions for LLM-callable
 case management. No new logic — thin wrappers around tested code.
 """
 
@@ -12,34 +12,34 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from aiir_cli.case_io import (
+from mcp.server.fastmcp import FastMCP
+from sift_common.audit import AuditWriter, resolve_examiner
+from sift_common.instructions import CASE_MCP as _INSTRUCTIONS
+from sift_common.oplog import setup_logging
+from vhir_cli.case_io import (
     export_bundle as _export_bundle,
 )
-from aiir_cli.case_io import (
+from vhir_cli.case_io import (
     import_bundle as _import_bundle,
 )
-from aiir_cli.commands.audit_cmd import audit_summary_data
-from aiir_cli.commands.evidence import (
+from vhir_cli.commands.audit_cmd import audit_summary_data
+from vhir_cli.commands.evidence import (
     list_evidence_data,
     register_evidence_data,
     verify_evidence_data,
 )
-from aiir_cli.commands.join import (
+from vhir_cli.commands.join import (
     _repoint_samba_share,
     notify_wintools_case_activated,
     notify_wintools_case_deactivated,
 )
-from aiir_cli.main import (
+from vhir_cli.main import (
     _case_activate_data,
     _case_init_data,
     _case_list_data,
     _case_status_data,
     _set_case_wintools_permissions,
 )
-from mcp.server.fastmcp import FastMCP
-from sift_common.audit import AuditWriter, resolve_examiner
-from sift_common.instructions import CASE_MCP as _INSTRUCTIONS
-from sift_common.oplog import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def _wintools_configured() -> bool:
     """Check if Samba sharing is set up (samba.yaml exists with share_name)."""
     import yaml
 
-    p = Path.home() / ".aiir" / "samba.yaml"
+    p = Path.home() / ".vhir" / "samba.yaml"
     if not p.is_file():
         return False
     try:
@@ -77,30 +77,30 @@ def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
 def _resolve_case_dir(case_id: str = "") -> Path:
     """Resolve case directory without sys.exit.
 
-    Same priority as aiir CLI get_case_dir(), but raises ValueError
+    Same priority as vhir CLI get_case_dir(), but raises ValueError
     instead of calling sys.exit().
 
-    Side effect: sets AIIR_CASE_DIR env var so AuditWriter can find
+    Side effect: sets VHIR_CASE_DIR env var so AuditWriter can find
     the audit directory.
     """
     if case_id:
         if ".." in case_id or "/" in case_id or "\\" in case_id:
             raise ValueError(f"Invalid case ID: {case_id}")
-        cases_dir = Path(os.environ.get("AIIR_CASES_DIR", _DEFAULT_CASES_DIR))
+        cases_dir = Path(os.environ.get("VHIR_CASES_DIR", _DEFAULT_CASES_DIR))
         case_dir = cases_dir / case_id
         if not case_dir.exists():
             raise ValueError(f"Case not found: {case_id}")
-        os.environ["AIIR_CASE_DIR"] = str(case_dir)
+        os.environ["VHIR_CASE_DIR"] = str(case_dir)
         return case_dir
 
-    env_dir = os.environ.get("AIIR_CASE_DIR")
+    env_dir = os.environ.get("VHIR_CASE_DIR")
     if env_dir:
         p = Path(env_dir)
         if not p.is_dir():
-            raise ValueError(f"AIIR_CASE_DIR does not exist: {env_dir}")
+            raise ValueError(f"VHIR_CASE_DIR does not exist: {env_dir}")
         return p
 
-    active_file = Path.home() / ".aiir" / "active_case"
+    active_file = Path.home() / ".vhir" / "active_case"
     if active_file.exists():
         content = active_file.read_text().strip()
         if content:
@@ -109,11 +109,11 @@ def _resolve_case_dir(case_id: str = "") -> Path:
             else:
                 if ".." in content or "/" in content or "\\" in content:
                     raise ValueError(f"Invalid case ID in active_case: {content}")
-                cases_dir = Path(os.environ.get("AIIR_CASES_DIR", _DEFAULT_CASES_DIR))
+                cases_dir = Path(os.environ.get("VHIR_CASES_DIR", _DEFAULT_CASES_DIR))
                 case_dir = cases_dir / content
             if not case_dir.is_dir():
                 raise ValueError(f"Case directory does not exist: {case_dir}")
-            os.environ["AIIR_CASE_DIR"] = str(case_dir)
+            os.environ["VHIR_CASE_DIR"] = str(case_dir)
             return case_dir
 
     raise ValueError("No active case. Use case_init or case_activate first.")
@@ -159,7 +159,7 @@ def create_server() -> FastMCP:
                 description=description,
                 cases_dir=cases_dir or None,
             )
-            os.environ["AIIR_CASE_DIR"] = result["case_dir"]
+            os.environ["VHIR_CASE_DIR"] = result["case_dir"]
 
             if share_wintools and _wintools_configured():
                 try:
@@ -200,7 +200,7 @@ def create_server() -> FastMCP:
         try:
             _validate_str_length(cases_dir, "cases_dir", _MAX_NAME)
             result = _case_activate_data(case_id, cases_dir=cases_dir or None)
-            os.environ["AIIR_CASE_DIR"] = result["case_dir"]
+            os.environ["VHIR_CASE_DIR"] = result["case_dir"]
 
             # Repoint share and notify wintools
             case_path = Path(result["case_dir"])
@@ -508,7 +508,7 @@ def create_server() -> FastMCP:
 
         Creates a timestamped backup of case metadata, findings, timeline,
         approvals, audit trails, and reports. Does NOT include evidence or
-        extraction files (use 'aiir backup --all' for full backups).
+        extraction files (use 'vhir backup --all' for full backups).
 
         Confirm with the examiner before creating a backup.
 
@@ -516,7 +516,7 @@ def create_server() -> FastMCP:
             destination: Directory to create the backup in.
             purpose: Why the backup is being made (audit trail).
         """
-        from aiir_cli.commands.backup import create_backup_data
+        from vhir_cli.commands.backup import create_backup_data
 
         try:
             _validate_str_length(destination, "destination", _MAX_NAME)
@@ -561,9 +561,9 @@ def create_server() -> FastMCP:
 
         import yaml
 
-        config_path = Path.home() / ".aiir" / "gateway.yaml"
+        config_path = Path.home() / ".vhir" / "gateway.yaml"
         if not config_path.is_file():
-            return {"error": "Gateway config not found (~/.aiir/gateway.yaml)"}
+            return {"error": "Gateway config not found (~/.vhir/gateway.yaml)"}
 
         try:
             config = yaml.safe_load(config_path.read_text()) or {}

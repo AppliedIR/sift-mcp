@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AIIR — Examiner Portal</title>
+<title>ValiHuntIR — Examiner Portal</title>
 <style>
 :root {
   --bg-primary: #0f172a;
@@ -482,7 +482,7 @@ body {
   <!-- Header -->
   <div class="header">
     <div class="header-row">
-      <span class="header-title" id="headerTitle">AIIR — Examiner Portal</span>
+      <span class="header-title" id="headerTitle">ValiHuntIR — Examiner Portal</span>
       <div class="header-actions">
         <button id="btnRefresh" title="Refresh findings">&#8635; Refresh</button>
         <span id="refreshBadge" class="refresh-badge" style="display:none"></span>
@@ -744,7 +744,7 @@ body {
     <button id="commitBtn" class="btn-primary" onclick="openCommitDialog()"
       style="font-size:12px;padding:4px 12px" disabled>Commit</button>
     <span id="footerHint" style="font-size:11px;color:var(--text-muted)">
-      Or terminal: <code>aiir approve --review</code></span>
+      Or terminal: <code>vhir approve --review</code></span>
     <span id="footerShortcuts" style="cursor:pointer">? Shortcuts</span>
   </div>
 </div>
@@ -867,10 +867,10 @@ let batchTimelineSelected = new Set();
   const hash = window.location.hash;
   if (hash.startsWith('#token=')) {
     token = hash.slice(7);
-    try { sessionStorage.setItem('aiir_dashboard_token', token); } catch (e) {}
+    try { sessionStorage.setItem('vhir_dashboard_token', token); } catch (e) {}
     history.replaceState(null, '', window.location.pathname + window.location.search);
   } else {
-    try { token = sessionStorage.getItem('aiir_dashboard_token'); } catch (e) {}
+    try { token = sessionStorage.getItem('vhir_dashboard_token'); } catch (e) {}
   }
 })();
 
@@ -929,8 +929,8 @@ async function loadAll() {
     delta = d && d.items ? d : { version: 1, case_id: '', items: [] };
     caseMeta = c || {};
     if (caseMeta.case_id) {
-      document.getElementById('headerTitle').textContent = 'AIIR \u2014 ' + caseMeta.case_id;
-      document.title = 'AIIR \u2014 ' + caseMeta.case_id;
+      document.getElementById('headerTitle').textContent = 'ValiHuntIR \u2014 ' + caseMeta.case_id;
+      document.title = 'ValiHuntIR \u2014 ' + caseMeta.case_id;
       if (!delta.case_id) delta.case_id = caseMeta.case_id;
     }
     populateExaminerFilter();
@@ -976,7 +976,7 @@ function showEmptyOrFirst() {
     });
     if (allReviewed && currentFilter === 'pending') {
       document.getElementById('emptyState').innerHTML =
-        '<h2>No pending findings remaining</h2><p>Run <code>aiir approve --review</code> in your terminal to commit.</p>';
+        '<h2>No pending findings remaining</h2><p>Run <code>vhir approve --review</code> in your terminal to commit.</p>';
     } else {
       document.getElementById('emptyState').innerHTML =
         '<h2>No findings match current filter</h2><p>Try changing the filter or search.</p>';
@@ -1791,7 +1791,7 @@ async function submitCommit() {
     updateCommitButton();
     showToast('Committed: ' + (result.approved || 0) + ' approved, ' +
       (result.rejected || 0) + ' rejected, ' + (result.edited || 0) + ' edited', 'success');
-    try { localStorage.setItem('aiir-has-committed', 'true'); } catch(_) {}
+    try { localStorage.setItem('vhir-has-committed', 'true'); } catch(_) {}
     _commitInProgress = false;
 
   } catch (e) {
@@ -2358,14 +2358,14 @@ function formatTimeShort(iso) {
 /* === Theme === */
 function initTheme() {
   var saved;
-  try { saved = localStorage.getItem('aiir-theme'); } catch(_) {}
+  try { saved = localStorage.getItem('vhir-theme'); } catch(_) {}
   if (saved === 'light') document.body.classList.add('light');
   updateThemeButton();
 }
 
 function toggleTheme() {
   document.body.classList.toggle('light');
-  try { localStorage.setItem('aiir-theme', document.body.classList.contains('light') ? 'light' : 'dark'); } catch(_) {}
+  try { localStorage.setItem('vhir-theme', document.body.classList.contains('light') ? 'light' : 'dark'); } catch(_) {}
   updateThemeButton();
 }
 
@@ -2687,7 +2687,7 @@ function renderDashboard(summary) {
     if (caseMeta.description) html += '<p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px">' + escapeHtml(caseMeta.description) + '</p>';
   } else {
     html += '<h2 style="margin:0 0 8px;font-size:20px;color:var(--text-muted)">No active case</h2>';
-    html += '<p style="color:var(--text-muted);font-size:13px">Open a case with <code>aiir case activate</code> or create one with <code>aiir case init</code>.</p>';
+    html += '<p style="color:var(--text-muted);font-size:13px">Open a case with <code>vhir case activate</code> or create one with <code>vhir case init</code>.</p>';
   }
 
   // === TWO-PANEL LAYOUT ===
@@ -2744,11 +2744,11 @@ function renderDashboard(summary) {
 
   // --- RIGHT PANEL: Getting Started ---
   html += '<div style="font-size:13px;line-height:1.7;color:var(--text-secondary)">';
-  html += '<div style="font-weight:600;font-size:15px;margin-bottom:10px;color:var(--text-primary)">Welcome to AIIR</div>';
+  html += '<div style="font-weight:600;font-size:15px;margin-bottom:10px;color:var(--text-primary)">Welcome to ValiHuntIR</div>';
 
   // --- Intro ---
   html += '<div style="margin-bottom:14px">';
-  html += 'AIIR is an AI-assisted incident response platform. An AI analyst investigates using forensic tools on your SIFT and Windows workstations, recording what it finds as structured findings and timeline events. <strong>You are the examiner</strong> \u2014 the human authority who reviews, corrects, and approves the AI\u2019s work before anything appears in a report.';
+  html += 'ValiHuntIR is an AI-assisted incident response platform. An AI analyst investigates using forensic tools on your SIFT and Windows workstations, recording what it finds as structured findings and timeline events. <strong>You are the examiner</strong> \u2014 the human authority who reviews, corrects, and approves the AI\u2019s work before anything appears in a report.';
   html += '</div>';
 
   // --- How It Works (always visible) ---
@@ -2777,7 +2777,7 @@ function renderDashboard(summary) {
   // --- Evidence & Trust ---
   html += '<details style="margin-bottom:8px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text-primary)">Evidence & Trust</summary>';
   html += '<div style="margin-top:8px;font-size:12px;line-height:1.7">';
-  html += '<div style="margin-bottom:6px">AIIR is designed so you never have to take the AI\u2019s word for anything:</div>';
+  html += '<div style="margin-bottom:6px">ValiHuntIR is designed so you never have to take the AI\u2019s word for anything:</div>';
   html += '<div style="margin-bottom:4px"><strong>Provenance chain</strong> \u2014 every finding links back to the evidence files and tool executions that produced it. The chain panel on each finding shows: which evidence file was input, which tool processed it, and what output was extracted. You can trace any claim back to its source</div>';
   html += '<div style="margin-bottom:4px"><strong>Audit trail</strong> \u2014 every tool execution, finding record, and approval decision is logged with timestamps and the examiner identity. The AI cannot modify or delete audit entries</div>';
   html += '<div style="margin-bottom:4px"><strong>Content hashing</strong> \u2014 findings are hashed at creation. If a finding is modified after you reviewed it, the hash changes and the approval is flagged as stale</div>';
@@ -2786,13 +2786,13 @@ function renderDashboard(summary) {
   html += '</div></details>';
 
   // --- The Platform ---
-  html += '<details style="margin-bottom:8px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text-primary)">The AIIR Platform</summary>';
+  html += '<details style="margin-bottom:8px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text-primary)">The ValiHuntIR Platform</summary>';
   html += '<div style="margin-top:8px;font-size:12px;line-height:1.7">';
   html += '<div style="margin-bottom:6px">The Examiner Portal is one part of a larger system:</div>';
   html += '<div style="margin-bottom:4px"><strong>SIFT Gateway</strong> \u2014 runs on your SIFT workstation. Hosts 7 MCP backends: forensic tools, case management, report generation, knowledge search, threat intelligence, and more</div>';
   html += '<div style="margin-bottom:4px"><strong>Windows Tools</strong> \u2014 if connected, runs Zimmerman tools and Hayabusa on a Windows VM for artifact parsing that requires Windows</div>';
   html += '<div style="margin-bottom:4px"><strong>LLM Client</strong> \u2014 any MCP-compatible AI client (Claude Code, Goose, Cursor, etc.) connects to the gateway and drives the investigation. The platform is LLM-agnostic</div>';
-  html += '<div style="margin-bottom:4px"><strong>aiir CLI</strong> \u2014 your command-line tool for case management, approval, backup, and reporting. Everything you can do in the Examiner Portal, you can also do from the terminal with <code>aiir approve --review</code>, <code>aiir case status</code>, <code>aiir backup</code></div>';
+  html += '<div style="margin-bottom:4px"><strong>vhir CLI</strong> \u2014 your command-line tool for case management, approval, backup, and reporting. Everything you can do in the Examiner Portal, you can also do from the terminal with <code>vhir approve --review</code>, <code>vhir case status</code>, <code>vhir backup</code></div>';
   html += '<div><strong>Reports</strong> \u2014 once findings are committed, generate professional IR reports: full, executive summary, timeline-only, IOC-only, or status updates</div>';
   html += '</div></details>';
 
@@ -3455,7 +3455,7 @@ function renderTimeline() {
   }
   if (filtered.length === 0) {
     var msg = timelineFilter === 'pending'
-      ? 'No pending events remaining. Run <code>aiir approve --review</code> to apply.'
+      ? 'No pending events remaining. Run <code>vhir approve --review</code> to apply.'
       : 'No events match current filters.';
     container.innerHTML = '<div class="tl-empty"><h2>' + msg + '</h2></div>';
     updateTimelineSummary();
@@ -3855,7 +3855,7 @@ document.getElementById('timelineTypeFilter').addEventListener('change', functio
   var handle = document.getElementById('sidebarResize');
   var sidebar = document.querySelector('.sidebar');
   if (!handle || !sidebar) return;
-  var savedW = localStorage.getItem('aiir-sidebar-width');
+  var savedW = localStorage.getItem('vhir-sidebar-width');
   if (savedW) sidebar.style.width = savedW + 'px';
   var startX, startW;
   handle.addEventListener('mousedown', function(e) {
@@ -3878,7 +3878,7 @@ document.getElementById('timelineTypeFilter').addEventListener('change', functio
     document.body.style.userSelect = '';
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
-    try { localStorage.setItem('aiir-sidebar-width', sidebar.offsetWidth); } catch(_) {}
+    try { localStorage.setItem('vhir-sidebar-width', sidebar.offsetWidth); } catch(_) {}
   }
 })();
 

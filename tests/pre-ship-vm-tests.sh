@@ -13,7 +13,7 @@ set -euo pipefail
 
 CLAUDE_JSON="$HOME/.claude.json"
 BACKUP="$HOME/.claude.json.pre-ship-backup"
-GATEWAY_YAML="$HOME/.aiir/gateway.yaml"
+GATEWAY_YAML="$HOME/.vhir/gateway.yaml"
 RESULTS=()
 
 # --- Helpers ---
@@ -124,15 +124,15 @@ echo "--- Test 1: First-Launch Preservation ---"
 echo ""
 info "Adding test mcpServers entry to ~/.claude.json"
 
-add_mcp_entry "aiir-preservation-test" "http" "test_token_preservation_check"
+add_mcp_entry "vhir-preservation-test" "http" "test_token_preservation_check"
 
-BEFORE=$(entry_exists "aiir-preservation-test")
+BEFORE=$(entry_exists "vhir-preservation-test")
 info "Before Claude launch: $BEFORE"
 
 info "Launching Claude Code (non-interactive, single prompt)..."
 (cd /tmp && claude -p "Respond with exactly: OK" 2>&1) || true
 
-AFTER=$(entry_exists "aiir-preservation-test")
+AFTER=$(entry_exists "vhir-preservation-test")
 info "After Claude launch: $AFTER"
 
 if echo "$AFTER" | grep -q "EXISTS"; then
@@ -143,41 +143,41 @@ else
     ls -la "$HOME/.claude.json.backup"* 2>/dev/null || info "No backups found"
 fi
 
-remove_mcp_entry "aiir-preservation-test"
+remove_mcp_entry "vhir-preservation-test"
 
 echo ""
 echo "--- Test 2: MCP type 'http' in global scope ---"
 echo ""
 info "Adding forensic-mcp entry with type=http to ~/.claude.json"
 
-add_mcp_entry "aiir-type-test-http" "http" "$TOKEN"
+add_mcp_entry "vhir-type-test-http" "http" "$TOKEN"
 info "Entry added:"
-entry_exists "aiir-type-test-http"
+entry_exists "vhir-type-test-http"
 
-if check_mcp_connects "aiir-type-test-http"; then
+if check_mcp_connects "vhir-type-test-http"; then
     pass "type=http works in ~/.claude.json global mcpServers"
 else
     fail "type=http does NOT work in ~/.claude.json global mcpServers"
 fi
 
-remove_mcp_entry "aiir-type-test-http"
+remove_mcp_entry "vhir-type-test-http"
 
 echo ""
 echo "--- Test 3: MCP type 'streamable-http' in global scope ---"
 echo ""
 info "Adding forensic-mcp entry with type=streamable-http to ~/.claude.json"
 
-add_mcp_entry "aiir-type-test-shttp" "streamable-http" "$TOKEN"
+add_mcp_entry "vhir-type-test-shttp" "streamable-http" "$TOKEN"
 info "Entry added:"
-entry_exists "aiir-type-test-shttp"
+entry_exists "vhir-type-test-shttp"
 
-if check_mcp_connects "aiir-type-test-shttp"; then
+if check_mcp_connects "vhir-type-test-shttp"; then
     pass "type=streamable-http works in ~/.claude.json global mcpServers"
 else
     fail "type=streamable-http does NOT work in ~/.claude.json global mcpServers"
 fi
 
-remove_mcp_entry "aiir-type-test-shttp"
+remove_mcp_entry "vhir-type-test-shttp"
 
 # --- Restore and Report ---
 

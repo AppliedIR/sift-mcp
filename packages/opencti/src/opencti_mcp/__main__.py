@@ -8,8 +8,8 @@ Environment Variables:
     OPENCTI_TOKEN: API token for authentication
     OPENCTI_TIMEOUT: Request timeout in seconds (default: 60)
     OPENCTI_MAX_RESULTS: Maximum results per query (default: 100)
-    AIIR_LOG_FORMAT: Log format - "json" (default) or "text"
-    AIIR_LOG_FILE: Write to ~/.aiir/logs/ - "true" (default) or "false"
+    VHIR_LOG_FORMAT: Log format - "json" (default) or "text"
+    VHIR_LOG_FILE: Write to ~/.vhir/logs/ - "true" (default) or "false"
 
 Feature Flags (FF_ prefix):
     FF_STARTUP_VALIDATION: Enable startup connectivity test (default: true)

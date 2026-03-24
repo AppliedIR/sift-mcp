@@ -12,7 +12,7 @@ rules:
     description: "Findings and timeline entries require human approval before becoming official"
     enforcement: "forensic_mcp_stages_as_draft"
     when_to_apply: "After staging any finding or timeline event — before referencing it as established fact"
-    how_to_apply: "Stage via record_finding(). Do not build subsequent analysis on DRAFT findings. Inform the examiner that approval is needed via aiir CLI. Wait for APPROVED status."
+    how_to_apply: "Stage via record_finding(). Do not build subsequent analysis on DRAFT findings. Inform the examiner that approval is needed via vhir CLI. Wait for APPROVED status."
   - id: "FD-003"
     name: "no_autonomous_attribution"
     severity: "critical"

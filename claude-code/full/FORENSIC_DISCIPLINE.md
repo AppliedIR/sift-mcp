@@ -182,7 +182,7 @@ The cost of a wrong assumption cascading into hours of invalid analysis far exce
 
 When the human approves a finding during conversation, stage it
 formally using `record_finding` so it enters the case record as DRAFT.
-The examiner then uses `aiir approve` to promote it. This two-step
+The examiner then uses `vhir approve` to promote it. This two-step
 process (conversational approval + formal approval) ensures every
 finding in the case record was explicitly endorsed.
 
