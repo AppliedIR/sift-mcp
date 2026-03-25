@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# case-manager.sh — Deterministic case management for ValiHuntIR Lite.
+# case-manager.sh — Deterministic case management for Valhuntir Lite.
 # Called by the /case skill. All file operations happen here so the
 # LLM never writes state files, directories, or CASE.yaml directly.
 set -euo pipefail

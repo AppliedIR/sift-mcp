@@ -1,7 +1,7 @@
-# LibreChat Setup Guide for ValiHuntIR
+# LibreChat Setup Guide for Valhuntir
 
-Configure LibreChat as an ValiHuntIR forensic investigation client. LibreChat
-connects to the ValiHuntIR gateway via MCP (streamable-http) and gets per-backend
+Configure LibreChat as a Valhuntir forensic investigation client. LibreChat
+connects to the Valhuntir gateway via MCP (streamable-http) and gets per-backend
 forensic discipline instructions automatically.
 
 **Minimum version:** v0.8.3+ recommended (streamable-http reconnection fix,
@@ -9,7 +9,7 @@ deferred tool loading). Currently v0.8.3-rc1 — use v0.8.3+ when available.
 
 ## Two-Mode Architecture
 
-LibreChat operates in two modes with ValiHuntIR. Understanding this split is
+LibreChat operates in two modes with Valhuntir. Understanding this split is
 essential for correct setup.
 
 **Standard mode** uses the `modelSpecs` preset. The `promptPrefix` injects
@@ -31,7 +31,7 @@ Use Agents mode for investigations. Standard mode works as a quick fallback.
 
 ## Prerequisites
 
-1. ValiHuntIR gateway running (`vhir service status` shows backends healthy)
+1. Valhuntir gateway running (`vhir service status` shows backends healthy)
 2. Bearer token from `~/.vhir/gateway.yaml`
 3. LibreChat v0.8.3+ with MCP support enabled
 
@@ -47,7 +47,7 @@ This creates `librechat_mcp.yaml` with per-backend MCP entries, timeouts,
 initTimeout, allowedDomains, and model settings. Merge it into your
 `librechat.yaml`.
 
-After merging, create an ValiHuntIR Investigation agent (see "Creating an ValiHuntIR
+After merging, create a Valhuntir Investigation agent (see "Creating a Valhuntir
 Agent" below). The generated config handles standard mode. Agents mode
 requires manual setup in the UI.
 
@@ -165,13 +165,13 @@ goes in Agent Instructions instead.
 modelSpecs:
   list:
     - spec: vhir-investigation
-      name: "ValiHuntIR Investigation"
+      name: "Valhuntir Investigation"
       preset:
         endpoint: "anthropic"  # change if using azureOpenAI, bedrock, etc.
         maxContextTokens: 200000   # full Claude context window
         maxOutputTokens: 16384     # forensic analysis needs long output
         greeting: |
-          ValiHuntIR Investigation workspace ready. Connected backends and forensic
+          Valhuntir Investigation workspace ready. Connected backends and forensic
           discipline are active. Start with your investigation objective or
           evidence to analyze. All findings stage as DRAFT for your review.
         promptPrefix: |
@@ -198,7 +198,7 @@ in the modelSpec above. In Agents mode, use the lean Agent Instructions
 instead (see below).
 
 ```
-You are an IR analyst orchestrating forensic investigations on an ValiHuntIR workstation. Evidence guides theory, never the reverse.
+You are an IR analyst orchestrating forensic investigations on a Valhuntir workstation. Evidence guides theory, never the reverse.
 
 EVIDENCE PRESENTATION: Every finding must include: (1) Source — artifact file path. (2) Extraction — tool and command. (3) Content — actual log entry or record, never a summary. (4) Observation — factual. (5) Interpretation — analytical, clearly labeled. (6) Confidence — SPECULATIVE/LOW/MEDIUM/HIGH with justification. If you cannot show the evidence, you cannot make the claim.
 
@@ -226,7 +226,7 @@ separate modelSpec preset:
 
 ```
     - spec: vhir-investigation-thinking
-      name: "ValiHuntIR Investigation (Thinking)"
+      name: "Valhuntir Investigation (Thinking)"
       preset:
         endpoint: "anthropic"
         thinking: true
@@ -268,7 +268,7 @@ schemas, or playbooks.
 Verify with `vhir service status` — forensic-mcp should show 26 tools
 (12 base + 14 deferred).
 
-## Creating an ValiHuntIR Agent (Step-by-Step)
+## Creating a Valhuntir Agent (Step-by-Step)
 
 This is the single most important setup step. Agents mode with deferred
 loading is the biggest performance lever for LibreChat.
@@ -276,12 +276,12 @@ loading is the biggest performance lever for LibreChat.
 1. Open LibreChat, click the Agents panel, click Create Agent.
 
 2. Set the fields:
-   - **Name:** ValiHuntIR Investigation
+   - **Name:** Valhuntir Investigation
    - **Model:** claude-sonnet-4-6 (or your preferred Claude model)
    - **Instructions:** paste the Agent Instructions text below
    - **Tool Search:** ON
 
-3. Add MCP Servers: select all ValiHuntIR backends (forensic-mcp, sift-mcp,
+3. Add MCP Servers: select all Valhuntir backends (forensic-mcp, sift-mcp,
    case-mcp, report-mcp, forensic-rag-mcp, windows-triage-mcp, opencti-mcp).
 
 4. Configure deferred loading: for each backend's tools, click the clock
@@ -312,7 +312,7 @@ per-backend MCP instructions (tier 3) which are delivered automatically
 via `serverInstructions`.
 
 ```
-You are an incident response analyst on the ValiHuntIR forensic investigation platform.
+You are an incident response analyst on the Valhuntir forensic investigation platform.
 
 INVESTIGATION WORKFLOW
 Plan before acting. For any multi-step task, list your planned steps, then execute. The examiner monitors your progress and can redirect at any time.
@@ -378,7 +378,7 @@ concluding anything is malicious.
 ### Reporting Agent Instructions
 
 ```
-You are generating an incident response report using the ValiHuntIR platform.
+You are generating an incident response report using the Valhuntir platform.
 Only approved findings and timeline events appear in reports. Use
 search_knowledge for IR writing best practices. Use generate_report to
 draft, then save_report to persist. Set case metadata as information emerges.
@@ -498,5 +498,5 @@ Generates `librechat_mcp.yaml` with:
 - `endpoints.agents.recursionLimit: 75`
 
 Users must create agents manually (UI only — no YAML config for agents).
-The generated config handles standard mode. Follow the "Creating an ValiHuntIR
+The generated config handles standard mode. Follow the "Creating a Valhuntir
 Agent" section above for agents mode setup.

@@ -1,4 +1,4 @@
-"""ValiHuntIR case management MCP server.
+"""Valhuntir case management MCP server.
 
 Exposes 15 tools wrapping vhir CLI _data() functions for LLM-callable
 case management. No new logic — thin wrappers around tested code.

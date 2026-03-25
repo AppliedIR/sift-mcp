@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# quickstart.sh — ValiHuntIR Platform Quick Start
+# quickstart.sh — Valhuntir Platform Quick Start
 #
-# One command to go from zero to a working ValiHuntIR platform.
+# One command to go from zero to a working Valhuntir platform.
 # Auto-selects quick tier. Prompts for examiner identity and LLM client.
 #
 # Usage:

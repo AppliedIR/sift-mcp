@@ -1,1 +1,1 @@
-"""ValiHuntIR case dashboard — web-based finding review interface."""
+"""Valhuntir case dashboard — web-based finding review interface."""

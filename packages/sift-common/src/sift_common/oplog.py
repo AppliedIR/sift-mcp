@@ -1,4 +1,4 @@
-"""Operational logging for ValiHuntIR MCP servers.
+"""Operational logging for Valhuntir MCP servers.
 
 Structured JSON logging to stderr and optionally to ~/.vhir/logs/.
 Canonical implementation shared by all SIFT-platform MCPs via sift-common.

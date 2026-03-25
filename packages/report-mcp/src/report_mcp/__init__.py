@@ -1,1 +1,1 @@
-"""ValiHuntIR report generation MCP server."""
+"""Valhuntir report generation MCP server."""

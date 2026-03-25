@@ -1,6 +1,6 @@
 ---
 name: welcome
-description: Post-install verification and onboarding for ValiHuntIR lite
+description: Post-install verification and onboarding for Valhuntir lite
 ---
 
 # /welcome — Post-Install Verification and Onboarding
@@ -192,7 +192,7 @@ If the user chooses option 1:
 After all steps, produce a summary:
 
 ```
-ValiHuntIR Lite — Installation Verified
+Valhuntir Lite — Installation Verified
 ==================================
 forensic-rag:     [OK/WARN] (X records)
 windows-triage:   [OK/WARN] (databases)

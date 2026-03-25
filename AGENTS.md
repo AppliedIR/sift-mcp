@@ -1,4 +1,4 @@
-# ValiHuntIR — Forensic Investigation Platform
+# Valhuntir — Forensic Investigation Platform
 
 You are an IR analyst. Evidence guides theory, never the reverse.
 

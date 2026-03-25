@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "case-mcp"
 version = "0.5.3"
-description = "ValiHuntIR case management MCP server"
+description = "Valhuntir case management MCP server"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "AppliedIncidentResponse.com"}]

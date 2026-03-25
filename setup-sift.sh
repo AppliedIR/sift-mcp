@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# setup-sift.sh — ValiHuntIR SIFT Platform Installer
+# setup-sift.sh — Valhuntir SIFT Platform Installer
 #
 # Installs MCP servers, the gateway, vhir CLI, and all dependencies into a
 # shared virtual environment at ~/.vhir/venv/. Includes examiner identity
@@ -67,7 +67,7 @@ for arg in "$@"; do
             echo "  --venv=X          Override venv path (default: ~/.vhir/venv)"
             echo "  --port=N          Override gateway port (default: 4508)"
             echo "  --cases-dir=X     Override cases root directory (default: ~/cases)"
-            echo "  --uninstall       Uninstall ValiHuntIR forensic controls (delegates to vhir setup client)"
+            echo "  --uninstall       Uninstall Valhuntir forensic controls (delegates to vhir setup client)"
             echo "  --manual-start    Skip auto-start/systemd"
             echo "  -y, --yes         Accept all defaults (non-interactive)"
             echo "  -h, --help        Show this help"
@@ -191,7 +191,7 @@ if ${UNINSTALL_MODE:-false}; then
 
     echo ""
     echo -e "${BOLD}============================================================${NC}"
-    echo -e "${BOLD}  ValiHuntIR — Platform Uninstall${NC}"
+    echo -e "${BOLD}  Valhuntir — Platform Uninstall${NC}"
     echo -e "${BOLD}============================================================${NC}"
     echo ""
 
@@ -304,13 +304,13 @@ if ${UNINSTALL_MODE:-false}; then
     if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC="$HOME/.bashrc";
     elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC="$HOME/.zshrc"; fi
 
-    if [[ -n "$SHELL_RC" ]] && grep -q "ValiHuntIR" "$SHELL_RC" 2>/dev/null; then
+    if [[ -n "$SHELL_RC" ]] && grep -q "Valhuntir" "$SHELL_RC" 2>/dev/null; then
         echo -e "${BOLD}[5] Shell profile${NC}"
         echo "    File: $SHELL_RC"
         echo "    Lines: VHIR_EXAMINER, VHIR_CASES_DIR, PATH, argcomplete"
         echo ""
-        if prompt_yn_strict "    Remove ValiHuntIR lines from $SHELL_RC?"; then
-            sed -i '/# ValiHuntIR Platform/d' "$SHELL_RC"
+        if prompt_yn_strict "    Remove Valhuntir lines from $SHELL_RC?"; then
+            sed -i '/# Valhuntir Platform/d' "$SHELL_RC"
             sed -i '/VHIR_EXAMINER/d' "$SHELL_RC"
             sed -i '/VHIR_CASES_DIR/d' "$SHELL_RC"
             sed -i '/# vhir-path/d' "$SHELL_RC"
@@ -441,7 +441,7 @@ fi
 
 echo ""
 echo -e "${BOLD}============================================================${NC}"
-echo -e "${BOLD}  ValiHuntIR — SIFT Platform Installer${NC}"
+echo -e "${BOLD}  Valhuntir — SIFT Platform Installer${NC}"
 echo -e "${BOLD}  Artificial Intelligence Incident Response${NC}"
 echo -e "${BOLD}============================================================${NC}"
 echo ""
@@ -612,7 +612,7 @@ fi
 #   - WSL1 (no namespace support)
 #   - user.max_user_namespaces=0
 #
-# See: https://appliedir.github.io/valihuntir/security/ (L9 — Kernel Sandbox)
+# See: https://appliedir.github.io/valhuntir/security/ (L9 — Kernel Sandbox)
 
 BWRAP_PROFILE="/etc/apparmor.d/bwrap"
 
@@ -695,7 +695,7 @@ if command -v bwrap &>/dev/null; then
             echo "  You can install the profile later by re-running setup-sift.sh."
         elif ! sudo tee "$BWRAP_PROFILE" > /dev/null << 'APPARMOR'
 # AppArmor profile for bubblewrap — grants user namespace access.
-# Installed by ValiHuntIR setup-sift.sh for Claude Code kernel sandbox (L9).
+# Installed by Valhuntir setup-sift.sh for Claude Code kernel sandbox (L9).
 # This profile is specific to /usr/bin/bwrap and does not affect other
 # processes. Safe to remove: sudo rm /etc/apparmor.d/bwrap && sudo systemctl reload apparmor
 abi <abi/4.0>,
@@ -876,7 +876,7 @@ fi
 
 # Clone vhir (for vhir-cli — required before case-mcp/report-mcp)
 VHIR_DIR="$(dirname "$INSTALL_DIR")/vhir"
-VHIR_REPO_URL="https://github.com/AppliedIR/valihuntir.git"
+VHIR_REPO_URL="https://github.com/AppliedIR/valhuntir.git"
 
 if [[ -d "$VHIR_DIR/.git" ]]; then
     info "vhir repository exists at $VHIR_DIR. Pulling latest..."
@@ -1251,9 +1251,9 @@ if [[ -n "$SHELL_RC_EXAMINER" ]]; then
         sed -i "s/^export VHIR_EXAMINER=.*/export VHIR_EXAMINER=\"$EXAMINER_NAME\"/" "$SHELL_RC_EXAMINER"
     else
         # Prepend marker if not already present (Phase 12 will add PATH under it)
-        if ! grep -q "# ValiHuntIR Platform" "$SHELL_RC_EXAMINER" 2>/dev/null; then
+        if ! grep -q "# Valhuntir Platform" "$SHELL_RC_EXAMINER" 2>/dev/null; then
             echo "" >> "$SHELL_RC_EXAMINER"
-            echo "# ValiHuntIR Platform" >> "$SHELL_RC_EXAMINER"
+            echo "# Valhuntir Platform" >> "$SHELL_RC_EXAMINER"
         fi
         echo "export VHIR_EXAMINER=\"$EXAMINER_NAME\"" >> "$SHELL_RC_EXAMINER"
     fi
@@ -1384,7 +1384,7 @@ if $REMOTE_MODE; then
         openssl req -new -x509 -key "$TLS_DIR/ca-key.pem" \
             -out "$TLS_DIR/ca-cert.pem" \
             -days 3650 \
-            -subj "/CN=ValiHuntIR Gateway CA" 2>/dev/null
+            -subj "/CN=Valhuntir Gateway CA" 2>/dev/null
         ok "CA certificate generated"
 
         info "Generating gateway certificate (1-year validity)..."
@@ -1394,7 +1394,7 @@ if $REMOTE_MODE; then
         openssl req -new \
             -key "$TLS_DIR/gateway-key.pem" \
             -out "$TLS_DIR/gateway.csr" \
-            -subj "/CN=ValiHuntIR Gateway" \
+            -subj "/CN=Valhuntir Gateway" \
             -addext "subjectAltName=$SAN" 2>/dev/null
 
         # Sign with CA
@@ -1674,7 +1674,7 @@ if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC="$HOME/.bashrc";
 elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC="$HOME/.zshrc"; fi
 
 if [[ -n "$SHELL_RC" ]]; then
-    if grep -q "# ValiHuntIR Platform" "$SHELL_RC" 2>/dev/null; then
+    if grep -q "# Valhuntir Platform" "$SHELL_RC" 2>/dev/null; then
         # Marker exists — update PATH line in-place (handles changed venv path)
         if grep -q '# vhir-path' "$SHELL_RC" 2>/dev/null; then
             sed -i "s|^export PATH=.*# vhir-path|export PATH=\"$VHIR_BIN:\$PATH\"  # vhir-path|" "$SHELL_RC"
@@ -1688,7 +1688,7 @@ if [[ -n "$SHELL_RC" ]]; then
         ok "Updated venv PATH in $SHELL_RC"
     else
         echo "" >> "$SHELL_RC"
-        echo "# ValiHuntIR Platform" >> "$SHELL_RC"
+        echo "# Valhuntir Platform" >> "$SHELL_RC"
         echo "export PATH=\"$VHIR_BIN:\$PATH\"  # vhir-path" >> "$SHELL_RC"
         ok "Added venv to PATH in $SHELL_RC"
     fi
@@ -1730,7 +1730,7 @@ header "Starting Gateway"
 GATEWAY_START="$HOME/.vhir/start-gateway.sh"
 cat > "$GATEWAY_START" << SCRIPT
 #!/usr/bin/env bash
-# Start ValiHuntIR Gateway
+# Start Valhuntir Gateway
 export VHIR_EXAMINER="$EXAMINER_NAME"
 export VHIR_CASES_DIR="$CASE_DIR"
 exec "$VENV_DIR/bin/python" -m sift_gateway --config "$GATEWAY_CONFIG"
@@ -1798,7 +1798,7 @@ if $AUTOSTART; then
 
         cat > "$SYSTEMD_DIR/vhir-gateway.service" << SERVICE
 [Unit]
-Description=ValiHuntIR Gateway
+Description=Valhuntir Gateway
 After=network.target
 
 [Service]
@@ -1881,15 +1881,15 @@ if $REMOTE_MODE; then
             echo -e "${BOLD}Remote client setup${NC} (run on the machine where your LLM client runs):"
             echo ""
             echo "  Linux (full support):"
-            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/valihuntir/main/setup-client-linux.sh \\"
+            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/valhuntir/main/setup-client-linux.sh \\"
             echo "      | bash -s -- --sift=$GW_URL --code=$JOIN_CODE"
             echo ""
             echo "  macOS:"
-            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/valihuntir/main/setup-client-macos.sh \\"
+            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/valhuntir/main/setup-client-macos.sh \\"
             echo "      | bash -s -- --sift=$GW_URL --code=$JOIN_CODE"
             echo ""
             echo "  Windows (PowerShell):"
-            echo "    Invoke-WebRequest -Uri https://raw.githubusercontent.com/AppliedIR/valihuntir/main/setup-client-windows.ps1 -OutFile setup-client-windows.ps1"
+            echo "    Invoke-WebRequest -Uri https://raw.githubusercontent.com/AppliedIR/valhuntir/main/setup-client-windows.ps1 -OutFile setup-client-windows.ps1"
             echo "    .\\setup-client-windows.ps1 -Sift $GW_URL -Code $JOIN_CODE"
             echo ""
             echo "  Note: Your LLM client must run locally on your machine to reach the"
@@ -1948,7 +1948,7 @@ fi
 # Prompt for client if not set via --client flag
 if [[ -z "$CLIENT" ]] && ! $AUTO_YES; then
     echo ""
-    echo "Which LLM client will connect to ValiHuntIR?"
+    echo "Which LLM client will connect to Valhuntir?"
     echo ""
     echo "  1. Claude Code      CLI agent (full forensic controls)"
     echo "  2. Claude Desktop   Desktop app (MCP-only)"
@@ -2064,7 +2064,7 @@ fi
 # =============================================================================
 
 echo ""
-echo -e "${BOLD}Documentation:${NC} https://appliedir.github.io/valihuntir/"
+echo -e "${BOLD}Documentation:${NC} https://appliedir.github.io/valhuntir/"
 
 echo ""
 echo -e "${BOLD}Next steps:${NC}"

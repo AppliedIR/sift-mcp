@@ -36,7 +36,7 @@ jobs:
           pip install -e packages/forensic-knowledge
 
       - name: Install vhir-cli (case-mcp dependency)
-        run: pip install "vhir-cli @ git+https://github.com/AppliedIR/valihuntir.git"
+        run: pip install "vhir-cli @ git+https://github.com/AppliedIR/valhuntir.git"
 
       - name: Install remaining packages
         run: |

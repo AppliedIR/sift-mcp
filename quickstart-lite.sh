@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# quickstart-lite.sh — ValiHuntIR Lite Installer
+# quickstart-lite.sh — Valhuntir Lite Installer
 #
-# Installs ValiHuntIR Lite: forensic knowledge MCPs + discipline files + audit hook.
+# Installs Valhuntir Lite: forensic knowledge MCPs + discipline files + audit hook.
 # No gateway, no sandbox, no deny rules. Claude runs tools directly via Bash.
 #
 # Usage:
@@ -94,9 +94,9 @@ for arg in "$@"; do
         --registry) INSTALL_REGISTRY=true ;;
         --remnux=*) REMNUX_ADDR="${arg#--remnux=}" ;;
         --wintools=*)
-            echo "ERROR: Wintools integration requires Full ValiHuntIR (setup-sift.sh)."
+            echo "ERROR: Wintools integration requires Full Valhuntir (setup-sift.sh)."
             echo "Lite cannot share case data or retrieve large extraction results."
-            echo "See: https://appliedir.github.io/valihuntir/deployment/"
+            echo "See: https://appliedir.github.io/valhuntir/deployment/"
             exit 1
             ;;
         --quick)   MODE="quick" ;;
@@ -132,7 +132,7 @@ COMP
             cat << 'HELPEOF'
 Usage: quickstart-lite.sh [options]
 
-ValiHuntIR Lite installer. Installs forensic knowledge MCPs, discipline files,
+Valhuntir Lite installer. Installs forensic knowledge MCPs, discipline files,
 and audit hooks for Claude Code.
 
 Modes:
@@ -235,7 +235,7 @@ VENV_PYTHON="$VENV_DIR/bin/python"
 DB_DIR="$HOME/.vhir/triage-db"
 INDEX_DIR="$HOME/.vhir/rag-index"
 
-echo -e "${BOLD}ValiHuntIR Lite Installer${NC}"
+echo -e "${BOLD}Valhuntir Lite Installer${NC}"
 echo "Source:  $SCRIPT_DIR"
 echo "Project: $PROJECT_DIR"
 echo "Venv:    $VENV_DIR"

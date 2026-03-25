@@ -1,4 +1,4 @@
-# ValiHuntIR Gateway configuration
+# Valhuntir Gateway configuration
 # Copy to gateway.yaml and customize for your environment.
 # Environment variables can be referenced as ${VAR_NAME}.
 

@@ -1,4 +1,4 @@
-# ValiHuntIR Platform Architecture
+# Valhuntir Platform Architecture
 
 **Status:** Definitive reference for what is built. Not aspirational.
 **Last updated:** 2026-02-25
@@ -238,6 +238,6 @@ Generated `.mcp.json` example:
 |------|--------|---------|
 | [sift-mcp](https://github.com/AppliedIR/sift-mcp) | AppliedIR/sift-mcp | SIFT monorepo: 11 packages (forensic-mcp, case-mcp, report-mcp, sift-mcp, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, sift-common, case-dashboard), SIFT installer, platform docs |
 | [wintools-mcp](https://github.com/AppliedIR/wintools-mcp) | AppliedIR/wintools-mcp | Windows tool execution MCP + Windows installer |
-| [ValiHuntIR](https://github.com/AppliedIR/valihuntir) | AppliedIR/valihuntir | CLI + this architecture doc |
+| [Valhuntir](https://github.com/AppliedIR/valhuntir) | AppliedIR/valhuntir | CLI + this architecture doc |
 
 Public repos under the AppliedIR GitHub org.

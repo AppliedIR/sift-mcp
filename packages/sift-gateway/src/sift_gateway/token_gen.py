@@ -1,4 +1,4 @@
-"""Bearer token generation for the ValiHuntIR gateway."""
+"""Bearer token generation for the Valhuntir gateway."""
 
 import secrets
 

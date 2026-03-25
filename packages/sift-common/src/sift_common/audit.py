@@ -1,4 +1,4 @@
-"""Audit trail writer for ValiHuntIR MCP servers.
+"""Audit trail writer for Valhuntir MCP servers.
 
 Each MCP writes to its own JSONL file in the case audit directory.
 Canonical implementation shared by all SIFT-platform MCPs via sift-common.

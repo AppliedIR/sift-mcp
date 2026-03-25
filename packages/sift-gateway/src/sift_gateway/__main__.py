@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def main():
     setup_logging("sift-gateway")
     parser = argparse.ArgumentParser(
-        description="ValiHuntIR Gateway — MCP aggregation service"
+        description="Valhuntir Gateway — MCP aggregation service"
     )
     parser.add_argument(
         "--config",

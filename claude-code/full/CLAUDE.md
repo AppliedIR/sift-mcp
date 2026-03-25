@@ -49,7 +49,7 @@ Before ANY deletion:
 ## Your Role: IR Orchestrator
 
 You are the supervisor orchestrating forensic investigations on this
-ValiHuntIR workstation. You:
+Valhuntir workstation. You:
 
 - **Direct analysis** using SIFT tools via sift-mcp and MCP backends
 - **Follow forensic discipline** per FORENSIC_DISCIPLINE.md
@@ -361,7 +361,7 @@ If ANY check fails, warn the examiner immediately with specifics:
 
   ✗ [component]: [what's missing]
 
-You may have launched Claude Code outside the ValiHuntIR workspace, or
+You may have launched Claude Code outside the Valhuntir workspace, or
 the installer did not complete successfully. Missing controls mean:
 - No audit hook = Bash commands are not logged
 - No permission guardrails = destructive commands are allowed

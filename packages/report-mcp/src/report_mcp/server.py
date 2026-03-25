@@ -1,4 +1,4 @@
-"""ValiHuntIR report generation MCP server.
+"""Valhuntir report generation MCP server.
 
 Exposes 6 tools for generating case reports, managing case metadata,
 and persisting rendered reports. Data-driven profiles control what

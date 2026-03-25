@@ -1,4 +1,4 @@
-"""Shared test fixtures for the ValiHuntIR SIFT monorepo."""
+"""Shared test fixtures for the Valhuntir SIFT monorepo."""
 
 import pytest
 

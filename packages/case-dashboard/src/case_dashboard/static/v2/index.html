@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ValiHuntIR — Examiner Portal</title>
+<title>Valhuntir — Examiner Portal</title>
 <style>
 :root {
   --bg-primary: #0f172a;
@@ -482,7 +482,7 @@ body {
   <!-- Header -->
   <div class="header">
     <div class="header-row">
-      <span class="header-title" id="headerTitle">ValiHuntIR — Examiner Portal</span>
+      <span class="header-title" id="headerTitle">Valhuntir — Examiner Portal</span>
       <div class="header-actions">
         <button id="btnRefresh" title="Refresh findings">&#8635; Refresh</button>
         <span id="refreshBadge" class="refresh-badge" style="display:none"></span>
@@ -929,8 +929,8 @@ async function loadAll() {
     delta = d && d.items ? d : { version: 1, case_id: '', items: [] };
     caseMeta = c || {};
     if (caseMeta.case_id) {
-      document.getElementById('headerTitle').textContent = 'ValiHuntIR \u2014 ' + caseMeta.case_id;
-      document.title = 'ValiHuntIR \u2014 ' + caseMeta.case_id;
+      document.getElementById('headerTitle').textContent = 'Valhuntir \u2014 ' + caseMeta.case_id;
+      document.title = 'Valhuntir \u2014 ' + caseMeta.case_id;
       if (!delta.case_id) delta.case_id = caseMeta.case_id;
     }
     populateExaminerFilter();
@@ -2744,11 +2744,11 @@ function renderDashboard(summary) {
 
   // --- RIGHT PANEL: Getting Started ---
   html += '<div style="font-size:13px;line-height:1.7;color:var(--text-secondary)">';
-  html += '<div style="font-weight:600;font-size:15px;margin-bottom:10px;color:var(--text-primary)">Welcome to ValiHuntIR</div>';
+  html += '<div style="font-weight:600;font-size:15px;margin-bottom:10px;color:var(--text-primary)">Welcome to Valhuntir</div>';
 
   // --- Intro ---
   html += '<div style="margin-bottom:14px">';
-  html += 'ValiHuntIR is an AI-assisted incident response platform. An AI analyst investigates using forensic tools on your SIFT and Windows workstations, recording what it finds as structured findings and timeline events. <strong>You are the examiner</strong> \u2014 the human authority who reviews, corrects, and approves the AI\u2019s work before anything appears in a report.';
+  html += 'Valhuntir is an AI-assisted incident response platform. An AI analyst investigates using forensic tools on your SIFT and Windows workstations, recording what it finds as structured findings and timeline events. <strong>You are the examiner</strong> \u2014 the human authority who reviews, corrects, and approves the AI\u2019s work before anything appears in a report.';
   html += '</div>';
 
   // --- How It Works (always visible) ---
@@ -2777,7 +2777,7 @@ function renderDashboard(summary) {
   // --- Evidence & Trust ---
   html += '<details style="margin-bottom:8px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text-primary)">Evidence & Trust</summary>';
   html += '<div style="margin-top:8px;font-size:12px;line-height:1.7">';
-  html += '<div style="margin-bottom:6px">ValiHuntIR is designed so you never have to take the AI\u2019s word for anything:</div>';
+  html += '<div style="margin-bottom:6px">Valhuntir is designed so you never have to take the AI\u2019s word for anything:</div>';
   html += '<div style="margin-bottom:4px"><strong>Provenance chain</strong> \u2014 every finding links back to the evidence files and tool executions that produced it. The chain panel on each finding shows: which evidence file was input, which tool processed it, and what output was extracted. You can trace any claim back to its source</div>';
   html += '<div style="margin-bottom:4px"><strong>Audit trail</strong> \u2014 every tool execution, finding record, and approval decision is logged with timestamps and the examiner identity. The AI cannot modify or delete audit entries</div>';
   html += '<div style="margin-bottom:4px"><strong>Content hashing</strong> \u2014 findings are hashed at creation. If a finding is modified after you reviewed it, the hash changes and the approval is flagged as stale</div>';
@@ -2786,7 +2786,7 @@ function renderDashboard(summary) {
   html += '</div></details>';
 
   // --- The Platform ---
-  html += '<details style="margin-bottom:8px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text-primary)">The ValiHuntIR Platform</summary>';
+  html += '<details style="margin-bottom:8px"><summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--text-primary)">The Valhuntir Platform</summary>';
   html += '<div style="margin-top:8px;font-size:12px;line-height:1.7">';
   html += '<div style="margin-bottom:6px">The Examiner Portal is one part of a larger system:</div>';
   html += '<div style="margin-bottom:4px"><strong>SIFT Gateway</strong> \u2014 runs on your SIFT workstation. Hosts 7 MCP backends: forensic tools, case management, report generation, knowledge search, threat intelligence, and more</div>';

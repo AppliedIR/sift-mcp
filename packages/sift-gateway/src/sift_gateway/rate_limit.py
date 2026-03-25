@@ -1,4 +1,4 @@
-"""Per-IP sliding window rate limiter for the ValiHuntIR gateway.
+"""Per-IP sliding window rate limiter for the Valhuntir gateway.
 
 In-memory implementation suitable for a single-process gateway.
 Each IP address is tracked independently with a configurable
