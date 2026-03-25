@@ -133,7 +133,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
             return {"error": str(e)}
 
     @server.tool()
-    def list_cases() -> list[dict]:
+    def list_cases():
         """List all cases with status."""
         try:
             return manager.list_cases()
@@ -306,7 +306,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         return result
 
     @server.tool()
-    def get_findings(status: str = "") -> list[dict]:
+    def get_findings(status: str = ""):
         """Return findings, optionally filtered by DRAFT/APPROVED/REJECTED.
 
         Each finding dict contains:
@@ -334,7 +334,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         start_date: str = "",
         end_date: str = "",
         event_type: str = "",
-    ) -> list[dict]:
+    ):
         """Return timeline events with optional filtering.
 
         Filters (all optional):
@@ -359,7 +359,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
             return [{"error": str(e)}]
 
     @server.tool()
-    def get_actions(limit: int = 50) -> list[dict]:
+    def get_actions(limit: int = 50):
         """Return recent actions from the case actions log."""
         try:
             return manager.get_actions(limit)
@@ -402,7 +402,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         return result
 
     @server.tool()
-    def list_todos(status: str = "open", assignee: str = "") -> list[dict]:
+    def list_todos(status: str = "open", assignee: str = ""):
         """List TODO items. Status: open/completed/all."""
         try:
             return manager.list_todos(status, assignee)
@@ -460,7 +460,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     # --- Evidence ---
 
     @server.tool()
-    def list_evidence() -> list[dict]:
+    def list_evidence():
         """Return evidence index with registration timestamps and integrity status."""
         try:
             return manager.list_evidence()
@@ -641,7 +641,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
             return {"error": str(e)}
 
     @server.tool()
-    def get_rules() -> list[dict]:
+    def get_rules():
         """Return all forensic discipline rules as structured data."""
         try:
             from forensic_mcp.discipline.rules import get_all_rules
@@ -696,7 +696,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
             return {"error": str(e)}
 
     @server.tool()
-    def get_anti_patterns() -> list[dict]:
+    def get_anti_patterns():
         """Common forensic mistakes to avoid."""
         try:
             from forensic_mcp.discipline.rules import get_anti_patterns_data
@@ -740,7 +740,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
             return {"error": str(e)}
 
     @server.tool()
-    def get_corroboration_suggestions(finding_type: str) -> list[dict]:
+    def get_corroboration_suggestions(finding_type: str):
         """Cross-reference suggestions based on finding type."""
         try:
             from forensic_mcp.discipline.guidance import get_corroboration
@@ -751,7 +751,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
             return [{"error": str(e)}]
 
     @server.tool()
-    def list_playbooks() -> list[dict]:
+    def list_playbooks():
         """Available investigation playbooks."""
         try:
             from forensic_mcp.discipline.playbooks import list_all
