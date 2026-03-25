@@ -1274,6 +1274,8 @@ if [[ -t 0 ]] && ! $AUTO_YES; then
     echo ""
     echo "Minimum 8 characters. Choose something memorable."
     echo ""
+    # Flush stdin to discard typeahead before password prompt
+    read -r -d '' -t 0.1 < /dev/tty 2>/dev/null || true
     "$VENV_DIR/bin/vhir" config --setup-password || {
         warn "Password setup failed or was cancelled."
         echo "  Set your password later with: vhir config --setup-password"
@@ -1803,7 +1805,7 @@ After=network.target
 ExecStart=$VENV_DIR/bin/python -m sift_gateway --config $GATEWAY_CONFIG
 Environment=VHIR_EXAMINER=$EXAMINER_NAME
 Environment=VHIR_CASES_DIR=$CASE_DIR
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]
