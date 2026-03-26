@@ -158,13 +158,13 @@ class TestToolMetadata:
     """Tool metadata lookup."""
 
     def test_known_tool(self):
-        meta = TOOL_METADATA["search"]
+        meta = TOOL_METADATA["search_knowledge"]
         assert isinstance(meta["caveats"], list)
         assert len(meta["caveats"]) > 0
         assert "interpretation_constraint" in meta
 
     def test_all_tools_have_metadata(self):
-        expected_tools = {"search", "list_sources", "get_stats"}
+        expected_tools = {"search_knowledge", "list_knowledge_sources", "get_knowledge_stats"}
         assert set(TOOL_METADATA.keys()) == expected_tools
 
     def test_default_metadata(self):
