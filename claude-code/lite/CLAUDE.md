@@ -98,8 +98,8 @@ Offline Windows file/process validation. UNKNOWN = not in database (neutral).
 
 ### opencti-mcp (Threat Intelligence) - optional
 Live threat intel from OpenCTI instance.
-- **Search:** search_threat_intel, search_entity, search_attack_pattern, search_reports
-- **Lookup:** lookup_ioc, lookup_hash, get_entity, get_relationships
+- **Search:** search_threat_intel, search_entity, search_reports
+- **Lookup:** lookup_ioc, get_entity, get_relationships
 - **Recent:** get_recent_indicators
 - **System:** get_health
 

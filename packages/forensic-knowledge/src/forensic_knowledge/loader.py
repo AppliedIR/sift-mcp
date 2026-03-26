@@ -238,6 +238,12 @@ def list_playbooks() -> list[dict]:
     return results
 
 
+def list_playbook_slugs() -> list[str]:
+    """Return playbook slug names (filenames without extension)."""
+    pb_dir = _find_data_dir() / "discipline" / "playbooks"
+    return sorted(p.stem for p in pb_dir.glob("*.yaml")) if pb_dir.is_dir() else []
+
+
 def get_confidence_definitions() -> dict:
     """Load confidence level definitions."""
     data = _load_yaml("discipline/confidence.yaml")

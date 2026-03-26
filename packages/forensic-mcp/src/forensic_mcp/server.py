@@ -121,26 +121,6 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     server._manager = manager
     server._audit = audit
 
-    # --- Case Lifecycle ---
-
-    @server.tool()
-    def get_case_status(case_id: str = "") -> dict:
-        """Get investigation summary: findings by status, evidence count, timeline span."""
-        try:
-            return manager.get_case_status(case_id or None)
-        except Exception as e:
-            logger.error("get_case_status failed: %s", e)
-            return {"error": str(e)}
-
-    @server.tool()
-    def list_cases():
-        """List all cases with status."""
-        try:
-            return manager.list_cases()
-        except Exception as e:
-            logger.error("list_cases failed: %s", e)
-            return [{"error": str(e)}]
-
     # --- Investigation Records ---
 
     @server.tool()
@@ -306,8 +286,16 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         return result
 
     @server.tool()
-    def get_findings(status: str = ""):
+    def get_findings(status: str = "", limit: int = 20, offset: int = 0):
         """Return findings, optionally filtered by DRAFT/APPROVED/REJECTED.
+
+        Args:
+            status: Filter by DRAFT, APPROVED, or REJECTED. Empty = all.
+            limit: Max findings to return (default 20, 0 = all).
+            offset: Skip first N findings (for pagination).
+
+        Response includes total count so the LLM knows if results were
+        truncated. Use offset to paginate through large result sets.
 
         Each finding dict contains:
         - id, title, observation, interpretation, confidence, confidence_justification, type
@@ -321,10 +309,25 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - Metadata: staged, modified_at, created_by, examiner
         """
         try:
-            return manager.get_findings(status or None)
+            all_findings = manager.get_findings(status or None)
+            total = len(all_findings)
+            paginated = (
+                all_findings[offset : offset + limit] if limit > 0 else all_findings
+            )
+            return {
+                "findings": paginated,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            }
         except Exception as e:
             logger.error("get_findings failed: %s", e)
-            return [{"error": str(e)}]
+            return {
+                "findings": [{"error": str(e)}],
+                "total": 0,
+                "limit": limit,
+                "offset": offset,
+            }
 
     @server.tool()
     def get_timeline(
@@ -334,6 +337,8 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         start_date: str = "",
         end_date: str = "",
         event_type: str = "",
+        limit: int = 50,
+        offset: int = 0,
     ):
         """Return timeline events with optional filtering.
 
@@ -344,9 +349,15 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - start_date: ISO date/datetime lower bound on timestamp
         - end_date: ISO date/datetime upper bound on timestamp
         - event_type: process, network, file, registry, auth, persistence, lateral, execution, other
+
+        Pagination:
+        - limit: Max events to return (default 50, 0 = all).
+        - offset: Skip first N events (for pagination).
+
+        Response includes total count so the LLM knows if results were truncated.
         """
         try:
-            return manager.get_timeline(
+            all_events = manager.get_timeline(
                 status=status or None,
                 source=source or None,
                 examiner=examiner or None,
@@ -354,9 +365,22 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
                 end_date=end_date or None,
                 event_type=event_type or None,
             )
+            total = len(all_events)
+            paginated = all_events[offset : offset + limit] if limit > 0 else all_events
+            return {
+                "events": paginated,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            }
         except Exception as e:
             logger.error("get_timeline failed: %s", e)
-            return [{"error": str(e)}]
+            return {
+                "events": [{"error": str(e)}],
+                "total": 0,
+                "limit": limit,
+                "offset": offset,
+            }
 
     @server.tool()
     def get_actions(limit: int = 50):
@@ -456,17 +480,6 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         if logged_id is None:
             result["warning"] = "Audit write failed — action not recorded"
         return result
-
-    # --- Evidence ---
-
-    @server.tool()
-    def list_evidence():
-        """Return evidence index with registration timestamps and integrity status."""
-        try:
-            return manager.list_evidence()
-        except Exception as e:
-            logger.error("list_evidence failed: %s", e)
-            return [{"error": str(e)}]
 
     # --- Discipline Reference Data ---
 

@@ -128,13 +128,6 @@ TOOL_METADATA: dict[str, dict[str, list[str] | str]] = {
         ],
         "interpretation_constraint": "Notes reflect individual analyst perspective",
     },
-    "lookup_hash": {
-        "caveats": [
-            "Hash lookup depends on OpenCTI instance data",
-            "Absence does not mean file is safe",
-        ],
-        "interpretation_constraint": "Hash match requires validation of file context",
-    },
     "get_entity": {
         "caveats": [
             "Entity details reflect current OpenCTI state",

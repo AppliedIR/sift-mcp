@@ -22,8 +22,6 @@ class TestToolRegistration:
             "search_threat_intel",
             "search_entity",
             "lookup_ioc",
-            "lookup_hash",
-            "search_attack_pattern",
             "get_recent_indicators",
             "get_entity",
             "get_relationships",
@@ -38,8 +36,6 @@ class TestToolRegistration:
                 args = {"days": 7}
             elif tool_name == "lookup_ioc":
                 args = {"ioc": "192.168.1.1"}
-            elif tool_name == "lookup_hash":
-                args = {"hash": "d41d8cd98f00b204e9800998ecf8427e"}
             elif tool_name == "get_entity" or tool_name == "get_relationships":
                 args = {"entity_id": "550e8400-e29b-41d4-a716-446655440000"}
             elif tool_name == "search_entity":
@@ -51,22 +47,19 @@ class TestToolRegistration:
             assert result is not None
 
     @pytest.mark.asyncio
-    async def test_exactly_10_tools(self, mock_server: OpenCTIMCPServer):
-        """Server exposes exactly 10 tools by verifying dispatch coverage."""
-        # The 10 tools that should work
+    async def test_exactly_8_tools(self, mock_server: OpenCTIMCPServer):
+        """Server exposes exactly 8 tools by verifying dispatch coverage."""
         valid_tools = {
             "get_health": {},
             "search_threat_intel": {"query": "test"},
             "search_entity": {"type": "threat_actor", "query": "test"},
             "lookup_ioc": {"ioc": "192.168.1.1"},
-            "lookup_hash": {"hash": "d41d8cd98f00b204e9800998ecf8427e"},
-            "search_attack_pattern": {"query": "T1003"},
             "get_recent_indicators": {"days": 7},
             "get_entity": {"entity_id": "550e8400-e29b-41d4-a716-446655440000"},
             "get_relationships": {"entity_id": "550e8400-e29b-41d4-a716-446655440000"},
             "search_reports": {"query": "test"},
         }
-        assert len(valid_tools) == 10
+        assert len(valid_tools) == 8
         for tool_name, args in valid_tools.items():
             result = await mock_server._dispatch_tool(tool_name, args)
             assert result is not None, f"{tool_name} returned None"
@@ -148,16 +141,6 @@ class TestToolDispatch:
 
         assert "found" in result
         assert "ioc_type" in result
-
-    @pytest.mark.asyncio
-    async def test_search_attack_pattern(self, mock_server: OpenCTIMCPServer):
-        """search_attack_pattern dispatches correctly."""
-        result = await mock_server._dispatch_tool(
-            "search_attack_pattern", {"query": "T1003"}
-        )
-
-        assert "results" in result
-        assert "total" in result
 
     @pytest.mark.asyncio
     async def test_get_recent_indicators(self, mock_server: OpenCTIMCPServer):

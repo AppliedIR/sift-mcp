@@ -234,7 +234,7 @@ class OpenCTIMCPServer:
                 ),
                 Tool(
                     name="lookup_ioc",
-                    description="Look up a specific IOC (IP, hash, domain, or URL) and return full context: related threat actors, malware families, MITRE techniques, and campaigns. Use for known IOCs you want to contextualize, not for broad searching. For hash-only lookups, lookup_hash is equivalent.",
+                    description="Look up a specific IOC (IP, hash, domain, or URL) and return full context: related threat actors, malware families, MITRE techniques, and campaigns. Use for known IOCs you want to contextualize, not for broad searching. Handles all IOC types including MD5, SHA1, and SHA256 hashes.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -245,62 +245,6 @@ class OpenCTIMCPServer:
                             }
                         },
                         "required": ["ioc"],
-                    },
-                ),
-                Tool(
-                    name="lookup_hash",
-                    description="Look up a file hash (MD5, SHA1, or SHA256) in OpenCTI for threat context. Returns associated malware families, threat actors, and reports if the hash is known. Equivalent to lookup_ioc for hash values.",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "hash": {
-                                "type": "string",
-                                "description": "File hash (MD5, SHA1, or SHA256)",
-                                "maxLength": 128,
-                            }
-                        },
-                        "required": ["hash"],
-                    },
-                ),
-                Tool(
-                    name="search_attack_pattern",
-                    description="Search MITRE ATT&CK techniques by ID (e.g., 'T1003', 'T1053.005') or name (e.g., 'credential dumping'). Returns technique details, associated threat actors, and related malware. Supports pagination (limit max 50, offset max 500) and date filtering.",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "MITRE technique ID (e.g., 'T1003') or name (e.g., 'credential dumping')",
-                                "maxLength": MAX_QUERY_LENGTH,
-                            },
-                            "limit": {
-                                "type": "integer",
-                                "description": "Max results (default: 10, max: 50)",
-                                "default": 10,
-                                "maximum": 50,
-                            },
-                            "offset": {
-                                "type": "integer",
-                                "description": "Skip first N results (for pagination)",
-                                "default": 0,
-                                "minimum": 0,
-                                "maximum": 500,
-                            },
-                            "labels": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Filter by labels",
-                            },
-                            "created_after": {
-                                "type": "string",
-                                "description": "Filter by created date >= (ISO format)",
-                            },
-                            "created_before": {
-                                "type": "string",
-                                "description": "Filter by created date <= (ISO format)",
-                            },
-                        },
-                        "required": ["query"],
                     },
                 ),
                 Tool(
@@ -372,7 +316,7 @@ class OpenCTIMCPServer:
                 ),
                 Tool(
                     name="search_reports",
-                    description="Search threat intelligence reports by keyword (campaign name, threat actor, malware family, CVE). Returns report metadata, publication date, and associated entities. Reports often contain the analytical narrative that individual IOCs lack. Limit max 50, supports offset pagination.",
+                    description="Search threat intelligence reports by keyword (campaign name, threat actor, malware family, CVE). Returns report metadata, publication date, and associated entities. Reports often contain the analytical narrative that individual IOCs lack. Supports offset pagination, label filtering, confidence threshold, and date range.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -386,6 +330,32 @@ class OpenCTIMCPServer:
                                 "description": "Max results (default: 10, max: 50)",
                                 "default": 10,
                                 "maximum": 50,
+                            },
+                            "offset": {
+                                "type": "integer",
+                                "description": "Skip first N results (for pagination, max: 500)",
+                                "default": 0,
+                                "minimum": 0,
+                                "maximum": 500,
+                            },
+                            "labels": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Filter by labels (e.g., ['tlp:amber'])",
+                            },
+                            "confidence_min": {
+                                "type": "integer",
+                                "description": "Minimum confidence threshold (0-100)",
+                                "minimum": 0,
+                                "maximum": 100,
+                            },
+                            "created_after": {
+                                "type": "string",
+                                "description": "Filter reports created after this ISO date",
+                            },
+                            "created_before": {
+                                "type": "string",
+                                "description": "Filter reports created before this ISO date",
                             },
                         },
                         "required": ["query"],
@@ -734,38 +704,6 @@ class OpenCTIMCPServer:
             result = await asyncio.to_thread(self.client.get_indicator_context, ioc)
             result["ioc_type"] = ioc_type
             return result
-
-        elif name == "lookup_hash":
-            hash_value = arguments.get("hash", "")
-            validate_length(hash_value, 128, "hash")
-            result = await asyncio.to_thread(self.client.lookup_hash, hash_value)
-            if result is None:
-                return {"found": False, "hash": hash_value}
-            return result
-
-        elif name == "search_attack_pattern":
-            query = arguments.get("query", "")
-            validate_length(query, MAX_QUERY_LENGTH, "query")
-            limit = validate_limit(arguments.get("limit", 10), max_value=50)
-            offset, labels, created_after, created_before = (
-                self._validate_search_filters(
-                    arguments.get("offset"),
-                    arguments.get("labels"),
-                    arguments.get("created_after"),
-                    arguments.get("created_before"),
-                )
-            )
-            results = await asyncio.to_thread(
-                self.client.search_attack_patterns,
-                query,
-                limit,
-                offset,
-                labels,
-                created_after,
-                created_before,
-            )
-            results = self._safe_results(results)
-            return {"results": results, "total": len(results), "offset": offset}
 
         elif name == "get_recent_indicators":
             days = arguments.get("days", 7)

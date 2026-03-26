@@ -169,7 +169,6 @@ class TestToolMetadata:
         "search_course_of_action",
         "search_grouping",
         "search_note",
-        "lookup_hash",
         "get_entity",
         "get_relationships",
         "get_health",
@@ -180,7 +179,7 @@ class TestToolMetadata:
         assert set(TOOL_METADATA.keys()) == self.EXPECTED_TOOLS
 
     def test_tool_count(self):
-        assert len(TOOL_METADATA) == 25
+        assert len(TOOL_METADATA) == 24  # lookup_hash removed (C3)
 
     def test_all_have_caveats_and_constraint(self):
         for tool, meta in TOOL_METADATA.items():

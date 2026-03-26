@@ -18,8 +18,8 @@ def get_by_name(name: str) -> dict:
     """Get a specific playbook."""
     result = loader.get_playbook(name)
     if result is None:
-        available = [p["name"] for p in loader.list_playbooks()]
-        return {"error": f"Unknown playbook '{name}'", "available": available}
+        available = loader.list_playbook_slugs()
+        return {"error": f"Unknown playbook '{name}'", "available_slugs": available}
     return result
 
 

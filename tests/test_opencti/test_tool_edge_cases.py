@@ -35,7 +35,6 @@ def mock_client():
     client.search_malware.return_value = []
     client.search_campaigns.return_value = []
     client.search_vulnerabilities.return_value = []
-    client.search_attack_patterns.return_value = []
     client.search_reports.return_value = []
     client.search_observables.return_value = []
     client.search_indicators.return_value = []
@@ -53,7 +52,6 @@ def mock_client():
     client.get_entity.return_value = {"id": "test", "name": "Test"}
     client.get_relationships.return_value = []
     client.lookup_observable.return_value = None
-    client.lookup_hash.return_value = None
     client.get_recent_indicators.return_value = []
     return client
 
@@ -338,20 +336,6 @@ class TestIOCLookupEdgeCases:
     async def test_ipv6_edge_cases(self, server, mock_client, ioc: str):
         """Handle IPv6 edge cases."""
         result = await server._dispatch_tool("lookup_ioc", {"ioc": ioc})
-        assert result is not None
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "hash_value",
-        [
-            "d41d8cd98f00b204e9800998ecf8427e",  # MD5 of empty string
-            "da39a3ee5e6b4b0d3255bfef95601890afd80709",  # SHA1 of empty
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",  # SHA256 of empty
-        ],
-    )
-    async def test_hash_edge_cases(self, server, mock_client, hash_value: str):
-        """Handle hash edge cases."""
-        result = await server._dispatch_tool("lookup_hash", {"hash": hash_value})
         assert result is not None
 
     @pytest.mark.asyncio

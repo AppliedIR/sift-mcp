@@ -87,7 +87,7 @@ User Question
 | CVE Details | opencti-mcp `search_entity` (type=vulnerability) | forensic-rag `search` (cisa_kev) |
 | Mitigations | opencti-mcp `search_entity` (type=course_of_action) | forensic-rag `search` (mitre_d3fend) |
 | Detection Rules | forensic-rag `search` (sigma, elastic, chainsaw) | — |
-| MITRE Technique | forensic-rag `search` (mitre_attack) | opencti-mcp `search_attack_pattern` |
+| MITRE Technique | forensic-rag `search` (mitre_attack) | opencti-mcp `search_entity` (type=attack_pattern) |
 | Forensic Artifacts | forensic-rag `search` (velociraptor, forensic_artifacts, kape) | — |
 | File Validation | windows-triage `check_file` | — |
 | Process Validation | windows-triage `check_process_tree` | — |
@@ -157,7 +157,7 @@ User Question
 ### File/Process Investigation
 ```
 1. windows-triage check_file or check_process_tree   -+
-2. opencti-mcp lookup_hash (if hash available)         +- PARALLEL
+2. opencti-mcp lookup_ioc (if hash available)           +- PARALLEL
 3. forensic-rag search (sigma/lolbas context)         -+
 ```
 
@@ -278,7 +278,7 @@ sift-mcp run_command:
 1. `windows-triage check_file(path="...", hash="...")`
 2. `windows-triage check_process_tree(process="...", parent="...")`
 3. `windows-triage check_lolbin(filename="...")`
-4. `opencti-mcp lookup_hash(hash="...")`
+4. `opencti-mcp lookup_ioc(ioc="<hash>")`
 5. `forensic-rag search(query="filename", source_ids=["sigma", "lolbas"])`
 
 ---

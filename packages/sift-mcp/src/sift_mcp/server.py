@@ -14,6 +14,49 @@ from sift_mcp.response import build_response
 
 logger = logging.getLogger(__name__)
 
+# Event IDs that indicate Security log context
+_SECURITY_EVENT_IDS = frozenset(
+    {"4624", "4625", "4634", "4648", "4672", "4688", "4720", "4732"}
+)
+
+# Filename keywords → artifact context for FK filtering
+_FILENAME_ARTIFACT_MAP = {
+    "security": "event_logs_security",
+    "system": "event_logs_system",
+    "sysmon": "event_logs_sysmon",
+    "powershell": "event_logs_powershell",
+    "operational": "event_logs_powershell",
+}
+
+
+def _detect_artifact_context(command: list[str]) -> str | None:
+    """Detect artifact context from command for FK advisory filtering.
+
+    Returns an artifact name (e.g., "event_logs_security") to filter
+    FK advisories, or None for no filtering (include all).
+    """
+    for i, token in enumerate(command):
+        # Match --inc 4624, --inc 4624,4625, or --inc=4624
+        value = None
+        if token.startswith("--inc="):
+            value = token.split("=", 1)[1]
+        elif token == "--inc" and i + 1 < len(command):
+            value = command[i + 1]
+        if value:
+            ids = set(value.replace(",", " ").split())
+            if ids & _SECURITY_EVENT_IDS:
+                return "event_logs_security"
+
+    for token in command:
+        if token.startswith("-"):
+            continue
+        basename = token.rsplit("/", 1)[-1].rsplit("\\", 1)[-1].lower()
+        for keyword, artifact in _FILENAME_ARTIFACT_MAP.items():
+            if keyword in basename:
+                return artifact
+
+    return None
+
 
 def create_server() -> FastMCP:
     """Create and configure the sift MCP server with core tools."""
@@ -75,6 +118,7 @@ def create_server() -> FastMCP:
         save_output: bool = False,
         input_files: list[str] | None = None,
         preview_lines: int = 0,
+        skip_enrichment: bool = False,
     ) -> dict:
         """Execute a forensic tool on this SIFT workstation.
 
@@ -94,6 +138,9 @@ def create_server() -> FastMCP:
             preview_lines: Max lines in inline preview for large outputs
                 (0 = default ~10KB budget, max 200). Useful when you need
                 more context from a grep or timeline query.
+            skip_enrichment: Skip FK caveats/advisories/corroboration on
+                repeat calls to the same tool (already in context from
+                first call).
         """
         import hashlib
         import time
@@ -168,6 +215,9 @@ def create_server() -> FastMCP:
             # FK tool name for knowledge enrichment (td already resolved above)
             fk_name = td.knowledge_name if td else binary
 
+            # Detect artifact context for FK advisory filtering
+            artifact_hint = _detect_artifact_context(command)
+
             # Use parsed preview for large output, raw result for small
             if exec_result.get("_parsed"):
                 resp_data = exec_result["_parsed"]
@@ -190,6 +240,8 @@ def create_server() -> FastMCP:
                 if exec_result.get("output_file")
                 else None,
                 extractions=exec_result.get("extractions"),
+                skip_enrichment=skip_enrichment,
+                artifact_context=artifact_hint,
             )
 
             # Add full output metadata if file was saved
@@ -305,16 +357,5 @@ def create_server() -> FastMCP:
             if logged_id is None:
                 response["warning"] = "Audit write failed — action not recorded"
             return response
-
-    # --- Missing Tools ---
-
-    @server.tool()
-    def list_missing_tools(category: str = "") -> dict:
-        """List catalog tools not currently installed on this system."""
-        from sift_mcp.tools.discovery import list_available_tools as _list
-
-        all_tools = _list(category=category or None)
-        missing = [t for t in all_tools if not t.get("available", False)]
-        return {"tools": missing, "count": len(missing)}
 
     return server

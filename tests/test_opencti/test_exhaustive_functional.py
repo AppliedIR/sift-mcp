@@ -44,7 +44,6 @@ def mock_client():
     client.is_available.return_value = True
     client.search_threat_actors.return_value = []
     client.search_malware.return_value = []
-    client.search_attack_patterns.return_value = []
     client.search_vulnerabilities.return_value = []
     client.search_campaigns.return_value = []
     client.search_tools.return_value = []
@@ -65,7 +64,6 @@ def mock_client():
     client.get_entity.return_value = None
     client.get_relationships.return_value = []
     client.get_indicator_context.return_value = {}
-    client.lookup_hash.return_value = None
     return client
 
 
@@ -188,29 +186,6 @@ class TestSearchEntityMalware:
                 "confidence_min": 50,
                 "created_after": "2024-01-01",
             },
-        )
-        assert "results" in result
-
-
-class TestSearchAttackPattern:
-    """Test search_attack_pattern tool (kept separate)."""
-
-    @pytest.mark.asyncio
-    async def test_mitre_search(self, server, mock_client):
-        """Search for MITRE technique."""
-        mock_client.search_attack_patterns.return_value = [
-            {"id": "1", "name": "Credential Dumping", "mitre_id": "T1003"}
-        ]
-        result = await server._dispatch_tool(
-            "search_attack_pattern", {"query": "T1003"}
-        )
-        assert "results" in result
-
-    @pytest.mark.asyncio
-    async def test_technique_name_search(self, server, mock_client):
-        """Search by technique name."""
-        result = await server._dispatch_tool(
-            "search_attack_pattern", {"query": "credential dumping"}
         )
         assert "results" in result
 
@@ -557,14 +532,6 @@ class TestLookupIOC:
         """Lookup IP address."""
         result = await server._dispatch_tool("lookup_ioc", {"ioc": "192.168.1.1"})
         assert result is not None
-
-    @pytest.mark.asyncio
-    async def test_lookup_hash(self, server, mock_client):
-        """Lookup hash."""
-        result = await server._dispatch_tool(
-            "lookup_hash", {"hash": "d41d8cd98f00b204e9800998ecf8427e"}
-        )
-        # Returns found=False if not found, which is OK
 
     @pytest.mark.asyncio
     async def test_lookup_domain(self, server, mock_client):

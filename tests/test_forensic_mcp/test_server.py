@@ -69,13 +69,13 @@ def _seed_audit(audit_dir):
 
 @pytest.fixture
 def server():
-    """Server in default (resources) mode — 15 active tools."""
+    """Server in default (resources) mode — 9 active tools."""
     return create_server()
 
 
 @pytest.fixture
 def tools_server():
-    """Server in tools mode — 29 tools (15 active + 14 discipline)."""
+    """Server in tools mode — 23 tools (9 active + 14 discipline)."""
     return create_server(reference_mode="tools")
 
 
@@ -86,20 +86,18 @@ class TestServerSetup:
     @pytest.mark.asyncio
     async def test_tool_count_resources_mode(self, server):
         tools = await server.list_tools()
-        assert len(tools) == 12
+        assert len(tools) == 9  # C1: removed get_case_status, list_cases, list_evidence
 
     @pytest.mark.asyncio
     async def test_tool_count_tools_mode(self, tools_server):
         tools = await tools_server.list_tools()
-        assert len(tools) == 26
+        assert len(tools) == 23  # C1: 26 - 3 removed duplicates
 
     @pytest.mark.asyncio
     async def test_expected_tools_present(self, server):
         tools = await server.list_tools()
         names = {t.name for t in tools}
         expected = {
-            "get_case_status",
-            "list_cases",
             "record_finding",
             "record_timeline_event",
             "get_findings",
@@ -109,7 +107,6 @@ class TestServerSetup:
             "list_todos",
             "update_todo",
             "complete_todo",
-            "list_evidence",
         }
         assert names == expected
 
@@ -169,6 +166,39 @@ class TestInvalidReferenceMode:
     def test_typo_reference_mode_raises(self):
         with pytest.raises(ValueError, match="Invalid reference_mode"):
             create_server(reference_mode="resource")
+
+
+class TestPagination:
+    """H6/H7: get_findings and get_timeline return paginated envelopes."""
+
+    @pytest.mark.asyncio
+    async def test_get_findings_returns_envelope(self, server):
+        """get_findings returns {findings, total, limit, offset}."""
+        tools = await server.list_tools()
+        tool = next(t for t in tools if t.name == "get_findings")
+        result = await server.call_tool("get_findings", {"status": ""})
+        # Parse the result — FastMCP returns the dict directly
+        assert isinstance(result, (dict, list))
+        # If it's a dict envelope, check structure
+        if isinstance(result, dict):
+            assert "findings" in result
+            assert "total" in result
+            assert "limit" in result
+            assert "offset" in result
+            assert result["limit"] == 20  # default
+            assert result["offset"] == 0  # default
+
+    @pytest.mark.asyncio
+    async def test_get_timeline_returns_envelope(self, server):
+        """get_timeline returns {events, total, limit, offset}."""
+        result = await server.call_tool("get_timeline", {"status": ""})
+        if isinstance(result, dict):
+            assert "events" in result
+            assert "total" in result
+            assert "limit" in result
+            assert "offset" in result
+            assert result["limit"] == 50  # default
+            assert result["offset"] == 0  # default
 
 
 class TestResourceContent:

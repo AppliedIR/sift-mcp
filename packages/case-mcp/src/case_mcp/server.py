@@ -322,7 +322,10 @@ def create_server() -> FastMCP:
     def export_bundle(since: str = "") -> dict:
         """Export case findings and timeline as a JSON bundle for
         collaboration. Optionally filter to items modified since a
-        given ISO timestamp."""
+        given ISO timestamp.
+
+        WARNING: Returns full case data which may be large (30,000+ tokens).
+        For investigation status, use case_status instead."""
         try:
             case_dir = _resolve_case_dir()
             result = _export_bundle(case_dir, since=since)

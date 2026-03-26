@@ -252,7 +252,7 @@ class TestSearchMethods:
         assert results[0]["name"] == "Cobalt Strike"
 
     def test_search_attack_patterns(self, mock_opencti_client: OpenCTIClient):
-        """Search attack patterns returns formatted results."""
+        """Search attack patterns returns formatted results (still used by search_entity)."""
         results = mock_opencti_client.search_attack_patterns("T1003")
 
         assert len(results) == 1

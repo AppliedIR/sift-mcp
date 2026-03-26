@@ -55,6 +55,8 @@ def build_response(
     fk_tool_name: str | None = None,
     output_files: list | None = None,
     extractions: list | None = None,
+    skip_enrichment: bool = False,
+    artifact_context: str | None = None,
 ) -> dict:
     """Build enriched response envelope with forensic-knowledge context.
 
@@ -89,40 +91,43 @@ def build_response(
     if extractions:
         response["extractions"] = extractions
 
-    # Load forensic-knowledge context
+    # Resolve FK tool name (used for enrichment and exit code hints)
     fk_name = fk_tool_name or tool_name
-    try:
-        (
-            corroboration,
-            caveats,
-            advisories,
-            field_notes,
-            field_meanings,
-            cross_mcp_checks,
-        ) = _build_knowledge_context(fk_name)
-    except Exception as e:
-        logger.warning("FK knowledge context unavailable for %s: %s", fk_name, e)
-        (
-            corroboration,
-            caveats,
-            advisories,
-            field_notes,
-            field_meanings,
-            cross_mcp_checks,
-        ) = {}, [], [], {}, {}, []
 
-    if caveats:
-        response["caveats"] = caveats
-    if advisories:
-        response["advisories"] = advisories
-    if corroboration:
-        response["corroboration"] = corroboration
-    if field_notes:
-        response["field_notes"] = field_notes
-    if field_meanings:
-        response["field_meanings"] = field_meanings
-    if cross_mcp_checks:
-        response["cross_mcp_checks"] = cross_mcp_checks
+    # Load forensic-knowledge context (skip on repeat calls to same tool)
+    if not skip_enrichment:
+        try:
+            (
+                corroboration,
+                caveats,
+                advisories,
+                field_notes,
+                field_meanings,
+                cross_mcp_checks,
+            ) = _build_knowledge_context(fk_name, artifact_context=artifact_context)
+        except Exception as e:
+            logger.warning("FK knowledge context unavailable for %s: %s", fk_name, e)
+            (
+                corroboration,
+                caveats,
+                advisories,
+                field_notes,
+                field_meanings,
+                cross_mcp_checks,
+            ) = {}, [], [], {}, {}, []
+
+        if caveats:
+            response["caveats"] = caveats
+        if advisories:
+            response["advisories"] = advisories
+        if corroboration:
+            response["corroboration"] = corroboration
+        if field_notes:
+            response["field_notes"] = field_notes
+        if field_meanings:
+            response["field_meanings"] = field_meanings
+        if cross_mcp_checks:
+            response["cross_mcp_checks"] = cross_mcp_checks
 
     # Discipline reminder (rotates)
     response["discipline_reminder"] = DISCIPLINE_REMINDERS[
@@ -143,8 +148,6 @@ def build_response(
                 metadata["exit_code_meaning"] = exit_hints[exit_code]
         except Exception as e:
             logger.debug("FK exit_code_hints lookup failed for %s: %s", fk_name, e)
-    if command:
-        metadata["command"] = command
     if metadata:
         response["metadata"] = metadata
 
@@ -153,8 +156,14 @@ def build_response(
 
 def _build_knowledge_context(
     tool_name: str,
+    artifact_context: str | None = None,
 ) -> tuple[dict, list[str], list[str], dict[str, str], dict[str, str], list[dict]]:
     """Load artifact + tool knowledge for response envelope.
+
+    Args:
+        tool_name: FK tool name for knowledge lookup.
+        artifact_context: When set, filter artifacts_parsed to this single
+            artifact (e.g., "event_logs_security"). None = include all.
 
     Returns: (corroboration, caveats, advisories, field_notes, field_meanings, cross_mcp_checks)
     """
@@ -174,7 +183,11 @@ def _build_knowledge_context(
     field_meanings: dict[str, str] = dict(tool_info.get("field_meanings", {}))
     cross_mcp: list[dict] = []
 
-    for artifact_name in tool_info.get("artifacts_parsed", []):
+    artifacts_parsed = tool_info.get("artifacts_parsed", [])
+    if artifact_context:
+        artifacts_parsed = [a for a in artifacts_parsed if a == artifact_context]
+
+    for artifact_name in artifacts_parsed:
         try:
             artifact = loader.get_artifact(artifact_name)
         except Exception as e:

@@ -105,17 +105,3 @@ class TestRunCommandEnvelope:
             audit_id="sift-test-20260223-001",
         )
         assert "extractions" not in response
-
-
-class TestListMissingTools:
-    """Test the list_missing_tools tool."""
-
-    def test_list_missing_tools_returns_unavailable(self, monkeypatch):
-        """list_missing_tools should return tools that are not installed."""
-        monkeypatch.setenv("VHIR_EXAMINER", "testuser")
-        from sift_mcp.tools.discovery import list_available_tools
-
-        all_tools = list_available_tools()
-        missing = [t for t in all_tools if not t.get("available", False)]
-        # On a non-SIFT workstation, most tools should be missing
-        assert len(missing) > 0

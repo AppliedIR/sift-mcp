@@ -47,7 +47,7 @@ class TestBuildResponse:
         )
         assert resp["metadata"]["elapsed_seconds"] == 2.35
         assert resp["metadata"]["exit_code"] == 0
-        assert resp["metadata"]["command"] == ["echo", "hello"]
+        assert "command" not in resp["metadata"]  # H3: command echo removed
 
 
 class TestKnowledgeEnrichment:
@@ -118,6 +118,61 @@ class TestKnowledgeEnrichment:
         # Should still work, just without enrichment
         assert resp["success"] is True
         assert "caveats" not in resp
+
+    def test_skip_enrichment_suppresses_fk(self):
+        """skip_enrichment=True should suppress caveats/advisories/corroboration."""
+        resp = build_response(
+            tool_name="run_amcacheparser",
+            success=True,
+            data={"rows": []},
+            audit_id="sift-20260220-040",
+            fk_tool_name="AmcacheParser",
+            skip_enrichment=True,
+        )
+        assert resp["success"] is True
+        assert "caveats" not in resp
+        assert "advisories" not in resp
+        assert "corroboration" not in resp
+        # discipline_reminder stays even with skip_enrichment
+        assert "discipline_reminder" in resp
+        # data_provenance stays even with skip_enrichment
+        assert "data_provenance" in resp
+
+    def test_skip_enrichment_false_still_enriches(self):
+        """skip_enrichment=False (default) should include FK enrichment."""
+        resp = build_response(
+            tool_name="run_amcacheparser",
+            success=True,
+            data={"rows": []},
+            audit_id="sift-20260220-041",
+            fk_tool_name="AmcacheParser",
+            skip_enrichment=False,
+        )
+        assert "caveats" in resp
+
+    def test_artifact_context_filters_advisories(self):
+        """artifact_context should filter FK advisories to matching artifact."""
+        # With no context — gets all advisories
+        resp_all = build_response(
+            tool_name="run_evtxecmd",
+            success=True,
+            data={},
+            audit_id="sift-20260220-042",
+            fk_tool_name="EvtxECmd",
+        )
+        # With security context — should get fewer or equal advisories
+        resp_filtered = build_response(
+            tool_name="run_evtxecmd",
+            success=True,
+            data={},
+            audit_id="sift-20260220-043",
+            fk_tool_name="EvtxECmd",
+            artifact_context="event_logs_security",
+        )
+        # Filtered should have <= advisories than unfiltered
+        all_count = len(resp_all.get("advisories", []))
+        filtered_count = len(resp_filtered.get("advisories", []))
+        assert filtered_count <= all_count
 
 
 class TestDisciplineReminders:
