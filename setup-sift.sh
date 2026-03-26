@@ -486,13 +486,21 @@ else
     exit 1
 fi
 
-# venv
-if $PYTHON -m venv --help &>/dev/null 2>&1; then
-    ok "venv available"
+# uv (or venv fallback check — uv is installed in Phase 4 if missing)
+if command -v uv &>/dev/null; then
+    ok "uv available"
+elif $PYTHON -m venv --help &>/dev/null 2>&1; then
+    ok "venv available (uv will be installed in Phase 4)"
 else
-    err "python3-venv not found"
-    echo "  Install: sudo apt install python3-venv"
-    exit 1
+    # Neither uv nor python3-venv — uv will be auto-installed in Phase 4,
+    # but warn if curl/wget are also missing (uv install needs one of them)
+    if command -v curl &>/dev/null || command -v wget &>/dev/null; then
+        ok "uv will be installed in Phase 4"
+    else
+        err "Neither uv, python3-venv, curl, nor wget found"
+        echo "  Install curl: sudo apt install curl"
+        exit 1
+    fi
 fi
 
 # git
@@ -905,6 +913,31 @@ fi
 
 header "Installing Packages"
 
+# --- uv package manager ---
+ensure_uv() {
+    if command -v uv &>/dev/null; then
+        return
+    fi
+    info "Installing uv package manager..."
+    if ! curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null; then
+        err "uv installation failed"
+        echo "  Install manually: curl -LsSf https://astral.sh/uv/install.sh | sh"
+        exit 1
+    fi
+    export PATH="$HOME/.local/bin:$PATH"
+    if ! command -v uv &>/dev/null; then
+        err "uv installed but not found on PATH"
+        exit 1
+    fi
+    ok "uv installed"
+}
+
+# Bridge existing pip mirror config to uv
+[ -n "${PIP_INDEX_URL:-}" ] && export UV_INDEX_URL="$PIP_INDEX_URL"
+
+ensure_uv
+
+# --- Virtual environment ---
 VENV_DIR=$(realpath -m "$VENV_DIR")
 mkdir -p "$(dirname "$VENV_DIR")"
 
@@ -915,9 +948,8 @@ fi
 
 if [[ ! -d "$VENV_DIR" ]]; then
     info "Creating virtual environment at $VENV_DIR..."
-    if ! $PYTHON -m venv "$VENV_DIR"; then
+    if ! uv venv "$VENV_DIR" --python "$PYTHON" --seed --quiet; then
         err "Failed to create virtual environment"
-        echo "  Ensure python3-venv is installed: sudo apt install python3-venv"
         exit 1
     fi
 fi
@@ -927,20 +959,16 @@ if [[ ! -f "$VENV_DIR/bin/python" ]]; then
     exit 1
 fi
 
-"$VENV_DIR/bin/pip" install --progress-bar off --upgrade pip >/dev/null 2>&1 || true
 ok "Virtual environment ready at $VENV_DIR"
 
-VENV_PIP="$VENV_DIR/bin/pip"
 VENV_PYTHON="$VENV_DIR/bin/python"
 
-# Helper: install a package with error handling
+# Helper: install a single package (used for fallback and one-off installs)
 install_pkg() {
     local name="$1" path="$2"
-    echo ""
-    info "Installing $name..."
-    if ! $VENV_PIP install --progress-bar off -e "$path" >/dev/null; then
+    if ! uv pip install --python "$VENV_PYTHON" --quiet -e "$path"; then
         err "Failed to install $name"
-        echo "  Check pip output: $VENV_PIP install -e $path"
+        echo "  Check: uv pip install --python $VENV_PYTHON -e $path"
         return 1
     fi
     ok "$name installed"
@@ -948,69 +976,66 @@ install_pkg() {
 
 INSTALL_ERRORS=0
 
-# 1. forensic-knowledge (no deps)
-install_pkg "forensic-knowledge" "$INSTALL_DIR/packages/forensic-knowledge" || exit 1
-
-# 2. sift-common (no deps)
-install_pkg "sift-common" "$INSTALL_DIR/packages/sift-common" || exit 1
-
-# 3. forensic-mcp (depends on 1+2)
-install_pkg "forensic-mcp" "$INSTALL_DIR/packages/forensic-mcp" || exit 1
-
-# 4. sift-mcp (depends on 1+2)
-install_pkg "sift-mcp" "$INSTALL_DIR/packages/sift-mcp" || exit 1
-
-# 5. sift-gateway (depends on 2)
-install_pkg "sift-gateway" "$INSTALL_DIR/packages/sift-gateway" || exit 1
-
-# 6. vhir-cli (from vhir repo — must be installed before case-mcp/report-mcp)
-install_pkg "vhir-cli" "$VHIR_DIR" || exit 1
-
-# 7. case-mcp (depends on vhir-cli)
-install_pkg "case-mcp" "$INSTALL_DIR/packages/case-mcp" || exit 1
-
-# 8. report-mcp (depends on vhir-cli)
-install_pkg "report-mcp" "$INSTALL_DIR/packages/report-mcp" || exit 1
-
-# 9. case-dashboard (depends on sift-common, optional for gateway)
-install_pkg "case-dashboard" "$INSTALL_DIR/packages/case-dashboard" || exit 1
-
-# 10. windows-triage-mcp (optional, depends on 2)
-if $INSTALL_TRIAGE; then
-    install_pkg "windows-triage-mcp" "$INSTALL_DIR/packages/windows-triage" || {
-        warn "windows-triage install failed. Continuing without it."
-        INSTALL_TRIAGE=false
-    }
+# --- Core packages (always installed) — batched for unified resolution ---
+info "Installing core packages..."
+if ! uv pip install --python "$VENV_PYTHON" --quiet \
+    -e "$INSTALL_DIR/packages/forensic-knowledge" \
+    -e "$INSTALL_DIR/packages/sift-common" \
+    -e "$INSTALL_DIR/packages/forensic-mcp" \
+    -e "$INSTALL_DIR/packages/sift-mcp" \
+    -e "$INSTALL_DIR/packages/sift-gateway" \
+    -e "$VHIR_DIR" \
+    -e "$INSTALL_DIR/packages/case-mcp" \
+    -e "$INSTALL_DIR/packages/report-mcp" \
+    -e "$INSTALL_DIR/packages/case-dashboard"; then
+    err "Failed to install core packages"
+    exit 1
 fi
+ok "Core packages installed"
 
-# 11. rag-mcp (optional, depends on 2)
+# --- Optional packages — batched for unified opentelemetry resolution ---
+OPTIONAL_PKGS=""
+$INSTALL_TRIAGE  && OPTIONAL_PKGS="$OPTIONAL_PKGS -e $INSTALL_DIR/packages/windows-triage"
+$INSTALL_OPENCTI && OPTIONAL_PKGS="$OPTIONAL_PKGS -e $INSTALL_DIR/packages/opencti"
+
 if $INSTALL_RAG; then
     echo ""
-    info "Installing rag-mcp..."
-    echo "  (downloads ML model + dependencies, may take several minutes)"
-    if ! $VENV_PIP install --progress-bar off -e "$INSTALL_DIR/packages/forensic-rag" >/dev/null; then
-        err "Failed to install rag-mcp"
-        echo "  Check pip output: $VENV_PIP install -e $INSTALL_DIR/packages/forensic-rag"
-        warn "forensic-rag install failed. Continuing without it."
-        INSTALL_RAG=false
-    else
-        ok "rag-mcp installed"
+    info "Installing optional packages (including ML dependencies)..."
+    echo "  (may take several minutes on first install)"
+    OPTIONAL_PKGS="$OPTIONAL_PKGS -e $INSTALL_DIR/packages/forensic-rag"
+fi
+
+if [ -n "$OPTIONAL_PKGS" ]; then
+    # --reinstall-package forces re-resolution of the exporter when opencti
+    # is added to an existing RAG install (prevents sdk/exporter version mismatch)
+    REINSTALL_FLAG=""
+    if $INSTALL_OPENCTI && $INSTALL_RAG; then
+        REINSTALL_FLAG="--reinstall-package opentelemetry-exporter-otlp-proto-grpc"
     fi
-fi
-
-# 12. opencti-mcp (optional, depends on 2)
-if $INSTALL_OPENCTI; then
-    install_pkg "opencti-mcp" "$INSTALL_DIR/packages/opencti" || {
-        warn "opencti install failed. Continuing without it."
-        INSTALL_OPENCTI=false
-    }
-fi
-
-# Fix opentelemetry version conflict: pycti pins ~=1.35.0 but chromadb needs
-# newer. Both work at >=1.40. Upgrade after both are installed.
-if $INSTALL_RAG && $INSTALL_OPENCTI; then
-    $VENV_PIP install --progress-bar off --quiet \
-        "opentelemetry-sdk>=1.40" "opentelemetry-api>=1.40" >/dev/null 2>&1 || true
+    if ! uv pip install --python "$VENV_PYTHON" --quiet $REINSTALL_FLAG $OPTIONAL_PKGS; then
+        # If batched optional fails, try each individually to isolate the failure
+        warn "Batched optional install failed. Installing individually..."
+        if $INSTALL_TRIAGE; then
+            install_pkg "windows-triage-mcp" "$INSTALL_DIR/packages/windows-triage" || {
+                warn "windows-triage install failed. Continuing without it."
+                INSTALL_TRIAGE=false
+            }
+        fi
+        if $INSTALL_RAG; then
+            install_pkg "rag-mcp" "$INSTALL_DIR/packages/forensic-rag" || {
+                warn "forensic-rag install failed. Continuing without it."
+                INSTALL_RAG=false
+            }
+        fi
+        if $INSTALL_OPENCTI; then
+            install_pkg "opencti-mcp" "$INSTALL_DIR/packages/opencti" || {
+                warn "opencti install failed. Continuing without it."
+                INSTALL_OPENCTI=false
+            }
+        fi
+    else
+        ok "Optional packages installed"
+    fi
 fi
 
 # =============================================================================
@@ -1092,7 +1117,7 @@ if $INSTALL_TRIAGE; then
     DB_DIR="$WT_DIR/data"
 
     # Ensure zstandard is available for the download module
-    "$VENV_PYTHON" -m pip install --quiet zstandard 2>/dev/null || true
+    uv pip install --python "$VENV_PYTHON" --quiet zstandard 2>/dev/null || true
 
     # Check if databases already exist
     DB_EXISTS=false

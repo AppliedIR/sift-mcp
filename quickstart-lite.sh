@@ -273,19 +273,29 @@ fi
 # ==========================================================================
 header "Phase 1: Python Environment"
 
+# Ensure uv is available
+if ! command -v uv &>/dev/null; then
+    echo "  Installing uv package manager..."
+    if ! curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null; then
+        fail "uv installation failed. Install manually: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    fi
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
+# Bridge existing pip mirror config
+[ -n "${PIP_INDEX_URL:-}" ] && export UV_INDEX_URL="$PIP_INDEX_URL"
+
 if [[ ! -f "$VENV_PYTHON" ]]; then
-    python3 -m venv "$VENV_DIR"
+    uv venv "$VENV_DIR" --seed --quiet
     ok "Created venv at $VENV_DIR"
 else
     ok "Venv exists at $VENV_DIR"
 fi
 
-"$VENV_DIR/bin/pip" install --quiet --upgrade pip
-
 # sift-common always installed
 pkg_dir="$SCRIPT_DIR/packages/sift-common"
 if [[ -d "$pkg_dir" ]]; then
-    "$VENV_DIR/bin/pip" install --quiet -e "$pkg_dir"
+    uv pip install --python "$VENV_PYTHON" --quiet -e "$pkg_dir"
     ok "Installed sift-common"
 else
     warn "sift-common not found at $pkg_dir"
@@ -295,7 +305,7 @@ if [[ "$INSTALL_RAG" == "true" ]]; then
     pkg_dir="$SCRIPT_DIR/packages/forensic-rag"
     if [[ -d "$pkg_dir" ]]; then
         echo "  Installing forensic-rag (downloads ML dependencies, may take several minutes)..."
-        "$VENV_DIR/bin/pip" install --quiet -e "$pkg_dir"
+        uv pip install --python "$VENV_PYTHON" --quiet -e "$pkg_dir"
         ok "Installed forensic-rag"
     else
         warn "forensic-rag not found at $pkg_dir"
@@ -305,7 +315,7 @@ fi
 if [[ "$INSTALL_TRIAGE" == "true" ]]; then
     pkg_dir="$SCRIPT_DIR/packages/windows-triage"
     if [[ -d "$pkg_dir" ]]; then
-        "$VENV_DIR/bin/pip" install --quiet -e "$pkg_dir"
+        uv pip install --python "$VENV_PYTHON" --quiet -e "$pkg_dir"
         ok "Installed windows-triage"
     else
         warn "windows-triage not found at $pkg_dir"
@@ -573,7 +583,7 @@ if [[ "$INSTALL_OPENCTI" == "true" ]]; then
     # Install opencti package
     pkg_dir="$SCRIPT_DIR/packages/opencti"
     if [[ -d "$pkg_dir" ]]; then
-        "$VENV_DIR/bin/pip" install --quiet -e "$pkg_dir"
+        uv pip install --python "$VENV_PYTHON" --quiet -e "$pkg_dir"
         ok "Installed opencti-mcp"
     else
         warn "opencti-mcp not found at $pkg_dir"
