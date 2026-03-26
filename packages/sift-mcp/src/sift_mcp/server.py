@@ -20,12 +20,13 @@ _SECURITY_EVENT_IDS = frozenset(
 )
 
 # Filename keywords → artifact context for FK filtering
+# Note: "operational" is NOT included — it's a generic channel suffix
+# (TaskScheduler%4Operational, TerminalServices%4Operational, etc.)
 _FILENAME_ARTIFACT_MAP = {
     "security": "event_logs_security",
     "system": "event_logs_system",
     "sysmon": "event_logs_sysmon",
     "powershell": "event_logs_powershell",
-    "operational": "event_logs_powershell",
 }
 
 
