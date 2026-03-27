@@ -1,3 +1,3 @@
 """Forensic knowledge: community-curated artifact, tool, and discipline data."""
 
-__version__ = "0.5.3"
+__version__ = "0.5.4"
