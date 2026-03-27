@@ -1699,6 +1699,12 @@ if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC="$HOME/.bashrc";
 elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC="$HOME/.zshrc"; fi
 
 if [[ -n "$SHELL_RC" ]]; then
+    # Clean up pre-rebrand marker and its associated lines
+    if grep -q "# ValiHuntIR Platform" "$SHELL_RC" 2>/dev/null; then
+        sed -i '/# ValiHuntIR Platform/d' "$SHELL_RC"
+        # Remove duplicate PATH lines left by old installer
+        sed -i '/\.vhir\/venv\/bin.*# vhir-path/!{/\.vhir\/venv\/bin/d;}' "$SHELL_RC" 2>/dev/null || true
+    fi
     if grep -q "# Valhuntir Platform" "$SHELL_RC" 2>/dev/null; then
         # Marker exists — update PATH line in-place (handles changed venv path)
         if grep -q '# vhir-path' "$SHELL_RC" 2>/dev/null; then

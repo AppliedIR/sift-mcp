@@ -3392,13 +3392,14 @@ function renderTimelineRuler() {
 
   ruler.style.display = '';
   var useHours = spanMs < 86400000; // < 1 day
+  var useYear = spanMs > 365 * 86400000; // > 1 year
   var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   // Date labels at 0%, 25%, 50%, 75%, 100%
   var lblHtml = '';
   [0, 25, 50, 75, 100].forEach(function(pct) {
     var d = new Date(minT.getTime() + spanMs * pct / 100);
-    var label = useHours ? d.toISOString().slice(11, 16) : months[d.getUTCMonth()] + ' ' + d.getUTCDate();
+    var label = useHours ? d.toISOString().slice(11, 16) : useYear ? months[d.getUTCMonth()] + " '" + String(d.getUTCFullYear()).slice(2) : months[d.getUTCMonth()] + ' ' + d.getUTCDate();
     lblHtml += '<span style="position:absolute;left:' + pct + '%;transform:translateX(-50%);white-space:nowrap">' + escapeHtml(label) + '</span>';
   });
   labelsEl.innerHTML = lblHtml;

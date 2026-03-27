@@ -660,8 +660,10 @@ class OpenCTIClient:
             result = False
             self._circuit_breaker.record_failure()
 
-        # Cache result
-        self._health_cache = (result, monotonic())
+        # Cache positive results only — don't cache failures so next
+        # call retries immediately (handles Tailscale startup timing)
+        if result:
+            self._health_cache = (result, monotonic())
         return result
 
     def clear_health_cache(self) -> None:
