@@ -6,10 +6,10 @@
 
 Monorepo for all SIFT-side Valhuntir components. 11 packages: forensic-mcp (26 tools), case-mcp (15 tools), report-mcp (6 tools), sift-mcp (6 tools), sift-gateway, forensic-knowledge, forensic-rag (3 tools), windows-triage (13 tools), opencti (10 tools), sift-common, and case-dashboard. Part of the [Valhuntir](https://github.com/AppliedIR/valhuntir) platform.
 
-**[Documentation](https://appliedir.github.io/valhuntir/)** ·
-[Getting Started](https://appliedir.github.io/valhuntir/getting-started/) ·
-[CLI Reference](https://appliedir.github.io/valhuntir/cli-reference/) ·
-[MCP Reference](https://appliedir.github.io/valhuntir/mcp-reference/)
+**[Documentation](https://appliedir.github.io/Valhuntir/)** ·
+[Getting Started](https://appliedir.github.io/Valhuntir/getting-started/) ·
+[CLI Reference](https://appliedir.github.io/Valhuntir/cli-reference/) ·
+[MCP Reference](https://appliedir.github.io/Valhuntir/mcp-reference/)
 
 > **Public Beta** — This project is undergoing active feature development.
 > Backward compatibility with future releases is not guaranteed. Consider
@@ -338,7 +338,7 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 
 When installed with `--remote`, `setup-sift.sh` generates a local CA and gateway certificate at `~/.vhir/tls/`. The gateway binds to `0.0.0.0:4508` with TLS enabled. A bearer token (`vhir_gw_` prefix) is generated and written to `gateway.yaml`.
 
-Remote clients join via platform-specific setup scripts. The installer prints per-OS commands with a join code. See the [Deployment Guide](https://appliedir.github.io/valhuntir/deployment/) for details.
+Remote clients join via platform-specific setup scripts. The installer prints per-OS commands with a join code. See the [Deployment Guide](https://appliedir.github.io/Valhuntir/deployment/) for details.
 
 Without `--remote`, the gateway listens on `127.0.0.1` only. Auth tokens are still generated but optional for localhost.
 

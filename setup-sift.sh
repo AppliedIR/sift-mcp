@@ -620,7 +620,7 @@ fi
 #   - WSL1 (no namespace support)
 #   - user.max_user_namespaces=0
 #
-# See: https://appliedir.github.io/valhuntir/security/ (L9 — Kernel Sandbox)
+# See: https://appliedir.github.io/Valhuntir/security/ (L9 — Kernel Sandbox)
 
 BWRAP_PROFILE="/etc/apparmor.d/bwrap"
 
@@ -2100,7 +2100,7 @@ fi
 # =============================================================================
 
 echo ""
-echo -e "${BOLD}Documentation:${NC} https://appliedir.github.io/valhuntir/"
+echo -e "${BOLD}Documentation:${NC} https://appliedir.github.io/Valhuntir/"
 
 echo ""
 echo -e "${BOLD}Next steps:${NC}"
