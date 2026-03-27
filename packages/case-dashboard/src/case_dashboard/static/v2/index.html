@@ -1282,7 +1282,7 @@ function renderFinding(id) {
     html += '</div>';
   }
 
-  // Sticky bar: header + title + confidence + actions
+  // Sticky bar: ID + type + status + host + timestamp + actions + editable title
   html += '<div class="finding-sticky-bar">';
   html += '<div class="sticky-row">';
   html += '<div class="card-header">';
@@ -1298,7 +1298,13 @@ function renderFinding(id) {
   } else {
     html += '<span class="badge ' + escapeHtml(statusClass) + '">' + escapeHtml(status) + '</span>';
   }
-  html += '<span class="badge ' + escapeHtml(confClass) + '">' + escapeHtml(conf) + '</span>';
+  // Host + event timestamp (decision-relevant context, always visible)
+  var stickyContext = [];
+  if (f.host) stickyContext.push(escapeHtml(f.host));
+  if (f.event_timestamp) stickyContext.push(escapeHtml(formatTime(f.event_timestamp)));
+  if (stickyContext.length) {
+    html += '<span style="color:var(--text-secondary);font-size:12px;margin-left:6px">' + stickyContext.join(' \u00B7 ') + '</span>';
+  }
   html += '</div>';
   html += '<div class="action-bar">';
   html += '<button class="action-btn approve" onclick="doApprove()"><span class="key">a</span> Approve</button>';
@@ -1308,59 +1314,16 @@ function renderFinding(id) {
   }
   html += '</div>';
   html += '</div>';
-  html += '<div class="sticky-title">' + escapeHtml(eff.title || '') + '</div>';
+  // Editable title in sticky bar (single location — no duplicate in Zone 1)
+  html += '<div class="sticky-title">';
+  html += renderEditableField('title', eff.title || '', f, de);
+  html += '</div>';
   html += '</div>';
 
-  // === Zone 1: Decision fields ===
+  // === Zone 1: Decision fields (evidence → narrative → confidence) ===
   html += '<div class="zone1">';
 
-  // Title (editable)
-  html += '<div class="field-section" style="margin-bottom:8px"><div class="card-title" style="display:inline">';
-  html += renderEditableField('title', eff.title || '', f, de);
-  html += '</div></div>';
-
-  // Meta
-  html += '<div class="card-meta">Staged by ' + escapeHtml(examiner) + (staged ? ' \u00B7 ' + escapeHtml(staged) : '');
-  if (f.host) html += ' \u00B7 ' + escapeHtml(f.host);
-  if (f.affected_account) html += ' \u00B7 ' + escapeHtml(f.affected_account);
-  if (f.event_type) html += ' \u00B7 <span class="badge badge-timeline">' + escapeHtml(f.event_type) + '</span>';
-  html += '</div>';
-  if (f.event_timestamp) {
-    html += '<div class="card-meta">Event: ' + escapeHtml(formatTime(f.event_timestamp)) + '</div>';
-  }
-  if (f.source_evidence) {
-    html += '<div class="card-meta">Primary source: ' + escapeHtml(f.source_evidence) + ' (registered \u2713)</div>';
-  }
-  if (f.timeline_event_id) {
-    html += '<div class="card-meta">Timeline: <a style="color:var(--accent);cursor:pointer" onclick="switchTab(\'timeline\');focusTimelineEvent(\'' + escapeJsString(f.timeline_event_id) + '\')">' + escapeHtml(f.timeline_event_id) + '</a></div>';
-  }
-  // Provenance warnings
-  if (f.provenance_warnings && f.provenance_warnings.length) {
-    html += '<div style="background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:8px;margin:8px 0;font-size:12px">';
-    f.provenance_warnings.forEach(function(w) { html += '\u26A0 ' + escapeHtml(w) + '<br>'; });
-    html += '</div>';
-  }
-
-  // Confidence
-  html += '<div class="field-section"><div class="field-label">Confidence</div>';
-  if (editingField === 'confidence') {
-    html += renderEditableField('confidence', eff.confidence || 'LOW', f, de);
-  } else {
-    if (de && de.modifications && de.modifications.confidence) {
-      html += '<span class="modified-original badge ' + escapeHtml(confClassFor(de.modifications.confidence.original)) + '">' +
-        escapeHtml(de.modifications.confidence.original) + '</span> \u2192 ';
-    }
-    html += '<span class="badge ' + escapeHtml(confClass) + '">' + escapeHtml(conf) + '</span>';
-    html += ' <button style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px" onclick="startEdit(\'confidence\')">Edit</button>';
-  }
-  html += '</div>';
-
-  // Confidence justification (editable)
-  html += '<div class="field-section"><div class="field-label">Justification</div>';
-  html += renderEditableField('confidence_justification', eff.confidence_justification || '', f, de);
-  html += '</div>';
-
-  // Artifacts (the evidence — displayed before LLM narrative)
+  // 1. Evidence Artifacts (primary evidence — before LLM narrative)
   if (f.artifacts && f.artifacts.length) {
     html += '<div class="field-section"><div class="field-label">Evidence Artifacts</div>';
     f.artifacts.forEach(function(art) {
@@ -1376,23 +1339,60 @@ function renderFinding(id) {
     html += '</div>';
   }
 
-  // Observation
+  // 2. Provenance warnings (after evidence, before narrative — CR feedback)
+  if (f.provenance_warnings && f.provenance_warnings.length) {
+    html += '<div style="background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:6px 8px;margin:4px 0;font-size:11px">';
+    f.provenance_warnings.forEach(function(w) { html += '\u26A0 ' + escapeHtml(w) + '<br>'; });
+    html += '</div>';
+  }
+
+  // 3. Observation (fact — editable)
   html += '<div class="field-section"><div class="field-label">Observation</div>';
   html += renderEditableField('observation', eff.observation || '', f, de);
   html += '</div>';
 
-  // Interpretation
+  // 4. Interpretation (opinion — editable)
   html += '<div class="field-section"><div class="field-label">Interpretation</div>';
   html += renderEditableField('interpretation', eff.interpretation || '', f, de);
   html += '</div>';
 
-  // Context (collapsible)
+  // 5. Confidence + justification (one row, inline)
+  html += '<div class="field-section"><div class="field-label">Confidence</div>';
+  if (editingField === 'confidence') {
+    html += renderEditableField('confidence', eff.confidence || 'LOW', f, de);
+  } else {
+    if (de && de.modifications && de.modifications.confidence) {
+      html += '<span class="modified-original badge ' + escapeHtml(confClassFor(de.modifications.confidence.original)) + '">' +
+        escapeHtml(de.modifications.confidence.original) + '</span> \u2192 ';
+    }
+    html += '<span class="badge ' + escapeHtml(confClass) + '">' + escapeHtml(conf) + '</span>';
+    html += ' <button style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px" onclick="startEdit(\'confidence\')">Edit</button>';
+    html += ' <span style="color:var(--text-secondary);font-size:13px">\u2014 ';
+    html += renderEditableField('confidence_justification', eff.confidence_justification || '', f, de);
+    html += '</span>';
+  }
+  html += '</div>';
+
+  // 6. Context (collapsible)
   html += '<div class="context-section" style="margin: 12px 0;">';
   html += '<button onclick="toggleContext(\'' + escapeJsString(id) + '\')" class="btn btn-sm" style="background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border);">Context \u25B8</button>';
   html += '<div id="contextPanel-' + escapeJsString(id) + '" style="display: none; margin-top: 8px;">';
   html += '<div class="field-section"><div class="field-label">Context</div>';
   html += renderEditableField('context', eff.context || '', f, de);
   html += '</div></div></div>';
+
+  // Meta bar (compact, single line, after substance)
+  html += '<div class="card-meta" style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px">';
+  var metaParts = [];
+  if (f.host) metaParts.push(escapeHtml(f.host));
+  if (f.affected_account) metaParts.push(escapeHtml(f.affected_account));
+  if (f.event_type) metaParts.push('<span class="badge badge-timeline">' + escapeHtml(f.event_type) + '</span>');
+  if (f.event_timestamp) metaParts.push(escapeHtml(formatTime(f.event_timestamp)));
+  if (f.source_evidence) metaParts.push(escapeHtml(f.source_evidence));
+  if (f.timeline_event_id) metaParts.push('<a style="color:var(--accent);cursor:pointer" onclick="switchTab(\'timeline\');focusTimelineEvent(\'' + escapeJsString(f.timeline_event_id) + '\')">' + escapeHtml(f.timeline_event_id) + '</a>');
+  metaParts.push('staged ' + (staged ? escapeHtml(staged) : '') + ' by ' + escapeHtml(examiner));
+  html += metaParts.join(' \u00B7 ');
+  html += '</div>';
 
   html += '</div>'; // end zone1
 
