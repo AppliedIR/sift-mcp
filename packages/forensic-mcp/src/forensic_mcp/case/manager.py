@@ -67,6 +67,7 @@ def _protected_write(path: Path, content: str) -> None:
 
 CASES_DIR_ENV = "VHIR_CASES_DIR"
 DEFAULT_CASES_DIR = str(Path.home() / "cases")
+_ACTIVE_CASE_FILE = Path.home() / ".vhir" / "active_case"
 
 # Audit ID format: prefix-examiner-YYYYMMDD-NNN (all lowercase alphanumeric + hyphens)
 _AUDIT_ID_PATTERN = re.compile(r"^[a-z]+-[a-z0-9]+-[0-9]{8}-[0-9]{3,}\Z")
@@ -338,21 +339,6 @@ class CaseManager:
     def __init__(self) -> None:
         self._active_case_id: str | None = None
         self._active_case_path: Path | None = None
-        # Read from environment if set by installer/gateway
-        env_case = os.environ.get("VHIR_ACTIVE_CASE")
-        if env_case:
-            try:
-                _validate_case_id(env_case)
-                case_dir = self.cases_dir / env_case
-                if case_dir.is_dir():
-                    self._active_case_id = env_case
-                    self._active_case_path = case_dir
-                    os.environ["VHIR_CASE_DIR"] = str(case_dir)
-                    logger.info("Activated case from environment: %s", env_case)
-            except ValueError:
-                logger.warning(
-                    "VHIR_ACTIVE_CASE contains invalid case ID: %s", env_case
-                )
 
     @property
     def cases_dir(self) -> Path:
@@ -371,27 +357,31 @@ class CaseManager:
         return resolve_examiner()
 
     def _require_active_case(self) -> Path:
-        if self._active_case_id is None:
-            active_file = Path.home() / ".vhir" / "active_case"
-            if active_file.exists():
+        # Re-read active_case file on every call to detect case switches
+        active_file = _ACTIVE_CASE_FILE
+        if active_file.exists():
+            try:
                 content = active_file.read_text().strip()
+            except OSError:
+                content = ""
+            if content:
                 if os.path.isabs(content):
-                    # Absolute path — use directly
                     case_dir = Path(content)
-                    if case_dir.is_dir() and (case_dir / "CASE.yaml").exists():
-                        self._active_case_id = case_dir.name
-                        self._active_case_path = case_dir
-                        os.environ["VHIR_CASE_DIR"] = str(case_dir)
-                        os.environ["VHIR_ACTIVE_CASE"] = case_dir.name
+                    new_id = case_dir.name
                 else:
-                    # Legacy: bare case ID
                     _validate_case_id(content)
                     case_dir = self.cases_dir / content
-                    if case_dir.is_dir() and (case_dir / "CASE.yaml").exists():
-                        self._active_case_id = content
-                        self._active_case_path = case_dir
-                        os.environ["VHIR_CASE_DIR"] = str(case_dir)
-                        os.environ["VHIR_ACTIVE_CASE"] = content
+                    new_id = content
+                if case_dir.is_dir() and (case_dir / "CASE.yaml").exists():
+                    if (
+                        new_id != self._active_case_id
+                        and self._active_case_id is not None
+                    ):
+                        logger.info(
+                            "Case switched: %s → %s", self._active_case_id, new_id
+                        )
+                    self._active_case_id = new_id
+                    self._active_case_path = case_dir
         d = self.active_case_dir
         if d is None or not d.exists():
             raise ValueError("No active case. Run 'vhir case activate <id>' first.")

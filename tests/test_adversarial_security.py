@@ -150,6 +150,8 @@ class TestProvenanceGate:
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
 
         from forensic_mcp.case.manager import CaseManager
+        import forensic_mcp.case.manager as _mgr
+        monkeypatch.setattr(_mgr, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
 
         cases_dir = tmp_path / "cases"
         cases_dir.mkdir()
@@ -299,6 +301,8 @@ class TestFieldAllowlist:
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
 
         from forensic_mcp.case.manager import CaseManager
+        import forensic_mcp.case.manager as _mgr
+        monkeypatch.setattr(_mgr, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
 
         cases_dir = tmp_path / "cases"
         cases_dir.mkdir()

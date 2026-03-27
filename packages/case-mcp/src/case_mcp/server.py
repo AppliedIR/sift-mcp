@@ -44,6 +44,7 @@ from vhir_cli.main import (
 logger = logging.getLogger(__name__)
 
 _DEFAULT_CASES_DIR = str(Path.home() / "cases")
+_ACTIVE_CASE_FILE = Path.home() / ".vhir" / "active_case"
 _MAX_NAME = 200
 _MAX_TEXT = 10_000
 _MAX_SHORT = 200
@@ -90,19 +91,15 @@ def _resolve_case_dir(case_id: str = "") -> Path:
         case_dir = cases_dir / case_id
         if not case_dir.exists():
             raise ValueError(f"Case not found: {case_id}")
-        os.environ["VHIR_CASE_DIR"] = str(case_dir)
         return case_dir
 
-    env_dir = os.environ.get("VHIR_CASE_DIR")
-    if env_dir:
-        p = Path(env_dir)
-        if not p.is_dir():
-            raise ValueError(f"VHIR_CASE_DIR does not exist: {env_dir}")
-        return p
-
-    active_file = Path.home() / ".vhir" / "active_case"
+    # Read active_case file first (detects case switches without restart)
+    active_file = _ACTIVE_CASE_FILE
     if active_file.exists():
-        content = active_file.read_text().strip()
+        try:
+            content = active_file.read_text().strip()
+        except OSError:
+            content = ""
         if content:
             if os.path.isabs(content):
                 case_dir = Path(content)
@@ -111,10 +108,16 @@ def _resolve_case_dir(case_id: str = "") -> Path:
                     raise ValueError(f"Invalid case ID in active_case: {content}")
                 cases_dir = Path(os.environ.get("VHIR_CASES_DIR", _DEFAULT_CASES_DIR))
                 case_dir = cases_dir / content
-            if not case_dir.is_dir():
-                raise ValueError(f"Case directory does not exist: {case_dir}")
-            os.environ["VHIR_CASE_DIR"] = str(case_dir)
-            return case_dir
+            if case_dir.is_dir():
+                return case_dir
+
+    # Fallback: env var (containers, tests, non-standard deployments)
+    env_dir = os.environ.get("VHIR_CASE_DIR")
+    if env_dir:
+        p = Path(env_dir)
+        if not p.is_dir():
+            raise ValueError(f"VHIR_CASE_DIR does not exist: {env_dir}")
+        return p
 
     raise ValueError("No active case. Use case_init or case_activate first.")
 
@@ -159,7 +162,6 @@ def create_server() -> FastMCP:
                 description=description,
                 cases_dir=cases_dir or None,
             )
-            os.environ["VHIR_CASE_DIR"] = result["case_dir"]
 
             if share_wintools and _wintools_configured():
                 try:
@@ -200,7 +202,6 @@ def create_server() -> FastMCP:
         try:
             _validate_str_length(cases_dir, "cases_dir", _MAX_NAME)
             result = _case_activate_data(case_id, cases_dir=cases_dir or None)
-            os.environ["VHIR_CASE_DIR"] = result["case_dir"]
 
             # Repoint share and notify wintools
             case_path = Path(result["case_dir"])

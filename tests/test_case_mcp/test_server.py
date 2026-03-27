@@ -62,6 +62,10 @@ def case_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("VHIR_ACTIVE_CASE", case_id)
     monkeypatch.setenv("VHIR_EXAMINER", "tester")
     monkeypatch.setenv("VHIR_AUDIT_DIR", str(cd / "audit"))
+    # Prevent _resolve_case_dir from reading the real ~/.vhir/active_case
+    import case_mcp.server as _cs
+
+    monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
     return {"case_id": case_id, "path": cd, "parent": tmp_path}
 
 
@@ -82,56 +86,74 @@ def server(case_dir):
 
 class TestResolveCaseDir:
     def test_explicit_case_id(self, tmp_path, monkeypatch):
+        import case_mcp.server as _cs
+        monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
         case_id = "INC-2026-test"
         (tmp_path / case_id).mkdir()
         monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
         result = _resolve_case_dir(case_id)
         assert result == tmp_path / case_id
-        assert os.environ["VHIR_CASE_DIR"] == str(tmp_path / case_id)
 
     def test_explicit_case_id_not_found(self, tmp_path, monkeypatch):
+        import case_mcp.server as _cs
+        monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
         monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
         with pytest.raises(ValueError, match="Case not found"):
             _resolve_case_dir("nonexistent")
 
     def test_env_var_fallback(self, tmp_path, monkeypatch):
+        """VHIR_CASE_DIR is used when active_case file doesn't exist."""
+        import case_mcp.server as _cs
+        monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
         monkeypatch.setenv("VHIR_CASE_DIR", str(tmp_path))
         assert _resolve_case_dir() == tmp_path
 
-    def test_env_var_missing_dir(self, monkeypatch):
+    def test_env_var_missing_dir(self, tmp_path, monkeypatch):
+        import case_mcp.server as _cs
+        monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
         monkeypatch.setenv("VHIR_CASE_DIR", "/nonexistent/path/xyz")
         with pytest.raises(ValueError, match="does not exist"):
             _resolve_case_dir()
 
     def test_active_case_file_absolute(self, tmp_path, monkeypatch):
+        import case_mcp.server as _cs
         monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
-        fake_home = tmp_path / "fakehome"
-        (fake_home / ".vhir").mkdir(parents=True)
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
         case_dir = tmp_path / "my-case"
         case_dir.mkdir()
-        (fake_home / ".vhir" / "active_case").write_text(str(case_dir))
+        (case_dir / "CASE.yaml").write_text("case_id: my-case\nstatus: open\n")
+        active_file = tmp_path / "active_case"
+        active_file.write_text(str(case_dir))
+        monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", active_file)
         result = _resolve_case_dir()
         assert result == case_dir
 
     def test_active_case_file_relative(self, tmp_path, monkeypatch):
+        import case_mcp.server as _cs
         monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
-        fake_home = tmp_path / "fakehome"
-        (fake_home / ".vhir").mkdir(parents=True)
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
         case_id = "INC-2026-rel"
         (tmp_path / case_id).mkdir()
+        (tmp_path / case_id / "CASE.yaml").write_text("case_id: " + case_id + "\nstatus: open\n")
         monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
-        (fake_home / ".vhir" / "active_case").write_text(case_id)
+        active_file = tmp_path / "active_case"
+        active_file.write_text(case_id)
+        monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", active_file)
         result = _resolve_case_dir()
         assert result == tmp_path / case_id
 
     def test_no_active_case(self, tmp_path, monkeypatch):
+        import case_mcp.server as _cs
+        monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
         monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
-        fake_home = tmp_path / "fakehome"
-        (fake_home / ".vhir").mkdir(parents=True)
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
         with pytest.raises(ValueError, match="No active case"):
+            _resolve_case_dir()
+
+    def test_active_file_traversal_rejected(self, tmp_path, monkeypatch):
+        import case_mcp.server as _cs
+        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
+        active_file = tmp_path / "active_case"
+        active_file.write_text("../etc/passwd")
+        monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", active_file)
+        with pytest.raises(ValueError, match="Invalid case ID"):
             _resolve_case_dir()
 
     # --- Security: path traversal ---
@@ -150,15 +172,6 @@ class TestResolveCaseDir:
         monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
         with pytest.raises(ValueError, match="Invalid case ID"):
             _resolve_case_dir("foo\\bar")
-
-    def test_active_file_traversal_rejected(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
-        fake_home = tmp_path / "fakehome"
-        (fake_home / ".vhir").mkdir(parents=True)
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
-        (fake_home / ".vhir" / "active_case").write_text("../../etc/shadow")
-        with pytest.raises(ValueError, match="Invalid case ID in active_case"):
-            _resolve_case_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -225,9 +238,8 @@ class TestCaseStatus:
 
     def test_no_case_returns_error(self, tmp_path, monkeypatch):
         monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
-        fake_home = tmp_path / "fakehome"
-        (fake_home / ".vhir").mkdir(parents=True)
-        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
+        import case_mcp.server as _cs
+        monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
         result = _parse(tools["case_status"]())

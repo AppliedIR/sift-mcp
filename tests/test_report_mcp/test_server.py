@@ -18,6 +18,10 @@ def case_dir(tmp_path, monkeypatch):
 
     monkeypatch.setenv("VHIR_CASE_DIR", str(case))
     monkeypatch.setenv("VHIR_EXAMINER", "tester")
+    # Prevent _resolve_case_dir from reading the real ~/.vhir/active_case
+    import report_mcp.server as _rs
+
+    monkeypatch.setattr(_rs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
 
     # CASE.yaml
     meta = {

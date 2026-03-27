@@ -60,6 +60,9 @@ def manager(tmp_path, monkeypatch):
     monkeypatch.delenv("VHIR_ACTIVE_CASE", raising=False)
     # Isolate from real ~/.vhir/active_case
     monkeypatch.setenv("HOME", str(tmp_path))
+    import forensic_mcp.case.manager as _mgr
+
+    monkeypatch.setattr(_mgr, "_ACTIVE_CASE_FILE", tmp_path / ".vhir" / "active_case")
     mgr = CaseManager()
     return mgr
 
@@ -135,18 +138,27 @@ class TestCaseLifecycle:
         with pytest.raises(ValueError, match="No active case"):
             manager._require_active_case()
 
-    def test_init_reads_active_case_from_env(self, tmp_path, monkeypatch):
-        """VHIR_ACTIVE_CASE env var activates an existing case on __init__."""
+    def test_require_reads_active_case_file(self, tmp_path, monkeypatch):
+        """_require_active_case reads ~/.vhir/active_case file."""
         monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
         monkeypatch.setenv("VHIR_EXAMINER", "tester")
-        # Create a case directory manually
+        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
+        monkeypatch.delenv("VHIR_ACTIVE_CASE", raising=False)
         case_id = "INC-2026-0223120000"
         case_dir = tmp_path / case_id
         case_dir.mkdir()
-        monkeypatch.setenv("VHIR_ACTIVE_CASE", case_id)
+        (case_dir / "CASE.yaml").write_text("case_id: " + case_id + "\nstatus: open\n")
+        # Write active_case file pointing to case
+        vhir_dir = tmp_path / ".vhir"
+        vhir_dir.mkdir()
+        (vhir_dir / "active_case").write_text(str(case_dir))
+        import forensic_mcp.case.manager as _mgr
+
+        monkeypatch.setattr(_mgr, "_ACTIVE_CASE_FILE", vhir_dir / "active_case")
         mgr = CaseManager()
+        result = mgr._require_active_case()
         assert mgr._active_case_id == case_id
-        assert os.environ.get("VHIR_CASE_DIR") == str(case_dir)
+        assert result == case_dir
 
     def test_init_ignores_missing_case_dir(self, tmp_path, monkeypatch):
         """VHIR_ACTIVE_CASE pointing to non-existent dir is ignored."""

@@ -39,6 +39,10 @@ def _setup_test_case(manager, cases_dir, monkeypatch):
     manager._active_case_path = case_dir
     monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
     monkeypatch.setenv("VHIR_ACTIVE_CASE", case_id)
+    # Prevent _require_active_case from reading the real ~/.vhir/active_case
+    import forensic_mcp.case.manager as _mgr
+
+    monkeypatch.setattr(_mgr, "_ACTIVE_CASE_FILE", cases_dir / "no_active_case")
 
 
 def _seed_audit(audit_dir):
