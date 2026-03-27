@@ -180,6 +180,7 @@ class AuditWriter:
         input_sha256s: list[str] | None = None,
         input_detection_method: str = "",
         source_evidence: str = "",
+        extra: dict[str, Any] | None = None,
     ) -> str | None:
         """Write an audit entry. Returns the audit_id, or None when no case is active."""
         if not self._get_audit_dir():
@@ -207,6 +208,8 @@ class AuditWriter:
             entry["input_detection_method"] = input_detection_method
         if source_evidence:
             entry["source_evidence"] = source_evidence
+        if extra:
+            entry.update(extra)
 
         if not self._write_entry(entry):
             logger.warning(

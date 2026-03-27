@@ -2,15 +2,18 @@
 
 import asyncio
 import contextlib
+import json
 import logging
 import time
 
 import anyio
 from mcp.types import Tool
+from sift_common.audit import AuditWriter
 from starlette.applications import Starlette
 from starlette.routing import Mount
 
 from sift_gateway.auth import AuthMiddleware
+from sift_gateway.backends.http_backend import HttpMCPBackend
 
 
 class _NormalizeMCPPath:
@@ -49,6 +52,45 @@ from sift_gateway.rest import rest_routes
 logger = logging.getLogger(__name__)
 
 
+def _extract_audit_id(result: list) -> str | None:
+    """Extract audit_id from backend response content."""
+    for item in result:
+        text = getattr(item, "text", None)
+        if text:
+            try:
+                data = json.loads(text)
+                return data.get("audit_id")
+            except (json.JSONDecodeError, AttributeError):
+                pass
+    return None
+
+
+def _truncate_params(params: dict, max_len: int = 1000) -> dict:
+    """Truncate large param values for audit storage."""
+    truncated = {}
+    for k, v in params.items():
+        s = str(v)
+        truncated[k] = s[:max_len] + "..." if len(s) > max_len else v
+    return truncated
+
+
+def _summarize_result(result: list) -> dict:
+    """Extract lightweight summary from backend response."""
+    for item in result:
+        text = getattr(item, "text", None)
+        if text:
+            try:
+                data = json.loads(text)
+                summary = {}
+                for key in ("exit_code", "success", "error", "truncated", "found"):
+                    if key in data:
+                        summary[key] = data[key]
+                return summary
+            except (json.JSONDecodeError, AttributeError):
+                pass
+    return {"raw_items": len(result)}
+
+
 class Gateway:
     """Aggregates multiple MCP backends behind a single HTTP service.
 
@@ -63,6 +105,7 @@ class Gateway:
         self._start_locks: dict[str, asyncio.Lock] = {}
         self._reload_event = asyncio.Event()
         self._pending_backends: dict[str, dict] = {}
+        self._audit = AuditWriter(mcp_name="sift-gateway")
 
         # Create backend instances from config
         backends_config = config.get("backends", {})
@@ -385,8 +428,9 @@ class Gateway:
             backend_name,
             examiner,
         )
+        start = time.monotonic()
         try:
-            return await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 backend.call_tool(actual_name, arguments), timeout=300.0
             )
         except asyncio.TimeoutError as exc:
@@ -396,6 +440,25 @@ class Gateway:
                 backend_name,
             )
             raise RuntimeError(f"Tool call {actual_name} timed out after 300s") from exc
+
+        # Proxy-side audit for HTTP backends (non-blocking)
+        if isinstance(backend, HttpMCPBackend):
+            elapsed_ms = (time.monotonic() - start) * 1000
+            backend_audit_id = _extract_audit_id(result)
+            await asyncio.to_thread(
+                self._audit.log,
+                tool=actual_name,
+                params=_truncate_params(arguments),
+                result_summary=_summarize_result(result),
+                source="gateway_proxy",
+                elapsed_ms=elapsed_ms,
+                extra={
+                    "backend": backend_name,
+                    "backend_audit_id": backend_audit_id,
+                },
+            )
+
+        return result
 
     def create_app(self) -> Starlette:
         """Build a Starlette application with all routes and middleware.
