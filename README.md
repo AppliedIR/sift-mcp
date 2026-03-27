@@ -87,7 +87,11 @@ Full Valhuntir is **LLM client agnostic** — connect any MCP-compatible client 
 - Structured JSON case files with integrity verification
 - Formal report generation (6 profiles)
 
+Examiners review findings in the Examiner Portal — validating artifacts, observations, and interpretations, with the full command audit trail from original evidence to final result.
+
 ![Examiner Portal — Findings](docs/images/portal-findings.png)
+
+The timeline view places findings and other observables in chronological context across the investigation.
 
 ![Examiner Portal — Timeline](docs/images/portal-timeline.png)
 
