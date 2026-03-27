@@ -931,7 +931,7 @@ async function loadAll() {
     delta = d && d.items ? d : { version: 1, case_id: '', items: [] };
     caseMeta = c || {};
     if (caseMeta.case_id) {
-      document.getElementById('headerTitle').textContent = 'Valhuntir \u2014 ' + caseMeta.case_id;
+      document.getElementById('headerTitle').innerHTML = '<img src="valhuntir-icon.png" alt="" style="height:24px;vertical-align:middle;margin-right:6px">Valhuntir \u2014 ' + escapeHtml(caseMeta.case_id);
       document.title = 'Valhuntir \u2014 ' + caseMeta.case_id;
       if (!delta.case_id) delta.case_id = caseMeta.case_id;
     }
