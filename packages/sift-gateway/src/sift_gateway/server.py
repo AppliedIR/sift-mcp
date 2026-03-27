@@ -445,18 +445,26 @@ class Gateway:
         if isinstance(backend, HttpMCPBackend):
             elapsed_ms = (time.monotonic() - start) * 1000
             backend_audit_id = _extract_audit_id(result)
-            await asyncio.to_thread(
-                self._audit.log,
-                tool=actual_name,
-                params=_truncate_params(arguments),
-                result_summary=_summarize_result(result),
-                source="gateway_proxy",
-                elapsed_ms=elapsed_ms,
-                extra={
-                    "backend": backend_name,
-                    "backend_audit_id": backend_audit_id,
-                },
-            )
+            try:
+                audit_id = await asyncio.to_thread(
+                    self._audit.log,
+                    tool=actual_name,
+                    params=_truncate_params(arguments),
+                    result_summary=_summarize_result(result),
+                    source="gateway_proxy",
+                    elapsed_ms=elapsed_ms,
+                    extra={
+                        "backend": backend_name,
+                        "backend_audit_id": backend_audit_id,
+                    },
+                )
+                if audit_id is None:
+                    logger.warning(
+                        "Gateway audit skipped for %s — no active case or audit dir",
+                        actual_name,
+                    )
+            except Exception as exc:
+                logger.warning("Gateway audit failed for %s: %s", actual_name, exc)
 
         return result
 
