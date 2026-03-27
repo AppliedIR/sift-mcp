@@ -1732,6 +1732,11 @@ if [[ ":$PATH:" != *":$VHIR_BIN:"* ]]; then
 fi
 export VHIR_CASES_DIR="$CASE_DIR"
 
+# Symlink: valhuntir → vhir (users expect the product name to work)
+if [[ -f "$VHIR_BIN/vhir" && ! -e "$VHIR_BIN/valhuntir" ]]; then
+    ln -sf "$VHIR_BIN/vhir" "$VHIR_BIN/valhuntir"
+fi
+
 # Tab completion
 if [[ -z "${SHELL_RC:-}" ]]; then
     if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC="$HOME/.bashrc";
