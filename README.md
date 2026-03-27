@@ -87,9 +87,9 @@ Full Valhuntir is **LLM client agnostic** — connect any MCP-compatible client 
 - Structured JSON case files with integrity verification
 - Formal report generation (6 profiles)
 
-![Examiner Portal — Findings](docs/images/dashboard.png)
+![Examiner Portal — Findings](docs/images/portal-findings.png)
 
-![Examiner Portal — Timeline](docs/images/timeline.png)
+![Examiner Portal — Timeline](docs/images/portal-timeline.png)
 
 When Claude Code is the client, additional controls are deployed:
 
