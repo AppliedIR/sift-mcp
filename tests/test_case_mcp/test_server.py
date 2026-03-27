@@ -1,7 +1,6 @@
 """Unit tests for case-mcp server: _resolve_case_dir, tool handlers, security."""
 
 import json
-import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -87,6 +86,7 @@ def server(case_dir):
 class TestResolveCaseDir:
     def test_explicit_case_id(self, tmp_path, monkeypatch):
         import case_mcp.server as _cs
+
         monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
         case_id = "INC-2026-test"
         (tmp_path / case_id).mkdir()
@@ -96,6 +96,7 @@ class TestResolveCaseDir:
 
     def test_explicit_case_id_not_found(self, tmp_path, monkeypatch):
         import case_mcp.server as _cs
+
         monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
         monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
         with pytest.raises(ValueError, match="Case not found"):
@@ -104,12 +105,14 @@ class TestResolveCaseDir:
     def test_env_var_fallback(self, tmp_path, monkeypatch):
         """VHIR_CASE_DIR is used when active_case file doesn't exist."""
         import case_mcp.server as _cs
+
         monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
         monkeypatch.setenv("VHIR_CASE_DIR", str(tmp_path))
         assert _resolve_case_dir() == tmp_path
 
     def test_env_var_missing_dir(self, tmp_path, monkeypatch):
         import case_mcp.server as _cs
+
         monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
         monkeypatch.setenv("VHIR_CASE_DIR", "/nonexistent/path/xyz")
         with pytest.raises(ValueError, match="does not exist"):
@@ -117,6 +120,7 @@ class TestResolveCaseDir:
 
     def test_active_case_file_absolute(self, tmp_path, monkeypatch):
         import case_mcp.server as _cs
+
         monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
         case_dir = tmp_path / "my-case"
         case_dir.mkdir()
@@ -129,10 +133,13 @@ class TestResolveCaseDir:
 
     def test_active_case_file_relative(self, tmp_path, monkeypatch):
         import case_mcp.server as _cs
+
         monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
         case_id = "INC-2026-rel"
         (tmp_path / case_id).mkdir()
-        (tmp_path / case_id / "CASE.yaml").write_text("case_id: " + case_id + "\nstatus: open\n")
+        (tmp_path / case_id / "CASE.yaml").write_text(
+            "case_id: " + case_id + "\nstatus: open\n"
+        )
         monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path))
         active_file = tmp_path / "active_case"
         active_file.write_text(case_id)
@@ -142,6 +149,7 @@ class TestResolveCaseDir:
 
     def test_no_active_case(self, tmp_path, monkeypatch):
         import case_mcp.server as _cs
+
         monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
         monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
         with pytest.raises(ValueError, match="No active case"):
@@ -149,6 +157,7 @@ class TestResolveCaseDir:
 
     def test_active_file_traversal_rejected(self, tmp_path, monkeypatch):
         import case_mcp.server as _cs
+
         monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
         active_file = tmp_path / "active_case"
         active_file.write_text("../etc/passwd")
@@ -239,6 +248,7 @@ class TestCaseStatus:
     def test_no_case_returns_error(self, tmp_path, monkeypatch):
         monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
         import case_mcp.server as _cs
+
         monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}

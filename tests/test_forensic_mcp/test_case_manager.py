@@ -1,7 +1,6 @@
 """Tests for CaseManager: lifecycle, findings, timeline, todos."""
 
 import json
-import os
 from pathlib import Path
 
 import pytest

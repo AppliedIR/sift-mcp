@@ -17,6 +17,7 @@ def manager(tmp_path, monkeypatch):
     monkeypatch.delenv("VHIR_AUDIT_DIR", raising=False)
     monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
     import forensic_mcp.case.manager as _mgr
+
     monkeypatch.setattr(_mgr, "_ACTIVE_CASE_FILE", tmp_path / ".vhir" / "active_case")
     return CaseManager()
 

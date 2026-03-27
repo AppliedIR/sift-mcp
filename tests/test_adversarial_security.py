@@ -149,8 +149,9 @@ class TestProvenanceGate:
         monkeypatch.delenv("VHIR_ACTIVE_CASE", raising=False)
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
 
-        from forensic_mcp.case.manager import CaseManager
         import forensic_mcp.case.manager as _mgr
+        from forensic_mcp.case.manager import CaseManager
+
         monkeypatch.setattr(_mgr, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
 
         cases_dir = tmp_path / "cases"
@@ -300,8 +301,9 @@ class TestFieldAllowlist:
         monkeypatch.delenv("VHIR_ACTIVE_CASE", raising=False)
         monkeypatch.setattr("pathlib.Path.home", staticmethod(lambda: tmp_path))
 
-        from forensic_mcp.case.manager import CaseManager
         import forensic_mcp.case.manager as _mgr
+        from forensic_mcp.case.manager import CaseManager
+
         monkeypatch.setattr(_mgr, "_ACTIVE_CASE_FILE", tmp_path / "no_active_case")
 
         cases_dir = tmp_path / "cases"
