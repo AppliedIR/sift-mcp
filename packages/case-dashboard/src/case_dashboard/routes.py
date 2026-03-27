@@ -1392,8 +1392,36 @@ def create_dashboard_app() -> Starlette:
     return Starlette(routes=routes, middleware=[Middleware(SecurityHeadersMiddleware)])
 
 
+async def serve_v2_static(request: Request) -> Response:
+    """Serve static files from the v2 directory (images, icons, etc.)."""
+    filename = request.path_params.get("filename", "")
+    if not filename or ".." in filename or "/" in filename or "\\" in filename:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    allowed_ext = {".png", ".jpg", ".svg", ".ico", ".css", ".js"}
+    if Path(filename).suffix.lower() not in allowed_ext:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    file_path = _V2_STATIC_DIR / filename
+    if not file_path.is_file():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    media_types = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".svg": "image/svg+xml",
+        ".ico": "image/x-icon",
+        ".css": "text/css",
+        ".js": "application/javascript",
+    }
+    return FileResponse(
+        file_path,
+        media_type=media_types.get(
+            Path(filename).suffix.lower(), "application/octet-stream"
+        ),
+    )
+
+
 def create_dashboard_v2_app() -> Starlette:
     """Create the v2 dashboard sub-app for mounting on the gateway."""
     routes = _dashboard_api_routes()
+    routes.append(Route("/{filename}", serve_v2_static, methods=["GET"]))
     routes.append(Route("/", serve_v2_index, methods=["GET"]))
     return Starlette(routes=routes, middleware=[Middleware(SecurityHeadersMiddleware)])
