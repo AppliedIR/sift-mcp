@@ -164,7 +164,11 @@ class TestToolMetadata:
         assert "interpretation_constraint" in meta
 
     def test_all_tools_have_metadata(self):
-        expected_tools = {"search_knowledge", "list_knowledge_sources", "get_knowledge_stats"}
+        expected_tools = {
+            "search_knowledge",
+            "list_knowledge_sources",
+            "get_knowledge_stats",
+        }
         assert set(TOOL_METADATA.keys()) == expected_tools
 
     def test_default_metadata(self):
