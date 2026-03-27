@@ -1318,7 +1318,12 @@ function renderFinding(id) {
   html += '</div>';
   // Editable title in sticky bar (single location — no duplicate in Zone 1)
   html += '<div class="sticky-title">';
-  html += renderEditableField('title', eff.title || '', f, de);
+  if (editingField === 'title') {
+    html += renderEditableField('title', eff.title || '', f, de);
+  } else {
+    html += escapeHtml(eff.title || '');
+    html += ' <span class="edit-pencil" onclick="startEdit(\'title\')" title="Click to edit">\u270E</span>';
+  }
   html += '</div>';
   html += '</div>';
 
@@ -1349,12 +1354,12 @@ function renderFinding(id) {
   }
 
   // 3. Observation (fact — editable)
-  html += '<div class="field-section"><div class="field-label">Observation</div>';
+  html += '<div class="field-section"><div class="field-label">Observation <span class="edit-pencil" onclick="startEdit(\'observation\')" title="Click to edit">\u270E</span></div>';
   html += renderEditableField('observation', eff.observation || '', f, de);
   html += '</div>';
 
   // 4. Interpretation (opinion — editable)
-  html += '<div class="field-section"><div class="field-label">Interpretation</div>';
+  html += '<div class="field-section"><div class="field-label">Interpretation <span class="edit-pencil" onclick="startEdit(\'interpretation\')" title="Click to edit">\u270E</span></div>';
   html += renderEditableField('interpretation', eff.interpretation || '', f, de);
   html += '</div>';
 
@@ -1378,7 +1383,7 @@ function renderFinding(id) {
   html += '<div class="context-section" style="margin: 12px 0;">';
   html += '<button onclick="toggleContext(\'' + escapeJsString(id) + '\')" class="btn btn-sm" style="background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border);">Context \u25B8</button>';
   html += '<div id="contextPanel-' + escapeJsString(id) + '" style="display: none; margin-top: 8px;">';
-  html += '<div class="field-section"><div class="field-label">Context</div>';
+  html += '<div class="field-section"><div class="field-label">Context <span class="edit-pencil" onclick="startEdit(\'context\')" title="Click to edit">\u270E</span></div>';
   html += renderEditableField('context', eff.context || '', f, de);
   html += '</div></div></div>';
 
@@ -1999,10 +2004,8 @@ function renderEditableField(field, value, f, de) {
         '<div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'' + ef + '\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
     }
   }
-  // Not editing — show value with inline pencil
-  let display = renderFieldWithDelta(field, value, de);
-  display += '<span class="edit-pencil" onclick="startEdit(\'' + ef + '\')" title="Click to edit">\u270E</span>';
-  return display;
+  // Not editing — show value (pencil is on the field label)
+  return renderFieldWithDelta(field, value, de);
 }
 
 function toggleContext(id) {
