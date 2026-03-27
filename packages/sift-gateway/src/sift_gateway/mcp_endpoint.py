@@ -33,6 +33,12 @@ from sift_common.instructions import GATEWAY as _GATEWAY_INSTRUCTIONS
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from sift_gateway.audit_helpers import (
+    _extract_audit_id,
+    _summarize_result,
+    _truncate_params,
+)
+from sift_gateway.backends.http_backend import HttpMCPBackend
 from sift_gateway.rate_limit import check_rate_limit
 
 logger = logging.getLogger(__name__)
@@ -336,6 +342,7 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
         if examiner and name in ANALYST_TOOLS:
             arguments = {**arguments, "analyst_override": examiner}
 
+        _start = time.monotonic()
         try:
             result = await backend.call_tool(name, arguments)
         except (RuntimeError, ConnectionError, OSError) as e:
@@ -374,6 +381,35 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
                 )
             else:
                 contents.append(TextContent(type="text", text=str(item)))
+
+        # Proxy-side audit for HTTP backends
+        if isinstance(backend, HttpMCPBackend):
+            elapsed_ms = (time.monotonic() - _start) * 1000
+            backend_audit_id = _extract_audit_id(result)
+            try:
+                audit_id = await asyncio.to_thread(
+                    gateway._audit.log,
+                    tool=name,
+                    params=_truncate_params(arguments),
+                    result_summary=_summarize_result(result),
+                    source="gateway_proxy",
+                    elapsed_ms=elapsed_ms,
+                    extra={
+                        "backend": backend_name,
+                        "backend_audit_id": backend_audit_id,
+                    },
+                )
+                if audit_id is None:
+                    logger.warning(
+                        "Gateway audit skipped for %s/%s — no active case",
+                        backend_name,
+                        name,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Gateway audit failed for %s/%s: %s", backend_name, name, exc
+                )
+
         return contents
 
     return server

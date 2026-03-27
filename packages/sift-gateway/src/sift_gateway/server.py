@@ -2,7 +2,6 @@
 
 import asyncio
 import contextlib
-import json
 import logging
 import time
 
@@ -13,7 +12,6 @@ from starlette.applications import Starlette
 from starlette.routing import Mount
 
 from sift_gateway.auth import AuthMiddleware
-from sift_gateway.backends.http_backend import HttpMCPBackend
 
 
 class _NormalizeMCPPath:
@@ -50,45 +48,6 @@ from sift_gateway.mcp_endpoint import (
 from sift_gateway.rest import rest_routes
 
 logger = logging.getLogger(__name__)
-
-
-def _extract_audit_id(result: list) -> str | None:
-    """Extract audit_id from backend response content."""
-    for item in result:
-        text = getattr(item, "text", None)
-        if text:
-            try:
-                data = json.loads(text)
-                return data.get("audit_id")
-            except (json.JSONDecodeError, AttributeError):
-                pass
-    return None
-
-
-def _truncate_params(params: dict, max_len: int = 1000) -> dict:
-    """Truncate large param values for audit storage."""
-    truncated = {}
-    for k, v in params.items():
-        s = str(v)
-        truncated[k] = s[:max_len] + "..." if len(s) > max_len else v
-    return truncated
-
-
-def _summarize_result(result: list) -> dict:
-    """Extract lightweight summary from backend response."""
-    for item in result:
-        text = getattr(item, "text", None)
-        if text:
-            try:
-                data = json.loads(text)
-                summary = {}
-                for key in ("exit_code", "success", "error", "truncated", "found"):
-                    if key in data:
-                        summary[key] = data[key]
-                return summary
-            except (json.JSONDecodeError, AttributeError):
-                pass
-    return {"raw_items": len(result)}
 
 
 class Gateway:
@@ -428,7 +387,6 @@ class Gateway:
             backend_name,
             examiner,
         )
-        start = time.monotonic()
         try:
             result = await asyncio.wait_for(
                 backend.call_tool(actual_name, arguments), timeout=300.0
@@ -440,31 +398,6 @@ class Gateway:
                 backend_name,
             )
             raise RuntimeError(f"Tool call {actual_name} timed out after 300s") from exc
-
-        # Proxy-side audit for HTTP backends (non-blocking)
-        if isinstance(backend, HttpMCPBackend):
-            elapsed_ms = (time.monotonic() - start) * 1000
-            backend_audit_id = _extract_audit_id(result)
-            try:
-                audit_id = await asyncio.to_thread(
-                    self._audit.log,
-                    tool=actual_name,
-                    params=_truncate_params(arguments),
-                    result_summary=_summarize_result(result),
-                    source="gateway_proxy",
-                    elapsed_ms=elapsed_ms,
-                    extra={
-                        "backend": backend_name,
-                        "backend_audit_id": backend_audit_id,
-                    },
-                )
-                if audit_id is None:
-                    logger.warning(
-                        "Gateway audit skipped for %s — no active case or audit dir",
-                        actual_name,
-                    )
-            except Exception as exc:
-                logger.warning("Gateway audit failed for %s: %s", actual_name, exc)
 
         return result
 
