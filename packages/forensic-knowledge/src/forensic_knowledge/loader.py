@@ -41,7 +41,7 @@ def _find_data_dir() -> Path:
         _DATA_DIR = source_data
         return _DATA_DIR
 
-    # 3. importlib.resources (installed package — shared-data lands in site-packages)
+    # 3. importlib.resources (installed package — force-include puts data inside package)
     try:
         ref = importlib.resources.files("forensic_knowledge") / "data"
         p = Path(str(ref))

@@ -39,7 +39,7 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/forensic_knowledge"]
 
-[tool.hatch.build.targets.wheel.shared-data]
+[tool.hatch.build.targets.wheel.force-include]
 "data" = "forensic_knowledge/data"
 
 [tool.hatch.build.targets.sdist]
