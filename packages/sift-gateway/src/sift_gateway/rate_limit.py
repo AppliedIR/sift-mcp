@@ -123,5 +123,11 @@ def reset_rate_limiter() -> None:
 
 
 def check_rate_limit(ip: str) -> bool:
-    """Convenience: check the singleton limiter. Returns True if allowed."""
+    """Convenience: check the singleton limiter. Returns True if allowed.
+
+    Localhost connections are always allowed — rate limiting protects
+    against remote abuse, not local Claude Code connections.
+    """
+    if ip in ("127.0.0.1", "::1", "localhost"):
+        return True
     return get_rate_limiter().is_allowed(ip)
