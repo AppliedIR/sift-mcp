@@ -884,7 +884,7 @@ fi
 
 # Clone vhir (for vhir-cli — required before case-mcp/report-mcp)
 VHIR_DIR="$(dirname "$INSTALL_DIR")/vhir"
-VHIR_REPO_URL="https://github.com/AppliedIR/valhuntir.git"
+VHIR_REPO_URL="https://github.com/AppliedIR/Valhuntir.git"
 
 if [[ -d "$VHIR_DIR/.git" ]]; then
     info "vhir repository exists at $VHIR_DIR. Pulling latest..."
@@ -1917,15 +1917,15 @@ if $REMOTE_MODE; then
             echo -e "${BOLD}Remote client setup${NC} (run on the machine where your LLM client runs):"
             echo ""
             echo "  Linux (full support):"
-            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/valhuntir/main/setup-client-linux.sh \\"
+            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/Valhuntir/main/setup-client-linux.sh \\"
             echo "      | bash -s -- --sift=$GW_URL --code=$JOIN_CODE"
             echo ""
             echo "  macOS:"
-            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/valhuntir/main/setup-client-macos.sh \\"
+            echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/Valhuntir/main/setup-client-macos.sh \\"
             echo "      | bash -s -- --sift=$GW_URL --code=$JOIN_CODE"
             echo ""
             echo "  Windows (PowerShell):"
-            echo "    Invoke-WebRequest -Uri https://raw.githubusercontent.com/AppliedIR/valhuntir/main/setup-client-windows.ps1 -OutFile setup-client-windows.ps1"
+            echo "    Invoke-WebRequest -Uri https://raw.githubusercontent.com/AppliedIR/Valhuntir/main/setup-client-windows.ps1 -OutFile setup-client-windows.ps1"
             echo "    .\\setup-client-windows.ps1 -Sift $GW_URL -Code $JOIN_CODE"
             echo ""
             echo "  Note: Your LLM client must run locally on your machine to reach the"
