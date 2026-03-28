@@ -234,6 +234,24 @@ class Gateway:
             if reaped:
                 await self._build_tool_map()
 
+    async def _late_start_checker(self) -> None:
+        """Periodically retry backends that failed to start at boot."""
+        while True:
+            await anyio.sleep(30)
+            restarted = []
+            for name, backend in self.backends.items():
+                if backend.started:
+                    continue
+                try:
+                    await asyncio.wait_for(backend.start(), timeout=30.0)
+                    restarted.append(name)
+                    logger.info("Late-started backend: %s", name)
+                except Exception:
+                    pass
+            if restarted:
+                await self._build_tool_map()
+                logger.info("Tool map rebuilt after late-starting: %s", restarted)
+
     async def _backend_loader(self) -> None:
         """Start backends added after gateway boot (e.g. wintools after join).
 
@@ -436,6 +454,7 @@ class Gateway:
             reaper_task = None
             if gateway.idle_timeout > 0:
                 reaper_task = asyncio.create_task(gateway._idle_reaper())
+            late_start_task = asyncio.create_task(gateway._late_start_checker())
             async with contextlib.AsyncExitStack() as stack:
                 await stack.enter_async_context(session_manager.run())
                 for b_sm in backend_session_managers:
@@ -459,6 +478,9 @@ class Gateway:
                 reaper_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await reaper_task
+            late_start_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await late_start_task
             await gateway.stop()
 
         routes = []
