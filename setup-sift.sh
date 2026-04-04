@@ -1048,7 +1048,7 @@ if [ ! -d "$OPENSEARCH_MCP_DIR" ]; then
     OPENSEARCH_MCP_DIR="$HOME/.vhir/src/opensearch-mcp"
 fi
 
-# Clone if --opensearch flag was passed and repo not found
+# Clone or update opensearch-mcp
 if $INSTALL_OPENSEARCH_FLAG && [ ! -d "$OPENSEARCH_MCP_DIR" ]; then
     OPENSEARCH_MCP_DIR="$INSTALL_DIR/../opensearch-mcp"
     info "Cloning opensearch-mcp..."
@@ -1058,6 +1058,9 @@ if $INSTALL_OPENSEARCH_FLAG && [ ! -d "$OPENSEARCH_MCP_DIR" ]; then
         warn "opensearch-mcp clone failed. OpenSearch features unavailable."
         OPENSEARCH_MCP_DIR=""
     fi
+elif [ -d "$OPENSEARCH_MCP_DIR" ] && [ -d "$OPENSEARCH_MCP_DIR/.git" ]; then
+    info "Updating opensearch-mcp..."
+    git -C "$OPENSEARCH_MCP_DIR" pull --ff-only --quiet 2>/dev/null && ok "opensearch-mcp updated" || true
 fi
 
 INSTALL_OPENSEARCH=false
@@ -1072,10 +1075,45 @@ if [ -d "$OPENSEARCH_MCP_DIR" ]; then
         if [ -f "$SETUP_OS_SCRIPT" ]; then
             echo ""
             info "Setting up OpenSearch (Docker container, templates, credentials)..."
-            if bash "$SETUP_OS_SCRIPT"; then
-                ok "OpenSearch setup complete"
+
+            # Ensure Docker is accessible before calling setup-opensearch.sh
+            if command -v docker &>/dev/null; then
+                if ! docker ps &>/dev/null; then
+                    if ! groups | grep -qw docker; then
+                        info "Adding $USER to docker group (requires sudo)..."
+                        if sudo usermod -aG docker "$USER"; then
+                            ok "Added to docker group"
+                            if sg docker -c 'bash "'"$SETUP_OS_SCRIPT"'"'; then
+                                ok "OpenSearch setup complete"
+                            else
+                                warn "OpenSearch setup failed. Run manually: $SETUP_OS_SCRIPT"
+                            fi
+                        else
+                            warn "Could not add $USER to docker group. OpenSearch setup skipped."
+                        fi
+                        SETUP_OS_SCRIPT=""
+                    else
+                        info "Starting Docker daemon..."
+                        sudo systemctl start docker
+                        if ! docker ps &>/dev/null; then
+                            warn "Could not start Docker. OpenSearch setup skipped."
+                            SETUP_OS_SCRIPT=""
+                        fi
+                    fi
+                fi
             else
-                warn "OpenSearch setup failed. Run manually: $SETUP_OS_SCRIPT"
+                warn "Docker not installed. OpenSearch setup skipped."
+                warn "Install Docker: https://docs.docker.com/engine/install/"
+                SETUP_OS_SCRIPT=""
+            fi
+
+            # Normal call (docker access already working)
+            if [ -n "$SETUP_OS_SCRIPT" ]; then
+                if bash "$SETUP_OS_SCRIPT"; then
+                    ok "OpenSearch setup complete"
+                else
+                    warn "OpenSearch setup failed. Run manually: $SETUP_OS_SCRIPT"
+                fi
             fi
         fi
     else
