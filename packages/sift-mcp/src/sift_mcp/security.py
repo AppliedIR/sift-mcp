@@ -93,22 +93,29 @@ def validate_rm_targets(args: list[str]) -> None:
     rm is allowed for general cleanup but blocked inside evidence
     storage locations. Also blocks rm -rf / patterns.
     """
+    _RM_GUIDANCE = (
+        " File deletion in case/evidence directories requires human action "
+        "outside the AI session (forensic integrity control). "
+        "Exit Claude Code, run the rm command directly, then return."
+    )
     path_args = [a for a in args if not a.startswith("-")]
     for arg in path_args:
         resolved = str(Path(arg).resolve())
         if resolved == "/":
             raise ValueError("Blocked: rm targeting filesystem root")
-        # Block evidence storage directories
         for protected in _get_protected_dirs():
             if resolved == protected or resolved.startswith(protected + "/"):
                 raise ValueError(
-                    f"Blocked: rm targeting protected evidence directory '{protected}'"
+                    f"Blocked: rm in protected directory '{protected}'."
+                    + _RM_GUIDANCE
                 )
         case_dir = resolve_case_dir()
         if case_dir:
             case_resolved = str(Path(case_dir).resolve())
             if resolved == case_resolved or resolved.startswith(case_resolved + "/"):
-                raise ValueError("Blocked: rm targeting case evidence directory")
+                raise ValueError(
+                    "Blocked: rm in case directory." + _RM_GUIDANCE
+                )
 
 
 _BLOCKED_DIRECTORIES = (
