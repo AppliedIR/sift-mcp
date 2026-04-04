@@ -33,6 +33,7 @@ VENV_DIR=""
 GATEWAY_PORT=4508
 MANUAL_START=false
 UNINSTALL_MODE=false
+INSTALL_OPENSEARCH_FLAG=false
 EXAMINER_NAME=""
 CLIENT=""
 
@@ -45,6 +46,7 @@ for arg in "$@"; do
         --remote)          REMOTE_MODE=true ;;
         --manual-start)    MANUAL_START=true ;;
         --uninstall)       UNINSTALL_MODE=true ;;
+        --opensearch)      INSTALL_OPENSEARCH_FLAG=true ;;
         --examiner=*)      EXAMINER_NAME="${arg#*=}" ;;
         --client=*)        CLIENT="${arg#*=}" ;;
         --install-dir=*)   INSTALL_DIR="${arg#*=}" ;;
@@ -67,6 +69,7 @@ for arg in "$@"; do
             echo "  --venv=X          Override venv path (default: ~/.vhir/venv)"
             echo "  --port=N          Override gateway port (default: 4508)"
             echo "  --cases-dir=X     Override cases root directory (default: ~/cases)"
+            echo "  --opensearch      Clone and install opensearch-mcp (evidence indexing)"
             echo "  --uninstall       Uninstall Valhuntir forensic controls (delegates to vhir setup client)"
             echo "  --manual-start    Skip auto-start/systemd"
             echo "  -y, --yes         Accept all defaults (non-interactive)"
@@ -1043,6 +1046,19 @@ OPENSEARCH_MCP_DIR="$INSTALL_DIR/../opensearch-mcp"
 if [ ! -d "$OPENSEARCH_MCP_DIR" ]; then
     OPENSEARCH_MCP_DIR="$HOME/.vhir/src/opensearch-mcp"
 fi
+
+# Clone if --opensearch flag was passed and repo not found
+if $INSTALL_OPENSEARCH_FLAG && [ ! -d "$OPENSEARCH_MCP_DIR" ]; then
+    OPENSEARCH_MCP_DIR="$INSTALL_DIR/../opensearch-mcp"
+    info "Cloning opensearch-mcp..."
+    if git clone --quiet https://github.com/AppliedIR/opensearch-mcp.git "$OPENSEARCH_MCP_DIR"; then
+        ok "opensearch-mcp cloned to $OPENSEARCH_MCP_DIR"
+    else
+        warn "opensearch-mcp clone failed. OpenSearch features unavailable."
+        OPENSEARCH_MCP_DIR=""
+    fi
+fi
+
 INSTALL_OPENSEARCH=false
 if [ -d "$OPENSEARCH_MCP_DIR" ]; then
     info "Installing opensearch-mcp from $OPENSEARCH_MCP_DIR..."
@@ -1053,7 +1069,7 @@ if [ -d "$OPENSEARCH_MCP_DIR" ]; then
         warn "opensearch-mcp install failed. OpenSearch features unavailable."
     fi
 else
-    info "opensearch-mcp not found — skipping (clone to $OPENSEARCH_MCP_DIR to enable)"
+    info "opensearch-mcp not found — skipping (use --opensearch to install, or clone to $INSTALL_DIR/../opensearch-mcp)"
 fi
 
 # =============================================================================

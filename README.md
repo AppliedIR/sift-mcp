@@ -183,11 +183,19 @@ git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 ./setup-sift.sh
 ```
 
-**Adding OpenSearch** — If [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp) is cloned alongside sift-mcp (or at `~/.vhir/src/opensearch-mcp`), `setup-sift.sh` detects it automatically and registers it as a gateway backend. Then set up the OpenSearch Docker container:
+**Adding OpenSearch** — Add `--opensearch` to any install command to include evidence indexing:
 
 ```
-cd opensearch-mcp && ./scripts/setup-opensearch.sh
+bash /tmp/vhir-quickstart.sh --recommended --opensearch
 ```
+
+After installation, set up the OpenSearch Docker container:
+
+```
+cd ~/.vhir/src/opensearch-mcp && ./scripts/setup-opensearch.sh
+```
+
+If opensearch-mcp is already cloned alongside sift-mcp, the installer detects it automatically — no flag needed.
 
 ## Valhuntir Lite
 
