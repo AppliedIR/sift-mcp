@@ -1261,7 +1261,7 @@ if $INSTALL_OPENCTI; then
             err "OpenCTI URL contains invalid characters (quotes or backslashes)"
             OPENCTI_URL=""
         else
-            read -rsp "OpenCTI API Token: " OPENCTI_TOKEN < "$READ_FROM"
+            read -rp "OpenCTI API Token: " OPENCTI_TOKEN < "$READ_FROM"
             echo ""
             if [[ "$OPENCTI_TOKEN" =~ [\"\'\\] ]]; then
                 err "OpenCTI token contains invalid characters (quotes or backslashes)"
