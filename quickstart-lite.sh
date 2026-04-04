@@ -285,9 +285,17 @@ fi
 # Bridge existing pip mirror config
 [ -n "${PIP_INDEX_URL:-}" ] && export UV_INDEX_URL="$PIP_INDEX_URL"
 
+# Verify Python 3.10+ (required by all packages)
+PY_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
+PY_MAJOR=${PY_VERSION%%.*}
+PY_MINOR=${PY_VERSION##*.}
+if (( PY_MAJOR < 3 || (PY_MAJOR == 3 && PY_MINOR < 10) )); then
+    fail "Python 3.10+ required (found $PY_VERSION). Install Python 3.10 or later."
+fi
+
 if [[ ! -f "$VENV_PYTHON" ]]; then
     uv venv "$VENV_DIR" --seed --quiet
-    ok "Created venv at $VENV_DIR"
+    ok "Created venv at $VENV_DIR (Python $PY_VERSION)"
 else
     ok "Venv exists at $VENV_DIR"
 fi

@@ -3,7 +3,7 @@
 # quickstart.sh — Valhuntir Platform Quick Start
 #
 # One command to go from zero to a working Valhuntir platform.
-# Auto-selects quick tier. Prompts for examiner identity and LLM client.
+# Defaults to quick tier. Pass --recommended for full databases.
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/vhir-quickstart.sh && bash /tmp/vhir-quickstart.sh
