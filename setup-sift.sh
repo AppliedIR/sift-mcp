@@ -850,6 +850,7 @@ case "$MODE" in
         prompt_yn "    Install forensic-rag (knowledge search — Sigma, MITRE, KAPE)?" "y" && INSTALL_RAG=true
         prompt_yn "    Install windows-triage (Windows baseline validation)?" "y" && INSTALL_TRIAGE=true
         prompt_yn "    Install opencti (threat intelligence — needs OpenCTI server)?" "n" && INSTALL_OPENCTI=true
+        prompt_yn "    Install opensearch-mcp (evidence indexing — needs Docker)?" "n" && INSTALL_OPENSEARCH_FLAG=true
         echo ""
         ;;
 esac
@@ -1065,6 +1066,18 @@ if [ -d "$OPENSEARCH_MCP_DIR" ]; then
     if uv pip install --python "$VENV_PYTHON" --quiet -e "$OPENSEARCH_MCP_DIR"; then
         ok "opensearch-mcp installed"
         INSTALL_OPENSEARCH=true
+
+        # Run setup-opensearch.sh to start Docker + templates + credentials
+        SETUP_OS_SCRIPT="$OPENSEARCH_MCP_DIR/scripts/setup-opensearch.sh"
+        if [ -f "$SETUP_OS_SCRIPT" ]; then
+            echo ""
+            info "Setting up OpenSearch (Docker container, templates, credentials)..."
+            if bash "$SETUP_OS_SCRIPT"; then
+                ok "OpenSearch setup complete"
+            else
+                warn "OpenSearch setup failed. Run manually: $SETUP_OS_SCRIPT"
+            fi
+        fi
     else
         warn "opensearch-mcp install failed. OpenSearch features unavailable."
     fi
