@@ -109,12 +109,22 @@ class HttpMCPBackend(MCPBackend):
             self._started = True
             logger.info("Backend %s started (http -> %s)", self.name, url)
         except BaseException as exc:
+            # CancelledError from streamablehttp_client often masks HTTP
+            # auth failures (401/403). Add actionable guidance.
+            exc_name = type(exc).__name__
+            hint = ""
+            if "Cancel" in exc_name or "cancel" in str(exc).lower():
+                hint = (
+                    " — if this is an auth issue, check bearer_token "
+                    "in gateway.yaml matches the remote server"
+                )
             logger.error(
-                "Backend %s failed to start (http -> %s): %s: %s",
+                "Backend %s failed to start (http -> %s): %s: %s%s",
                 self.name,
                 url,
-                type(exc).__name__,
+                exc_name,
                 exc,
+                hint,
             )
             try:
                 await self._exit_stack.aclose()
@@ -155,7 +165,7 @@ class HttpMCPBackend(MCPBackend):
 
     async def list_tools(self) -> list[Tool]:
         if not self._started or not self._session:
-            await self.start()
+            return self._tools_cache or []
 
         if self._tools_cache is None:
             result = await asyncio.wait_for(

@@ -220,6 +220,10 @@ class Gateway:
             now = time.monotonic()
             reaped = False
             for name, backend in list(self.backends.items()):
+                # Skip HTTP backends — they're remote servers, disconnecting
+                # just drops our session for no benefit (server keeps running)
+                if isinstance(backend, HttpMCPBackend):
+                    continue
                 if backend.started and backend.last_tool_call > 0:
                     idle = now - backend.last_tool_call
                     if idle > timeout:
