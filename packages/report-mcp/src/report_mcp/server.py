@@ -689,7 +689,7 @@ def create_server() -> FastMCP:
     # ------------------------------------------------------------------
     @server.tool()
     def generate_report(
-        profile: str,
+        profile: str = "full",
         case_id: str = "",
         finding_ids: list[str] | None = None,
         start_date: str = "",

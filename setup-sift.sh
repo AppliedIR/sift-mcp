@@ -1038,6 +1038,24 @@ if [ -n "$OPTIONAL_PKGS" ]; then
     fi
 fi
 
+# --- OpenSearch MCP (evidence indexing — optional) ---
+OPENSEARCH_MCP_DIR="$INSTALL_DIR/../opensearch-mcp"
+if [ ! -d "$OPENSEARCH_MCP_DIR" ]; then
+    OPENSEARCH_MCP_DIR="$HOME/.vhir/src/opensearch-mcp"
+fi
+INSTALL_OPENSEARCH=false
+if [ -d "$OPENSEARCH_MCP_DIR" ]; then
+    info "Installing opensearch-mcp from $OPENSEARCH_MCP_DIR..."
+    if uv pip install --python "$VENV_PYTHON" --quiet -e "$OPENSEARCH_MCP_DIR"; then
+        ok "opensearch-mcp installed"
+        INSTALL_OPENSEARCH=true
+    else
+        warn "opensearch-mcp install failed. OpenSearch features unavailable."
+    fi
+else
+    info "opensearch-mcp not found — skipping (clone to $OPENSEARCH_MCP_DIR to enable)"
+fi
+
 # =============================================================================
 # Phase 5: Smoke Tests
 # =============================================================================
@@ -1066,7 +1084,8 @@ smoke_test "report-mcp"         "report_mcp"
 smoke_test "case-dashboard"     "case_dashboard"
 $INSTALL_TRIAGE  && smoke_test "windows-triage-mcp" "windows_triage"
 $INSTALL_RAG     && smoke_test "rag-mcp"            "rag_mcp"
-$INSTALL_OPENCTI && smoke_test "opencti-mcp"        "opencti_mcp"
+$INSTALL_OPENCTI    && smoke_test "opencti-mcp"        "opencti_mcp"
+$INSTALL_OPENSEARCH && smoke_test "opensearch-mcp"     "opensearch_mcp"
 
 if (( INSTALL_ERRORS > 0 )); then
     warn "$INSTALL_ERRORS component(s) failed import. Check output above."
@@ -1459,6 +1478,7 @@ if [[ -f "$GATEWAY_CONFIG" ]]; then
     MERGE_TRIAGE="${INSTALL_TRIAGE:-false}" \
     MERGE_RAG="${INSTALL_RAG:-false}" \
     MERGE_OPENCTI="${INSTALL_OPENCTI:-false}" \
+    MERGE_OPENSEARCH="${INSTALL_OPENSEARCH:-false}" \
     "$VENV_PYTHON" << 'MERGE_EOF'
 import os, yaml
 
@@ -1479,6 +1499,8 @@ if os.environ.get("MERGE_RAG") == "true":
     expected.append(("forensic-rag-mcp", "rag_mcp"))
 if os.environ.get("MERGE_OPENCTI") == "true":
     expected.append(("opencti-mcp", "opencti_mcp"))
+if os.environ.get("MERGE_OPENSEARCH") == "true":
+    expected.append(("opensearch-mcp", "opensearch_mcp"))
 
 added = []
 for name, module in expected:
@@ -1500,6 +1522,8 @@ for name, module in expected:
             entry["env"]["VHIR_CASES_DIR"] = "${VHIR_CASES_DIR}"
         if name == "forensic-rag-mcp":
             entry["env"]["ANONYMIZED_TELEMETRY"] = "False"
+        if name == "opensearch-mcp":
+            entry["env"]["OPENSEARCH_CONFIG"] = os.path.expanduser("~/.vhir/opensearch.yaml")
         config.setdefault("backends", {})[name] = entry
         added.append(name)
 
@@ -1562,6 +1586,8 @@ if "$INSTALL_RAG" == "true":
     optional.append(("forensic-rag-mcp", "rag_mcp"))
 if "$INSTALL_OPENCTI" == "true":
     optional.append(("opencti-mcp", "opencti_mcp"))
+if "$INSTALL_OPENSEARCH" == "true":
+    optional.append(("opensearch-mcp", "opensearch_mcp"))
 
 for name, module in core_backends + optional:
     entry = {
@@ -1586,6 +1612,8 @@ for name, module in core_backends + optional:
         entry["env"]["OPENCTI_TOKEN"] = octi_token if octi_token else "\${OPENCTI_TOKEN}"
     if name == "forensic-rag-mcp":
         entry["env"]["ANONYMIZED_TELEMETRY"] = "False"
+    if name == "opensearch-mcp":
+        entry["env"]["OPENSEARCH_CONFIG"] = os.path.expanduser("~/.vhir/opensearch.yaml")
     config["backends"][name] = entry
 
 with open("$GATEWAY_CONFIG", "w") as f:

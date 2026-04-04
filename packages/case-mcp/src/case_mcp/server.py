@@ -136,11 +136,12 @@ def create_server() -> FastMCP:
     def case_init(
         name: str,
         description: str = "",
+        case_id: str = "",
         share_wintools: bool = False,
         cases_dir: str = "",
     ) -> dict:
         """Create a new case directory with the given name. The case ID
-        is generated from the name and current timestamp.
+        is auto-generated unless case_id is provided.
 
         Confirm with the examiner before creating a case — this creates
         a permanent directory with case metadata.
@@ -148,6 +149,8 @@ def create_server() -> FastMCP:
         Args:
             name: Case name.
             description: Optional case description.
+            case_id: Custom case ID (default: auto-generated INC-YYYY-MMDDHHMMSS).
+                Must match: alphanumeric, hyphens, underscores. Max 64 chars.
             share_wintools: Set case permissions for wintools access.
             cases_dir: Override cases root directory.
         """
@@ -155,12 +158,22 @@ def create_server() -> FastMCP:
             _validate_str_length(name, "name", _MAX_NAME)
             _validate_str_length(description, "description", _MAX_TEXT)
             _validate_str_length(cases_dir, "cases_dir", _MAX_NAME)
+            if case_id:
+                _validate_str_length(case_id, "case_id", 64)
+                import re
+
+                if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,63}$", case_id):
+                    return {
+                        "error": "case_id must be alphanumeric with hyphens/underscores, "
+                        "start with letter/digit, 2-64 chars"
+                    }
             examiner = resolve_examiner()
             result = _case_init_data(
                 name=name,
                 examiner=examiner,
                 description=description,
                 cases_dir=cases_dir or None,
+                case_id=case_id or None,
             )
 
             if share_wintools and _wintools_configured():
@@ -181,6 +194,13 @@ def create_server() -> FastMCP:
             )
             if logged_id is None:
                 result["warning"] = "Audit write failed — action not recorded"
+            result["next_steps"] = [
+                "Ask the examiner what triggered this investigation",
+                "Survey evidence: ls evidence/",
+                "If OpenSearch tools available: offer to ingest evidence",
+                "Run idx_case_summary for scope overview",
+                "Check list_playbooks for investigation procedures",
+            ]
             return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}
@@ -224,6 +244,19 @@ def create_server() -> FastMCP:
             )
             if logged_id is None:
                 result["warning"] = "Audit write failed — action not recorded"
+
+            import importlib.util
+
+            if importlib.util.find_spec("opensearch_mcp") is not None:
+                result["opensearch_hint"] = (
+                    "OpenSearch MCP tools are available. Call idx_case_summary "
+                    "to see what's indexed, or offer to ingest new evidence."
+                )
+            result["next_steps"] = [
+                "Ask the examiner for investigation context",
+                "Survey evidence: ls evidence/",
+                "Follow the INVESTIGATION STARTUP sequence in your instructions",
+            ]
             return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}

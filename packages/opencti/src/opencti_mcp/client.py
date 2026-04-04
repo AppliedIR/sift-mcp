@@ -506,8 +506,13 @@ class OpenCTIClient:
                 if self._client is not None:
                     self._client.requests_timeout = new_timeout
 
-    def _execute_with_retry(self, func: Any, *args: Any, **kwargs: Any) -> Any:
+    def _execute_with_retry(self, method_path: str, *args: Any, **kwargs: Any) -> Any:
         """Execute function with exponential backoff retry.
+
+        Args:
+            method_path: Dotted attribute path on the pycti client
+                (e.g., "indicator.list"). Resolved fresh each attempt
+                via operator.attrgetter to avoid stale bound methods.
 
         Production resilience:
         - Exponential backoff prevents overwhelming recovering server
@@ -516,6 +521,8 @@ class OpenCTIClient:
         - Jitter prevents thundering herd problem
         - Adaptive metrics track latency for dynamic recommendations
         """
+        from operator import attrgetter
+
         # Check circuit breaker first
         if not self._circuit_breaker.allow_request():
             logger.warning("Circuit breaker open, failing fast")
@@ -526,6 +533,8 @@ class OpenCTIClient:
         for attempt in range(self.config.max_retries + 1):
             try:
                 attempt_start = time_module.time()
+                client = self.connect()
+                func = attrgetter(method_path)(client)
                 result = func(*args, **kwargs)
 
                 # Success - record it and track latency
@@ -578,7 +587,11 @@ class OpenCTIClient:
                 logger.info(f"Retrying in {delay:.2f}s...")
                 time_module.sleep(delay)
 
-                # Reset timing for next attempt (backoff already applied above)
+                # Clear cached client on transient errors so next attempt
+                # gets a fresh connection (fixes stale session bug)
+                if self._is_transient_error(e) and not self._is_auth_error(e):
+                    with self._client_lock:
+                        self._client = None
 
         # Should not reach here, but just in case
         if last_exception:
@@ -879,8 +892,7 @@ class OpenCTIClient:
         Returns version and capability information for diagnostics.
         """
         try:
-            client = self.connect()
-            version_info = self._get_opencti_version(client) or {}
+            version_info = self._get_opencti_version(self.connect()) or {}
 
             return {
                 "url": self.config.opencti_url,
@@ -1085,7 +1097,6 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
         self._last_response_from_cache = False
         self._last_response_degraded = False
 
@@ -1104,7 +1115,7 @@ class OpenCTIClient:
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(client.indicator.list, **kwargs)
+            results = self._execute_with_retry("indicator.list", **kwargs)
 
             # Apply offset
             results = (results or [])[offset : offset + limit]
@@ -1155,8 +1166,6 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             results = []
 
@@ -1171,13 +1180,13 @@ class OpenCTIClient:
 
             # Search IntrusionSet (where most APTs are)
             intrusion_sets = (
-                self._execute_with_retry(client.intrusion_set.list, **kwargs) or []
+                self._execute_with_retry("intrusion_set.list", **kwargs) or []
             )
             results.extend(intrusion_sets)
 
             # Also search ThreatActorGroup
             threat_actors = (
-                self._execute_with_retry(client.threat_actor_group.list, **kwargs) or []
+                self._execute_with_retry("threat_actor_group.list", **kwargs) or []
             )
             results.extend(threat_actors)
 
@@ -1217,8 +1226,6 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             kwargs: dict[str, Any] = {"search": query, "first": limit + offset}
 
@@ -1228,7 +1235,7 @@ class OpenCTIClient:
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(client.malware.list, **kwargs) or []
+            results = self._execute_with_retry("malware.list", **kwargs) or []
 
             results = results[offset : offset + limit]
             return self._format_malware(results)
@@ -1255,8 +1262,6 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             kwargs: dict[str, Any] = {"search": query, "first": limit + offset}
 
@@ -1265,9 +1270,7 @@ class OpenCTIClient:
             if filters:
                 kwargs["filters"] = filters
 
-            results = (
-                self._execute_with_retry(client.attack_pattern.list, **kwargs) or []
-            )
+            results = self._execute_with_retry("attack_pattern.list", **kwargs) or []
 
             results = results[offset : offset + limit]
             return self._format_attack_patterns(results)
@@ -1294,8 +1297,6 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             kwargs: dict[str, Any] = {"search": query, "first": limit + offset}
 
@@ -1303,9 +1304,7 @@ class OpenCTIClient:
             if filters:
                 kwargs["filters"] = filters
 
-            results = (
-                self._execute_with_retry(client.vulnerability.list, **kwargs) or []
-            )
+            results = self._execute_with_retry("vulnerability.list", **kwargs) or []
 
             results = results[offset : offset + limit]
             return self._format_vulnerabilities(results)
@@ -1333,8 +1332,6 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             kwargs: dict[str, Any] = {
                 "search": query,
@@ -1349,7 +1346,7 @@ class OpenCTIClient:
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(client.report.list, **kwargs) or []
+            results = self._execute_with_retry("report.list", **kwargs) or []
 
             results = results[offset : offset + limit]
             return self._format_reports(results)
@@ -1377,8 +1374,6 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             kwargs: dict[str, Any] = {
                 "search": query,
@@ -1393,7 +1388,7 @@ class OpenCTIClient:
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(client.campaign.list, **kwargs) or []
+            results = self._execute_with_retry("campaign.list", **kwargs) or []
 
             results = results[offset : offset + limit]
             return self._format_campaigns(results)
@@ -1420,8 +1415,6 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             kwargs: dict[str, Any] = {"search": query, "first": limit + offset}
 
@@ -1429,7 +1422,7 @@ class OpenCTIClient:
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(client.tool.list, **kwargs) or []
+            results = self._execute_with_retry("tool.list", **kwargs) or []
 
             results = results[offset : offset + limit]
             return self._format_tools(results)
@@ -1456,8 +1449,6 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             kwargs: dict[str, Any] = {"search": query, "first": limit + offset}
 
@@ -1465,9 +1456,7 @@ class OpenCTIClient:
             if filters:
                 kwargs["filters"] = filters
 
-            results = (
-                self._execute_with_retry(client.infrastructure.list, **kwargs) or []
-            )
+            results = self._execute_with_retry("infrastructure.list", **kwargs) or []
 
             results = results[offset : offset + limit]
             return self._format_infrastructure(results)
@@ -1495,8 +1484,6 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             kwargs: dict[str, Any] = {
                 "search": query,
@@ -1511,7 +1498,7 @@ class OpenCTIClient:
             if filters:
                 kwargs["filters"] = filters
 
-            results = self._execute_with_retry(client.incident.list, **kwargs) or []
+            results = self._execute_with_retry("incident.list", **kwargs) or []
 
             results = results[offset : offset + limit]
             return self._format_incidents(results)
@@ -1549,8 +1536,6 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             kwargs: dict[str, Any] = {"search": query, "first": limit + offset}
             if observable_types:
@@ -1562,8 +1547,7 @@ class OpenCTIClient:
                 kwargs["filters"] = filters
 
             results = (
-                self._execute_with_retry(client.stix_cyber_observable.list, **kwargs)
-                or []
+                self._execute_with_retry("stix_cyber_observable.list", **kwargs) or []
             )
 
             results = results[offset : offset + limit]
@@ -1583,12 +1567,10 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             results = (
                 self._execute_with_retry(
-                    client.stix_sighting_relationship.list,
+                    "stix_sighting_relationship.list",
                     search=query,
                     first=limit,
                     orderBy="created",
@@ -1612,13 +1594,11 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             # Organizations are stored as Identity with type "Organization"
             results = (
                 self._execute_with_retry(
-                    client.identity.list,
+                    "identity.list",
                     search=query,
                     first=limit,
                     types=["Organization"],
@@ -1641,13 +1621,11 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             # Sectors are stored as Identity with type "Sector"
             results = (
                 self._execute_with_retry(
-                    client.identity.list, search=query, first=limit, types=["Sector"]
+                    "identity.list", search=query, first=limit, types=["Sector"]
                 )
                 or []
             )
@@ -1667,13 +1645,9 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             results = (
-                self._execute_with_retry(
-                    client.location.list, search=query, first=limit
-                )
+                self._execute_with_retry("location.list", search=query, first=limit)
                 or []
             )
             return self._format_locations(results)
@@ -1692,12 +1666,10 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             results = (
                 self._execute_with_retry(
-                    client.course_of_action.list, search=query, first=limit
+                    "course_of_action.list", search=query, first=limit
                 )
                 or []
             )
@@ -1719,12 +1691,10 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             results = (
                 self._execute_with_retry(
-                    client.grouping.list,
+                    "grouping.list",
                     search=query,
                     first=limit,
                     orderBy="created",
@@ -1748,12 +1718,10 @@ class OpenCTIClient:
         if not _skip_rate_limit:
             self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             results = (
                 self._execute_with_retry(
-                    client.note.list,
+                    "note.list",
                     search=query,
                     first=limit,
                     orderBy="created",
@@ -1876,13 +1844,10 @@ class OpenCTIClient:
 
         self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             # Search for indicators first
             results = (
-                self._execute_with_retry(client.indicator.list, search=ioc, first=5)
-                or []
+                self._execute_with_retry("indicator.list", search=ioc, first=5) or []
             )
 
             # Also search observables if no indicators found
@@ -1890,7 +1855,7 @@ class OpenCTIClient:
             if not results:
                 observables = (
                     self._execute_with_retry(
-                        client.stix_cyber_observable.list, search=ioc, first=5
+                        "stix_cyber_observable.list", search=ioc, first=5
                     )
                     or []
                 )
@@ -1906,6 +1871,11 @@ class OpenCTIClient:
                 entity = observables[0]
                 entity_type = "observable"
 
+            try:
+                labels = self._extract_labels(entity)
+            except Exception:
+                labels = []
+
             context = {
                 "found": True,
                 "ioc": ioc,
@@ -1919,7 +1889,7 @@ class OpenCTIClient:
                 else "",
                 "created": entity.get("created", ""),
                 "confidence": entity.get("confidence", 0),
-                "labels": self._extract_labels(entity),
+                "labels": labels,
                 "related_threat_actors": [],
                 "related_malware": [],
                 "mitre_techniques": [],
@@ -1930,7 +1900,7 @@ class OpenCTIClient:
             try:
                 relations = (
                     self._execute_with_retry(
-                        client.stix_core_relationship.list,
+                        "stix_core_relationship.list",
                         fromId=entity.get("id"),
                         first=MAX_RELATIONSHIPS,
                     )
@@ -1958,9 +1928,18 @@ class OpenCTIClient:
 
             return context
 
+        except ConnectionError:
+            # Connection errors should propagate for circuit breaker
+            raise
         except Exception as e:
-            logger.error(f"IOC context lookup failed: {e}")
-            raise QueryError(f"IOC context lookup failed: {type(e).__name__}") from e
+            # GraphQL schema errors, pycti version mismatches, etc.
+            # Degrade gracefully instead of killing the lookup
+            logger.warning(f"IOC context lookup degraded for {ioc}: {e}")
+            return {
+                "found": False,
+                "ioc": ioc,
+                "error": f"Context unavailable: {type(e).__name__}",
+            }
 
     def get_entity(self, entity_id: str) -> dict[str, Any] | None:
         """Get any entity by its OpenCTI ID.
@@ -1975,20 +1954,16 @@ class OpenCTIClient:
 
         self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             # Use stix_domain_object.read for SDOs
-            entity = self._execute_with_retry(
-                client.stix_domain_object.read, id=entity_id
-            )
+            entity = self._execute_with_retry("stix_domain_object.read", id=entity_id)
 
             if entity:
                 return self._format_entity(entity)
 
             # Try SCO if SDO not found
             entity = self._execute_with_retry(
-                client.stix_cyber_observable.read, id=entity_id
+                "stix_cyber_observable.read", id=entity_id
             )
 
             if entity:
@@ -1996,7 +1971,7 @@ class OpenCTIClient:
 
             # Try relationship
             entity = self._execute_with_retry(
-                client.stix_core_relationship.read, id=entity_id
+                "stix_core_relationship.read", id=entity_id
             )
 
             if entity:
@@ -2031,8 +2006,6 @@ class OpenCTIClient:
 
         self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             results = []
 
@@ -2043,9 +2016,7 @@ class OpenCTIClient:
                     kwargs["relationship_type"] = relationship_types
 
                 outgoing = (
-                    self._execute_with_retry(
-                        client.stix_core_relationship.list, **kwargs
-                    )
+                    self._execute_with_retry("stix_core_relationship.list", **kwargs)
                     or []
                 )
                 results.extend(outgoing)
@@ -2057,9 +2028,7 @@ class OpenCTIClient:
                     kwargs["relationship_type"] = relationship_types
 
                 incoming = (
-                    self._execute_with_retry(
-                        client.stix_core_relationship.list, **kwargs
-                    )
+                    self._execute_with_retry("stix_core_relationship.list", **kwargs)
                     or []
                 )
                 results.extend(incoming)
@@ -2089,8 +2058,6 @@ class OpenCTIClient:
 
         self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
             # OpenCTI expects Z suffix
@@ -2098,7 +2065,7 @@ class OpenCTIClient:
 
             results = (
                 self._execute_with_retry(
-                    client.indicator.list,
+                    "indicator.list",
                     first=limit,
                     orderBy="created",
                     orderMode="desc",
@@ -2131,13 +2098,11 @@ class OpenCTIClient:
 
         self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             # Search indicators with this hash
             indicators = (
                 self._execute_with_retry(
-                    client.indicator.list,
+                    "indicator.list",
                     filters={
                         "mode": "and",
                         "filters": [
@@ -2167,7 +2132,7 @@ class OpenCTIClient:
             # Also check observables
             files = (
                 self._execute_with_retry(
-                    client.stix_cyber_observable.list,
+                    "stix_cyber_observable.list",
                     types=["StixFile"],
                     filters={
                         "mode": "or",
@@ -2206,8 +2171,6 @@ class OpenCTIClient:
         """List available enrichment connectors."""
         self._check_rate_limit(self._query_limiter, "query")
 
-        client = self.connect()
-
         try:
             query = """
             query ConnectorsList {
@@ -2221,7 +2184,7 @@ class OpenCTIClient:
               }
             }
             """
-            result = self._execute_with_retry(client.query, query)
+            result = self._execute_with_retry("query", query)
             connectors = result.get("data", {}).get("connectors", [])
 
             enrichment = []
@@ -2259,8 +2222,6 @@ class OpenCTIClient:
         # Use enrichment rate limiter (more restrictive)
         self._check_rate_limit(self._enrichment_limiter, "enrichment")
 
-        client = self.connect()
-
         try:
             # Use GraphQL mutation to trigger enrichment
             mutation = """
@@ -2277,7 +2238,7 @@ class OpenCTIClient:
             }
             """
             result = self._execute_with_retry(
-                client.query, mutation, {"id": entity_id, "connectorId": connector_id}
+                "query", mutation, {"id": entity_id, "connectorId": connector_id}
             )
 
             enrichment_data = (
@@ -2344,7 +2305,7 @@ class OpenCTIClient:
             logger.info(f"Creating indicator: {name}")
 
             result = self._execute_with_retry(
-                client.indicator.create,
+                "indicator.create",
                 name=name,
                 pattern=pattern,
                 pattern_type=pattern_type,
@@ -2417,14 +2378,12 @@ class OpenCTIClient:
         # Use enrichment limiter for writes
         self._check_rate_limit(self._enrichment_limiter, "write")
 
-        client = self.connect()
-
         try:
             logger.info(f"Creating note for {len(entity_ids)} entities")
 
             # Create the note
             result = self._execute_with_retry(
-                client.note.create,
+                "note.create",
                 content=content,
                 note_types=note_types or ["analysis"],
                 confidence=confidence,
@@ -2488,8 +2447,6 @@ class OpenCTIClient:
         # Use enrichment limiter for writes
         self._check_rate_limit(self._enrichment_limiter, "write")
 
-        client = self.connect()
-
         try:
             logger.info(f"Creating sighting: {indicator_id} -> {sighted_by_id}")
 
@@ -2502,7 +2459,7 @@ class OpenCTIClient:
                 last_seen = first_seen
 
             result = self._execute_with_retry(
-                client.stix_sighting_relationship.create,
+                "stix_sighting_relationship.create",
                 fromId=indicator_id,
                 toId=sighted_by_id,
                 first_seen=first_seen,

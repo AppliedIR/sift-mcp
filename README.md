@@ -4,7 +4,7 @@
 [![CI](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/AppliedIR/sift-mcp/blob/main/LICENSE)
 
-Monorepo for all SIFT-side Valhuntir components. 11 packages: forensic-mcp (26 tools), case-mcp (15 tools), report-mcp (6 tools), sift-mcp (6 tools), sift-gateway, forensic-knowledge, forensic-rag (3 tools), windows-triage (13 tools), opencti (10 tools), sift-common, and case-dashboard. Part of the [Valhuntir](https://github.com/AppliedIR/valhuntir) platform.
+Monorepo for all SIFT-side Valhuntir components. 11 packages: forensic-mcp (23 tools), case-mcp (15 tools), report-mcp (6 tools), sift-mcp (5 tools), sift-gateway, forensic-knowledge, forensic-rag (3 tools), windows-triage (13 tools), opencti (8 tools), sift-common, and case-dashboard. With optional [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp) (17 tools) for evidence indexing and querying at scale. Part of the [Valhuntir](https://github.com/AppliedIR/Valhuntir) platform.
 
 **[Documentation](https://appliedir.github.io/Valhuntir/)** ·
 [Getting Started](https://appliedir.github.io/Valhuntir/getting-started/) ·
@@ -16,7 +16,180 @@ Monorepo for all SIFT-side Valhuntir components. 11 packages: forensic-mcp (26 t
 > this a public beta for feature testing and evaluation rather than a
 > production-ready tool for real case data.
 
-## Valhuntir Lite — Get Started in Minutes
+## Valhuntir — AI-Assisted Forensic Investigation
+
+Valhuntir is a forensic investigation platform that connects AI to structured MCP tools, enforces human-in-the-loop review, and maintains a complete audit trail from evidence to finding to report.
+
+The platform is **LLM client agnostic** — connect any MCP-compatible client through the gateway. Supported clients include Claude Code, Claude Desktop, LibreChat, Cherry Studio, and any client that supports Streamable HTTP transport with Bearer token authentication. Forensic discipline is provided structurally at the gateway and MCP layer, not through client-specific prompt engineering, so the same rigor applies regardless of which AI model or client drives the investigation.
+
+With [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp), evidence is parsed programmatically and indexed into OpenSearch, giving the LLM 17 purpose-built query tools instead of consuming billions of tokens reading raw artifacts. A 30-host triage collection with 50 million records becomes instantly searchable. Triage baseline and threat intelligence enrichment run programmatically — zero LLM tokens consumed. OpenSearch integration is optional but recommended for investigations at scale.
+
+> Looking for a simpler setup without the gateway or OpenSearch? See [Valhuntir Lite](#valhuntir-lite).
+
+### What You Get
+
+- **Gateway** with auth + lifecycle management (up to 90 tools across 8 backends)
+- **Evidence indexing** — 15 parsers (evtx, EZ tools, Volatility, JSON, CSV, W3C, and more) with deterministic dedup and full provenance (via opensearch-mcp)
+- **Structured querying** — case summary, search, aggregation, timeline, field enumeration, detection listing (via opensearch-mcp)
+- **Programmatic enrichment** — triage baseline validation and threat intelligence stamping at index scale, zero LLM tokens (via opensearch-mcp)
+- **Examiner Portal** — 8-tab browser UI for review, approval, and commit (findings, timeline, hosts, accounts, evidence, IOCs, TODOs, overview) with keyboard shortcuts, search, provenance chain display, and challenge-response authentication
+- **IOC auto-extraction** from findings with approval cascade
+- **Evidence provenance chain** linking findings back to registered evidence through audited tool executions
+- **RAG search** — 23K+ forensic records (Sigma, MITRE ATT&CK, LOLBAS, Atomic Red Team, and more)
+- **Windows baseline validation** — offline file/process/service validation against 2.6M known-good records
+- **Case management** — init, activate, close, backup with SHA-256 manifest and verification
+- **Structured JSON case files** with integrity verification
+- **Formal report generation** (6 profiles) with Zeltser IR Writing guidance
+- **Audit trail** — JSONL logs with SHA-256 hashes for every MCP tool call and Bash command
+- **Optional add-ons** — OpenCTI threat intelligence, REMnux malware analysis, Microsoft Learn, Zeltser IR Writing
+
+When Claude Code is the client, additional controls are deployed:
+
+- Bubblewrap sandbox — kernel-level filesystem isolation, Bash restricted to project directory
+- 41 permission deny rules — Edit/Write blocked on case data files (findings.json, timeline.json, approvals.jsonl, etc.)
+- PreToolUse guard hook — blocks Bash redirections (>, >>, tee) to protected case files
+- HMAC-signed findings — password-gated approval with PBKDF2-derived cryptographic signing
+- Provenance enforcement — rejects findings that lack an evidence trail in the audit log
+- PostToolUse audit hook — every Bash command logged to JSONL with SHA-256 hashes
+- Prompt hook — forensic discipline reminders injected on every prompt
+
+Examiners review findings in the Examiner Portal — validating artifacts, observations, and interpretations, with the full command audit trail from original evidence to final result.
+
+![Examiner Portal — Findings](docs/images/portal-findings.png)
+
+The timeline view places findings and other observables in chronological context across the investigation.
+
+![Examiner Portal — Timeline](docs/images/portal-timeline.png)
+
+### Investigation Workflow
+
+The recommended workflow uses OpenSearch for evidence indexing, enabling structured queries across millions of records. Without OpenSearch, the same investigation tools are available through direct file-based analysis via `run_command` — OpenSearch adds scale, not capability.
+
+```
+1. case_init("Ransomware Investigation")     → Create case, set examiner
+2. evidence_register(path, description)       → SHA-256 hash, chain of custody
+3. idx_ingest(case_dir, hostname)             → Parse + index into OpenSearch
+4. idx_case_summary(case_id)                  → Hosts, artifacts, fields, time range
+5. idx_search / idx_aggregate / idx_timeline  → Structured queries (~500 tokens each)
+6. idx_enrich_triage + idx_enrich_intel       → Programmatic enrichment (zero tokens)
+7. record_finding / record_timeline_event     → Stage as DRAFT with provenance
+8. Examiner Portal or vhir approve            → Human review → APPROVED/REJECTED
+9. generate_report(profile="full")            → IR report from approved findings
+```
+
+Without OpenSearch, steps 3-6 are replaced by direct tool execution (`run_command`) and manual analysis. The investigation workflow, findings, timeline, and reporting are identical either way.
+
+### Architecture
+
+Each MCP backend runs as a stdio subprocess of the sift-gateway, aggregated behind a single HTTP endpoint. opensearch-mcp connects to a local or remote OpenSearch instance for evidence indexing and querying. The Examiner Portal is served by the gateway for browser-based review and approval. See the [Valhuntir README](https://github.com/AppliedIR/Valhuntir#deployment-overview) for the full deployment topology including REMnux and Windows VMs.
+
+```mermaid
+graph LR
+    GW["sift-gateway :4508"]
+
+    FM["forensic-mcp<br/>23 tools · findings, timeline,<br/>evidence, discipline"]
+    CM["case-mcp<br/>15 tools · case management,<br/>audit queries, backup"]
+    RM["report-mcp<br/>6 tools · report generation,<br/>IOC aggregation"]
+    SM["sift-mcp<br/>5 tools · Linux forensic<br/>tool execution"]
+    RAG["forensic-rag<br/>3 tools · semantic search<br/>23K records"]
+    WT["windows-triage<br/>13 tools · offline baseline<br/>validation"]
+    OC["opencti<br/>8 tools · threat<br/>intelligence"]
+    OS["opensearch-mcp<br/>17 tools · evidence indexing,<br/>query, enrichment"]
+    CD["Examiner Portal<br/>browser review + commit"]
+    FK["forensic-knowledge<br/>shared YAML data"]
+    CASE["Case Directory"]
+    OSD["OpenSearch<br/>Docker :9200"]
+
+    GW -->|stdio| FM
+    GW -->|stdio| CM
+    GW -->|stdio| RM
+    GW -->|stdio| SM
+    GW -->|stdio| RAG
+    GW -->|stdio| WT
+    GW -->|stdio| OC
+    GW -->|stdio| OS
+    GW --> CD
+    FM --> FK
+    SM --> FK
+    FM --> CASE
+    CM --> CASE
+    RM --> CASE
+    CD --> CASE
+    OS --> OSD
+```
+
+The gateway exposes each backend as a separate MCP endpoint. Clients can connect to the aggregate endpoint or to individual backends:
+
+```
+http://localhost:4508/mcp              # Aggregate (all tools)
+http://localhost:4508/mcp/forensic-mcp
+http://localhost:4508/mcp/case-mcp
+http://localhost:4508/mcp/report-mcp
+http://localhost:4508/mcp/sift-mcp
+http://localhost:4508/mcp/windows-triage-mcp
+http://localhost:4508/mcp/forensic-rag-mcp
+http://localhost:4508/mcp/opencti-mcp
+http://localhost:4508/mcp/opensearch-mcp
+```
+
+When the LLM client runs on a different machine, install with `--remote` to generate TLS certificates and a bearer token. The gateway binds to all interfaces and requires `Authorization: Bearer <token>` on every request.
+
+### Deployment Configurations
+
+All configurations run on a SIFT Workstation (Ubuntu-based) with Python 3.10+.
+
+| Configuration | What runs on SIFT | RAM (min) | RAM (recommended) | Best for |
+|---|---|---|---|---|
+| **Valhuntir** | Gateway + 8 backends + OpenSearch (Docker) | 24 GB | 32 GB | Solo analyst, lab environments |
+| **Valhuntir (remote OpenSearch)** | Gateway + 8 backends; OpenSearch on separate host | 16 GB SIFT, 8 GB OS host | 16 GB SIFT, 16 GB OS host | Larger cases, persistent clusters |
+| **Valhuntir + Windows** | Above + wintools-mcp on Windows VM | +8 GB Windows | +8 GB Windows | Full artifact coverage |
+| **Valhuntir + REMnux** | Above + remnux-mcp on REMnux VM | +4 GB REMnux | +8 GB REMnux | Malware analysis |
+| **[Valhuntir Lite](#valhuntir-lite)** | No gateway, no OpenSearch — stdio MCPs only | 8 GB | 16 GB | Quick setup, smaller investigations |
+
+**Where the RAM goes (all-in-one Valhuntir):**
+
+- OpenSearch Docker: 4-12 GB heap (default 4 GB, increase for larger cases)
+- Gateway + 8 MCP backends: ~2-3 GB (Python processes)
+- RAG embedding model: ~2 GB (when forensic-rag is loaded)
+- Evidence parsing during ingest: 1-4 GB (spikes during large ingests)
+- OS + Docker overhead: ~2 GB
+
+Disk space: ~14 GB for RAG + triage databases, plus evidence and OpenSearch indices.
+
+### Valhuntir Installation
+
+Requires Python 3.10+ and sudo access. The installer handles everything: MCP servers, gateway, vhir CLI, HMAC verification ledger, examiner identity, and LLM client configuration. When you select Claude Code, the forensic controls listed above are deployed automatically.
+
+**Quick** — Core platform only, no databases (~70 MB):
+
+```
+curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/vhir-quickstart.sh && bash /tmp/vhir-quickstart.sh
+```
+
+**Recommended** — Adds the RAG knowledge base (22,000+ records from 23 security sources) and Windows triage databases (2.6M baseline records). Requires ~14 GB disk space:
+
+- ~7 GB — ML dependencies (PyTorch, CUDA) required by the RAG embedding model
+- ~6 GB — Windows triage baseline databases (2.6M rows, decompressed)
+- ~1 GB — RAG index, source code, and everything else
+
+```
+curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/vhir-quickstart.sh && bash /tmp/vhir-quickstart.sh --recommended
+```
+
+**Custom** — Individual package selection, OpenSearch integration, OpenCTI, or remote access with TLS:
+
+```
+git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
+./setup-sift.sh
+```
+
+**Adding OpenSearch** — If [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp) is cloned alongside sift-mcp (or at `~/.vhir/src/opensearch-mcp`), `setup-sift.sh` detects it automatically and registers it as a gateway backend. Then set up the OpenSearch Docker container:
+
+```
+cd opensearch-mcp && ./scripts/setup-opensearch.sh
+```
+
+## Valhuntir Lite
 
 In its simplest form, Valhuntir Lite provides Claude Code with forensic knowledge and instructions on how to enforce forensic rigor, present findings for human review, and audit actions taken. MCP servers enhance accuracy by providing authoritative information — a forensic knowledge RAG and a Windows triage database — plus optional OpenCTI threat intelligence and REMnux malware analysis.
 
@@ -70,119 +243,11 @@ No gateway, no sandbox, no deny rules. Claude runs forensic tools directly via B
 ./quickstart-lite.sh --zeltser              # IR writing guidelines
 ```
 
-## Full Valhuntir — Structural Enforcement
+## Upgrading from Lite to Valhuntir
 
-For use cases where more definitive human-in-the-loop approval is desired, the full Valhuntir suite can be deployed to ensure accountability and enforce human review of findings through cryptographic signing, password-gated approvals, and multiple layered controls.
+Both modes share the same knowledge base, MCPs, and audit format. Upgrading adds the gateway, sandbox, enforcement layer, structured case management, and optionally OpenSearch for evidence indexing at scale. Note: Lite case data (markdown files) does not auto-migrate to Valhuntir case data (structured JSON). Start fresh or transfer findings manually.
 
-Full Valhuntir is **LLM client agnostic** — connect any MCP-compatible client through the gateway. Supported clients include Claude Code, Claude Desktop, LibreChat, Cherry Studio, and any MCP-only client that supports Streamable HTTP transport with Bearer token authentication. Forensic discipline is provided structurally at the gateway and MCP layer, not through client-specific prompt engineering, so the same rigor applies regardless of which AI model or client drives the investigation.
-
-### What Full Valhuntir Adds
-
-- LLM client agnostic (Claude Code, Desktop, LibreChat, Cherry Studio, any MCP client)
-- Gateway with auth + lifecycle management (79 tools across 7 backends)
-- Examiner Portal — 8-tab browser UI for review, approval, and commit (findings, timeline, hosts, accounts, evidence, IOCs, TODOs, overview) with keyboard shortcuts, search, provenance chain display, and challenge-response authentication
-- IOC auto-extraction from findings with approval cascade
-- Evidence provenance chain linking findings back to registered evidence through audited tool executions
-- Case backup with SHA-256 manifest and verification
-- Structured JSON case files with integrity verification
-- Formal report generation (6 profiles)
-
-Examiners review findings in the Examiner Portal — validating artifacts, observations, and interpretations, with the full command audit trail from original evidence to final result.
-
-![Examiner Portal — Findings](docs/images/portal-findings.png)
-
-The timeline view places findings and other observables in chronological context across the investigation.
-
-![Examiner Portal — Timeline](docs/images/portal-timeline.png)
-
-When Claude Code is the client, additional controls are deployed:
-
-- Bubblewrap sandbox — kernel-level filesystem isolation, Bash restricted to project directory
-- 41 permission deny rules — Edit/Write blocked on case data files (findings.json, timeline.json, approvals.jsonl, etc.)
-- PreToolUse guard hook — blocks Bash redirections (>, >>, tee) to protected case files
-- HMAC-signed findings — password-gated approval with PBKDF2-derived cryptographic signing
-- Provenance enforcement — rejects findings that lack an evidence trail in the audit log
-- PostToolUse audit hook — every Bash command logged to JSONL with SHA-256 hashes
-- Prompt hook — forensic discipline reminders injected on every prompt
-
-### Valhuntir Installation
-
-Requires Python 3.10+ and sudo access. The installer handles everything: MCP servers, gateway, vhir CLI, HMAC verification ledger, examiner identity, and LLM client configuration. When you select Claude Code, the forensic controls listed above are deployed automatically.
-
-**Quick** — Core platform only, no databases (~70 MB):
-
-```
-curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/vhir-quickstart.sh && bash /tmp/vhir-quickstart.sh
-```
-
-**Recommended** — Adds the RAG knowledge base (22,000+ records from 23 security sources) and Windows triage databases (2.6M baseline records), downloaded as pre-built snapshots. Requires ~14 GB disk space:
-
-- ~7 GB — ML dependencies (PyTorch, CUDA) required by the RAG embedding model
-- ~6 GB — Windows triage baseline databases (2.6M rows, decompressed)
-- ~1 GB — RAG index, source code, and everything else
-
-```
-curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/vhir-quickstart.sh && bash /tmp/vhir-quickstart.sh --recommended
-```
-
-**Custom** — Individual package selection, OpenCTI integration, or remote access with TLS:
-
-```
-git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
-./setup-sift.sh
-```
-
-## Architecture
-
-Each MCP backend runs as a stdio subprocess of the sift-gateway, aggregated behind a single HTTP endpoint. The Examiner Portal is served by the gateway for browser-based review and approval. See the [Valhuntir README](https://github.com/AppliedIR/valhuntir#deployment-overview) for the full deployment topology including REMnux and Windows VMs.
-
-```mermaid
-graph LR
-    GW["sift-gateway :4508"]
-
-    FM["forensic-mcp<br/>26 tools · findings, timeline,<br/>evidence, discipline"]
-    CM["case-mcp<br/>15 tools · case management,<br/>audit queries, backup"]
-    RM["report-mcp<br/>6 tools · report generation,<br/>IOC aggregation"]
-    SM["sift-mcp<br/>6 tools · Linux forensic<br/>tool execution"]
-    RAG["forensic-rag<br/>3 tools · semantic search<br/>23K records"]
-    WT["windows-triage<br/>13 tools · offline baseline<br/>validation"]
-    OC["opencti<br/>10 tools · threat<br/>intelligence"]
-    CD["Examiner Portal<br/>browser review + commit"]
-    FK["forensic-knowledge<br/>shared YAML data"]
-    CASE["Case Directory"]
-
-    GW -->|stdio| FM
-    GW -->|stdio| CM
-    GW -->|stdio| RM
-    GW -->|stdio| SM
-    GW -->|stdio| RAG
-    GW -->|stdio| WT
-    GW -->|stdio| OC
-    GW --> CD
-    FM --> FK
-    SM --> FK
-    FM --> CASE
-    CM --> CASE
-    RM --> CASE
-    CD --> CASE
-```
-
-The gateway exposes each backend as a separate MCP endpoint. Clients can connect to the aggregate endpoint or to individual backends:
-
-```
-http://localhost:4508/mcp              # Aggregate (all tools)
-http://localhost:4508/mcp/forensic-mcp
-http://localhost:4508/mcp/case-mcp
-http://localhost:4508/mcp/report-mcp
-http://localhost:4508/mcp/sift-mcp
-http://localhost:4508/mcp/windows-triage-mcp
-http://localhost:4508/mcp/forensic-rag-mcp
-http://localhost:4508/mcp/opencti-mcp
-```
-
-When the LLM client runs on a different machine, install with `--remote` to generate TLS certificates and a bearer token. The gateway binds to all interfaces and requires `Authorization: Bearer <token>` on every request.
-
-### Execution Pipeline
+## Execution Pipeline
 
 Every tool call follows the same pipeline: denylist check, safe execution, output parsing, knowledge enrichment (for cataloged tools), audit logging.
 
@@ -200,20 +265,15 @@ graph LR
     RESP --> AUDIT["Audit Entry"]
 ```
 
-## Upgrading from Lite to Full
-
-Both modes share the same knowledge base, MCPs, and audit format. Upgrading adds the gateway, sandbox, enforcement layer, and structured case management. Note: lite case data (markdown files) does not auto-migrate to full case data (structured JSON). Start fresh or transfer findings manually.
-
 ## MCP Tools
 
-6 core tools: 5 discovery + 1 generic execution.
+5 core tools on sift-mcp: 4 discovery + 1 generic execution.
 
 ### Discovery
 
 | Tool | Description |
 |------|-------------|
-| `list_available_tools` | List cataloged tools (enriched) — uncataloged tools can also execute |
-| `list_missing_tools` | List tools not installed, with installation guidance and alternatives |
+| `list_available_tools` | List cataloged tools (enriched) with availability status — uncataloged tools can also execute |
 | `get_tool_help` | Usage info, flags, caveats, and FK knowledge for a tool |
 | `check_tools` | Check which tools are installed and available |
 | `suggest_tools` | Given an artifact type, suggest relevant tools with corroboration guidance |
@@ -242,6 +302,12 @@ All 30+ per-tool wrappers (Zimmerman suite, Sleuth Kit, Volatility, etc.) are co
 "Extract the $MFT and build a filesystem timeline"
 
 "Check which forensic tools are installed on this workstation"
+
+"Ingest all evidence from /cases/evidence/ into OpenSearch and give me a case summary"
+
+"Show me all 4688 events where cmd.exe spawned from an unusual parent process"
+
+"Aggregate the top 20 source IPs across all hosts and check them against threat intel"
 ```
 
 ## Response Envelope
@@ -312,15 +378,17 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 
 ## Prerequisites
 
-- SIFT Workstation (Ubuntu-based) — for full Valhuntir
+- SIFT Workstation (Ubuntu-based) — for Valhuntir
 - Any Linux/macOS machine — for Valhuntir Lite
 - Python 3.10+
-- sudo access (required for full Valhuntir's HMAC verification ledger at `/var/lib/vhir/verification/`)
+- Docker — for OpenSearch (Valhuntir with evidence indexing)
+- sudo access (required for Valhuntir's HMAC verification ledger at `/var/lib/vhir/verification/`)
 - Forensic tools installed via SIFT package or manually
 
 ### External Dependencies
 
-- **Zeltser IR Writing MCP** (https://website-mcp.zeltser.com/mcp) — Required for report generation (full Valhuntir). The `vhir setup client` wizard configures this automatically. HTTPS, no authentication required.
+- **opensearch-mcp** (https://github.com/AppliedIR/opensearch-mcp) — Evidence indexing and querying. Optional but recommended. Detected automatically by `setup-sift.sh` when cloned alongside sift-mcp.
+- **Zeltser IR Writing MCP** (https://website-mcp.zeltser.com/mcp) — Required for report generation (Valhuntir). The `vhir setup client` wizard configures this automatically. HTTPS, no authentication required.
 - **MS Learn MCP** (https://learn.microsoft.com/api/mcp) — Optional. Provides Microsoft documentation search.
 
 ## Configuration
@@ -333,6 +401,7 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 | `VHIR_CASE_DIR` | (none) | Active case directory — enables audit trail. Falls back to `~/.vhir/active_case` if unset. |
 | `VHIR_CASES_DIR` | (none) | Root directory containing all cases |
 | `VHIR_EXAMINER` | (none) | Examiner identity for evidence IDs and audit |
+| `OPENSEARCH_CONFIG` | (none) | Path to OpenSearch connection config (e.g. `~/.vhir/opensearch.yaml`) |
 
 ### Remote Access (TLS + Auth)
 

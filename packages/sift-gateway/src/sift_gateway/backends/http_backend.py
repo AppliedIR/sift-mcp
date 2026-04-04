@@ -193,7 +193,15 @@ class HttpMCPBackend(MCPBackend):
             raise
         except Exception as exc:
             exc_str = str(exc).lower()
-            if "session terminated" in exc_str or "session not found" in exc_str:
+            if any(
+                phrase in exc_str
+                for phrase in (
+                    "session terminated",
+                    "session not found",
+                    "connection closed",
+                    "stream ended",
+                )
+            ):
                 # Session went stale — reconnect and retry once instead of
                 # tearing down and cascading through the lazy-restart cycle.
                 logger.warning(

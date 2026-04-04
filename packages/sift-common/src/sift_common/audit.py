@@ -127,7 +127,7 @@ class AuditWriter:
         return f"{prefix}-{self.examiner}-{today}-{seq:03d}"
 
     def _resume_sequence(self, date_str: str) -> int:
-        """Scan existing audit JSONL for highest sequence on this date.
+        """Resume sequence from sidecar file, falling back to JSONL scan.
 
         Prevents duplicate audit IDs after server restart.
         Must be called under self._lock.
@@ -135,6 +135,18 @@ class AuditWriter:
         audit_dir = self._get_audit_dir()
         if not audit_dir:
             return 0
+
+        # Try sidecar first (O(1) read)
+        seq_file = audit_dir / f"{self.mcp_name}.seq"
+        try:
+            if seq_file.exists():
+                data = json.loads(seq_file.read_text())
+                if data.get("date") == date_str:
+                    return data.get("seq", 0)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+        # Fallback: scan JSONL (O(n) — only on first startup or date change)
         log_file = audit_dir / f"{self.mcp_name}.jsonl"
         if not log_file.exists():
             return 0
@@ -145,10 +157,7 @@ class AuditWriter:
             with open(log_file, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
-                    if not line:
-                        continue
-                    # Quick pre-filter: only parse lines that could match the date
-                    if date_str not in line:
+                    if not line or date_str not in line:
                         continue
                     try:
                         entry = json.loads(line)
@@ -166,6 +175,19 @@ class AuditWriter:
                 "Failed to read audit log %s for sequence resume: %s", log_file, e
             )
         return max_seq
+
+    def _write_seq_sidecar(self) -> None:
+        """Write current sequence to sidecar for fast resume."""
+        audit_dir = self._get_audit_dir()
+        if not audit_dir:
+            return
+        seq_file = audit_dir / f"{self.mcp_name}.seq"
+        try:
+            seq_file.write_text(
+                json.dumps({"date": self._date_str, "seq": self._sequence})
+            )
+        except OSError:
+            pass
 
     def log(
         self,
@@ -217,6 +239,7 @@ class AuditWriter:
                 audit_id,
             )
             return None
+        self._write_seq_sidecar()
         return audit_id
 
     def _write_entry(self, entry: dict) -> bool:
@@ -286,6 +309,11 @@ class AuditWriter:
         with self._lock:
             self._sequence = 0
             self._date_str = ""
+        # Remove sidecar so _resume_sequence starts fresh
+        audit_dir = self._get_audit_dir()
+        if audit_dir:
+            seq_file = audit_dir / f"{self.mcp_name}.seq"
+            seq_file.unlink(missing_ok=True)
 
 
 def _summarize(result: Any) -> Any:

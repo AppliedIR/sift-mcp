@@ -270,6 +270,22 @@ def _detect_ioc_type(value: str) -> tuple[str, str]:
     if re.match(r"^[a-zA-Z0-9._-]+\\[a-zA-Z0-9._-]+$", v):
         return "user-account", "identity"
 
+    # File name with executable extension (before domain — .exe/.sys/.dll match domain regex)
+    _EXE_EXTS = (
+        ".exe",
+        ".sys",
+        ".dll",
+        ".bat",
+        ".ps1",
+        ".cmd",
+        ".vbs",
+        ".js",
+        ".msi",
+        ".scr",
+    )
+    if "." in v and v.lower().endswith(_EXE_EXTS) and "/" not in v and "\\" not in v:
+        return "file:name", "host"
+
     # Domain name
     if re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9-]*\.)+[a-zA-Z]{2,}$", v):
         return "domain-name", "network"
@@ -858,6 +874,29 @@ class CaseManager:
             logger.warning("IOC processing failed: %s", exc)
             warnings.append(f"IOC processing failed: {exc}")
 
+        # IOC completeness check — warn if text mentions IOCs not in the list
+        try:
+            text = (
+                f"{finding.get('observation', '')} {finding.get('interpretation', '')}"
+            )
+            submitted = {
+                str(i).lower().strip()
+                for i in (finding.get("iocs") or [])
+                if isinstance(i, str)
+            }
+            mentioned_ips = set(
+                re.findall(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", text)
+            )
+            mentioned_hashes = set(re.findall(r"\b[a-fA-F0-9]{32,64}\b", text))
+            missing = (mentioned_ips | mentioned_hashes) - submitted
+            if missing:
+                warnings.append(
+                    f"IOC completeness: {len(missing)} value(s) in text but not in iocs list: "
+                    + ", ".join(sorted(missing)[:5])
+                )
+        except Exception:
+            pass
+
         result = {
             "status": "STAGED",
             "finding_id": finding_id,
@@ -1354,12 +1393,34 @@ class CaseManager:
         iocs = self._load_iocs(case_dir)
         ioc_by_value = {_normalize_ioc(ioc["value"]): ioc for ioc in iocs}
 
+        # Contextual hints for ambiguous IOC classification
+        affected_account = finding.get("affected_account", "")
+        account_names = set()
+        if affected_account:
+            account_names.add(affected_account.lower().strip())
+            # Also add bare username if domain\user format
+            if "\\" in affected_account:
+                account_names.add(affected_account.split("\\", 1)[1].lower().strip())
+
         for raw in raw_iocs[:100]:
-            value = _refang_ioc(str(raw).strip())
+            # Support explicit type: {"value": "rsydow-a", "type": "user-account"}
+            if isinstance(raw, dict) and "value" in raw:
+                value = _refang_ioc(str(raw["value"]).strip())
+                explicit_type = raw.get("type", "")
+            else:
+                value = _refang_ioc(str(raw).strip())
+                explicit_type = ""
             if not value:
                 continue
             # Strip port from IPv4 before dedup (10.0.0.1:8443 → 10.0.0.1)
-            ioc_type, category = _detect_ioc_type(value)
+            if explicit_type:
+                ioc_type = explicit_type
+                category = "identity" if "account" in explicit_type else "host"
+            else:
+                ioc_type, category = _detect_ioc_type(value)
+                # Override unknown → user-account if value matches affected_account
+                if ioc_type == "unknown" and value.lower() in account_names:
+                    ioc_type, category = "user-account", "identity"
             if ioc_type == "ipv4-addr" and re.search(r":\d{1,5}$", value):
                 value = re.sub(r":\d{1,5}$", "", value)
             dedup_key = _normalize_ioc(value)

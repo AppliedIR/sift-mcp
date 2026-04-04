@@ -25,6 +25,7 @@ from sift_common.instructions import (
     FORENSIC_MCP,
     FORENSIC_RAG,
     OPENCTI,
+    OPENSEARCH,
     REPORT_MCP,
     SIFT_MCP,
     WINDOWS_TRIAGE,
@@ -33,12 +34,6 @@ from sift_common.instructions import GATEWAY as _GATEWAY_INSTRUCTIONS
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from sift_gateway.audit_helpers import (
-    _extract_audit_id,
-    _summarize_result,
-    _truncate_params,
-)
-from sift_gateway.backends.http_backend import HttpMCPBackend
 from sift_gateway.rate_limit import check_rate_limit
 
 logger = logging.getLogger(__name__)
@@ -55,6 +50,7 @@ _BACKEND_INSTRUCTIONS: dict[str, str] = {
     "forensic-rag-mcp": FORENSIC_RAG,
     "windows-triage-mcp": WINDOWS_TRIAGE,
     "opencti-mcp": OPENCTI,
+    "opensearch-mcp": OPENSEARCH,
 }
 
 # Tools that accept analyst_override for identity injection.
@@ -106,9 +102,15 @@ class MCPAuthASGIApp:
         scope.setdefault("state", {})
 
         # Rate limit check (before auth or any processing).
-        # Extract client IP from the ASGI scope.
+        # Extract real client IP — check X-Forwarded-For for reverse proxy setups.
         client = scope.get("client")
         client_ip = client[0] if client else "unknown"
+        # Trust X-Forwarded-For only from localhost (proxy on same machine)
+        if client_ip in ("127.0.0.1", "::1"):
+            headers = dict(scope.get("headers", []))
+            forwarded = headers.get(b"x-forwarded-for", b"").decode()
+            if forwarded:
+                client_ip = forwarded.split(",")[0].strip()
         if not check_rate_limit(client_ip):
             resp = JSONResponse(
                 {"error": "Rate limit exceeded"},
@@ -316,8 +318,8 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
         if not backend.started:
             try:
                 await gateway.ensure_backend_started(backend_name)
-            except asyncio.TimeoutError:
-                raise RuntimeError(f"Backend {backend_name} start timed out") from None
+            except (asyncio.TimeoutError, RuntimeError, ConnectionError, OSError):
+                raise RuntimeError(f"Backend {backend_name} failed to start") from None
         backend.last_tool_call = time.monotonic()
         return await backend.list_tools()
 
@@ -382,29 +384,30 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
             else:
                 contents.append(TextContent(type="text", text=str(item)))
 
-        # Proxy-side audit for HTTP backends
+        # Per-backend audit for HTTP backends (this path bypasses
+        # Gateway.call_tool, so centralized audit doesn't cover it)
+        from sift_gateway.audit_helpers import (
+            _extract_audit_id,
+            _summarize_result,
+            _truncate_params,
+        )
+        from sift_gateway.backends.http_backend import HttpMCPBackend
+
         if isinstance(backend, HttpMCPBackend):
             elapsed_ms = (time.monotonic() - _start) * 1000
-            backend_audit_id = _extract_audit_id(result)
             try:
-                audit_id = await asyncio.to_thread(
+                await asyncio.to_thread(
                     gateway._audit.log,
                     tool=name,
                     params=_truncate_params(arguments),
                     result_summary=_summarize_result(result),
                     source="gateway_proxy",
-                    elapsed_ms=elapsed_ms,
+                    elapsed_ms=round(elapsed_ms, 1),
                     extra={
                         "backend": backend_name,
-                        "backend_audit_id": backend_audit_id,
+                        "backend_audit_id": _extract_audit_id(result),
                     },
                 )
-                if audit_id is None:
-                    logger.warning(
-                        "Gateway audit skipped for %s/%s — no active case",
-                        backend_name,
-                        name,
-                    )
             except Exception as exc:
                 logger.warning(
                     "Gateway audit failed for %s/%s: %s", backend_name, name, exc

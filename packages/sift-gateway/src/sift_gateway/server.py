@@ -36,7 +36,13 @@ class _NormalizeMCPPath:
         await self.app(scope, receive, send)
 
 
+from sift_gateway.audit_helpers import (
+    _extract_audit_id,
+    _summarize_result,
+    _truncate_params,
+)
 from sift_gateway.backends import MCPBackend, create_backend
+from sift_gateway.backends.http_backend import HttpMCPBackend
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import (
     ANALYST_TOOLS,
@@ -238,19 +244,16 @@ class Gateway:
         """Periodically retry backends that failed to start at boot."""
         while True:
             await anyio.sleep(30)
-            restarted = []
             for name, backend in self.backends.items():
                 if backend.started:
                     continue
                 try:
                     await asyncio.wait_for(backend.start(), timeout=30.0)
-                    restarted.append(name)
                     logger.info("Late-started backend: %s", name)
-                except Exception:
-                    pass
-            if restarted:
-                await self._build_tool_map()
-                logger.info("Tool map rebuilt after late-starting: %s", restarted)
+                    await self._build_tool_map()
+                    logger.info("Tool map rebuilt after late-starting: %s", name)
+                except Exception as exc:
+                    logger.warning("Late-start failed for %s: %s", name, exc)
 
     async def _backend_loader(self) -> None:
         """Start backends added after gateway boot (e.g. wintools after join).
@@ -405,6 +408,7 @@ class Gateway:
             backend_name,
             examiner,
         )
+        _start = time.monotonic()
         try:
             result = await asyncio.wait_for(
                 backend.call_tool(actual_name, arguments), timeout=300.0
@@ -415,7 +419,41 @@ class Gateway:
                 actual_name,
                 backend_name,
             )
+            if isinstance(backend, HttpMCPBackend):
+                elapsed_ms = (time.monotonic() - _start) * 1000
+                try:
+                    await asyncio.to_thread(
+                        self._audit.log,
+                        tool=actual_name,
+                        params=_truncate_params(arguments),
+                        result_summary="timeout after 300s",
+                        source="gateway_proxy",
+                        elapsed_ms=round(elapsed_ms, 1),
+                        extra={"backend": backend_name, "examiner": examiner},
+                    )
+                except Exception:
+                    pass
             raise RuntimeError(f"Tool call {actual_name} timed out after 300s") from exc
+
+        # Centralized audit for HTTP backends (stdio backends audit themselves)
+        if isinstance(backend, HttpMCPBackend):
+            elapsed_ms = (time.monotonic() - _start) * 1000
+            try:
+                await asyncio.to_thread(
+                    self._audit.log,
+                    tool=actual_name,
+                    params=_truncate_params(arguments),
+                    result_summary=_summarize_result(result),
+                    source="gateway_proxy",
+                    elapsed_ms=round(elapsed_ms, 1),
+                    extra={
+                        "backend": backend_name,
+                        "examiner": examiner,
+                        "backend_audit_id": _extract_audit_id(result),
+                    },
+                )
+            except Exception as exc:
+                logger.warning("Gateway audit failed for %s: %s", actual_name, exc)
 
         return result
 

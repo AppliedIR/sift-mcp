@@ -110,10 +110,22 @@ class StdioMCPBackend(MCPBackend):
             raise RuntimeError(f"Backend {self.name} is not started")
 
         if self._tools_cache is None:
-            result = await asyncio.wait_for(
-                self._session.list_tools(), timeout=_TOOL_LIST_TIMEOUT
-            )
-            self._tools_cache = result.tools
+            try:
+                result = await asyncio.wait_for(
+                    self._session.list_tools(), timeout=_TOOL_LIST_TIMEOUT
+                )
+                self._tools_cache = result.tools
+            except (ConnectionError, OSError):
+                self._tools_cache = None
+                self._session = None
+                self._started = False
+                if self._exit_stack:
+                    try:
+                        await self._exit_stack.aclose()
+                    except BaseException:
+                        pass
+                    self._exit_stack = None
+                raise
         return self._tools_cache
 
     async def call_tool(self, name: str, arguments: dict) -> list:

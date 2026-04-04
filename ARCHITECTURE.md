@@ -1,7 +1,7 @@
 # Valhuntir Platform Architecture
 
 **Status:** Definitive reference for what is built. Not aspirational.
-**Last updated:** 2026-02-25
+**Last updated:** 2026-04-04
 
 ---
 
@@ -34,6 +34,8 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | forensic-rag-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | windows-triage-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | opencti-mcp | SIFT | — | (via gateway) | stdio subprocess |
+| opensearch-mcp | SIFT | — | (via gateway) | stdio subprocess |
+| OpenSearch | SIFT (Docker) | 9200 | — | HTTPS (local) |
 | case-dashboard | SIFT | — | (via gateway /portal/) | — |
 | wintools-mcp | Windows | 4624 | Streamable HTTP MCP | — |
 | vhir CLI | SIFT | — | — (filesystem) | — |
@@ -45,13 +47,14 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | Component | Purpose |
 |-----------|---------|
 | **sift-gateway** | Aggregates SIFT-local MCPs. Starts each as a stdio subprocess. Exposes all their tools via `/mcp` (Streamable HTTP) and `/api/v1/tools` (REST). API key → examiner identity mapping for multi-user. |
-| **forensic-mcp** | Findings, timeline, evidence, TODOs, discipline rules. The investigation state machine. 12 tools + 14 MCP resources (or 26 tools in tools mode for clients without resource support). |
+| **forensic-mcp** | Findings, timeline, evidence, TODOs, discipline rules. The investigation state machine. 9 tools + 14 MCP resources (or 23 tools in tools mode for clients without resource support). |
 | **case-mcp** | Case lifecycle and status. Init, activate, close, migrate, list cases, case info, evidence summary, timeline summary, findings summary, recent activity, disk usage, export, import, open portal, backup. 15 tools. |
 | **report-mcp** | Report generation with data-driven profiles (full, executive, timeline, ioc, findings, status). Aggregates approved findings, IOCs, MITRE mappings, and Zeltser IR Writing guidance. 6 tools. |
-| **sift-mcp** | Authenticated, denylist-protected forensic tool execution on Linux/SIFT. Zimmerman suite, Volatility, Sleuth Kit, Hayabusa, etc. FK-enriched response envelopes. 6 core tools, 65+ catalog entries. |
+| **sift-mcp** | Authenticated, denylist-protected forensic tool execution on Linux/SIFT. Zimmerman suite, Volatility, Sleuth Kit, Hayabusa, etc. FK-enriched response envelopes. 5 core tools, 65+ catalog entries. |
 | **forensic-rag-mcp** | Semantic search across Sigma rules, MITRE ATT&CK, Atomic Red Team, Splunk, KAPE, Velociraptor, LOLBAS, GTFOBins. |
 | **windows-triage-mcp** | Offline Windows baseline validation. Checks files, processes, services, scheduled tasks, registry, DLLs, pipes against known-good databases. |
-| **opencti-mcp** | Read-only threat intelligence from OpenCTI. IOC lookup, threat actor search, malware search, MITRE technique search. 10 tools. |
+| **opencti-mcp** | Read-only threat intelligence from OpenCTI. IOC lookup, threat actor search, malware search, MITRE technique search. 8 tools. |
+| **opensearch-mcp** | Evidence indexing and querying at scale. 15 parsers (evtx, EZ tools, Volatility, JSON, CSV, W3C, etc.), 17 MCP tools (search, aggregate, timeline, enrichment). Deterministic content-based dedup, full provenance. Triage baseline and threat intel enrichment run as programmatic post-ingest passes. Optional — not part of the sift-mcp monorepo ([separate repo](https://github.com/AppliedIR/opensearch-mcp)). |
 | **wintools-mcp** | Catalog-gated forensic tool execution on Windows. Zimmerman suite, Hayabusa. FK-enriched response envelopes. Denylist blocks dangerous binaries. 7 tools, 31 catalog entries. |
 | **vhir CLI** | Human-only actions: approve/reject findings, review case status, manage evidence, generate reports, audit trail queries, case lifecycle (init/close/activate/migrate), execute forensic commands with audit trail, configure examiner identity. Not callable by AI. |
 | **sift-common** | Shared internal package. Canonical AuditWriter, operational logging (oplog), CSV/JSON/text output parsers. Used by all SIFT MCPs. |
@@ -237,6 +240,7 @@ Generated `.mcp.json` example:
 | Repo | GitHub | Purpose |
 |------|--------|---------|
 | [sift-mcp](https://github.com/AppliedIR/sift-mcp) | AppliedIR/sift-mcp | SIFT monorepo: 11 packages (forensic-mcp, case-mcp, report-mcp, sift-mcp, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, sift-common, case-dashboard), SIFT installer, platform docs |
+| [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp) | AppliedIR/opensearch-mcp | Evidence indexing + querying via OpenSearch (17 tools, 15 parsers). Optional. |
 | [wintools-mcp](https://github.com/AppliedIR/wintools-mcp) | AppliedIR/wintools-mcp | Windows tool execution MCP + Windows installer |
 | [Valhuntir](https://github.com/AppliedIR/valhuntir) | AppliedIR/valhuntir | CLI + this architecture doc |
 

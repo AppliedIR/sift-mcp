@@ -7,6 +7,7 @@ requests-per-minute limit using a sliding window approach.
 
 import threading
 import time
+from collections import deque
 
 # Default: 60 requests per 60-second window.
 DEFAULT_LIMIT = 60
@@ -37,7 +38,7 @@ class RateLimiter:
     ):
         self.limit = limit
         self.window = window
-        self._store: dict[str, list[float]] = {}
+        self._store: dict[str, deque[float]] = {}
         self._lock = threading.Lock()
         self._last_cleanup = time.monotonic()
 
@@ -62,22 +63,13 @@ class RateLimiter:
 
             timestamps = self._store.get(ip)
             if timestamps is None:
-                self._store[ip] = [now]
+                self._store[ip] = deque([now], maxlen=self.limit + 1)
                 return True
 
             # Trim timestamps outside the sliding window
             cutoff = now - self.window
-            # Find first index within the window (list is append-ordered)
-            start = 0
-            for i, ts in enumerate(timestamps):
-                if ts >= cutoff:
-                    start = i
-                    break
-            else:
-                # All timestamps are expired
-                start = len(timestamps)
-
-            timestamps[:] = timestamps[start:]
+            while timestamps and timestamps[0] < cutoff:
+                timestamps.popleft()
 
             if len(timestamps) >= self.limit:
                 return False

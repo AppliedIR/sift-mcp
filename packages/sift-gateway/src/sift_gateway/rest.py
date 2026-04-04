@@ -67,7 +67,12 @@ async def call_tool(request: Request) -> JSONResponse:
         {"arguments": {...}}
     """
     # Rate limit check (before any body processing)
+    # Trust X-Forwarded-For only from localhost (proxy on same machine)
     client_ip = request.client.host if request.client else "unknown"
+    if client_ip in ("127.0.0.1", "::1"):
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            client_ip = forwarded.split(",")[0].strip()
     if not check_rate_limit(client_ip):
         return JSONResponse(
             {"error": "Rate limit exceeded"},

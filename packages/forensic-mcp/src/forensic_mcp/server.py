@@ -155,9 +155,11 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
 
         Optional: mitre_ids, iocs, event_type, artifact_ref, related_findings
 
-        iocs (list[str]): indicators of compromise found in this evidence.
+        iocs (list): indicators of compromise found in this evidence.
           Pass ALL suspicious IPs, hashes, domains, registry keys, file paths,
           and accounts. Types auto-detected, deduplication automatic.
+          For ambiguous values (bare usernames), pass as dict with explicit type:
+          {"value": "rsydow-a", "type": "user-account"}
 
         supporting_commands (separate parameter, list of dicts): for shell-based
         evidence only. Each dict: {command, purpose, output_excerpt}.
@@ -372,6 +374,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
                 "total": total,
                 "limit": limit,
                 "offset": offset,
+                "has_more": total > offset + limit,
             }
         except Exception as e:
             logger.error("get_timeline failed: %s", e)

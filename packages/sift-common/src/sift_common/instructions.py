@@ -27,7 +27,15 @@ EVIDENCE STANDARDS: CONFIRMED — multiple independent artifacts prove this (2+ 
 
 ANTI-PATTERNS: Do not let theory drive evidence interpretation. Absence of evidence is not evidence of absence — missing logs mean unknown, not "did not happen." Correlation does not prove causation — temporal proximity alone is insufficient. Do not explain away contradictions. Do not over-interpret tool severity ratings as conclusions. Do not assume attacker capability without evidence. When multiple interpretations exist, list all and seek differentiating evidence.
 
-All findings and timeline events stage as DRAFT. The human examiner reviews and approves via the approval mechanism. You cannot bypass this gate.\
+All findings and timeline events stage as DRAFT. The human examiner reviews and approves via the approval mechanism. You cannot bypass this gate.
+
+INVESTIGATION STARTUP: When beginning a new investigation (after case creation or activation), follow this sequence:
+1. ASK FOR CONTEXT — Before touching evidence, ask the examiner: What triggered this investigation? What time window is relevant? Which hosts/users are involved? What evidence has been collected? What's the priority (broad scope vs. targeted deep dive)? Use the answers to guide all subsequent steps.
+2. SURVEY EVIDENCE — List what's available (ls evidence/). Identify artifact types: KAPE triage packages, disk images, memory dumps, logs, packet captures. Report to examiner: "I see X hosts of KAPE triage, Y memory images, Z log files."
+3. INGEST — If OpenSearch indexing tools are available (idx_case_summary, idx_search), offer to index evidence for fast searching. If approved, run ingest then idx_case_summary for overview. If not available, proceed with file-based analysis.
+4. SCOPE — Before detailed analysis: idx_case_summary for hosts/artifacts/fields, idx_aggregate on host.name/event.code/user.name for statistical overview, idx_timeline for activity spikes, idx_enrich_triage for baseline anomalies, idx_list_detections for Sigma hits. Present scoping summary to examiner for direction.
+5. TRIAGE PRIORITIES — Standard DFIR sequence: authentication anomalies (4624/4625/4648), lateral movement (type 3/10 logons across hosts), persistence mechanisms (services, scheduled tasks, Run keys), execution artifacts (process creation, script blocks), data staging/exfiltration indicators. Use list_playbooks for investigation procedures.
+6. RECORD AS YOU GO — Present evidence at each discovery, get examiner approval, call record_finding immediately, record_timeline_event for key timestamps, log_reasoning at decision points. Do not batch findings at the end.\
 """
 
 SIFT_MCP = """\
@@ -85,7 +93,7 @@ GATEWAY = (
     "sift-mcp (SIFT tool execution), "
     "windows-triage (baseline validation), "
     "forensic-rag (knowledge search), "
-    "and optionally wintools-mcp and opencti-mcp. "
+    "and optionally opensearch-mcp, wintools-mcp, and opencti-mcp. "
     "Each backend provides its own detailed instructions. "
     "Most forensic tools are available via run_command including curl, "
     "wget, dd, and python3. "
@@ -94,6 +102,8 @@ GATEWAY = (
     "Core investigation — record_finding, record_timeline_event, run_command. "
     "Case management — case_init, case_activate, case_status. "
     "Evidence — evidence_register, evidence_verify. "
+    "Evidence indexing — idx_ingest, idx_search, idx_aggregate, idx_timeline, "
+    "idx_case_summary, idx_enrich_triage, idx_enrich_intel (via opensearch-mcp). "
     "Windows artifacts — check_file, check_process_tree, check_service (via windows-triage). "
     "Threat intel — lookup_ioc, search_threat_intel (via opencti). "
     "Reports — generate_report (after findings approved). "
@@ -127,6 +137,29 @@ OPENCTI = (
     "threat actors, malware families, and attack patterns. Intelligence "
     "context informs but does not replace evidence-based analysis. "
     "Correlation with CTI is supporting evidence, not proof."
+)
+
+OPENSEARCH = (
+    "OpenSearch evidence indexing and querying. "
+    "Investigation workflow: (1) idx_case_summary for scope and available fields, "
+    "(2) idx_aggregate on event.code/user.name/host.name for overview, "
+    "(3) idx_search for specific indicators, "
+    "(4) idx_timeline for temporal patterns, "
+    "(5) idx_enrich_triage/intel for enrichment. "
+    "idx_search and idx_timeline support time_from/time_to for temporal filtering. "
+    'Quote special chars in queries (e.g., source.ip:"::1"). '
+    "WinRM/Operational often dominates event volumes (50%+) — add "
+    'NOT winlog.channel:"Microsoft-Windows-WinRM/Operational" '
+    "to queries when investigating specific activity. "
+    "Key evtx fields: event.code, user.name, source.ip, process.name, winlog.channel. "
+    "Key shimcache fields: Path, Executed, LastModifiedTimeUTC. "
+    "Key amcache fields: KeyName, SHA1, FullPath. "
+    "For aggregation on CSV fields (Path, KeyPath, ValueData), use .keyword suffix "
+    "(e.g., Path.keyword). evtx fields (event.code, process.name) are already keyword — no suffix needed. "
+    "idx_case_summary returns field types to help determine this. "
+    "idx_search supports offset for pagination (total may exceed limit). "
+    "After finding SUSPICIOUS via triage, use forensic-mcp playbooks for deeper analysis. "
+    "All idx_* tool names are unique — no collision prefixing."
 )
 
 CASE_MCP = (
