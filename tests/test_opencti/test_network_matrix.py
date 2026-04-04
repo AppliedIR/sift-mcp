@@ -93,6 +93,9 @@ def _make_client(config=None, feature_flags=None, **config_overrides):
     ]
     mock_pycti.stix_cyber_observable.list.return_value = []
     client._client = mock_pycti
+    # Patch connect() so retries that clear _client still get the mock
+    # back (attrgetter retry sets _client=None on transient errors)
+    client.connect = lambda: mock_pycti
     return client
 
 

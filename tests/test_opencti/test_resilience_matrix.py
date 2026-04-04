@@ -56,8 +56,12 @@ def make_client(
     if config is None:
         config = make_config()
     client = OpenCTIClient(config, adaptive_metrics=adaptive_metrics)
-    # Set a mock pycti client to avoid real connections
-    client._client = MagicMock()
+    # Set a mock pycti client to avoid real connections.
+    # Also patch connect() so retries that clear _client still get the mock
+    # back (attrgetter retry sets _client=None on transient errors).
+    mock_pycti = MagicMock()
+    client._client = mock_pycti
+    client.connect = lambda: mock_pycti
     return client
 
 
