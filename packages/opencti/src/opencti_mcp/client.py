@@ -506,13 +506,16 @@ class OpenCTIClient:
                 if self._client is not None:
                     self._client.requests_timeout = new_timeout
 
-    def _execute_with_retry(self, method_path: str, *args: Any, **kwargs: Any) -> Any:
+    def _execute_with_retry(
+        self, method_path: str | Any, *args: Any, **kwargs: Any
+    ) -> Any:
         """Execute function with exponential backoff retry.
 
         Args:
             method_path: Dotted attribute path on the pycti client
                 (e.g., "indicator.list"). Resolved fresh each attempt
                 via operator.attrgetter to avoid stale bound methods.
+                Also accepts a callable for backward compatibility.
 
         Production resilience:
         - Exponential backoff prevents overwhelming recovering server
@@ -529,13 +532,17 @@ class OpenCTIClient:
             raise ConnectionError("OpenCTI unavailable (circuit breaker open)")
 
         last_exception: Exception | None = None
+        is_callable = callable(method_path) and not isinstance(method_path, str)
 
         for attempt in range(self.config.max_retries + 1):
             try:
                 attempt_start = time_module.time()
-                client = self.connect()
-                func = attrgetter(method_path)(client)
-                result = func(*args, **kwargs)
+                if is_callable:
+                    result = method_path(*args, **kwargs)
+                else:
+                    client = self.connect()
+                    func = attrgetter(method_path)(client)
+                    result = func(*args, **kwargs)
 
                 # Success - record it and track latency
                 self._circuit_breaker.record_success()
