@@ -42,3 +42,6 @@ CLAUDE.md
 # OS
 .DS_Store
 Thumbs.db
+pytest-of-user/
+*.db
+*.db-journal

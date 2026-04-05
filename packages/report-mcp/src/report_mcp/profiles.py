@@ -23,6 +23,7 @@ STRIPPED_FINDING_FIELDS = {
     "created_by",
     "examiner_notes",
     "examiner_modifications",
+    "provenance_warnings",
 }
 
 PROFILES: dict[str, dict] = {

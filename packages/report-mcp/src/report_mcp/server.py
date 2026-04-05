@@ -313,6 +313,8 @@ def _extract_all_iocs(
                     ioc_type = ioc.get("type", "Unknown")
                     ioc_value = str(ioc.get("value", ""))
                     collected.setdefault((ioc_type, ioc_value), set()).add(fid)
+                elif isinstance(ioc, str) and ioc.strip():
+                    collected.setdefault(("Unknown", ioc.strip()), set()).add(fid)
 
         # Text extraction from description
         text = f.get("description", "")
@@ -356,7 +358,7 @@ def _build_mitre_mapping(findings: list[dict]) -> dict[str, dict]:
 
     for f in findings:
         fid = f.get("id", "")
-        techniques = f.get("mitre_techniques")
+        techniques = f.get("mitre_techniques") or f.get("mitre_ids")
         if not techniques:
             continue
         if isinstance(techniques, list):
@@ -647,7 +649,13 @@ def _reconcile_verification(
         if item and not entry:
             results.append({"id": item_id, "status": "APPROVED_NO_VERIFICATION"})
         elif entry and not item:
-            results.append({"id": item_id, "status": "VERIFICATION_NO_FINDING"})
+            # IOCs and auto-extracted items have ledger entries but no standalone finding
+            status = (
+                "EXTRACTED_FROM_FINDING"
+                if item_id.startswith("IOC-")
+                else "VERIFICATION_NO_FINDING"
+            )
+            results.append({"id": item_id, "status": status})
         elif item and entry:
             # Reconstruct hmac_text: canonical JSON of all substantive fields
             hashable = {k: v for k, v in item.items() if k not in _HASH_EXCLUDE_KEYS}
@@ -657,12 +665,21 @@ def _reconcile_verification(
             else:
                 results.append({"id": item_id, "status": "VERIFIED"})
 
-    if len(all_approved) != len(ledger_entries):
+    # Compare counts excluding auto-extracted IOCs (they don't go through approval)
+    non_ioc_ledger = [
+        e for e in ledger_entries if not e.get("id", "").startswith("IOC-")
+    ]
+    if len(all_approved) != len(non_ioc_ledger):
+        ioc_count = len(ledger_entries) - len(non_ioc_ledger)
         results.append(
             {
                 "id": "_summary",
                 "status": "COUNT_MISMATCH",
-                "detail": f"approved={len(all_approved)}, ledger={len(ledger_entries)}",
+                "detail": (
+                    f"approved={len(all_approved)}, "
+                    f"ledger={len(non_ioc_ledger)} "
+                    f"(+{ioc_count} auto-extracted IOCs excluded)"
+                ),
             }
         )
     return results

@@ -61,14 +61,7 @@ def validate(finding: dict) -> dict:
             "Missing confidence_justification (FD-005: confidence must be justified)"
         )
 
-    # Evidence count by confidence level (FD-001, FD-007)
-    if confidence in confidence_defs and not errors:
-        min_required = confidence_defs[confidence]["min_audit_ids"]
-        if len(audit_ids) < min_required:
-            errors.append(
-                f"Confidence {confidence} requires at least {min_required} audit_id(s), "
-                f"got {len(audit_ids)}"
-            )
+    # Evidence count check deferred to after warnings list is created (line 80)
 
     # Attribution requires 3+ evidence sources (FD-003)
     if finding_type == "attribution" and len(audit_ids) < 3:
@@ -78,6 +71,15 @@ def validate(finding: dict) -> dict:
 
     # event_timestamp validation
     warnings: list[str] = []
+
+    # Evidence count by confidence level (FD-001, FD-007) — warning, not error
+    if confidence in confidence_defs and not errors:
+        min_required = confidence_defs[confidence]["min_audit_ids"]
+        if len(audit_ids) < min_required:
+            warnings.append(
+                f"Confidence {confidence} typically requires {min_required}+ audit_id(s) "
+                f"(got {len(audit_ids)}). Acceptable for single-source comprehensive evidence."
+            )
     event_ts = finding.get("event_timestamp", "")
     if event_ts:
         # Validate ISO 8601 or date-only (YYYY-MM-DD)

@@ -349,6 +349,49 @@ def _validate_examiner(examiner: str) -> None:
         )
 
 
+# MITRE tactic → event_type mapping for auto-created timeline events
+_MITRE_EVENT_TYPE = {
+    "T10": "execution",  # T1059 etc.
+    "T11": "persistence",  # T1136 etc.
+    "T12": "execution",  # T1204 etc.
+    "T13": "persistence",  # T1353 etc.
+    "T14": "execution",  # T1489 etc.
+    "T15": "other",  # T15xx varies
+    "T1003": "execution",  # Credential Dumping
+    "T1021": "lateral",  # Remote Services
+    "T1047": "execution",  # WMI
+    "T1053": "persistence",  # Scheduled Task
+    "T1055": "execution",  # Process Injection
+    "T1059": "execution",  # Command Interpreter
+    "T1078": "auth",  # Valid Accounts
+    "T1098": "persistence",  # Account Manipulation
+    "T1110": "auth",  # Brute Force
+    "T1190": "network",  # Exploit Public App
+    "T1543": "persistence",  # Create/Modify Service
+    "T1547": "persistence",  # Boot/Logon Autostart
+    "T1548": "execution",  # Abuse Elevation
+    "T1562": "other",  # Impair Defenses
+    "T1566": "network",  # Phishing
+    "T1570": "lateral",  # Lateral Tool Transfer
+}
+
+
+def _infer_event_type(sanitized: dict) -> str:
+    """Best-effort event_type from MITRE technique IDs."""
+    mitre_ids = sanitized.get("mitre_ids", [])
+    if isinstance(mitre_ids, str):
+        mitre_ids = [mitre_ids]
+    for mid in mitre_ids:
+        mid = mid.strip().upper()
+        # Try exact match first (T1021), then prefix (T10)
+        if mid in _MITRE_EVENT_TYPE:
+            return _MITRE_EVENT_TYPE[mid]
+        prefix = mid[:3]  # T10, T11, etc.
+        if prefix in _MITRE_EVENT_TYPE:
+            return _MITRE_EVENT_TYPE[prefix]
+    return ""
+
+
 class CaseManager:
     """Manages forensic investigation cases."""
 
@@ -849,7 +892,9 @@ class CaseManager:
                         if sanitized.get("audit_ids")
                         else ""
                     ),
-                    "event_type": sanitized.get("event_type", "other"),
+                    "event_type": sanitized.get("event_type")
+                    or _infer_event_type(sanitized)
+                    or "other",
                     "related_findings": [finding_id],
                     "auto_created_from": finding_id,
                     "status": "DRAFT",
