@@ -180,7 +180,7 @@ User Question
 
 ### Workflow 2: Threat Actor Research
 1. `opencti-mcp search_threat_intel(query="...")`
-2. `opencti-mcp search_entity(entity_type="malware", query="...")`
+2. `opencti-mcp search_entity(type="malware", query="...")`
 3. `forensic-rag search(query="...", source_ids=["mitre_attack"])`
 4. `forensic-rag search(query="... detection", source_ids=["sigma"])`
 

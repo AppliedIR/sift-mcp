@@ -373,3 +373,13 @@ re-run setup-sift.sh --client=claude-code (SIFT workstation)."
 
 Do not proceed with forensic work if any guardrail check fails.
 Wait for the examiner to acknowledge the risk or fix the issue.
+
+---
+
+## Known Limitations (Claude Code)
+
+- **MCP config changes require restart:** After `vhir setup client` or
+  config edits, exit and relaunch Claude Code. There is no hot-reload.
+- **Context compaction drops MCP connections:** Long sessions may trigger
+  context compaction that disconnects MCP backends. Save work and restart
+  if tools stop responding.
