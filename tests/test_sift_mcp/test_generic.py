@@ -74,12 +74,12 @@ class TestGenericRunCommand:
         evidence_dir = case_dir / "evidence"
         evidence_dir.mkdir()
         monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
-        with pytest.raises(ValueError, match="case evidence"):
+        with pytest.raises(ValueError, match="case directory"):
             run_command(["rm", "-rf", str(evidence_dir)])
 
     def test_rm_blocks_cases_dir(self):
         """rm targeting /cases is blocked."""
-        with pytest.raises(ValueError, match="protected evidence directory"):
+        with pytest.raises(ValueError, match="protected directory"):
             run_command(["rm", "-rf", "/cases"])
 
     def test_rm_allows_temp_cleanup(self):
