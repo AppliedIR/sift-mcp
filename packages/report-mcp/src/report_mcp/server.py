@@ -763,13 +763,19 @@ def create_server() -> FastMCP:
                     f"{', '.join(sorted(_PROTECTED_FIELDS))}"
                 }
 
-            # Validate enum fields
+            # Validate enum fields (case-insensitive for TLP)
             if field in _ENUM_FIELDS:
-                if value not in _ENUM_FIELDS[field]:
+                valid = _ENUM_FIELDS[field]
+                check_val = value
+                # TLP is uppercase by convention
+                if field == "tlp" and isinstance(value, str):
+                    check_val = value.upper()
+                if check_val not in valid:
                     return {
                         "error": f"Invalid value for {field}: {value}. "
-                        f"Valid values: {', '.join(sorted(_ENUM_FIELDS[field]))}"
+                        f"Valid values: {', '.join(sorted(valid))}"
                     }
+                value = check_val
 
             # Validate date fields
             if field in _DATE_FIELDS:
@@ -782,7 +788,10 @@ def create_server() -> FastMCP:
             # Validate list fields
             if field in _LIST_FIELDS:
                 if not isinstance(value, list):
-                    return {"error": f"Field '{field}' requires a list value."}
+                    return {
+                        "error": f"Field '{field}' requires a JSON array. "
+                        f'Example: ["{field}_item1", "{field}_item2"]'
+                    }
 
             # Reject unknown fields
             _ALLOWED_FIELDS = (
