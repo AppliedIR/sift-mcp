@@ -106,16 +106,13 @@ def validate_rm_targets(args: list[str]) -> None:
         for protected in _get_protected_dirs():
             if resolved == protected or resolved.startswith(protected + "/"):
                 raise ValueError(
-                    f"Blocked: rm in protected directory '{protected}'."
-                    + _RM_GUIDANCE
+                    f"Blocked: rm in protected directory '{protected}'." + _RM_GUIDANCE
                 )
         case_dir = resolve_case_dir()
         if case_dir:
             case_resolved = str(Path(case_dir).resolve())
             if resolved == case_resolved or resolved.startswith(case_resolved + "/"):
-                raise ValueError(
-                    "Blocked: rm in case directory." + _RM_GUIDANCE
-                )
+                raise ValueError("Blocked: rm in case directory." + _RM_GUIDANCE)
 
 
 _BLOCKED_DIRECTORIES = (

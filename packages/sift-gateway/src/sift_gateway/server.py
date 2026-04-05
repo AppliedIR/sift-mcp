@@ -67,6 +67,7 @@ class Gateway:
         self.config = config
         self.backends: dict[str, MCPBackend] = {}
         self._tool_map: dict[str, str] = {}  # tool_name -> backend_name
+        self._tool_cache: dict[str, Tool] = {}  # tool_name -> Tool object
         self._start_locks: dict[str, asyncio.Lock] = {}
         self._reload_event = asyncio.Event()
         self._pending_backends: dict[str, dict] = {}
@@ -142,6 +143,7 @@ class Gateway:
                     "Error stopping backend %s: %s: %s", name, type(exc).__name__, exc
                 )
         self._tool_map.clear()
+        self._tool_cache.clear()
 
     async def _build_tool_map(self) -> None:
         """Build a map from tool names to backend names.
@@ -150,6 +152,7 @@ class Gateway:
         with their backend name: {backend}__toolname.
         """
         raw_map: dict[str, list[str]] = {}  # tool_name -> [backend_names]
+        tool_objects: dict[str, Tool] = {}  # tool_name -> Tool
 
         for name, backend in self.backends.items():
             if not backend.started:
@@ -158,6 +161,7 @@ class Gateway:
                 tools = await asyncio.wait_for(backend.list_tools(), timeout=15.0)
                 for tool in tools:
                     raw_map.setdefault(tool.name, []).append(name)
+                    tool_objects[tool.name] = tool
             except asyncio.TimeoutError:
                 logger.error("Timeout listing tools for backend %s", name)
             except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
@@ -179,6 +183,19 @@ class Gateway:
                     new_map[prefixed] = bname
 
         self._tool_map = new_map  # atomic reference swap
+        # Cache Tool objects for get_tools_list fallback
+        new_cache: dict[str, Tool] = {}
+        for mapped_name in new_map:
+            original = (
+                mapped_name.split("__", 1)[1] if "__" in mapped_name else mapped_name
+            )
+            if original in tool_objects:
+                new_cache[mapped_name] = Tool(
+                    name=mapped_name,
+                    description=tool_objects[original].description or "",
+                    inputSchema=tool_objects[original].inputSchema,
+                )
+        self._tool_cache = new_cache
 
         logger.info(
             "Tool map built: %d tools across %d backends",
@@ -346,13 +363,18 @@ class Gateway:
 
             src = by_name.get(original)
             if src is None:
-                tools.append(
-                    Tool(
-                        name=mapped_name,
-                        description="",
-                        inputSchema={"type": "object", "properties": {}},
+                # Use cached Tool from _build_tool_map if available
+                cached = self._tool_cache.get(mapped_name)
+                if cached:
+                    tools.append(cached)
+                else:
+                    tools.append(
+                        Tool(
+                            name=mapped_name,
+                            description="",
+                            inputSchema={"type": "object", "properties": {}},
+                        )
                     )
-                )
             else:
                 tools.append(
                     Tool(
