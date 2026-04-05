@@ -12,6 +12,7 @@ if [ -f "$VHIR_HOME/active_case" ]; then
 fi
 
 if [ -n "$ACTIVE_CASE" ] && [ -d "$ACTIVE_CASE" ]; then
+    # Unquoted EOF — $ACTIVE_CASE expanded (content is a path we wrote)
     cat <<EOF
 WARNING: Not in a case directory (no CASE.yaml found).
 
@@ -27,7 +28,7 @@ Please close this session and relaunch from the case directory:
 
 EOF
 else
-    cat <<EOF
+    cat <<'EOF'
 WARNING: Not in a case directory (no CASE.yaml found).
 
 The sandbox restricts all commands to the current directory tree.
