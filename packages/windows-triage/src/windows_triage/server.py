@@ -312,7 +312,7 @@ class WindowsTriageServer:
                         "properties": {
                             "path": {
                                 "type": "string",
-                                "description": "Windows file path",
+                                "description": "Windows file path (with or without drive letter, e.g. C:\\Windows\\System32\\svchost.exe or \\Windows\\System32\\svchost.exe)",
                             },
                             "hash": {
                                 "type": "string",

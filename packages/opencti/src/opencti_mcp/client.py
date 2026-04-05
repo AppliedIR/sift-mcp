@@ -1849,6 +1849,20 @@ class OpenCTIClient:
         """
         validate_length(ioc, MAX_IOC_LENGTH, "IOC")
 
+        # Private/internal IPs are not in threat intelligence scope
+        import ipaddress
+
+        try:
+            ip = ipaddress.ip_address(ioc)
+            if ip.is_private or ip.is_loopback or ip.is_link_local:
+                return {
+                    "found": False,
+                    "ioc": ioc,
+                    "note": f"Internal address ({ioc}) — not in threat intelligence scope.",
+                }
+        except ValueError:
+            pass  # Not an IP — proceed with lookup
+
         self._check_rate_limit(self._query_limiter, "query")
 
         try:
