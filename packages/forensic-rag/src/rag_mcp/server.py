@@ -232,12 +232,19 @@ class RAGServer:
                     elapsed_ms=elapsed_ms,
                 )
                 return [TextContent(type="text", text=json.dumps(error_result))]
-            except Exception:
+            except Exception as exc:
                 elapsed_ms = (time.monotonic() - start) * 1000
                 logger.exception(f"Tool {name} internal error")
+                # Surface the actual error so LLMs can diagnose
+                msg = str(exc)
+                if isinstance(exc, FileNotFoundError):
+                    msg = f"Index not found: {exc}. Run 'python -m rag_mcp.build' to build the knowledge index."
+                elif isinstance(exc, ImportError):
+                    msg = f"Missing dependency: {exc}"
                 error_result = {
                     "error": "internal_error",
-                    "message": "An unexpected error occurred. Check server logs.",
+                    "message": msg
+                    or "An unexpected error occurred. Check server logs.",
                 }
                 error_result = self._wrap_response(
                     name,
