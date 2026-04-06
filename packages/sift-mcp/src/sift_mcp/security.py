@@ -124,6 +124,12 @@ _BLOCKED_DIRECTORIES = (
     os.path.expanduser("~/.vhir"),
 )
 
+# Exceptions within blocked directories (evidence data, not config)
+_BLOCKED_EXCEPTIONS = (
+    os.path.expanduser("~/.vhir/cases"),
+    os.path.expanduser("~/.vhir/hayabusa-output"),
+)
+
 
 def get_output_flags() -> frozenset:
     """Return the set of flags that take output path values."""
@@ -204,6 +210,12 @@ def validate_input_path(path: str) -> str:
     resolved = str(Path(path).resolve())
     for blocked in _BLOCKED_DIRECTORIES:
         if resolved == blocked or resolved.startswith(blocked + "/"):
+            # Check if path falls within an allowed exception (evidence data)
+            if any(
+                resolved == exc or resolved.startswith(exc + "/")
+                for exc in _BLOCKED_EXCEPTIONS
+            ):
+                break  # Allowed exception
             raise ValueError(
                 f"Access denied: path '{path}' resolves to '{resolved}' "
                 f"which is inside blocked system directory '{blocked}'"

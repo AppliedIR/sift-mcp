@@ -1874,12 +1874,15 @@ class OpenCTIClient:
             # Also search observables if no indicators found
             observables = []
             if not results:
-                observables = (
-                    self._execute_with_retry(
-                        "stix_cyber_observable.list", search=ioc, first=5
+                try:
+                    observables = (
+                        self._execute_with_retry(
+                            "stix_cyber_observable.list", search=ioc, first=5
+                        )
+                        or []
                     )
-                    or []
-                )
+                except Exception as obs_err:
+                    logger.warning("Observable search failed for %s: %s", ioc, obs_err)
 
             if not results and not observables:
                 return {"found": False, "ioc": ioc}
@@ -1959,7 +1962,7 @@ class OpenCTIClient:
             return {
                 "found": False,
                 "ioc": ioc,
-                "error": f"Context unavailable: {type(e).__name__}",
+                "error": f"Context unavailable: {e}",
             }
 
     def get_entity(self, entity_id: str) -> dict[str, Any] | None:
@@ -2150,24 +2153,30 @@ class OpenCTIClient:
                     "source": "opencti",
                 }
 
-            # Also check observables
-            files = (
-                self._execute_with_retry(
-                    "stix_cyber_observable.list",
-                    types=["StixFile"],
-                    filters={
-                        "mode": "or",
-                        "filters": [
-                            {"key": "hashes.MD5", "values": [hash_normalized]},
-                            {"key": "hashes.SHA-1", "values": [hash_normalized]},
-                            {"key": "hashes.SHA-256", "values": [hash_normalized]},
-                        ],
-                        "filterGroups": [],
-                    },
-                    first=5,
+            # Also check observables (may fail on pycti/OpenCTI version mismatch)
+            files = []
+            try:
+                files = (
+                    self._execute_with_retry(
+                        "stix_cyber_observable.list",
+                        types=["StixFile"],
+                        filters={
+                            "mode": "or",
+                            "filters": [
+                                {"key": "hashes.MD5", "values": [hash_normalized]},
+                                {"key": "hashes.SHA-1", "values": [hash_normalized]},
+                                {"key": "hashes.SHA-256", "values": [hash_normalized]},
+                            ],
+                            "filterGroups": [],
+                        },
+                        first=5,
+                    )
+                    or []
                 )
-                or []
-            )
+            except Exception as obs_err:
+                logger.warning(
+                    "Observable hash lookup failed for %s: %s", hash_value, obs_err
+                )
 
             if files:
                 return {

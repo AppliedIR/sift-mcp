@@ -861,7 +861,8 @@ class CaseManager:
                         "Failed to resolve source evidence (filesystem error)"
                     )
 
-            # Provenance warnings: check artifact sources against registry
+            # Hard reject: artifact sources must be in evidence registry
+            unregistered_sources = []
             for art in validated_artifacts:
                 src = art.get("source", "")
                 if not src:
@@ -871,9 +872,30 @@ class CaseManager:
                 except OSError:
                     continue
                 if resolved not in registered:
-                    provenance_warnings.append(
-                        f"Artifact source not in evidence registry: {src}"
+                    case_relative = src
+                    case_dir_str = str(case_dir)
+                    if resolved.startswith(case_dir_str + "/"):
+                        case_relative = resolved[len(case_dir_str) + 1 :]
+                    unregistered_sources.append(
+                        {
+                            "source": src,
+                            "action": f"evidence_register(path='{case_relative}')",
+                            "hint": (
+                                f"If external: ln -s {src} evidence/{Path(src).name}"
+                            ),
+                        }
                     )
+            if unregistered_sources:
+                fid = sanitized.get("finding_id", "unknown")
+                return {
+                    "status": "REJECTED",
+                    "error": (
+                        "Artifact sources not in evidence registry. "
+                        "Register first, then resubmit."
+                    ),
+                    "unregistered_sources": unregistered_sources,
+                    "finding_held": f"{fid} (not staged -- fix sources and resubmit)",
+                }
 
         if provenance_warnings:
             sanitized["provenance_warnings"] = provenance_warnings

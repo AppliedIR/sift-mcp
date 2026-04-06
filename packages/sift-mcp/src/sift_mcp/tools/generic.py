@@ -16,6 +16,27 @@ from sift_mcp.security import (
     validate_rm_targets,
 )
 
+# Tools that legitimately use /dev/ paths as device specifiers
+_DEV_PATH_TOOLS = {
+    "mount",
+    "umount",
+    "mmls",
+    "fls",
+    "icat",
+    "img_stat",
+    "blkid",
+    "fdisk",
+    "losetup",
+    "fsstat",
+    "ifind",
+    "istat",
+    "mmcat",
+    "sigfind",
+    "tsk_recover",
+    "sorter",
+    "dd",
+}
+
 
 def run_command(
     command: list[str],
@@ -68,7 +89,9 @@ def run_command(
             if value and (
                 value.startswith("/") or value.startswith("..") or "/" in value
             ):
-                if flag_part in output_flags:
+                if value.startswith("/dev/") and binary in _DEV_PATH_TOOLS:
+                    pass  # Device path for disk forensics
+                elif flag_part in output_flags:
                     validate_output_path(value)
                 else:
                     validate_input_path(value)
@@ -78,7 +101,9 @@ def run_command(
             prev_was_output_flag = arg in output_flags
             continue
         if arg.startswith("/") or arg.startswith("..") or "/" in arg:
-            if prev_was_output_flag:
+            if arg.startswith("/dev/") and binary in _DEV_PATH_TOOLS:
+                pass  # Device path for disk forensics
+            elif prev_was_output_flag:
                 validate_output_path(arg)
             else:
                 validate_input_path(arg)
