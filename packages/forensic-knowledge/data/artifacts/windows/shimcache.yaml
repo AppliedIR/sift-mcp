@@ -56,3 +56,23 @@ cross_mcp_checks:
 references:
   - "SANS FOR500 - Windows Forensic Analysis"
   - "Mandiant - Leveraging the Application Compatibility Cache"
+
+investigation_patterns:
+  - name: "Unknown executables in system directories"
+    query: "Path.keyword:*\\Windows\\System32\\* OR Path.keyword:*\\Windows\\SysWOW64\\*"
+    purpose: "Find executables cached in system paths — cross-reference with windows-triage check_file"
+    caveat: "ShimCache proves PRESENCE only, never execution"
+    follow_up: "windows-triage check_file for baseline validation, opencti lookup_ioc for hash"
+
+  - name: "Cross-host binary presence"
+    query: "Path.keyword:*<filename>*"
+    index: "case-*-shimcache-*"
+    purpose: "Same binary cached on multiple hosts indicates lateral movement"
+    caveat: "Presence on multiple hosts does not prove execution on any host"
+    follow_up: "Check Prefetch on each host for execution evidence"
+
+  - name: "Executables in unusual paths"
+    query: "Path.keyword:(*\\Temp\\* OR *\\AppData\\* OR *\\ProgramData\\* OR *\\Users\\Public\\*)"
+    purpose: "Binaries in non-standard locations — potential attacker tools or malware"
+    caveat: "ShimCache proves file was PRESENT in this path, not that it executed"
+    follow_up: "Check Prefetch, BAM (rip.pl -r SYSTEM -p bam), or process creation events for execution proof"

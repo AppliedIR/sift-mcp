@@ -55,3 +55,54 @@ cross_mcp_checks:
 references:
   - "SANS FOR500 - Windows Forensic Analysis"
   - "SANS FOR508 - Advanced Incident Response"
+
+investigation_patterns:
+  - name: "Deleted Prefetch files"
+    query: "UpdateReasons:*Delete* AND ParentPath:*Prefetch*"
+    purpose: "Deleted prefetch files prove execution of programs the attacker removed"
+    follow_up: "Search shimcache/amcache for the same executable name to confirm presence on disk"
+    note: "Constrain by time range around the incident window for manageable results"
+
+  - name: "Executable code deployment"
+    query: "Name:(*.exe OR *.dll OR *.ps1 OR *.bat OR *.vbs OR *.js OR *.wsf OR *.hta OR *.msi OR *.scr OR *.sys) AND UpdateReasons:*FileCreate*"
+    purpose: "Every executable or script that touched disk — including files later deleted"
+    follow_up: "Check hash via windows-triage check_file and opencti lookup_ioc for any unknown binaries"
+    note: "Constrain by time range. Without time bounds this returns every binary ever created on disk."
+
+  - name: "Tool/evidence deletion"
+    query: "UpdateReasons:*Delete* AND Name:(*.exe OR *.dll OR *.ps1 OR *.bat OR *.log OR *.evtx OR *.sys)"
+    purpose: "Detect anti-forensics — bulk deletion of tools, scripts, logs, and event log files"
+    follow_up: "Search MFT for the deleted filename (InUse.keyword:False AND FileName:<name>) to recover metadata"
+    note: "Constrain by time range around the incident window"
+
+  - name: "Attacker folder activity"
+    query: "ParentPath:*<known_path>*"
+    purpose: "All file operations in a compromised folder — reveals tools deployed, data staged, cleanup performed"
+    note: "Replace <known_path> with identified attacker directory. Constrain by time range."
+
+  - name: "SDelete secure deletion detection"
+    query: "Name:AAAAAAA* AND UpdateReasons:*Rename*"
+    purpose: "SDelete renames files to A characters before secure overwrite. Rename record preserves original filename."
+    follow_up: "Identify original filename from rename chain, search shimcache/amcache/prefetch"
+    note: "Low false-positive rate but not unique to SDelete — verify with surrounding USN entries"
+
+  - name: "Suspicious activity in system directories"
+    query: "ParentPath:(*Windows\\System32* OR *Windows\\SysWOW64* OR *Windows\\Temp*) AND UpdateReasons:*FileCreate* AND Name:(*.exe OR *.dll OR *.sys)"
+    purpose: "New executables in system directories — DLL sideloading, service binary replacement, dropped tools"
+    note: "MUST constrain to incident time range. Without time bounds returns thousands of Windows Update operations."
+
+  - name: "Staging directory activity"
+    query: "ParentPath:(*Users*Public* OR *ProgramData* OR *Temp*) AND UpdateReasons:*FileCreate*"
+    purpose: "Common attacker staging locations — tool deployment and data staging"
+    note: "MUST constrain to incident time range. High legitimate activity without time bounds."
+
+  - name: "Cross-host file deployment"
+    query: "Name:<filename> AND UpdateReasons:*FileCreate*"
+    index: "case-*-usn-*"
+    purpose: "Same file on multiple hosts indicates lateral movement or automated deployment"
+    follow_up: "idx_aggregate on host.name with the filename to see deployment scope"
+
+scale_advantage: |
+  OpenSearch enables these queries across all hosts for which USN Journal
+  was ingested simultaneously. A filename appearing across 15 hosts is
+  instantly visible — lateral movement detection at scale.

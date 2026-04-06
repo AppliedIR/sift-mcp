@@ -73,3 +73,31 @@ references:
   - "SANS FOR500 - Windows Forensic Analysis"
   - "SANS FOR508 - Advanced Incident Response"
   - "Brian Carrier - File System Forensic Analysis"
+
+cross_artifact_correlation:
+  - pattern: "Timestomping detection — $SI vs $FN"
+    fields: ["SI<FN", "uSecZeros"]
+    note: "SI<FN=True OR uSecZeros=True in non-servicing paths is suspicious. Exclude WinSxS, assembly, servicing directories."
+
+  - pattern: "Timestomping detection — $SI vs Shimcache"
+    cross_ref: "Shimcache"
+    note: "Compare MFT $SI Modified time to shimcache LastModifiedTime for same executable. Mismatch = post-cache timestamp manipulation."
+
+  - pattern: "Timestomping detection — $SI vs PE compile time"
+    note: "Use exiftool or PECmd to extract PE compile timestamp. Compile time AFTER $SI Modified is impossible without tampering."
+
+  - pattern: "Deleted file + execution proof"
+    fields: ["InUse"]
+    cross_ref: "Prefetch"
+    note: "InUse=False + matching Prefetch entry = executed then deleted (anti-forensics)"
+
+  - pattern: "ADS extraction"
+    fields: ["HasAds"]
+    deep_analysis: "icat with ADS inode format (inode-type-id) via run_command"
+    note: "HasAds=True in suspicious paths warrants ADS content extraction"
+
+  - pattern: "Downloaded code detection"
+    fields: ["ZoneIdContents"]
+    query: "ZoneIdContents:* AND FileName:(*.exe OR *.dll OR *.ps1 OR *.bat OR *.vbs OR *.js OR *.wsf OR *.hta OR *.msi OR *.scr)"
+    purpose: "Find downloaded scripts and executables — Zone.Identifier proves internet or network origin"
+    follow_up: "Check hash via windows-triage check_file and opencti lookup_ioc"

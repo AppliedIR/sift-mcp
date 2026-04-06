@@ -44,4 +44,4 @@ field_meanings:
   Path: "Full file path recorded in the ShimCache"
   CacheEntryPosition: "Position in cache — lower numbers are more recently cached"
   ControlSet: "Registry control set the entry was extracted from"
-  Executed: "Execution flag — only reliable on Windows XP/2003; always 'N/A' on Win10+"
+  Executed: "DO NOT TRUST THIS FIELD. The 'Executed' column is the InsertFlag from the ShimCache entry. It is unreliable on all Windows versions — do not use it to prove or disprove execution. This field has caused more forensic misinterpretations than any other. To prove execution: use Prefetch, UserAssist, BAM (rip.pl -r SYSTEM -p bam), or event logs (4688, Sysmon 1)."

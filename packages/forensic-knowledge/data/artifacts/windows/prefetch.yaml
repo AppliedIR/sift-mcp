@@ -63,3 +63,28 @@ cross_mcp_checks:
 references:
   - "SANS FOR500 - Windows Forensic Analysis"
   - "SANS FOR508 - Advanced Incident Response"
+
+investigation_patterns:
+  - name: "First-time execution during incident window"
+    query: "FirstRun:[time_from TO time_to]"
+    purpose: "Programs executed for the first time during the attack window"
+    follow_up: "Cross-reference with MFT for file metadata and Zone.Identifier for download origin"
+
+  - name: "32-bit payload detection via WOW64 redirection"
+    note: |
+      32-bit binaries on 64-bit Windows create prefetch entries reflecting
+      SysWOW64 paths due to WOW64 redirection. This produces distinct
+      prefetch entries from the 64-bit version. An unexpected 32-bit
+      version of a normally-64-bit tool (e.g., cmd.exe from SysWOW64
+      instead of System32) especially during the time of the intrusion
+      can indicate a dropped 32-bit payload.
+
+  - name: "Anti-forensics detection via MFT cross-reference"
+    note: "Cross-reference executable names with MFT InUse field"
+    query: "InUse.keyword:False AND FileName:<exe_from_prefetch>"
+    purpose: "File deleted after execution — attacker cleanup"
+
+  - name: "Scripting engine frequency anomaly"
+    query: "ExecutableName:(POWERSHELL.EXE OR CSCRIPT.EXE OR WSCRIPT.EXE OR MSHTA.EXE)"
+    purpose: "Unusual frequency of scripting engine execution during incident window"
+    follow_up: "Check ScriptBlock logs (EID 4104) for executed content"

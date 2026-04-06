@@ -46,3 +46,21 @@ cross_mcp_checks:
 
 references:
   - "SANS FOR500 - Windows Forensic Analysis"
+
+investigation_patterns:
+  - name: "Programs without installer record"
+    query: "NOT KeyName:*Microsoft* AND NOT KeyName:*Windows*"
+    purpose: "Executables registered without a standard installer — potential manually deployed tools"
+    caveat: "Amcache proves PRESENCE and provides SHA1 hash, never execution"
+    follow_up: "windows-triage check_file with SHA1, opencti lookup_ioc for hash"
+
+  - name: "Recently registered executables"
+    query: "FileKeyLastWriteTimestamp:[time_from TO time_to]"
+    purpose: "Executables registered during the incident window"
+    caveat: "FileKeyLastWriteTimestamp is when the registry key was modified, not when the file ran"
+
+  - name: "Cross-host hash correlation"
+    query: "SHA1.keyword:<hash>"
+    index: "case-*-amcache-*"
+    purpose: "Same binary hash on multiple hosts — confirms deployment scope"
+    follow_up: "opencti lookup_ioc for the SHA1 hash, windows-triage check_hash for vulnerable drivers"

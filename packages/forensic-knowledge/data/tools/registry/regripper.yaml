@@ -3,7 +3,7 @@ category: registry
 description: "Extract and parse forensic artifacts from Windows registry hive files using Perl plugins"
 platform: [windows, linux, macos]
 platform_notes: "Perl-based. Primarily used on Linux (SIFT). Requires Perl runtime on Windows. Parses Windows registry hives regardless of host OS."
-artifacts_parsed: [registry_run_keys, registry_services]
+artifacts_parsed: [registry_run_keys, registry_services, userassist, bam]
 
 caveats:
   - "Requires raw registry hive files (SYSTEM, SOFTWARE, NTUSER.DAT, SAM, SECURITY, UsrClass.dat)"
@@ -41,3 +41,37 @@ investigation_sequence:
   - "Cross-reference NTUSER.DAT findings with SYSTEM and SOFTWARE hive analysis"
   - "Correlate registry timestamps with other artifact timelines for investigation context"
   - "Check persistence-related keys (Run, RunOnce, Services) for unauthorized entries"
+
+key_plugins:
+  - plugin: "bam"
+    hive: "SYSTEM"
+    purpose: "Background Activity Moderator — EXECUTION timestamps for binaries. Strongest execution evidence from registry hives."
+    note: "BAM is the answer when shimcache/amcache show presence but not execution. Windows 10 1709+ only, entries expire after 7 days, local executables only. Records are per-user (stored under HKLM\\SYSTEM\\CurrentControlSet\\Services\\bam\\State\\UserSettings\\<SID>) — RegRipper handles SID resolution automatically."
+
+  - plugin: "userassist"
+    hive: "NTUSER.DAT"
+    purpose: "Program execution history with run count and last execution time. ROT13-encoded names auto-decoded."
+    note: "Per-user execution evidence. Complements Prefetch (system-wide)."
+
+  - plugin: "services"
+    hive: "SYSTEM"
+    purpose: "Service configurations with ImagePath, Start type, and timestamps"
+
+  - plugin: "networklist"
+    hive: "SOFTWARE"
+    purpose: "WiFi network connection history with first/last connect timestamps"
+
+  - plugin: "rdp_mru"
+    hive: "NTUSER.DAT"
+    purpose: "RDP connection history — remote hosts the user connected to"
+
+cross_mcp_checks:
+  - mcp: "opensearch-mcp"
+    tool: "idx_search"
+    when: "BAM shows execution — search indexed evidence for same binary across hosts"
+  - mcp: "windows-triage"
+    tool: "check_file"
+    when: "BAM shows unknown executable — validate against baseline"
+  - mcp: "remnux-mcp"
+    tool: "upload_from_host"
+    when: "BAM shows suspicious binary executed — submit for malware analysis"

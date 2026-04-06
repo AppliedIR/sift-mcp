@@ -60,3 +60,18 @@ references:
   - "SANS FOR500 - Windows Forensic Analysis"
   - "SANS FOR508 - Advanced Incident Response"
   - "FireEye - Greater Visibility Through PowerShell Logging"
+
+caveat: |
+  ScriptBlock logging (EID 4104) captures code at compilation time.
+  Obfuscated code is logged in its obfuscated form. When Invoke-Expression
+  processes a decoded string, that string becomes a new script block
+  generating a separate 4104 event with readable content. PowerShell's
+  -EncodedCommand is also captured decoded. However, pure .NET execution
+  via reflection (Assembly.Load) without re-entering the PowerShell engine
+  bypasses ScriptBlock logging entirely. Known bypasses exist (ScriptBlock
+  Smuggling, AST manipulation). Known in-process ETW patching techniques
+  can disable ScriptBlock logging for the remainder of that PowerShell
+  session — absence of 4104 events after a known compromise does not
+  prove no code executed. Manual decoding is always necessary for
+  complete analysis — do not assume ScriptBlock logging automatically
+  reveals all obfuscated payloads.
