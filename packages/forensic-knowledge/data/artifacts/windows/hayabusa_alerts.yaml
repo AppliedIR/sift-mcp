@@ -1,0 +1,45 @@
+name: Hayabusa Alerts
+description: "Sigma-based detection alerts from Hayabusa rule engine"
+category: detection
+source_tool: hayabusa
+
+alert_levels:
+  note: |
+    Hayabusa alert levels map to Sigma severity. 'critical' alerts have very
+    low false-positive rates and warrant immediate investigation. 'high' alerts
+    are usually actionable. 'medium' and 'low' alerts have high false-positive
+    rates — triage by volume and context, do not treat all alerts equally.
+
+investigation_patterns:
+  - name: "Critical and high alerts"
+    query: "Level:(critical OR high)"
+    purpose: "Highest-confidence detections — low false-positive rate, investigate first"
+    follow_up: "Group by RuleTitle for pattern identification, then examine source events"
+
+  - name: "MITRE technique heatmap"
+    query: "MitreTactics:*"
+    aggregation: "idx_aggregate on MitreTactics.keyword"
+    purpose: "Identify which MITRE tactics are represented — reveals attack phases present in evidence"
+
+  - name: "Cross-host alert correlation"
+    query: "RuleTitle.keyword:<rule_name>"
+    index: "case-*-hayabusa-*"
+    purpose: "Same detection firing on multiple hosts indicates coordinated activity"
+    follow_up: "idx_aggregate on host.name to see affected scope"
+
+  - name: "Account-based pivoting"
+    query: "Level:(critical OR high) AND user.name.keyword:<username>"
+    purpose: "All high-confidence alerts for a specific account — track attacker movement"
+
+  - name: "Named pipe detection"
+    query: "RuleTitle:*pipe* OR RuleTitle:*named*"
+    purpose: "Named pipe-related detections may indicate C2 communication"
+    follow_up: "windows-triage check_pipe for known C2 patterns, opencti lookup_ioc"
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search_knowledge"
+    when: "Alert references a MITRE technique — search for detection context and response procedures"
+  - mcp: "opencti"
+    tool: "search_threat_intel"
+    when: "Alert pattern matches known threat actor TTPs"
