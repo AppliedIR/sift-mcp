@@ -477,7 +477,7 @@ class CaseManager:
         evidence = self._load_evidence_registry(case_dir)
         todos = self._load_todos(case_dir)
 
-        return {
+        resp = {
             "case_id": meta["case_id"],
             "name": meta.get("name", ""),
             "status": meta.get("status", "unknown"),
@@ -496,6 +496,59 @@ class CaseManager:
                 "completed": sum(1 for t in todos if t.get("status") == "completed"),
             },
         }
+
+        # Layer 4: platform capabilities detection
+        import importlib.util
+
+        capabilities = {
+            "opensearch": importlib.util.find_spec("opensearch_mcp") is not None,
+            "remnux": False,
+            "wintools": False,
+            "forensic_rag": importlib.util.find_spec("rag_mcp") is not None,
+            "opencti": importlib.util.find_spec("opencti_mcp") is not None,
+            "sift_tools": True,
+        }
+        try:
+            gw_path = Path.home() / ".vhir" / "gateway.yaml"
+            if gw_path.exists():
+                gw_config = yaml.safe_load(gw_path.read_text()) or {}
+                backends = gw_config.get("backends", {})
+                capabilities["remnux"] = "remnux-mcp" in backends
+                capabilities["wintools"] = "wintools-mcp" in backends
+        except Exception:
+            pass
+        resp["platform_capabilities"] = capabilities
+
+        guidance = ["Available investigation capabilities:"]
+        guidance.append("- SIFT forensic tools via run_command (65+ tools)")
+        if capabilities["opensearch"]:
+            guidance.append(
+                "- Evidence indexing: idx_ingest for structured querying at scale"
+            )
+        if capabilities["remnux"]:
+            guidance.append(
+                "- Malware analysis: upload_from_host + analyze_file on REMnux"
+            )
+        if capabilities["wintools"]:
+            guidance.append(
+                "- Windows offline analysis: run_windows_command on forensic workstation"
+            )
+        if capabilities["forensic_rag"]:
+            guidance.append(
+                "- Knowledge search: search_knowledge (Sigma, MITRE ATT&CK, KAPE)"
+            )
+        if capabilities["opencti"]:
+            guidance.append(
+                "- Threat intel: lookup_ioc, search_threat_intel on OpenCTI"
+            )
+        guidance.append("")
+        guidance.append(
+            "Do not rely solely on OpenSearch queries. "
+            "Call suggest_tools(artifact_type='...') for deep analysis recommendations."
+        )
+        resp["investigation_guidance"] = "\n".join(guidance)
+
+        return resp
 
     def list_cases(self) -> list[dict]:
         """List all cases."""

@@ -81,6 +81,42 @@ something is misconfigured:
 
 ---
 
+## Investigation Methodology
+
+AFTER EVIDENCE SURVEY, BEFORE INVESTIGATION:
+1. Run suggest_tools(artifact_type) for each evidence type found
+2. Run idx_ingest_memory for any memory dumps (tier 2 recommended)
+3. Upload suspicious binaries to REMnux via upload_from_host + analyze_file
+4. All text-based evidence (CSV, TSV, log) can be ingested via
+   idx_ingest_delimited regardless of encoding — UTF-16LE auto-detected
+5. Use run_command with SIFT tools (vol, fls, icat, regripper, strings)
+   for deep analysis beyond indexed data
+6. Use wintools-mcp for offline evidence analysis on forensic workstation (autorunsc, sigcheck, PECmd)
+
+After ingesting evidence, do NOT default to OpenSearch queries only.
+The platform has 97+ tools across 9 backends. Use this sequence:
+
+1. **Scope** — idx_case_summary, idx_aggregate, idx_list_detections
+2. **Triage** — idx_enrich_triage (baseline), idx_enrich_intel (threat intel)
+3. **Query** — idx_search for specific hypotheses
+4. **Deep analysis** — run_command with SIFT tools for artifacts that
+   need examination beyond indexed data
+5. **Cross-reference** — suggest_tools for each artifact type to discover
+   tools you haven't considered
+6. **Malware** — upload_from_host to REMnux for suspicious binaries
+7. **Memory** — idx_ingest_memory for memory dumps (3 tiers of Volatility)
+
+When you find a suspicious file, binary, or process:
+- check_file on windows-triage for baseline validation
+- upload_from_host + analyze_file on REMnux for behavioral analysis
+- lookup_ioc on OpenCTI for threat intelligence
+
+When you encounter an artifact type you haven't analyzed before:
+- suggest_tools(artifact_type="...") on sift-mcp
+- get_tool_guidance(tool_name="...") on forensic-mcp
+
+---
+
 ## MCP Backends
 
 ### forensic-mcp (Investigation Records + Discipline)
