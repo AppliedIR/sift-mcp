@@ -71,3 +71,22 @@ cross_mcp_checks:
 references:
   - "SANS FOR500 - Windows Forensic Analysis"
   - "MITRE ATT&CK T1547.001 - Boot or Logon Autostart Execution: Registry Run Keys"
+
+investigation_patterns:
+  - name: "Scripting in autostart"
+    query: "ValueData:(*powershell* OR *wscript* OR *cscript* OR *mshta* OR *cmd /c*)"
+    purpose: "Run key values executing scripts — persistence via LOLBins"
+
+  - name: "Unusual service paths"
+    query: "ValueData:(*\\Temp\\* OR *\\AppData\\* OR *\\ProgramData\\* OR *\\Users\\Public\\*)"
+    purpose: "Autostart entries pointing to non-standard locations — potential malware persistence"
+    follow_up: "windows-triage check_file for the binary"
+
+  - name: "WDigest credential config"
+    query: "KeyPath:*WDigest* AND ValueName:UseLogonCredential"
+    purpose: "WDigest enabled to store cleartext credentials in memory — credential harvesting preparation"
+    note: "UseLogonCredential=1 enables cleartext credential caching. Default is disabled on Windows 8.1+."
+
+  - name: "LSA security packages"
+    query: "KeyPath:*Lsa* AND ValueName:(*Security Packages* OR *Authentication Packages*)"
+    purpose: "Modified LSA security packages — SSP injection for credential interception"

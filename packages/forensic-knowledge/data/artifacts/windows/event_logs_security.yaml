@@ -60,3 +60,34 @@ references:
   - "SANS FOR508 - Advanced Incident Response"
   - "Microsoft - Windows Security Auditing"
   - "NSA - Spotting the Adversary with Windows Event Log Monitoring"
+
+investigation_patterns:
+  - name: "Lateral movement logons"
+    query: "event.code:4624 AND winlog.event_data.LogonType:(3 OR 10)"
+    purpose: "Network (type 3) and RDP (type 10) logons from remote hosts"
+    follow_up: "Correlate source IP with other hosts' logon events for movement chain"
+
+  - name: "Explicit credential use"
+    query: "event.code:4648"
+    purpose: "Credentials explicitly supplied — RunAs, mapped drives, or credential theft tools"
+    follow_up: "Check if target account matches the logged-on user — mismatch indicates stolen credentials"
+
+  - name: "Privilege escalation"
+    query: "event.code:4672"
+    purpose: "Special privileges assigned to new logon — admin or sensitive privileges"
+    follow_up: "Cross-reference with 4624 to identify which account received privileges"
+
+  - name: "Service installation"
+    query: "event.code:7045"
+    purpose: "New service installed — common persistence mechanism"
+    follow_up: "Check service binary path against windows-triage check_file and opencti lookup_ioc"
+
+  - name: "Scheduled task creation"
+    query: "event.code:4698"
+    purpose: "New scheduled task created — persistence or lateral movement"
+    follow_up: "Examine task XML for encoded commands, unusual paths, or remote creation"
+
+  - name: "Event log clearing"
+    query: "event.code:1102"
+    purpose: "Security log was cleared — anti-forensics indicator"
+    note: "Absence of this event does not prove logs were not cleared (attacker may have also cleared this event)"

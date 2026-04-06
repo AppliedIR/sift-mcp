@@ -67,3 +67,19 @@ cross_mcp_checks:
 references:
   - "SANS FOR508 - Advanced Incident Response"
   - "MITRE ATT&CK T1053.005 - Scheduled Task"
+
+investigation_patterns:
+  - name: "LOLBins in scheduled tasks"
+    query: "Actions:(*powershell* OR *cmd* OR *wscript* OR *cscript* OR *mshta* OR *rundll32*)"
+    purpose: "Scheduled tasks executing living-off-the-land binaries — persistence or execution"
+    follow_up: "Check for encoded commands in the action arguments"
+
+  - name: "Tasks with encoded PowerShell"
+    query: "Actions:*encodedcommand* OR Actions:*-enc *"
+    purpose: "Scheduled tasks with base64-encoded PowerShell — obfuscated payloads"
+    follow_up: "Decode the base64 content, search ScriptBlock logs (EID 4104) for decoded version"
+
+  - name: "Tasks in non-standard paths"
+    query: "Actions:(*\\Temp\\* OR *\\AppData\\* OR *\\ProgramData\\* OR *\\Users\\Public\\*)"
+    purpose: "Tasks executing binaries from attacker staging locations"
+    follow_up: "windows-triage check_file for the binary, check MFT for file metadata"

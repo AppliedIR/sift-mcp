@@ -63,3 +63,37 @@ references:
   - "SANS FOR508 - Advanced Incident Response"
   - "Microsoft Sysinternals - Sysmon Documentation"
   - "SwiftOnSecurity - Sysmon Config"
+
+investigation_patterns:
+  - name: "Process creation with command line"
+    query: "event.code:1"
+    purpose: "Process creation with full command line, parent process, and hashes"
+    note: "Sysmon provides richer context than Security EID 4688 — always check Sysmon availability first"
+
+  - name: "Network connections"
+    query: "event.code:3"
+    purpose: "TCP/UDP connections initiated by processes — C2 beaconing detection"
+    follow_up: "opencti lookup_ioc for destination IPs/domains"
+
+  - name: "File creation time changed (timestomping)"
+    query: "event.code:2"
+    purpose: "Process modified file creation time — timestomping detection"
+
+  - name: "Driver loaded"
+    query: "event.code:6"
+    purpose: "Kernel driver loaded — vulnerable driver (BYOVD) or rootkit detection"
+    follow_up: "windows-triage check_hash for known vulnerable drivers (LOLDrivers)"
+
+  - name: "DLL sideloading"
+    query: "event.code:7 AND NOT Signed:true"
+    purpose: "Unsigned DLL loaded by a process — DLL sideloading or injection"
+    follow_up: "Check DLL path against windows-triage check_file"
+
+  - name: "Named pipe activity"
+    query: "event.code:(17 OR 18)"
+    purpose: "Named pipe created or connected — C2 communication channel"
+    follow_up: "windows-triage check_pipe for known C2 patterns (CobaltStrike: MSSE-*, msagent_*, postex_*; PsExec: \\PSEXESVC)"
+
+  - name: "WMI persistence"
+    query: "event.code:(19 OR 20 OR 21)"
+    purpose: "WMI event subscription created — fileless persistence mechanism"
