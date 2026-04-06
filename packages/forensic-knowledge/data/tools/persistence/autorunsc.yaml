@@ -46,6 +46,18 @@ investigation_sequence:
   - "Correlate persistence mechanisms with other execution evidence (Prefetch, Amcache)"
   - "Cross-MCP: Verify entries against Windows autorun baseline (windows-triage: check_autorun)"
   - "Cross-MCP: Check unsigned entry hashes against threat intelligence (opencti: lookup_hash)"
+  - "Cross-MCP: Run autorunsc on offline evidence via Windows forensic workstation (wintools-mcp: run_windows_command)"
+
+cross_mcp_checks:
+  - mcp: "windows-triage"
+    tool: "check_autorun"
+    when: "Autorun entry found — verify against Windows baseline"
+  - mcp: "wintools-mcp"
+    tool: "run_windows_command"
+    when: "Windows forensic workstation available — run autorunsc -z on offline evidence for full ASEP enumeration"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Unsigned autorun entry — check file hash against threat intelligence"
 
 field_meanings:
   Time: "Timestamp associated with the autorun entry"
