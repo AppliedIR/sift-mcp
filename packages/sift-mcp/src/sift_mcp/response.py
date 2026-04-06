@@ -22,6 +22,53 @@ logger = logging.getLogger(__name__)
 
 # --- Enrichment Token Budget: FK delivery decay counters ---
 _fk_delivery_counts: dict[str, int] = defaultdict(int)
+_related_delivery_counts: dict[str, int] = defaultdict(int)
+
+# Layer 3: suggestion groups — tools that trigger the same related_tools
+_SUGGESTION_GROUPS: dict[str, set[str]] = {
+    "binary_analysis": {
+        "sigcheck",
+        "autorunsc",
+        "densityscout",
+        "capa",
+        "strings",
+        "bstrings",
+    },
+    "persistence": {"autorun", "service", "scheduled_task", "registry"},
+    "execution": {"prefetch", "amcache", "shimcache", "appcompatcache"},
+    "memory": {"vol", "volatility3"},
+}
+
+_RELATED_TOOLS: dict[str, list[str]] = {
+    "binary_analysis": [
+        "remnux-mcp upload_from_host + analyze_file: Analyze suspicious binaries",
+        "windows-triage check_file: Validate against Windows baseline",
+        "opencti-mcp lookup_ioc: Check hash/filename against threat intel",
+    ],
+    "persistence": [
+        "wintools-mcp run_windows_command(autorunsc): Scan ASEPs on offline evidence via forensic workstation",
+        "wintools-mcp run_windows_command(sigcheck): Verify digital signatures on binaries",
+        "opencti-mcp lookup_ioc: Check file hash against threat intelligence",
+    ],
+    "execution": [
+        "wintools-mcp run_windows_command(PECmd/AmcacheParser): Parse on Windows for maximum fidelity",
+    ],
+    "memory": [
+        "opensearch-mcp idx_ingest_memory: Index Volatility results for querying",
+        "remnux-mcp analyze_file: Upload suspicious processes for malware analysis",
+    ],
+}
+
+
+def _get_suggestion_group(tool_name: str, artifact_context: str | None) -> str | None:
+    """Find which suggestion group a tool/artifact belongs to."""
+    name_lower = (tool_name or "").lower()
+    ctx_lower = (artifact_context or "").lower()
+    for group, tools in _SUGGESTION_GROUPS.items():
+        if name_lower in tools or ctx_lower in tools:
+            return group
+    return None
+
 
 # Rotating discipline reminders — deterministic based on call counter
 DISCIPLINE_REMINDERS = [
@@ -140,6 +187,14 @@ def build_response(
             if cross_mcp_checks:
                 response["cross_mcp_checks"] = cross_mcp_checks
 
+    # Layer 3: related_tools cross-MCP suggestions with decay
+    group = _get_suggestion_group(fk_name, artifact_context)
+    if group:
+        _related_delivery_counts[group] += 1
+        rel_count = _related_delivery_counts[group]
+        if rel_count <= 3 or rel_count % 10 == 0:
+            response["related_tools"] = _RELATED_TOOLS.get(group, [])
+
     # Discipline reminder (rotates)
     response["discipline_reminder"] = DISCIPLINE_REMINDERS[
         call_num % len(DISCIPLINE_REMINDERS)
@@ -244,3 +299,4 @@ def reset_call_counter() -> None:
     global _call_counter
     _call_counter = itertools.count(1)
     _fk_delivery_counts.clear()
+    _related_delivery_counts.clear()

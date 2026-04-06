@@ -1,0 +1,57 @@
+name: Memory Analysis (Volatility)
+description: "RAM dump analysis via Volatility 3 — process tree, code injection, network connections, handles"
+platform: windows
+
+investigation_patterns:
+  - name: "Process tree anomalies"
+    command: "vol -f <dump> windows.pstree"
+    purpose: "Identify unexpected parent-child relationships — orphaned processes, unusual spawning chains"
+    follow_up: "windows-triage check_process_tree for baseline validation"
+
+  - name: "Code injection detection"
+    command: "vol -f <dump> windows.malfind"
+    purpose: "Find injected code, hollowed processes, and suspicious memory regions with execute permissions"
+    follow_up: "Extract suspicious regions, submit to remnux-mcp analyze_file"
+
+  - name: "Hidden process detection"
+    command: "vol -f <dump> windows.psscan"
+    purpose: "Scan for EPROCESS structures — finds hidden and terminated processes not in active list"
+    note: "Compare psscan output with pslist — processes in psscan but not pslist may be hidden by rootkit"
+
+  - name: "Network connections"
+    command: "vol -f <dump> windows.netscan"
+    purpose: "Active and recently closed network connections — C2 detection"
+    follow_up: "opencti lookup_ioc for destination IPs/domains"
+
+  - name: "Named pipe C2 detection"
+    command: "vol -f <dump> windows.handles --pid <pid>"
+    filter: "grep for \\Device\\NamedPipe in output"
+    note: "windows.handles lists ALL handle types. Filter for \\Device\\NamedPipe to isolate pipe handles."
+    follow_up: "windows-triage check_pipe for known C2 patterns"
+
+  - name: "Command line arguments"
+    command: "vol -f <dump> windows.cmdline"
+    purpose: "Process command lines — reveals encoded commands, suspicious arguments, attacker tools"
+
+  - name: "DLL injection detection"
+    command: "vol -f <dump> windows.ldrmodules"
+    purpose: "Compare loaded modules against PEB — unlinked DLLs indicate injection"
+    note: "Modules in InInit but not InLoad or InMem are suspicious"
+
+  - name: "Service enumeration"
+    command: "vol -f <dump> windows.svcscan"
+    purpose: "Enumerate services from memory — includes services hidden from registry"
+
+cross_mcp_checks:
+  - mcp: "opensearch-mcp"
+    tool: "idx_ingest_memory"
+    when: "Memory dump available — index Volatility results for structured querying"
+  - mcp: "remnux-mcp"
+    tool: "upload_from_host"
+    when: "Suspicious process found — extract and submit for malware analysis"
+  - mcp: "windows-triage"
+    tool: "check_process_tree"
+    when: "Process identified — validate against Windows baseline"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Network connection or hash found — check threat intelligence"

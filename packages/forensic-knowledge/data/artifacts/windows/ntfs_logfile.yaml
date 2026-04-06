@@ -52,6 +52,12 @@ cross_mcp_checks:
     tool: "search"
     when: "Suspicious file activity pattern — search for related techniques"
 
+known_gaps:
+  - artifact: "$LogFile"
+    status: "Not parsed by platform"
+    tools: "LogFileParser, NTFS Log Tracker (not in catalog)"
+    note: "For deep anti-forensics investigation, $LogFile may contain transaction records flushed from USN Journal. Manual extraction and parsing required."
+
 references:
   - "SANS FOR508 - Advanced Incident Response"
   - "SANS FOR500 - Windows Forensic Analysis"

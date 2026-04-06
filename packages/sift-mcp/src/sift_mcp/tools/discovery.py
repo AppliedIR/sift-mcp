@@ -33,6 +33,39 @@ ARTIFACT_ALIASES: dict[str, list[str]] = {
 
 _suggest_counter = itertools.count(1)
 
+# Layer 7b: SIFT limitations where wintools-mcp produces better results
+_SIFT_LIMITATIONS: dict[str, str] = {
+    "srum": (
+        "SRUM parsing on SIFT uses Plaso (limited dirty-database handling). "
+        "For reliable SRUM analysis, provision wintools-mcp with SrumECmd."
+    ),
+    "prefetch": (
+        "Prefetch parsing on SIFT uses Plaso (misses execution counts, loaded DLLs). "
+        "For complete prefetch analysis, provision wintools-mcp with PECmd."
+    ),
+    "registry": (
+        "Registry parsing on SIFT has limited transaction log recovery. "
+        "For dirty hives from KAPE live collection, provision wintools-mcp with RECmd."
+    ),
+    "digital_signatures": (
+        "SIFT cannot verify Authenticode signatures. "
+        "For signature verification, provision wintools-mcp with sigcheck."
+    ),
+}
+
+
+def _wintools_available() -> bool:
+    """Check if wintools-mcp is configured in gateway.yaml."""
+    try:
+        from pathlib import Path
+
+        import yaml
+
+        gw = yaml.safe_load((Path.home() / ".vhir" / "gateway.yaml").read_text()) or {}
+        return "wintools-mcp" in gw.get("backends", {})
+    except Exception:
+        return False
+
 
 def list_available_tools(category: str | None = None) -> list[dict]:
     """List cataloged tools with availability and FK enrichment status.
@@ -131,6 +164,12 @@ def suggest_tools(artifact_type: str, question: str = "") -> dict:
     all_advisories: list[str] = []
     all_corroboration: dict[str, list[str]] = {}
     all_cross_mcp: list[dict] = []
+
+    # Layer 7b: add SIFT limitation advisories when wintools unavailable
+    if not _wintools_available():
+        for art_name in artifact_names:
+            if art_name in _SIFT_LIMITATIONS:
+                all_advisories.append(_SIFT_LIMITATIONS[art_name])
 
     for art_name in artifact_names:
         try:
