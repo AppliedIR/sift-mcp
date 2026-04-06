@@ -26,7 +26,7 @@ tools:
     timeout_seconds: 7200
     interactive: false
     description: "Plaso super-timeline generator"
-    fk_tool_name: Plaso
+    fk_tool_name: "Plaso (log2timeline)"
 
   - name: mactime
     binary: mactime

@@ -10,7 +10,7 @@ tools:
     timeout_seconds: 1200
     interactive: false
     description: "Volatility 3 memory forensics framework"
-    fk_tool_name: Volatility3
+    fk_tool_name: "Volatility 3"
     common_flags:
       - flag: "-r"
         description: "Output renderer (json, csv, text)"

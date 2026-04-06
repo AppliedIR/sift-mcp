@@ -61,7 +61,7 @@ class TestCatalogLoading:
         td = get_tool_def("vol3")
         assert td is not None
         assert td.category == "volatility"
-        assert td.knowledge_name == "Volatility3"
+        assert td.knowledge_name == "Volatility 3"
 
     def test_hayabusa_in_catalog(self):
         td = get_tool_def("hayabusa")

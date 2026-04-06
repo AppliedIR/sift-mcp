@@ -54,7 +54,7 @@ class TestVolatility:
 
         td = get_tool_def("vol3")
         assert td is not None
-        assert td.knowledge_name == "Volatility3"
+        assert td.knowledge_name == "Volatility 3"
 
 
 class TestTimeline:
