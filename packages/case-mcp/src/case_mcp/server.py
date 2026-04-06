@@ -300,6 +300,7 @@ def create_server() -> FastMCP:
             case_path = Path(result["case_dir"])
             if _wintools_configured():
                 try:
+                    _set_case_wintools_permissions(case_path)
                     _repoint_samba_share(case_path)
                     ok = notify_wintools_case_activated(case_id)
                     result["wintools_shared"] = True
