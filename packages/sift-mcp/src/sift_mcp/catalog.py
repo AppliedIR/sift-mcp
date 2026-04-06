@@ -126,9 +126,17 @@ def load_catalog() -> dict[str, ToolDefinition]:
 
 
 def get_tool_def(name: str) -> ToolDefinition | None:
-    """Look up a tool by name (case-insensitive)."""
+    """Look up a tool by name or binary name (case-insensitive)."""
     catalog = load_catalog()
-    return catalog.get(name.lower())
+    result = catalog.get(name.lower())
+    if result:
+        return result
+    # Fallback: search by binary name (e.g., "rip.pl" → regripper)
+    name_lower = name.lower()
+    for td in catalog.values():
+        if td.binary.lower() == name_lower:
+            return td
+    return None
 
 
 def list_tools_in_catalog(category: str | None = None) -> list[dict]:

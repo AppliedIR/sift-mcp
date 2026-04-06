@@ -87,6 +87,18 @@ def _build_platform_capabilities() -> dict:
             capabilities["wintools"] = "wintools-mcp" in backends
     except Exception:
         pass
+    # REMnux connects directly to client (not via gateway) — check .claude.json
+    if not capabilities["remnux"]:
+        try:
+            import json
+
+            claude_json = Path.home() / ".claude.json"
+            if claude_json.exists():
+                cj = json.loads(claude_json.read_text())
+                mcp_servers = cj.get("mcpServers", {})
+                capabilities["remnux"] = "remnux-mcp" in mcp_servers
+        except Exception:
+            pass
 
     guidance = ["Available investigation capabilities:"]
     guidance.append("- SIFT forensic tools via run_command (65+ tools)")
