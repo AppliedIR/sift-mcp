@@ -57,6 +57,21 @@ cross_mcp_checks:
     tool: "analyze_file"
     when: "Unknown binary referenced by persistence entry — submit for static analysis"
 
+investigation_patterns:
+  - name: "Services with unusual binary paths"
+    query: "ImagePath:(*\\Temp\\* OR *\\AppData\\* OR *\\ProgramData\\* OR *\\Users\\Public\\*)"
+    purpose: "Services pointing to non-standard locations — potential malware persistence"
+    follow_up: "windows-triage check_service for baseline validation"
+
+  - name: "Services with command-line arguments"
+    query: "ImagePath:(*cmd* OR *powershell* OR *wscript* OR *mshta*)"
+    purpose: "Services executing scripting engines — fileless persistence"
+
+  - name: "Recently modified service keys"
+    query: "LastWriteTime:[time_from TO time_to]"
+    purpose: "Service registry keys modified during incident window"
+    note: "LastWriteTime updates on ANY key modification, not just creation"
+
 references:
   - "SANS FOR500 - Windows Forensic Analysis"
   - "MITRE ATT&CK T1543.003 - Create or Modify System Process: Windows Service"
