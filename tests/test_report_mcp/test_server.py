@@ -490,7 +490,7 @@ class TestSetCaseMetadata:
         )
 
         assert "error" in result
-        assert "list" in result["error"].lower()
+        assert "array" in result["error"].lower() or "list" in result["error"].lower()
 
 
 class TestGetCaseMetadata:

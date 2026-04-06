@@ -36,8 +36,9 @@ def test_high_confidence_needs_two_evidence():
         "type": "finding",
     }
     result = validate(finding)
-    assert result["valid"] is False
-    assert any("at least 2" in e for e in result["errors"])
+    # HIGH confidence with single audit_id is now a warning, not an error
+    assert result["valid"] is True
+    assert any("2+" in w for w in result.get("warnings", []))
 
 
 def test_attribution_needs_three_evidence():
