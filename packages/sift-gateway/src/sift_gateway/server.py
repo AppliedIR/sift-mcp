@@ -129,6 +129,11 @@ class Gateway:
         )
         await self._build_tool_map()
 
+        # Push active case to all started HTTP backends on startup
+        for _name, backend in self.backends.items():
+            if backend.started:
+                await self._notify_backend_case(backend)
+
     async def stop(self) -> None:
         """Stop all backends."""
         for name, backend in self.backends.items():
@@ -263,21 +268,22 @@ class Gateway:
                 await self._build_tool_map()
 
     async def _late_start_checker(self) -> None:
-        """Periodically retry backends that failed to start at boot."""
+        """Periodically retry failed backends and re-sync case on started ones."""
         while True:
             await anyio.sleep(30)
             for name, backend in self.backends.items():
-                if backend.started:
-                    continue
-                try:
-                    await asyncio.wait_for(backend.start(), timeout=30.0)
-                    logger.info("Late-started backend: %s", name)
-                    await self._build_tool_map()
-                    logger.info("Tool map rebuilt after late-starting: %s", name)
-                    # Re-send case activation to reconnected HTTP backends
+                if not backend.started:
+                    try:
+                        await asyncio.wait_for(backend.start(), timeout=30.0)
+                        logger.info("Late-started backend: %s", name)
+                        await self._build_tool_map()
+                        logger.info("Tool map rebuilt after late-starting: %s", name)
+                    except Exception as exc:
+                        logger.warning("Late-start failed for %s: %s", name, exc)
+                        continue
+                # Re-sync case on wintools only (/cases/activate is wintools-specific)
+                if name == "wintools-mcp":
                     await self._notify_backend_case(backend)
-                except Exception as exc:
-                    logger.warning("Late-start failed for %s: %s", name, exc)
 
     def _get_active_case(self) -> str:
         """Read the current active case ID."""
@@ -302,17 +308,20 @@ class Gateway:
             import httpx
 
             async with httpx.AsyncClient(verify=False) as client:
-                await client.post(
+                resp = await client.post(
                     f"{backend.base_url}/cases/activate",
                     json={"case_id": active_case},
                     headers={"Authorization": f"Bearer {backend.bearer_token}"},
                     timeout=5,
                 )
-            logger.info(
-                "Case %s activated on reconnected backend %s",
-                active_case,
-                backend.name,
-            )
+            # Only log at INFO on actual state change, DEBUG for heartbeat no-ops
+            body = resp.json() if resp.status_code == 200 else {}
+            if body.get("status") == "already_active":
+                logger.debug("Case %s already active on %s", active_case, backend.name)
+            else:
+                logger.info(
+                    "Case %s activated on backend %s", active_case, backend.name
+                )
         except Exception as e:
             logger.debug("Case activation to %s failed: %s", backend.name, e)
 

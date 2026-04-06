@@ -31,7 +31,6 @@ from vhir_cli.commands.evidence import (
 from vhir_cli.commands.join import (
     _repoint_samba_share,
     notify_wintools_case_activated,
-    notify_wintools_case_deactivated,
 )
 from vhir_cli.main import (
     _case_activate_data,
@@ -301,18 +300,14 @@ def create_server() -> FastMCP:
             case_path = Path(result["case_dir"])
             if _wintools_configured():
                 try:
-                    if (case_path / "extractions" / "wintools").is_dir():
-                        _repoint_samba_share(case_path)
-                        ok = notify_wintools_case_activated(case_id)
-                        result["wintools_shared"] = True
-                        if not ok:
-                            result.setdefault("warnings", []).append(
-                                "Could not notify wintools-mcp of case activation. "
-                                "Windows tools may not have access to this case."
-                            )
-                    else:
-                        _repoint_samba_share(None)
-                        notify_wintools_case_deactivated()
+                    _repoint_samba_share(case_path)
+                    ok = notify_wintools_case_activated(case_id)
+                    result["wintools_shared"] = True
+                    if not ok:
+                        result.setdefault("warnings", []).append(
+                            "Could not notify wintools-mcp of case activation. "
+                            "Windows tools may not have access to this case."
+                        )
                 except Exception as e:
                     result["wintools_warning"] = f"Failed to update wintools share: {e}"
 
