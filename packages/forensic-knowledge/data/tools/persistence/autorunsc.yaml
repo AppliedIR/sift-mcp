@@ -6,7 +6,8 @@ platform_notes: "Windows only (Sysinternals). For offline registry persistence a
 artifacts_parsed: [registry_run_keys, scheduled_tasks, registry_services, wmi_persistence]
 
 caveats:
-  - "Live system analysis only — cannot analyze offline images directly"
+  - "Offline scanning (-z flag) is limited to registry-based ASEPs only. Does NOT detect WMI persistence or scheduled tasks offline — those require live system access or separate artifact analysis"
+  - "Live system analysis covers all ASEPs; offline (-z) covers only registry-based ones"
   - "Requires elevated privileges for complete enumeration"
   - "Not all persistence mechanisms are covered (e.g., DLL search order hijacking, COM object hijacking)"
   - "VirusTotal integration requires accepting the EULA and sends file hashes"
