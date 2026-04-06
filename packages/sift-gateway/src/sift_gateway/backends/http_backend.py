@@ -63,6 +63,17 @@ class HttpMCPBackend(MCPBackend):
                     f"Backend {name}: URL must use http or https scheme, got {parsed.scheme!r}"
                 )
 
+    @property
+    def base_url(self) -> str:
+        """HTTP base URL (without /mcp path)."""
+        url = self.config.get("url", "")
+        return url.rsplit("/mcp", 1)[0] if "/mcp" in url else url
+
+    @property
+    def bearer_token(self) -> str:
+        """Bearer token for authentication."""
+        return self.config.get("bearer_token", "")
+
     async def start(self) -> None:
         if self._started:
             return

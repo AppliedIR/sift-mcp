@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import logging
 import time
+from pathlib import Path
 
 import anyio
 from mcp.types import Tool
@@ -273,8 +274,47 @@ class Gateway:
                     logger.info("Late-started backend: %s", name)
                     await self._build_tool_map()
                     logger.info("Tool map rebuilt after late-starting: %s", name)
+                    # Re-send case activation to reconnected HTTP backends
+                    await self._notify_backend_case(backend)
                 except Exception as exc:
                     logger.warning("Late-start failed for %s: %s", name, exc)
+
+    def _get_active_case(self) -> str:
+        """Read the current active case ID."""
+        try:
+            p = Path.home() / ".vhir" / "active_case"
+            if p.exists():
+                return Path(p.read_text().strip()).name
+        except Exception:
+            pass
+        return ""
+
+    async def _notify_backend_case(self, backend) -> None:
+        """Send case activation to an HTTP backend after reconnect."""
+        from sift_gateway.backends.http_backend import HttpMCPBackend
+
+        if not isinstance(backend, HttpMCPBackend):
+            return
+        active_case = self._get_active_case()
+        if not active_case:
+            return
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(verify=False) as client:
+                await client.post(
+                    f"{backend.base_url}/cases/activate",
+                    json={"case_id": active_case},
+                    headers={"Authorization": f"Bearer {backend.bearer_token}"},
+                    timeout=5,
+                )
+            logger.info(
+                "Case %s activated on reconnected backend %s",
+                active_case,
+                backend.name,
+            )
+        except Exception as e:
+            logger.debug("Case activation to %s failed: %s", backend.name, e)
 
     async def _backend_loader(self) -> None:
         """Start backends added after gateway boot (e.g. wintools after join).

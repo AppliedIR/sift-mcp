@@ -203,7 +203,7 @@ def create_server() -> FastMCP:
         name: str,
         description: str = "",
         case_id: str = "",
-        share_wintools: bool = False,
+        share_wintools: bool | None = None,
         cases_dir: str = "",
     ) -> dict:
         """Create a new case directory with the given name. The case ID
@@ -242,12 +242,20 @@ def create_server() -> FastMCP:
                 case_id=case_id or None,
             )
 
+            # Auto-detect wintools when share_wintools is None
+            if share_wintools is None:
+                share_wintools = _wintools_configured()
             if share_wintools and _wintools_configured():
                 try:
                     _set_case_wintools_permissions(Path(result["case_dir"]))
                     _repoint_samba_share(Path(result["case_dir"]))
-                    notify_wintools_case_activated(result["case_id"])
+                    ok = notify_wintools_case_activated(result["case_id"])
                     result["wintools_shared"] = True
+                    if not ok:
+                        result.setdefault("warnings", []).append(
+                            "Could not notify wintools-mcp of case activation. "
+                            "Windows tools may not have access to this case."
+                        )
                 except Exception as e:
                     result["wintools_warning"] = (
                         f"Failed to set up wintools sharing: {e}"
@@ -295,8 +303,13 @@ def create_server() -> FastMCP:
                 try:
                     if (case_path / "extractions" / "wintools").is_dir():
                         _repoint_samba_share(case_path)
-                        notify_wintools_case_activated(case_id)
+                        ok = notify_wintools_case_activated(case_id)
                         result["wintools_shared"] = True
+                        if not ok:
+                            result.setdefault("warnings", []).append(
+                                "Could not notify wintools-mcp of case activation. "
+                                "Windows tools may not have access to this case."
+                            )
                     else:
                         _repoint_samba_share(None)
                         notify_wintools_case_deactivated()
