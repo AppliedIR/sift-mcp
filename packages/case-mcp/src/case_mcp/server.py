@@ -64,6 +64,60 @@ def _wintools_configured() -> bool:
         return False
 
 
+def _build_platform_capabilities() -> dict:
+    """Detect available backends for Layer 4 platform capabilities."""
+    import importlib.util
+
+    capabilities = {
+        "opensearch": importlib.util.find_spec("opensearch_mcp") is not None,
+        "remnux": False,
+        "wintools": False,
+        "forensic_rag": importlib.util.find_spec("rag_mcp") is not None,
+        "opencti": importlib.util.find_spec("opencti_mcp") is not None,
+        "sift_tools": True,
+    }
+    try:
+        import yaml
+
+        gw_path = Path.home() / ".vhir" / "gateway.yaml"
+        if gw_path.exists():
+            gw_config = yaml.safe_load(gw_path.read_text()) or {}
+            backends = gw_config.get("backends", {})
+            capabilities["remnux"] = "remnux-mcp" in backends
+            capabilities["wintools"] = "wintools-mcp" in backends
+    except Exception:
+        pass
+
+    guidance = ["Available investigation capabilities:"]
+    guidance.append("- SIFT forensic tools via run_command (65+ tools)")
+    if capabilities["opensearch"]:
+        guidance.append(
+            "- Evidence indexing: idx_ingest for structured querying at scale"
+        )
+    if capabilities["remnux"]:
+        guidance.append("- Malware analysis: upload_from_host + analyze_file on REMnux")
+    if capabilities["wintools"]:
+        guidance.append(
+            "- Windows offline analysis: run_windows_command on forensic workstation"
+        )
+    if capabilities["forensic_rag"]:
+        guidance.append(
+            "- Knowledge search: search_knowledge (Sigma, MITRE ATT&CK, KAPE)"
+        )
+    if capabilities["opencti"]:
+        guidance.append("- Threat intel: lookup_ioc, search_threat_intel on OpenCTI")
+    guidance.append("")
+    guidance.append(
+        "Do not rely solely on OpenSearch queries. "
+        "Call suggest_tools(artifact_type='...') for deep analysis recommendations."
+    )
+
+    return {
+        "platform_capabilities": capabilities,
+        "investigation_guidance": "\n".join(guidance),
+    }
+
+
 def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
     """Reject strings exceeding max_len, containing null bytes, or path traversal."""
     if value is not None and isinstance(value, str):
@@ -285,6 +339,8 @@ def create_server() -> FastMCP:
         try:
             case_dir = _resolve_case_dir(case_id)
             result = _case_status_data(case_dir)
+            # Layer 4: platform capabilities detection
+            result.update(_build_platform_capabilities())
             return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}
