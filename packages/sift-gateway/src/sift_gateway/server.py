@@ -281,6 +281,11 @@ class Gateway:
                     except Exception as exc:
                         logger.warning("Late-start failed for %s: %s", name, exc)
                         continue
+                # Rebuild tool map if backend reconnected with new code
+                if getattr(backend, "_tool_map_stale", False):
+                    backend._tool_map_stale = False
+                    await self._build_tool_map()
+                    logger.info("Tool map rebuilt after %s reconnected", name)
                 # Re-sync case on wintools only (/cases/activate is wintools-specific)
                 if name == "wintools-mcp":
                     await self._notify_backend_case(backend)
