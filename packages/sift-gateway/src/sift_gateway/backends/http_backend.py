@@ -187,71 +187,67 @@ class HttpMCPBackend(MCPBackend):
 
     async def _teardown(self) -> None:
         """Clean up session state so the backend can be restarted."""
+        stack = self._exit_stack
         self._tools_cache = None
         self._session = None
+        self._exit_stack = None
         self._started = False
-        if self._exit_stack:
+        if stack:
             try:
-                await self._exit_stack.aclose()
+                await asyncio.wait_for(stack.aclose(), timeout=5)
             except BaseException:
                 pass
-            self._exit_stack = None
 
     async def call_tool(self, name: str, arguments: dict) -> list:
         if not self._started or not self._session:
             await self.start()
 
-        try:
-            result = await asyncio.wait_for(
-                self._session.call_tool(name, arguments), timeout=_TOOL_CALL_TIMEOUT
-            )
-            return result.content
-        except (ConnectionError, OSError) as exc:
-            # Connection lost -- teardown, reconnect, retry once
-            logger.warning(
-                "Backend %s connection lost, reconnecting: %s", self.name, exc
-            )
-            return await self._reconnect_and_retry(name, arguments, exc)
-        except Exception as exc:
-            exc_str = str(exc).lower()
-            if any(
-                phrase in exc_str
-                for phrase in (
-                    "session terminated",
-                    "session not found",
-                    "connection closed",
-                    "stream ended",
-                    "closed resource",
-                    "broken resource",
+        for attempt in range(2):
+            try:
+                result = await asyncio.wait_for(
+                    self._session.call_tool(name, arguments),
+                    timeout=_TOOL_CALL_TIMEOUT,
                 )
-            ):
+                return result.content
+            except (ConnectionError, OSError) as exc:
+                if attempt > 0:
+                    await self._teardown()
+                    raise
                 logger.warning(
-                    "Backend %s session stale, reconnecting: %s", self.name, exc
+                    "Backend %s connection lost, reconnecting: %s",
+                    self.name,
+                    exc,
                 )
-                return await self._reconnect_and_retry(name, arguments, exc)
-            raise
-
-    async def _reconnect_and_retry(
-        self, name: str, arguments: dict, original_exc: Exception
-    ) -> list:
-        """Teardown, reconnect, and retry a tool call once."""
-        await self._teardown()
-        try:
-            await self.start()
-            self._tool_map_stale = True  # Signal gateway to rebuild tool map
-            result = await asyncio.wait_for(
-                self._session.call_tool(name, arguments),
-                timeout=_TOOL_CALL_TIMEOUT,
-            )
-            return result.content
-        except Exception as retry_exc:
-            logger.error(
-                "Backend %s retry after reconnect failed: %s",
-                self.name,
-                retry_exc,
-            )
-            await self._teardown()
-            raise retry_exc from original_exc
+                await self._teardown()
+                await self.start()
+                self._tool_map_stale = True
+                continue
+            except Exception as exc:
+                exc_str = str(exc).lower()
+                if attempt == 0 and any(
+                    phrase in exc_str
+                    for phrase in (
+                        "session terminated",
+                        "session not found",
+                        "connection closed",
+                        "stream ended",
+                        "closed resource",
+                        "broken resource",
+                        "connection reset",
+                        "forcibly closed",
+                    )
+                ):
+                    logger.warning(
+                        "Backend %s session stale, reconnecting: %s",
+                        self.name,
+                        exc,
+                    )
+                    await self._teardown()
+                    await self.start()
+                    self._tool_map_stale = True
+                    continue
+                raise
+        raise RuntimeError(f"Backend {self.name}: call_tool failed after reconnect")
 
     async def health_check(self) -> dict:
         if not self._started or not self._session:
