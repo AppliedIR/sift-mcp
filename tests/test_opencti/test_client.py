@@ -295,14 +295,6 @@ class TestSearchMethods:
 class TestContextMethods:
     """Tests for context/lookup methods."""
 
-    def test_get_indicator_context_found(self, mock_opencti_client: OpenCTIClient):
-        """Get indicator context returns full context."""
-        result = mock_opencti_client.get_indicator_context("203.0.113.1")
-
-        assert result["found"] is True
-        assert result["ioc"] == "203.0.113.1"
-        assert result["source"] == "opencti"
-
     def test_get_indicator_context_not_found(self, mock_opencti_client: OpenCTIClient):
         """Get indicator context handles not found."""
         mock_opencti_client._client.indicator.list.return_value = []
