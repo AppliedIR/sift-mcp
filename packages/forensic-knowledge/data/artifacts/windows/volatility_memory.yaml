@@ -2,6 +2,10 @@ name: Memory Analysis (Volatility)
 description: "RAM dump analysis via Volatility 3 — process tree, code injection, network connections, handles"
 platform: windows
 
+does_not_prove:
+  - "Process is malicious — memory artifacts require contextual analysis"
+  - "Complete picture of system activity — memory is a point-in-time snapshot"
+
 investigation_patterns:
   - name: "Process tree anomalies"
     command: "vol -f <dump> windows.pstree"
@@ -46,7 +50,7 @@ cross_mcp_checks:
   - mcp: "opensearch-mcp"
     tool: "idx_ingest_memory"
     when: "Memory dump available — index Volatility results for structured querying"
-  - mcp: "remnux-mcp"
+  - mcp: "remnux"
     tool: "upload_from_host"
     when: "Suspicious process found — extract and submit for malware analysis"
   - mcp: "windows-triage"
