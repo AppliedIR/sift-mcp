@@ -6,8 +6,8 @@
 #   ./scripts/bump-version.sh 0.5.1
 #
 # Updates pyproject.toml and __init__.py version strings in the
-# sift-mcp monorepo, vhir, and wintools-mcp (if present at ../vhir
-# and ../wintools-mcp).
+# sift-mcp monorepo, aiir, wintools-mcp, and opensearch-mcp
+# (if present at ../aiir, ../wintools-mcp, ../opensearch-mcp).
 #
 set -euo pipefail
 
@@ -20,8 +20,9 @@ fi
 VERSION="$1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-VHIR_DIR="$REPO_ROOT/../vhir"
+VHIR_DIR="$REPO_ROOT/../aiir"
 WINTOOLS_DIR="$REPO_ROOT/../wintools-mcp"
+OPENSEARCH_DIR="$REPO_ROOT/../opensearch-mcp"
 
 # Validate version format
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -52,10 +53,10 @@ while IFS= read -r file; do
     fi
 done < <(find "$REPO_ROOT" -name "__init__.py" -not -path "*/.*")
 
-# Update vhir if present
+# Update aiir (Valhuntir CLI) if present
 if [[ -f "$VHIR_DIR/pyproject.toml" ]]; then
     sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" "$VHIR_DIR/pyproject.toml"
-    echo "  Updated: ../vhir/pyproject.toml"
+    echo "  Updated: ../aiir/pyproject.toml"
     count=$((count + 1))
 fi
 
@@ -66,10 +67,17 @@ if [[ -f "$WINTOOLS_DIR/pyproject.toml" ]]; then
     count=$((count + 1))
 fi
 
+# Update opensearch-mcp if present
+if [[ -f "$OPENSEARCH_DIR/pyproject.toml" ]]; then
+    sed -i "s/^version = \"[^\"]*\"/version = \"${VERSION}\"/" "$OPENSEARCH_DIR/pyproject.toml"
+    echo "  Updated: ../opensearch-mcp/pyproject.toml"
+    count=$((count + 1))
+fi
+
 echo ""
 echo "$count files updated to $VERSION"
 echo ""
-echo "Next steps (repeat for each repo: sift-mcp, vhir, wintools-mcp):"
+echo "Next steps (repeat for each repo: sift-mcp, aiir, wintools-mcp, opensearch-mcp):"
 echo "  1. Review:  git diff"
 echo "  2. Commit:  git commit -am 'bump version to $VERSION'"
 echo "  3. Tag:     git tag v$VERSION"

@@ -1,7 +1,12 @@
 name: Hayabusa Alerts
 description: "Sigma-based detection alerts from Hayabusa rule engine"
 category: detection
+platform: windows
 source_tool: hayabusa
+
+does_not_prove:
+  - "Malicious activity occurred — alerts require analyst validation"
+  - "Specific threat actor attribution — alerts map to techniques, not actors"
 
 alert_levels:
   note: |
