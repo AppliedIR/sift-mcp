@@ -294,7 +294,7 @@ class Gateway:
                     # Re-sync case on wintools only (/cases/activate is wintools-specific)
                     if name == "wintools-mcp":
                         await self._notify_backend_case(backend)
-            except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
+            except (Exception, BaseExceptionGroup) as exc:
                 logger.error("Late-start checker error (will retry): %s", exc)
 
     def _get_active_case(self) -> str:
