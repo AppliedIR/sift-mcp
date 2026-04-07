@@ -54,6 +54,7 @@ class HttpMCPBackend(MCPBackend):
         self._session: ClientSession | None = None
         self._exit_stack: AsyncExitStack | None = None
         self._tools_cache: list[Tool] | None = None
+        self._cleanup_tasks: set[asyncio.Task] = set()
 
         # Validate URL format at construction time
         url = config.get("url")
@@ -199,13 +200,16 @@ class HttpMCPBackend(MCPBackend):
         self._exit_stack = None
         self._started = False
         if stack:
+
             async def _close_detached():
                 try:
                     await asyncio.wait_for(stack.aclose(), timeout=5)
                 except BaseException:
                     pass
 
-            asyncio.ensure_future(_close_detached())
+            task = asyncio.ensure_future(_close_detached())
+            self._cleanup_tasks.add(task)
+            task.add_done_callback(self._cleanup_tasks.discard)
 
     async def call_tool(self, name: str, arguments: dict) -> list:
         if not self._started or not self._session:
@@ -218,7 +222,12 @@ class HttpMCPBackend(MCPBackend):
                     timeout=_TOOL_CALL_TIMEOUT,
                 )
                 return result.content
-            except (ConnectionError, OSError, ClosedResourceError, BrokenResourceError) as exc:
+            except (
+                ConnectionError,
+                OSError,
+                ClosedResourceError,
+                BrokenResourceError,
+            ) as exc:
                 if attempt > 0:
                     await self._teardown()
                     raise

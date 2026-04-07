@@ -438,6 +438,7 @@ class RAGIndex:
             meta = results["metadatas"][0][i]
             distance = results["distances"][0][i]
             score = 1 - distance
+            raw_score = score
 
             # Apply source boost for authoritative sources
             result_source = meta.get("source", "")
@@ -451,6 +452,9 @@ class RAGIndex:
             title = meta.get("title", "")
             keyword_boost = self._calculate_keyword_boost(doc, title, boost_terms)
             score = min(1.0, score * keyword_boost)
+
+            # Cap combined boost to prevent "fair" results appearing "excellent"
+            score = min(score, raw_score * 1.20)
 
             # Apply filters
             # source_ids (exact match) takes precedence over source (substring)

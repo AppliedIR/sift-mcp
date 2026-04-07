@@ -2329,8 +2329,6 @@ class OpenCTIClient:
         # Use enrichment limiter for writes (more restrictive)
         self._check_rate_limit(self._enrichment_limiter, "write")
 
-        client = self.connect()
-
         try:
             logger.info(f"Creating indicator: {name}")
 
@@ -2351,8 +2349,10 @@ class OpenCTIClient:
                 if labels and indicator_id:
                     for label in labels[:10]:  # Limit labels
                         try:
-                            client.stix_domain_object.add_label(
-                                id=indicator_id, label_name=label
+                            self._execute_with_retry(
+                                "stix_domain_object.add_label",
+                                id=indicator_id,
+                                label_name=label,
                             )
                         except Exception as e:
                             logger.warning(f"Failed to add label {label}: {e}")

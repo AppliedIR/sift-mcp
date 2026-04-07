@@ -278,7 +278,9 @@ class Gateway:
                             await asyncio.wait_for(backend.start(), timeout=30.0)
                             logger.info("Late-started backend: %s", name)
                             await self._build_tool_map()
-                            logger.info("Tool map rebuilt after late-starting: %s", name)
+                            logger.info(
+                                "Tool map rebuilt after late-starting: %s", name
+                            )
                         except (
                             Exception,
                             asyncio.CancelledError,

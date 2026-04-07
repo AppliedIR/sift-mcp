@@ -316,8 +316,8 @@ def _extract_all_iocs(
                 elif isinstance(ioc, str) and ioc.strip():
                     collected.setdefault(("Unknown", ioc.strip()), set()).add(fid)
 
-        # Text extraction from description
-        text = f.get("description", "")
+        # Text extraction from observation + interpretation (findings use these, not description)
+        text = f"{f.get('observation', '')} {f.get('interpretation', '')} {f.get('description', '')}"
         ipv4_pattern = (
             r"\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}"
             r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b"
