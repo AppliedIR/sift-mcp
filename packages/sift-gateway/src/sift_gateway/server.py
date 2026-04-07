@@ -270,25 +270,32 @@ class Gateway:
     async def _late_start_checker(self) -> None:
         """Periodically retry failed backends and re-sync case on started ones."""
         while True:
-            await anyio.sleep(30)
-            for name, backend in self.backends.items():
-                if not backend.started:
-                    try:
-                        await asyncio.wait_for(backend.start(), timeout=30.0)
-                        logger.info("Late-started backend: %s", name)
+            try:
+                await anyio.sleep(30)
+                for name, backend in self.backends.items():
+                    if not backend.started:
+                        try:
+                            await asyncio.wait_for(backend.start(), timeout=30.0)
+                            logger.info("Late-started backend: %s", name)
+                            await self._build_tool_map()
+                            logger.info("Tool map rebuilt after late-starting: %s", name)
+                        except (
+                            Exception,
+                            asyncio.CancelledError,
+                            BaseExceptionGroup,
+                        ) as exc:
+                            logger.warning("Late-start failed for %s: %s", name, exc)
+                            continue
+                    # Rebuild tool map if backend reconnected with new code
+                    if getattr(backend, "_tool_map_stale", False):
+                        backend._tool_map_stale = False
                         await self._build_tool_map()
-                        logger.info("Tool map rebuilt after late-starting: %s", name)
-                    except Exception as exc:
-                        logger.warning("Late-start failed for %s: %s", name, exc)
-                        continue
-                # Rebuild tool map if backend reconnected with new code
-                if getattr(backend, "_tool_map_stale", False):
-                    backend._tool_map_stale = False
-                    await self._build_tool_map()
-                    logger.info("Tool map rebuilt after %s reconnected", name)
-                # Re-sync case on wintools only (/cases/activate is wintools-specific)
-                if name == "wintools-mcp":
-                    await self._notify_backend_case(backend)
+                        logger.info("Tool map rebuilt after %s reconnected", name)
+                    # Re-sync case on wintools only (/cases/activate is wintools-specific)
+                    if name == "wintools-mcp":
+                        await self._notify_backend_case(backend)
+            except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
+                logger.error("Late-start checker error (will retry): %s", exc)
 
     def _get_active_case(self) -> str:
         """Read the current active case ID."""
