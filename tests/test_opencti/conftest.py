@@ -40,7 +40,7 @@ def mock_pycti_client() -> Mock:
         {
             "id": "indicator-1",
             "name": "Test IOC",
-            "pattern": "[ipv4-addr:value = '192.168.1.1']",
+            "pattern": "[ipv4-addr:value = '203.0.113.1']",
             "pattern_type": "stix",
             "confidence": 85,
             "created": "2025-01-15T10:00:00Z",
