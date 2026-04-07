@@ -14,7 +14,7 @@ Usage:
     python -m opencti_mcp
 """
 
-__version__ = "0.5.4"
+__version__ = "0.6.0"
 __author__ = "AppliedIncidentResponse.com"
 
 from .adaptive import (
