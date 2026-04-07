@@ -6,6 +6,7 @@ import os
 from contextlib import AsyncExitStack
 from urllib.parse import urlparse
 
+from anyio import BrokenResourceError, ClosedResourceError
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
@@ -186,17 +187,25 @@ class HttpMCPBackend(MCPBackend):
         return self._tools_cache
 
     async def _teardown(self) -> None:
-        """Clean up session state so the backend can be restarted."""
+        """Clean up session state so the backend can be restarted.
+
+        The old exit stack is closed in a detached background task to
+        prevent cancel-scope errors from poisoning the current task's
+        asyncio state — which would make the *new* session appear closed.
+        """
         stack = self._exit_stack
         self._tools_cache = None
         self._session = None
         self._exit_stack = None
         self._started = False
         if stack:
-            try:
-                await asyncio.wait_for(stack.aclose(), timeout=5)
-            except BaseException:
-                pass
+            async def _close_detached():
+                try:
+                    await asyncio.wait_for(stack.aclose(), timeout=5)
+                except BaseException:
+                    pass
+
+            asyncio.ensure_future(_close_detached())
 
     async def call_tool(self, name: str, arguments: dict) -> list:
         if not self._started or not self._session:
@@ -209,7 +218,7 @@ class HttpMCPBackend(MCPBackend):
                     timeout=_TOOL_CALL_TIMEOUT,
                 )
                 return result.content
-            except (ConnectionError, OSError) as exc:
+            except (ConnectionError, OSError, ClosedResourceError, BrokenResourceError) as exc:
                 if attempt > 0:
                     await self._teardown()
                     raise
