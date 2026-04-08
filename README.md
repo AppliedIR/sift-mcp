@@ -21,7 +21,7 @@ Monorepo for all SIFT-side Valhuntir components. 11 packages: forensic-mcp (23 t
 
 Valhuntir is a forensic investigation platform that connects AI to structured MCP tools, enforces human-in-the-loop review, and maintains a complete audit trail from evidence to finding to report.
 
-The platform is **LLM client agnostic** — connect any MCP-compatible client through the gateway. Supported clients include Claude Code, Claude Desktop, LibreChat, Cherry Studio, and any client that supports Streamable HTTP transport with Bearer token authentication. Forensic discipline is provided structurally at the gateway and MCP layer, not through client-specific prompt engineering, so the same rigor applies regardless of which AI model or client drives the investigation.
+The platform is **LLM client agnostic** — connect any locally installed MCP-compatible client through the gateway. Supported clients include Claude Code, Claude Desktop, Cherry Studio, self-hosted LibreChat, and any client that supports Streamable HTTP transport with Bearer token authentication. The client must run on your machine or local network — cloud-hosted services cannot reach internal gateway addresses. Forensic discipline is provided structurally at the gateway and MCP layer, not through client-specific prompt engineering, so the same rigor applies regardless of which AI model or client drives the investigation.
 
 With [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp), evidence is parsed programmatically and indexed into OpenSearch, giving the LLM 17 purpose-built query tools instead of consuming billions of tokens reading raw artifacts. A 30-host triage collection with 50 million records becomes instantly searchable. Triage baseline and threat intelligence enrichment run programmatically — zero LLM tokens consumed. OpenSearch integration is optional but recommended for investigations at scale.
 
@@ -292,25 +292,31 @@ All 30+ per-tool wrappers (Zimmerman suite, Sleuth Kit, Volatility, etc.) are co
 ## What Can You Ask?
 
 ```
-"Parse the Amcache hive at /cases/evidence/Amcache.hve"
+"Ingest all evidence from /cases/evidence/ into OpenSearch and give me a summary of the artifacts ingested"
 
-"Run Prefetch analysis on all .pf files in /cases/evidence/prefetch/"
+"Show me all 4688 events where cmd.exe spawned from an unusual parent process"
+
+"Aggregate the top 20 source IPs across all hosts and check them against threat intel"
+
+"Run triage enrichment and show me anything flagged as suspicious"
+
+"Parse the Amcache hive from workstation3"
+
+"See if this registry value exists on any of the other hosts in OpenSearch"
 
 "What tools should I use to investigate lateral movement artifacts?"
-
-"Analyze this memory dump with Volatility -- list processes and network connections"
 
 "Run hayabusa against the evtx logs and show critical/high alerts"
 
 "Extract the $MFT and build a filesystem timeline"
 
-"Check which forensic tools are installed on this workstation"
+"Analyze this memory dump with Volatility -- list processes and network connections"
 
-"Ingest all evidence from /cases/evidence/ into OpenSearch and give me a case summary"
+"Check if svchost.exe with parent wsmprovhost.exe is normal"
 
-"Show me all 4688 events where cmd.exe spawned from an unusual parent process"
+"Look up this hash in threat intel"
 
-"Aggregate the top 20 source IPs across all hosts and check them against threat intel"
+"Upload this binary to REMnux and analyze it"
 ```
 
 ## Response Envelope
@@ -424,20 +430,40 @@ Outgoing Internet connections are required for report generation (Zeltser IR Wri
 
 Valhuntir is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. Clients with direct shell access (like Claude Code) can also operate outside MCP, but `vhir setup client` deploys forensic controls for Claude Code: a kernel-level sandbox restricts Bash writes, deny rules block Edit/Write to case data files, a PreToolUse hook guards against Bash redirections to protected files, a PostToolUse hook captures every Bash command to the audit trail, provenance enforcement ensures findings are traceable to evidence, and an HMAC verification ledger provides cryptographic proof that approved findings haven't been tampered with. Valhuntir is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
 
-## Audit Trail and Provenance
+## Audit Trail, Provenance, and Grounding
 
 Every MCP tool call is logged to a per-backend JSONL file in the case `audit/` directory with a unique evidence ID (`{backend}-{examiner}-{date}-{seq}`). When Claude Code is the client, a PostToolUse hook additionally captures every Bash command to `audit/claude-code.jsonl`.
 
-Findings recorded via `record_finding()` are classified by provenance tier based on the audit trail:
+### Evidence Artifacts
 
-| Tier | Source | Meaning |
-|------|--------|---------|
-| MCP | MCP audit log | Evidence gathered through an MCP tool (system-witnessed) |
-| HOOK | Claude Code hook log | Evidence gathered via Bash with hook capture (framework-witnessed) |
-| SHELL | `supporting_commands` parameter | Evidence from direct shell commands (self-reported) |
-| NONE | No audit record | No evidence trail — finding is rejected by hard gate |
+Findings should include an `artifacts` list showing the actual evidence — source file, tool command, and raw output. The `audit_id` from the tool response ties each artifact to a specific audit trail entry, and the `source` file must be registered in the evidence registry. Findings without artifacts (analytical conclusions, exclusions) can use `supporting_commands` instead.
 
-Findings with NONE provenance and no supporting commands are rejected. This ensures every finding is traceable to evidence.
+### Provenance
+
+When a finding is staged, `record_finding()` classifies its provenance by scanning the audit trail for each referenced `audit_id`:
+
+| Tier | Where the audit_id was found | Trust Level |
+|------|------------------------------|-------------|
+| MCP | MCP backend audit log | System-witnessed (highest) |
+| HOOK | Claude Code hook log (`claude-code.jsonl`) | Framework-witnessed |
+| SHELL | Not in audit trail — provided via `supporting_commands` | Self-reported |
+| NONE | Not found anywhere | Rejected by hard gate |
+
+The finding is stamped with its provenance tier. Findings with NONE provenance and no supporting commands are rejected. The **Evidence Provenance Chain** in the Examiner Portal traces the full path from finding back to registered evidence.
+
+### Grounding
+
+Grounding measures whether the investigation consulted authoritative reference sources before making a claim — separate from provenance, which tracks where the evidence came from.
+
+| Level | Criteria | Meaning |
+|-------|----------|---------|
+| STRONG | 2+ reference sources consulted | Cross-referenced against authoritative knowledge |
+| PARTIAL | 1 source consulted, or finding traces to registered evidence | Some external validation |
+| WEAK | No reference sources, no evidence chain | Claim lacks external validation |
+
+Reference sources: forensic-rag (Sigma, MITRE ATT&CK, forensic artifacts), windows-triage (known-good baseline), opencti (threat intelligence). Grounding is advisory — it does not block a finding but tells the examiner how well-supported the claim is.
+
+### Content Integrity
 
 Content integrity is protected by SHA-256 hashes computed at staging and verified at approval. Cross-file verification compares hashes stored in `findings.json` against those in `approvals.jsonl` to detect post-approval tampering.
 
