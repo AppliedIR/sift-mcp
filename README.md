@@ -11,10 +11,11 @@ Monorepo for all SIFT-side Valhuntir components. 11 packages: forensic-mcp (23 t
 [CLI Reference](https://appliedir.github.io/Valhuntir/cli-reference/) ·
 [MCP Reference](https://appliedir.github.io/Valhuntir/mcp-reference/)
 
-> **Public Beta** — This project is undergoing active feature development.
-> Backward compatibility with future releases is not guaranteed. Consider
-> this a public beta for feature testing and evaluation rather than a
-> production-ready tool for real case data.
+> **Important Note** — While extensively tested, this is a new platform.
+> ALWAYS verify results and guide the investigative process. If you just
+> tell Valhuntir to "Find Evil" it will more than likely hallucinate
+> rather than provide meaningful results. The AI can accelerate, but the
+> human must guide it and review all decisions.
 
 ## Valhuntir — AI-Assisted Forensic Investigation
 
@@ -35,7 +36,7 @@ With [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp), evidence is 
 - **Examiner Portal** — 8-tab browser UI for review, approval, and commit (findings, timeline, hosts, accounts, evidence, IOCs, TODOs, overview) with keyboard shortcuts, search, provenance chain display, and challenge-response authentication
 - **IOC auto-extraction** from findings with approval cascade
 - **Evidence provenance chain** linking findings back to registered evidence through audited tool executions
-- **RAG search** — 23K+ forensic records (Sigma, MITRE ATT&CK, LOLBAS, Atomic Red Team, and more)
+- **RAG search** — 22K+ forensic records (Sigma, MITRE ATT&CK, LOLBAS, Atomic Red Team, and more)
 - **Windows baseline validation** — offline file/process/service validation against 2.6M known-good records
 - **Case management** — init, activate, close, backup with SHA-256 manifest and verification
 - **Structured JSON case files** with integrity verification
@@ -91,7 +92,7 @@ graph LR
     CM["case-mcp<br/>15 tools · case management,<br/>audit queries, backup"]
     RM["report-mcp<br/>6 tools · report generation,<br/>IOC aggregation"]
     SM["sift-mcp<br/>5 tools · Linux forensic<br/>tool execution"]
-    RAG["forensic-rag<br/>3 tools · semantic search<br/>23K records"]
+    RAG["forensic-rag<br/>3 tools · semantic search<br/>22K records"]
     WT["windows-triage<br/>13 tools · offline baseline<br/>validation"]
     OC["opencti<br/>8 tools · threat<br/>intelligence"]
     OS["opensearch-mcp<br/>17 tools · evidence indexing,<br/>query, enrichment"]
@@ -166,7 +167,7 @@ Requires Python 3.10+ and sudo access. The installer handles everything: MCP ser
 curl -fsSL https://raw.githubusercontent.com/AppliedIR/sift-mcp/main/quickstart.sh -o /tmp/vhir-quickstart.sh && bash /tmp/vhir-quickstart.sh
 ```
 
-**Recommended** — Adds the RAG knowledge base (22,000+ records from 23 security sources) and Windows triage databases (2.6M baseline records). Requires ~14 GB disk space:
+**Recommended** — Adds the RAG knowledge base (22,000+ records from 23 authoritative sources) and Windows triage databases (2.6M baseline records). Requires ~14 GB disk space:
 
 - ~7 GB — ML dependencies (PyTorch, CUDA) required by the RAG embedding model
 - ~6 GB — Windows triage baseline databases (2.6M rows, decompressed)
@@ -203,7 +204,7 @@ cd sift-mcp
 ./quickstart-lite.sh --quick
 ```
 
-**Recommended** — Adds the RAG knowledge base (22,000+ records from 23 security sources) and Windows triage databases (2.6M baseline records). Requires ~14 GB disk space:
+**Recommended** — Adds the RAG knowledge base (22,000+ records from 23 authoritative sources) and Windows triage databases (2.6M baseline records). Requires ~14 GB disk space:
 
 - ~7 GB — ML dependencies (PyTorch, CUDA) required by the RAG embedding model
 - ~6 GB — Windows triage baseline databases (2.6M rows, decompressed)
@@ -228,7 +229,7 @@ claude
 - **Forensic discipline** — CLAUDE.md + FORENSIC_DISCIPLINE.md + reference docs
 - **Prompt reinforcement** — forensic rules injected on every prompt
 - **Audit trail** — JSONL logs with SHA-256 hashes for every Bash command and MCP query
-- **RAG search** — 23K+ forensic records (Sigma, MITRE ATT&CK, LOLBAS, Atomic Red Team, and more)
+- **RAG search** — 22K+ forensic records (Sigma, MITRE ATT&CK, LOLBAS, Atomic Red Team, and more)
 - **Windows baseline validation** — offline file/process validation against known_good.db
 - **Case management** — `/case init`, `/case open`, `/case status`, `/case list`, `/case close`
 - **Post-install verification** — `/welcome` validates setup and orients you
