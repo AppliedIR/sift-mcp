@@ -649,6 +649,19 @@ def create_server() -> FastMCP:
             result.pop("symlinks", None)
             result.pop("ledger_note", None)
 
+            # Warn about OpenSearch if available
+            try:
+                import importlib.util
+
+                if importlib.util.find_spec("opensearch_mcp") is not None:
+                    result["opensearch_note"] = (
+                        "OpenSearch indices are NOT included in MCP backups. "
+                        "Use 'vhir backup --all' from the CLI for a full backup "
+                        "including indexed evidence."
+                    )
+            except Exception:
+                pass
+
             logged_id = audit.log(
                 tool="backup_case",
                 params={"destination": destination, "purpose": purpose},
