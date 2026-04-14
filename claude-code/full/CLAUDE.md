@@ -209,6 +209,15 @@ Offline Windows file/process validation. UNKNOWN = not in database (neutral).
 - **Threats:** `check_lolbin`, `check_hijackable_dll`, `check_hash`, `check_pipe`
 - **System:** `get_db_stats`, `get_health`
 
+### opensearch-mcp (Evidence Indexing + Querying)
+Parse, index, and query forensic evidence at scale via OpenSearch. **Use these MCP tools for ingestion — do NOT use `vhir ingest` via Bash.**
+
+- **Ingest:** `idx_ingest` (triage packages), `idx_ingest_memory` (memory dumps), `idx_ingest_json`, `idx_ingest_delimited`, `idx_ingest_accesslog`
+- **Query:** `idx_search`, `idx_count`, `idx_aggregate`, `idx_timeline`, `idx_field_values`, `idx_get_event`
+- **Overview:** `idx_case_summary`, `idx_status`, `idx_ingest_status`
+- **Enrich:** `idx_enrich_triage` (baseline), `idx_enrich_intel` (threat intel)
+- **Detect:** `idx_list_detections` (Hayabusa/Sigma alerts)
+
 ### opencti-mcp (Threat Intelligence)
 Live threat intel from OpenCTI instance.
 
