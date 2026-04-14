@@ -402,10 +402,9 @@ class TestCheckFile:
     async def test_lolbin_wrong_location(self, server):
         """Test checking a LOLBin in unexpected location."""
         result = await server._check_file("C:\\Users\\test\\certutil.exe")
-        # Not in baseline, but filename matches LOLBin
+        # Not in baseline path, but filename in baseline — wrong directory
         assert result["path_in_baseline"] is False
         assert result["verdict"] == "SUSPICIOUS"
-        assert "non-standard location" in str(result.get("reasons", []))
 
     @pytest.mark.asyncio
     async def test_hash_mismatch(self, server):

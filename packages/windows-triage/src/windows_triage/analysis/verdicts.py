@@ -53,6 +53,14 @@ Key Design Decisions:
 from dataclasses import dataclass
 from enum import Enum
 
+# Windows components that install binaries in versioned/dynamic paths
+_KNOWN_DYNAMIC_PATHS = [
+    "\\programdata\\microsoft\\windows defender\\",
+    "\\programdata\\microsoft\\windows defender advanced threat protection\\",
+    "\\windows\\servicing\\",
+    "\\windows\\winsxs\\",
+]
+
 
 class Verdict(Enum):
     """Triage verdict categories (offline analysis only).
@@ -93,6 +101,8 @@ def calculate_file_verdict(
     filename_findings: list[dict],
     lolbin_info: dict | None,
     is_protected_process: bool = False,
+    directory_known_for_file: bool = False,
+    dir_normalized: str = "",
 ) -> VerdictResult:
     """
     Calculate verdict for a file/path check (offline analysis only).
@@ -106,6 +116,8 @@ def calculate_file_verdict(
         filename_findings: Findings from filename analysis (unicode, patterns, etc.)
         lolbin_info: LOLBin info if filename is a known LOLBin
         is_protected_process: True if filename matches a protected process name
+        directory_known_for_file: True if this directory is a known location for this filename
+        dir_normalized: Normalized directory path for dynamic path matching
 
     Returns:
         VerdictResult with verdict, reasons, and confidence
@@ -148,38 +160,47 @@ def calculate_file_verdict(
             verdict=Verdict.EXPECTED, reasons=reasons, confidence="high"
         )
 
-    if filename_in_baseline and is_system_path:
-        if lolbin_info:
-            reasons.append("Filename matches Windows baseline")
-            reasons.append("Located in system directory")
-            reasons.append(
-                f"LOLBin: can be abused for {', '.join(lolbin_info.get('functions', [])[:2])}"
-            )
+    # Priority 5: Known Windows binary in unexpected directory
+    if filename_in_baseline and not path_in_baseline:
+        if directory_known_for_file:
+            # Known directory for this file, just not this exact path
+            # (e.g., different WinSxS version)
+            if lolbin_info:
+                reasons.append("Filename matches baseline in known directory")
+                reasons.append(
+                    f"LOLBin: can be abused for "
+                    f"{', '.join(lolbin_info.get('functions', [])[:2])}"
+                )
+                return VerdictResult(
+                    verdict=Verdict.EXPECTED_LOLBIN,
+                    reasons=reasons,
+                    confidence="medium",
+                )
+            reasons.append("Filename matches baseline in known directory")
             return VerdictResult(
-                verdict=Verdict.EXPECTED_LOLBIN, reasons=reasons, confidence="medium"
+                verdict=Verdict.EXPECTED, reasons=reasons, confidence="medium"
             )
-        reasons.append("Filename matches Windows baseline")
-        reasons.append("Located in system directory")
-        return VerdictResult(
-            verdict=Verdict.EXPECTED, reasons=reasons, confidence="medium"
-        )
 
-    # Priority 5: Just a LOLBin name (not in expected location)
-    if lolbin_info and not is_system_path:
+        # Check if directory is a known dynamic path
+        if dir_normalized and any(
+            dir_normalized.startswith(dp) for dp in _KNOWN_DYNAMIC_PATHS
+        ):
+            reasons.append("Known dynamic path -- verify with hash or signature")
+            return VerdictResult(
+                verdict=Verdict.UNKNOWN, reasons=reasons, confidence="low"
+            )
+
+        # Directory is NOT known for this file -- masquerading indicator
         reasons.append(
-            f"LOLBin ({lolbin_info.get('name', 'unknown')}) in non-standard location"
+            "Known Windows binary in directory not associated with this file"
         )
+        if is_protected_process:
+            reasons.append("Protected system process -- high masquerading risk")
+            return VerdictResult(
+                verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="high"
+            )
         return VerdictResult(
             verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="medium"
-        )
-
-    # Priority 5b: Protected system process name in non-system location
-    # These are critical Windows processes that should ONLY run from System32
-    if is_protected_process and not is_system_path:
-        reasons.append("Protected system process name found outside system directory")
-        reasons.append("Likely process masquerading attempt")
-        return VerdictResult(
-            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="high"
         )
 
     # Priority 6: High severity filename issues

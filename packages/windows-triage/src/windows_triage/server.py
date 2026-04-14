@@ -61,6 +61,7 @@ from .analysis import (
     calculate_service_verdict,
     check_process_name_spoofing,
     detect_hash_algorithm,
+    extract_directory,
     extract_filename,
     is_system_path,
     normalize_hash,
@@ -773,6 +774,14 @@ class WindowsTriageServer:
         filename_matches = self.known_good_db.lookup_by_filename(filename)
         filename_in_baseline = len(filename_matches) > 0
 
+        # Check if this directory is a known location for this filename
+        dir_path = extract_directory(path)
+        dir_known = (
+            self.known_good_db.is_directory_known_for_file(filename, dir_path)
+            if filename_in_baseline and not path_in_baseline and dir_path
+            else False
+        )
+
         # Check for LOLBin
         lolbin_info = self.context_db.check_lolbin(filename)
 
@@ -860,6 +869,8 @@ class WindowsTriageServer:
             filename_findings=findings,
             lolbin_info=lolbin_info,
             is_protected_process=is_protected,
+            directory_known_for_file=dir_known,
+            dir_normalized=dir_path,
         )
 
         result = {

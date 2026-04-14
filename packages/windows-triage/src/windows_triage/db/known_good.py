@@ -510,6 +510,16 @@ class KnownGoodDB:
         )
         return cursor.fetchone() is not None
 
+    def is_directory_known_for_file(self, filename: str, directory: str) -> bool:
+        """Check if this directory is a known location for this filename."""
+        conn = self.connect()
+        cursor = conn.execute(
+            "SELECT 1 FROM baseline_files "
+            "WHERE filename_lower = ? AND directory_normalized = ? LIMIT 1",
+            (filename.lower(), directory.lower()),
+        )
+        return cursor.fetchone() is not None
+
     def clear_cache(self) -> None:
         """Clear all LRU caches."""
         if self.cache_size > 0:

@@ -106,29 +106,53 @@ class TestCalculateFileVerdict:
         assert result.verdict == Verdict.EXPECTED_LOLBIN
         assert "LOLBin" in result.reasons[1]
 
-    def test_filename_in_baseline_system_path(self):
-        """Filename in baseline in system path should be EXPECTED with medium confidence."""
+    def test_filename_in_baseline_known_directory(self):
+        """Filename in baseline in known directory should be EXPECTED with medium confidence."""
         result = calculate_file_verdict(
             path_in_baseline=False,
             filename_in_baseline=True,
             is_system_path=True,
             filename_findings=[],
             lolbin_info=None,
+            directory_known_for_file=True,
         )
         assert result.verdict == Verdict.EXPECTED
         assert result.confidence == "medium"
 
-    def test_lolbin_wrong_location(self):
-        """LOLBin in non-system path should be SUSPICIOUS."""
+    def test_filename_in_baseline_unknown_directory(self):
+        """Filename in baseline in unknown directory should be SUSPICIOUS."""
         result = calculate_file_verdict(
             path_in_baseline=False,
-            filename_in_baseline=False,
-            is_system_path=False,  # Not in system path
+            filename_in_baseline=True,
+            is_system_path=True,
             filename_findings=[],
-            lolbin_info={"name": "certutil.exe", "functions": ["Download"]},
+            lolbin_info=None,
+            directory_known_for_file=False,
         )
         assert result.verdict == Verdict.SUSPICIOUS
-        assert "non-standard location" in result.reasons[0]
+
+    def test_lolbin_wrong_location(self):
+        """Known LOLBin in unknown directory should be SUSPICIOUS."""
+        result = calculate_file_verdict(
+            path_in_baseline=False,
+            filename_in_baseline=True,  # certutil IS in baseline
+            is_system_path=False,
+            filename_findings=[],
+            lolbin_info={"name": "certutil.exe", "functions": ["Download"]},
+            directory_known_for_file=False,
+        )
+        assert result.verdict == Verdict.SUSPICIOUS
+
+    def test_lolbin_not_in_baseline(self):
+        """LOLBin filename not in Windows baseline should be UNKNOWN."""
+        result = calculate_file_verdict(
+            path_in_baseline=False,
+            filename_in_baseline=False,  # Third-party LOLBin (Teams, etc.)
+            is_system_path=False,
+            filename_findings=[],
+            lolbin_info={"name": "Teams.exe", "functions": ["DLL load"]},
+        )
+        assert result.verdict == Verdict.UNKNOWN
 
     def test_unknown_file(self):
         """File not in any database should be UNKNOWN (neutral)."""

@@ -2043,11 +2043,12 @@ class TestProtectedProcessNames:
 
         result = calculate_file_verdict(
             path_in_baseline=False,
-            filename_in_baseline=False,
-            is_system_path=False,  # Wrong location!
+            filename_in_baseline=True,  # Protected processes ARE in baseline
+            is_system_path=False,
             filename_findings=[],
             lolbin_info=None,
             is_protected_process=True,
+            directory_known_for_file=False,
         )
         assert result.verdict.value == "SUSPICIOUS"
 

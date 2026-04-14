@@ -1593,15 +1593,16 @@ class TestVerdictEdgeCases:
         assert result.verdict.value == "SUSPICIOUS"
 
     def test_lolbin_in_non_system_path(self):
-        """Test LOLBin outside system path is suspicious."""
+        """Test known LOLBin in unknown directory is suspicious."""
         from windows_triage.analysis.verdicts import calculate_file_verdict
 
         result = calculate_file_verdict(
             path_in_baseline=False,
-            filename_in_baseline=False,
+            filename_in_baseline=True,  # certutil IS in baseline
             is_system_path=False,
             filename_findings=[],
             lolbin_info={"name": "certutil.exe", "functions": ["Download"]},
+            directory_known_for_file=False,
         )
         assert result.verdict.value == "SUSPICIOUS"
 

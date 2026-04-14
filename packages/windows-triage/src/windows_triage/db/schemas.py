@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS baseline_files (
 CREATE INDEX IF NOT EXISTS idx_files_path ON baseline_files(path_normalized);
 CREATE INDEX IF NOT EXISTS idx_files_filename ON baseline_files(filename_lower);
 CREATE INDEX IF NOT EXISTS idx_files_directory ON baseline_files(directory_normalized);
+CREATE INDEX IF NOT EXISTS idx_files_filename_dir ON baseline_files(filename_lower, directory_normalized);
 
 -- ═══════════════════════════════════════════════════════════════
 -- HASH INDEX (Links hashes to files)
