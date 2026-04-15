@@ -923,6 +923,7 @@ class CaseManager:
                         # verify the ingest matches by hostname segment
                         # ("dc" must not match "dc01"). Wildcard patterns
                         # (case-*-evtx-*) accept any ingest.
+                        ingest_hosts: list[str] = []
                         if search_index and "*" not in search_index:
                             # Check both params.hosts (list, from idx_ingest)
                             # and params.hostname (string, from _launch_background)
