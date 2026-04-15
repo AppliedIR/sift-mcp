@@ -159,7 +159,7 @@ _MASQUERADE_TARGETS = {
     "wwahost.exe",
     # --- Additional (Red Canary, Nextron, SANS) ---
     "cmd.exe",
-    "notepad.exe",
+    # notepad.exe excluded — MSIX Store version installs to WindowsApps
     "sethc.exe",
 }
 

@@ -397,7 +397,15 @@ def detect_typosquatting(
 
         distance = levenshtein_distance(text_lower, protected_lower)
 
-        if 0 < distance <= max_distance:
+        # Scale threshold by filename length — short names (<=5 chars
+        # before .exe) need tighter matching to avoid FPs like
+        # wt.exe vs dwm.exe or OSE.EXE vs lsm.exe
+        stem_len = min(
+            len(text_lower.split(".")[0]), len(protected_lower.split(".")[0])
+        )
+        effective_max = 1 if stem_len <= 4 else max_distance
+
+        if 0 < distance <= effective_max:
             matches.append(
                 (distance, abs(len(text_lower) - len(protected_lower)), protected)
             )
