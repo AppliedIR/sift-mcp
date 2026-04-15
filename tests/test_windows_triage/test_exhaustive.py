@@ -839,11 +839,12 @@ class TestVerdictCalculationExhaustive:
 
         result = calculate_file_verdict(
             path_in_baseline=False,
-            filename_in_baseline=True,  # filename is known
-            is_system_path=False,  # NOT in system path
+            filename_in_baseline=True,
+            is_system_path=False,
             filename_findings=[],
             lolbin_info=None,
             is_protected_process=True,
+            filename="svchost.exe",
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
@@ -2043,12 +2044,13 @@ class TestProtectedProcessNames:
 
         result = calculate_file_verdict(
             path_in_baseline=False,
-            filename_in_baseline=True,  # Protected processes ARE in baseline
+            filename_in_baseline=True,
             is_system_path=False,
             filename_findings=[],
             lolbin_info=None,
             is_protected_process=True,
             directory_known_for_file=False,
+            filename=proc_name,
         )
         assert result.verdict.value == "SUSPICIOUS"
 

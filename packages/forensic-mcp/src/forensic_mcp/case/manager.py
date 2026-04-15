@@ -860,6 +860,51 @@ class CaseManager:
                     provenance_warnings.append(
                         "Failed to resolve source evidence (filesystem error)"
                     )
+            else:
+                # OpenSearch indirect path: idx_search/idx_aggregate/etc have
+                # no input_files (they're queries). Trace through idx_ingest*
+                # entries that DO have input_files (the evidence path).
+                for aid in sanitized["audit_ids"]:
+                    entry = audit_by_id.get(aid)
+                    if not entry:
+                        continue
+                    tool = entry.get("tool", "")
+                    if not tool.startswith("idx_"):
+                        continue
+                    # Extract index from search params to match against ingest host
+                    search_index = entry.get("params", {}).get("index", "")
+                    for e in all_audit_entries:
+                        e_tool = e.get("tool", "")
+                        if not (
+                            e_tool.startswith("idx_ingest") and e.get("input_files")
+                        ):
+                            continue
+                        # If we have a search index, verify the ingest matches
+                        # by hostname segment (not substring — "dc" must not
+                        # match "dc01")
+                        if search_index:
+                            ingest_hosts = e.get("params", {}).get("hosts", [])
+                            idx_lower = search_index.lower()
+                            if ingest_hosts and not any(
+                                idx_lower.endswith(f"-{h.lower()}")
+                                or f"-{h.lower()}-" in idx_lower
+                                for h in ingest_hosts
+                            ):
+                                continue  # wrong ingest, skip
+                        try:
+                            source_ev = _resolve_source_evidence_static(
+                                e["input_files"],
+                                all_audit_entries,
+                                registered,
+                                evidence_by_hash=ev_by_hash,
+                            )
+                            if source_ev:
+                                sanitized["source_evidence"] = source_ev
+                                break
+                        except OSError:
+                            continue
+                    if sanitized.get("source_evidence"):
+                        break
 
             # Hard reject: artifact sources must be in evidence registry
             unregistered_sources = []

@@ -871,6 +871,7 @@ class WindowsTriageServer:
             is_protected_process=is_protected,
             directory_known_for_file=dir_known,
             dir_normalized=dir_path,
+            filename=filename,
         )
 
         result = {

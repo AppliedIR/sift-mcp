@@ -1598,11 +1598,12 @@ class TestVerdictEdgeCases:
 
         result = calculate_file_verdict(
             path_in_baseline=False,
-            filename_in_baseline=True,  # certutil IS in baseline
+            filename_in_baseline=True,
             is_system_path=False,
             filename_findings=[],
             lolbin_info={"name": "certutil.exe", "functions": ["Download"]},
             directory_known_for_file=False,
+            filename="certutil.exe",
         )
         assert result.verdict.value == "SUSPICIOUS"
 

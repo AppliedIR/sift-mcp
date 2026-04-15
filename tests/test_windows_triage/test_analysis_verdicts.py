@@ -119,8 +119,8 @@ class TestCalculateFileVerdict:
         assert result.verdict == Verdict.EXPECTED
         assert result.confidence == "medium"
 
-    def test_filename_in_baseline_unknown_directory(self):
-        """Filename in baseline in unknown directory should be SUSPICIOUS."""
+    def test_masquerade_target_unknown_directory(self):
+        """Masquerade target in unknown directory should be SUSPICIOUS."""
         result = calculate_file_verdict(
             path_in_baseline=False,
             filename_in_baseline=True,
@@ -128,18 +128,33 @@ class TestCalculateFileVerdict:
             filename_findings=[],
             lolbin_info=None,
             directory_known_for_file=False,
+            filename="svchost.exe",
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
-    def test_lolbin_wrong_location(self):
-        """Known LOLBin in unknown directory should be SUSPICIOUS."""
+    def test_non_target_in_unknown_directory(self):
+        """Non-masquerade-target baseline filename in unknown dir should be UNKNOWN."""
         result = calculate_file_verdict(
             path_in_baseline=False,
-            filename_in_baseline=True,  # certutil IS in baseline
+            filename_in_baseline=True,
+            is_system_path=False,
+            filename_findings=[],
+            lolbin_info=None,
+            directory_known_for_file=False,
+            filename="setup.exe",
+        )
+        assert result.verdict == Verdict.UNKNOWN
+
+    def test_lolbin_wrong_location(self):
+        """Known LOLBin masquerade target in unknown directory should be SUSPICIOUS."""
+        result = calculate_file_verdict(
+            path_in_baseline=False,
+            filename_in_baseline=True,
             is_system_path=False,
             filename_findings=[],
             lolbin_info={"name": "certutil.exe", "functions": ["Download"]},
             directory_known_for_file=False,
+            filename="certutil.exe",
         )
         assert result.verdict == Verdict.SUSPICIOUS
 
@@ -171,10 +186,11 @@ class TestCalculateFileVerdict:
         result = calculate_file_verdict(
             path_in_baseline=False,
             filename_in_baseline=True,
-            is_system_path=False,  # Wrong path!
+            is_system_path=False,
             filename_findings=[],
             lolbin_info=None,
             is_protected_process=True,
+            filename="svchost.exe",
         )
         assert result.verdict == Verdict.SUSPICIOUS
 

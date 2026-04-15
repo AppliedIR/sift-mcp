@@ -53,13 +53,115 @@ Key Design Decisions:
 from dataclasses import dataclass
 from enum import Enum
 
-# Windows components that install binaries in versioned/dynamic paths
-_KNOWN_DYNAMIC_PATHS = [
-    "\\programdata\\microsoft\\windows defender\\",
-    "\\programdata\\microsoft\\windows defender advanced threat protection\\",
-    "\\windows\\servicing\\",
-    "\\windows\\winsxs\\",
-]
+# Windows system binaries that should only exist in system directories.
+# Finding these filenames outside System32/SysWOW64/WinSxS is a
+# masquerading indicator (T1036.005).
+#
+# Sources:
+#   Sigma e4a6b256 "System File Execution Location Anomaly"
+#   Sigma d5866ddf "Files With System Process Name In Unsuspected Locations"
+#   SANS Hunt Evil, 13Cubed, MITRE CAR-2021-04-001, Red Canary
+#
+# Filenames NOT in this set get UNKNOWN when found outside baseline
+# paths — they are legitimate software in non-baseline directories,
+# not masquerading indicators.
+_MASQUERADE_TARGETS = {
+    # --- Both Sigma rules (core set) ---
+    "atbroker.exe",
+    "audiodg.exe",
+    "bcdedit.exe",
+    "bitsadmin.exe",
+    "certreq.exe",
+    "certutil.exe",
+    "cmstp.exe",
+    "conhost.exe",
+    "csrss.exe",
+    "dashost.exe",
+    "dfrgui.exe",
+    "dllhost.exe",
+    "dwm.exe",
+    "eventvwr.exe",
+    "explorer.exe",
+    "fsquirt.exe",
+    "lsaiso.exe",
+    "lsass.exe",
+    "lsm.exe",
+    "msiexec.exe",
+    "powershell.exe",
+    "pwsh.exe",
+    "regsvr32.exe",
+    "rundll32.exe",
+    "runtimebroker.exe",
+    "schtasks.exe",
+    "services.exe",
+    "sihost.exe",
+    "smartscreen.exe",
+    "smss.exe",
+    "spoolsv.exe",
+    "svchost.exe",
+    "taskhost.exe",
+    "taskhostw.exe",
+    "taskmgr.exe",
+    "werfault.exe",
+    "werfaultsecure.exe",
+    "wininit.exe",
+    "winlogon.exe",
+    "wlanext.exe",
+    "wscript.exe",
+    "wsmprovhost.exe",
+    # --- Execution rule only ---
+    "consent.exe",
+    "cscript.exe",
+    "defrag.exe",
+    "dism.exe",
+    "dllhst3g.exe",
+    "finger.exe",
+    "logonui.exe",
+    "ntoskrnl.exe",
+    "powershell_ise.exe",
+    "runonce.exe",
+    "winver.exe",
+    "wsl.exe",
+    # --- File creation rule only ---
+    "backgroundtaskhost.exe",
+    "cmdl32.exe",
+    "eventcreate.exe",
+    "extrac32.exe",
+    "fontdrvhost.exe",
+    "ipconfig.exe",
+    "iscsicli.exe",
+    "iscsicpl.exe",
+    "logman.exe",
+    "msinfo32.exe",
+    "mstsc.exe",
+    "nbtstat.exe",
+    "odbcconf.exe",
+    "regini.exe",
+    "searchfilterhost.exe",
+    "searchindexer.exe",
+    "searchprotocolhost.exe",
+    "securityhealthservice.exe",
+    "securityhealthsystray.exe",
+    "shellappruntime.exe",
+    "systemsettingsbroker.exe",
+    "tiworker.exe",
+    "vssadmin.exe",
+    "w32tm.exe",
+    "wermgr.exe",
+    "wevtutil.exe",
+    "winrshost.exe",
+    "winrtnetmuahostserver.exe",
+    "wlrmdr.exe",
+    "wmiprvse.exe",
+    "wslhost.exe",
+    "wsreset.exe",
+    "wudfhost.exe",
+    "wwahost.exe",
+    # --- Additional (Red Canary, Nextron, SANS) ---
+    "cmd.exe",
+    "notepad.exe",
+    "sethc.exe",
+}
 
 
 class Verdict(Enum):
@@ -103,6 +205,7 @@ def calculate_file_verdict(
     is_protected_process: bool = False,
     directory_known_for_file: bool = False,
     dir_normalized: str = "",
+    filename: str = "",
 ) -> VerdictResult:
     """
     Calculate verdict for a file/path check (offline analysis only).
@@ -117,7 +220,7 @@ def calculate_file_verdict(
         lolbin_info: LOLBin info if filename is a known LOLBin
         is_protected_process: True if filename matches a protected process name
         directory_known_for_file: True if this directory is a known location for this filename
-        dir_normalized: Normalized directory path for dynamic path matching
+        dir_normalized: Unused, retained for API compatibility
 
     Returns:
         VerdictResult with verdict, reasons, and confidence
@@ -181,27 +284,31 @@ def calculate_file_verdict(
                 verdict=Verdict.EXPECTED, reasons=reasons, confidence="medium"
             )
 
-        # Check if directory is a known dynamic path
-        if dir_normalized and any(
-            dir_normalized.startswith(dp) for dp in _KNOWN_DYNAMIC_PATHS
-        ):
-            reasons.append("Known dynamic path -- verify with hash or signature")
+        # Only masquerade targets trigger SUSPICIOUS in unknown directories.
+        # Other baseline filenames (setup.exe, OneDriveSetup.exe, etc.)
+        # are legitimate software in non-baseline paths -> UNKNOWN.
+        if filename.lower() in _MASQUERADE_TARGETS:
+            reasons.append(
+                "System binary in unexpected directory (masquerade indicator)"
+            )
+            if is_protected_process:
+                reasons.append("Protected system process -- high masquerading risk")
+                return VerdictResult(
+                    verdict=Verdict.SUSPICIOUS,
+                    reasons=reasons,
+                    confidence="high",
+                )
             return VerdictResult(
-                verdict=Verdict.UNKNOWN, reasons=reasons, confidence="low"
+                verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="medium"
             )
 
-        # Directory is NOT known for this file -- masquerading indicator
+        # Baseline filename but not a masquerade target -- normal software
+        # in a non-baseline directory. Not suspicious.
         reasons.append(
-            "Known Windows binary in directory not associated with this file"
+            "Filename in baseline but not a masquerade target -- "
+            "verify with hash if needed"
         )
-        if is_protected_process:
-            reasons.append("Protected system process -- high masquerading risk")
-            return VerdictResult(
-                verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="high"
-            )
-        return VerdictResult(
-            verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="medium"
-        )
+        return VerdictResult(verdict=Verdict.UNKNOWN, reasons=reasons, confidence="low")
 
     # Priority 6: High severity filename issues
     high_findings = [f for f in filename_findings if f.get("severity") == "high"]
