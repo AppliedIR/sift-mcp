@@ -879,10 +879,11 @@ class CaseManager:
                             e_tool.startswith("idx_ingest") and e.get("input_files")
                         ):
                             continue
-                        # If we have a search index, verify the ingest matches
-                        # by hostname segment (not substring — "dc" must not
-                        # match "dc01")
-                        if search_index:
+                        # If we have a specific search index (no wildcard),
+                        # verify the ingest matches by hostname segment
+                        # ("dc" must not match "dc01"). Wildcard patterns
+                        # (case-*-evtx-*) accept any ingest.
+                        if search_index and "*" not in search_index:
                             ingest_hosts = e.get("params", {}).get("hosts", [])
                             idx_lower = search_index.lower()
                             if ingest_hosts and not any(
