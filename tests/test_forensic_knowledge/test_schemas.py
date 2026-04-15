@@ -262,13 +262,13 @@ class TestCrossMcpChecks:
                     )
 
     def test_cross_mcp_checks_count(self):
-        """Should have 51 artifacts total with cross_mcp_checks."""
+        """Should have 53 artifacts total with cross_mcp_checks."""
         count = 0
         for platform in ("windows", "linux"):
             for art in loader._load_all_in_dir(f"artifacts/{platform}"):
                 if "cross_mcp_checks" in art:
                     count += 1
-        assert count == 51
+        assert count == 53
 
 
 # --- Scenario playbook schema ---
