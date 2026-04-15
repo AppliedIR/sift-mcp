@@ -153,6 +153,8 @@ def _resolve_source_evidence_static(
     depth: int = 0,
     max_depth: int = 10,
     evidence_by_hash: dict[str, str] | None = None,
+    output_to_inputs: dict[str, list[str]] | None = None,
+    hostname_hint: str = "",
 ) -> str:
     """Walk input files backward through audit trail to find registered evidence.
 
@@ -163,6 +165,20 @@ def _resolve_source_evidence_static(
         return ""
     if visited is None:
         visited = set()
+    # Build output→input_files lookup once at depth 0, reuse in recursion
+    if output_to_inputs is None:
+        output_to_inputs = {}
+        for entry in audit_entries:
+            rs = entry.get("result_summary", {})
+            if isinstance(rs, dict):
+                of = rs.get("output_file", "")
+                if of:
+                    try:
+                        output_to_inputs[str(Path(of).resolve())] = entry.get(
+                            "input_files", []
+                        )
+                    except OSError:
+                        pass
     for path in input_files:
         resolved = str(Path(path).resolve())
         if resolved in visited:
@@ -170,6 +186,19 @@ def _resolve_source_evidence_static(
         visited.add(resolved)
         if resolved in evidence_registry:
             return resolved
+        # Directory containment: idx_ingest records a directory but
+        # the registry has individual files inside it.
+        # When hostname_hint is set, prefer evidence paths containing it.
+        resolved_prefix = resolved.rstrip("/") + "/"
+        containment_match = ""
+        for reg_path in evidence_registry:
+            if reg_path.startswith(resolved_prefix):
+                if not containment_match:
+                    containment_match = reg_path
+                if hostname_hint and hostname_hint.lower() in reg_path.lower():
+                    return reg_path  # exact host match, return immediately
+        if containment_match:
+            return containment_match
         # Hash-based fallback: match input_sha256s against evidence hashes
         if evidence_by_hash:
             for entry in audit_entries:
@@ -180,22 +209,21 @@ def _resolve_source_evidence_static(
                         h = entry_hashes[i]
                         if h and h in evidence_by_hash:
                             return evidence_by_hash[h]
-        for entry in audit_entries:
-            output = entry.get("result_summary", {}).get("output_file", "")
-            if output and str(Path(output).resolve()) == resolved:
-                parent_inputs = entry.get("input_files", [])
-                if parent_inputs:
-                    result = _resolve_source_evidence_static(
-                        parent_inputs,
-                        audit_entries,
-                        evidence_registry,
-                        visited,
-                        depth + 1,
-                        max_depth,
-                        evidence_by_hash,
-                    )
-                    if result:
-                        return result
+        parent_inputs = output_to_inputs.get(resolved)
+        if parent_inputs:
+            result = _resolve_source_evidence_static(
+                parent_inputs,
+                audit_entries,
+                evidence_registry,
+                visited,
+                depth + 1,
+                max_depth,
+                evidence_by_hash,
+                output_to_inputs,
+                hostname_hint,
+            )
+            if result:
+                return result
     return ""
 
 
@@ -776,9 +804,10 @@ class CaseManager:
                         ),
                     }
                 if aid not in eid_set:
-                    # Two-strike: flush race condition
+                    # Two-strike: flush race condition — rebuild everything
                     time.sleep(0.1)
                     eid_set.clear()
+                    all_audit_entries.clear()
                     if audit_dir.is_dir():
                         for jsonl_file in audit_dir.glob("*.jsonl"):
                             try:
@@ -792,6 +821,7 @@ class CaseManager:
                                             a = entry.get("audit_id", "")
                                             if a:
                                                 eid_set.add(a)
+                                            all_audit_entries.append(entry)
                                         except json.JSONDecodeError:
                                             continue
                             except OSError:
@@ -837,9 +867,14 @@ class CaseManager:
                 p = e.get("path", "")
                 if h and p:
                     ev_by_hash[h] = str(Path(p).resolve())
-            audit_by_id = {
-                e["audit_id"]: e for e in all_audit_entries if e.get("audit_id")
-            }
+            audit_by_id: dict[str, dict] = {}
+            for e in all_audit_entries:
+                aid_key = e.get("audit_id", "")
+                if not aid_key:
+                    continue
+                if aid_key in audit_by_id:
+                    logger.warning("Duplicate audit_id in trail: %s", aid_key)
+                audit_by_id[aid_key] = e
             # Collect input_files from referenced audit entries
             input_files = []
             for aid in sanitized["audit_ids"]:
@@ -864,6 +899,7 @@ class CaseManager:
                 # OpenSearch indirect path: idx_search/idx_aggregate/etc have
                 # no input_files (they're queries). Trace through idx_ingest*
                 # entries that DO have input_files (the evidence path).
+                active_cid = self._active_case_id or ""
                 for aid in sanitized["audit_ids"]:
                     entry = audit_by_id.get(aid)
                     if not entry:
@@ -879,25 +915,38 @@ class CaseManager:
                             e_tool.startswith("idx_ingest") and e.get("input_files")
                         ):
                             continue
+                        # Bug 4: skip entries from a different case
+                        e_cid = e.get("case_id", "")
+                        if e_cid and active_cid and e_cid != active_cid:
+                            continue
                         # If we have a specific search index (no wildcard),
                         # verify the ingest matches by hostname segment
                         # ("dc" must not match "dc01"). Wildcard patterns
                         # (case-*-evtx-*) accept any ingest.
                         if search_index and "*" not in search_index:
+                            # Check both params.hosts (list, from idx_ingest)
+                            # and params.hostname (string, from _launch_background)
                             ingest_hosts = e.get("params", {}).get("hosts", [])
+                            if not ingest_hosts:
+                                h = e.get("params", {}).get("hostname", "")
+                                if h:
+                                    ingest_hosts = [h]
                             idx_lower = search_index.lower()
-                            if ingest_hosts and not any(
+                            if not ingest_hosts or not any(
                                 idx_lower.endswith(f"-{h.lower()}")
                                 or f"-{h.lower()}-" in idx_lower
                                 for h in ingest_hosts
                             ):
-                                continue  # wrong ingest, skip
+                                continue  # wrong ingest or unknown host, skip
+                        # Pass hostname for directory containment disambiguation
+                        hint = ingest_hosts[0] if ingest_hosts else ""
                         try:
                             source_ev = _resolve_source_evidence_static(
                                 e["input_files"],
                                 all_audit_entries,
                                 registered,
                                 evidence_by_hash=ev_by_hash,
+                                hostname_hint=hint,
                             )
                             if source_ev:
                                 sanitized["source_evidence"] = source_ev
