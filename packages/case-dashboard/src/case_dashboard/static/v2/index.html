@@ -2127,10 +2127,25 @@ async function loadToolInvocations(finding) {
     }
     var gradeColor = artGrade === 'FULL' ? 'var(--green)' : 'var(--amber)';
     html += '<div style="padding:4px 10px;margin-bottom:4px;background:var(--bg-secondary);border-left:3px solid ' + gradeColor + ';border-radius:4px">';
-    html += '<strong>' + escapeHtml((art.source || '').split('/').pop() || 'artifact') + '</strong>';
-    if (artGrade) html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + escapeHtml(artGrade) + '</span>';
-    if (artSource) html += ' \u2192 ' + escapeHtml(artSource.split('/').pop());
-    // Inline the audit entry for this artifact
+    // Evidence source at top (chronological start)
+    if (artSource) {
+      html += '<strong>' + escapeHtml(artSource.split('/').pop()) + '</strong>';
+      html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + escapeHtml(artGrade) + '</span>';
+      html += ' <span style="color:var(--text-muted);font-size:10px">(registered evidence)</span>';
+    } else {
+      html += '<strong>' + escapeHtml((art.source || '').split('/').pop() || 'artifact') + '</strong>';
+      if (artGrade) html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + escapeHtml(artGrade) + '</span>';
+    }
+    // Chain steps in chronological order (reversed from resolution order)
+    var reversedChain = chain.slice().reverse();
+    reversedChain.forEach(function(step) {
+      html += '<div style="padding:2px 0 2px 12px;border-left:2px solid var(--border);margin-left:4px">';
+      html += '\u2191 <strong>' + escapeHtml(step.tool || 'unknown') + '</strong>';
+      if (step.hostname) html += ' \u00B7 ' + escapeHtml(step.hostname);
+      if (step.audit_id) html += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(step.audit_id) + ']</span>';
+      html += '</div>';
+    });
+    // Artifact's own tool call at bottom (chronological end — what produced the finding)
     var artEntry = auditById[artAuditId];
     if (artEntry) {
       renderedAuditIds[artAuditId] = true;
@@ -2141,7 +2156,7 @@ async function loadToolInvocations(finding) {
       }
       var elapsed = artEntry.elapsed_ms ? ' \u00B7 ' + (artEntry.elapsed_ms / 1000).toFixed(1) + 's' : '';
       html += '<div style="padding:2px 0 2px 12px;border-left:2px solid var(--border);margin-left:4px">';
-      html += '\u2193 <strong>' + escapeHtml(tool) + '</strong>' + elapsed;
+      html += '\u2191 <strong>' + escapeHtml(tool) + '</strong>' + elapsed;
       html += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(artAuditId) + ']</span>';
       if (cmd) html += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
       var outFile = (artEntry.result_summary || {}).output_file;
@@ -2150,14 +2165,6 @@ async function loadToolInvocations(finding) {
       }
       html += '</div>';
     }
-    // Render chain steps (intermediate hops for derivative/OpenSearch paths)
-    chain.forEach(function(step) {
-      html += '<div style="padding:2px 0 2px 12px;border-left:2px solid var(--border);margin-left:4px">';
-      html += '\u2193 <strong>' + escapeHtml(step.tool || 'unknown') + '</strong>';
-      if (step.hostname) html += ' \u00B7 ' + escapeHtml(step.hostname);
-      if (step.audit_id) html += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(step.audit_id) + ']</span>';
-      html += '</div>';
-    });
     html += '</div>';
   });
   if (artifactsRendered) html += '</div>';
