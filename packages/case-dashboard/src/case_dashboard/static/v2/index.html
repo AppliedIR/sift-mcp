@@ -860,6 +860,7 @@ let evidenceSortAsc = true;
 let todosSortCol = 'priority';
 let todosSortAsc = true;
 let focusedTimelineId = null;
+var _tooltipAuditMap = {};
 let timelineFilter = 'pending';
 let timelineTypeFilter = '';
 let batchTimelineSelected = new Set();
@@ -2093,6 +2094,7 @@ async function loadToolInvocations(finding) {
   // Build audit_id → entry lookup
   var auditById = {};
   auditData.forEach(function(e) { if (e.audit_id) auditById[e.audit_id] = e; });
+  _tooltipAuditMap = auditById;
 
   var artifacts = finding.artifacts || [];
   var renderedAuditIds = {};
@@ -2127,7 +2129,10 @@ async function loadToolInvocations(finding) {
     if (fullEntry && fullEntry.params && fullEntry.params.command) {
       cmd = Array.isArray(fullEntry.params.command) ? fullEntry.params.command.join(' ') : String(fullEntry.params.command);
     }
-    var h = '<div style="padding:1px 0 1px 12px;border-left:2px solid var(--border);margin-left:4px">';
+    var aid = step.audit_id || '';
+    var h = '<div style="padding:1px 0 1px 12px;border-left:2px solid var(--border);margin-left:4px;cursor:pointer"'
+      + (aid ? ' data-audit-id="' + escapeHtml(aid) + '" onmouseenter="showChainTooltip(this)" onmouseleave="hideChainTooltip()" onclick="pinChainTooltip(this)"' : '')
+      + '>';
     h += '\u2193 <strong>' + escapeHtml(tool) + '</strong>';
     if (step.artifact_type) h += ' (' + escapeHtml(step.artifact_type);
     if (step.artifact_type && step.hostname) h += ' \u00B7 ' + escapeHtml(step.hostname);
@@ -3960,6 +3965,87 @@ setInterval(function() {
   if (editingField) return;
   loadAll().catch(function(e) { console.error('Auto-refresh failed:', e); });
 }, 15000);
+
+/* === Chain step tooltip === */
+function _tipRow(label, value, mono) {
+  return '<div><span style="color:var(--text-muted);display:inline-block;width:90px">'
+    + escapeHtml(label) + ':</span> '
+    + (mono ? '<span style="font-family:monospace">' : '<span>')
+    + escapeHtml(String(value)) + '</span></div>';
+}
+function _buildTooltipHtml(entry) {
+  var h = '';
+  var tool = entry.tool || entry.mcp || 'unknown';
+  h += '<div style="font-weight:700;margin-bottom:6px">' + escapeHtml(tool) + '</div>';
+  if (entry.ts || entry.timestamp) h += _tipRow('Timestamp', entry.ts || entry.timestamp);
+  if (entry.audit_id) h += _tipRow('Audit ID', entry.audit_id, true);
+  if (entry.elapsed_ms) h += _tipRow('Elapsed', (entry.elapsed_ms / 1000).toFixed(1) + 's');
+  var params = entry.params || {};
+  if (params.command) {
+    var cmd = Array.isArray(params.command) ? params.command.join(' ') : String(params.command);
+    h += _tipRow('Command', '$ ' + cmd, true);
+  }
+  if (params.purpose) h += _tipRow('Purpose', params.purpose);
+  var inputs = entry.input_files || [];
+  if (inputs.length) {
+    h += _tipRow('Input files', inputs.map(function(p) { return p.split('/').pop(); }).join(', '));
+  }
+  var rs = entry.result_summary || {};
+  if (typeof rs === 'string') { h += _tipRow('Result', rs); }
+  else {
+    if (rs.output_file) h += _tipRow('Output file', rs.output_file.split('/').pop(), true);
+    if (rs.output_sha256) h += _tipRow('SHA-256', rs.output_sha256.slice(0, 16) + '...', true);
+    if (rs.stdout_bytes) h += _tipRow('Size', Number(rs.stdout_bytes).toLocaleString() + ' bytes');
+  }
+  var backend = entry._backend || entry.mcp || '';
+  if (backend) h += _tipRow('Backend', backend);
+  return h;
+}
+function showChainTooltip(el) {
+  var aid = el.getAttribute('data-audit-id');
+  if (!aid) return;
+  var tip = document.getElementById('chainTooltip');
+  var entry = _tooltipAuditMap[aid];
+  tip.innerHTML = entry ? _buildTooltipHtml(entry)
+    : '<span style="color:var(--text-muted)">Audit entry not available</span>';
+  tip.style.display = '';
+  tip.style.pointerEvents = 'none';
+  var rect = el.getBoundingClientRect();
+  var x = rect.right + 8;
+  var y = rect.top;
+  if (x + 480 > window.innerWidth) x = rect.left - 488;
+  if (y + tip.offsetHeight > window.innerHeight) y = window.innerHeight - tip.offsetHeight - 8;
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+function hideChainTooltip() {
+  var tip = document.getElementById('chainTooltip');
+  if (tip.style.pointerEvents === 'auto') return; // pinned
+  tip.style.display = 'none';
+}
+function pinChainTooltip(el) {
+  showChainTooltip(el);
+  var tip = document.getElementById('chainTooltip');
+  tip.style.pointerEvents = 'auto';
+  if (!tip.querySelector('.tip-close')) {
+    var btn = document.createElement('span');
+    btn.className = 'tip-close';
+    btn.style.cssText = 'float:right;cursor:pointer;font-size:14px;color:var(--text-muted)';
+    btn.textContent = '\u2715';
+    btn.onclick = function() { tip.style.display = 'none'; tip.style.pointerEvents = 'none'; };
+    tip.prepend(btn);
+  }
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') { var tip = document.getElementById('chainTooltip'); tip.style.display = 'none'; tip.style.pointerEvents = 'none'; }
+});
+document.addEventListener('click', function(e) {
+  var tip = document.getElementById('chainTooltip');
+  if (tip.style.display !== 'none' && tip.style.pointerEvents === 'auto' && !tip.contains(e.target) && !e.target.closest('[data-audit-id]')) {
+    tip.style.display = 'none'; tip.style.pointerEvents = 'none';
+  }
+});
 </script>
+<div id="chainTooltip" style="display:none;position:fixed;z-index:1000;max-width:480px;padding:10px 14px;background:var(--bg-primary);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);font-size:12px;line-height:1.5;pointer-events:none"></div>
 </body>
 </html>
