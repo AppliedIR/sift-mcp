@@ -2106,35 +2106,51 @@ async function loadToolInvocations(finding) {
     html += '<div style="font-weight:600;margin-bottom:4px">' + escapeHtml(sourceEv) + ' (registered \u2713)</div>';
   }
 
-  // Render per-artifact provenance chains
+  // Build audit_id → entry lookup for inline rendering
+  var auditById = {};
+  auditData.forEach(function(e) { if (e.audit_id) auditById[e.audit_id] = e; });
+
+  // Unified per-artifact provenance + tool invocation display
   var artifacts = finding.artifacts || [];
-  var chainsRendered = false;
+  var renderedAuditIds = {};
+  var artifactsRendered = false;
   artifacts.forEach(function(art) {
     var chain = art.provenance_chain || [];
     var artGrade = art.provenance_grade || '';
     var artSource = art.source_evidence || '';
-    if (!chain.length && !artGrade) return;
-    if (!chainsRendered) {
+    var artAuditId = art.audit_id || '';
+    if (!artGrade && !artAuditId) return;
+    if (!artifactsRendered) {
       html += '<div style="margin:6px 0;font-size:11px">';
-      html += '<div style="font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Per-Artifact Provenance</div>';
-      chainsRendered = true;
+      html += '<div style="font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Evidence Chain</div>';
+      artifactsRendered = true;
     }
     var gradeColor = artGrade === 'FULL' ? 'var(--green)' : 'var(--amber)';
     html += '<div style="padding:4px 10px;margin-bottom:4px;background:var(--bg-secondary);border-left:3px solid ' + gradeColor + ';border-radius:4px">';
     html += '<strong>' + escapeHtml((art.source || '').split('/').pop() || 'artifact') + '</strong>';
-    html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + escapeHtml(artGrade) + '</span>';
+    if (artGrade) html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + escapeHtml(artGrade) + '</span>';
     if (artSource) html += ' \u2192 ' + escapeHtml(artSource.split('/').pop());
-    if (chain.length === 0 && artGrade === 'FULL' && art.audit_id) {
-      // Direct path: tool → evidence, no intermediates
-      var toolName = '';
-      if (auditData) {
-        var ae = auditData.find(function(e) { return e.audit_id === art.audit_id; });
-        if (ae) toolName = ae.tool || '';
+    // Inline the audit entry for this artifact
+    var artEntry = auditById[artAuditId];
+    if (artEntry) {
+      renderedAuditIds[artAuditId] = true;
+      var tool = artEntry.tool || artEntry.mcp || 'unknown';
+      var cmd = '';
+      if (artEntry.params && artEntry.params.command) {
+        cmd = Array.isArray(artEntry.params.command) ? artEntry.params.command.join(' ') : String(artEntry.params.command);
       }
-      html += '<div style="padding:2px 0 2px 12px;border-left:2px solid var(--border);margin-left:4px;color:var(--text-secondary)">';
-      html += 'direct: <strong>' + escapeHtml(toolName || art.audit_id) + '</strong> \u2192 evidence';
+      var elapsed = artEntry.elapsed_ms ? ' \u00B7 ' + (artEntry.elapsed_ms / 1000).toFixed(1) + 's' : '';
+      html += '<div style="padding:2px 0 2px 12px;border-left:2px solid var(--border);margin-left:4px">';
+      html += '\u2193 <strong>' + escapeHtml(tool) + '</strong>' + elapsed;
+      html += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(artAuditId) + ']</span>';
+      if (cmd) html += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
+      var outFile = (artEntry.result_summary || {}).output_file;
+      if (outFile) {
+        html += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">\u2192 ' + escapeHtml(outFile.split('/').pop()) + '</div>';
+      }
       html += '</div>';
     }
+    // Render chain steps (intermediate hops for derivative/OpenSearch paths)
     chain.forEach(function(step) {
       html += '<div style="padding:2px 0 2px 12px;border-left:2px solid var(--border);margin-left:4px">';
       html += '\u2193 <strong>' + escapeHtml(step.tool || 'unknown') + '</strong>';
@@ -2144,52 +2160,32 @@ async function loadToolInvocations(finding) {
     });
     html += '</div>';
   });
-  if (chainsRendered) html += '</div>';
+  if (artifactsRendered) html += '</div>';
 
-  // Group audit entries by primary input source for tree display
-  var sorted = auditData.slice().sort(function(a, b) {
-    return (a.ts || a.timestamp || '').localeCompare(b.ts || b.timestamp || '');
-  });
-  var groups = {};
-  sorted.forEach(function(entry) {
-    var src = (entry.input_files && entry.input_files.length) ? entry.input_files[0] : '_no_input';
-    if (!groups[src]) groups[src] = [];
-    groups[src].push(entry);
-  });
-
-  function renderEntry(entry) {
-    var tool = entry.tool || entry.mcp || 'unknown';
-    var cmd = '';
-    if (entry.params && entry.params.command) {
-      cmd = Array.isArray(entry.params.command) ? entry.params.command.join(' ') : String(entry.params.command);
-    }
-    var elapsed = entry.elapsed_ms ? ' \u00B7 ' + (entry.elapsed_ms / 1000).toFixed(1) + 's' : '';
-    var h = '<div style="padding:2px 0 2px 12px;border-left:2px solid var(--border);margin-left:4px">';
-    h += '\u2193 <strong>' + escapeHtml(tool) + '</strong>' + elapsed;
-    if (entry.audit_id) h += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(entry.audit_id) + ']</span>';
-    if (cmd) h += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
-    var outFile = (entry.result_summary || {}).output_file;
-    if (outFile) {
-      h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">\u2192 ' + escapeHtml(outFile.split('/').pop()) + '</div>';
-    }
-    h += '</div>';
-    return h;
-  }
-
-  var groupKeys = Object.keys(groups);
-  groupKeys.forEach(function(src, idx) {
-    html += '<div style="margin-top:' + (idx > 0 ? '12' : '8') + 'px;padding:8px 10px;background:var(--bg-secondary);border:2px solid var(--border);border-radius:6px;border-left:3px solid var(--accent)">';
-    if (src !== '_no_input') {
-      html += '<div style="font-size:11px;font-weight:700;color:var(--text-primary);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">\u25B8 Input: ' + escapeHtml(src.split('/').pop()) + '</div>';
-    }
-    groups[src].forEach(function(entry) {
-      html += renderEntry(entry);
+  // Render remaining audit entries not tied to a specific artifact
+  var remaining = auditData.filter(function(e) { return e.audit_id && !renderedAuditIds[e.audit_id]; });
+  if (remaining.length) {
+    html += '<div style="margin-top:8px;font-size:11px">';
+    html += '<div style="font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Additional Tool Invocations</div>';
+    remaining.forEach(function(entry) {
+      var tool = entry.tool || entry.mcp || 'unknown';
+      var cmd = '';
+      if (entry.params && entry.params.command) {
+        cmd = Array.isArray(entry.params.command) ? entry.params.command.join(' ') : String(entry.params.command);
+      }
+      var elapsed = entry.elapsed_ms ? ' \u00B7 ' + (entry.elapsed_ms / 1000).toFixed(1) + 's' : '';
+      html += '<div style="padding:2px 0 2px 12px;border-left:2px solid var(--border);margin-left:4px">';
+      html += '\u2193 <strong>' + escapeHtml(tool) + '</strong>' + elapsed;
+      if (entry.audit_id) html += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(entry.audit_id) + ']</span>';
+      if (cmd) html += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
+      var outFile = (entry.result_summary || {}).output_file;
+      if (outFile) {
+        html += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">\u2192 ' + escapeHtml(outFile.split('/').pop()) + '</div>';
+      }
+      html += '</div>';
     });
     html += '</div>';
-    if (idx < groupKeys.length - 1) {
-      html += '<div style="text-align:center;font-size:10px;color:var(--text-muted);margin:4px 0">\u2502 parallel chain \u2502</div>';
-    }
-  });
+  }
   container.innerHTML = html;
 }
 

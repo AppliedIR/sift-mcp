@@ -612,6 +612,13 @@ def create_server() -> FastMCP:
         _validate_str_length(purpose, "purpose", _MAX_TEXT)
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
 
+        provenance_warning = ""
+        if output_files and not input_files:
+            provenance_warning = (
+                "output_files provided without input_files — provenance chain "
+                "cannot trace to evidence. Add input_files to enable chain resolution."
+            )
+
         # Determine source tier based on hook_audit_id
         source = "orchestrator_voluntary"
         if hook_audit_id:
@@ -620,8 +627,12 @@ def create_server() -> FastMCP:
             case_dir = _resolve_case_dir()
             if case_dir:
                 hook_found = False
-                hook_file = case_dir / "audit" / "claude-code.jsonl"
-                if hook_file.exists():
+                audit_dir = case_dir / "audit"
+                for hook_file in (
+                    sorted(audit_dir.glob("*.jsonl")) if audit_dir.is_dir() else []
+                ):
+                    if hook_found:
+                        break
                     try:
                         with open(hook_file, encoding="utf-8") as f:
                             for line in f:
@@ -669,6 +680,8 @@ def create_server() -> FastMCP:
         }
         if audit_id is None:
             result["warning"] = "Audit write failed — action not recorded"
+        if provenance_warning:
+            result["provenance_warning"] = provenance_warning
         return result
 
     # ------------------------------------------------------------------

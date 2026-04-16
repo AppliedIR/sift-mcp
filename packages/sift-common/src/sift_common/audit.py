@@ -66,7 +66,6 @@ class AuditWriter:
         self._sequence = 0
         self._date_str = ""
         self._lock = threading.Lock()
-        self._cached_case_id: str = ""
 
     @property
     def examiner(self) -> str:
@@ -191,16 +190,18 @@ class AuditWriter:
             pass
 
     def _read_active_case_id(self) -> str:
-        """Read case_id from ~/.vhir/active_case file, cached."""
-        if self._cached_case_id:
-            return self._cached_case_id
+        """Read case_id from ~/.vhir/active_case file.
+
+        Re-reads on every call to handle mid-session case switches.
+        The file is ~50 bytes and OS page-cached, so effectively free.
+        """
         try:
             raw = (Path.home() / ".vhir" / "active_case").read_text().strip()
             if raw:
-                self._cached_case_id = Path(raw).name
+                return Path(raw).name
         except OSError:
             pass
-        return self._cached_case_id
+        return ""
 
     def log(
         self,

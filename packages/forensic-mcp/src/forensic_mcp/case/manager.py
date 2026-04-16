@@ -1014,7 +1014,45 @@ class CaseManager:
                                     "hostname": hint,
                                     "role": "ingest",
                                 }
-                                art["provenance_chain"] = chain + [ingest_step]
+                                # Find per-artifact parser entry via run_id
+                                ingest_run_id = e.get("params", {}).get("run_id", "")
+                                parser_step = None
+                                if ingest_run_id and search_index:
+                                    idx_lower = search_index.lower()
+                                    for pe in all_audit_entries:
+                                        pe_tool = pe.get("tool", "")
+                                        if not pe_tool.startswith("ingest_"):
+                                            continue
+                                        pe_rid = pe.get("params", {}).get("run_id", "")
+                                        if pe_rid != ingest_run_id:
+                                            continue
+                                        pe_host = pe.get("params", {}).get(
+                                            "hostname", ""
+                                        )
+                                        if (
+                                            hint
+                                            and pe_host
+                                            and pe_host.lower() != hint.lower()
+                                        ):
+                                            continue
+                                        # Match artifact type from index name
+                                        pe_idx = (
+                                            pe.get("params", {})
+                                            .get("index_name", "")
+                                            .lower()
+                                        )
+                                        if pe_idx and pe_idx in idx_lower:
+                                            parser_step = {
+                                                "audit_id": pe.get("audit_id"),
+                                                "tool": pe_tool,
+                                                "hostname": pe_host,
+                                                "role": "parser",
+                                            }
+                                            break
+                                full_chain = chain + [ingest_step]
+                                if parser_step:
+                                    full_chain.append(parser_step)
+                                art["provenance_chain"] = full_chain
                                 art["provenance_grade"] = "FULL"
                                 break
                         except OSError:
