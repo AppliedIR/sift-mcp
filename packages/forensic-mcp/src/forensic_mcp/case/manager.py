@@ -158,20 +158,22 @@ def _resolve_source_evidence_static(
     max_depth: int = 10,
     evidence_by_hash: dict[str, str] | None = None,
     output_to_inputs: dict[str, list[str]] | None = None,
+    output_to_entry: dict[str, dict] | None = None,
     hostname_hint: str = "",
-) -> str:
+) -> tuple[str, list[dict]]:
     """Walk input files backward through audit trail to find registered evidence.
 
-    Tries path matching first, then falls back to hash matching for
-    cross-platform paths (e.g., Windows UNC vs Linux local).
+    Returns (evidence_path, chain_steps) where chain_steps records each
+    intermediate audit entry traversed during the walk.
     """
     if depth >= max_depth:
-        return ""
+        return "", []
     if visited is None:
         visited = set()
-    # Build output→input_files lookup once at depth 0, reuse in recursion
+    # Build output→input_files and output→entry lookups once at depth 0
     if output_to_inputs is None:
         output_to_inputs = {}
+        output_to_entry = {}
         for entry in audit_entries:
             inp = entry.get("input_files", [])
             rs = entry.get("result_summary", {})
@@ -179,25 +181,29 @@ def _resolve_source_evidence_static(
                 of = rs.get("output_file", "")
                 if of:
                     try:
-                        output_to_inputs[str(Path(of).resolve())] = inp
+                        key = str(Path(of).resolve())
+                        output_to_inputs[key] = inp
+                        output_to_entry[key] = entry
                     except OSError:
                         pass
                 for of in rs.get("output_files", []):
                     if of:
                         try:
-                            output_to_inputs[str(Path(of).resolve())] = inp
+                            key = str(Path(of).resolve())
+                            output_to_inputs[key] = inp
+                            output_to_entry[key] = entry
                         except OSError:
                             pass
+    if output_to_entry is None:
+        output_to_entry = {}
     for path in input_files:
         resolved = str(Path(path).resolve())
         if resolved in visited:
             continue
         visited.add(resolved)
         if resolved in evidence_registry:
-            return resolved
-        # Directory containment: idx_ingest records a directory but
-        # the registry has individual files inside it.
-        # When hostname_hint is set, prefer evidence paths containing it.
+            return resolved, []
+        # Directory containment
         resolved_prefix = resolved.rstrip("/") + "/"
         containment_match = ""
         for reg_path in evidence_registry:
@@ -205,10 +211,10 @@ def _resolve_source_evidence_static(
                 if not containment_match:
                     containment_match = reg_path
                 if hostname_hint and hostname_hint.lower() in reg_path.lower():
-                    return reg_path  # exact host match, return immediately
+                    return reg_path, []
         if containment_match:
-            return containment_match
-        # Hash-based fallback: match input_sha256s against evidence hashes
+            return containment_match, []
+        # Hash-based fallback
         if evidence_by_hash:
             for entry in audit_entries:
                 entry_inputs = entry.get("input_files", [])
@@ -217,10 +223,11 @@ def _resolve_source_evidence_static(
                     if str(Path(inp).resolve()) == resolved and i < len(entry_hashes):
                         h = entry_hashes[i]
                         if h and h in evidence_by_hash:
-                            return evidence_by_hash[h]
+                            return evidence_by_hash[h], []
         parent_inputs = output_to_inputs.get(resolved)
         if parent_inputs:
-            result = _resolve_source_evidence_static(
+            producer = output_to_entry.get(resolved, {})
+            result, sub_chain = _resolve_source_evidence_static(
                 parent_inputs,
                 audit_entries,
                 evidence_registry,
@@ -229,11 +236,18 @@ def _resolve_source_evidence_static(
                 max_depth,
                 evidence_by_hash,
                 output_to_inputs,
+                output_to_entry,
                 hostname_hint,
             )
             if result:
-                return result
-    return ""
+                step = {
+                    "audit_id": producer.get("audit_id", ""),
+                    "tool": producer.get("tool", ""),
+                    "input_files": producer.get("input_files", []),
+                    "role": "intermediate",
+                }
+                return result, sub_chain + [step]
+    return "", []
 
 
 # --- IOC helpers ---
@@ -860,7 +874,7 @@ class CaseManager:
         sanitized["audit_ids"] = list(dict.fromkeys(audit_ids))
 
         # Per-artifact provenance resolution
-        finding_prov_grade = "NONE"
+        finding_prov_grade = "PARTIAL"
         if all_audit_entries and validated_artifacts:
             raw_ev = self._load_evidence_registry(case_dir)
             evidence = (
@@ -887,8 +901,9 @@ class CaseManager:
                 audit_by_id[aid_key] = e
             active_cid = self._active_case_id or ""
 
-            # Pre-build output→input lookup once for all artifacts
+            # Pre-build output→input and output→entry lookups
             shared_output_map: dict[str, list[str]] = {}
+            shared_entry_map: dict[str, dict] = {}
             for _e in all_audit_entries:
                 _inp = _e.get("input_files", [])
                 _rs = _e.get("result_summary", {})
@@ -896,40 +911,47 @@ class CaseManager:
                     _of = _rs.get("output_file", "")
                     if _of:
                         try:
-                            shared_output_map[str(Path(_of).resolve())] = _inp
+                            _key = str(Path(_of).resolve())
+                            shared_output_map[_key] = _inp
+                            shared_entry_map[_key] = _e
                         except OSError:
                             pass
                     for _of in _rs.get("output_files", []):
                         if _of:
                             try:
-                                shared_output_map[str(Path(_of).resolve())] = _inp
+                                _key = str(Path(_of).resolve())
+                                shared_output_map[_key] = _inp
+                                shared_entry_map[_key] = _e
                             except OSError:
                                 pass
 
             for art in validated_artifacts:
                 art_aid = art.get("audit_id", "")
                 if not art_aid:
-                    art["provenance_grade"] = "NONE"
+                    art["provenance_grade"] = "PARTIAL"
                     continue
                 entry = audit_by_id.get(art_aid)
                 if not entry:
-                    art["provenance_grade"] = "NONE"
+                    art["provenance_grade"] = "PARTIAL"
                     continue
 
                 # Direct path: audit entry has input_files
                 art_input_files = entry.get("input_files", [])
                 if art_input_files:
                     try:
-                        source_ev = _resolve_source_evidence_static(
+                        source_ev, chain = _resolve_source_evidence_static(
                             art_input_files,
                             all_audit_entries,
                             registered,
                             evidence_by_hash=ev_by_hash,
                             output_to_inputs=shared_output_map,
+                            output_to_entry=shared_entry_map,
                         )
                         if source_ev:
                             art["source_evidence"] = source_ev
                             art["provenance_grade"] = "FULL"
+                            if chain:
+                                art["provenance_chain"] = chain
                             continue
                     except OSError:
                         pass
@@ -974,36 +996,36 @@ class CaseManager:
                     for _score, e, ingest_hosts in candidates:
                         hint = ingest_hosts[0] if ingest_hosts else ""
                         try:
-                            source_ev = _resolve_source_evidence_static(
+                            source_ev, chain = _resolve_source_evidence_static(
                                 e["input_files"],
                                 all_audit_entries,
                                 registered,
                                 evidence_by_hash=ev_by_hash,
                                 output_to_inputs=shared_output_map,
+                                output_to_entry=shared_entry_map,
                                 hostname_hint=hint,
                             )
                             if source_ev:
                                 art["source_evidence"] = source_ev
-                                art["provenance_chain"] = [
-                                    {
-                                        "audit_id": e.get("audit_id"),
-                                        "tool": e.get("tool"),
-                                        "input_files": e.get("input_files"),
-                                        "hostname": hint,
-                                        "role": "ingest",
-                                    }
-                                ]
+                                ingest_step = {
+                                    "audit_id": e.get("audit_id"),
+                                    "tool": e.get("tool"),
+                                    "input_files": e.get("input_files"),
+                                    "hostname": hint,
+                                    "role": "ingest",
+                                }
+                                art["provenance_chain"] = chain + [ingest_step]
                                 art["provenance_grade"] = "FULL"
                                 break
                         except OSError:
                             continue
 
                 if "provenance_grade" not in art:
-                    art["provenance_grade"] = "NONE"
+                    art["provenance_grade"] = "PARTIAL"
 
             # Finding-level grade: FULL or PARTIAL (NONE cannot survive reject gates)
             art_grades = [
-                a.get("provenance_grade", "NONE") for a in validated_artifacts
+                a.get("provenance_grade", "PARTIAL") for a in validated_artifacts
             ]
             if all(g == "FULL" for g in art_grades):
                 finding_prov_grade = "FULL"
@@ -1078,7 +1100,7 @@ class CaseManager:
                 gap: dict = {
                     "artifact_index": i,
                     "audit_id": art_aid or "(none)",
-                    "grade": art.get("provenance_grade", "NONE"),
+                    "grade": art.get("provenance_grade", "PARTIAL"),
                 }
                 if unresolved:
                     gap["unresolved_input"] = unresolved

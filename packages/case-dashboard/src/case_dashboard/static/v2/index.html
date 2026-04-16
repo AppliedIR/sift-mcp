@@ -1302,7 +1302,7 @@ function renderFinding(id) {
   }
   // Provenance grade badge — system-verified evidence chain completeness
   if (f.provenance_grade) {
-    var pgColor = f.provenance_grade === 'FULL' ? 'var(--status-approved)' : f.provenance_grade === 'PARTIAL' ? 'var(--status-draft)' : 'var(--status-rejected)';
+    var pgColor = f.provenance_grade === 'FULL' ? 'var(--green)' : 'var(--amber)';
     html += '<span class="badge" style="background:transparent;border:1px solid ' + pgColor + ';color:' + pgColor + ';font-size:10px">' + escapeHtml(f.provenance_grade) + '</span>';
   }
   // Host + event timestamp (decision-relevant context, always visible)
@@ -2119,11 +2119,22 @@ async function loadToolInvocations(finding) {
       html += '<div style="font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Per-Artifact Provenance</div>';
       chainsRendered = true;
     }
-    var gradeColor = artGrade === 'FULL' ? 'var(--status-approved)' : artGrade === 'PARTIAL' ? 'var(--status-draft)' : 'var(--text-muted)';
+    var gradeColor = artGrade === 'FULL' ? 'var(--green)' : 'var(--amber)';
     html += '<div style="padding:4px 10px;margin-bottom:4px;background:var(--bg-secondary);border-left:3px solid ' + gradeColor + ';border-radius:4px">';
     html += '<strong>' + escapeHtml((art.source || '').split('/').pop() || 'artifact') + '</strong>';
     html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + escapeHtml(artGrade) + '</span>';
     if (artSource) html += ' \u2192 ' + escapeHtml(artSource.split('/').pop());
+    if (chain.length === 0 && artGrade === 'FULL' && art.audit_id) {
+      // Direct path: tool → evidence, no intermediates
+      var toolName = '';
+      if (auditData) {
+        var ae = auditData.find(function(e) { return e.audit_id === art.audit_id; });
+        if (ae) toolName = ae.tool || '';
+      }
+      html += '<div style="padding:2px 0 2px 12px;border-left:2px solid var(--border);margin-left:4px;color:var(--text-secondary)">';
+      html += 'direct: <strong>' + escapeHtml(toolName || art.audit_id) + '</strong> \u2192 evidence';
+      html += '</div>';
+    }
     chain.forEach(function(step) {
       html += '<div style="padding:2px 0 2px 12px;border-left:2px solid var(--border);margin-left:4px">';
       html += '\u2193 <strong>' + escapeHtml(step.tool || 'unknown') + '</strong>';
