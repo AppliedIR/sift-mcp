@@ -113,7 +113,11 @@ _HASH_EXCLUDE_KEYS = {
     "verification",
     "modified_at",
     "provenance",
+    "provenance_detail",
+    "provenance_chain",
+    "provenance_grade",
     "provenance_warnings",
+    "provenance_gaps",
     "timeline_event_id",
     "source_evidence",
 }
@@ -169,16 +173,21 @@ def _resolve_source_evidence_static(
     if output_to_inputs is None:
         output_to_inputs = {}
         for entry in audit_entries:
+            inp = entry.get("input_files", [])
             rs = entry.get("result_summary", {})
             if isinstance(rs, dict):
                 of = rs.get("output_file", "")
                 if of:
                     try:
-                        output_to_inputs[str(Path(of).resolve())] = entry.get(
-                            "input_files", []
-                        )
+                        output_to_inputs[str(Path(of).resolve())] = inp
                     except OSError:
                         pass
+                for of in rs.get("output_files", []):
+                    if of:
+                        try:
+                            output_to_inputs[str(Path(of).resolve())] = inp
+                        except OSError:
+                            pass
     for path in input_files:
         resolved = str(Path(path).resolve())
         if resolved in visited:
@@ -800,7 +809,8 @@ class CaseManager:
                         "status": "REJECTED",
                         "error": (
                             "Artifact missing audit_id — pass the audit_id "
-                            "from the tool response you just received."
+                            "from the tool response, or call log_external_action "
+                            "first to record Bash commands."
                         ),
                     }
                 if aid not in eid_set:
@@ -849,8 +859,9 @@ class CaseManager:
         audit_ids.extend(artifact_aids)
         sanitized["audit_ids"] = list(dict.fromkeys(audit_ids))
 
-        # Auto-resolve source_evidence from audit trail
-        if all_audit_entries and sanitized["audit_ids"]:
+        # Per-artifact provenance resolution
+        finding_prov_grade = "NONE"
+        if all_audit_entries and validated_artifacts:
             raw_ev = self._load_evidence_registry(case_dir)
             evidence = (
                 raw_ev.get("files", []) if isinstance(raw_ev, dict) else (raw_ev or [])
@@ -860,7 +871,6 @@ class CaseManager:
                 for e in evidence
                 if e.get("path")
             }
-            # Hash→path lookup for cross-platform fallback (UNC → local)
             ev_by_hash = {}
             for e in evidence:
                 h = e.get("sha256", "")
@@ -875,58 +885,72 @@ class CaseManager:
                 if aid_key in audit_by_id:
                     logger.warning("Duplicate audit_id in trail: %s", aid_key)
                 audit_by_id[aid_key] = e
-            # Collect input_files from referenced audit entries
-            input_files = []
-            for aid in sanitized["audit_ids"]:
-                entry = audit_by_id.get(aid)
-                if entry:
-                    input_files.extend(entry.get("input_files", []))
-            if input_files:
-                try:
-                    source_ev = _resolve_source_evidence_static(
-                        input_files,
-                        all_audit_entries,
-                        registered,
-                        evidence_by_hash=ev_by_hash,
-                    )
-                    if source_ev:
-                        sanitized["source_evidence"] = source_ev
-                except OSError:
-                    provenance_warnings.append(
-                        "Failed to resolve source evidence (filesystem error)"
-                    )
-            else:
-                # OpenSearch indirect path: idx_search/idx_aggregate/etc have
-                # no input_files (they're queries). Trace through idx_ingest*
-                # entries that DO have input_files (the evidence path).
-                active_cid = self._active_case_id or ""
-                for aid in sanitized["audit_ids"]:
-                    entry = audit_by_id.get(aid)
-                    if not entry:
-                        continue
-                    tool = entry.get("tool", "")
-                    if not tool.startswith("idx_"):
-                        continue
-                    # Extract index from search params to match against ingest host
+            active_cid = self._active_case_id or ""
+
+            # Pre-build output→input lookup once for all artifacts
+            shared_output_map: dict[str, list[str]] = {}
+            for _e in all_audit_entries:
+                _inp = _e.get("input_files", [])
+                _rs = _e.get("result_summary", {})
+                if isinstance(_rs, dict):
+                    _of = _rs.get("output_file", "")
+                    if _of:
+                        try:
+                            shared_output_map[str(Path(_of).resolve())] = _inp
+                        except OSError:
+                            pass
+                    for _of in _rs.get("output_files", []):
+                        if _of:
+                            try:
+                                shared_output_map[str(Path(_of).resolve())] = _inp
+                            except OSError:
+                                pass
+
+            for art in validated_artifacts:
+                art_aid = art.get("audit_id", "")
+                if not art_aid:
+                    art["provenance_grade"] = "NONE"
+                    continue
+                entry = audit_by_id.get(art_aid)
+                if not entry:
+                    art["provenance_grade"] = "NONE"
+                    continue
+
+                # Direct path: audit entry has input_files
+                art_input_files = entry.get("input_files", [])
+                if art_input_files:
+                    try:
+                        source_ev = _resolve_source_evidence_static(
+                            art_input_files,
+                            all_audit_entries,
+                            registered,
+                            evidence_by_hash=ev_by_hash,
+                            output_to_inputs=shared_output_map,
+                        )
+                        if source_ev:
+                            art["source_evidence"] = source_ev
+                            art["provenance_grade"] = "FULL"
+                            continue
+                    except OSError:
+                        pass
+
+                # Indirect path: idx_search/idx_aggregate → trace to idx_ingest
+                tool = entry.get("tool", "")
+                if tool.startswith("idx_"):
                     search_index = entry.get("params", {}).get("index", "")
+                    # Collect candidates, score by filename affinity
+                    candidates: list[tuple[int, dict, list[str]]] = []
                     for e in all_audit_entries:
                         e_tool = e.get("tool", "")
                         if not (
                             e_tool.startswith("idx_ingest") and e.get("input_files")
                         ):
                             continue
-                        # Bug 4: skip entries from a different case
                         e_cid = e.get("case_id", "")
                         if e_cid and active_cid and e_cid != active_cid:
                             continue
-                        # If we have a specific search index (no wildcard),
-                        # verify the ingest matches by hostname segment
-                        # ("dc" must not match "dc01"). Wildcard patterns
-                        # (case-*-evtx-*) accept any ingest.
                         ingest_hosts: list[str] = []
                         if search_index and "*" not in search_index:
-                            # Check both params.hosts (list, from idx_ingest)
-                            # and params.hostname (string, from _launch_background)
                             ingest_hosts = e.get("params", {}).get("hosts", [])
                             if not ingest_hosts:
                                 h = e.get("params", {}).get("hostname", "")
@@ -938,8 +962,16 @@ class CaseManager:
                                 or f"-{h.lower()}-" in idx_lower
                                 for h in ingest_hosts
                             ):
-                                continue  # wrong ingest or unknown host, skip
-                        # Pass hostname for directory containment disambiguation
+                                continue
+                        score = 0
+                        for inp in e.get("input_files", []):
+                            stem = Path(inp).stem.lower()
+                            if stem and search_index and stem in search_index.lower():
+                                score = 1
+                                break
+                        candidates.append((score, e, ingest_hosts))
+                    candidates.sort(key=lambda c: -c[0])
+                    for _score, e, ingest_hosts in candidates:
                         hint = ingest_hosts[0] if ingest_hosts else ""
                         try:
                             source_ev = _resolve_source_evidence_static(
@@ -947,19 +979,47 @@ class CaseManager:
                                 all_audit_entries,
                                 registered,
                                 evidence_by_hash=ev_by_hash,
+                                output_to_inputs=shared_output_map,
                                 hostname_hint=hint,
                             )
                             if source_ev:
-                                sanitized["source_evidence"] = source_ev
+                                art["source_evidence"] = source_ev
+                                art["provenance_chain"] = [
+                                    {
+                                        "audit_id": e.get("audit_id"),
+                                        "tool": e.get("tool"),
+                                        "input_files": e.get("input_files"),
+                                        "hostname": hint,
+                                        "role": "ingest",
+                                    }
+                                ]
+                                art["provenance_grade"] = "FULL"
                                 break
                         except OSError:
                             continue
-                    if sanitized.get("source_evidence"):
-                        break
 
-            # Hard reject: artifact sources must be in evidence registry
+                if "provenance_grade" not in art:
+                    art["provenance_grade"] = "NONE"
+
+            # Finding-level grade: FULL or PARTIAL (NONE cannot survive reject gates)
+            art_grades = [
+                a.get("provenance_grade", "NONE") for a in validated_artifacts
+            ]
+            if all(g == "FULL" for g in art_grades):
+                finding_prov_grade = "FULL"
+            else:
+                finding_prov_grade = "PARTIAL"
+            for art in validated_artifacts:
+                if art.get("source_evidence"):
+                    sanitized["source_evidence"] = art["source_evidence"]
+                    break
+
+            # Hard reject: artifact sources must be in evidence registry.
+            # Exception: FULL-graded artifacts (chain traced to evidence).
             unregistered_sources = []
             for art in validated_artifacts:
+                if art.get("provenance_grade") == "FULL":
+                    continue
                 src = art.get("source", "")
                 if not src:
                     continue
@@ -968,8 +1028,11 @@ class CaseManager:
                 except OSError:
                     continue
                 if resolved not in registered:
-                    case_relative = src
+                    prefix = resolved.rstrip("/") + "/"
+                    if any(r.startswith(prefix) for r in registered):
+                        continue
                     case_dir_str = str(case_dir)
+                    case_relative = src
                     if resolved.startswith(case_dir_str + "/"):
                         case_relative = resolved[len(case_dir_str) + 1 :]
                     unregistered_sources.append(
@@ -977,7 +1040,9 @@ class CaseManager:
                             "source": src,
                             "action": f"evidence_register(path='{case_relative}')",
                             "hint": (
-                                f"If external: ln -s {src} evidence/{Path(src).name}"
+                                "If derivative: call log_external_action with "
+                                "input_files=[original evidence] and "
+                                f"output_files=['{src}'] to bridge the gap."
                             ),
                         }
                     )
@@ -987,11 +1052,43 @@ class CaseManager:
                     "status": "REJECTED",
                     "error": (
                         "Artifact sources not in evidence registry. "
-                        "Register first, then resubmit."
+                        "Register original evidence, or use log_external_action "
+                        "to link derivatives to registered evidence."
                     ),
                     "unregistered_sources": unregistered_sources,
                     "finding_held": f"{fid} (not staged -- fix sources and resubmit)",
                 }
+
+            # Provenance gap diagnostics for staged findings
+            provenance_gaps: list[dict] = []
+            for i, art in enumerate(validated_artifacts):
+                if art.get("provenance_grade") == "FULL":
+                    continue
+                art_aid = art.get("audit_id", "")
+                entry = audit_by_id.get(art_aid, {}) if art_aid else {}
+                unresolved = ""
+                for inp in entry.get("input_files", []):
+                    try:
+                        r = str(Path(inp).resolve())
+                    except OSError:
+                        r = inp
+                    if r not in registered:
+                        unresolved = inp
+                        break
+                gap: dict = {
+                    "artifact_index": i,
+                    "audit_id": art_aid or "(none)",
+                    "grade": art.get("provenance_grade", "NONE"),
+                }
+                if unresolved:
+                    gap["unresolved_input"] = unresolved
+                    gap["fix"] = (
+                        "Call log_external_action with input_files "
+                        f"and output_files=['{unresolved}'], then resubmit"
+                    )
+                provenance_gaps.append(gap)
+            if provenance_gaps:
+                sanitized["provenance_gaps"] = provenance_gaps
 
         if provenance_warnings:
             sanitized["provenance_warnings"] = provenance_warnings
@@ -1013,6 +1110,10 @@ class CaseManager:
                 ),
             }
 
+        # Provenance grade: per-artifact roll-up, or shell fallback
+        if not validated_artifacts:
+            finding_prov_grade = "PARTIAL"  # shell-only (no artifacts)
+
         finding_record = {
             **sanitized,
             "id": finding_id,
@@ -1022,6 +1123,8 @@ class CaseManager:
             "created_by": exam,
             "examiner": exam,
             "provenance": provenance["summary"],
+            "provenance_detail": provenance,
+            "provenance_grade": finding_prov_grade,
         }
 
         # Store supporting_commands if provided
@@ -1117,7 +1220,17 @@ class CaseManager:
             "status": "STAGED",
             "finding_id": finding_id,
             "provenance_detail": provenance,
+            "provenance_grade": finding_prov_grade,
+            "source_evidence": sanitized.get("source_evidence", ""),
         }
+        gaps = sanitized.get("provenance_gaps", [])
+        if gaps:
+            result["provenance_gaps"] = gaps
+            result["message"] = (
+                f"Finding staged as {finding_prov_grade}. "
+                f"{len(gaps)} artifact(s) have provenance gaps. "
+                "Fix gaps and resubmit to upgrade to FULL."
+            )
         if timeline_event_id:
             result["timeline_event_id"] = timeline_event_id
         if iocs_extracted:

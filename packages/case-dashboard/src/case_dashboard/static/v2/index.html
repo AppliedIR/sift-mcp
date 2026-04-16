@@ -1300,6 +1300,11 @@ function renderFinding(id) {
   } else {
     html += '<span class="badge ' + escapeHtml(statusClass) + '">' + escapeHtml(status) + '</span>';
   }
+  // Provenance grade badge — system-verified evidence chain completeness
+  if (f.provenance_grade) {
+    var pgColor = f.provenance_grade === 'FULL' ? 'var(--status-approved)' : f.provenance_grade === 'PARTIAL' ? 'var(--status-draft)' : 'var(--status-rejected)';
+    html += '<span class="badge" style="background:transparent;border:1px solid ' + pgColor + ';color:' + pgColor + ';font-size:10px">' + escapeHtml(f.provenance_grade) + '</span>';
+  }
   // Host + event timestamp (decision-relevant context, always visible)
   var stickyContext = [];
   if (f.host) stickyContext.push(escapeHtml(f.host));
@@ -2100,6 +2105,35 @@ async function loadToolInvocations(finding) {
   if (sourceEv) {
     html += '<div style="font-weight:600;margin-bottom:4px">' + escapeHtml(sourceEv) + ' (registered \u2713)</div>';
   }
+
+  // Render per-artifact provenance chains
+  var artifacts = finding.artifacts || [];
+  var chainsRendered = false;
+  artifacts.forEach(function(art) {
+    var chain = art.provenance_chain || [];
+    var artGrade = art.provenance_grade || '';
+    var artSource = art.source_evidence || '';
+    if (!chain.length && !artGrade) return;
+    if (!chainsRendered) {
+      html += '<div style="margin:6px 0;font-size:11px">';
+      html += '<div style="font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Per-Artifact Provenance</div>';
+      chainsRendered = true;
+    }
+    var gradeColor = artGrade === 'FULL' ? 'var(--status-approved)' : artGrade === 'PARTIAL' ? 'var(--status-draft)' : 'var(--text-muted)';
+    html += '<div style="padding:4px 10px;margin-bottom:4px;background:var(--bg-secondary);border-left:3px solid ' + gradeColor + ';border-radius:4px">';
+    html += '<strong>' + escapeHtml((art.source || '').split('/').pop() || 'artifact') + '</strong>';
+    html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + escapeHtml(artGrade) + '</span>';
+    if (artSource) html += ' \u2192 ' + escapeHtml(artSource.split('/').pop());
+    chain.forEach(function(step) {
+      html += '<div style="padding:2px 0 2px 12px;border-left:2px solid var(--border);margin-left:4px">';
+      html += '\u2193 <strong>' + escapeHtml(step.tool || 'unknown') + '</strong>';
+      if (step.hostname) html += ' \u00B7 ' + escapeHtml(step.hostname);
+      if (step.audit_id) html += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(step.audit_id) + ']</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  });
+  if (chainsRendered) html += '</div>';
 
   // Group audit entries by primary input source for tree display
   var sorted = auditData.slice().sort(function(a, b) {

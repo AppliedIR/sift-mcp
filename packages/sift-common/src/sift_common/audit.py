@@ -66,6 +66,7 @@ class AuditWriter:
         self._sequence = 0
         self._date_str = ""
         self._lock = threading.Lock()
+        self._cached_case_id: str = ""
 
     @property
     def examiner(self) -> str:
@@ -189,6 +190,18 @@ class AuditWriter:
         except OSError:
             pass
 
+    def _read_active_case_id(self) -> str:
+        """Read case_id from ~/.vhir/active_case file, cached."""
+        if self._cached_case_id:
+            return self._cached_case_id
+        try:
+            raw = (Path.home() / ".vhir" / "active_case").read_text().strip()
+            if raw:
+                self._cached_case_id = Path(raw).name
+        except OSError:
+            pass
+        return self._cached_case_id
+
     def log(
         self,
         tool: str,
@@ -216,7 +229,9 @@ class AuditWriter:
             "tool": tool,
             "audit_id": audit_id,
             "examiner": self.examiner,
-            "case_id": case_id or os.environ.get("VHIR_ACTIVE_CASE", ""),
+            "case_id": case_id
+            or os.environ.get("VHIR_ACTIVE_CASE", "")
+            or self._read_active_case_id(),
             "source": source,
             "params": params,
             "result_summary": _summarize(result_summary),

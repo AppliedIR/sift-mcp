@@ -582,17 +582,64 @@ def create_server() -> FastMCP:
     # ------------------------------------------------------------------
     @server.tool()
     def log_external_action(
-        command: str, output_summary: str, purpose: str, analyst_override: str = ""
+        command: str,
+        output_summary: str,
+        purpose: str,
+        analyst_override: str = "",
+        hook_audit_id: str = "",
+        input_files: list[str] | None = None,
+        output_files: list[str] | None = None,
     ) -> dict:
         """Record a tool execution performed outside this MCP server
         (e.g., via Bash or another backend). Response includes an audit_id
         field that can be used in record_finding's audit_ids list. Without
         this record, the action has no audit entry and findings cannot
-        reference it."""
+        reference it.
+
+        Args:
+            command: The command that was executed.
+            output_summary: Summary of what the command produced.
+            purpose: Why this command was run.
+            analyst_override: Override examiner identity.
+            hook_audit_id: If the command was captured by the PostToolUse
+                hook, pass its audit_id here to cross-reference. Upgrades
+                provenance from voluntary to verified.
+            input_files: Files the command read (for provenance chain).
+            output_files: Files the command produced.
+        """
         _validate_str_length(command, "command", _MAX_TEXT)
         _validate_str_length(output_summary, "output_summary", _MAX_TEXT)
         _validate_str_length(purpose, "purpose", _MAX_TEXT)
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
+
+        # Determine source tier based on hook_audit_id
+        source = "orchestrator_voluntary"
+        if hook_audit_id:
+            _validate_str_length(hook_audit_id, "hook_audit_id", _MAX_SHORT)
+            # Verify hook_audit_id exists in audit trail
+            case_dir = _resolve_case_dir()
+            if case_dir:
+                hook_found = False
+                hook_file = case_dir / "audit" / "claude-code.jsonl"
+                if hook_file.exists():
+                    try:
+                        with open(hook_file, encoding="utf-8") as f:
+                            for line in f:
+                                line = line.strip()
+                                if not line or hook_audit_id not in line:
+                                    continue
+                                try:
+                                    entry = json.loads(line)
+                                    if entry.get("audit_id") == hook_audit_id:
+                                        hook_found = True
+                                        break
+                                except (json.JSONDecodeError, ValueError):
+                                    continue
+                    except OSError:
+                        pass
+                if hook_found:
+                    source = "orchestrator_verified"
+
         audit_id = audit.log(
             tool="log_external_action",
             params={
@@ -600,14 +647,25 @@ def create_server() -> FastMCP:
                 "output_summary": output_summary,
                 "purpose": purpose,
                 "analyst_override": analyst_override,
+                "hook_audit_id": hook_audit_id,
             },
-            result_summary={"status": "logged"},
-            source="orchestrator_voluntary",
+            result_summary={
+                "status": "logged",
+                "source": source,
+                "output_files": output_files or [],
+            },
+            source=source,
+            input_files=input_files or None,
         )
         result = {
             "status": "logged",
             "audit_id": audit_id,
-            "note": "orchestrator_voluntary -- not independently verified",
+            "source": source,
+            "note": (
+                "orchestrator_verified -- cross-referenced with hook entry"
+                if source == "orchestrator_verified"
+                else "orchestrator_voluntary -- not independently verified"
+            ),
         }
         if audit_id is None:
             result["warning"] = "Audit write failed — action not recorded"

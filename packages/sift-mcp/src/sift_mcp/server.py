@@ -297,6 +297,11 @@ def create_server() -> FastMCP:
                     "Could not detect input files — pass input_files parameter "
                     "for provenance chain linking."
                 )
+            elif detection_method == "llm" and not input_hashes:
+                response["input_files_warning"] = (
+                    "input_files provided but none resolved to existing files. "
+                    "Provenance chain will be incomplete."
+                )
             return response
 
         except SiftError as e:

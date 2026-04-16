@@ -209,4 +209,11 @@ if $BLOCKED; then
     exit 2
 fi
 
+# Warn (but don't block) when forensic tools are run via Bash instead of MCP.
+# These tools have MCP equivalents (run_command) that provide provenance tracking.
+FORENSIC_PATTERNS="rip\.pl|strings |7z |qemu-nbd|mount.*nbd|fls |mmls |icat |mactime |vol -f |bulk_extractor|AmcacheParser|PECmd|MFTECmd|EvtxECmd|RECmd|hayabusa|log2timeline|psort"
+if echo "$COMMAND" | grep -qiE "$FORENSIC_PATTERNS"; then
+    echo "NOTE: Forensic tool detected in Bash. Use run_command on sift-mcp for provenance tracking. Call log_external_action afterward if you proceed via Bash." >&2
+fi
+
 exit 0
