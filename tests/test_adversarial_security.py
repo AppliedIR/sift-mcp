@@ -113,20 +113,16 @@ class TestAuditIdValidation:
         assert not pattern.match(" sift-alice-20260225-001")
 
     def test_examiner_segment_allows_hyphens(self, pattern):
-        """Pattern structure: prefix-examiner-YYYYMMDD-NNN.
-
-        The examiner segment is [a-z0-9]+ which does NOT include hyphens.
-        Evidence IDs with hyphenated examiners (e.g. alice-bob) are parsed
-        as: prefix=sift, examiner=alice, date-like=bob (fails \\d{8}).
-
-        This is by design — the regex is greedy and hyphens are delimiters.
-        Real examiner slugs don't contain hyphens in the evidence ID context
-        because the prefix/examiner/date are joined by hyphens.
+        """Hyphenated examiners like 'alice-bob' produce IDs like
+        sift-alice-bob-20260225-001. The regex must accept these
+        since default deployments use hyphenated examiner names.
         """
-        # Hyphenated examiner doesn't match — correct behavior
-        assert not pattern.match("sift-alice-bob-20260225-001")
-        # Pure hyphens also rejected
+        # Hyphenated examiner matches
+        assert pattern.match("sift-alice-bob-20260225-001")
+        assert pattern.match("opensearch-uat-verify-20260416-005")
+        # Pure hyphens still rejected (examiner must start/end alphanumeric)
         assert not pattern.match("sift----20260225-001")
+        assert not pattern.match("sift--20260225-001")
 
     def test_anchored(self, pattern):
         """Pattern must be anchored (^ and $) — no partial matches."""

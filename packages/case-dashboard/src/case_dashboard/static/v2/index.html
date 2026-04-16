@@ -868,7 +868,7 @@ let batchTimelineSelected = new Set();
 (function extractToken() {
   const hash = window.location.hash;
   if (hash.startsWith('#token=')) {
-    token = hash.slice(7);
+    token = hash.slice(7).split('&')[0];
     try { sessionStorage.setItem('vhir_dashboard_token', token); } catch (e) {}
     history.replaceState(null, '', window.location.pathname + window.location.search);
   } else {
@@ -2090,37 +2090,19 @@ async function loadToolInvocations(finding) {
     return;
   }
 
-  // Build chain: source_evidence at root, audit entries as steps
-  var sourceEv = finding.source_evidence || '';
-  var chainStatus = sourceEv ? 'complete' : (auditData.length > 0 ? 'partial' : 'none');
-  if (!finding.artifacts || !finding.artifacts.length) {
-    if (finding.supporting_commands && finding.supporting_commands.length) chainStatus = 'shell only';
-  }
-
-  var html = '';
-  html += '<div style="font-size:11px;margin-bottom:6px;color:var(--text-muted)">Chain: ' + escapeHtml(chainStatus);
-  if (sourceEv) html += ' \u2192 ' + escapeHtml(sourceEv.split('/').pop()) + ' \u2713';
-  html += '</div>';
-
-  if (sourceEv) {
-    html += '<div style="font-weight:600;margin-bottom:4px">' + escapeHtml(sourceEv) + ' (registered \u2713)</div>';
-  }
-
-  // Build audit_id → entry lookup for inline rendering
+  // Build audit_id → entry lookup
   var auditById = {};
   auditData.forEach(function(e) { if (e.audit_id) auditById[e.audit_id] = e; });
 
-  // Unified per-artifact provenance + tool invocation display
   var artifacts = finding.artifacts || [];
   var renderedAuditIds = {};
+  var html = '';
 
   // Group artifacts by source_evidence
   var evidenceGroups = {};
   var ungrouped = [];
   artifacts.forEach(function(art) {
-    var artGrade = art.provenance_grade || '';
-    var artAuditId = art.audit_id || '';
-    if (!artGrade && !artAuditId) return;
+    if (!art.provenance_grade && !art.audit_id) return;
     var src = art.source_evidence || '';
     if (src) {
       if (!evidenceGroups[src]) evidenceGroups[src] = [];
@@ -2130,98 +2112,98 @@ async function loadToolInvocations(finding) {
     }
   });
 
-  var hasGroups = Object.keys(evidenceGroups).length > 0 || ungrouped.length > 0;
-  if (hasGroups) {
+  var hasContent = Object.keys(evidenceGroups).length > 0 || ungrouped.length > 0;
+  if (hasContent) {
     html += '<div style="margin:6px 0;font-size:11px">';
-    html += '<div style="font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Evidence Chain</div>';
+    html += '<div style="font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Evidence Provenance Chain</div>';
   }
 
-  function renderArtifactEntry(art) {
-    var chain = art.provenance_chain || [];
-    var artGrade = art.provenance_grade || '';
-    var artAuditId = art.audit_id || '';
-    var artEntry = auditById[artAuditId];
-    var artLabel = (art.source || '').split('/').pop() || 'artifact';
-    var gradeColor = artGrade === 'FULL' ? 'var(--green)' : 'var(--amber)';
-    var h = '<div style="padding:2px 0 2px 8px;margin:2px 0">';
-    // Chain steps in chronological order (reversed from resolution order)
-    var reversedChain = chain.slice().reverse();
-    reversedChain.forEach(function(step) {
-      h += '<div style="padding:1px 0 1px 12px;border-left:2px solid var(--border);margin-left:4px">';
-      h += '\u2191 <strong>' + escapeHtml(step.tool || 'unknown') + '</strong>';
-      if (step.hostname) h += ' \u00B7 ' + escapeHtml(step.hostname);
-      if (step.audit_id) h += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(step.audit_id) + ']</span>';
-      h += '</div>';
-    });
-    // Artifact's own tool call (what produced the finding data)
-    if (artEntry) {
-      renderedAuditIds[artAuditId] = true;
-      var tool = artEntry.tool || artEntry.mcp || 'unknown';
-      var cmd = '';
-      if (artEntry.params && artEntry.params.command) {
-        cmd = Array.isArray(artEntry.params.command) ? artEntry.params.command.join(' ') : String(artEntry.params.command);
-      }
-      var elapsed = artEntry.elapsed_ms ? ' \u00B7 ' + (artEntry.elapsed_ms / 1000).toFixed(1) + 's' : '';
-      h += '<div style="padding:1px 0 1px 12px;border-left:2px solid var(--border);margin-left:4px">';
-      h += '\u2191 <strong>' + escapeHtml(tool) + '</strong>' + elapsed;
-      h += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(artAuditId) + ']</span>';
-      if (cmd) h += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
-      var outFile = (artEntry.result_summary || {}).output_file;
-      if (outFile) {
-        h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">\u2192 ' + escapeHtml(outFile.split('/').pop()) + '</div>';
-      }
-      h += '</div>';
+  // Render one chain step enriched from audit data
+  function renderStep(step) {
+    var fullEntry = auditById[step.audit_id];
+    var tool = (fullEntry && fullEntry.tool) || step.tool || 'unknown';
+    var elapsed = (fullEntry && fullEntry.elapsed_ms) ? ' \u00B7 ' + (fullEntry.elapsed_ms / 1000).toFixed(1) + 's' : '';
+    var cmd = '';
+    if (fullEntry && fullEntry.params && fullEntry.params.command) {
+      cmd = Array.isArray(fullEntry.params.command) ? fullEntry.params.command.join(' ') : String(fullEntry.params.command);
     }
+    var h = '<div style="padding:1px 0 1px 12px;border-left:2px solid var(--border);margin-left:4px">';
+    h += '\u2193 <strong>' + escapeHtml(tool) + '</strong>';
+    if (step.artifact_type) h += ' (' + escapeHtml(step.artifact_type);
+    if (step.artifact_type && step.hostname) h += ' \u00B7 ' + escapeHtml(step.hostname);
+    else if (step.hostname) h += ' \u00B7 ' + escapeHtml(step.hostname);
+    if (step.artifact_type) h += ')';
+    h += elapsed;
+    if (step.audit_id) h += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(step.audit_id) + ']</span>';
+    if (cmd) h += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
+    var outFile = fullEntry && (fullEntry.result_summary || {}).output_file;
+    if (outFile) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">\u2192 ' + escapeHtml(outFile.split('/').pop()) + '</div>';
+    h += '</div>';
+    if (step.audit_id) renderedAuditIds[step.audit_id] = true;
+    return h;
+  }
+
+  // Build merged step list for one artifact and render
+  function renderArtifact(art) {
+    var chain = art.provenance_chain || [];
+    var artAuditId = art.audit_id || '';
+    // Reverse chain for chronological order (evidence → ... → tool)
+    var steps = chain.slice().reverse();
+    // If artifact's own audit_id is not in the chain, append it
+    var inChain = steps.some(function(s) { return s.audit_id === artAuditId; });
+    if (artAuditId && !inChain) {
+      steps.push({audit_id: artAuditId, tool: '', role: 'query'});
+    }
+    var h = '<div style="padding:2px 0 2px 8px;margin:2px 0">';
+    steps.forEach(function(step) { h += renderStep(step); });
     h += '</div>';
     return h;
   }
 
-  // Render grouped by evidence source
+  // Render each evidence group
   Object.keys(evidenceGroups).forEach(function(src) {
     var group = evidenceGroups[src];
-    var worstGrade = group.every(function(a) { return a.provenance_grade === 'FULL'; }) ? 'FULL' : 'PARTIAL';
-    var gradeColor = worstGrade === 'FULL' ? 'var(--green)' : 'var(--amber)';
-    html += '<div style="padding:4px 10px;margin-bottom:4px;background:var(--bg-secondary);border-left:3px solid ' + gradeColor + ';border-radius:4px">';
+    var allFull = group.every(function(a) { return a.provenance_grade === 'FULL'; });
+    var gradeColor = allFull ? 'var(--green)' : 'var(--amber)';
+    html += '<div style="padding:6px 10px;margin-bottom:6px;background:var(--bg-secondary);border-left:3px solid ' + gradeColor + ';border-radius:4px">';
     html += '<strong>' + escapeHtml(src.split('/').pop()) + '</strong>';
-    html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + escapeHtml(worstGrade) + '</span>';
+    html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + (allFull ? 'FULL' : 'PARTIAL') + '</span>';
     html += ' <span style="color:var(--text-muted);font-size:10px">(registered evidence)</span>';
-    group.forEach(function(art) { html += renderArtifactEntry(art); });
+    group.forEach(function(art, idx) {
+      var label = art.extraction || art.content_type || 'artifact ' + (idx + 1);
+      if (label.length > 60) { var lp = label.split(/\s+/); label = lp[0] + ' ... ' + lp.slice(-2).join(' '); }
+      html += '<div style="margin:6px 0 2px 4px;font-size:11px;color:var(--text-primary)">';
+      html += '<span style="font-weight:600">' + escapeHtml(label) + '</span>';
+      html += '</div>';
+      html += renderArtifact(art);
+    });
     html += '</div>';
   });
 
-  // Render ungrouped artifacts (no source_evidence)
-  ungrouped.forEach(function(art) {
-    var artGrade = art.provenance_grade || '';
-    var gradeColor = artGrade === 'FULL' ? 'var(--green)' : 'var(--amber)';
-    html += '<div style="padding:4px 10px;margin-bottom:4px;background:var(--bg-secondary);border-left:3px solid ' + gradeColor + ';border-radius:4px">';
+  // Render ungrouped artifacts (no source_evidence resolved)
+  ungrouped.forEach(function(art, idx) {
+    var gradeColor = art.provenance_grade === 'FULL' ? 'var(--green)' : 'var(--amber)';
+    html += '<div style="padding:6px 10px;margin-bottom:6px;background:var(--bg-secondary);border-left:3px solid ' + gradeColor + ';border-radius:4px">';
     html += '<strong>' + escapeHtml((art.source || '').split('/').pop() || 'artifact') + '</strong>';
-    if (artGrade) html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + escapeHtml(artGrade) + '</span>';
-    html += renderArtifactEntry(art);
+    if (art.provenance_grade) html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + escapeHtml(art.provenance_grade) + '</span>';
+    var label = art.extraction || art.content_type || 'artifact ' + (idx + 1);
+    if (label.length > 60) label = label.slice(0, 57) + '...';
+    html += '<div style="margin:6px 0 2px 4px;font-size:11px;color:var(--text-primary)">';
+    html += '<span style="font-weight:600">' + escapeHtml(label) + '</span>';
+    html += '</div>';
+    html += renderArtifact(art);
     html += '</div>';
   });
-  if (hasGroups) html += '</div>';
 
-  // Render remaining audit entries not tied to a specific artifact
+  if (hasContent) html += '</div>';
+
+  // Remaining audit entries not tied to any artifact
   var remaining = auditData.filter(function(e) { return e.audit_id && !renderedAuditIds[e.audit_id]; });
   if (remaining.length) {
     html += '<div style="margin-top:8px;font-size:11px">';
     html += '<div style="font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Additional Tool Invocations</div>';
     remaining.forEach(function(entry) {
-      var tool = entry.tool || entry.mcp || 'unknown';
-      var cmd = '';
-      if (entry.params && entry.params.command) {
-        cmd = Array.isArray(entry.params.command) ? entry.params.command.join(' ') : String(entry.params.command);
-      }
-      var elapsed = entry.elapsed_ms ? ' \u00B7 ' + (entry.elapsed_ms / 1000).toFixed(1) + 's' : '';
-      html += '<div style="padding:2px 0 2px 12px;border-left:2px solid var(--border);margin-left:4px">';
-      html += '\u2193 <strong>' + escapeHtml(tool) + '</strong>' + elapsed;
-      if (entry.audit_id) html += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(entry.audit_id) + ']</span>';
-      if (cmd) html += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
-      var outFile = (entry.result_summary || {}).output_file;
-      if (outFile) {
-        html += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">\u2192 ' + escapeHtml(outFile.split('/').pop()) + '</div>';
-      }
-      html += '</div>';
+      html += renderStep({audit_id: entry.audit_id, tool: entry.tool});
     });
     html += '</div>';
   }

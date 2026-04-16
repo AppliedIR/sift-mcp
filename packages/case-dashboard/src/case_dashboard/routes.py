@@ -911,6 +911,11 @@ async def get_audit_for_finding(request: Request) -> JSONResponse:
     for f in findings:
         if f.get("id") == finding_id:
             audit_ids = set(f.get("audit_ids", []))
+            # Include provenance chain audit_ids for enriched rendering
+            for art in f.get("artifacts", []):
+                for step in art.get("provenance_chain", []):
+                    if step.get("audit_id"):
+                        audit_ids.add(step["audit_id"])
             break
 
     if not audit_ids:

@@ -70,7 +70,9 @@ DEFAULT_CASES_DIR = str(Path.home() / "cases")
 _ACTIVE_CASE_FILE = Path.home() / ".vhir" / "active_case"
 
 # Audit ID format: prefix-examiner-YYYYMMDD-NNN (all lowercase alphanumeric + hyphens)
-_AUDIT_ID_PATTERN = re.compile(r"^[a-z]+-[a-z0-9]+-[0-9]{8}-[0-9]{3,}\Z")
+_AUDIT_ID_PATTERN = re.compile(
+    r"^[a-z]+-[a-z0-9](?:[a-z0-9-]*[a-z0-9])?-[0-9]{8}-[0-9]{3,}\Z"
+)
 
 # Allowlist: only these fields pass through from user-supplied finding data
 _ALLOWED_FINDING_FIELDS = {
@@ -1016,11 +1018,31 @@ class CaseManager:
                             )
                             if source_ev:
                                 art["source_evidence"] = source_ev
+                                # Extract artifact type from index name
+                                _art_type = ""
+                                if search_index and active_cid:
+                                    _pfx = f"case-{active_cid}-".lower()
+                                    _idx = search_index.lower()
+                                    if _idx.startswith(_pfx):
+                                        _rem = _idx[len(_pfx) :]
+                                        if hint:
+                                            _sfx = f"-{hint}".lower()
+                                            if _rem.endswith(_sfx):
+                                                _art_type = _rem[: -len(_sfx)]
+                                        # Wildcard: strip trailing -* or just use remainder
+                                        if not _art_type:
+                                            _art_type = _rem.rstrip("-*")
                                 ingest_step = {
                                     "audit_id": e.get("audit_id"),
                                     "tool": e.get("tool"),
                                     "input_files": e.get("input_files"),
-                                    "hostname": hint,
+                                    "hostname": hint
+                                    or (
+                                        e.get("params", {}).get("hosts", [""])[0]
+                                        if e.get("params", {}).get("hosts")
+                                        else e.get("params", {}).get("hostname", "")
+                                    ),
+                                    "artifact_type": _art_type,
                                     "role": "ingest",
                                 }
                                 # Find per-artifact parser entry via run_id
