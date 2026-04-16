@@ -3986,9 +3986,23 @@ function _buildTooltipHtml(entry) {
     h += _tipRow('Command', '$ ' + cmd, true);
   }
   if (params.purpose) h += _tipRow('Purpose', params.purpose);
+  // Render remaining params (hostname, index_name, query, hosts, run_id, etc.)
+  var skipParams = {command:1, purpose:1};
+  Object.keys(params).forEach(function(k) {
+    if (skipParams[k]) return;
+    var v = params[k];
+    if (v === null || v === undefined || v === '' || v === false || v === 0) return;
+    if (Array.isArray(v)) { if (!v.length) return; v = v.join(', '); }
+    else if (typeof v === 'object') v = JSON.stringify(v);
+    h += _tipRow(k, v);
+  });
   var inputs = entry.input_files || [];
   if (inputs.length) {
     h += _tipRow('Input files', inputs.map(function(p) { return p.split('/').pop(); }).join(', '));
+  }
+  var sha256s = entry.input_sha256s || [];
+  if (sha256s.length) {
+    h += _tipRow('Input SHA-256', sha256s.map(function(s) { return s.slice(0, 16) + '...'; }).join(', '), true);
   }
   var rs = entry.result_summary || {};
   if (typeof rs === 'string') { h += _tipRow('Result', rs); }

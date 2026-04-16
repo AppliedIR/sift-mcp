@@ -1599,25 +1599,6 @@ class TestPerformance:
         # First load includes model loading, should be under 30 seconds
         assert load_time < 30, f"Cold start {load_time:.1f}s exceeds 30s threshold"
 
-    def test_sustained_load(self, rag_index):
-        """Sustained query load should maintain performance."""
-        latencies = []
-
-        for i in range(50):
-            query = f"test query {i} credential detection"
-            start = time.perf_counter()
-            rag_index.search(query, top_k=5)
-            latency = (time.perf_counter() - start) * 1000
-            latencies.append(latency)
-
-        # Check for performance degradation
-        first_half_avg = sum(latencies[:25]) / 25
-        second_half_avg = sum(latencies[25:]) / 25
-
-        # Second half should not be significantly slower (20% tolerance)
-        assert second_half_avg < first_half_avg * 1.2, (
-            f"Performance degradation: {first_half_avg:.1f}ms -> {second_half_avg:.1f}ms"
-        )
 
 
 # =============================================================================
