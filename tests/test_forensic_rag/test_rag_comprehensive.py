@@ -1600,7 +1600,6 @@ class TestPerformance:
         assert load_time < 30, f"Cold start {load_time:.1f}s exceeds 30s threshold"
 
 
-
 # =============================================================================
 # Server Integration Tests
 # =============================================================================
