@@ -4,7 +4,7 @@ Provides offline forensic file/hash/indicator triage capabilities
 for Claude Code via the Model Context Protocol.
 """
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 from .config import Config, get_config, reset_config, set_config
 from .exceptions import (

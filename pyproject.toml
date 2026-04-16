@@ -1,6 +1,6 @@
 [project]
 name = "sift-mcp-workspace"
-version = "0.6.0"
+version = "0.6.1"
 description = "Valhuntir forensic investigation platform — SIFT workstation monorepo"
 requires-python = ">=3.12"
 
