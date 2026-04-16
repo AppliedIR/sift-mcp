@@ -2199,7 +2199,7 @@ async function loadToolInvocations(finding) {
     html += renderArtifactEntry(art);
     html += '</div>';
   });
-  if (artifactsRendered) html += '</div>';
+  if (hasGroups) html += '</div>';
 
   // Render remaining audit entries not tied to a specific artifact
   var remaining = auditData.filter(function(e) { return e.audit_id && !renderedAuditIds[e.audit_id]; });

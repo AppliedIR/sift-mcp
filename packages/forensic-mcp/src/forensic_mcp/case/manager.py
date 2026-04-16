@@ -952,6 +952,15 @@ class CaseManager:
                             art["provenance_grade"] = "FULL"
                             if chain:
                                 art["provenance_chain"] = chain
+                            else:
+                                art["provenance_chain"] = [
+                                    {
+                                        "audit_id": entry.get("audit_id", ""),
+                                        "tool": entry.get("tool", ""),
+                                        "input_files": entry.get("input_files", []),
+                                        "role": "direct",
+                                    }
+                                ]
                             continue
                     except OSError:
                         pass
