@@ -208,7 +208,7 @@ def _resolve_source_evidence_static(
         # Directory containment
         resolved_prefix = resolved.rstrip("/") + "/"
         containment_match = ""
-        for reg_path in evidence_registry:
+        for reg_path in sorted(evidence_registry):
             if reg_path.startswith(resolved_prefix):
                 if not containment_match:
                     containment_match = reg_path
@@ -960,7 +960,7 @@ class CaseManager:
                                         "audit_id": entry.get("audit_id", ""),
                                         "tool": entry.get("tool", ""),
                                         "input_files": entry.get("input_files", []),
-                                        "role": "direct",
+                                        "role": "query",
                                     }
                                 ]
                             continue
@@ -1091,6 +1091,19 @@ class CaseManager:
 
                 if "provenance_grade" not in art:
                     art["provenance_grade"] = "PARTIAL"
+
+                # Ensure the terminal "query" step (the tool that produced
+                # this artifact's data) is present in the chain. Path A
+                # builds chains that may include it; Path B/D builds
+                # chains without it. Normalizing server-side means the
+                # portal reads what the server provides — no per-render
+                # synthesis.
+                art_aid = art.get("audit_id", "")
+                chain = art.get("provenance_chain") or []
+                if art_aid and not any(s.get("audit_id") == art_aid for s in chain):
+                    art["provenance_chain"] = chain + [
+                        {"audit_id": art_aid, "tool": "", "role": "query"}
+                    ]
 
             # Finding-level grade: FULL or PARTIAL (NONE cannot survive reject gates)
             art_grades = [

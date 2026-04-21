@@ -860,7 +860,6 @@ let evidenceSortAsc = true;
 let todosSortCol = 'priority';
 let todosSortAsc = true;
 let focusedTimelineId = null;
-var _tooltipAuditMap = {};
 let timelineFilter = 'pending';
 let timelineTypeFilter = '';
 let batchTimelineSelected = new Set();
@@ -935,6 +934,20 @@ async function loadAll() {
       document.getElementById('headerTitle').innerHTML = '<img src="valhuntir-icon.png" alt="" style="height:24px;vertical-align:middle;margin-right:6px">Valhuntir \u2014 ' + escapeHtml(caseMeta.case_id);
       document.title = 'Valhuntir \u2014 ' + caseMeta.case_id;
       if (!delta.case_id) delta.case_id = caseMeta.case_id;
+    }
+    // Prune stale ids from batch selections so the toolbar count
+    // reflects only items still visible after refresh.
+    {
+      var _fIds = new Set(findings.map(function(x) { return x.id; }));
+      var _tIds = new Set(timelineEvents.map(function(x) { return x.id; }));
+      batchSelected.forEach(function(id) {
+        if (!_fIds.has(id)) batchSelected.delete(id);
+      });
+      batchTimelineSelected.forEach(function(id) {
+        if (!_tIds.has(id)) batchTimelineSelected.delete(id);
+      });
+      updateBatchToolbar();
+      updateTimelineBatchToolbar();
     }
     populateExaminerFilter();
     renderSidebar();
@@ -1675,12 +1688,14 @@ function submitReject() {
   const f = findings.find(x => x.id === selectedId);
   if (!f) return;
 
+  const existing = getDeltaEntry(selectedId);
   setDeltaEntry({
     id: selectedId,
     type: f.type || 'finding',
     action: 'reject',
     content_hash_at_review: f.content_hash || '',
     rejection_reason: reason,
+    modifications: existing ? existing.modifications || {} : {},
     _snapshot: snapshotFields(f),
   });
   closeRejectDialog();
@@ -1750,12 +1765,28 @@ function closeCommitDialog() {
 var _commitInProgress = false;
 async function submitCommit() {
   if (_commitInProgress) return;
+  _commitInProgress = true;
+
+  // Flush pending debounced save before commit; abort on failure.
+  // Without this, a fast autofill-and-Enter can hit /api/commit
+  // before the latest delta has been persisted.
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  try {
+    await saveDelta();
+  } catch (e) {
+    _commitInProgress = false;
+    showCommitError('Could not save pending changes: ' +
+      (e.message || 'unknown error') +
+      '. Retry commit after resolving.');
+    return;
+  }
+
   var pw = document.getElementById('commitPassword').value;
   if (!pw) {
+    _commitInProgress = false;
     showCommitError('Password required.');
     return;
   }
-  _commitInProgress = true;
 
   document.getElementById('commitSubmitBtn').disabled = true;
   document.getElementById('commitPasswordRow').style.display = 'none';
@@ -1910,9 +1941,11 @@ function batchReject() {
   batchSelected.forEach(id => {
     const f = findings.find(x => x.id === id);
     if (!f) return;
+    const existing = getDeltaEntry(id);
     setDeltaEntry({
       id, type: f.type || 'finding', action: 'reject',
       content_hash_at_review: f.content_hash || '', rejection_reason: reason,
+      modifications: existing ? existing.modifications || {} : {},
       _snapshot: snapshotFields(f),
     });
   });
@@ -2070,6 +2103,11 @@ function renderResultSummary(summary) {
 }
 
 /* === Tool invocations panel === */
+function truncateLabel(label) {
+  if (!label || label.length <= 60) return label || '';
+  var lp = label.split(/\s+/);
+  return lp[0] + ' ... ' + lp.slice(-2).join(' ');
+}
 async function loadToolInvocations(finding) {
   var container = document.getElementById('toolInvocationsList');
   if (!container) return;
@@ -2091,10 +2129,12 @@ async function loadToolInvocations(finding) {
     return;
   }
 
-  // Build audit_id → entry lookup
+  // Build audit_id → entry lookup scoped to this container.
+  // Attaching to the element (not a module global) isolates tooltips
+  // per finding and prevents stale-DOM cross-resolution.
   var auditById = {};
   auditData.forEach(function(e) { if (e.audit_id) auditById[e.audit_id] = e; });
-  _tooltipAuditMap = auditById;
+  container._auditMap = auditById;
 
   var artifacts = finding.artifacts || [];
   var renderedAuditIds = {};
@@ -2130,9 +2170,14 @@ async function loadToolInvocations(finding) {
       cmd = Array.isArray(fullEntry.params.command) ? fullEntry.params.command.join(' ') : String(fullEntry.params.command);
     }
     var aid = step.audit_id || '';
-    var h = '<div style="padding:1px 0 1px 12px;border-left:2px solid var(--border);margin-left:4px;cursor:pointer"'
-      + (aid ? ' data-audit-id="' + escapeHtml(aid) + '" onmouseenter="showChainTooltip(this)" onmouseleave="hideChainTooltip()" onclick="pinChainTooltip(this)"' : '')
-      + '>';
+    var h = '<div style="padding:1px 0 1px 12px;border-left:2px solid var(--border);margin-left:4px;cursor:pointer"';
+    if (aid) {
+      h += ' data-audit-id="' + escapeHtml(aid) + '"';
+      if (step.artifact_type) h += ' data-artifact-type="' + escapeHtml(step.artifact_type) + '"';
+      if (step.role) h += ' data-role="' + escapeHtml(step.role) + '"';
+      h += ' onmouseenter="showChainTooltip(this)" onmouseleave="hideChainTooltip()" onclick="pinChainTooltip(this)"';
+    }
+    h += '>';
     h += '\u2193 <strong>' + escapeHtml(tool) + '</strong>';
     if (step.artifact_type) h += ' (' + escapeHtml(step.artifact_type);
     if (step.artifact_type && step.hostname) h += ' \u00B7 ' + escapeHtml(step.hostname);
@@ -2151,14 +2196,11 @@ async function loadToolInvocations(finding) {
   // Build merged step list for one artifact and render
   function renderArtifact(art) {
     var chain = art.provenance_chain || [];
-    var artAuditId = art.audit_id || '';
-    // Reverse chain for chronological order (evidence → ... → tool)
+    // Server now guarantees the terminal "query" step is present in
+    // the chain (manager.py appends art.audit_id with role='query' if
+    // missing). Portal just renders what the server provides.
+    // Reverse for chronological order (evidence → ... → tool).
     var steps = chain.slice().reverse();
-    // If artifact's own audit_id is not in the chain, append it
-    var inChain = steps.some(function(s) { return s.audit_id === artAuditId; });
-    if (artAuditId && !inChain) {
-      steps.push({audit_id: artAuditId, tool: '', role: 'query'});
-    }
     var h = '<div style="padding:2px 0 2px 8px;margin:2px 0">';
     steps.forEach(function(step) { h += renderStep(step); });
     h += '</div>';
@@ -2175,8 +2217,7 @@ async function loadToolInvocations(finding) {
     html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + (allFull ? 'FULL' : 'PARTIAL') + '</span>';
     html += ' <span style="color:var(--text-muted);font-size:10px">(registered evidence)</span>';
     group.forEach(function(art, idx) {
-      var label = art.extraction || art.content_type || 'artifact ' + (idx + 1);
-      if (label.length > 60) { var lp = label.split(/\s+/); label = lp[0] + ' ... ' + lp.slice(-2).join(' '); }
+      var label = truncateLabel(art.extraction || art.content_type || 'artifact ' + (idx + 1));
       html += '<div style="margin:6px 0 2px 4px;font-size:11px;color:var(--text-primary)">';
       html += '<span style="font-weight:600">' + escapeHtml(label) + '</span>';
       html += '</div>';
@@ -2191,8 +2232,7 @@ async function loadToolInvocations(finding) {
     html += '<div style="padding:6px 10px;margin-bottom:6px;background:var(--bg-secondary);border-left:3px solid ' + gradeColor + ';border-radius:4px">';
     html += '<strong>' + escapeHtml((art.source || '').split('/').pop() || 'artifact') + '</strong>';
     if (art.provenance_grade) html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + escapeHtml(art.provenance_grade) + '</span>';
-    var label = art.extraction || art.content_type || 'artifact ' + (idx + 1);
-    if (label.length > 60) label = label.slice(0, 57) + '...';
+    var label = truncateLabel(art.extraction || art.content_type || 'artifact ' + (idx + 1));
     html += '<div style="margin:6px 0 2px 4px;font-size:11px;color:var(--text-primary)">';
     html += '<span style="font-weight:600">' + escapeHtml(label) + '</span>';
     html += '</div>';
@@ -3646,6 +3686,7 @@ function doTimelineApprove(id) {
     action: 'approve',
     content_hash_at_review: ev.content_hash || '',
     modifications: existing ? existing.modifications || {} : {},
+    _snapshot: snapshotFields(ev),
   });
   renderTimeline();
   updateProgress();
@@ -3681,12 +3722,15 @@ function submitTimelineReject() {
   if (!reason) { document.getElementById('rejectReason').focus(); return; }
   var ev = timelineEvents.find(function(x) { return x.id === focusedTimelineId; });
   if (!ev) return;
+  var existing = getDeltaEntry(focusedTimelineId);
   setDeltaEntry({
     id: focusedTimelineId,
     type: ev.type || 'timeline_event',
     action: 'reject',
     content_hash_at_review: ev.content_hash || '',
     rejection_reason: reason,
+    modifications: existing ? existing.modifications || {} : {},
+    _snapshot: snapshotFields(ev),
   });
   closeRejectDialog();
   renderTimeline();
@@ -3781,6 +3825,7 @@ function batchTimelineApprove() {
       id: id, type: ev.type || 'timeline_event', action: 'approve',
       content_hash_at_review: ev.content_hash || '',
       modifications: existing ? existing.modifications || {} : {},
+      _snapshot: snapshotFields(ev),
     });
   });
   batchTimelineSelected.clear();
@@ -3795,10 +3840,13 @@ function batchTimelineReject() {
   batchTimelineSelected.forEach(function(id) {
     var ev = timelineEvents.find(function(x) { return x.id === id; });
     if (!ev) return;
+    var existing = getDeltaEntry(id);
     setDeltaEntry({
       id: id, type: ev.type || 'timeline_event', action: 'reject',
       content_hash_at_review: ev.content_hash || '',
       rejection_reason: reason,
+      modifications: existing ? existing.modifications || {} : {},
+      _snapshot: snapshotFields(ev),
     });
   });
   batchTimelineSelected.clear();
@@ -3973,7 +4021,7 @@ function _tipRow(label, value, mono) {
     + (mono ? '<span style="font-family:monospace">' : '<span>')
     + escapeHtml(String(value)) + '</span></div>';
 }
-function _buildTooltipHtml(entry) {
+function _buildTooltipHtml(entry, step) {
   var h = '';
   var tool = entry.tool || entry.mcp || 'unknown';
   h += '<div style="font-weight:700;margin-bottom:6px">' + escapeHtml(tool) + '</div>';
@@ -4013,14 +4061,32 @@ function _buildTooltipHtml(entry) {
   }
   var backend = entry._backend || entry.mcp || '';
   if (backend) h += _tipRow('Backend', backend);
+  // Resolver-derived fields live on the chain step (not the audit
+  // entry). Render here so the tooltip matches what the chain label
+  // already shows.
+  if (step) {
+    if (step.artifact_type) h += _tipRow('Artifact type', step.artifact_type);
+    if (step.role) h += _tipRow('Chain role', step.role);
+  }
   return h;
+}
+function _findAuditMap(el) {
+  while (el) {
+    if (el._auditMap) return el._auditMap;
+    el = el.parentElement;
+  }
+  return {};
 }
 function showChainTooltip(el) {
   var aid = el.getAttribute('data-audit-id');
   if (!aid) return;
   var tip = document.getElementById('chainTooltip');
-  var entry = _tooltipAuditMap[aid];
-  tip.innerHTML = entry ? _buildTooltipHtml(entry)
+  var entry = _findAuditMap(el)[aid];
+  var stepFields = {
+    artifact_type: el.getAttribute('data-artifact-type') || '',
+    role: el.getAttribute('data-role') || '',
+  };
+  tip.innerHTML = entry ? _buildTooltipHtml(entry, stepFields)
     : '<span style="color:var(--text-muted)">Audit entry not available</span>';
   tip.style.display = '';
   tip.style.pointerEvents = 'none';
