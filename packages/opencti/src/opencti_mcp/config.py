@@ -152,8 +152,16 @@ class Config:
     opencti_token: SecretStr
     timeout_seconds: int = 60
     max_results: int = 100
-    rate_limit_queries: int = 60  # queries per minute
-    rate_limit_enrichment: int = 10  # enrichments per hour
+    # Rate limits are PER MINUTE for both limiters. Previously the
+    # enrichment limiter used a 1-hour window with a cap of 10, which
+    # was arbitrarily conservative and blocked bulk operations (UAT
+    # 2026-04-23: 5,426-IOC enrichment runs were bottlenecked by the
+    # query limiter at 60/min → 90 min). Both defaults are sized for
+    # a dedicated OpenCTI instance; shared/SaaS operators should
+    # override via env. Override: `OPENCTI_RATE_LIMIT_QUERIES` and
+    # `OPENCTI_RATE_LIMIT_ENRICHMENT` (both integers, requests/min).
+    rate_limit_queries: int = 600  # queries per minute
+    rate_limit_enrichment: int = 100  # enrichment/write ops per minute
 
     # Production network resilience
     max_retries: int = 3  # retry attempts for transient failures
@@ -239,6 +247,12 @@ class Config:
         timeout = _parse_int_env("OPENCTI_TIMEOUT", 60)
         max_results = _parse_int_env("OPENCTI_MAX_RESULTS", 100)
 
+        # Rate limits — operator-tunable for varying OpenCTI capacities.
+        # Defaults sized for a dedicated instance; shared/SaaS operators
+        # should tune down.
+        rate_limit_queries = _parse_int_env("OPENCTI_RATE_LIMIT_QUERIES", 600)
+        rate_limit_enrichment = _parse_int_env("OPENCTI_RATE_LIMIT_ENRICHMENT", 100)
+
         # Production resilience settings
         max_retries = _parse_int_env("OPENCTI_MAX_RETRIES", 3)
         retry_base_delay = _parse_float_env("OPENCTI_RETRY_DELAY", 1.0)
@@ -260,6 +274,8 @@ class Config:
             opencti_token=SecretStr(token),
             timeout_seconds=timeout,
             max_results=max_results,
+            rate_limit_queries=rate_limit_queries,
+            rate_limit_enrichment=rate_limit_enrichment,
             max_retries=max_retries,
             retry_base_delay=retry_base_delay,
             retry_max_delay=retry_max_delay,

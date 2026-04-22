@@ -268,11 +268,17 @@ class OpenCTIClient:
         self.config = config
         self._client: Any = None
         self._client_lock = threading.Lock()
+        # Both limiters are per-minute as of UAT 2026-04-23. The
+        # enrichment limiter previously used a 1-hour window with a
+        # cap of 10 (effectively 1/6 requests/min), which blocked
+        # bulk write paths — the 4 enrichment/write call sites in
+        # this class are real writes, not deprecated code. Harmonising
+        # on a 60s window makes operator tuning predictable.
         self._query_limiter = RateLimiter(
             max_calls=config.rate_limit_queries, window_seconds=60
         )
         self._enrichment_limiter = RateLimiter(
-            max_calls=config.rate_limit_enrichment, window_seconds=3600
+            max_calls=config.rate_limit_enrichment, window_seconds=60
         )
         # Health check cache
         self._health_cache: tuple[bool, float] | None = None

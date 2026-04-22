@@ -1040,3 +1040,72 @@ class TestAdaptiveMetricsUnit:
         config = metrics.get_adaptive_config()
         # With < 90% success rate, recommended_max_retries should be 5
         assert config.recommended_max_retries == 5
+
+
+# ---------------------------------------------------------------------------
+# UAT 2026-04-23: rate limit defaults raised + env-tunable
+# ---------------------------------------------------------------------------
+#
+# Previously rate_limit_queries=60/min, rate_limit_enrichment=10/HOUR — both
+# were arbitrarily conservative and bottlenecked bulk IOC enrichment (5,426
+# IOCs → 90 min wall clock, blocked entirely on the query limiter). Raised
+# to 600/min and 100/min with env overrides for operators on shared/SaaS
+# OpenCTI instances.
+
+
+class TestRateLimitDefaultsAndEnv:
+    """Contract pin: defaults stay at the raised values; env vars override
+    them at Config.load() time; both limiters use a 60-second window in
+    client construction so operator tuning is predictable (was 3600 for
+    enrichment)."""
+
+    def test_default_queries_limit_is_600_per_minute(self):
+        cfg = Config(
+            opencti_url="http://localhost:8080",
+            opencti_token=SecretStr("tok"),
+        )
+        assert cfg.rate_limit_queries == 600
+
+    def test_default_enrichment_limit_is_100_per_minute(self):
+        cfg = Config(
+            opencti_url="http://localhost:8080",
+            opencti_token=SecretStr("tok"),
+        )
+        assert cfg.rate_limit_enrichment == 100
+
+    def test_env_override_queries(self, monkeypatch):
+        monkeypatch.setenv("OPENCTI_RATE_LIMIT_QUERIES", "1200")
+        monkeypatch.setenv("OPENCTI_TOKEN", "tok")
+        cfg = Config.load()
+        assert cfg.rate_limit_queries == 1200
+
+    def test_env_override_enrichment(self, monkeypatch):
+        monkeypatch.setenv("OPENCTI_RATE_LIMIT_ENRICHMENT", "30")
+        monkeypatch.setenv("OPENCTI_TOKEN", "tok")
+        cfg = Config.load()
+        assert cfg.rate_limit_enrichment == 30
+
+    def test_env_invalid_value_falls_back_to_default(self, monkeypatch):
+        """Unparseable env var must not crash — log warning + keep default.
+        Protects operators from typo'd overrides bringing down the server."""
+        monkeypatch.setenv("OPENCTI_RATE_LIMIT_QUERIES", "not-an-int")
+        monkeypatch.setenv("OPENCTI_TOKEN", "tok")
+        cfg = Config.load()
+        assert cfg.rate_limit_queries == 600
+
+    def test_client_harmonises_limiter_windows_to_60s(self, monkeypatch):
+        """Both limiters must use window_seconds=60 post-UAT. If a future
+        refactor reintroduces an hourly window, this test catches it and
+        the docstring/comment needs updating too."""
+        from opencti_mcp.client import OpenCTIClient
+
+        monkeypatch.setattr(
+            "opencti_mcp.client.OpenCTIClient.connect", lambda self: None
+        )
+        cfg = Config(
+            opencti_url="http://localhost:8080",
+            opencti_token=SecretStr("tok"),
+        )
+        client = OpenCTIClient(cfg)
+        assert client._query_limiter.window == 60
+        assert client._enrichment_limiter.window == 60
