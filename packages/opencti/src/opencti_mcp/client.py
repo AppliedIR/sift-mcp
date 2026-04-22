@@ -25,7 +25,13 @@ from typing import Any
 from .adaptive import AdaptiveMetrics, get_global_metrics
 from .cache import NOT_FOUND, CacheManager, TTLCache, generate_cache_key
 from .config import Config
-from .errors import ConnectionError, QueryError, RateLimitError, ValidationError
+from .errors import (
+    ConnectionError,
+    QueryError,
+    RateLimitError,
+    ValidationError,
+    VersionMismatchError,
+)
 from .feature_flags import get_feature_flags
 from .validation import (
     MAX_IOC_LENGTH,
@@ -629,8 +635,24 @@ class OpenCTIClient:
                     requests_timeout=self._effective_timeout,
                     ssl_verify=self.config.ssl_verify,
                 )
+                # Version-compatibility enforcement (UAT 2026-04-22):
+                # pycti major must match OpenCTI server major or queries
+                # fail with schema errors (e.g., pycti 7.x sends
+                # AIPrompt fragment that 6.x servers reject). Enforce
+                # at connect time so the operator sees one clear error
+                # instead of per-IOC GRAPHQL_VALIDATION_FAILED noise.
+                # Server-unreachable at check time is tolerated (don't
+                # fail-closed on transient outage) — log-and-continue
+                # path.
+                self._enforce_version_compat(self._client)
                 return self._client
 
+            except VersionMismatchError:
+                # Re-raise the compat error unchanged so callers see
+                # the precise pin instruction, not a generic
+                # ConnectionError.
+                self._client = None
+                raise
             except ImportError as e:
                 raise ConnectionError(
                     "pycti not installed. Run: pip install pycti"
@@ -858,6 +880,67 @@ class OpenCTIClient:
             logger.debug(f"Could not get OpenCTI version: {e}")
 
         return None
+
+    def _enforce_version_compat(self, client: Any) -> None:
+        """Verify pycti major matches server major; raise on mismatch.
+
+        Called from connect() right after OpenCTIApiClient is
+        instantiated. Fetches `about.version` via the new client and
+        compares to `pycti.__version__`. Transient server-unreachable
+        is tolerated (don't fail-closed on outage); hard mismatch
+        raises VersionMismatchError with a clear operator message.
+
+        UAT 2026-04-22: pycti 7.x queries AIPrompt and other
+        v7-only types, which a 6.x server rejects with
+        GRAPHQL_VALIDATION_FAILED. Enforcing at init turns per-IOC
+        noise into one actionable error.
+        """
+        try:
+            import pycti
+
+            pycti_ver = getattr(pycti, "__version__", "") or ""
+        except Exception:  # noqa: BLE001
+            pycti_ver = ""
+        if not pycti_ver:
+            # Can't read our own pycti version — skip enforcement,
+            # log. Server-side errors will surface per-IOC if real.
+            logger.warning(
+                "pycti.__version__ unreadable; skipping version compat check"
+            )
+            return
+
+        try:
+            about = client.query("query About { about { version } }") or {}
+            server_ver = (about.get("data") or {}).get("about", {}).get("version") or ""
+        except Exception as e:  # noqa: BLE001
+            # Server unreachable at init — don't fail-closed. If the
+            # server is actually unreachable, downstream queries will
+            # surface that separately. Mismatch cases we're trying to
+            # catch only manifest when the server IS reachable.
+            logger.warning(
+                "opencti-mcp: could not fetch server version for compat check: %s", e
+            )
+            return
+
+        if not server_ver:
+            logger.warning(
+                "opencti-mcp: server returned no version; skipping compat check"
+            )
+            return
+
+        try:
+            pycti_major = int(pycti_ver.split(".", 1)[0])
+            server_major = int(server_ver.split(".", 1)[0])
+        except (ValueError, IndexError):
+            logger.warning(
+                "opencti-mcp: could not parse versions (pycti=%s, server=%s); skipping compat check",
+                pycti_ver,
+                server_ver,
+            )
+            return
+
+        if pycti_major != server_major:
+            raise VersionMismatchError(pycti_ver, server_ver)
 
     def _check_version_compatibility(
         self, version_info: dict[str, str], result: dict[str, Any]

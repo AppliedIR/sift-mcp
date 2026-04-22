@@ -25,7 +25,12 @@ classifiers = [
 
 dependencies = [
     "mcp>=1.26",
-    "pycti>=6.0",
+    # pycti major version must match OpenCTI server major.
+    # pycti 7.x ships a StixCyberObservable fragment with v7-only types
+    # (AIPrompt etc.) that cause GRAPHQL_VALIDATION_FAILED against 6.x
+    # servers. Default to 6.x; operators on 7.x servers must manually
+    # upgrade pycti (see README "OpenCTI version compatibility").
+    "pycti>=6.0,<7.0",
     "sift-common",
 ]
 

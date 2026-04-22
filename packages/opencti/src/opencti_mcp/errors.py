@@ -102,3 +102,39 @@ class RateLimitError(OpenCTIMCPError):
         super().__init__(message, safe_message=message)
         self.wait_seconds = wait_seconds
         self.limit_type = limit_type
+
+
+class VersionMismatchError(OpenCTIMCPError):
+    """pycti major version does not match the connected OpenCTI server.
+
+    Raised at connect time (UAT 2026-04-22) when pycti's major doesn't
+    match the server's `about.version` major. Without this enforcement,
+    per-IOC queries emit misleading `GRAPHQL_VALIDATION_FAILED: Unknown
+    type "..."` errors (e.g., pycti 7.x's AIPrompt fragment against a
+    6.x server). Fail-fast at init so the operator sees one clear error
+    pointing at the fix.
+    """
+
+    def __init__(self, pycti_version: str, server_version: str) -> None:
+        pycti_major = pycti_version.split(".", 1)[0] if pycti_version else "?"
+        server_major = server_version.split(".", 1)[0] if server_version else "?"
+        # Build the install-hint defensively. Upstream
+        # _enforce_version_compat returns early on unparseable versions,
+        # so server_major == "?" is currently unreachable — but guarding
+        # the int() call here prevents a future refactor from surfacing
+        # ValueError from inside error construction (CR 2026-04-22).
+        try:
+            next_major = int(server_major) + 1
+            install_hint = f"'pycti>={server_major}.0,<{next_major}.0'"
+        except (ValueError, TypeError):
+            install_hint = "the version matching your server"
+        message = (
+            f"opencti-mcp: pycti {pycti_major}.x installed but OpenCTI "
+            f"server is version {server_version}. Pin pycti to "
+            f"{server_major}.x (e.g., `uv pip install {install_hint}`). "
+            f"See packages/opencti/README.md "
+            f'"OpenCTI version compatibility".'
+        )
+        super().__init__(message, safe_message=message)
+        self.pycti_version = pycti_version
+        self.server_version = server_version
