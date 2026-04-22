@@ -922,16 +922,19 @@ class OpenCTIClient:
             )
             return
 
-        if not server_ver:
+        if not server_ver or not isinstance(server_ver, str):
+            # Missing or non-string version (e.g. test mocks returning
+            # MagicMock for the query result) — skip enforcement rather
+            # than fail-closed on something we can't interpret.
             logger.warning(
-                "opencti-mcp: server returned no version; skipping compat check"
+                "opencti-mcp: server returned no usable version; skipping compat check"
             )
             return
 
         try:
             pycti_major = int(pycti_ver.split(".", 1)[0])
             server_major = int(server_ver.split(".", 1)[0])
-        except (ValueError, IndexError):
+        except (ValueError, IndexError, TypeError):
             logger.warning(
                 "opencti-mcp: could not parse versions (pycti=%s, server=%s); skipping compat check",
                 pycti_ver,
