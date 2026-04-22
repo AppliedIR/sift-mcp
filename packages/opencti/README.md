@@ -6,24 +6,30 @@ Valhuntir gateway.
 
 ## OpenCTI version compatibility
 
-**The default pycti pin (`>=6.0,<7.0`) targets OpenCTI 6.x servers.**
-pycti's major version must match your OpenCTI server's major — a
-mismatch causes `GRAPHQL_VALIDATION_FAILED: Unknown type "..."`
-errors on every IOC query because each major adds new schema types
-the older server doesn't know about (e.g., pycti 7.x's `AIPrompt`
-fragment).
+**You must align `pycti`'s major version to your OpenCTI server's
+major version.** `opencti-mcp` declares only a floor (`pycti>=6.0`)
+and does not ceiling-pin, because the correct major depends on which
+OpenCTI server you are connecting to — and that is
+environment-specific, not a package-wide default.
 
-Match pycti's major to your server's:
+A major mismatch causes `GRAPHQL_VALIDATION_FAILED: Unknown type
+"..."` errors on every IOC query because each major adds new schema
+types the older server doesn't know about (e.g., pycti 7.x's
+`AIPrompt` fragment against a 6.x server; or older pycti missing
+types a newer server requires).
+
+Install the pycti major that matches your server:
 
 | OpenCTI server   | Install pycti                                   |
 |------------------|-------------------------------------------------|
-| 6.x (default)    | `uv pip install 'pycti>=6.0,<7.0'`              |
-| 7.x              | `uv pip install 'pycti>=7.0,<8.0'`              |
 | 5.x (legacy)     | `uv pip install 'pycti>=5.0,<6.0'`              |
+| 6.x              | `uv pip install 'pycti>=6.0,<7.0'`              |
+| 7.x              | `uv pip install 'pycti>=7.0,<8.0'`              |
 
-If pycti's major doesn't match, `opencti-mcp` fails init with a
-clear `VersionMismatchError` including the exact pin instruction.
-It will NOT start the backend and begin emitting per-IOC GraphQL
+If pycti's major doesn't match the server's major at startup,
+`opencti-mcp` fails init with a clear `VersionMismatchError`
+including the exact pin instruction for your server's version. It
+will NOT start the backend and begin emitting per-IOC GraphQL
 errors.
 
 ### Checking your server version

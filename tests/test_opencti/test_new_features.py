@@ -241,41 +241,6 @@ class TestVersionChecking:
             opencti_token=SecretStr("test-token-12345"),
         )
 
-    def test_version_compatibility_check_old_version(self, mock_config):
-        """Old version triggers warning."""
-        from opencti_mcp.client import OpenCTIClient
-
-        client = OpenCTIClient(mock_config)
-        result = {"warnings": []}
-
-        client._check_version_compatibility({"version": "4.5.1"}, result)
-
-        assert len(result["warnings"]) > 0
-        assert "older" in result["warnings"][0].lower()
-
-    def test_version_compatibility_check_new_version(self, mock_config):
-        """New version triggers warning."""
-        from opencti_mcp.client import OpenCTIClient
-
-        client = OpenCTIClient(mock_config)
-        result = {"warnings": []}
-
-        client._check_version_compatibility({"version": "7.0.0"}, result)
-
-        assert len(result["warnings"]) > 0
-        assert "newer" in result["warnings"][0].lower()
-
-    def test_version_compatibility_check_current_version(self, mock_config):
-        """Current version doesn't trigger warning."""
-        from opencti_mcp.client import OpenCTIClient
-
-        client = OpenCTIClient(mock_config)
-        result = {"warnings": []}
-
-        client._check_version_compatibility({"version": "6.1.0"}, result)
-
-        assert len(result["warnings"]) == 0
-
     def test_get_server_info(self, mock_config):
         """Server info structure is correct."""
         from opencti_mcp.client import OpenCTIClient

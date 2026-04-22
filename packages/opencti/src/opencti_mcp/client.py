@@ -804,9 +804,6 @@ class OpenCTIClient:
                 result["opencti_version"] = version_info.get("version")
                 result["platform_version"] = version_info.get("platform_version")
 
-                # Check version compatibility
-                self._check_version_compatibility(version_info, result)
-
             # Verify we can actually query
             client.stix_cyber_observable.list(first=1)
             self._circuit_breaker.record_success()
@@ -944,40 +941,6 @@ class OpenCTIClient:
 
         if pycti_major != server_major:
             raise VersionMismatchError(pycti_ver, server_ver)
-
-    def _check_version_compatibility(
-        self, version_info: dict[str, str], result: dict[str, Any]
-    ) -> None:
-        """Check version compatibility and add warnings if needed.
-
-        Known compatibility:
-        - pycti 6.x works with OpenCTI 6.x
-        - Major version mismatches may cause issues
-        """
-        version = version_info.get("version", "")
-        if not version:
-            return
-
-        try:
-            # Parse major version
-            major = int(version.split(".")[0])
-
-            # pycti 6.x is designed for OpenCTI 6.x
-            # Warn if major version doesn't match
-            if major < 5:
-                result["warnings"].append(
-                    f"OpenCTI version {version} is older than expected. "
-                    "Some features may not work correctly."
-                )
-            elif major > 6:
-                result["warnings"].append(
-                    f"OpenCTI version {version} is newer than this client. "
-                    "Consider updating opencti-mcp for full compatibility."
-                )
-
-        except (ValueError, IndexError):
-            # Can't parse version - not critical
-            pass
 
     def get_server_info(self) -> dict[str, Any]:
         """Get OpenCTI server information.
