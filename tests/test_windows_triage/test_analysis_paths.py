@@ -173,3 +173,107 @@ class TestParseServiceBinaryPath:
     def test_driver_path(self):
         result = parse_service_binary_path("\\SystemRoot\\System32\\drivers\\tcpip.sys")
         assert result == "\\windows\\system32\\drivers\\tcpip.sys"
+
+
+class TestNormalizePathEnvExpansion:
+    """Regression pin for specs/windows-triage-env-var-normalize-2026-04-24.md.
+
+    Pre-fix, registry values like %windir%\\system32\\cmd.exe missed
+    baseline lookup and fell through to the masquerade-target check,
+    producing false SUSPICIOUS verdicts on legitimate Windows 10/11
+    autoruns (SecurityHealthSystray + friends). Post-fix, normalize_path
+    expands the seven env-var placeholders BEFORE drive-strip /
+    separator-flip so the paths resolve canonically.
+    """
+
+    def test_windir_expansion(self):
+        assert (
+            normalize_path(r"%windir%\system32\cmd.exe")
+            == r"\windows\system32\cmd.exe"
+        )
+
+    def test_systemroot_expansion(self):
+        assert (
+            normalize_path(r"%SystemRoot%\System32\cmd.exe")
+            == r"\windows\system32\cmd.exe"
+        )
+
+    def test_programfiles_expansion(self):
+        assert (
+            normalize_path(r"%ProgramFiles%\App\app.exe")
+            == r"\program files\app\app.exe"
+        )
+
+    def test_programfiles_x86_expansion(self):
+        assert (
+            normalize_path(r"%ProgramFiles(x86)%\App\app.exe")
+            == r"\program files (x86)\app\app.exe"
+        )
+
+    def test_programdata_expansion(self):
+        assert (
+            normalize_path(r"%ProgramData%\foo\bar.exe")
+            == r"\programdata\foo\bar.exe"
+        )
+
+    def test_allusersprofile_expansion(self):
+        """%AllUsersProfile% alias maps to ProgramData on Vista+."""
+        assert (
+            normalize_path(r"%AllUsersProfile%\foo.exe")
+            == r"\programdata\foo.exe"
+        )
+
+    def test_systemdrive_expansion(self):
+        """%SystemDrive% collapses to empty — the trailing path segment
+        supplies the canonical prefix on its own.
+        """
+        assert (
+            normalize_path(r"%SystemDrive%\windows\system32\cmd.exe")
+            == r"\windows\system32\cmd.exe"
+        )
+
+    def test_legacy_systemroot_backslash(self):
+        r"""\SystemRoot\ prefix from kernel-space paths still resolves."""
+        assert (
+            normalize_path(r"\SystemRoot\System32\cmd.exe")
+            == r"\windows\system32\cmd.exe"
+        )
+
+    def test_case_insensitive_env_match(self):
+        """Env-var matching is case-insensitive — registry values mix
+        cases routinely (%WinDir%, %ProgramFILES%, etc.).
+        """
+        assert (
+            normalize_path(r"%WINDIR%\System32\cmd.exe")
+            == r"\windows\system32\cmd.exe"
+        )
+        assert (
+            normalize_path(r"%ProgramFILES%\App\app.exe")
+            == r"\program files\app\app.exe"
+        )
+
+    def test_drive_letter_still_stripped_after_no_env_match(self):
+        """Concrete paths (no env var) still lose the drive letter —
+        existing behavior is unchanged on the no-match branch.
+        """
+        assert (
+            normalize_path(r"C:\Windows\System32\cmd.exe")
+            == r"\windows\system32\cmd.exe"
+        )
+
+    def test_no_env_no_drive_unchanged(self):
+        assert (
+            normalize_path(r"\windows\system32\cmd.exe")
+            == r"\windows\system32\cmd.exe"
+        )
+
+    def test_empty_preserved(self):
+        assert normalize_path("") == ""
+
+    def test_env_var_in_middle_not_expanded(self):
+        """Only leading placeholders expand. Mid-path env vars stay
+        literal — registry rarely stores them mid-path, and expanding
+        inside args (e.g. `cmd /c echo %var%`) would be wrong.
+        """
+        result = normalize_path(r"\windows\system32\%windir%.txt")
+        assert result == r"\windows\system32\%windir%.txt"

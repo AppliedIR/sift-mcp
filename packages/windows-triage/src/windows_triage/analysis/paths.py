@@ -30,6 +30,28 @@ Suspicious Directory Detection:
 
 import re
 
+# Env-var and system-path placeholders commonly found in registry
+# persistence values (Run keys, Service ImagePath, Active Setup
+# StubPath, NetSh Helper DLLs, Scheduled Tasks). Registry stores these
+# un-expanded; downstream path-match needs the resolved forms or
+# legitimate Microsoft binaries get flagged SUSPICIOUS via the
+# "System binary in unexpected directory (masquerade indicator)"
+# fallback in verdicts.py.
+#
+# Match is case-insensitive — callers lowercase before lookup, so keys
+# are lowercase here. First-match-wins; order does not matter (each
+# placeholder is unique).
+_ENV_EXPANSIONS = {
+    "%windir%": r"\windows",
+    "%systemroot%": r"\windows",
+    "%programfiles%": r"\program files",
+    "%programfiles(x86)%": r"\program files (x86)",
+    "%programdata%": r"\programdata",
+    "%allusersprofile%": r"\programdata",  # maps to ProgramData on Vista+
+    "%systemdrive%": "",  # drive letter; leaves the rest of the path intact
+    "\\systemroot\\": "\\windows\\",
+}
+
 
 def normalize_path(path: str) -> str:
     r"""
@@ -37,20 +59,44 @@ def normalize_path(path: str) -> str:
 
     Transformations:
     - Lowercase the entire path
+    - Expand environment-variable placeholders (%windir%,
+      %SystemRoot%, %ProgramFiles%, %ProgramFiles(x86)%, %ProgramData%,
+      %SystemDrive%, %AllUsersProfile%, and the \SystemRoot\ kernel
+      prefix). Must run BEFORE drive-letter strip so
+      %SystemDrive%\windows\... resolves correctly.
     - Remove drive letter (C:\Windows -> \windows)
     - Normalize separators (/ -> \)
     - Remove trailing slashes
 
+    Pre-fix, registry values like `%windir%\system32\cmd.exe` matched
+    none of the baseline rows (which store `\windows\system32\...`),
+    fell through to the filename-match fallback, and hit the
+    _MASQUERADE_TARGETS check — producing false SUSPICIOUS verdicts on
+    every Windows 10/11 autorun that uses unexpanded placeholders
+    (SecurityHealthSystray and friends). See
+    `specs/windows-triage-env-var-normalize-2026-04-24.md`.
+
     Examples:
-        C:\Windows\System32\cmd.exe -> \windows\system32\cmd.exe
-        c:\WINDOWS\system32\CMD.EXE -> \windows\system32\cmd.exe
-        C:/Users/Admin/file.txt -> \users\admin\file.txt
+        %windir%\System32\cmd.exe         -> \windows\system32\cmd.exe
+        %SystemRoot%\System32\cmd.exe     -> \windows\system32\cmd.exe
+        %ProgramFiles%\App\app.exe        -> \program files\app\app.exe
+        C:\Windows\System32\cmd.exe       -> \windows\system32\cmd.exe
+        c:\WINDOWS\system32\CMD.EXE       -> \windows\system32\cmd.exe
+        C:/Users/Admin/file.txt           -> \users\admin\file.txt
     """
     if not path:
         return path
 
-    # Lowercase
+    # Lowercase first so env-var matching is case-insensitive.
     path = path.lower()
+
+    # Env-var / system-path expansion. Runs before drive-strip so
+    # `%systemdrive%\windows\...` (placeholder produces "", leaving the
+    # trailing `\windows\...` intact) is handled correctly.
+    for placeholder, replacement in _ENV_EXPANSIONS.items():
+        if path.startswith(placeholder):
+            path = replacement + path[len(placeholder):]
+            break
 
     # Remove drive letter (C:\Windows -> \windows)
     if len(path) > 2 and path[1] == ":":
@@ -237,13 +283,16 @@ def parse_service_binary_path(image_path: str) -> str:
             if space_idx > 0:
                 path = path[:space_idx]
 
-    # Expand common system paths
+    # Expand common system paths. The %SystemRoot%\ / \SystemRoot\
+    # prefixes used to live here; they now live in normalize_path's
+    # _ENV_EXPANSIONS so every caller benefits (Run keys, Active Setup,
+    # NetSh DLLs, scheduled tasks — not just service ImagePaths).
+    # `system32\...` relative-path expansion stays local to this
+    # function because it's not an env var — it's the special case
+    # where a bare ImagePath starts with `system32\` and implicitly
+    # resolves against %SystemRoot%.
     path_lower = path.lower()
-    if path_lower.startswith("\\systemroot\\"):
-        path = "\\windows\\" + path[12:]
-    elif path_lower.startswith("%systemroot%\\"):
-        path = "\\windows\\" + path[13:]
-    elif path_lower.startswith("system32\\"):
+    if path_lower.startswith("system32\\"):
         path = "\\windows\\system32\\" + path[9:]
 
     return normalize_path(path)
