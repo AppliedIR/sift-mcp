@@ -104,11 +104,16 @@ def temp_dbs():
             CREATE INDEX idx_autoruns_key ON baseline_autoruns(key_path_lower);
 
             -- Insert test data
+            -- securityhealthsystray.exe is in _MASQUERADE_TARGETS — included
+            -- here so the env-var-expansion regression test (Run-key value
+            -- `%windir%\\system32\\SecurityHealthSystray.exe`) can verify
+            -- the path-resolves-to-baseline → EXPECTED end-to-end flow.
             INSERT INTO baseline_files (path_normalized, directory_normalized, filename_lower, os_versions)
             VALUES
                 ('\\windows\\system32\\cmd.exe', '\\windows\\system32', 'cmd.exe', '["W11_22H2", "W10_21H2"]'),
                 ('\\windows\\system32\\notepad.exe', '\\windows\\system32', 'notepad.exe', '["W11_22H2", "W10_21H2"]'),
-                ('\\windows\\system32\\certutil.exe', '\\windows\\system32', 'certutil.exe', '["W11_22H2", "W10_21H2"]');
+                ('\\windows\\system32\\certutil.exe', '\\windows\\system32', 'certutil.exe', '["W11_22H2", "W10_21H2"]'),
+                ('\\windows\\system32\\securityhealthsystray.exe', '\\windows\\system32', 'securityhealthsystray.exe', '["W11_22H2", "W10_21H2"]');
 
             INSERT INTO baseline_hashes (hash_value, hash_type, file_id)
             VALUES
@@ -405,6 +410,34 @@ class TestCheckFile:
         # Not in baseline path, but filename in baseline — wrong directory
         assert result["path_in_baseline"] is False
         assert result["verdict"] == "SUSPICIOUS"
+
+    @pytest.mark.asyncio
+    async def test_securityhealthsystray_via_windir_is_expected(self, server):
+        """End-to-end regression for env-var normalize spec (Rev 1).
+
+        Pre-fix, registry Run-key value
+        `%windir%\\system32\\SecurityHealthSystray.exe` (the legitimate
+        Windows Security autorun on every Windows 10/11 host) failed
+        baseline lookup and fell through to the masquerade-target check,
+        producing false SUSPICIOUS verdicts. Post-fix, normalize_path
+        expands `%windir%` to `\\windows`, baseline lookup succeeds, and
+        the verdict resolves to EXPECTED with no masquerade reason.
+
+        Pins the full check_file → normalize_path → baseline → verdict
+        chain end-to-end, not just the unit-level path normalization.
+        """
+        result = await server._check_file(
+            r"%windir%\system32\SecurityHealthSystray.exe"
+        )
+        assert result["path_in_baseline"] is True, (
+            "%windir% expansion should have hit the baseline; got "
+            f"normalized={result.get('normalized_path')!r}"
+        )
+        assert result["verdict"] == "EXPECTED"
+        reasons_text = " ".join(result.get("reasons", [])).lower()
+        assert "masquerade" not in reasons_text, (
+            f"Pre-fix masquerade verdict regressed; reasons={result.get('reasons')!r}"
+        )
 
     @pytest.mark.asyncio
     async def test_hash_mismatch(self, server):
