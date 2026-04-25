@@ -95,7 +95,7 @@ def normalize_path(path: str) -> str:
     # trailing `\windows\...` intact) is handled correctly.
     for placeholder, replacement in _ENV_EXPANSIONS.items():
         if path.startswith(placeholder):
-            path = replacement + path[len(placeholder):]
+            path = replacement + path[len(placeholder) :]
             break
 
     # Remove drive letter (C:\Windows -> \windows)

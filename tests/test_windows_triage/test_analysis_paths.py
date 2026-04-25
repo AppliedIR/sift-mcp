@@ -188,8 +188,7 @@ class TestNormalizePathEnvExpansion:
 
     def test_windir_expansion(self):
         assert (
-            normalize_path(r"%windir%\system32\cmd.exe")
-            == r"\windows\system32\cmd.exe"
+            normalize_path(r"%windir%\system32\cmd.exe") == r"\windows\system32\cmd.exe"
         )
 
     def test_systemroot_expansion(self):
@@ -212,16 +211,12 @@ class TestNormalizePathEnvExpansion:
 
     def test_programdata_expansion(self):
         assert (
-            normalize_path(r"%ProgramData%\foo\bar.exe")
-            == r"\programdata\foo\bar.exe"
+            normalize_path(r"%ProgramData%\foo\bar.exe") == r"\programdata\foo\bar.exe"
         )
 
     def test_allusersprofile_expansion(self):
         """%AllUsersProfile% alias maps to ProgramData on Vista+."""
-        assert (
-            normalize_path(r"%AllUsersProfile%\foo.exe")
-            == r"\programdata\foo.exe"
-        )
+        assert normalize_path(r"%AllUsersProfile%\foo.exe") == r"\programdata\foo.exe"
 
     def test_systemdrive_expansion(self):
         """%SystemDrive% collapses to empty — the trailing path segment
@@ -244,8 +239,7 @@ class TestNormalizePathEnvExpansion:
         cases routinely (%WinDir%, %ProgramFILES%, etc.).
         """
         assert (
-            normalize_path(r"%WINDIR%\System32\cmd.exe")
-            == r"\windows\system32\cmd.exe"
+            normalize_path(r"%WINDIR%\System32\cmd.exe") == r"\windows\system32\cmd.exe"
         )
         assert (
             normalize_path(r"%ProgramFILES%\App\app.exe")
@@ -263,8 +257,7 @@ class TestNormalizePathEnvExpansion:
 
     def test_no_env_no_drive_unchanged(self):
         assert (
-            normalize_path(r"\windows\system32\cmd.exe")
-            == r"\windows\system32\cmd.exe"
+            normalize_path(r"\windows\system32\cmd.exe") == r"\windows\system32\cmd.exe"
         )
 
     def test_empty_preserved(self):
