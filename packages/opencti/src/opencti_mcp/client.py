@@ -68,8 +68,7 @@ def _load_startup_probe_timeout() -> int:
         val = int(raw)
     except ValueError as e:
         raise ValueError(
-            f"OPENCTI_STARTUP_TIMEOUT must be an integer (1-300 seconds); "
-            f"got {raw!r}"
+            f"OPENCTI_STARTUP_TIMEOUT must be an integer (1-300 seconds); got {raw!r}"
         ) from e
     if not 1 <= val <= 300:
         raise ValueError(

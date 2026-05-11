@@ -140,9 +140,7 @@ class StdioMCPBackend(MCPBackend):
             return
         if self._exit_stack is not None:
             try:
-                await asyncio.wait_for(
-                    self._exit_stack.aclose(), timeout=_STOP_TIMEOUT
-                )
+                await asyncio.wait_for(self._exit_stack.aclose(), timeout=_STOP_TIMEOUT)
                 # Successful close: state-reset still runs in finally below
             except asyncio.TimeoutError:
                 logger.warning(

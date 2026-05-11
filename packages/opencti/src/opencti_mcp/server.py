@@ -116,9 +116,7 @@ VALID_ENTITY_TYPES = frozenset(_ENTITY_TYPE_METHODS.keys())
 class OpenCTIMCPServer:
     """MCP server for OpenCTI threat intelligence (read-only)."""
 
-    def __init__(
-        self, config: Config, client: OpenCTIClient | None = None
-    ) -> None:
+    def __init__(self, config: Config, client: OpenCTIClient | None = None) -> None:
         """Construct the MCP server.
 
         Args:

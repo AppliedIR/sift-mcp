@@ -363,9 +363,7 @@ class TestStartupDegradedMode:
 
         client = OpenCTIClient(mock_config)
         with patch.object(client, "_connect_probe") as mock_probe:
-            mock_probe.side_effect = requests.exceptions.Timeout(
-                "Read timed out"
-            )
+            mock_probe.side_effect = requests.exceptions.Timeout("Read timed out")
             result = client.validate_startup()
 
         assert client._degraded is True
@@ -427,8 +425,7 @@ class TestStartupDegradedMode:
                 # surface can fail-fast at the next layer.
                 serialized = str(result)
                 assert "DEGRADED" in serialized.upper() or "degraded" in serialized, (
-                    f"{method_name} returned without DEGRADED marker: "
-                    f"{result!r}"
+                    f"{method_name} returned without DEGRADED marker: {result!r}"
                 )
             except (DegradedError, Exception) as e:
                 # DegradedError direct, or wrapped (e.g., QueryError
@@ -464,7 +461,7 @@ class TestStartupDegradedMode:
                         client.validate_startup()
                     except Exception:
                         pass  # post-probe path may raise; we only care
-                              # that connect() was bypassed
+                        # that connect() was bypassed
                     mp.assert_called()
                     mc.assert_not_called()
 
