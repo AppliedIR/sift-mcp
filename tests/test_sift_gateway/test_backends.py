@@ -1,5 +1,7 @@
 """Tests for backend factory and lifecycle."""
 
+import asyncio
+
 import pytest
 from sift_gateway.backends import create_backend
 from sift_gateway.backends.http_backend import HttpMCPBackend
@@ -200,3 +202,201 @@ class TestLazyStart:
         assert gw.idle_timeout == 300
         gw2 = Gateway({"backends": {}})
         assert gw2.idle_timeout == 0
+
+
+# --- Rev 2: _safe_cleanup helper + bounded initialize ---
+
+
+class TestSafeCleanup:
+    """Pins _safe_cleanup contract (CR Rev-2 spec).
+
+    Pre-fix, three cleanup sites (start/list_tools/call_tool) had
+    near-identical patterns with subtly different bugs:
+      - start() logged WARNING on unavoidable cancel-scope errors
+      - list_tools / call_tool used silent `pass`, swallowing real errors
+      - stop() had the right pattern (downgrade on "cancel scope")
+    Post-fix: all four call _safe_cleanup(context=...) — uniform.
+    """
+
+    @pytest.mark.asyncio
+    async def test_safe_cleanup_handles_none_exit_stack(self):
+        """_exit_stack already None → no exception, no log spam, state reset."""
+        backend = StdioMCPBackend("test", {"command": "true"})
+        backend._exit_stack = None
+        backend._session = object()
+        backend._started = True
+        # Must not raise
+        await backend._safe_cleanup(context="test cleanup")
+        assert backend._session is None
+        assert backend._started is False
+
+    @pytest.mark.asyncio
+    async def test_safe_cleanup_downgrades_cancel_scope_to_debug(self, caplog):
+        """Cancel-scope error during cleanup → DEBUG, not WARNING."""
+        import logging
+        from contextlib import AsyncExitStack
+
+        backend = StdioMCPBackend("test", {"command": "true"})
+        backend._exit_stack = AsyncExitStack()
+
+        async def _raise_cancel_scope():
+            raise RuntimeError(
+                "Attempted to exit cancel scope in a different task than it was entered in"
+            )
+
+        # Replace aclose with a method that raises the structural error
+        backend._exit_stack.aclose = _raise_cancel_scope  # type: ignore[method-assign]
+
+        with caplog.at_level(logging.DEBUG):
+            await backend._safe_cleanup(context="cleanup after failed start")
+
+        # Find the log record from this cleanup
+        records = [
+            r for r in caplog.records if "cleanup after failed start" in r.getMessage()
+        ]
+        assert records, "expected a cleanup log record"
+        # All matching records must be DEBUG-level
+        assert all(r.levelno == logging.DEBUG for r in records), (
+            f"cancel-scope error logged at non-DEBUG: {[r.levelname for r in records]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_safe_cleanup_logs_real_errors_at_warning(self, caplog):
+        """Non-cancel-scope error → WARNING (real failure, not noise)."""
+        import logging
+        from contextlib import AsyncExitStack
+
+        backend = StdioMCPBackend("test", {"command": "true"})
+        backend._exit_stack = AsyncExitStack()
+
+        async def _raise_real():
+            raise RuntimeError("disk full")
+
+        backend._exit_stack.aclose = _raise_real  # type: ignore[method-assign]
+
+        with caplog.at_level(logging.WARNING):
+            await backend._safe_cleanup(context="cleanup after failed start")
+
+        records = [
+            r for r in caplog.records if "cleanup after failed start" in r.getMessage()
+        ]
+        assert records
+        assert all(r.levelno == logging.WARNING for r in records)
+
+    @pytest.mark.asyncio
+    async def test_safe_cleanup_always_resets_state_in_finally(self):
+        """Even when aclose raises, _exit_stack/_session/_started reset."""
+        from contextlib import AsyncExitStack
+
+        backend = StdioMCPBackend("test", {"command": "true"})
+        backend._exit_stack = AsyncExitStack()
+        backend._session = object()
+        backend._tools_cache = ["fake"]
+        backend._started = True
+
+        async def _raise():
+            raise RuntimeError("boom")
+
+        backend._exit_stack.aclose = _raise  # type: ignore[method-assign]
+
+        await backend._safe_cleanup(context="test")
+        assert backend._exit_stack is None
+        assert backend._session is None
+        assert backend._tools_cache is None
+        assert backend._started is False
+
+
+class TestStartInitializeBounded:
+    """asyncio.wait_for(session.initialize(), _INITIALIZE_TIMEOUT=30)
+    so a hung backend doesn't block the gateway's startup loop."""
+
+    @pytest.mark.asyncio
+    async def test_start_raises_timeout_after_initialize_timeout(self):
+        """When session.initialize() hangs, start() raises TimeoutError
+        within the bounded window — pre-fix it waited on the underlying
+        socket timeout (300s+).
+        """
+        from unittest.mock import AsyncMock, patch
+
+        from sift_gateway.backends import stdio_backend
+
+        # Override the module constant for a fast test (3s instead of 30s)
+        with patch.object(stdio_backend, "_INITIALIZE_TIMEOUT", 1):
+            backend = StdioMCPBackend("test", {"command": "true"})
+
+            # Mock the AsyncExitStack pipeline up to and including initialize()
+            mock_session = AsyncMock()
+
+            async def _hang(*a, **kw):
+                # Block longer than _INITIALIZE_TIMEOUT
+                import asyncio as _aio
+
+                await _aio.sleep(60)
+
+            mock_session.initialize = _hang
+
+            mock_exit_stack = AsyncMock()
+            mock_exit_stack.enter_async_context = AsyncMock(
+                side_effect=[(object(), object()), mock_session]
+            )
+            mock_exit_stack.aclose = AsyncMock()
+
+            with patch(
+                "sift_gateway.backends.stdio_backend.AsyncExitStack",
+                return_value=mock_exit_stack,
+            ):
+                with pytest.raises(asyncio.TimeoutError):
+                    await backend.start()
+
+            # Cleanup was invoked
+            assert backend._started is False
+            assert backend._exit_stack is None
+
+
+class TestThreeSiteCleanupUsesSafeCleanup:
+    """list_tools / call_tool / start error paths all route through
+    _safe_cleanup — pins the canonical-helper contract so future bugs
+    touch one site, not three."""
+
+    @pytest.mark.asyncio
+    async def test_list_tools_error_path_calls_safe_cleanup(self):
+        """ConnectionError in list_tools → _safe_cleanup runs."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        backend = StdioMCPBackend("test", {"command": "true"})
+        backend._started = True
+        backend._session = MagicMock()
+        backend._session.list_tools = AsyncMock(
+            side_effect=ConnectionError("backend hung")
+        )
+        backend._exit_stack = AsyncMock()
+        backend._exit_stack.aclose = AsyncMock()
+
+        with pytest.raises(ConnectionError):
+            await backend.list_tools()
+
+        # _safe_cleanup ran — state is reset
+        assert backend._exit_stack is None
+        assert backend._session is None
+        assert backend._started is False
+
+    @pytest.mark.asyncio
+    async def test_call_tool_error_path_calls_safe_cleanup(self):
+        """ConnectionError in call_tool → _safe_cleanup runs."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        backend = StdioMCPBackend("test", {"command": "true"})
+        backend._started = True
+        backend._session = MagicMock()
+        backend._session.call_tool = AsyncMock(
+            side_effect=ConnectionError("backend hung")
+        )
+        backend._exit_stack = AsyncMock()
+        backend._exit_stack.aclose = AsyncMock()
+
+        with pytest.raises(ConnectionError):
+            await backend.call_tool("x", {})
+
+        assert backend._exit_stack is None
+        assert backend._session is None
+        assert backend._started is False
