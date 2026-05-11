@@ -51,7 +51,13 @@ def main() -> None:
         flags = get_feature_flags()
         logger.debug(f"Feature flags: {flags.to_dict()}")
 
-        # Startup validation (if enabled)
+        # Startup validation (if enabled) — build ONE OpenCTIClient,
+        # run validate_startup on it, then hand the SAME instance to
+        # the server below. Pre-fix __main__.py built a separate
+        # client here and OpenCTIMCPServer built another; the
+        # `_degraded` flag set by validate_startup never propagated to
+        # the tool-call path (live BLOCKER caught 2026-05-11).
+        client: OpenCTIClient | None = None
         if flags.startup_validation:
             logger.info("Running startup validation...")
             client = OpenCTIClient(config)
@@ -77,8 +83,16 @@ def main() -> None:
                     "Startup validation had errors - server will start but may have issues"
                 )
 
-        # Create and run server
-        server = OpenCTIMCPServer(config)
+        # Create and run server — pass validated client through if we
+        # built one, otherwise let server construct fresh (no startup
+        # validation requested → no _degraded state to preserve).
+        # Conditional kwarg keeps existing call-shape assertions in
+        # lifecycle tests valid; new behavior only fires when
+        # validation actually built a client.
+        if client is not None:
+            server = OpenCTIMCPServer(config, client=client)
+        else:
+            server = OpenCTIMCPServer(config)
         asyncio.run(server.run())
 
     except ConfigurationError as e:

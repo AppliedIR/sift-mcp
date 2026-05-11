@@ -13,7 +13,7 @@ import threading
 import time
 from io import StringIO
 from time import monotonic
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import ANY, MagicMock, Mock, patch
 
 import pytest
 from opencti_mcp.client import RateLimiter
@@ -577,7 +577,12 @@ class TestStartupLifecycle:
             # Should NOT raise; server should still start
             main()
 
-            mock_server_cls.assert_called_once_with(config)
+            # Per 2026-05-11 BLOCKER fix: when startup_validation is
+            # enabled, __main__.py passes the validated client through
+            # to OpenCTIMCPServer so `_degraded` set during the probe
+            # reaches the tool-call path. ANY matches the
+            # MagicMock client built in this fixture.
+            mock_server_cls.assert_called_once_with(config, client=ANY)
             mock_asyncio.run.assert_called_once()
 
     # LC5 ------------------------------------------------------------------

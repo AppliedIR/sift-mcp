@@ -58,6 +58,31 @@ class ConnectionError(OpenCTIMCPError):
         )
 
 
+class DegradedError(OpenCTIMCPError):
+    """OpenCTI backend in degraded mode (startup probe failed).
+
+    Distinct from ConnectionError so the retry-with-backoff loop in
+    OpenCTIClient does NOT retry — degraded mode is set explicitly by
+    validate_startup, won't clear without operator action, so retrying
+    just delays the failure. The chokepoint guard in connect() raises
+    this; the retry-loop's `_is_transient_error` checks by class name
+    ("ConnectionError") so DegradedError correctly falls through to
+    the non-transient branch and raises immediately.
+
+    Operators recover via `vhir service restart opencti-mcp` after the
+    OpenCTI server returns.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            message,
+            safe_message=(
+                "OpenCTI backend in DEGRADED mode — server unreachable. "
+                "Run `vhir service restart opencti-mcp` after server returns."
+            ),
+        )
+
+
 class ValidationError(OpenCTIMCPError):
     """Input validation failure.
 

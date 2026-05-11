@@ -13,6 +13,7 @@ Security:
 from __future__ import annotations
 
 import logging
+import os
 import random
 import threading
 import time as time_module
@@ -27,6 +28,7 @@ from .cache import NOT_FOUND, CacheManager, TTLCache, generate_cache_key
 from .config import Config
 from .errors import (
     ConnectionError,
+    DegradedError,
     QueryError,
     RateLimitError,
     ValidationError,
@@ -49,6 +51,34 @@ from .validation import (
 
 MAX_RELATIONSHIPS = 50  # Max relationships to fetch per entity
 HEALTH_CHECK_TTL = 30  # Seconds to cache health check result
+
+
+def _load_startup_probe_timeout() -> int:
+    """Bounded env-overridable startup-probe timeout in seconds.
+
+    Pycti's default `requests_timeout=300` plus `perform_health_check=True`
+    means a constructor with an unreachable host blocks for 5 minutes —
+    much longer than the gateway's startup timeout, which then leaks
+    anyio cancel-scope warnings + a `'NoneType'.aclose` deref on retry.
+    This bounded probe times out the connectivity test in 10s by default;
+    operators on slow networks bump via `OPENCTI_STARTUP_TIMEOUT`.
+    """
+    raw = os.environ.get("OPENCTI_STARTUP_TIMEOUT", "10")
+    try:
+        val = int(raw)
+    except ValueError as e:
+        raise ValueError(
+            f"OPENCTI_STARTUP_TIMEOUT must be an integer (1-300 seconds); "
+            f"got {raw!r}"
+        ) from e
+    if not 1 <= val <= 300:
+        raise ValueError(
+            f"OPENCTI_STARTUP_TIMEOUT must be in 1-300 second range; got {val}"
+        )
+    return val
+
+
+_STARTUP_PROBE_TIMEOUT = _load_startup_probe_timeout()
 
 # Transient errors that should trigger retry.
 # These are network/connection issues that may resolve on retry:
@@ -301,6 +331,15 @@ class OpenCTIClient:
         # Response metadata (for cache/degradation info)
         self._last_response_from_cache = False
         self._last_response_degraded = False
+
+        # Degraded-mode flag — set true by validate_startup() when the
+        # bounded probe fails (server unreachable, network partition).
+        # When True, tool entry points raise DegradedError immediately
+        # rather than the 300s socket-hang per tool call. Cleared only
+        # by a fresh successful validate_startup (typically via
+        # `vhir service restart opencti-mcp`).
+        self._degraded = False
+        self._degraded_reason: str = ""
 
         # Response caches (if caching enabled)
         self._cache_manager = CacheManager()
@@ -617,16 +656,76 @@ class OpenCTIClient:
             raise last_exception
         raise ConnectionError("Unexpected retry loop exit")
 
+    def _connect_probe(self) -> Any:
+        """Bounded-timeout probe client for startup validation only.
+
+        Constructs a pycti client with `perform_health_check=False`
+        (otherwise pycti's own __init__ fires an HTTP health_check that
+        hangs for `requests_timeout` seconds on an unreachable host —
+        verified at pycti/api/opencti_api_client.py:340) and
+        `requests_timeout=_STARTUP_PROBE_TIMEOUT` so any HTTP call we
+        make ourselves bounds at the probe timeout on the socket layer.
+
+        Returns a one-shot client used only by validate_startup. The
+        runtime client built by connect() retains the operator-
+        configured timeout (typically 300s) for actual queries.
+        """
+        from pycti import OpenCTIApiClient
+
+        return OpenCTIApiClient(
+            self.config.opencti_url,
+            self.config.opencti_token.get_secret_value(),
+            log_level="error",
+            perform_health_check=False,
+            requests_timeout=_STARTUP_PROBE_TIMEOUT,
+            ssl_verify=self.config.ssl_verify,
+        )
+
+    def _ensure_not_degraded(self, tool_name: str = "") -> None:
+        """Fail-fast guard for tool entry points.
+
+        When _degraded is set (probe failed during startup), tool calls
+        raise immediately rather than each timing out for the full
+        operator-configured timeout (300s default). Operator restarts
+        the backend via `vhir service restart opencti-mcp` to clear.
+        """
+        if self._degraded:
+            label = f"{tool_name}: " if tool_name else ""
+            # DegradedError NOT ConnectionError — the latter is in the
+            # retry-loop's transient list by class name. DegradedError
+            # falls through to the non-retryable branch and raises
+            # immediately (true fail-fast, no backoff).
+            raise DegradedError(
+                f"{label}OpenCTI backend in DEGRADED mode "
+                f"({self._degraded_reason}). Threat-intel queries will "
+                f"fail-fast until the server is reachable. Run "
+                f"`vhir service restart opencti-mcp` after the server "
+                f"returns."
+            )
+
     def connect(self) -> Any:
         """Establish connection to OpenCTI (thread-safe).
 
         Returns cached client if already connected.
         Configures timeout and SSL verification from config.
 
+        Degraded-mode chokepoint (Arch/CR review fixup): every tool
+        method funnels through connect() before issuing a query. A
+        single _ensure_not_degraded() call here guards all 20+ public
+        tool methods automatically — catches future tools without
+        per-site wiring, and makes the regression test (Test 3)
+        exercise the actual call path rather than the helper.
+
         Production notes:
         - Set ssl_verify=True for remote instances
         - Increase timeout for high-latency connections
         """
+        # Fail-fast on degraded mode BEFORE acquiring the lock or
+        # touching pycti. Tool calls in degraded mode return the
+        # actionable error in <1ms instead of blocking on the runtime
+        # client's full requests_timeout (300s default).
+        self._ensure_not_degraded()
+
         with self._client_lock:
             if self._client is not None:
                 return self._client
@@ -800,18 +899,24 @@ class OpenCTIClient:
         if skip_connectivity:
             return result
 
-        # Test connectivity and token validity
+        # Bounded-probe connectivity test (UAT 2026-04-25 fix).
+        # Uses _connect_probe() — perform_health_check=False + bounded
+        # requests_timeout — to avoid pycti's __init__ health_check
+        # hanging for 300s when the server is unreachable.
         try:
-            client = self.connect()
+            import requests
 
-            # Try to get version info - this validates connectivity and token
-            version_info = self._get_opencti_version(client)
+            probe = self._connect_probe()
+
+            # _get_opencti_version is the cheapest connectivity probe —
+            # lightweight `about` GraphQL query, validates url + token.
+            version_info = self._get_opencti_version(probe)
             if version_info:
                 result["opencti_version"] = version_info.get("version")
                 result["platform_version"] = version_info.get("platform_version")
 
-            # Verify we can actually query
-            client.stix_cyber_observable.list(first=1)
+            # Idempotent token-validity check
+            probe.stix_cyber_observable.list(first=1)
             self._circuit_breaker.record_success()
 
             logger.info(
@@ -822,12 +927,40 @@ class OpenCTIClient:
                 },
             )
 
+        except (
+            requests.exceptions.Timeout,
+            requests.exceptions.ConnectionError,
+        ) as e:
+            # Server unreachable — set degraded mode, return cleanly so
+            # the backend stays up. Tools fail-fast per-call via
+            # _ensure_not_degraded.
+            self._degraded = True
+            self._degraded_reason = (
+                f"server unreachable within {_STARTUP_PROBE_TIMEOUT}s: "
+                f"{type(e).__name__}"
+            )
+            result["valid"] = False
+            result["errors"].append(
+                f"OpenCTI server unreachable within "
+                f"{_STARTUP_PROBE_TIMEOUT}s: {type(e).__name__}. "
+                f"Backend running in DEGRADED mode — threat-intel "
+                f"queries will fail-fast until the server is reachable. "
+                f"Check connectivity to {self.config.opencti_url}."
+            )
+            self._circuit_breaker.record_failure()
+            logger.warning(
+                "OpenCTI unreachable; degraded mode active",
+                extra={"url": self.config.opencti_url, "error_type": type(e).__name__},
+            )
+            # NOTE: not raising — backend stays up, tools fail-fast per-call
+
         except Exception as e:
+            # Other failures (auth, GraphQL schema mismatch, etc.) are
+            # real config errors — surface them as before.
             error_msg = f"Connectivity test failed: {type(e).__name__}"
             result["errors"].append(error_msg)
             result["valid"] = False
             self._circuit_breaker.record_failure()
-
             logger.error(
                 "Startup validation failed",
                 extra={"error": str(e), "error_type": type(e).__name__},

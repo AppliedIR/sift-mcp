@@ -116,9 +116,31 @@ VALID_ENTITY_TYPES = frozenset(_ENTITY_TYPE_METHODS.keys())
 class OpenCTIMCPServer:
     """MCP server for OpenCTI threat intelligence (read-only)."""
 
-    def __init__(self, config: Config) -> None:
+    def __init__(
+        self, config: Config, client: OpenCTIClient | None = None
+    ) -> None:
+        """Construct the MCP server.
+
+        Args:
+            config: Loaded OpenCTI configuration.
+            client: Optional pre-built OpenCTIClient. When provided
+                (the canonical path from __main__.py), the server reuses
+                the same instance that validate_startup ran against —
+                so the _degraded flag set during startup probe is
+                visible to the connect() chokepoint when tools fire.
+                When None (tests / direct construction), a fresh client
+                is built but _degraded stays False (no startup probe
+                was run; degraded-mode behavior is opt-in via
+                client.validate_startup()).
+
+                Fix for live-test BLOCKER 2026-05-11: __main__.py
+                previously built one client for validation and the
+                server built a second; degraded state set on the first
+                never reached the tool-call path. Single shared
+                instance closes the gap.
+        """
         self.config = config
-        self.client = OpenCTIClient(config)
+        self.client = client if client is not None else OpenCTIClient(config)
         self.server = Server("opencti-mcp", instructions=_INSTRUCTIONS)
         self._audit = AuditWriter("opencti-mcp")
         self._register_tools()
