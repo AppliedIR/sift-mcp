@@ -13,6 +13,10 @@ def clear_cache():
 
 # --- Artifact schema ---
 
+# Every platform directory under data/artifacts/ that schema checks apply to.
+# Keep this in sync when a new platform is added, or its artifacts go unchecked.
+PLATFORMS = ("windows", "linux", "macos")
+
 REQUIRED_ARTIFACT_FIELDS = {"name", "description", "platform"}
 OPTIONAL_ARTIFACT_FIELDS = {
     "locations",
@@ -44,7 +48,7 @@ class TestArtifactSchemas:
 
     def test_all_artifacts_have_proves_or_does_not_prove(self):
         """Every artifact should document what it proves or doesn't."""
-        for platform in ("windows", "linux"):
+        for platform in PLATFORMS:
             for art in loader._load_all_in_dir(f"artifacts/{platform}"):
                 name = art.get("name", "?")
                 has_proves = bool(art.get("proves"))
@@ -54,7 +58,7 @@ class TestArtifactSchemas:
                 )
 
     def test_artifact_timestamps_have_required_fields(self):
-        for platform in ("windows", "linux"):
+        for platform in PLATFORMS:
             for art in loader._load_all_in_dir(f"artifacts/{platform}"):
                 for ts in art.get("timestamps", []):
                     assert "field" in ts, (
@@ -65,7 +69,7 @@ class TestArtifactSchemas:
                     )
 
     def test_artifact_misinterpretations_have_claim_and_correction(self):
-        for platform in ("windows", "linux"):
+        for platform in PLATFORMS:
             for art in loader._load_all_in_dir(f"artifacts/{platform}"):
                 for m in art.get("common_misinterpretations", []):
                     assert "claim" in m, (
@@ -227,7 +231,7 @@ class TestCrossMcpChecks:
 
     def test_all_artifacts_have_cross_mcp_checks(self):
         """Every artifact should have cross_mcp_checks."""
-        for platform in ("windows", "linux"):
+        for platform in PLATFORMS:
             for art in loader._load_all_in_dir(f"artifacts/{platform}"):
                 name = art.get("name", "?")
                 assert "cross_mcp_checks" in art, (
@@ -239,7 +243,7 @@ class TestCrossMcpChecks:
 
     def test_cross_mcp_checks_have_required_fields(self):
         """Each cross_mcp_check must have mcp, tool, when."""
-        for platform in ("windows", "linux"):
+        for platform in PLATFORMS:
             for art in loader._load_all_in_dir(f"artifacts/{platform}"):
                 name = art.get("name", "?")
                 for check in art.get("cross_mcp_checks", []):
@@ -253,7 +257,7 @@ class TestCrossMcpChecks:
 
     def test_cross_mcp_checks_use_valid_mcps(self):
         """MCP names must be from the allowed set."""
-        for platform in ("windows", "linux"):
+        for platform in PLATFORMS:
             for art in loader._load_all_in_dir(f"artifacts/{platform}"):
                 name = art.get("name", "?")
                 for check in art.get("cross_mcp_checks", []):
@@ -262,13 +266,27 @@ class TestCrossMcpChecks:
                     )
 
     def test_cross_mcp_checks_count(self):
-        """Should have 53 artifacts total with cross_mcp_checks."""
+        """Every artifact on every platform must have cross_mcp_checks.
+
+        Guards against an artifact being added without them, or silently
+        dropped. Compares against the on-disk file count rather than a
+        hardcoded total so adding an artifact does not require editing a
+        magic number — the check that matters is that the two agree.
+        """
+        expected = sum(
+            len(loader._load_all_in_dir(f"artifacts/{platform}"))
+            for platform in PLATFORMS
+        )
         count = 0
-        for platform in ("windows", "linux"):
+        for platform in PLATFORMS:
             for art in loader._load_all_in_dir(f"artifacts/{platform}"):
                 if "cross_mcp_checks" in art:
                     count += 1
-        assert count == 53
+        assert count == expected, (
+            f"{expected - count} artifact(s) missing cross_mcp_checks"
+        )
+        # Floor guards against the loader silently returning nothing.
+        assert count >= 70, f"Expected at least 70 artifacts, found {count}"
 
 
 # --- Scenario playbook schema ---

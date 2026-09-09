@@ -1,0 +1,145 @@
+name: KnowledgeC and Biome
+description: "Apple's pattern-of-life tracking across two backing stores (KnowledgeC SQLite and Biome SEGB) — records application usage, device and screen state, media playback, Bluetooth connectivity, and user activity patterns"
+platform: macos
+platform_notes: |
+  Apple tracks user and system activity through two related subsystems that share the same underlying data streams. KnowledgeC.db is a SQLite database maintained by the CoreDuet framework, organized into "streams" identified by string keys beginning with "/". Biome is a newer SEGB-backed store that Apple has been incrementally migrating streams to since Ventura, and names its streams as dotted domains rather than slash-prefixed paths. Both exist simultaneously — some streams appear in KnowledgeC only, some in Biome only, and some in both. A thorough investigation must check both stores.
+
+  KnowledgeC uses Core Data timestamps (seconds since 2001-01-01 00:00:00 UTC). Biome files are SEGB containers wrapping protobuf payloads, so they need a SEGB-aware parser rather than a protobuf decoder. Both were designed to power Siri Suggestions, Handoff, Screen Time, and adaptive system behavior. Forensically, they provide a rich timeline of application usage, device interactions, and user behavior patterns.
+
+locations:
+  - path: "/private/var/db/CoreDuet/Knowledge/knowledgeC.db"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "System-level KnowledgeC database. Unreachable on a live host — the Knowledge directory returns Operation not permitted even to root with SIP enabled, while its sibling CoreDuet directories list normally — so collect it from a disk image or an APFS snapshot, where it reads without difficulty. It is not redundant with the per-user database: a tested host carried /media/nowPlaying and /app/activity here and nowhere else. Collect knowledgeC.db-wal and knowledgeC.db-shm alongside it; the WAL was three times the size of the database."
+  - path: "~/Library/Application Support/Knowledge/knowledgeC.db"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Per-user KnowledgeC database, readable without root, and the store that holds the application-usage data on tested hosts — /app/usage, /app/webUsage, /app/mediaUsage, /display/isBacklit, /bluetooth/isConnected and /notification/usage. Stream keys carry a leading slash in ZOBJECT.ZSTREAMNAME. Parse with sqlite3, APOLLO, or Plaso's sqlite/mac_knowledgec plugin; mac_apt has no KnowledgeC plugin, so a mac_apt run covers Biome but not this database. Check every user's home directory."
+  - path: "/private/var/db/biome/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "System-level Biome store. Streams live under streams/restricted/ as directories named with dotted domains, all prefixed _DKEvent.* on a tested host (_DKEvent.App.InFocus, _DKEvent.Device.BatteryPercentage, _DKEvent.Inferred.MicroLocationVisit) — these are the Biome counterparts of the KnowledgeC /app/* streams. The directory is owned by _biome with mode 0751, so collection requires root."
+  - path: "~/Library/Biome"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Per-user Biome store, owned by the user and readable without root, named as dotted domains (App.Activity, App.InFocus, Device.Wireless.Bluetooth, Safari.Navigations) rather than the slash-prefixed KnowledgeC convention, so names do not map directly between the two stores. Data files sit under streams/restricted/<StreamName>/local/, deletions under local/tombstone/, and are SEGB containers holding protobuf payloads — parse with ccl-segb or mac_apt's biome.py, not a plain protobuf decoder. Filenames are Core Data timestamps in microseconds, so they date a segment without opening it."
+
+proves:
+  - "Application usage duration and session boundaries — KnowledgeC stream /app/usage, the largest stream on tested hosts"
+  - "Web browsing activity attributed to an application — KnowledgeC stream /app/webUsage"
+  - "Media playback attributed to an application — KnowledgeC stream /app/mediaUsage records the bundle identifier, e.g. com.apple.Safari"
+  - "Screen on/off state — KnowledgeC stream /display/isBacklit"
+  - "Bluetooth device connections — KnowledgeC stream /bluetooth/isConnected"
+  - "Notification delivery — KnowledgeC stream /notification/usage, with ZVALUESTRING recording the action (e.g. Receive)"
+  - "Media playback and per-application activity — KnowledgeC streams /media/nowPlaying and /app/activity, observed only in the system-level database"
+  - "Foreground application, device lock state, battery level, Siri intents and Safari history — these live in Biome rather than KnowledgeC (App.InFocus, Device.ScreenLocked, Device.Power.BatteryLevel, App.Intent, Safari.Navigations). Biome names are dotted, KnowledgeC names slash-prefixed; querying one store with the other's naming returns nothing."
+  - "Screen Time usage data and app category tracking"
+  - "That KnowledgeC records were deleted and when — /event/tombstone holds one row per removed record, with ZVALUESTRING carrying the deleted record's UUID and ZSTARTDATE marking the deletion"
+  - "Invocation of system features such as Spotlight — /discoverability/signals records values like com.apple.spotlight.invoked, and retained entries far older than any activity stream on a tested host"
+
+does_not_prove:
+  - "What the user actually did within an application (only that the app was in focus, not what actions were performed)"
+  - "That the user was physically present — an application can be in the foreground on an unattended machine"
+  - "The complete history of activity — both KnowledgeC and Biome have retention limits and older entries are purged"
+  - "That an application was NOT used if no record exists (the entry may have been purged, the stream may not track that application type, or the data may be in the other store)"
+  - "Precise second-level user actions — these stores record session-level events, not keystroke or click-level granularity"
+  - "That a stream documented elsewhere exists on the host in front of you — stream sets differ between the two KnowledgeC databases, between KnowledgeC and Biome, and between hosts. Enumerate ZSTREAMNAME and the Biome stream directories before concluding a data type was not recorded."
+  - "What a tombstoned record contained — /event/tombstone stores only the deleted record's UUID and the time of deletion, with no copy of the original stream name or value"
+
+timestamps:
+  - field: "ZSTARTDATE / ZCREATIONDATE"
+    meaning: "When the event or activity session began, and when the record was created. Both are Core Data timestamps — seconds since 2001-01-01 00:00:00 UTC — so add 978307200 to convert to Unix time."
+    common_misinterpretation: "Reading the raw value as a Unix timestamp shifts the result roughly 31 years into the PAST, not the future: 810437429 renders as 1995-09-07 rather than the correct 2026-09-07. The result still looks like a plausible date, which is what makes the error easy to miss."
+  - field: "ZENDDATE"
+    meaning: "When the event or activity session ended."
+    common_misinterpretation: "A session with no duration is not necessarily truncated. Where an end genuinely is missing, it may mean the closing event was never recorded after a crash, forced shutdown, or data migration."
+  - field: "ZSECONDSFROMGMT"
+    meaning: "The UTC offset in effect when the event was recorded, in seconds. Allows reconstruction of local time."
+    common_misinterpretation: "This reflects the timezone setting at the time of the event, which may differ from the current system timezone. Use this value to reconstruct what local time the user experienced."
+
+common_misinterpretations:
+  - claim: "KnowledgeC and Biome are a complete log of everything the user did"
+    correction: "These stores record activity metadata — which apps were used, for how long, and device state. They do not record application content (documents opened, messages sent, etc.). They are pattern-of-life artifacts, not content audit logs."
+  - claim: "App in-focus time equals active user engagement"
+    correction: "An application can be in the foreground while the user is away from the keyboard. In-focus time proves the application was displayed, not that the user was actively interacting with it."
+  - claim: "All pattern-of-life data is in KnowledgeC.db"
+    correction: "Apple has been migrating streams from KnowledgeC to Biome since Ventura, incrementally — some streams exist in both stores, some only in one. Check the per-user knowledgeC.db and ~/Library/Biome first, since both are readable without root, then the system-level stores. The system KnowledgeC database cannot be reached on a live host — /private/var/db/CoreDuet/Knowledge returns Operation not permitted even to root with SIP enabled — so it must be collected from a snapshot or image."
+  - claim: "KnowledgeC timestamps are Unix timestamps"
+    correction: "KnowledgeC uses Core Data timestamps (seconds since 2001-01-01 00:00:00 UTC). The offset from Unix epoch is 978307200 seconds. This is the same epoch used by the QuarantineEventsV2 database."
+  - claim: "Stream names are consistent across macOS versions"
+    correction: "Apple adds, renames, and removes streams between macOS releases. A Sequoia host carried six per-user streams while a Tahoe host carried the same six plus two more: /discoverability/signals and /event/tombstone. Document which macOS version produced the data being analysed."
+  - claim: "Biome files can be parsed with standard SQLite or text tools"
+    correction: "Biome data files are SEGB containers, not SQLite, plain text, or bare protobuf. Protobuf is the payload inside the container, so a protobuf decoder pointed at the raw file fails; the SEGB framing must be parsed first. Use ccl-segb (ccl_segb_cli.py) or mac_apt. Note that SEGB has more than one revision, so confirm your parser handles the version present in the evidence."
+  - claim: "Deleting KnowledgeC.db removes all activity traces"
+    correction: "Some data is duplicated in Biome, Screen Time databases, Unified Logging, and iCloud sync. Deleting the local database does not eliminate all traces of activity."
+
+corroborate_with:
+  for_execution: [unified_logging, launchd, tcc]
+  for_presence: [spotlight, fsevents, tcc]
+  for_timeline: [unified_logging, quarantine, safari_artifacts]
+
+related_tools: [sqlite3, APOLLO, ccl-segb, mac_apt, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "An unfamiliar bundle identifier appears in /app/usage or a Biome stream — search for known macOS malware, monitoring tools, and their associated persistence patterns"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "A bundle identifier or domain recovered from /app/webUsage or the Safari Biome streams — check threat intelligence. These stores record no hashes, so the bundle identifier is the only pivot available"
+
+references:
+  - "Sarah Edwards — mac4n6: Knowledge Is Power! Using the macOS/iOS knowledgeC.db"
+  - "Sarah Edwards — APOLLO: Apple Pattern of Life Lazy Output'er"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+  - "mac4n6.com — KnowledgeC database reference and stream documentation"
+  - "Alexis Brignoni — Biome stream parsers in iLEAPP (abrignoni.blogspot.com)"
+  - "Alex Caithness, CCL Solutions — ccl-segb: reading the SEGB format behind Biome"
+
+investigation_patterns:
+  - name: "Application usage timeline"
+    note: |
+      Query the in-focus application stream to build a timeline of what apps the user had in the foreground:
+      `sqlite3 knowledgeC.db "SELECT \
+        datetime(ZOBJECT.ZSTARTDATE + 978307200, 'unixepoch') as start, \
+        datetime(ZOBJECT.ZENDDATE + 978307200, 'unixepoch') as end, \
+        ZOBJECT.ZVALUESTRING as bundle_id, \
+        (ZOBJECT.ZENDDATE - ZOBJECT.ZSTARTDATE) as duration_sec \
+       FROM ZOBJECT \
+       WHERE ZOBJECT.ZSTREAMNAME = '/app/usage' \
+       ORDER BY ZOBJECT.ZSTARTDATE DESC;"`
+    follow_up: "Flag applications used during the incident window that are unexpected for the user's normal work pattern."
+
+  - name: "Screen state and user presence timeline"
+    note: |
+      KnowledgeC has no lock-state stream — /device/isLocked does not exist. Use screen backlight as the proxy:
+      `sqlite3 knowledgeC.db "SELECT \
+        datetime(ZSTARTDATE+978307200,'unixepoch') AS start, \
+        datetime(ZENDDATE+978307200,'unixepoch') AS end, \
+        ZVALUEINTEGER AS is_backlit \
+        FROM ZOBJECT \
+        WHERE ZSTREAMNAME='/display/isBacklit' \
+        ORDER BY ZSTARTDATE DESC;"`
+      Actual lock and unlock state lives in Biome as Device.ScreenLocked, which needs a SEGB parser rather than sqlite3.
+    follow_up: "Correlate screen-on periods with authentication events from Unified Logging to verify who was present."
+
+  - name: "Media playback during incident window"
+    note: |
+      Query the nowPlaying stream to identify media activity:
+      `sqlite3 knowledgeC.db "SELECT \
+        datetime(ZOBJECT.ZSTARTDATE + 978307200, 'unixepoch') as start, \
+        datetime(ZOBJECT.ZENDDATE + 978307200, 'unixepoch') as end, \
+        ZOBJECT.ZVALUESTRING as app \
+       FROM ZOBJECT \
+       WHERE ZOBJECT.ZSTREAMNAME = '/media/nowPlaying' \
+       ORDER BY ZOBJECT.ZSTARTDATE DESC;"`
+      /media/nowPlaying appears only in the system-level database, which cannot be read on a live host — collect it from a snapshot or image. The per-user database carries /app/mediaUsage instead, recording the playing application's bundle identifier.
+    follow_up: "Combine with /display/isBacklit screen state and /app/usage foreground sessions for a fuller picture of user activity."
+
+  - name: "Enumerate available streams"
+    note: |
+      Before running targeted queries, list all available streams in the database to understand what data is present:
+      `sqlite3 knowledgeC.db "SELECT DISTINCT ZSTREAMNAME FROM ZOBJECT WHERE ZSTREAMNAME NOT LIKE '/knowledge-sync%' ORDER BY 1;"`
+      Stream availability varies by macOS version and Biome migration status.
+    follow_up: "Compare available streams against known stream documentation for the macOS version. Missing expected streams may have migrated to Biome."
+
+  - name: "Check Biome for supplementary data"
+    note: |
+      Examine ~/Library/Biome and /private/var/db/biome. Streams are directories named as dotted domains, with data files under local/ and deletions under local/tombstone/. The files are SEGB containers holding protobuf payloads — parse with ccl-segb or mac_apt's biome.py, not sqlite3 or a bare protobuf decoder. Enumerating the stream directory names alone tells you what data categories exist, without parsing anything.
+    follow_up: "Check Biome for the migrated data not found in KnowledgeC."

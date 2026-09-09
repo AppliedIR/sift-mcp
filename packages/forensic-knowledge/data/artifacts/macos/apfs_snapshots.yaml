@@ -1,0 +1,208 @@
+name: APFS Snapshots
+description: "Point-in-time APFS filesystem snapshots — may contain pre-incident state, but only Data-volume snapshots hold user data, and the standard tools neither identify which volume a snapshot belongs to nor report when it was created"
+platform: macos
+platform_notes: |
+  APFS supports copy-on-write snapshots, so creation is near-instant and initially consumes almost nothing — space grows only as the live volume diverges. macOS creates them automatically before system updates and, when Time Machine is configured, on a rolling hourly schedule. Files deleted or modified after a snapshot can be recovered from it.
+
+  Modern macOS splits the OS across two volumes in one volume group:
+
+    System volume  — read-only, sealed (SSV), mounted at /. Contains NO user data.
+                     Snapshots here are named com.apple.os.update-*
+    Data volume    — writable, mounted at /System/Volumes/Data. Contains /Users,
+                     /private/var, and the Data half of /Library and /Applications.
+                     Snapshots here are named com.apple.TimeMachine.<date>.local
+
+  On a modern Mac, the / root directory is itself a snapshot — `diskutil info /` reports a snapshot name and Volume Read-Only: Yes. Only Data-volume snapshots are forensically useful for user activity, and a host without Time Machine configured commonly has ZERO of them while still showing several System snapshots. Reporting "N snapshots available" without saying which volume each belongs to is meaningless. Data-volume snapshots are the ones that carry evidentiary value. Note that the command `tmutil localsnapshot` snapshots the Data volume only. This can be useful for evidence recovery purposes, giving analysts the ability to mount the snapshot to acquire files otherwise locked by the OS.
+
+  Two further properties support analysis:
+    - Snapshot metadata exposes NO creation timestamp through any Apple CLI. Times may be discoverable via Unified Logging.
+    - `tmutil listlocalsnapshots` reports VOLUME GROUP snapshots, merging both volumes into one list with no indication of which volume each came from.
+
+locations:
+  - path: "/Volumes/com.apple.TimeMachine.localsnapshots/Backups.backupdb/<ComputerName>/<timestamp>/Data/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Automount path macOS uses for Data-volume snapshots — mounted read-only and nobrowse, so invisible in Finder but readable by path. TRANSIENT: the path was populated with 14 mounts during backup activity and absent entirely a few hours later while all the snapshots still existed, so its absence says nothing about whether snapshots are present. Enumerate with `diskutil apfs listSnapshots /System/Volumes/Data` and mount explicitly when it is not there. The snapshots themselves are named com.apple.TimeMachine.<YYYY-MM-DD-HHMMSS>.local and contain /Users and other user-writable locations. Note: the Backups.backupdb component here is NOT the legacy HFS+ layout."
+  - path: "Data volume snapshots — enumerate with `diskutil apfs listSnapshots /System/Volumes/Data`"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "The authoritative enumeration, and the route to mounting one explicitly. Purgeable: Yes — thinned at roughly 24 hours and removed automatically when the volume runs low on free space. A Time Machine-enabled host settles at about 24; a host that never had Time Machine configured commonly has none. Get the device for mounting with `diskutil info /System/Volumes/Data | grep 'Device Node'`."
+  - path: "System volume snapshots — enumerate with `diskutil apfs listSnapshots /`"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Named com.apple.os.update-<hash> (plus com.apple.os.update-MSUPrepareUpdate). Snapshots of the sealed, read-only System volume — they contain NO user data at all. Typically Purgeable: No. Useful only for establishing OS state and update history."
+  - path: "Snapshots on external and Time Machine backup volumes"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Any APFS volume can hold snapshots. On APFS-formatted Time Machine destinations, each backup is a snapshot on the backup volume, named com.apple.TimeMachine.<timestamp>.backup, and macOS automounts them under /Volumes/.timemachine/ while the media is attached. Enumerate the destination separately with `diskutil apfs listSnapshots /Volumes/<BackupVolume>`. See the time_machine artifact."
+
+proves:
+  - "The complete state of a specific VOLUME at the moment the snapshot was taken, unaffected by any Time Machine exclusions; Data-volume snapshots hold user data, while System-volume snapshots hold OS state"
+  - "On a Time Machine-enabled host, source filesystem state at roughly hourly intervals from com.apple.TimeMachine.<timestamp>.local snapshots — recoverable from the Mac alone, without the backup destination"
+  - "Content that Time Machine EXCLUDES from backups — exclusions govern what is copied to a destination and have no effect on snapshot contents. Local snapshots can therefore be better evidence than the backups themselves, holding material a custodian deliberately or incidentally kept out of Time Machine."
+  - "Previous versions of files modified since the snapshot"
+  - "That files existed at snapshot time which have since been deleted, and their content"
+  - "The relative ORDER in which snapshots were created, via the monotonically increasing SnapshotXID"
+  - "That a system update occurred (presence of com.apple.os.update-* snapshots), independent of any user activity"
+  - "Content the OS locks against reading on a live system; e.g. the Quick Look cache returns EPERM to root with Full Disk Access but reads normally from a mounted snapshot"
+
+does_not_prove:
+  - "That a com.apple.os.update-* snapshot contains user files — System-volume snapshots contain none. Any /Users content seen through one comes from a Data volume via firmlink, not from the snapshot. Note also that mounting a System-volume snapshot on a live host is unsafe; see common_misinterpretations."
+  - "That the number of snapshots reported by `tmutil listlocalsnapshots` reflects recoverable user state — that command merges both volumes of the volume group into a single list with no volume attribution"
+  - "Activity between snapshots — a file created and deleted between two snapshots appears in neither"
+  - "That deleted files were intentionally removed — the snapshot preserves the file; the deletion may be routine"
+  - "Complete filesystem history — snapshots are periodic and purgeable"
+  - "That a gap in the snapshot sequence means snapshots were deleted — Time Machine snapshots are created only while the machine is running, so a gap can reflect downtime. Corroborate against power and boot history."
+
+timestamps:
+  - field: "Snapshot name (com.apple.TimeMachine.<YYYY-MM-DD-HHMMSS>.local)"
+    meaning: "For Time Machine local snapshots, the creation date and time encoded in the filename — LOCAL time, not UTC. This is a naming convention, not a metadata field."
+    common_misinterpretation: "com.apple.os.update-<hash> snapshots encode no date whatsoever, so do not assume every snapshot name carries a time."
+  - field: "SnapshotXID"
+    meaning: "APFS transaction identifier, monotonically increasing per container. Establishes reliable relative ORDER of snapshots even when names carry no date."
+    common_misinterpretation: "XID is a sequence number, not a time. It supports 'A was created before B' and nothing about the interval between them. Correlate with Unified Logging to bind an XID to wall-clock time."
+  - field: "SnapMetadataRecord create_time / change_time (APFS on-disk structure)"
+    meaning: "APFS does record a true creation timestamp for every snapshot in its on-disk metadata, alongside a change time."
+    common_misinterpretation: "No Apple command-line tool surfaces these fields, so their absence from `diskutil apfs listSnapshots -plist` does not mean the timestamp does not exist. Reaching them requires a third-party APFS parser. mac_apt's APFS parser decodes SnapMetadataRecord, but no mac_apt plugin consumes the records, so the values never reach its output — the practical route remains Unified Logging."
+  - field: "Unified Logging — kernel apfs fs_insert_snapshot_metadata"
+    meaning: "The authoritative creation record. Logs device, snapshot name, and XID at the moment of creation, e.g. 'fs_insert_snapshot_metadata:252: disk4s5 snap_name=... snap_xid 196584'. This is the only observed source that ties an XID to a wall-clock time and names the volume."
+    common_misinterpretation: "Bounded by Unified Logging retention. A snapshot older than the log window has no recoverable creation time from this source, and absence of a log entry does not mean the snapshot was created outside the window — it may simply have aged out."
+
+common_misinterpretations:
+  - claim: "`diskutil apfs listSnapshots /` lists the system's snapshots"
+    correction: "It lists snapshots of the SYSTEM volume only (/ is itself a snapshot of the sealed System volume, on a device such as disk4s1s1). Those are com.apple.os.update-* snapshots containing no user data. User-data snapshots live on the Data volume and require `diskutil apfs listSnapshots /System/Volumes/Data`."
+  - claim: "`diskutil apfs listSnapshots` will tell you when a snapshot was created"
+    correction: "It will not. The complete plist key set is SnapshotName, SnapshotUUID, SnapshotXID, Purgeable, RevertTo, RootTo and LimitingContainerShrink — no timestamp among them. The creation time exists in the APFS on-disk metadata but no Apple command-line tool surfaces it, so in practice recover it from Unified Logging or a third-party APFS parser."
+  - claim: "Mounting a snapshot could modify the original filesystem"
+    correction: "It cannot write to it. Snapshot mounts are read-only and the kernel enforces it — `mount_apfs -s` without -o ro emits 'mount_apfs: snapshot implicitly mounted readonly' and mounts read-only anyway. Specifying -o ro is still good practice for explicitness. Note that read-only does not mean risk-free: see the System-volume mounting caution below."
+  - claim: "Mounting any snapshot read-only is a safe, non-invasive action"
+    correction: "Mounting a snapshot of the RUNNING BOOT VOLUME is not safe. Attempting to mount the com.apple.os.update-* snapshots of the live System volume rendered a Sequoia 15.6.1 host unresponsive — basic binaries began failing with 'exec format error' and the machine required a forced power off. Data-volume snapshot mounts on the same host caused no problems. Mount Data-volume snapshots on a live host; do not mount System-volume snapshots of the volume the system is booted from."
+  - claim: "APFS snapshots are the same as Time Machine backups"
+    correction: "Related but distinct. Time Machine uses APFS snapshots as its mechanism, and on APFS destinations each backup is a snapshot on the backup volume. But the system also creates snapshots for OS updates independently of Time Machine, and local snapshots exist on the source volume separately from any backup destination. A host can have snapshots and no backups, or backups and no local snapshots."
+  - claim: "Snapshots persist until explicitly deleted"
+    correction: "Local Time Machine snapshots are marked Purgeable: Yes and are removed automatically when the volume runs low on free space. `tmutil localsnapshot` itself warns of this. backupd also performs scheduled age-based thinning at roughly 24 hours, logged under com.apple.TimeMachine:LocalThinning."
+  - claim: "All file versions are recoverable through snapshots"
+    correction: "Only state at each snapshot instant is preserved. A file created and deleted between two snapshots exists in neither."
+  - claim: "Every Mac has useful APFS snapshots available"
+    correction: "It depends almost entirely on whether Time Machine is configured, and that is the first thing to check. With Time Machine enabled the Data volume accumulates com.apple.TimeMachine.<timestamp>.local snapshots roughly hourly, capping at about 24. Without it, a host commonly has zero Data-volume snapshots, leaving only System-volume com.apple.os.update-* snapshots that hold no user data. Other sources exist — third-party backup tools such as Carbon Copy Cloner and ChronoSync, Erase All Content and Settings, and manual `tmutil localsnapshot` — so check rather than assume, but 'Time Machine configured?' is the question that predicts the answer."
+  - claim: "A Time Machine exclusion means the content is absent from local snapshots too"
+    correction: "It does not. An APFS snapshot is a volume-level freeze of the entire Data volume; Time Machine exclusions only govern what is copied to a backup destination. Check the exclusion list to learn what a custodian kept out of backups, then look for that same content in local snapshots, where it is likely still present."
+  - claim: "A local snapshot's name shows whether it was created automatically"
+    correction: "It does not. Manual `tmutil localsnapshot` and backupd's scheduled activity produce identical com.apple.TimeMachine.<timestamp>.local names, and both are logged as created by backupd. The name identifies the subsystem, not the trigger within it. Where it matters, corroborate with sudo or command history and with Unified Logging around the creation time."
+  - claim: "A com.apple.apfs.purgatory.* snapshot is a system-generated snapshot worth examining"
+    correction: "It is the trace of a DELETED snapshot. APFS renames a snapshot into purgatory on deletion and a background cleaner reclaims its blocks, retaining the original SnapshotXID. Finding one in the log means a snapshot with that XID was removed — useful as a deletion indicator, not as a source of data."
+  - claim: "diskutil reporting 'Sealed: Broken' on the System volume means the seal was tampered with"
+    correction: "That is normal. macOS boots from a sealed snapshot rather than from the live System volume, so `diskutil apfs list` reports 'Sealed: Broken' for the volume and 'Snapshot Sealed: Yes' for the snapshot actually in use. Read the snapshot field. To check the protections themselves, use `csrutil status` and `csrutil authenticated-root status`."
+  - claim: "The sealed System volume cannot be modified, so its contents are always trustworthy"
+    correction: "Persistent modification is hard but not impossible, and the distinction matters. SIP is a runtime kernel protection and has been bypassed by real vulnerabilities such as CVE-2024-44243. The SSV seal is separate and cryptographic: the volume is sealed with an APFS hash tree verified at boot. A change to the system volume from a kernel exploit therefore breaks the seal, normally preventing the machine from booting at all. Persistently defeating the seal would require pre-kernel code execution. The more likely route is disabling SIP and authenticated-root, which can only be done from recoveryOS and so requires physical access, after which the system runs from a re-blessed snapshot. That makes 'Authenticated Root status: disabled' a significant finding in its own right. A host that boots with the seal intact therefore indicates the on-disk system volume is unmodified, although it says nothing about runtime tampering for the current boot cycle — and nothing about the Data volume, which is not sealed and is where macOS malware normally persists."
+
+corroborate_with:
+  for_execution: []
+  for_presence: [fsevents, spotlight, time_machine, quick_look]
+  for_timeline: [unified_logging]
+
+related_tools: [diskutil, tmutil, mount_apfs, csrutil, log, mac_apt]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "A file recovered from a snapshot needs interpretation"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "A suspicious binary recovered from a snapshot in the incident window — hash it and check threat intelligence for known malicious files"
+
+references:
+  - "Apple — APFS Reference (snapshots, volume groups, firmlinks)"
+  - "Apple — diskutil(8), mount_apfs(8), tmutil(8) man pages"
+  - "Apple — Platform Security Guide (Signed System Volume)"
+  - "Microsoft Security — Analyzing CVE-2024-44243, a macOS System Integrity Protection bypass through kernel extensions"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+
+investigation_patterns:
+  - name: "Enumerate snapshots PER VOLUME and attribute each one"
+    note: |
+      Never report a snapshot count without saying which volume it belongs to. Enumerate each volume separately with diskutil:
+
+      `diskutil info /System/Volumes/Data | grep "Device Node"`   # e.g. /dev/disk4s5
+      `diskutil apfs listSnapshots /System/Volumes/Data`          # USER DATA
+      `diskutil apfs listSnapshots /`                             # System volume, no user data
+      `diskutil apfs listSnapshots -plist /System/Volumes/Data`   # machine-readable
+
+      Do NOT rely on `tmutil listlocalsnapshots` for attribution — it reports volume-group snapshots and returns the same merged list regardless of which path you pass it.
+
+      Read the names: com.apple.TimeMachine.<date>.local are Data snapshots and carry a date; com.apple.os.update-<hash> are System snapshots and carry none.
+
+      TOOL SCOPE. Third-party tooling does not substitute for these commands. mac_apt reports only a snapshot count — its APFS parser decodes the on-disk create_time, but no plugin surfaces it. log2timeline cannot reach snapshots at all, since libfsapfs exposes no snapshot API, so a Plaso run over an APFS image silently omits everything held in snapshots.
+    follow_up: "If the Data volume has no snapshots, say so explicitly — it is a common and important negative finding, not an absence of evidence to gloss over. Record SnapshotXID for each snapshot; it gives reliable ordering even where names carry no date."
+
+  - name: "Establish when a snapshot was created (Unified Logging)"
+    note: |
+      Snapshot metadata has no creation timestamp reachable by Apple tooling, so the time must come from the log.
+
+      Kernel APFS record — device, name, and XID at creation:
+      `log show --last 7d --predicate 'process == "kernel" AND eventMessage CONTAINS "fs_insert_snapshot_metadata"' --info --style compact`
+
+      backupd record — names the volume in plain language:
+      `log show --last 7d --predicate 'subsystem == "com.apple.TimeMachine"' --info --style compact`
+
+      Snapshot deletion and thinning appear under the LocalThinning category:
+      `log show --last 7d --predicate 'subsystem == "com.apple.TimeMachine" AND category == "LocalThinning"' --info`
+    follow_up: "Use the kernel record to bind SnapshotXID to wall-clock time, then order all snapshots by XID even where log coverage is incomplete. Both sources are bounded by Unified Logging retention; state the log window examined so absence is interpretable."
+
+  - name: "Mount a Data snapshot read-only — and never mount the running System volume"
+    note: |
+      STABILITY WARNING. Do NOT mount a System-volume snapshot (com.apple.os.update-*) on a host booted from that volume. Doing so hung a Sequoia 15.6.1 host — basic binaries began failing with 'exec format error' and the machine required a forced power off, which on a live subject means losing memory and clean shutdown state. There is little to gain in any case, since System snapshots contain no user data; read OS version history from them only on a non-booted disk or image.
+
+      Data-volume snapshots mount safely. Mounting requires the DEVICE of the volume the snapshot belongs to, not a mount point — a common failure is passing the boot device for a Data snapshot.
+
+      `diskutil info /System/Volumes/Data | grep "Device Node"`   # e.g. /dev/disk4s5
+      `sudo mkdir -p /tmp/snap_mount`
+      `sudo mount_apfs -o ro -s <snapshot_name> /dev/<data_device> /tmp/snap_mount`
+      `sudo umount /tmp/snap_mount`
+
+      Confirm you mounted what you intended before analysing it — matching device numbers mean you are reading the live filesystem rather than the snapshot:
+      `stat -f "%N device=%d" /tmp/snap_mount/Users/<user> /Users/<user>`
+
+      The kernel enforces read-only regardless of -o ro; pass it anyway so the intent is explicit in examination notes. Mount one snapshot at a time and confirm the host is responsive before the next — do not loop over snapshots unattended.
+
+      macOS sometimes automounts Data-volume snapshots read-only under /Volumes/com.apple.TimeMachine.localsnapshots/, but that path is transient — it was populated with 14 mounts during backup activity and absent entirely a few hours later while all the snapshots still existed. Its absence says nothing about whether snapshots exist; enumerate with diskutil.
+    follow_up: "Record whether the snapshot was pre-existing or examiner-created; if you created it with `tmutil localsnapshot`, note that in the examination record so it is not mistaken for system-generated evidence, and delete it afterwards with `tmutil deletelocalsnapshots <date>`."
+
+  - name: "Recover deleted or modified files from a Data snapshot"
+    note: |
+      Only Data-volume snapshots hold user files. After mounting one read-only:
+
+      `diff -rq /tmp/snap_mount/Users/<user>/Downloads /Users/<user>/Downloads`
+
+      Focus on persistence and staging locations:
+        /Library/LaunchDaemons, /Library/LaunchAgents
+        Users/<user>/Library/LaunchAgents, Users/<user>/Downloads
+        private/tmp, private/var/tmp
+
+      Copy recovered files to an evidence directory and hash them.
+    follow_up: "Hash recovered binaries and check them against threat intelligence. Note that recovery proves the file existed at snapshot time, not that it was executed — corroborate execution with unified_logging and presence with fsevents or spotlight."
+
+  - name: "Read files the running OS refuses to open"
+    note: |
+      Some paths are unreadable on a live system even to root with Full Disk Access — the Quick Look thumbnail cache under /private/var/folders/<x>/<hash>/C/com.apple.quicklook.ThumbnailsAgent/ returns EPERM to stat, ls and find. A live `find` for such a path returns nothing at all, which reads as the data being absent rather than protected.
+
+      The protection is enforced on the live path, not on the bytes. Mounting a Data-volume snapshot and reading the same relative path inside the mount succeeds:
+
+      `sudo mount_apfs -o ro -s <snapshot_name> /dev/<data_device> /tmp/snap_mount`
+      `sudo ls /tmp/snap_mount/private/var/folders/<x>/<hash>/C/com.apple.quicklook.ThumbnailsAgent/`
+
+      If no suitable snapshot exists, `sudo tmutil localsnapshot` creates one — record that you did, since examiner-created snapshots are indistinguishable from scheduled ones.
+    follow_up: "Collect files previously locked by the running OS. Dead-box imaging reaches these paths equally well, since the restriction is a runtime access control rather than encryption."
+
+  - name: "Snapshot manipulation as an anti-forensic action"
+    note: |
+      Snapshots can be used against the examination as well as for it, and both commands below are ordinary administrative ones available to any admin user.
+
+      Reverting a volume to a snapshot discards everything written since, including evidence:
+      `diskutil apfs revert <device> <snapshot>`
+
+      Deleting snapshots removes recovery opportunities:
+      `tmutil deletelocalsnapshots <date>`   /   `tmutil thinlocalsnapshots <path>`
+
+      DELETION LEAVES A LOG SIGNATURE. APFS renames a deleted snapshot into "purgatory" before a background cleaner reclaims its blocks, and the renamed entry carries the SAME SnapshotXID as the original — which ties the deletion to a specific snapshot:
+
+      `log show --last 7d --predicate 'eventMessage CONTAINS "purgatory"' --info --style compact`
+
+      Match the purgatory XID against creation records to recover the deleted snapshot's original name and creation time. Also compare surviving snapshots against the XID sequence — gaps in the progression alongside surviving snapshots suggest snapshots were removed rather than never created.
+    follow_up: "Distinguish deliberate removal from routine purging before concluding anything: snapshots marked Purgeable are removed automatically when the volume runs low on free space, backupd thins Time Machine snapshots at roughly 24 hours (logged under com.apple.TimeMachine:LocalThinning), and the reference snapshot from the last backup is exempt from thinning and will legitimately sit outside the window. Snapshot revert was not tested; treat that behavior as documented rather than verified."

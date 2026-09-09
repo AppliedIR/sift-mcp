@@ -1,0 +1,110 @@
+name: Cron and at Jobs
+description: "Scheduled task mechanisms on macOS — per-user and system crontabs executed by the cron daemon, and the at job queue, both surviving legacy Unix schedulers that Apple discourages in favour of launchd"
+platform: macos
+platform_notes: |
+  macOS retains two legacy Unix schedulers alongside launchd. cron is present and functional on Sequoia and Tahoe. at is present but its launchd job is disabled by default. A third mechanism, periodic, was removed in Sequoia — a tested 15.6.1 host had no /etc/periodic, no /usr/sbin/periodic, and none of the com.apple.periodic-daily, -weekly or -monthly jobs — so on current macOS its absence is the normal state rather than a finding, and it appears only in pre-Sequoia evidence.
+
+  The cron daemon ships as com.vix.cron, whose launchd job declares QueueDirectories on /var/at/tabs and KeepAlive PathState on /etc/crontab, so writing a crontab is sufficient to bring it up with no separate enabling step. It may also already be resident: a tested host had cron running with an empty spool and no /etc/crontab, so a running cron process is not evidence that any crontab exists. Apple recommends launchd for scheduled work, which is what makes a crontab's presence notable rather than routine.
+
+locations:
+  - path: "/var/at/tabs/<username>"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Per-user crontab files, one per user, plain text, written by the `crontab` command. This is the same directory as /usr/lib/cron/tabs — /usr/lib/cron is a symlink to ../../var/at, and both paths resolved to the same inode on a tested host — so collect it once rather than treating them as two locations. The directory is mode 0700 root:wheel and was empty on a clean host; once cron jobs are configured each crontab inside is mode 0600 root:wheel regardless of which user it belongs to. A file here with different permissions was not written by the `crontab` command — a directly-written crontab took the writer's umask (0644) on a tested host — which pairs with the missing installation header as a sign the spool was edited behind the tool's back. Any file here warrants examination."
+
+    notes: "Per-user crontab files, one per user, in plain text. /usr/lib/cron is a symlink to ../../var/at, so /usr/lib/cron/tabs and /var/at/tabs are the same directory — both resolved to the same inode on a tested host — and should be collected once, not twice. The directory is mode 0700 root:wheel and stays empty until a crontab is installed. Files written by the `crontab` command are mode 0600 root:wheel, no matter the user they belong to, and carry a header recording the installation. A file with different permissions or no header was written into the spool directly, bypassing the command. Any file here warrants examination."
+  - path: "/etc/crontab"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "System-wide crontab, absent by default on macOS, so its existence is itself notable. Requires root to create. Its presence also keeps the cron daemon running, via the KeepAlive PathState condition in com.vix.cron."
+  - path: "/var/at/cron.deny and /var/at/cron.allow"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "cron access control. cron.deny lists users barred from using crontab and shipped containing only 'Guest' on a tested host; cron.allow was absent, which means every other user may create a crontab. Either file being modified changes who can schedule work — a removed cron.deny or an added cron.allow is worth explaining."
+  - path: "/var/at/jobs/ and /var/at/spool/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Queued `at` jobs. The at mechanism is present — /usr/bin/at and /usr/libexec/atrun both ship — but its launchd job com.apple.atrun is Disabled by default and was not loaded on a tested host. Enabling it is a deliberate act that leaves a record in /private/var/db/com.apple.xpc.launchd/disabled.plist, so check that file alongside these directories. When enabled, atrun runs every 30 seconds."
+
+proves:
+  - "That a scheduled task was configured to run at specified times or intervals"
+  - "The command or script to be executed, including arguments"
+  - "The schedule, as the standard five cron fields — minute, hour, day of month, month, day of week"
+  - "The user context the job runs under, from the crontab's filename in /var/at/tabs/, which is the username; the file itself is owned root:wheel mode 0600 regardless"
+  - "When the crontab was installed and from which source, where it was created with the `crontab` command — the tool writes a header of the form '# (<source> installed on <date>)'. A source of /tmp/crontab.XXXXXXXXXX indicates interactive use of `crontab -e`; a named file indicates `crontab <file>`, echoed as typed. Only the most recent installation is recorded."
+  - "Which users are permitted to schedule work at all, from /var/at/cron.deny and /var/at/cron.allow"
+
+does_not_prove:
+  - "That the scheduled task actually executed — cron may not have been running, or the system may have been off at the scheduled time"
+  - "When an individual crontab line was added or changed. The header records only the most recent installation of the whole file, so a later edit to one entry leaves no separate mark — and a crontab written directly into /var/at/tabs rather than through the `crontab` command carries no header at all, which is itself worth noting"
+  - "Who added the crontab entry — any process running as that user can install one, and the file is written root:wheel mode 0600 regardless of who requested it"
+  - "The output or effect of the scheduled command (cron logs execution but not command output by default)"
+
+timestamps:
+  - field: "Crontab file mtime"
+    meaning: "When the crontab file was last written, by any means."
+    common_misinterpretation: "Compare it against the installation time in the file's own header. They match when the crontab was installed with the `crontab` command, and diverge when the file was edited directly (an mtime later than the header means the file changed without going through the crontab command)."
+  - field: "Unified Logging — cron execution records"
+    meaning: "When a scheduled job actually ran. The cron process logs one entry per execution in the form '(<user>) CMD (<command>)', for example '(jdoe) CMD (/usr/bin/logger -t crontest ARTIFACT_VALIDATION)', timestamped to the millisecond."
+    common_misinterpretation: "This records the invocation, not the outcome — the command's own output does not appear unless the command writes it somewhere itself. Query with `log show --predicate 'process == \"cron\"'`, and note it is bounded by Unified Logging retention, so a job that ran outside the log window leaves no trace here."
+  - field: "Installation time in the crontab header"
+    meaning: "When the crontab was last installed through the `crontab` command, written as '# (<source> installed on <date>)' in local time."
+    common_misinterpretation: "It records only the most recent installation of the whole file, and is absent entirely on a crontab written directly into /var/at/tabs. Absence of the header is itself a finding."
+
+common_misinterpretations:
+  - claim: "Cron is disabled on modern macOS"
+    correction: "Cron remains functional. The daemon ships as com.vix.cron and its launchd job declares QueueDirectories on /var/at/tabs, so writing a crontab is enough to bring it up with no separate enabling step — though it may already be resident regardless, so a running cron process does not imply a crontab exists. Apple discourages cron in favour of launchd, which is what makes a crontab's presence notable rather than routine."
+  - claim: "Cron jobs are visible in System Settings"
+    correction: "They are not. Cron jobs do not appear in System Settings → Login Items & Extensions, and nothing cron-related appears in the Background Task Management database — not even the com.vix.cron daemon itself, which is a loaded launchd job. That invisibility to BTM is what makes cron attractive to an attacker avoiding user-visible registration."
+  - claim: "crontab -l shows all scheduled tasks"
+    correction: "`crontab -l` shows the invoking user's crontab only. Root's crontab, other users' crontabs, /etc/crontab, and any queued at jobs are not shown. Enumerate /var/at/tabs/ directly and check every user."
+  - claim: "A cron job runs with the full privileges of the user who owns the crontab"
+    correction: "Not for TCC-protected data. A cron-launched process does not inherit Full Disk Access from the terminal or application the crontab was created in — on a tested host a cron job running `ls ~/Documents` returned 'Operation not permitted', and /usr/sbin/cron held no entry in the TCC database. tccd logged the refusal and, the invoked binary being an Apple platform binary, declined to prompt at all. Granting cron that access requires GUI interaction, which constrains cron as a persistence route and is part of why LaunchAgents remain more attractive."
+  - claim: "The at scheduler is unavailable on macOS"
+    correction: "at ships with macOS — /usr/bin/at and /usr/libexec/atrun are both present — but its launchd job com.apple.atrun is Disabled by default, so queued jobs do not run until someone enables it. Enabling it is a deliberate act recorded in /private/var/db/com.apple.xpc.launchd/disabled.plist, so check that file alongside /var/at/jobs."
+
+corroborate_with:
+  for_execution: [unified_logging, tcc]
+  for_presence: [fsevents, launchd]
+  for_timeline: [unified_logging]
+
+related_tools: [crontab, at, launchctl, log, KnockKnock]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious command in a crontab or at job — search for known malware persistence patterns"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "URL, IP, or domain in a cron job command — check threat intelligence"
+
+references:
+  - "Apple — crontab(5) man page (file format) and crontab(1) (the command)"
+  - "Apple — at(1) and atrun(8) man pages"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+  - "Patrick Wardle — The Art of Mac Malware, Volume 1"
+  - "Csaba Fitzl — Beyond the good ol' LaunchAgents #4: cron jobs (theevilbit.github.io)"
+  - "Csaba Fitzl — Beyond the good ol' LaunchAgents #14: atrun (theevilbit.github.io)"
+  - "Objective-See — KnockKnock: persistent item enumeration (live systems only)"
+
+investigation_patterns:
+  - name: "Enumerate all crontabs"
+    note: |
+      Read the spool files directly rather than using `crontab -l`, which strips the header comments and with them the installation timestamp:
+      `sudo ls -la /var/at/tabs/`
+      `sudo head -20 /var/at/tabs/*`
+      `sudo cat /etc/crontab 2>/dev/null`
+      Each filename in /var/at/tabs/ is a username, so the directory listing alone enumerates which users have scheduled work. /usr/lib/cron/tabs is a symlink to the same directory — collect one or the other, not both. On a disk image the same paths apply relative to the mount point.
+    follow_up: "Any crontab on a modern macOS system warrants investigation — legitimate software rarely uses cron. Compare each file's header against its mtime: an mtime later than the recorded installation time means the file was edited without going through the crontab command."
+
+  - name: "Check the at job queue and whether atrun is enabled"
+    note: |
+      at jobs queue in /var/at/jobs/ but only execute if the com.apple.atrun launchd job is enabled, which it is not by default:
+      `sudo ls -la /var/at/jobs/ /var/at/spool/`
+      `sudo plutil -p /System/Library/LaunchDaemons/com.apple.atrun.plist`
+      `sudo plutil -p /private/var/db/com.apple.xpc.launchd/disabled.plist`
+      A Disabled value of 1 in the job's own plist is the shipped state. An entry in disabled.plist setting com.apple.atrun to 0 means someone explicitly enabled it.
+    follow_up: "Queued jobs with atrun disabled are staged but inert; queued jobs with atrun enabled are live persistence. See the launchd artifact for reading disabled.plist, and check Unified Logging for when the change was made."
+
+  - name: "Check cron execution in Unified Logging"
+    note: |
+      cron records every job it launches:
+      `log show --last 7d --predicate 'process == "cron"' --info --style compact`
+      Entries take the form (<user>) CMD (<command>) — giving the user context and the exact command, timestamped to the millisecond.
+    follow_up: "This records the invocation, not its result — the command's own output appears only if the command writes it somewhere itself. Bounded by Unified Logging retention, so for jobs that ran outside the log window fall back to the crontab file's own timestamps."

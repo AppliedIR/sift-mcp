@@ -1,0 +1,112 @@
+name: FSEvents
+description: "Filesystem event journal maintained by macOS that records file and directory changes — used to confirm that filesystem operations occurred, but without per-event timestamps"
+platform: macos
+platform_notes: |
+  FSEvents is a macOS kernel-level change notification system. It records filesystem operations (create, delete, rename, permission change, etc.) into a journal stored in a .fseventsd directory. FSEvents is primarily designed to support Spotlight indexing, Time Machine, and third-party file sync tools. Forensically, it serves as a record of what changed on the filesystem, but it does NOT record per-event timestamps. Events can only be roughly ordered by their event ID (monotonically increasing) and by the creation time of the journal file that contains them.
+
+  On APFS with volume roles, only the writable Data volume carries a journal, at /System/Volumes/Data/.fseventsd. The System volume root has none, so a collection that looks only at / returns nothing.
+
+  Current journals use the DLS3 format, identified by a 3SLD magic value at the start of each decompressed journal; earlier releases wrote 1SLD and 2SLD. Each record holds a path relative to the volume, a 64-bit event ID, a flags bitmask, and a node identifier matching the file's inode. Confirm a parser handles DLS3 before relying on its output against current evidence. (As of August 2026, mac_apt's FSEVENTS plugin recognises 1SLD, 2SLD and 3SLD, while Plaso and FSEventsParser register only 1SLD and 2SLD and will skip a DLS3 journal without reporting an error.)
+
+locations:
+  - path: "/System/Volumes/Data/.fseventsd/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "The journal for the writable Data volume, and the only one present on a running APFS system with volume roles (the System volume root, Preboot and VM carry none). Holds gzip-compressed journal files alongside an fseventsd-uuid file containing a plain UUID string that identifies the current journal stream. Each journal file is named according to the event ID one past the last record the file contains. The directory is mode 0700 root:wheel, so collection requires root; a non-root read fails rather than returning an empty listing."
+  - path: "/Volumes/<volume_name>/.fseventsd/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "External drives, disk images, and other separately mounted filesystems keep their own journal at their mount root — this is also where the Data volume's journal appears when a collected image is mounted for analysis. Not every mount has one: a mounted System volume and synthetic or network shares carry none, so confirm before reading absence as evidence."
+
+proves:
+  - "That a file or directory was created, deleted, renamed, or had metadata/permissions changed"
+  - "The path of the affected file or directory, relative to the volume root"
+  - "The event flags indicating the type of operation (Created, Removed, Renamed, Modified, PermissionChange, XattrModified, FinderInfoChanged, etc.)"
+  - "The event ID (monotonically increasing integer) which establishes relative ordering of events"
+  - "That a file remained the same object across a rename or move — records carry a node identifier (FSID) that stays constant when the filename or directory changes, allowing activity to be correlated across path changes"
+  - "That a volume was mounted or unmounted (Mount/Unmount flags)"
+
+does_not_prove:
+  - "When an event occurred — FSEvents stores no per-event timestamps, leaving only event ID ordering and the journal file's own timestamp, and that timestamp records when the journal was written rather than when the operations happened. Logging is asynchronous and can lag the underlying action from near real-time to tens of minutes, so correlate with Unified Logging or filesystem metadata whenever precise timing matters."
+  - "Who performed the operation (no user, PID, or process attribution)"
+  - "What the file contents were before or after the change"
+  - "That a file still exists (a create event may be followed by a delete event, or vice versa)"
+  - "The complete history of changes to a file — FSEvents coalesces events within the same journal page, so multiple rapid changes to the same path may appear as a single record with combined flags"
+  - "Which volume a path refers to — records are volume-relative, so a journal collected without noting its source volume cannot be resolved to absolute paths"
+
+timestamps:
+  - field: "Journal file creation time (filesystem metadata on the .fseventsd/* file)"
+    meaning: "The time the journal was closed and rotated — journal files are written once, so birth and modification times are identical. Events inside a file therefore occurred between the PREVIOUS journal's timestamp and this one's, not between this one and the next."
+    common_misinterpretation: "This is NOT a per-event timestamp; it only bounds all events in that journal. Precision is coarse and activity-dependent — a busy volume will produce tighter windows while an idle one produces much wider ones."
+  - field: "Event ID"
+    meaning: "Monotonically increasing 64-bit integer. Establishes strict ordering of events within a volume's FSEvents stream."
+    common_misinterpretation: "Event IDs are not timestamps. They only provide relative order. The gap between two event IDs says nothing about the time elapsed between them."
+
+common_misinterpretations:
+  - claim: "FSEvents provides timestamps for filesystem changes"
+    correction: "FSEvents does not store per-event timestamps, and the journal file's own timestamp bounds when records were written rather than when the operations occurred. For authoritative timing, corroborate with Unified Logging, filesystem metadata, or Spotlight."
+  - claim: "Every individual file operation is recorded as a separate event"
+    correction: "FSEvents coalesces events within the same journal page. If a file is created and then deleted within the same page, both flags may appear on a single record. This means the record shows 'Created + Deleted' but you cannot determine the order from FSEvents alone."
+  - claim: "FSEvents records are permanent"
+    correction: "Journals are pruned as .fseventsd exceeds its storage budget, and the retained window is a function of filesystem activity rather than elapsed time. The whole stream can also be recreated from scratch: a forced power-off on a tested VM produced a new fseventsd-uuid and event IDs restarting near zero within a minute of the next boot, and the same outcome is available to root by deleting .fseventsd. Because filenames are event IDs, the sequence distinguishes the two — a run beginning at a high event ID means earlier journals were pruned, while one beginning near zero means the stream was reset, and the fseventsd-uuid modification time dates that reset."
+  - claim: "If a path doesn't appear in FSEvents, it was never created or modified"
+    correction: "The event may have been recorded in a journal file that has since been pruned, or the events may have been coalesced with other operations on the same path. Absence from FSEvents does not prove absence of activity."
+  - claim: "FSEvents can reconstruct the complete timeline of a directory"
+    correction: "FSEvents records changes, not state. It cannot tell you what a directory looked like at a given point in time. For that, correlate with Time Machine snapshots or APFS snapshots if available."
+  - claim: "The presence of .fseventsd means FSEvents logging is enabled"
+    correction: "An empty file named no_log inside .fseventsd disables logging for that volume — Apple documents creating the directory and the file for precisely this purpose, so the directory's presence says nothing about whether events are being recorded. Attackers and privacy tools use it to suppress logging; check for it explicitly."
+
+corroborate_with:
+  for_execution: []
+  for_presence: [spotlight, quarantine, unified_logging]
+  for_timeline: [unified_logging, apfs_snapshots, time_machine]
+
+related_tools: [FSEventsParser, mac_apt, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious path or filename pattern — search for known malware drop locations or staging directories"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Filename matches a known IOC pattern — check threat intelligence"
+
+references:
+  - "Apple — FSEvents C API reference"
+  - "Apple — File System Events Programming Guide"
+  - "dlcowen/FSEventsParser — on-disk flag reference and parser documentation (GitHub)"
+  - "Hexordia — FSEvents: How They Work and Why They Matter for Mac Analysis"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+  - "Nicole Ibrahim — Mac Forensics: Looking into the Past with FSEvents (SANS DFIR Summit 2017)"
+  - "Josh Clevenger — Reconstructing Deleted File Activity Using FSEvents from macOS (SANS)"
+  - "mac4n6.com — FSEvents reference"
+
+investigation_patterns:
+  - name: "Check for anti-forensic suppression"
+    note: |
+      Look for a file named no_log in each volume's .fseventsd directory:
+      `sudo ls -la /System/Volumes/Data/.fseventsd/no_log`
+      `sudo ls -la /Volumes/<volume_name>/.fseventsd/no_log`
+      The directory is root-only, so this needs sudo. If no_log is present, FSEvents logging was disabled for that volume — an anti-forensic indicator. Check the file's own timestamps and corroborate with Unified Logging to establish when it appeared.
+    follow_up: "If no_log is present, note this as an evidence limitation. Rely on Unified Logging and Spotlight for filesystem activity on that volume."
+
+  - name: "Identify file drops in common staging directories"
+    note: |
+      Parse FSEvents and filter for Created events in common attacker staging locations: /tmp/, /Users/Shared/, ~/Downloads/, ~/Library/Application Support/, /Library/Application Support/, /usr/local/bin/. Look for executable drops, scripts, or plist files that appear outside of normal application installation patterns.
+      Match paths in their volume-relative form — records carry no leading slash and no tilde, so /tmp appears as private/tmp, ~/Downloads as Users/<name>/Downloads, and /Library/Application Support as Library/Application Support.
+    follow_up: "For each suspicious file identified, check quarantine xattr and Gatekeeper artifact for download provenance, and hash the binary for threat intel lookup."
+
+  - name: "Correlate launchd persistence with FSEvents"
+    note: |
+      Filter FSEvents for Created or Modified events in LaunchDaemon/LaunchAgent directories, in volume-relative form:
+      Library/LaunchDaemons/, Library/LaunchAgents/, Users/<name>/Library/LaunchAgents/.
+      This confirms that a plist was written to disk (complementing the launchd artifact which shows what plists exist but not necessarily when they appeared).
+    follow_up: "The journal file's timestamp bounds when the record was written, not when the plist was dropped — treat it as an upper bound and expect lag. Cross-reference with Unified Logging launchd load events for the corresponding Label to fix the actual time."
+
+  - name: "Detect bulk file operations"
+    note: |
+      Look for clusters of Created or Deleted events affecting many files in a short event ID range. This can indicate data staging/exfiltration (bulk copy to /tmp or external volume), ransomware activity (bulk encryption with renames), or cleanup (bulk deletion after an operation).
+    follow_up: "If a bulk operation targets an external volume, check that volume's own .fseventsd for the corresponding write events."
+
+  - name: "XattrModified events for quarantine manipulation"
+    note: |
+      Filter for XattrModified events on executable files. This can indicate that com.apple.quarantine was added (download from internet) or removed (anti-forensic stripping of download provenance, or legitimate app clearing the flag post-verification).
+    follow_up: "Cross-reference with the quarantine artifact (QuarantineEventsV2 database) for the original download record. Removing the attribute is also ordinary practice for downloaded command-line tools, so corroborate before treating it as evasion."

@@ -1,0 +1,105 @@
+name: Login Items
+description: "Applications and background services registered to start automatically — managed through System Settings, the SMAppService API, or legacy SMLoginItemSetEnabled, and tracked since Ventura in the Background Task Management database alongside LaunchAgent and LaunchDaemon registrations"
+platform: macos
+platform_notes: |
+  Login Items are applications or executables that launch when a user logs in. Apple has unified the management of Login Items and background services under System Settings → General → Login Items & Extensions, backed by the Background Task Management (BTM) framework. Login Items overlap with LaunchAgents — both run at login — but Login Items are user-visible in System Settings while LaunchAgents may not be. Beginning with macOS 13 (Ventura), the BTM database (BackgroundItems-v*.btm) tracks both Login Items and LaunchAgent/Daemon registrations.
+
+  There are several mechanisms that create Login Items:
+  - System Settings → General → Login Items (user-managed)
+  - SMAppService.register() API (Ventura+ programmatic registration)
+  - Legacy SMLoginItemSetEnabled via Service Management Framework (deprecated but still functional)
+  - "Open at Login" option in Dock context menu
+  - Shared File Lists (legacy, pre-Ventura)
+
+locations:
+  - path: "/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "BTM database and the primary source for Login Items on current macOS. The version suffix varies by release, so glob rather than assuming a number. The file is a binary plist whose contents are NSKeyedArchiver-serialised; parse it with `sfltool dumpbtm` on a live host, or with Objective-See's DumpBTM or mac_apt against collected evidence. It records Login Items alongside LaunchAgents and LaunchDaemons registered through the framework, partitioned into a separate record set per UID — enumerate every UID section, not only the console user's."
+  - path: "~/Library/Application Support/com.apple.backgroundtaskmanagementagent/backgrounditems.btm"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Legacy per-user background items database, superseded by the system-level BTM file above. May be present on machines upgraded from older macOS versions. Check every user's home directory, but do not read its absence as meaningful on a clean install."
+  - path: "/private/var/db/com.apple.xpc.launchd/loginitems.*.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Login Items preference file. Plist filenames include the userid they belong to (e.g. loginitems.501.plist for user 501)."
+  - path: "<application>.app/Contents/Library/LoginItems"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Helper applications an app is capable of registering as Login Items. For example, Weather.app ships WeatherMenu.app and Passwords.app ships PasswordsMenuBarExtra.app. Presence here shows only what the application could register, not what is active: neither helper appeared in BTM on a tested host. Use the bundle to identify candidate helpers and BTM to establish which were actually registered."
+
+proves:
+  - "Which applications or executables are configured to launch at user login"
+  - "The bundle identifier or path of the registered item"
+  - "Whether the item is currently enabled or disabled by the user (macOS allows users to disable items via System Settings without removing the registration)"
+  - "The plist backing a registration and the executable it runs — BTM records a URL pointing at the plist and an Executable Path for the binary"
+  - "The code-signing identity behind an item, where present — Developer Name and Team Identifier, both null for unsigned or ad-hoc items"
+  - "What kind of registration it is — Type distinguishes developer, legacy agent and legacy daemon entries, and Parent Identifier groups child items under their developer record"
+
+does_not_prove:
+  - "That the login item actually executed at the last login (it may have been disabled, crashed, or the binary may be missing)"
+  - "When the login item was registered, or in what order — BTM exposes no timestamps at all, only a Generation counter per item"
+  - "Who registered the login item — records are partitioned by UID, so the user context is known, but nothing in BTM identifies the process or person that performed the registration. Unified Logging supplies that separately, naming the initiating process on each change."
+  - "That the login item is the only persistence mechanism for an application. It may also have LaunchAgents, cron jobs, or other persistence. E.g. BlockBlock (legitimate tool) uses both a Login Item and LaunchAgent."
+
+timestamps:
+  - field: "BackgroundItems-v*.btm file mtime"
+    meaning: "When the BTM database was last written."
+    common_misinterpretation: "This dates the database as a whole, not any individual registration — a single toggle rewrites the file. BTM exposes no per-item timestamps; the only per-item sequencing signal is the Generation counter, which increments on each change to that record."
+  - field: "Unified Logging — BTM and launchd change events"
+    meaning: "When an item was registered, enabled, or disabled. launchd logs 'Setting service <label> to enabled (initiated by <process>)' or 'removing service: <label>'; backgroundtaskmanagementd logs 'updateItems: result=record updated' followed by 'BTMStore: store saved'."
+    common_misinterpretation: "This is the only way to date a BTM change, and it is bounded by Unified Logging retention."
+
+common_misinterpretations:
+  - claim: "Disabling a Login Item in System Settings removes it"
+    correction: "Disabling sets a flag in BTM but does not delete the registration. The toggle clears the allowed bit rather than setting disabled — a user-disabled item reads [enabled, disallowed, visible, notified] (0x9) against [enabled, allowed, visible, notified] (0xb) when active — so filtering for 'disabled' can miss items the user actually switched off. The item's Generation counter also increments on each change. This is forensically useful: a disallowed item indicates the user or system took action to suppress it."
+  - claim: "All Login Items appear in System Settings"
+    correction: "Some legacy Login Items registered via older APIs may not surface in the System Settings UI. Check both the BTM database and legacy plist locations for complete coverage."
+  - claim: "The BTM database only tracks Login Items"
+    correction: "BTM tracks Login Items, LaunchAgents, and LaunchDaemons. It is a unified registry of background task registrations, not just Login Items. Cross-reference with the launchd artifact for the full picture."
+  - claim: "Every record in the BTM database is a persistence item"
+    correction: "Records of Type developer are grouping entries for a signing identity, not runnable items — they carry no URL and no Executable Path, and list their children under Embedded Item Identifiers."
+
+corroborate_with:
+  for_execution: [unified_logging, knowledgec_biome]
+  for_presence: [launchd, fsevents]
+  for_timeline: [unified_logging, knowledgec_biome]
+
+related_tools: [sfltool, DumpBTM, KnockKnock, mac_apt, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Unknown Login Item bundle identifier — search for known malware persistence patterns"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "Hash the binary at an item's Executable Path and check threat intelligence — Team Identifier is a second pivot for signed items"
+
+references:
+  - "Apple — SMAppService documentation"
+  - "Apple — Updating helper executables from earlier versions of macOS"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+  - "Patrick Wardle — The Art of Mac Malware, Volume 1"
+  - "Patrick Wardle — The Art of Mac Malware, Volume 2"
+  - "Objective-See — KnockKnock: persistent item enumeration (live systems only)"
+  - "Objective-See — DumpBTM: parses BackgroundItems-v*.btm, and unlike sfltool works against collected evidence"
+  - "Csaba Fitzl — Beyond the good ol' LaunchAgents #3: Login Items (theevilbit.github.io)"
+
+investigation_patterns:
+  - name: "Enumerate BTM-registered items"
+    note: |
+      On a live system, dump BTM state:
+      `sudo sfltool dumpbtm`
+      Run it with sudo. An unprivileged invocation triggers an authorization prompt on the console user's screen — on a subject machine that both alerts the user and requires interaction before you get output. The result is identical either way.
+      This lists all registered Login Items, LaunchAgents, and LaunchDaemons with their Disposition and Type. Filter out records of Type developer before counting: they are grouping entries with no URL or Executable Path. For collected evidence sfltool is unavailable — use Objective-See's DumpBTM, mac_apt, or Plaso's macos_background_items_plist parser against the .btm file directly.
+      Note that running this command causes backgroundtaskmanagementd to write the full dump into Unified Logging, so it leaves a record of your own examination.
+    follow_up: "Flag items with unfamiliar bundle identifiers or paths. Cross-reference with launchd artifact for corresponding plists."
+
+  - name: "Identify disabled items"
+    note: |
+      Items that were disabled by the user in System Settings may be forensically significant — the user or system may have disabled a suspicious item or a legitimate security tool. A user-disabled entry reads [enabled, disallowed, visible, notified] (0x9) against the [enabled, allowed, visible, notified] (0xb) of an active item.
+    follow_up: "Investigate why the item was disabled. BTM stores no timestamps, but Unified Logging dates the change: launchd logs 'Setting service <label> to enabled (initiated by <process>)' or 'removing service: <label>', naming the item, its new state, and what initiated it."
+
+  - name: "Cross-reference BTM with launchd plists"
+    note: |
+      Compare BTM-registered items against actual plist files in LaunchAgent/Daemon directories. Discrepancies indicate:
+      - BTM entry without plist: item was uninstalled but registration persists
+      - Plist without BTM entry: item predates Ventura or bypasses BTM registration
+    follow_up: "Items with plists but no BTM registration may be using older APIs or may indicate direct plist drops without proper registration."
