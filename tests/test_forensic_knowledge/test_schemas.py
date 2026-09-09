@@ -29,18 +29,13 @@ OPTIONAL_ARTIFACT_FIELDS = {
 
 class TestArtifactSchemas:
     def test_all_artifacts_have_required_fields(self):
-        arts = loader.list_artifacts()
-        assert len(arts) >= 1, "No artifacts found"
-        for summary in arts:
-            name = summary["name"]
-            art = loader.get_artifact(name.lower().replace(" ", "_").replace("-", "_"))
-            if art is None:
-                # Try the description-based name
-                continue
-            for field in REQUIRED_ARTIFACT_FIELDS:
-                assert field in art, (
-                    f"Artifact '{name}' missing required field '{field}'"
-                )
+        for platform in ("windows", "linux", "macos"):
+            for art in loader._load_all_in_dir(f"artifacts/{platform}"):
+                name = art.get("name", "?")
+                for field in REQUIRED_ARTIFACT_FIELDS:
+                    assert field in art, (
+                        f"Artifact '{name}' missing required field '{field}'"
+                    )
 
     def test_all_artifacts_have_proves_or_does_not_prove(self):
         """Every artifact should document what it proves or doesn't."""
