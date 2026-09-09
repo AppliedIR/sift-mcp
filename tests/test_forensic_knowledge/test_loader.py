@@ -40,6 +40,21 @@ class TestArtifacts:
         assert "Shell History" in names
         assert "Authentication Log" in names
 
+    def test_list_artifacts_macos(self):
+        arts = loader.list_artifacts(platform="macos")
+        assert len(arts) >= 17
+        names = [a["name"] for a in arts]
+        assert "Unified Logging" in names
+        assert "LaunchDaemons and LaunchAgents" in names
+
+    def test_list_artifacts_macos_platform_field(self):
+        """macOS artifacts must declare platform: macos, not inherit it."""
+        for art in loader._load_all_in_dir("artifacts/macos"):
+            assert art.get("platform") == "macos", (
+                f"Artifact '{art.get('name', '?')}' has platform="
+                f"{art.get('platform')!r}, expected 'macos'"
+            )
+
     def test_get_artifacts_for_tool(self):
         arts = loader.get_artifacts_for_tool("AmcacheParser")
         assert len(arts) >= 1

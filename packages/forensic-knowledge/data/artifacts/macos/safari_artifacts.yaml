@@ -1,0 +1,124 @@
+name: Safari Artifacts
+description: "Safari browser history, downloads, cache, bookmarks, and extension data — macOS-specific paths and formats distinct from Chromium-based browsers"
+platform: macos
+platform_notes: |
+  Safari is the default browser on macOS and stores its data in macOS-specific locations and formats. Unlike Chromium-based browsers which use a single profile directory with SQLite databases, Safari's data is spread across multiple locations in ~/Library/ using a mix of SQLite databases, binary plists, and directory structures. Collect -wal and -shm files alongside every Safari database. Safari uses SQLite WAL journaling, and the write-ahead log frequently holds more data than the database file. Copying the .db alone can silently discard the majority of recent activity.
+
+  Safari's data is split between two roots, and the split is not intuitive. History.db and Downloads.plist sit at ~/Library/Safari/, while cookies, SafariTabs.db, CloudTabs.db, extension lists and the WebKit cache live under the sandbox container at ~/Library/Containers/com.apple.Safari/Data/Library/. Verified on 15.6.1 that the non-containerized files have no container counterpart, so this is a genuine split rather than a migration in progress. Check each path individually — assuming either root applies to all Safari data produces false negatives on a host where the data is present.
+
+  Safari data is protected by TCC (Full Disk Access required to read a user's Safari data on a live system). Safari also integrates tightly with macOS features: iCloud Tabs syncs across devices, Keychain stores saved passwords, and Intelligent Tracking Prevention maintains its own databases.
+
+locations:
+  - path: "~/Library/Safari/History.db"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "SQLite database containing browsing history. Tables: history_items (URLs) and history_visits (visit timestamps, redirect sources). Check every user's home directory."
+  - path: "~/Library/Safari/Downloads.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Binary plist tracking recent downloads — file path, source URL, download date, and progress state."
+  - path: "~/Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Safari cookies in Apple's binary cookies format. Requires specialized parsing (not standard SQLite)."
+  - path: "~/Library/Containers/com.apple.Safari/Data/Library/Safari/SafariTabs.db"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "SQLite database containing bookmarks, windows session info, tab groups."
+  - path: "~/Library/Containers/com.apple.Safari/Data/Library/Safari/WebExtensions/Extensions.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Contains every Safari web extension installed on the Mac, with an AddedDate key for each."
+  - path: "~/Library/Containers/com.apple.Safari/Data/Library/Safari/AppExtensions/Extensions.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Contains every Safari app extension installed on the Mac. Every Safari extension is delivered as part of a containing macOS app — either as a Safari App Extension (native, XPC-based) or a Safari Web Extension (cross-browser WebExtension API, since Safari 14). Both live as .appex bundles inside their host app."
+  - path: "~/Library/Containers/com.apple.Safari/Data/Library/Caches/com.apple.Safari/WebKitCache"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Safari cache including cached web content, favicons, and preview images. Older versions were in ~/Library/Caches/com.apple.Safari/WebKitCache"
+  - path: "~/Library/Containers/com.apple.Safari/Data/Library/Safari/CloudTabs.db"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "iCloud Tabs — tabs open on other devices signed into the same Apple ID. Provides cross-device browsing context. Attribute each tab by joining cloud_tabs.device_uuid to cloud_tab_devices, which carries device_name and device_type_identifier, and corroborate against History.db before placing the activity on this host."
+
+proves:
+  - "URLs visited in Safari with visit timestamps and visit counts"
+  - "Redirect chains between visited URLs (history_visits.redirect_source)"
+  - "Files downloaded via Safari — source URL, destination path, download timestamp"
+  - "Bookmarks and Reading List entries (user-curated content)"
+  - "iCloud Tabs open on other devices signed into the same Apple ID, attributable to a specific device by name and type via cloud_tab_devices"
+  - "Installed Safari extensions and their bundle identifiers"
+  - "Cached web content, which may include pages or resources no longer available on the web"
+
+does_not_prove:
+  - "What the user did on a visited page (history records the URL, not user actions or form submissions)"
+  - "That the user intentionally visited a URL (it may be a redirect, embedded resource, or ad tracker)"
+  - "Browsing activity in Private Browsing mode (not recorded in History.db)"
+  - "The complete browsing history: Safari prunes history based on age and database size limits; recent activity could be missed if the database was collected without its -wal file"
+  - "Activity in other browsers (Chrome, Firefox, Arc, etc. have separate data stores)"
+  - "That a URL in CloudTabs.db was visited on the examined Mac, since iCloud Tabs are synced from every device on the same Apple ID"
+
+timestamps:
+  - field: "history_visits.visit_time (History.db)"
+    meaning: "When the page visit occurred. Stored as Core Data timestamp (seconds since 2001-01-01 00:00:00 UTC)."
+    common_misinterpretation: "Core Data epoch (2001-01-01), not Unix epoch. Add 978307200 to convert."
+  - field: "Downloads.plist download date"
+    meaning: "When the download was initiated."
+
+common_misinterpretations:
+  - claim: "Safari history contains all web activity"
+    correction: "Private Browsing sessions are not written to History.db. Embedded resources, AJAX calls, and some redirects may not create history entries. Extensions may also modify browsing behavior."
+  - claim: "Clearing Safari history removes all traces"
+    correction: "Clearing history removes entries from History.db but may not clear all related artifacts — cache files, cookies, QuarantineEventsV2 records for downloads, Unified Logging entries, and FSEvents records of database modifications may persist."
+  - claim: "Safari data is in the same format as Chrome"
+    correction: "Safari uses different database schemas, Core Data timestamps (not Chrome's WebKit timestamps), binary plists, and Apple-specific binary cookies format. Tools designed for Chromium databases will not parse Safari data correctly."
+  - claim: "History.db contains the full page content"
+    correction: "History.db stores URLs and visit metadata only. Page content may be in the cache directory (~/Library/Containers/com.apple.Safari/Data/Library/Caches/com.apple.Safari/WebKitCache) but is not guaranteed to be retained."
+
+corroborate_with:
+  for_execution: []
+  for_presence: [quarantine, fsevents]
+  for_timeline: [unified_logging, knowledgec_biome, quarantine]
+
+related_tools: [sqlite3, plutil, mac_apt, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Suspicious URL or domain in Safari history — check threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious Safari extension or browsing pattern — search for known macOS malware delivery URLs or malicious extensions"
+
+references:
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+  - "mac4n6.com — Safari artifact reference"
+
+investigation_patterns:
+  - name: "Query browsing history for incident window"
+    note: |
+      Extract Safari history for a specific time range:
+      `sqlite3 ~/Library/Safari/History.db "SELECT \
+        datetime(hv.visit_time + 978307200, 'unixepoch') as visit_date, \
+        hi.url, \
+        hv.title \
+       FROM history_visits hv \
+       JOIN history_items hi ON hv.history_item = hi.id \
+       WHERE hv.visit_time + 978307200 BETWEEN strftime('%s','<start>') AND strftime('%s','<end>') \
+       ORDER BY hv.visit_time DESC;"`
+    follow_up: "Flag visits to unusual domains, IP-based URLs, or known malware delivery sites. Check quarantine artifact for any downloads from those URLs."
+
+  - name: "Extract download history"
+    note: |
+      Parse Downloads.plist for download records:
+      `plutil -convert xml1 -o - ~/Library/Safari/Downloads.plist`
+      Extract source URLs, destination paths, and download dates.
+    follow_up: "Cross-reference downloaded files with quarantine artifact and file hashes against threat intelligence."
+
+  - name: "Audit Safari extensions"
+    note: |
+      List installed extensions:
+      `plutil -p ~/Library/Containers/com.apple.Safari/Data/Library/Safari/WebExtensions/Extensions.plist`
+      `plutil -p ~/Library/Containers/com.apple.Safari/Data/Library/Safari/AppExtensions/Extensions.plist`
+      Safari extensions must be distributed through the App Store or signed by a Developer ID.
+    follow_up: "Flag extensions with broad permissions (access to all websites, ability to read page content). Check extension bundle identifiers against known malicious extensions."
+
+  - name: "Check iCloud Tabs for cross-device context"
+    note: |
+      Query CloudTabs.db for tabs open on other Apple devices:
+      `sqlite3 ~/Library/Containers/com.apple.Safari/Data/Library/Safari/CloudTabs.db "SELECT * FROM cloud_tabs;"`
+      This can reveal browsing activity on iPhone, iPad, or other Macs signed into the same Apple ID.
+    follow_up: "Cross-device tabs may provide context about the user's activity before or after the incident."

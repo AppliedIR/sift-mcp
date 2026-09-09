@@ -1,0 +1,113 @@
+name: Spotlight Metadata
+description: "macOS Spotlight indexing system that maintains searchable metadata for files on disk — provides file attributes, content types, creation dates, and extended metadata even after file deletion"
+platform: macos
+platform_notes: |
+  Spotlight is the macOS system-wide search and indexing service. It indexes file metadata (name, type, dates, size, content type, author, etc.) and, for supported file types, full-text content. The index is maintained by the mds (metadata server) daemon family. Forensically, Spotlight metadata can reveal information about files that have been deleted — the index may retain metadata entries after the file is removed from disk, depending on when the index was last updated.
+
+  Individual file metadata can be queried with `mdls` (metadata list). The Spotlight index itself is stored in a per-volume .Spotlight-V100 directory.
+
+locations:
+  - path: "/System/Volumes/Data/.Spotlight-V100/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Spotlight index on the APFS Data volume. Contains the index databases (.store.db and related files). The internal format is not publicly documented and changes between macOS versions."
+  - path: "/Volumes/<volume_name>/.Spotlight-V100/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Spotlight index for each mounted volume. External drives and disk images are indexed when mounted."
+
+proves:
+  - "File metadata attributes — name, content type (kMDItemContentType), size, creation date, modification date"
+  - "Author, title, and other document-level metadata for supported file types (Office documents, PDFs, images)"
+  - "Content type classification (e.g., public.jpeg, com.adobe.pdf, public.shell-script)"
+  - "The absolute path of an indexed file (kMDItemPath), which may resolve a file that no longer exists at that location"
+  - "That a file existed on the volume at the time of indexing (index entries may persist after deletion)"
+  - "Download provenance via kMDItemWhereFroms (URL chain) and kMDItemDownloadedDate"
+  - "Application bundle metadata — bundle identifier, version, copyright"
+
+does_not_prove:
+  - "That a file currently exists on disk (Spotlight index entries may lag behind file deletions)"
+  - "Who accessed or modified the file (Spotlight indexes metadata, not access patterns)"
+  - "The content of files that Spotlight does not index (encrypted files, unsupported formats, files in excluded directories)"
+  - "File activity on volumes where Spotlight indexing was disabled (via mdutil -i off or .metadata_never_index)"
+
+timestamps:
+  - field: "kMDItemFSCreationDate"
+    meaning: "File creation date from the filesystem"
+  - field: "kMDItemFSContentChangeDate"
+    meaning: "File content modification date from the filesystem"
+  - field: "kMDItemContentModificationDate"
+    meaning: "Content modification date from file metadata (may differ from filesystem date)"
+  - field: "kMDItemDateAdded"
+    meaning: "When the file was added to its containing directory"
+    common_misinterpretation: "This is the date the file was added to the directory, not necessarily when it was created or downloaded. Moving a file to a new directory updates this value."
+  - field: "kMDItemDownloadedDate"
+    meaning: "When the file was downloaded from the internet"
+    common_misinterpretation: "This is set via an extended attribute (com.apple.metadata:kMDItemDownloadedDate). It can be stripped along with other xattrs. Absence does not prove the file was not downloaded."
+  - field: "kMDItemLastUsedDate"
+    meaning: "When the file was last opened by the user"
+    common_misinterpretation: "Updated by Launch Services when a file is opened via the Finder or Open dialog. Not updated for all access methods (e.g., command-line tools, scripts)."
+
+common_misinterpretations:
+  - claim: "Spotlight indexes everything on disk"
+    correction: "Spotlight respects exclusion lists — directories can be excluded in System Settings → Spotlight, and volumes can have indexing disabled with `mdutil -i off`. A file named .metadata_never_index at a volume root also suppresses indexing. Check for these before assuming completeness."
+  - claim: "The Spotlight index is a reliable inventory of all files"
+    correction: "The index can be stale — deleted files may persist in the index, and newly created files may not yet be indexed. The index reflects the state at last indexing, not necessarily the current filesystem state."
+  - claim: "mdls output shows all metadata for a file"
+    correction: "mdls shows Spotlight-indexed attributes for the file. It does not show extended attributes (use xattr -l), filesystem metadata not tracked by Spotlight, or content that Spotlight chose not to index."
+  - claim: "kMDItemWhereFroms always shows the download URL"
+    correction: "kMDItemWhereFroms is stored as an extended attribute set by the downloading application. Not all applications set it. It can be stripped with xattr -d. When present, it is an array — typically the first entry is the direct URL and the second is the referring page."
+  - claim: "Spotlight does not record file paths, since mdls output shows only filenames"
+    correction: "The mdls command omits kMDItemPath from its default output, showing only kMDItemFSName and kMDItemDisplayName. The path is available on request: mdls -name kMDItemPath <file>. The mdfind command also returns absolute paths, and -onlyin restricts a search by directory. Note that kMDItemPath from mdls returns the firmlink-resolved form (/System/Volumes/Data/Users/...), while mdfind returns the user-facing form (/Users/...) — normalize before comparing paths across sources."
+
+corroborate_with:
+  for_execution: []
+  for_presence: [fsevents, quarantine]
+  for_timeline: [unified_logging, quarantine]
+
+related_tools: [mdls, mdfind, mdutil, mac_apt, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Download URL recovered from kMDItemWhereFroms — check the domain and full URL chain against threat intelligence"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious content type or file metadata pattern — search for known malware file characteristics"
+
+references:
+  - "Apple — Spotlight metadata attributes reference"
+  - "Apple — mdls(1), mdfind(1), mdutil(1) man pages"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+  - "mac4n6.com — Spotlight metadata reference"
+  - "Electric Light Co. — Spotlight search can be blocked by extended attributes"
+
+investigation_patterns:
+  - name: "Query file metadata with mdls"
+    note: |
+      On a live system, query comprehensive metadata for a specific file:
+      `mdls <file_path>`
+      Key fields to examine: kMDItemContentType, kMDItemWhereFroms, kMDItemDownloadedDate, kMDItemDateAdded, kMDItemFSCreationDate.
+      To obtain file path from a given filename:
+      `mdls -name kMDItemPath <filename>`
+    follow_up: "If kMDItemWhereFroms is present, extract the download URL for threat intelligence lookup."
+
+  - name: "Search for files by content type"
+    note: |
+      Use mdfind to search for files by content type across the volume:
+      `mdfind 'kMDItemContentType == "com.apple.application-bundle"'`
+      `mdfind 'kMDItemContentType == "public.shell-script"'`
+      `mdfind 'kMDItemContentType == "public.python-script"'`
+      Useful for finding executables, scripts, or specific file types that may have been dropped during an incident.
+    follow_up: "For each suspicious file found, check quarantine xattr, code signature, and file hash."
+
+  - name: "Find recently downloaded files"
+    note: |
+      Search for files with download metadata:
+      `mdfind 'kMDItemDownloadedDate >= $time.today(-7)'`
+      Or query specific download sources:
+      `mdfind 'kMDItemWhereFroms == "*suspicious-domain.com*"'`
+    follow_up: "Cross-reference with quarantine artifact for the full download record."
+
+  - name: "Check Spotlight indexing status"
+    note: |
+      Verify that Spotlight indexing is enabled and check for exclusions: `mdutil -s /` (check indexing status per volume) Check System Settings → Spotlight for excluded directories. Check for .metadata_never_index file at the root of volumes.
+    follow_up: "If indexing is disabled or directories are excluded, note this as an evidence limitation. An attacker may have disabled indexing to suppress metadata collection."
