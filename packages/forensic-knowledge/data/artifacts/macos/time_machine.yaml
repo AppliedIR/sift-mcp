@@ -1,0 +1,200 @@
+name: Time Machine
+description: "macOS backup system that stores each backup as an APFS snapshot on the destination volume — provides historical filesystem state, a per-backup record of what was excluded, and a system plist recording every backup attempt even when the media is absent"
+platform: macos
+platform_notes: |
+  On a current macOS source system with an APFS destination volume, a Time Machine backup is effectively an APFS snapshot written to the destination. Backups remain browsable through the Time Machine app in /System/Applications, which presents both destination backups and local snapshots. Files can be recovered with the command `tmutil restore`. For examination purposes, mount the snapshot read-only instead, as it avoids the restore machinery and leaves the evidence untouched.
+
+  Time Machine is a user-configurable backup feature, not enabled by default. Once configured, local snapshots are created with every backup run. The source is snapshotted first locally, then copied to the destination if it is available. A typical destination is a USB external drive. The snapshot process occurs roughly hourly. If the destination volume is not connected, the local snapshot is still created but the copy process to the destination does not occur. On a host with the backup drive absent, users can still recover ~24 hours of file history, and so can an examiner.
+
+  Naming separates the two snapshot families: com.apple.TimeMachine.<timestamp>.backup is a snapshot on the destination and represents a backup, while com.apple.TimeMachine.<timestamp>.local is a snapshot on the source volume. A complete backup run creates both, snapshotting the source first and then copying from that stable point.
+
+  Local snapshots are thinned (deleted) at roughly 24 hours. A host backing up hourly settles at about 24 of them spanning just under a day. One exception: the source snapshot from the last successful backup to the destination is pinned as the incremental reference and exempt from thinning, so it can sit far outside the 24-hour window. That exemption transfers to each new backup, so the pinned snapshot ages out normally once a later backup to the destination succeeds. Its age marks the last backup, not a longer retention period.
+
+  Destination snapshots follow a different policy and are not thinned at 24 hours. Apple documents a tiered schedule: hourly backups kept for the past 24 hours, daily for the past month, and weekly for all previous months — with the oldest deleted once the destination fills.
+
+  Hourly snapshots on the host appear only while the machine is running, so a gap in the sequence is evidence about uptime rather than evidence that Time Machine was disabled or that snapshots were deleted.
+
+  When a destination volume is reconnected, the most recent backup is immediately copied if it is not already present. So a backup timestamped right after a connection is normal automatic behavior rather than deliberate user action. Note that cadence alone does not indicate whether the backup drive was connected. Pairing does: a source snapshot with a matching destination snapshot seconds later means a backup ran, while an unpaired local snapshot means the destination was absent. However, for an examiner to make that determination, both the source volume and destination volume must be available for review.
+
+locations:
+  - path: "/Library/Preferences/com.apple.TimeMachine.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "The central Time Machine record, and system-level — there is no per-user equivalent. Holds a Destinations array containing, per destination: AttemptDates and SnapshotDates, BytesUsed and BytesAvailable, DestinationID and DestinationUUIDs, FilesystemTypeName, LastKnownVolumeName, LastKnownEncryptionState, ReferenceLocalSnapshotDate and RESULT. Readable with the backup media absent, which makes it the first thing to collect."
+  - path: "/Volumes/com.apple.TimeMachine.localsnapshots/Backups.backupdb/<ComputerName>/<timestamp>/Data/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Automount path for source-volume local snapshots (com.apple.TimeMachine.<timestamp>.local), the most commonly available Time Machine evidence since they need no backup media. Mounted read-only and nobrowse, so invisible in Finder but readable by path — but TRANSIENT: the path appears during backup activity and can be absent later while the snapshots themselves still exist. Enumerate with `diskutil apfs listSnapshots /System/Volumes/Data` and mount explicitly with mount_apfs when it is not there. Purgeable and thinned at roughly 24 hours. CAUTION: the Backups.backupdb component here is NOT the legacy HFS+ layout."
+  - path: "/Volumes/.timemachine/<DestinationUUID>/<timestamp>.backup/<timestamp>.backup/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Automount path for destination backups, present only while the backup volume is attached — one read-only nobrowse mount per backup. Note the timestamp appears twice in the path. Each contains Data/, the backed-up volume mirroring the source layout, where excluded directories are present but EMPTY rather than absent; and .exclusions.plist, which records what was excluded AT THE TIME THAT BACKUP RAN — userExclusionPaths holds user or administrator additions and is the forensically interesting key, making exclusion history recoverable rather than inferred from current settings. `tmutil listbackups` prints these paths; they resolve when the destination is mounted and fail when it is not, so a failure means the media is absent rather than the backup missing."
+  - path: "/Volumes/<BackupVolume>/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Root of the mounted destination volume, distinct from the automount paths above. Holds backup_manifest.plist, which ties the backup set to its source machine via volumeStoreInfo keyed by the source volume group UUID, and a single <timestamp>.previous directory for the most recent backup — the historical backups are reachable only as snapshots, not as directories here."
+  - path: "/Volumes/<BackupDrive>/Backups.backupdb/<ComputerName>/"
+    os_versions: ["legacy — HFS+ destinations only"]
+    notes: "LEGACY, NOT VERIFIED. Dated directories built from hard links, so unchanged files across backups share inodes and naive size calculations vastly overcount. Current macOS creates APFS destinations only, so expect this on older media or images of older systems. CAUTION: Backups.backupdb is not exclusively legacy — it also appears in the current local-snapshot automount path, so finding the string does not imply an HFS+ destination."
+
+proves:
+  - "That a backup was attempted and whether it completed, with timestamps — AttemptDates, SnapshotDates and RESULT in /Library/Preferences/com.apple.TimeMachine.plist, readable even without the backup media"
+  - "The filesystem state of included files at each backup point, recoverable by mounting the corresponding snapshot"
+  - "That a file existed with specific content at a specific backup time, and that it changed between backups"
+  - "What was excluded from each individual backup, from that backup's own .exclusions.plist, including which exclusions were user-added rather than Apple defaults"
+  - "Which machine a backup set came from (source volume group UUID in backup_manifest.plist) and which media it was written to (DestinationUUIDs, LastKnownVolumeName)"
+  - "Whether the destination was encrypted at last use (LastKnownEncryptionState) and its filesystem type (FilesystemTypeName)"
+  - "The source filesystem state at each local-snapshot point, recoverable from the Mac alone without the backup destination"
+  - "Whether the backup destination was connected during a given hour, by pairing source and destination snapshots — a local snapshot with a matching destination snapshot seconds later means a backup ran, while an unpaired local snapshot means the destination was absent (matching requires access to destination)"
+
+does_not_prove:
+  - "That a `tmutil listbackups` path failing to open means the backup is missing — those paths are automounts that exist only while the destination volume is attached, so a failure indicates absent media"
+  - "That a directory present in a backup had its contents captured — excluded directories appear as EMPTY directories rather than being absent"
+  - "Activity between backups — a file created and deleted between two backup points appears in neither"
+  - "That backups persist indefinitely — destination snapshots are Purgeable and subject to Time Machine thinning and APFS space pressure"
+  - "That the absence of a backup destination means no Time Machine evidence exists — local snapshots on the source volume commonly survive when the backup media does not"
+  - "That local snapshot retention is longer than ~24 hours because one much older snapshot is present — the source snapshot from the last successful backup is pinned as the incremental reference and exempt from thinning. Read that outlier as the time of the last backup, and do not read the gap between it and the next snapshot as machine downtime."
+  - "That a gap in local-snapshot cadence means Time Machine was disabled or tampered with — snapshots are created only while the machine is running, so a gap can reflect downtime. Corroborate against power and boot history before drawing conclusions."
+  - "That a local snapshot was created automatically. Manual `tmutil localsnapshot` and backupd's scheduled path produce IDENTICAL names and are both logged as created by backupd — an examiner cannot tell a scheduled snapshot from one made by a user, an attacker, or a previous examiner."
+  - "That a backup is a forensic image — Time Machine captures files subject to exclusions, not unallocated space, slack, or filesystem metadata beyond what it copies"
+
+timestamps:
+  - field: "Snapshot name — com.apple.TimeMachine.<YYYY-MM-DD-HHMMSS>.local or .backup"
+    meaning: "When the snapshot was taken, in LOCAL time. The suffix identifies which volume it is on: .local is a source-volume snapshot, .backup is a completed backup on the destination. A backup run creates both, with the source snapshot a few seconds earlier."
+    common_misinterpretation: "This is the snapshot time, not the modification time of anything inside it — files retain their own original timestamps. The interval between consecutive snapshots reflects machine runtime, so a wide gap indicates the host was off, asleep or suspended rather than Time Machine having stopped."
+  - field: "SnapshotDates and AttemptDates (com.apple.TimeMachine.plist)"
+    meaning: "SnapshotDates lists completed backups; AttemptDates lists attempts. The difference between them is evidence in itself."
+    common_misinterpretation: "AttemptDates is much sparser than SnapshotDates and is not a parallel array — e.g. a host with 23 backups may hold only 5 AttemptDates. Treat SnapshotDates as the reliable series and read RESULT for the outcome of the most recent attempt."
+  - field: "backup_manifest.plist startDate"
+    meaning: "When the backup run began, distinct from the completion time encoded in the snapshot name."
+  - field: "ReferenceLocalSnapshotDate (com.apple.TimeMachine.plist)"
+    meaning: "The source-side local snapshot a backup was taken from — links a destination backup to the source snapshot that produced it."
+  - field: "SnapshotXID on the destination volume"
+    meaning: "APFS transaction identifier, monotonically increasing. Orders backups reliably even where names or system clocks are in doubt."
+
+common_misinterpretations:
+  - claim: "Time Machine should be active on all macOS systems"
+    correction: "Time Machine is user-enabled and not on by default."
+  - claim: "Time Machine backups are browsable dated directories on the backup drive"
+    correction: "Not on an APFS destination. Each backup is an APFS snapshot; the live volume root shows only <timestamp>.previous and backup_manifest.plist. macOS automounts every backup read-only under /Volumes/.timemachine/ while the destination is attached, or enumerate with `diskutil apfs listSnapshots /Volumes/<BackupVolume>` and mount the one you want."
+  - claim: "A backup that copied zero bytes did not back anything up"
+    correction: "APFS cloning records logical change without physical copying, so a backup reporting 'Total copied: 0.00 MB' can still contain modified and newly created files. Judge coverage by mounting the snapshot, never by the copy statistics."
+  - claim: "Time Machine configuration is stored per user"
+    correction: "It is system-level, at /Library/Preferences/com.apple.TimeMachine.plist. No per-user equivalent exists, so its absence from a home directory must not be read as Time Machine never having been configured."
+  - claim: "Time Machine writes log files under /var/log"
+    correction: "It does not. Backup activity is in Unified Logging under subsystem com.apple.TimeMachine, categories including General, TMSession, BackupEngine, CopyProgress, TMSnapshot and LocalThinning."
+  - claim: "If a directory appears in a backup, its contents were backed up"
+    correction: "Excluded directories are present but empty. Read that backup's .exclusions.plist to distinguish 'excluded at backup time' from 'genuinely empty', rather than inferring from the current exclusion settings."
+  - claim: "Time Machine backups are encrypted by default"
+    correction: "Encryption is opt-in at destination setup, and the current state is recorded as LastKnownEncryptionState. An unencrypted destination is readable by anyone with physical access to the media."
+  - claim: "Deleting a file from the live system removes it from backups"
+    correction: "Each snapshot is an independent point-in-time view, so a file deleted from the live system persists in every earlier backup and local snapshot. This is the artifact's primary forensic value."
+  - claim: "Without the backup drive there is no Time Machine evidence"
+    correction: "Usually false. A Time Machine-enabled Mac accumulates local APFS snapshots on its own source volume, both from backup runs and from the scheduled path while the destination is unavailable. They are recoverable from a disk image with no backup media at all."
+  - claim: "Time Machine must be currently configured for backup evidence to exist"
+    correction: "Destinations, AttemptDates and SnapshotDates persist in the plist after media is disconnected, establishing that backups existed and when, even when the media itself is unavailable."
+
+corroborate_with:
+  for_execution: []
+  for_presence: [apfs_snapshots, fsevents, spotlight]
+  for_timeline: [unified_logging, apfs_snapshots]
+
+related_tools: [tmutil, diskutil, mount_apfs, plutil, log, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "A binary recovered from a pre-incident backup — hash it and check threat intelligence for known malicious files"
+
+references:
+  - "Apple — Time Machine documentation"
+  - "Apple — About Time Machine local snapshots (support.apple.com/en-us/102154)"
+  - "Apple — Back up your Mac with Time Machine (support.apple.com/en-us/104984)"
+  - "Howard Oakley — Managing snapshots: how to stop them eating free space (eclecticlight.co)"
+  - "Apple — tmutil(8), diskutil(8), mount_apfs(8) man pages"
+  - "log2timeline/plaso — plist_plugins/time_machine.py, which parses Destinations and SnapshotDates from com.apple.TimeMachine.plist"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+
+investigation_patterns:
+  - name: "Establish backup history from the plist — do this first, destination media not required"
+    note: |
+      /Library/Preferences/com.apple.TimeMachine.plist records backup history independently of the media, so it works even when the destination was never collected.
+
+      `sudo plutil -p /Library/Preferences/com.apple.TimeMachine.plist`
+
+      Per destination, read:
+        LastKnownVolumeName, DestinationID, DestinationUUIDs   which media
+        FilesystemTypeName                                     apfs or hfs
+        LastKnownEncryptionState                               was it encrypted
+        AttemptDates vs SnapshotDates                          attempted vs completed
+        RESULT, ConsistencyScanDate                            outcome and health
+        BytesUsed, BytesAvailable                              capacity at last use
+
+      This file is SYSTEM-level. Do not search a home directory for it and report its absence as meaningful.
+
+      log2timeline parses this same file through its time_machine plist plugin (Destinations, SnapshotDates), which folds backup history into a wider timeline. 
+    follow_up: "SnapshotDates is the fuller record — it carried one entry per backup on the tested host, matching the snapshots on the destination. Consider reviewing local or backup snapshots bracketing the incident window. Record DestinationUUIDs so backup media encountered later can be tied back to this host."
+
+  - name: "Enumerate and mount snapshots"
+    note: |
+      Both families mount identically; only the device and the suffix differ.
+
+      Local snapshots — source volume, no backup media needed, the usual examination position:
+      `diskutil apfs listSnapshots /System/Volumes/Data`
+      `diskutil info /System/Volumes/Data | grep "Device Node"`
+      `sudo mkdir -p /tmp/local_mount`
+      `sudo mount_apfs -o ro -s com.apple.TimeMachine.<timestamp>.local /dev/<data_device> /tmp/local_mount`
+      Contents appear at the mount root mirroring the source volume, so a user file sits at /tmp/local_mount/Users/<user>/...
+
+      Destination backups — backup volume attached:
+      `diskutil apfs listSnapshots /Volumes/<BackupVolume>`
+      `diskutil info /Volumes/<BackupVolume> | grep "Device Node"`
+      `sudo mkdir -p /tmp/tm_mount`
+      `sudo mount_apfs -o ro -s com.apple.TimeMachine.<timestamp>.backup /dev/<dest_device> /tmp/tm_mount`
+      Contents are at /tmp/tm_mount/<timestamp>.backup/Data/ — note the wrapper directory, unlike local snapshots.
+
+      macOS sometimes automounts snapshots read-only, which saves mounting by hand: /Volumes/com.apple.TimeMachine.localsnapshots/ for local snapshots, and /Volumes/.timemachine/ for destination backups while the media is attached. Both paths are transient — the local one was populated during backup activity and absent hours later while every snapshot still existed — so their absence says nothing about whether snapshots exist. `tmutil listbackups` prints the destination paths, which fail when the media is absent.
+
+      Mount one snapshot at a time and unmount when finished.
+    follow_up: "Record SnapshotXID alongside each name — it orders snapshots reliably even where timestamps are in doubt. Distinguish the families when reporting: .local is source state, .backup is a completed backup on the destination. A host with no Time Machine configuration will generally have no .local snapshots at all, only com.apple.os.update-* system snapshots holding no user data (see the apfs_snapshots artifact)."
+
+  - name: "Recover a file and establish when it changed"
+    note: |
+      Mount two snapshots bracketing the period of interest and compare the same path in each.
+
+      Against the live system:
+      `sudo tmutil compare`
+      `sudo tmutil compare <backup_path> /`
+
+      Copy recovered files to an evidence directory and hash them.
+    follow_up: "Recovery proves the file existed with that content at that snapshot time — not that it was executed, nor that the user created it."
+
+  - name: "Determine when the backup drive was connected"
+    note: |
+      Each backup run snapshots the source and then the destination seconds later, so pairing the two lists reconstructs when the media was attached.
+
+      `diskutil apfs listSnapshots /System/Volumes/Data`      # .local, source
+      `diskutil apfs listSnapshots /Volumes/<BackupVolume>`   # .backup, destination
+
+      A local snapshot with a destination snapshot within a few seconds means a backup ran and the drive was present. An unpaired local snapshot means the scheduled path ran with the destination absent. This requires access to the destination.
+    follow_up: "Consider reviewing backup snapshots bracketing the incident window."
+
+  - name: "Reconstruct what was excluded, per backup"
+    note: |
+      Exclusions are recorded inside each backup, so exclusion history is recoverable rather than inferred:
+
+      `sudo plutil -p /tmp/tm_mount/<timestamp>.backup/.exclusions.plist`
+
+      Keys: userExclusionPaths (user or administrator additions), standardExclusionPaths (Apple defaults), stickyExclusionPaths, apiExclusionPaths, sourcePaths, systemFilesExcluded.
+
+      Current configuration, for comparison:
+      `sudo defaults read /Library/Preferences/com.apple.TimeMachine SkipPaths`
+      `tmutil isexcluded <path>`
+
+      Remember that excluded directories appear in the backup as EMPTY directories. An empty Documents in a backup means excluded, not that the user had no documents.
+    follow_up: "Compare userExclusionPaths across successive backups. An exclusion added shortly before or during the incident window suggests content was deliberately kept out of backups — and the per-backup record is what makes that provable rather than speculative."
+
+  - name: "Review Time Machine activity in Unified Logging"
+    note: |
+      There are no Time Machine log files under /var/log. Use Unified Logging:
+
+      `log show --last 7d --predicate 'subsystem == "com.apple.TimeMachine"' --info --style compact`
+
+      Useful categories: LocalSnapshotManagement (snapshot creation), LocalThinning (snapshot removal and age-based thinning), BackupEngine and TMSession (backup runs). The kernel's apfs fs_insert_snapshot_metadata records also give creation times for both snapshot families — see the apfs_snapshots artifact.
+    follow_up: "Bounded by Unified Logging retention, so state the window examined when reporting absence. Note that a local snapshot cannot be attributed to automatic or manual creation from the snapshot itself; the Unified Log is the only place that distinction may appear."

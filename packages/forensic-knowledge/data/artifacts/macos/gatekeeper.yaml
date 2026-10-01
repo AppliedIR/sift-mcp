@@ -1,0 +1,132 @@
+name: Gatekeeper
+description: "macOS code signing and notarization enforcement system that assesses applications before first execution — controls which software is allowed to run"
+platform: macos
+platform_notes: |
+  Gatekeeper is the macOS security framework that verifies code signatures and notarization status before allowing applications to run. When a user opens an application for the first time (particularly one with a quarantine attribute), Gatekeeper checks:
+  1. Code signature validity (is the binary signed by a known developer?)
+  2. Notarization status (did Apple scan and approve the binary?)
+  3. Revocation status (has the developer certificate been revoked?)
+
+  Sequoia removed the Control-click → Open bypass in Finder. Running unsigned or unnotarized software now requires System Settings → Privacy & Security → Open Anyway, which prompts for an admin password. That prompt is not the only path, though: the underlying authorization right is also satisfied by any root process, which writes an approval with no prompt at all. An approval record therefore shows that software was allowed to run, not necessarily that a person authenticated it.
+
+  Gatekeeper works closely with XProtect (malware scanning), quarantine (download tracking), and the syspolicy subsystem (policy enforcement).
+
+locations:
+  - path: "/var/db/SystemPolicyConfiguration/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Gatekeeper's state directory, holding several distinct SQLite databases — SystemPolicy (the rule set), ExecPolicy (per-executable assessments), Tickets (notarization tickets), KextPolicy — plus .LastGKReject, TamperExceptions.plist, and the gke/ and gke.bundle/ allowlist bundles. Collect the directory whole, including every -wal and -shm supporting file."
+  - path: "/var/db/SystemPolicyConfiguration/SystemPolicy"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "The assessment rule set, not an activity log. Table authority holds the evaluation rules — Apple System, Apple Installer, Developer ID, Mac App Store — alongside thousands of GKE cdhash allowlist entries. Columns allow, disabled, priority, ctime, mtime, user and remarks attribute each rule, so any rule added outside Apple's shipped set is distinguishable by its user and ctime."
+  - path: "/var/db/SystemPolicyConfiguration/ExecPolicy"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "The actively written assessment store and the richest Gatekeeper artifact. executable_measurements_v2 holds one row per assessed executable with is_signed, is_valid, is_quarantined, bundle_identifier, bundle_version, team_identifier, signing_identifier, cdhash, main_executable_hash, file_size, responsible_file_identifier and timestamps. provenance_tracking maps a binary to the URL it came from together with its signing identity. historic_gk_overrides records only a timestamp per override — no path or identity — while historic_malware_blocks also carries the blocked cdhash. Collect ExecPolicy-wal and ExecPolicy-shm alongside it."
+  - path: "/var/db/SystemPolicyConfiguration/Tickets"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Cached notarization tickets — tables tickets, hashes, legacy_policy and settings. Establishes which software held a valid notarization ticket locally, independent of whether Apple's notarization service is reachable at examination time."
+  - path: "/var/db/SystemPolicyConfiguration/.LastGKReject"
+    os_versions: ["macOS 15 (Sequoia)"]
+    notes: "Plist recording the most recent Gatekeeper rejection: Timestamp, BookmarkData resolving to the rejected file, IsExecutionPath, DirectApproval, PromptType, and XProtectMalwareType (0 indicates a signature or notarization rejection rather than an XProtect match). Overwritten on each rejection, so treat it as a single sample rather than a history, and pair it with ExecPolicy.historic_malware_blocks."
+  - path: "/var/db/gkopaque.bundle/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Gatekeeper opaque allowlist bundle — cdhash entries Apple ships to permit specific unsigned or legacy software."
+
+proves:
+  - "Whether Gatekeeper assessed a specific application and the verdict (ExecPolicy.policy_scan_cache holds policy_match, malware_result, top_policy_match and matched_rule_name — the last naming which authority allowed it)"
+  - "That a Gatekeeper override occurred and when (from ExecPolicy.historic_gk_overrides)"
+  - "That a binary was blocked as malware and its identity (ExecPolicy.historic_malware_blocks records the blocked cdhash with a timestamp)"
+  - "The code signing identity and team ID of assessed applications (from ExecPolicy.executable_measurements_v2 and provenance_tracking)"
+  - "Where an assessed binary came from (provenance_tracking pairs a download URL with the bundle identifier, cdhash, team identifier and signing identifier)"
+  - "The current Gatekeeper enforcement state on a live host (`spctl --status` reports assessments enabled or disabled)"
+
+does_not_prove:
+  - "That every executed binary was assessed by Gatekeeper (binaries without quarantine attributes may bypass assessment)"
+  - "That an allowed application is safe (a validly signed and notarized application can still be malicious — supply chain attacks, compromised developer accounts)"
+  - "Which application a Gatekeeper override applied to (historic_gk_overrides stores only a timestamp, with no path, bundle identifier, or cdhash)"
+  - "That a person authorised an approval. The authorization right behind an assessment update is satisfied by any root process as well as by admin authentication, so an approval can be written with no prompt shown."
+  - "A complete record of every assessment — these are caches scoped to what was actually evaluated, not an execution log (e.g. a host with thousands of binaries held 50 measurement rows and 95 scan-cache entries)"
+
+timestamps:
+  - field: "ExecPolicy — policy_scan_cache.timestamp, executable_measurements_v2.timestamp, provenance_tracking.timestamp"
+    meaning: "When Gatekeeper evaluated the binary. Unix epoch seconds in UTC — convert with datetime(timestamp,'unixepoch')."
+    common_misinterpretation: "This is when the assessment was cached, not when the application ran and not when it was downloaded. provenance_tracking.timestamp sits closer to acquisition time while policy_scan_cache.timestamp is evaluation time, so one application can hold rows in several tables carrying different times."
+  - field: "SystemPolicy — authority.ctime and authority.mtime"
+    meaning: "When an assessment rule was created and last modified. Stored as a JULIAN DAY number rather than Unix epoch — convert with datetime(ctime), with no 'unixepoch' modifier."
+    common_misinterpretation: "Applying 'unixepoch' to these columns yields a 1970 date."
+  - field: "Tickets — tickets.timestamp and tickets.last_access"
+    meaning: "When a notarization ticket was cached and when it was last consulted. Unix epoch seconds in UTC."
+    common_misinterpretation: "last_access records Gatekeeper consulting the ticket, which need not coincide with the application launching. The row is keyed by hash, so it identifies no application on its own."
+  - field: ".LastGKReject — Timestamp"
+    meaning: "When the most recent Gatekeeper rejection occurred. A native plist date in UTC."
+    common_misinterpretation: "Only the latest rejection survives — the file is overwritten each time — so this says nothing about whether earlier rejections occurred."
+  - field: "Unified Logging — com.apple.syspolicy.exec"
+    meaning: "When Gatekeeper evaluated an execution, recorded in real time."
+    common_misinterpretation: "Bounded by Unified Logging retention, which is typically far shorter than the ExecPolicy cache. Absence of a log entry does not mean no assessment occurred; check ExecPolicy for the cached record."
+
+common_misinterpretations:
+  - claim: "Gatekeeper scans all executed binaries"
+    correction: "Gatekeeper primarily assesses applications that have the quarantine extended attribute (files downloaded from the internet). Binaries compiled locally, transferred via USB without quarantine, or with the quarantine attribute stripped may not be assessed."
+  - claim: "A notarized application is guaranteed safe by Apple"
+    correction: "Notarization means Apple scanned the application and did not find known malware at the time of submission. It is not a guarantee of safety — new malware, logic bugs, and supply chain compromises are not caught by notarization. Apple can revoke notarization tickets retroactively."
+  - claim: "Gatekeeper cannot be bypassed"
+    correction: "An admin can override a block via System Settings → Privacy & Security → Open Anyway (the Control-click → Open shortcut was removed in Sequoia). `spctl --global-disable` turns assessment off entirely, and enforcement can be weakened further with SIP disabled. Overrides are recorded but not prevented."
+  - claim: "If Gatekeeper allowed an application, it will always be allowed"
+    correction: "Apple can revoke developer certificates and notarization tickets. An application allowed today may be blocked after a revocation. Gatekeeper re-checks notarization periodically."
+
+corroborate_with:
+  for_execution: [unified_logging, quarantine, xprotect_mrt]
+  for_presence: [quarantine, fsevents]
+  for_timeline: [unified_logging, knowledgec_biome]
+
+related_tools: [spctl, codesign, stapler, sqlite3, plutil, log, mac_apt]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "A blocked cdhash from historic_malware_blocks, or an unfamiliar team identifier or matched_rule_name from the assessment cache — search for the associated malware family and MITRE techniques"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Team ID or binary hash from Gatekeeper assessment — check threat intelligence"
+
+references:
+  - "Apple — Gatekeeper and runtime protection documentation"
+  - "Apple — Platform Security Guide (Gatekeeper section)"
+  - "Apple — Notarization documentation"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+  - "Patrick Wardle — The Art of Mac Malware, Volume 1"
+  - "Howard Oakley — How macOS now tracks the provenance of apps (eclecticlight.co)"
+
+investigation_patterns:
+  - name: "Check Gatekeeper status"
+    note: |
+      For live analysis, verify Gatekeeper enforcement level:
+      `spctl --status`
+      If assessments are disabled, applications can run without Gatekeeper checks. This is a significant security finding.
+    follow_up: "If Gatekeeper is disabled, check Unified Logging and csrutil status for when and why it was disabled."
+
+  - name: "Query Gatekeeper assessment history and user overrides"
+    note: |
+      Gatekeeper's forensic state is split across two SQLite databases under /var/db/SystemPolicyConfiguration/: ExecPolicy holds historic assessments and overrides; SystemPolicy holds the active rule set (mostly Apple-shipped GKE allow-rules — not user history). Recent Gatekeeper assessments (bundle id, team identifier, signing identifier, cdhash, policy match, malware result):
+      `sudo sqlite3 /var/db/SystemPolicyConfiguration/ExecPolicy "SELECT datetime(timestamp,'unixepoch') AS scan_time, bundle_id, team_identifier, signing_identifier, cdhash, policy_match, malware_result FROM policy_scan_cache ORDER BY timestamp DESC LIMIT 50;"`
+      User Gatekeeper overrides (each row is one 'Open Anyway' / 'Allow Anyway' event):
+      `sudo sqlite3 /var/db/SystemPolicyConfiguration/ExecPolicy "SELECT datetime(timestamp,'unixepoch') AS override_time FROM historic_gk_overrides ORDER BY timestamp DESC;"`
+      Inspect the active rule set (use this only to see what is currently allowed; not for historic assessment lookup):
+      `sudo sqlite3 /var/db/SystemPolicyConfiguration/SystemPolicy "SELECT * FROM authority ORDER BY ROWID DESC LIMIT 50;"`
+    follow_up: "Cross-reference any historic_gk_overrides timestamps with the quarantine artifact (download URL and time) and Unified Logging com.apple.syspolicy.exec events for the same window — a user override on a recently downloaded binary is a strong social-engineering signal."
+
+  - name: "Verify code signature of a specific application"
+    note: |
+      Check the code signature and notarization status:
+      `codesign -dv --verbose=4 <app_path>`
+      `spctl -a -vv <app_path>`
+      `xcrun stapler validate <app_path>`
+      Look for: valid signature, expected team ID, notarization ticket, no ad-hoc signing, entitlements that match the application's purpose. Note that spctl checks notarization online via Apple's CRL/notarization service, whereas a stapled ticket attaches a digital notarization ticket for offline validation. Absence of a stapled ticket is normal.
+      Read the reason, not just the verdict. spctl rejects a plain executable even when validly signed — /usr/bin/du returns 'rejected (the code is valid but does not seem to be an app)' with origin=Software Signing, and --type execute does not change that. A genuinely unsigned file instead returns 'rejected' with source=no usable signature. An accepted app prints both fields, e.g. source=Notarized Developer ID with origin=Developer ID Application: <name> (TEAMID).
+    follow_up: "Ad-hoc signed, unsigned, or revoked applications are high-priority investigation targets."
+
+  - name: "Identify Gatekeeper overrides in Unified Logging"
+    note: |
+      Query for Gatekeeper override events:
+      `log show --predicate 'subsystem BEGINSWITH "com.apple.syspolicy"' --info`
+      User overrides generate specific log entries when the user clicks "Open Anyway" (pre-Sequoia) or in System Settings → Privacy & Security after a blocked launch attempt (Sequoia+).
+    follow_up: "Cross-reference overridden applications with quarantine artifact for download source and with XProtect for malware assessment."

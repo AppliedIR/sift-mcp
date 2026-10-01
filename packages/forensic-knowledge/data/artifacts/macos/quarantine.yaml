@@ -1,0 +1,122 @@
+name: Quarantine Events
+description: "Extended attribute and SQLite database tracking files downloaded from the internet — records the downloading application, download time, and Gatekeeper approval state, with the origin URL often held in a companion kMDItemWhereFroms attribute"
+platform: macos
+platform_notes: |
+  When a file is downloaded via a quarantine-aware application (Safari, Chrome, Mail, AirDrop, curl in some configurations, etc.), macOS applies the com.apple.quarantine extended attribute to the file. This attribute contains a UUID that links to a record in the QuarantineEventsV2 SQLite database, which stores the downloading application, timestamp, and in some cases the download URL (the URL is often omitted in the database). Gatekeeper reads the extended attribute to determine whether to perform a security assessment on first open. The quarantine xattr can be stripped with `xattr -d`, but the database record may persist independently.
+
+locations:
+  - path: "~/Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Per-user SQLite database containing download records. Check every user's home directory. This is the primary quarantine database location."
+  - path: "com.apple.quarantine extended attribute attached to some downloaded files"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Applied to the downloaded file itself. List attribute names with `xattr <file>` or `ls -l@ <file>`; avoid `xattr -l` here, since it dumps raw binary plist bytes for the metadata attributes and corrupts terminal output. com.apple.quarantine is plain text — `xattr -p com.apple.quarantine <file>` — and its value is semicolon-delimited as flags;hex-timestamp;agent-name;UUID, for example 00c3;6a987b9d;Safari;CBE2FA0D-8C4D-4BB3-9C0C-C47FC226160B. The third field is the agent NAME; the bundle identifier appears only in the database as LSQuarantineAgentBundleIdentifier. The companion attributes com.apple.metadata:kMDItemWhereFroms (an array holding both the download URL and the referring URL) and kMDItemDownloadedDate are binary plists, so read them with `xattr -px <name> <file> | xxd -r -p | plutil -p -`, or with `mdls -name kMDItemWhereFroms <file>` on a live host. com.apple.provenance is also commonly present and links to ExecPolicy.provenance_tracking in the gatekeeper artifact."
+
+proves:
+  - "That a file was downloaded from the internet (or received via AirDrop, email attachment, etc.)"
+  - "The URL the file was downloaded from (LSQuarantineDataURLString when populated; otherwise recoverable from the file's kMDItemWhereFroms xattr)"
+  - "The referring URL that led to the download (LSQuarantineOriginURLString, when populated)"
+  - "The application used to download the file (LSQuarantineAgentBundleIdentifier in the database — e.g. com.apple.Safari; the xattr carries the shorter agent name form, e.g. Safari)"
+  - "The sender of a file received by mail or message, where recorded (LSQuarantineSenderName and LSQuarantineSenderAddress)"
+  - "The timestamp of the download event (LSQuarantineTimeStamp in the database, also encoded in the xattr)"
+  - "A UUID linking the xattr on the file to the database record (LSQuarantineEventIdentifier), where a matching row exists"
+  - "The Gatekeeper approval state of the file, from the flags field of the com.apple.quarantine xattr"
+
+does_not_prove:
+  - "That the file was actually opened or executed after download — the database records the download event, not usage. The xattr flags field does change on Gatekeeper approval, which is a weak indication that an open was attempted, but it is not an execution record."
+  - "That a quarantined file will have a matching database row — on a tested host only 3 of 10 did, so a failed UUID lookup is common and does not mean the download went unrecorded"
+  - "That no origin was recorded because the database URL columns are empty — check the file's kMDItemWhereFroms xattr before concluding the source is unknown"
+  - "That the file still exists on disk (the database record persists after the file is deleted)"
+  - "That the file was NOT downloaded from the internet if the xattr is absent (xattr can be stripped with `xattr -d com.apple.quarantine`, and some download methods do not set it)"
+  - "That the download URL is the true origin (the URL may be a redirect, CDN, or URL shortener)"
+  - "The content of the file at download time (only metadata about the download event is recorded)"
+  - "Which file a database record refers to — the row holds no filename, path, or alias. The LSQuarantineEventIdentifier UUID resolves a file's xattr back to its database record, never the reverse, and one record covers every file extracted from that download."
+
+timestamps:
+  - field: "LSQuarantineTimeStamp (database column)"
+    meaning: "When the download event was recorded. A Core Data / NSDate timestamp — seconds since 2001-01-01 00:00:00 UTC, stored as REAL with sub-second precision. Convert with datetime(LSQuarantineTimeStamp+978307200,'unixepoch')."
+    common_misinterpretation: "Reading it as Unix epoch shifts the result roughly 31 years into the PAST — the value 810070813 renders as 1995-09-02 rather than the correct 2026-09-02. Many SQLite viewers do not auto-detect the Core Data epoch."
+  - field: "Timestamp in the xattr value (second semicolon-delimited field)"
+    meaning: "Download time as hexadecimal seconds since the Unix epoch — 6a987b9d is 1788378013, or 2026-09-02 19:40:13 UTC. The same instant is usually also recorded in the file's kMDItemDownloadedDate attribute, but that one is absent more often."
+    common_misinterpretation: "This field uses a different epoch from the LSQuarantineTimeStamp column recording the same event, so applying the Core Data offset here shifts the result roughly 31 years into the FUTURE (2057). Both misreadings preserve the month, day and time and change only the year, so a date correct in everything but the year is the signature of an epoch mismatch."
+
+common_misinterpretations:
+  - claim: "All downloaded files have a quarantine xattr"
+    correction: "Only quarantine-aware applications set the xattr. Files downloaded via non-aware tools (some command-line utilities, custom scripts, or applications that do not enable it) may not have the attribute. Additionally, files extracted from archives may or may not inherit the parent archive's quarantine status depending on the extraction tool."
+  - claim: "The quarantine xattr cannot be removed"
+    correction: "Any user can remove it with `xattr -d com.apple.quarantine <file>`. Malware installers commonly strip it to bypass Gatekeeper. Privacy tools also remove quarantine attributes. Absence of the xattr does not mean the file was not downloaded."
+  - claim: "The QuarantineEventsV2 database and the xattr are always in sync"
+    correction: "The two are independent after creation. Most commonly the xattr outlives the record — on a tested host only 3 of 10 quarantined files had a matching database row. The reverse also occurs: the xattr can be stripped, or the file deleted, while the database record persists, which makes the database useful for identifying downloads that were later cleaned up."
+  - claim: "Quarantine events are recorded for all file transfer methods"
+    correction: "AirDrop, email attachments (via Mail.app), and browser downloads are generally recorded. Files transferred via scp, rsync, or directly written by applications may not trigger quarantine. USB-copied files do not receive quarantine attributes."
+  - claim: "The download URL in the database is always the direct download link"
+    correction: "The URL may be a redirect endpoint, a CDN address, or a shortener target. Where the database columns are empty, the file's kMDItemWhereFroms attribute carries the same pair — the direct download URL first, then the referring page — which shows where the user was when the download started."
+
+corroborate_with:
+  for_execution: [unified_logging, gatekeeper, xprotect_mrt]
+  for_presence: [fsevents, spotlight, safari_artifacts]
+  for_timeline: [unified_logging, knowledgec_biome, safari_artifacts]
+
+related_tools: [xattr, mdls, plutil, sqlite3, mac_apt, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "A download URL or domain recovered from the record, or from the file's kMDItemWhereFroms attribute — check threat intelligence for known malicious infrastructure"
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Downloading agent or URL pattern is suspicious — search for known macOS malware delivery methods"
+  - mcp: "remnux"
+    tool: "analyze_file"
+    when: "Downloaded file still exists on disk — submit for static analysis"
+
+references:
+  - "Apple — Gatekeeper and runtime protection documentation"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+  - "Patrick Wardle — The Art of Mac Malware, Volume 1"
+  - "mac4n6.com — Quarantine Events reference"
+  - "Howard Oakley — The Quarantine Extended Attribute (eclecticlight.co)"
+  - "Stephan Berger — macOS Extended Attributes: Case Study (dfir.ch)"
+
+investigation_patterns:
+  - name: "Dump all quarantine database records"
+    note: |
+      Query the QuarantineEventsV2 database for each user:
+      `sqlite3 ~/Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2 \
+        "SELECT datetime(LSQuarantineTimeStamp + 978307200, 'unixepoch') as download_time, \
+         LSQuarantineAgentBundleIdentifier as agent, \
+         LSQuarantineDataURLString as url, \
+         LSQuarantineOriginURLString as referrer, \
+         LSQuarantineEventIdentifier as uuid \
+         FROM LSQuarantineEvent ORDER BY LSQuarantineTimeStamp DESC;"`
+      Note: 978307200 is the offset between Unix epoch and Core Data epoch (2001-01-01).
+      If the url and referrer columns come back empty, recover them from the files themselves with `mdls -name kMDItemWhereFroms <file>`.
+    follow_up: "Filter results to the incident time window. Flag downloads from unusual domains or via unexpected agents."
+
+  - name: "Find files with quarantine xattr still present"
+    note: |
+      Search for files that still have the quarantine attribute:
+      `find / -xattrname com.apple.quarantine 2>/dev/null`
+      Or on a mounted image, use xattr enumeration tools. For each file found, read the attribute with `xattr -p com.apple.quarantine <file>` and extract the UUID to correlate with the QuarantineEventsV2 database.
+    follow_up: "Hash each quarantined file and check against threat intelligence."
+
+  - name: "Identify stripped quarantine attributes"
+    note: |
+      The quarantine database stores no file path, so a record cannot be mapped back to a file — this correlation has to run from the filesystem side. Look for files that retain download metadata but have lost the quarantine attribute:
+      `mdfind 'kMDItemWhereFroms == "*"' | while read -r f; do xattr -p com.apple.quarantine "$f" >/dev/null 2>&1 || echo "$f"; done`
+      A file carrying kMDItemWhereFroms without com.apple.quarantine was downloaded but is no longer quarantined. FSEvents XattrModified events on the same path distinguish active stripping from a download method that never set the attribute in the first place.
+    follow_up: "If the xattr was stripped, check Unified Logging for Gatekeeper assessment events — the file may have been opened without a security prompt. Removing the attribute is also routine developer hygiene for downloaded command-line tools, so corroborate before treating it as evasion."
+
+  - name: "Downloads during incident window"
+    note: |
+      Filter quarantine database records to the incident time window and identify files downloaded from external sources. Pay attention to:
+      - Downloads via unexpected agents (e.g., curl or a scripting runtime instead of a browser)
+      - Downloads from IP addresses rather than domain names
+      - Downloads from newly registered or disposable domains
+      - Multiple downloads in rapid succession from the same source
+    follow_up: "For each suspicious download, check if the file still exists, verify its hash against threat intel, and trace what happened after download via Unified Logging and KnowledgeC."
+
+  - name: "Archive extraction provenance"
+    note: |
+      When a .zip, .dmg, or .pkg is downloaded, the archive itself gets the quarantine xattr. Whether extracted files inherit it depends on the extraction method. Archive Utility (macOS built-in) propagates the attribute; some third-party tools do not. Check both the archive and extracted contents for quarantine status.
+    follow_up: "If extracted files lack quarantine but the parent archive has it, note the extraction tool used and whether Gatekeeper would have assessed the extracted contents."

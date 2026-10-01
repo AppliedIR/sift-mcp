@@ -1,0 +1,221 @@
+name: Keychain
+description: "macOS encrypted credential storage — spans two coexisting generations, a legacy file-based keychain and the modern Data Protection keychain, which differ sharply in what metadata is recoverable without decryption"
+platform: macos
+platform_notes: |
+  macOS stores credentials in two generations of keychain that coexist on every modern system and behave differently in nearly every way that matters forensically. The legacy file-based keychains are handled by the Security framework and are what the `security` command-line tool operates on. The modern Data Protection keychain is SQLite-backed, arrived with OS X 10.9 (Mavericks) alongside iCloud Keychain, and holds the great majority of credentials.
+
+  The distinction that matters is how much survives without decryption. In a legacy keychain, only the secret is encrypted: service, account, description, and the creation and modification dates all read out of a locked, offline copy. In the Data Protection keychain, the attributes are encrypted alongside the secret, so the service and account columns are ciphertext and a credential cannot be identified from them. A useful subset stays in the clear — creation and modification dates, the owning access group, the protection class, and the iCloud-sync and tombstone flags — which is often enough to characterise a credential even when its account name cannot be read.
+
+  The scope trap is the most important point about this artifact. `security list-keychains` and `security dump-keychain` see only the legacy stores, which held well under a quarter of the credentials present on tested hosts. An examiner who runs those commands and stops there has missed most of the material and gets no indication that anything is absent.
+
+locations:
+  - path: "~/Library/Keychains/login.keychain-db"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Legacy per-user keychain. Item attributes — svce, acct, desc, cdat, mdat — are recoverable from a locked offline copy without the user's password, since only the secret itself is encrypted. This is a minority of the user's credentials, not the full set; the Data Protection keychain holds the rest."
+  - path: "/Library/Keychains/System.keychain"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Legacy system-wide keychain. Dominated by Wi-Fi credentials carrying the description 'AirPort network password', alongside a small number of certificates. Same attribute recoverability as the per-user legacy keychain."
+  - path: "~/Library/Keychains/<HardwareUUID>/keychain-2.db"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "The modern Data Protection keychain and the primary credential store, holding the large majority of items on tested hosts. Items are split across four tables: genp (generic passwords), inet (internet passwords), keys, and cert. The directory name is the IOPlatformUUID — confirm with `ioreg -rd1 -c IOPlatformExpertDevice | grep IOPlatformUUID`, or read the same value as Hardware UUID from `system_profiler SPHardwareDataType`. Collect keychain-2.db together with its -wal and -shm files: the WAL routinely holds recent writes and on tested hosts was a substantial fraction of the database size. The file is readable as SQLite, but item attributes are encrypted."
+  - path: "~/Library/Keychains/<HardwareUUID>/user.kb"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "User keybag, wrapping the class keys that protect the Data Protection keychain. Required for any authorized decryption, and on Apple Silicon the relevant keys are additionally bound to the Secure Enclave. Collect it, but note that possessing it does not make decryption possible without the user's password."
+  - path: "/Library/Keychains/system-keychain-2.db"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "System-level Data Protection keychain. Root-owned, mode 0600, and far smaller than the per-user store. Same collection caveat: take the -wal and -shm files with it."
+  - path: "/System/Library/Keychains/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "System trust stores on the Sealed System Volume: SystemRootCertificates.keychain holding the shipped root CA set, plus SystemTrustSettings.plist, EVRoots.plist and X509Anchors. Read-only and SIP-protected, so not directly tamperable on a running system. This is the shipped certificate set rather than the trust baseline — membership here does not mean the system trusts a certificate for TLS — so hunt an injected authority by comparing `security dump-trust-settings -s` output, not by diffing this keychain."
+  - path: "~/Library/Keychains/metadata.keychain-db and /Library/Keychains/apsd.keychain"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Auxiliary legacy keychains. metadata.keychain-db backs keychain and Passwords metadata; apsd.keychain holds Apple Push Service credentials. Low value individually, but enumerate them so that item counts reconcile against the totals."
+  - path: "~/Library/Keychains/<HardwareUUID>/com.apple.security.keychain-*.TrustedPeersHelper.db"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Octagon trust state for iCloud Keychain — the local cache of which peers are entitled to receive synced keychain items. ZPEER holds the trusted peers (ZISEGOPEER marks this device), ZMACHINE the account's device list with status flags and modification times, ZVOUCHER the records of one trusted peer admitting another, and the ZESCROW* tables the iCloud recovery records. Peer and machine identifiers are opaque and the info blobs are signed rather than plain text, so this establishes how many peers are trusted and when the list changed, not which physical device each one is. Relevant when establishing whether an unexpected device joined the sync circle and thereby obtained synced credentials. The file set varies between hosts."
+  - path: "/Library/Preferences/com.apple.wifi.known-networks.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "A companion artifact rather than a keychain. The keychain holds Wi-Fi secrets while this plist holds the timestamped SSID history — AddedAt, JoinedByUserAt, UpdatedAt, AddReason and ChannelHistory per network. This is the better source for Wi-Fi timeline and location context, since the keychain alone records no dates for network joins."
+  - path: "/private/var/db/SystemKey"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "The unlock key for System.keychain — 48 bytes, mode 0400 root:wheel, and not SIP-restricted. The system unlocks that keychain without user interaction, so possessing this file decrypts its secrets, Wi-Fi passwords included, with no user password involved. mac_apt's KEYCHAINS plugin and chainbreaker both accept it as an unlock file. Collect it alongside System.keychain: without it the system keychain's secrets stay closed, and with it they do not."
+
+proves:
+  - "Legacy keychains: which service and account each credential belongs to, its description, and its creation and modification dates — all plain text, readable from a locked offline copy without the user's password, though individual items may leave any of these attributes empty"
+  - "Modern keychains: that a credential exists, when it was created and modified, which access group owns it, its protection class, and its iCloud-sync and tombstone flags — all readable without decryption, though the service and account are not"
+  - "Legacy keychains: which Wi-Fi networks the system holds credentials for, from System.keychain items whose description is 'AirPort network password'"
+  - "Which certificates are present in the system root store. An explicit trust override is recorded in the trust settings rather than in the keychain listing, so check both."
+  - "Legacy keychains: which applications are authorized to use a given item, with each application's path and code-signing requirement, from its ACL entries. `security dump-keychain -a` shows these only when the keychain is unlocked — on a locked keychain it silently omits the access section, so unlike the other legacy attributes an ACL is not recoverable from collected evidence without the password."
+  - "How many credentials each store holds. This is the basis for scoping any keychain finding, and both the legacy and the modern counts have to be reported for that scope to mean anything."
+
+does_not_prove:
+  - "The secret value of a user credential without authorized decryption. Recovery from login.keychain-db or the Data Protection keychain requires the custodian's password, an authenticated session, or keys from a memory image, obtained under proper legal authority. System.keychain is the exception — it is unlocked by /private/var/db/SystemKey rather than by any user password, so its secrets are recoverable from an image that carries both files."
+  - "Modern keychains: which service, site, or account an item belongs to. In genp the svce and acct columns hold ciphertext; in inet the equivalent srvr, path and acct columns do the same. An item cannot be identified from them without decryption."
+  - "That a credential was ever used, accessed, or read. Both generations record creation and modification only — the modern item tables carry cdat and mdat, and neither generation has an access-time column of any kind."
+  - "Which process accessed a credential, or when. securityd's Unified Logging records keychain unlock events but identifies items by memory address and does not name the requesting process."
+  - "That the legacy keychain represents the user's credentials. It holds a minority of the items present, the rest being in the Data Protection keychain, so a finding scoped to login.keychain-db is not a finding about the user's credentials."
+  - "That a credential is still valid — a stored password may since have been changed at the service."
+  - "Every credential the user holds. Third-party managers such as 1Password and Bitwarden, browser-specific stores such as Chrome's, and credentials never saved are all outside the keychain."
+  - "That an ACL entry indicates access occurred — ACLs express authorization policy, not access history."
+
+timestamps:
+  - field: "Legacy keychain cdat / mdat (<timedate> attributes)"
+    meaning: "Creation and last-modification time of a keychain item in login.keychain-db or System.keychain, visible in `security dump-keychain` output without decryption. The value is ASCII-hex-encoded text rather than a number, decoding to the form YYYYMMDDHHMMSSZ — and the trailing Z means UTC."
+    common_misinterpretation: "mdat is modification of the keychain item (for example, the stored password being updated), not the time the credential was used to authenticate. Neither field records access. Note that these times are UTC."
+  - field: "Modern keychain cdat / mdat (REAL columns)"
+    meaning: "Creation and last-modification time in keychain-2.db, stored as Mac epoch time (CFAbsoluteTime — seconds since 2001-01-01 UTC). Present on all four item tables — genp, inet, cert and keys — and readable without decryption even though the item's attributes are encrypted. The keys table carries two further date columns, sdat and edat, holding a key's validity window."
+    common_misinterpretation: "These dates are available while the service and account are not. A row proves a credential was created at a time, without establishing what it was for. Do not pair a timestamp with a guessed service. A zero in any of these columns is an unset value rather than a date — it renders as 2001-01-01 00:00:00 through the usual epoch conversion, which is how sdat and edat appeared on every key of a tested host."
+  - field: "Filesystem mtime on the keychain files"
+    meaning: "When the store was last written by any means. For the Data Protection keychain this is often the only timestamp available, since per-item attributes are ciphertext — the file mtime bounds the most recent credential change even when the changed item cannot be identified."
+    common_misinterpretation: "Read the -wal file's mtime alongside the database's. Recent writes land in the write-ahead log first, and on a tested host the -wal was sixteen minutes newer than keychain-2.db, so the database mtime alone understates when the store last changed."
+  - field: "com.apple.wifi.known-networks.plist — AddedAt, JoinedByUserAt, UpdatedAt"
+    meaning: "When a Wi-Fi network was first added, last joined by the user, and last updated. The only dated record of network association; the keychain's AirPort items carry no join history."
+    common_misinterpretation: "JoinedByUserAt reflects a user-initiated join. Automatic reassociation to a known network does not necessarily update it, so absence of a recent value does not prove the network was not in use."
+
+common_misinterpretations:
+  - claim: "Running `security dump-keychain` shows the system's keychain contents"
+    correction: "It shows the legacy keychains only, and within the legacy keychains the plain dump returns attributes only: secret values require -d and the keychain password, and ACLs require -a against an unlocked keychain. Given no path argument, `dump-keychain` operates on the keychain search list, which `security list-keychains` shows holds only login.keychain-db and System.keychain, both legacy files; that is the limit of the tool's reach. It has no access to the modern Data Protection keychain at all, which requires SecItemCopyMatching through the Security framework or direct SQLite reads of keychain-2.db."
+  - claim: "Keychain contents cannot be examined without the user's password"
+    correction: "Metadata frequently can. `security dump-keychain` against a locked, offline copy of login.keychain-db returned every item and its attributes with no password prompt. Only the secret values require authorization. For the modern keychain the reverse applies: attributes are encrypted, but dates and access groups are not."
+  - claim: "securityd logs in Unified Logging show which process accessed which credential"
+    correction: "They do not. The com.apple.securityd subsystem is real and active (high volume, and not <private>-redacted), but keychain messages identify databases by memory address — 'KCdb 0xc06272d00 is unlocked; decoding for makeUnlocked()' — and name no item and no requesting process. Unified Logging can establish that a keychain was unlocked at a time; it cannot attribute credential access."
+  - claim: "`security find-certificate` reveals which certificate authorities the system trusts"
+    correction: "It lists certificates present in a keychain, not trust decisions, and the two genuinely differ — Apple's own SystemRootCertificates.keychain carries the Developer ID Certification Authority, a code-signing anchor that does not appear in the system TLS trust domain at all. Enumerate by domain instead. `security dump-trust-settings -s` gives the system domain and, despite the name, lists the OS's own trusted roots rather than overrides; a certificate showing 'Number of trust settings : 0' is trusted implicitly, while anything carrying settings has been overridden. `security dump-trust-settings` covers the user domain and `sudo security dump-trust-settings -d` the admin domain, where a managed host will commonly carry an explicitly trusted enterprise root that a certificate listing alone would not flag. A clean domain reports 'No Trust Settings were found', which is a normal result and not an error."
+  - claim: "iCloud Keychain sync means all credentials are in the local keychain file"
+    correction: "iCloud-synced items live in the Data Protection keychain under ~/Library/Keychains/<HardwareUUID>/, identifiable by the sync flag (sync=1) in keychain-2.db. They are not in login.keychain-db. Which devices can receive synced items is governed by the Octagon trusted-peer databases in the same directory."
+  - claim: "Wi-Fi passwords are in the user's login keychain"
+    correction: "They are in the System keychain — items carrying the description 'AirPort network password', with none in login.keychain-db. For network timeline, the keychain is the wrong source entirely: use /Library/Preferences/com.apple.wifi.known-networks.plist, which carries AddedAt and JoinedByUserAt per SSID."
+  - claim: "chainbreaker can extract the contents of any macOS keychain"
+    correction: "It parses the legacy file format only. Verified working on Sequoia's login.keychain-db, but its own source states it does not parse keychain-2.db, which uses a SQLite header. Since the Data Protection keychain holds the large majority of user items, a chainbreaker run covers a small fraction of the user's credentials. Report what it covered, not 'the keychain'. Note also that chainbreaker and `security dump-keychain` disagreed slightly on item counts for the same file — parse-based and API-based enumeration are not guaranteed to agree, so prefer chainbreaker for completeness on collected evidence."
+  - claim: "A keychain item's ACL shows which applications have accessed it"
+    correction: "ACL entries express which applications are authorized, along with partition identifiers. They are policy, not history. Note also that the plain dump does not show ACLs — `security dump-keychain -a` is required, and it emits the access section only when the keychain is unlocked, so ACLs are unavailable on collected evidence without the password."
+
+corroborate_with:
+  for_execution: []
+  for_presence: [unified_logging, tcc, time_machine, safari_artifacts]
+  for_timeline: [unified_logging, knowledgec_biome]
+
+related_tools: [security, sqlite3, chainbreaker, plutil, ioreg, mac_apt, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "An unfamiliar access group in keychain-2.db, or an ACL authorizing an application you did not expect — search for known macOS credential theft techniques"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "An unexpected trusted root CA or client certificate identified via dump-trust-settings — check the issuer against threat intelligence for known interception or C2 infrastructure"
+
+references:
+  - "Apple — Keychain Services documentation"
+  - "Apple — Platform Security Guide (keychain data protection, Secure Enclave, iCloud Keychain / Octagon)"
+  - "Apple — security(1) man page"
+  - "n0fate — chainbreaker: offline parser for the legacy keychain format"
+  - "mac_apt — KEYCHAINS plugin (supplies /private/var/db/SystemKey as the unlock file for System.keychain)"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+
+investigation_patterns:
+  - name: "Inventory every keychain store before drawing any conclusion"
+    note: |
+      Scoping is the first step because the obvious tool sees only part of the picture. Enumerate all stores and record counts for each.
+
+      Legacy stores (what `security` can reach):
+      `security list-keychains`
+      `security dump-keychain ~/Library/Keychains/login.keychain-db | grep -c '^keychain:'`
+      `sudo security dump-keychain /Library/Keychains/System.keychain | grep -c '^keychain:'`
+
+      Modern Data Protection stores (invisible to `security`):
+      `ioreg -rd1 -c IOPlatformExpertDevice | grep IOPlatformUUID`   # gives <HardwareUUID>
+      `sqlite3 ~/Library/Keychains/<HardwareUUID>/keychain-2.db "SELECT 'genp',count(*) FROM genp UNION ALL SELECT 'inet',count(*) FROM inet UNION ALL SELECT 'cert',count(*) FROM cert UNION ALL SELECT 'keys',count(*) FROM keys;"`
+      `sudo sqlite3 /Library/Keychains/system-keychain-2.db "SELECT count(*) FROM genp;"`
+
+      Report both figures; the modern store holding the large majority is the norm, not an anomaly.
+    follow_up: "If the modern store counts are not reported, the examination is incomplete. Collect keychain-2.db with its -wal and -shm files, since the WAL routinely holds uncommitted data."
+
+  - name: "Recover legacy keychain metadata (works offline, no password required)"
+    note: |
+      Legacy item attributes are stored unencrypted, so service, account, description and dates read out of a collected copy with no password and no prompt — only the secret itself is protected. This works on a keychain from a disk image or another host, since nothing machine-specific is consulted.
+
+      `security dump-keychain /absolute/path/to/login.keychain-db`
+
+      Give an ABSOLUTE path. Handed a relative one, `security` prints nothing and exits 0, which is indistinguishable from an empty keychain.
+
+      Attributes exposed include svce (service), acct (account), desc (user-visible description), icmt (comment), gena (generic free-form data), cdat and mdat (creation and modified date), plus for internet items srvr (server host), path (URL path), atyp (authentication type) and sdmn (security domain).
+
+      ACLs are the exception to all of this. `security dump-keychain -a` appends an access section naming each authorized application and its code-signing requirement, but only when the keychain is unlocked — against a locked collected copy it omits the section silently and still exits 0, so an empty result there means "locked", not "no ACLs".
+
+      Adding -d requests the secrets instead, which requires the keychain password and raises a GUI prompt. On a subject system that prompt is visible to anyone watching; on collected evidence there is no session to satisfy it. Declining leaves 'SecKeychainItemCopyAttributesAndData: User canceled the operation' on stderr, still prints the attribute portion, and still exits 0 — so check stderr, not the return code, before recording that secrets were retrieved.
+
+      For a collected image where the `security` tool is not appropriate, use chainbreaker, which parses the legacy format directly. This applies to legacy keychains only; the Data Protection keychain is not readable by `security` at all.
+    follow_up: "Flag items whose cdat falls inside the incident window and entries for services inconsistent with the user's role, then reconcile the count against the modern keychain before scoping any finding. Attributes establish which services a credential exists for, not whether it was ever used — neither generation carries an access timestamp."
+
+  - name: "Recover modern keychain metadata (attributes are encrypted; dates are not)"
+    note: |
+      keychain-2.db is readable as ordinary SQLite. The secret AND the service and account attributes are encrypted, but a useful metadata layer is not.
+
+      Item classes are genp (generic passwords), inet (internet passwords), cert, and keys. Recoverable in the clear:
+
+      `sqlite3 keychain-2.db "SELECT datetime(cdat+978307200,'unixepoch') AS created, datetime(mdat+978307200,'unixepoch') AS modified, agrp, pdmn, sync, tomb FROM genp ORDER BY cdat DESC LIMIT 50;"`
+
+      Field meanings:
+        cdat / mdat  Mac absolute time (CFAbsoluteTime, epoch 2001-01-01 UTC)
+        agrp         access group — which app or service owns the item
+                     (e.g. com.apple.cloudd, InternetAccounts, com.apple.akd)
+        pdmn         protection class: ak/ck/dk and the ThisDeviceOnly
+                     variants aku/cku/dku — governs when the item is available
+        sync         1 = syncs to iCloud Keychain
+        tomb         tombstone marker for deleted items
+
+      Confirm ciphertext rather than assuming: svce and acct should be short high-entropy blobs. If they are printable, the schema differs from the verified baseline and this guidance may not apply.
+    follow_up: "Group by agrp to see which subsystems own credentials, and treat an unfamiliar access group as a lead. Items with sync=1 may also exist on other devices in the user's iCloud Keychain circle — check the Octagon TrustedPeersHelper databases for which devices are trusted members. tomb rows indicate deleted items."
+
+  - name: "Wi-Fi credentials and network history"
+    note: |
+      These are two separate artifacts and both are needed. The keychain holds the secrets; the plist holds the dates.
+
+      Which networks have stored credentials:
+      `sudo security find-generic-password -D "AirPort network password" /Library/Keychains/System.keychain`
+      `sudo security dump-keychain /Library/Keychains/System.keychain | grep -c "AirPort network password"`
+
+      When networks were added and joined — the timeline source:
+      `sudo plutil -p /Library/Preferences/com.apple.wifi.known-networks.plist`
+
+      The plist carries SSID, AddedAt, JoinedByUserAt, UpdatedAt, AddReason, ChannelHistory, Hidden, and SupportedSecurityTypes per network. Its SSID count matched the AirPort keychain items exactly on a tested host — the two sources should reconcile.
+
+      Those secrets are recoverable from collected evidence. System.keychain is unlocked by /private/var/db/SystemKey rather than a user password, so mac_apt's KEYCHAINS plugin, or chainbreaker given the same unlock file, will decrypt the stored Wi-Fi passwords from an image carrying both files.
+    follow_up: "SSIDs establish location and travel context. Investigate networks added during the incident window, hidden networks, and any network whose AddReason indicates programmatic rather than user addition. A keychain AirPort item with no corresponding plist entry (or the reverse) is an inconsistency worth explaining."
+
+  - name: "Certificate trust review — presence is not trust"
+    note: |
+      Listing certificates answers a different question from what is trusted. Do both.
+
+      What is explicitly trusted (the question that matters for interception):
+      `security dump-trust-settings`         # user domain
+      `sudo security dump-trust-settings -d` # admin domain
+      `sudo security dump-trust-settings -s` # system domain — the OS's own trusted roots
+
+      What certificates exist:
+      `sudo security find-certificate -a -p /Library/Keychains/System.keychain`
+      `security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain`
+
+      An examination limited to the user and system keychains misses the trusted root set entirely, and the root keychain is not itself the trust baseline — it carries the Developer ID Certification Authority, a code-signing anchor absent from the system TLS trust domain. Baseline against `dump-trust-settings -s`, where a certificate showing 'Number of trust settings : 0' is trusted implicitly and anything carrying settings has been overridden. A clean user or admin domain reports 'No Trust Settings were found', which is a normal result rather than an error.
+    follow_up: "An unexpected trusted root in the admin or user domain is a strong TLS-interception indicator — corporate proxies produce this legitimately, so verify against organizational PKI expectations before treating it as malicious. Compare the trusted set against a known-good host on a matching macOS build. Also check for client certificates that could enable VPN or mutual-TLS access."
+
+  - name: "Keychain unlock events in Unified Logging — and their limits"
+    note: |
+      `sudo log show --last 1h --predicate 'process == "securityd"' --info --style compact`
+
+      This returns high volume and is not redacted — no <private> markers appear. But the keychain messages identify databases by memory address:
+
+        [com.apple.securityd:KCdb] 0xc06272d00(0xc06184900) is unlocked; decoding for makeUnlocked() [com.apple.securityd:SecurityAgentXPCConnection] Retrieved UID 501 for this session
+
+      Use it to establish that a keychain was unlocked and that a security agent prompt was raised, with times and session UID. Do not use it to claim which credential was accessed or which process requested it — that information is not present.
+    follow_up: "SecurityAgent prompt events are worth correlating: an authorization prompt at a time the custodian was not at the console suggests either remote interaction or an examiner's own activity. Record any prompts raised by examination so they are not later mistaken for subject activity."
+
+  - name: "Handling and authorization caution"
+    note: |
+      Secret VALUES from login.keychain-db and the Data Protection keychain require the custodian's login password, an authenticated session, or keys recovered from a memory image, and must only be obtained under proper legal authority and consent. System.keychain is the exception, unlocked by /private/var/db/SystemKey from the image itself. Brute-force or password-cracking attacks against keychain files are out of scope.
+
+      Commands that request secrets — `security dump-keychain -d`, `security find-generic-password -g` — raise an interactive authorization dialog on the console of a live system. This is disruptive, visible to anyone present, and generates SecurityAgent entries in Unified Logging that become part of the record.
+
+      Prefer this order: collect the files, work from copies, exhaust metadata first, and request decryption only when a specific investigative question requires a specific secret.
+    follow_up: "Where decryption is authorized, document who authorized it, which items were decrypted and why, and the time. If the custodian supplies the password, record that the recovery was credentialed rather than derived. Note in the examination record any authorization prompts raised by examiner activity."

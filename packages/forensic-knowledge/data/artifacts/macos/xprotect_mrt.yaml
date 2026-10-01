@@ -1,0 +1,185 @@
+name: XProtect and XProtect Remediator
+description: "Apple's built-in malware detection, remediation, and behavioral monitoring system — signature scanning at file open, scheduled remediation scans, an emergency Gatekeeper revocation list, and a persistent database of behavioral rule violations with full code-signing attribution"
+platform: macos
+platform_notes: |
+  XProtect is Apple's built-in anti-malware stack. It has three distinct components, and only the first two are widely documented:
+
+  1. XProtect (signature scanning) — evaluates files at specific trigger points, principally the first open of a quarantined file. Detection content lives in XProtect.bundle/Contents/Resources/ in three forms: YARA rules (XProtect.yara, XPScripts.yr), legacy plist byte-pattern matches (XProtect.plist), and an emergency Gatekeeper blocklist of cdhashes and Team IDs (gk.db).
+
+  2. XProtect Remediator (XPR) — background scanners that detect and remove already installed malware, one executable per malware family in XProtect.app/Contents/MacOS/. XPR replaced MRT functionally, and MRT itself survives as the XProtectRemediatorMRTv3 plugin.
+
+  3. XProtect Behavior Service (XPdb) — /private/var/protected/xprotect/db/XPdb is a SQLite database recording matches against a narrow set of behavioral rules, capturing the executing binary's path, cdhash, signing identifier, Team ID, SHA-256 and notarization status, the same fields for the responsible (launching) process, and a timestamp. It persists independently of Unified Logging retention, which is what makes it worth collecting. It is not an execution log and not general endpoint telemetry: recording is sparse and heavily rate-limited. Ordinary activity typically produces no rows.
+
+  All detection content updates silently via Software Update / background content delivery, independent of macOS version updates. A dedicated CLI, /usr/bin/xprotect, exposes version, logs, check, and update subcommands.
+
+locations:
+  - path: "/Library/Apple/System/Library/CoreServices/XProtect.bundle/Contents/Resources/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "All detection content: XProtect.yara and XPScripts.yr (YARA rules), XProtect.plist (legacy byte-pattern signatures), gk.db (SQLite emergency Gatekeeper blocklist), XProtect.meta.plist (legacy browser plug-in blacklisting — PlugInBlacklist, JavaWebComponentVersionMinimum), LegacyEntitlementAllowlist.plist, and AppProtectionPolicy.plist (the behavioral protection policy: protections, paths, attribution, allowedTeamId, allowedSigningIds, exclusions). Rule and signature counts change with every content update, so record them at examination time rather than comparing against a published baseline. Bundle version is Info.plist CFBundleShortVersionString."
+  - path: "/private/var/protected/xprotect/db/XPdb"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "XProtect Behavior Service database — SQLite, recording matches against a narrow behavioral rule set. Root-owned, mode 0600; collect XPdb-wal AND XPdb-shm alongside it. The db/ component is a later Sequoia layout — earlier releases placed XPdb directly under /private/var/protected/xprotect/, which is where mac_apt's XPROTECT plugin still looks. A full-image run in MACOS mode therefore reports 'No XProtect Behavior Service artifacts were found!' on current Sequoia; use ARTIFACTONLY mode pointed at the collected file, which matches on filename instead."
+  - path: "/Library/Apple/System/Library/CoreServices/XProtect.app/Contents/MacOS/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "XProtect Remediator scanner executables (one per malware family) and the XProtect binary itself. The plugin list is a direct inventory of what Apple can currently remediate."
+  - path: "/Library/Receipts/InstallHistory.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Install history including every XProtect content update, each with its version, package identifier, and UTC date — processName XProtectPlistConfigData, packageIdentifiers com.apple.pkg.XProtectPlistConfigData_*. This is the dead-box route to XProtect update history: it survives offline, predates Unified Logging retention, and gives the full version sequence rather than only the current one. Corroborate with /var/log/install.log, which records the same installs in plain text."
+  - path: "/usr/bin/xprotect"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Apple's XProtect CLI. Subcommands: version (prints signature version and install timestamp), logs (pre-canned Unified Logging query for XProtect activity), check (queries iCloud for an available update — requires root), update (performs an update — DO NOT run against evidence)."
+
+proves:
+  - "Which XProtect signature version is installed and when it was installed (`xprotect version` prints both, in the form 'Version: <n> Installed: <UTC timestamp>')"
+  - "Which malware families XProtect Remediator can currently detect and remove, by enumerating the scanner executables"
+  - "Which cdhashes and Team IDs Apple has emergency-revoked out of band, from gk.db"
+  - "That a specific binary triggered a behavioral rule, with its full code-signing identity (cdhash, signing ID, Team ID, SHA-256, notarization status) and the identity of the process responsible for launching it — from XPdb events"
+  - "When XProtect Remediator scans ran, from Unified Logging subsystem com.apple.XProtectFramework. Includes priority and trigger event ('Queuing a scan - Priority: High Event: Periodic') and whether each ran as system or user ('Finished system scan, ran as 0' / 'ran as 501')."
+  - "Which malware signatures Apple was capable of detecting at examination time, by reading the YARA rules and legacy plist entries"
+
+does_not_prove:
+  - "That the system is free of malware — XProtect detects only what is in its signature set; it is not guaranteed to detect all malware"
+  - "That an XPdb event indicates malicious activity. The behavioral rules may fire on ordinary software."
+  - "That a binary did not execute, or did not touch a protected resource, because XPdb holds no row for it. XPdb samples sparsely and rate-limits heavily. Absence of an event is not evidence of absence of activity."
+  - "That a detected file was actually malicious — false positives occur"
+  - "That malware was successfully removed by Remediator — remediation may fail or be partial"
+  - "That every executed binary was assessed — signature scanning is triggered at specific points, principally first open of a quarantined file. Binaries compiled locally, transferred without quarantine, or with the attribute stripped may never be scanned."
+  - "The complete history of scans or events — XPdb spans weeks rather than months, and Unified Logging is bounded independently; check both sources rather than assuming either covers the incident"
+  - "That the presence of MRT.app means MRT is active — it is frozen at version 1.93 from 2022 and superseded by the XProtectRemediatorMRTv3 plugin"
+
+timestamps:
+  - field: "/Library/Receipts/InstallHistory.plist — date"
+    meaning: "When an XProtect content update was installed, as ISO 8601 UTC. Each record pairs the date with displayName XProtectPlistConfigData, displayVersion (the signature version), packageIdentifiers, and the processName that performed the install — typically softwareupdated. Records accumulate, so the plist gives the full update sequence rather than only the current version."
+    common_misinterpretation: "This is when detection content was installed, not when any scan ran or anything was detected. It also differs from the Installed value printed by `xprotect version` — on the tested host the CLI reported roughly sixteen hours later for the same version — so the two measure different events and the source should be named alongside the time."
+  - field: "XPdb events.dt"
+    meaning: "When a behavioral rule violation was recorded. SQLite DATETIME, stored as UTC, one row per event."
+    common_misinterpretation: "This is when the rule fired, not when the binary was installed, first run, or last run. A binary may generate many events or none. Absence of an event does not mean the binary did not execute."
+  - field: "Unified Logging — XProtect scan events"
+    meaning: "When remediation scans were queued and run. 'Queuing a scan - Priority: <High|Standard|Low> Event: Periodic' records the trigger; 'Starting system scan, running as <uid>' and 'Finished system scan, ran as <uid>' bracket each run, so duration comes from the pair and the uid separates system scans from per-user ones."
+    common_misinterpretation: "A completed scan does not mean the system was clean at that time — only that the scanners ran, and 'No scanners to run...' is a common outcome. Bounded by Unified Logging retention, which is independent of XPdb's window; check both."
+
+common_misinterpretations:
+  - claim: "XProtect's forensic value is limited to signature versions and scan results"
+    correction: "The XPdb database at /private/var/protected/xprotect/db/XPdb records behavioral rule violations with full code-signing identity for both the executing binary and the responsible parent process, timestamped, and should be collected in every examination. But it is a sparse, rate-limited sample of a narrow rule set, not endpoint telemetry — absence of a row is NOT evidence that a binary did not run or did not touch a protected resource."
+  - claim: "An XPdb entry means malware was detected"
+    correction: "False. XPdb records behavioral policy violations, which fire on ordinary activity. For example: running `du -sh` to size some directories produced an XPdb row with violated_rule macOS.InfoStealer.Generic, exec_path /usr/bin/du, responsible_path Terminal.app. Apple's own signed disk-usage utility, logged under an InfoStealer rule. An examiner reading XPdb as a detection log would report an infostealer on a clean machine. Other benign rows on the same host came from Finder, osascript, zsh and find. Treat entries as leads, pivot on signing identity and responsible process, and corroborate before characterising anything as malicious."
+  - claim: "XProtect provides real-time protection like third-party AV"
+    correction: "It scans at specific trigger points — first open of quarantined files, software updates, and periodic, startup and login Remediator scans — not on every file access. Files can exist on disk indefinitely without being scanned."
+  - claim: "XProtect Remediator scan results can be read from Unified Logging"
+    correction: "Only partially. The remediator plugins log under com.apple.XProtectFramework.Plugin with a category naming the malware family — for example [com.apple.XProtectFramework.Plugin:Eicar.Root] — but the finding itself is emitted as <private>. Running XProtectRemediatorEicar directly produced exactly one plugin line, redacted. Unified Logging establishes which scanners ran and when; it does not disclose what they found."
+  - claim: "MRT is no longer present on modern macOS"
+    correction: "MRT.app remains on disk at /Library/Apple/System/Library/CoreServices/MRT.app on Sequoia, frozen at version 1.93 dated 2022-07-13 with functional binaries. Its functionality moved into XProtect Remediator as the XProtectRemediatorMRTv3 scanner. Expect to find it; verify the version matches the frozen baseline."
+  - claim: "If XProtect did not flag a file, it is safe"
+    correction: "XProtect checks against its signature set only. A file not flagged may be too new, obfuscated, or simply outside Apple's coverage. Perform independent analysis."
+  - claim: "A notarized application is guaranteed safe"
+    correction: "Notarization means Apple's automated scan found no known malware at submission time. Apple can and does revoke retroactively — gk.db is precisely that mechanism, holding cdhashes and Team IDs blocked out of band between full Gatekeeper updates."
+  - claim: "Rule names in XPdb follow consistent spelling"
+    correction: "They do not. Apple ships a typo: the rule is macOS.Exectution.UnusualDylibLocation, not 'Execution'. Grepping for 'Execution' silently misses it. Enumerate rules with a GROUP BY rather than assuming names."
+
+corroborate_with:
+  for_execution: [unified_logging, gatekeeper, quarantine, launchd]
+  for_presence: [quarantine, fsevents, spotlight]
+  for_timeline: [unified_logging, knowledgec_biome]
+
+related_tools: [xprotect, sqlite3, codesign, spctl, log, plutil, yara, mac_apt]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "An XProtect signature name, remediator plugin name, or XPdb behavioral rule is identified — search for the corresponding malware family and MITRE techniques"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "An exec_sha256 or responsible_sha256 value from XPdb, or a cdhash from gk.db — check threat intelligence for known malicious binaries and campaign context"
+
+references:
+  - "Apple — Platform Security Guide (XProtect, XProtect Remediator, Gatekeeper)"
+  - "Apple — xprotect(1)"
+  - "Howard Oakley — XProtect and XProtect Remediator research (eclecticlight.co)"
+  - "Howard Oakley — What do XProtect BehaviourService and Bastion rules do? (eclecticlight.co)"
+  - "Patrick Wardle — The Art of Mac Malware, Volume 1"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+
+investigation_patterns:
+  - name: "Collect and query XPdb — behavioral telemetry with process attribution"
+    note: |
+      Collect XPdb early: it is small, root-only, and its window is independent of Unified Logging, so neither substitutes for the other. Expect few rows — single digits per day at most, frequently none. Collect the database with its WAL and shared-memory files:
+
+      `sudo cp /private/var/protected/xprotect/db/XPdb{,-wal,-shm} <evidence_dir>/`
+
+      Enumerate which rules fired and how often:
+      `sudo sqlite3 -header XPdb "SELECT violated_rule, count(*) n FROM events GROUP BY violated_rule ORDER BY n DESC;"`
+
+      Full event detail with attribution — note both the executing binary and the responsible (launching) process:
+      `sudo sqlite3 -header -column XPdb "SELECT dt, violated_rule, exec_path, exec_signing_id, exec_team_id, exec_sha256, exec_is_notarized, responsible_path, responsible_signing_id, reported FROM events ORDER BY dt DESC;"`
+
+      Establish the coverage window before reasoning about absence:
+      `sudo sqlite3 XPdb "SELECT min(dt), max(dt), count(*) FROM events;"`
+    follow_up: "Treat entries as leads, not detections — these rules fire on ordinary activity. Prioritise events whose exec_is_notarized is 0, whose signing identity is absent or ad-hoc, or whose responsible process is inconsistent with the binary. Hash-pivot exec_sha256 through threat intelligence. Record the min/max dt window so absence of an event is interpretable."
+
+  - name: "Establish detection coverage at the time of the incident"
+    note: |
+      For live response, determine what Apple was capable of detecting, and when that content arrived:
+
+      `xprotect version`        # Version: <n> Installed: <UTC timestamp>
+      `sudo xprotect check`     # whether a newer version is available (root required; contacts Apple)
+
+      On collected evidence the CLI is unavailable — read the full update history from the receipts plist instead:
+      `plutil -p /Library/Receipts/InstallHistory.plist | grep -A4 XProtectPlistConfigData`
+
+      Enumerate what XProtect Remediator can remove:
+      `ls /Library/Apple/System/Library/CoreServices/XProtect.app/Contents/MacOS/`
+
+      Inspect the detection content itself:
+      `grep -cE '^rule |^private rule ' /Library/Apple/System/Library/CoreServices/XProtect.bundle/Contents/Resources/XProtect.yara`
+      `grep -oE '^rule [A-Za-z0-9_]+' .../XProtect.yara | head`
+      `plutil -p .../XProtect.plist | head -100`
+
+      Rule names are opaque hashes (XProtect_MACOS_6e6bed7), so match on rule content rather than expecting readable family names in the YARA file.
+
+      NEVER run `xprotect update` against evidence — it mutates detection content and destroys the version baseline you are trying to establish.
+    follow_up: "If the installed version significantly predates the incident, malware known to Apple at the time may still not have been detectable on this host — investigate why updates were not applied. Use the InstallHistory record immediately preceding the incident to establish which signature version was actually active, and compare it against Apple's published release for the period."
+
+  - name: "Check the emergency Gatekeeper revocation list (gk.db)"
+    note: |
+      gk.db holds cdhashes and Team IDs Apple has revoked out of band, between full Gatekeeper updates — several hundred hashes and low hundreds of Team IDs on a current host.
+
+      `sudo sqlite3 -header .../XProtect.bundle/Contents/Resources/gk.db "SELECT lower(hex(hash)) AS cdhash, hash_type, flags FROM blocked_hashes;"`
+      `sudo sqlite3 -header .../gk.db "SELECT team_id, flags FROM blocked_teams;"`
+
+      For a binary under investigation, obtain its identity and compare:
+      `codesign -dv --verbose=4 <binary>`   # yields CDHash and TeamIdentifier
+    follow_up: "A hit means Apple revoked the binary or its developer out of band — a strong signal, and one that applies even to notarized software. Cross-reference the Team ID against other software on the host signed by the same developer, and pivot the cdhash through threat intelligence."
+
+  - name: "Review XProtect activity in Unified Logging"
+    note: |
+      Use Apple's own pre-canned query first — it is the fastest correct start:
+      `xprotect logs`
+
+      For controlled queries, use the CORRECT subsystems. Do not use com.apple.syspolicy.exec, which is Gatekeeper:
+      `log show --last 24h --predicate 'subsystem BEGINSWITH "com.apple.XProtectFramework" OR subsystem == "com.apple.xprotect"' --info --style compact`
+
+      Update activity has its own subsystem:
+      `log show --last 30d --predicate 'subsystem == "com.apple.security.XProtectFramework.XProtectUpdateService"' --info --style compact`
+
+      Scan lifecycle entries, under com.apple.XProtectFramework:
+        Queuing a scan - Priority: High Event: Periodic      # priorities High, Standard and Low observed
+        Starting system scan, running as 0                   # 0 = system scan, 501 = per-user scan
+        Finished system scan, ran as 0                       # duration is the gap between this and Starting
+        No scanners to run...                                # a common and unremarkable outcome
+
+      Remediator findings themselves are redacted: plugins log under com.apple.XProtectFramework.Plugin with a category naming the family, for example [com.apple.XProtectFramework.Plugin:WaterNet.Root], but the finding is emitted as <private>.
+    follow_up: "Establish when scans ran relative to the incident window. Periodic is the trigger seen in ordinary operation; a Startup scan job exists (com.apple.XProtect.daemon.scan.startup) but only fires on boot, so its absence on a long-uptime host is expected rather than suspicious. Correlate scan times with XPdb event timestamps."
+
+  - name: "Verify XProtect has not been disabled or tampered with"
+    note: |
+      The detection content lives on the Data volume under /Library/Apple, so it is not covered by the Sealed System Volume — but it carries the SIP restricted flag, and root cannot modify it while SIP is enabled. Confirm both, because the protection depends entirely on SIP:
+
+      `csrutil status`                                              # expect: enabled
+      `ls -lO /Library/Apple/System/Library/CoreServices/ | grep -E "XProtect|MRT"`   # expect: restricted
+
+      Then confirm the content is intact — the plugin set complete, the detection files present and non-empty, and the legacy MRT baseline untouched:
+      `ls /Library/Apple/System/Library/CoreServices/XProtect.app/Contents/MacOS/`
+      `sudo plutil -extract CFBundleShortVersionString raw /Library/Apple/System/Library/CoreServices/MRT.app/Contents/Info.plist`
+
+      A version comparison against the second bundle in /private/var/protected/xprotect/ is not a useful check — for a given signature version the two hold byte-identical content, so their versions always match.
+    follow_up: "With SIP enabled and the restricted flag present, modification of these paths is blocked by policy on a running system — so any discrepancy implies SIP was disabled, the volume was edited offline or from Recovery, or a SIP bypass was used, all of which are significant findings in their own right. Check csrutil status FIRST: if SIP is disabled, treat the entire XProtect stack as untrustworthy. Corroborate any suspected modification with fsevents and unified_logging."

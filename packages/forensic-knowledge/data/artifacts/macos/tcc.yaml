@@ -1,0 +1,130 @@
+name: TCC Database
+description: "Transparency, Consent, and Control database tracking per-application permissions for sensitive resources — camera, microphone, full disk access, screen recording, accessibility, and more"
+platform: macos
+platform_notes: |
+  TCC (Transparency, Consent, and Control) is the macOS privacy framework that gates access to sensitive resources. When an application requests access to a protected resource, TCC either prompts the user or checks existing policy. Grants and denials are recorded in SQLite databases at the system and user level. TCC is a key artifact for spyware investigations, insider threat cases, and any scenario involving unauthorized access to camera, microphone, screen content, contacts, or file system areas. TCC enforcement has grown increasingly strict — many previously ungated resources now require explicit consent.
+
+locations:
+  - path: "/Library/Application Support/com.apple.TCC/TCC.db"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "System-level TCC database. Contains permissions granted via System Settings → Privacy & Security, or via MDM configuration profiles."
+  - path: "~/Library/Application Support/com.apple.TCC/TCC.db"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Per-user TCC database. Contains permissions the user granted via consent prompts. Check every user's home directory."
+
+proves:
+  - "Which applications were granted or denied access to specific protected resources"
+  - "The service type requested (kTCCServiceCamera, kTCCServiceMicrophone, kTCCServiceScreenCapture, kTCCServiceAccessibility, kTCCServiceSystemPolicyAllFiles, etc.)"
+  - "The bundle identifier or absolute path of the requesting application"
+  - "How the permission was authorized, from the auth_reason column — user consent (2), user set (3), system set (4), service policy (5), and MDM policy (6), among other documented values"
+  - "The csreq (code signing requirement) blob that was evaluated when the permission was granted — ties the grant to a specific code signature"
+
+does_not_prove:
+  - "That the application actually used the permission after it was granted (TCC records the grant, not subsequent access)"
+  - "When the permission was first used (TCC records when the grant was made, not when the resource was accessed)"
+  - "That a denied application did not access the resource through other means (TCC bypass vulnerabilities have been discovered in multiple macOS releases)"
+  - "The full history of grants and revocations — the database reflects current state plus some historical entries, but revoked permissions may be deleted rather than marked"
+  - "That a granted permission was requested or approved by the end user (MDM profiles can silently grant access without any user prompt)"
+  - "That no consent prompt was shown. A pending TCC prompt writes nothing to the database — verified twice during testing. An unanswered or dismissed request leaves no trace in TCC.db."
+
+timestamps:
+  - field: "last_modified (database column)"
+    meaning: "When the TCC entry was last modified. Stored as a Unix timestamp."
+    common_misinterpretation: "This reflects the last modification of the database row, not when the application last accessed the protected resource."
+  - field: "last_reminded (database column)"
+    meaning: "Stored as a Unix timestamp. Based on testing, this timestamp is of limited value at best. Testing shows it is populated only for system-provisioned entries (auth_reason=4), where it duplicates last_modified and carries no independent information."
+    common_misinterpretation: "Despite the name, it does not record when the user was prompted. Verified on Sequoia: grants created by live consent prompts (auth_reason=2) store the integer 0 (not NULL), while system-provisioned entries (auth_reason=4) are populated."
+
+common_misinterpretations:
+  - claim: "TCC.db is a complete audit log of all permission requests"
+    correction: "TCC.db is a policy database, not an audit log. It records the current permission state. Some historical entries persist, but revoked permissions may be removed from the database entirely. For temporal audit data, corroborate with Unified Logging (subsystem com.apple.TCC)."
+  - claim: "If an application is not in TCC.db, it was never granted access"
+    correction: "The entry may have been revoked and deleted, the database may have been reset, or the permission may have been granted via MDM profile (which may appear only in the system-level database). Also, some access paths do not require TCC (e.g., apps in /usr/bin may have implicit entitlements)."
+  - claim: "TCC protections cannot be bypassed"
+    correction: "TCC bypass vulnerabilities are regularly discovered and patched. CVEs affecting TCC have been found in multiple macOS versions. A determined attacker with code execution may bypass TCC through known or zero-day vulnerabilities, injection into already-authorized processes, or by manipulating the TCC database directly (if SIP is disabled)."
+  - claim: "The system and user TCC databases contain the same types of entries"
+    correction: "Some service types are system-level only (e.g., Full Disk Access via MDM), others are user-level. The system database takes precedence — a system-level deny overrides a user-level grant."
+  - claim: "The csreq blob is just a code signature hash"
+    correction: "csreq is a code signing requirement expression — it can match on team ID, signing certificate chain, or specific binary hash. It defines the criteria under which the grant applies, not just a single hash. A grant tied to a team ID applies to any binary signed by that team."
+  - claim: "Resetting TCC via `tccutil reset` removes all evidence"
+    correction: "tccutil reset deletes the row rather than marking it revoked. The reset is logged under subsystem com.apple.TCC, where tccd records the service name, the client identifier, and the sender process and UID. The destroyed grant and who destroyed it are recoverable from the log even though the database row is gone. FSEvents will also record the database file modification."
+  - claim: "MDM-provisioned TCC entries always grant access"
+    correction: "They can also deny it (auth_value=0 is policy denied). An application unable to reach a protected resource may be constrained by policy rather than failing or being blocked by a bypass attempt."
+
+corroborate_with:
+  for_execution: [unified_logging]
+  for_presence: [unified_logging, launchd]
+  for_timeline: [unified_logging, knowledgec_biome]
+
+related_tools: [sqlite3, tccutil, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Unknown application with sensitive TCC permissions — search for known spyware or monitoring tool patterns"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Bundle identifier or binary hash of a suspicious TCC-authorized application — check threat intelligence"
+
+references:
+  - "Apple — Transparency, Consent, and Control documentation"
+  - "Apple — Privacy preferences policy control profile payload (MDM reference)"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+  - "Csaba Fitzl — TCC research and bypass presentations (Objective by the Sea)"
+  - "Wojciech Regula — TCC bypass research"
+  - "mac4n6.com — TCC database reference"
+  - "HackTricks — macOS TCC"
+  - "My Gorram Frakking Blog — macOS TCC: Transparency, Consent, and Control"
+
+investigation_patterns:
+  - name: "Dump all TCC grants"
+    note: |
+      Query both system and user TCC databases:
+      System: `sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" \
+        "SELECT service, client, auth_value, auth_reason, last_modified, \
+         datetime(last_modified, 'unixepoch') as modified_time \
+         FROM access ORDER BY last_modified DESC;"`
+      User: `sqlite3 ~/Library/Application\ Support/com.apple.TCC/TCC.db \
+        "SELECT service, client, auth_value, auth_reason, last_modified, \
+         datetime(last_modified, 'unixepoch') as modified_time \
+         FROM access ORDER BY last_modified DESC;"`
+      auth_value: 0=denied, 2=granted. auth_reason: 1=error, 2=user consent, 3=user set, 4=system set, 5=service policy, 6=MDM policy, with further values documented by the community. Note that 4 (system set) is common on unmanaged hosts and does not indicate MDM provisioning; MDM-provisioned entries carry 6 and were observed only in the system-level database.
+    follow_up: "Flag grants for sensitive services (Camera, Microphone, ScreenCapture, Accessibility, SystemPolicyAllFiles) to unexpected applications."
+
+  - name: "Identify applications with Full Disk Access"
+    note: |
+      Full Disk Access (kTCCServiceSystemPolicyAllFiles) is the most powerful TCC permission — it grants access to Mail, Messages, Safari data, Time Machine backups, and all user files. Query:
+      `sqlite3 <tcc.db> "SELECT client, auth_value, auth_reason, \
+       datetime(last_modified, 'unixepoch') FROM access \
+       WHERE service='kTCCServiceSystemPolicyAllFiles' AND auth_value=2;"`
+    follow_up: "Verify each authorized application is legitimate and expected. Unknown applications with FDA are high-priority investigation targets."
+
+  - name: "Detect screen recording and accessibility grants"
+    note: |
+      Screen recording (kTCCServiceScreenCapture) and accessibility (kTCCServiceAccessibility) are commonly abused by spyware and monitoring tools. Accessibility grants enable keystroke interception and UI automation. Query for both:
+      `sqlite3 <tcc.db> "SELECT client, auth_value, \
+       datetime(last_modified, 'unixepoch') FROM access \
+       WHERE service IN ('kTCCServiceScreenCapture', 'kTCCServiceAccessibility') \
+       AND auth_value=2;"`
+    follow_up: "Cross-reference authorized applications with launchd artifact to determine if they have persistence configured."
+
+  - name: "Determine whether the host is MDM-managed"
+    note: |
+      Establish management state before interpreting any permission grant, since an MDM can provision TCC permissions without a user prompt.
+      `profiles status -type enrollment`
+      Works identically as a standard user or root — verified on both a managed and an unmanaged host. It reports DEP and MDM enrollment separately, e.g. Enrolled via DEP: No with MDM enrollment: Yes (User Approved) for a manually enrolled machine, versus No/No when unmanaged.
+      To enumerate the profiles themselves:
+      `sudo profiles show -type configuration`
+      `sudo ls -la /var/db/ConfigurationProfiles/`
+      Run show as root. As a standard user it reports "There are no configuration profiles installed for user '<name>'" on managed and unmanaged hosts alike — an MDM-managed Tahoe host returned that single line as a user and roughly 1,500 lines of profile detail as root. A user-level empty result is no information at all. profiles status does not share this behaviour.
+      /var/db/ConfigurationProfiles/Store returns EPERM to ls even for root with Full Disk Access; the parent directory is listable. Collect it via an APFS snapshot or from an image if its contents are needed — see the apfs_snapshots artifact.
+    follow_up: "If the host is managed, TCC grants may have been provisioned by policy rather than user consent, and the profile payloads are the authoritative record of what was granted — TCC.db alone does not distinguish MDM-provisioned grants from user-approved ones on the tested hosts. If the host is not managed, an installed configuration profile is itself worth investigating."
+
+  - name: "TCC database integrity check"
+    note: |
+      On a live system with SIP disabled, an attacker with root can directly modify TCC.db to grant themselves permissions. Check for signs of direct database manipulation:
+      - SIP status: `csrutil status` (if disabled, TCC.db is writable by root)
+      - FSEvents for modifications to the TCC.db file path
+      - Unified Logging for tccutil or sqlite3 access to TCC.db
+      - File metadata: compare TCC.db modification time against known grant events
+    follow_up: "If SIP is disabled and TCC.db shows unexpected grants, treat the TCC data as potentially manipulated and rely on Unified Logging for corroboration."

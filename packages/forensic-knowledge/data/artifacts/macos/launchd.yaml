@@ -1,0 +1,121 @@
+name: LaunchDaemons and LaunchAgents
+description: "Persistent background jobs executed by launchd (PID 1) at boot or user login — declared as plists in the LaunchDaemon and LaunchAgent directories or registered through SMAppService into the Background Task Management database"
+platform: macos
+platform_notes: |
+  launchd is the parent of all user-space processes on macOS. Plists in /Library/Launch* and ~/Library/LaunchAgents are the most common persistence vector abused by macOS malware. /System/Library/Launch* resides on the Sealed System Volume, carries the SIP restricted flag, and is not writable even by root while SIP is enabled, so attackers target the writable locations instead. The privilege each one requires is itself evidence: ~/Library/LaunchAgents needs only the user's own rights, while /Library/LaunchDaemons and /Library/LaunchAgents require root or admin, so a plist dropped there implies escalation had already occurred.
+
+  Since Ventura, enumerating those directories is not sufficient on its own. An application can register an agent or daemon through the SMAppService API, which keeps the plist inside the application bundle and records the registration in the Background Task Management database instead of the classic directories. Treat BTM and the plist directories as two halves of one picture — the login_items artifact covers the BTM side in detail.
+
+locations:
+  - path: "/Library/LaunchDaemons/*.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "System-wide daemons running as root (or specified UserName). Load at boot, regardless of user login. Highly privileged — highest-value persistence location."
+  - path: "/Library/LaunchAgents/*.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "System-wide agents loaded per-user at login. Run in the user's session context."
+  - path: "~/Library/LaunchAgents/*.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "User-scoped agents. Writable without admin rights — common malware target. Check every user home directory, not just the compromised user."
+  - path: "/System/Library/LaunchDaemons/*.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Apple-supplied daemons. On SSV — read-only. Use as a baseline for 'known good'. Any file here that is NOT in Apple's signed seal is a major red flag."
+  - path: "/System/Library/LaunchAgents/*.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Apple-supplied agents. SSV-protected. Same baselining guidance as /System/Library/LaunchDaemons."
+  - path: "/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Background Task Management database, introduced in Ventura. Records items appearing in System Settings → General → Login Items & Extensions. Complements the plist locations above; some persistence is registered only here, notably items added through SMAppService. The file is an NSKeyedArchive — parse it with `sfltool dumpbtm` on a live host, or with Objective-See's DumpBTM, or mac_apt against collected evidence."
+  - path: "/private/var/db/com.apple.xpc.launchd/disabled.plist and disabled.<uid>.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Records jobs explicitly disabled or enabled with `launchctl disable` / `launchctl enable`, mapping job label to a boolean — 1 disabled, 0 explicitly enabled. disabled.plist covers the system domain, disabled.<uid>.plist the per-user domain. Both are world-readable, so collection needs no root. The record persists independently of the job's own plist, so a daemon switched off leaves evidence here even when its plist is untouched; an explicit 0 is equally notable, since it shows a service such as com.apple.screensharing was deliberately turned on."
+  - path: "/Library/StartupItems/"
+    os_versions: ["Deprecated — directory present but non-functional"]
+    notes: "Legacy persistence that no longer executes. The directory still ships, empty, on current macOS, but SystemStarter and StartupItemContext — the binaries that ran these items — are gone and no launchd job invokes them. Anything found here is inert rather than active persistence, and is still worth reporting: it evidences an attempt that either predates the removal or was written by tooling assuming an older macOS."
+
+proves:
+  - "A persistent service was configured to run at boot, login, or on a trigger"
+  - "The program path, arguments, run schedule, and execution context (user, group) declared by the plist"
+  - "Whether KeepAlive / RunAtLoad / StartInterval / StartCalendarInterval / WatchPaths triggers were set"
+  - "The Label string (namespaced identifier, attacker-controlled)"
+  - "Whether a job was explicitly disabled or enabled, from /private/var/db/com.apple.xpc.launchd/disabled.plist and disabled.<uid>.plist"
+
+does_not_prove:
+  - "That the referenced program ever actually executed (plist presence = configuration, not execution)"
+  - "Who created the plist (no user attribution in the plist itself)"
+  - "When the plist was first installed (plist file timestamps can be manipulated with SetFile/touch)"
+  - "That the declared Label is legitimate (Label is a free-form string — attackers routinely use com.apple.* labels to appear benign)"
+  - "That the binary at ProgramArguments[0] exists, or is the same one that originally ran. The plist records only a configured path. Binary replacement and symlink swaps are common"
+  - "That no persistence is running, when no plist is present. launchd holds loaded jobs in memory, so a service whose plist was deleted after loading continues to run until it is unloaded or the host reboots — and SMAppService registrations keep their plist inside the application bundle rather than in these directories at all."
+
+timestamps:
+  - field: "Filesystem timestamps on the plist"
+    meaning: "When the plist was created/modified on disk per the filesystem"
+    common_misinterpretation: "Trivially manipulable via SetFile/touch. Never treat as authoritative. APFS clones may inherit timestamps from the source file."
+  - field: "Unified Logging entries for launchd"
+    meaning: "The authoritative record of when launchd loaded, unloaded, or executed a service."
+    common_misinterpretation: "Query with `subsystem CONTAINS \"com.apple.xpc.launchd\"`, since launchd logs under per-service subsystems such as gui/501/com.apple.xpc.launchd.unmanaged.osascript.40478."
+
+common_misinterpretations:
+  - claim: "The plist filename and Label identify the vendor"
+    correction: "Both are attacker-controlled free-form strings. Malware frequently uses labels like com.apple.softwareupdate.daemon or com.google.keystone to hide. Verify against /System/Library baselines and Apple's signed manifest, not by name."
+  - claim: "A plist in /Library/LaunchDaemons must have been installed by a package installer"
+    correction: "Any process with root can write there. Installation may have been a `curl | sudo sh` one-liner, a post-exploitation drop, or a legitimate installer. Check /private/var/db/receipts, where each installed package leaves a <identifier>.plist carrying InstallDate, InstallProcessName, PackageFileName and PackageVersion, and corroborate with /Library/Receipts/InstallHistory.plist and /var/log/install.log. A daemon with no matching receipt was not installed by pkg."
+  - claim: "If the plist doesn't have RunAtLoad=true, the service hasn't run"
+    correction: "Services also trigger on StartInterval, StartCalendarInterval, WatchPaths, MachServices, KeepAlive, and on-demand IPC. Read all trigger keys, not just RunAtLoad."
+  - claim: "The plist file mtime shows when persistence was established"
+    correction: "File timestamps are trivially forged. Corroborate with FSEvents (filesystem change journal) and Unified Logging (launchd load events) — these require more effort to tamper with."
+  - claim: "launchctl list output reflects all persistent services"
+    correction: "launchctl list shows services loaded in the current context (system or per-GUI). Services loaded in other domains (per-user, per-session) are not shown. Use `launchctl print system` and iterate `launchctl print gui/<uid>` for every active user. Dead-box analysis must enumerate plist files directly."
+  - claim: "The plist is binary, so nothing sensitive is visible"
+    correction: "Binary plists are a serialization format, not encryption. Convert with `plutil -convert xml1 -o - <file>` to read ProgramArguments, Label, and all keys."
+
+corroborate_with:
+  for_execution: [unified_logging, knowledgec_biome]
+  for_presence: [fsevents, quarantine, spotlight, login_items, cron_at]
+  for_timeline: [unified_logging, knowledgec_biome]
+
+related_tools: [plutil, launchctl, KnockKnock, mac_apt, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious Label or path — search for known-malicious launchd persistence IOCs and macOS malware families"
+  - mcp: "opencti"
+    tool: "lookup_hash"
+    when: "Hash the binary the job actually runs — ProgramArguments[0], or the script named in the later arguments when the first element is an interpreter — and check threat intelligence"
+  - mcp: "remnux"
+    tool: "analyze_file"
+    when: "ProgramArguments references an unknown binary — submit for static analysis (Mach-O inspection, string/YARA, code signature validation)"
+
+references:
+  - "Apple — launchd.plist(5) man page"
+  - "Apple Platform Security Guide (signed system volume, SIP, notarization)"
+  - "Patrick Wardle — The Art of Mac Malware, Volume 1"
+  - "Objective-See — KnockKnock: persistent item enumeration (live systems only)"
+  - "Objective-See — DumpBTM: parses BackgroundItems-v*.btm, and unlike sfltool works against collected evidence"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+  - "mac4n6.com — launchd persistence artifact reference"
+  - "Apple — SMAppService documentation"
+
+investigation_patterns:
+  - name: "Triage sweep for non-Apple launchd plists"
+    note: |
+      Enumerate every plist under /Library/LaunchDaemons, /Library/LaunchAgents, and each user's ~/Library/LaunchAgents. For each: extract Label and the full ProgramArguments array — not just element 0, which may be an interpreter with the payload in later arguments — then take the code signature (codesign -dv) and SHA-256 of the executable or script the job actually runs. Flag plists where the target is unsigned, ad-hoc signed, or signed by a Developer ID not previously seen on the host. Check each Label against /private/var/db/com.apple.xpc.launchd/disabled.plist and disabled.<uid>.plist, since a job may be present on disk but disabled.
+    follow_up: "Cross-reference flagged binaries with OpenCTI and submit to REMnux if unknown."
+
+  - name: "Label collision with Apple namespace"
+    note: |
+      Malware commonly uses labels in com.apple.*, com.google.*, com.microsoft.* to blend in. Any plist outside /System/Library using a com.apple.* label is suspicious and warrants manual review.
+
+      To check whether a Label genuinely belongs to Apple, search the sealed volume for it: `grep -l "<label>" /System/Library/LaunchDaemons/*.plist /System/Library/LaunchAgents/*.plist`. Nothing can be added there while SIP is enabled, so a hit means the label is Apple's and the copy outside is the impostor, while no hit means the attacker invented an Apple-looking name outright.
+    follow_up: "Then verify the referenced binary's code signature: an Apple-labelled job pointing at an unsigned or third-party-signed executable is the strongest form of this finding."
+
+  - name: "Persistence without a visible plist"
+    note: |
+      Check the BTM database (BackgroundItems-v*.btm) for persistence items not backed by a plist file — items registered through SMAppService keep their plist inside the application bundle and appear only here. See the login_items artifact for BTM parsing. Also check cron and at jobs for non-launchd persistence, covered in the cron_at artifact.
+    follow_up: "If BTM entry exists without a corresponding plist file, investigate whether the plist was deleted post-load (launchd caches services in memory)."
+
+  - name: "WatchPaths-triggered persistence"
+    note: |
+      Plists with WatchPaths keys fire when specified paths are modified. This is a stealthier trigger than RunAtLoad — the service only wakes when the watched path changes, leaving fewer logs until activation.
+    follow_up: "Identify which paths are watched and whether they align with plausible legitimate use (e.g., mail.app watching ~/Library/Mail is normal; an unknown daemon watching /Users/Shared is not)."

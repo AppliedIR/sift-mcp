@@ -1,0 +1,112 @@
+name: System Extensions and Kernel Extensions
+description: "Kernel-level and user-space extensions that modify system behavior — modern System Extensions (DriverKit, NetworkExtension, EndpointSecurity) and legacy Kernel Extensions (kexts)"
+platform: macos
+platform_notes: |
+  Apple has been migrating from Kernel Extensions (kexts) to System Extensions since Catalina. Kexts now require reduced security settings and user approval, while System Extensions run in user space and are the supported mechanism. Both are persistence vectors — they load at boot and operate with elevated privileges. System Extensions are managed by systemextensionsd and require user approval via System Settings → Privacy & Security.
+
+  System Extension types:
+  - DriverKit extensions: hardware driver replacements
+  - Network Extensions: DNS proxies, content filters, VPN clients
+  - Endpoint Security extensions: security tools, EDR agents
+
+  Legacy kexts are loaded by the kernel and have full kernel-level access. They reside in /Library/Extensions/ or /System/Library/Extensions/ (SSV-protected).
+
+locations:
+  - path: "/Library/SystemExtensions/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Installed System Extensions. Each extension lives in a UUID-named subdirectory. The extension bundle contains the executable, Info.plist, and entitlements."
+  - path: "/Library/SystemExtensions/db.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "System Extensions database — plist tracking all registered extensions, their state (enabled, awaiting approval, disabled), team ID, and bundle identifier."
+  - path: "/Library/Extensions/*.kext"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Third-party kernel extensions. Requires reduced security on Apple Silicon. Increasingly rare on current macOS, but still present for some hardware drivers and legacy security tools. Note some may be present by default, per agreements with Apple (e.g. HighPoint and SoftRAID)"
+  - path: "/private/var/db/loadedkextmt.plist"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "List of installed kexts."
+  - path: "/System/Library/Extensions/*.kext"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Apple-supplied kernel extensions. SSV-protected. Use as baseline for known-good."
+
+proves:
+  - "Which System Extensions are installed and their approval state (enabled, awaiting user approval, disabled)"
+  - "The bundle identifier and team ID of each extension (tied to developer code signing)"
+  - "The extension type (DriverKit, NetworkExtension, EndpointSecurity)"
+  - "Which kernel extensions are loaded (via kextstat on live systems or kext bundles on disk)"
+  - "Whether the extension has a valid code signature and entitlements"
+
+does_not_prove:
+  - "That the extension is currently active (it may be installed but not loaded, or awaiting approval)"
+  - "What data the extension accessed or transmitted (extension behavior is not logged in the extension database)"
+  - "That the extension operated legitimately (a signed extension from a compromised developer account could be malicious)"
+  - "The complete history of extension installations and removals — the database reflects current state"
+
+timestamps:
+  - field: "Extension bundle file timestamps"
+    meaning: "When the extension files were written to disk"
+  - field: "db.plist modification time"
+    meaning: "When the System Extensions database was last updated"
+
+common_misinterpretations:
+  - claim: "Kernel extensions are no longer supported on current macOS"
+    correction: "Kexts are deprecated but still functional. On Apple Silicon, they require the user to boot into Recovery and lower security settings. On Intel Macs, they require user approval. Some hardware drivers and legacy security tools still use kexts."
+  - claim: "Kext bundles present in /Library/Extensions are loaded and running"
+    correction: "Presence on disk and load state are independent. For example, on tested hosts (Sequoia and Tahoe) /Library/Extensions held HighPointIOP.kext and HighPointRR.kext while kmutil showloaded reported zero non-Apple kexts loaded. Enumerate the filesystem for what is installed and kmutil showloaded (or the deprecated kextstat) for what is actually running, and report the two separately. The reverse also matters: a kext loaded from a path that no longer contains a bundle is worth investigating."
+  - claim: "System Extensions run with kernel privileges"
+    correction: "System Extensions run in user space, not in the kernel. They use Apple-provided frameworks (DriverKit, NetworkExtension, EndpointSecurity) that mediate kernel access. This is a security improvement over kexts but means they still have significant system access."
+  - claim: "All System Extensions are visible in System Settings"
+    correction: "System Extensions awaiting approval appear in System Settings → Privacy & Security. Once approved, they may not be prominently displayed. Check /Library/SystemExtensions/db.plist for the complete list."
+  - claim: "A signed extension is trustworthy"
+    correction: "Code signing proves the developer identity, not the extension's intent. A legitimately signed extension could be malicious (compromised developer account, supply chain attack) or a dual-use tool. Verify the team ID against known vendors."
+  - claim: "KnockKnock can enumerate kernel and system extensions from a collected image or mounted volume"
+    correction: "KnockKnock scans only the live, running system — it offers no option to target a disk image, mounted volume, or alternate root. Use it during live response for a point-in-time assessment. For collected evidence, parse the extension paths above directly."
+
+corroborate_with:
+  for_execution: [unified_logging]
+  for_presence: [fsevents, tcc]
+  for_timeline: [unified_logging]
+
+related_tools: [systemextensionsctl, kmutil, kextstat, codesign, plutil, KnockKnock]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Unknown System Extension or kext — search for known malicious extensions or suspicious extension categories"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "Team ID or binary hash of an unknown extension — check threat intelligence"
+
+references:
+  - "Apple — System Extensions documentation"
+  - "Apple — DriverKit, NetworkExtension, EndpointSecurity framework references"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+  - "Patrick Wardle — The Art of Mac Malware, Volume 1"
+  - "Stack Exchange — What are the HighPoint, SoftRAID macOS software extensions?"
+  - "Objective-See — KnockKnock: persistent item enumeration (live systems only)"
+
+investigation_patterns:
+  - name: "Enumerate installed System Extensions"
+    note: |
+      On a live system:
+      `systemextensionsctl list`
+      On a disk image, parse /Library/SystemExtensions/db.plist with plutil:
+      `plutil -convert xml1 -o - /Library/SystemExtensions/db.plist`
+      Review each extension's bundle identifier, team ID, state, and extension type.
+    follow_up: "Verify team IDs against known vendor registrations. Flag extensions from unfamiliar teams."
+
+  - name: "Check for kexts on Apple Silicon"
+    note: |
+      Kexts are rarely used on modern Mac systems. If in use, investigate why. On a live system: `kmutil showloaded | grep -v com.apple` to list non-Apple kexts. On a dead system: `plutil -p /private/var/db/loadedkextmt.plist | grep -v com.apple` to list non-Apple kexts. List kext files in /Library/Extensions, but be aware of default 3rd-party kexts for HighPoint and SoftRAID (see Stack Exchange reference)
+    follow_up: "Check csrutil status and system security policy. A reduced security posture may indicate legitimate need (hardware driver) or tampering."
+
+  - name: "Identify NetworkExtension and EndpointSecurity extensions"
+    note: |
+      Network Extensions (DNS proxies, content filters, VPN) and Endpoint Security extensions have broad system visibility. Parse db.plist and filter for these extension types. Cross-reference with TCC — Endpoint Security extensions require Full Disk Access.
+    follow_up: "Verify that security tool extensions match the organization's known EDR/security vendor. Unknown Endpoint Security extensions are high-priority investigation targets."
+
+  - name: "Verify code signatures"
+    note: |
+      For each non-Apple extension, verify the code signature:
+      `codesign -dv --verbose=4 <extension_path>`
+      Check for: valid signature, known team ID, no ad-hoc signing, entitlements that match the claimed extension type.
+    follow_up: "Ad-hoc signed or unsigned extensions in /Library/Extensions or /Library/SystemExtensions are red flags."

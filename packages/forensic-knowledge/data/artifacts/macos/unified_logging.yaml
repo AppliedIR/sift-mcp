@@ -1,0 +1,168 @@
+name: Unified Logging
+description: "Apple's structured logging framework (os_log) replacing ASL/syslog — the primary log source on modern macOS for system, application, and security events"
+platform: macos
+platform_notes: |
+  Unified Logging was introduced in macOS 10.12 (Sierra) and is the primary system-wide logging framework on current macOS. Logs are stored in a compressed binary format (.tracev3 files) that standard text tools cannot meaningfully reconstruct. On a live system they can be queried with `log show` or browsed in the Console application, and collected with `log collect` into a .logarchive bundle.
+
+  For offline analysis, Mandiant's macos-UnifiedLogs is a Rust library whose example binary `unifiedlog_iterator` parses a logarchive or a live system into JSON or CSV. Plaso also ships a Unified Logging parser.
+
+locations:
+  - path: "/private/var/db/diagnostics/ (also reachable as /var/db/diagnostics/)"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "The live log store, holding .tracev3 files across several pools: Persist (Default level and above, size-bounded with oldest entries evicted first — the main forensic source), Special (lower-priority storage), HighVolume (shorter retention, often empty), and Signpost (performance data). Timesync holds the binary timestamp metadata each log entry depends on. /var is a symlink to private/var, so both path forms reach the same directory."
+  - path: "/private/var/db/uuidtext/"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "UUID-to-text mapping files. Required to decode format strings in tracev3 files. Without these, log messages appear as <decode: missing data>. Always collect alongside /private/var/db/diagnostics/ during acquisition."
+  - path: "*.logarchive (collected archive)"
+    os_versions: ["macOS 15 (Sequoia)", "macOS 26 (Tahoe)"]
+    notes: "Output of `log collect`. A self-contained bundle with tracev3 files + uuidtext + timesync. This is the preferred acquisition format — contains everything needed for offline analysis."
+
+proves:
+  - "Process execution events with execution timestamp, PID, process name, process path, subsystem, category, and message"
+  - "launchd service load/unload/failure events"
+  - "Authentication and authorization events (subsystem: com.apple.Authorization, com.apple.opendirectoryd)"
+  - "TCC permission prompts and grants (subsystem: com.apple.TCC)"
+  - "Gatekeeper and XProtect activity"
+  - "Network connection events (subsystems: com.apple.network, com.apple.CFNetwork, com.apple.networkextension)"
+  - "Kernel extension and system extension load/unload events"
+  - "FileVault unlock events, screen lock/unlock, and login window activity (subsystem: com.apple.loginwindow.logging)"
+  - "Application launch and termination events"
+  - "USB device attach/detach events"
+  - "SSH connection events (subsystem: com.apple.securityd, com.openssh.sshd)"
+  - "Software update and installation events"
+
+does_not_prove:
+  - "Events that occurred outside the retention window (retention varies by log level)"
+  - "Events from processes that deliberately bypass os_log (rare but possible with direct file I/O)"
+  - "The complete content of user data — os_log redacts certain arguments marked <private> by developers unless a configuration profile enables private data visibility"
+  - "Event details if /private/var/db/uuidtext was not collected alongside /private/var/db/diagnostics (messages will appear as '<decode: missing data>')"
+  - "That an event did not occur because a query returned nothing. Confirm a subsystem name returns events before treating its silence as evidence. Using an incorrect subsystem or predicate name results in the same empty result as genuine absence."
+
+timestamps:
+  - field: "Event timestamp"
+    meaning: "Mach Continuous Time converted to wall clock via timesync data. Microsecond precision."
+    common_misinterpretation: "Timestamps rely on timesync calibration data (also in /private/var/db/diagnostics/). If timesync is missing or corrupt, wall-clock conversion is unreliable. Mach time itself is monotonic and boot-relative."
+  - field: "machTimestamp"
+    meaning: "Raw Mach Continuous Time — monotonic, boot-relative, nanosecond precision. Appears as a top-level field in `log show --style json` and in third-party parser output."
+    common_misinterpretation: "Not wall-clock time and not an epoch value. It is meaningless across reboots without the timesync mapping."
+
+common_misinterpretations:
+  - claim: "Unified Logging stores logs indefinitely like traditional syslog"
+    correction: "Unified Logging is a ring buffer. Retention is bounded by storage quotas and log level. Default-level messages may persist days to weeks; Info-level messages could be much less. Check the actual window with `log stats`, and collect early."
+  - claim: "If a log message is not present, the event did not happen"
+    correction: "The event may have occurred outside the retention window, at a log level that was not persisted, or the format strings may be missing (uuidtext not collected). Absence of a Unified Log entry proves nothing about events beyond the retention window."
+  - claim: "All log messages are in plain text"
+    correction: "Unified Logs are a binary tracev3 format requiring `log show`, unifiedlog_iterator, or Plaso to parse. `strings` will return readable fragments, but message text is assembled at display time from format strings in uuidtext, so grepping the raw files yields fragments without the events they belong to and will silently miss most matches."
+  - claim: "Private data fields are always redacted"
+    correction: "Fields marked private by developers are redacted by default, but a logging configuration profile (payload com.apple.system.logging, key Enable-Private-Data) can enable full visibility. Overrides written by a profile or by `log config` land in /Library/Preferences/Logging/Subsystems/<subsystem>.plist, with Apple's defaults in /System/Library/Preferences/Logging/Subsystems/ for comparison — check both to establish what the source system was recording. Redacted fields appear as <private> in output from the built-in `log show` command. The private fields from raw events parsed with third-party tools such as unifiedlog_iterator will display as hashed or base64 encoded."
+  - claim: "`log show` output is the same on any Mac"
+    correction: "Format strings are resolved using uuidtext files from the source system. Running `log show` on a .logarchive on a different macOS version may produce different message rendering. Always use `log show` on the collected .logarchive bundle for consistent results."
+  - claim: "Filtering by subsystem catches all relevant events"
+    correction: "Some events are logged by unexpected subsystems. For example, SSH events may appear under com.apple.securityd in addition to com.openssh.sshd. Use keyword search in addition to subsystem filtering."
+  - claim: "Timestamps shown by `log show` are in the source system's timezone"
+    correction: "They are rendered in the timezone of the machine running the query, so a logarchive collected from a host in another timezone displays shifted times with no indication. Pass `--timezone` explicitly and record which one you used. Third-party parsers typically output UTC, since events are stored as UTC in the raw files."
+  - claim: "A Time Machine backup of the system contains its unified log"
+    correction: "It does not — /private/var/db/diagnostics and /private/var/db/uuidtext are both excluded from Time Machine. APFS snapshots are the exception, since they capture the volume regardless of backup exclusions and can hold tracev3 files the live ring buffer has already evicted."
+
+corroborate_with:
+  for_execution: [launchd, knowledgec_biome, tcc, gatekeeper]
+  for_presence: [fsevents, quarantine]
+  for_timeline: [knowledgec_biome, quarantine, apfs_snapshots]
+
+related_tools: [log, unifiedlog_iterator, log2timeline]
+
+cross_mcp_checks:
+  - mcp: "forensic-rag"
+    tool: "search"
+    when: "Suspicious subsystem or process name — search for known macOS malware behaviors and MITRE techniques"
+  - mcp: "opencti"
+    tool: "lookup_ioc"
+    when: "IP address, domain, or hash extracted from log entries — check threat intelligence"
+
+references:
+  - "Apple — Logging documentation (os_log framework)"
+  - "Apple — man page: log(1)"
+  - "SANS FOR518 — Mac and iOS Forensic Analysis"
+  - "Mandiant — Reviewing macOS Unified Logs"
+  - "CrowdStrike — How to Leverage Apple Unified Log (AUL) for IR"
+  - "mac4n6.com — Unified Logging reference"
+  - "Howard Oakley — Inside the Unified Log 3: Log storage and attrition (eclecticlight.co)"
+
+investigation_patterns:
+  - name: "Collect logs before analysis"
+    note: |
+      Use `log collect`, with the option to include filters (source host, root required):
+
+        `sudo log collect --output /Volumes/Evidence/<case>.logarchive` # collect all logs
+        `sudo log collect --last 30m --output /Volumes/Evidence/<case>.logarchive` # collect last 30 minutes of logs
+        `sudo log collect --start "2026-09-05 09:00:00" --output /Volumes/Evidence/<case>.logarchive` # collect logs since specific time
+
+      Also accepts `--size <num>[k|m]` and `--predicate`. There is no `--end`; bound the far side at review time with `log show --end`. Write to external media if possible.
+
+      SIZE. Every archive carries the format strings its events reference, so even a short window costs hundreds of megabytes before any log data is counted. It's possible to measure the retained window rather than assuming it: `log stats` reports it directly as start and end.
+
+      TRANSFER. A .logarchive is a bundle (a directory), not a single file. Finder presents it as opaque; use `cp -R`, `ditto`, or `rsync -a`, and hash it after transfer as with any other evidence.
+
+      REVIEW (analysis host, no root required):
+
+        `log show --archive <case>.logarchive --predicate '<predicate>' --info`
+        `log show --archive <case>.logarchive --style json --timezone UTC`
+
+      Because the archive carries its own dsc/ and uuidtext/, format strings resolve correctly on a machine that never had the source binaries installed, which is what makes cross-host review work at all.
+    follow_up: "If `log collect` fails, fall back to collecting /private/var/db/diagnostics/ and /private/var/db/uuidtext/ directly; both are required, as the tracev3 files are unreadable without the format strings. Note that logd records every `log` invocation with its full arguments under subsystem com.apple.log — useful for spotting `log erase`, and a reminder that your own triage commands become log entries on a live subject."
+
+  - name: "launchd persistence loading"
+    note: |
+      Filter for service load events to identify when persistence was activated:
+      `log show --predicate 'subsystem CONTAINS "com.apple.xpc.launchd"' --info`
+      CONTAINS is required here, not ==: launchd logs under per-service subsystems such as gui/501/com.apple.xpc.launchd.unmanaged.osascript.40478, so an equality match returns nothing. Look for load, unload, and bootstrap messages — service labels in these messages correspond to LaunchDaemon/LaunchAgent plist Labels.
+    follow_up: "Cross-reference discovered Labels with plist enumeration from the launchd artifact."
+
+  - name: "Process execution timeline"
+    note: |
+      Build a process execution timeline by filtering for process lifecycle events:
+      `log show --predicate 'eventMessage CONTAINS "spawn" OR eventMessage CONTAINS "exec"' --info`
+      Also filter with `subsystem CONTAINS "com.apple.xpc.launchd"` for service-launched processes.
+    follow_up: "Correlate with KnowledgeC.db for application usage context and TCC.db for permission grants."
+
+  - name: "Authentication events"
+    note: |
+      Query authentication subsystems:
+      `log show --predicate 'subsystem == "com.apple.Authorization" OR subsystem == "com.apple.opendirectoryd" OR subsystem == "com.apple.securityd"' --info`
+      Covers sudo usage, login window authentication, keychain access, and SSH.
+    follow_up: "Look for failed authentication clusters — brute force or credential stuffing."
+
+  - name: "TCC permission grants"
+    note: |
+      Filter for TCC (Transparency, Consent, and Control) events:
+      `log show --predicate 'subsystem == "com.apple.TCC"' --info`
+      Shows when applications requested and were granted sensitive permissions (Full Disk Access, camera, microphone, screen recording, accessibility).
+    follow_up: "Cross-reference with TCC.db artifact for the persistent permission state."
+
+  - name: "Network activity"
+    note: |
+      Filter for network connection events:
+      `log show --predicate 'subsystem == "com.apple.network" OR subsystem == "com.apple.CFNetwork"' --info`
+      Captures DNS resolution, TCP/UDP connections, and TLS handshake events.
+    follow_up: "Extract IPs and domains for threat intelligence lookups via OpenCTI."
+
+  - name: "Gatekeeper and XProtect verdicts"
+    note: |
+      Query code signing and malware scanning events:
+      `log show --predicate 'subsystem == "com.apple.syspolicy.exec" OR process == "XProtect" OR process == "syspolicyd"' --info`
+      Shows Gatekeeper assessment results (allowed, blocked, quarantined) and XProtect signature match events.
+    follow_up: "If a binary was blocked, check quarantine xattr and Gatekeeper artifact for the assessment record."
+
+  - name: "USB device connections"
+    note: |
+      Filter for USB attach and detach events:
+      `log show --predicate 'subsystem == "com.apple.usb" OR (process == "kernel" AND eventMessage CONTAINS[c] "usb")' --info`
+      The kernel logs enumeration and termination under com.apple.usb, naming the device with its vendor, product, and release IDs in the compact form 0x090c/1000/1100 — the same identifiers appear on both attach and detach. The second clause is necessary because some kernel USB messages, including those from IOUSBMassStorageDriver, carry no subsystem and are invisible to a subsystem-only filter.
+    follow_up: "Serial numbers may not be written to the log. Recover them from IORegistry on a live system with `ioreg -c IOUSBHostDevice -r -l`."
+
+  - name: "Background Task Management"
+    note: |
+      Filter for Login and background item management activity:
+      `log show --predicate 'subsystem == "com.apple.backgroundtaskmanagement"' --info`
+      Identify what items are deployed and registered with background task management.
+    follow_up: "Locate new registered background items for threat intelligence lookups via OpenCTI."
