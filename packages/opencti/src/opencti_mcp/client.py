@@ -270,6 +270,38 @@ class RateLimiter:
 # =============================================================================
 
 
+def _same_ioc(value: Any, ioc: str) -> bool:
+    """Equal as IOCs: as parsed addresses for IPs, otherwise ignoring case."""
+    import ipaddress
+
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        return ipaddress.ip_address(value) == ipaddress.ip_address(ioc)
+    except ValueError:
+        return value.lower() == ioc.lower()
+
+
+def _is_the_ioc(hit: dict, entity_type: str, ioc: str) -> bool:
+    """Whether a search hit is the queried IOC itself. An indicator's name is
+    its pattern's literal; an observable is matched on its value or any of its
+    hashes, since a file observable's name is the filename."""
+    if entity_type == "indicator":
+        values = [hit.get("name")]
+    else:
+        values = [hit.get("observable_value"), hit.get("value")]
+        values += [
+            h.get("hash") for h in hit.get("hashes") or [] if isinstance(h, dict)
+        ]
+    return any(_same_ioc(value, ioc) for value in values)
+
+
+def _hit_name(hit: dict, entity_type: str) -> str:
+    if entity_type == "indicator":
+        return hit.get("name", "")
+    return hit.get("observable_value") or hit.get("value") or hit.get("name", "")
+
+
 class OpenCTIClient:
     """Client for querying OpenCTI threat intelligence.
 
@@ -2074,13 +2106,27 @@ class OpenCTIClient:
             if not results and not observables:
                 return {"found": False, "ioc": ioc}
 
-            # Use indicator if available, otherwise observable
-            if results:
-                entity = results[0]
-                entity_type = "indicator"
-            else:
-                entity = observables[0]
-                entity_type = "observable"
+            # Use indicator if available, otherwise observable. The search is
+            # full text, so its hits include objects that only share a word
+            # with the IOC: report the first hit that is the IOC itself, and
+            # when none is, return the hits as related rather than found.
+            hits, entity_type = (
+                (results, "indicator") if results else (observables, "observable")
+            )
+            entity = next((h for h in hits if _is_the_ioc(h, entity_type, ioc)), None)
+            if entity is None:
+                return {
+                    "found": False,
+                    "ioc": ioc,
+                    "related": [
+                        {
+                            "name": _hit_name(h, entity_type),
+                            "entity_type": entity_type,
+                            "confidence": h.get("confidence", 0),
+                        }
+                        for h in hits
+                    ],
+                }
 
             try:
                 labels = self._extract_labels(entity)
