@@ -48,7 +48,7 @@ cross_mcp_checks:
     tool: "lookup_ioc"
     when: "Source IP identified in authentication or connection event — check threat intelligence"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious authentication or system pattern — search for related techniques"
 
 references:

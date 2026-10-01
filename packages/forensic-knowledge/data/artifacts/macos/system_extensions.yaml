@@ -70,7 +70,7 @@ related_tools: [systemextensionsctl, kmutil, kextstat, codesign, plutil, KnockKn
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Unknown System Extension or kext — search for known malicious extensions or suspicious extension categories"
   - mcp: "opencti"
     tool: "lookup_ioc"

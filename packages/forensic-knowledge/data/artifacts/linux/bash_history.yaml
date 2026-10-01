@@ -54,7 +54,7 @@ cross_mcp_checks:
     tool: "lookup_ioc"
     when: "IP address, URL, or domain found in command history — check threat intelligence"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious command pattern — search for related techniques and LOLBins"
 
 references:

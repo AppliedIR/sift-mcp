@@ -99,7 +99,7 @@ related_tools: [tmutil, diskutil, mount_apfs, plutil, log, log2timeline]
 
 cross_mcp_checks:
   - mcp: "opencti"
-    tool: "lookup_hash"
+    tool: "lookup_ioc"
     when: "A binary recovered from a pre-incident backup — hash it and check threat intelligence for known malicious files"
 
 references:

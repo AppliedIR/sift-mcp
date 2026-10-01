@@ -41,7 +41,7 @@ related_tools: [bmc-tools]
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "RDP session content visible — search for lateral movement techniques"
 
 references:

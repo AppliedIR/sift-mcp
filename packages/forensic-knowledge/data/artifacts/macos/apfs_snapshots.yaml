@@ -101,10 +101,10 @@ related_tools: [diskutil, tmutil, mount_apfs, csrutil, log, mac_apt]
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "A file recovered from a snapshot needs interpretation"
   - mcp: "opencti"
-    tool: "lookup_hash"
+    tool: "lookup_ioc"
     when: "A suspicious binary recovered from a snapshot in the incident window — hash it and check threat intelligence for known malicious files"
 
 references:

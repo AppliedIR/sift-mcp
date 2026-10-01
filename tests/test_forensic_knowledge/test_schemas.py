@@ -216,13 +216,76 @@ class TestFrameworkSchema:
 
 
 class TestCrossMcpChecks:
-    VALID_MCPS = {
-        "windows-triage",
-        "opencti",
-        "forensic-rag",
-        "remnux",
-        "opensearch-mcp",
+    # The tools each MCP serves, as the servers name them. suggest_tools hands
+    # these pairs to the AI, which calls them as written.
+    VALID_TOOLS = {
+        "windows-triage": {
+            "analyze_filename",
+            "check_autorun",
+            "check_file",
+            "check_hash",
+            "check_hijackable_dll",
+            "check_lolbin",
+            "check_pipe",
+            "check_process_tree",
+            "check_registry",
+            "check_scheduled_task",
+            "check_service",
+            "get_db_stats",
+            "get_health",
+        },
+        "opencti": {
+            "get_entity",
+            "get_health",
+            "get_recent_indicators",
+            "get_relationships",
+            "lookup_ioc",
+            "search_entity",
+            "search_reports",
+            "search_threat_intel",
+        },
+        "forensic-rag": {
+            "get_knowledge_stats",
+            "list_knowledge_sources",
+            "search_knowledge",
+        },
+        "remnux": {
+            "analyze_file",
+            "check_tools",
+            "download_file",
+            "extract_archive",
+            "extract_iocs",
+            "get_file_info",
+            "get_tool_help",
+            "list_files",
+            "run_tool",
+            "suggest_tools",
+            "upload_from_host",
+        },
+        "opensearch-mcp": {
+            "case_host_fix",
+            "idx_aggregate",
+            "idx_case_summary",
+            "idx_count",
+            "idx_enrich_intel",
+            "idx_enrich_triage",
+            "idx_field_values",
+            "idx_get_event",
+            "idx_ingest",
+            "idx_ingest_accesslog",
+            "idx_ingest_delimited",
+            "idx_ingest_json",
+            "idx_ingest_memory",
+            "idx_ingest_status",
+            "idx_install_pipelines",
+            "idx_list_detections",
+            "idx_search",
+            "idx_shard_status",
+            "idx_status",
+            "idx_timeline",
+        },
     }
+    VALID_MCPS = set(VALID_TOOLS)
 
     def test_all_artifacts_have_cross_mcp_checks(self):
         """Every artifact should have cross_mcp_checks."""
@@ -259,6 +322,16 @@ class TestCrossMcpChecks:
                     assert check["mcp"] in self.VALID_MCPS, (
                         f"Artifact '{name}' has invalid MCP '{check['mcp']}'"
                     )
+
+    def test_cross_mcp_checks_name_real_tools(self):
+        """Every (mcp, tool) pair names a tool that MCP serves."""
+        bad = []
+        for platform in PLATFORMS:
+            for art in loader._load_all_in_dir(f"artifacts/{platform}"):
+                for check in art.get("cross_mcp_checks", []):
+                    if check["tool"] not in self.VALID_TOOLS.get(check["mcp"], set()):
+                        bad.append((art.get("name", "?"), check["mcp"], check["tool"]))
+        assert not bad, f"{len(bad)} unknown tools, first: {bad[:3]}"
 
     def test_cross_mcp_checks_count(self):
         """Every artifact on every platform must have cross_mcp_checks.

@@ -65,7 +65,7 @@ cross_mcp_checks:
     tool: "lookup_ioc"
     when: "URL, domain, or IP identified — check threat intelligence"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious network or browsing pattern — search for related techniques"
 
 references:

@@ -60,7 +60,7 @@ related_tools: [sqlite3, tccutil, log2timeline]
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Unknown application with sensitive TCC permissions — search for known spyware or monitoring tool patterns"
   - mcp: "opencti"
     tool: "lookup_ioc"

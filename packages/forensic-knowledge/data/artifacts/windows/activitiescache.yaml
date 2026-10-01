@@ -50,7 +50,7 @@ cross_mcp_checks:
     tool: "check_file"
     when: "Application path identified — verify against Windows baseline"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious application activity — search for related techniques"
 
 references:

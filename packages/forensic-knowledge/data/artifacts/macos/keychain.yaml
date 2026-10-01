@@ -99,7 +99,7 @@ related_tools: [security, sqlite3, chainbreaker, plutil, ioreg, mac_apt, log2tim
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "An unfamiliar access group in keychain-2.db, or an ACL authorizing an application you did not expect — search for known macOS credential theft techniques"
   - mcp: "opencti"
     tool: "lookup_ioc"

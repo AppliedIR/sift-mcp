@@ -55,7 +55,7 @@ cross_mcp_checks:
     tool: "lookup_ioc"
     when: "IP address, domain, or hash found in event — check threat intelligence"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious event pattern — search for detection rules and MITRE technique context"
 
 references:

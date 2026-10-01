@@ -49,7 +49,7 @@ cross_mcp_checks:
     tool: "lookup_ioc"
     when: "Network connection destination identified — check threat intelligence"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious process or deleted binary — search for related techniques"
 
 references:

@@ -73,7 +73,7 @@ related_tools: [log, unifiedlog_iterator, log2timeline]
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious subsystem or process name — search for known macOS malware behaviors and MITRE techniques"
   - mcp: "opencti"
     tool: "lookup_ioc"

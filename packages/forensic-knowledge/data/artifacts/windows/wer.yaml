@@ -47,10 +47,10 @@ cross_mcp_checks:
     tool: "check_file"
     when: "Crashing executable path — verify against Windows baseline"
   - mcp: "opencti"
-    tool: "lookup_hash"
+    tool: "lookup_ioc"
     when: "Crashing executable hash — check threat intelligence"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Crash in security-relevant process — search for exploitation techniques"
 
 references:

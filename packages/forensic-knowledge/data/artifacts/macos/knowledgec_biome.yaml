@@ -78,7 +78,7 @@ related_tools: [sqlite3, APOLLO, ccl-segb, mac_apt, log2timeline]
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "An unfamiliar bundle identifier appears in /app/usage or a Biome stream — search for known macOS malware, monitoring tools, and their associated persistence patterns"
   - mcp: "opencti"
     tool: "lookup_ioc"

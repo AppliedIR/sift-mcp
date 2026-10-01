@@ -39,7 +39,7 @@ related_tools: [RECmd, RegRipper]
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Removable device or network share mounted — search for exfiltration techniques"
 
 references:

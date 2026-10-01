@@ -55,7 +55,7 @@ cross_mcp_checks:
     tool: "lookup_ioc"
     when: "SSH connection source IP or known_hosts entry — check threat intelligence"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious SSH configuration or key — search for related techniques"
 
 references:

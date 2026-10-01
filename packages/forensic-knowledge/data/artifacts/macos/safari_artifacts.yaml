@@ -80,7 +80,7 @@ cross_mcp_checks:
     tool: "lookup_ioc"
     when: "Suspicious URL or domain in Safari history — check threat intelligence"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious Safari extension or browsing pattern — search for known macOS malware delivery URLs or malicious extensions"
 
 references:

@@ -85,10 +85,10 @@ related_tools: [xprotect, sqlite3, codesign, spctl, log, plutil, yara, mac_apt]
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "An XProtect signature name, remediator plugin name, or XPdb behavioral rule is identified — search for the corresponding malware family and MITRE techniques"
   - mcp: "opencti"
-    tool: "lookup_hash"
+    tool: "lookup_ioc"
     when: "An exec_sha256 or responsible_sha256 value from XPdb, or a cdhash from gk.db — check threat intelligence for known malicious binaries and campaign context"
 
 references:

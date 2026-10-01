@@ -82,7 +82,7 @@ related_tools: [spctl, codesign, stapler, sqlite3, plutil, log, mac_apt]
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "A blocked cdhash from historic_malware_blocks, or an unfamiliar team identifier or matched_rule_name from the assessment cache — search for the associated malware family and MITRE techniques"
   - mcp: "opencti"
     tool: "lookup_ioc"

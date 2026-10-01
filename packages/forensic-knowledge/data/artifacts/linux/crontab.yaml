@@ -54,7 +54,7 @@ cross_mcp_checks:
     tool: "lookup_ioc"
     when: "URL or IP in cron command — check threat intelligence"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious cron entry — search for persistence techniques"
 
 references:

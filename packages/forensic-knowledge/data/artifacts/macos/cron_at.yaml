@@ -68,7 +68,7 @@ related_tools: [crontab, at, launchctl, log, KnockKnock]
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious command in a crontab or at job — search for known malware persistence patterns"
   - mcp: "opencti"
     tool: "lookup_ioc"

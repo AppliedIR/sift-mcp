@@ -66,10 +66,10 @@ related_tools: [sfltool, DumpBTM, KnockKnock, mac_apt, log2timeline]
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Unknown Login Item bundle identifier — search for known malware persistence patterns"
   - mcp: "opencti"
-    tool: "lookup_hash"
+    tool: "lookup_ioc"
     when: "Hash the binary at an item's Executable Path and check threat intelligence — Team Identifier is a second pivot for signed items"
 
 references:

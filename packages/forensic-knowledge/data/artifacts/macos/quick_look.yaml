@@ -71,7 +71,7 @@ related_tools: [sqlite3, tmutil, mount_apfs, diskutil, mac_apt]
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Quick Look cache schema or decoding differs from what is documented here — search for version-specific Quick Look research before trusting the join and offset rules on a system whose preferences.version differs from the one you validated against"
   - mcp: "opencti"
     tool: "lookup_ioc"

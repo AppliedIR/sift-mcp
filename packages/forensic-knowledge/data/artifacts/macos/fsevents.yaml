@@ -63,7 +63,7 @@ related_tools: [FSEventsParser, mac_apt, log2timeline]
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious path or filename pattern — search for known malware drop locations or staging directories"
   - mcp: "opencti"
     tool: "lookup_ioc"

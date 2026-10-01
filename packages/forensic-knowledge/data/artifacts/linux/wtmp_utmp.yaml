@@ -53,7 +53,7 @@ cross_mcp_checks:
     tool: "lookup_ioc"
     when: "Remote login source IP — check threat intelligence"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious login pattern — search for related techniques"
 
 references:

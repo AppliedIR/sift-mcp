@@ -64,7 +64,7 @@ cross_mcp_checks:
     tool: "lookup_ioc"
     when: "A download URL or domain recovered from the record, or from the file's kMDItemWhereFroms attribute — check threat intelligence for known malicious infrastructure"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Downloading agent or URL pattern is suspicious — search for known macOS malware delivery methods"
   - mcp: "remnux"
     tool: "analyze_file"

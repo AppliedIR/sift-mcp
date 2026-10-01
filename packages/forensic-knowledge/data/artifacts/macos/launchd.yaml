@@ -78,10 +78,10 @@ related_tools: [plutil, launchctl, KnockKnock, mac_apt, log2timeline]
 
 cross_mcp_checks:
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious Label or path — search for known-malicious launchd persistence IOCs and macOS malware families"
   - mcp: "opencti"
-    tool: "lookup_hash"
+    tool: "lookup_ioc"
     when: "Hash the binary the job actually runs — ProgramArguments[0], or the script named in the later arguments when the first element is an interpreter — and check threat intelligence"
   - mcp: "remnux"
     tool: "analyze_file"

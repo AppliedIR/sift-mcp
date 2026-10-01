@@ -55,7 +55,7 @@ cross_mcp_checks:
     tool: "lookup_ioc"
     when: "URL, IP, or domain found in transcript — check threat intelligence"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious PowerShell command — search for technique context and detection rules"
 
 references:

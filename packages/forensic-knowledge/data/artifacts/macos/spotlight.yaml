@@ -70,7 +70,7 @@ cross_mcp_checks:
     tool: "lookup_ioc"
     when: "Download URL recovered from kMDItemWhereFroms — check the domain and full URL chain against threat intelligence"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious content type or file metadata pattern — search for known malware file characteristics"
 
 references:

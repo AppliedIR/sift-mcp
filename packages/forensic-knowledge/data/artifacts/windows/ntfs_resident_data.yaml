@@ -44,10 +44,10 @@ cross_mcp_checks:
     tool: "check_file"
     when: "File path identified — verify against Windows baseline"
   - mcp: "opencti"
-    tool: "lookup_hash"
+    tool: "lookup_ioc"
     when: "File hash available — check threat intelligence"
   - mcp: "forensic-rag"
-    tool: "search"
+    tool: "search_knowledge"
     when: "Suspicious file activity pattern — search for related techniques"
 
 references:
