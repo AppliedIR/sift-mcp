@@ -1,6 +1,9 @@
 """Schema validation tests — ensure all YAML files follow expected structure."""
 
+from pathlib import Path
+
 import pytest
+import yaml
 from forensic_knowledge import loader
 
 
@@ -435,3 +438,39 @@ class TestToolCrossMcp:
             assert len(cross_mcp) >= 1, (
                 f"Tool '{tool_name}' has no Cross-MCP steps in investigation_sequence"
             )
+
+
+# --- YAML hygiene ---
+
+
+class _StrictLoader(yaml.SafeLoader):
+    """SafeLoader that refuses a mapping with a repeated key."""
+
+
+def _no_duplicate_keys(loader, node, deep=False):
+    seen = set()
+    for key_node, _ in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in seen:
+            raise ValueError(
+                f"duplicate key {key!r} at line {key_node.start_mark.line + 1}"
+            )
+        seen.add(key)
+    return loader.construct_mapping(node, deep=deep)
+
+
+_StrictLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _no_duplicate_keys
+)
+
+
+def test_no_artifact_yaml_repeats_a_key():
+    """The loader keeps the last of two equal keys, silently dropping the first."""
+    root = Path(loader._find_data_dir()) / "artifacts"
+    bad = []
+    for path in sorted(root.rglob("*.yaml")):
+        try:
+            yaml.load(path.read_text(), Loader=_StrictLoader)  # noqa: S506
+        except ValueError as e:
+            bad.append(f"{path.relative_to(root)}: {e}")
+    assert not bad, bad
