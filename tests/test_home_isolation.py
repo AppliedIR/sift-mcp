@@ -26,12 +26,17 @@ _PROBE = os.environ.get("HOME_ISOLATION_PROBE")
 _ROOT = Path(__file__).parent.parent
 
 
-def _child(tmp_path: Path, probe: str) -> tuple[Path, dict]:
+def _child(tmp_path: Path, probe: str, **env_extra: str) -> tuple[Path, dict]:
     original = tmp_path / "original-home"
     (original / ".vhir").mkdir(parents=True)
     (original / ".vhir" / "active_case").write_text("/the/original/case\n")
     out = tmp_path / "probe.json"
-    env = {**os.environ, "HOME": str(original), "HOME_ISOLATION_PROBE": str(out)}
+    env = {
+        **os.environ,
+        "HOME": str(original),
+        "HOME_ISOLATION_PROBE": str(out),
+        **env_extra,
+    }
     run = subprocess.run(
         [
             sys.executable,
@@ -84,3 +89,20 @@ def test_probe_module_paths():
         "sift-gateway _STATE_DIR": str(join._STATE_DIR),
     }
     Path(_PROBE).write_text(json.dumps(paths))
+
+
+def test_a_case_named_in_the_environment_is_not_written(tmp_path):
+    """VHIR_CASE_DIR set when the suite starts doesn't receive its audit."""
+    case = tmp_path / "named-case"
+    (case / "audit").mkdir(parents=True)
+    (case / "CASE.yaml").write_text("case_id: named\n")
+    _child(tmp_path, "test_probe_audit", VHIR_CASE_DIR=str(case))
+    assert list((case / "audit").iterdir()) == []
+
+
+@pytest.mark.skipif(not _PROBE, reason="runs only in the child started above")
+def test_probe_audit():
+    from sift_common.audit import AuditWriter
+
+    AuditWriter("home-isolation-probe").log(tool="probe", params={}, result_summary="x")
+    Path(_PROBE).write_text("{}")

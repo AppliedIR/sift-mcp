@@ -7,10 +7,11 @@ import tempfile
 
 import pytest
 
-# Tests never use the real HOME: some activate cases and write audit entries for
-# real. Product modules read Path.home() when imported (case-mcp's
-# _ACTIVE_CASE_FILE, the gateway's state directory), so this runs when the root
-# conftest is imported, before any child conftest or test module.
+# Tests run under a temporary HOME: some activate cases and write audit entries
+# for real. Only the model cache below is reached through the real one. Product
+# modules read Path.home() when imported (case-mcp's _ACTIVE_CASE_FILE, the
+# gateway's state directory), so this runs when the root conftest is imported,
+# before any child conftest or test module.
 _ORIGINAL_HOME = os.environ.get("HOME", "")
 _TEST_HOME = tempfile.mkdtemp(prefix="sift-mcp-tests-home-")
 atexit.register(shutil.rmtree, _TEST_HOME, ignore_errors=True)
