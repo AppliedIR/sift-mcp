@@ -62,6 +62,7 @@ class TestAutoSave:
 
     def test_auto_save_when_exceeds_budget(self, tmp_path, monkeypatch):
         """Output > budget with case dir set → file saved automatically."""
+        (tmp_path / "CASE.yaml").write_text("case_id: test\n")  # a case, not a bare dir
         monkeypatch.setenv("VHIR_CASE_DIR", str(tmp_path))
         monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "100")  # tiny budget
         extractions = tmp_path / "extractions"
@@ -150,6 +151,7 @@ class TestSaveOutputBlockedPrefixes:
         """When VHIR_CASE_DIR is set, saving outside it should fail."""
         case_dir = tmp_path / "case"
         case_dir.mkdir()
+        (case_dir / "CASE.yaml").write_text("case_id: test\n")  # a case, not a bare dir
         monkeypatch.setenv("VHIR_CASE_DIR", str(case_dir))
         other = tmp_path / "other"
         other.mkdir()
