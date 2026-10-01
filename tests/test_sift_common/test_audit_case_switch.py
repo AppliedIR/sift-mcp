@@ -232,3 +232,29 @@ def test_a_foreign_id_logged_into_a_case_then_a_restart(tmp_path, monkeypatch):
     )
     got = _log(AuditWriter(NAME), 1)
     assert not _dups(a), got  # may skip numbers; never repeats
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        '["20261001"]',
+        '{"audit_id": null, "d": "20261001"}',
+        '{"audit_id": 5, "d": "20261001"}',
+    ],
+    ids=["a list", "a null audit_id", "an int audit_id"],
+)
+def test_a_log_line_of_another_shape_is_skipped_on_a_switch(
+    tmp_path, monkeypatch, line
+):
+    """Valid JSON that isn't an audit entry, carrying today's date: the scan
+    that now runs on every switch raised on it."""
+    x, y = _case(tmp_path, "X"), _case(tmp_path, "Y")
+    _use(monkeypatch, y)
+    _log(AuditWriter(NAME), 7)
+    with open(y / "audit" / f"{NAME}.jsonl", "a") as f:
+        f.write(line + "\n")
+    writer = AuditWriter(NAME)
+    _use(monkeypatch, x)
+    _log(writer, 3)
+    _use(monkeypatch, y)
+    assert _log(writer, 1)[0].endswith("-008")

@@ -132,9 +132,9 @@ class AuditWriter:
         return f"{prefix}-{self.examiner}-{today}-{seq:03d}"
 
     def _resume_sequence(self, date_str: str) -> int:
-        """Resume sequence from sidecar file, falling back to JSONL scan.
+        """Resume sequence: the higher of the sidecar and the JSONL's highest ID.
 
-        Prevents duplicate audit IDs after server restart.
+        Prevents duplicate audit IDs after server restart or a case switch.
         Must be called under self._lock.
         """
         audit_dir = self._get_audit_dir()
@@ -151,7 +151,7 @@ class AuditWriter:
         except (json.JSONDecodeError, OSError):
             pass
 
-        # Fallback: scan JSONL (O(n) — only on first startup or date change)
+        # Scan the JSONL (O(n) — on startup, a date change or a case switch)
         log_file = audit_dir / f"{self.mcp_name}.jsonl"
         if not log_file.exists():
             return side
@@ -166,7 +166,11 @@ class AuditWriter:
                         continue
                     try:
                         entry = json.loads(line)
+                        if not isinstance(entry, dict):
+                            continue
                         eid = entry.get("audit_id", "")
+                        if not isinstance(eid, str):
+                            continue
                         if eid.startswith(pattern):
                             try:
                                 seq = int(eid[len(pattern) :])
