@@ -147,8 +147,10 @@ class AuditWriter:
             if seq_file.exists():
                 data = json.loads(seq_file.read_text())
                 if data.get("date") == date_str:
-                    side = data.get("seq", 0)
-        except (json.JSONDecodeError, OSError):
+                    seq = data.get("seq", 0)
+                    if isinstance(seq, int):
+                        side = seq
+        except Exception:  # unreadable or not a sidecar: the JSONL sets the floor
             pass
 
         # Scan the JSONL (O(n) — on startup, a date change or a case switch)
@@ -159,7 +161,7 @@ class AuditWriter:
         pattern = f"{prefix}-{self.examiner}-{date_str}-"
         max_seq = 0
         try:
-            with open(log_file, encoding="utf-8") as f:
+            with open(log_file, encoding="utf-8", errors="replace") as f:
                 for line in f:
                     line = line.strip()
                     if not line or date_str not in line:
@@ -177,7 +179,7 @@ class AuditWriter:
                                 max_seq = max(max_seq, seq)
                             except ValueError:
                                 pass
-                    except json.JSONDecodeError:
+                    except Exception:  # a line that is not an entry
                         continue
         except OSError as e:
             logger.warning(

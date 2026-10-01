@@ -258,3 +258,49 @@ def test_a_log_line_of_another_shape_is_skipped_on_a_switch(
     _log(writer, 3)
     _use(monkeypatch, y)
     assert _log(writer, 1)[0].endswith("-008")
+
+
+_DEEP = 100_000
+BAD_LINES = {
+    "invalid utf-8": b'{"d": "20261001", "x": "\xff\xfe"}\n',
+    "deep nesting": ("[" * _DEEP + '"20261001"' + "]" * _DEEP + "\n").encode(),
+    "a 5000-digit int": ('{"d": "20261001", "n": ' + "1" * 5000 + "}\n").encode(),
+}
+
+
+@pytest.mark.parametrize("sidecar", ["missing", "behind at 8"])
+@pytest.mark.parametrize("bad", sorted(BAD_LINES))
+def test_a_log_line_that_cannot_be_read(monkeypatch, a_with_32, bad, sidecar):
+    """Each aborted the scan, and with it the next log()."""
+    audit_dir = a_with_32 / "audit"
+    with open(audit_dir / f"{NAME}.jsonl", "ab") as f:
+        f.write(BAD_LINES[bad])
+    seq = audit_dir / f"{NAME}.seq"
+    if sidecar == "missing":
+        seq.unlink()
+    else:
+        seq.write_text(json.dumps({"date": "20261001", "seq": 8}))
+    assert _log(AuditWriter(NAME), 1)[0].endswith("-033")
+
+
+def test_a_sidecar_that_is_not_a_record_on_a_switch(tmp_path, monkeypatch, a_with_32):
+    (a_with_32 / "audit" / f"{NAME}.seq").write_text("[32]")
+    writer = AuditWriter(NAME)
+    _use(monkeypatch, _case(tmp_path, "B"))
+    _log(writer, 2)
+    _use(monkeypatch, a_with_32)
+    assert _log(writer, 1)[0].endswith("-033")
+
+
+@pytest.mark.parametrize("seq", ["12", 40.5], ids=["a string", "a float"])
+def test_a_sidecar_seq_that_is_not_an_int_on_a_switch(
+    tmp_path, monkeypatch, a_with_32, seq
+):
+    (a_with_32 / "audit" / f"{NAME}.seq").write_text(
+        json.dumps({"date": "20261001", "seq": seq})
+    )
+    writer = AuditWriter(NAME)
+    _use(monkeypatch, _case(tmp_path, "B"))
+    _log(writer, 2)
+    _use(monkeypatch, a_with_32)
+    assert _log(writer, 1)[0].endswith("-033")
