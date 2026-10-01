@@ -65,6 +65,7 @@ class AuditWriter:
         self._explicit_audit_dir = audit_dir
         self._sequence = 0
         self._date_str = ""
+        self._audit_dir: Path | None = None
         self._lock = threading.Lock()
 
     @property
@@ -118,9 +119,13 @@ class AuditWriter:
         """Generate next audit ID: {prefix}-{examiner}-{date}-{seq}."""
         today = datetime.now(timezone.utc).strftime("%Y%m%d")
         with self._lock:
+            audit_dir = self._get_audit_dir()
             if today != self._date_str:
                 self._date_str = today
                 self._sequence = self._resume_sequence(today)
+            elif audit_dir != self._audit_dir:
+                self._sequence = max(self._sequence, self._resume_sequence(today))
+            self._audit_dir = audit_dir
             self._sequence += 1
             seq = self._sequence
         prefix = self.mcp_name.replace("-mcp", "").replace("-", "")
@@ -136,20 +141,20 @@ class AuditWriter:
         if not audit_dir:
             return 0
 
-        # Try sidecar first (O(1) read)
+        side = 0
         seq_file = audit_dir / f"{self.mcp_name}.seq"
         try:
             if seq_file.exists():
                 data = json.loads(seq_file.read_text())
                 if data.get("date") == date_str:
-                    return data.get("seq", 0)
+                    side = data.get("seq", 0)
         except (json.JSONDecodeError, OSError):
             pass
 
         # Fallback: scan JSONL (O(n) — only on first startup or date change)
         log_file = audit_dir / f"{self.mcp_name}.jsonl"
         if not log_file.exists():
-            return 0
+            return side
         prefix = self.mcp_name.replace("-mcp", "").replace("-", "")
         pattern = f"{prefix}-{self.examiner}-{date_str}-"
         max_seq = 0
@@ -174,7 +179,7 @@ class AuditWriter:
             logger.warning(
                 "Failed to read audit log %s for sequence resume: %s", log_file, e
             )
-        return max_seq
+        return max(side, max_seq)
 
     def _write_seq_sidecar(self) -> None:
         """Write current sequence to sidecar for fast resume."""
