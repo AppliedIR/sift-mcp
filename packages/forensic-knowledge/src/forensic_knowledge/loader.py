@@ -154,6 +154,13 @@ def list_artifacts(platform: str | None = None) -> list[dict]:
     return results
 
 
+def list_artifact_keys() -> list[str]:
+    """Keys get_artifact accepts (file names without extension), for artifacts
+    that name related tools."""
+    keys = {p.stem for p in (_find_data_dir() / "artifacts").glob("*/*.yaml")}
+    return sorted(k for k in keys if (get_artifact(k) or {}).get("related_tools"))
+
+
 def get_artifacts_for_tool(tool_name: str) -> list[dict]:
     """Find artifacts that reference a specific tool in their related_tools."""
     results = []
