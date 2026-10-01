@@ -177,3 +177,46 @@ class TestOnlyTheIOCIsFound:
             "observable",
             "a.exe",
         )
+
+
+class TestSurroundingWhitespace:
+    """validate_ioc trims its own copy; the raw value reached the comparison."""
+
+    def test_a_padded_ipv4(self, mock_opencti_client):
+        result = _lookup(mock_opencti_client, " 8.8.8.8 ", [_indicator("8.8.8.8", 90)])
+        assert (result["found"], result["ioc"], result["name"]) == (
+            True,
+            "8.8.8.8",
+            "8.8.8.8",
+        )
+
+    def test_a_domain_with_a_trailing_newline(self, mock_opencti_client):
+        result = _lookup(
+            mock_opencti_client,
+            "update-check.invalid\n",
+            [_indicator("update-check.invalid", 90)],
+        )
+        assert (result["found"], result["ioc"]) == (True, "update-check.invalid")
+
+    def test_a_padded_md5_file_observable(self, mock_opencti_client):
+        stix_file = {
+            "id": "obs-file",
+            "entity_type": "StixFile",
+            "name": "a.exe",
+            "observable_value": SHA256,
+            "hashes": [
+                {"algorithm": "MD5", "hash": MD5},
+                {"algorithm": "SHA-256", "hash": SHA256},
+            ],
+        }
+        result = _lookup(mock_opencti_client, f"  {MD5}\t", observables=[stix_file])
+        assert (result["found"], result["entity_type"], result["ioc"]) == (
+            True,
+            "observable",
+            MD5,
+        )
+
+    def test_a_padded_private_address(self, mock_opencti_client):
+        result = _lookup(mock_opencti_client, " 10.0.0.1 ")
+        assert result["found"] is False and "Internal address" in result["note"]
+        mock_opencti_client._client.indicator.list.assert_not_called()

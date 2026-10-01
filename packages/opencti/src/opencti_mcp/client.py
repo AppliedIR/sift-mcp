@@ -2066,6 +2066,9 @@ class OpenCTIClient:
 
         Searches both Indicators and Observables to ensure complete coverage.
         """
+        # Surrounding whitespace is not part of the IOC: the search, the exact
+        # comparison and the echoed value all use the trimmed form.
+        ioc = ioc.strip()
         validate_length(ioc, MAX_IOC_LENGTH, "IOC")
 
         # Private/internal IPs are not in threat intelligence scope
