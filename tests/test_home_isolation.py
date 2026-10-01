@@ -106,3 +106,54 @@ def test_probe_audit():
 
     AuditWriter("home-isolation-probe").log(tool="probe", params={}, result_summary="x")
     Path(_PROBE).write_text("{}")
+
+
+_FAKE_PWD = """
+import pwd
+_real = pwd.getpwuid
+def _getpwuid(uid):
+    e = _real(uid)
+    return pwd.struct_passwd((e.pw_name, e.pw_passwd, e.pw_uid, e.pw_gid, e.pw_gecos, {home!r}, e.pw_shell))
+pwd.getpwuid = _getpwuid
+"""
+
+
+def test_a_test_that_clears_the_environment_keeps_its_logs_out_of_the_real_home(
+    tmp_path,
+):
+    """With HOME cleared, Path.home() reads the password database. The child
+    reports a scratch directory there, so nothing reaches the real home."""
+    plugin = tmp_path / "plugin"
+    plugin.mkdir()
+    passwd_home = tmp_path / "passwd-home"
+    passwd_home.mkdir()
+    # The path is in the file, not the environment: the test clears that.
+    (plugin / "fakepwd.py").write_text(_FAKE_PWD.format(home=str(passwd_home)))
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "original-home"),
+        "PYTHONPATH": os.pathsep.join([str(plugin), os.environ.get("PYTHONPATH", "")]),
+    }
+    target = "tests/test_opencti/test_coverage_gaps.py::TestMainEntryPoint::test_main_with_missing_token"
+    run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-p",
+            "fakepwd",
+            "-p",
+            "no:cacheprovider",
+            "-q",
+            target,
+        ],
+        cwd=_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert run.returncode == 0, run.stdout[-3000:]
+    assert not (passwd_home / ".vhir").exists(), sorted(
+        p.name for p in passwd_home.rglob("*")
+    )

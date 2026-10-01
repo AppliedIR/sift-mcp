@@ -37,7 +37,9 @@ class TestMainEntryPoint:
         """Main exits with error when token is missing."""
         from opencti_mcp.__main__ import main
 
-        with patch.dict(os.environ, {}, clear=True):
+        # HOME stays: without it Path.home() falls back to the password
+        # database, and the startup log is appended under the real home.
+        with patch.dict(os.environ, {"HOME": os.environ["HOME"]}, clear=True):
             with patch("opencti_mcp.__main__.Config.load") as mock_load:
                 mock_load.side_effect = ConfigurationError("No token configured")
 
