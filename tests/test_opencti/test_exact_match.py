@@ -65,6 +65,74 @@ class TestOnlyTheIOCIsFound:
             {"name": "dc01.other.invalid", "entity_type": "observable", "confidence": 0}
         ]
 
+    def test_an_ipv6_observable_behind_a_word_sharing_indicator(
+        self, mock_opencti_client
+    ):
+        """IPv6 text always draws other IPv6 indicators, so observables were
+        never searched and an address held only as an observable read not
+        found."""
+        address = "2606:4700:4700::1111"
+        observable = {
+            "id": "obs-6",
+            "entity_type": "IPv6-Addr",
+            "observable_value": address,
+            "value": address,
+        }
+        result = _lookup(
+            mock_opencti_client,
+            address,
+            [_indicator("2606:4700:4700::1001")],
+            observables=[observable],
+        )
+        assert (result["found"], result["entity_type"], result["name"]) == (
+            True,
+            "observable",
+            address,
+        )
+
+    def test_a_miss_lists_both_kinds(self, mock_opencti_client):
+        observable = {
+            "id": "obs-7",
+            "entity_type": "Hostname",
+            "observable_value": "dc01.other.invalid",
+        }
+        result = _lookup(
+            mock_opencti_client,
+            "dc01.corp-a.test",
+            [_indicator("worker-unrelated.invalid")],
+            observables=[observable],
+        )
+        assert result["found"] is False
+        assert result["related"] == [
+            {
+                "name": "worker-unrelated.invalid",
+                "entity_type": "indicator",
+                "confidence": 70,
+            },
+            {
+                "name": "dc01.other.invalid",
+                "entity_type": "observable",
+                "confidence": 0,
+            },
+        ]
+
+    @pytest.mark.parametrize(
+        "indicators, searched",
+        [
+            ([_indicator("update-check.invalid", 90)], 0),
+            ([_indicator("check.invalid")], 1),
+        ],
+        ids=["its own indicator", "a word-sharing indicator"],
+    )
+    def test_observables_are_searched_only_without_its_own_indicator(
+        self, mock_opencti_client, indicators, searched
+    ):
+        _lookup(mock_opencti_client, "update-check.invalid", indicators)
+        assert (
+            mock_opencti_client._client.stix_cyber_observable.list.call_count
+            == searched
+        )
+
     @pytest.mark.parametrize("rank", [0, 1], ids=["first hit", "second hit"])
     def test_the_iocs_own_indicator(self, mock_opencti_client, rank):
         hits = [_indicator("update-check.invalid", 90)]

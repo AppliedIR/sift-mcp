@@ -2090,9 +2090,11 @@ class OpenCTIClient:
                 self._execute_with_retry("indicator.list", search=ioc, first=5) or []
             )
 
-            # Also search observables if no indicators found
+            # Also search observables if no indicator is the IOC: a value
+            # with no indicator of its own still draws indicators that share
+            # a word with it, and may exist as an observable.
             observables = []
-            if not results:
+            if not any(_is_the_ioc(h, "indicator", ioc) for h in results):
                 try:
                     observables = (
                         self._execute_with_retry(
@@ -2106,25 +2108,27 @@ class OpenCTIClient:
             if not results and not observables:
                 return {"found": False, "ioc": ioc}
 
-            # Use indicator if available, otherwise observable. The search is
-            # full text, so its hits include objects that only share a word
-            # with the IOC: report the first hit that is the IOC itself, and
-            # when none is, return the hits as related rather than found.
-            hits, entity_type = (
-                (results, "indicator") if results else (observables, "observable")
+            # The search is full text, so its hits include objects that only
+            # share a word with the IOC: report the first hit, indicators
+            # before observables, that is the IOC itself, and when none is,
+            # return the hits as related rather than found.
+            hits = [(h, "indicator") for h in results]
+            hits += [(h, "observable") for h in observables]
+            entity, entity_type = next(
+                ((h, kind) for h, kind in hits if _is_the_ioc(h, kind, ioc)),
+                (None, None),
             )
-            entity = next((h for h in hits if _is_the_ioc(h, entity_type, ioc)), None)
             if entity is None:
                 return {
                     "found": False,
                     "ioc": ioc,
                     "related": [
                         {
-                            "name": _hit_name(h, entity_type),
-                            "entity_type": entity_type,
+                            "name": _hit_name(h, kind),
+                            "entity_type": kind,
                             "confidence": h.get("confidence", 0),
                         }
-                        for h in hits
+                        for h, kind in hits
                     ],
                 }
 
