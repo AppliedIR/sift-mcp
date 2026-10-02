@@ -109,6 +109,8 @@ fi
 # Defaults
 [[ -z "$INSTALL_DIR" ]] && INSTALL_DIR="$HOME/.vhir/src/sift-mcp"
 [[ -z "$VENV_DIR" ]] && VENV_DIR="$HOME/.vhir/venv"
+# Unset under cron, systemd, cloud-init and docker exec; root is refused above.
+USER="${USER:-$(id -un)}"
 
 # =============================================================================
 # Colors and Helpers
@@ -583,7 +585,7 @@ fi
 # Phase 1b: Verification Ledger Directory
 # =============================================================================
 
-if [ -d /var/lib/vhir/verification ]; then
+if [ -d /var/lib/vhir/verification ] && [ -w /var/lib/vhir/verification ]; then
     ok "Verification ledger: /var/lib/vhir/verification/"
 else
     info "Creating verification ledger directory (requires sudo)..."
@@ -603,7 +605,7 @@ fi
 # Phase 1b2: Password Storage Directory
 # =============================================================================
 
-if [ -d /var/lib/vhir/passwords ]; then
+if [ -d /var/lib/vhir/passwords ] && [ -w /var/lib/vhir/passwords ]; then
     ok "Password storage: /var/lib/vhir/passwords/"
 else
     info "Creating password storage directory (requires sudo)..."
