@@ -53,6 +53,7 @@ class Evidence:
         ev = case / "evidence"
         self.img = ev / "rd01-memory.img"
         self.img2 = ev / "rd02-memory.img"
+        self.img_host = ev / "rd01.img"  # named after its host
         self.json_dir = ev / "C.1/artifacts/Windows.Sysinternals.Autoruns"
         self.json_file = self.json_dir / "F.AAA.json"
         self.kansa = ev / "Output/Autorunsc"
@@ -262,6 +263,25 @@ def _scenario(name, ev):
             ev.kansa_files,
             [("104", ev.kansa_files[1], "not_wrong")],
         ),
+        # A memory image named after its host: its stem is in every rd01 index,
+        # so it says nothing about which ingest a query read.
+        **{
+            f"stemhost_{form}": (
+                _memory(ev.img_host, "rd01", RUN1, 1)
+                + _triage_ingest(ev, ["rd01"])
+                + [_query("204", index)],
+                [ev.img_host, ev.security["rd01"]],
+                [
+                    ("204", ev.security["rd01"], "not_wrong"),
+                    ("204", ev.img_host, "not_wrong"),
+                ],
+            )
+            for form, index in (
+                ("evtx", f"{evtx}rd01"),
+                ("comma", f"{evtx}rd01,{vol}rd01"),
+                ("wildcard", f"case-{CID}-*-rd01"),
+            )
+        },
         # Anchors: one ingest, one file — still FULL with the right source
         "memonly": (
             _memory(ev.img, "rd01", RUN1, 1) + [_query("102", f"{vol}rd01")],
@@ -327,6 +347,9 @@ ROWS = sorted(
         "directdir",
         "mixed",
         "kansa3",
+        "stemhost_evtx",
+        "stemhost_comma",
+        "stemhost_wildcard",
     ]
     + ["memonly", "jsononly", "kansa1", "wildcard1"]
     + ["bridged", "unbridged", "bridge_unregistered"]
@@ -370,6 +393,7 @@ def test_a_query_artifact_is_full_only_with_its_own_source(case, name, order):
         "confidence": "LOW",
         "confidence_justification": "row test",
         "type": "finding",
+        "event_timestamp": "2026-09-30T12:00:00Z",  # so a timeline event is made
     }
     for n, declared, expect in plan:
         aid = (
@@ -414,3 +438,16 @@ def test_a_query_artifact_is_full_only_with_its_own_source(case, name, order):
             assert Path(stored[0]["source_evidence"]).resolve() == declared.resolve(), (
                 where
             )
+        events = [
+            t
+            for t in json.loads((case / "timeline.json").read_text())
+            if t.get("auto_created_from") == result["finding_id"]
+        ]
+        assert len(events) == 1, (where, events)
+        others = {Path(r).resolve() for r in registered} - {declared.resolve()}
+        tl_source = events[0].get("source", "")
+        assert not tl_source or Path(tl_source).resolve() not in others, (
+            where,
+            "timeline source",
+            tl_source,
+        )
