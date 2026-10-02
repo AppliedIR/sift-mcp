@@ -255,3 +255,11 @@ class TestAFailedObservableSearchLeavesNotFoundUnconfirmed:
     ):
         result = _lookup(mock_opencti_client, "dc01.corp-a.test")
         assert result == {"found": False, "ioc": "dc01.corp-a.test"}
+
+    def test_the_note_belongs_to_one_lookup(self, mock_opencti_client):
+        """The client lives for the whole server process: a failed search must
+        not mark the lookups after it."""
+        assert "note" in self._failing(mock_opencti_client, "dc01.corp-a.test")
+        mock_opencti_client._client.stix_cyber_observable.list.side_effect = None
+        result = _lookup(mock_opencti_client, "dc02.corp-a.test")
+        assert result == {"found": False, "ioc": "dc02.corp-a.test"}
