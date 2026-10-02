@@ -111,21 +111,26 @@ class TestValidationPerformance:
             assert elapsed < 0.0001, f"IOC '{ioc}' validation took {elapsed}s"
 
     def test_label_validation_performance(self):
-        """Label validation scales linearly."""
-        iterations = 1000
+        """Label validation scales linearly.
 
-        # Single label
-        start = time.perf_counter()
-        for _ in range(iterations):
-            validate_labels(["apt"])
-        single_time = (time.perf_counter() - start) / iterations
-
-        # 10 labels
+        The single label has the same shape as the ten, so the ratio counts
+        labels rather than characters. The two timings alternate over several
+        rounds and each keeps its fastest: a pause from the scheduler can only
+        add time, and one pair timed back to back moved between 3x and 36x on
+        a loaded machine.
+        """
+        iterations = 200
         labels_10 = [f"label-{i}" for i in range(10)]
-        start = time.perf_counter()
-        for _ in range(iterations):
-            validate_labels(labels_10)
-        ten_time = (time.perf_counter() - start) / iterations
+
+        def per_call(labels):
+            start = time.perf_counter()
+            for _ in range(iterations):
+                validate_labels(labels)
+            return (time.perf_counter() - start) / iterations
+
+        rounds = [(per_call(labels_10[:1]), per_call(labels_10)) for _ in range(15)]
+        single_time = min(one for one, _ in rounds)
+        ten_time = min(ten for _, ten in rounds)
 
         # Should scale roughly linearly (10x labels = ~10x time, with tolerance)
         assert ten_time < single_time * 20, (
