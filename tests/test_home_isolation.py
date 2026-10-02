@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+from importlib.util import find_spec
 from pathlib import Path
 
 import pytest
@@ -118,6 +119,9 @@ pwd.getpwuid = _getpwuid
 """
 
 
+@pytest.mark.skipif(
+    find_spec("opencti_mcp") is None, reason="it runs an opencti-mcp test"
+)
 def test_a_test_that_clears_the_environment_keeps_its_logs_out_of_the_real_home(
     tmp_path,
 ):

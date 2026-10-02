@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+from importlib.util import find_spec
 from unittest.mock import MagicMock, Mock
 
 import pytest
-from opencti_mcp.adaptive import reset_global_metrics
-from opencti_mcp.client import OpenCTIClient
-from opencti_mcp.config import Config, SecretStr
-from opencti_mcp.server import OpenCTIMCPServer
+
+if find_spec("opencti_mcp") is None:
+    # A default install leaves opencti-mcp out. Checked by name, not by a
+    # failing import, so a broken opencti-mcp still fails the run.
+
+    def pytest_collect_file(file_path, parent):
+        pytest.skip("opencti-mcp isn't installed")
+
+else:
+    from opencti_mcp.adaptive import reset_global_metrics
+    from opencti_mcp.client import OpenCTIClient
+    from opencti_mcp.config import Config, SecretStr
+    from opencti_mcp.server import OpenCTIMCPServer
 
 
 @pytest.fixture(autouse=True)
