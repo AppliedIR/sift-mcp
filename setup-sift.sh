@@ -585,11 +585,11 @@ fi
 # Phase 1b: Verification Ledger Directory
 # =============================================================================
 
-if [ -d /var/lib/vhir/verification ] && [ -w /var/lib/vhir/verification ]; then
+if [ -d /var/lib/vhir/verification ] && [ ! -L /var/lib/vhir/verification ] && [ -O /var/lib/vhir/verification ] && [ -w /var/lib/vhir/verification ]; then
     ok "Verification ledger: /var/lib/vhir/verification/"
 else
     info "Creating verification ledger directory (requires sudo)..."
-    if sudo mkdir -p /var/lib/vhir/verification && \
+    if [ ! -L /var/lib/vhir/verification ] && sudo mkdir -p /var/lib/vhir/verification && \
        sudo chown "$USER:$USER" /var/lib/vhir/verification && \
        sudo chmod 700 /var/lib/vhir/verification; then
         ok "Verification ledger: /var/lib/vhir/verification/"
@@ -605,11 +605,11 @@ fi
 # Phase 1b2: Password Storage Directory
 # =============================================================================
 
-if [ -d /var/lib/vhir/passwords ] && [ -w /var/lib/vhir/passwords ]; then
+if [ -d /var/lib/vhir/passwords ] && [ ! -L /var/lib/vhir/passwords ] && [ -O /var/lib/vhir/passwords ] && [ -w /var/lib/vhir/passwords ]; then
     ok "Password storage: /var/lib/vhir/passwords/"
 else
     info "Creating password storage directory (requires sudo)..."
-    if sudo mkdir -p /var/lib/vhir/passwords && \
+    if [ ! -L /var/lib/vhir/passwords ] && sudo mkdir -p /var/lib/vhir/passwords && \
        sudo chown "$USER:$USER" /var/lib/vhir/passwords && \
        sudo chmod 700 /var/lib/vhir/passwords; then
         ok "Password storage: /var/lib/vhir/passwords/"

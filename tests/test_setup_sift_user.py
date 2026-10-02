@@ -21,7 +21,7 @@ SCRIPT = Path(__file__).parent.parent / "setup-sift.sh"
 DIRS = ("verification", "passwords")
 
 
-def _harness(root: Path, sudo: str = '"$@"') -> str:
+def _harness(root: Path, sudo: str = '"$@"', prelude: str = "") -> str:
     text = SCRIPT.read_text()
     user = "\n".join(re.findall(r"^USER=.*$", text, re.M))
     start = text.index("# Phase 1b: Verification Ledger Directory")
@@ -32,6 +32,7 @@ def _harness(root: Path, sudo: str = '"$@"') -> str:
     return "\n".join(
         [
             "set -euo pipefail",
+            prelude,
             f"sudo() {{ {sudo}; }}",
             'info() { echo "INFO $*"; }',
             'ok() { echo "OK $*"; }',
@@ -99,3 +100,40 @@ class TestLedgerDirectories:
         run = _run(tmp_path, env_user=True, sudo="exit 9")
         assert run.returncode == 0, run.stdout + run.stderr
         assert run.stdout.count("OK ") == 2
+
+    @pytest.mark.parametrize("name", DIRS)
+    @pytest.mark.parametrize("target_mode", [0o555, 0o700])
+    def test_a_symlink_fails_loudly_and_its_target_is_untouched(
+        self, tmp_path, name, target_mode
+    ):
+        """A repair through the link would chown and chmod its target."""
+        target = tmp_path / "elsewhere"
+        target.mkdir(mode=target_mode)
+        target.chmod(target_mode)
+        for other in DIRS:
+            if other != name:
+                (tmp_path / "vhir" / other).mkdir(parents=True, mode=0o700)
+        (tmp_path / "vhir").mkdir(exist_ok=True)
+        (tmp_path / "vhir" / name).symlink_to(target)
+        try:
+            run = _run(tmp_path, env_user=True)
+            mode = stat.S_IMODE(target.stat().st_mode)
+        finally:
+            target.chmod(0o700)
+        assert run.returncode == 1, run.stdout
+        assert f"ERR Could not create {tmp_path / 'vhir' / name}/" in run.stdout
+        assert mode == target_mode
+
+    def test_a_directory_another_user_owns_is_not_ok(self, tmp_path):
+        """World-writable passes -w, but the passwords must be the
+        installer's alone. [ -O ] reports another owner: a test that isn't
+        root can't create one."""
+        for name in DIRS:
+            (tmp_path / "vhir" / name).mkdir(parents=True)
+            (tmp_path / "vhir" / name).chmod(0o777)
+        not_mine = '[() { if [[ $1 == -O ]]; then return 1; fi; builtin [ "$@"; }'
+        run = _run(tmp_path, env_user=True, prelude=not_mine)
+        assert run.returncode == 0, run.stdout + run.stderr
+        assert run.stdout.count("INFO Creating") == 2, run.stdout
+        for name in DIRS:
+            assert stat.S_IMODE((tmp_path / "vhir" / name).stat().st_mode) == 0o700
