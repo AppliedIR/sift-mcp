@@ -1152,6 +1152,7 @@ if [ -n "$OPTIONAL_PKGS" ]; then
 fi
 
 # --- OpenSearch MCP (evidence indexing — optional) ---
+OPENSEARCH_SETUP_FAILED=""  # the setup script to re-run, if it ran and failed
 OPENSEARCH_MCP_DIR="$INSTALL_DIR/../opensearch-mcp"
 if [ ! -d "$OPENSEARCH_MCP_DIR" ]; then
     OPENSEARCH_MCP_DIR="$HOME/.vhir/src/opensearch-mcp"
@@ -1196,6 +1197,7 @@ if [ -d "$OPENSEARCH_MCP_DIR" ]; then
                                 ok "OpenSearch setup complete"
                             else
                                 warn "OpenSearch setup failed. Run manually: $SETUP_OS_SCRIPT"
+                                OPENSEARCH_SETUP_FAILED="$SETUP_OS_SCRIPT"
                             fi
                         else
                             warn "Could not add $USER to docker group. OpenSearch setup skipped."
@@ -1222,6 +1224,7 @@ if [ -d "$OPENSEARCH_MCP_DIR" ]; then
                     ok "OpenSearch setup complete"
                 else
                     warn "OpenSearch setup failed. Run manually: $SETUP_OS_SCRIPT"
+                    OPENSEARCH_SETUP_FAILED="$SETUP_OS_SCRIPT"
                 fi
             fi
         fi
@@ -2288,6 +2291,13 @@ if $REMOTE_MODE; then
     echo "  $HOME/.vhir/tls/ca-cert.pem"
 else
     echo "Token:       stored in $GATEWAY_CONFIG"
+fi
+
+# The backend is registered either way and answers until a tool needs the cluster.
+if [ -n "$OPENSEARCH_SETUP_FAILED" ]; then
+    echo ""
+    err "OpenSearch setup failed: evidence indexing won't work. Re-run: bash $OPENSEARCH_SETUP_FAILED"
+    INSTALL_ERRORS=$((INSTALL_ERRORS + 1))
 fi
 
 # =============================================================================
