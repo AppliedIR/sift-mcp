@@ -450,6 +450,25 @@ def _infer_event_type(sanitized: dict) -> str:
     return ""
 
 
+def _utc(ts: object) -> datetime | None:
+    """An ISO timestamp as an aware UTC datetime (naive read as UTC), or None."""
+    if not isinstance(ts, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(ts[:-1] + "+00:00" if ts.endswith("Z") else ts)
+    except ValueError:
+        return None
+    return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _within(ts: object, bound: str, after: bool) -> bool:
+    """Compare instants; when either side doesn't parse, compare as text, as before."""
+    b, v = _utc(bound), _utc(ts)
+    if b is None or v is None:
+        return ts >= bound if after else ts <= bound
+    return v >= b if after else v <= b
+
+
 class CaseManager:
     """Manages forensic investigation cases."""
 
@@ -1494,9 +1513,13 @@ class CaseManager:
         if examiner:
             events = [e for e in events if e.get("examiner") == examiner]
         if start_date:
-            events = [e for e in events if e.get("timestamp", "") >= start_date]
+            events = [
+                e for e in events if _within(e.get("timestamp", ""), start_date, True)
+            ]
         if end_date:
-            events = [e for e in events if e.get("timestamp", "") <= end_date]
+            events = [
+                e for e in events if _within(e.get("timestamp", ""), end_date, False)
+            ]
         if event_type:
             events = [e for e in events if e.get("event_type", "") == event_type]
         return events
