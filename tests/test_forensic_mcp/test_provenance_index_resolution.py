@@ -21,7 +21,7 @@ RUN1 = "da4898b2-9060-4955-95ca-3a8dfd008ef5"
 RUN2 = "11111111-2222-3333-4444-555555555555"
 
 
-def _entry(mcp, tool, aid, params, inputs=None, result=None):
+def _entry(mcp, tool, aid, params, inputs=None, result=None, hashes=None):
     e = {
         "ts": "2026-10-02T07:34:00+00:00",
         "mcp": mcp,
@@ -35,7 +35,7 @@ def _entry(mcp, tool, aid, params, inputs=None, result=None):
     }
     if inputs is not None:
         e["input_files"] = [str(p) for p in inputs]
-        e["input_sha256s"] = []
+        e["input_sha256s"] = list(hashes or [])
     return e
 
 
@@ -71,6 +71,10 @@ class Evidence:
         }
         self.evtx_dir = ev / "evtx_dir"
         self.derivative = case / "extractions" / "Security_parsed.csv"
+        self.security_copy = case.parent / "work" / "Security.evtx"  # relocated
+
+
+SECURITY_SHA = "a" * 64  # Security.evtx's registered hash
 
 
 def _memory(image, host, run, n):
@@ -319,6 +323,26 @@ def _scenario(name, ev):
         + _memory(ev.img, "rd01", RUN1, 1)
         + [_query("106", f"case-{CID}-*")]
     )
+    # Bridged only through the audited hash of a relocated copy of the evidence.
+    run_on_copy = _entry(
+        "sift-mcp",
+        "run_command",
+        "sift-examiner-20261002-001",
+        {"command": f"EvtxECmd -f {ev.security_copy} --csv out", "purpose": "parse"},
+        [ev.security_copy],
+        {"exit_code": 0, "output_file": str(ev.derivative), "output_sha256": "z"},
+        hashes=[SECURITY_SHA],
+    )
+    s["hash_bridged"] = (
+        two_ingests + [run_on_copy],
+        [ev.img, ev.json_file, (ev.security["rd01"], SECURITY_SHA)],
+        [("106", ev.derivative, "staged")],
+    )
+    s["hash_mismatch"] = (
+        two_ingests + [run_on_copy],
+        [ev.img, ev.json_file, (ev.security["rd01"], "b" * 64)],
+        [("106", ev.derivative, "rejected")],
+    )
     s["bridged"] = (
         two_ingests + [bridge],
         [ev.img, ev.json_file, ev.security["rd01"]],
@@ -352,7 +376,7 @@ ROWS = sorted(
         "stemhost_wildcard",
     ]
     + ["memonly", "jsononly", "kansa1", "wildcard1"]
-    + ["bridged", "unbridged", "bridge_unregistered"]
+    + ["bridged", "unbridged", "bridge_unregistered", "hash_bridged", "hash_mismatch"]
 )
 
 
@@ -383,7 +407,16 @@ def test_a_query_artifact_is_full_only_with_its_own_source(case, name, order):
         "".join(json.dumps(e) + "\n" for e in entries)
     )
     (case / "evidence.json").write_text(
-        json.dumps({"files": [{"path": str(p), "sha256": ""} for p in registered]})
+        json.dumps(
+            {
+                "files": [
+                    {"path": str(p), "sha256": h}
+                    for p, h in (
+                        r if isinstance(r, tuple) else (r, "") for r in registered
+                    )
+                ]
+            }
+        )
     )
     cm = CaseManager()
     finding = {
@@ -444,7 +477,9 @@ def test_a_query_artifact_is_full_only_with_its_own_source(case, name, order):
             if t.get("auto_created_from") == result["finding_id"]
         ]
         assert len(events) == 1, (where, events)
-        others = {Path(r).resolve() for r in registered} - {declared.resolve()}
+        others = {
+            Path(r[0] if isinstance(r, tuple) else r).resolve() for r in registered
+        } - {declared.resolve()}
         tl_source = events[0].get("source", "")
         assert not tl_source or Path(tl_source).resolve() not in others, (
             where,
