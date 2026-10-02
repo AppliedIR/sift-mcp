@@ -2097,6 +2097,8 @@ class OpenCTIClient:
             # with no indicator of its own still draws indicators that share
             # a word with it, and may exist as an observable.
             observables = []
+            # Not found is unconfirmed while the observable search failed.
+            unconfirmed: dict[str, str] = {}
             if not any(_is_the_ioc(h, "indicator", ioc) for h in results):
                 try:
                     observables = (
@@ -2107,9 +2109,12 @@ class OpenCTIClient:
                     )
                 except Exception as obs_err:
                     logger.warning("Observable search failed for %s: %s", ioc, obs_err)
+                    unconfirmed["note"] = (
+                        "Not found is unconfirmed: the observable search failed."
+                    )
 
             if not results and not observables:
-                return {"found": False, "ioc": ioc}
+                return {"found": False, "ioc": ioc, **unconfirmed}
 
             # The search is full text, so its hits include objects that only
             # share a word with the IOC: report the first hit, indicators
@@ -2133,6 +2138,7 @@ class OpenCTIClient:
                         }
                         for h, kind in hits
                     ],
+                    **unconfirmed,
                 }
 
             try:

@@ -220,3 +220,38 @@ class TestSurroundingWhitespace:
         result = _lookup(mock_opencti_client, " 10.0.0.1 ")
         assert result["found"] is False and "Internal address" in result["note"]
         mock_opencti_client._client.indicator.list.assert_not_called()
+
+
+class TestAFailedObservableSearchLeavesNotFoundUnconfirmed:
+    """Observables are searched when no indicator is the IOC. When that search
+    raised, a not-found answer read exactly like a real one, and enrichment
+    counted the IOC as a confirmed lookup."""
+
+    NOTE = "Not found is unconfirmed: the observable search failed."
+
+    @staticmethod
+    def _failing(client: OpenCTIClient, ioc: str, indicators=()) -> dict:
+        client._client.indicator.list.return_value = list(indicators)
+        client._client.stix_cyber_observable.list.side_effect = RuntimeError(
+            "observable search failed"
+        )
+        return client.get_indicator_context(ioc)
+
+    def test_no_hits(self, mock_opencti_client):
+        result = self._failing(mock_opencti_client, "dc01.corp-a.test")
+        assert result == {"found": False, "ioc": "dc01.corp-a.test", "note": self.NOTE}
+
+    def test_indicator_hits_that_are_not_the_ioc(self, mock_opencti_client):
+        result = self._failing(
+            mock_opencti_client,
+            "dc01.corp-a.test",
+            [_indicator("worker-unrelated.invalid")],
+        )
+        assert (result["found"], result.get("note")) == (False, self.NOTE)
+        assert [r["name"] for r in result["related"]] == ["worker-unrelated.invalid"]
+
+    def test_a_search_that_did_not_fail_is_a_confirmed_not_found(
+        self, mock_opencti_client
+    ):
+        result = _lookup(mock_opencti_client, "dc01.corp-a.test")
+        assert result == {"found": False, "ioc": "dc01.corp-a.test"}
