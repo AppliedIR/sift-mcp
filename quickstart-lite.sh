@@ -285,7 +285,7 @@ fi
 # Older uv installs from the lock without checking its hashes, and says nothing.
 UV_VERSION=$(uv --version 2>/dev/null | awk '{print $2}')
 if ! printf '%s\n%s\n' "0.6.0" "${UV_VERSION:-0}" | sort -V -C; then
-    fail "uv ${UV_VERSION:-unknown} is older than 0.6.0, which doesn't check package hashes. Update it: uv self update"
+    fail "uv ${UV_VERSION:-unknown} is older than 0.6.0, which doesn't check package hashes. Update it: uv self update (or reinstall: curl -LsSf https://astral.sh/uv/install.sh | sh)"
 fi
 
 # Third-party packages install at the versions and hashes in the lock.
@@ -340,6 +340,9 @@ if [[ "$INSTALL_TRIAGE" == "true" ]]; then
         warn "windows-triage not found at $pkg_dir"
     fi
 fi
+
+"$VENV_PYTHON" "$SCRIPT_DIR/deps/check-lock.py" --strict --lock "$LOCK" \
+    || fail "Installed packages differ from the dependency lock (listed above)."
 
 if [[ "${VENV_ONLY:-}" == "true" ]]; then
     echo ""
@@ -604,6 +607,9 @@ if [[ "$INSTALL_OPENCTI" == "true" ]]; then
     if [[ -d "$pkg_dir" ]]; then
         uv pip install --python "$VENV_PYTHON" --quiet -e "$pkg_dir"
         ok "Installed opencti-mcp"
+        # Outside the lock: the packages must still agree; what pycti moved is listed.
+        "$VENV_PYTHON" "$SCRIPT_DIR/deps/check-lock.py" --final --lock "$LOCK" \
+            || fail "Installed packages conflict (listed above)."
     else
         warn "opencti-mcp not found at $pkg_dir"
     fi

@@ -1128,6 +1128,12 @@ else
     info "opensearch-mcp not found — skipping (use --opensearch to install, or clone to $INSTALL_DIR/../opensearch-mcp)"
 fi
 
+# --- Dependency check: everything installed so far is at the lock's versions ---
+if ! "$VENV_PYTHON" "$INSTALL_DIR/deps/check-lock.py" --strict --lock "$LOCK"; then
+    err "Installed packages differ from the dependency lock (listed above)."
+    exit 1
+fi
+
 # --- OpenCTI (optional, outside the lock) ---
 # Its client, pycti, pins versions the lock can't hold (pycti 6 keeps
 # starlette 0.50 and uvicorn 0.35), so it installs last and unlocked. After
@@ -1140,6 +1146,11 @@ if $INSTALL_OPENCTI; then
     else
         ok "opencti-mcp installed"
     fi
+fi
+# The packages agree with each other; what OpenCTI's client moved is listed.
+if ! "$VENV_PYTHON" "$INSTALL_DIR/deps/check-lock.py" --final --lock "$LOCK"; then
+    err "Installed packages conflict (listed above)."
+    exit 1
 fi
 
 # =============================================================================

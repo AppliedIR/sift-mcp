@@ -3,8 +3,10 @@
 Every `uv pip install` of first-party or third-party packages takes the lock
 as constraint and build constraint (-c, -b). OpenCTI installs last and
 unlocked: pycti pins versions the lock can't hold. uv older than 0.6.0
-ignores the lock's hashes, so the installers refuse it. These run the
-installers' own text with uv and every other external command stubbed.
+ignores the lock's hashes, so the installers refuse it. The venv is checked
+against the lock after the locked installs (--strict) and again after
+OpenCTI's (--final). These run the installers' own text with uv, the venv's
+python and every other external command stubbed.
 """
 
 from __future__ import annotations
@@ -48,6 +50,25 @@ def _calls(log: Path) -> list[str]:
     ]
 
 
+def _steps(log: Path) -> list[str]:
+    """The log, each line reduced to: opencti, locked, check --strict/--final."""
+    out = []
+    for line in log.read_text().splitlines():
+        if line.startswith("check "):
+            out.append("check " + line.split()[2])
+        elif line.startswith("pip install"):
+            out.append("opencti" if "packages/opencti" in line else "locked")
+    return out
+
+
+def _python(tmp_path: Path, log: Path) -> Path:
+    """The venv's python: records the check-lock.py runs."""
+    py = tmp_path / "venv-python"
+    py.write_text(f'#!/bin/sh\necho "check $*" >> "{log}"\n')
+    py.chmod(0o755)
+    return py
+
+
 def test_setup_sift_installs_everything_but_opencti_from_the_lock(tmp_path):
     install_dir = tmp_path / "sift-mcp"
     (install_dir / "deps").mkdir(parents=True)
@@ -62,7 +83,8 @@ def test_setup_sift_installs_everything_but_opencti_from_the_lock(tmp_path):
         [
             STUBS,
             f'uv(){{ echo "$*" >> "{log}"; }}',
-            f'INSTALL_DIR="{install_dir}"; VHIR_DIR="{tmp_path}/vhir"; VENV_PYTHON=python3',
+            f'INSTALL_DIR="{install_dir}"; VHIR_DIR="{tmp_path}/vhir"',
+            f'VENV_PYTHON="{_python(tmp_path, log)}"',
             f'HOME="{tmp_path}"; USER=x',
             "INSTALL_TRIAGE=true; INSTALL_RAG=true; INSTALL_OPENCTI=true; INSTALL_OPENSEARCH_FLAG=true",
             _slice(
@@ -101,6 +123,12 @@ def test_setup_sift_installs_everything_but_opencti_from_the_lock(tmp_path):
     assert calls.index(opencti[0]) > max(
         i for i, c in enumerate(calls) if "opensearch-mcp" in c
     )
+    # Checked after the last locked install, and again after OpenCTI's.
+    steps = _steps(log)
+    tail = steps[steps.index("check --strict") - 1 :]
+    assert tail[:4] == ["locked", "check --strict", "opencti", "check --final"], steps
+    assert steps.count("check --strict") == 1 and steps.count("check --final") == 1
+    assert all(x == "locked" for x in tail[4:]), steps  # zstandard, already present
 
 
 def test_quickstart_lite_installs_everything_but_opencti_from_the_lock(tmp_path):
@@ -116,7 +144,8 @@ def test_quickstart_lite_installs_everything_but_opencti_from_the_lock(tmp_path)
         [
             STUBS,
             f'uv(){{ if [ "$1" = "--version" ]; then echo "uv 0.12.20"; else echo "$*" >> "{log}"; fi; }}',
-            f'SCRIPT_DIR="{script_dir}"; VENV_PYTHON=python3; VENV_DIR="{tmp_path}/venv"',
+            f'SCRIPT_DIR="{script_dir}"; VENV_DIR="{tmp_path}/venv"',
+            f'VENV_PYTHON="{_python(tmp_path, log)}"',
             "INSTALL_RAG=true; INSTALL_TRIAGE=true; INSTALL_OPENCTI=true",
             _slice(
                 text,
@@ -146,6 +175,14 @@ def test_quickstart_lite_installs_everything_but_opencti_from_the_lock(tmp_path)
         (False, True),
         (True, False),
     ], calls
+    assert _steps(log) == [
+        "locked",
+        "locked",
+        "locked",
+        "check --strict",
+        "opencti",
+        "check --final",
+    ]
 
 
 @pytest.mark.parametrize("installer", ["setup-sift", "quickstart-lite"])
