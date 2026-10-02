@@ -1137,8 +1137,10 @@ fi
 # --- OpenCTI (optional, outside the lock) ---
 # Its client, pycti, pins versions the lock can't hold (pycti 6 keeps
 # starlette 0.50 and uvicorn 0.35), so it installs last and unlocked. After
-# the opensearch-mcp install, so nothing locked runs after it.
-if $INSTALL_OPENCTI; then
+# the opensearch-mcp install, so nothing locked runs after it. Reinstalled
+# whenever it's already there: the locked steps above may have moved what
+# pycti pins, even on a run that didn't select OpenCTI again.
+if $INSTALL_OPENCTI || uv pip show --python "$VENV_PYTHON" opencti-mcp &>/dev/null; then
     info "Installing opencti-mcp (outside the dependency lock)..."
     if ! uv pip install --python "$VENV_PYTHON" --quiet -e "$INSTALL_DIR/packages/opencti"; then
         warn "opencti install failed. Continuing without it."

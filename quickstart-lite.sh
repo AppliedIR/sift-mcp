@@ -344,6 +344,27 @@ fi
 "$VENV_PYTHON" "$SCRIPT_DIR/deps/check-lock.py" --strict --lock "$LOCK" \
     || fail "Installed packages differ from the dependency lock (listed above)."
 
+# OpenCTI's client installs unlocked, after the locked packages: pycti pins
+# its own. Reinstalled whenever it's already there, since the locked installs
+# above may have moved what it pins, even on a run that didn't select it.
+_install_opencti_pkg() {
+    [[ "${OPENCTI_PKG_DONE:-}" == "true" ]] && return 0
+    local pkg_dir="$SCRIPT_DIR/packages/opencti"
+    if [[ ! -d "$pkg_dir" ]]; then
+        warn "opencti-mcp not found at $pkg_dir"
+        return 0
+    fi
+    uv pip install --python "$VENV_PYTHON" --quiet -e "$pkg_dir"
+    ok "Installed opencti-mcp"
+    OPENCTI_PKG_DONE=true
+    # Outside the lock: the packages must still agree; what pycti moved is listed.
+    "$VENV_PYTHON" "$SCRIPT_DIR/deps/check-lock.py" --final --lock "$LOCK" \
+        || fail "Installed packages conflict (listed above)."
+}
+if [[ "$INSTALL_OPENCTI" == "true" ]] || uv pip show --python "$VENV_PYTHON" opencti-mcp &>/dev/null; then
+    _install_opencti_pkg
+fi
+
 if [[ "${VENV_ONLY:-}" == "true" ]]; then
     echo ""
     _write_install_marker
@@ -602,17 +623,7 @@ if [[ "$INSTALL_OPENCTI" != "true" ]] && [[ "$YES" != "true" ]] && [[ "$SKIP_OPT
 fi
 
 if [[ "$INSTALL_OPENCTI" == "true" ]]; then
-    # Install opencti package
-    pkg_dir="$SCRIPT_DIR/packages/opencti"
-    if [[ -d "$pkg_dir" ]]; then
-        uv pip install --python "$VENV_PYTHON" --quiet -e "$pkg_dir"
-        ok "Installed opencti-mcp"
-        # Outside the lock: the packages must still agree; what pycti moved is listed.
-        "$VENV_PYTHON" "$SCRIPT_DIR/deps/check-lock.py" --final --lock "$LOCK" \
-            || fail "Installed packages conflict (listed above)."
-    else
-        warn "opencti-mcp not found at $pkg_dir"
-    fi
+    _install_opencti_pkg  # already done in Phase 1 unless chosen just now
 
     OPENCTI_URL=""
     OPENCTI_TOKEN=""

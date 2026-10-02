@@ -10,10 +10,10 @@
 # The same commits, DATE and uv version give the same file, byte for byte;
 # the header records them and the command that reproduces it.
 #
-# --check compiles the current commits against the lock and fails if any
-# package they need is missing from it or pinned differently: a dependency
-# change that needs the lock regenerated. Run it before pushing any of the
-# three repos.
+# --check compiles the current commits the way the lock was made (same
+# cutoff date) and fails if any package they need, with its markers, is
+# missing from the lock or pinned differently: a dependency change that
+# needs the lock regenerated. Run it before pushing any of the three repos.
 #
 # The other repos are found beside this one, as the installer lays them out
 # (~/.vhir/src/{sift-mcp,vhir,opensearch-mcp}); VHIR_REPO and OPENSEARCH_REPO
@@ -83,12 +83,14 @@ compile() {  # paths in the output are relative to $WORK, so they don't vary
 if $CHECK; then
     [ -f "$LOCK" ] || { echo "No lock at $LOCK" >&2; exit 1; }
     LOCK_DATE=$(sed -n 's/^# exclude-newer *\([^ ]*\).*/\1/p' "$LOCK")
-    if ! compile -c "$LOCK" --exclude-newer "$LOCK_DATE" --no-annotate -o needed.txt 2> "$WORK/err"; then
+    # Not compiled against the lock (-c): that would fit the markers to it.
+    if ! compile --exclude-newer "$LOCK_DATE" --no-annotate -o needed.txt 2> "$WORK/err"; then
         cat "$WORK/err" >&2
-        echo "LOCK OUT OF DATE: the current dependencies can't be met from the lock. Run deps/regen-lock.sh" >&2
+        echo "Can't resolve the current dependencies; see above." >&2
         exit 1
     fi
-    pins() { grep -E '^[A-Za-z0-9._-]+==' "$1" | sed 's/ .*//' | tr 'A-Z_' 'a-z-' | sort -u; }
+    # Each pin with its markers, the hash continuation dropped.
+    pins() { grep -E '^[A-Za-z0-9._-]+==' "$1" | sed -E 's/[[:space:]]*\\$//' | sort -u; }
     missing=$(comm -23 <(pins "$WORK/needed.txt") <(pins "$LOCK"))
     if [ -n "$missing" ]; then
         echo "LOCK OUT OF DATE: needed but not in the lock:" >&2
