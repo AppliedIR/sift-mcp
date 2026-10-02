@@ -282,6 +282,17 @@ if ! command -v uv &>/dev/null; then
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
+# Older uv installs from the lock without checking its hashes, and says nothing.
+UV_VERSION=$(uv --version 2>/dev/null | awk '{print $2}')
+if ! printf '%s\n%s\n' "0.6.0" "${UV_VERSION:-0}" | sort -V -C; then
+    fail "uv ${UV_VERSION:-unknown} is older than 0.6.0, which doesn't check package hashes. Update it: uv self update"
+fi
+
+# Third-party packages install at the versions and hashes in the lock.
+LOCK="$SCRIPT_DIR/deps/vhir.lock"
+[[ -f "$LOCK" ]] || fail "Dependency lock not found: $LOCK"
+LOCKED=(-c "$LOCK" -b "$LOCK")
+
 # Bridge existing pip mirror config
 [ -n "${PIP_INDEX_URL:-}" ] && export UV_INDEX_URL="$PIP_INDEX_URL"
 
@@ -303,7 +314,7 @@ fi
 # sift-common always installed
 pkg_dir="$SCRIPT_DIR/packages/sift-common"
 if [[ -d "$pkg_dir" ]]; then
-    uv pip install --python "$VENV_PYTHON" --quiet -e "$pkg_dir"
+    uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" -e "$pkg_dir"
     ok "Installed sift-common"
 else
     warn "sift-common not found at $pkg_dir"
@@ -313,7 +324,7 @@ if [[ "$INSTALL_RAG" == "true" ]]; then
     pkg_dir="$SCRIPT_DIR/packages/forensic-rag"
     if [[ -d "$pkg_dir" ]]; then
         echo "  Installing forensic-rag (downloads ML dependencies, may take several minutes)..."
-        uv pip install --python "$VENV_PYTHON" --quiet -e "$pkg_dir"
+        uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" -e "$pkg_dir"
         ok "Installed forensic-rag"
     else
         warn "forensic-rag not found at $pkg_dir"
@@ -323,7 +334,7 @@ fi
 if [[ "$INSTALL_TRIAGE" == "true" ]]; then
     pkg_dir="$SCRIPT_DIR/packages/windows-triage"
     if [[ -d "$pkg_dir" ]]; then
-        uv pip install --python "$VENV_PYTHON" --quiet -e "$pkg_dir"
+        uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" -e "$pkg_dir"
         ok "Installed windows-triage"
     else
         warn "windows-triage not found at $pkg_dir"

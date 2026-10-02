@@ -941,6 +941,24 @@ ensure_uv() {
 
 ensure_uv
 
+# Older uv installs from the lock without checking its hashes, and says nothing.
+UV_VERSION=$(uv --version 2>/dev/null | awk '{print $2}')
+if ! printf '%s\n%s\n' "0.6.0" "${UV_VERSION:-0}" | sort -V -C; then
+    err "uv ${UV_VERSION:-unknown} is older than 0.6.0, which doesn't check package hashes."
+    echo "  Update it: uv self update   (or reinstall: curl -LsSf https://astral.sh/uv/install.sh | sh)"
+    exit 1
+fi
+
+# Every third-party package is installed at the version and hash in the lock
+# (as constraint and as build constraint). OpenCTI's client is the exception:
+# it's installed after everything else, outside the lock.
+LOCK="$INSTALL_DIR/deps/vhir.lock"
+if [[ ! -f "$LOCK" ]]; then
+    err "Dependency lock not found: $LOCK"
+    exit 1
+fi
+LOCKED=(-c "$LOCK" -b "$LOCK")
+
 # --- Virtual environment ---
 VENV_DIR=$(realpath -m "$VENV_DIR")
 mkdir -p "$(dirname "$VENV_DIR")"
@@ -970,9 +988,9 @@ VENV_PYTHON="$VENV_DIR/bin/python"
 # Helper: install a single package (used for fallback and one-off installs)
 install_pkg() {
     local name="$1" path="$2"
-    if ! uv pip install --python "$VENV_PYTHON" --quiet -e "$path"; then
+    if ! uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" -e "$path"; then
         err "Failed to install $name"
-        echo "  Check: uv pip install --python $VENV_PYTHON -e $path"
+        echo "  Check: uv pip install --python $VENV_PYTHON -c $LOCK -b $LOCK -e $path"
         return 1
     fi
     ok "$name installed"
@@ -982,7 +1000,7 @@ INSTALL_ERRORS=0
 
 # --- Core packages (always installed) — batched for unified resolution ---
 info "Installing core packages..."
-if ! uv pip install --python "$VENV_PYTHON" --quiet \
+if ! uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" \
     -e "$INSTALL_DIR/packages/forensic-knowledge" \
     -e "$INSTALL_DIR/packages/sift-common" \
     -e "$INSTALL_DIR/packages/forensic-mcp" \
@@ -1000,7 +1018,6 @@ ok "Core packages installed"
 # --- Optional packages — batched for unified opentelemetry resolution ---
 OPTIONAL_PKGS=""
 $INSTALL_TRIAGE  && OPTIONAL_PKGS="$OPTIONAL_PKGS -e $INSTALL_DIR/packages/windows-triage"
-$INSTALL_OPENCTI && OPTIONAL_PKGS="$OPTIONAL_PKGS -e $INSTALL_DIR/packages/opencti"
 
 if $INSTALL_RAG; then
     echo ""
@@ -1010,13 +1027,7 @@ if $INSTALL_RAG; then
 fi
 
 if [ -n "$OPTIONAL_PKGS" ]; then
-    # --reinstall-package forces re-resolution of the exporter when opencti
-    # is added to an existing RAG install (prevents sdk/exporter version mismatch)
-    REINSTALL_FLAG=""
-    if $INSTALL_OPENCTI && $INSTALL_RAG; then
-        REINSTALL_FLAG="--reinstall-package opentelemetry-exporter-otlp-proto-grpc"
-    fi
-    if ! uv pip install --python "$VENV_PYTHON" --quiet $REINSTALL_FLAG $OPTIONAL_PKGS; then
+    if ! uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" $OPTIONAL_PKGS; then
         # If batched optional fails, try each individually to isolate the failure
         warn "Batched optional install failed. Installing individually..."
         if $INSTALL_TRIAGE; then
@@ -1029,12 +1040,6 @@ if [ -n "$OPTIONAL_PKGS" ]; then
             install_pkg "rag-mcp" "$INSTALL_DIR/packages/forensic-rag" || {
                 warn "forensic-rag install failed. Continuing without it."
                 INSTALL_RAG=false
-            }
-        fi
-        if $INSTALL_OPENCTI; then
-            install_pkg "opencti-mcp" "$INSTALL_DIR/packages/opencti" || {
-                warn "opencti install failed. Continuing without it."
-                INSTALL_OPENCTI=false
             }
         fi
     else
@@ -1066,7 +1071,7 @@ fi
 INSTALL_OPENSEARCH=false
 if [ -d "$OPENSEARCH_MCP_DIR" ]; then
     info "Installing opensearch-mcp from $OPENSEARCH_MCP_DIR..."
-    if uv pip install --python "$VENV_PYTHON" --quiet -e "$OPENSEARCH_MCP_DIR"; then
+    if uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" -e "$OPENSEARCH_MCP_DIR"; then
         ok "opensearch-mcp installed"
         INSTALL_OPENSEARCH=true
 
@@ -1121,6 +1126,20 @@ if [ -d "$OPENSEARCH_MCP_DIR" ]; then
     fi
 else
     info "opensearch-mcp not found — skipping (use --opensearch to install, or clone to $INSTALL_DIR/../opensearch-mcp)"
+fi
+
+# --- OpenCTI (optional, outside the lock) ---
+# Its client, pycti, pins versions the lock can't hold (pycti 6 keeps
+# starlette 0.50 and uvicorn 0.35), so it installs last and unlocked. After
+# the opensearch-mcp install, so nothing locked runs after it.
+if $INSTALL_OPENCTI; then
+    info "Installing opencti-mcp (outside the dependency lock)..."
+    if ! uv pip install --python "$VENV_PYTHON" --quiet -e "$INSTALL_DIR/packages/opencti"; then
+        warn "opencti install failed. Continuing without it."
+        INSTALL_OPENCTI=false
+    else
+        ok "opencti-mcp installed"
+    fi
 fi
 
 # =============================================================================
@@ -1203,7 +1222,7 @@ if $INSTALL_TRIAGE; then
     DB_DIR="$WT_DIR/data"
 
     # Ensure zstandard is available for the download module
-    uv pip install --python "$VENV_PYTHON" --quiet zstandard 2>/dev/null || true
+    uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" zstandard 2>/dev/null || true
 
     # Check if databases already exist
     DB_EXISTS=false

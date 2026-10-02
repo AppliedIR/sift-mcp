@@ -192,6 +192,8 @@ bash /tmp/vhir-quickstart.sh --recommended --opensearch
 
 If opensearch-mcp is already cloned alongside sift-mcp, the installer detects and installs it automatically — no flag needed.
 
+**Dependency versions** — The installers and `vhir update` install every third-party package at the version and hash listed in `deps/vhir.lock`, and require uv 0.6.0 or newer. OpenCTI's client (pycti) is installed outside the lock because it pins versions of its own, and the packages it pins stay at pycti's versions: requests and setuptools with pycti 7, and setuptools, starlette 0.50 and uvicorn 0.35 with pycti 6. Starlette 0.50 has known security advisories; upgrading OpenCTI (server and pycti) to 7.x removes that hold.
+
 ## Valhuntir Lite
 
 In its simplest form, Valhuntir Lite provides Claude Code with forensic knowledge and instructions on how to enforce forensic rigor, present findings for human review, and audit actions taken. MCP servers enhance accuracy by providing authoritative information — a forensic knowledge RAG and a Windows triage database — plus optional OpenCTI threat intelligence and REMnux malware analysis.
