@@ -364,13 +364,17 @@ _install_opencti_pkg() {
     uv pip install --python "$VENV_PYTHON" --quiet -e "$pkg_dir"
     ok "Installed opencti-mcp"
     OPENCTI_PKG_DONE=true
-    # Outside the lock: the packages must still agree; what pycti moved is listed.
+}
+# The packages must agree with each other, whether or not OpenCTI's step ran
+# (a leftover pycti is skipped by --strict); what pycti moved is listed.
+_final_check() {
     "$VENV_PYTHON" "$SCRIPT_DIR/deps/check-lock.py" --final --lock "$LOCK" \
         || fail "Installed packages conflict (listed above)."
 }
 if [[ "$INSTALL_OPENCTI" == "true" ]] || uv pip show --python "$VENV_PYTHON" opencti-mcp &>/dev/null; then
     _install_opencti_pkg
 fi
+_final_check
 
 if [[ "${VENV_ONLY:-}" == "true" ]]; then
     echo ""
@@ -630,7 +634,10 @@ if [[ "$INSTALL_OPENCTI" != "true" ]] && [[ "$YES" != "true" ]] && [[ "$SKIP_OPT
 fi
 
 if [[ "$INSTALL_OPENCTI" == "true" ]]; then
-    _install_opencti_pkg  # already done in Phase 1 unless chosen just now
+    if [[ "${OPENCTI_PKG_DONE:-}" != "true" ]]; then  # chosen just now
+        _install_opencti_pkg
+        _final_check
+    fi
 
     OPENCTI_URL=""
     OPENCTI_TOKEN=""

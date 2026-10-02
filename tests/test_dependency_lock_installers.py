@@ -180,7 +180,7 @@ def test_uv_older_than_0_6_is_refused(tmp_path, installer, version, refused):
         assert run.returncode == 0 and "PASSED" in run.stdout, run.stdout
 
 
-def _lite(tmp_path, *args, installed=False):
+def _lite(tmp_path, *args, installed=False, final_rc=0, answers=None):
     """The whole quickstart-lite.sh, with uv a stand-in that records its calls
     and answers `pip show opencti-mcp`; the venv already exists and its python
     records check-lock.py runs (anything else goes to the system python)."""
@@ -194,7 +194,8 @@ def _lite(tmp_path, *args, installed=False):
     py.write_text(
         "#!/bin/sh\n"
         f'case "$1" in *check-lock.py) echo "check $*" >> "{log}"\n'
-        '  [ "$2" = --installed ] && echo "setuptools packaging"; exit 0;; esac\n'
+        '  [ "$2" = --installed ] && echo "setuptools packaging"\n'
+        f'  [ "$2" = --final ] && exit {final_rc}; exit 0;; esac\n'
         'exec python3 "$@"\n'
     )
     py.chmod(0o755)
@@ -214,7 +215,7 @@ def _lite(tmp_path, *args, installed=False):
         ["bash", str(LITE), *args],
         cwd=home / "proj",
         env={"HOME": str(home), "PATH": f"{stub}:/usr/bin:/bin", "LANG": "C.UTF-8"},
-        stdin=subprocess.DEVNULL,
+        input=answers or "",
         capture_output=True,
         text=True,
         timeout=120,
@@ -251,11 +252,32 @@ def test_lite_reinstalls_opencti_after_the_locked_packages_whenever_it_is_there(
         "check --final",
     }
     assert set(steps) <= allowed, steps
+    # Checked after the strict check whether or not OpenCTI's step runs.
+    assert steps.count("check --final") == 1, steps
     if not expect_opencti:
-        assert "opencti" not in steps and "check --final" not in steps, steps
+        assert "opencti" not in steps, steps
+        assert steps.index("check --final") > steps.index("check --strict"), steps
         return
     assert steps.count("opencti") == 1, steps
     i = steps.index("opencti")
     # After every locked install and the strict check; checked again after it.
     assert "locked" not in steps[i:] and "check --strict" in steps[:i], steps
     assert steps[i + 1] == "check --final", steps
+
+
+def test_lite_fails_on_conflicts_left_by_a_pycti_without_opencti_mcp(tmp_path):
+    """pycti is there, opencti-mcp isn't: --strict leaves `uv pip check` to
+    --final, so --final has to run though OpenCTI's step doesn't."""
+    run, steps = _lite(tmp_path, "--yes", "--venv-only", installed=False, final_rc=1)
+    assert run.returncode != 0
+    assert "conflict" in run.stdout + run.stderr
+    assert "opencti" not in steps and steps[-1] == "check --final", steps
+
+
+def test_lite_checks_again_after_opencti_chosen_at_the_prompt(tmp_path):
+    """No flags: Continue? y, then "Install OpenCTI MCP?" y; the rest blank."""
+    run, steps = _lite(tmp_path, answers="y\ny\n" + "\n" * 12)
+    assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
+    i = steps.index("opencti")
+    assert steps[i - 1] == "check --final" and steps[i + 1] == "check --final", steps
+    assert steps.count("opencti") == 1 and "locked" not in steps[i:], steps
