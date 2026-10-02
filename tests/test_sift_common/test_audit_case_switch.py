@@ -304,3 +304,32 @@ def test_a_sidecar_seq_that_is_not_an_int_on_a_switch(
     _log(writer, 2)
     _use(monkeypatch, a_with_32)
     assert _log(writer, 1)[0].endswith("-033")
+
+
+def _set_sidecar(case: Path, seq: int, date: str = "20261001") -> None:
+    (case / "audit" / f"{NAME}.seq").write_text(json.dumps({"date": date, "seq": seq}))
+
+
+def test_a_sidecar_ahead_of_the_log_sets_the_next_id(tmp_path, monkeypatch):
+    """IDs 009-032 were issued but never reached the log: the sidecar holds
+    the higher sequence, and resuming from the log alone reissues 009."""
+    a = _case(tmp_path, "A")
+    _use(monkeypatch, a)
+    _log(AuditWriter(NAME), 8)
+    _set_sidecar(a, 32)
+    assert _log(AuditWriter(NAME), 1) == ["test-tester-20261001-033"]
+
+
+def test_a_sidecar_with_no_log_sets_the_next_id(tmp_path, monkeypatch):
+    a = _case(tmp_path, "A")
+    _use(monkeypatch, a)
+    _set_sidecar(a, 32)
+    assert AuditWriter(NAME)._next_audit_id() == "test-tester-20261001-033"
+
+
+def test_a_sidecar_from_another_day_is_ignored(tmp_path, monkeypatch):
+    a = _case(tmp_path, "A")
+    _use(monkeypatch, a)
+    _log(AuditWriter(NAME), 8)
+    _set_sidecar(a, 32, date="20260930")
+    assert _log(AuditWriter(NAME), 1) == ["test-tester-20261001-009"]
