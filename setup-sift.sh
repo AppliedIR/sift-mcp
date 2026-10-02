@@ -998,9 +998,16 @@ install_pkg() {
 
 INSTALL_ERRORS=0
 
+# Packages already in the venv that the lock names (pip's seeds, or what an
+# earlier OpenCTI install pulled in) join the first locked install, so it
+# moves them to the lock too.
+LOCK_HELD_LIST=$("$VENV_PYTHON" "$INSTALL_DIR/deps/check-lock.py" --installed --lock "$LOCK") \
+    || { err "Cannot read the venv's packages against the dependency lock."; exit 1; }
+read -ra LOCK_HELD <<< "$LOCK_HELD_LIST"
+
 # --- Core packages (always installed) — batched for unified resolution ---
 info "Installing core packages..."
-if ! uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" \
+if ! uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" "${LOCK_HELD[@]}" \
     -e "$INSTALL_DIR/packages/forensic-knowledge" \
     -e "$INSTALL_DIR/packages/sift-common" \
     -e "$INSTALL_DIR/packages/forensic-mcp" \

@@ -311,10 +311,17 @@ else
     ok "Venv exists at $VENV_DIR"
 fi
 
+# Packages already in the venv that the lock names (pip's seeds, or what an
+# earlier OpenCTI install pulled in) join the first locked install, so it
+# moves them to the lock too.
+LOCK_HELD_LIST=$("$VENV_PYTHON" "$SCRIPT_DIR/deps/check-lock.py" --installed --lock "$LOCK") \
+    || fail "Cannot read the venv's packages against the dependency lock."
+read -ra LOCK_HELD <<< "$LOCK_HELD_LIST"
+
 # sift-common always installed
 pkg_dir="$SCRIPT_DIR/packages/sift-common"
 if [[ -d "$pkg_dir" ]]; then
-    uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" -e "$pkg_dir"
+    uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" "${LOCK_HELD[@]}" -e "$pkg_dir"
     ok "Installed sift-common"
 else
     warn "sift-common not found at $pkg_dir"

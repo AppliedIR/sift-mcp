@@ -33,6 +33,8 @@ scipy==1.16.0 ; python_full_version >= '3.11' \\
     --hash=sha256:ffff
 scipy==1.15.3 ; python_full_version < '3.11' \\
     --hash=sha256:9999
+pywin32==311 ; sys_platform == 'win32' \\
+    --hash=sha256:8888
 """
 # Each listed once per Python range, in opposite orders: neither "first entry
 # wins" nor "last entry wins" can stand in for evaluating the marker.
@@ -165,3 +167,16 @@ def test_final_still_fails_on_conflicts_and_on_drift_without_pycti(tmp_path, mod
     other.mkdir()
     run = _run(other, mode, {**CLEAN, "starlette": "0.50.0"})
     assert run.returncode == 1 and "starlette installed 0.50.0" in run.stderr
+
+
+def test_installed_names_what_the_lock_pins_for_this_venv(tmp_path):
+    run = _run(
+        tmp_path,
+        "--installed",
+        {**CLEAN, "leftover": "1.0", "pywin32": "311"},
+        editable={"sift-mcp": "0.6.1"},
+    )
+    assert run.returncode == 0, run.stderr
+    # Only the names, on one line, for the first locked install to take.
+    assert run.stdout == "numpy scipy starlette uvicorn\n"
+    assert not run.pip_checked

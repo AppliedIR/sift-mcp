@@ -3,8 +3,18 @@
 Run it with the venv's own python, so the lock's markers are evaluated for
 that interpreter:
 
-    <venv>/bin/python deps/check-lock.py --strict   after the locked installs
-    <venv>/bin/python deps/check-lock.py --final    after OpenCTI's client
+    <venv>/bin/python deps/check-lock.py --installed  before the first locked install
+    <venv>/bin/python deps/check-lock.py --strict     after the locked installs
+    <venv>/bin/python deps/check-lock.py --final      after OpenCTI's client
+
+--installed prints the installed packages the lock names (pip's seeds, what
+an earlier OpenCTI install pulled in). The first locked install takes them
+as requirements, so -c moves them to the lock along with everything it
+installs; nothing else would touch them.
+
+The contract for every caller (setup-sift.sh, quickstart-lite.sh, `vhir
+update`): --strict passes immediately before the unlocked OpenCTI step, and
+--final runs right after it.
 
 --strict fails when any installed package is at a version other than the
 lock's, naming each one and the command that repairs it. --final runs after
@@ -86,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--strict", action="store_true")
     mode.add_argument("--final", action="store_true")
+    mode.add_argument("--installed", action="store_true")
     parser.add_argument(
         "--lock", type=Path, default=Path(__file__).with_name("vhir.lock")
     )
@@ -99,6 +110,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     pins = locked_versions(lock)
     have = installed_versions(site)
+    if args.installed:
+        print(" ".join(sorted(n for n in have if n in pins)))
+        return 0
     differ = {
         n: (v, pins[n]) for n, v in sorted(have.items()) if n in pins and pins[n] != v
     }

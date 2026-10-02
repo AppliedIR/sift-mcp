@@ -66,10 +66,23 @@ def _steps(log: Path) -> list[str]:
     return out
 
 
+def _held_go_to_the_first_locked_install(log: Path) -> None:
+    lines = log.read_text().splitlines()
+    first = next(i for i, x in enumerate(lines) if x.startswith("pip install"))
+    asked = next(i for i, x in enumerate(lines) if "--installed" in x)
+    assert asked < first, lines
+    assert " -c " in lines[first] and " setuptools packaging " in lines[first], lines
+    assert not any("packaging" in x for x in lines[first + 1 :] if "pip install" in x)
+
+
 def _python(tmp_path: Path, log: Path) -> Path:
-    """The venv's python: records the check-lock.py runs."""
+    """The venv's python: records the check-lock.py runs; --installed names
+    two packages, as seeds would."""
     py = tmp_path / "venv-python"
-    py.write_text(f'#!/bin/sh\necho "check $*" >> "{log}"\n')
+    py.write_text(
+        f'#!/bin/sh\necho "check $*" >> "{log}"\n'
+        '[ "$2" = --installed ] && echo "setuptools packaging"\nexit 0\n'
+    )
     py.chmod(0o755)
     return py
 
@@ -119,6 +132,7 @@ def test_setup_sift_installs_everything_but_opencti_from_the_lock(
     assert run.returncode == 0, run.stdout + run.stderr
     calls = _calls(log)
     locked = f"-c {lock} -b {lock}"
+    _held_go_to_the_first_locked_install(log)
     opencti = [c for c in calls if "packages/opencti" in c]
     others = [c for c in calls if "packages/opencti" not in c]
     if not (selected or installed):
@@ -179,7 +193,8 @@ def _lite(tmp_path, *args, installed=False):
     py = venv_bin / "python"
     py.write_text(
         "#!/bin/sh\n"
-        f'case "$1" in *check-lock.py) echo "check $*" >> "{log}"; exit 0;; esac\n'
+        f'case "$1" in *check-lock.py) echo "check $*" >> "{log}"\n'
+        '  [ "$2" = --installed ] && echo "setuptools packaging"; exit 0;; esac\n'
         'exec python3 "$@"\n'
     )
     py.chmod(0o755)
@@ -204,6 +219,8 @@ def _lite(tmp_path, *args, installed=False):
         text=True,
         timeout=120,
     )
+    if run.returncode == 0:
+        _held_go_to_the_first_locked_install(log)
     return run, _steps(log)
 
 
@@ -225,7 +242,15 @@ def test_lite_reinstalls_opencti_after_the_locked_packages_whenever_it_is_there(
     # sift-common, forensic-rag and windows-triage, each from the lock; no
     # other install of any kind.
     assert steps.count("locked") == 3, steps
-    assert set(steps) <= {"locked", "opencti", "check --strict", "check --final"}, steps
+    assert steps[0] == "check --installed", steps
+    allowed = {
+        "locked",
+        "opencti",
+        "check --installed",
+        "check --strict",
+        "check --final",
+    }
+    assert set(steps) <= allowed, steps
     if not expect_opencti:
         assert "opencti" not in steps and "check --final" not in steps, steps
         return
