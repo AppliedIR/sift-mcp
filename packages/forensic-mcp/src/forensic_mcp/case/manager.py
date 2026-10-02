@@ -216,9 +216,10 @@ def _resolve_source_evidence_static(
             if reg_path.startswith(resolved_prefix):
                 if not containment_match:
                     containment_match = reg_path
-                if hostname_hint and hostname_hint.lower() in reg_path.lower():
-                    return reg_path, []
-        if containment_match:
+        # A directory names its evidence only when it holds exactly one
+        # registered file; with more, which one is a guess.
+        n_contained = sum(r.startswith(resolved_prefix) for r in evidence_registry)
+        if containment_match and n_contained == 1:
             return containment_match, []
         # Hash-based fallback
         if evidence_by_hash:
@@ -995,7 +996,8 @@ class CaseManager:
                                     ingest_hosts = [h]
                             idx_lower = search_index.lower()
                             if not ingest_hosts or not any(
-                                idx_lower.endswith(f"-{h.lower()}")
+                                f"-{h.lower()},"
+                                in idx_lower + ","  # also in a comma list
                                 or f"-{h.lower()}-" in idx_lower
                                 for h in ingest_hosts
                             ):
@@ -1008,6 +1010,12 @@ class CaseManager:
                                 break
                         candidates.append((score, e, ingest_hosts))
                     candidates.sort(key=lambda c: -c[0])
+                    # FULL only when the best-scoring candidates are one ingest's
+                    # input: between different ingests, picking one is a guess.
+                    top = [c for c in candidates if c[0] == candidates[0][0]]
+                    if len({tuple(c[1]["input_files"]) for c in top}) != 1:
+                        top = []
+                    candidates = top
                     for _score, e, ingest_hosts in candidates:
                         hint = ingest_hosts[0] if ingest_hosts else ""
                         try:
@@ -1139,6 +1147,14 @@ class CaseManager:
                     prefix = resolved.rstrip("/") + "/"
                     if any(r.startswith(prefix) for r in registered):
                         continue
+                    # A derivative bridged to registered evidence (log_external_action)
+                    try:
+                        if _resolve_source_evidence_static(
+                            [src], all_audit_entries, registered
+                        )[0]:
+                            continue
+                    except OSError:
+                        pass  # unresolved: the rejection stands
                     case_dir_str = str(case_dir)
                     case_relative = src
                     if resolved.startswith(case_dir_str + "/"):
