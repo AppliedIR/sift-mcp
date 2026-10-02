@@ -6,6 +6,13 @@ import pytest
 from sift_gateway.__main__ import main
 
 
+@pytest.fixture(autouse=True)
+def _keep_path():
+    """main() may extend PATH; keep the suite's own."""
+    with patch("sift_gateway.__main__.prepend_local_bin"):
+        yield
+
+
 class TestTLSConfig:
     def test_tls_missing_cert_exits(self, tmp_path):
         """Missing TLS certificate file causes sys.exit(1)."""

@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -13,6 +14,15 @@ from sift_gateway.oplog import setup_logging
 from sift_gateway.server import Gateway
 
 logger = logging.getLogger(__name__)
+
+
+def prepend_local_bin() -> None:
+    """Put ~/.local/bin on the backends' PATH, where SIFT installs hayabusa,
+    capa, floss and chainsaw; a systemd user unit's PATH doesn't have it."""
+    local_bin = str(Path.home() / ".local" / "bin")
+    path = os.environ.get("PATH", "")
+    if os.path.isdir(local_bin) and local_bin not in path.split(os.pathsep):
+        os.environ["PATH"] = os.pathsep.join(p for p in (local_bin, path) if p)
 
 
 def main():
@@ -101,6 +111,7 @@ def main():
         )
         sys.exit(1)
 
+    prepend_local_bin()
     gateway = Gateway(config)
     app = gateway.create_app()
     uvicorn.run(
