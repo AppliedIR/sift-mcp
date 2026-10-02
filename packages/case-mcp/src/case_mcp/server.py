@@ -691,9 +691,12 @@ def create_server() -> FastMCP:
     def backup_case(destination: str, purpose: str = "") -> dict:
         """Back up case data files to a destination directory.
 
-        Creates a timestamped backup of case metadata, findings, timeline,
-        approvals, audit trails, and reports. Does NOT include evidence or
-        extraction files (use 'vhir backup --all' for full backups).
+        Creates a timestamped backup of everything in the case directory
+        except evidence/, extractions/ and registered evidence (wherever it
+        sits): case metadata, findings, timeline, approvals, audit trails and
+        reports, but also any unregistered images or copies elsewhere in the
+        case (under work/, say), which can be large. Use 'vhir backup --all'
+        for full backups.
 
         Confirm with the examiner before creating a backup.
 
