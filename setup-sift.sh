@@ -2226,7 +2226,11 @@ print(sum(1 for s in data.get('online_sources', []) if s.get('has_update')))
 fi
 
 if $INSTALL_TRIAGE; then
-    ok "Triage databases: installed. Re-download when needed: $VENV_PYTHON -m windows_triage.scripts.download_databases"
+    if [[ -s "$DB_DIR/known_good.db" ]] && [[ -s "$DB_DIR/context.db" ]]; then
+        ok "Triage databases: installed. Re-download when needed: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
+    else
+        warn "Triage databases: not installed; windows-triage won't start without them. Download: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
+    fi
 fi
 
 if $INSTALL_RAG || $INSTALL_TRIAGE; then

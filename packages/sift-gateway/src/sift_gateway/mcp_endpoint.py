@@ -13,6 +13,7 @@ import asyncio
 import hmac
 import json
 import logging
+import sys
 import time
 from collections.abc import Sequence
 from typing import Any
@@ -35,6 +36,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from sift_gateway.rate_limit import check_rate_limit
+
+if sys.version_info < (3, 11):
+    from exceptiongroup import BaseExceptionGroup
 
 logger = logging.getLogger(__name__)
 

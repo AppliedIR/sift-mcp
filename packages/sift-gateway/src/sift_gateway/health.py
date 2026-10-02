@@ -2,10 +2,14 @@
 
 import asyncio
 import logging
+import sys
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
+
+if sys.version_info < (3, 11):
+    from exceptiongroup import BaseExceptionGroup
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ description = "Valhuntir forensic investigation platform — SIFT workstation mo
 requires-python = ">=3.12"
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py310"
 line-length = 88
 
 [tool.ruff.lint]

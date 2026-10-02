@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import socket
+import sys
 import tempfile
 import threading
 from urllib.parse import urlparse
@@ -24,6 +25,9 @@ from sift_gateway.join import (
 )
 from sift_gateway.rate_limit import check_rate_limit
 from sift_gateway.token_gen import generate_gateway_token
+
+if sys.version_info < (3, 11):
+    from exceptiongroup import BaseExceptionGroup
 
 logger = logging.getLogger(__name__)
 

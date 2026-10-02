@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import sys
 from contextlib import AsyncExitStack
 from urllib.parse import urlparse
 
@@ -12,6 +13,9 @@ from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
 
 from sift_gateway.backends.base import MCPBackend
+
+if sys.version_info < (3, 11):
+    from exceptiongroup import BaseExceptionGroup
 
 logger = logging.getLogger(__name__)
 

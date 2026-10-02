@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import logging
+import sys
 import time
 from pathlib import Path
 
@@ -13,6 +14,9 @@ from starlette.applications import Starlette
 from starlette.routing import Mount
 
 from sift_gateway.auth import AuthMiddleware
+
+if sys.version_info < (3, 11):
+    from exceptiongroup import BaseExceptionGroup
 
 
 class _NormalizeMCPPath:
