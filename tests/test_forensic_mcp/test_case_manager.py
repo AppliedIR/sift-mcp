@@ -838,3 +838,32 @@ class TestExaminerOverride:
         assert actions_file.exists()
         entry = json.loads(actions_file.read_text().strip())
         assert entry["examiner"] == "alice"
+
+
+class TestTimelineEventTimestamp:
+    """A timeline event's timestamp is ISO 8601 or a date, as a finding's
+    event_timestamp already must be. "yesterday-ish" was staged and then
+    sorted and filtered as a string."""
+
+    @pytest.mark.parametrize(
+        "bad", ["yesterday-ish", "20261001", "2026-10-02 07:00:00", 1696230000]
+    )
+    def test_a_timestamp_that_isnt_iso_is_refused(self, manager, active_case, bad):
+        result = manager.record_timeline_event({"timestamp": bad, "description": "x"})
+        assert result["status"] == "VALIDATION_FAILED", result
+        assert "Use format like" in result["errors"][0]
+        assert manager.get_timeline() == []
+
+    @pytest.mark.parametrize(
+        "good",
+        [
+            "2026-10-02T07:00:00Z",
+            "2023-01-29",
+            "2023-01-29T23:57:54Z",
+            "2023-01-29T23:57:54.152155Z",
+            "2023-01-29T23:57:54+00:00",
+        ],
+    )
+    def test_iso_timestamps_and_dates_are_staged(self, manager, active_case, good):
+        result = manager.record_timeline_event({"timestamp": good, "description": "x"})
+        assert result["status"] == "STAGED", result

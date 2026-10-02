@@ -14,6 +14,13 @@ from forensic_knowledge import loader
 
 VALID_TYPES = {"finding", "attribution", "conclusion", "exclusion"}
 
+# ISO 8601 or date-only (YYYY-MM-DD): the timestamps findings and timeline
+# events accept, the same on every Python version.
+ISO_TIMESTAMP_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$"
+)
+ISO_TIMESTAMP_HINT = "Use format like '2026-01-24T15:00:41Z' or '2026-01-24'."
+
 
 def _get_confidence_defs() -> dict:
     """Load confidence definitions from FK (cached by loader)."""
@@ -82,14 +89,9 @@ def validate(finding: dict) -> dict:
             )
     event_ts = finding.get("event_timestamp", "")
     if event_ts:
-        # Validate ISO 8601 or date-only (YYYY-MM-DD)
-        if not re.match(
-            r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$",
-            event_ts,
-        ):
+        if not ISO_TIMESTAMP_RE.match(event_ts):
             errors.append(
-                f"event_timestamp '{event_ts}' is not valid ISO 8601. "
-                "Use format like '2026-01-24T15:00:41Z' or '2026-01-24'."
+                f"event_timestamp '{event_ts}' is not valid ISO 8601. {ISO_TIMESTAMP_HINT}"
             )
     elif finding_type == "finding":
         warnings.append(

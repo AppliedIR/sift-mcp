@@ -20,6 +20,10 @@ from typing import Any
 import yaml
 
 from forensic_mcp.audit import resolve_examiner
+from forensic_mcp.discipline.validation import (
+    ISO_TIMESTAMP_HINT,
+    ISO_TIMESTAMP_RE,
+)
 from forensic_mcp.discipline.validation import validate as validate_finding_data
 
 logger = logging.getLogger(__name__)
@@ -1398,6 +1402,16 @@ class CaseManager:
             return {
                 "status": "VALIDATION_FAILED",
                 "errors": [f"Missing required fields: {missing}"],
+            }
+        # The timeline sorts and filters on this string, so it must be the
+        # form findings' event_timestamp already has to be.
+        ts = event["timestamp"]
+        if not isinstance(ts, str) or not ISO_TIMESTAMP_RE.match(ts):
+            return {
+                "status": "VALIDATION_FAILED",
+                "errors": [
+                    f"timestamp '{ts}' is not valid ISO 8601. {ISO_TIMESTAMP_HINT}"
+                ],
             }
 
         exam = self._effective_examiner(examiner_override)
