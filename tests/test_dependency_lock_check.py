@@ -215,7 +215,12 @@ def test_strict_removes_a_conflicting_leftover_nothing_requires(tmp_path):
     run = _run(tmp_path, "--strict", {**CLEAN, OTLP: "0.66b0"}, conflict=OTLP_CONFLICT)
     assert run.returncode == 0, run.stderr
     assert run.removed == [[OTLP]]
-    assert "Removing leftovers" in run.stdout and OTLP in run.stdout
+    # Named with its version, and how to put it back if it was the user's own.
+    note = [x for x in run.stdout.splitlines() if f"{OTLP}==0.66b0" in x]
+    assert len(note) == 1, run.stdout
+    assert "nothing installed needs it" in note[0]
+    assert f"uv pip install --python {sys.executable} {OTLP}==0.66b0" in note[0]
+    assert "if you added it yourself" in note[0]
 
 
 def test_strict_keeps_what_an_installed_package_requires(tmp_path):

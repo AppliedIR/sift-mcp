@@ -111,13 +111,17 @@ def remove_leftovers(site: list[str], pins: dict[str, str], have: dict) -> list[
     }
     stale = sorted((named & set(have)) - set(pins) - _required_names(site))
     if stale:
-        print(
-            "  Removing leftovers that conflict with the lock and that nothing"
-            f" requires: {', '.join(stale)}",
-            flush=True,
-        )
         subprocess.run(
             ["uv", "pip", "uninstall", "--python", sys.executable, *stale], check=True
+        )
+        # It may be the user's own package: say how to put it back.
+        specs = [f"{n}=={have[n]}" for n in stale]
+        print(
+            f"  Removed {', '.join(specs)}: removed because it conflicted with the"
+            " dependency lock and nothing installed needs it; reinstall with"
+            f" `uv pip install --python {shlex.quote(sys.executable)}"
+            f" {' '.join(shlex.quote(x) for x in specs)}` if you added it yourself.",
+            flush=True,
         )
     return stale
 
