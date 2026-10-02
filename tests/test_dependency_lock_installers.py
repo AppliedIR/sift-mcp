@@ -165,13 +165,20 @@ def test_setup_sift_installs_everything_but_opencti_from_the_lock(
 
 @pytest.mark.parametrize("installer", ["setup-sift", "quickstart-lite"])
 @pytest.mark.parametrize(
-    "version,refused", [("0.5.0", True), ("0.6.0", False), ("0.12.20", False)]
+    "version,refused",
+    [("0.5.0", True), ("0.5.31", True), ("0.6.0", False), ("0.12.20", False)],
 )
 def test_uv_older_than_0_6_is_refused(tmp_path, installer, version, refused):
     text = SETUP.read_text() if installer == "setup-sift" else LITE.read_text()
     floor = _slice(text, "# Older uv installs from the lock", "\n\n")
     script = "\n".join(
-        [STUBS, f'uv(){{ echo "uv {version} (x)"; }}', floor, 'echo "PASSED"']
+        [
+            STUBS,
+            "sort(){ return 2; }",
+            f'uv(){{ echo "uv {version} (x)"; }}',
+            floor,
+            'echo "PASSED"',
+        ]
     )
     run = _run(script, tmp_path)
     if refused:

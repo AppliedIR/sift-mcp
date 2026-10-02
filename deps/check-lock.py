@@ -106,7 +106,8 @@ def remove_leftovers(site: list[str], pins: dict[str, str], have: dict) -> list[
     named = {
         _name(n)
         for n in re.findall(
-            r"The package `([^`]+)` requires", check.stdout + check.stderr
+            r"The package `([^`]+)` requires `[^`]+`, but `[^`]+` is installed",
+            check.stdout + check.stderr,
         )
     }
     stale = sorted((named & set(have)) - set(pins) - _required_names(site))

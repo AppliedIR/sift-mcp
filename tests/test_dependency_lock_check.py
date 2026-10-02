@@ -255,3 +255,10 @@ def test_strict_keeps_locked_editable_and_quiet_leftovers(tmp_path):
 def test_final_removes_nothing(tmp_path):
     run = _run(tmp_path, "--final", {**CLEAN, OTLP: "0.66b0"}, conflict=OTLP_CONFLICT)
     assert run.returncode == 1 and not run.removed
+
+
+def test_strict_reports_but_keeps_a_package_only_missing_its_own_dependency(tmp_path):
+    missing = "The package `flask` requires `werkzeug>=3.1.0`, but it's not installed"
+    run = _run(tmp_path, "--strict", {**CLEAN, "flask": "3.1.3"}, conflict=missing)
+    assert not run.removed
+    assert run.returncode == 1 and missing in run.stderr

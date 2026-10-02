@@ -943,7 +943,7 @@ ensure_uv
 
 # Older uv installs from the lock without checking its hashes, and says nothing.
 UV_VERSION=$(uv --version 2>/dev/null | awk '{print $2}')
-if ! printf '%s\n%s\n' "0.6.0" "${UV_VERSION:-0}" | sort -V -C; then
+if ! awk -v v="${UV_VERSION:-0}" 'BEGIN { split(v, p, "."); exit !(p[1] + 0 > 0 || p[2] + 0 >= 6) }'; then
     err "uv ${UV_VERSION:-unknown} is older than 0.6.0, which doesn't check package hashes."
     echo "  Update it: uv self update   (or reinstall: curl -LsSf https://astral.sh/uv/install.sh | sh)"
     exit 1
@@ -1007,7 +1007,7 @@ read -ra LOCK_HELD <<< "$LOCK_HELD_LIST"
 
 # --- Core packages (always installed) — batched for unified resolution ---
 info "Installing core packages..."
-if ! uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" "${LOCK_HELD[@]}" \
+if ! uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" ${LOCK_HELD[@]+"${LOCK_HELD[@]}"} \
     -e "$INSTALL_DIR/packages/forensic-knowledge" \
     -e "$INSTALL_DIR/packages/sift-common" \
     -e "$INSTALL_DIR/packages/forensic-mcp" \

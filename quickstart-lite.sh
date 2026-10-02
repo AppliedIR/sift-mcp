@@ -284,7 +284,7 @@ fi
 
 # Older uv installs from the lock without checking its hashes, and says nothing.
 UV_VERSION=$(uv --version 2>/dev/null | awk '{print $2}')
-if ! printf '%s\n%s\n' "0.6.0" "${UV_VERSION:-0}" | sort -V -C; then
+if ! awk -v v="${UV_VERSION:-0}" 'BEGIN { split(v, p, "."); exit !(p[1] + 0 > 0 || p[2] + 0 >= 6) }'; then
     fail "uv ${UV_VERSION:-unknown} is older than 0.6.0, which doesn't check package hashes. Update it: uv self update (or reinstall: curl -LsSf https://astral.sh/uv/install.sh | sh)"
 fi
 
@@ -321,7 +321,7 @@ read -ra LOCK_HELD <<< "$LOCK_HELD_LIST"
 # sift-common always installed
 pkg_dir="$SCRIPT_DIR/packages/sift-common"
 if [[ -d "$pkg_dir" ]]; then
-    uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" "${LOCK_HELD[@]}" -e "$pkg_dir"
+    uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" ${LOCK_HELD[@]+"${LOCK_HELD[@]}"} -e "$pkg_dir"
     ok "Installed sift-common"
 else
     warn "sift-common not found at $pkg_dir"
