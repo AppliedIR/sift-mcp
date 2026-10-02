@@ -45,34 +45,54 @@ SCIPY_OTHER = "1.16.0" if OLD else "1.15.3"
 CLEAN = {"starlette": "1.7.0", "uvicorn": "0.54.0", "numpy": NUMPY, "scipy": SCIPY}
 
 
-def _venv(tmp_path: Path, dists: dict, editable: dict | None = None) -> Path:
+def _venv(
+    tmp_path: Path, dists: dict, editable: dict | None = None, requires=None
+) -> Path:
     site = tmp_path / "site"
     for name, version in {**dists, **(editable or {})}.items():
         info = site / f"{name}-{version}.dist-info"
         info.mkdir(parents=True)
-        (info / "METADATA").write_text(f"Name: {name}\nVersion: {version}\n")
+        reqs = "".join(f"Requires-Dist: {r}\n" for r in (requires or {}).get(name, []))
+        (info / "METADATA").write_text(f"Name: {name}\nVersion: {version}\n{reqs}")
         if editable and name in editable:
             url = {"url": "file:///src", "dir_info": {"editable": True}}
             (info / "direct_url.json").write_text(json.dumps(url))
     return site
 
 
-def _run(tmp_path, mode, dists, *, pip_check_ok=True, editable=None):
+def _run(
+    tmp_path,
+    mode,
+    dists,
+    *,
+    pip_check_ok=True,
+    editable=None,
+    requires=None,
+    conflict="",
+):
+    """conflict: what `uv pip check` reports (exit 1) until an uninstall,
+    which removes the named packages' records."""
     lock = tmp_path / "vhir.lock"
     lock.write_text(LOCK)
-    site = _venv(tmp_path, dists, editable)
+    site = _venv(tmp_path, dists, editable, requires)
+    (tmp_path / "conflict.txt").write_text(conflict)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     uv = bin_dir / "uv"
+    check = (
+        "exit 0\n"
+        if pip_check_ok
+        else 'echo "x 1 requires y<2, but 2 is installed"; exit 1\n'
+    )
     uv.write_text(
         "#!/bin/sh\n"
         'if [ "$1" = "--version" ]; then echo "uv 0.12.20"; exit 0; fi\n'
         f'echo "uv $*" >> "{tmp_path}/uv.log"\n'
-        + (
-            "exit 0\n"
-            if pip_check_ok
-            else 'echo "x 1 requires y<2, but 2 is installed"; exit 1\n'
-        )
+        'if [ "$2" = uninstall ]; then shift 4\n'
+        f'  for n in "$@"; do rm -rf "{site}/$n"-*.dist-info; done\n'
+        f'  touch "{tmp_path}/removed"; exit 0; fi\n'
+        f'if [ -s "{tmp_path}/conflict.txt" ] && [ ! -e "{tmp_path}/removed" ]; then\n'
+        f'  cat "{tmp_path}/conflict.txt"; exit 1; fi\n' + check
     )
     uv.chmod(0o755)
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
@@ -84,7 +104,10 @@ def _run(tmp_path, mode, dists, *, pip_check_ok=True, editable=None):
         timeout=60,
     )
     log = tmp_path / "uv.log"
-    run.pip_checked = log.exists() and "pip check" in log.read_text()
+    lines = log.read_text().splitlines() if log.exists() else []
+    run.pip_checked = any("pip check" in x for x in lines)
+    # Each uninstall's package names (after "uv pip uninstall --python PY").
+    run.removed = [x.split()[5:] for x in lines if x.startswith("uv pip uninstall")]
     return run
 
 
@@ -134,7 +157,7 @@ def test_unmet_requirements_fail(tmp_path):
 def test_strict_leaves_requirements_to_final_while_pycti_is_installed(tmp_path):
     run = _run(tmp_path, "--strict", {**CLEAN, "pycti": "6.9.29"}, pip_check_ok=False)
     assert run.returncode == 0, run.stderr
-    assert not run.pip_checked
+    assert "conflict" not in run.stderr and not run.removed
 
 
 def test_final_lists_what_pycti_6_holds_and_why_it_matters(tmp_path):
@@ -180,3 +203,50 @@ def test_installed_names_what_the_lock_pins_for_this_venv(tmp_path):
     # Only the names, on one line, for the first locked install to take.
     assert run.stdout == "numpy scipy starlette uvicorn\n"
     assert not run.pip_checked
+
+
+OTLP = "opentelemetry-exporter-otlp-common"
+OTLP_CONFLICT = f"The package `{OTLP}` requires `opentelemetry-sdk~=1.45`, but `1.35.0` is installed"
+
+
+def test_strict_removes_a_conflicting_leftover_nothing_requires(tmp_path):
+    """A no-OpenCTI 0.6.1 venv: otel moved to the lock, the old exporter
+    plugin stays behind, outside the lock, and conflicts."""
+    run = _run(tmp_path, "--strict", {**CLEAN, OTLP: "0.66b0"}, conflict=OTLP_CONFLICT)
+    assert run.returncode == 0, run.stderr
+    assert run.removed == [[OTLP]]
+    assert "Removing leftovers" in run.stdout and OTLP in run.stdout
+
+
+def test_strict_keeps_what_an_installed_package_requires(tmp_path):
+    """Between the locked step and OpenCTI's: pycti conflicts, but opencti-mcp
+    requires it, and it requires the exporter (under an extra)."""
+    run = _run(
+        tmp_path,
+        "--strict",
+        {**CLEAN, "pycti": "6.9.29", OTLP: "0.66b0"},
+        editable={"opencti-mcp": "0.6.1"},
+        requires={"opencti-mcp": ["pycti>=6"], "pycti": [f"{OTLP}; extra == 'otel'"]},
+        conflict="The package `pycti` requires `starlette<0.51`, but `1.7.0` is installed\n"
+        + OTLP_CONFLICT,
+    )
+    assert run.returncode == 0, run.stderr
+    assert not run.removed
+
+
+def test_strict_keeps_locked_editable_and_quiet_leftovers(tmp_path):
+    run = _run(
+        tmp_path,
+        "--strict",
+        {**CLEAN, "leftover": "1.0"},
+        editable={"sift-gateway": "0.6.1"},
+        conflict="The package `starlette` requires `anyio<5`, but `5.0` is installed\n"
+        "The package `sift-gateway` requires `starlette>=2`, but `1.7.0` is installed",
+    )
+    assert not run.removed
+    assert run.returncode == 1  # the conflict stands, so --strict fails
+
+
+def test_final_removes_nothing(tmp_path):
+    run = _run(tmp_path, "--final", {**CLEAN, OTLP: "0.66b0"}, conflict=OTLP_CONFLICT)
+    assert run.returncode == 1 and not run.removed

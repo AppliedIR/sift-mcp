@@ -16,8 +16,12 @@ The contract for every caller (setup-sift.sh, quickstart-lite.sh, `vhir
 update`): --strict passes immediately before the unlocked OpenCTI step, and
 --final runs right after it.
 
---strict fails when any installed package is at a version other than the
-lock's, naming each one and the command that repairs it. --final runs after
+--strict first removes leftovers: packages `uv pip check` names that are
+installed, not editable, not in the lock, and required by no installed
+package (under any marker). An earlier install's plugin for a version the
+lock moved away from is one; each removed is named. Then it fails when any
+installed package is at a version other than the lock's, naming each one
+and the command that repairs it. --final runs after
 the unlocked OpenCTI step, and what pycti moved is listed for information;
 without pycti, any difference from the lock still fails. Both run `uv pip
 check`, which must pass, except --strict while pycti is installed: between
@@ -81,6 +85,43 @@ def installed_versions(site: list[str]) -> dict[str, str]:
     return found
 
 
+def _required_names(site: list[str]) -> set[str]:
+    """Every name any installed package requires, under any marker or extra."""
+    names = set()
+    for dist in importlib.metadata.distributions(path=site):
+        for req in dist.requires or []:
+            m = re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", req)
+            if m:
+                names.add(_name(m.group(0)))
+    return names
+
+
+def remove_leftovers(site: list[str], pins: dict[str, str], have: dict) -> list[str]:
+    """Uninstall what conflicts, isn't the lock's and nothing needs."""
+    check = subprocess.run(
+        ["uv", "pip", "check", "--python", sys.executable],
+        capture_output=True,
+        text=True,
+    )
+    named = {
+        _name(n)
+        for n in re.findall(
+            r"The package `([^`]+)` requires", check.stdout + check.stderr
+        )
+    }
+    stale = sorted((named & set(have)) - set(pins) - _required_names(site))
+    if stale:
+        print(
+            "  Removing leftovers that conflict with the lock and that nothing"
+            f" requires: {', '.join(stale)}",
+            flush=True,
+        )
+        subprocess.run(
+            ["uv", "pip", "uninstall", "--python", sys.executable, *stale], check=True
+        )
+    return stale
+
+
 def _uv_version() -> str:
     try:
         out = subprocess.run(
@@ -113,12 +154,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.installed:
         print(" ".join(sorted(n for n in have if n in pins)))
         return 0
+    print(f"  Dependency check against {lock} (uv {_uv_version()})", flush=True)
+    if args.strict and remove_leftovers(site, pins, have):
+        have = installed_versions(site)
     differ = {
         n: (v, pins[n]) for n, v in sorted(have.items()) if n in pins and pins[n] != v
     }
     extra = sorted(n for n in have if n not in pins)
     py = sys.executable
-    print(f"  Dependency check against {lock} (uv {_uv_version()})", flush=True)
 
     failed = False
     pycti = have.get("pycti")
