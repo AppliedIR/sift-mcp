@@ -10,20 +10,24 @@ from __future__ import annotations
 
 import json
 
+import forensic_mcp.case.manager as manager_module
 import pytest
 from forensic_mcp.case.manager import CaseManager
 
 
 @pytest.fixture
-def window(tmp_path):
+def window(tmp_path, monkeypatch):
+    # The manager re-reads the active-case pointer on every call: point it here.
+    pointer = tmp_path / "active_case"
+    monkeypatch.setattr(manager_module, "_ACTIVE_CASE_FILE", pointer)
+
     def run(events, **kw):
         case = tmp_path / "case-utc"
         case.mkdir(exist_ok=True)
         (case / "CASE.yaml").write_text("case_id: case-utc\nstatus: open\n")
         (case / "timeline.json").write_text(json.dumps(events))
-        m = CaseManager()
-        m._active_case_path = case
-        return sorted(e["id"] for e in m.get_timeline(**kw))
+        pointer.write_text(str(case))
+        return sorted(e["id"] for e in CaseManager().get_timeline(**kw))
 
     return run
 
