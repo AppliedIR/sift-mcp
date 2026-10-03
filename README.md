@@ -48,7 +48,7 @@ When Claude Code is the client, additional controls are deployed:
 
 - Bubblewrap sandbox — kernel-level filesystem isolation, Bash restricted to project directory
 - 41 permission deny rules — Edit/Write blocked on case data files (findings.json, timeline.json, approvals.jsonl, etc.)
-- PreToolUse guard hook — blocks Bash redirections (>, >>, tee) to protected case files
+- PreToolUse case-data guard — refuses Bash commands that would delete or overwrite case records, audit logs or evidence files (a best-effort check of listed commands, not a security boundary)
 - HMAC-signed findings — password-gated approval with PBKDF2-derived cryptographic signing
 - Provenance enforcement — rejects findings that lack an evidence trail in the audit log
 - PostToolUse audit hook — every Bash command logged to JSONL with SHA-256 hashes
@@ -361,7 +361,7 @@ Every tool response is wrapped in a structured envelope enriched by forensic-kno
 
 ## Execution Security
 
-A denylist blocks destructive system commands (mkfs, dd, fdisk, shutdown, etc.). When Claude Code is the LLM client, additional deny rules block Edit/Write to case data files (findings.json, timeline.json, approvals.jsonl, etc.), a PreToolUse hook guards against Bash redirections to protected files, and findings.json and timeline.json are set to chmod 444 after every write. All other binaries can execute. This follows the REMnux MCP philosophy: VM/container isolation is the security boundary, not in-band command filtering.
+A denylist blocks destructive system commands (mkfs, dd, fdisk, shutdown, etc.). When Claude Code is the LLM client, additional deny rules block Edit/Write to case data files (findings.json, timeline.json, approvals.jsonl, etc.), a PreToolUse hook refuses Bash commands that would delete or overwrite case records, `audit/` or evidence files (rm, mv, cp, truncate, shred, redirections and find -delete, through sudo/env/chains/cd; not `bash -c`, xargs, scripts or variables: a best-effort check, not a security boundary), and findings.json and timeline.json are set to chmod 444 after every write. All other binaries can execute. This follows the REMnux MCP philosophy: VM/container isolation is the security boundary, not in-band command filtering.
 
 Additional protections:
 - `subprocess.run(shell=False)` — no shell, no arbitrary command chains
@@ -432,7 +432,7 @@ Any data loaded into the system or its component VMs, computers, or instances ru
 
 Outgoing Internet connections are required for report generation (Zeltser IR Writing MCP) and optionally used for threat intelligence (OpenCTI) and documentation (MS Learn MCP). No incoming connections from external systems should be allowed.
 
-Valhuntir is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. Clients with direct shell access (like Claude Code) can also operate outside MCP, but `vhir setup client` deploys forensic controls for Claude Code: a kernel-level sandbox restricts Bash writes, deny rules block Edit/Write to case data files, a PreToolUse hook guards against Bash redirections to protected files, a PostToolUse hook captures every Bash command to the audit trail, provenance enforcement ensures findings are traceable to evidence, and an HMAC verification ledger provides cryptographic proof that approved findings haven't been tampered with. Valhuntir is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
+Valhuntir is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. Clients with direct shell access (like Claude Code) can also operate outside MCP, but `vhir setup client` deploys forensic controls for Claude Code: a kernel-level sandbox restricts Bash writes, deny rules block Edit/Write to case data files, a PreToolUse hook refuses Bash commands that would delete or overwrite case records or evidence (a best-effort check of listed commands), a PostToolUse hook captures every Bash command to the audit trail, provenance enforcement ensures findings are traceable to evidence, and an HMAC verification ledger provides cryptographic proof that approved findings haven't been tampered with. Valhuntir is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
 
 ## Audit Trail, Provenance, and Grounding
 
