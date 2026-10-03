@@ -5,6 +5,7 @@ from sift_common.instructions import (
     FORENSIC_RAG,
     GATEWAY,
     OPENCTI,
+    OPENSEARCH,
     SIFT_MCP,
     WINDOWS_TRIAGE,
     WINTOOLS_MCP,
@@ -77,3 +78,24 @@ class TestServerInstructionsWired:
         )
         assert instructions is not None
         assert "EVIDENCE IS SOVEREIGN" in instructions
+
+
+def test_opensearch_aggregation_guidance_names_both_field_forms():
+    """A text guard over the guidance's clauses; it checks nothing about meaning.
+    The old line told the AI to add .keyword to CSV fields, which returns 0
+    buckets, silently, on keyword-only (delim-, json-, zeek-) indices."""
+    assert "use .keyword suffix" not in OPENSEARCH
+    for clause in (
+        "include_fields=true",  # where the types are
+        "how a file was ingested",  # the ingest path decides, not the tool
+        "idx_ingest_delimited",
+        "delim-",
+        "json-",
+        "use the bare name",
+        "<field>.keyword",
+        "another artifact's word",  # name collisions
+        "each artifact with its own form via index=",
+        "0 buckets does not prove there are no values",
+    ):
+        assert clause in OPENSEARCH, clause
+    assert "fails loudly" not in OPENSEARCH
