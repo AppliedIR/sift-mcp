@@ -6,6 +6,12 @@ that interpreter:
     <venv>/bin/python deps/check-lock.py --installed  before the first locked install
     <venv>/bin/python deps/check-lock.py --strict     after the locked installs
     <venv>/bin/python deps/check-lock.py --final      after OpenCTI's client
+    <venv>/bin/python deps/check-lock.py --cuda-leftovers
+
+--cuda-leftovers prints the CUDA-family packages (nvidia-*, cuda-*, triton)
+the lock doesn't pin and nothing outside them requires, requirers first: what
+a switch to CPU PyTorch leaves behind. --final prints them with their size and
+the commands that remove them; nothing here deletes them.
 
 --installed prints the installed packages the lock names (pip's seeds, what
 an earlier OpenCTI install pulled in). The first locked install takes them
@@ -51,6 +57,8 @@ PIN = re.compile(
 )
 # pycti 6 requires these below the lock's versions.
 PYCTI6_HOLDS = ("starlette", "uvicorn", "setuptools")
+# What GPU PyTorch brings; the CPU build needs none of it.
+CUDA_FAMILY = re.compile(r"^(nvidia-.+|cuda-.+|triton)$")
 
 
 def _name(name: str) -> str:
@@ -94,6 +102,49 @@ def _required_names(site: list[str]) -> set[str]:
             if m:
                 names.add(_name(m.group(0)))
     return names
+
+
+def _cpu_lock(lock: Path) -> bool:
+    """The CPU-PyTorch variant (regen-lock.sh marks it in the header)."""
+    return any(
+        x.startswith("# variant") and " cpu" in x for x in lock.read_text().splitlines()
+    )
+
+
+def cuda_leftovers(site: list[str], pins: dict[str, str], have: dict) -> list[str]:
+    """CUDA-family packages the lock doesn't pin and that no installed package
+    outside the set requires (repeated until stable), requirers first, so
+    stopping a single uninstall partway still leaves consistent requirements."""
+    reqs: dict[str, set[str]] = {}
+    for dist in importlib.metadata.distributions(path=site):
+        if dist.metadata["Name"]:
+            names = reqs.setdefault(_name(dist.metadata["Name"]), set())
+            for req in dist.requires or []:
+                m = re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", req)
+                if m:
+                    names.add(_name(m.group(0)))
+    left = {n for n in have if CUDA_FAMILY.match(n) and n not in pins}
+    while True:
+        needed = {r for n, rs in reqs.items() if n not in left for r in rs}
+        if not left & needed:
+            break
+        left -= needed
+    order = []
+    while left:
+        inner = {r for n in left for r in reqs.get(n, ())}
+        step = sorted(left - inner) or sorted(left)  # a cycle: any order
+        order += step
+        left -= set(step)
+    return order
+
+
+def _size(site: list[str], names: list[str]) -> int:
+    """Bytes the named packages' RECORDs list."""
+    total = 0
+    for dist in importlib.metadata.distributions(path=site):
+        if dist.metadata["Name"] and _name(dist.metadata["Name"]) in names:
+            total += sum(f.size or 0 for f in dist.files or [])
+    return total
 
 
 def remove_leftovers(site: list[str], pins: dict[str, str], have: dict) -> list[str]:
@@ -143,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--strict", action="store_true")
     mode.add_argument("--final", action="store_true")
     mode.add_argument("--installed", action="store_true")
+    mode.add_argument("--cuda-leftovers", action="store_true")
     parser.add_argument(
         "--lock", type=Path, default=Path(__file__).with_name("vhir.lock")
     )
@@ -158,6 +210,9 @@ def main(argv: list[str] | None = None) -> int:
     have = installed_versions(site)
     if args.installed:
         print(" ".join(sorted(n for n in have if n in pins)))
+        return 0
+    if args.cuda_leftovers:
+        print(" ".join(cuda_leftovers(site, pins, have)))
         return 0
     print(f"  Dependency check against {lock} (uv {_uv_version()})", flush=True)
     if args.strict and remove_leftovers(site, pins, have):
@@ -209,6 +264,11 @@ def main(argv: list[str] | None = None) -> int:
         repair = " ".join(
             shlex.quote(f"{n}=={want}") for n, (_, want) in differ.items()
         )
+        # 2.14.0+cpu satisfies ==2.14.0, and the CPU lock's torch is on the
+        # PyTorch index: without these the line repairs nothing.
+        repair += "".join(f" --reinstall-package {shlex.quote(n)}" for n in differ)
+        if _cpu_lock(lock):
+            repair += " --torch-backend cpu"
         print("  Repair:", file=sys.stderr)
         print(
             f"    uv pip install --python {shlex.quote(py)} -c {shlex.quote(str(lock))}"
@@ -220,6 +280,20 @@ def main(argv: list[str] | None = None) -> int:
     if extra:
         print(
             f"  Installed but not in the lock (earlier installs or added by hand): {', '.join(extra)}"
+        )
+    leftovers = cuda_leftovers(site, pins, have) if args.final else []
+    if leftovers:
+        names = " ".join(shlex.quote(n) for n in leftovers)
+        # The venv's files are links into uv's cache: the disk comes back
+        # only once the cache copies go too. The CPU lock's torch replaced the
+        # GPU build, whose archive stays in the cache until cleaned.
+        cached = names + (" torch" if _cpu_lock(lock) else "")
+        print(
+            f"  CUDA packages this lock doesn't use: {', '.join(leftovers)}"
+            f" ({_size(site, leftovers) / 1e9:.1f} GB in the venv, freed on disk only"
+            " after the cache clean). Nothing removed them; to remove them:\n"
+            f"    uv pip uninstall --python {shlex.quote(py)} {names}\n"
+            f"    uv cache clean {cached}"
         )
     if not failed:
         print(
