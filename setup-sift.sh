@@ -2285,6 +2285,11 @@ if grep -qx '  Forensic controls deployed:' "$CLIENT_LOG" 2>/dev/null; then
     echo ""
     echo "Run /welcome in Claude Code to verify your installation and get oriented."
 fi
+# vhir's undo block (stdout, after a -y change to the user's own files), kept
+# to repeat as the installer's last output.
+UNDO_BLOCK=$(awk '/^  vhir setup client -y changed these files/ { on = 1 }
+    on && /^(  vhir setup client -y changed|  normal terminal|    cp -p |    # )/' \
+    "$CLIENT_LOG" 2>/dev/null || true)
 rm -f "$CLIENT_LOG"
 
 # =============================================================================
@@ -2422,6 +2427,13 @@ if $REMOTE_MODE; then
     echo "Remote clients: run the setup commands shown above on each client machine."
 fi
 echo ""
+
+# vhir's undo block, repeated as the last output so it isn't scrolled away.
+if [[ -n "$UNDO_BLOCK" ]]; then
+    echo -e "${BOLD}${RED}=== Your own Claude settings were changed (backups kept) ===${NC}"
+    echo "$UNDO_BLOCK"
+    echo ""
+fi
 
 # Exit with error if smoke tests failed
 if (( INSTALL_ERRORS > 0 )); then
