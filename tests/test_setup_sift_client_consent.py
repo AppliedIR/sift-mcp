@@ -18,7 +18,10 @@ import pytest
 SCRIPT = (Path(__file__).parent.parent / "setup-sift.sh").read_text()
 # From the optional comment through the call's failure warning.
 _call = SCRIPT.index('"$VENV_DIR/bin/vhir" setup client')
-_start = SCRIPT.rfind("# vhir asks before changing", 0, _call)
+_start = max(
+    SCRIPT.rfind("# vhir setup client -y changes", 0, _call),
+    SCRIPT.rfind("# vhir asks before changing", 0, _call),
+)
 _start = _start if _start != -1 else SCRIPT.rfind("\n", 0, _call) + 1
 _end = SCRIPT.index("\n", SCRIPT.index("Client configuration failed", _call)) + 1
 _end += 3 if SCRIPT.startswith("fi\n", _end) else 0
@@ -44,7 +47,7 @@ def stub(tmp_path):
         vhir = tmp_path / "venv" / "bin" / "vhir"
         vhir.parent.mkdir(parents=True, exist_ok=True)
         vhir.write_text(
-            f'#!/bin/bash\necho "STDIN=$(readlink /proc/self/fd/0)"\necho "{says}"\nexit {rc}\n'
+            f'#!/bin/bash\necho "STDIN=$(readlink /proc/self/fd/0)"\necho "ARGS=$*"\necho "{says}"\nexit {rc}\n'
         )
         vhir.chmod(0o755)
         tty = tmp_path / "fake-tty"
@@ -81,6 +84,8 @@ def test_client_setup_gets_a_terminal_only_without_y(
     tty = stub()
     out = _install(tmp_path, tty, auto_yes, read_from)
     assert f"STDIN={tty if expected == 'TTY' else expected}" in out, out
+    # -y always (the wizard defaults); asking about user files only without -y
+    assert " -y" in out and ("--ask-user-files" in out) is (auto_yes == "false")
 
 
 def test_deployed_message_when_vhir_applied_the_controls(stub, tmp_path):

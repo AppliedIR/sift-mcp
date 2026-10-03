@@ -2255,19 +2255,22 @@ elif [[ -z "$CLIENT" ]]; then
     CLIENT="claude-code"
 fi
 
-# vhir asks before changing the user's own Claude files, and only on a
-# terminal: -y never consents, so it gets none.
-if $AUTO_YES; then
-    CLIENT_IN=/dev/null
-elif { : < "$READ_FROM"; } 2>/dev/null; then
-    CLIENT_IN="$READ_FROM"
-else
-    CLIENT_IN=/dev/null
+# vhir setup client -y changes the user's own Claude files (after a backup,
+# with an alert and undo commands). Run without -y, this installer has it ask
+# instead (--ask-user-files), on the installer's terminal; with no terminal
+# it changes nothing.
+ASK_USER_FILES=""
+CLIENT_IN=/dev/null
+if ! $AUTO_YES; then
+    ASK_USER_FILES="--ask-user-files"
+    if { : < "$READ_FROM"; } 2>/dev/null; then
+        CLIENT_IN="$READ_FROM"
+    fi
 fi
-# Its output says whether the controls were applied (they aren't over a
-# user's file they'd change without a yes).
+# Its output says whether the controls were applied (not when the user kept
+# their own file).
 CLIENT_LOG=$(mktemp)
-if ! "$VENV_DIR/bin/vhir" setup client --client="$CLIENT" --sift="$SIFT_URL" -y \
+if ! "$VENV_DIR/bin/vhir" setup client --client="$CLIENT" --sift="$SIFT_URL" -y $ASK_USER_FILES \
     < "$CLIENT_IN" | tee "$CLIENT_LOG"; then
     warn "Client configuration failed. Run manually: vhir setup client"
 fi
