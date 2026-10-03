@@ -307,13 +307,15 @@ def test_anchor_a_file_without_mcp_servers_is_merged(tmp_path):
 
 _p5 = SCRIPT.index('header "Phase 5: Optional MCPs"')
 PHASE5_TO_END = SCRIPT[_p5:]
+_v = SCRIPT.index("_validate_credential() {")
+VALIDATE = SCRIPT[_v : SCRIPT.index("\n}\n", _v) + 3]
 _w = SCRIPT.index("_write_install_marker() {")
 MARKER = SCRIPT[  # to the next top-level definition: its Python has a "}" line
     _w : re.compile(r"^[A-Za-z_]+\(\) \{$", re.M).search(SCRIPT, _w + 1).start()
 ]
 
 
-def _phase5(tmp_path, mcp_text):
+def _phase5(tmp_path, mcp_text, answers=None, **more):
     mcp = tmp_path / "my project" / ".mcp.json"
     mcp.parent.mkdir(parents=True, exist_ok=True)
     mcp.write_text(mcp_text)
@@ -323,6 +325,7 @@ def _phase5(tmp_path, mcp_text):
         "set -euo pipefail\nBOLD=; RED=; GREEN=; YELLOW=; NC=\n"
         'ok() { echo "OK $1"; }; warn() { echo "WARN $1"; }; fail() { echo "FAIL $1"; exit 1; }\n'
         'header() { echo "== $1"; }\n'
+        + VALIDATE
         + MARKER
         + 'UNDO_LINES=("cp -p a\\ b c")\n'  # an earlier replacement's undo line
         + PHASE5_TO_END
@@ -345,9 +348,15 @@ def _phase5(tmp_path, mcp_text):
         "INSTALL_REGISTRY": "false",
         "SKIP_OPTIONAL_MCPS": "false",
         "REMNUX_ADDR": "",
+        **more,
     }
     p = subprocess.run(
-        ["/bin/bash", str(run)], capture_output=True, text=True, env=env, timeout=60
+        ["/bin/bash", str(run)],
+        input=answers,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
     )
     return p.returncode, p.stdout + p.stderr, mcp
 
@@ -383,3 +392,27 @@ def test_a_link_planted_at_the_staging_path_isnt_written_through(tmp_path, clone
     assert (project / ".claude" / "settings.json").read_text() == '{"mine": true}\n'
     assert "settings.json differs" in out and "NOT deployed" in out
     assert not (project / ".claude" / "settings.json.vhir-new").exists()
+
+
+def test_the_add_by_hand_text_never_shows_a_typed_token(tmp_path):
+    """Interactive OpenCTI and REMnux adds onto an unparseable .mcp.json: the
+    entries to paste carry placeholders, not the tokens just typed."""
+    answers = (  # OpenCTI URL, token; REMnux y, address, token; no Learn, Zeltser
+        "https://cti.example\nCTI-SECRET-4711\ny\nremnux:3000\nRMX-SECRET-0815\nn\nn\n"
+    )
+    rc, out, mcp = _phase5(
+        tmp_path,
+        "{",
+        answers,
+        YES="false",
+        INSTALL_OPENCTI="true",
+        OPENCTI_PKG_DONE="true",
+        INSTALL_MSLEARN="false",
+        INSTALL_ZELTSER="false",
+    )
+    assert rc == 0 and mcp.read_text() == "{", out
+    assert out.count("NOT added") == 2
+    assert out.count("CTI-SECRET-4711") == 0 and out.count("RMX-SECRET-0815") == 0
+    assert '"OPENCTI_TOKEN": "<your OpenCTI token>"' in out
+    assert '"Authorization": "Bearer <your REMnux token>"' in out
+    assert out.count("put your token where it says") == 2
