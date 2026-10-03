@@ -157,6 +157,8 @@ BLOCK = [
         "C",
         "mv {C}/findings.json {C}/DELETE/ && rm {C}/DELETE/findings.json",
     ),
+    ("find group -delete", "C", "find {C} \\( -name x -o -name y \\) -delete"),
+    ("subshell rm", "C", "(rm {C}/findings.json)"),
     # Accepted, disclosed over-blocks (decision 8)
     ("over-block: find case -delete", "C", "find {C} -name '*.tmp' -delete"),
     (
@@ -287,3 +289,14 @@ def test_d_the_settings_entry_still_runs_this_script():
     commands = [h["command"] for e in entries for h in e.get("hooks", [])]
     assert any(c.endswith("/case-data-guard.sh") for c in commands)
     assert os.access(HOOK, os.X_OK) and "TOOL_NAME" not in HOOK.read_text()
+
+
+def test_a_module_planted_in_the_cwd_is_not_imported(box):
+    root, cases, case, out = box
+    canary = out / "PLANTED"
+    for mod in ("shlex", "json", "glob"):
+        (case / f"{mod}.py").write_text(
+            f"open({str(canary)!r}, 'w').close()\nraise SystemExit(1)\n"
+        )
+    p = run(box, case, f"rm {case}/findings.json")
+    assert p.returncode == 2 and not canary.exists()

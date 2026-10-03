@@ -30,8 +30,10 @@ import glob, itertools, json, os, shlex, sys
 
 RECORDS = {"findings.json", "timeline.json", "approvals.jsonl", "iocs.json", "evidence.json",
            "todos.json", "CASE.yaml", "actions.jsonl", "pending-reviews.json"}
-KEYWORDS = {"if", "then", "else", "elif", "do", "while", "until", "{", "}", "!", "fi", "done"}
-SEPS = {";", "&&", "||", "|", "&", "|&", "(", ")"}
+# "(" opens a subshell or a find group: stripped like a keyword, so a find
+# expression stays in one segment; ")" is dropped.
+KEYWORDS = {"if", "then", "else", "elif", "do", "while", "until", "{", "}", "!", "fi", "done", "("}
+SEPS = {";", "&&", "||", "|", "&", "|&"}
 REDIRS = {">", ">>", ">|", "&>", "&>>"}
 WRAP = {"sudo", "env", "command", "nice", "nohup", "time", "timeout", "stdbuf", "exec"}
 CAP = 2000  # glob matches checked per argument (the 5-second bound)
@@ -106,6 +108,7 @@ def expand(a):
 
 def check(seg):
     global base
+    seg = [t for t in seg if t != ")"]
     for i, t in enumerate(seg[:-1]):
         if t in REDIRS and damage(seg[i + 1]):
             block(f"redirection onto {seg[i + 1]}")
@@ -170,4 +173,5 @@ for t in tokens + [";"]:
 sys.exit(0)
 PY
 )
-exec python3 -c "$GUARD"
+# -I: isolated, so nothing in the cwd (a planted shlex.py) or PYTHON* runs
+exec python3 -I -c "$GUARD"
