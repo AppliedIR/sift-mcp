@@ -37,12 +37,12 @@ Launching from outside a case directory bypasses case isolation.
 To fix, close this session and either:
 
   1. Launch from an existing case:
-     cd $CASES_DIR/<case-id>
+     cd "$CASES_DIR/<case-id>"
      claude
 
   2. Create a new case first:
      vhir case init <case-id>
-     cd $CASES_DIR/<case-id>
+     cd "$CASES_DIR/<case-id>"
      claude
 
 EOF

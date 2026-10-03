@@ -46,7 +46,7 @@ def test_no_active_case_points_at_the_cases_root(tmp_path, cases_env):
         if cases_env
         else str(tmp_path / "home" / "cases")
     )
-    assert out.count(f"cd {root}/<case-id>") == 2
+    assert out.count(f'cd "{root}/<case-id>"') == 2
     assert "~/.vhir/cases" not in out and ".vhir/cases" not in out
 
 
@@ -74,3 +74,15 @@ def test_anchor_silent_inside_a_case_dir(tmp_path):
         check=True,
     ).stdout
     assert out == ""
+
+
+def test_a_cases_root_with_a_space_is_quoted(tmp_path):
+    out = _run(tmp_path, {"VHIR_CASES_DIR": "/srv/IR cases"})
+    assert out.count('cd "/srv/IR cases/<case-id>"') == 2
+
+
+def test_the_cases_root_is_printed_not_run(tmp_path):
+    marker = tmp_path / "ran"
+    root = f"$(touch {marker})"
+    out = _run(tmp_path, {"VHIR_CASES_DIR": root})
+    assert out.count(f'cd "{root}/<case-id>"') == 2 and not marker.exists()
