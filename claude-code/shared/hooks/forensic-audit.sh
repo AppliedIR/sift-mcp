@@ -31,7 +31,7 @@ EXAMINER="${VHIR_EXAMINER:-$(whoami)}"
 
 # 3. Read stdin and parse via Python one-liner
 INPUT=$(cat)
-PARSED=$(printf '%s' "$INPUT" | python3 -c "
+PARSED=$(printf '%s' "$INPUT" | python3 -I -c "
 import sys, json
 try:
     d = json.load(sys.stdin)
@@ -46,7 +46,7 @@ except Exception:
     print('{}')
 " 2>/dev/null) || PARSED="{}"
 
-COMMAND=$(printf '%s' "$PARSED" | python3 -c "import sys,json; print(json.load(sys.stdin).get('command',''))" 2>/dev/null) || COMMAND=""
+COMMAND=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('command',''))" 2>/dev/null) || COMMAND=""
 if [ -z "$COMMAND" ]; then
     exit 0
 fi
@@ -71,7 +71,7 @@ TODAY=$(date -u +%Y%m%d)
 EVIDENCE_ID="hook-${EXAMINER}-${TODAY}-$(printf '%03d' "$SEQ")"
 
 # 6. Compute SHA-256 of command + output
-TOOL_RESPONSE=$(printf '%s' "$PARSED" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_response',''))" 2>/dev/null) || TOOL_RESPONSE=""
+TOOL_RESPONSE=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('tool_response',''))" 2>/dev/null) || TOOL_RESPONSE=""
 HASH_INPUT="${COMMAND}${TOOL_RESPONSE}"
 if command -v sha256sum >/dev/null 2>&1; then
     OUTPUT_HASH=$(printf '%s' "$HASH_INPUT" | sha256sum | cut -d' ' -f1 2>/dev/null) || OUTPUT_HASH=""
@@ -82,9 +82,9 @@ else
 fi
 
 # 7. Build and write audit entry
-TOOL_USE_ID=$(printf '%s' "$PARSED" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_use_id',''))" 2>/dev/null) || TOOL_USE_ID=""
-SESSION_ID=$(printf '%s' "$PARSED" | python3 -c "import sys,json; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null) || SESSION_ID=""
-CWD=$(printf '%s' "$PARSED" | python3 -c "import sys,json; print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null) || CWD=""
+TOOL_USE_ID=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('tool_use_id',''))" 2>/dev/null) || TOOL_USE_ID=""
+SESSION_ID=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null) || SESSION_ID=""
+CWD=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null) || CWD=""
 OUTPUT_BYTES=$(printf '%s' "$TOOL_RESPONSE" | wc -c 2>/dev/null) || OUTPUT_BYTES=0
 
 # Truncate output to 2000 chars for excerpt
@@ -92,7 +92,7 @@ OUTPUT_EXCERPT=$(printf '%s' "$TOOL_RESPONSE" | head -c 2000 2>/dev/null) || OUT
 
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-python3 -c "
+python3 -I -c "
 import json, sys
 entry = {
     'ts': '$TS',
