@@ -100,3 +100,10 @@ def test_a_failed_client_setup_warns_and_the_install_goes_on(stub, tmp_path):
     out = _install(tmp_path, stub(rc=1))
     assert "WARN Client configuration failed" in out
     assert "Forensic controls deployed globally." not in out
+
+
+def test_only_vhirs_own_status_line_counts(stub, tmp_path):
+    out = _install(
+        tmp_path, stub("  NOTE: Forensic controls deployed: none, see above")
+    )
+    assert "Forensic controls deployed globally." not in out

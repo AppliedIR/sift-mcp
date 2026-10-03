@@ -2264,7 +2264,7 @@ fi
 
 
 # Global deployment message for claude-code
-if grep -q 'Forensic controls deployed:' "$CLIENT_LOG" 2>/dev/null; then
+if grep -qx '  Forensic controls deployed:' "$CLIENT_LOG" 2>/dev/null; then
     echo ""
     echo -e "${BOLD}Forensic controls deployed globally.${NC}"
     echo "Claude Code can be launched from any directory on this machine."
