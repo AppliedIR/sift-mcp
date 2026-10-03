@@ -29,7 +29,9 @@
 #
 # The command is tokenized only: it is never run, evaluated or expanded by a
 # shell. A block exits 2 with the reason on stderr (Claude Code shows it to
-# the model); anything else exits 0.
+# the model); anything else exits 0. A payload it can't read, or an error of
+# its own, is blocked too (fail closed): a check that can't reach a verdict
+# mustn't look like one that passed.
 #
 GUARD=$(
     cat <<'PY'
@@ -52,13 +54,20 @@ def block(why):
     sys.exit(2)
 
 
+def unreadable():
+    print("BLOCKED: the case-data guard couldn't read this command, so it was blocked "
+          "to be safe. If every command is blocked, the hook's input may have changed; "
+          "tell the examiner.", file=sys.stderr)
+    sys.exit(2)
+
+
 try:
     payload = json.load(sys.stdin)
+    cmd = payload["tool_input"]["command"]  # not a string: the check below fails
+    base = payload.get("cwd") or os.getcwd()
+    cases = os.path.realpath(os.path.expanduser(os.environ.get("VHIR_CASES_DIR", "~/cases")))
 except Exception:
-    sys.exit(0)
-cmd = (payload.get("tool_input") or {}).get("command") or ""
-base = payload.get("cwd") or os.getcwd()
-cases = os.path.realpath(os.path.expanduser(os.environ.get("VHIR_CASES_DIR", "~/cases")))
+    unreadable()
 
 
 def rel(p):
@@ -174,24 +183,27 @@ def check(seg):
 
 # A backslash-newline joins lines; any other newline separates commands (in
 # quotes it stays part of the word). Spaced, so "&&;" or ";;" can't form.
-text = cmd.replace("\\\n", "").replace("\n", " ; ")
-try:
-    lex = shlex.shlex(text, posix=True, punctuation_chars=True)
-    lex.whitespace_split = True
-    tokens = list(lex) + [";"]
-except ValueError:  # unbalanced quotes: fall back to plain words
-    tokens = text.split() + [";"]
-seg = []
-for t in tokens:
-    if t == "(" and seg and seg[-1].endswith("$"):  # $( starts a command
-        seg[-1] = seg[-1][:-1]
-        check(seg)
-        seg = []
-    elif t in SEPS:
-        check(seg)
-        seg = []
-    else:
-        seg.append(t)
+try:  # a block exits through SystemExit, which this doesn't catch
+    text = cmd.replace("\\\n", "").replace("\n", " ; ")
+    try:
+        lex = shlex.shlex(text, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        tokens = list(lex) + [";"]
+    except ValueError:  # unbalanced quotes: fall back to plain words
+        tokens = text.split() + [";"]
+    seg = []
+    for t in tokens:
+        if t == "(" and seg and seg[-1].endswith("$"):  # $( starts a command
+            seg[-1] = seg[-1][:-1]
+            check(seg)
+            seg = []
+        elif t in SEPS:
+            check(seg)
+            seg = []
+        else:
+            seg.append(t)
+except Exception:
+    unreadable()
 sys.exit(0)
 PY
 )

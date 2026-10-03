@@ -246,6 +246,7 @@ def test_blocks_damage_to_case_data(box, label, cwd_key, template):
     p = run(box, cwd, cmd)
     assert p.returncode == 2, (cmd, p.stdout, p.stderr)  # E: exactly 2
     assert p.stdout == "" and "BLOCKED" in p.stderr  # S: the reason on stderr only
+    assert "couldn't read" not in p.stderr  # its own reason, not the fail-closed one
     assert "vhir case delete" not in p.stderr
 
 
@@ -329,3 +330,50 @@ def test_a_module_planted_in_the_cwd_is_not_imported(box):
         )
     p = run(box, case, f"rm {case}/findings.json")
     assert p.returncode == 2 and not canary.exists()
+
+
+# Fail closed: input the guard can't read, or an error of its own, blocks.
+def _raw(box, stdin):
+    root, cases, case, out = box
+    return subprocess.run(
+        ["bash", str(HOOK)],
+        input=stdin,
+        capture_output=True,
+        text=True,
+        cwd=case,
+        env={"HOME": str(root), "PATH": "/usr/bin:/bin", "VHIR_CASES_DIR": str(cases)},
+        timeout=30,
+    )
+
+
+def _payload(**kw):
+    return json.dumps({"session_id": "s", "tool_name": "Bash", **kw})
+
+
+UNREADABLE = [
+    ("unparseable JSON", "{not json"),
+    ("empty stdin", ""),
+    ("a JSON list", "[]"),
+    ("no tool_input", _payload()),
+    ("tool_input a string", _payload(tool_input="rm findings.json")),
+    ("tool_input null", _payload(tool_input=None)),
+    ("no command", _payload(tool_input={"description": "d"})),
+    ("command null", _payload(tool_input={"command": None})),
+    ("command a number", _payload(tool_input={"command": 5})),
+    ("command a list", _payload(tool_input={"command": ["rm", "findings.json"]})),
+    # an error inside the check itself (os.path.join on a non-string cwd)
+    ("an unexpected error", _payload(tool_input={"command": "rm x"}, cwd=5)),
+]
+
+
+@pytest.mark.parametrize("label,stdin", UNREADABLE, ids=[r[0] for r in UNREADABLE])
+def test_input_the_guard_cannot_read_is_blocked(box, label, stdin):
+    p = _raw(box, stdin)
+    assert p.returncode == 2 and p.stdout == "", (label, p.stderr)
+    assert "couldn't read this command, so it was blocked" in p.stderr
+    assert "Traceback" not in p.stderr
+
+
+def test_anchor_an_empty_command_is_read_and_allowed(box):
+    p = _raw(box, _payload(tool_input={"command": ""}))
+    assert p.returncode == 0 and p.stderr == ""
