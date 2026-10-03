@@ -399,15 +399,24 @@ if ${UNINSTALL_MODE:-false}; then
     VERIF_DIR="/var/lib/vhir"
     if [[ -d "$VERIF_DIR" ]]; then
         echo -e "${BOLD}[8] Verification ledger${NC}"
-        echo "    Path: $VERIF_DIR/verification/"
-        LEDGER_COUNT=$(find "$VERIF_DIR/verification" -name "*.jsonl" 2>/dev/null | wc -l)
-        echo "    Ledger files: $LEDGER_COUNT"
-        echo -e "    ${YELLOW}Contains HMAC approval records for case findings.${NC}"
-        echo ""
-        if prompt_yn_strict "    Remove verification ledger? (requires sudo)"; then
-            sudo rm -rf "$VERIF_DIR" && ok "Verification ledger removed." || warn "Could not remove $VERIF_DIR (sudo required)"
+        # What can't be read can't be listed or counted: leave it, and go on.
+        UNREADABLE=""
+        for d in "$VERIF_DIR" "$VERIF_DIR/verification" "$VERIF_DIR/passwords"; do
+            [[ ! -e "$d" ]] || { [[ -r "$d" && -x "$d" ]]; } || UNREADABLE="$d"
+        done
+        if [[ -n "$UNREADABLE" ]]; then
+            warn "Can't read $UNREADABLE (owner: $(stat -c %U "$UNREADABLE" 2>/dev/null || echo unknown)): not removing $VERIF_DIR. Run uninstall as that user."
         else
-            info "Skipped. Ledger preserved at $VERIF_DIR"
+            LEDGER_COUNT=$(find "$VERIF_DIR/verification" -name "*.jsonl" 2>/dev/null | wc -l || true)
+            echo "    Removes $VERIF_DIR/ and everything in it ($LEDGER_COUNT ledger files):"
+            ls -A "$VERIF_DIR" | sed 's|^|      |'
+            echo -e "    ${YELLOW}Contains HMAC approval records for case findings.${NC}"
+            echo ""
+            if prompt_yn_strict "    Remove $VERIF_DIR? (requires sudo)"; then
+                sudo rm -rf "$VERIF_DIR" && ok "Verification ledger removed." || warn "Could not remove $VERIF_DIR (sudo required)"
+            else
+                info "Skipped. Ledger preserved at $VERIF_DIR"
+            fi
         fi
         echo ""
     fi
