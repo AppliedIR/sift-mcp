@@ -365,8 +365,8 @@ def test_an_unparseable_mcp_json_doesnt_stop_the_optional_servers(tmp_path):
     rc, out, mcp = _phase5(tmp_path, '{"mcpServers": {"mine": ')
     assert rc == 0, out
     assert mcp.read_text() == '{"mcpServers": {"mine": '
-    assert out.count("NOT added. Add it to") == 2
-    assert '"microsoft-learn": {' in out and '"zeltser-ir-writing": {' in out
+    for name in ("microsoft-learn", "zeltser-ir-writing"):
+        assert f"WARN NOT added: {name}. {mcp} can't be parsed;" in out
     assert "OK Added" not in out
     assert "microsoft-learn (documentation)" not in out  # not listed as installed
     assert out.rstrip().endswith("cp -p a\\ b c")  # the end, with the undo block
@@ -394,9 +394,10 @@ def test_a_link_planted_at_the_staging_path_isnt_written_through(tmp_path, clone
     assert not (project / ".claude" / "settings.json.vhir-new").exists()
 
 
-def test_the_add_by_hand_text_never_shows_a_typed_token(tmp_path):
-    """Interactive OpenCTI and REMnux adds onto an unparseable .mcp.json: the
-    entries to paste carry placeholders, not the tokens just typed."""
+def test_a_skipped_server_never_prints_a_typed_token(tmp_path):
+    """Interactive OpenCTI and REMnux adds onto an unparseable .mcp.json: each
+    is named as not added, and neither token typed at the hidden prompts is
+    printed anywhere."""
     answers = (  # OpenCTI URL, token; REMnux y, address, token; no Learn, Zeltser
         "https://cti.example\nCTI-SECRET-4711\ny\nremnux:3000\nRMX-SECRET-0815\nn\nn\n"
     )
@@ -411,8 +412,7 @@ def test_the_add_by_hand_text_never_shows_a_typed_token(tmp_path):
         INSTALL_ZELTSER="false",
     )
     assert rc == 0 and mcp.read_text() == "{", out
-    assert out.count("NOT added") == 2
+    for name in ("opencti-mcp", "remnux-mcp"):
+        assert f"WARN NOT added: {name}. {mcp} can't be parsed;" in out
     assert out.count("CTI-SECRET-4711") == 0 and out.count("RMX-SECRET-0815") == 0
-    assert '"OPENCTI_TOKEN": "<your OpenCTI token>"' in out
-    assert '"Authorization": "Bearer <your REMnux token>"' in out
-    assert out.count("put your token where it says") == 2
+    assert out.rstrip().endswith("cp -p a\\ b c")  # the end, with the undo block

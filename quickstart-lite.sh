@@ -774,13 +774,7 @@ with open('$MCP_JSON', 'w') as f:
     f.write('\n')
 " "$name" "$json_fragment" || rc=$?
     if [[ $rc -eq 3 ]]; then
-        # printed for pasting, so never with a token the user typed
-        local shown="$json_fragment"
-        [[ -n "${OPENCTI_TOKEN:-}" ]] && shown=${shown//"$OPENCTI_TOKEN"/<your OpenCTI token>}
-        [[ -n "${REMNUX_TOKEN:-}" ]] && shown=${shown//"$REMNUX_TOKEN"/<your REMnux token>}
-        warn "$MCP_JSON isn't valid JSON: $name NOT added. Add it to \"mcpServers\" by hand:"
-        echo "  \"$name\": $shown"
-        [[ "$shown" == "$json_fragment" ]] || echo "  (put your token where it says <your … token>)"
+        warn "NOT added: $name. $MCP_JSON can't be parsed; fix it and re-run quickstart-lite."
         return 1
     elif [[ $rc -ne 0 ]]; then
         fail "Could not update $MCP_JSON"
