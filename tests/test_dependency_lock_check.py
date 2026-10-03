@@ -340,9 +340,12 @@ def test_cuda_leftovers_are_the_closure_requirers_first(tmp_path):
         CUDA_VENV,
         requires=CUDA_REQUIRES,
         lock_text=CPU_LOCK,
+        sizes={"nvidia-cudnn-cu12": 1_054_000_000},
     )
     assert run.returncode == 0, run.stderr
-    names = run.stdout.split()
+    rows = [x.split() for x in run.stdout.splitlines()]
+    names = [n for n, _ in rows]
+    assert dict(rows)["nvidia-cudnn-cu12"] == "1054000000"  # name, then bytes
     assert sorted(names) == ["nvidia-cublas-cu12", "nvidia-cudnn-cu12", "triton"]
     assert names.index("nvidia-cudnn-cu12") < names.index("nvidia-cublas-cu12")
 
@@ -355,7 +358,7 @@ def test_a_family_package_the_lock_pins_is_not_a_leftover(tmp_path):
         "triton": "3.6.0",
     }
     run = _run(tmp_path, "--cuda-leftovers", venv, lock_text=GPU_LOCK)
-    assert run.stdout.split() == ["triton"]
+    assert run.stdout.split() == ["triton", "0"]
 
 
 def test_final_prints_the_leftovers_size_and_commands_and_removes_nothing(tmp_path):

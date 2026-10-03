@@ -9,9 +9,10 @@ that interpreter:
     <venv>/bin/python deps/check-lock.py --cuda-leftovers
 
 --cuda-leftovers prints the CUDA-family packages (nvidia-*, cuda-*, triton)
-the lock doesn't pin and nothing outside them requires, requirers first: what
-a switch to CPU PyTorch leaves behind. --final prints them with their size and
-the commands that remove them; nothing here deletes them.
+the lock doesn't pin and nothing outside them requires, one "name bytes" line
+each, requirers first: what a switch to CPU PyTorch leaves behind. --final
+prints them with their size and the commands that remove them; nothing here
+deletes them (`vhir update` offers to, asking first).
 
 --installed prints the installed packages the lock names (pip's seeds, what
 an earlier OpenCTI install pulled in). The first locked install takes them
@@ -212,7 +213,8 @@ def main(argv: list[str] | None = None) -> int:
         print(" ".join(sorted(n for n in have if n in pins)))
         return 0
     if args.cuda_leftovers:
-        print(" ".join(cuda_leftovers(site, pins, have)))
+        for n in cuda_leftovers(site, pins, have):
+            print(n, _size(site, [n]))
         return 0
     print(f"  Dependency check against {lock} (uv {_uv_version()})", flush=True)
     if args.strict and remove_leftovers(site, pins, have):
