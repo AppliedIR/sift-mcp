@@ -11,6 +11,7 @@ and the answers stubbed.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -35,6 +36,23 @@ def _slice(text: str, start: str, end: str) -> str:
     return text[i : text.index(end, i)]
 
 
+def _session(terminal: bool):
+    """A new session (no controlling terminal), given a pseudo-terminal as
+    its terminal when `terminal`: /dev/tty then opens though stdin is a pipe,
+    as under `curl | bash`."""
+    slave = None
+    if terminal:
+        master, slave_fd = os.openpty()
+        slave = os.ttyname(slave_fd)
+
+    def pre():
+        os.setsid()
+        if slave:
+            os.close(os.open(slave, os.O_RDWR))  # becomes the controlling tty
+
+    return pre
+
+
 def _setup_decision(
     tmp_path,
     *,
@@ -46,9 +64,11 @@ def _setup_decision(
     answers=(),
     platform="Linux",
     gpu=False,
+    terminal=True,
+    rc=0,
 ):
-    """Runs setup-sift's PyTorch-build block; returns (variant, record, output,
-    the questions asked)."""
+    """Runs setup-sift's PyTorch-build block, stdin never a terminal; returns
+    (variant, record, output, how many times it asked)."""
     home = tmp_path / "home"
     (home / ".vhir").mkdir(parents=True)
     if record is not None:
@@ -67,7 +87,6 @@ def _setup_decision(
         smi = bin_dir / "nvidia-smi"
         smi.write_text("#!/bin/sh\necho 'GPU 0: NVIDIA RTX A4000 (UUID: GPU-x)'\n")
         smi.chmod(0o755)
-    asked = tmp_path / "asked"
     replies = tmp_path / "replies"
     replies.write_text("".join(f"{a}\n" for a in answers))
     script = "\n".join(
@@ -76,9 +95,8 @@ def _setup_decision(
             f'export PATH="{bin_dir}:/usr/bin:/bin"',
             f'HOME="{home}"; VENV_DIR="{venv}"; PLATFORM="{platform}"',
             f'TORCH_FLAG="{flag}"; AUTO_YES={str(auto_yes).lower()}; INSTALL_RAG={str(rag).lower()}',
-            # prompt: records the question, answers from the file, default on empty
-            f'prompt(){{ echo "$1" >> "{asked}"; local a; read -r a <&3 || a=""; echo "${{a:-$2}}"; }}',
-            f'exec 3< "{replies}"',
+            # A stream, as /dev/tty or /dev/stdin are: each read goes on from the last.
+            f'exec 3< <(cat "{replies}"); READ_FROM=/dev/fd/3',
             _slice(
                 SETUP.read_text(), "# --- PyTorch build", "# Phase 3: Clone Repository"
             ),
@@ -86,13 +104,23 @@ def _setup_decision(
         ]
     )
     run = subprocess.run(
-        ["bash", "-c", script], capture_output=True, text=True, timeout=60, cwd=tmp_path
+        ["bash", "-c", script],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=tmp_path,
+        stdin=subprocess.DEVNULL,
+        preexec_fn=_session(terminal),
     )
-    assert run.returncode == 0, run.stdout + run.stderr
+    assert run.returncode == rc, run.stdout + run.stderr
+    asked = 0
+    if "PyTorch for knowledge search" in run.stdout:
+        asked = 1 + run.stdout.count("Please enter cpu or gpu.")
+    if rc:
+        return None, None, run.stdout, asked
     last = run.stdout.strip().splitlines()[-1]
     variant, record_out = (x.split("=", 1)[1] for x in last.split())
-    questions = asked.read_text().splitlines() if asked.exists() else []
-    return variant, record_out, run.stdout, questions
+    return variant, record_out, run.stdout, asked
 
 
 @pytest.mark.parametrize("flag", ["cpu", "gpu"])
@@ -101,7 +129,7 @@ def test_a_flag_wins_without_a_question(tmp_path, flag):
     variant, record, _, asked = _setup_decision(
         tmp_path, flag=flag, installed=installed, auto_yes=False
     )
-    assert (variant, record, asked) == (flag, flag, [])
+    assert (variant, record, asked) == (flag, flag, 0)
 
 
 @pytest.mark.parametrize(
@@ -111,7 +139,7 @@ def test_a_flag_wins_without_a_question(tmp_path, flag):
 def test_a_run_that_does_not_ask_keeps_the_installed_build(tmp_path, installed, expect):
     """-y: a GPU install re-run stays GPU; no PyTorch yet means CPU."""
     variant, record, out, asked = _setup_decision(tmp_path, installed=installed)
-    assert (variant, asked) == (expect, [])
+    assert (variant, asked) == (expect, 0)
     assert record == ""  # not asked: nothing recorded
     assert f"PyTorch build: {expect} (switch with --cpu or --gpu)" in out
 
@@ -122,7 +150,7 @@ def test_the_installed_build_beats_a_stale_record(tmp_path):
     variant, _, _, asked = _setup_decision(
         tmp_path, installed="2.14.0+cpu", record="gpu"
     )
-    assert (variant, asked) == ("cpu", [])
+    assert (variant, asked) == ("cpu", 0)
 
 
 @pytest.mark.parametrize("answer,expect", [("", "cpu"), ("gpu", "gpu"), ("CPU", "cpu")])
@@ -130,7 +158,7 @@ def test_an_old_install_never_asked_is_asked_default_cpu(tmp_path, answer, expec
     variant, record, out, asked = _setup_decision(
         tmp_path, installed="2.10.0", auto_yes=False, answers=[answer]
     )
-    assert len(asked) == 1 and (variant, record) == (expect, expect)
+    assert asked == 1 and (variant, record) == (expect, expect)
     assert "Installed now: the GPU build (torch 2.10.0)" in out
     assert "Choosing the other build replaces it" in out
     assert "0.2 GB download" in out and "3 GB download" in out
@@ -140,7 +168,7 @@ def test_a_wrong_answer_is_asked_again(tmp_path):
     variant, _, _, asked = _setup_decision(
         tmp_path, installed="2.10.0", auto_yes=False, answers=["gpus", "gpu"]
     )
-    assert (variant, len(asked)) == ("gpu", 2)
+    assert (variant, asked) == ("gpu", 2)
 
 
 def test_an_install_already_asked_is_not_asked_again(tmp_path):
@@ -148,13 +176,13 @@ def test_an_install_already_asked_is_not_asked_again(tmp_path):
     variant, record, _, asked = _setup_decision(
         tmp_path, installed="2.14.0", record="gpu", auto_yes=False
     )
-    assert (variant, record, asked) == ("gpu", "gpu", [])
+    assert (variant, record, asked) == ("gpu", "gpu", 0)
 
 
 @pytest.mark.parametrize("rag,asks", [(True, True), (False, False)])
 def test_a_first_install_asks_only_when_installing_rag(tmp_path, rag, asks):
     variant, _, _, asked = _setup_decision(
-        tmp_path, auto_yes=False, rag=rag, record="cpu"
+        tmp_path, auto_yes=False, answers=[""], rag=rag, record="cpu"
     )
     assert variant == "cpu" and bool(asked) is asks
 
@@ -172,9 +200,38 @@ def test_macos_uses_the_pypi_lock_and_is_never_asked(tmp_path, flag):
     variant, record, out, asked = _setup_decision(
         tmp_path, platform="Darwin", flag=flag, installed="2.14.0", auto_yes=False
     )
-    assert (variant, record, asked) == ("pypi", "", [])
+    assert (variant, record, asked) == ("pypi", "", 0)
     if flag:
         assert f"--{flag} is not applicable on macOS" in out
+
+
+@pytest.mark.parametrize("installed,expect", [("2.14.0", "gpu"), ("", "cpu")])
+def test_without_a_terminal_a_run_does_not_ask_and_keeps_the_build(
+    tmp_path, installed, expect
+):
+    """Not -y, but nothing to answer with: a re-run over a GPU install stays
+    GPU, and nothing is recorded (it was never asked)."""
+    variant, record, out, asked = _setup_decision(
+        tmp_path, installed=installed, auto_yes=False, terminal=False
+    )
+    assert (variant, record, asked) == (expect, "", 0)
+    assert f"PyTorch build: {expect} (switch with --cpu or --gpu)" in out
+
+
+def test_piped_stdin_with_a_terminal_still_asks(tmp_path):
+    """`curl | bash`: stdin is the pipe, the answer comes from /dev/tty."""
+    variant, record, _, asked = _setup_decision(
+        tmp_path, installed="2.14.0", auto_yes=False, answers=["gpu"], terminal=True
+    )
+    assert (variant, record, asked) == ("gpu", "gpu", 1)
+
+
+def test_no_answer_at_the_question_installs_nothing(tmp_path):
+    """End of input mustn't become a silent swap to the default."""
+    _, _, out, asked = _setup_decision(
+        tmp_path, installed="2.14.0", auto_yes=False, answers=(), rc=1
+    )
+    assert asked == 1 and "nothing installed" in out and "--cpu or --gpu" in out
 
 
 # --- The locked installs ------------------------------------------------------

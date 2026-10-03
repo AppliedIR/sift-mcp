@@ -893,9 +893,12 @@ else
     else
         TORCH_VARIANT=cpu
     fi
-    if ! $AUTO_YES && { { [[ -n "$TORCH_INSTALLED" && -z "$TORCH_RECORD" ]]; } \
+    # A terminal: stdin, or /dev/tty for `curl | bash` (readable /dev/tty
+    # alone isn't enough: it exists without one).
+    if ! $AUTO_YES && { [[ -t 0 ]] || { : </dev/tty; } 2>/dev/null; } \
+        && { { [[ -n "$TORCH_INSTALLED" && -z "$TORCH_RECORD" ]]; } \
         || { $INSTALL_RAG && [[ -z "$TORCH_INSTALLED" ]]; }; }; then
-        if command -v nvidia-smi &>/dev/null && nvidia-smi -L 2>/dev/null | grep -q '^GPU'; then
+        if command -v nvidia-smi &>/dev/null && timeout 10 nvidia-smi -L 2>/dev/null | grep -q '^GPU'; then
             gpu_found="an NVIDIA GPU was found"
         else
             gpu_found="no NVIDIA GPU was found"
@@ -909,9 +912,15 @@ else
         echo "    cpu  about 0.2 GB download, 0.7 GB on disk; slower index builds"
         echo "    gpu  about 3 GB download, 5.4 GB on disk; much faster index builds; needs an NVIDIA GPU"
         while true; do
-            choice=$(prompt "    PyTorch build (cpu/gpu)" "cpu")
-            case "${choice,,}" in
-                cpu|gpu) TORCH_VARIANT="${choice,,}"; break ;;
+            # No answer (end of input) must not become a silent CPU swap.
+            if ! read -rp "$(echo -e "${BOLD}    PyTorch build (cpu/gpu)${NC} [cpu]: ")" choice < "$READ_FROM"; then
+                echo ""
+                err "No answer to the PyTorch question; nothing installed. Re-run with --cpu or --gpu."
+                exit 1
+            fi
+            choice=$(tr A-Z a-z <<< "${choice:-cpu}")
+            case "$choice" in
+                cpu|gpu) TORCH_VARIANT=$choice; break ;;
                 *) echo "    Please enter cpu or gpu." ;;
             esac
         done

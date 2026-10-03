@@ -312,7 +312,7 @@ else
     fi
     if [[ "$YES" != "true" ]] && { { [[ -n "$TORCH_INSTALLED" && -z "$TORCH_RECORD" ]]; } \
         || { [[ "$INSTALL_RAG" == "true" && -z "$TORCH_INSTALLED" ]]; }; }; then
-        if command -v nvidia-smi &>/dev/null && nvidia-smi -L 2>/dev/null | grep -q '^GPU'; then
+        if command -v nvidia-smi &>/dev/null && timeout 10 nvidia-smi -L 2>/dev/null | grep -q '^GPU'; then
             gpu_found="an NVIDIA GPU was found"
         else
             gpu_found="no NVIDIA GPU was found"

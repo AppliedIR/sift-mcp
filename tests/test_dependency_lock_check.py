@@ -371,17 +371,22 @@ def test_final_prints_the_leftovers_size_and_commands_and_removes_nothing(tmp_pa
         sizes={"nvidia-cudnn-cu12": 1_000_000_000, "triton": 500_000_000},
     )
     out = run.stdout
-    assert "CUDA packages this lock doesn't use" in out and "(1.5 GB in the venv" in out
+    assert (
+        "CUDA-family packages this lock doesn't install (check none are yours)" in out
+    )
+    assert "(1.5 GB in the venv" in out
     (uninstall,) = [x for x in out.splitlines() if "uv pip uninstall" in x]
     (clean,) = [x for x in out.splitlines() if "uv cache clean" in x]
     for name in ("nvidia-cudnn-cu12", "nvidia-cublas-cu12", "triton"):
         assert name in uninstall and name in clean
     assert "nvidia-curand-cu12" not in uninstall
-    assert clean.split()[-1] == "torch"  # the replaced GPU build's archive
+    # Only what it uninstalls: cleaning torch's cache breaks a venv that links
+    # its CPU torch there (uv --link-mode symlink).
+    assert clean.split()[3:] == ["nvidia-cudnn-cu12", "triton", "nvidia-cublas-cu12"]
     assert run.removed == []
 
 
-def test_final_on_the_gpu_lock_leaves_its_torch_in_the_cache(tmp_path):
+def test_final_on_the_gpu_lock_cleans_only_the_leftovers(tmp_path):
     venv = {
         "torch": "2.14.0",
         "starlette": "1.7.0",

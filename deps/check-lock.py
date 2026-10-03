@@ -287,15 +287,15 @@ def main(argv: list[str] | None = None) -> int:
     if leftovers:
         names = " ".join(shlex.quote(n) for n in leftovers)
         # The venv's files are links into uv's cache: the disk comes back
-        # only once the cache copies go too. The CPU lock's torch replaced the
-        # GPU build, whose archive stays in the cache until cleaned.
-        cached = names + (" torch" if _cpu_lock(lock) else "")
+        # only once the cache copies go too. Only these names: cleaning
+        # torch's would break a venv that links its CPU torch into the cache.
         print(
-            f"  CUDA packages this lock doesn't use: {', '.join(leftovers)}"
+            "  CUDA-family packages this lock doesn't install (check none are"
+            f" yours): {', '.join(leftovers)}"
             f" ({_size(site, leftovers) / 1e9:.1f} GB in the venv, freed on disk only"
             " after the cache clean). Nothing removed them; to remove them:\n"
             f"    uv pip uninstall --python {shlex.quote(py)} {names}\n"
-            f"    uv cache clean {cached}"
+            f"    uv cache clean {names}"
         )
     if not failed:
         print(
