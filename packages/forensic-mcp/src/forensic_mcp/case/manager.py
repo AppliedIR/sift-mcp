@@ -103,6 +103,18 @@ _PROTECTED_EVENT_FIELDS = {
     "modified_at",
     "created_by",
     "examiner",
+    # Approval couples an event to its finding by auto_created_from, which
+    # only record_finding's auto-timeline sets; approval and integrity state
+    # comes from the approve step, never from the caller.
+    "auto_created_from",
+    "approved_at",
+    "approved_by",
+    "rejected_at",
+    "rejected_by",
+    "rejection_reason",
+    "verification",
+    "examiner_modifications",
+    "examiner_notes",
 }
 
 # Keys excluded from content hash — volatile/derived fields

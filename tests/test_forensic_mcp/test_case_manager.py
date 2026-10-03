@@ -867,3 +867,131 @@ class TestTimelineEventTimestamp:
     def test_iso_timestamps_and_dates_are_staged(self, manager, active_case, good):
         result = manager.record_timeline_event({"timestamp": good, "description": "x"})
         assert result["status"] == "STAGED", result
+
+
+# --- record_timeline_event can't set coupling or approval fields -------------
+# Approval couples an event to its finding through auto_created_from, which
+# only record_finding's auto-timeline sets; a caller that set it (or the
+# approval fields) had its event approved and signed with the finding, unseen.
+
+RESERVED_EVENT_FIELDS = {
+    "auto_created_from": "F-tester-001",
+    "approved_at": "2026-01-01T00:00:00Z",
+    "approved_by": "tester",
+    "rejected_at": "2026-01-01T00:00:00Z",
+    "rejected_by": "tester",
+    "rejection_reason": "x",
+    "verification": "confirmed",
+    "examiner_modifications": {"description": "x"},
+    "examiner_notes": "x",
+}
+FINDING = {
+    "title": "Suspicious process",
+    "audit_ids": ["wt-tester-20260219-001"],
+    "observation": "svchost.exe spawned from cmd.exe",
+    "interpretation": "Unusual parent-child relationship",
+    "confidence": "MEDIUM",
+    "confidence_justification": "Single evidence source",
+    "type": "finding",
+    "event_timestamp": "2026-02-19T10:00:00Z",
+}
+
+
+def _timeline(case):
+    return json.loads((Path(case["path"]) / "timeline.json").read_text())
+
+
+def test_a_caller_cannot_set_coupling_or_approval_fields(manager, active_case):
+    result = manager.record_timeline_event(
+        {
+            "timestamp": "2026-02-19T10:30:00Z",
+            "description": "Attacker-chosen text",
+            **RESERVED_EVENT_FIELDS,
+        }
+    )
+    (event,) = [e for e in _timeline(active_case) if e["id"] == result["event_id"]]
+    assert not set(RESERVED_EVENT_FIELDS) & set(event), event
+    assert event["status"] == "DRAFT"
+
+
+def test_other_caller_fields_are_still_stored(manager, active_case):
+    result = manager.record_timeline_event(
+        {
+            "timestamp": "2026-02-19T10:30:00Z",
+            "description": "Logon",
+            "host": "WS01",
+            "my_custom_key": "kept",
+        }
+    )
+    (event,) = [e for e in _timeline(active_case) if e["id"] == result["event_id"]]
+    assert (event["host"], event["my_custom_key"]) == ("WS01", "kept")
+
+
+def test_a_findings_own_auto_created_event_still_couples(manager, active_case):
+    result = manager.record_finding(dict(FINDING))
+    (event,) = _timeline(active_case)
+    assert event["auto_created_from"] == result["finding_id"] == "F-tester-001"
+
+
+def test_existing_auto_created_events_are_left_as_they_are(manager, active_case):
+    path = Path(active_case["path"]) / "timeline.json"
+    before = {
+        "id": "T-tester-001",
+        "timestamp": "2026-02-19T10:00:00Z",
+        "description": "From a finding",
+        "auto_created_from": "F-tester-001",
+        "status": "DRAFT",
+    }
+    path.write_text(json.dumps([before]))
+    manager.record_timeline_event(
+        {"timestamp": "2026-02-19T11:00:00Z", "description": "Another event"}
+    )
+    assert _timeline(active_case)[0] == before
+
+
+def _approve(case, finding_id):
+    """vhir's _approve_specific on the finding, the password step and the
+    HMAC ledger stood in for; returns the ids it would sign."""
+    approve = pytest.importorskip("vhir_cli.commands.approve")
+    from unittest.mock import patch
+
+    signed = []
+
+    def ledger(case_dir, items, *a, **kw):
+        signed.extend(item["id"] for item in items)
+        return []
+
+    identity = {"examiner": "tester", "os_user": "tester", "analyst": "tester"}
+    with (
+        patch.object(approve, "require_confirmation", return_value=("pw", "pw")),
+        patch.object(approve, "_write_verification_entries", side_effect=ledger),
+    ):
+        approve._approve_specific(Path(case["path"]), [finding_id], identity, Path("x"))
+    return signed
+
+
+def test_a_forged_event_is_not_approved_or_signed_with_its_finding(
+    manager, active_case
+):
+    finding = {**FINDING}
+    del finding["event_timestamp"]  # no event of its own
+    finding_id = manager.record_finding(finding)["finding_id"]
+    forged = manager.record_timeline_event(
+        {
+            "timestamp": "2026-02-19T10:30:00Z",
+            "description": "Attacker-chosen text",
+            "auto_created_from": finding_id,
+        }
+    )["event_id"]
+    signed = _approve(active_case, finding_id)
+    (event,) = [e for e in _timeline(active_case) if e["id"] == forged]
+    assert event["status"] == "DRAFT" and forged not in signed, (event, signed)
+    assert finding_id in signed
+
+
+def test_a_findings_own_event_is_approved_and_signed_with_it(manager, active_case):
+    """The twin: real coupling still works end to end."""
+    result = manager.record_finding(dict(FINDING))
+    signed = _approve(active_case, result["finding_id"])
+    (event,) = _timeline(active_case)
+    assert event["status"] == "APPROVED" and event["id"] in signed
