@@ -649,6 +649,7 @@ mkdir -p "$PROJECT_DIR/.claude"
 settings_src="$LITE_DIR/settings.json"
 if [[ -f "$settings_src" ]]; then
     # compared after the path is filled in, so a re-run finds it identical
+    rm -f "$PROJECT_DIR/.claude/settings.json.vhir-new"  # never written through a link
     sed "s|\\\$CLAUDE_PROJECT_DIR|$PROJECT_DIR|g" "$settings_src" > "$PROJECT_DIR/.claude/settings.json.vhir-new"
     _deploy_file "$PROJECT_DIR/.claude/settings.json.vhir-new" "$PROJECT_DIR/.claude/settings.json" "" \
         "settings.json (hook path resolved)"
@@ -756,17 +757,30 @@ fi
 header "Phase 5: Optional MCPs"
 
 _add_mcp_server() {
-    # Add a server entry to .mcp.json
-    local name="$1" json_fragment="$2"
+    # Add a server entry to .mcp.json; one that isn't valid JSON is left as it is
+    local name="$1" json_fragment="$2" rc=0
     "$VENV_PYTHON" -c "
 import json, sys
-with open('$MCP_JSON') as f:
-    data = json.load(f)
-data.setdefault('mcpServers', {})[sys.argv[1]] = json.loads(sys.argv[2])
+try:
+    with open('$MCP_JSON') as f:
+        data = json.load(f)
+except ValueError:
+    sys.exit(3)
+if not isinstance(data, dict) or not isinstance(data.setdefault('mcpServers', {}), dict):
+    sys.exit(3)
+data['mcpServers'][sys.argv[1]] = json.loads(sys.argv[2])
 with open('$MCP_JSON', 'w') as f:
     json.dump(data, f, indent=2)
     f.write('\n')
-" "$name" "$json_fragment"
+" "$name" "$json_fragment" || rc=$?
+    if [[ $rc -eq 3 ]]; then
+        warn "$MCP_JSON isn't valid JSON: $name NOT added. Add it to \"mcpServers\" by hand:"
+        echo "  \"$name\": $json_fragment"
+        return 1
+    elif [[ $rc -ne 0 ]]; then
+        fail "Could not update $MCP_JSON"
+    fi
+    ok "Added $name to .mcp.json"
 }
 
 INSTALLED_OPENCTI=false
@@ -816,9 +830,7 @@ if [[ "$INSTALL_OPENCTI" == "true" ]]; then
                 \"OPENCTI_TOKEN\": \"$OPENCTI_TOKEN\",
                 \"VHIR_CASE_DIR\": \"$PROJECT_DIR\"
             }
-        }"
-        ok "Added opencti-mcp to .mcp.json"
-        INSTALLED_OPENCTI=true
+        }" && INSTALLED_OPENCTI=true
     else
         warn "OpenCTI URL or token not provided. Skipped."
     fi
@@ -858,9 +870,7 @@ if [[ -n "$REMNUX_ADDR" ]]; then
             \"type\": \"http\",
             \"url\": \"http://$REMNUX_ADDR/mcp\",
             \"headers\": {\"Authorization\": \"Bearer $REMNUX_TOKEN\"}
-        }"
-        ok "Added remnux-mcp to .mcp.json"
-        INSTALLED_REMNUX=true
+        }" && INSTALLED_REMNUX=true
     elif [[ "$YES" == "true" ]]; then
         warn "REMnux token cannot be provided non-interactively. Run without -y to configure."
     else
@@ -880,9 +890,7 @@ if [[ "$INSTALL_MSLEARN" == "true" ]]; then
     _add_mcp_server "microsoft-learn" "{
         \"type\": \"http\",
         \"url\": \"https://learn.microsoft.com/api/mcp\"
-    }"
-    ok "Added microsoft-learn to .mcp.json"
-    INSTALLED_MSLEARN=true
+    }" && INSTALLED_MSLEARN=true
 fi
 
 # --- Zeltser IR Writing ---
@@ -897,9 +905,7 @@ if [[ "$INSTALL_ZELTSER" == "true" ]]; then
     _add_mcp_server "zeltser-ir-writing" "{
         \"type\": \"http\",
         \"url\": \"https://website-mcp.zeltser.com/mcp\"
-    }"
-    ok "Added zeltser-ir-writing to .mcp.json"
-    INSTALLED_ZELTSER=true
+    }" && INSTALLED_ZELTSER=true
 fi
 
 # --- Registry baseline (deferred) ---

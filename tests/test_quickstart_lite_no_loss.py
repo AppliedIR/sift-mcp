@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -300,3 +301,85 @@ def test_anchor_a_file_without_mcp_servers_is_merged(tmp_path):
     assert json.loads(mcp.read_text())["mcpServers"] == {
         "forensic-rag": {"command": "x"}
     }
+
+
+# --- after .mcp.json is left alone, the optional servers don't abort -----------
+
+_p5 = SCRIPT.index('header "Phase 5: Optional MCPs"')
+PHASE5_TO_END = SCRIPT[_p5:]
+_w = SCRIPT.index("_write_install_marker() {")
+MARKER = SCRIPT[  # to the next top-level definition: its Python has a "}" line
+    _w : re.compile(r"^[A-Za-z_]+\(\) \{$", re.M).search(SCRIPT, _w + 1).start()
+]
+
+
+def _phase5(tmp_path, mcp_text):
+    mcp = tmp_path / "my project" / ".mcp.json"
+    mcp.parent.mkdir(parents=True, exist_ok=True)
+    mcp.write_text(mcp_text)
+    (tmp_path / ".vhir").mkdir(exist_ok=True)  # made by the earlier phases
+    run = tmp_path / "phase5.sh"
+    run.write_text(
+        "set -euo pipefail\nBOLD=; RED=; GREEN=; YELLOW=; NC=\n"
+        'ok() { echo "OK $1"; }; warn() { echo "WARN $1"; }; fail() { echo "FAIL $1"; exit 1; }\n'
+        'header() { echo "== $1"; }\n'
+        + MARKER
+        + 'UNDO_LINES=("cp -p a\\ b c")\n'  # an earlier replacement's undo line
+        + PHASE5_TO_END
+    )
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "YES": "true",
+        "VENV_PYTHON": shutil.which("python3"),
+        "VENV_DIR": str(tmp_path / "venv"),
+        "SCRIPT_DIR": str(tmp_path),
+        "PROJECT_DIR": str(mcp.parent),
+        "MCP_JSON": str(mcp),
+        "INDEX_DIR": str(tmp_path),
+        "INSTALL_MSLEARN": "true",
+        "INSTALL_ZELTSER": "true",
+        "INSTALL_OPENCTI": "false",
+        "INSTALL_RAG": "false",
+        "INSTALL_TRIAGE": "false",
+        "INSTALL_REGISTRY": "false",
+        "SKIP_OPTIONAL_MCPS": "false",
+        "REMNUX_ADDR": "",
+    }
+    p = subprocess.run(
+        ["/bin/bash", str(run)], capture_output=True, text=True, env=env, timeout=60
+    )
+    return p.returncode, p.stdout + p.stderr, mcp
+
+
+def test_an_unparseable_mcp_json_doesnt_stop_the_optional_servers(tmp_path):
+    rc, out, mcp = _phase5(tmp_path, '{"mcpServers": {"mine": ')
+    assert rc == 0, out
+    assert mcp.read_text() == '{"mcpServers": {"mine": '
+    assert out.count("NOT added. Add it to") == 2
+    assert '"microsoft-learn": {' in out and '"zeltser-ir-writing": {' in out
+    assert "OK Added" not in out
+    assert "microsoft-learn (documentation)" not in out  # not listed as installed
+    assert out.rstrip().endswith("cp -p a\\ b c")  # the end, with the undo block
+
+
+def test_anchor_a_valid_mcp_json_gets_the_optional_servers(tmp_path):
+    rc, out, mcp = _phase5(tmp_path, '{"mcpServers": {"mine": {}}}')
+    assert rc == 0, out
+    servers = json.loads(mcp.read_text())["mcpServers"]
+    assert list(servers) == ["mine", "microsoft-learn", "zeltser-ir-writing"]
+    assert out.count("OK Added") == 2 and "microsoft-learn (documentation)" in out
+
+
+def test_a_link_planted_at_the_staging_path_isnt_written_through(tmp_path, clone):
+    project = _project(tmp_path)
+    target = tmp_path / "elsewhere.json"
+    target.write_text("NOT YOURS\n")
+    (project / ".claude" / "settings.json.vhir-new").symlink_to(target)
+    (project / ".claude" / "settings.json").write_text('{"mine": true}\n')
+    rc, out = _run(tmp_path, clone, project)  # no terminal, no -y
+    assert rc == 0, out
+    assert target.read_text() == "NOT YOURS\n"
+    assert (project / ".claude" / "settings.json").read_text() == '{"mine": true}\n'
+    assert "settings.json differs" in out and "NOT deployed" in out
+    assert not (project / ".claude" / "settings.json.vhir-new").exists()
