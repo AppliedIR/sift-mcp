@@ -169,11 +169,15 @@ def remove_leftovers(site: list[str], pins: dict[str, str], have: dict) -> list[
         )
         # It may be the user's own package: say how to put it back.
         specs = [f"{n}=={have[n]}" for n in stale]
+        rule = "=" * 66
         print(
-            f"  Removed {', '.join(specs)}: removed because it conflicted with the"
-            " dependency lock and nothing installed needs it; reinstall with"
-            f" `uv pip install --python {shlex.quote(sys.executable)}"
-            f" {' '.join(shlex.quote(x) for x in specs)}` if you added it yourself.",
+            f"\n  {rule}\n  REMOVED {', '.join(specs)}: it conflicted with the"
+            " dependency lock and nothing installed needs it.\n  If you added it"
+            " yourself, reinstall it (this moves locked packages off the lock, and"
+            " the next install or update removes it again):\n"
+            f"    uv pip install --python {shlex.quote(sys.executable)}"
+            f" {' '.join(shlex.quote(x) for x in specs)}\n  {rule}",
+            file=sys.stderr,
             flush=True,
         )
     return stale
