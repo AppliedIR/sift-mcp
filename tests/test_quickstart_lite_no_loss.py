@@ -67,7 +67,7 @@ def clone(tmp_path):
     _git(root, "add", "-A")
     _git(root, "commit", "-qm", "v1")
     hook.write_text(HOOK_V2)
-    hook.chmod(0o755)
+    hook.chmod(0o644)  # the step makes it executable
     _git(root, "commit", "-qam", "v2")
     return root
 
@@ -106,7 +106,7 @@ def _run(tmp_path, clone, project, yes=False, pty_answers=None):
         (bin_dir / "date").chmod(0o755)
     run = tmp_path / "step.sh"
     run.write_text(
-        "set -euo pipefail\nRED=; GREEN=; YELLOW=; NC=\n"
+        "set -euo pipefail\numask 022\nRED=; GREEN=; YELLOW=; NC=\n"
         'ok() { echo "OK $1"; }; warn() { echo "WARN $1"; }; fail() { echo "FAIL $1"; exit 1; }\n'
         + HELPERS
         + STEP
@@ -167,6 +167,14 @@ def test_y_replaces_with_backups_and_the_undo_block_restores(tmp_path, clone):
     assert {b.read_bytes() for b in backups} == set(before.values())
     undo = [ln.strip() for ln in out.splitlines() if ln.strip().startswith("cp -p ")]
     assert len(undo) == 3
+    # and repeated as the script's last output
+    tail = SCRIPT[SCRIPT.index("# The undo block, repeated") :]
+    run = tmp_path / "tail.sh"
+    run.write_text('BOLD=; RED=; NC=; PROJECT_DIR=p\nUNDO_LINES=("$@")\n' + tail)
+    last = subprocess.run(
+        ["/bin/bash", str(run), *undo], capture_output=True, text=True, check=True
+    ).stdout
+    assert [ln.strip() for ln in last.splitlines()[1:4]] == undo
     # a second change in the same second gets its own backup
     (project / "CLAUDE.md").write_text("EDITED AGAIN\n")
     _run(tmp_path, clone, project, yes=True)
@@ -190,17 +198,42 @@ def test_at_a_terminal_it_asks_and_defaults_to_no(tmp_path, clone, answer, repla
     assert (len(_backups(project)) == 3) is replaced
 
 
-def test_an_empty_project_then_a_re_run(tmp_path, clone):
+def _r5(tmp_path, clone):
     project = _project(tmp_path)
     rc, out = _run(tmp_path, clone, project)  # as today
     assert rc == 0, out
-    lite = clone / "claude-code" / "lite"
-    assert (project / "CLAUDE.md").read_bytes() == (lite / "CLAUDE.md").read_bytes()
-    settings = (project / ".claude" / "settings.json").read_text()
-    assert settings == SETTINGS.replace("$CLAUDE_PROJECT_DIR", str(project))
-    hook = project / "hooks" / "forensic-audit.sh"
-    assert hook.read_text() == HOOK_V2 and stat.S_IMODE(hook.stat().st_mode) & 0o111
-    rc, out = _run(tmp_path, clone, project)  # re-run
+    lite, shared = clone / "claude-code" / "lite", clone / "claude-code" / "shared"
+    want = {  # every file, its bytes and its mode
+        "CLAUDE.md": ((lite / "CLAUDE.md").read_bytes(), 0o644),
+        "FORENSIC_DISCIPLINE.md": (
+            (lite / "FORENSIC_DISCIPLINE.md").read_bytes(),
+            0o644,
+        ),
+        "TOOL_REFERENCE.md": ((lite / "TOOL_REFERENCE.md").read_bytes(), 0o644),
+        "FORENSIC_TOOLS.md": ((shared / "FORENSIC_TOOLS.md").read_bytes(), 0o644),
+        "hooks/forensic-audit.sh": (HOOK_V2.encode(), 0o755),
+        ".claude/settings.json": (
+            SETTINGS.replace("$CLAUDE_PROJECT_DIR", str(project)).encode(),
+            0o644,
+        ),
+        ".claude/commands/case.md": (b"valhuntir case command\n", 0o644),
+    }
+    got = {
+        str(f.relative_to(project)): (f.read_bytes(), stat.S_IMODE(f.stat().st_mode))
+        for f in project.rglob("*")
+        if f.is_file()
+    }
+    assert got == want
+    return project
+
+
+def test_anchor_an_empty_project_gets_every_file(tmp_path, clone):
+    _r5(tmp_path, clone)
+
+
+def test_a_re_run_is_silent(tmp_path, clone):
+    project = _r5(tmp_path, clone)
+    rc, out = _run(tmp_path, clone, project)
     assert rc == 0 and out.strip() == "" and _backups(project) == [], out
 
 

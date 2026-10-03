@@ -965,3 +965,10 @@ echo "  1. cd $PROJECT_DIR"
 echo "  2. claude                    # Launch Claude Code"
 echo "  3. /welcome                  # Verify setup, get oriented"
 echo ""
+
+# The undo block, repeated as the last output so it isn't scrolled away.
+if (( ${#UNDO_LINES[@]} )); then
+    echo -e "${BOLD}${RED}=== Files in $PROJECT_DIR were replaced (backups kept) ===${NC}"
+    printf '  %s\n' "${UNDO_LINES[@]}"
+    echo ""
+fi
