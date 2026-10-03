@@ -377,3 +377,21 @@ def test_input_the_guard_cannot_read_is_blocked(box, label, stdin):
 def test_anchor_an_empty_command_is_read_and_allowed(box):
     p = _raw(box, _payload(tool_input={"command": ""}))
     assert p.returncode == 0 and p.stderr == ""
+
+
+def test_without_python3_the_guard_blocks(box, tmp_path):
+    root, cases, case, out = box
+    bin_dir = tmp_path / "no-python"
+    bin_dir.mkdir()
+    (bin_dir / "cat").symlink_to(shutil.which("cat"))  # the script's own heredoc
+    p = subprocess.run(
+        ["/bin/bash", str(HOOK)],
+        input=_payload(tool_input={"command": "ls"}),
+        capture_output=True,
+        text=True,
+        cwd=case,
+        env={"HOME": str(root), "PATH": str(bin_dir), "VHIR_CASES_DIR": str(cases)},
+        timeout=30,
+    )
+    assert p.returncode == 2, p.stderr
+    assert "couldn't run (python3 unavailable), so it was blocked" in p.stderr
