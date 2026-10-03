@@ -17,8 +17,11 @@
 # at a case or the cases root) with -delete or -exec. Seen through: sudo, env,
 # VAR=val, nice, nohup, time, timeout, stdbuf, exec, command, if/then/do/{/!,
 # ; && || | & and newlines, cd, quoting, .., absolute command paths, mv -t.
-# Not seen: bash -c/sh -c, xargs, scripts, git clean, rsync --delete, tar
-# --remove-files, dd of=, brace expansion, variables and $(...).
+# Not seen: bash -c/sh -c, xargs, scripts, tee, git clean, rsync --delete,
+# tar --remove-files, dd of=, >& redirections, brace expansion, variables and
+# $(...); options of timeout -s and env -u; a cd inside a subshell or one that
+# fails (it's applied to later commands). A quoted '>' is read as a redirection
+# (a false block).
 #
 # The command is tokenized only: it is never run, evaluated or expanded by a
 # shell. A block exits 2 with the reason on stderr (Claude Code shows it to
@@ -67,8 +70,10 @@ def damage(p, new_ok=False):
     parts, real = rel(p)
     if parts is None:
         return False
-    if len(parts) <= 1:  # the cases root or a case root
+    if not parts:  # the cases root
         return True
+    if len(parts) == 1:  # a case root (a plain file beside the cases isn't one)
+        return os.path.isdir(real)
     top = parts[1]
     if top == "audit" or (top in RECORDS and len(parts) == 2):
         return True
@@ -150,9 +155,9 @@ def check(seg):
             if damage(tgt, new_ok=True):
                 block(f"{name} over {tgt}")
     elif name == "find" and ("-delete" in seg or any(t in ("-exec", "-execdir") for t in seg)):
-        for r in [a for a in seg[1:] if not a.startswith("-")][:1] or ["."]:
-            parts, _ = rel(r)
-            if parts is not None and (len(parts) <= 1 or damage(r)):
+        roots = itertools.takewhile(lambda a: not a.startswith("-") and a not in ("!", "("), seg[1:])
+        for r in list(roots) or ["."]:  # every starting point
+            if damage(r):
                 block(f"find -delete/-exec under {r}")
 
 

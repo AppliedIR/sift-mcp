@@ -71,6 +71,7 @@ def box(tmp_path):
         "evidence/unregistered-notes.txt",
     ):
         (case / f).write_text("x\n")
+    (cases / "notes.md").write_text("x\n")
     out = tmp_path / "out"
     out.mkdir()
     (out / "x").write_text("x\n")
@@ -159,6 +160,7 @@ BLOCK = [
     ),
     ("find group -delete", "C", "find {C} \\( -name x -o -name y \\) -delete"),
     ("subshell rm", "C", "(rm {C}/findings.json)"),
+    ("find with two roots", "C", "find {O} {C} -name x -delete"),
     # Accepted, disclosed over-blocks (decision 8)
     ("over-block: find case -delete", "C", "find {C} -name '*.tmp' -delete"),
     (
@@ -197,6 +199,7 @@ ALLOW = [
     ("record name outside cases", "C", "echo '{{}}' > {O}/findings.json"),
     ("rm non-record in case root", "C", "rm {C}/notes.txt"),
     ("rm in work/", "C", "rm {C}/work/scratch.txt"),
+    ("rm a file beside the cases", "C", "rm {CS}/notes.md"),
     (
         "quoted arg mentioning record",
         "C",
