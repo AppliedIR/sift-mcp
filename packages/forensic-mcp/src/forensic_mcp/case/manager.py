@@ -1187,10 +1187,7 @@ class CaseManager:
                     # A derivative bridged to registered evidence (log_external_action)
                     try:
                         if _resolve_source_evidence_static(
-                            [src],
-                            all_audit_entries,
-                            registered,
-                            evidence_by_hash=ev_by_hash,
+                            [src], all_audit_entries, registered
                         )[0]:
                             continue
                     except OSError:
