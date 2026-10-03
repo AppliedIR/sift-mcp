@@ -2016,7 +2016,7 @@ cat > "$GATEWAY_START" << SCRIPT
 # Start Valhuntir Gateway
 export VHIR_EXAMINER="$EXAMINER_NAME"
 export VHIR_CASES_DIR="$CASE_DIR"
-exec "$VENV_DIR/bin/python" -m sift_gateway --config "$GATEWAY_CONFIG"
+exec "$VENV_DIR/bin/python" -I -m sift_gateway --config "$GATEWAY_CONFIG"
 SCRIPT
 chmod +x "$GATEWAY_START"
 
@@ -2036,7 +2036,7 @@ if curl -sf ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
     ok "Gateway already running on port $GATEWAY_PORT"
 elif ! $MANUAL_START; then
     info "Starting gateway on port $GATEWAY_PORT..."
-    "$VENV_DIR/bin/python" -m sift_gateway --config "$GATEWAY_CONFIG" >/dev/null 2>&1 &
+    "$VENV_DIR/bin/python" -I -m sift_gateway --config "$GATEWAY_CONFIG" >/dev/null 2>&1 &
     GATEWAY_PID=$!
 
     # Wait for health endpoint (backends need time to start)
@@ -2085,7 +2085,7 @@ Description=Valhuntir Gateway
 After=network.target
 
 [Service]
-ExecStart=$VENV_DIR/bin/python -m sift_gateway --config $GATEWAY_CONFIG
+ExecStart=$VENV_DIR/bin/python -I -m sift_gateway --config $GATEWAY_CONFIG
 Environment=VHIR_EXAMINER=$EXAMINER_NAME
 Environment=VHIR_CASES_DIR=$CASE_DIR
 PassEnvironment=DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR

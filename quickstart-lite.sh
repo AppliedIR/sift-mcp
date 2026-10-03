@@ -750,7 +750,7 @@ if [[ "$INSTALL_OPENCTI" == "true" ]]; then
     if [[ -n "$OPENCTI_URL" ]] && [[ -n "$OPENCTI_TOKEN" ]]; then
         _add_mcp_server "opencti-mcp" "{
             \"command\": \"$VENV_DIR/bin/python\",
-            \"args\": [\"-m\", \"opencti_mcp.server\"],
+            \"args\": [\"-I\", \"-m\", \"opencti_mcp.server\"],
             \"env\": {
                 \"PYTHONPATH\": \"$SCRIPT_DIR/packages/opencti/src\",
                 \"OPENCTI_URL\": \"$OPENCTI_URL\",

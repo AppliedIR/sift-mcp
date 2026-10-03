@@ -89,6 +89,14 @@ class StdioMCPBackend(MCPBackend):
         command = self.config.get("command", "python")
         args = self.config.get("args", [])
         env = self.config.get("env") or None
+        # Python backends run isolated: the gateway's cwd is never on sys.path.
+        # Not one whose env sets PYTHONPATH, which -I would ignore.
+        if (
+            args[:1] == ["-m"]
+            and os.path.basename(command).startswith("python")
+            and "PYTHONPATH" not in (env or {})
+        ):
+            args = ["-I", *args]
 
         # When config provides explicit env vars, merge VHIR_* from parent
         # so examiner identity and case dir propagate to backend subprocesses.
