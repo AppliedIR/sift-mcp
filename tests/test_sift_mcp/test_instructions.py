@@ -86,7 +86,8 @@ def test_opensearch_aggregation_guidance_names_both_field_forms():
     buckets, silently, on keyword-only (delim-, json-, zeek-) indices."""
     assert "use .keyword suffix" not in OPENSEARCH
     for clause in (
-        "include_fields=true",  # where the types are
+        "include_fields=true) can show them",  # a sample, not proof
+        "doesn't show .keyword sub-fields",
         "how a file was ingested",  # the ingest path decides, not the tool
         "idx_ingest_delimited",
         "delim-",
@@ -99,3 +100,4 @@ def test_opensearch_aggregation_guidance_names_both_field_forms():
     ):
         assert clause in OPENSEARCH, clause
     assert "fails loudly" not in OPENSEARCH
+    assert "include_fields=true) shows them" not in OPENSEARCH
