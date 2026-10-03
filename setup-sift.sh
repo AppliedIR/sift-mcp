@@ -2254,12 +2254,17 @@ elif { : < "$READ_FROM"; } 2>/dev/null; then
 else
     CLIENT_IN=/dev/null
 fi
-"$VENV_DIR/bin/vhir" setup client --client="$CLIENT" --sift="$SIFT_URL" -y < "$CLIENT_IN" \
-    || warn "Client configuration failed. Run manually: vhir setup client"
+# Its output says whether the controls were applied (they aren't over a
+# user's file they'd change without a yes).
+CLIENT_LOG=$(mktemp)
+if ! "$VENV_DIR/bin/vhir" setup client --client="$CLIENT" --sift="$SIFT_URL" -y \
+    < "$CLIENT_IN" | tee "$CLIENT_LOG"; then
+    warn "Client configuration failed. Run manually: vhir setup client"
+fi
 
 
 # Global deployment message for claude-code
-if grep -q 'forensic-audit.sh' "$HOME/.claude/settings.json" 2>/dev/null; then
+if grep -q 'Forensic controls deployed:' "$CLIENT_LOG" 2>/dev/null; then
     echo ""
     echo -e "${BOLD}Forensic controls deployed globally.${NC}"
     echo "Claude Code can be launched from any directory on this machine."
@@ -2267,6 +2272,7 @@ if grep -q 'forensic-audit.sh' "$HOME/.claude/settings.json" 2>/dev/null; then
     echo ""
     echo "Run /welcome in Claude Code to verify your installation and get oriented."
 fi
+rm -f "$CLIENT_LOG"
 
 # =============================================================================
 # Summary
