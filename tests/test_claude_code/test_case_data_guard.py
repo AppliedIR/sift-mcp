@@ -161,8 +161,13 @@ BLOCK = [
     ("find group -delete", "C", "find {C} \\( -name x -o -name y \\) -delete"),
     ("subshell rm", "C", "(rm {C}/findings.json)"),
     ("find with two roots", "C", "find {O} {C} -name x -delete"),
-    ("comment line before rm", "C", "# tidy up\nrm {C}/findings.json"),
     ("backslash-newline rm", "C", "rm \\\n{C}/findings.json"),
+    ("quoted newline, then a redirect", "C", 'echo "a\nb" > "{C}/findings.json"'),
+    ("quoted newline in an rm word", "C", 'rm -f "notes\n" {C}/findings.json'),
+    ("find -L root", "O", "find -L {C} -delete"),
+    ("find -O3 -D tree root", "O", "find -O3 -D tree {C} -name x -exec rm {{}} +"),
+    ("rm inside $(...)", "C", "echo $(rm {C}/findings.json)"),
+    ("rm inside x=$(...)", "C", "x=$( rm {C}/findings.json )"),
     ("cp -rT onto a case", "C", "cp -rT {O} {C}"),
     ("redirect onto a glob", "C", "echo x > {C}/finding?.json"),
     # Accepted, disclosed over-blocks (decision 8)
@@ -208,6 +213,15 @@ ALLOW = [
         "quoted arg mentioning record",
         "C",
         'grep "rm {C}/findings.json" {C}/reports/draft.md',
+    ),
+    ("quoted multi-line text mentioning rm", "C", 'echo "x\nrm {C}/findings.json"'),
+    ("find -L elsewhere", "C", "find -L {C}/reports -name x -delete"),
+    ("$(...) reading a record", "C", "echo $(cat {C}/findings.json)"),
+    # Disclosed as not seen: a # comment hides the rest of the command
+    (
+        "not seen: a command after a comment line",
+        "C",
+        "# tidy up\nrm {C}/findings.json",
     ),
 ]
 

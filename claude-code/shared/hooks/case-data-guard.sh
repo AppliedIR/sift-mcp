@@ -16,12 +16,14 @@
 # onto it; cp, install or ln onto it; > >> >| &> onto it; find rooted at it (or
 # at a case or the cases root) with -delete or -exec. Seen through: sudo, env,
 # VAR=val, nice, nohup, time, timeout, stdbuf, exec, command, if/then/do/{/!,
-# ; && || | & and newlines, cd, quoting, .., absolute command paths, mv -t.
+# ; && || | & and newlines, $(...), cd, quoting, .., absolute command paths,
+# mv -t, find -H/-L/-P/-O/-D.
 # Not seen: bash -c/sh -c, xargs, scripts, tee, git clean, rsync --delete,
-# tar --remove-files, dd of=, >& redirections, brace expansion, variables and
-# $(...); options of timeout -s and env -u; a cd inside a subshell or one that
-# fails (it's applied to later commands). A quoted '>' is read as a redirection
-# (a false block).
+# tar --remove-files, dd of=, >& redirections, brace expansion, variables,
+# backquotes and a "$(...)" in double quotes; options of timeout -s and env -u;
+# a cd inside a subshell or one that fails (it's applied to later commands);
+# anything after a # comment, on later lines too. A quoted '>' is read as a
+# redirection (a false block).
 #
 # The command is tokenized only: it is never run, evaluated or expanded by a
 # shell. A block exits 2 with the reason on stderr (Claude Code shows it to
@@ -158,23 +160,32 @@ def check(seg):
             if damage(tgt, new_ok=True):
                 block(f"{name} over {tgt}")
     elif name == "find" and ("-delete" in seg or any(t in ("-exec", "-execdir") for t in seg)):
-        roots = itertools.takewhile(lambda a: not a.startswith("-") and a not in ("!", "("), seg[1:])
+        rest = seg[1:]
+        while rest and (rest[0] in ("-H", "-L", "-P", "-D") or rest[0].startswith("-O")):
+            if rest.pop(0) == "-D" and rest:  # find's options come before its roots
+                rest.pop(0)
+        roots = itertools.takewhile(lambda a: not a.startswith("-") and a not in ("!", "("), rest)
         for r in list(roots) or ["."]:  # every starting point
             if damage(r):
                 block(f"find -delete/-exec under {r}")
 
 
-tokens = []
-for line in cmd.replace("\\\n", "").split("\n"):  # a comment ends at its line
-    try:
-        lex = shlex.shlex(line, posix=True, punctuation_chars=True)
-        lex.whitespace_split = True
-        tokens += list(lex) + [";"]
-    except ValueError:  # unbalanced quotes: fall back to plain words
-        tokens += line.split() + [";"]
+# A backslash-newline joins lines; any other newline separates commands (in
+# quotes it stays part of the word).
+text = cmd.replace("\\\n", "").replace("\n", ";")
+try:
+    lex = shlex.shlex(text, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
+    tokens = list(lex) + [";"]
+except ValueError:  # unbalanced quotes: fall back to plain words
+    tokens = text.split() + [";"]
 seg = []
 for t in tokens:
-    if t in SEPS:
+    if t == "(" and seg and seg[-1].endswith("$"):  # $( starts a command
+        seg[-1] = seg[-1][:-1]
+        check(seg)
+        seg = []
+    elif t in SEPS:
         check(seg)
         seg = []
     else:
