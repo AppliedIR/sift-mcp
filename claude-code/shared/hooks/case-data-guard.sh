@@ -207,12 +207,15 @@ except Exception:
 sys.exit(0)
 PY
 )
+couldnt_run() {
+    echo "BLOCKED: the case-data guard couldn't run, so it was blocked to be safe." >&2
+    exit 2
+}
+# Fail closed: only the guard's own verdicts pass through. No script (cat
+# failed), no python3, or a Python that can't start all block.
+[ -n "$GUARD" ] || couldnt_run
 # -I: isolated, so nothing in the cwd (a planted shlex.py) or PYTHON* runs.
-# execfail: if python3 can't run, carry on to block (fail closed) instead of
-# exiting 127, which doesn't block. After a failed exec bash's own stderr no
-# longer reaches the caller (measured, bash 5.1), so the reason goes to a copy.
-shopt -s execfail
-exec 3>&2
-exec python3 -I -c "$GUARD"
-echo "BLOCKED: the case-data guard couldn't run (python3 unavailable), so it was blocked to be safe." >&3
-exit 2
+python3 -I -c "$GUARD"
+rc=$?
+case $rc in 0 | 2) exit $rc ;; esac
+couldnt_run

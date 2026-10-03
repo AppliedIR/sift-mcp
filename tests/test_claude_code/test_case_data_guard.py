@@ -394,4 +394,37 @@ def test_without_python3_the_guard_blocks(box, tmp_path):
         timeout=30,
     )
     assert p.returncode == 2, p.stderr
-    assert "couldn't run (python3 unavailable), so it was blocked" in p.stderr
+    assert "couldn't run, so it was blocked" in p.stderr
+
+
+def test_without_cat_the_script_is_empty_and_the_guard_blocks(box, tmp_path):
+    root, cases, case, out = box
+    bin_dir = tmp_path / "no-cat"
+    bin_dir.mkdir()
+    (bin_dir / "python3").symlink_to(shutil.which("python3"))
+    p = subprocess.run(
+        ["/bin/bash", str(HOOK)],
+        input=_payload(tool_input={"command": "ls"}),
+        capture_output=True,
+        text=True,
+        cwd=case,
+        env={"HOME": str(root), "PATH": str(bin_dir), "VHIR_CASES_DIR": str(cases)},
+        timeout=30,
+    )
+    assert p.returncode == 2, p.stderr
+    assert "couldn't run, so it was blocked" in p.stderr
+
+
+def test_a_python_that_cannot_start_blocks(box):
+    root, cases, case, out = box
+    p = subprocess.run(  # too little memory for the interpreter to initialise
+        ["/bin/bash", "-c", f"ulimit -v 12000; exec /bin/bash {HOOK}"],
+        input=_payload(tool_input={"command": "ls"}),
+        capture_output=True,
+        text=True,
+        cwd=case,
+        env={"HOME": str(root), "PATH": "/usr/bin:/bin", "VHIR_CASES_DIR": str(cases)},
+        timeout=30,
+    )
+    assert p.returncode == 2, p.stderr
+    assert "couldn't run, so it was blocked" in p.stderr
