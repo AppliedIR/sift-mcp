@@ -130,3 +130,13 @@ def test_no_verification_dir_lists_the_rest(tmp_path):
 def test_anchor_no_store_skips_the_step(tmp_path):
     rc, out, sudo = _run(tmp_path, tmp_path / "absent", "n\n")
     assert rc == 0 and "[8]" not in out and "[9] reached" in out and sudo == []
+
+
+def test_an_unreadable_dir_below_verification_gives_no_count(tmp_path):
+    vlv = _store(tmp_path)
+    sub = vlv / "verification" / "old"
+    sub.mkdir()
+    (sub / "CASE-C.jsonl").write_text("{}\n")
+    rc, out, sudo = _run(tmp_path, vlv, "n\n", lock=(sub, 0o000))
+    assert rc == 0 and "[9] reached" in out
+    assert "count unavailable" in out and "ledger files):" not in out

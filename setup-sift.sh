@@ -407,8 +407,15 @@ if ${UNINSTALL_MODE:-false}; then
         if [[ -n "$UNREADABLE" ]]; then
             warn "Can't read $UNREADABLE (owner: $(stat -c %U "$UNREADABLE" 2>/dev/null || echo unknown)): not removing $VERIF_DIR. Run uninstall as that user."
         else
-            LEDGER_COUNT=$(find "$VERIF_DIR/verification" -name "*.jsonl" 2>/dev/null | wc -l || true)
-            echo "    Removes $VERIF_DIR/ and everything in it ($LEDGER_COUNT ledger files):"
+            # A count find couldn't finish isn't printed as a number.
+            if [[ ! -d "$VERIF_DIR/verification" ]]; then
+                LEDGERS="0 ledger files"
+            elif FOUND=$(find "$VERIF_DIR/verification" -name "*.jsonl" 2>/dev/null); then
+                LEDGERS="$(printf '%s' "$FOUND" | grep -c . || true) ledger files"
+            else
+                LEDGERS="ledger files: count unavailable, part of verification/ can't be read"
+            fi
+            echo "    Removes $VERIF_DIR/ and everything in it ($LEDGERS):"
             ls -A "$VERIF_DIR" | sed 's|^|      |'
             echo -e "    ${YELLOW}Contains HMAC approval records for case findings.${NC}"
             echo ""
