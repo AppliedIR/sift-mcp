@@ -581,6 +581,16 @@ else
     exit 1
 fi
 
+# The ledger directories may belong to another examiner OS user: never take
+# them over (that user could no longer approve or verify), and stop before
+# any sudo, so neither directory is touched.
+for d in /var/lib/vhir/verification /var/lib/vhir/passwords; do
+    if [ -d "$d" ] && [ ! -L "$d" ] && [ ! -O "$d" ] && [ "$(stat -c %u "$d")" != 0 ]; then
+        err "$d/ belongs to $(stat -c %U "$d"), not $USER: the ledger is theirs. One examiner OS user per machine is supported; run the installer as $(stat -c %U "$d")."
+        exit 1
+    fi
+done
+
 # =============================================================================
 # Phase 1b: Verification Ledger Directory
 # =============================================================================
