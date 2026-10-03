@@ -56,11 +56,13 @@ marker = {
     'rag_method': sys.argv[6],
     'triage': sys.argv[7] == 'true',
 }
+if sys.argv[9]:  # the PyTorch build the user chose (asked, or --cpu/--gpu)
+    marker['torch_variant'] = sys.argv[9]
 with open(sys.argv[8], 'w') as f:
     json.dump(marker, f, indent=2)
     f.write('\n')
 " "$version" "$commit" "$installed_at" "$SCRIPT_DIR" \
-  "$INSTALL_RAG" "${RAG_METHOD:-skipped}" "$INSTALL_TRIAGE" "$marker"
+  "$INSTALL_RAG" "${RAG_METHOD:-skipped}" "$INSTALL_TRIAGE" "$marker" "${TORCH_RECORD:-}"
 }
 
 _validate_credential() {
@@ -84,6 +86,7 @@ INSTALL_MSLEARN=false
 INSTALL_ZELTSER=false
 INSTALL_REGISTRY=false
 REMNUX_ADDR=""
+TORCH_FLAG=""  # cpu or gpu: the PyTorch build, given on the command line
 
 for arg in "$@"; do
     case "$arg" in
@@ -106,13 +109,19 @@ for arg in "$@"; do
         --rebuild-rag)     REBUILD_RAG=true ;;
         --rebuild-triage)  REBUILD_TRIAGE=true ;;
         --venv-only) VENV_ONLY=true ;;
+        --cpu|--gpu)
+            if [[ -n "$TORCH_FLAG" && "$TORCH_FLAG" != "${arg#--}" ]]; then
+                echo "Use only one of --cpu and --gpu"
+                exit 1
+            fi
+            TORCH_FLAG="${arg#--}" ;;
         --completions)
             cat << 'COMP'
 _quickstart_lite() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local opts="--quick --custom --no-rag --no-triage --rebuild-rag
         --rebuild-triage --venv-only --opencti --mslearn
-        --zeltser --registry --yes --help --completions"
+        --zeltser --registry --cpu --gpu --yes --help --completions"
     if [[ "$cur" == --remnux=* ]]; then
         return 0
     fi
@@ -148,6 +157,10 @@ Data control:
 
 Scope:
   --venv-only         Update Python packages only (no config, no data)
+
+PyTorch (knowledge search):
+  --cpu, --gpu        PyTorch build (default: asked, or the installed build;
+                      CPU on a new install). Not used on macOS.
 
 Optional MCPs:
   --opencti           Add OpenCTI threat intelligence MCP
@@ -268,6 +281,64 @@ if [[ "$YES" != "true" ]]; then
     [[ "$reply" =~ ^[Nn] ]] && exit 0
 fi
 
+# --- PyTorch build: knowledge search (forensic-rag) embeds with PyTorch ---
+# The flag, else the build already in the venv, else CPU. Asked only when
+# interactive and either the venv has PyTorch but was never asked (the record
+# is in lite-install.json) or RAG is being installed without it. macOS has one
+# build (PyPI's, no CUDA) and is never asked.
+TORCH_INSTALLED=""
+if [[ -x "$VENV_PYTHON" ]]; then
+    TORCH_INSTALLED=$("$VENV_PYTHON" -c \
+        'import importlib.metadata as m; print(m.version("torch"))' 2>/dev/null) || true
+fi
+TORCH_RECORD=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("torch_variant", ""))' \
+    "$MARKER_FILE" 2>/dev/null) || true
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    if [[ -n "$TORCH_FLAG" ]]; then
+        echo "  --$TORCH_FLAG is not applicable on macOS (PyPI's PyTorch has no CUDA)."
+    fi
+    TORCH_VARIANT=pypi
+    TORCH_RECORD=""
+elif [[ -n "$TORCH_FLAG" ]]; then
+    TORCH_VARIANT=$TORCH_FLAG
+    TORCH_RECORD=$TORCH_FLAG
+else
+    if [[ "$TORCH_INSTALLED" == *+cpu ]]; then
+        TORCH_VARIANT=cpu
+    elif [[ -n "$TORCH_INSTALLED" ]]; then
+        TORCH_VARIANT=gpu
+    else
+        TORCH_VARIANT=cpu
+    fi
+    if [[ "$YES" != "true" ]] && { { [[ -n "$TORCH_INSTALLED" && -z "$TORCH_RECORD" ]]; } \
+        || { [[ "$INSTALL_RAG" == "true" && -z "$TORCH_INSTALLED" ]]; }; }; then
+        if command -v nvidia-smi &>/dev/null && nvidia-smi -L 2>/dev/null | grep -q '^GPU'; then
+            gpu_found="an NVIDIA GPU was found"
+        else
+            gpu_found="no NVIDIA GPU was found"
+        fi
+        echo ""
+        echo -e "${BOLD}PyTorch for knowledge search${NC} ($gpu_found):"
+        if [[ -n "$TORCH_INSTALLED" ]]; then
+            echo "  Installed now: the $(tr a-z A-Z <<< "$TORCH_VARIANT") build (torch $TORCH_INSTALLED)."
+            echo "  Choosing the other build replaces it; CUDA packages it leaves are listed after the install."
+        fi
+        echo "  cpu  about 0.2 GB download, 0.7 GB on disk; slower index builds"
+        echo "  gpu  about 3 GB download, 5.4 GB on disk; much faster index builds; needs an NVIDIA GPU"
+        while true; do
+            read -rp "  PyTorch build (cpu/gpu) [cpu]: " reply
+            reply=$(tr A-Z a-z <<< "${reply:-cpu}")
+            case "$reply" in
+                cpu|gpu) TORCH_VARIANT=$reply; break ;;
+                *) echo "  Please enter cpu or gpu." ;;
+            esac
+        done
+        TORCH_RECORD=$TORCH_VARIANT
+    else
+        echo "  PyTorch build: $TORCH_VARIANT (switch with --cpu or --gpu)."
+    fi
+fi
+
 # ==========================================================================
 # Phase 1: Python Environment
 # ==========================================================================
@@ -282,16 +353,34 @@ if ! command -v uv &>/dev/null; then
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
-# Older uv installs from the lock without checking its hashes, and says nothing.
+# Older uv installs from the lock without checking its hashes, and says
+# nothing; --torch-backend (the CPU PyTorch lock) first appears in 0.6.9.
 UV_VERSION=$(uv --version 2>/dev/null | awk '{print $2}')
-if ! awk -v v="${UV_VERSION:-0}" 'BEGIN { split(v, p, "."); exit !(p[1] + 0 > 0 || p[2] + 0 >= 6) }'; then
-    fail "uv ${UV_VERSION:-unknown} is older than 0.6.0, which doesn't check package hashes. Update it: uv self update (or reinstall: curl -LsSf https://astral.sh/uv/install.sh | sh)"
+if ! awk -v v="${UV_VERSION:-0}" 'BEGIN { split(v, p, "."); a = p[1] + 0; b = p[2] + 0; c = p[3] + 0
+        exit !(a > 0 || b > 6 || (b == 6 && c >= 9)) }'; then
+    fail "uv ${UV_VERSION:-unknown} is older than 0.6.9, which this installer needs for --torch-backend and hash checks. Update it: uv self update (or reinstall: curl -LsSf https://astral.sh/uv/install.sh | sh)"
 fi
 
-# Third-party packages install at the versions and hashes in the lock.
+# Third-party packages install at the versions and hashes in the lock. The
+# CPU PyTorch lock pins torch from the PyTorch CPU index, which only
+# --torch-backend reaches; 2.14.0+cpu satisfies the GPU lock's ==2.14.0, so a
+# switch to GPU has to reinstall it.
 LOCK="$SCRIPT_DIR/deps/vhir.lock"
+if [[ "$TORCH_VARIANT" == cpu ]]; then
+    LOCK="$SCRIPT_DIR/deps/vhir-cpu.lock"
+fi
 [[ -f "$LOCK" ]] || fail "Dependency lock not found: $LOCK"
 LOCKED=(-c "$LOCK" -b "$LOCK")
+if [[ "$TORCH_VARIANT" == cpu ]]; then
+    LOCKED+=(--torch-backend cpu)
+elif [[ "$TORCH_VARIANT" == gpu && "$TORCH_INSTALLED" == *+cpu ]]; then
+    LOCKED+=(--reinstall-package torch)
+fi
+torch_index_hint() {
+    if [[ "$TORCH_VARIANT" == cpu ]]; then
+        echo "  CPU PyTorch comes from download.pytorch.org; if you use a package mirror, re-run with --gpu."
+    fi
+}
 
 # Bridge existing pip mirror config
 [ -n "${PIP_INDEX_URL:-}" ] && export UV_INDEX_URL="$PIP_INDEX_URL"
@@ -321,7 +410,8 @@ read -ra LOCK_HELD <<< "$LOCK_HELD_LIST"
 # sift-common always installed
 pkg_dir="$SCRIPT_DIR/packages/sift-common"
 if [[ -d "$pkg_dir" ]]; then
-    uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" ${LOCK_HELD[@]+"${LOCK_HELD[@]}"} -e "$pkg_dir"
+    uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" ${LOCK_HELD[@]+"${LOCK_HELD[@]}"} -e "$pkg_dir" \
+        || { torch_index_hint; fail "Failed to install sift-common"; }
     ok "Installed sift-common"
 else
     warn "sift-common not found at $pkg_dir"
@@ -331,7 +421,8 @@ if [[ "$INSTALL_RAG" == "true" ]]; then
     pkg_dir="$SCRIPT_DIR/packages/forensic-rag"
     if [[ -d "$pkg_dir" ]]; then
         echo "  Installing forensic-rag (downloads ML dependencies, may take several minutes)..."
-        uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" -e "$pkg_dir"
+        uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" -e "$pkg_dir" \
+            || { torch_index_hint; fail "Failed to install forensic-rag"; }
         ok "Installed forensic-rag"
     else
         warn "forensic-rag not found at $pkg_dir"

@@ -11,6 +11,7 @@ python and every other external command stubbed.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -112,6 +113,7 @@ def test_setup_sift_installs_everything_but_opencti_from_the_lock(
             f'HOME="{tmp_path}"; USER=x',
             f"INSTALL_TRIAGE=true; INSTALL_RAG=true; INSTALL_OPENCTI={str(selected).lower()}",
             "INSTALL_OPENSEARCH_FLAG=true",
+            'TORCH_VARIANT=gpu; TORCH_INSTALLED=""',  # set before this slice in the script
             _slice(
                 text,
                 "# Every third-party package is installed",
@@ -166,9 +168,19 @@ def test_setup_sift_installs_everything_but_opencti_from_the_lock(
 @pytest.mark.parametrize("installer", ["setup-sift", "quickstart-lite"])
 @pytest.mark.parametrize(
     "version,refused",
-    [("0.5.0", True), ("0.5.31", True), ("0.6.0", False), ("0.12.20", False)],
+    [
+        ("0.5.0", True),
+        ("0.5.31", True),
+        ("0.6.0", True),
+        ("0.6.8", True),
+        ("0.6.9", False),
+        ("0.7.0", False),
+        ("0.12.20", False),
+        ("1.0.0", False),
+    ],
 )
-def test_uv_older_than_0_6_is_refused(tmp_path, installer, version, refused):
+def test_uv_older_than_0_6_9_is_refused(tmp_path, installer, version, refused):
+    """0.6.9 is the first with --torch-backend (the CPU PyTorch lock)."""
     text = SETUP.read_text() if installer == "setup-sift" else LITE.read_text()
     floor = _slice(text, "# Older uv installs from the lock", "\n\n")
     script = "\n".join(
@@ -182,15 +194,26 @@ def test_uv_older_than_0_6_is_refused(tmp_path, installer, version, refused):
     )
     run = _run(script, tmp_path)
     if refused:
-        assert run.returncode == 1 and "older than 0.6.0" in run.stdout, run.stdout
+        assert run.returncode == 1 and "older than 0.6.9" in run.stdout, run.stdout
+        assert "--torch-backend" in run.stdout
     else:
         assert run.returncode == 0 and "PASSED" in run.stdout, run.stdout
 
 
-def _lite(tmp_path, *args, installed=False, final_rc=0, answers=None):
+def _lite(
+    tmp_path,
+    *args,
+    installed=False,
+    final_rc=0,
+    answers=None,
+    torch="",
+    platform="Linux",
+    install_fails=False,
+):
     """The whole quickstart-lite.sh, with uv a stand-in that records its calls
     and answers `pip show opencti-mcp`; the venv already exists and its python
-    records check-lock.py runs (anything else goes to the system python)."""
+    records check-lock.py runs and answers the PyTorch probe with `torch`
+    (anything else goes to the system python)."""
     home = tmp_path / "home"
     venv_bin = home / ".vhir" / "venv" / "bin"
     venv_bin.mkdir(parents=True)
@@ -203,7 +226,9 @@ def _lite(tmp_path, *args, installed=False, final_rc=0, answers=None):
         f'case "$1" in *check-lock.py) echo "check $*" >> "{log}"\n'
         '  [ "$2" = --installed ] && echo "setuptools packaging"\n'
         f'  [ "$2" = --final ] && exit {final_rc}; exit 0;; esac\n'
-        'exec python3 "$@"\n'
+        'case "$2" in *\'version("torch")\'*) '
+        + (f"echo {torch}; exit 0;; esac\n" if torch else "exit 1;; esac\n")
+        + 'exec python3 "$@"\n'
     )
     py.chmod(0o755)
     stub = tmp_path / "stub"
@@ -215,9 +240,15 @@ def _lite(tmp_path, *args, installed=False, final_rc=0, answers=None):
         'if [ "$1" = --version ]; then echo "uv 0.12.20 (x)"; exit 0; fi\n'
         'if [ "$1 $2" = "pip show" ]; then '
         + ("exit 0" if installed else "exit 1")
-        + "; fi\nexit 0\n"
+        + "; fi\n"
+        + ('if [ "$1 $2" = "pip install" ]; then exit 1; fi\n' if install_fails else "")
+        + "exit 0\n"
     )
     uv.chmod(0o755)
+    if platform != "Linux":
+        uname = stub / "uname"
+        uname.write_text(f"#!/bin/sh\necho {platform}\n")
+        uname.chmod(0o755)
     run = subprocess.run(
         ["bash", str(LITE), *args],
         cwd=home / "proj",
@@ -229,6 +260,9 @@ def _lite(tmp_path, *args, installed=False, final_rc=0, answers=None):
     )
     if run.returncode == 0:
         _held_go_to_the_first_locked_install(log)
+    run.calls = _calls(log)
+    marker = home / ".vhir" / "lite-install.json"
+    run.marker = json.loads(marker.read_text()) if marker.exists() else None
     return run, _steps(log)
 
 
@@ -282,9 +316,91 @@ def test_lite_fails_on_conflicts_left_by_a_pycti_without_opencti_mcp(tmp_path):
 
 
 def test_lite_checks_again_after_opencti_chosen_at_the_prompt(tmp_path):
-    """No flags: Continue? y, then "Install OpenCTI MCP?" y; the rest blank."""
-    run, steps = _lite(tmp_path, answers="y\ny\n" + "\n" * 12)
+    """No flags: Continue? y, the PyTorch build blank (CPU), then "Install
+    OpenCTI MCP?" y; the rest blank."""
+    run, steps = _lite(tmp_path, answers="y\n\ny\n" + "\n" * 12)
     assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
     i = steps.index("opencti")
     assert steps[i - 1] == "check --final" and steps[i + 1] == "check --final", steps
     assert steps.count("opencti") == 1 and "locked" not in steps[i:], steps
+
+
+# --- Lite's PyTorch build -----------------------------------------------------
+
+LITE_LOCKS = {
+    "cpu": ROOT / "deps" / "vhir-cpu.lock",
+    "gpu": ROOT / "deps" / "vhir.lock",
+}
+
+
+def _locked_with(run, variant, *, reinstall=False):
+    lock = LITE_LOCKS[variant]
+    locked = [c for c in run.calls if " -c " in c]
+    assert locked, run.calls
+    for call in locked:
+        assert f"-c {lock} -b {lock}" in call, call
+        assert ("--torch-backend cpu" in call) is (variant == "cpu"), call
+        assert ("--reinstall-package torch" in call) is reinstall, call
+
+
+@pytest.mark.parametrize(
+    "torch,variant",
+    [("", "cpu"), ("2.14.0+cpu", "cpu"), ("2.10.0", "gpu"), ("2.14.0", "gpu")],
+)
+def test_lite_without_a_question_keeps_the_installed_build(tmp_path, torch, variant):
+    run, _ = _lite(tmp_path, "--yes", "--venv-only", torch=torch)
+    assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
+    _locked_with(run, variant)
+    assert f"PyTorch build: {variant} (switch with --cpu or --gpu)" in run.stdout
+    assert "torch_variant" not in run.marker  # never asked: nothing recorded
+
+
+@pytest.mark.parametrize(
+    "flag,torch,reinstall", [("--gpu", "2.14.0+cpu", True), ("--cpu", "2.14.0", False)]
+)
+def test_lite_flag_switches_the_build_and_records_it(tmp_path, flag, torch, reinstall):
+    run, _ = _lite(tmp_path, "--yes", "--venv-only", flag, torch=torch)
+    assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
+    _locked_with(run, flag[2:], reinstall=reinstall)
+    assert run.marker["torch_variant"] == flag[2:]
+
+
+def test_lite_asks_an_old_install_once_default_cpu(tmp_path):
+    """read -p shows its prompt only on a terminal: the heading says it asked."""
+    run, _ = _lite(tmp_path, "--venv-only", torch="2.10.0", answers="y\n\n")
+    assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
+    assert "PyTorch for knowledge search" in run.stdout
+    assert "Installed now: the GPU build (torch 2.10.0)" in run.stdout
+    _locked_with(run, "cpu")
+    assert run.marker["torch_variant"] == "cpu"
+
+
+def test_lite_does_not_ask_when_the_record_exists(tmp_path):
+    home = tmp_path / "home" / ".vhir"
+    home.mkdir(parents=True)
+    (home / "lite-install.json").write_text(json.dumps({"torch_variant": "cpu"}))
+    run, _ = _lite(tmp_path, "--venv-only", torch="2.10.0", answers="y\n")
+    assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
+    assert "PyTorch for knowledge search" not in run.stdout
+    _locked_with(run, "gpu")  # the installed build, not the record
+    assert run.marker["torch_variant"] == "cpu"  # carried over
+
+
+@pytest.mark.parametrize("flag", ["", "--cpu"])
+def test_lite_on_macos_uses_the_pypi_lock(tmp_path, flag):
+    args = ["--venv-only", "--yes"] + ([flag] if flag else [])
+    run, _ = _lite(tmp_path, *args, torch="2.14.0", platform="Darwin")
+    assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
+    _locked_with(run, "gpu")
+    assert "torch_variant" not in run.marker
+    if flag:
+        assert "--cpu is not applicable on macOS" in run.stdout
+
+
+@pytest.mark.parametrize("flag,hint", [("--cpu", True), ("--gpu", False)])
+def test_lite_failed_install_on_the_cpu_lock_names_the_pytorch_index(
+    tmp_path, flag, hint
+):
+    run, _ = _lite(tmp_path, "--yes", "--venv-only", flag, install_fails=True)
+    assert run.returncode != 0 and "Failed to install sift-common" in run.stdout
+    assert ("download.pytorch.org" in run.stdout) is hint
