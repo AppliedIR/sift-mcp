@@ -1048,11 +1048,12 @@ class CaseManager:
                                 break
                         candidates.append((score, e, ingest_hosts))
                     candidates.sort(key=lambda c: -c[0])
-                    # FULL only when every host-matching candidate is one ingest's
-                    # input: between different ingests, picking one (by filename
-                    # stem or anything else) is a guess.
-                    if len({tuple(c[1]["input_files"]) for c in candidates}) != 1:
-                        candidates = []
+                    # FULL only when the best-scoring candidates are one ingest's
+                    # input: between different ingests, picking one is a guess.
+                    top = [c for c in candidates if c[0] == candidates[0][0]]
+                    if len({tuple(c[1]["input_files"]) for c in top}) != 1:
+                        top = []
+                    candidates = top
                     for _score, e, ingest_hosts in candidates:
                         hint = ingest_hosts[0] if ingest_hosts else ""
                         try:
