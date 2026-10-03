@@ -30,6 +30,49 @@ NC='\033[0m'
 ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
 warn() { echo -e "  ${YELLOW}!${NC} $1"; }
 fail() { echo -e "  ${RED}✗${NC} $1"; exit 1; }
+
+# Whether $1's bytes are a version of $2 in the sift clone's git history.
+_shipped() {
+    local blob
+    blob=$(git hash-object "$1" 2>/dev/null) || return 1
+    git -C "$SCRIPT_DIR" log HEAD --follow --format= --raw --no-abbrev -- "${2#"$SCRIPT_DIR"/}" 2>/dev/null |
+        awk '/^:/ { print $3; print $4 }' | grep -x "$blob" >/dev/null
+}
+# A file in the user's project: absent or identical, deployed quietly; a version
+# Valhuntir shipped, replaced; one the user changed, replaced only with -y or a
+# "y" at a terminal, after a backup, and otherwise left alone.
+UNDO_LINES=()
+_deploy_file() {  # <new content> <dest> <source in the sift clone, or ""> <name>
+    local new="$1" dest="$2" src="$3" name="$4" base bak n=1 reply=""
+    if [[ ! -e "$dest" ]]; then
+        cp "$new" "$dest"
+        ok "Deployed $name"
+        return 0
+    fi
+    cmp -s "$new" "$dest" && return 0
+    if [[ -n "$src" ]] && _shipped "$dest" "$src"; then
+        cp "$new" "$dest"
+        ok "Updated $name (an earlier Valhuntir version)"
+        return 0
+    fi
+    if [[ "$YES" != "true" ]]; then
+        if [[ -t 0 ]]; then
+            diff -u "$dest" "$new" || true
+            read -rp "  Replace your $dest with Valhuntir's? [y/N] " reply || reply=""
+        fi
+        if [[ ! "$reply" =~ ^[Yy] ]]; then
+            warn "$dest differs from Valhuntir's: NOT deployed. Re-run in a terminal or with -y to replace it (backed up first)."
+            return 0
+        fi
+    fi
+    base="$dest.vhir-backup-$(date -u +%Y%m%dT%H%M%SZ)"
+    bak="$base"
+    while [[ -e "$bak" ]]; do n=$((n + 1)); bak="$base-$n"; done
+    cp -p "$dest" "$bak"
+    cat "$new" > "$dest"
+    warn "Replaced $dest; your version is at $bak"
+    UNDO_LINES+=("cp -p $(printf %q "$bak") $(printf %q "$dest")")
+}
 header() { echo -e "\n${BOLD}=== $1 ===${NC}"; }
 
 _write_install_marker() {
@@ -580,16 +623,14 @@ fi
 for doc in CLAUDE.md FORENSIC_DISCIPLINE.md TOOL_REFERENCE.md; do
     src="$LITE_DIR/$doc"
     if [[ -f "$src" ]]; then
-        cp "$src" "$PROJECT_DIR/$doc"
-        ok "Deployed $doc"
+        _deploy_file "$src" "$PROJECT_DIR/$doc" "$src" "$doc"
     fi
 done
 
 for doc in FORENSIC_TOOLS.md; do
     src="$SHARED_DIR/$doc"
     if [[ -f "$src" ]]; then
-        cp "$src" "$PROJECT_DIR/$doc"
-        ok "Deployed $doc (shared)"
+        _deploy_file "$src" "$PROJECT_DIR/$doc" "$src" "$doc (shared)"
     fi
 done
 
@@ -597,17 +638,21 @@ done
 mkdir -p "$PROJECT_DIR/hooks"
 hook_src="$SHARED_DIR/hooks/forensic-audit.sh"
 if [[ -f "$hook_src" ]]; then
-    cp "$hook_src" "$PROJECT_DIR/hooks/forensic-audit.sh"
-    chmod +x "$PROJECT_DIR/hooks/forensic-audit.sh"
-    ok "Deployed forensic-audit.sh"
+    _deploy_file "$hook_src" "$PROJECT_DIR/hooks/forensic-audit.sh" "$hook_src" forensic-audit.sh
+    if cmp -s "$hook_src" "$PROJECT_DIR/hooks/forensic-audit.sh"; then
+        chmod +x "$PROJECT_DIR/hooks/forensic-audit.sh"
+    fi
 fi
 
 # Deploy settings.json with path fixup
 mkdir -p "$PROJECT_DIR/.claude"
 settings_src="$LITE_DIR/settings.json"
 if [[ -f "$settings_src" ]]; then
-    sed "s|\\\$CLAUDE_PROJECT_DIR|$PROJECT_DIR|g" "$settings_src" > "$PROJECT_DIR/.claude/settings.json"
-    ok "Deployed settings.json (hook path resolved)"
+    # compared after the path is filled in, so a re-run finds it identical
+    sed "s|\\\$CLAUDE_PROJECT_DIR|$PROJECT_DIR|g" "$settings_src" > "$PROJECT_DIR/.claude/settings.json.vhir-new"
+    _deploy_file "$PROJECT_DIR/.claude/settings.json.vhir-new" "$PROJECT_DIR/.claude/settings.json" "" \
+        "settings.json (hook path resolved)"
+    rm -f "$PROJECT_DIR/.claude/settings.json.vhir-new"
 fi
 
 # Deploy skills
@@ -615,9 +660,13 @@ mkdir -p "$PROJECT_DIR/.claude/commands"
 if [[ -d "$LITE_DIR/commands" ]]; then
     for skill in "$LITE_DIR/commands/"*.md; do
         [[ -f "$skill" ]] || continue
-        cp "$skill" "$PROJECT_DIR/.claude/commands/"
-        ok "Deployed skill: $(basename "$skill")"
+        _deploy_file "$skill" "$PROJECT_DIR/.claude/commands/$(basename "$skill")" "$skill" \
+            "skill: $(basename "$skill")"
     done
+fi
+if (( ${#UNDO_LINES[@]} )); then
+    warn "To undo the replacements above, run:"
+    printf '      %s\n' "${UNDO_LINES[@]}"
 fi
 
 # Deploy case templates
@@ -671,14 +720,17 @@ managed = json.loads(sys.argv[1])
 new_core = json.loads(sys.argv[2])
 mcp_path = sys.argv[3]
 
-# Load existing config (if any)
+# Load existing config (if any); an unreadable one is left as it is
 existing = {}
 if os.path.isfile(mcp_path):
     try:
         with open(mcp_path) as f:
-            existing = json.load(f).get('mcpServers', {})
-    except (json.JSONDecodeError, OSError):
-        pass
+            data = json.load(f) if os.path.getsize(mcp_path) else {}
+    except (ValueError, OSError):
+        sys.exit(3)
+    existing = data.get('mcpServers', {}) if isinstance(data, dict) else None
+    if not isinstance(existing, dict):
+        sys.exit(3)
 
 # Start with existing servers, remove managed ones, add fresh managed
 merged = {k: v for k, v in existing.items() if k not in managed}
@@ -687,9 +739,16 @@ merged.update(new_core.get('mcpServers', {}))
 with open(mcp_path, 'w') as f:
     json.dump({'mcpServers': merged}, f, indent=2)
     f.write('\n')
-" "$_MANAGED_SERVERS" "$_NEW_CORE" "$MCP_JSON"
-chmod 600 "$MCP_JSON"
-ok "Updated .mcp.json (preserved non-managed servers)"
+" "$_MANAGED_SERVERS" "$_NEW_CORE" "$MCP_JSON" || MCP_RC=$?
+if [[ "${MCP_RC:-0}" -eq 3 ]]; then
+    warn "$MCP_JSON isn't valid JSON: NOT changed. Add these to its \"mcpServers\" by hand:"
+    echo "$_NEW_CORE"
+elif [[ "${MCP_RC:-0}" -ne 0 ]]; then
+    fail "Could not update $MCP_JSON"
+else
+    chmod 600 "$MCP_JSON"
+    ok "Updated .mcp.json (preserved non-managed servers)"
+fi
 
 # ==========================================================================
 # Phase 5: Optional MCPs

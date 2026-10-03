@@ -1,0 +1,254 @@
+"""quickstart-lite never silently replaces a file in the user's project.
+
+It deploys into the directory it runs in, and copied CLAUDE.md, the discipline
+files, the hook, .claude/settings.json and the commands over whatever was
+there. Now an absent or identical file is deployed quietly, a version Valhuntir
+shipped is replaced with a notice, and one the user changed is replaced only
+with -y or a "y" at a terminal (stdin), after a backup, with an undo block; it's
+otherwise left with "NOT deployed". An unparseable .mcp.json is left as it is.
+
+The script's own deploy step runs against a scratch sift clone (a git repo with
+two versions of the hook) and a scratch project whose name has a space.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import stat
+import subprocess
+from pathlib import Path
+
+import pytest
+
+SCRIPT = (Path(__file__).parent.parent / "quickstart-lite.sh").read_text()
+HELPERS = (  # absent in an older script, whose step doesn't call them
+    SCRIPT[
+        SCRIPT.index("# Whether $1's bytes are a version") : SCRIPT.index(
+            "\n}\n", SCRIPT.index("_deploy_file() {")
+        )
+        + 3
+    ]
+    if "_deploy_file() {" in SCRIPT
+    else ""
+)
+_d = SCRIPT.index("# Deploy doc files to project root")
+STEP = SCRIPT[_d : SCRIPT.index("# Deploy case templates", _d)]
+
+HOOK_V1 = "#!/bin/bash\necho old hook\n"
+HOOK_V2 = "#!/bin/bash\necho new hook\n"
+SETTINGS = '{"hooks": "$CLAUDE_PROJECT_DIR/hooks/forensic-audit.sh"}\n'
+
+
+def _git(repo, *args):
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+    )
+
+
+@pytest.fixture
+def clone(tmp_path):
+    """A sift clone: lite and shared files, the hook committed twice."""
+    root = tmp_path / "sift-mcp"
+    lite, shared = root / "claude-code" / "lite", root / "claude-code" / "shared"
+    (lite / "commands").mkdir(parents=True)
+    (shared / "hooks").mkdir(parents=True)
+    for name in ("CLAUDE.md", "FORENSIC_DISCIPLINE.md", "TOOL_REFERENCE.md"):
+        (lite / name).write_text(f"valhuntir {name}\n")
+    (lite / "settings.json").write_text(SETTINGS)
+    (lite / "commands" / "case.md").write_text("valhuntir case command\n")
+    (shared / "FORENSIC_TOOLS.md").write_text("valhuntir tools\n")
+    hook = shared / "hooks" / "forensic-audit.sh"
+    _git(root, "init", "-q")
+    hook.write_text(HOOK_V1)
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "v1")
+    hook.write_text(HOOK_V2)
+    hook.chmod(0o755)
+    _git(root, "commit", "-qam", "v2")
+    return root
+
+
+def _project(tmp_path):
+    p = tmp_path / "my project"
+    (p / ".claude" / "commands").mkdir(parents=True)
+    return p
+
+
+def _user_state(clone, project):
+    """User-different CLAUDE.md, settings.json, commands/case.md; TOOL_REFERENCE
+    identical; FORENSIC_DISCIPLINE absent."""
+    (project / "CLAUDE.md").write_text("MY OWN CLAUDE.md\n")
+    (project / ".claude" / "settings.json").write_text('{"mine": true}\n')
+    (project / ".claude" / "commands" / "case.md").write_text("my case command\n")
+    shutil.copy(clone / "claude-code" / "lite" / "TOOL_REFERENCE.md", project)
+    return {
+        p: p.read_bytes()
+        for p in (
+            project / "CLAUDE.md",
+            project / ".claude" / "settings.json",
+            project / ".claude" / "commands" / "case.md",
+        )
+    }
+
+
+def _run(tmp_path, clone, project, yes=False, pty_answers=None):
+    """Run the deploy step. pty_answers: stdin is a terminal (stdout still a pipe)."""
+    bin_dir = tmp_path / "bin"
+    if not bin_dir.exists():
+        bin_dir.mkdir()
+        (bin_dir / "date").write_text(
+            "#!/bin/sh\necho 20261003T120000Z\n"
+        )  # one second
+        (bin_dir / "date").chmod(0o755)
+    run = tmp_path / "step.sh"
+    run.write_text(
+        "set -euo pipefail\nRED=; GREEN=; YELLOW=; NC=\n"
+        'ok() { echo "OK $1"; }; warn() { echo "WARN $1"; }; fail() { echo "FAIL $1"; exit 1; }\n'
+        + HELPERS
+        + STEP
+    )
+    env = {
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "YES": "true" if yes else "false",
+        "SCRIPT_DIR": str(clone),
+        "LITE_DIR": str(clone / "claude-code" / "lite"),
+        "SHARED_DIR": str(clone / "claude-code" / "shared"),
+        "PROJECT_DIR": str(project),
+    }
+    if pty_answers is None:
+        p = subprocess.run(
+            ["/bin/bash", str(run)],
+            input="",
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=60,
+        )
+        return p.returncode, p.stdout + p.stderr
+    p = subprocess.run(  # script gives the step a pty on stdin; its stdout stays piped
+        ["script", "-qec", f"/bin/bash {run} | cat", "/dev/null"],
+        input=pty_answers,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+    )
+    return p.returncode, p.stdout + p.stderr
+
+
+def _backups(project):
+    return sorted(project.rglob("*.vhir-backup-*"))
+
+
+def test_without_a_terminal_or_y_the_users_files_are_kept(tmp_path, clone):
+    project = _project(tmp_path)
+    before = _user_state(clone, project)
+    rc, out = _run(tmp_path, clone, project)
+    assert rc == 0, out
+    assert {p: p.read_bytes() for p in before} == before
+    assert out.count("NOT deployed") == 3 and _backups(project) == []
+    assert (project / "FORENSIC_DISCIPLINE.md").exists()  # absent: deployed
+    assert "TOOL_REFERENCE" not in out  # identical: quiet
+
+
+def test_y_replaces_with_backups_and_the_undo_block_restores(tmp_path, clone):
+    project = _project(tmp_path)
+    before = _user_state(clone, project)
+    rc, out = _run(tmp_path, clone, project, yes=True)
+    assert rc == 0, out
+    assert (project / "CLAUDE.md").read_text() == "valhuntir CLAUDE.md\n"
+    backups = _backups(project)
+    assert len(backups) == 3 and not any(b.name.endswith(".md") for b in backups)
+    assert {b.read_bytes() for b in backups} == set(before.values())
+    undo = [ln.strip() for ln in out.splitlines() if ln.strip().startswith("cp -p ")]
+    assert len(undo) == 3
+    # a second change in the same second gets its own backup
+    (project / "CLAUDE.md").write_text("EDITED AGAIN\n")
+    _run(tmp_path, clone, project, yes=True)
+    claude = sorted(project.glob("CLAUDE.md.vhir-backup-*"))
+    assert [b.read_text() for b in claude] == ["MY OWN CLAUDE.md\n", "EDITED AGAIN\n"]
+    subprocess.run(["/bin/bash", "-c", "\n".join(undo)], check=True)
+    assert {p: p.read_bytes() for p in before} == before
+
+
+@pytest.mark.skipif(not shutil.which("script"), reason="needs script(1)")
+@pytest.mark.parametrize(
+    "answer,replaced", [("n", False), ("", False), ("y", True)], ids=["n", "Enter", "y"]
+)
+def test_at_a_terminal_it_asks_and_defaults_to_no(tmp_path, clone, answer, replaced):
+    project = _project(tmp_path)
+    before = _user_state(clone, project)
+    rc, out = _run(tmp_path, clone, project, pty_answers=f"{answer}\n" * 3)
+    assert out.count("with Valhuntir's? [y/N]") == 3, out  # stdin is the terminal
+    after = {p: p.read_bytes() for p in before}
+    assert (after != before) is replaced
+    assert (len(_backups(project)) == 3) is replaced
+
+
+def test_an_empty_project_then_a_re_run(tmp_path, clone):
+    project = _project(tmp_path)
+    rc, out = _run(tmp_path, clone, project)  # as today
+    assert rc == 0, out
+    lite = clone / "claude-code" / "lite"
+    assert (project / "CLAUDE.md").read_bytes() == (lite / "CLAUDE.md").read_bytes()
+    settings = (project / ".claude" / "settings.json").read_text()
+    assert settings == SETTINGS.replace("$CLAUDE_PROJECT_DIR", str(project))
+    hook = project / "hooks" / "forensic-audit.sh"
+    assert hook.read_text() == HOOK_V2 and stat.S_IMODE(hook.stat().st_mode) & 0o111
+    rc, out = _run(tmp_path, clone, project)  # re-run
+    assert rc == 0 and out.strip() == "" and _backups(project) == [], out
+
+
+def test_an_older_shipped_hook_is_replaced_without_asking(tmp_path, clone):
+    project = _project(tmp_path)
+    (project / "hooks").mkdir()
+    (project / "hooks" / "forensic-audit.sh").write_text(HOOK_V1)
+    rc, out = _run(tmp_path, clone, project)  # no terminal, no -y
+    assert rc == 0, out
+    assert (project / "hooks" / "forensic-audit.sh").read_text() == HOOK_V2
+    assert "Updated forensic-audit.sh (an earlier Valhuntir version)" in out
+    assert "NOT deployed" not in out and _backups(project) == []
+
+
+# --- The .mcp.json merge ------------------------------------------------------
+
+_m = SCRIPT.index('"$VENV_PYTHON" -c "\nimport json, sys, os\n\nmanaged')
+MERGE = SCRIPT[_m : SCRIPT.index("\n# =====", _m)]
+
+
+def _merge(tmp_path, existing):
+    mcp = tmp_path / ".mcp.json"
+    if existing is not None:
+        mcp.write_text(existing)
+    run = tmp_path / "merge.sh"
+    run.write_text(
+        "set -euo pipefail\n"
+        'ok() { echo "OK $1"; }; warn() { echo "WARN $1"; }; fail() { echo "FAIL $1"; exit 1; }\n'
+        f"VENV_PYTHON={json.dumps(os.environ.get('PYTHON', shutil.which('python3')))}\n"
+        f"MCP_JSON='{mcp}'\n"
+        "_MANAGED_SERVERS='[\"forensic-rag\"]'\n"
+        '_NEW_CORE=\'{"mcpServers": {"forensic-rag": {"command": "x"}}}\'\n' + MERGE
+    )
+    p = subprocess.run(
+        ["/bin/bash", str(run)], capture_output=True, text=True, timeout=60
+    )
+    return p.returncode, p.stdout + p.stderr, mcp
+
+
+def test_an_unparseable_mcp_json_is_left_with_the_entries(tmp_path):
+    rc, out, mcp = _merge(tmp_path, '{"mcpServers": {"mine": ')
+    assert rc == 0 and mcp.read_text() == '{"mcpServers": {"mine": '
+    assert "NOT changed" in out and "forensic-rag" in out and "preserved" not in out
+
+
+def test_anchor_a_file_without_mcp_servers_is_merged(tmp_path):
+    rc, out, mcp = _merge(tmp_path, '{"other": 1}\n')
+    assert rc == 0 and "preserved" in out
+    assert json.loads(mcp.read_text())["mcpServers"] == {
+        "forensic-rag": {"command": "x"}
+    }
