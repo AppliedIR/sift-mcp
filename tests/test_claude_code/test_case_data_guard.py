@@ -162,6 +162,9 @@ BLOCK = [
     ("subshell rm", "C", "(rm {C}/findings.json)"),
     ("find with two roots", "C", "find {O} {C} -name x -delete"),
     ("backslash-newline rm", "C", "rm \\\n{C}/findings.json"),
+    ("&& at a line end", "C", "true &&\nrm {C}/findings.json"),
+    ("; at a line end", "C", "true;\nrm {C}/findings.json"),
+    ("blank line between", "C", "echo hi\n\nrm {C}/findings.json"),
     ("quoted newline, then a redirect", "C", 'echo "a\nb" > "{C}/findings.json"'),
     ("quoted newline in an rm word", "C", 'rm -f "notes\n" {C}/findings.json'),
     ("find -L root", "O", "find -L {C} -delete"),
@@ -222,6 +225,11 @@ ALLOW = [
         "not seen: a command after a comment line",
         "C",
         "# tidy up\nrm {C}/findings.json",
+    ),
+    (
+        "not seen: an operand after $(...) in a word",
+        "C",
+        "rm x$(true) {C}/findings.json",
     ),
 ]
 

@@ -20,10 +20,12 @@
 # mv -t, find -H/-L/-P/-O/-D.
 # Not seen: bash -c/sh -c, xargs, scripts, tee, git clean, rsync --delete,
 # tar --remove-files, dd of=, >& redirections, brace expansion, variables,
-# backquotes and a "$(...)" in double quotes; options of timeout -s and env -u;
+# backquotes and a "$(...)" in double quotes; an operand after a $(...) inside
+# an argument (rm x$(true) findings.json); options of timeout -s and env -u;
 # a cd inside a subshell or one that fails (it's applied to later commands);
 # anything after a # comment, on later lines too. A quoted '>' is read as a
-# redirection (a false block).
+# redirection (a false block), and a quoted 'x$' before \( can be misread as
+# a $(.
 #
 # The command is tokenized only: it is never run, evaluated or expanded by a
 # shell. A block exits 2 with the reason on stderr (Claude Code shows it to
@@ -171,8 +173,8 @@ def check(seg):
 
 
 # A backslash-newline joins lines; any other newline separates commands (in
-# quotes it stays part of the word).
-text = cmd.replace("\\\n", "").replace("\n", ";")
+# quotes it stays part of the word). Spaced, so "&&;" or ";;" can't form.
+text = cmd.replace("\\\n", "").replace("\n", " ; ")
 try:
     lex = shlex.shlex(text, posix=True, punctuation_chars=True)
     lex.whitespace_split = True
