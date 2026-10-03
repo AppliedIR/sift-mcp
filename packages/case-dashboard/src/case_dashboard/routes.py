@@ -692,7 +692,7 @@ def _apply_delta(case_dir: Path, examiner: str, derived_key: bytes) -> dict:
             source = item_by_id.get(auto_from)
             if not source:
                 continue
-            if source.get("status") == "APPROVED" and item.get("status") != "APPROVED":
+            if source.get("status") == "APPROVED" and item.get("status") == "DRAFT":
                 item["status"] = "APPROVED"
                 item["approved_at"] = now
                 item["approved_by"] = examiner
