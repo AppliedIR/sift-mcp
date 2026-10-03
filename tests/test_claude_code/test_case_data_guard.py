@@ -161,6 +161,10 @@ BLOCK = [
     ("find group -delete", "C", "find {C} \\( -name x -o -name y \\) -delete"),
     ("subshell rm", "C", "(rm {C}/findings.json)"),
     ("find with two roots", "C", "find {O} {C} -name x -delete"),
+    ("comment line before rm", "C", "# tidy up\nrm {C}/findings.json"),
+    ("backslash-newline rm", "C", "rm \\\n{C}/findings.json"),
+    ("cp -rT onto a case", "C", "cp -rT {O} {C}"),
+    ("redirect onto a glob", "C", "echo x > {C}/finding?.json"),
     # Accepted, disclosed over-blocks (decision 8)
     ("over-block: find case -delete", "C", "find {C} -name '*.tmp' -delete"),
     (

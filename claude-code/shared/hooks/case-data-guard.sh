@@ -115,7 +115,7 @@ def check(seg):
     global base
     seg = [t for t in seg if t != ")"]
     for i, t in enumerate(seg[:-1]):
-        if t in REDIRS and damage(seg[i + 1]):
+        if t in REDIRS and any(damage(x) for x in expand(seg[i + 1])):
             block(f"redirection onto {seg[i + 1]}")
     seg = [t for i, t in enumerate(seg) if t not in REDIRS and (i == 0 or seg[i - 1] not in REDIRS)]
     while seg and (seg[0] in WRAP or seg[0] in KEYWORDS or ("=" in seg[0] and not seg[0].startswith("-"))):
@@ -130,10 +130,12 @@ def check(seg):
     if name == "cd":
         base = os.path.join(base, os.path.expanduser(seg[1] if len(seg) > 1 else "~"))
         return
-    args, dd, tdir, it = [], False, None, iter(seg[1:])
+    args, dd, tdir, it, no_t = [], False, None, iter(seg[1:]), False
     for a in it:
         if a == "--" and not dd:
             dd = True
+        elif not dd and (a == "--no-target-directory" or (a[:2] != "--" and a[:1] == "-" and "T" in a)):
+            no_t = True
         elif not dd and a in ("-t", "--target-directory"):
             tdir = next(it, None)
         elif not dd and a.startswith("--target-directory="):
@@ -151,7 +153,8 @@ def check(seg):
         for s in args[:-1]:
             if name == "mv" and damage(s):
                 block(f"mv away {s}")
-            tgt = os.path.join(dst, os.path.basename(s)) if os.path.isdir(os.path.join(base, dst)) else dst
+            into = not no_t and os.path.isdir(os.path.join(base, dst))
+            tgt = os.path.join(dst, os.path.basename(s)) if into else dst
             if damage(tgt, new_ok=True):
                 block(f"{name} over {tgt}")
     elif name == "find" and ("-delete" in seg or any(t in ("-exec", "-execdir") for t in seg)):
@@ -161,15 +164,16 @@ def check(seg):
                 block(f"find -delete/-exec under {r}")
 
 
-text = cmd.replace("\n", ";")
-try:
-    lex = shlex.shlex(text, posix=True, punctuation_chars=True)
-    lex.whitespace_split = True
-    tokens = list(lex)
-except ValueError:  # unbalanced quotes: fall back to plain words
-    tokens = text.split()
+tokens = []
+for line in cmd.replace("\\\n", "").split("\n"):  # a comment ends at its line
+    try:
+        lex = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        tokens += list(lex) + [";"]
+    except ValueError:  # unbalanced quotes: fall back to plain words
+        tokens += line.split() + [";"]
 seg = []
-for t in tokens + [";"]:
+for t in tokens:
     if t in SEPS:
         check(seg)
         seg = []
