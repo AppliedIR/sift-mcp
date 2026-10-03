@@ -503,7 +503,8 @@ def _atomic_yaml_write(config_path, config: dict) -> None:
     fd, tmp_path = tempfile.mkstemp(dir=str(config_path.parent), suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
-            yaml.dump(config, f, default_flow_style=False)
+            # Owner's key first: local readers take the first api_key.
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
             f.flush()
             os.fsync(f.fileno())
         os.chmod(tmp_path, 0o600)
