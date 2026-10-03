@@ -131,11 +131,7 @@ _HASH_EXCLUDE_KEYS = {
     "verification",
     "modified_at",
     "provenance",
-    "provenance_detail",
-    "provenance_chain",
-    "provenance_grade",
     "provenance_warnings",
-    "provenance_gaps",
     "timeline_event_id",
     "source_evidence",
 }
