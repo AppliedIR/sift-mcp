@@ -2245,12 +2245,21 @@ elif [[ -z "$CLIENT" ]]; then
     CLIENT="claude-code"
 fi
 
-"$VENV_DIR/bin/vhir" setup client --client="$CLIENT" --sift="$SIFT_URL" -y \
+# vhir asks before changing the user's own Claude files, and only on a
+# terminal: -y never consents, so it gets none.
+if $AUTO_YES; then
+    CLIENT_IN=/dev/null
+elif { : < "$READ_FROM"; } 2>/dev/null; then
+    CLIENT_IN="$READ_FROM"
+else
+    CLIENT_IN=/dev/null
+fi
+"$VENV_DIR/bin/vhir" setup client --client="$CLIENT" --sift="$SIFT_URL" -y < "$CLIENT_IN" \
     || warn "Client configuration failed. Run manually: vhir setup client"
 
 
 # Global deployment message for claude-code
-if grep -qE '"forensic-mcp"|"vhir"' "$HOME/.claude.json" 2>/dev/null; then
+if grep -q 'forensic-audit.sh' "$HOME/.claude/settings.json" 2>/dev/null; then
     echo ""
     echo -e "${BOLD}Forensic controls deployed globally.${NC}"
     echo "Claude Code can be launched from any directory on this machine."
