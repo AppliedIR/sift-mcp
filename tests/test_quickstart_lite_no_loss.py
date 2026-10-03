@@ -159,14 +159,27 @@ def test_without_a_terminal_or_y_the_users_files_are_kept(tmp_path, clone):
 def test_y_replaces_with_backups_and_the_undo_block_restores(tmp_path, clone):
     project = _project(tmp_path)
     before = _user_state(clone, project)
+    hook = project / "hooks" / "forensic-audit.sh"
+    hook.parent.mkdir()
+    hook.write_text("#!/bin/bash\necho my own hook\n")
+    hook.chmod(0o755)
+    before[hook] = hook.read_bytes()
+    (project / "CLAUDE.md").chmod(0o664)  # group-write: a copy without -p loses it
+    (project / ".claude" / "settings.json").chmod(0o600)
+    modes = {p: stat.S_IMODE(p.stat().st_mode) for p in before}
     rc, out = _run(tmp_path, clone, project, yes=True)
     assert rc == 0, out
     assert (project / "CLAUDE.md").read_text() == "valhuntir CLAUDE.md\n"
     backups = _backups(project)
-    assert len(backups) == 3 and not any(b.name.endswith(".md") for b in backups)
-    assert {b.read_bytes() for b in backups} == set(before.values())
+    assert len(backups) == 4 and not any(b.name.endswith(".md") for b in backups)
+    for b in backups:  # each backup has its original's bytes and mode
+        orig = Path(str(b).split(".vhir-backup-")[0])
+        assert (b.read_bytes(), stat.S_IMODE(b.stat().st_mode)) == (
+            before[orig],
+            modes[orig],
+        )
     undo = [ln.strip() for ln in out.splitlines() if ln.strip().startswith("cp -p ")]
-    assert len(undo) == 3
+    assert len(undo) == 4
     # and repeated as the script's last output
     tail = SCRIPT[SCRIPT.index("# The undo block, repeated") :]
     run = tmp_path / "tail.sh"
@@ -174,7 +187,7 @@ def test_y_replaces_with_backups_and_the_undo_block_restores(tmp_path, clone):
     last = subprocess.run(
         ["/bin/bash", str(run), *undo], capture_output=True, text=True, check=True
     ).stdout
-    assert [ln.strip() for ln in last.splitlines()[1:4]] == undo
+    assert [ln.strip() for ln in last.splitlines()[1:5]] == undo
     # a second change in the same second gets its own backup
     (project / "CLAUDE.md").write_text("EDITED AGAIN\n")
     _run(tmp_path, clone, project, yes=True)
@@ -182,6 +195,8 @@ def test_y_replaces_with_backups_and_the_undo_block_restores(tmp_path, clone):
     assert [b.read_text() for b in claude] == ["MY OWN CLAUDE.md\n", "EDITED AGAIN\n"]
     subprocess.run(["/bin/bash", "-c", "\n".join(undo)], check=True)
     assert {p: p.read_bytes() for p in before} == before
+    assert {p: stat.S_IMODE(p.stat().st_mode) for p in before} == modes
+    assert modes[hook] == 0o755
 
 
 @pytest.mark.skipif(not shutil.which("script"), reason="needs script(1)")
