@@ -1530,6 +1530,7 @@ if [[ -n "$SHELL_RC_EXAMINER" ]]; then
             echo "" >> "$SHELL_RC_EXAMINER"
             echo "# Valhuntir Platform" >> "$SHELL_RC_EXAMINER"
         fi
+        [[ -s "$SHELL_RC_EXAMINER" && -n "$(tail -c1 "$SHELL_RC_EXAMINER")" ]] && echo >> "$SHELL_RC_EXAMINER"
         echo "export VHIR_EXAMINER=\"$EXAMINER_NAME\"" >> "$SHELL_RC_EXAMINER"
     fi
 fi
@@ -1985,6 +1986,7 @@ if [[ -n "$SHELL_RC" ]]; then
     if grep -q "^export VHIR_CASES_DIR=" "$SHELL_RC" 2>/dev/null; then
         sed -i --follow-symlinks "s|^export VHIR_CASES_DIR=.*|export VHIR_CASES_DIR=\"$CASE_DIR\"|" "$SHELL_RC"
     else
+        [[ -s "$SHELL_RC" && -n "$(tail -c1 "$SHELL_RC")" ]] && echo >> "$SHELL_RC"
         echo "export VHIR_CASES_DIR=\"$CASE_DIR\"" >> "$SHELL_RC"
     fi
 else

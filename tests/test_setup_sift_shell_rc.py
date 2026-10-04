@@ -227,3 +227,31 @@ def test_anchor_a_re_run_updates_our_exports_in_place(home):
         'export VHIR_EXAMINER="bob"',
         f'export VHIR_CASES_DIR="{home}/other"',
     ]
+
+
+# a user's last line mentions the variable and has no newline at the end
+NO_EOL = {
+    "VHIR_EXAMINER": (
+        '# Valhuntir Platform\nexport PATH="x"  # vhir-path\n',
+        "alias who-ir='echo \"$VHIR_EXAMINER\"'",
+    ),
+    "VHIR_CASES_DIR": (
+        '# Valhuntir Platform\nexport VHIR_EXAMINER="alice"\n'
+        'export PATH="x"  # vhir-path\n',
+        "alias cases='cd \"$VHIR_CASES_DIR\"'",
+    ),
+}
+
+
+@pytest.mark.parametrize("name", list(NO_EOL))
+def test_our_export_starts_on_its_own_line_after_a_last_line_without_newline(
+    home, name
+):
+    ours, last = NO_EOL[name]
+    rc = home / ".bashrc"
+    rc.write_text("# my stuff\n" + ours + last)
+    _run(home, "install")
+    lines = _lines(rc)
+    assert last in lines
+    assert 'export VHIR_EXAMINER="alice"' in lines
+    assert f'export VHIR_CASES_DIR="{home}/cases"' in lines
