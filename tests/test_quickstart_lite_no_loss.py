@@ -325,7 +325,8 @@ def _phase5(
     **more,
 ):
     """`argv_log`: every exec through VENV_PYTHON or a PATH tool records its argv
-    there. `strace_log`: the whole step runs under strace, recording each execve."""
+    and its environment there. `strace_log`: the whole step runs under strace,
+    recording each execve with its argv and environment."""
     mcp = tmp_path / project / ".mcp.json"
     mcp.parent.mkdir(parents=True, exist_ok=True)
     mcp.write_text(mcp_text)
@@ -359,7 +360,11 @@ def _phase5(
             real = shutil.which(tool, path="/usr/bin:/bin")
             if real:
                 (shims / tool).write_text(
-                    f'#!/bin/bash\nprintf "%s\\n" "{tool} $*" >> "{argv_log}"\nexec "{real}" "$@"\n'
+                    "#!/bin/bash\n"
+                    f'printf "%s\\n" "{tool} $*" >> "{argv_log}"\n'
+                    "while IFS= read -r -d '' v; do printf 'ENV %s\\n' \"$v\"; done "
+                    f'< /proc/$$/environ >> "{argv_log}"\n'
+                    f'exec "{real}" "$@"\n'
                 )
                 (shims / tool).chmod(0o755)
         python, path = str(shims / "python3"), f"{shims}:{path}"
@@ -389,6 +394,7 @@ def _phase5(
             "strace",
             "-f",
             "-qq",
+            "-v",  # each execve's environment in full, not just its size
             "-e",
             "trace=execve",
             "-s",
@@ -526,14 +532,16 @@ def test_anchor_the_document_written_for_all_four_servers(tmp_path):
     assert mcp.read_text() == json.dumps(want, indent=2) + "\n"
 
 
-def test_no_process_is_given_a_token_in_its_arguments(tmp_path):
+def test_no_process_is_given_a_token_in_its_arguments_or_environment(tmp_path):
     log = tmp_path / "argv.log"
     rc, out, mcp = _phase5(
         tmp_path, '{"mcpServers": {"mine": {}}}\n', ADD_ALL, argv_log=log, **INTERACTIVE
     )
     assert rc == 0, out
     seen = log.read_text()
-    assert "python3" in seen  # the adds ran through the shim
+    assert (
+        "python3" in seen and "\nENV PATH=" in seen
+    )  # the shim saw argv and environment
     assert not [t for t in TOKENS if t in seen], seen
     servers = json.loads(mcp.read_text())["mcpServers"]
     assert servers["opencti-mcp"]["env"]["OPENCTI_TOKEN"] == TOKENS[0]  # still stored
