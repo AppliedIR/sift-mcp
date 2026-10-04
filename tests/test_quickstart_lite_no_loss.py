@@ -315,8 +315,18 @@ MARKER = SCRIPT[  # to the next top-level definition: its Python has a "}" line
 ]
 
 
-def _phase5(tmp_path, mcp_text, answers=None, **more):
-    mcp = tmp_path / "my project" / ".mcp.json"
+def _phase5(
+    tmp_path,
+    mcp_text,
+    answers=None,
+    project="my project",
+    argv_log=None,
+    strace_log=None,
+    **more,
+):
+    """`argv_log`: every exec through VENV_PYTHON or a PATH tool records its argv
+    there. `strace_log`: the whole step runs under strace, recording each execve."""
+    mcp = tmp_path / project / ".mcp.json"
     mcp.parent.mkdir(parents=True, exist_ok=True)
     mcp.write_text(mcp_text)
     (tmp_path / ".vhir").mkdir(exist_ok=True)  # made by the earlier phases
@@ -330,11 +340,34 @@ def _phase5(tmp_path, mcp_text, answers=None, **more):
         + 'UNDO_LINES=("cp -p a\\ b c")\n'  # an earlier replacement's undo line
         + PHASE5_TO_END
     )
+    python = shutil.which("python3")
+    path = "/usr/bin:/bin"
+    if argv_log:
+        shims = tmp_path / "shims"
+        shims.mkdir()
+        for tool in (
+            "python3",
+            "env",
+            "cat",
+            "printf",
+            "echo",
+            "tee",
+            "sh",
+            "bash",
+            "xargs",
+        ):
+            real = shutil.which(tool, path="/usr/bin:/bin")
+            if real:
+                (shims / tool).write_text(
+                    f'#!/bin/bash\nprintf "%s\\n" "{tool} $*" >> "{argv_log}"\nexec "{real}" "$@"\n'
+                )
+                (shims / tool).chmod(0o755)
+        python, path = str(shims / "python3"), f"{shims}:{path}"
     env = {
-        "PATH": "/usr/bin:/bin",
+        "PATH": path,
         "HOME": str(tmp_path),
         "YES": "true",
-        "VENV_PYTHON": shutil.which("python3"),
+        "VENV_PYTHON": python,
         "VENV_DIR": str(tmp_path / "venv"),
         "SCRIPT_DIR": str(tmp_path),
         "PROJECT_DIR": str(mcp.parent),
@@ -350,8 +383,21 @@ def _phase5(tmp_path, mcp_text, answers=None, **more):
         "REMNUX_ADDR": "",
         **more,
     }
+    cmd = ["/bin/bash", str(run)]
+    if strace_log:
+        cmd = [
+            "strace",
+            "-f",
+            "-qq",
+            "-e",
+            "trace=execve",
+            "-s",
+            "65536",
+            "-o",
+            str(strace_log),
+        ] + cmd
     p = subprocess.run(
-        ["/bin/bash", str(run)],
+        cmd,
         input=answers,
         capture_output=True,
         text=True,
@@ -416,3 +462,111 @@ def test_a_skipped_server_never_prints_a_typed_token(tmp_path):
         assert f"WARN NOT added: {name}. {mcp} can't be parsed;" in out
     assert out.count("CTI-SECRET-4711") == 0 and out.count("RMX-SECRET-0815") == 0
     assert out.rstrip().endswith("cp -p a\\ b c")  # the end, with the undo block
+
+
+# --- Adding an optional server: the path and the entry stay out of code and argv --
+
+TOKENS = (
+    "CTI-TEST-TOKEN-0001",
+    "RMX-TEST-TOKEN-0002",
+)  # synthetic; pass the credential check
+ADD_ALL = (  # OpenCTI URL and token; REMnux y, address, token; Learn and Zeltser yes
+    f"https://cti.example.test\n{TOKENS[0]}\ny\nremnux.example.test:3000\n{TOKENS[1]}\ny\ny\n"
+)
+INTERACTIVE = {
+    "YES": "false",
+    "INSTALL_OPENCTI": "true",
+    "OPENCTI_PKG_DONE": "true",
+    "INSTALL_MSLEARN": "false",
+    "INSTALL_ZELTSER": "false",
+}
+LEARN = {"type": "http", "url": "https://learn.microsoft.com/api/mcp"}
+ZELTSER = {"type": "http", "url": "https://website-mcp.zeltser.com/mcp"}
+
+
+def test_a_project_path_with_quotes_and_a_backslash_still_gets_the_servers(tmp_path):
+    project = "it's '''q\"\"\" \\x"
+    rc, out, mcp = _phase5(tmp_path, '{"mcpServers": {"mine": {}}}\n', project=project)
+    assert rc == 0 and "FAIL" not in out, out
+    assert json.loads(mcp.read_text())["mcpServers"] == {
+        "mine": {},
+        "microsoft-learn": LEARN,
+        "zeltser-ir-writing": ZELTSER,
+    }
+
+
+def test_anchor_the_document_written_for_all_four_servers(tmp_path):
+    rc, out, mcp = _phase5(
+        tmp_path, '{"mcpServers": {"mine": {}}}\n', ADD_ALL, **INTERACTIVE
+    )
+    assert rc == 0, out
+    project = mcp.parent
+    want = {
+        "mcpServers": {
+            "mine": {},
+            "opencti-mcp": {
+                "command": f"{tmp_path}/venv/bin/python",
+                "args": ["-I", "-m", "opencti_mcp.server"],
+                "env": {
+                    "PYTHONPATH": f"{tmp_path}/packages/opencti/src",
+                    "OPENCTI_URL": "https://cti.example.test",
+                    "OPENCTI_TOKEN": TOKENS[0],
+                    "VHIR_CASE_DIR": str(project),
+                },
+            },
+            "remnux-mcp": {
+                "type": "http",
+                "url": "http://remnux.example.test:3000/mcp",
+                "headers": {"Authorization": f"Bearer {TOKENS[1]}"},
+            },
+            "microsoft-learn": LEARN,
+            "zeltser-ir-writing": ZELTSER,
+        }
+    }
+    assert mcp.read_text() == json.dumps(want, indent=2) + "\n"
+
+
+def test_no_process_is_given_a_token_in_its_arguments(tmp_path):
+    log = tmp_path / "argv.log"
+    rc, out, mcp = _phase5(
+        tmp_path, '{"mcpServers": {"mine": {}}}\n', ADD_ALL, argv_log=log, **INTERACTIVE
+    )
+    assert rc == 0, out
+    seen = log.read_text()
+    assert "python3" in seen  # the adds ran through the shim
+    assert not [t for t in TOKENS if t in seen], seen
+    servers = json.loads(mcp.read_text())["mcpServers"]
+    assert servers["opencti-mcp"]["env"]["OPENCTI_TOKEN"] == TOKENS[0]  # still stored
+    assert servers["remnux-mcp"]["headers"]["Authorization"] == f"Bearer {TOKENS[1]}"
+
+
+@pytest.mark.skipif(not shutil.which("strace"), reason="needs strace")
+def test_no_exec_carries_a_token_under_strace(tmp_path):
+    log = tmp_path / "strace.log"
+    rc, out, mcp = _phase5(
+        tmp_path,
+        '{"mcpServers": {"mine": {}}}\n',
+        ADD_ALL,
+        strace_log=log,
+        **INTERACTIVE,
+    )
+    assert rc == 0, out
+    execs = [ln for ln in log.read_text().splitlines() if "execve(" in ln]
+    assert any("python3" in ln for ln in execs)
+    assert not [ln for ln in execs if any(t in ln for t in TOKENS)]
+    assert TOKENS[0] in mcp.read_text() and TOKENS[1] in mcp.read_text()
+
+
+def test_a_bad_server_entry_fails_loudly_and_isnt_blamed_on_mcp_json(tmp_path):
+    # a '"' in the project path breaks OpenCTI's entry, which embeds the path
+    project = 'case "x"'
+    rc, out, mcp = _phase5(
+        tmp_path,
+        '{"mcpServers": {"mine": {}}}\n',
+        ADD_ALL,
+        project=project,
+        **INTERACTIVE,
+    )
+    assert rc == 1 and f"FAIL Could not update {mcp}" in out, out
+    assert "can't be parsed" not in out
+    assert mcp.read_text() == '{"mcpServers": {"mine": {}}}\n'

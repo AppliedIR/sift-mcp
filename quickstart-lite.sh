@@ -759,20 +759,22 @@ header "Phase 5: Optional MCPs"
 _add_mcp_server() {
     # Add a server entry to .mcp.json; one that isn't valid JSON is left as it is
     local name="$1" json_fragment="$2" rc=0
-    "$VENV_PYTHON" -c "
+    # the path as an argument, the entry (it can hold a token) on stdin, not in argv
+    printf '%s' "$json_fragment" | "$VENV_PYTHON" -c "
 import json, sys
+entry = json.load(sys.stdin)
 try:
-    with open('$MCP_JSON') as f:
+    with open(sys.argv[2]) as f:
         data = json.load(f)
 except ValueError:
     sys.exit(3)
 if not isinstance(data, dict) or not isinstance(data.setdefault('mcpServers', {}), dict):
     sys.exit(3)
-data['mcpServers'][sys.argv[1]] = json.loads(sys.argv[2])
-with open('$MCP_JSON', 'w') as f:
+data['mcpServers'][sys.argv[1]] = entry
+with open(sys.argv[2], 'w') as f:
     json.dump(data, f, indent=2)
     f.write('\n')
-" "$name" "$json_fragment" || rc=$?
+" "$name" "$MCP_JSON" || rc=$?
     if [[ $rc -eq 3 ]]; then
         warn "NOT added: $name. $MCP_JSON can't be parsed; fix it and re-run quickstart-lite."
         return 1
