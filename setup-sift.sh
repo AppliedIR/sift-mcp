@@ -2359,10 +2359,13 @@ if $INSTALL_RAG; then
         "$VENV_PYTHON" -c "
 import sys, json
 data = json.load(sys.stdin)
-print(sum(1 for s in data.get('online_sources', []) if s.get('has_update')))
+docs = data.get('document_count', 0)
+print(-1 if docs <= 0 else sum(1 for s in data.get('online_sources', []) if s.get('has_update')))
 " 2>/dev/null) || RAG_STALE_COUNT=""
 
-    if [[ -n "$RAG_STALE_COUNT" ]] && [[ "$RAG_STALE_COUNT" -gt 0 ]] 2>/dev/null; then
+    if [[ "$RAG_STALE_COUNT" == "-1" ]]; then  # no documents: an absent or partly built index
+        warn "RAG knowledge base: the index is empty, so knowledge search returns nothing. Download it with GITHUB_TOKEN set (GitHub can refuse unauthenticated downloads): $VENV_PYTHON -m rag_mcp.scripts.download_index, then restart the gateway: systemctl --user restart vhir-gateway"
+    elif [[ -n "$RAG_STALE_COUNT" ]] && [[ "$RAG_STALE_COUNT" -gt 0 ]] 2>/dev/null; then
         echo -e "  ${BOLD}RAG knowledge base:${NC} $RAG_STALE_COUNT of 23 sources have updates available."
         echo "  Refresh now or later with: $VENV_PYTHON -m rag_mcp.refresh"
         echo "  Time: a few minutes to a couple of hours depending on changes and CPU."
