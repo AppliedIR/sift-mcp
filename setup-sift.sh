@@ -325,8 +325,8 @@ if ${UNINSTALL_MODE:-false}; then
         echo ""
         if prompt_yn_strict "    Remove Valhuntir lines from $SHELL_RC?"; then
             sed -i --follow-symlinks '/# Valhuntir Platform/d' "$SHELL_RC"
-            sed -i --follow-symlinks '/VHIR_EXAMINER/d' "$SHELL_RC"
-            sed -i --follow-symlinks '/VHIR_CASES_DIR/d' "$SHELL_RC"
+            sed -i --follow-symlinks '/^export VHIR_EXAMINER=/d' "$SHELL_RC"
+            sed -i --follow-symlinks '/^export VHIR_CASES_DIR=/d' "$SHELL_RC"
             sed -i --follow-symlinks '/# vhir-path/d' "$SHELL_RC"
             sed -i --follow-symlinks '/register-python-argcomplete vhir/d' "$SHELL_RC"
             ok "Shell profile cleaned."
@@ -1522,7 +1522,7 @@ if [[ -f "$HOME/.bashrc" ]]; then SHELL_RC_EXAMINER="$HOME/.bashrc";
 elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC_EXAMINER="$HOME/.zshrc"; fi
 
 if [[ -n "$SHELL_RC_EXAMINER" ]]; then
-    if grep -q "VHIR_EXAMINER" "$SHELL_RC_EXAMINER" 2>/dev/null; then
+    if grep -q "^export VHIR_EXAMINER=" "$SHELL_RC_EXAMINER" 2>/dev/null; then
         sed -i --follow-symlinks "s/^export VHIR_EXAMINER=.*/export VHIR_EXAMINER=\"$EXAMINER_NAME\"/" "$SHELL_RC_EXAMINER"
     else
         # Prepend marker if not already present (Phase 12 will add PATH under it)
@@ -1982,7 +1982,7 @@ if [[ -n "$SHELL_RC" ]]; then
     fi
 
     # VHIR_CASES_DIR — so vhir CLI resolves ~/cases (or custom --cases-dir)
-    if grep -q "VHIR_CASES_DIR" "$SHELL_RC" 2>/dev/null; then
+    if grep -q "^export VHIR_CASES_DIR=" "$SHELL_RC" 2>/dev/null; then
         sed -i --follow-symlinks "s|^export VHIR_CASES_DIR=.*|export VHIR_CASES_DIR=\"$CASE_DIR\"|" "$SHELL_RC"
     else
         echo "export VHIR_CASES_DIR=\"$CASE_DIR\"" >> "$SHELL_RC"
