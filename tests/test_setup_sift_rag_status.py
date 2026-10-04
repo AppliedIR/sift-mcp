@@ -22,8 +22,8 @@ CHECK = SCRIPT[_start : SCRIPT.index("if $INSTALL_TRIAGE; then", _start)]
 EMPTY = (
     "[WARN] RAG knowledge base: the index is empty, so knowledge search returns nothing. "
     "Download it with GITHUB_TOKEN set (GitHub can refuse unauthenticated downloads): "
-    "{py} -m rag_mcp.scripts.download_index, then restart the gateway: "
-    "systemctl --user restart vhir-gateway"
+    "{py} -m rag_mcp.scripts.download_index, then restart the gateway "
+    "(systemctl --user restart vhir-gateway, or however you start it)"
 )
 
 
@@ -64,9 +64,14 @@ def _check(tmp_path: Path, status: str | None, rc: int = 0, timed_out: bool = Fa
     return out.returncode, [ln.strip() for ln in out.stdout.splitlines()], str(py)
 
 
-def _status(exists: bool, docs: int, sources: list[dict]) -> str:
+def _status(exists: bool, docs: int, sources: list[dict], warnings=()) -> str:
     return json.dumps(
-        {"index_exists": exists, "document_count": docs, "online_sources": sources}
+        {
+            "index_exists": exists,
+            "document_count": docs,
+            "online_sources": sources,
+            "warnings": list(warnings),
+        }
     )
 
 
@@ -113,3 +118,26 @@ def test_anchor_an_unreadable_status_is_still_unchecked(
     assert rc_out == 0 and lines == [
         f"[WARN] Could not check RAG status. Check later with: {py} -m rag_mcp.status"
     ]
+
+
+@pytest.mark.parametrize(
+    "warning",
+    [
+        "Error reading ChromaDB: attempt to write a readonly database",
+        "Could not read metadata.json: [Errno 13] Permission denied",
+    ],
+    ids=["unreadable database", "unreadable metadata"],
+)
+def test_an_index_it_cannot_read_is_unchecked_not_empty(tmp_path, warning):
+    rc, lines, py = _check(tmp_path, _status(True, 0, _sources(0), [warning]))
+    assert rc == 0 and lines == [
+        f"[WARN] Could not check RAG status. Check later with: {py} -m rag_mcp.status"
+    ]
+
+
+def test_anchor_an_absent_index_with_its_not_found_warning_is_still_empty(tmp_path):
+    status = _status(
+        False, 0, [], ["Index not found. Run 'python -m rag_mcp.build' first."]
+    )
+    rc, lines, py = _check(tmp_path, status)
+    assert rc == 0 and lines == [EMPTY.format(py=py)]

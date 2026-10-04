@@ -2359,12 +2359,15 @@ if $INSTALL_RAG; then
         "$VENV_PYTHON" -c "
 import sys, json
 data = json.load(sys.stdin)
+unread = ('Error reading ChromaDB', 'Could not read metadata.json')
+if any(w.startswith(unread) for w in data.get('warnings', [])):
+    sys.exit(1)  # an index it couldn't read isn't an empty one
 docs = data.get('document_count', 0)
 print(-1 if docs <= 0 else sum(1 for s in data.get('online_sources', []) if s.get('has_update')))
 " 2>/dev/null) || RAG_STALE_COUNT=""
 
     if [[ "$RAG_STALE_COUNT" == "-1" ]]; then  # no documents: an absent or partly built index
-        warn "RAG knowledge base: the index is empty, so knowledge search returns nothing. Download it with GITHUB_TOKEN set (GitHub can refuse unauthenticated downloads): $VENV_PYTHON -m rag_mcp.scripts.download_index, then restart the gateway: systemctl --user restart vhir-gateway"
+        warn "RAG knowledge base: the index is empty, so knowledge search returns nothing. Download it with GITHUB_TOKEN set (GitHub can refuse unauthenticated downloads): $VENV_PYTHON -m rag_mcp.scripts.download_index, then restart the gateway (systemctl --user restart vhir-gateway, or however you start it)"
     elif [[ -n "$RAG_STALE_COUNT" ]] && [[ "$RAG_STALE_COUNT" -gt 0 ]] 2>/dev/null; then
         echo -e "  ${BOLD}RAG knowledge base:${NC} $RAG_STALE_COUNT of 23 sources have updates available."
         echo "  Refresh now or later with: $VENV_PYTHON -m rag_mcp.refresh"
