@@ -324,12 +324,11 @@ if ${UNINSTALL_MODE:-false}; then
         echo "    Lines: VHIR_EXAMINER, VHIR_CASES_DIR, PATH, argcomplete"
         echo ""
         if prompt_yn_strict "    Remove Valhuntir lines from $SHELL_RC?"; then
-            sed -i '/# Valhuntir Platform/d' "$SHELL_RC"
-            sed -i '/VHIR_EXAMINER/d' "$SHELL_RC"
-            sed -i '/VHIR_CASES_DIR/d' "$SHELL_RC"
-            sed -i '/# vhir-path/d' "$SHELL_RC"
-            sed -i '\|\.vhir/venv/bin|d' "$SHELL_RC"
-            sed -i '/register-python-argcomplete vhir/d' "$SHELL_RC"
+            sed -i --follow-symlinks '/# Valhuntir Platform/d' "$SHELL_RC"
+            sed -i --follow-symlinks '/VHIR_EXAMINER/d' "$SHELL_RC"
+            sed -i --follow-symlinks '/VHIR_CASES_DIR/d' "$SHELL_RC"
+            sed -i --follow-symlinks '/# vhir-path/d' "$SHELL_RC"
+            sed -i --follow-symlinks '/register-python-argcomplete vhir/d' "$SHELL_RC"
             ok "Shell profile cleaned."
         else
             info "Skipped. Remove manually if needed."
@@ -1524,7 +1523,7 @@ elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC_EXAMINER="$HOME/.zshrc"; fi
 
 if [[ -n "$SHELL_RC_EXAMINER" ]]; then
     if grep -q "VHIR_EXAMINER" "$SHELL_RC_EXAMINER" 2>/dev/null; then
-        sed -i "s/^export VHIR_EXAMINER=.*/export VHIR_EXAMINER=\"$EXAMINER_NAME\"/" "$SHELL_RC_EXAMINER"
+        sed -i --follow-symlinks "s/^export VHIR_EXAMINER=.*/export VHIR_EXAMINER=\"$EXAMINER_NAME\"/" "$SHELL_RC_EXAMINER"
     else
         # Prepend marker if not already present (Phase 12 will add PATH under it)
         if ! grep -q "# Valhuntir Platform" "$SHELL_RC_EXAMINER" 2>/dev/null; then
@@ -1964,17 +1963,12 @@ elif [[ -f "$HOME/.zshrc" ]]; then SHELL_RC="$HOME/.zshrc"; fi
 if [[ -n "$SHELL_RC" ]]; then
     # Clean up pre-rebrand marker and its associated lines
     if grep -q "# ValiHuntIR Platform" "$SHELL_RC" 2>/dev/null; then
-        sed -i '/# ValiHuntIR Platform/d' "$SHELL_RC"
-        # Remove duplicate PATH lines left by old installer
-        sed -i '/\.vhir\/venv\/bin.*# vhir-path/!{/\.vhir\/venv\/bin/d;}' "$SHELL_RC" 2>/dev/null || true
+        sed -i --follow-symlinks '/# ValiHuntIR Platform/d' "$SHELL_RC"
     fi
     if grep -q "# Valhuntir Platform" "$SHELL_RC" 2>/dev/null; then
         # Marker exists — update PATH line in-place (handles changed venv path)
         if grep -q '# vhir-path' "$SHELL_RC" 2>/dev/null; then
-            sed -i "s|^export PATH=.*# vhir-path|export PATH=\"$VHIR_BIN:\$PATH\"  # vhir-path|" "$SHELL_RC"
-        elif grep -q '\.vhir/venv/bin' "$SHELL_RC" 2>/dev/null; then
-            # Legacy install without tag — replace and add tag
-            sed -i "s|^export PATH=.*\.vhir/venv/bin.*|export PATH=\"$VHIR_BIN:\$PATH\"  # vhir-path|" "$SHELL_RC"
+            sed -i --follow-symlinks "s|^export PATH=.*# vhir-path|export PATH=\"$VHIR_BIN:\$PATH\"  # vhir-path|" "$SHELL_RC"
         else
             # Marker exists but no PATH line — append after marker
             echo "export PATH=\"$VHIR_BIN:\$PATH\"  # vhir-path" >> "$SHELL_RC"
@@ -1989,7 +1983,7 @@ if [[ -n "$SHELL_RC" ]]; then
 
     # VHIR_CASES_DIR — so vhir CLI resolves ~/cases (or custom --cases-dir)
     if grep -q "VHIR_CASES_DIR" "$SHELL_RC" 2>/dev/null; then
-        sed -i "s|^export VHIR_CASES_DIR=.*|export VHIR_CASES_DIR=\"$CASE_DIR\"|" "$SHELL_RC"
+        sed -i --follow-symlinks "s|^export VHIR_CASES_DIR=.*|export VHIR_CASES_DIR=\"$CASE_DIR\"|" "$SHELL_RC"
     else
         echo "export VHIR_CASES_DIR=\"$CASE_DIR\"" >> "$SHELL_RC"
     fi
