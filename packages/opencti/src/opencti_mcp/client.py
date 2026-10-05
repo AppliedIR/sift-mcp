@@ -2206,7 +2206,6 @@ class OpenCTIClient:
             # Degrade gracefully instead of killing the lookup
             logger.warning(f"IOC context lookup degraded for {ioc}: {e}")
             return {
-                "found": False,
                 "ioc": ioc,
                 "error": f"Context unavailable: {e}",
             }
