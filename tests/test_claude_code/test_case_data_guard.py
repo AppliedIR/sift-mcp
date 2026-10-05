@@ -488,6 +488,11 @@ MORE_ALLOW = [
         "C",
         "find {C}/reports/* -name '*.tmp' -delete",
     ),
+    (
+        "find over two roots that hold no case data",
+        "O",
+        "find {O}/x {C}/reports/* -name '*.tmp' -delete",
+    ),
 ]
 MORE_BLOCK = [
     (
@@ -533,6 +538,11 @@ MORE_BLOCK = [
         "find over a glob of the cases root with -delete",
         "O",
         "find {CS}/* -name x -delete",
+    ),
+    (
+        "find with a second root that is a glob of a case",
+        "O",
+        "find {O}/x {C}/* -delete",
     ),
 ]
 
