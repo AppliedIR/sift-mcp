@@ -276,10 +276,14 @@ if ${UNINSTALL_MODE:-false}; then
     # [4] Source code (includes RAG index and triage databases via editable install)
     KEPT_SRC=false
     SRC_DIR="$(dirname "$INSTALL_DIR")"
-    if [[ -d "$SRC_DIR" ]]; then
-        SRC_SIZE=$(du -sh "$SRC_DIR" 2>/dev/null | cut -f1 || echo "unknown")
+    SRC_REPOS=()
+    for d in "$INSTALL_DIR" "$SRC_DIR/vhir" "$SRC_DIR/opensearch-mcp"; do
+        [[ -d "$d" ]] && SRC_REPOS+=("$d")
+    done
+    if [[ ${#SRC_REPOS[@]} -gt 0 ]]; then
+        SRC_SIZE=$(du -shc "${SRC_REPOS[@]}" 2>/dev/null | tail -1 | cut -f1 || echo "unknown")
         echo -e "${BOLD}[4] Source code${NC}"
-        echo "    Path: $SRC_DIR"
+        for d in "${SRC_REPOS[@]}"; do echo "    Path: $d"; done
         echo "    Size: $SRC_SIZE"
 
         # Surface RAG index and triage DB sizes if present
@@ -304,7 +308,8 @@ if ${UNINSTALL_MODE:-false}; then
 
         echo ""
         if prompt_yn_strict "    Remove source code?"; then
-            rm -rf "$SRC_DIR"
+            rm -rf "${SRC_REPOS[@]}"
+            rmdir "$SRC_DIR" 2>/dev/null || true
             ok "Source code removed."
         else
             KEPT_SRC=true
@@ -368,6 +373,7 @@ if ${UNINSTALL_MODE:-false}; then
         EXCLUDE_ARGS=()
         $KEPT_VENV && EXCLUDE_ARGS+=(! -name "venv")
         $KEPT_SRC  && EXCLUDE_ARGS+=(! -name "src")
+        EXCLUDE_ARGS+=(! -name gateway.yaml ! -name manifest.json ! -name config.yaml ! -name tls)
 
         REMAINING=$(find "$VHIR_DIR" -mindepth 1 -maxdepth 1 "${EXCLUDE_ARGS[@]}" 2>/dev/null | head -5)
         if [[ -n "$REMAINING" ]]; then
@@ -1084,8 +1090,14 @@ VENV_DIR=$(realpath -m "$VENV_DIR")
 mkdir -p "$(dirname "$VENV_DIR")"
 
 if [[ -d "$VENV_DIR" && ! -f "$VENV_DIR/bin/python" ]]; then
-    warn "Broken virtual environment detected at $VENV_DIR — recreating..."
-    rm -rf "$VENV_DIR"
+    if [[ -f "$VENV_DIR/pyvenv.cfg" ]]; then
+        warn "Broken virtual environment detected at $VENV_DIR — recreating..."
+        rm -rf "$VENV_DIR"
+    elif ! rmdir "$VENV_DIR" 2>/dev/null; then
+        err "$VENV_DIR exists and is not a virtual environment (no pyvenv.cfg)"
+        echo "  Remove it or choose a different --venv"
+        exit 1
+    fi
 fi
 
 if [[ ! -d "$VENV_DIR" ]]; then
