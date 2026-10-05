@@ -8,9 +8,9 @@
 # (findings.json, timeline.json, approvals.jsonl, iocs.json, evidence.json,
 # todos.json, CASE.yaml, actions.jsonl, pending-reviews.json), everything in
 # audit/, every existing file in evidence/ (and evidence/ while non-empty),
-# each case root and the cases root. Everything else is allowed: other files,
-# reports/, work/, .outputs/, extractions/, filing new files into evidence/,
-# and moving unprotected files into DELETE/.
+# each non-empty case root and the cases root. Everything else is allowed:
+# other files, reports/, work/, .outputs/, extractions/, filing new files into
+# evidence/, and moving unprotected files into DELETE/.
 #
 # Blocked on a protected path: rm, rmdir, shred, unlink, truncate; mv from or
 # onto it; cp, install or ln onto it; > >> >| &> onto it; find rooted at it (or
@@ -18,7 +18,8 @@
 # VAR=val, nice, nohup, time, timeout, stdbuf, exec, command, if/then/do/{/!,
 # ; && || | & and newlines, $(...), cd, quoting, .., absolute command paths,
 # mv -t, find -H/-L/-P/-O/-D.
-# Not seen: bash -c/sh -c, xargs, scripts, tee, git clean, rsync --delete,
+# Not seen: bash -c/sh -c, xargs, scripts, tee, in-place editors (sed -i,
+# perl -i), git clean, rsync --delete,
 # tar --remove-files, dd of=, >& redirections, brace expansion, variables,
 # backquotes and a "$(...)" in double quotes; an operand after a $(...) inside
 # an argument (rm x$(true) findings.json); options of timeout -s and env -u;
@@ -86,7 +87,7 @@ def damage(p, new_ok=False):
     if not parts:  # the cases root
         return True
     if len(parts) == 1:  # a case root (a plain file beside the cases isn't one)
-        return os.path.isdir(real)
+        return os.path.isdir(real) and bool(os.listdir(real))
     top = parts[1]
     if top == "audit" or (top in RECORDS and len(parts) == 2):
         return True
@@ -128,7 +129,7 @@ def check(seg):
     global base
     seg = [t for t in seg if t != ")"]
     for i, t in enumerate(seg[:-1]):
-        if t in REDIRS and any(damage(x) for x in expand(seg[i + 1])):
+        if t in REDIRS and any(damage(x, new_ok=True) for x in expand(seg[i + 1])):
             block(f"redirection onto {seg[i + 1]}")
     seg = [t for i, t in enumerate(seg) if t not in REDIRS and (i == 0 or seg[i - 1] not in REDIRS)]
     while seg and (seg[0] in WRAP or seg[0] in KEYWORDS or ("=" in seg[0] and not seg[0].startswith("-"))):
@@ -166,7 +167,7 @@ def check(seg):
         for s in args[:-1]:
             if name == "mv" and damage(s):
                 block(f"mv away {s}")
-            into = not no_t and os.path.isdir(os.path.join(base, dst))
+            into = not no_t and os.path.isdir(os.path.join(base, os.path.expanduser(dst)))
             tgt = os.path.join(dst, os.path.basename(s)) if into else dst
             if damage(tgt, new_ok=True):
                 block(f"{name} over {tgt}")
@@ -176,7 +177,7 @@ def check(seg):
             if rest.pop(0) == "-D" and rest:  # find's options come before its roots
                 rest.pop(0)
         roots = itertools.takewhile(lambda a: not a.startswith("-") and a not in ("!", "("), rest)
-        for r in list(roots) or ["."]:  # every starting point
+        for r in [x for a in roots for x in expand(a)] or ["."]:  # every starting point
             if damage(r):
                 block(f"find -delete/-exec under {r}")
 

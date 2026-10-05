@@ -428,3 +428,131 @@ def test_a_python_that_cannot_start_blocks(box):
     )
     assert p.returncode == 2, p.stderr
     assert "couldn't run, so it was blocked" in p.stderr
+
+
+# --- Empty folders, new files in evidence/, ~ destinations, find over a glob ---
+
+
+@pytest.fixture
+def more(box):
+    """The box plus an empty folder, two non-case folders and a case with no records."""
+    root, cases, case, out = box
+    (cases / "staging").mkdir()
+    (cases / "records-no-case-yaml").mkdir()
+    (cases / "records-no-case-yaml" / "findings.json").write_text("x\n")
+    (cases / "not-a-case").mkdir()
+    (cases / "not-a-case" / "file.txt").write_text("x\n")
+    second = cases / "INC-2"
+    (second / "evidence").mkdir(parents=True)
+    (second / "CASE.yaml").write_text("x\n")
+    (out / "findings.json").write_text("x\n")
+    (out / "disk.E01").write_text("x\n")
+    return box, second
+
+
+def _run_more(more, cwd_key, template):
+    box, second = more
+    root, cases, case, out = box
+    cmd = template.format(C=case, SECOND=second, CS=cases, O=out)
+    return run(box, {"C": case, "CS": cases, "O": out}[cwd_key], cmd)
+
+
+MORE_ALLOW = [
+    ("rmdir of an empty folder under the cases root", "O", "rmdir {CS}/staging"),
+    ("rmdir of an empty folder, cwd the cases root", "CS", "rmdir staging"),
+    ("rmdir of an empty folder spelled with ~", "O", "rmdir ~/cases/staging"),
+    ("rm -rf of an empty folder under the cases root", "O", "rm -rf {CS}/staging"),
+    ("mv of an empty folder out of the cases root", "O", "mv {CS}/staging {O}/st"),
+    ("> creates a new file in evidence/", "C", "echo hi > {C}/evidence/newfile.txt"),
+    (">> creates a new file in evidence/", "C", "echo hi >> {C}/evidence/newlog.txt"),
+    (
+        "> creates a new evidence file by ~ path",
+        "O",
+        "echo hi > ~/cases/INC-1/evidence/new2.txt",
+    ),
+    (
+        "> creates the first file in an empty evidence/",
+        "C",
+        "echo hi > {SECOND}/evidence/first.txt",
+    ),
+    ("cp into a case root by ~ path", "O", "cp {O}/x ~/cases/INC-1/"),
+    ("cp into evidence/ by ~ path", "O", "cp {O}/new.E01 ~/cases/INC-1/evidence/"),
+    (
+        "cp into evidence by ~ path, no trailing slash",
+        "O",
+        "cp {O}/new.E01 ~/cases/INC-1/evidence",
+    ),
+    ("mv into evidence/ by ~ path", "O", "mv {O}/new.E01 ~/cases/INC-1/evidence/"),
+    (
+        "find over a glob of reports/ with -delete",
+        "C",
+        "find {C}/reports/* -name '*.tmp' -delete",
+    ),
+]
+MORE_BLOCK = [
+    (
+        "rm -rf of a folder holding a record but no CASE.yaml",
+        "O",
+        "rm -rf {CS}/records-no-case-yaml",
+    ),
+    (
+        "rm -rf of a non-empty folder under the cases root",
+        "O",
+        "rm -rf {CS}/not-a-case",
+    ),
+    ("> onto an existing evidence file", "C", "echo x > {C}/evidence/disk.E01"),
+    (">> onto an existing evidence file", "C", "echo x >> {C}/evidence/disk.E01"),
+    ("> creating a record that is absent", "C", "echo x > {SECOND}/findings.json"),
+    (
+        "cp a record into a case root by ~ path",
+        "O",
+        "cp {O}/findings.json ~/cases/INC-1/",
+    ),
+    (
+        "cp over an evidence file by ~ path",
+        "O",
+        "cp {O}/disk.E01 ~/cases/INC-1/evidence/",
+    ),
+    (
+        "cp -t a record into a case root by ~ path",
+        "O",
+        "cp -t ~/cases/INC-1/ {O}/findings.json",
+    ),
+    ("find over a glob of a case with -delete", "O", "find {C}/* -delete"),
+    (
+        "find over a glob of a case, -name and -delete",
+        "O",
+        "find {C}/* -name '*.json' -delete",
+    ),
+    (
+        "find over a glob of a case with -exec rm",
+        "O",
+        "find {C}/* -name '*.json' -exec rm {{}} +",
+    ),
+    (
+        "find over a glob of the cases root with -delete",
+        "O",
+        "find {CS}/* -name x -delete",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "label,cwd_key,template", MORE_ALLOW, ids=[r[0] for r in MORE_ALLOW]
+)
+def test_allows_empty_folders_new_evidence_and_tilde_destinations(
+    more, label, cwd_key, template
+):
+    p = _run_more(more, cwd_key, template)
+    assert p.returncode == 0 and p.stdout == "" and p.stderr == "", (template, p.stderr)
+
+
+@pytest.mark.parametrize(
+    "label,cwd_key,template", MORE_BLOCK, ids=[r[0] for r in MORE_BLOCK]
+)
+def test_blocks_records_existing_evidence_and_find_over_globs(
+    more, label, cwd_key, template
+):
+    p = _run_more(more, cwd_key, template)
+    assert p.returncode == 2, (template, p.stdout, p.stderr)
+    assert p.stdout == "" and "BLOCKED" in p.stderr
