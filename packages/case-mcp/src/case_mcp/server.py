@@ -688,7 +688,9 @@ def create_server() -> FastMCP:
     # Tool 15: backup_case (CONFIRM)
     # ------------------------------------------------------------------
     @server.tool()
-    def backup_case(destination: str, purpose: str = "") -> dict:
+    def backup_case(
+        destination: str, purpose: str = "", skip_unreadable: bool = False
+    ) -> dict:
         """Back up case data files to a destination directory.
 
         Creates a timestamped backup of everything in the case directory
@@ -703,6 +705,9 @@ def create_server() -> FastMCP:
         Args:
             destination: Directory to create the backup in.
             purpose: Why the backup is being made (audit trail).
+            skip_unreadable: Leave out paths that can't be read or followed
+                and list them in the manifest, instead of stopping. Only when
+                the examiner agrees.
         """
         from vhir_cli.commands.backup import create_backup_data
 
@@ -717,6 +722,7 @@ def create_server() -> FastMCP:
                 destination=destination,
                 examiner=examiner,
                 purpose=purpose,
+                skip_unreadable=skip_unreadable,
             )
 
             # Strip CLI-only fields from MCP response
@@ -738,7 +744,11 @@ def create_server() -> FastMCP:
 
             logged_id = audit.log(
                 tool="backup_case",
-                params={"destination": destination, "purpose": purpose},
+                params={
+                    "destination": destination,
+                    "purpose": purpose,
+                    "skip_unreadable": skip_unreadable,
+                },
                 result_summary=result,
             )
             if logged_id is None:
