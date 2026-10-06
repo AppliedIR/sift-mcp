@@ -23,7 +23,9 @@
 # tar --remove-files, dd of=, >& redirections, brace expansion, variables,
 # backquotes and a "$(...)" in double quotes; an operand after a $(...) inside
 # an argument (rm x$(true) findings.json); options of timeout -s and env -u;
-# a cd inside a subshell or one that fails (it's applied to later commands);
+# an option value placed after the operands of cp, install or ln
+# (--suffix .bak, -m 0644); a cd inside a subshell or one that fails (it's
+# applied to later commands);
 # anything after a # comment, on later lines too. A quoted '>' is read as a
 # redirection (a false block), and a quoted 'x$' before \( can be misread as
 # a $(.
