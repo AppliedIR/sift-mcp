@@ -253,7 +253,6 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
     dest.mkdir(parents=True, exist_ok=True)
 
     # Preserve user state files before extraction
-    user_state_backup = None
     ingested_state_backup = None
     user_state_path = dest / "user_state.json"
     ingested_state_path = dest / "ingested_state.json"
@@ -266,7 +265,6 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
                 user_state = json.load(f)
             if user_state.get("files"):
                 has_user_content = True
-                user_state_backup = user_state_path.read_bytes()
         except (OSError, json.JSONDecodeError):
             pass
 
@@ -342,10 +340,8 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
             _extract_bundle(temp_dir / "rag-index.tar.zst", dest)
             print("  Extraction complete")
 
-            # Restore user state files
-            if user_state_backup is not None:
-                user_state_path.write_bytes(user_state_backup)
-                print("  Restored user_state.json")
+            # Keep the bundle's user_state.json: it lists what the new index
+            # holds, so the refresh below re-embeds the user's documents
             if ingested_state_backup is not None:
                 ingested_state_path.write_bytes(ingested_state_backup)
                 print("  Restored ingested_state.json")
