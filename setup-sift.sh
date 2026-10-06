@@ -1723,7 +1723,7 @@ if [[ -f "$GATEWAY_CONFIG" ]]; then
     MERGE_RAG="${INSTALL_RAG:-false}" \
     MERGE_OPENCTI="${INSTALL_OPENCTI:-false}" \
     MERGE_OPENSEARCH="${INSTALL_OPENSEARCH:-false}" \
-    "$VENV_PYTHON" << 'MERGE_EOF'
+    "$VENV_PYTHON" 3<<< "$OPENCTI_URL"$'\n'"$OPENCTI_TOKEN" << 'MERGE_EOF'
 import os, yaml
 
 config_path = os.environ["MERGE_CONFIG"]
@@ -1764,6 +1764,10 @@ for name, module in expected:
             entry["args"].append("--deferred-tools")
         if name in ("case-mcp", "report-mcp", "forensic-mcp"):
             entry["env"]["VHIR_CASES_DIR"] = "${VHIR_CASES_DIR}"
+        if name == "opencti-mcp":  # the wizard's answers, on fd 3: never in argv or env
+            url, token = (os.fdopen(3).read().split("\n") + ["", ""])[:2]
+            entry["env"]["OPENCTI_URL"] = url or "${OPENCTI_URL}"
+            entry["env"]["OPENCTI_TOKEN"] = token or "${OPENCTI_TOKEN}"
         if name == "forensic-rag-mcp":
             entry["env"]["ANONYMIZED_TELEMETRY"] = "False"
         if name == "opensearch-mcp":

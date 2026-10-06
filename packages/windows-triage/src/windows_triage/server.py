@@ -443,7 +443,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_hash",
-                    description="Check a file hash (MD5/SHA1/SHA256) against the LOLDrivers vulnerable driver database. Returns verdict: SUSPICIOUS (known vulnerable driver) or UNKNOWN (not in LOLDrivers database). For broader threat intel (malware hashes, IOCs), use opencti-mcp lookup_hash instead. For filename-based analysis, use check_file.",
+                    description="Check a file hash (MD5/SHA1/SHA256) against the LOLDrivers vulnerable driver database. Returns verdict: SUSPICIOUS (known vulnerable driver) or UNKNOWN (not in LOLDrivers database). For broader threat intel (malware hashes, IOCs), use opencti-mcp lookup_ioc instead. For filename-based analysis, use check_file.",
                     inputSchema={
                         "type": "object",
                         "properties": {

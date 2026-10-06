@@ -173,7 +173,7 @@ User Question
 ## Investigation Workflows
 
 ### Workflow 1: IOC Investigation
-1. `opencti-mcp lookup_ioc(value="...")` - Check if known malicious
+1. `opencti-mcp lookup_ioc(ioc="...")` - Check if known malicious
 2. If not found: `windows-triage check_hash` (for drivers)
 3. `forensic-rag search(query="IOC type detection", source_ids=["sigma"])`
 4. Synthesize with evidence per FORENSIC_DISCIPLINE.md

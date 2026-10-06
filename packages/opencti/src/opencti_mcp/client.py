@@ -2195,6 +2195,10 @@ class OpenCTIClient:
 
             except Exception as e:
                 logger.warning(f"Failed to get relationships: {e}")
+                context["relationships_unavailable"] = (
+                    f"Relationships query failed ({type(e).__name__}): "
+                    "related_threat_actors, related_malware and mitre_techniques are incomplete."
+                )
 
             return context
 

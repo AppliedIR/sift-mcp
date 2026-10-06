@@ -808,3 +808,9 @@ class OpenCTIMCPServer:
             await self.server.run(
                 read_stream, write_stream, self.server.create_initialization_options()
             )
+
+
+if __name__ == "__main__":
+    from opencti_mcp.__main__ import main
+
+    main()
