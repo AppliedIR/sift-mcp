@@ -10,7 +10,7 @@ from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.types import Tool
 
-from sift_gateway.backends.base import MCPBackend
+from sift_gateway.backends.base import MCPBackend, ToolResult
 
 if sys.version_info < (3, 11):
     from exceptiongroup import BaseExceptionGroup
@@ -196,7 +196,7 @@ class StdioMCPBackend(MCPBackend):
             result = await asyncio.wait_for(
                 self._session.call_tool(name, arguments), timeout=_TOOL_CALL_TIMEOUT
             )
-            return result.content
+            return ToolResult(result.content, is_error=bool(result.isError))
         except (ConnectionError, OSError):
             await self._safe_cleanup(context="call_tool cleanup after error")
             raise

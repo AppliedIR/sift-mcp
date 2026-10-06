@@ -20,7 +20,7 @@ from typing import Any
 
 from mcp.server.lowlevel.server import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
-from mcp.types import TextContent, Tool
+from mcp.types import CallToolResult, TextContent, Tool
 from sift_common.instructions import (
     CASE_MCP,
     FORENSIC_MCP,
@@ -316,6 +316,8 @@ def create_mcp_server(gateway: Any) -> Server:
                 )
             else:
                 contents.append(TextContent(type="text", text=str(item)))
+        if getattr(result, "is_error", False):
+            return CallToolResult(content=contents, isError=True)
         return contents
 
     return server
@@ -435,6 +437,8 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
                     "Gateway audit failed for %s/%s: %s", backend_name, name, exc
                 )
 
+        if getattr(result, "is_error", False):
+            return CallToolResult(content=contents, isError=True)
         return contents
 
     return server

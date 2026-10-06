@@ -5,6 +5,14 @@ from abc import ABC, abstractmethod
 from mcp.types import Tool
 
 
+class ToolResult(list):
+    """A tool call's content list, carrying the backend's MCP ``isError`` flag."""
+
+    def __init__(self, content=(), is_error: bool = False):
+        super().__init__(content)
+        self.is_error = is_error
+
+
 class MCPBackend(ABC):
     """Base class for all MCP backend connections.
 

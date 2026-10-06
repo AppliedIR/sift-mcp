@@ -12,7 +12,7 @@ from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
 
-from sift_gateway.backends.base import MCPBackend
+from sift_gateway.backends.base import MCPBackend, ToolResult
 
 if sys.version_info < (3, 11):
     from exceptiongroup import BaseExceptionGroup
@@ -225,7 +225,7 @@ class HttpMCPBackend(MCPBackend):
                     self._session.call_tool(name, arguments),
                     timeout=_TOOL_CALL_TIMEOUT,
                 )
-                return result.content
+                return ToolResult(result.content, is_error=bool(result.isError))
             except (
                 ConnectionError,
                 OSError,
