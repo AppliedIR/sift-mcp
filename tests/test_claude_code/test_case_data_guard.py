@@ -619,6 +619,11 @@ ABOVE_ALLOW = [
     ("rm -rf of a folder whose name is a prefix of the cases folder", "rm -rf ~/case"),
     ("grep -r over home", "grep -r foo ~"),
     ("find -delete under a folder in home", "find ~/scratch -name '*.tmp' -delete"),
+    ("du of home", "du -sh ~"),
+    ("tar of home into a file outside", "tar czf {O}/home.tgz ~"),
+    ("cp -r of home to a folder outside", "cp -r ~ {O}/home-copy"),
+    ("stat of home", "stat ~"),
+    ("sudo ls of /", "sudo ls /"),
 ]
 
 
@@ -633,3 +638,39 @@ def test_blocks_slash_and_directories_above_the_cases_root(above, label, templat
 def test_allows_other_work_in_home_and_reads_from_above(above, label, template):
     p = _run_above(above, template)
     assert p.returncode == 0 and p.stdout == "" and p.stderr == "", (template, p.stderr)
+
+
+@pytest.fixture
+def deeper(box):
+    """The box with a second cases root two folders down in home."""
+    root, cases, case, out = box
+    deep = root / "work" / "team" / "cases"
+    (deep / "INC-2" / "audit").mkdir(parents=True)
+    (deep / "INC-2" / "findings.json").write_text("[]\n")
+    (root / "work" / "other").mkdir()
+    return (root, deep, deep / "INC-2", out)
+
+
+@pytest.mark.parametrize(
+    "expect,template",
+    [
+        (2, "rm -rf ~/work"),
+        (2, "rm -rf ~/work/team"),
+        (2, "mv ~/work /tmp/w"),
+        (2, "find ~/work -name findings.json -delete"),
+        (0, "rm -rf ~/work/other"),
+        (0, "ls ~/work/team"),
+    ],
+    ids=[
+        "rm -rf two folders above the cases root",
+        "rm -rf of the cases root's parent",
+        "mv of a folder above the cases root",
+        "find -delete from a folder above the cases root",
+        "rm -rf of a sibling folder",
+        "ls of the cases root's parent",
+    ],
+)
+def test_a_deeper_cases_root_protects_each_folder_above_it(deeper, expect, template):
+    root, cases, case, out = deeper
+    p = run(deeper, out, template)
+    assert p.returncode == expect, (template, p.stdout, p.stderr)
