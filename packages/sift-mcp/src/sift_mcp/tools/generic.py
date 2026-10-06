@@ -11,6 +11,7 @@ from sift_mcp.security import (
     get_output_flags,
     is_denied,
     sanitize_extra_args,
+    validate_case_data_targets,
     validate_input_path,
     validate_output_path,
     validate_rm_targets,
@@ -77,6 +78,7 @@ def run_command(
     # rm-specific: allow execution but protect evidence directories
     if binary == "rm":
         validate_rm_targets(command[1:])
+    validate_case_data_targets(command)
 
     # Validate any arguments that look like file paths
     output_flags = get_output_flags()

@@ -104,15 +104,124 @@ def validate_rm_targets(args: list[str]) -> None:
         if resolved == "/":
             raise ValueError("Blocked: rm targeting filesystem root")
         for protected in _get_protected_dirs():
-            if resolved == protected or resolved.startswith(protected + "/"):
+            if (
+                resolved == protected
+                or resolved.startswith(protected + "/")
+                or protected.startswith(resolved.rstrip("/") + "/")
+            ):
                 raise ValueError(
                     f"Blocked: rm in protected directory '{protected}'." + _RM_GUIDANCE
                 )
         case_dir = resolve_case_dir()
         if case_dir:
             case_resolved = str(Path(case_dir).resolve())
-            if resolved == case_resolved or resolved.startswith(case_resolved + "/"):
+            if (
+                resolved == case_resolved
+                or resolved.startswith(case_resolved + "/")
+                or case_resolved.startswith(resolved.rstrip("/") + "/")
+            ):
                 raise ValueError("Blocked: rm in case directory." + _RM_GUIDANCE)
+
+
+# Case records, as protected by the Bash case-data guard hook
+# (claude-code/shared/hooks/case-data-guard.sh). Keep the two lists the same.
+_CASE_RECORDS = frozenset(
+    {
+        "findings.json",
+        "timeline.json",
+        "approvals.jsonl",
+        "iocs.json",
+        "evidence.json",
+        "todos.json",
+        "CASE.yaml",
+        "actions.jsonl",
+        "pending-reviews.json",
+    }
+)
+_WRAPPERS = frozenset({"sudo", "nice", "nohup", "time", "timeout", "stdbuf"})
+
+
+def _harms_case_data(path: str, new_ok: bool = False) -> bool:
+    """Whether deleting or overwriting path harms protected case data."""
+    cases = os.path.realpath(
+        os.environ.get("VHIR_CASES_DIR", str(Path.home() / "cases"))
+    )
+    real = os.path.realpath(path)
+    if real == "/" or cases.startswith(real.rstrip("/") + "/"):
+        return True  # an ancestor of the cases root
+    if real != cases and not real.startswith(cases + "/"):
+        return False
+    parts = [x for x in real[len(cases) :].split("/") if x]
+    if not parts:  # the cases root
+        return True
+    if len(parts) == 1:  # a case root, while it holds anything
+        return os.path.isdir(real) and bool(os.listdir(real))
+    top = parts[1]
+    if top == "audit" or (top in _CASE_RECORDS and len(parts) == 2):
+        return True
+    if top == "evidence":
+        if len(parts) == 2:  # evidence/ itself, while it holds anything
+            return os.path.isdir(real) and bool(os.listdir(real))
+        return os.path.lexists(real) or not new_ok
+    return False
+
+
+def validate_case_data_targets(command: list[str]) -> None:
+    """Refuse commands that delete or overwrite case records, audit/ or evidence.
+
+    Moving other files into the case's DELETE/ directory, filing new files
+    into evidence/, and reading anything stay allowed. A best-effort check of
+    the listed commands (no shell runs here, so there are no redirections).
+    """
+    cmd = list(command)
+    while cmd and os.path.basename(cmd[0]) in _WRAPPERS:
+        w = os.path.basename(cmd.pop(0))
+        while cmd and (
+            cmd[0].startswith("-")
+            or "=" in cmd[0]
+            or (w == "timeout" and cmd[0][:1].isdigit())
+        ):
+            o = cmd.pop(0)
+            if (w, o) in (("sudo", "-u"), ("sudo", "-g"), ("nice", "-n")) and cmd:
+                cmd.pop(0)
+    if not cmd:
+        return
+    name = os.path.basename(cmd[0])
+    args, dd, tdir, no_t, it = [], False, None, False, iter(cmd[1:])
+    for a in it:
+        if a == "--" and not dd:
+            dd = True
+        elif not dd and (
+            a == "--no-target-directory"
+            or (a[:2] != "--" and a[:1] == "-" and "T" in a)
+        ):
+            no_t = True
+        elif not dd and a in ("-t", "--target-directory"):
+            tdir = next(it, None)
+        elif not dd and a.startswith("--target-directory="):
+            tdir = a.split("=", 1)[1]
+        elif dd or not a.startswith("-"):
+            args.append(a)
+    if tdir is not None:
+        args.append(tdir)
+    bad = []
+    if name in ("rm", "shred", "unlink", "truncate", "tee"):
+        bad = [a for a in args if _harms_case_data(a, new_ok=name == "tee")]
+    elif name in ("mv", "cp", "install", "ln") and len(args) >= 2:
+        dst = args[-1]
+        into = not no_t and os.path.isdir(dst)
+        for s in args[:-1]:
+            if name == "mv" and _harms_case_data(s):
+                bad.append(s)
+            tgt = os.path.join(dst, os.path.basename(s)) if into else dst
+            if _harms_case_data(tgt, new_ok=True):
+                bad.append(tgt)
+    if bad:
+        raise ValueError(
+            f"Blocked: {name} would delete or overwrite case data at '{bad[0]}'. "
+            "Case records, audit/ and evidence files are protected; move other "
+            "files to the case's DELETE/ directory instead."
+        )
 
 
 _BLOCKED_DIRECTORIES = (

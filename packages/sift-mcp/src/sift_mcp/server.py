@@ -127,6 +127,8 @@ def create_server() -> FastMCP:
         fdisk, and python3. Only mkfs, shutdown, kill, and raw socket
         tools (nc/ncat) are blocked. Tools in the forensic catalog
         get enriched responses with caveats and corroboration suggestions.
+        Deleting or overwriting case records, audit/ or evidence files is refused;
+        bash -c, python -c, dd and a tool's own output options are not checked.
 
         Args:
             command: Command as list of strings (e.g., ["AmcacheParser", "-f", "Amcache.hve", "--csv", "/tmp/out"]).

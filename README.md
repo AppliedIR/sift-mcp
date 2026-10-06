@@ -368,6 +368,7 @@ Additional protections:
 - Argument sanitization — shell metacharacters blocked
 - Path validation — kernel interfaces (/proc, /sys, /dev) blocked for input
 - `rm` protection — case directories protected from deletion
+- Case-data protection — commands that would delete or overwrite case records, `audit/` or evidence files are refused (rm, mv, cp, install, ln, tee, truncate, shred, unlink, also under sudo, nice, nohup, time, timeout and stdbuf); `bash -c`, `python -c`, `dd` and a tool's own output options are not checked
 - Output truncation — large output capped
 - Audit trail — every execution logged with audit ID
 
