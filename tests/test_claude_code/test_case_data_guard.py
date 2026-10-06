@@ -566,3 +566,70 @@ def test_blocks_records_existing_evidence_and_find_over_globs(
     p = _run_more(more, cwd_key, template)
     assert p.returncode == 2, (template, p.stdout, p.stderr)
     assert p.stdout == "" and "BLOCKED" in p.stderr
+
+
+# --- / and the directories above the cases root ---
+
+
+@pytest.fixture
+def above(box):
+    """The box plus files in its home (the box root, which holds the cases root)."""
+    root, cases, case, out = box
+    (root / "scratch" / "x").mkdir(parents=True)
+    (root / "a").write_text("x\n")
+    (root / "case").mkdir()  # its name is a prefix of "cases"; it isn't above it
+    return box
+
+
+def _run_above(above, template):
+    root, cases, case, out = above
+    return run(above, out, template.format(CS=cases, O=out))
+
+
+ABOVE_BLOCK = [
+    ("rm -rf of home, which holds the cases root", "rm -rf ~"),
+    ("rm -rf of home with a trailing slash", "rm -rf ~/"),
+    ("rm -rf of the directory above home", "rm -rf ~/.."),
+    ("rm -rf of /", "rm -rf /"),
+    ("rm -rf of everything under /", "rm -rf /*"),
+    ("rm -rf of the cases root's parent spelled with ..", "rm -rf {CS}/.."),
+    ("rm -rf .. from a folder in home", "cd ~/scratch && rm -rf .."),
+    ("mv of home elsewhere", "mv ~ /tmp/x"),
+    ("cp -rT onto home", "cp -rT x ~"),
+    ("find from home with -delete", "find ~ -name findings.json -delete"),
+    ("find from / with -exec rm", "find / -name '*.json' -exec rm {{}} +"),
+    ("sudo rm -rf of home", "sudo rm -rf ~"),
+    ("sudo rm -rf of /", "sudo rm -rf /"),
+    ("sudo mv of home elsewhere", "sudo mv ~ /tmp/x"),
+    ("sudo cp -rT onto home", "sudo cp -rT x ~"),
+    # Accepted over-block: find's predicates aren't evaluated, as for a case root
+    (
+        "over-block: find from home with -exec grep",
+        "find ~ -name '*.py' -exec grep -l x {{}} +",
+    ),
+]
+ABOVE_ALLOW = [
+    ("rm -rf of a folder in home, outside the cases root", "rm -rf ~/scratch/x"),
+    ("ls of home", "ls ~"),
+    ("cd to home", "cd ~ && ls -la"),
+    ("rename a file in home", "mv ~/a ~/b"),
+    ("find from home without -delete or -exec", "find ~ -name x"),
+    ("find from / without -delete or -exec", "find / -name x -print"),
+    ("cp of a file into home", "cp {O}/x ~/"),
+    ("rm -rf of a folder whose name is a prefix of the cases folder", "rm -rf ~/case"),
+    ("grep -r over home", "grep -r foo ~"),
+    ("find -delete under a folder in home", "find ~/scratch -name '*.tmp' -delete"),
+]
+
+
+@pytest.mark.parametrize("label,template", ABOVE_BLOCK, ids=[r[0] for r in ABOVE_BLOCK])
+def test_blocks_slash_and_directories_above_the_cases_root(above, label, template):
+    p = _run_above(above, template)
+    assert p.returncode == 2, (template, p.stdout, p.stderr)
+    assert p.stdout == "" and "BLOCKED" in p.stderr and "couldn't" not in p.stderr
+
+
+@pytest.mark.parametrize("label,template", ABOVE_ALLOW, ids=[r[0] for r in ABOVE_ALLOW])
+def test_allows_other_work_in_home_and_reads_from_above(above, label, template):
+    p = _run_above(above, template)
+    assert p.returncode == 0 and p.stdout == "" and p.stderr == "", (template, p.stderr)

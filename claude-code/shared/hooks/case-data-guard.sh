@@ -10,7 +10,9 @@
 # audit/, every existing file in evidence/ (and evidence/ while non-empty),
 # each non-empty case root and the cases root. Everything else is allowed:
 # other files, reports/, work/, .outputs/, extractions/, filing new files into
-# evidence/, and moving unprotected files into DELETE/.
+# evidence/, and moving unprotected files into DELETE/. / and every directory
+# above the cases root (such as ~) are protected as wholes: find with -exec or
+# -delete rooted at one is blocked whatever its predicates.
 #
 # Blocked on a protected path: rm, rmdir, shred, unlink, truncate; mv from or
 # onto it; cp, install or ln onto it; > >> >| &> onto it; find rooted at it (or
@@ -85,8 +87,8 @@ def rel(p):
 def damage(p, new_ok=False):
     """Whether deleting or overwriting p touches protected case data."""
     parts, real = rel(p)
-    if parts is None:
-        return False
+    if parts is None:  # outside: only / and the directories above the cases root
+        return real == "/" or cases.startswith(real.rstrip("/") + "/")
     if not parts:  # the cases root
         return True
     if len(parts) == 1:  # a case root (a plain file beside the cases isn't one)
