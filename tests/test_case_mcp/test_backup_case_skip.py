@@ -53,3 +53,33 @@ def test_backup_case_skip_option_finishes_and_lists_the_paths(case_dir, tmp_path
         (Path(result["backup_path"]) / "backup-manifest.json").read_text()
     )
     assert {s["path"] for s in manifest["skipped"]} == want
+
+
+def test_backup_case_still_works_with_a_vhir_cli_without_the_skip_option(
+    case_dir, tmp_path, monkeypatch
+):
+    from vhir_cli.commands import backup as B
+
+    real = B.create_backup_data
+
+    def older(case_dir, destination, examiner, *, purpose="", **kw):
+        assert "skip_unreadable" not in kw
+        return real(case_dir, destination, examiner, purpose=purpose, **kw)
+
+    monkeypatch.setattr(B, "create_backup_data", older)
+    (case_dir / "work" / "gone.txt").unlink()
+    (case_dir / "work" / "loop").unlink()
+    assert "error" not in _call(destination=str(tmp_path / "out"))
+
+
+def test_the_skip_option_against_a_vhir_cli_without_it_fails_naming_it(
+    case_dir, tmp_path, monkeypatch
+):
+    from vhir_cli.commands import backup as B
+
+    def older(case_dir, destination, examiner, *, purpose=""):
+        raise AssertionError("not reached")
+
+    monkeypatch.setattr(B, "create_backup_data", older)
+    with pytest.raises(TypeError, match="skip_unreadable"):
+        _call(destination=str(tmp_path / "out"), skip_unreadable=True)

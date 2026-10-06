@@ -722,7 +722,8 @@ def create_server() -> FastMCP:
                 destination=destination,
                 examiner=examiner,
                 purpose=purpose,
-                skip_unreadable=skip_unreadable,
+                # only when asked: an older vhir-cli has no such keyword
+                **({"skip_unreadable": True} if skip_unreadable else {}),
             )
 
             # Strip CLI-only fields from MCP response
