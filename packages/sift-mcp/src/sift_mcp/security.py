@@ -175,8 +175,9 @@ def validate_case_data_targets(command: list[str]) -> None:
     Not checked: a wrapper option that takes a value (timeout -s KILL,
     stdbuf -o 0, sudo --user), an attached or combined -t (-t<dir>, -ft <dir>),
     an option value placed after the operands of cp, install or ln
-    (--suffix .bak, -m 0644), and an evidence file that is a symlink to a file
-    outside the cases dir.
+    (--suffix .bak, -m 0644), a single-operand ln (the link is created in the
+    current folder), and an evidence file that is a symlink to a file outside
+    the cases dir.
     """
     cmd = list(command)
     while cmd and os.path.basename(cmd[0]) in _WRAPPERS:
