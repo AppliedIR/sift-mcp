@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import os
 import tarfile
 from pathlib import Path
 
@@ -75,6 +76,18 @@ def test_a_link_that_points_out_of_the_destination_is_refused(tmp_path):
     with pytest.raises(tarfile.FilterError):
         _module()._extract_bundle(src, dest)
     assert list(outside.iterdir()) == []
+
+
+def test_a_link_to_an_absolute_path_is_refused(tmp_path):
+    dest = tmp_path / "index"
+    dest.mkdir()
+    link = tarfile.TarInfo("link")
+    link.type = tarfile.SYMTYPE
+    link.linkname = "/etc/passwd"
+    src = _bundle(tmp_path / "evil.tar.zst", [link])
+    with pytest.raises(tarfile.FilterError):
+        _module()._extract_bundle(src, dest)
+    assert not os.path.lexists(dest / "link")
 
 
 def test_a_well_formed_bundle_still_unpacks(tmp_path):
