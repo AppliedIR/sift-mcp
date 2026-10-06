@@ -154,15 +154,15 @@ def _verify_checksums(temp_dir: Path) -> bool:
 
 def _extract_bundle(src: Path, dest: Path) -> None:
     """Extract a .tar.zst archive to dest directory."""
-    import sys
-
     import zstandard as zstd
 
     dctx = zstd.ZstdDecompressor()
     with open(src, "rb") as compressed:
         with dctx.stream_reader(compressed) as reader:
             with tarfile.open(fileobj=reader, mode="r|") as tar:
-                if sys.version_info >= (3, 12):
+                # The "data" filter refuses members that leave dest: Python 3.12+,
+                # and the 3.10.12+/3.11.4+ backports
+                if hasattr(tarfile, "data_filter"):
                     tar.extractall(path=dest, filter="data")
                 else:
                     tar.extractall(path=dest)
