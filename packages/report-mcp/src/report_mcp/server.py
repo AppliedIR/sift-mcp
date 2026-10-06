@@ -667,7 +667,7 @@ def _reconcile_verification(
 
     # Compare counts excluding auto-extracted IOCs (they don't go through approval)
     non_ioc_ledger = [
-        e for e in ledger_entries if not e.get("id", "").startswith("IOC-")
+        e for e in ledger_entries if not e.get("finding_id", "").startswith("IOC-")
     ]
     if len(all_approved) != len(non_ioc_ledger):
         ioc_count = len(ledger_entries) - len(non_ioc_ledger)
