@@ -29,7 +29,7 @@ def _pins(lock: Path) -> list[str]:
 def test_the_cpu_lock_pins_cpu_torch_and_no_cuda_family():
     pins = _pins(CPU)
     torch = [x for x in pins if x.startswith("torch==")]
-    assert "torch==2.14.0+cpu ; sys_platform != 'darwin' \\" in torch
+    assert "torch==2.14.1+cpu ; sys_platform != 'darwin' \\" in torch
     assert not [x for x in pins if FAMILY.match(x)]
     assert [x for x in _pins(GPU) if FAMILY.match(x)]  # the GPU lock's twin has them
     assert "# variant         cpu" in CPU.read_text()
@@ -104,4 +104,4 @@ def test_check_covers_both_locks(tmp_path):
         tmp_path / "wrong", GPU.read_text()
     )  # the GPU lock as the CPU one
     assert wrong.returncode == 1
-    assert "vhir-cpu.lock" in wrong.stderr and "torch==2.14.0+cpu" in wrong.stderr
+    assert "vhir-cpu.lock" in wrong.stderr and "torch==2.14.1+cpu" in wrong.stderr
