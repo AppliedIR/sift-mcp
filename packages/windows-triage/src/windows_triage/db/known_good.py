@@ -418,14 +418,14 @@ class KnownGoodDB:
                 }
                 # Add hash info if present
                 if row[4]:
-                    entry[row[5]] = row[4]  # e.g., entry['md5'] = 'abc...'
+                    entry[row[5]] = (row[4],)  # every baseline hash of this type
                 results.append(entry)
                 seen_ids.add(file_id)
             elif row[4]:
                 # Add additional hash to existing entry
                 for r in results:
                     if r["file_id"] == file_id:
-                        r[row[5]] = row[4]
+                        r[row[5]] = r.get(row[5], ()) + (row[4],)
                         break
 
         # Convert to tuple of frozensets for caching

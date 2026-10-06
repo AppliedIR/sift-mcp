@@ -841,16 +841,19 @@ class WindowsTriageServer:
                     )
 
         # Hash checks (optional) - local baseline validation only
-        if hash_value and validate_hash(hash_value):
+        if hash_value and not validate_hash(hash_value):
+            return {"error": "Invalid hash format", "verdict": "ERROR"}
+        if hash_value:
             hash_normalized = normalize_hash(hash_value)
             algorithm = detect_hash_algorithm(hash_normalized)
 
             # Check for hash mismatch with baseline
-            if baseline_matches and algorithm:
+            # Hashes are compared against the path's baseline on every build; os_version narrows the path match only
+            hash_matches = self.known_good_db.lookup_by_path(normalized_path)
+            if hash_matches and algorithm:
                 baseline_hashes = []
-                for entry in baseline_matches:
-                    if entry.get(algorithm):
-                        baseline_hashes.append(entry[algorithm].lower())
+                for entry in hash_matches:
+                    baseline_hashes.extend(h.lower() for h in entry.get(algorithm, ()))
                 if baseline_hashes and hash_normalized.lower() not in baseline_hashes:
                     findings.append(
                         {

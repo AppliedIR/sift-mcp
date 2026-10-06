@@ -460,13 +460,179 @@ class TestCheckFile:
         # Should flag protected process in wrong location
 
     @pytest.mark.asyncio
-    async def test_invalid_hash_ignored(self, server):
-        """Test that invalid hash format is handled gracefully."""
+    async def test_an_invalid_hash_is_an_error(self, server):
+        """A hash that can't be validated is an error, not a verdict without it."""
         result = await server._check_file(
             "C:\\Windows\\System32\\cmd.exe", hash_value="not-a-valid-hash"
         )
-        # Should still return valid result
-        assert "verdict" in result
+        assert result == {"error": "Invalid hash format", "verdict": "ERROR"}
+
+
+# ============================================================================
+# check_file: a hash is compared with every baseline hash of its path
+# ============================================================================
+
+CMD = "C:\\Windows\\System32\\cmd.exe"
+SVCHOST = "C:\\Windows\\System32\\svchost.exe"
+EXPLORER = "C:\\Windows\\explorer.exe"
+# Builds keep many hashes per file; the shared fixture stores one of each type.
+EXTRA = {
+    "\\windows\\system32\\cmd.exe": [
+        ("4" * 64, "sha256"),
+        ("5" * 64, "sha256"),
+        ("4" * 32, "md5"),
+        ("5" * 32, "md5"),
+        ("4" * 40, "sha1"),
+        ("5" * 40, "sha1"),
+    ],
+    "\\windows\\system32\\svchost.exe": [
+        ("1" * 64, "sha256"),
+        ("2" * 64, "sha256"),
+        ("3" * 64, "sha256"),
+        ("1" * 32, "md5"),
+        ("2" * 32, "md5"),
+        ("1" * 40, "sha1"),
+        ("2" * 40, "sha1"),
+    ],
+    "\\windows\\explorer.exe": [
+        ("6" * 64, "sha256"),
+        ("7" * 64, "sha256"),
+        ("6" * 32, "md5"),
+        ("7" * 32, "md5"),
+        ("6" * 40, "sha1"),
+        ("7" * 40, "sha1"),
+    ],
+}
+BASELINE = (
+    [(CMD, h) for h, _ in EXTRA["\\windows\\system32\\cmd.exe"]]
+    + [(SVCHOST, h) for h, _ in EXTRA["\\windows\\system32\\svchost.exe"]]
+    + [(EXPLORER, h) for h, _ in EXTRA["\\windows\\explorer.exe"]]
+)
+# os_version as hosts spell it, and as the baseline does
+HOST_SPELLINGS = [
+    "Windows 10",
+    "W11_23H2",
+    "Windows 11",
+    "Windows Server 2022",
+    "10.0.22000",
+]
+BASELINE_SPELLINGS = [None, "W10", "W11", "Server2022", "w10_21h2"]
+
+
+@pytest.fixture
+def hash_server(temp_dbs):
+    kg_path, ctx_path = temp_dbs
+    conn = sqlite3.connect(kg_path)
+    for path, hashes in EXTRA.items():
+        row = conn.execute(
+            "SELECT id FROM baseline_files WHERE path_normalized = ?", (path,)
+        ).fetchone()
+        if row is None:
+            directory, name = path.rsplit("\\", 1)
+            conn.execute(
+                "INSERT INTO baseline_files (path_normalized, directory_normalized,"
+                " filename_lower, os_versions) VALUES (?, ?, ?, ?)",
+                (path, directory, name, '["W11_22H2", "W10_21H2"]'),
+            )
+            file_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        else:
+            file_id = row[0]
+        for value, kind in hashes:
+            conn.execute(
+                "INSERT INTO baseline_hashes (hash_value, hash_type, file_id) VALUES (?, ?, ?)",
+                (value, kind, file_id),
+            )
+    conn.commit()
+    conn.close()
+    config = Config(
+        known_good_db=kg_path,
+        context_db=ctx_path,
+        skip_db_validation=True,
+        cache_size=0,
+    )
+    return WindowsTriageServer(config=config)
+
+
+def _mismatch(result):
+    return any(f.get("type") == "hash_mismatch" for f in result.get("findings", []))
+
+
+class TestHashAgainstEveryBaselineHash:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("path, value", BASELINE)
+    async def test_every_baseline_hash_of_a_path_matches(
+        self, hash_server, path, value
+    ):
+        result = await hash_server._check_file(path, hash_value=value)
+        assert not _mismatch(result), result
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("path", [CMD, SVCHOST])
+    @pytest.mark.parametrize("os_version", HOST_SPELLINGS + BASELINE_SPELLINGS)
+    async def test_a_foreign_hash_is_flagged_however_the_os_is_spelled(
+        self, hash_server, path, os_version
+    ):
+        result = await hash_server._check_file(
+            path, hash_value="0" * 64, os_version=os_version
+        )
+        assert result["verdict"] == "SUSPICIOUS" and _mismatch(result), result
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("os_version", HOST_SPELLINGS + BASELINE_SPELLINGS)
+    async def test_an_earlier_stored_hash_matches_however_the_os_is_spelled(
+        self, hash_server, os_version
+    ):
+        result = await hash_server._check_file(
+            SVCHOST, hash_value="1" * 64, os_version=os_version
+        )
+        assert result["verdict"] != "SUSPICIOUS" and not _mismatch(result), result
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", ["9" * 64, "9" * 32, "9" * 40])
+    async def test_a_hash_outside_the_baseline_is_flagged(self, hash_server, value):
+        result = await hash_server._check_file(CMD, hash_value=value)
+        assert result["verdict"] == "SUSPICIOUS" and _mismatch(result), result
+
+    @pytest.mark.asyncio
+    async def test_another_files_baseline_hash_is_flagged(self, hash_server):
+        result = await hash_server._check_file(CMD, hash_value="6" * 64)  # explorer's
+        assert result["verdict"] == "SUSPICIOUS" and _mismatch(result), result
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "SHA256: " + "0" * 64,
+            "SHA256: " + "4" * 64,
+            "0x" + "4" * 64,
+            "nothex",
+            "sha256:\t" + "0" * 64,
+        ],
+        ids=[
+            "labelled foreign",
+            "labelled baseline",
+            "0x prefix",
+            "not hex",
+            "prefix and a tab",
+        ],
+    )
+    async def test_a_hash_it_cannot_read_is_an_error(self, hash_server, value):
+        result = await hash_server._check_file(CMD, hash_value=value)
+        assert result == {"error": "Invalid hash format", "verdict": "ERROR"}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", ["0" * 64, "sha256:" + "0" * 64])
+    async def test_a_readable_foreign_hash_is_flagged(self, hash_server, value):
+        result = await hash_server._check_file(CMD, hash_value=value)
+        assert result["verdict"] == "SUSPICIOUS" and _mismatch(result), result
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "value", ["4" * 64, "", None], ids=["baseline", "empty", "none"]
+    )
+    async def test_a_baseline_or_absent_hash_reads_as_before(self, hash_server, value):
+        result = await hash_server._check_file(CMD, hash_value=value)
+        assert "error" not in result and not _mismatch(result), result
 
 
 # ============================================================================
