@@ -172,6 +172,9 @@ def validate_case_data_targets(command: list[str]) -> None:
     Moving other files into the case's DELETE/ directory, filing new files
     into evidence/, and reading anything stay allowed. A best-effort check of
     the listed commands (no shell runs here, so there are no redirections).
+    Not checked: a wrapper option that takes a value (timeout -s KILL,
+    stdbuf -o 0, sudo --user), an attached or combined -t (-t<dir>, -ft <dir>),
+    and an evidence file that is a symlink to a file outside the cases dir.
     """
     cmd = list(command)
     while cmd and os.path.basename(cmd[0]) in _WRAPPERS:
