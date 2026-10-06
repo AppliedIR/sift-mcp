@@ -1,6 +1,7 @@
 """REST API routes for /api/v1/."""
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -311,8 +312,16 @@ async def restart_service(request: Request) -> JSONResponse:
 async def create_join_code(request: Request) -> JSONResponse:
     """POST /api/v1/setup/join-code — generate a one-time join code.
 
-    Requires bearer token auth (authenticated examiner).
+    Only the gateway owner's key (the first api_keys entry, the one
+    `vhir setup join-code` sends) may mint one. Single-user mode has no keys.
     """
+    api_keys = getattr(request.app.state.gateway, "_api_keys", None) or {}
+    token = request.headers.get("authorization", "")[7:].strip()
+    if api_keys and not hmac.compare_digest(token, next(iter(api_keys))):
+        return JSONResponse(
+            {"error": "Only the gateway owner can create join codes"},
+            status_code=403,
+        )
     expires_hours = 2
     body = await request.body()
     if body:
