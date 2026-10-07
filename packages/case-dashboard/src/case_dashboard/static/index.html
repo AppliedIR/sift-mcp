@@ -1974,7 +1974,8 @@ function switchTab(tabName) {
 function escapeHtml(s) {
   const d = document.createElement('div');
   d.textContent = s;
-  return d.innerHTML.replace(/'/g, '&#39;');
+  // Quotes too: the result also goes inside quoted attributes
+  return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function escapeJsString(s) {
