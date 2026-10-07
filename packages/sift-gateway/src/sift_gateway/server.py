@@ -47,6 +47,7 @@ from sift_gateway.audit_helpers import (
     _truncate_params,
 )
 from sift_gateway.backends import MCPBackend, create_backend
+from sift_gateway.backends.base import in_own_task
 from sift_gateway.backends.http_backend import HttpMCPBackend
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import (
@@ -107,6 +108,9 @@ class Gateway:
         # Backends a re-join replaced that were started in another task: kept
         # referenced so they're never finalised from the wrong task.
         self._retired: list[MCPBackend] = []
+        # Backends the loader started, by config: only its task may stop them
+        self._hot: dict[str, dict] = {}
+        self._reloaded: dict[str, asyncio.Event] = {}
         self._audit = AuditWriter(mcp_name="sift-gateway")
 
         # Create backend instances from config
@@ -277,7 +281,7 @@ class Gateway:
                 backend.last_tool_call = time.monotonic()
                 return
             logger.info("Lazy-starting backend: %s", backend_name)
-            await asyncio.wait_for(backend.start(), timeout=60.0)
+            await asyncio.wait_for(in_own_task(backend.start()), timeout=60.0)
             backend.last_tool_call = time.monotonic()
             await self._build_tool_map()
 
@@ -326,7 +330,9 @@ class Gateway:
                         continue  # the loader is replacing it
                     if not backend.started:
                         try:
-                            await asyncio.wait_for(backend.start(), timeout=30.0)
+                            await asyncio.wait_for(
+                                in_own_task(backend.start()), timeout=30.0
+                            )
                             logger.info("Late-started backend: %s", name)
                             await self._build_tool_map()
                             logger.info(
@@ -410,6 +416,10 @@ class Gateway:
                     if prev is not None and dynamic.get(name) is prev:
                         del dynamic[name]
                         await _close_in_this_task(prev)
+                    if conf is None:  # a stop: closed above, nothing to load
+                        self._pending_backends.pop(name, None)
+                        self._reloaded[name].set()
+                        continue
                     loaded = False
                     for attempt in range(6):
                         if attempt > 0:
@@ -420,6 +430,7 @@ class Gateway:
                             await bk.start()
                             await self._build_tool_map()
                             dynamic[name] = bk
+                            self._hot[name] = conf
                             loaded = True
                             logger.info("Loaded backend: %s", name)
                             break
@@ -454,6 +465,8 @@ class Gateway:
                         ) as exc:
                             logger.warning("Backend %s not restored: %s", name, exc)
                     self._pending_backends.pop(name, None)
+                    if name in self._reloaded:
+                        self._reloaded[name].set()
                     if not loaded:
                         logger.warning(
                             "Could not load %s after retries — "
@@ -463,6 +476,15 @@ class Gateway:
         finally:
             for bk in reversed(list(dynamic.values())):
                 await _close_in_this_task(bk)
+
+    async def reload_backend(self, name: str, conf: dict | None) -> None:
+        """Have the loader stop (``conf`` None) or reload a backend it started,
+        in its own task, and wait until it has."""
+        done = self._reloaded.setdefault(name, asyncio.Event())
+        done.clear()
+        self._pending_backends[name] = conf
+        self._reload_event.set()
+        await done.wait()
 
     async def list_tools(self) -> dict[str, str]:
         """Return the current tool map (tool_name -> backend_name)."""

@@ -268,6 +268,91 @@ def test_a_gateway_with_a_joined_backend_shuts_down_cleanly(env, caplog):
     assert no_task_errors(caplog) == []
 
 
+def _service(client: TestClient, name: str, action: str):
+    return client.post(
+        f"/api/v1/services/{name}/{action}",
+        headers={"Authorization": f"Bearer {OWNER}"},
+    )
+
+
+def every_endpoint_answers(client: TestClient, wintools_tool: str) -> None:
+    wintools_answers(client, "/mcp/wintools-mcp", wintools_tool)
+    assert probe(client, "/mcp/other-mcp") == (200, ["other_echo"], "hi")
+
+
+def test_a_service_restart_of_a_joined_backend_keeps_every_endpoint_working(
+    env, caplog
+):
+    other = Remote("other_echo").start()
+    first = Remote("first_echo").start()
+    second = Remote("second_echo").start()
+    env.extend([other, first, second])
+    with TestClient(gateway_app(("other-mcp", other))) as client:
+        join(client, first)
+        wintools_answers(client, "/mcp/wintools-mcp", "first_echo")
+        r = _service(client, "wintools-mcp", "restart")
+        assert r.status_code == 200, r.text
+        every_endpoint_answers(client, "first_echo")
+        join(client, second)  # and a re-join after it still loads
+        every_endpoint_answers(client, "second_echo")
+    assert no_task_errors(caplog) == []
+
+
+def test_a_joined_backend_stopped_and_started_as_a_service_answers_again(env, caplog):
+    other = Remote("other_echo").start()
+    first = Remote("first_echo").start()
+    env.extend([other, first])
+    with TestClient(gateway_app(("other-mcp", other))) as client:
+        join(client, first)
+        wintools_answers(client, "/mcp/wintools-mcp", "first_echo")
+        assert _service(client, "wintools-mcp", "stop").json()["status"] == "stopped"
+        assert probe(client, "/mcp/other-mcp") == (200, ["other_echo"], "hi")
+        assert _service(client, "wintools-mcp", "start").json()["status"] == "started"
+        every_endpoint_answers(client, "first_echo")
+    assert no_task_errors(caplog) == []
+
+
+def test_restarting_every_service_with_a_joined_backend_keeps_every_endpoint_working(
+    env, caplog
+):
+    other = Remote("other_echo").start()
+    first = Remote("first_echo").start()
+    env.extend([other, first])
+    with TestClient(gateway_app(("other-mcp", other))) as client:
+        join(client, first)
+        wintools_answers(client, "/mcp/wintools-mcp", "first_echo")
+        services = client.get(
+            "/api/v1/services", headers={"Authorization": f"Bearer {OWNER}"}
+        ).json()
+        names = [s["name"] for s in services.get("services", services)]
+        assert set(names) >= {"other-mcp", "wintools-mcp"}, services
+        for name in names:  # what `vhir service restart` with no name does
+            assert _service(client, name, "restart").status_code == 200
+        every_endpoint_answers(client, "first_echo")
+    assert no_task_errors(caplog) == []
+
+
+def test_a_stopped_backend_started_again_by_a_call_keeps_every_endpoint_working(
+    env, caplog
+):
+    other = Remote("other_echo").start()
+    first = Remote("first_echo").start()
+    env.extend([other, first])
+    with TestClient(
+        gateway_app(("other-mcp", other), ("wintools-mcp", first))
+    ) as client:
+        assert _service(client, "other-mcp", "stop").json()["status"] == "stopped"
+        # the call starts it again, from the request
+        assert probe(client, "/mcp/other-mcp") == (200, ["other_echo"], "hi")
+        assert probe(client, "/mcp/wintools-mcp") == (200, ["first_echo"], "hi")
+        assert _service(client, "other-mcp", "restart").status_code == 200
+        assert probe(client, "/mcp/other-mcp") == (200, ["other_echo"], "hi")
+        assert _service(client, "other-mcp", "stop").json()["status"] == "stopped"
+        assert _service(client, "other-mcp", "start").json()["status"] == "started"
+        assert probe(client, "/mcp/other-mcp") == (200, ["other_echo"], "hi")
+    assert no_task_errors(caplog) == []
+
+
 # The same lifecycle with in-memory backends, for the steps a live run can't
 # time: what the loader does around a failed re-join, the retry task, and
 # shutdown.

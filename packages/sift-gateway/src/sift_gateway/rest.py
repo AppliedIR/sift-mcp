@@ -17,6 +17,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from sift_gateway.auth import resolve_examiner
+from sift_gateway.backends.base import in_own_task
 from sift_gateway.join import (
     _join_code_lock,
     check_join_rate_limit,
@@ -239,9 +240,16 @@ async def start_service(request: Request) -> JSONResponse:
     backend = gateway.backends[name]
     if backend.started:
         return JSONResponse({"status": "already_running", "name": name})
+    if name in gateway._hot:  # started by the loader: only its task starts it
+        await gateway.reload_backend(name, gateway._hot[name])
+        if not gateway.backends[name].started:
+            return JSONResponse(
+                {"error": f"Failed to start service {name}"}, status_code=500
+            )
+        return JSONResponse({"status": "started", "name": name})
 
     try:
-        await asyncio.wait_for(backend.start(), timeout=30.0)
+        await asyncio.wait_for(in_own_task(backend.start()), timeout=30.0)
     except asyncio.TimeoutError:
         return JSONResponse({"error": f"Start timed out for {name}"}, status_code=504)
     except (Exception, asyncio.CancelledError, BaseExceptionGroup) as e:
@@ -265,9 +273,14 @@ async def stop_service(request: Request) -> JSONResponse:
     backend = gateway.backends[name]
     if not backend.started:
         return JSONResponse({"status": "already_stopped", "name": name})
+    if name in gateway._hot:  # started by the loader: only its task stops it
+        await gateway.reload_backend(name, None)
+    if not gateway.backends[name].started:
+        await gateway._build_tool_map()
+        return JSONResponse({"status": "stopped", "name": name})
 
     try:
-        await asyncio.wait_for(backend.stop(), timeout=10.0)
+        await asyncio.wait_for(in_own_task(backend.stop()), timeout=10.0)
     except asyncio.TimeoutError:
         return JSONResponse({"error": f"Stop timed out for {name}"}, status_code=504)
     except (Exception, asyncio.CancelledError, BaseExceptionGroup) as e:
@@ -289,11 +302,19 @@ async def restart_service(request: Request) -> JSONResponse:
         return JSONResponse({"error": f"Unknown backend: {name}"}, status_code=404)
 
     backend = gateway.backends[name]
+    if name in gateway._hot:  # started by the loader: only its task restarts it
+        await gateway.reload_backend(name, gateway._hot[name])
+        if not gateway.backends[name].started:
+            return JSONResponse(
+                {"error": f"Failed to start service {name} during restart"},
+                status_code=500,
+            )
+        return JSONResponse({"status": "restarted", "name": name})
 
     # Stop if running
     if backend.started:
         try:
-            await asyncio.wait_for(backend.stop(), timeout=10.0)
+            await asyncio.wait_for(in_own_task(backend.stop()), timeout=10.0)
         except (Exception, asyncio.CancelledError, BaseExceptionGroup) as e:
             logger.error("Failed to stop service %s during restart: %s", name, e)
             return JSONResponse(
@@ -303,7 +324,7 @@ async def restart_service(request: Request) -> JSONResponse:
 
     # Start
     try:
-        await asyncio.wait_for(backend.start(), timeout=30.0)
+        await asyncio.wait_for(in_own_task(backend.start()), timeout=30.0)
     except asyncio.TimeoutError:
         await gateway._build_tool_map()
         return JSONResponse({"error": f"Start timed out for {name}"}, status_code=504)
