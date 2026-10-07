@@ -493,8 +493,9 @@ def test_a_former_name_pivots_to_the_machine(case, client):
     (m,) = hi.load(case).machines.values()
     size = (case / hi.OBSERVATIONS).stat().st_size
     rename = {"machine": m.keys[0], "canonical": "SECOND"}
+    # A rename is R's (the host operation); written here as R writes it
     hi.append_decision(
-        case, {"action": "rename", "examiner": "t", "args": rename}, size
+        case, {"action": "rename", "examiner": "t", "args": rename}, size, door="R"
     )
     (case / "findings.json").write_text(
         json.dumps([{"id": "F-tester-001", "title": "x", "host": "FIRST"}])
@@ -678,3 +679,55 @@ def test_one_confirmation_with_a_name_in_two_groups_is_refused_whole(case, clien
     resp = _decide(client, page, "confirm", {"groups": groups})
     assert resp.status_code == 400 and "more than one group" in resp.json()["error"]
     assert _decisions(case) == []
+
+
+class TestTheGuardsRefusalsAreReported:
+    def test_confirm_all_reports_an_item_the_guard_refuses(
+        self, case, client, monkeypatch
+    ):
+        folder(case, "WKS01")
+        folder(case, "WKS02")
+        page = client.get("/api/hosts").json()
+        sent = {}
+
+        def guard(case_dir, record, seen_offset, door="portal"):
+            sent.update(record=record, door=door)
+            return {
+                "size": 0,
+                "appended": 1,
+                "refused": [{"index": 0, "reason": "two machine ids"}],
+            }
+
+        monkeypatch.setattr(hi, "append_decision_items", guard)
+        body = _confirm_all(client, page).json()
+        assert sent["record"]["args"]["proposed"] is True and sent["door"] == "portal"
+        first, second = (i["canonical"] for i in sent["record"]["args"]["machines"])
+        assert [(x["canonical"], x["reason"]) for x in body["skipped"]] == [
+            (first, "two machine ids")
+        ]
+        assert body["confirmed"] == [second]
+
+    def test_start_now_reports_what_the_guard_refused(self, case, client, monkeypatch):
+        u = unit(case, "evidence/WKS01", "WKS01")
+        hg.record_wait(case, "run-1", [u])
+        page = client.get("/api/hosts").json()
+        monkeypatch.setattr(
+            hg,
+            "start_now",
+            lambda *a, **k: {
+                "run_id": "run-1",
+                "machines": [],
+                "refused": [
+                    {
+                        "index": 0,
+                        "reason": "not its unit's machine",
+                        "machine": {"canonical": "WKS01"},
+                    }
+                ],
+            },
+        )
+        body = _decide(client, page, "start_now", {"run_id": "run-1"}).json()
+        assert body["summary"] == "0 started now for run run-1, 1 refused"
+        assert body["skipped"] == [
+            {"canonical": "WKS01", "reason": "not its unit's machine"}
+        ]

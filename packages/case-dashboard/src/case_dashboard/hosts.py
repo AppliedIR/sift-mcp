@@ -361,11 +361,11 @@ def _confirm_all(
     case_dir: Path, state: hi.HostState, examiner: str, args: dict, seen
 ) -> dict:
     """Confirm every group proposed on the page, as proposed then: each one
-    unflagged, named from an artifact and unchanged since, as its own
-    decision. A group that can't be confirmed is skipped with the reason; the
-    others go ahead."""
+    unflagged, named from an artifact and unchanged since. One request of
+    items; a group that can't be confirmed is skipped with the reason, and
+    the others go ahead."""
     page = _state_at(case_dir, state, seen, args.get("seen_decisions"))
-    confirmed, skipped = [], []
+    confirmed, skipped, items = [], [], []
     for g in hp.cached_propose(case_dir, page):
         if all(p in page.bindings for p in g.pairs):
             continue  # nothing waiting in it on the page
@@ -396,22 +396,32 @@ def _confirm_all(
             continue
         waiting = [list(p) for p in g.pairs if p not in state.bindings]
         key = state.machines[g.machine].keys[0] if g.machine else hi.new_machine_key()
-        item = {"key": key, "canonical": name, "pairs": waiting}
-        try:
-            hi.append_decision(
-                case_dir,
-                {
-                    "action": "confirm",
-                    "examiner": examiner,
-                    "origin": "portal",
-                    "args": {"machines": [item]},
-                },
-                seen,
-            )
-        except hi.HostLogError as e:
-            skipped.append({"canonical": name, "pairs": waiting, "reason": str(e)})
-            continue
-        confirmed.append(name)
+        items.append({"key": key, "canonical": name, "pairs": waiting})
+    if items:
+        # One request: the guard checks each item in order under the log lock,
+        # appends those it accepts and reports the others
+        out = hi.append_decision_items(
+            case_dir,
+            {
+                "action": "confirm",
+                "examiner": examiner,
+                "origin": "portal",
+                "args": {"machines": items, "proposed": True},
+            },
+            seen,
+        )
+        refused = {r["index"]: r["reason"] for r in out.get("refused", [])}
+        for i, item in enumerate(items):
+            if i in refused:
+                skipped.append(
+                    {
+                        "canonical": item["canonical"],
+                        "pairs": item["pairs"],
+                        "reason": refused[i],
+                    }
+                )
+            else:
+                confirmed.append(item["canonical"])
     summary = f"{len(confirmed)} confirmed" + (
         f", {len(skipped)} skipped" if skipped else ""
     )
@@ -464,6 +474,15 @@ async def post_host_decision(request: Request) -> JSONResponse:
                 summary = (
                     f"{len(result.get('machines', []))} started now for run {run_id}"
                 )
+                if result.get("refused"):
+                    summary += f", {len(result['refused'])} refused"
+                    result["skipped"] = [
+                        {
+                            "canonical": (r.get("machine") or {}).get("canonical", ""),
+                            "reason": r.get("reason", ""),
+                        }
+                        for r in result["refused"]
+                    ]
             else:
                 if run_id not in state.waits or run_id in state.cancelled:
                     raise hi.HostLogError(
