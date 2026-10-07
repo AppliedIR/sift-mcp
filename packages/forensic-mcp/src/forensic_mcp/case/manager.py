@@ -6,6 +6,7 @@ Local-first: each examiner owns a flat case directory. Case lifecycle
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import hashlib
 import json
@@ -255,6 +256,22 @@ _MAX_EVIDENCE = 5000
 _CHALLENGE_OUTCOMES = {"stands", "revised", "withdrawn"}
 
 
+@contextlib.contextmanager
+def _audit_text(path: Path):
+    """An audit file's lines, decoded one at a time: a line that isn't UTF-8
+    is skipped with a warning, so it can't block every read of the trail."""
+    with open(path, "rb") as f:
+        yield _decoded_lines(f, path)
+
+
+def _decoded_lines(f, path: Path):
+    for n, raw in enumerate(f, 1):
+        try:
+            yield raw.decode("utf-8")
+        except UnicodeDecodeError:
+            logger.warning("Skipped line %d of %s: not UTF-8", n, path.name)
+
+
 def _tool_output_ids(case_dir: Path) -> set[str]:
     """Audit ids in the evidence backends' own audit files (see above)."""
     ids: set[str] = set()
@@ -267,7 +284,7 @@ def _tool_output_ids(case_dir: Path) -> set[str]:
         ):
             continue
         try:
-            with open(jsonl_file, encoding="utf-8") as f:
+            with _audit_text(jsonl_file) as f:
                 for line in f:
                     try:
                         entry = json.loads(line)
@@ -1154,7 +1171,7 @@ class CaseManager:
             if audit_dir.is_dir():
                 for jsonl_file in audit_dir.glob("*.jsonl"):
                     try:
-                        with open(jsonl_file, encoding="utf-8") as f:
+                        with _audit_text(jsonl_file) as f:
                             for line in f:
                                 line = line.strip()
                                 if not line:
@@ -1189,7 +1206,7 @@ class CaseManager:
                     if audit_dir.is_dir():
                         for jsonl_file in audit_dir.glob("*.jsonl"):
                             try:
-                                with open(jsonl_file, encoding="utf-8") as f:
+                                with _audit_text(jsonl_file) as f:
                                     for line in f:
                                         line = line.strip()
                                         if not line:
@@ -1795,7 +1812,7 @@ class CaseManager:
         if audit_dir.is_dir():
             for jsonl_file in audit_dir.glob("*.jsonl"):
                 try:
-                    with open(jsonl_file, encoding="utf-8") as f:
+                    with _audit_text(jsonl_file) as f:
                         for line in f:
                             line = line.strip()
                             if not line:
@@ -2147,7 +2164,7 @@ class CaseManager:
             for jsonl_file in audit_dir.glob("*.jsonl"):
                 source = "HOOK" if jsonl_file.name == "claude-code.jsonl" else "MCP"
                 try:
-                    with open(jsonl_file, encoding="utf-8") as f:
+                    with _audit_text(jsonl_file) as f:
                         for line in f:
                             line = line.strip()
                             if not line:

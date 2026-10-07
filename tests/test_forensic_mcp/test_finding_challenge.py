@@ -388,3 +388,27 @@ def test_an_id_from_an_evidence_backend_counts(case, file):
         {**FINDING, "challenged": {**WITHDRAWN, "skeptic_audit_ids": [CITED]}}
     )
     assert result["status"] == "WITHDRAWN", result
+
+
+def test_a_line_that_isn_t_utf8_doesn_t_block_recording(case):
+    """One damaged line in the trail used to fail every record_finding that
+    read it; now it's skipped with a warning and the rest of the trail counts."""
+    with open(case / "audit" / "sift-mcp.jsonl", "ab") as f:
+        f.write(b'{"audit_id": "x", "tool": "\xff\xfe"}\n')
+    alternative = {
+        "explanation": "A renamed backup tool",
+        "status": "ruled_out",
+        "evidence": "sigcheck: unsigned",
+        "audit_ids": [SKEPTIC],
+    }
+    result = _record(
+        {
+            **FINDING,
+            "alternatives": [alternative],
+            "challenged": {"outcome": "stands", "skeptic_audit_ids": [SKEPTIC]},
+        }
+    )
+    stored = _stored(case, result)
+    assert stored["challenged"]["skeptic_audit_ids"] == [SKEPTIC]
+    assert stored["alternatives"][0]["status"] == "ruled_out"
+    assert stored["provenance"] == "MCP"
