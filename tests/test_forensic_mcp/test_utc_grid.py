@@ -1,7 +1,8 @@
 """Every stored timestamp shape against every bound shape: get_timeline's
 comparator agrees with the true instant on this Python, 3.10 included
-(its fromisoformat takes only 3/6-digit fractions and ±HH:MM). Extreme
-dates that overflow on conversion compare as text instead of crashing.
+(its fromisoformat takes only 3/6-digit fractions and ±HH:MM). A date-only
+end bound includes its whole UTC day. Extreme dates that overflow on
+conversion compare as text instead of crashing.
 """
 
 from __future__ import annotations
@@ -64,7 +65,11 @@ GRID = [(v, b) for v in STORED for b in BOUNDS]
 @pytest.mark.parametrize("value,bound", GRID)
 def test_every_shape_compares_by_instant(value, bound):
     assert _within(value, bound, True) == (_instant(value) >= _instant(bound))
-    assert _within(value, bound, False) == (_instant(value) <= _instant(bound))
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", bound):  # through its whole day
+        before_end = _instant(value) < _instant(bound) + timedelta(days=1)
+    else:
+        before_end = _instant(value) <= _instant(bound)
+    assert _within(value, bound, False) == before_end
 
 
 def test_extreme_dates_dont_abort_a_window(tmp_path, monkeypatch):

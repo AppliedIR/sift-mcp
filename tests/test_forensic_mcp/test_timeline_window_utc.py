@@ -3,7 +3,8 @@
 A −05:00 event inside a Z window was omitted (and a +05:30 event outside it
 included), and a same-second fractional event fell outside a Z bound,
 because the bounds were compared as strings. When either side doesn't parse,
-the comparison stays textual, as it was.
+the comparison stays textual, as it was. A date-only end includes its
+whole UTC day.
 """
 
 from __future__ import annotations
@@ -73,11 +74,11 @@ EVENTS = [
         ),
         ({"start_date": "2023-01-20", "end_date": "2023-01-21"}, ["a", "b", "c"]),
         ({"start_date": "2023-02"}, ["d"]),  # a partial date: compared as text
-        ({"end_date": "2023-01-20"}, []),
+        ({"end_date": "2023-01-20"}, ["a", "b"]),
     ],
     ids=["z window", "date-only window", "partial-date bound", "date-only end"],
 )
-def test_stored_format_windows_are_unchanged(window, kw, want):
+def test_stored_format_windows(window, kw, want):
     assert window(EVENTS, **kw) == want
 
 

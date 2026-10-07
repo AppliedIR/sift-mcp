@@ -17,7 +17,7 @@ import tempfile
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -749,11 +749,19 @@ def _utc(ts: object) -> datetime | None:
 
 
 def _within(ts: object, bound: str, after: bool) -> bool:
-    """Compare instants; when either side doesn't parse, compare as text, as before."""
+    """Compare instants, with a date-only end bound including its whole UTC
+    day; when either side doesn't parse, compare as text, as before."""
     b, v = _utc(bound), _utc(ts)
     if b is None or v is None:
         return ts >= bound if after else ts <= bound
-    return v >= b if after else v <= b
+    if after:
+        return v >= b
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", bound):
+        try:
+            return v < b + timedelta(days=1)
+        except OverflowError:  # the end is 9999-12-31
+            return True
+    return v <= b
 
 
 class CaseManager:

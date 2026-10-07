@@ -11,7 +11,7 @@ import logging
 import os
 import re
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -37,6 +37,44 @@ _ACTIVE_CASE_FILE = Path.home() / ".vhir" / "active_case"
 _MAX_FILENAME = 200
 _MAX_FIELD = 500
 _MAX_REPORT_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+# Duplicated from vhir-cli case_io.py — report-mcp does NOT depend on
+# vhir-cli. Kept in sync manually.
+def _utc(ts: object) -> datetime | None:
+    """An ISO timestamp as an aware UTC datetime (naive read as UTC), or None.
+    The fraction is made 6 digits and ±HHMM gets its colon, for Python 3.10."""
+    if not isinstance(ts, str):
+        return None
+    s = ts[:-1] + "+00:00" if ts.endswith("Z") else ts
+    s = re.sub(r"\.(\d+)", lambda m: "." + (m.group(1) + "000000")[:6], s, count=1)
+    s = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", s)
+    try:
+        dt = datetime.fromisoformat(s)
+        return (
+            dt.astimezone(timezone.utc)
+            if dt.tzinfo
+            else dt.replace(tzinfo=timezone.utc)
+        )
+    except (ValueError, OverflowError):
+        return None
+
+
+def _within(ts: object, bound: str, after: bool) -> bool:
+    """Compare instants, with a date-only end bound including its whole UTC
+    day; when either side doesn't parse, compare as text, as before."""
+    b, v = _utc(bound), _utc(ts)
+    if b is None or v is None:
+        return ts >= bound if after else ts <= bound
+    if after:
+        return v >= b
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", bound):
+        try:
+            return v < b + timedelta(days=1)
+        except OverflowError:  # the end is 9999-12-31
+            return True
+    return v <= b
+
 
 _WRITING_GUIDANCE = """Report Writing Guidance (forensic-specific):
 
@@ -490,11 +528,15 @@ def _generate(
     # Apply date filters (timeline profile)
     if start_date and profile.get("filterable", {}).get("start_date"):
         report_timeline = [
-            t for t in report_timeline if t.get("timestamp", "") >= start_date
+            t
+            for t in report_timeline
+            if _within(t.get("timestamp", ""), start_date, True)
         ]
     if end_date and profile.get("filterable", {}).get("end_date"):
         report_timeline = [
-            t for t in report_timeline if t.get("timestamp", "") <= end_date
+            t
+            for t in report_timeline
+            if _within(t.get("timestamp", ""), end_date, False)
         ]
 
     # Strip internal fields from findings; an approval from before signing
@@ -630,6 +672,7 @@ def create_server() -> FastMCP:
         Optional filters:
         - finding_ids: limit findings profile to specific finding IDs
         - start_date/end_date: limit timeline profile by ISO 8601 date range
+          (compared as instants; a date-only end_date includes that whole day, UTC)
         """
         try:
             if profile not in PROFILES:

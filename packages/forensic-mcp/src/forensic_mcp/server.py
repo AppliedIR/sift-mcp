@@ -382,7 +382,8 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - source: substring match against event source
         - examiner: exact examiner slug
         - start_date: ISO date/datetime lower bound on timestamp
-        - end_date: ISO date/datetime upper bound on timestamp
+        - end_date: ISO date/datetime upper bound on timestamp (a date alone
+          includes that whole day, UTC)
         - event_type: process, network, file, registry, auth, persistence, lateral, execution, other
 
         Pagination:
