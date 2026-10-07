@@ -186,13 +186,10 @@ def sync_examiner_store(
         known = state["files"]
         have = set(collection.get(include=[])["ids"])
 
-        for rel in sorted(known):
-            if rel not in files:
-                ids = known.pop(rel).get("record_ids") or []
-                if ids:
-                    collection.delete(ids=ids)
-                    result.records_removed += len(ids)
-                result.deleted.append(rel)
+        # Every changed file is read and encoded before anything is deleted,
+        # so a model that can't load, or any other encode failure, leaves the
+        # store and its state as they were.
+        changes = []
         for rel, path in sorted(files.items()):
             entry = known.get(rel)
             if entry is None or not set(entry.get("record_ids") or []) <= have:
@@ -201,6 +198,20 @@ def sync_examiner_store(
                 result.modified.append(rel)
             else:
                 continue
+            records = get_document_records(path, source_prefix="user")
+            if records and encode is None:
+                raise RuntimeError("no embedding model to add examiner records")
+            texts = [r["text"] for r in records]
+            changes.append((rel, path, entry, records, encode(texts) if texts else []))
+
+        for rel in sorted(known):
+            if rel not in files:
+                ids = known.pop(rel).get("record_ids") or []
+                if ids:
+                    collection.delete(ids=ids)
+                    result.records_removed += len(ids)
+                result.deleted.append(rel)
+        for rel, path, entry, records, embeddings in changes:
             stale = set((entry or {}).get("record_ids") or [])
             stem = re.compile(rf"^user_{re.escape(_sanitize_id(path.stem))}_\d+$")
             # Ids another file's entry owns stay: same-stem files share ids
@@ -216,16 +227,12 @@ def sync_examiner_store(
                 collection.delete(ids=sorted(stale))
                 result.records_removed += len(stale)
                 have -= stale
-            records = get_document_records(path, source_prefix="user")
             ids = [r["id"] for r in records]
-            if records and encode is None:
-                raise RuntimeError("no embedding model to add examiner records")
             if records:
-                texts = [r["text"] for r in records]
                 collection.add(
                     ids=ids,
-                    documents=texts,
-                    embeddings=encode(texts),
+                    documents=[r["text"] for r in records],
+                    embeddings=embeddings,
                     metadatas=[
                         sanitize_metadata(r.get("metadata", {})) for r in records
                     ],

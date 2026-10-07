@@ -455,6 +455,30 @@ def test_a_download_whose_examiner_sync_fails_extracts_nothing(
     }
 
 
+class _NoModel:
+    def __init__(self, *a, **k):
+        raise OSError("couldn't connect to load the files")
+
+
+@pytest.mark.parametrize("removed", [False, True], ids=["edited", "edited + removed"])
+def test_a_download_whose_model_can_t_load_keeps_every_record(
+    rig, monkeypatch, capsys, removed
+):
+    (rig.know / "notes" / "runbook.md").write_text(NOTE.replace("PsExec", "RDP"))
+    _legacy_install(rig)
+    _refresh(rig)
+    before = _user_unchanged(rig)
+    assert len(before[1]) == 2
+    (rig.know / "notes" / "probe-note.md").write_text(EDITED)
+    if removed:
+        (rig.know / "notes" / "runbook.md").unlink()
+    st = pytest.importorskip("sentence_transformers")
+    monkeypatch.setattr(st, "SentenceTransformer", _NoModel)
+    assert _download(rig, monkeypatch, _bundle(rig)) is False
+    assert "Nothing was downloaded or changed" in capsys.readouterr().out
+    assert _user_unchanged(rig) == before
+
+
 # --- the model guard ------------------------------------------------------
 
 
