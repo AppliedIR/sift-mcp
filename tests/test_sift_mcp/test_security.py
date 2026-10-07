@@ -108,27 +108,35 @@ class TestValidateInputPath:
     """validate_input_path must block access to sensitive system directories."""
 
     def test_blocks_etc_shadow(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
+        with pytest.raises(ValueError, match="under protected path"):
             validate_input_path("/etc/shadow")
 
     def test_blocks_proc_cmdline(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
+        with pytest.raises(ValueError, match="under protected path"):
             validate_input_path("/proc/1/cmdline")
 
     def test_blocks_sys_class(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
+        with pytest.raises(ValueError, match="under protected path"):
             validate_input_path("/sys/class")
 
     def test_blocks_dev_sda(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
+        with pytest.raises(ValueError, match="under protected path"):
             validate_input_path("/dev/sda")
 
     def test_blocks_etc_passwd(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
+        with pytest.raises(ValueError, match="under protected path"):
             validate_input_path("/etc/passwd")
 
+    def test_a_protected_file_is_not_called_a_directory(self):
+        path = os.path.expanduser("~/.claude.json")
+        with pytest.raises(ValueError) as e:
+            validate_input_path(path)
+        assert str(e.value).startswith("Access denied: ")
+        assert f"under protected path '{path}'" in str(e.value)
+        assert "directory" not in str(e.value)
+
     def test_blocks_boot(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
+        with pytest.raises(ValueError, match="under protected path"):
             validate_input_path("/boot/vmlinuz")
 
     def test_allows_home_directory(self):
@@ -165,12 +173,12 @@ class TestValidateInputPath:
         """Symlink pointing to a blocked directory should be blocked."""
         link = tmp_path / "sneaky_link"
         os.symlink("/etc/passwd", str(link))
-        with pytest.raises(ValueError, match="blocked system directory"):
+        with pytest.raises(ValueError, match="under protected path"):
             validate_input_path(str(link))
 
     def test_flag_value_path_validation(self):
         """flag=value arguments should have the value portion validated as a path."""
-        with pytest.raises(ValueError, match="blocked system directory"):
+        with pytest.raises(ValueError, match="under protected path"):
             validate_input_path("--input=/etc/shadow")
 
     def test_flag_value_safe_path(self):

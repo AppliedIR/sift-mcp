@@ -326,7 +326,7 @@ def validate_output_path(path: str) -> str:
 
 
 def validate_input_path(path: str) -> str:
-    """Validate that an input file path is not in a blocked system directory.
+    """Validate that an input file path is not under a protected path.
 
     Resolves symlinks, then checks against a blocklist of sensitive system
     directories. Also parses flag=value arguments and validates the value
@@ -353,6 +353,6 @@ def validate_input_path(path: str) -> str:
                 break  # Allowed exception
             raise ValueError(
                 f"Access denied: path '{path}' resolves to '{resolved}' "
-                f"which is inside blocked system directory '{blocked}'"
+                f"which is under protected path '{blocked}'"
             )
     return resolved
