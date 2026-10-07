@@ -251,6 +251,9 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
     """
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
+    # Every Chroma client in this process must see the same settings: one
+    # opened with telemetry on refuses a later one on the same path
+    os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
     # Preserve user state files before extraction
     ingested_state_backup = None
@@ -369,7 +372,6 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
             if has_user_content:
                 print("\nRe-embedding user documents into downloaded index...")
                 try:
-                    os.environ["ANONYMIZED_TELEMETRY"] = "False"
                     from ..refresh import refresh
 
                     result = refresh(skip_online=True, data_dir=dest)
