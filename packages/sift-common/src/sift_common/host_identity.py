@@ -634,11 +634,11 @@ class _Folder:
                 )
         elif kind == "unit":
             u = rec.get("unit")
-            if isinstance(u, str):
+            if isinstance(u, str):  # what the scan found out about it, latest wins
                 entry = s.units.setdefault(u, {})
-                for k in ("locator", "source", "origin", "registered_via", "label"):
-                    if k in rec:
-                        entry[k] = rec[k]
+                entry.update(
+                    {k: v for k, v in rec.items() if k not in ("kind", "t", "unit")}
+                )
         elif kind == "name":
             p = _pair((rec.get("unit"), rec.get("raw")))
             if p is None:

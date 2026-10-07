@@ -629,3 +629,14 @@ def test_a_short_write_leaves_nothing_a_later_line_could_revive(case, monkeypatc
         "u0",
         "u2",
     ]
+
+
+def test_a_units_scan_details_are_kept(case):
+    hi.append_observations(case, [
+        {"kind": "unit", "unit": "u1", "locator": "evidence/a", "source": "host folder",
+         "machine_guid": "11111111-2222-3333-4444-555555555555"},
+        {"kind": "unit", "unit": "u1", "note": "locked volume: not read"},
+    ])  # fmt: skip
+    unit = hi.load(case).units["u1"]
+    assert unit["machine_guid"] == "11111111-2222-3333-4444-555555555555"
+    assert unit["locator"] == "evidence/a" and unit["note"] == "locked volume: not read"
