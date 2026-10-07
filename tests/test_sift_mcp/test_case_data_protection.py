@@ -301,3 +301,21 @@ def test_moving_its_notes_into_delete_really_moves_them(outside):
 
 def test_rm_of_a_file_in_an_active_case_outside_is_still_refused(outside):
     assert _verdict(["rm", f"{outside['A']}/notes.txt"]) == "refused"
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["mv", "{A}/findings.json", "{A}/DELETE/"],
+        ["truncate", "-s", "0", "{A}/timeline.json"],
+        ["mv", "{P}", "{W}/moved"],
+    ],
+    ids=["a record", "another record", "the folder that holds it"],
+)
+def test_an_active_case_named_through_a_link_is_protected_at_its_real_path(
+    outside, monkeypatch, argv
+):
+    link = f"{outside['H']}/case-link"
+    os.symlink(outside["A"], link)
+    monkeypatch.setenv("VHIR_CASE_DIR", link)
+    assert _verdict(_fmt(argv, outside)) == "refused"

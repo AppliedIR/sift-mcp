@@ -18,6 +18,7 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 OWNER = "vhir_gw_" + "a" * 24
+SECRET = "vhir_gw_" + "e" * 24  # must never reach the log
 GOOD = {
     "gateway": {"host": "127.0.0.1", "port": 4508},
     "api_keys": {OWNER: {"examiner": "owner", "role": "lead"}},
@@ -162,3 +163,12 @@ def test_an_absent_config_is_still_created(gateway):
     r = _join(client, code)
     assert r.status_code == 200
     assert yaml.safe_load(path.read_text())["api_keys"]
+
+
+def test_a_refused_join_logs_no_part_of_the_file(gateway, caplog):
+    client, _, path, code = gateway
+    path.write_text(f"- {SECRET}\n- two\n")  # a list: refused, and holds a token
+    with caplog.at_level("DEBUG"):
+        assert _join(client, code).status_code == 500
+    assert "Join refused" in caplog.text
+    assert SECRET not in caplog.text

@@ -623,7 +623,10 @@ def _read_config_for_join(config_path) -> dict:
     except (yaml.YAMLError, OSError) as e:
         config = e
     if not isinstance(config, dict):
-        logger.error("Join refused: cannot use %s: %s", config_path, config)
+        # The type only: a parsed value (a list, say) can hold the bearer tokens.
+        logger.error(
+            "Join refused: cannot use %s: %s", config_path, type(config).__name__
+        )
         raise HTTPException(
             status_code=500,
             detail="Join refused: gateway.yaml could not be read or parsed. "
