@@ -33,6 +33,8 @@ from .sources import (
     load_disabled_sources,
     load_sources_state,
 )
+from .stores import layout, read_json, read_state, user_dir
+from .utils import resolve_data_dir
 
 logging.basicConfig(level=logging.WARNING, format="%(message)s", stream=sys.stderr)
 logger = logging.getLogger(__name__)
@@ -56,6 +58,10 @@ class StatusResult:
     ingested_documents: list[dict]
     warnings: list[str]
     disabled_sources: list[str]
+    # The examiner's store (user/): document_count stays the shipped count
+    user_document_count: int = 0
+    user_model: str = ""
+    layout: str = ""
 
 
 def get_status(
@@ -74,7 +80,7 @@ def get_status(
     Returns:
         StatusResult with all status information
     """
-    data_dir = data_dir or Path(os.environ.get("RAG_INDEX_DIR", DEFAULT_DATA_DIR))
+    data_dir = resolve_data_dir(data_dir)
     knowledge_dir = knowledge_dir or Path(
         os.environ.get("RAG_KNOWLEDGE_DIR", DEFAULT_KNOWLEDGE_DIR)
     )
@@ -159,19 +165,29 @@ def get_status(
                 }
             )
 
-    # Get watched documents status
-    user_state = load_user_state()
-    for rel_path, info in user_state.get("files", {}).items():
-        result.watched_documents.append(
-            {
-                "file": rel_path,
-                "records": info.get("records", 0),
-                "processed_at": info.get("processed_at", ""),
-            }
-        )
+    # The examiner store, from its commit point
+    result.layout = layout(data_dir)
+    user_meta = read_json(user_dir(data_dir) / "metadata.json")
+    result.user_document_count = int(user_meta.get("record_count") or 0)
+    result.user_model = user_meta.get("model") or ""
+
+    # Get watched documents status, from both stores' state
+    for store, state in (
+        ("shipped", load_user_state(data_dir)),
+        ("user", read_state(user_dir(data_dir) / "user_state.json")),
+    ):
+        for rel_path, info in state.get("files", {}).items():
+            result.watched_documents.append(
+                {
+                    "file": rel_path,
+                    "records": info.get("records", 0),
+                    "processed_at": info.get("processed_at", ""),
+                    "store": store,
+                }
+            )
 
     # Get ingested documents status
-    ingested_state = load_ingested_state()
+    ingested_state = load_ingested_state(data_dir)
     for name, info in ingested_state.get("documents", {}).items():
         result.ingested_documents.append(
             {
@@ -208,6 +224,16 @@ def format_status(status: StatusResult, verbose: bool = False) -> str:
         return "\n".join(lines)
 
     lines.append(f"Index: {status.document_count:,} documents | Model: {status.model}")
+    if status.layout == "two-store":
+        lines.append(
+            f"Your documents: {status.user_document_count:,} records "
+            f"| Model: {status.user_model}"
+        )
+    else:
+        lines.append(
+            "Your documents: not in their own store yet; run "
+            "'python -m rag_mcp.refresh --skip-online' once"
+        )
     if status.install_method:
         method_str = status.install_method
         if status.bundle_tag:
@@ -257,7 +283,9 @@ def format_status(status: StatusResult, verbose: bool = False) -> str:
             if len(file_name) > 35:
                 file_name = "..." + file_name[-32:]
             processed = doc["processed_at"][:10] if doc["processed_at"] else "unknown"
-            lines.append(f"  {file_name:<35} {doc['records']:>8}   {processed}")
+            lines.append(
+                f"  {file_name:<35} {doc['records']:>8}   {processed}  {doc['store']}"
+            )
     else:
         lines.append("  (none)")
 
