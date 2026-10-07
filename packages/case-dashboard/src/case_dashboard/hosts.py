@@ -157,6 +157,7 @@ async def get_hosts(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "obs_offset": state.obs_offset,
+            "dec_offset": state.dec_offset,
             "counts": counts,
             "total": len(machines),
             "page": page,
@@ -290,6 +291,8 @@ def _confirm_items(state: hi.HostState, args: dict) -> list[dict]:
     own name only; renaming it is done with rename, and joining two machines
     is a merge."""
     items = []
+    named: set[tuple[str, str]] = set()
+    machines: set[str] = set()
     for g in args.get("groups") or ():
         if not isinstance(g, dict):
             raise _Refused(400, "each group must be an object")
@@ -307,6 +310,12 @@ def _confirm_items(state: hi.HostState, args: dict) -> list[dict]:
             in_use[m.id] = m
         if not pairs and not in_use:
             raise _Refused(400, "nothing to confirm")
+        # One confirmation is all or nothing: a name or machine in two groups
+        # would be confirmed twice, the second over the first
+        if named & {tuple(p) for p in pairs} or machines & set(in_use):
+            raise _Refused(400, "a name or machine appears in more than one group")
+        named |= {tuple(p) for p in pairs}
+        machines |= set(in_use)
         if len(in_use) > 1:
             names = ", ".join(sorted(m.canonical for m in in_use.values()))
             raise _Refused(
@@ -329,6 +338,84 @@ def _confirm_items(state: hi.HostState, args: dict) -> list[dict]:
     if not items:
         raise _Refused(400, "nothing to confirm")
     return items
+
+
+def _state_at(case_dir: Path, state: hi.HostState, obs_at, dec_at) -> hi.HostState:
+    """The host logs as the page saw them: the fold of each log up to the
+    page's offsets."""
+    if (
+        not (isinstance(obs_at, int) and isinstance(dec_at, int))
+        or min(obs_at, dec_at) < 0
+    ):
+        raise _Refused(400, "confirm all needs the page's two log offsets")
+    if (obs_at, dec_at) == (state.obs_offset, state.dec_offset):
+        return state
+    _, obs = hi._read(Path(case_dir) / hi.OBSERVATIONS)
+    _, dec = hi._read(Path(case_dir) / hi.DECISIONS)
+    if obs_at > len(obs) or dec_at > len(dec):
+        raise _Refused(409, "the page refers to log offsets past the logs' end")
+    return hi.fold(obs[:obs_at], dec[:dec_at])
+
+
+def _confirm_all(
+    case_dir: Path, state: hi.HostState, examiner: str, args: dict, seen
+) -> dict:
+    """Confirm every group proposed on the page, as proposed then: each one
+    unflagged, named from an artifact and unchanged since, as its own
+    decision. A group that can't be confirmed is skipped with the reason; the
+    others go ahead."""
+    page = _state_at(case_dir, state, seen, args.get("seen_decisions"))
+    confirmed, skipped = [], []
+    for g in hp.cached_propose(case_dir, page):
+        if all(p in page.bindings for p in g.pairs):
+            continue  # nothing waiting in it on the page
+        name = page.machines[g.machine].canonical if g.machine else g.canonical
+        reason = ""
+        if g.flags or g.conflicts:
+            reason = "needs the examiner: " + "; ".join([*g.flags, *g.conflicts])
+        elif not all(
+            hi.ARTIFACT in (page.names.get(p) or {}).get("origins", ()) for p in g.pairs
+        ):
+            reason = "not every name was read from evidence"
+        elif any(state.bindings.get(p) != page.bindings.get(p) for p in g.pairs) or (
+            g.machine
+            and (
+                g.machine not in state.machines
+                or state.machines[g.machine].canonical != name
+            )
+        ):
+            reason = "changed since the page"
+        if reason:
+            skipped.append(
+                {
+                    "canonical": name,
+                    "pairs": [list(p) for p in g.pairs],
+                    "reason": reason,
+                }
+            )
+            continue
+        waiting = [list(p) for p in g.pairs if p not in state.bindings]
+        key = state.machines[g.machine].keys[0] if g.machine else hi.new_machine_key()
+        item = {"key": key, "canonical": name, "pairs": waiting}
+        try:
+            hi.append_decision(
+                case_dir,
+                {
+                    "action": "confirm",
+                    "examiner": examiner,
+                    "origin": "portal",
+                    "args": {"machines": [item]},
+                },
+                seen,
+            )
+        except hi.HostLogError as e:
+            skipped.append({"canonical": name, "pairs": waiting, "reason": str(e)})
+            continue
+        confirmed.append(name)
+    summary = f"{len(confirmed)} confirmed" + (
+        f", {len(skipped)} skipped" if skipped else ""
+    )
+    return {"confirmed": confirmed, "skipped": skipped, "summary": summary}
 
 
 async def post_host_decision(request: Request) -> JSONResponse:
@@ -386,23 +473,17 @@ async def post_host_decision(request: Request) -> JSONResponse:
                 result, summary = {}, f"run {run_id} cancelled"
             _audit(case_dir, examiner, action, {"run_id": run_id}, summary)
             return JSONResponse({"ok": True, "summary": summary, **result})
-        if action == "confirm_all":  # every proposed group, each as proposed
-            groups = [
-                {
-                    "pairs": [list(p) for p in g.pairs],
-                    "canonical": state.machines[g.machine].canonical
-                    if g.machine
-                    else g.canonical,
-                    "machine": g.machine or "",
-                }
-                for g in hp.cached_propose(case_dir, state)
-                if any(p not in state.bindings for p in g.pairs)
-            ]
-            items = _confirm_items(state, {"groups": groups})
-            action = "confirm"
-            record_args = {"machines": items}
-            summary = f"{len(items)} confirmed"
-        elif action == "confirm":
+        if action == "confirm_all":
+            result = _confirm_all(case_dir, state, examiner, args, seen)
+            _audit(
+                case_dir,
+                examiner,
+                "confirm_all",
+                {"skipped": len(result["skipped"])},
+                result["summary"],
+            )
+            return JSONResponse({"ok": True, **result})
+        if action == "confirm":
             items = _confirm_items(state, args)
             record_args = {"machines": items}
             summary = f"{len(items)} confirmed"

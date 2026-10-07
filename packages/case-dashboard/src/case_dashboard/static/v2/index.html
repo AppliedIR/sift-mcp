@@ -3915,7 +3915,9 @@ async function hostDecide(action, args) {
       method: 'POST',
       body: JSON.stringify({ action: action, args: args, seen_offset: hostsView.data.obs_offset })
     });
-    showToast(r.summary || 'Saved', 'success');
+    var skipped = (r.skipped || []).map(function(x) { return x.canonical + ': ' + x.reason; });
+    showToast((r.summary || 'Saved') + (skipped.length ? ' \u2014 skipped ' + skipped.join('; ') : ''),
+      skipped.length ? 'warning' : 'success');
   } catch (e) {
     showToast(e.message, 'error');
   }
@@ -3941,7 +3943,7 @@ document.addEventListener('click', async function(ev) {
   if (act === 'page') { hostsView.page = i; renderHosts(); }
   else if (act === 'ppage') { hostsView.ppage = i; renderHosts(); }
   else if (act === 'confirm') { hostDecide('confirm', { groups: [hostGroupArgs(i)] }); }
-  else if (act === 'confirm_all') { hostDecide('confirm_all', {}); }
+  else if (act === 'confirm_all') { hostDecide('confirm_all', { seen_decisions: d.dec_offset }); }
   else if (act === 'not_a_host') { hostDecide('not_a_host', { pairs: d.proposed[i].pairs }); }
   else if (act === 'confirm_machine') { var m = d.machines[i]; hostDecide('confirm', { groups: [{ machine: m.id, canonical: m.canonical }] }); }
   else if (act === 'start_now' || act === 'cancel_run') { hostDecide(act, { run_id: hostsView.runs[i].run_id }); }

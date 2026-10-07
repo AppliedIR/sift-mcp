@@ -206,10 +206,15 @@ class TestDecisions:
 
     def test_confirm_all_proposed(self, case, client):
         for i in range(3):
-            unit(case, f"evidence/WKS0{i}", f"WKS0{i}")
+            folder(case, f"WKS0{i}")
         page = client.get("/api/hosts").json()
         assert page["counts"]["proposed"] == 3
-        assert _decide(client, page, "confirm_all", {}).status_code == 200
+        assert (
+            _decide(
+                client, page, "confirm_all", {"seen_decisions": page["dec_offset"]}
+            ).status_code
+            == 200
+        )
         after = client.get("/api/hosts").json()
         assert (after["counts"]["confirmed"], after["counts"]["proposed"]) == (3, 0)
 
@@ -598,3 +603,78 @@ class TestStartNowAndProposals:
         assert (len(first["proposed"]), first["proposed_total"]) == (50, 60)
         second = client.get("/api/hosts?proposed_page=2").json()
         assert len(second["proposed"]) == 10
+
+
+def _confirm_all(client, page):
+    return _decide(client, page, "confirm_all", {"seen_decisions": page["dec_offset"]})
+
+
+class TestConfirmAllIsPerItem:
+    """Confirm all confirms the page's proposals, each on its own: one that
+    can't be confirmed is skipped and reported, and the rest go ahead."""
+
+    def test_a_name_bound_since_the_page_is_skipped_and_the_rest_confirmed(
+        self, case, client
+    ):
+        a = folder(case, "WKS01")
+        folder(case, "WKS02")
+        page = client.get("/api/hosts").json()
+        hi.get_or_mint(
+            case, a, "WKS01", origin="artifact", evidence="x", canonical="WKS01"
+        )
+        resp = _confirm_all(client, page)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["confirmed"] == ["WKS02"]
+        assert [(s["canonical"], s["reason"]) for s in body["skipped"]] == [
+            ("WKS01", "changed since the page")
+        ]
+
+    def test_a_name_that_arrived_after_the_page_isn_t_included(self, case, client):
+        folder(case, "WKS01")
+        page = client.get("/api/hosts").json()
+        late = folder(case, "LATE")
+        body = _confirm_all(client, page).json()
+        assert body["confirmed"] == ["WKS01"]
+        assert hi.load(case).machine_of_pair(late, "LATE") is None
+
+    def test_a_name_the_ai_gave_is_skipped(self, case, client):
+        u = hi.unit_key("evidence/mem.raw")
+        hi.append_observations(
+            case,
+            [
+                {"kind": "unit", "unit": u, "locator": "evidence/mem.raw"},
+                {
+                    "kind": "name",
+                    "unit": u,
+                    "raw": "GUESS",
+                    "evidence": "x",
+                    "origin": "argument",
+                },
+            ],
+        )
+        folder(case, "WKS01")
+        page = client.get("/api/hosts").json()
+        body = _confirm_all(client, page).json()
+        assert body["confirmed"] == ["WKS01"]
+        (skip,) = body["skipped"]
+        assert skip["canonical"] == "GUESS"
+
+    def test_without_the_page_s_decision_offset_nothing_is_written(self, case, client):
+        folder(case, "WKS01")
+        page = client.get("/api/hosts").json()
+        assert _decide(client, page, "confirm_all", {}).status_code == 400
+        assert _decisions(case) == []
+
+
+def test_one_confirmation_with_a_name_in_two_groups_is_refused_whole(case, client):
+    u = unit(case, "evidence/WKS01", "WKS01")
+    unit(case, "evidence/WKS02", "WKS02")
+    page = client.get("/api/hosts").json()
+    groups = [
+        {"pairs": [[u, "WKS01"]], "canonical": "WKS01"},
+        {"pairs": [[u, "WKS01"]], "canonical": "OTHER"},
+    ]
+    resp = _decide(client, page, "confirm", {"groups": groups})
+    assert resp.status_code == 400 and "more than one group" in resp.json()["error"]
+    assert _decisions(case) == []
