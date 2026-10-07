@@ -26,9 +26,15 @@ HOST_LIST_HINT = (
     "If you have an inventory of the machines in scope, upload it in the Hosts tab "
     "before ingesting; matching hosts then confirm automatically."
 )
+# with the list's own confirmation off (host_proposal.LIST_AUTO_CONFIRM)
+HOST_LIST_HINT_PROPOSED = (
+    "If you have an inventory of the machines in scope, upload it in the Hosts tab "
+    "before ingesting; matching hosts are then proposed for you to confirm."
+)
 REASON_UNCONFIRMED = "not confirmed"
 REASON_AI = "named only by the AI or an unregistered file"
 REASON_NO_NAME = "no host name found"
+REASON_NEEDS_NAME = "needs a name: its only name is not a host"
 
 _RESOLVED = (hi.CONFIRMED, hi.STARTED_NOW)
 _AI = hi.AI_ORIGINS | {"file-name"}
@@ -40,11 +46,16 @@ class RunCancelled(RuntimeError):
 
 def host_list_hint(case_dir: str | os.PathLike) -> str:
     """The host-list encouragement, or "" when the case has a list loaded."""
+    from sift_common import host_proposal
+
+    hint = (
+        HOST_LIST_HINT if host_proposal.LIST_AUTO_CONFIRM else HOST_LIST_HINT_PROPOSED
+    )
     try:
         state = hi.load(case_dir)
     except hi.HostLogError:
-        return HOST_LIST_HINT
-    return "" if state.host_list else HOST_LIST_HINT
+        return hint
+    return "" if state.host_list else hint
 
 
 def unresolved(state: hi.HostState, units) -> list[dict]:
@@ -62,7 +73,19 @@ def unresolved(state: hi.HostState, units) -> list[dict]:
                 {"unit": unit, "locator": locator, "raw": "", "reason": REASON_NO_NAME}
             )
             continue
-        for p in pairs:
+        # a name the examiner marked not a host is resolved, never held
+        rest = [p for p in pairs if p in state.bindings or not _not_a_host(state, p)]
+        if not rest:
+            out.append(
+                {
+                    "unit": unit,
+                    "locator": locator,
+                    "raw": "",
+                    "reason": REASON_NEEDS_NAME,
+                }
+            )
+            continue
+        for p in rest:
             m = state.machine_of_pair(*p)
             if m is not None and m.state in _RESOLVED:
                 continue
@@ -72,6 +95,24 @@ def unresolved(state: hi.HostState, units) -> list[dict]:
                 {"unit": unit, "locator": locator, "raw": p[1], "reason": reason}
             )
     return out
+
+
+def _not_a_host(state: hi.HostState, p) -> bool:
+    return hi.FLAG_NOT_A_HOST in state.pair_flags.get(p, [])
+
+
+def placeholder_name(locator: str) -> str:
+    """The name Start now gives a unit no name of its evidence can give: as a
+    hostless volume is named, `<image>-<digest>`, plus its volume's offset."""
+    import hashlib
+    import re
+
+    base, _, offset = str(locator).partition("@")
+    leaf = re.split(r"[/!]", base)[-1] or "unit"
+    stem = leaf.rsplit(".", 1)[0] if "." in leaf.strip(".") else leaf
+    clean = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip("-.") or "unit"
+    digest = hashlib.sha256(base.encode()).hexdigest()[:8]
+    return f"{clean}-{digest}" + (f"-{offset}" if offset else "")
 
 
 def summary(pending: list[dict]) -> dict:
@@ -93,9 +134,17 @@ def record_wait(case_dir: str | os.PathLike, run_id: str, units) -> None:
     )
 
 
-def start_now(case_dir: str | os.PathLike, run_id: str, examiner: str) -> dict:
+def start_now(
+    case_dir: str | os.PathLike,
+    run_id: str,
+    examiner: str,
+    seen_offset: int | None = None,
+) -> dict:
     """Bind the waiting run's unresolved names to the machines proposed for
-    them, in state ``started-now``. The examiner's, from the Hosts tab."""
+    them, in state ``started-now``; a unit no name can name (none found, or
+    only names the examiner marked not a host) gets its placeholder machine.
+    The examiner's, from the Hosts tab: `seen_offset` is the observation-log
+    offset the page showed."""
     from sift_common import host_proposal
 
     if not examiner:
@@ -105,7 +154,8 @@ def start_now(case_dir: str | os.PathLike, run_id: str, examiner: str) -> dict:
     units = state.waits.get(run_id)
     if units is None:
         raise hi.HostLogError(f"no run {run_id!r} is waiting for host confirmation")
-    pending = {(e["unit"], e["raw"]) for e in unresolved(state, units) if e["raw"]}
+    waiting = unresolved(state, units)
+    pending = {(e["unit"], e["raw"]) for e in waiting if e["raw"]}
     machines: list[dict] = []
     taken: set[str] = set()
 
@@ -116,7 +166,7 @@ def start_now(case_dir: str | os.PathLike, run_id: str, examiner: str) -> dict:
         taken.add(hi.spelling(name))
         return name
 
-    for g in host_proposal.propose(state):
+    for g in host_proposal.cached_propose(root, state):
         pairs = [p for p in g.pairs if p in pending]
         if not pairs:
             continue
@@ -128,21 +178,25 @@ def start_now(case_dir: str | os.PathLike, run_id: str, examiner: str) -> dict:
         machines.append(
             {"key": key, "canonical": canonical, "pairs": [list(p) for p in pairs]}
         )
-        pending -= set(pairs)
-    for p in sorted(pending):  # a name no group holds: its own machine
+    for e in waiting:  # nothing to name it by: its placeholder
+        if e["raw"]:
+            continue
+        name = canonical_for(placeholder_name(e["locator"]))
+        rejected = [
+            list(p) for p in state.names if p[0] == e["unit"] and _not_a_host(state, p)
+        ]
         machines.append(
-            {
-                "key": hi.new_machine_key(),
-                "canonical": canonical_for(p[1]),
-                "pairs": [list(p)],
-            }
-        )
+            {"key": hi.new_machine_key(), "canonical": name,
+             "pairs": [[e["unit"], name], *rejected]}
+        )  # fmt: skip
     record = {
         "action": "start_now",
         "examiner": examiner,
         "args": {"run_id": run_id, "machines": machines},
     }
-    hi.append_decision(root, record, state.obs_offset)
+    hi.append_decision(
+        root, record, state.obs_offset if seen_offset is None else seen_offset
+    )
     return {"run_id": run_id, "machines": machines}
 
 
@@ -151,6 +205,10 @@ def cancel(case_dir: str | os.PathLike, run_id: str, examiner: str) -> None:
     if not examiner:
         raise hi.HostLogError("a cancel needs the examiner who chose it")
     state = hi.load(case_dir)
+    if run_id not in state.waits:
+        raise hi.HostLogError(f"no run {run_id!r} is waiting for host confirmation")
+    if run_id in state.cancelled:
+        raise hi.HostLogError(f"run {run_id!r} is already cancelled")
     hi.append_decision(
         case_dir,
         {"action": "cancel_run", "examiner": examiner, "args": {"run_id": run_id}},

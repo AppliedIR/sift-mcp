@@ -424,6 +424,7 @@ def create_server() -> FastMCP:
                 path=path,
                 examiner=examiner,
                 description=description,
+                registered_via="mcp",  # the AI's: its host names never confirm a machine
             )
             logged_id = audit.log(
                 tool="evidence_register",

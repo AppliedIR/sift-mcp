@@ -301,6 +301,15 @@ class TestEvidenceRegister:
         result = _parse(tools["evidence_register"](path=str(second)))
         assert "error" not in result and "host_list_hint" not in result
 
+    def test_a_file_registered_here_is_marked_as_the_ais(self, case_dir):
+        evidence_file = case_dir["path"] / "evidence" / "c.csv"
+        evidence_file.write_text("Computer\nWKS01\n")
+        srv = create_server()
+        tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
+        _parse(tools["evidence_register"](path=str(evidence_file)))
+        files = json.loads((case_dir["path"] / "evidence.json").read_text())["files"]
+        assert [f.get("registered_via") for f in files] == ["mcp"]
+
     def test_missing_file_returns_error(self, case_dir):
         srv = create_server()
         tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}

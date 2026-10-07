@@ -194,11 +194,126 @@ def test_start_now_needs_a_waiting_run_and_an_examiner(case):
 
 
 def test_a_cancel_is_folded_for_its_run_only(case):
+    u = folder(case, "WKS01", "WKS01")
+    hg.record_wait(case, "run-1", [u])
+    hg.record_wait(case, "run-2", [u])
     hg.cancel(case, "run-1", "ex1")
     state = hi.load(case)
     assert "run-1" in state.cancelled and "run-2" not in state.cancelled
     with pytest.raises(hi.HostLogError, match="examiner"):
         hg.cancel(case, "run-2", "")
+
+
+def test_a_cancel_needs_a_waiting_run_not_yet_cancelled(case):
+    with pytest.raises(hi.HostLogError, match="no run 'run-9' is waiting"):
+        hg.cancel(case, "run-9", "ex1")
+    hg.record_wait(case, "run-1", [folder(case, "WKS01", "WKS01")])
+    hg.cancel(case, "run-1", "ex1")
+    with pytest.raises(hi.HostLogError, match="already cancelled"):
+        hg.cancel(case, "run-1", "ex1")
+
+
+# -- names that can't name a unit
+
+
+def not_a_host(case, unit, raw):
+    hi.append_decision(
+        case,
+        {"action": "not_a_host", "examiner": "ex1", "args": {"pairs": [[unit, raw]]}},
+        hi.load(case).obs_offset,
+    )
+
+
+def test_a_unit_whose_only_name_is_not_a_host_needs_a_name(case):
+    u = unit(
+        case,
+        "evidence/disk.raw@1048576",
+        [("BUILD", "SYSTEM ComputerName", "artifact")],
+    )
+    not_a_host(case, u, "BUILD")
+    (entry,) = pending(case, u)
+    assert entry["raw"] == "" and entry["reason"] == hg.REASON_NEEDS_NAME
+
+
+def test_a_name_marked_not_a_host_never_holds_a_unit_with_other_names(case):
+    u = folder(case, "WKS01", "WKS01")
+    hi.append_observations(case, [{"kind": "name", "unit": u, "raw": "BUILD",
+                                   "evidence": "x.csv host column", "origin": "artifact"}])  # fmt: skip
+    not_a_host(case, u, "BUILD")
+    assert [e["raw"] for e in pending(case, u)] == ["WKS01"]
+
+
+def test_start_now_gives_a_nameless_or_not_a_host_unit_its_placeholder(case):
+    a = unit(
+        case,
+        "evidence/disk.raw@1048576",
+        [("BUILD", "SYSTEM ComputerName", "artifact")],
+    )
+    not_a_host(case, a, "BUILD")
+    b = hi.unit_key("evidence/mem.raw")
+    hi.append_observations(
+        case, [{"kind": "unit", "unit": b, "locator": "evidence/mem.raw"}]
+    )
+    hg.record_wait(case, "run-1", [a, b])
+    out = hg.start_now(case, "run-1", "ex1")
+    state = hi.load(case)
+    assert pending(case, a, b) == []
+    names = sorted(m["canonical"] for m in out["machines"])
+    assert names == sorted([hg.placeholder_name("evidence/disk.raw@1048576"),
+                            hg.placeholder_name("evidence/mem.raw")])  # fmt: skip
+    assert all("BUILD" not in n for n in names)  # never the rejected name
+    m = state.machine_of_pair(a, "BUILD")  # its records go to the placeholder
+    assert m.canonical == hg.placeholder_name("evidence/disk.raw@1048576")
+    assert m.state == hi.STARTED_NOW
+
+
+def test_the_placeholder_is_named_as_a_hostless_volume_is():
+    assert hg.placeholder_name("evidence/disk.raw@22020096").startswith("disk-")
+    assert hg.placeholder_name("evidence/disk.raw@22020096").endswith("-22020096")
+    assert hg.placeholder_name("evidence/disks.zip!d2.E01@0").startswith("d2-")
+    assert hg.placeholder_name("evidence/a.raw") != hg.placeholder_name("other/a.raw")
+
+
+def test_a_not_a_host_name_met_while_ingesting_joins_its_units_machine(case):
+    u = folder(case, "WKS01", "WKS01")
+    confirm(case, k := hi.new_machine_key(), "WKS01", [(u, "WKS01")])
+    hi.append_observations(case, [{"kind": "name", "unit": u, "raw": "BUILD",
+                                   "evidence": "x.csv host column", "origin": "artifact"}])  # fmt: skip
+    not_a_host(case, u, "BUILD")
+    key, canonical = hi.get_or_mint(case, u, "BUILD")
+    assert (key, canonical) == (k, "WKS01")  # never a machine called BUILD
+
+
+def test_start_now_records_the_offset_the_page_showed(case):
+    u = folder(case, "WKS01", "WKS01")
+    hg.record_wait(case, "run-1", [u])
+    page = hi.load(case).obs_offset
+    folder(case, "WKS02", "WKS02")  # arrives after the page was built
+    hg.start_now(case, "run-1", "ex1", seen_offset=page)
+    last = (case / hi.DECISIONS).read_text().splitlines()[-1]
+    import json
+
+    assert json.loads(last)["offset"] == page
+
+
+def test_the_proposal_is_computed_once_per_state_of_the_logs(case, monkeypatch):
+    folder(case, "WKS01", "WKS01")
+    calls = []
+    real = hp.propose
+    monkeypatch.setattr(hp, "propose", lambda state: calls.append(1) or real(state))
+    hp.cached_propose(case)
+    hp.cached_propose(case)
+    assert calls == [1]
+    folder(case, "WKS02", "WKS02")
+    hp.cached_propose(case)
+    assert calls == [1, 1]
+
+
+def test_with_the_lists_confirmation_off_the_hint_says_matches_are_proposed(
+    case, monkeypatch
+):
+    monkeypatch.setattr(hp, "LIST_AUTO_CONFIRM", False)
+    assert hg.host_list_hint(case) == hg.HOST_LIST_HINT_PROPOSED
 
 
 # -- the wait

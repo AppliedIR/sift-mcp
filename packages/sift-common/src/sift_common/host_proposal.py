@@ -75,6 +75,16 @@ FLAG_NEAR = "a near spelling of another name"
 # The host list's own names are kept under one pseudo unit.
 LIST_UNIT = hi.unit_key("the examiner's host list")
 
+# Whether the examiner's host list confirms matching units by itself. Off,
+# its matches are shown as proposals the examiner confirms.
+LIST_AUTO_CONFIRM = True
+FLAG_LISTED = "confirmed by the examiner's host list"
+
+
+def _is_ip(value: str) -> bool:
+    s = hi.spelling(value)
+    return bool(_IPV4.match(s) or (":" in s and _IPV6.match(s)))
+
 
 # --------------------------------------------------------------------------
 # Names
@@ -175,6 +185,9 @@ def near_hints(state: hi.HostState, new_pairs: list[tuple[str, str]]) -> list[di
                 if other != c and _similarity(c, other) >= 0.85:
                     out.append({"kind": "hint", "unit": unit, "raw": raw, "near": other,
                                 "score": round(_similarity(c, other), 2)})  # fmt: skip
+        by_bucket.setdefault((digits, length), set()).add(
+            c
+        )  # and against later new names
     return out
 
 
@@ -267,22 +280,36 @@ def _list_entries(state: hi.HostState) -> list[dict]:
 
 
 def _entry_names(entry: dict) -> list[str]:
-    return [entry["name"], *([entry["fqdn"]] if entry.get("fqdn") else []),
-            *(entry.get("aliases") or [])]  # fmt: skip
+    names = [entry["name"], *([entry["fqdn"]] if entry.get("fqdn") else []),
+             *(entry.get("aliases") or [])]  # fmt: skip
+    return [n for n in names if isinstance(n, str) and n and not _is_ip(n)]
+
+
+def entry_domain(entry: dict) -> str:
+    """The domain a list entry names: its FQDN's, else its name's."""
+    for n in _entry_names(entry):
+        domain = hi.split_name(n)[1]
+        if domain:
+            return domain
+    return ""
 
 
 def list_matches(raw: str, entries: list[dict]) -> list[dict]:
     """The list entries a name matches: spelling-equal to its name, FQDN or
-    an alias, or the same short name where the domains agree (equal, or one
-    side has none)."""
+    an alias, or the same short name where the domains are equal once both
+    have one; an entry's FQDN gives the whole entry its domain. A value that
+    is an IP address is never a host name."""
+    if _is_ip(raw):
+        return []
     s = hi.spelling(raw)
     short, domain = hi.split_name(raw)
     found = []
     for e in entries:
+        ed = entry_domain(e)
         for n in _entry_names(e):
-            en = hi.spelling(n)
-            es, ed = hi.split_name(n)
-            if en == s or (es == short and (not ed or not domain or ed == domain)):
+            if hi.spelling(n) == s or (
+                hi.split_name(n)[0] == short and (not domain or not ed or domain == ed)
+            ):
                 found.append(e)
                 break
     return found
@@ -392,6 +419,9 @@ def propose(state: hi.HostState) -> list[Group]:
                 anchors.append(own[0] if own else None)
             anchors = [a for a in anchors if a]
             for a, b in zip(anchors, anchors[1:], strict=False):
+                guids = {_guid(state, a[0]), _guid(state, b[0])} - {""}
+                if key == "client_id" and len(guids) > 1:
+                    continue  # one collector client, two machines
                 if not close(a[1], b[1]):
                     clone_roots.update({uf.find(a), uf.find(b)})
                 uf.union(a, b, certain=False)
@@ -436,17 +466,11 @@ def propose(state: hi.HostState) -> list[Group]:
             taken.add(hi.spelling(g.canonical))
         result.append(g)
     _list_conflicts(result, pairs, state, entries)
+    # The list confirms per unit, never per group (`list_bindings`); a group
+    # here says which of its units it would confirm.
+    judged = {r["unit"] for r in list_bindings(state, {p[0] for p in pairs})}
     for g in result:
-        waiting = any(p not in state.bindings for p in g.pairs) or (
-            g.machine is not None and state.machines[g.machine].state != hi.CONFIRMED
-        )
-        g.auto_confirm = bool(
-            g.list_entry
-            and not g.flags
-            and not g.conflicts
-            and any(pairs[p].artifact and not pairs[p].ai_only for p in g.pairs)
-            and waiting
-        )
+        g.auto_confirm = bool(judged & {p[0] for p in g.pairs})
     return result
 
 
@@ -534,7 +558,8 @@ def _canonical(g: Group, ps, pairs, taken: set[str]) -> str:
     hive_fqdn = [
         p[1] for p in ps if any("Hostname+Domain" in e for e in pairs[p].evidence)
     ]
-    fqdns = sorted((p[1] for p in ps if "." in p[1]), key=lambda n: (-ps.count(n), n))
+    names = [p[1] for p in ps]
+    fqdns = sorted({n for n in names if "." in n}, key=lambda n: (-names.count(n), n))
     hive_name = [
         p[1] for p in ps if any(e.endswith("ComputerName") for e in pairs[p].evidence)
     ]
@@ -582,8 +607,10 @@ def parse_host_list(text: str) -> list[dict]:
         parts = [x.strip() for x in re.split(r"[,\t ]+", line) if x.strip()]
         if not parts or parts[0].lower() in ("name", "host", "hostname"):
             continue
+        if _is_ip(parts[0]):
+            continue  # an address is never a host name
         entry = {"name": unicodedata.normalize("NFC", parts[0])}
-        if len(parts) > 1:
+        if len(parts) > 1 and not _is_ip(parts[1]):  # an inventory's IP column
             entry["fqdn"] = unicodedata.normalize("NFC", parts[1])
         entries.append(entry)
     return entries
@@ -602,45 +629,308 @@ def upload_host_list(case_dir, text: str, examiner: str) -> dict:
     return {"entries": len(entries), "sha256": digest, **apply_host_list(case_dir)}
 
 
-def apply_host_list(case_dir) -> dict:
-    """Confirm, under the log lock, every group the host list names with no
-    flag and no conflict. A group that joins a machine keeps its canonical,
-    and the list's spelling is recorded as one of its names."""
+def apply_host_list(case_dir, units=None) -> dict:
+    """Confirm, under the log lock, what the examiner's host list names:
+    each of `units` (every unit in the case when None) that `list_bindings`
+    judges. Nothing when the list doesn't confirm by itself."""
     from pathlib import Path
 
+    if not LIST_AUTO_CONFIRM:
+        return {"confirmed": []}
     root = Path(case_dir)
-    confirmed: list[str] = []
     with hi._log_lock(root):
         state = hi.load(root)
-        records: list[dict] = []
-        for g in propose(state):
-            if not g.auto_confirm:
-                continue
-            if g.machine:
-                m = state.machines[g.machine]
-                key, canonical = m.keys[0], m.canonical
-            else:
-                existing = _machine_for_entry(state, g.list_entry)
-                if existing is not None:
-                    key, canonical = existing.keys[0], existing.canonical
-                else:
-                    key, canonical = hi.new_machine_key(), g.canonical
-            for p in g.pairs:  # a bound pair keeps its key: its machine is confirmed
-                records.append({"kind": "bind", "unit": p[0], "raw": p[1],
-                                "key": state.bindings.get(p, key), "canonical": canonical,
-                                "state": hi.CONFIRMED,
-                                "flags": ["confirmed by the examiner's host list"]})  # fmt: skip
-            if hi.spelling(g.list_entry) != hi.spelling(
-                canonical
-            ):  # the list's spelling
-                records.append({"kind": "name", "unit": LIST_UNIT, "raw": g.list_entry,
-                                "evidence": "host list", "origin": "list"})  # fmt: skip
-                records.append({"kind": "bind", "unit": LIST_UNIT, "raw": g.list_entry,
-                                "key": key, "state": hi.CONFIRMED})  # fmt: skip
-            confirmed.append(canonical)
+        if not _list_entries(state):
+            return {"confirmed": []}
+        records = list_bindings(state, units)
         for rec in records:
             hi._append_locked(root / hi.OBSERVATIONS, {"t": hi._now(), **rec})
-    return {"confirmed": sorted(set(confirmed))}
+    return {
+        "confirmed": sorted({r["canonical"] for r in records if r.get("canonical")})
+    }
+
+
+def _guid(state: hi.HostState, unit: str) -> str:
+    return str((state.units.get(unit) or {}).get("machine_guid") or "").lower()
+
+
+def _client(state: hi.HostState, unit: str) -> str:
+    return str((state.units.get(unit) or {}).get("client_id") or "").lower()
+
+
+def _not_a_host(state: hi.HostState, p) -> bool:
+    return hi.FLAG_NOT_A_HOST in state.pair_flags.get(p, [])
+
+
+def _sides(state: hi.HostState, unit: str):
+    """A unit's own pairs and the names it holds for other machines (row
+    columns, forwarded logs), as `propose` tells them apart."""
+    ps = {
+        p: _Pair(p[0], p[1], list(i.get("evidence") or []), set(i.get("origins") or []))
+        for p, i in state.names.items()
+        if p[0] == unit
+    }
+    own = [p for p, x in ps.items() if not x.foreign_by_evidence()]
+    foreign = [
+        p for p, x in ps.items()
+        if x.foreign_by_evidence() and not any(close(p[1], o[1]) for o in own)
+    ]  # fmt: skip
+    own = [p for p in ps if p not in foreign]
+    return ps, own, foreign
+
+
+def _eligible(x: _Pair) -> bool:
+    """A name the list may confirm: artifact evidence the examiner put in the
+    case (never the AI's), and a host name."""
+    return x.artifact and not x.ai_only and not name_flags(x.raw)
+
+
+def list_bindings(state: hi.HostState, units=None) -> list[dict]:
+    """The host list's confirmations, judged per unit (never per proposed
+    group): the bind records to append. A unit's own names confirm to a list
+    entry only when
+      1. each is judged for its unit alone;
+      2. a name that matches is artifact evidence, never the AI's;
+      3. it matches exactly once spelled alike, with equal domains where both
+         have one, and none of the unit's names puts it in another domain;
+      4. the unit carries no flag (near spelling, two domains, a folder name
+         its artifacts contradict, thin evidence, an unusual or non-host name)
+         and no other unit with a different machine id or domain matches the
+         same entry;
+      5. no decision of the examiner's holds any of its names (a machine
+         confirmed, a name not a host);
+      6. the entry names at most one machine, and the unit joins the one
+         already confirmed for it only when its domain, machine id and
+         collector client agree;
+      7. an IP address is never a host name.
+    Names a unit holds for other machines (row columns, forwarded logs) are
+    judged one at a time, the same way."""
+    entries = _list_entries(state)
+    if not entries:
+        return []
+    wanted = set(state_units(state) if units is None else units) - {LIST_UNIT}
+    by_entry_units: dict[
+        str, list[str]
+    ] = {}  # entry -> every unit whose own names match it
+    sides: dict[str, tuple] = {}
+    for unit in state_units(state):
+        sides[unit] = _sides(state, unit)
+        ps, own, _ = sides[unit]
+        for e in {
+            e["name"]
+            for p in own
+            if _eligible(ps[p])
+            for e in list_matches(p[1], entries)
+        }:
+            by_entry_units.setdefault(e, []).append(unit)
+    records: list[dict] = []
+    fresh: dict[
+        str, tuple[str, str]
+    ] = {}  # entry -> (key, canonical) minted in this pass
+    taken: set[str] = set()
+
+    def target(entry: dict, unit: str | None, domains: set[str]):
+        """(key, canonical) the entry confirms to, or None when it can't."""
+        name = entry["name"]
+        if name in fresh:
+            return fresh[name]
+        machines = _entry_machines(state, entry)
+        if len(machines) > 1:
+            return None  # one entry, several machines: the examiner decides
+        if machines:
+            m = machines[0]
+            mdomains = {
+                hi.split_name(n)[1] for n in (m.canonical, *(p[1] for p in m.pairs))
+            }
+            mdomains.discard("")
+            if domains and mdomains and domains != mdomains:
+                return None
+            if unit is not None:
+                munits = {p[0] for p in m.pairs if p[0] != LIST_UNIT}
+                for get in (_guid, _client):
+                    mine = get(state, unit)
+                    theirs = {get(state, u) for u in munits} - {""}
+                    if mine and theirs and theirs != {mine}:
+                        return None
+            return m.keys[0], m.canonical
+        canonical = state.unique_canonical(name)
+        while hi.spelling(canonical) in taken:
+            canonical = f"{name} ({len(taken) + 2})"
+        taken.add(hi.spelling(canonical))
+        fresh[name] = (hi.new_machine_key(), canonical)
+        return fresh[name]
+
+    def bind(pairs, key, canonical, entry_name):
+        for p in pairs:
+            records.append({"kind": "bind", "unit": p[0], "raw": p[1],
+                            "key": state.bindings.get(p, key), "canonical": canonical,
+                            "state": hi.CONFIRMED, "flags": [FLAG_LISTED]})  # fmt: skip
+        if hi.spelling(entry_name) != hi.spelling(canonical) and not any(
+            r.get("unit") == LIST_UNIT and r.get("raw") == entry_name for r in records
+        ):  # the list's spelling, as one of the machine's names
+            records.append({"kind": "name", "unit": LIST_UNIT, "raw": entry_name,
+                            "evidence": "host list", "origin": "list"})  # fmt: skip
+            records.append({"kind": "bind", "unit": LIST_UNIT, "raw": entry_name,
+                            "key": key, "state": hi.CONFIRMED})  # fmt: skip
+
+    for unit in sorted(wanted):
+        if unit not in sides:
+            continue
+        ps, own, foreign = sides[unit]
+        why = _unit_held(state, unit, ps, own, entries, by_entry_units)
+        if why is None:
+            matched = {e["name"]: e for p in own if _eligible(ps[p])
+                       for e in list_matches(p[1], entries)}  # fmt: skip
+            (entry,) = matched.values()
+            domains = {hi.split_name(p[1])[1] for p in own if ps[p].artifact} - {""}
+            held = {state.bindings[p] for p in own if p in state.bindings}
+            machines = {state.key_machine.get(k) for k in held}
+            if len(machines) > 1:
+                pass  # its names hold several machines: the examiner merges them
+            elif machines:  # one unconfirmed machine (new, or started now) holds them
+                m = state.machine_of_key(next(iter(held)))
+                named = entry["name"] in fresh or _entry_machines(state, entry)
+                if not named:  # it becomes the entry's machine, keeping its name
+                    fresh[entry["name"]] = (m.keys[0], m.canonical)
+                    taken.add(hi.spelling(m.canonical))
+                if fresh.get(entry["name"]) == (m.keys[0], m.canonical):
+                    bind([p for p in own if not ps[p].ai_only and not name_flags(p[1])],
+                         m.keys[0], m.canonical, entry["name"])  # fmt: skip
+            else:
+                hit = target(entry, unit, domains)
+                if hit is not None:
+                    bind([p for p in own if not ps[p].ai_only and not name_flags(p[1])],
+                         hit[0], hit[1], entry["name"])  # fmt: skip
+        for p in foreign:  # another machine's name, judged alone
+            x = ps[p]
+            if p in state.bindings or _not_a_host(state, p) or not _eligible(x):
+                continue
+            matched = list_matches(p[1], entries)
+            if len(matched) != 1:
+                continue
+            hit = target(matched[0], None, {hi.split_name(p[1])[1]} - {""})
+            if hit is not None:
+                bind([p], hit[0], hit[1], matched[0]["name"])
+    return records
+
+
+_proposals: dict[str, tuple[tuple, list]] = {}
+
+
+def cached_propose(case_dir, state: hi.HostState | None = None) -> list[Group]:
+    """`propose` of a case, computed once per state of its host logs: for
+    readers (the Hosts tab, Start now), which never append."""
+    from pathlib import Path
+
+    state = state if state is not None else hi.load(case_dir)
+    key = str(Path(case_dir).resolve())
+    at = (state.obs_offset, state.dec_offset, id(state))
+    hit = _proposals.get(key)
+    if hit is not None and hit[0] == at:
+        return hit[1]
+    groups = propose(state)
+    _proposals[key] = (at, groups)
+    return groups
+
+
+def late_list_binding(state: hi.HostState, unit: str, raw: str):
+    """(key, canonical) a name first met while ingesting confirms to, by the
+    same rule as `list_bindings` judges another machine's name: one list
+    entry, matched exactly, a host name, and the entry naming at most one
+    machine, in the name's domain. None otherwise, or with the list's
+    confirmation off."""
+    if not LIST_AUTO_CONFIRM or name_flags(raw):
+        return None
+    matched = list_matches(raw, _list_entries(state))
+    if len(matched) != 1:
+        return None
+    machines = _entry_machines(state, matched[0])
+    if len(machines) > 1:
+        return None
+    if machines:
+        m = machines[0]
+        domain = hi.split_name(raw)[1]
+        theirs = {hi.split_name(n)[1] for n in (m.canonical, *(p[1] for p in m.pairs))}
+        if domain and theirs - {""} and domain not in theirs:
+            return None
+        return m.keys[0], m.canonical
+    return hi.new_machine_key(), state.unique_canonical(matched[0]["name"])
+
+
+def state_units(state: hi.HostState) -> list[str]:
+    return sorted({p[0] for p in state.names} - {LIST_UNIT})
+
+
+def _unit_held(state, unit, ps, own, entries, by_entry_units) -> str | None:
+    """Why the list can't confirm a unit's own names by itself, or None."""
+    eligible = [p for p in own if _eligible(ps[p])]
+    if not eligible:
+        return "no artifact name"
+    if any(_not_a_host(state, p) for p in own):
+        return "the examiner marked a name not a host"
+    bound = [state.machine_of_pair(*p) for p in own if p in state.bindings]
+    if any(m is not None and m.state == hi.CONFIRMED for m in bound):
+        return "a machine the examiner confirmed holds its names"
+    matched = {e["name"]: e for p in eligible for e in list_matches(p[1], entries)}
+    if len(matched) != 1:
+        return (
+            "matches no list entry" if not matched else "matches several list entries"
+        )
+    (entry,) = matched.values()
+    ed = entry_domain(entry)
+    short = {hi.split_name(n)[0] for n in _entry_names(entry)}
+    for p in own:  # a name of the entry's in another domain: another machine
+        s, d = hi.split_name(p[1])
+        if s in short and d and ed and d != ed:
+            return "a name in another domain"
+    # flags on the unit
+    if any(name_flags(p[1]) for p in own if not ps[p].ai_only):
+        return "an unusual or non-host name"
+    hinted = {(h.get("unit"), h.get("raw")) for h in state.hints}
+    if any(p in hinted for p in own):
+        return "a near spelling"
+    shorts: dict[str, set] = {}
+    for p in own:
+        s, d = hi.split_name(p[1])
+        if d:
+            shorts.setdefault(s, set()).add(d)
+    if any(len(ds) > 1 for ds in shorts.values()):
+        return FLAG_DOMAINS
+    folder = [p for p in own if ps[p].folder]
+    artifact = [p for p in own if ps[p].artifact and not name_flags(p[1])]
+    if (
+        folder
+        and artifact
+        and not any(close(f[1], a[1]) for f in folder for a in artifact)
+    ):
+        return FLAG_FOLDER
+    if len({e for p in own for e in ps[p].evidence}) <= 1:
+        return FLAG_THIN
+    # other units matching the same entry with another machine id or domain
+    others = [u for u in by_entry_units.get(entry["name"], []) if u != unit]
+    for get in (_guid, _client):
+        mine = get(state, unit)
+        if mine and any(get(state, u) and get(state, u) != mine for u in others):
+            return "another unit with a different machine id matches the entry"
+    mine_d = {hi.split_name(p[1])[1] for p in own} - {""}
+    for u in others:
+        theirs = {hi.split_name(p[1])[1] for p in state.names if p[0] == u} - {""}
+        if mine_d and theirs and not (mine_d & theirs):
+            return "another unit in a different domain matches the entry"
+    return None
+
+
+def _entry_machines(state: hi.HostState, entry: dict) -> list:
+    """The confirmed machines the list entry already names (never the one
+    the examiner's not-a-host names are kept under)."""
+    found = []
+    for m in state.machines.values():
+        if m.state != hi.CONFIRMED or m.canonical.startswith("unattributed:"):
+            continue  # not a host: the examiner's, never a list entry's
+        names = {m.canonical, *(p[1] for p in m.pairs)}
+        if any(list_matches(n, [entry]) for n in names):
+            found.append(m)
+    return found
 
 
 def _machine_for_entry(state: hi.HostState, entry_name: str | None):

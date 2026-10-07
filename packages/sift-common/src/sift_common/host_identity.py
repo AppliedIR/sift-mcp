@@ -722,16 +722,16 @@ class _Folder:
                     m = self._new_machine(
                         key, canonical or (pairs[0][1] if pairs else key), state
                     )
-                else:
-                    self._set_canonical(m, canonical)
-                    if state == CONFIRMED or m.state == NEW:
-                        m.state = state
+                elif state == CONFIRMED or m.state == NEW:
+                    m.state = state
                 for p in pairs:
                     bound = s.machine_of_pair(*p)
                     if bound is not None and bound.id != m.id:
                         self._absorb(m, bound)
                     elif bound is None:
                         self._bind(p, key)
+                # after absorbing: the name it gives is free of the machines it took in
+                self._set_canonical(m, canonical)
         elif action == "cancel_run":
             run = args.get("run_id")
             if isinstance(run, str):
@@ -896,29 +896,12 @@ def _match_confirmed(state: HostState, raw: str) -> Machine | None:
     return found[0] if len(found) == 1 else None
 
 
-def _match_list(state: HostState, raw: str):
-    """(entry name, its confirmed machine or None) for the one host-list
-    entry a name matches, or None. Where the entry's machine already has a
-    domain, the name must carry the same one."""
+def _late_list_binding(state: HostState, unit: str, raw: str):
+    """(key, canonical) of the one host-list entry a late name confirms to,
+    under the list's one rule (host_proposal.late_list_binding), or None."""
     from sift_common import host_proposal
 
-    entries = [
-        e for e in ((state.host_list or {}).get("entries") or []) if isinstance(e, dict)
-    ]
-    found = host_proposal.list_matches(raw, entries)
-    if len(found) != 1:
-        return None
-    entry = found[0]["name"]
-    machine = host_proposal._machine_for_entry(state, entry)
-    if machine is not None:
-        domains = {
-            split_name(n)[1]
-            for n in (machine.canonical, *(p[1] for p in machine.pairs))
-        }
-        domains.discard("")
-        if domains and split_name(raw)[1] not in domains:
-            return None  # the machine is in another domain: this is another machine
-    return entry, machine
+    return host_proposal.late_list_binding(state, unit, raw)
 
 
 def get_or_mint(
@@ -963,18 +946,26 @@ def get_or_mint(
                     "origin": origin,
                 }
             )
-        match = None if origin in AI_ORIGINS else _match_confirmed(state, raw)
+        if FLAG_NOT_A_HOST in state.pair_flags.get(pair, []):
+            # not a host: its records go with the unit's own machine, never a new one
+            owners = sorted({k for p, k in state.bindings.items() if p[0] == unit})
+            if owners:
+                m = state.machine_of_key(owners[0])
+                records.append(
+                    {"kind": "bind", "unit": unit, "raw": raw, "key": owners[0]}
+                )
+                for rec in records:
+                    _append_locked(root / OBSERVATIONS, {"t": _now(), **rec})
+                return owners[0], m.canonical if m else raw
+        # Only a name the scan never held, read from the evidence, joins a
+        # machine by itself: a held one waits for the examiner at the gate.
+        late = (unit, raw) not in state.names and origin == ARTIFACT
+        match = _match_confirmed(state, raw) if late else None
         listed = (
-            None
-            if match is not None or origin in AI_ORIGINS
-            else _match_list(state, raw)
+            _late_list_binding(state, unit, raw) if late and match is None else None
         )
         if listed is not None:  # a host-list entry the name matches
-            entry_name, machine = listed
-            key = machine.keys[0] if machine else new_machine_key()
-            result = (
-                machine.canonical if machine else state.unique_canonical(entry_name)
-            )
+            key, result = listed
             records.append(
                 {
                     "kind": "bind",
