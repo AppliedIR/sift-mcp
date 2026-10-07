@@ -300,11 +300,7 @@ class TestTimeoutHandling:
         client._effective_timeout = 90
         client._client = None  # Force fresh connection
 
-        mock_pycti_module = MagicMock()
-        mock_api_client_class = MagicMock()
-        mock_pycti_module.OpenCTIApiClient = mock_api_client_class
-
-        with patch.dict("sys.modules", {"pycti": mock_pycti_module}):
+        with patch("opencti_mcp.client.GraphQLClient") as mock_api_client_class:
             client.connect()
 
         # Verify requests_timeout was passed as 90 (the effective, not 60)

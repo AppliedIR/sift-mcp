@@ -4,7 +4,7 @@ This module provides a high-level interface to OpenCTI, abstracting
 the GraphQL API behind simple Python methods.
 
 Security:
-- All queries use pycti's parameterized methods (no SQL/GraphQL injection)
+- All queries send their values as GraphQL variables (no query injection)
 - Connection timeouts prevent hanging
 - Rate limiting prevents abuse
 - Response sizes are bounded
@@ -12,6 +12,7 @@ Security:
 
 from __future__ import annotations
 
+import builtins
 import logging
 import os
 import random
@@ -31,10 +32,9 @@ from .errors import (
     DegradedError,
     QueryError,
     RateLimitError,
-    ValidationError,
-    VersionMismatchError,
 )
 from .feature_flags import get_feature_flags
+from .graphql import GraphQLClient
 from .validation import (
     MAX_QUERY_LENGTH,
     normalize_hash,
@@ -525,7 +525,7 @@ class OpenCTIClient:
 
         Checks every 5 successful requests. Only adapts after 10+ samples
         and when the recommended timeout differs by >25% from current.
-        Updates the pycti client's timeout in-place (no reconnect needed).
+        Updates the GraphQL client's timeout in-place (no reconnect needed).
         """
         self._adapt_success_count += 1
         if self._adapt_success_count % 5 != 0:
@@ -561,7 +561,7 @@ class OpenCTIClient:
         """Execute function with exponential backoff retry.
 
         Args:
-            method_path: Dotted attribute path on the pycti client
+            method_path: Dotted attribute path on the GraphQL client
                 (e.g., "indicator.list"). Resolved fresh each attempt
                 via operator.attrgetter to avoid stale bound methods.
                 Also accepts a callable for backward compatibility.
@@ -655,26 +655,13 @@ class OpenCTIClient:
         raise ConnectionError("Unexpected retry loop exit")
 
     def _connect_probe(self) -> Any:
-        """Bounded-timeout probe client for startup validation only.
-
-        Constructs a pycti client with `perform_health_check=False`
-        (otherwise pycti's own __init__ fires an HTTP health_check that
-        hangs for `requests_timeout` seconds on an unreachable host —
-        verified at pycti/api/opencti_api_client.py:340) and
-        `requests_timeout=_STARTUP_PROBE_TIMEOUT` so any HTTP call we
-        make ourselves bounds at the probe timeout on the socket layer.
-
-        Returns a one-shot client used only by validate_startup. The
-        runtime client built by connect() retains the operator-
-        configured timeout (typically 300s) for actual queries.
-        """
-        from pycti import OpenCTIApiClient
-
-        return OpenCTIApiClient(
+        """A client for startup validation only, whose requests time out
+        within the startup probe timeout, so an unreachable host is reported
+        in seconds. The runtime client built by connect() keeps the
+        configured timeout."""
+        return GraphQLClient(
             self.config.opencti_url,
             self.config.opencti_token.get_secret_value(),
-            log_level="error",
-            perform_health_check=False,
             requests_timeout=_STARTUP_PROBE_TIMEOUT,
             ssl_verify=self.config.ssl_verify,
         )
@@ -718,52 +705,28 @@ class OpenCTIClient:
         - Set ssl_verify=True for remote instances
         - Increase timeout for high-latency connections
         """
-        # Fail-fast on degraded mode BEFORE acquiring the lock or
-        # touching pycti. Tool calls in degraded mode return the
-        # actionable error in <1ms instead of blocking on the runtime
-        # client's full requests_timeout (300s default).
+        # Fail-fast on degraded mode BEFORE acquiring the lock. Tool calls
+        # in degraded mode return the actionable error in <1ms instead of
+        # waiting out the request timeout.
         self._ensure_not_degraded()
 
         with self._client_lock:
-            if self._client is not None:
-                return self._client
-
-            try:
-                from pycti import OpenCTIApiClient
-
-                self._client = OpenCTIApiClient(
-                    self.config.opencti_url,
-                    self.config.opencti_token.get_secret_value(),
-                    log_level="error",
-                    requests_timeout=self._effective_timeout,
-                    ssl_verify=self.config.ssl_verify,
-                )
-                # Version-compatibility enforcement (UAT 2026-04-22):
-                # pycti major must match OpenCTI server major or queries
-                # fail with schema errors (e.g., pycti 7.x sends
-                # AIPrompt fragment that 6.x servers reject). Enforce
-                # at connect time so the operator sees one clear error
-                # instead of per-IOC GRAPHQL_VALIDATION_FAILED noise.
-                # Server-unreachable at check time is tolerated (don't
-                # fail-closed on transient outage) — log-and-continue
-                # path.
-                self._enforce_version_compat(self._client)
-                return self._client
-
-            except VersionMismatchError:
-                # Re-raise the compat error unchanged so callers see
-                # the precise pin instruction, not a generic
-                # ConnectionError.
-                self._client = None
-                raise
-            except ImportError as e:
-                raise ConnectionError(
-                    "pycti not installed. Run: pip install pycti"
-                ) from e
-            except Exception as e:
-                # Don't leak connection details
-                logger.error(f"Failed to connect to OpenCTI: {e}")
-                raise ConnectionError(f"Connection failed: {type(e).__name__}") from e
+            if self._client is None:
+                # No request is made here: the first query reaches the server.
+                try:
+                    self._client = GraphQLClient(
+                        self.config.opencti_url,
+                        self.config.opencti_token.get_secret_value(),
+                        requests_timeout=self._effective_timeout,
+                        ssl_verify=self.config.ssl_verify,
+                    )
+                except Exception as e:
+                    # Don't leak connection details
+                    logger.error(f"Failed to connect to OpenCTI: {e}")
+                    raise ConnectionError(
+                        f"Connection failed: {type(e).__name__}"
+                    ) from e
+            return self._client
 
     def reconnect(self) -> Any:
         """Force reconnection to OpenCTI.
@@ -897,13 +860,9 @@ class OpenCTIClient:
         if skip_connectivity:
             return result
 
-        # Bounded-probe connectivity test (UAT 2026-04-25 fix).
-        # Uses _connect_probe() — perform_health_check=False + bounded
-        # requests_timeout — to avoid pycti's __init__ health_check
-        # hanging for 300s when the server is unreachable.
+        # Bounded-probe connectivity test: _connect_probe()'s requests time
+        # out within the startup probe timeout.
         try:
-            import requests
-
             probe = self._connect_probe()
 
             # _get_opencti_version is the cheapest connectivity probe —
@@ -925,10 +884,7 @@ class OpenCTIClient:
                 },
             )
 
-        except (
-            requests.exceptions.Timeout,
-            requests.exceptions.ConnectionError,
-        ) as e:
+        except (TimeoutError, builtins.ConnectionError) as e:
             # Server unreachable — set degraded mode, return cleanly so
             # the backend stays up. Tools fail-fast per-call via
             # _ensure_not_degraded.
@@ -1014,70 +970,6 @@ class OpenCTIClient:
             logger.debug(f"Could not get OpenCTI version: {e}")
 
         return None
-
-    def _enforce_version_compat(self, client: Any) -> None:
-        """Verify pycti major matches server major; raise on mismatch.
-
-        Called from connect() right after OpenCTIApiClient is
-        instantiated. Fetches `about.version` via the new client and
-        compares to `pycti.__version__`. Transient server-unreachable
-        is tolerated (don't fail-closed on outage); hard mismatch
-        raises VersionMismatchError with a clear operator message.
-
-        UAT 2026-04-22: pycti 7.x queries AIPrompt and other
-        v7-only types, which a 6.x server rejects with
-        GRAPHQL_VALIDATION_FAILED. Enforcing at init turns per-IOC
-        noise into one actionable error.
-        """
-        try:
-            import pycti
-
-            pycti_ver = getattr(pycti, "__version__", "") or ""
-        except Exception:  # noqa: BLE001
-            pycti_ver = ""
-        if not pycti_ver:
-            # Can't read our own pycti version — skip enforcement,
-            # log. Server-side errors will surface per-IOC if real.
-            logger.warning(
-                "pycti.__version__ unreadable; skipping version compat check"
-            )
-            return
-
-        try:
-            about = client.query("query About { about { version } }") or {}
-            server_ver = (about.get("data") or {}).get("about", {}).get("version") or ""
-        except Exception as e:  # noqa: BLE001
-            # Server unreachable at init — don't fail-closed. If the
-            # server is actually unreachable, downstream queries will
-            # surface that separately. Mismatch cases we're trying to
-            # catch only manifest when the server IS reachable.
-            logger.warning(
-                "opencti-mcp: could not fetch server version for compat check: %s", e
-            )
-            return
-
-        if not server_ver or not isinstance(server_ver, str):
-            # Missing or non-string version (e.g. test mocks returning
-            # MagicMock for the query result) — skip enforcement rather
-            # than fail-closed on something we can't interpret.
-            logger.warning(
-                "opencti-mcp: server returned no usable version; skipping compat check"
-            )
-            return
-
-        try:
-            pycti_major = int(pycti_ver.split(".", 1)[0])
-            server_major = int(server_ver.split(".", 1)[0])
-        except (ValueError, IndexError, TypeError):
-            logger.warning(
-                "opencti-mcp: could not parse versions (pycti=%s, server=%s); skipping compat check",
-                pycti_ver,
-                server_ver,
-            )
-            return
-
-        if pycti_major != server_major:
-            raise VersionMismatchError(pycti_ver, server_ver)
 
     def get_server_info(self) -> dict[str, Any]:
         """Get OpenCTI server information.
@@ -2216,7 +2108,7 @@ class OpenCTIClient:
                     "source": "opencti",
                 }
 
-            # Also check observables (may fail on pycti/OpenCTI version mismatch)
+            # Also check observables (may fail on some OpenCTI versions)
             files = []
             try:
                 files = (
@@ -2357,227 +2249,6 @@ class OpenCTIClient:
     # Write Operations (with safety controls)
     # =========================================================================
 
-    def create_indicator(
-        self,
-        name: str,
-        pattern: str,
-        pattern_type: str = "stix",
-        description: str = "",
-        confidence: int = 50,
-        labels: list[str] | None = None,
-    ) -> dict[str, Any]:
-        """Create a new indicator (IOC).
-
-        Safety: Uses enrichment rate limiter (stricter). Creates are logged.
-
-        Args:
-            name: Indicator name
-            pattern: STIX pattern (e.g., "[ipv4-addr:value = '192.168.1.1']")
-            pattern_type: Pattern type (default: "stix")
-            description: Description of the indicator
-            confidence: Confidence level 0-100 (default: 50)
-            labels: Optional labels to apply
-
-        Returns:
-            Created indicator details
-        """
-        # Validate inputs
-        validate_length(name, 256, "name")
-        validate_length(pattern, 2048, "pattern")
-        validate_length(description, 5000, "description")
-
-        if confidence < 0 or confidence > 100:
-            confidence = max(0, min(100, confidence))
-
-        # Use enrichment limiter for writes (more restrictive)
-        self._check_rate_limit(self._enrichment_limiter, "write")
-
-        try:
-            logger.info(f"Creating indicator: {name}")
-
-            result = self._execute_with_retry(
-                "indicator.create",
-                name=name,
-                pattern=pattern,
-                pattern_type=pattern_type,
-                description=description,
-                confidence=confidence,
-                x_opencti_main_observable_type="Unknown",
-            )
-
-            if result:
-                indicator_id = result.get("id", "")
-
-                # Add labels if provided
-                if labels and indicator_id:
-                    for label in labels[:10]:  # Limit labels
-                        try:
-                            self._execute_with_retry(
-                                "stix_domain_object.add_label",
-                                id=indicator_id,
-                                label_name=label,
-                            )
-                        except Exception as e:
-                            logger.warning(f"Failed to add label {label}: {e}")
-
-                return {
-                    "success": True,
-                    "id": indicator_id,
-                    "name": result.get("name", ""),
-                    "pattern": result.get("pattern", "")[:200],
-                    "created": result.get("created", ""),
-                }
-
-            return {"success": False, "error": "No result returned"}
-
-        except Exception as e:
-            logger.error(f"Create indicator failed: {e}")
-            raise QueryError(f"Create indicator failed: {type(e).__name__}") from e
-
-    def create_note(
-        self,
-        content: str,
-        entity_ids: list[str],
-        note_types: list[str] | None = None,
-        confidence: int = 75,
-        likelihood: int | None = None,
-    ) -> dict[str, Any]:
-        """Create a note attached to one or more entities.
-
-        Safety: Uses enrichment rate limiter (stricter). Creates are logged.
-
-        Args:
-            content: Note content (analyst observations)
-            entity_ids: List of entity IDs to attach note to
-            note_types: Note types (e.g., ["analysis", "assessment"])
-            confidence: Confidence level 0-100 (default: 75)
-            likelihood: Likelihood of assessment (1-100, optional)
-
-        Returns:
-            Created note details
-        """
-        # Validate inputs
-        validate_length(content, 10000, "content")
-        if not content.strip():
-            raise ValidationError("Note content cannot be empty")
-        if not entity_ids:
-            raise ValidationError("At least one entity_id is required")
-        if len(entity_ids) > 20:
-            raise ValidationError("Maximum 20 entity_ids allowed")
-
-        if confidence < 0 or confidence > 100:
-            confidence = max(0, min(100, confidence))
-
-        # Use enrichment limiter for writes
-        self._check_rate_limit(self._enrichment_limiter, "write")
-
-        try:
-            logger.info(f"Creating note for {len(entity_ids)} entities")
-
-            # Create the note
-            result = self._execute_with_retry(
-                "note.create",
-                content=content,
-                note_types=note_types or ["analysis"],
-                confidence=confidence,
-                likelihood=likelihood,
-                objects=entity_ids,
-            )
-
-            if result:
-                return {
-                    "success": True,
-                    "id": result.get("id", ""),
-                    "content": result.get("content", "")[:500],
-                    "created": result.get("created", ""),
-                    "attached_to": len(entity_ids),
-                }
-
-            return {"success": False, "error": "No result returned"}
-
-        except Exception as e:
-            logger.error(f"Create note failed: {e}")
-            raise QueryError(f"Create note failed: {type(e).__name__}") from e
-
-    def create_sighting(
-        self,
-        indicator_id: str,
-        sighted_by_id: str,
-        first_seen: str | None = None,
-        last_seen: str | None = None,
-        count: int = 1,
-        description: str = "",
-        confidence: int = 75,
-    ) -> dict[str, Any]:
-        """Create a sighting (detection event).
-
-        Records that an indicator was observed by an identity/organization.
-
-        Safety: Uses enrichment rate limiter (stricter). Creates are logged.
-
-        Args:
-            indicator_id: ID of the indicator that was sighted
-            sighted_by_id: ID of the identity/organization that observed it
-            first_seen: First observation timestamp (ISO format)
-            last_seen: Last observation timestamp (ISO format)
-            count: Number of times sighted (default: 1)
-            description: Sighting description
-            confidence: Confidence level 0-100 (default: 75)
-
-        Returns:
-            Created sighting details
-        """
-        # Validate inputs
-        validate_length(indicator_id, 100, "indicator_id")
-        validate_length(sighted_by_id, 100, "sighted_by_id")
-        validate_length(description, 5000, "description")
-
-        if confidence < 0 or confidence > 100:
-            confidence = max(0, min(100, confidence))
-        if count < 1:
-            count = 1
-
-        # Use enrichment limiter for writes
-        self._check_rate_limit(self._enrichment_limiter, "write")
-
-        try:
-            logger.info(f"Creating sighting: {indicator_id} -> {sighted_by_id}")
-
-            # Use current time if not provided
-            if not first_seen:
-                first_seen = (
-                    datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-                )
-            if not last_seen:
-                last_seen = first_seen
-
-            result = self._execute_with_retry(
-                "stix_sighting_relationship.create",
-                fromId=indicator_id,
-                toId=sighted_by_id,
-                first_seen=first_seen,
-                last_seen=last_seen,
-                count=count,
-                description=description,
-                confidence=confidence,
-            )
-
-            if result:
-                return {
-                    "success": True,
-                    "id": result.get("id", ""),
-                    "first_seen": result.get("first_seen", ""),
-                    "last_seen": result.get("last_seen", ""),
-                    "count": result.get("attribute_count", count),
-                    "created": result.get("created", ""),
-                }
-
-            return {"success": False, "error": "No result returned"}
-
-        except Exception as e:
-            logger.error(f"Create sighting failed: {e}")
-            raise QueryError(f"Create sighting failed: {type(e).__name__}") from e
-
     # =========================================================================
     # Formatting Methods
     # =========================================================================
@@ -2668,7 +2339,7 @@ class OpenCTIClient:
                     else "",
                     "kill_chain_phases": [
                         p.get("phase_name") if isinstance(p, dict) else str(p)
-                        for p in r.get("killChainPhases", [])
+                        for p in (r.get("killChainPhases") or [])
                     ][:10],
                     "platforms": (r.get("x_mitre_platforms") or [])[:10],
                 }
@@ -2863,7 +2534,7 @@ class OpenCTIClient:
                     "contact_information": r.get("contact_information", ""),
                     "sectors": [
                         s.get("name", "")
-                        for s in r.get("sectors", [])
+                        for s in (r.get("sectors") or [])
                         if isinstance(s, dict)
                     ][:5],
                     "labels": self._extract_labels(r),
@@ -2987,28 +2658,28 @@ class OpenCTIClient:
             "labels": self._extract_labels(entity),
             "external_references": [
                 {"source": ref.get("source_name", ""), "url": ref.get("url", "")}
-                for ref in entity.get("externalReferences", [])[:5]
+                for ref in (entity.get("externalReferences") or [])[:5]
             ],
         }
 
         # Type-specific fields
         if entity_type in ("Threat-Actor-Group", "Intrusion-Set"):
-            result["aliases"] = entity.get("aliases", [])[:10]
+            result["aliases"] = (entity.get("aliases") or [])[:10]
             result["sophistication"] = entity.get("sophistication")
             result["resource_level"] = entity.get("resource_level")
             result["primary_motivation"] = entity.get("primary_motivation")
         elif entity_type == "Malware":
-            result["aliases"] = entity.get("aliases", [])[:10]
-            result["malware_types"] = entity.get("malware_types", [])
+            result["aliases"] = (entity.get("aliases") or [])[:10]
+            result["malware_types"] = entity.get("malware_types") or []
             result["is_family"] = entity.get("is_family")
         elif entity_type == "Attack-Pattern":
             result["mitre_id"] = entity.get("x_mitre_id", "")
             result["kill_chain_phases"] = [
                 p.get("phase_name") if isinstance(p, dict) else str(p)
-                for p in entity.get("killChainPhases", [])
+                for p in (entity.get("killChainPhases") or [])
             ][:10]
         elif entity_type == "Indicator":
-            result["pattern"] = entity.get("pattern", "")[:200]
+            result["pattern"] = (entity.get("pattern") or "")[:200]
             result["pattern_type"] = entity.get("pattern_type", "")
             result["valid_from"] = entity.get("valid_from")
             result["valid_until"] = entity.get("valid_until")
@@ -3016,13 +2687,13 @@ class OpenCTIClient:
             result["cvss_score"] = entity.get("x_opencti_cvss_base_score")
             result["cvss_severity"] = entity.get("x_opencti_cvss_base_severity")
         elif entity_type == "Campaign":
-            result["aliases"] = entity.get("aliases", [])[:10]
+            result["aliases"] = (entity.get("aliases") or [])[:10]
             result["first_seen"] = entity.get("first_seen")
             result["last_seen"] = entity.get("last_seen")
             result["objective"] = entity.get("objective")
         elif entity_type == "Report":
             result["published"] = entity.get("published")
-            result["report_types"] = entity.get("report_types", [])
+            result["report_types"] = entity.get("report_types") or []
         elif entity_type in (
             "IPv4-Addr",
             "IPv6-Addr",

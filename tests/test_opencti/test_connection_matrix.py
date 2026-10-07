@@ -52,7 +52,7 @@ def make_config(**overrides: Any) -> Config:
 class TestConnectionURLVariants:
     """C1-C8: Verify various URL formats are accepted and normalized."""
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_c1_connect_http_localhost_default(self, mock_pycti_cls: Mock) -> None:
         """C1: Connect with http://localhost:8080 (default URL)."""
         mock_pycti_cls.return_value = MagicMock()
@@ -64,13 +64,12 @@ class TestConnectionURLVariants:
         mock_pycti_cls.assert_called_once_with(
             "http://localhost:8080",
             "test-token-12345",
-            log_level="error",
             requests_timeout=30,
             ssl_verify=True,
         )
         assert result is mock_pycti_cls.return_value
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_c2_connect_https_url(self, mock_pycti_cls: Mock) -> None:
         """C2: Connect with https:// URL."""
         mock_pycti_cls.return_value = MagicMock()
@@ -83,7 +82,7 @@ class TestConnectionURLVariants:
         call_args = mock_pycti_cls.call_args
         assert call_args[0][0] == "https://opencti.example.com"
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_c3_connect_custom_port(self, mock_pycti_cls: Mock) -> None:
         """C3: Connect with custom port (e.g., :4000)."""
         mock_pycti_cls.return_value = MagicMock()
@@ -95,7 +94,7 @@ class TestConnectionURLVariants:
         call_args = mock_pycti_cls.call_args
         assert call_args[0][0] == "http://localhost:4000"
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_c4_connect_ip_address_no_hostname(self, mock_pycti_cls: Mock) -> None:
         """C4: Connect with IP address, no hostname (e.g., http://10.0.0.50:8080)."""
         mock_pycti_cls.return_value = MagicMock()
@@ -107,7 +106,7 @@ class TestConnectionURLVariants:
         call_args = mock_pycti_cls.call_args
         assert call_args[0][0] == "http://10.0.0.50:8080"
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_c5_connect_ipv6_address(self, mock_pycti_cls: Mock) -> None:
         """C5: Connect with IPv6 address (http://[::1]:8080)."""
         mock_pycti_cls.return_value = MagicMock()
@@ -119,7 +118,7 @@ class TestConnectionURLVariants:
         call_args = mock_pycti_cls.call_args
         assert call_args[0][0] == "http://[::1]:8080"
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_c6_connect_url_with_path_prefix(self, mock_pycti_cls: Mock) -> None:
         """C6: Connect with URL path prefix — verify pycti receives the full URL."""
         mock_pycti_cls.return_value = MagicMock()
@@ -131,7 +130,7 @@ class TestConnectionURLVariants:
         call_args = mock_pycti_cls.call_args
         assert call_args[0][0] == "https://host/opencti"
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_c7_connect_trailing_slash_stripped(self, mock_pycti_cls: Mock) -> None:
         """C7: Connect with trailing slash in URL — verify slash is stripped."""
         mock_pycti_cls.return_value = MagicMock()
@@ -145,7 +144,7 @@ class TestConnectionURLVariants:
         call_args = mock_pycti_cls.call_args
         assert call_args[0][0] == "http://localhost:8080"
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_c8_connect_multiple_trailing_slashes_normalized(
         self, mock_pycti_cls: Mock
     ) -> None:
@@ -298,7 +297,7 @@ class TestTokenHandling:
 class TestConnectionCachingAndThreadSafety:
     """C20-C21: Client caching and concurrent access."""
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_c20_connect_reuses_cached_client(self, mock_pycti_cls: Mock) -> None:
         """C20: Connect reuses cached client (second call returns same object)."""
         mock_instance = MagicMock()
@@ -315,7 +314,7 @@ class TestConnectionCachingAndThreadSafety:
         assert result1 is result2
         assert result1 is mock_instance
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_c21_thread_safe_concurrent_connect(self, mock_pycti_cls: Mock) -> None:
         """C21: Thread-safe concurrent connect calls — only one pycti client created."""
         call_count = 0
@@ -371,7 +370,7 @@ class TestConnectionCachingAndThreadSafety:
 class TestSSLTLSHandling:
     """S1-S10: SSL verification, env parsing, error handling, and HTTP warnings."""
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_s1_ssl_verify_true_passed_to_pycti(self, mock_pycti_cls: Mock) -> None:
         """S1: ssl_verify=true passed to pycti client."""
         mock_pycti_cls.return_value = MagicMock()
@@ -383,7 +382,7 @@ class TestSSLTLSHandling:
         call_kwargs = mock_pycti_cls.call_args
         assert call_kwargs[1]["ssl_verify"] is True
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_s2_ssl_verify_false_passed_to_pycti(self, mock_pycti_cls: Mock) -> None:
         """S2: ssl_verify=false passed to pycti client."""
         mock_pycti_cls.return_value = MagicMock()
@@ -624,7 +623,7 @@ class TestURLEdgeCases:
 class TestReconnect:
     """Verify reconnect clears cached client and creates a new one."""
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_reconnect_creates_new_client(self, mock_pycti_cls: Mock) -> None:
         """reconnect() should clear the cached client and create a new one."""
         instance1 = MagicMock(name="client1")
@@ -641,7 +640,7 @@ class TestReconnect:
         assert second is instance2
         assert mock_pycti_cls.call_count == 2
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_connect_after_reconnect_returns_new_cached(
         self, mock_pycti_cls: Mock
     ) -> None:
@@ -684,20 +683,16 @@ class TestConfigEdgeCases:
         with pytest.raises(ConfigurationError, match="cannot be empty"):
             make_config(opencti_url="   ")
 
-    @patch("pycti.OpenCTIApiClient")
-    def test_connect_import_error_raises_connection_error(
-        self, mock_pycti_cls: Mock
-    ) -> None:
-        """If pycti import fails, a ConnectionError is raised."""
-        mock_pycti_cls.side_effect = ImportError("No module named 'pycti'")
-
+    @patch("opencti_mcp.client.GraphQLClient")
+    def test_connect_works_without_pycti(self, mock_graphql_cls: Mock) -> None:
+        """Connecting needs no client library: pycti can't be imported."""
         config = make_config()
         client = OpenCTIClient(config)
 
-        with pytest.raises(ConnectionError, match="pycti not installed"):
-            client.connect()
+        with patch.dict("sys.modules", {"pycti": None}):
+            assert client.connect() is mock_graphql_cls.return_value
 
-    @patch("pycti.OpenCTIApiClient")
+    @patch("opencti_mcp.client.GraphQLClient")
     def test_connect_generic_exception_raises_connection_error(
         self, mock_pycti_cls: Mock
     ) -> None:

@@ -35,6 +35,7 @@ def no_provider_network(monkeypatch):
     if find_spec("opencti_mcp") is None:
         return
     import httpx
+    import opencti_mcp.graphql as opencti_graphql
     import opencti_mcp.providers.misp as misp_provider
     import opencti_mcp.providers.opencti as opencti_provider
 
@@ -43,6 +44,7 @@ def no_provider_network(monkeypatch):
 
     monkeypatch.setattr(opencti_provider, "_http_post", refuse)
     monkeypatch.setattr(misp_provider, "_http_request", refuse)
+    monkeypatch.setattr(opencti_graphql, "_http_post", refuse)
 
 
 @pytest.fixture
@@ -98,7 +100,7 @@ def mock_config() -> Config:
 
 @pytest.fixture
 def mock_pycti_client() -> Mock:
-    """Create a mock pycti OpenCTIApiClient."""
+    """A stand-in for the GraphQL client: the calls the OpenCTI tools make."""
     client = MagicMock()
 
     # Mock indicator methods
@@ -186,7 +188,7 @@ def mock_pycti_client() -> Mock:
 
 @pytest.fixture
 def mock_opencti_client(mock_config: Config, mock_pycti_client: Mock) -> OpenCTIClient:
-    """Create an OpenCTI client with mocked pycti."""
+    """An OpenCTI client whose GraphQL client is the stand-in above."""
     client = OpenCTIClient(mock_config)
     client._client = mock_pycti_client
     return client

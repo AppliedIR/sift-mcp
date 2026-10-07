@@ -510,21 +510,16 @@ class TestClientConnection:
             opencti_url="http://localhost:8080", opencti_token=SecretStr("test-token")
         )
 
-    def test_connect_import_error(self, mock_config):
-        """Test connection when pycti is not installed."""
+    def test_connect_without_pycti(self, mock_config):
+        """Connecting works when pycti isn't installed."""
         from opencti_mcp.client import OpenCTIClient
+        from opencti_mcp.graphql import GraphQLClient
 
         client = OpenCTIClient(mock_config)
         client._client = None
 
         with patch.dict("sys.modules", {"pycti": None}):
-            with patch(
-                "builtins.__import__", side_effect=ImportError("No module named pycti")
-            ):
-                with pytest.raises(ConnectionError) as exc_info:
-                    client.connect()
-
-                assert "pycti not installed" in str(exc_info.value)
+            assert isinstance(client.connect(), GraphQLClient)
 
     def test_connect_generic_error(self, mock_config):
         """Test connection with generic error."""
@@ -534,7 +529,8 @@ class TestClientConnection:
         client._client = None
 
         with patch(
-            "pycti.OpenCTIApiClient", side_effect=RuntimeError("Connection refused")
+            "opencti_mcp.client.GraphQLClient",
+            side_effect=RuntimeError("Connection refused"),
         ):
             with pytest.raises(ConnectionError) as exc_info:
                 client.connect()
@@ -548,7 +544,7 @@ class TestClientConnection:
         client = OpenCTIClient(mock_config)
 
         mock_pycti = Mock()
-        with patch("pycti.OpenCTIApiClient", return_value=mock_pycti):
+        with patch("opencti_mcp.client.GraphQLClient", return_value=mock_pycti):
             # First connection
             client.connect()
             assert client._client is not None
@@ -664,87 +660,6 @@ class TestAdaptiveMetricsGaps:
 
         status = metrics.get_status()
         assert status["sample_count"] == 0
-
-
-# =============================================================================
-# Client Write Operations Tests
-# =============================================================================
-
-
-class TestClientWriteOperations:
-    """Tests for client write operations (client methods still exist, server no longer exposes them)."""
-
-    @pytest.fixture
-    def mock_config(self):
-        return Config(
-            opencti_url="http://localhost:8080",
-            opencti_token=SecretStr("test-token"),
-        )
-
-    def test_create_indicator(self, mock_config):
-        """Test create indicator method."""
-        from opencti_mcp.client import OpenCTIClient
-
-        client = OpenCTIClient(mock_config)
-
-        mock_pycti = Mock()
-        mock_pycti.indicator.create.return_value = {
-            "id": "indicator--123",
-            "name": "Test Indicator",
-            "pattern": "[ipv4-addr:value = '1.2.3.4']",
-        }
-
-        with patch.object(client, "connect", return_value=mock_pycti):
-            result = client.create_indicator(
-                name="Test Indicator",
-                pattern="[ipv4-addr:value = '1.2.3.4']",
-                pattern_type="stix",
-            )
-
-            assert result is not None
-            mock_pycti.indicator.create.assert_called_once()
-
-    def test_create_note(self, mock_config):
-        """Test create note method."""
-        from opencti_mcp.client import OpenCTIClient
-
-        client = OpenCTIClient(mock_config)
-
-        mock_pycti = Mock()
-        mock_pycti.note.create.return_value = {
-            "id": "note--123",
-            "content": "Analysis note",
-            "created": "2024-01-01T00:00:00Z",
-        }
-
-        with patch.object(client, "connect", return_value=mock_pycti):
-            result = client.create_note(
-                content="Analysis note", entity_ids=["indicator--abc"]
-            )
-
-            assert result is not None
-            assert result.get("success") is True
-
-    def test_create_sighting(self, mock_config):
-        """Test create sighting method."""
-        from opencti_mcp.client import OpenCTIClient
-
-        client = OpenCTIClient(mock_config)
-
-        mock_pycti = Mock()
-        mock_pycti.stix_sighting_relationship.create.return_value = {
-            "id": "sighting--123",
-            "first_seen": "2024-01-01T00:00:00Z",
-            "last_seen": "2024-01-01T00:00:00Z",
-        }
-
-        with patch.object(client, "connect", return_value=mock_pycti):
-            result = client.create_sighting(
-                indicator_id="indicator--abc", sighted_by_id="identity--xyz", count=1
-            )
-
-            assert result is not None
-            assert result.get("success") is True
 
 
 # =============================================================================

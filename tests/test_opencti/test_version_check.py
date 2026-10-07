@@ -1,90 +1,115 @@
-"""Tests for the pycti/OpenCTI major-version compatibility enforcement.
+"""The OpenCTI tools answer OpenCTI 6 and 7 alike, with no pycti installed.
 
-Regression guard for UAT 2026-04-22: pycti 7.x installed against a
-6.x server emits `GRAPHQL_VALIDATION_FAILED: Unknown type "AIPrompt"`
-on every IOC query. Enforcing at connect-time turns that silent
-per-IOC failure into one clear VersionMismatchError with an
-actionable pin instruction.
+There is no client library whose major has to match the server's: the tools
+send their own GraphQL selections, each valid on 6.9 and 7. The replies here
+were recorded from OpenCTI 6.9.10 and 7.261002.0 instances seeded with
+synthetic records, while every tool was called once
+(``opencti_tools_replies.json``).
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+import json
+import sys
+from pathlib import Path
 
+import httpx
+import opencti_mcp.graphql as opencti_graphql
 import pytest
 from opencti_mcp.client import OpenCTIClient
-from opencti_mcp.errors import VersionMismatchError
+from opencti_mcp.server import OpenCTIMCPServer
+
+from .threatintel_rig import config
+
+RECORDED = json.loads(
+    Path(__file__).with_name("opencti_tools_replies.json").read_text()
+)
+
+
+def _key(query: str, variables: dict) -> str:
+    # get_recent_indicators asks for "created since <now - days>".
+    variables = json.loads(json.dumps(variables))
+    for f in (variables.get("filters") or {}).get("filters", []):
+        if f.get("key") == "created":
+            f["values"] = ["<since>"]
+    return json.dumps([query, variables], sort_keys=True)
 
 
 @pytest.fixture
-def client_with_mocked_config():
-    """Build an OpenCTIClient with a fake Config. connect() will be
-    patched in the individual tests to control which pycti/server
-    versions are reported."""
-    cfg = MagicMock()
-    cfg.opencti_url = "http://test:8080"
-    cfg.opencti_token = MagicMock()
-    cfg.opencti_token.get_secret_value = lambda: "test-token"
-    cfg.ssl_verify = False
-    client = OpenCTIClient(config=cfg)
-    return client
+def replay(monkeypatch):
+    """Answer the tools' requests from one version's recording; returns the
+    requests made."""
+
+    def install(version: str) -> list[dict]:
+        replies = {
+            _key(r["query"], r["variables"]): r for r in RECORDED[version]["replies"]
+        }
+        made: list[dict] = []
+
+        def post(url, json=None, headers=None, timeout=None, verify=None):
+            made.append(json)
+            reply = replies[_key(json["query"], json["variables"])]
+            return httpx.Response(reply["status"], json=reply["body"])
+
+        monkeypatch.setattr(opencti_graphql, "_http_post", post)
+        return made
+
+    return install
 
 
-def _mock_pycti_module(version: str):
-    """Returns a MagicMock that resembles the pycti module with the
-    given __version__. Used as a patch target for
-    `import pycti` inside _enforce_version_compat."""
-    mod = MagicMock()
-    mod.__version__ = version
-    return mod
+@pytest.mark.parametrize("version", ["v6", "v7"])
+async def test_every_opencti_tool_answers_without_pycti(replay, monkeypatch, version):
+    monkeypatch.setitem(sys.modules, "pycti", None)  # `import pycti` fails
+    made = replay(version)
+    server = OpenCTIMCPServer(config(), provider_names=["opencti"])
+    answered = 0
+    for tool, arguments in RECORDED[version]["calls"]:
+        result = await server._dispatch_tool(tool, arguments)
+        rows = (
+            result.get("results")
+            or result.get("relationships")
+            or ([result["entity"]] if result.get("entity") else None)
+            or [x for key in ("malware", "reports") for x in result.get(key, [])]
+        )
+        assert rows or result.get("status") == "healthy", (tool, arguments, result)
+        answered += 1
+    assert answered == len(RECORDED[version]["calls"]) == 26
+    assert len(made) == len(RECORDED[version]["replies"])
 
 
-def test_version_mismatch_at_init_raises(client_with_mocked_config, monkeypatch):
-    """pycti 7.x against a 6.x server → VersionMismatchError with
-    actionable pin instruction mentioning both majors."""
-    client = client_with_mocked_config
-
-    # Build a fake inner pycti client that returns server version 6.9.10.
-    fake_inner = MagicMock()
-    fake_inner.query.return_value = {"data": {"about": {"version": "6.9.10"}}}
-
-    # Patch `import pycti` inside _enforce_version_compat to report 7.x.
-    fake_pycti = _mock_pycti_module("7.260318.0")
-
-    with patch.dict("sys.modules", {"pycti": fake_pycti}):
-        with pytest.raises(VersionMismatchError) as exc_info:
-            client._enforce_version_compat(fake_inner)
-
-    msg = str(exc_info.value)
-    assert "7.x" in msg or "7.260318.0" in msg
-    assert "6.9.10" in msg or "6.x" in msg
-    assert "README" in msg or "compatibility" in msg.lower()
+@pytest.mark.parametrize("version", ["v6", "v7"])
+async def test_an_entity_without_aliases_is_formatted(replay, version):
+    replay(version)
+    server = OpenCTIMCPServer(config(), provider_names=["opencti"])
+    malware_id = RECORDED[version]["ids"][0]
+    result = await server._dispatch_tool("get_entity", {"entity_id": malware_id})
+    assert result["found"] is True
+    assert result["entity"]["entity_type"] == "Malware"
+    assert result["entity"]["aliases"] == []
 
 
-def test_matching_majors_pass_cleanly(client_with_mocked_config):
-    """pycti 6.x and server 6.x → no raise."""
-    client = client_with_mocked_config
-    fake_inner = MagicMock()
-    fake_inner.query.return_value = {"data": {"about": {"version": "6.9.10"}}}
-    fake_pycti = _mock_pycti_module("6.9.20")
+def test_connecting_makes_no_request_and_needs_no_pycti(monkeypatch):
+    monkeypatch.setitem(sys.modules, "pycti", None)
+    made = []
+    monkeypatch.setattr(opencti_graphql, "_http_post", lambda *a, **k: made.append(1))
+    client = OpenCTIClient(config(timeout_seconds=42, ssl_verify=False))
+    graphql = client.connect()
+    assert isinstance(graphql, opencti_graphql.GraphQLClient)
+    assert graphql.requests_timeout == 42 and graphql._ssl_verify is False
+    assert client.connect() is graphql  # one client, reused
+    assert made == []
 
-    with patch.dict("sys.modules", {"pycti": fake_pycti}):
-        # Should return None without raising.
-        result = client._enforce_version_compat(fake_inner)
-    assert result is None
 
+@pytest.mark.parametrize("server_version", ["6.4.10", "6.9.10", "7.261002.0", "8.0.0"])
+async def test_no_server_version_is_refused(monkeypatch, server_version):
+    def post(url, json=None, **kwargs):
+        if "about" in json["query"]:
+            return httpx.Response(
+                200, json={"data": {"about": {"version": server_version}}}
+            )
+        return httpx.Response(200, json={"data": {"reports": {"edges": []}}})
 
-def test_server_unreachable_does_not_fail_closed(client_with_mocked_config):
-    """If the server about.version query raises (transient outage),
-    skip the check rather than blocking init. Downstream queries
-    surface the outage separately; version check is not the right
-    place to fail-closed on a network issue."""
-    client = client_with_mocked_config
-    fake_inner = MagicMock()
-    fake_inner.query.side_effect = OSError("connection refused")
-    fake_pycti = _mock_pycti_module("7.260318.0")
-
-    with patch.dict("sys.modules", {"pycti": fake_pycti}):
-        # Should NOT raise — transient outage tolerated.
-        result = client._enforce_version_compat(fake_inner)
-    assert result is None
+    monkeypatch.setattr(opencti_graphql, "_http_post", post)
+    server = OpenCTIMCPServer(config(), provider_names=["opencti"])
+    result = await server._dispatch_tool("search_reports", {"query": "x"})
+    assert result["results"] == []

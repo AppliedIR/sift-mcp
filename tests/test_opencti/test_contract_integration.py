@@ -148,6 +148,13 @@ class TestAPIContracts:
             with pytest.raises(ValidationError, match="Unknown tool"):
                 await server._dispatch_tool(tool, {})
 
+    def test_the_client_has_no_write_methods(self):
+        """The create methods are gone from the client too: nothing calls them."""
+        from opencti_mcp.client import OpenCTIClient
+
+        for method in ("create_indicator", "create_note", "create_sighting"):
+            assert not hasattr(OpenCTIClient, method)
+
 
 # =============================================================================
 # Cross-Function Consistency Tests

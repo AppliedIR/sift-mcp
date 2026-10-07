@@ -324,12 +324,9 @@ class TestGracefulDegradation:
 class TestStartupDegradedMode:
     """Pins the bounded-probe + degraded-mode behavior added in Rev 2.
 
-    Pre-fix: unreachable OpenCTI server caused pycti's __init__
-    health_check to block for 300s (default requests_timeout).
-    Post-fix: validate_startup uses a probe client with
-    perform_health_check=False + bounded requests_timeout. On failure,
-    sets _degraded=True and returns cleanly; tools fail-fast via
-    _ensure_not_degraded.
+    validate_startup uses a probe client whose requests time out within
+    the startup probe timeout. On failure it sets _degraded=True and
+    returns cleanly; tools fail-fast via _ensure_not_degraded.
     """
 
     @pytest.fixture
@@ -341,14 +338,15 @@ class TestStartupDegradedMode:
 
     def test_validate_startup_unreachable_returns_degraded(self, mock_config):
         """Connection error → degraded mode, returns cleanly (no raise)."""
-        import requests
+        import httpx
+        import opencti_mcp.graphql as opencti_graphql
         from opencti_mcp.client import OpenCTIClient
 
+        def refused(*args, **kwargs):
+            raise httpx.ConnectError("Connection refused")
+
         client = OpenCTIClient(mock_config)
-        with patch.object(client, "_connect_probe") as mock_probe:
-            mock_probe.side_effect = requests.exceptions.ConnectionError(
-                "Connection refused"
-            )
+        with patch.object(opencti_graphql, "_http_post", refused):
             result = client.validate_startup()
 
         assert result["valid"] is False
@@ -358,12 +356,15 @@ class TestStartupDegradedMode:
 
     def test_validate_startup_timeout_returns_degraded(self, mock_config):
         """Timeout (server hung) → same degraded path."""
-        import requests
+        import httpx
+        import opencti_mcp.graphql as opencti_graphql
         from opencti_mcp.client import OpenCTIClient
 
+        def hung(*args, **kwargs):
+            raise httpx.ReadTimeout("Read timed out")
+
         client = OpenCTIClient(mock_config)
-        with patch.object(client, "_connect_probe") as mock_probe:
-            mock_probe.side_effect = requests.exceptions.Timeout("Read timed out")
+        with patch.object(opencti_graphql, "_http_post", hung):
             result = client.validate_startup()
 
         assert client._degraded is True
@@ -464,23 +465,20 @@ class TestStartupDegradedMode:
                     mp.assert_called()
                     mc.assert_not_called()
 
-    def test_probe_uses_perform_health_check_false(self, mock_config):
-        """The probe must pass perform_health_check=False so pycti's
-        __init__ doesn't fire its own HTTP call. Pre-fix, the default
-        True caused 300s hang in the constructor.
-        """
+    def test_the_probe_times_out_within_the_startup_timeout(self, mock_config):
+        """The startup probe's requests use the bounded startup timeout,
+        not the runtime one."""
+        from opencti_mcp import client as client_module
         from opencti_mcp.client import OpenCTIClient
 
         client = OpenCTIClient(mock_config)
-        with patch("pycti.OpenCTIApiClient") as mock_api:
+        with patch("opencti_mcp.client.GraphQLClient") as mock_api:
             mock_api.return_value = object()
             client._connect_probe()
 
         call_kwargs = mock_api.call_args.kwargs
-        assert call_kwargs["perform_health_check"] is False
-        # requests_timeout uses _STARTUP_PROBE_TIMEOUT (default 10)
-        assert call_kwargs["requests_timeout"] >= 1
-        assert call_kwargs["requests_timeout"] <= 300
+        assert call_kwargs["requests_timeout"] == client_module._STARTUP_PROBE_TIMEOUT
+        assert call_kwargs["ssl_verify"] == mock_config.ssl_verify
 
     def test_server_reuses_validated_client_instance(self, mock_config):
         """BLOCKER regression — live test caught 2026-05-11.

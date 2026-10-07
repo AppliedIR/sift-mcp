@@ -1,0 +1,2803 @@
+{
+ "_about": "GraphQL requests and replies recorded from OpenCTI 6.9.10 and 7.261002.0 test instances seeded with synthetic records, while every OpenCTI tool was called once.",
+ "v6": {
+  "calls": [
+   [
+    "get_health",
+    {}
+   ],
+   [
+    "search_threat_intel",
+    {
+     "query": "ExampleRAT"
+    }
+   ],
+   [
+    "search_threat_intel",
+    {
+     "query": "Probe Report"
+    }
+   ],
+   [
+    "get_recent_indicators",
+    {
+     "days": 7,
+     "limit": 5
+    }
+   ],
+   [
+    "search_reports",
+    {
+     "query": "Probe Report"
+    }
+   ],
+   [
+    "get_entity",
+    {
+     "entity_id": "0bd2510c-680f-47d7-a85f-cfb141a76c27"
+    }
+   ],
+   [
+    "get_entity",
+    {
+     "entity_id": "f62ceb60-f004-48af-a48e-f432e849f15f"
+    }
+   ],
+   [
+    "get_entity",
+    {
+     "entity_id": "b30c122d-a3f0-4aa9-895e-77d3a5d9f055"
+    }
+   ],
+   [
+    "get_relationships",
+    {
+     "entity_id": "f62ceb60-f004-48af-a48e-f432e849f15f"
+    }
+   ],
+   [
+    "get_relationships",
+    {
+     "direction": "to",
+     "entity_id": "0bd2510c-680f-47d7-a85f-cfb141a76c27",
+     "relationship_types": [
+      "indicates"
+     ]
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Actor",
+     "type": "threat_actor"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "ExampleRAT",
+     "type": "malware"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Example Technique",
+     "type": "attack_pattern"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "CVE-2099-0001",
+     "type": "vulnerability"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Campaign",
+     "type": "campaign"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Tool",
+     "type": "tool"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Infrastructure",
+     "type": "infrastructure"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Incident",
+     "type": "incident"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "11.0.113.88",
+     "type": "observable"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe",
+     "type": "sighting"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Organization",
+     "type": "organization"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Sector",
+     "type": "sector"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Country",
+     "type": "location"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Course",
+     "type": "course_of_action"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Grouping",
+     "type": "grouping"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe",
+     "type": "note"
+    }
+   ]
+  ],
+  "ids": [
+   "0bd2510c-680f-47d7-a85f-cfb141a76c27",
+   "f62ceb60-f004-48af-a48e-f432e849f15f",
+   "b30c122d-a3f0-4aa9-895e-77d3a5d9f055"
+  ],
+  "replies": [
+   {
+    "body": {
+     "data": {
+      "stixCyberObservables": {
+       "edges": [
+        {
+         "node": {
+          "created_at": "2026-10-07T10:13:15.092Z",
+          "entity_type": "IPv4-Addr",
+          "id": "827eb8ef-87e2-4980-9f43-84d2d96792e2",
+          "objectLabel": [],
+          "observable_value": "11.0.113.88"
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int) { stixCyberObservables(first: $first) { edges { node { id entity_type created_at observable_value objectLabel { value } ... on StixFile { hashes { algorithm hash } } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 1
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "indicators": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { indicators(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description pattern pattern_type valid_from valid_until } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "intrusionSets": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { intrusionSets(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases first_seen last_seen goals resource_level primary_motivation } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "threatActorsGroup": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { threatActorsGroup(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases sophistication resource_level primary_motivation first_seen last_seen goals } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "malwares": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "capabilities": null,
+          "confidence": 100,
+          "created": "2026-10-07T08:31:38.864Z",
+          "description": null,
+          "entity_type": "Malware",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "id": "0bd2510c-680f-47d7-a85f-cfb141a76c27",
+          "is_family": true,
+          "killChainPhases": [],
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "malware_types": null,
+          "modified": "2026-10-07T08:31:38.864Z",
+          "name": "ExampleRAT",
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { malwares(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases malware_types is_family first_seen last_seen capabilities killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "attackPatterns": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { attackPatterns(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_mitre_id x_mitre_platforms killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "vulnerabilities": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { vulnerabilities(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_opencti_cvss_base_score x_opencti_cvss_base_severity } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "reports": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { reports(first: $first, search: $search, orderBy: published, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description published report_types } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "indicators": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { indicators(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description pattern pattern_type valid_from valid_until } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "intrusionSets": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { intrusionSets(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases first_seen last_seen goals resource_level primary_motivation } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "threatActorsGroup": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "confidence": 100,
+          "created": "2026-10-07T10:13:15.051Z",
+          "description": null,
+          "entity_type": "Threat-Actor-Group",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "goals": null,
+          "id": "2d560b91-a269-418e-86a3-024c6ad18e1d",
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "modified": "2026-10-07T10:13:15.051Z",
+          "name": "Probe Actor",
+          "objectLabel": [],
+          "primary_motivation": null,
+          "resource_level": null,
+          "sophistication": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { threatActorsGroup(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases sophistication resource_level primary_motivation first_seen last_seen goals } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "malwares": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { malwares(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases malware_types is_family first_seen last_seen capabilities killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "attackPatterns": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { attackPatterns(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_mitre_id x_mitre_platforms killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "vulnerabilities": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T10:13:14.611Z",
+          "description": "probe vulnerability",
+          "entity_type": "Vulnerability",
+          "id": "73fb0fa7-ccfa-41c5-903e-b503d5526bff",
+          "modified": "2026-10-07T10:13:14.611Z",
+          "name": "CVE-2099-0001",
+          "objectLabel": [],
+          "x_opencti_cvss_base_score": null,
+          "x_opencti_cvss_base_severity": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { vulnerabilities(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_opencti_cvss_base_score x_opencti_cvss_base_severity } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "reports": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-01T00:00:00.000Z",
+          "description": null,
+          "entity_type": "Report",
+          "id": "b30c122d-a3f0-4aa9-895e-77d3a5d9f055",
+          "modified": "2026-10-07T10:13:14.818Z",
+          "name": "Probe Report",
+          "objectLabel": [],
+          "published": "2026-10-01T00:00:00.000Z",
+          "report_types": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { reports(first: $first, search: $search, orderBy: published, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description published report_types } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "indicators": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 50,
+          "created": "2026-10-07T08:31:38.838Z",
+          "description": null,
+          "entity_type": "Indicator",
+          "id": "7b44574d-f97e-4561-ad1b-b9faa8054316",
+          "modified": "2026-10-07T08:31:38.838Z",
+          "name": "11.0.113.55",
+          "objectLabel": [],
+          "pattern": "alert ip 11.0.113.55 any -> any any (msg:\"n100\"; sid:1100;)",
+          "pattern_type": "snort",
+          "valid_from": "2026-10-07T08:31:38.810Z",
+          "valid_until": "2026-10-27T14:06:18.244Z"
+         }
+        },
+        {
+         "node": {
+          "confidence": 50,
+          "created": "2026-10-07T08:31:38.788Z",
+          "description": null,
+          "entity_type": "Indicator",
+          "id": "fafb59d0-355a-409b-aba4-9e9f8476dd4c",
+          "modified": "2026-10-07T08:31:38.788Z",
+          "name": "11.0.113.55",
+          "objectLabel": [],
+          "pattern": "alert ip 11.0.113.55 any -> any any (msg:\"n99\"; sid:1099;)",
+          "pattern_type": "snort",
+          "valid_from": "2026-10-07T08:31:38.750Z",
+          "valid_until": "2026-10-27T14:06:18.184Z"
+         }
+        },
+        {
+         "node": {
+          "confidence": 50,
+          "created": "2026-10-07T08:31:38.729Z",
+          "description": null,
+          "entity_type": "Indicator",
+          "id": "64148a15-0843-42c4-8594-9b9c93bb43ed",
+          "modified": "2026-10-07T08:31:38.729Z",
+          "name": "11.0.113.55",
+          "objectLabel": [],
+          "pattern": "alert ip 11.0.113.55 any -> any any (msg:\"n98\"; sid:1098;)",
+          "pattern_type": "snort",
+          "valid_from": "2026-10-07T08:31:38.696Z",
+          "valid_until": "2026-10-27T14:06:18.130Z"
+         }
+        },
+        {
+         "node": {
+          "confidence": 50,
+          "created": "2026-10-07T08:31:38.673Z",
+          "description": null,
+          "entity_type": "Indicator",
+          "id": "facc1cc0-1098-4db2-9790-5e734720491e",
+          "modified": "2026-10-07T08:31:38.673Z",
+          "name": "11.0.113.55",
+          "objectLabel": [],
+          "pattern": "alert ip 11.0.113.55 any -> any any (msg:\"n97\"; sid:1097;)",
+          "pattern_type": "snort",
+          "valid_from": "2026-10-07T08:31:38.641Z",
+          "valid_until": "2026-10-27T14:06:18.075Z"
+         }
+        },
+        {
+         "node": {
+          "confidence": 50,
+          "created": "2026-10-07T08:31:38.617Z",
+          "description": null,
+          "entity_type": "Indicator",
+          "id": "301df4e2-ab69-4e0d-9a40-0482368cd2f6",
+          "modified": "2026-10-07T08:31:38.617Z",
+          "name": "11.0.113.55",
+          "objectLabel": [],
+          "pattern": "alert ip 11.0.113.55 any -> any any (msg:\"n96\"; sid:1096;)",
+          "pattern_type": "snort",
+          "valid_from": "2026-10-07T08:31:38.584Z",
+          "valid_until": "2026-10-27T14:06:18.018Z"
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $filters: FilterGroup) { indicators(first: $first, filters: $filters, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description pattern pattern_type valid_from valid_until } } } }",
+    "status": 200,
+    "variables": {
+     "filters": {
+      "filterGroups": [],
+      "filters": [
+       {
+        "key": "created",
+        "operator": "gte",
+        "values": [
+         "2026-09-30T10:14:18.334012Z"
+        ]
+       }
+      ],
+      "mode": "and"
+     },
+     "first": 5
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "reports": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-01T00:00:00.000Z",
+          "description": null,
+          "entity_type": "Report",
+          "id": "b30c122d-a3f0-4aa9-895e-77d3a5d9f055",
+          "modified": "2026-10-07T10:13:14.818Z",
+          "name": "Probe Report",
+          "objectLabel": [],
+          "published": "2026-10-01T00:00:00.000Z",
+          "report_types": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { reports(first: $first, search: $search, orderBy: published, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description published report_types } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixDomainObject": {
+       "aliases": null,
+       "confidence": 100,
+       "created": "2026-10-07T08:31:38.864Z",
+       "description": null,
+       "entity_type": "Malware",
+       "externalReferences": {
+        "edges": []
+       },
+       "id": "0bd2510c-680f-47d7-a85f-cfb141a76c27",
+       "is_family": true,
+       "malware_types": null,
+       "modified": "2026-10-07T08:31:38.864Z",
+       "name": "ExampleRAT",
+       "objectLabel": []
+      }
+     }
+    },
+    "query": "query Read($id: String!) { stixDomainObject(id: $id) { id entity_type created modified confidence objectLabel { value } externalReferences { edges { node { source_name url } } } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on ThreatActorGroup { aliases sophistication resource_level primary_motivation } ... on IntrusionSet { aliases resource_level primary_motivation } ... on Malware { aliases malware_types is_family } ... on AttackPattern { killChainPhases { phase_name } } ... on Indicator { pattern pattern_type valid_from valid_until } ... on Vulnerability { x_opencti_cvss_base_score x_opencti_cvss_base_severity } ... on Campaign { aliases first_seen last_seen objective } ... on Report { published report_types } } }",
+    "status": 200,
+    "variables": {
+     "id": "0bd2510c-680f-47d7-a85f-cfb141a76c27"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixDomainObject": {
+       "confidence": 100,
+       "created": "2026-10-07T08:31:32.502Z",
+       "description": null,
+       "entity_type": "Indicator",
+       "externalReferences": {
+        "edges": []
+       },
+       "id": "f62ceb60-f004-48af-a48e-f432e849f15f",
+       "modified": "2026-10-07T08:31:32.519Z",
+       "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+       "objectLabel": [
+        {
+         "value": "malware"
+        }
+       ],
+       "pattern": "[file:hashes.'SHA-256' = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1']",
+       "pattern_type": "stix",
+       "valid_from": "2025-01-01T00:00:00.000Z",
+       "valid_until": "2025-02-01T00:00:00.000Z"
+      }
+     }
+    },
+    "query": "query Read($id: String!) { stixDomainObject(id: $id) { id entity_type created modified confidence objectLabel { value } externalReferences { edges { node { source_name url } } } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on ThreatActorGroup { aliases sophistication resource_level primary_motivation } ... on IntrusionSet { aliases resource_level primary_motivation } ... on Malware { aliases malware_types is_family } ... on AttackPattern { killChainPhases { phase_name } } ... on Indicator { pattern pattern_type valid_from valid_until } ... on Vulnerability { x_opencti_cvss_base_score x_opencti_cvss_base_severity } ... on Campaign { aliases first_seen last_seen objective } ... on Report { published report_types } } }",
+    "status": 200,
+    "variables": {
+     "id": "f62ceb60-f004-48af-a48e-f432e849f15f"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixDomainObject": {
+       "confidence": 100,
+       "created": "2026-10-01T00:00:00.000Z",
+       "description": null,
+       "entity_type": "Report",
+       "externalReferences": {
+        "edges": []
+       },
+       "id": "b30c122d-a3f0-4aa9-895e-77d3a5d9f055",
+       "modified": "2026-10-07T10:13:14.818Z",
+       "name": "Probe Report",
+       "objectLabel": [],
+       "published": "2026-10-01T00:00:00.000Z",
+       "report_types": null
+      }
+     }
+    },
+    "query": "query Read($id: String!) { stixDomainObject(id: $id) { id entity_type created modified confidence objectLabel { value } externalReferences { edges { node { source_name url } } } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on ThreatActorGroup { aliases sophistication resource_level primary_motivation } ... on IntrusionSet { aliases resource_level primary_motivation } ... on Malware { aliases malware_types is_family } ... on AttackPattern { killChainPhases { phase_name } } ... on Indicator { pattern pattern_type valid_from valid_until } ... on Vulnerability { x_opencti_cvss_base_score x_opencti_cvss_base_severity } ... on Campaign { aliases first_seen last_seen objective } ... on Report { published report_types } } }",
+    "status": 200,
+    "variables": {
+     "id": "b30c122d-a3f0-4aa9-895e-77d3a5d9f055"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixCoreRelationships": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T08:31:39.010Z",
+          "description": "",
+          "from": {
+           "description": null,
+           "entity_type": "Indicator",
+           "id": "f62ceb60-f004-48af-a48e-f432e849f15f",
+           "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          },
+          "id": "4b2867bd-a498-4806-96d5-c252080783bb",
+          "relationship_type": "indicates",
+          "start_time": "1970-01-01T00:00:00.000Z",
+          "stop_time": "5138-11-16T09:46:40.000Z",
+          "to": {
+           "description": null,
+           "entity_type": "Attack-Pattern",
+           "id": "f5a89e1d-c5b5-4ac0-8dc4-151a7612fdc5",
+           "name": "Example Technique",
+           "x_mitre_id": "T1999"
+          }
+         }
+        },
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T08:31:38.957Z",
+          "description": "",
+          "from": {
+           "description": null,
+           "entity_type": "Indicator",
+           "id": "f62ceb60-f004-48af-a48e-f432e849f15f",
+           "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          },
+          "id": "bcff9c29-3ca8-4254-af6b-f0b2ed7a7bcd",
+          "relationship_type": "indicates",
+          "start_time": "1970-01-01T00:00:00.000Z",
+          "stop_time": "5138-11-16T09:46:40.000Z",
+          "to": {
+           "description": null,
+           "entity_type": "Malware",
+           "id": "0bd2510c-680f-47d7-a85f-cfb141a76c27",
+           "name": "ExampleRAT"
+          }
+         }
+        },
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T08:31:39.061Z",
+          "description": "",
+          "from": {
+           "description": null,
+           "entity_type": "Indicator",
+           "id": "f62ceb60-f004-48af-a48e-f432e849f15f",
+           "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          },
+          "id": "68dd692e-7862-46f8-be25-6aa27e04128d",
+          "relationship_type": "indicates",
+          "start_time": "1970-01-01T00:00:00.000Z",
+          "stop_time": "5138-11-16T09:46:40.000Z",
+          "to": {
+           "description": null,
+           "entity_type": "Intrusion-Set",
+           "id": "988e4ae5-0ebe-4c9f-a21c-d79af68c3498",
+           "name": "Example Set"
+          }
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $fromId: [String]) { stixCoreRelationships(first: $first, fromId: $fromId) { edges { node { id relationship_type description start_time stop_time confidence created from { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } to { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 50,
+     "fromId": [
+      "f62ceb60-f004-48af-a48e-f432e849f15f"
+     ]
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixCoreRelationships": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $toId: [String]) { stixCoreRelationships(first: $first, toId: $toId) { edges { node { id relationship_type description start_time stop_time confidence created from { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } to { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 50,
+     "toId": [
+      "f62ceb60-f004-48af-a48e-f432e849f15f"
+     ]
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixCoreRelationships": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T08:31:39.111Z",
+          "description": "",
+          "from": {
+           "description": null,
+           "entity_type": "Indicator",
+           "id": "ba5cf2d0-6c32-40d8-a9de-5b1ab56d2296",
+           "name": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+          },
+          "id": "37a765cf-f8cf-4f97-8e24-4fb3b6a700b3",
+          "relationship_type": "indicates",
+          "start_time": "1970-01-01T00:00:00.000Z",
+          "stop_time": "5138-11-16T09:46:40.000Z",
+          "to": {
+           "description": null,
+           "entity_type": "Malware",
+           "id": "0bd2510c-680f-47d7-a85f-cfb141a76c27",
+           "name": "ExampleRAT"
+          }
+         }
+        },
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T08:31:38.957Z",
+          "description": "",
+          "from": {
+           "description": null,
+           "entity_type": "Indicator",
+           "id": "f62ceb60-f004-48af-a48e-f432e849f15f",
+           "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          },
+          "id": "bcff9c29-3ca8-4254-af6b-f0b2ed7a7bcd",
+          "relationship_type": "indicates",
+          "start_time": "1970-01-01T00:00:00.000Z",
+          "stop_time": "5138-11-16T09:46:40.000Z",
+          "to": {
+           "description": null,
+           "entity_type": "Malware",
+           "id": "0bd2510c-680f-47d7-a85f-cfb141a76c27",
+           "name": "ExampleRAT"
+          }
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $toId: [String], $relationship_type: [String]) { stixCoreRelationships(first: $first, toId: $toId, relationship_type: $relationship_type) { edges { node { id relationship_type description start_time stop_time confidence created from { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } to { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 50,
+     "relationship_type": [
+      "indicates"
+     ],
+     "toId": [
+      "0bd2510c-680f-47d7-a85f-cfb141a76c27"
+     ]
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "intrusionSets": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { intrusionSets(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases first_seen last_seen goals resource_level primary_motivation } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Actor"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "threatActorsGroup": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "confidence": 100,
+          "created": "2026-10-07T10:13:15.051Z",
+          "description": null,
+          "entity_type": "Threat-Actor-Group",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "goals": null,
+          "id": "2d560b91-a269-418e-86a3-024c6ad18e1d",
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "modified": "2026-10-07T10:13:15.051Z",
+          "name": "Probe Actor",
+          "objectLabel": [],
+          "primary_motivation": null,
+          "resource_level": null,
+          "sophistication": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { threatActorsGroup(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases sophistication resource_level primary_motivation first_seen last_seen goals } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Actor"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "malwares": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "capabilities": null,
+          "confidence": 100,
+          "created": "2026-10-07T08:31:38.864Z",
+          "description": null,
+          "entity_type": "Malware",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "id": "0bd2510c-680f-47d7-a85f-cfb141a76c27",
+          "is_family": true,
+          "killChainPhases": [],
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "malware_types": null,
+          "modified": "2026-10-07T08:31:38.864Z",
+          "name": "ExampleRAT",
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { malwares(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases malware_types is_family first_seen last_seen capabilities killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "attackPatterns": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T08:31:38.891Z",
+          "description": null,
+          "entity_type": "Attack-Pattern",
+          "id": "f5a89e1d-c5b5-4ac0-8dc4-151a7612fdc5",
+          "killChainPhases": [],
+          "modified": "2026-10-07T08:31:38.891Z",
+          "name": "Example Technique",
+          "objectLabel": [],
+          "x_mitre_id": "T1999",
+          "x_mitre_platforms": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { attackPatterns(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_mitre_id x_mitre_platforms killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Example Technique"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "vulnerabilities": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T10:13:14.611Z",
+          "description": "probe vulnerability",
+          "entity_type": "Vulnerability",
+          "id": "73fb0fa7-ccfa-41c5-903e-b503d5526bff",
+          "modified": "2026-10-07T10:13:14.611Z",
+          "name": "CVE-2099-0001",
+          "objectLabel": [],
+          "x_opencti_cvss_base_score": null,
+          "x_opencti_cvss_base_severity": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { vulnerabilities(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_opencti_cvss_base_score x_opencti_cvss_base_severity } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "CVE-2099-0001"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "campaigns": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "confidence": 100,
+          "created": "2026-10-07T10:13:14.660Z",
+          "description": null,
+          "entity_type": "Campaign",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "id": "e7dfd324-8fd1-4623-b340-371e887b29aa",
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "modified": "2026-10-07T10:13:14.660Z",
+          "name": "Probe Campaign",
+          "objectLabel": [],
+          "objective": "probe"
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { campaigns(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases first_seen last_seen objective } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Campaign"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "tools": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "confidence": 100,
+          "created": "2026-10-07T10:13:14.701Z",
+          "description": null,
+          "entity_type": "Tool",
+          "id": "c8cdf898-f095-4efd-bd72-230a6eaeeca1",
+          "killChainPhases": [],
+          "modified": "2026-10-07T10:13:14.701Z",
+          "name": "Probe Tool",
+          "objectLabel": [],
+          "tool_types": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { tools(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases tool_types killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Tool"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "infrastructures": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "confidence": 100,
+          "created": "2026-10-07T10:13:14.726Z",
+          "description": null,
+          "entity_type": "Infrastructure",
+          "first_seen": null,
+          "id": "fd5a9f2f-fbfd-4b1c-8804-e528aedc0c4d",
+          "infrastructure_types": null,
+          "last_seen": null,
+          "modified": "2026-10-07T10:13:14.726Z",
+          "name": "Probe Infrastructure",
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { infrastructures(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases infrastructure_types first_seen last_seen } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Infrastructure"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "incidents": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T10:13:14.752Z",
+          "description": null,
+          "entity_type": "Incident",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "id": "9b104265-d3f6-4c3b-981b-eadee26921bb",
+          "incident_type": null,
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "modified": "2026-10-07T10:13:14.779Z",
+          "name": "Probe Incident",
+          "objectLabel": [],
+          "objective": null,
+          "severity": "low",
+          "source": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { incidents(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description incident_type severity source objective first_seen last_seen } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Incident"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixCyberObservables": {
+       "edges": [
+        {
+         "node": {
+          "created_at": "2026-10-07T10:13:15.092Z",
+          "entity_type": "IPv4-Addr",
+          "id": "827eb8ef-87e2-4980-9f43-84d2d96792e2",
+          "objectLabel": [],
+          "observable_value": "11.0.113.88"
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { stixCyberObservables(first: $first, search: $search) { edges { node { id entity_type created_at observable_value objectLabel { value } ... on StixFile { hashes { algorithm hash } } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "11.0.113.88"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixSightingRelationships": {
+       "edges": [
+        {
+         "node": {
+          "attribute_count": 2,
+          "confidence": 100,
+          "description": "Probe sighting",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "from": {
+           "description": null,
+           "entity_type": "Indicator",
+           "id": "45daaac9-4595-43f5-afff-2c9c0daa96c4",
+           "name": "11.0.113.55"
+          },
+          "id": "7c322793-0812-4eb4-9f41-8a04a2a6f7c4",
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "to": {
+           "description": null,
+           "entity_type": "Organization",
+           "id": "0d6fe5dd-5960-4dcf-8a2f-a1c79642b112",
+           "name": "Probe Organization"
+          }
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { stixSightingRelationships(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id first_seen last_seen attribute_count description confidence from { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } to { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "organizations": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "contact_information": null,
+          "created": "2026-10-07T10:13:14.856Z",
+          "description": null,
+          "entity_type": "Organization",
+          "id": "0d6fe5dd-5960-4dcf-8a2f-a1c79642b112",
+          "modified": "2026-10-07T10:13:14.856Z",
+          "name": "Probe Organization",
+          "objectLabel": [],
+          "x_opencti_organization_type": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { organizations(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description contact_information x_opencti_organization_type } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Organization"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "sectors": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T10:13:14.896Z",
+          "description": null,
+          "entity_type": "Sector",
+          "id": "7df7ed08-93e9-4e09-854d-ae59393f76c1",
+          "modified": "2026-10-07T10:13:14.896Z",
+          "name": "Probe Sector",
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { sectors(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Sector"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "locations": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T10:13:14.933Z",
+          "description": null,
+          "entity_type": "Country",
+          "id": "510ac75f-dfc0-42a6-b3da-044b4be3e590",
+          "latitude": null,
+          "longitude": null,
+          "modified": "2026-10-07T10:13:14.933Z",
+          "name": "Probe Country",
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { locations(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description latitude longitude } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Country"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "coursesOfAction": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T10:13:14.961Z",
+          "description": null,
+          "entity_type": "Course-Of-Action",
+          "id": "d9e56f67-2253-4ec5-b46e-95a20b494e7d",
+          "modified": "2026-10-07T10:13:14.961Z",
+          "name": "Probe Course",
+          "objectLabel": [],
+          "x_mitre_id": "M9999"
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { coursesOfAction(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_mitre_id } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Course"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "groupings": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "context": "suspicious-activity",
+          "created": "2026-10-07T10:13:14.990Z",
+          "description": null,
+          "entity_type": "Grouping",
+          "id": "c6165baa-cc52-4f0b-8b74-7c841987be1a",
+          "modified": "2026-10-07T10:13:15.016Z",
+          "name": "Probe Grouping",
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { groupings(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description context } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Grouping"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "notes": {
+       "edges": [
+        {
+         "node": {
+          "attribute_abstract": "Probe Note",
+          "authors": null,
+          "confidence": 100,
+          "content": "Probe Note content",
+          "created": "2026-10-07T10:13:15.239Z",
+          "entity_type": "Note",
+          "id": "9c02b7e4-a25d-483a-9f8e-15b43e53a74a",
+          "likelihood": null,
+          "modified": "2026-10-07T10:13:15.295Z",
+          "note_types": null,
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { notes(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } attribute_abstract content note_types authors likelihood } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe"
+    }
+   }
+  ]
+ },
+ "v7": {
+  "calls": [
+   [
+    "get_health",
+    {}
+   ],
+   [
+    "search_threat_intel",
+    {
+     "query": "ExampleRAT"
+    }
+   ],
+   [
+    "search_threat_intel",
+    {
+     "query": "Probe Report"
+    }
+   ],
+   [
+    "get_recent_indicators",
+    {
+     "days": 7,
+     "limit": 5
+    }
+   ],
+   [
+    "search_reports",
+    {
+     "query": "Probe Report"
+    }
+   ],
+   [
+    "get_entity",
+    {
+     "entity_id": "9e0b7e8d-bdc5-428f-86f8-42b463f5df30"
+    }
+   ],
+   [
+    "get_entity",
+    {
+     "entity_id": "58e18543-d21b-41ee-bce5-594fbf30e4ef"
+    }
+   ],
+   [
+    "get_entity",
+    {
+     "entity_id": "8056c078-16ef-48d3-ae02-c55655fe5240"
+    }
+   ],
+   [
+    "get_relationships",
+    {
+     "entity_id": "58e18543-d21b-41ee-bce5-594fbf30e4ef"
+    }
+   ],
+   [
+    "get_relationships",
+    {
+     "direction": "to",
+     "entity_id": "9e0b7e8d-bdc5-428f-86f8-42b463f5df30",
+     "relationship_types": [
+      "indicates"
+     ]
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Actor",
+     "type": "threat_actor"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "ExampleRAT",
+     "type": "malware"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Example Technique",
+     "type": "attack_pattern"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "CVE-2099-0001",
+     "type": "vulnerability"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Campaign",
+     "type": "campaign"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Tool",
+     "type": "tool"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Infrastructure",
+     "type": "infrastructure"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Incident",
+     "type": "incident"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "11.0.113.88",
+     "type": "observable"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe",
+     "type": "sighting"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Organization",
+     "type": "organization"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Sector",
+     "type": "sector"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Country",
+     "type": "location"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Course",
+     "type": "course_of_action"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe Grouping",
+     "type": "grouping"
+    }
+   ],
+   [
+    "search_entity",
+    {
+     "query": "Probe",
+     "type": "note"
+    }
+   ]
+  ],
+  "ids": [
+   "9e0b7e8d-bdc5-428f-86f8-42b463f5df30",
+   "58e18543-d21b-41ee-bce5-594fbf30e4ef",
+   "8056c078-16ef-48d3-ae02-c55655fe5240"
+  ],
+  "replies": [
+   {
+    "body": {
+     "data": {
+      "stixCyberObservables": {
+       "edges": [
+        {
+         "node": {
+          "created_at": "2026-10-07T10:13:15.844Z",
+          "entity_type": "IPv4-Addr",
+          "id": "f58e7597-5557-4cd5-acc8-98f5b3cc2801",
+          "objectLabel": [],
+          "observable_value": "11.0.113.88"
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int) { stixCyberObservables(first: $first) { edges { node { id entity_type created_at observable_value objectLabel { value } ... on StixFile { hashes { algorithm hash } } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 1
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "indicators": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { indicators(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description pattern pattern_type valid_from valid_until } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "intrusionSets": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { intrusionSets(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases first_seen last_seen goals resource_level primary_motivation } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "threatActorsGroup": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { threatActorsGroup(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases sophistication resource_level primary_motivation first_seen last_seen goals } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "malwares": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "capabilities": null,
+          "confidence": 100,
+          "created": "2026-10-07T08:31:45.676Z",
+          "description": null,
+          "entity_type": "Malware",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "id": "9e0b7e8d-bdc5-428f-86f8-42b463f5df30",
+          "is_family": true,
+          "killChainPhases": [],
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "malware_types": null,
+          "modified": "2026-10-07T08:31:45.676Z",
+          "name": "ExampleRAT",
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { malwares(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases malware_types is_family first_seen last_seen capabilities killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "attackPatterns": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { attackPatterns(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_mitre_id x_mitre_platforms killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "vulnerabilities": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { vulnerabilities(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_opencti_cvss_base_score x_opencti_cvss_base_severity } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "reports": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { reports(first: $first, search: $search, orderBy: published, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description published report_types } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "indicators": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { indicators(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description pattern pattern_type valid_from valid_until } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "intrusionSets": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { intrusionSets(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases first_seen last_seen goals resource_level primary_motivation } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "threatActorsGroup": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "confidence": 100,
+          "created": "2026-10-07T10:13:15.813Z",
+          "description": null,
+          "entity_type": "Threat-Actor-Group",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "goals": null,
+          "id": "ea947b5b-3054-4af9-85da-8e08f1b9e6f0",
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "modified": "2026-10-07T10:13:15.813Z",
+          "name": "Probe Actor",
+          "objectLabel": [],
+          "primary_motivation": null,
+          "resource_level": null,
+          "sophistication": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { threatActorsGroup(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases sophistication resource_level primary_motivation first_seen last_seen goals } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "malwares": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { malwares(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases malware_types is_family first_seen last_seen capabilities killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "attackPatterns": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { attackPatterns(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_mitre_id x_mitre_platforms killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "vulnerabilities": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T10:13:15.461Z",
+          "description": "probe vulnerability",
+          "entity_type": "Vulnerability",
+          "id": "ec5ac359-2740-43a9-b475-4943cf2e2605",
+          "modified": "2026-10-07T10:13:15.461Z",
+          "name": "CVE-2099-0001",
+          "objectLabel": [],
+          "x_opencti_cvss_base_score": null,
+          "x_opencti_cvss_base_severity": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { vulnerabilities(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_opencti_cvss_base_score x_opencti_cvss_base_severity } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "reports": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-01T00:00:00.000Z",
+          "description": null,
+          "entity_type": "Report",
+          "id": "8056c078-16ef-48d3-ae02-c55655fe5240",
+          "modified": "2026-10-07T10:13:15.621Z",
+          "name": "Probe Report",
+          "objectLabel": [],
+          "published": "2026-10-01T00:00:00.000Z",
+          "report_types": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { reports(first: $first, search: $search, orderBy: published, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description published report_types } } } }",
+    "status": 200,
+    "variables": {
+     "first": 5,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "indicators": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 50,
+          "created": "2026-10-07T08:31:45.648Z",
+          "description": null,
+          "entity_type": "Indicator",
+          "id": "fcb31c78-14bb-48a2-970b-6d0a186472db",
+          "modified": "2026-10-07T08:31:45.648Z",
+          "name": "11.0.113.55",
+          "objectLabel": [],
+          "pattern": "alert ip 11.0.113.55 any -> any any (msg:\"n100\"; sid:1100;)",
+          "pattern_type": "snort",
+          "valid_from": "2026-10-07T08:31:45.625Z",
+          "valid_until": "2026-10-27T14:06:25.059Z"
+         }
+        },
+        {
+         "node": {
+          "confidence": 50,
+          "created": "2026-10-07T08:31:45.586Z",
+          "description": null,
+          "entity_type": "Indicator",
+          "id": "e814dc70-72c7-43a9-9b89-d403a4f4b841",
+          "modified": "2026-10-07T08:31:45.586Z",
+          "name": "11.0.113.55",
+          "objectLabel": [],
+          "pattern": "alert ip 11.0.113.55 any -> any any (msg:\"n99\"; sid:1099;)",
+          "pattern_type": "snort",
+          "valid_from": "2026-10-07T08:31:45.563Z",
+          "valid_until": "2026-10-27T14:06:24.997Z"
+         }
+        },
+        {
+         "node": {
+          "confidence": 50,
+          "created": "2026-10-07T08:31:45.536Z",
+          "description": null,
+          "entity_type": "Indicator",
+          "id": "e29fa07f-e847-472d-b910-bb3ec37f6085",
+          "modified": "2026-10-07T08:31:45.536Z",
+          "name": "11.0.113.55",
+          "objectLabel": [],
+          "pattern": "alert ip 11.0.113.55 any -> any any (msg:\"n98\"; sid:1098;)",
+          "pattern_type": "snort",
+          "valid_from": "2026-10-07T08:31:45.510Z",
+          "valid_until": "2026-10-27T14:06:24.944Z"
+         }
+        },
+        {
+         "node": {
+          "confidence": 50,
+          "created": "2026-10-07T08:31:45.476Z",
+          "description": null,
+          "entity_type": "Indicator",
+          "id": "9be2fe1c-2160-4dd4-9bdc-547976dea7cf",
+          "modified": "2026-10-07T08:31:45.476Z",
+          "name": "11.0.113.55",
+          "objectLabel": [],
+          "pattern": "alert ip 11.0.113.55 any -> any any (msg:\"n97\"; sid:1097;)",
+          "pattern_type": "snort",
+          "valid_from": "2026-10-07T08:31:45.456Z",
+          "valid_until": "2026-10-27T14:06:24.890Z"
+         }
+        },
+        {
+         "node": {
+          "confidence": 50,
+          "created": "2026-10-07T08:31:45.427Z",
+          "description": null,
+          "entity_type": "Indicator",
+          "id": "21b6cbdb-65f8-49d2-ac0f-e9e8f999984b",
+          "modified": "2026-10-07T08:31:45.427Z",
+          "name": "11.0.113.55",
+          "objectLabel": [],
+          "pattern": "alert ip 11.0.113.55 any -> any any (msg:\"n96\"; sid:1096;)",
+          "pattern_type": "snort",
+          "valid_from": "2026-10-07T08:31:45.402Z",
+          "valid_until": "2026-10-27T14:06:24.836Z"
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $filters: FilterGroup) { indicators(first: $first, filters: $filters, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description pattern pattern_type valid_from valid_until } } } }",
+    "status": 200,
+    "variables": {
+     "filters": {
+      "filterGroups": [],
+      "filters": [
+       {
+        "key": "created",
+        "operator": "gte",
+        "values": [
+         "2026-09-30T10:14:20.569162Z"
+        ]
+       }
+      ],
+      "mode": "and"
+     },
+     "first": 5
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "reports": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-01T00:00:00.000Z",
+          "description": null,
+          "entity_type": "Report",
+          "id": "8056c078-16ef-48d3-ae02-c55655fe5240",
+          "modified": "2026-10-07T10:13:15.621Z",
+          "name": "Probe Report",
+          "objectLabel": [],
+          "published": "2026-10-01T00:00:00.000Z",
+          "report_types": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { reports(first: $first, search: $search, orderBy: published, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description published report_types } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Report"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixDomainObject": {
+       "aliases": null,
+       "confidence": 100,
+       "created": "2026-10-07T08:31:45.676Z",
+       "description": null,
+       "entity_type": "Malware",
+       "externalReferences": {
+        "edges": []
+       },
+       "id": "9e0b7e8d-bdc5-428f-86f8-42b463f5df30",
+       "is_family": true,
+       "malware_types": null,
+       "modified": "2026-10-07T08:31:45.676Z",
+       "name": "ExampleRAT",
+       "objectLabel": []
+      }
+     }
+    },
+    "query": "query Read($id: String!) { stixDomainObject(id: $id) { id entity_type created modified confidence objectLabel { value } externalReferences { edges { node { source_name url } } } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on ThreatActorGroup { aliases sophistication resource_level primary_motivation } ... on IntrusionSet { aliases resource_level primary_motivation } ... on Malware { aliases malware_types is_family } ... on AttackPattern { killChainPhases { phase_name } } ... on Indicator { pattern pattern_type valid_from valid_until } ... on Vulnerability { x_opencti_cvss_base_score x_opencti_cvss_base_severity } ... on Campaign { aliases first_seen last_seen objective } ... on Report { published report_types } } }",
+    "status": 200,
+    "variables": {
+     "id": "9e0b7e8d-bdc5-428f-86f8-42b463f5df30"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixDomainObject": {
+       "confidence": 100,
+       "created": "2026-10-07T08:31:39.324Z",
+       "description": null,
+       "entity_type": "Indicator",
+       "externalReferences": {
+        "edges": []
+       },
+       "id": "58e18543-d21b-41ee-bce5-594fbf30e4ef",
+       "modified": "2026-10-07T08:31:39.340Z",
+       "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+       "objectLabel": [
+        {
+         "value": "malware"
+        }
+       ],
+       "pattern": "[file:hashes.'SHA-256' = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1']",
+       "pattern_type": "stix",
+       "valid_from": "2025-01-01T00:00:00.000Z",
+       "valid_until": "2025-02-01T00:00:00.000Z"
+      }
+     }
+    },
+    "query": "query Read($id: String!) { stixDomainObject(id: $id) { id entity_type created modified confidence objectLabel { value } externalReferences { edges { node { source_name url } } } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on ThreatActorGroup { aliases sophistication resource_level primary_motivation } ... on IntrusionSet { aliases resource_level primary_motivation } ... on Malware { aliases malware_types is_family } ... on AttackPattern { killChainPhases { phase_name } } ... on Indicator { pattern pattern_type valid_from valid_until } ... on Vulnerability { x_opencti_cvss_base_score x_opencti_cvss_base_severity } ... on Campaign { aliases first_seen last_seen objective } ... on Report { published report_types } } }",
+    "status": 200,
+    "variables": {
+     "id": "58e18543-d21b-41ee-bce5-594fbf30e4ef"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixDomainObject": {
+       "confidence": 100,
+       "created": "2026-10-01T00:00:00.000Z",
+       "description": null,
+       "entity_type": "Report",
+       "externalReferences": {
+        "edges": []
+       },
+       "id": "8056c078-16ef-48d3-ae02-c55655fe5240",
+       "modified": "2026-10-07T10:13:15.621Z",
+       "name": "Probe Report",
+       "objectLabel": [],
+       "published": "2026-10-01T00:00:00.000Z",
+       "report_types": null
+      }
+     }
+    },
+    "query": "query Read($id: String!) { stixDomainObject(id: $id) { id entity_type created modified confidence objectLabel { value } externalReferences { edges { node { source_name url } } } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on ThreatActorGroup { aliases sophistication resource_level primary_motivation } ... on IntrusionSet { aliases resource_level primary_motivation } ... on Malware { aliases malware_types is_family } ... on AttackPattern { killChainPhases { phase_name } } ... on Indicator { pattern pattern_type valid_from valid_until } ... on Vulnerability { x_opencti_cvss_base_score x_opencti_cvss_base_severity } ... on Campaign { aliases first_seen last_seen objective } ... on Report { published report_types } } }",
+    "status": 200,
+    "variables": {
+     "id": "8056c078-16ef-48d3-ae02-c55655fe5240"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixCoreRelationships": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T08:31:45.827Z",
+          "description": "",
+          "from": {
+           "description": null,
+           "entity_type": "Indicator",
+           "id": "58e18543-d21b-41ee-bce5-594fbf30e4ef",
+           "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          },
+          "id": "c788ed7f-e843-4643-bbd7-816eec703268",
+          "relationship_type": "indicates",
+          "start_time": "1970-01-01T00:00:00.000Z",
+          "stop_time": "5138-11-16T09:46:40.000Z",
+          "to": {
+           "description": null,
+           "entity_type": "Attack-Pattern",
+           "id": "02829851-fa55-4372-a3e9-c1f59a50dfe1",
+           "name": "Example Technique",
+           "x_mitre_id": "T1999"
+          }
+         }
+        },
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T08:31:45.774Z",
+          "description": "",
+          "from": {
+           "description": null,
+           "entity_type": "Indicator",
+           "id": "58e18543-d21b-41ee-bce5-594fbf30e4ef",
+           "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          },
+          "id": "b91d0e97-d388-47fc-95ee-2f9fac9af9f3",
+          "relationship_type": "indicates",
+          "start_time": "1970-01-01T00:00:00.000Z",
+          "stop_time": "5138-11-16T09:46:40.000Z",
+          "to": {
+           "description": null,
+           "entity_type": "Malware",
+           "id": "9e0b7e8d-bdc5-428f-86f8-42b463f5df30",
+           "name": "ExampleRAT"
+          }
+         }
+        },
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T08:31:45.869Z",
+          "description": "",
+          "from": {
+           "description": null,
+           "entity_type": "Indicator",
+           "id": "58e18543-d21b-41ee-bce5-594fbf30e4ef",
+           "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          },
+          "id": "754a2c9e-5628-443d-be52-499ef904501f",
+          "relationship_type": "indicates",
+          "start_time": "1970-01-01T00:00:00.000Z",
+          "stop_time": "5138-11-16T09:46:40.000Z",
+          "to": {
+           "description": null,
+           "entity_type": "Intrusion-Set",
+           "id": "e4cfeaf3-734d-4b59-851b-7b551b5d6304",
+           "name": "Example Set"
+          }
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $fromId: [String]) { stixCoreRelationships(first: $first, fromId: $fromId) { edges { node { id relationship_type description start_time stop_time confidence created from { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } to { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 50,
+     "fromId": [
+      "58e18543-d21b-41ee-bce5-594fbf30e4ef"
+     ]
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixCoreRelationships": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $toId: [String]) { stixCoreRelationships(first: $first, toId: $toId) { edges { node { id relationship_type description start_time stop_time confidence created from { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } to { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 50,
+     "toId": [
+      "58e18543-d21b-41ee-bce5-594fbf30e4ef"
+     ]
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixCoreRelationships": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T08:31:45.920Z",
+          "description": "",
+          "from": {
+           "description": null,
+           "entity_type": "Indicator",
+           "id": "93d1b78e-2cf9-490c-87a5-07a948c6419a",
+           "name": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"
+          },
+          "id": "d34d33a4-82ed-4be7-aca0-b82fc05a573a",
+          "relationship_type": "indicates",
+          "start_time": "1970-01-01T00:00:00.000Z",
+          "stop_time": "5138-11-16T09:46:40.000Z",
+          "to": {
+           "description": null,
+           "entity_type": "Malware",
+           "id": "9e0b7e8d-bdc5-428f-86f8-42b463f5df30",
+           "name": "ExampleRAT"
+          }
+         }
+        },
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T08:31:45.774Z",
+          "description": "",
+          "from": {
+           "description": null,
+           "entity_type": "Indicator",
+           "id": "58e18543-d21b-41ee-bce5-594fbf30e4ef",
+           "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"
+          },
+          "id": "b91d0e97-d388-47fc-95ee-2f9fac9af9f3",
+          "relationship_type": "indicates",
+          "start_time": "1970-01-01T00:00:00.000Z",
+          "stop_time": "5138-11-16T09:46:40.000Z",
+          "to": {
+           "description": null,
+           "entity_type": "Malware",
+           "id": "9e0b7e8d-bdc5-428f-86f8-42b463f5df30",
+           "name": "ExampleRAT"
+          }
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $toId: [String], $relationship_type: [String]) { stixCoreRelationships(first: $first, toId: $toId, relationship_type: $relationship_type) { edges { node { id relationship_type description start_time stop_time confidence created from { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } to { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 50,
+     "relationship_type": [
+      "indicates"
+     ],
+     "toId": [
+      "9e0b7e8d-bdc5-428f-86f8-42b463f5df30"
+     ]
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "intrusionSets": {
+       "edges": []
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { intrusionSets(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases first_seen last_seen goals resource_level primary_motivation } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Actor"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "threatActorsGroup": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "confidence": 100,
+          "created": "2026-10-07T10:13:15.813Z",
+          "description": null,
+          "entity_type": "Threat-Actor-Group",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "goals": null,
+          "id": "ea947b5b-3054-4af9-85da-8e08f1b9e6f0",
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "modified": "2026-10-07T10:13:15.813Z",
+          "name": "Probe Actor",
+          "objectLabel": [],
+          "primary_motivation": null,
+          "resource_level": null,
+          "sophistication": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { threatActorsGroup(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases sophistication resource_level primary_motivation first_seen last_seen goals } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Actor"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "malwares": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "capabilities": null,
+          "confidence": 100,
+          "created": "2026-10-07T08:31:45.676Z",
+          "description": null,
+          "entity_type": "Malware",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "id": "9e0b7e8d-bdc5-428f-86f8-42b463f5df30",
+          "is_family": true,
+          "killChainPhases": [],
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "malware_types": null,
+          "modified": "2026-10-07T08:31:45.676Z",
+          "name": "ExampleRAT",
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { malwares(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases malware_types is_family first_seen last_seen capabilities killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "ExampleRAT"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "attackPatterns": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T08:31:45.706Z",
+          "description": null,
+          "entity_type": "Attack-Pattern",
+          "id": "02829851-fa55-4372-a3e9-c1f59a50dfe1",
+          "killChainPhases": [],
+          "modified": "2026-10-07T08:31:45.706Z",
+          "name": "Example Technique",
+          "objectLabel": [],
+          "x_mitre_id": "T1999",
+          "x_mitre_platforms": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { attackPatterns(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_mitre_id x_mitre_platforms killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Example Technique"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "vulnerabilities": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T10:13:15.461Z",
+          "description": "probe vulnerability",
+          "entity_type": "Vulnerability",
+          "id": "ec5ac359-2740-43a9-b475-4943cf2e2605",
+          "modified": "2026-10-07T10:13:15.461Z",
+          "name": "CVE-2099-0001",
+          "objectLabel": [],
+          "x_opencti_cvss_base_score": null,
+          "x_opencti_cvss_base_severity": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { vulnerabilities(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_opencti_cvss_base_score x_opencti_cvss_base_severity } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "CVE-2099-0001"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "campaigns": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "confidence": 100,
+          "created": "2026-10-07T10:13:15.496Z",
+          "description": null,
+          "entity_type": "Campaign",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "id": "0e2cb8d1-59ae-4c59-b7a6-993dfb05126e",
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "modified": "2026-10-07T10:13:15.496Z",
+          "name": "Probe Campaign",
+          "objectLabel": [],
+          "objective": "probe"
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { campaigns(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases first_seen last_seen objective } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Campaign"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "tools": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "confidence": 100,
+          "created": "2026-10-07T10:13:15.523Z",
+          "description": null,
+          "entity_type": "Tool",
+          "id": "4c441fc7-62a9-442f-a98a-0d30c622f992",
+          "killChainPhases": [],
+          "modified": "2026-10-07T10:13:15.523Z",
+          "name": "Probe Tool",
+          "objectLabel": [],
+          "tool_types": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { tools(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases tool_types killChainPhases { phase_name } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Tool"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "infrastructures": {
+       "edges": [
+        {
+         "node": {
+          "aliases": null,
+          "confidence": 100,
+          "created": "2026-10-07T10:13:15.553Z",
+          "description": null,
+          "entity_type": "Infrastructure",
+          "first_seen": null,
+          "id": "a5383929-8312-490e-b391-34b3d174f822",
+          "infrastructure_types": null,
+          "last_seen": null,
+          "modified": "2026-10-07T10:13:15.553Z",
+          "name": "Probe Infrastructure",
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { infrastructures(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description aliases infrastructure_types first_seen last_seen } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Infrastructure"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "incidents": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T10:13:15.573Z",
+          "description": null,
+          "entity_type": "Incident",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "id": "0c1af4ce-d900-41ea-99c0-b8fc4a55f732",
+          "incident_type": null,
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "modified": "2026-10-07T10:13:15.594Z",
+          "name": "Probe Incident",
+          "objectLabel": [],
+          "objective": null,
+          "severity": "low",
+          "source": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { incidents(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description incident_type severity source objective first_seen last_seen } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Incident"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixCyberObservables": {
+       "edges": [
+        {
+         "node": {
+          "created_at": "2026-10-07T10:13:15.844Z",
+          "entity_type": "IPv4-Addr",
+          "id": "f58e7597-5557-4cd5-acc8-98f5b3cc2801",
+          "objectLabel": [],
+          "observable_value": "11.0.113.88"
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { stixCyberObservables(first: $first, search: $search) { edges { node { id entity_type created_at observable_value objectLabel { value } ... on StixFile { hashes { algorithm hash } } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "11.0.113.88"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "stixSightingRelationships": {
+       "edges": [
+        {
+         "node": {
+          "attribute_count": 2,
+          "confidence": 100,
+          "description": "Probe sighting",
+          "first_seen": "1970-01-01T00:00:00.000Z",
+          "from": {
+           "description": null,
+           "entity_type": "Indicator",
+           "id": "13745f72-0070-4551-886f-f32c7bee8616",
+           "name": "11.0.113.55"
+          },
+          "id": "87c31372-e663-4dbe-b7ba-5a832ec1e251",
+          "last_seen": "5138-11-16T09:46:40.000Z",
+          "to": {
+           "description": null,
+           "entity_type": "Organization",
+           "id": "3d10b054-f2ed-4739-8ca8-758a51be4d7c",
+           "name": "Probe Organization"
+          }
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { stixSightingRelationships(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id first_seen last_seen attribute_count description confidence from { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } to { ... on BasicObject { id entity_type } ... on AttackPattern { name description x_mitre_id } ... on Campaign { name description } ... on CourseOfAction { name description } ... on Grouping { name description } ... on Identity { name description } ... on Incident { name description } ... on Indicator { name description } ... on Infrastructure { name description } ... on IntrusionSet { name description } ... on Location { name description } ... on Malware { name description } ... on Report { name description } ... on ThreatActor { name description } ... on Tool { name description } ... on Vulnerability { name description } ... on StixCyberObservable { observable_value } } } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "organizations": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "contact_information": null,
+          "created": "2026-10-07T10:13:15.650Z",
+          "description": null,
+          "entity_type": "Organization",
+          "id": "3d10b054-f2ed-4739-8ca8-758a51be4d7c",
+          "modified": "2026-10-07T10:13:15.650Z",
+          "name": "Probe Organization",
+          "objectLabel": [],
+          "x_opencti_organization_type": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { organizations(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description contact_information x_opencti_organization_type } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Organization"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "sectors": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T10:13:15.678Z",
+          "description": null,
+          "entity_type": "Sector",
+          "id": "bd84677e-7ba3-4bbd-9296-3615b29cc5d4",
+          "modified": "2026-10-07T10:13:15.678Z",
+          "name": "Probe Sector",
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { sectors(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Sector"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "locations": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T10:13:15.712Z",
+          "description": null,
+          "entity_type": "Country",
+          "id": "c8920fba-11fe-44cf-94f0-b34c3515b4eb",
+          "latitude": null,
+          "longitude": null,
+          "modified": "2026-10-07T10:13:15.712Z",
+          "name": "Probe Country",
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { locations(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description latitude longitude } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Country"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "coursesOfAction": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "created": "2026-10-07T10:13:15.742Z",
+          "description": null,
+          "entity_type": "Course-Of-Action",
+          "id": "61e8dbad-680f-41dc-bb8d-a24314ef9187",
+          "modified": "2026-10-07T10:13:15.742Z",
+          "name": "Probe Course",
+          "objectLabel": [],
+          "x_mitre_id": "M9999"
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { coursesOfAction(first: $first, search: $search) { edges { node { id entity_type created modified confidence objectLabel { value } name description x_mitre_id } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Course"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "groupings": {
+       "edges": [
+        {
+         "node": {
+          "confidence": 100,
+          "context": "suspicious-activity",
+          "created": "2026-10-07T10:13:15.766Z",
+          "description": null,
+          "entity_type": "Grouping",
+          "id": "61e02a32-6ee4-408f-a342-ec39134c13de",
+          "modified": "2026-10-07T10:13:15.787Z",
+          "name": "Probe Grouping",
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { groupings(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } name description context } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe Grouping"
+    }
+   },
+   {
+    "body": {
+     "data": {
+      "notes": {
+       "edges": [
+        {
+         "node": {
+          "attribute_abstract": "Probe Note",
+          "authors": null,
+          "confidence": 100,
+          "content": "Probe Note content",
+          "created": "2026-10-07T10:13:15.940Z",
+          "entity_type": "Note",
+          "id": "df048d4b-7c34-4b1f-9dea-1a3244b12383",
+          "likelihood": null,
+          "modified": "2026-10-07T10:13:15.975Z",
+          "note_types": null,
+          "objectLabel": []
+         }
+        }
+       ]
+      }
+     }
+    },
+    "query": "query List($first: Int, $search: String) { notes(first: $first, search: $search, orderBy: created, orderMode: desc) { edges { node { id entity_type created modified confidence objectLabel { value } attribute_abstract content note_types authors likelihood } } } }",
+    "status": 200,
+    "variables": {
+     "first": 10,
+     "search": "Probe"
+    }
+   }
+  ]
+ }
+}
