@@ -451,7 +451,7 @@ def propose(state: hi.HostState) -> list[Group]:
             g.flags.append(FLAG_CLONE)
         if g.flags:
             g.tier = FLAGGED if not g.machine else g.tier
-        matched = _match_entries(g, ps, pairs, entries)
+        matched = _match_entries(g, ps, pairs, entries, state)
         if entries and not matched:
             g.flags.append(FLAG_NOT_LISTED)
         elif len(matched) == 1:
@@ -514,11 +514,13 @@ def _group_flags(g, ps, pairs, state, by_unit, foreign, never, hinted) -> list[s
     return list(dict.fromkeys(flags))
 
 
-def _match_entries(g, ps, pairs, entries) -> list[dict]:
+def _match_entries(g, ps, pairs, entries, state=None) -> list[dict]:
     found: dict[str, dict] = {}
     for p in ps:
         if not pairs[p].artifact or pairs[p].ai_only:
             continue  # only evidence the examiner put in the case names a list entry
+        if state is not None and _not_a_host(state, p):
+            continue  # nor a name marked not a host
         for e in list_matches(p[1], entries):
             found[e["name"]] = e
     return list(found.values())
@@ -585,7 +587,11 @@ def listed_without_data(state: hi.HostState, groups: list[Group]) -> list[str]:
     for m in state.machines.values():  # and machines the list already confirmed
         for e in _list_entries(state):
             if any(
-                list_matches(n, [e]) for n in (m.canonical, *(p[1] for p in m.pairs))
+                list_matches(n, [e])
+                for n in (
+                    m.canonical,
+                    *(p[1] for p in m.pairs if not _not_a_host(state, p)),
+                )
             ):
                 named.add(e["name"])
     return [e["name"] for e in _list_entries(state) if e["name"] not in named]
@@ -688,9 +694,11 @@ def _sides(state: hi.HostState, unit: str):
     return ps, own, foreign
 
 
-def _eligible(x: _Pair) -> bool:
+def _eligible(x: _Pair, state: hi.HostState | None = None) -> bool:
     """A name the list may confirm: artifact evidence the examiner put in the
     case (never the AI's), and a host name."""
+    if state is not None and _not_a_host(state, (x.unit, x.raw)):
+        return False  # a name marked not a host never matches anything
     return x.artifact and not x.ai_only and not name_flags(x.raw)
 
 
@@ -728,7 +736,7 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
         for e in {
             e["name"]
             for p in own
-            if _eligible(ps[p])
+            if _eligible(ps[p], state)
             for e in list_matches(p[1], entries)
         }:
             by_entry_units.setdefault(e, []).append(unit)
@@ -788,7 +796,7 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
         ps, own, foreign = sides[unit]
         why = _unit_held(state, unit, ps, own, entries, by_entry_units)
         if why is None:
-            matched = {e["name"]: e for p in own if _eligible(ps[p])
+            matched = {e["name"]: e for p in own if _eligible(ps[p], state)
                        for e in list_matches(p[1], entries)}  # fmt: skip
             (entry,) = matched.values()
             domains = {hi.split_name(p[1])[1] for p in own if ps[p].artifact} - {""}
@@ -812,7 +820,7 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
                          hit[0], hit[1], entry["name"])  # fmt: skip
         for p in foreign:  # another machine's name, judged alone
             x = ps[p]
-            if p in state.bindings or _not_a_host(state, p) or not _eligible(x):
+            if p in state.bindings or _not_a_host(state, p) or not _eligible(x, state):
                 continue
             matched = list_matches(p[1], entries)
             if len(matched) != 1:
@@ -880,7 +888,7 @@ def state_units(state: hi.HostState) -> list[str]:
 
 def _unit_held(state, unit, ps, own, entries, by_entry_units) -> str | None:
     """Why the list can't confirm a unit's own names by itself, or None."""
-    eligible = [p for p in own if _eligible(ps[p])]
+    eligible = [p for p in own if _eligible(ps[p], state)]
     if not eligible:
         return "no artifact name"
     if any(_not_a_host(state, p) for p in own):
@@ -944,22 +952,9 @@ def _entry_machines(state: hi.HostState, entry: dict) -> list:
     for m in state.machines.values():
         if m.state != hi.CONFIRMED or m.canonical.startswith("unattributed:"):
             continue  # not a host: the examiner's, never a list entry's
-        names = {m.canonical, *(p[1] for p in m.pairs)}
-        if any(list_matches(n, [entry]) for n in names):
+        names = {m.canonical, *(p[1] for p in m.pairs if not _not_a_host(state, p))}
+        if any(
+            list_matches(n, [entry]) for n in names
+        ):  # never through a not-a-host name
             found.append(m)
     return found
-
-
-def _machine_for_entry(state: hi.HostState, entry_name: str | None):
-    """The confirmed machine the list entry already names, if exactly one."""
-    if not entry_name:
-        return None
-    entries = [e for e in _list_entries(state) if e["name"] == entry_name]
-    found = []
-    for m in state.machines.values():
-        if m.state != hi.CONFIRMED:
-            continue
-        names = {m.canonical, *(p[1] for p in m.pairs)}
-        if any(list_matches(n, entries) for n in names):
-            found.append(m)
-    return found[0] if len(found) == 1 else None

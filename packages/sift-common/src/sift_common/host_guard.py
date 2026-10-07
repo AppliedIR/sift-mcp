@@ -18,8 +18,6 @@ A refused item comes back with its reason (HTTP 409 for the portal).
 
 from __future__ import annotations
 
-import copy
-
 from sift_common import host_identity as hi
 
 AUTOMATIC_DOORS = frozenset({"start_now", "list", "late", "proposed"})
@@ -61,10 +59,10 @@ def _placeholder(state: hi.HostState, unit: str, canonical: str) -> bool:
     )
 
 
-def _i2(state: hi.HostState, pairs, canonical: str) -> str:
-    """Why the not-a-host names among `pairs` (the machine's names after the
-    step) can't belong to it, or ""."""
-    for p in pairs:
+def _i2(state: hi.HostState, pairs, canonical: str, added=None) -> str:
+    """Why the not-a-host names the step adds (`added`; all of `pairs`, the
+    machine's names after it, when None) can't belong to it, or ""."""
+    for p in pairs if added is None else added:
         if not _not_a_host(state, p):
             continue
         if _placeholder(state, p[0], canonical):
@@ -77,16 +75,13 @@ def _i2(state: hi.HostState, pairs, canonical: str) -> str:
     return ""
 
 
-def _i3(state: hi.HostState, pairs) -> str:
-    """Why a machine holding `pairs` would be two machines, or ""."""
+def _ids_and_domains(state, pairs) -> tuple[set, dict]:
     from sift_common.host_proposal import LIST_UNIT
 
     units = {p[0] for p in pairs if p[0] != LIST_UNIT and _own(state, p)}
     guids = {
         str((state.units.get(u) or {}).get("machine_guid") or "").lower() for u in units
     } - {""}
-    if len(guids) > 1:
-        return "it would join machines with different machine ids"
     shorts: dict[str, set] = {}
     for p in pairs:
         if _not_a_host(state, p):
@@ -94,33 +89,99 @@ def _i3(state: hi.HostState, pairs) -> str:
         short, domain = hi.split_name(p[1])
         if domain:
             shorts.setdefault(short, set()).add(domain)
-    if any(len(d) > 1 for d in shorts.values()):
+    return guids, shorts
+
+
+def _i3(state: hi.HostState, pairs, before=()) -> str:
+    """Why a machine holding `pairs` (after an automatic join; `before` it)
+    would be two machines, or "". What the examiner already confirmed
+    together stands: only what the join adds is judged."""
+    guids, shorts = _ids_and_domains(state, pairs)
+    had, had_shorts = _ids_and_domains(state, list(before))
+    if len(guids) > 1 and guids != had:
+        return "it would join machines with different machine ids"
+    if any(len(d) > 1 and d != had_shorts.get(s) for s, d in shorts.items()):
         return "it would put one name in two domains on one machine"
     return ""
 
 
-def _item_reason(state: hi.HostState, item: dict, automatic: bool) -> str:
-    """Why one confirm or Start-now item is refused on `state`, or ""."""
+class _Overlay:
+    """The fresh state plus what the request's earlier items and records
+    would change: names, binds and new machines. Nothing is copied."""
+
+    def __init__(self, state: hi.HostState):
+        from collections import ChainMap
+
+        self.s = state
+        self.new_names: dict = {}
+        self.names = ChainMap(self.new_names, state.names)
+        self.pair_flags = state.pair_flags
+        self.units = state.units
+        self.bind: dict = {}  # pair -> key
+        self.key_mid: dict = {}  # key -> machine id
+        self.added: dict = {}  # machine id -> pairs
+        self.canon: dict = {}  # machine id -> canonical, for machines made here
+
+    def machine_of_key(self, key):
+        return self.key_mid.get(key) or self.s.key_machine.get(key)
+
+    def machine_of_pair(self, p):
+        key = self.bind.get(p) or self.s.bindings.get(p)
+        return self.machine_of_key(key) if key else None
+
+    def canonical(self, mid) -> str:
+        m = self.s.machines.get(mid)
+        return self.canon.get(mid) or (m.canonical if m else "")
+
+    def pairs(self, mid) -> list:
+        m = self.s.machines.get(mid)
+        return list(dict.fromkeys([*(m.pairs if m else ()), *self.added.get(mid, ())]))
+
+    def canonical_owner(self, canonical: str):
+        for mid, c in self.canon.items():
+            if hi.spelling(c) == hi.spelling(canonical):
+                return mid
+        m = self.s.canonical_owner(canonical)
+        return m.id if m else None
+
+    def join(self, mid, key, canonical, pairs) -> None:
+        self.key_mid.setdefault(key, mid)
+        if mid not in self.s.machines:
+            self.canon.setdefault(mid, canonical)
+        for p in pairs:
+            if self.machine_of_pair(p) is None:
+                self.bind[p] = key
+                self.added.setdefault(mid, []).append(p)
+
+
+def _item_reason(
+    v: _Overlay, action: str, item: dict, automatic: bool, examiner: bool
+) -> str:
+    """Why one confirm or Start-now item is refused, or ""."""
     key = str(item.get("key") or "")
     pairs = [p for p in (hi._pair(x) for x in item.get("pairs") or ()) if p]
-    km = state.machine_of_key(key) if key else None
-    canonical = str(item.get("canonical") or "") or (km.canonical if km else "")
-    bound = {}
-    for p in pairs:
-        m = state.machine_of_pair(*p)
-        if m is not None:
-            bound[m.id] = m
-    in_use = [m for m in ([km] if km else []) + list(bound.values()) if m.pairs]
-    # (two machines in use never share a name, so a merge of two is caught here too)
-    if any(m.canonical != canonical for m in in_use):
+    kmid = v.machine_of_key(key) if key else None
+    canonical = str(item.get("canonical") or "") or (v.canonical(kmid) if kmid else "")
+    mids = {m for m in [kmid, *(v.machine_of_pair(p) for p in pairs)] if m}
+    in_use = [m for m in mids if v.pairs(m)]
+    if examiner and canonical:  # a name the examiner typed that another machine has
+        owner = v.canonical_owner(canonical)
+        if owner is not None and owner not in mids:
+            return (
+                f"host name {canonical!r} is already used by another machine "
+                f"({v.canonical(owner)}); merge the two machines instead"
+            )
+    # two machines in use never share a name, so a merge of two is caught here too
+    if any(v.canonical(m) != canonical for m in in_use):
         return IN_USE
-    target = in_use[0] if in_use else km
-    result = list(dict.fromkeys([*(target.pairs if target else ()), *pairs]))
-    why = _i2(state, result, canonical)
+    target = in_use[0] if in_use else kmid
+    had = v.pairs(target) if target else []
+    result = list(dict.fromkeys([*had, *pairs]))
+    why = _i2(v, result, canonical, [p for p in pairs if p not in had])
     if why:
         return why
     if automatic:
-        return _i3(state, result)
+        return _i3(v, result, had)
     return ""
 
 
@@ -133,49 +194,65 @@ def check_decision(state: hi.HostState, record: dict, door: str) -> list[tuple]:
         return []
     args = record.get("args") if isinstance(record.get("args"), dict) else {}
     automatic = action == "start_now" or bool(args.get("proposed"))
-    folder = hi._Folder()
-    folder.s = copy.deepcopy(state)
+    v = _Overlay(state)
     refused = []
     for i, item in enumerate(args.get("machines") or ()):
         if not isinstance(item, dict):
             continue
-        why = _item_reason(folder.s, item, automatic)
+        why = _item_reason(v, action, item, automatic, examiner=action == "confirm")
         if why:
             refused.append((i, why))
             continue
-        folder.decision({"action": action, "args": {"machines": [item]}})
+        key = str(item.get("key") or "")
+        pairs = [p for p in (hi._pair(x) for x in item.get("pairs") or ()) if p]
+        mid = next(
+            (m for m in [v.machine_of_key(key), *(v.machine_of_pair(p) for p in pairs)]
+             if m and v.pairs(m)),
+            v.machine_of_key(key) or key,
+        )  # fmt: skip
+        v.join(mid, key, str(item.get("canonical") or ""), pairs)
     return refused
 
 
 def check_binds(state: hi.HostState, records: list[dict], door: str) -> list[tuple]:
     """[(record index, reason)] for the bind records that may not be
-    appended; each is judged with the earlier records in place."""
+    appended; each is judged with the earlier records (names and binds) in
+    place."""
     automatic = door in AUTOMATIC_DOORS
-    added: dict[str, list] = {}  # key -> pairs bound in this batch
-    bound: dict[tuple, str] = {}  # pair -> key, in this batch
-    canon: dict[str, str] = {}
+    v = _Overlay(state)
     refused = []
     for i, rec in enumerate(records):
+        if rec.get("kind") == "name":  # its evidence counts for the binds after it
+            p = hi._pair((rec.get("unit"), rec.get("raw")))
+            if p is not None:
+                info = v.new_names.setdefault(p, {"evidence": [], "origins": []})
+                for k, field in (("evidence", "evidence"), ("origin", "origins")):
+                    x = rec.get(k)
+                    if x and x not in info[field]:
+                        info[field].append(x)
+                old = state.names.get(p) or {}
+                for field in ("evidence", "origins"):
+                    info[field] = list(
+                        dict.fromkeys([*(old.get(field) or ()), *info[field]])
+                    )
+            continue
         if rec.get("kind") != "bind":
             continue
         p = hi._pair((rec.get("unit"), rec.get("raw")))
         key = rec.get("key")
         if p is None or not isinstance(key, str):
             continue
-        before = bound.get(p) or state.bindings.get(p)
+        before = v.bind.get(p) or state.bindings.get(p)
         if before is not None and before != key:
             refused.append((i, "it is bound to another machine already"))
             continue
-        m = state.machine_of_key(key)
-        canonical = (
-            m.canonical if m else canon.get(key) or str(rec.get("canonical") or p[1])
-        )
-        pairs = list(dict.fromkeys([*(m.pairs if m else ()), *added.get(key, ()), p]))
-        why = _i2(state, pairs, canonical) or (_i3(state, pairs) if automatic else "")
+        mid = v.machine_of_key(key) or key
+        canonical = v.canonical(mid) or str(rec.get("canonical") or p[1])
+        had = v.pairs(mid)
+        pairs = list(dict.fromkeys([*had, p]))
+        why = _i2(v, pairs, canonical, [p]) or (_i3(v, pairs, had) if automatic else "")
         if why:
             refused.append((i, why))
             continue
-        added.setdefault(key, []).append(p)
-        bound[p] = key
-        canon.setdefault(key, canonical)
+        v.join(mid, key, canonical, [p])
     return refused

@@ -262,9 +262,13 @@ def _append_decision(
                 f"past the log's end ({size} bytes)"
             )
         state = load(root)
-        clash = _canonical_clash(state, record)
-        if clash:
-            raise HostLogError(clash)
+        if record.get("action") not in (
+            "confirm",
+            "start_now",
+        ):  # (items: per item, below)
+            clash = _canonical_clash(state, record)
+            if clash:
+                raise HostLogError(clash)
         refused = host_guard.check_decision(state, record, door)
         whole = [why for i, why in refused if i is None]
         if whole or (refused and not partial):
@@ -936,7 +940,9 @@ def _match_confirmed(state: HostState, raw: str) -> Machine | None:
     for m in state.machines.values():
         if m.state != CONFIRMED:
             continue
-        names = {spelling(m.canonical), *(spelling(p[1]) for p in m.pairs)}
+        names = {spelling(m.canonical)}  # a name marked not a host never matches
+        names |= {spelling(p[1]) for p in m.pairs
+                  if FLAG_NOT_A_HOST not in state.pair_flags.get(p, [])}  # fmt: skip
         names |= {spelling(n) for n in m.former}
         if target in names:  # the exact name: its domain is the machine's own
             found.append(m)
@@ -1043,7 +1049,8 @@ def get_or_mint(
                         "flags": [FLAG_MATCHED_DURING_INGEST]}  # fmt: skip
             else:
                 bind, key, result = mint(canonical or raw)
-            if host_guard.check_binds(state, [bind], "late"):
+            # judged with this name's own record in place (its evidence counts)
+            if host_guard.check_binds(state, [*records, bind], "late"):
                 bind, key, result = mint(canonical or raw)  # its own machine, then
         records.append(bind)
         for rec in records:

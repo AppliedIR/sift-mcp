@@ -73,6 +73,58 @@ def violations(P, Q, door) -> list:
                and not _foreign(Q, x) and not _nah(Q, x)]  # fmt: skip
         if not own and not placeholder:
             out.append(("not a host elsewhere", door, p[1], m.canonical))
+    if door in ("name", "list", "mint"):  # a join by the list or a late name
+        for p, key in Q.bindings.items():
+            if P.bindings.get(p) == key or p[0] == hp.LIST_UNIT or _nah(Q, p):
+                continue  # (a not-a-host name goes with its unit's machine: checked above)
+            before = P.machine_of_key(key)
+            if before is None or not before.pairs:
+                continue  # a machine made for it
+            # the unit is one machine: its own names join together, so some
+            # name of the unit's must be one of the machine's (never a not-a-host)
+            mine = {hi.split_name(r)[0] for (u, r), k in Q.bindings.items()
+                    if u == p[0] and k == key and not _nah(Q, (u, r))}  # fmt: skip
+            theirs = {hi.split_name(before.canonical)[0]} | {
+                hi.split_name(q[1])[0] for q in before.pairs if not _nah(P, q)}  # fmt: skip
+            if not mine & theirs:
+                out.append(
+                    ("joined through a not-a-host name", door, p[1], before.canonical)
+                )
+    if door == "mint":  # a late name of one confirmed machine's own goes to it
+        for p in set(Q.names) - set(P.names):
+            if (Q.names[p].get("origins") or []) != ["artifact"] or _nah(Q, p):
+                continue
+            spelled = hi.spelling(p[1])
+            homes = [m for m in P.machines.values() if m.state == hi.CONFIRMED and spelled in {
+                hi.spelling(m.canonical), *(hi.spelling(n) for n in m.former),
+                *(hi.spelling(q[1]) for q in m.pairs if not _nah(P, q))}]  # fmt: skip
+            if len(homes) != 1:
+                continue
+            m = homes[0]
+
+            def ids(pairs):
+                us = {u for u, r in pairs if u != hp.LIST_UNIT
+                      and not _foreign(Q, (u, r)) and not _nah(Q, (u, r))}  # fmt: skip
+                return {str((Q.units.get(u) or {}).get("machine_guid") or "").lower()
+                        for u in us} - {""}  # fmt: skip
+
+            def doms(pairs):
+                out_: dict = {}
+                for q in pairs:
+                    if not _nah(Q, q):
+                        s_, d = hi.split_name(q[1])
+                        if d:
+                            out_.setdefault(s_, set()).add(d)
+                return out_
+
+            after_ids, after_doms = ids([*m.pairs, p]), doms([*m.pairs, p])
+            fine = (len(after_ids) <= 1 or after_ids == ids(m.pairs)) and all(
+                len(d) <= 1 or d == doms(m.pairs).get(s_)
+                for s_, d in after_doms.items()
+            )
+            if fine:
+                if Q.bindings.get(p) not in m.keys:
+                    out.append(("late name not joined", door, p[1], m.canonical))
     if door in AUTOMATIC:  # one machine, on the machines this step changed
         for q in Q.machines.values():
             before = P.machine_of_key(q.keys[0])
@@ -82,7 +134,12 @@ def violations(P, Q, door) -> list:
                      and not _foreign(Q, (u, r)) and not _nah(Q, (u, r))}  # fmt: skip
             guids = {str((Q.units.get(u) or {}).get("machine_guid") or "").lower()
                      for u in units} - {""}  # fmt: skip
-            if len(guids) > 1:
+            had = set()
+            if before is not None:
+                had = {str((Q.units.get(u) or {}).get("machine_guid") or "").lower()
+                       for u, r in before.pairs if u != hp.LIST_UNIT
+                       and not _foreign(Q, (u, r)) and not _nah(Q, (u, r))} - {""}  # fmt: skip
+            if len(guids) > 1 and guids != had:  # what the examiner joined stands
                 out.append(("two machine ids", door, q.canonical, sorted(guids)))
             shorts: dict = {}
             for p in q.pairs:
@@ -91,7 +148,14 @@ def violations(P, Q, door) -> list:
                 s, d = hi.split_name(p[1])
                 if d:
                     shorts.setdefault(s, set()).add(d)
-            if any(len(d) > 1 for d in shorts.values()):
+            had_shorts: dict = {}
+            for p in before.pairs if before is not None else ():
+                if _nah(Q, p):
+                    continue
+                s, d = hi.split_name(p[1])
+                if d:
+                    had_shorts.setdefault(s, set()).add(d)
+            if any(len(d) > 1 and d != had_shorts.get(s) for s, d in shorts.items()):
                 out.append(
                     ("two domains", door, q.canonical, sorted(n for _, n in q.pairs))
                 )
@@ -180,13 +244,15 @@ def run(tmp_path, seed: int, steps: int = 60, monkeypatch=None) -> list:
                     if rng.random() < 0.6
                     else (rng.choice(units), rng.choice(NAMES))
                 )
-                hi.get_or_mint(case, p[0], p[1])
+                hi.get_or_mint(case, p[0], p[1], evidence=rng.choice([*EVIDENCE, ""]))
             elif door == "start":
                 hg.record_wait(case, f"r{step}", rng.sample(units, 2))
                 hg.start_now(case, f"r{step}", "ex")
-        except hi.HostLogError:
+        except hi.HostLogError as e:
             if door == "confirm":  # all or nothing
                 assert (case / hi.DECISIONS).read_bytes() == before
+            if door == "confirm_all":  # skip and report: never the whole request
+                found.append((seed, step, "confirm-all refused whole", str(e)))
         found += [(seed, step, *v) for v in violations(P, hi.load(case), door)]
     return found
 
@@ -344,3 +410,46 @@ def test_a_bind_never_moves_a_name_bound_to_another_machine(case):
     bind = {"kind": "bind", "unit": "u1", "raw": "WKS01", "key": "f" * 16}
     (refused,) = host_guard.check_binds(hi.load(case), [bind], "late")
     assert refused[1] == "it is bound to another machine already"
+
+
+def test_a_list_entry_never_matches_through_a_not_a_host_name(case):
+    obs(case, unit("u1"), name("u1", "WKS01"), name("u1", "WKS01", "Security.evtx Computer"),
+        name("u1", "BUILD", "events.csv host column"), unit("u2"),
+        name("u2", "BUILD"), name("u2", "BUILD", "Security.evtx Computer"))  # fmt: skip
+    hi.append_decision(case, {"action": "confirm", "args": {"machines": [
+        {"key": "k1", "canonical": "WKS01", "pairs": [["u1", "WKS01"]]}]}},
+        hi.load(case).obs_offset)  # fmt: skip
+    hi.append_decision(case, {"action": "not_a_host", "args": {"pairs": [["u1", "BUILD"]]}},
+                       hi.load(case).obs_offset)  # fmt: skip
+    hi.get_or_mint(case, "u1", "BUILD")  # with WKS01, as not a host
+    P = hi.load(case)
+    hp.upload_host_list(case, "BUILD\n", "ex")
+    Q = hi.load(case)
+    assert Q.machine_of_pair("u2", "BUILD") is not Q.machine_of_key("k1")
+    assert violations(P, Q, "list") == []
+
+
+def test_one_clashing_item_of_a_confirm_all_is_reported_and_the_rest_appended(case):
+    obs(case, unit("u1"), name("u1", "WKS01"), unit("u2"), name("u2", "SRV01"),
+        unit("u3"), name("u3", "DC01"))  # fmt: skip
+    hi.get_or_mint(case, "u1", "WKS01")  # a machine called WKS01
+    out = hi.append_decision_items(case, {"action": "confirm", "args": {"proposed": True,
+        "machines": [{"key": "k2", "canonical": "WKS01", "pairs": [["u2", "SRV01"]]},
+                     {"key": "k3", "canonical": "DC01", "pairs": [["u3", "DC01"]]}]}},
+        hi.load(case).obs_offset)  # fmt: skip
+    assert [r["index"] for r in out["refused"]] == [0] and out["appended"] == 1
+    assert hi.load(case).machine_of_pair("u3", "DC01").canonical == "DC01"
+
+
+def test_a_forwarded_name_met_while_ingesting_joins_its_machine(case):
+    obs(case, unit("u1", "A"), name("u1", "DC01"), name("u1", "DC01", "Security.evtx Computer"),
+        unit("u2", "B"), name("u2", "WEC01"))  # fmt: skip
+    hi.append_decision(case, {"action": "confirm", "args": {"machines": [
+        {"key": "k1", "canonical": "DC01", "pairs": [["u1", "DC01"]]}]}},
+        hi.load(case).obs_offset)  # fmt: skip
+    P = hi.load(case)
+    key, canonical = hi.get_or_mint(
+        case, "u2", "DC01", evidence="ForwardedEvents Computer"
+    )
+    assert (key, canonical) == ("k1", "DC01")  # never "DC01 (2)"
+    assert violations(P, hi.load(case), "mint") == []
