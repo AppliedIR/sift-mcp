@@ -227,6 +227,177 @@ def _next_seq(items: list[dict], id_field: str, prefix: str, examiner: str) -> i
     return max_num + 1
 
 
+# --- Alternatives and the challenge marker ---------------------------------
+#
+# Anything that removes doubt (a ruled-out alternative, a challenge marker, a
+# withdrawal) must cite tool output in the case trail, or it is downgraded to
+# the doubtful form. Anything that adds doubt is kept.
+
+# Entries the model writes about itself (its account of a command it ran, or
+# the client hook's record): they don't count as tool output.
+_SELF_REPORTED_SOURCES = {"orchestrator_voluntary", "shell_self_report"}
+_SELF_REPORTED_AUDIT_FILES = {"claude-code.jsonl"}
+
+_MAX_ALTERNATIVES = 10
+_MAX_ALTERNATIVE_IDS = 10
+_MAX_SKEPTIC_IDS = 20
+_MAX_EXPLANATION = 2000
+_MAX_EVIDENCE = 5000
+_CHALLENGE_OUTCOMES = {"stands", "revised", "withdrawn"}
+
+
+def _tool_output_ids(case_dir: Path) -> set[str]:
+    """Audit ids in the case trail that record a tool's own output."""
+    ids: set[str] = set()
+    audit_dir = case_dir / "audit"
+    if not audit_dir.is_dir():
+        return ids
+    for jsonl_file in audit_dir.glob("*.jsonl"):
+        if jsonl_file.name in _SELF_REPORTED_AUDIT_FILES:
+            continue
+        try:
+            with open(jsonl_file, encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(entry, dict):
+                        continue
+                    aid = entry.get("audit_id")
+                    if aid and entry.get("source") not in _SELF_REPORTED_SOURCES:
+                        ids.add(str(aid))
+        except OSError:
+            continue
+    return ids
+
+
+def _cited_ids(raw: Any, limit: int, tool_ids: set[str]) -> tuple[list[str], list]:
+    """The ids in raw that are tool output in the trail, and the ones that aren't."""
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return [], []
+    kept: list[str] = []
+    removed: list = []
+    for aid in raw[:limit]:
+        if isinstance(aid, str) and aid in tool_ids:
+            if aid not in kept:
+                kept.append(aid)
+        else:
+            removed.append(aid)
+    return kept, removed
+
+
+def _normalize_alternatives(raw: Any, tool_ids: set[str]) -> tuple[list, list[str]]:
+    """The alternatives to store (empty: store no key), and warnings.
+
+    ``ruled_out`` stands only with tool output from the trail and evidence
+    text; otherwise the alternative stays ``open``.
+    """
+    warnings: list[str] = []
+    if raw is None or raw == [] or raw == "":
+        return [], warnings
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            raw = [raw]  # one alternative written as text
+    if not isinstance(raw, list):
+        return [], ["alternatives dropped: expected a list of alternatives."]
+    if len(raw) > _MAX_ALTERNATIVES:
+        warnings.append(
+            f"{len(raw) - _MAX_ALTERNATIVES} alternative(s) over the limit of "
+            f"{_MAX_ALTERNATIVES} dropped."
+        )
+    stored: list[dict] = []
+    for n, entry in enumerate(raw[:_MAX_ALTERNATIVES], 1):
+        if isinstance(entry, str):
+            entry = {"explanation": entry}
+        if not isinstance(entry, dict):
+            warnings.append(f"alternative {n} dropped: not an object or text.")
+            continue
+        explanation = str(entry.get("explanation") or "")
+        evidence = str(entry.get("evidence") or "")
+        ids, removed = _cited_ids(
+            entry.get("audit_ids"), _MAX_ALTERNATIVE_IDS, tool_ids
+        )
+        if removed:
+            warnings.append(
+                f"alternative {n}: audit id(s) {removed} removed, not tool output "
+                "in this case's audit trail."
+            )
+        status = "open"
+        if entry.get("status") == "ruled_out":
+            if ids and evidence.strip():
+                status = "ruled_out"
+            else:
+                warnings.append(
+                    f"alternative {n} stored as open: ruling it out needs the tool "
+                    "output (evidence) and its audit id."
+                )
+        if len(explanation) > _MAX_EXPLANATION or len(evidence) > _MAX_EVIDENCE:
+            warnings.append(f"alternative {n}: text truncated.")
+        alternative: dict = {
+            "explanation": explanation[:_MAX_EXPLANATION],
+            "status": status,
+        }
+        if evidence:
+            alternative["evidence"] = evidence[:_MAX_EVIDENCE]
+        if ids:
+            alternative["audit_ids"] = ids
+        stored.append(alternative)
+    return stored, warnings
+
+
+def _normalize_challenge(
+    raw: Any, tool_ids: set[str], own_ids: list[str]
+) -> tuple[dict | None, list[str]]:
+    """The challenge marker to store (None: store none), and warnings.
+
+    The skeptic's ids must be tool output in the trail, other than the
+    finding's own evidence. A ``withdrawn`` marker is kept even without them:
+    it says a withdrawal was refused, which adds doubt.
+    """
+    not_challenged = "The finding will show as not challenged."
+    if raw is None:
+        return None, []
+    if not isinstance(raw, dict) or raw.get("outcome") not in _CHALLENGE_OUTCOMES:
+        return None, [
+            "challenged dropped: expected outcome stands, revised or withdrawn. "
+            + not_challenged
+        ]
+    raw_ids = raw.get("skeptic_audit_ids")
+    if isinstance(raw_ids, str):
+        raw_ids = [raw_ids]
+    if not isinstance(raw_ids, list):
+        raw_ids = []
+    warnings: list[str] = []
+    if any(a in own_ids for a in raw_ids):
+        warnings.append(
+            "challenged: the finding's own audit ids don't count as the "
+            "skeptic's re-run."
+        )
+    ids, removed = _cited_ids(
+        [a for a in raw_ids if a not in own_ids], _MAX_SKEPTIC_IDS, tool_ids
+    )
+    if removed:
+        warnings.append(
+            f"challenged: skeptic audit id(s) {removed} removed, not tool output "
+            "in this case's audit trail."
+        )
+    marker: dict = {"outcome": raw["outcome"], "skeptic_audit_ids": ids}
+    contradiction = str(raw.get("contradiction") or "")
+    if contradiction:
+        marker["contradiction"] = contradiction[:_MAX_EVIDENCE]
+    if raw["outcome"] != "withdrawn" and not ids:
+        return None, warnings + [
+            "challenged dropped: no skeptic audit id is tool output in this "
+            "case's audit trail. " + not_challenged
+        ]
+    return marker, warnings
+
+
 def _resolve_source_evidence_static(
     input_files: list[str],
     audit_entries: list[dict],
@@ -792,8 +963,13 @@ class CaseManager:
         supporting_commands: list[dict] | None = None,
         artifacts: list[dict] | None = None,
         audit: Any | None = None,
+        withdrawal_unlogged: bool = False,
     ) -> dict:
         """Validate and stage finding as DRAFT.
+
+        A finding whose challenge withdrew it, citing the skeptic's tool output
+        and the output that contradicts it, is not staged: the result is
+        WITHDRAWN, and the caller's audit entry of this call is the record.
 
         Args:
             finding: Finding data dict.
@@ -801,6 +977,8 @@ class CaseManager:
             supporting_commands: List of shell commands that produced evidence.
                 Each dict must have command, output_excerpt, purpose.
             audit: AuditWriter instance (needed for shell audit ID generation).
+            withdrawal_unlogged: the withdrawal couldn't be logged, so the
+                finding is staged for the examiner instead.
 
         Holds the case lock from the findings load through the auto-created
         timeline event and the IOC extraction (one span). Raises
@@ -815,6 +993,7 @@ class CaseManager:
                 supporting_commands,
                 artifacts,
                 audit,
+                withdrawal_unlogged,
             )
 
     def _record_finding_locked(
@@ -825,7 +1004,18 @@ class CaseManager:
         supporting_commands: list[dict] | None,
         artifacts: list[dict] | None,
         audit: Any | None,
+        withdrawal_unlogged: bool = False,
     ) -> dict:
+
+        challenge = finding.get("challenged") if isinstance(finding, dict) else None
+        if (
+            isinstance(challenge, dict)
+            and challenge.get("outcome") == "withdrawn"
+            and not withdrawal_unlogged
+        ):
+            withdrawn = self._withdrawal(finding, artifacts, case_dir)
+            if withdrawn:
+                return withdrawn
 
         # Validate via discipline module
         validation = validate_finding_data(finding)
@@ -1369,6 +1559,31 @@ class CaseManager:
         if not validated_artifacts:
             finding_prov_grade = "PARTIAL"  # shell-only (no artifacts)
 
+        # Alternatives and the challenge marker: never merged into audit_ids
+        doubt_warnings: list[str] = []
+        if "alternatives" in finding or "challenged" in finding:
+            tool_ids = _tool_output_ids(case_dir)
+            alternatives, notes = _normalize_alternatives(
+                finding.get("alternatives"), tool_ids
+            )
+            doubt_warnings.extend(notes)
+            if alternatives:
+                sanitized["alternatives"] = alternatives
+            marker, notes = _normalize_challenge(
+                finding.get("challenged"), tool_ids, sanitized["audit_ids"]
+            )
+            doubt_warnings.extend(notes)
+            if marker:
+                sanitized["challenged"] = marker
+                if marker["outcome"] == "withdrawn":
+                    doubt_warnings.append(
+                        "Withdrawal could not be logged; staged for the examiner."
+                        if withdrawal_unlogged
+                        else "Withdrawal refused: it needs the skeptic's tool output "
+                        "and the output that contradicts the observation. "
+                        "Staged for the examiner."
+                    )
+
         finding_record = {
             **sanitized,
             "id": finding_id,
@@ -1506,9 +1721,60 @@ class CaseManager:
             )
         warnings.extend(audit_warnings)
         warnings.extend(validation_warnings)
+        warnings.extend(doubt_warnings)
         if warnings:
             result["warning"] = " ".join(warnings)
         return result
+
+    def _withdrawal(
+        self, finding: dict, artifacts: list[dict] | None, case_dir: Path
+    ) -> dict | None:
+        """The WITHDRAWN result for a complete withdrawal, else None (stage it).
+
+        Complete: a title and observation, a contradiction quoting the re-run
+        output, and at least one skeptic audit id that is tool output in the
+        trail other than the finding's own evidence.
+        """
+        title = str(finding.get("title") or "").strip()
+        observation = str(finding.get("observation") or "").strip()
+        if not title or not observation:
+            return None
+        if isinstance(artifacts, str):
+            try:
+                artifacts = json.loads(artifacts)
+            except (json.JSONDecodeError, TypeError):
+                artifacts = None
+        if artifacts is None:
+            artifacts = finding.get("artifacts")
+        own_ids = [a for a in finding.get("audit_ids") or [] if isinstance(a, str)]
+        if isinstance(artifacts, list):
+            own_ids += [
+                str(a["audit_id"])
+                for a in artifacts
+                if isinstance(a, dict) and a.get("audit_id")
+            ]
+        marker, _ = _normalize_challenge(
+            finding.get("challenged"), _tool_output_ids(case_dir), own_ids
+        )
+        if not marker or not marker["skeptic_audit_ids"]:
+            return None
+        if not marker.get("contradiction", "").strip():
+            return None
+        return {
+            "status": "WITHDRAWN",
+            "title": title,
+            "observation": observation,
+            "interpretation": str(finding.get("interpretation") or ""),
+            "confidence": str(finding.get("confidence") or ""),
+            "audit_ids": own_ids,
+            "skeptic_audit_ids": marker["skeptic_audit_ids"],
+            "contradiction": marker["contradiction"],
+            "message": (
+                "Not staged: withdrawn after challenge. It is counted for the "
+                "examiner at approval. Tell the examiner now, in one line: the "
+                "title and the contradiction."
+            ),
+        }
 
     def _next_shell_seq(self, case_dir: Path, examiner: str, today: str) -> int:
         """Find next sequence number for shell-{examiner}-{today}-NNN audit IDs."""

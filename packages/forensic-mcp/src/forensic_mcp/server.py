@@ -227,8 +227,33 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         logged_id = audit.log(
             tool="record_finding", params={"finding": finding}, result_summary=result
         )
+        if result.get("status") == "WITHDRAWN" and logged_id is None:
+            # The audit entry is the only record of a withdrawal: without it,
+            # the finding goes to the examiner instead.
+            try:
+                result = manager.record_finding(
+                    finding,
+                    examiner_override=analyst_override,
+                    supporting_commands=supporting_commands,
+                    artifacts=artifacts,
+                    audit=audit,
+                    withdrawal_unlogged=True,
+                )
+            except Exception as e:
+                logger.error("record_finding failed: %s", e)
+                return {"error": str(e)}
+            logged_id = audit.log(
+                tool="record_finding",
+                params={"finding": finding},
+                result_summary=result,
+            )
         if logged_id is None:
-            result["warning"] = "Audit write failed — action not recorded"
+            result["warning"] = " ".join(
+                filter(
+                    None,
+                    [result.get("warning"), "Audit write failed — action not recorded"],
+                )
+            )
 
         # Enrich with considerations when staging succeeds
         if result.get("status") == "STAGED":
