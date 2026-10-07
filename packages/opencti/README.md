@@ -52,33 +52,23 @@ names the warninglists that list the value, and `warninglists_enabled` and
 `decaying_models_enabled` say how many are switched on (both are disabled in a
 new MISP).
 
-## OpenCTI version compatibility
+## OpenCTI versions
 
-**You must align `pycti`'s major version to your OpenCTI server's
-major version.** `opencti-mcp` declares only a floor (`pycti>=6.0`)
-and does not ceiling-pin, because the correct major depends on which
-OpenCTI server you are connecting to — and that is
-environment-specific, not a package-wide default.
+`opencti-mcp` talks to OpenCTI's GraphQL API directly, with no client
+library, so one install works with OpenCTI 6.9 and 7. Every query uses fields
+that both versions have; `lookup_ioc` records the server's version with each
+answer.
 
-A major mismatch causes `GRAPHQL_VALIDATION_FAILED: Unknown type
-"..."` errors on every IOC query because each major adds new schema
-types the older server doesn't know about (e.g., pycti 7.x's
-`AIPrompt` fragment against a 6.x server; or older pycti missing
-types a newer server requires).
+An install from an earlier release may still have OpenCTI's old client,
+pycti. Nothing uses it any more; the installers and `vhir update` leave it in
+place and print the command that removes it:
 
-Install the pycti major that matches your server:
+```bash
+uv pip uninstall --python ~/.vhir/venv/bin/python pycti
+```
 
-| OpenCTI server   | Install pycti                                   |
-|------------------|-------------------------------------------------|
-| 5.x (legacy)     | `uv pip install 'pycti>=5.0,<6.0'`              |
-| 6.x              | `uv pip install 'pycti>=6.0,<7.0'`              |
-| 7.x              | `uv pip install 'pycti>=7.0,<8.0'`              |
-
-If pycti's major doesn't match the server's major at startup,
-`opencti-mcp` fails init with a clear `VersionMismatchError`
-including the exact pin instruction for your server's version. It
-will NOT start the backend and begin emitting per-IOC GraphQL
-errors.
+The standalone `opencti_query.py` script still uses pycti. To run it, install
+the pycti major that matches your server's, in an environment of its own.
 
 ### Checking your server version
 
@@ -87,13 +77,3 @@ curl -H "Authorization: Bearer <token>" \
      -d '{"query":"{ about { version } }"}' \
      https://<opencti-host>/graphql
 ```
-
-Returns `{"data":{"about":{"version":"6.9.10"}}}` — the major digit
-is the `pycti` major you need.
-
-### Future
-
-A future release will detect the server version and install the
-matching pycti automatically. Until then, this is a manual step
-after setting up a new operator environment or upgrading
-`opencti-mcp`.
