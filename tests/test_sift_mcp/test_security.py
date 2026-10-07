@@ -437,3 +437,94 @@ class TestSecurityPolicyYAML:
         assert "-o" in policy["output_flags"]
 
         clear_catalog_cache()
+
+
+# Credentials and the HMAC store are refused as path arguments, including bare
+# names in the working folder. ~ is the home the blocklist was built from (the
+# root conftest's temporary one).
+
+_HOME0 = os.path.expanduser("~")
+
+
+def _guarded(argv, cwd=None):
+    from unittest.mock import patch
+
+    from sift_mcp.tools.generic import run_command
+
+    ran = []
+
+    def fake(cmd, **kw):
+        ran.append(cmd)
+        return {"exit_code": 0, "stdout": "", "stderr": "", "stdout_total_bytes": 0}
+
+    old = os.getcwd()
+    if cwd:
+        os.chdir(cwd)
+    try:
+        with (
+            patch(
+                "sift_mcp.tools.generic.find_binary",
+                side_effect=lambda b: "/usr/bin/" + b,
+            ),
+            patch("sift_mcp.tools.generic.execute", side_effect=fake),
+        ):
+            try:
+                run_command([a.replace("~", _HOME0) for a in argv])
+            except ValueError as e:
+                assert not ran
+                return str(e)
+    finally:
+        os.chdir(old)
+    assert ran
+    return "allowed"
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["cat", "~/.ssh/id_ed25519"],
+        ["cp", "-r", "~/.ssh", "/tmp/s"],
+        ["cat", "~/.claude.json"],
+        ["cat", "~/.claude.json.vhir-backup-20261006T000000Z"],
+        ["cat", "~/.claude/.credentials.json"],
+        ["cp", "/tmp/x", "~/.claude/settings.json"],
+        ["cat", "~/.config/opencti-mcp/token"],
+        ["grep", "--file=~/.config/opencti-mcp/token", "x"],
+        ["cat", "/var/lib/vhir/verification/INC-1.jsonl"],
+        ["cat", "/var/lib/vhir/passwords/examiner.json"],
+        ["cp", "/tmp/x", "/var/lib/vhir/verification/INC-1.jsonl"],
+    ],
+)
+def test_credentials_and_the_hmac_store_are_refused(argv):
+    assert _guarded(argv).startswith("Access denied")
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["cat", ".claude.json"],
+        ["cp", "-r", ".ssh", "x"],
+        ["grep", "--file=.claude.json", "x"],
+        ["tar", "-cf", "/tmp/c.tar", ".claude"],
+    ],
+)
+def test_a_bare_name_in_the_working_folder_is_refused_too(argv):
+    assert _guarded(argv, cwd=_HOME0).startswith("Access denied")
+
+
+@pytest.mark.parametrize(
+    "argv, cwd",
+    [
+        (["ls", "-la"], _HOME0),
+        (["grep", "foo", "file.txt"], _HOME0),
+        (["cat", "~/.sshfoo/x"], None),
+        (["cat", "~/.claude.jsonl"], None),
+        (["cat", "/var/log/syslog"], None),
+    ],
+)
+def test_ordinary_reads_are_still_allowed(argv, cwd):
+    assert _guarded(argv, cwd=cwd) == "allowed"
+
+
+def test_the_gateway_config_is_still_refused():
+    assert _guarded(["cat", "~/.vhir/gateway.yaml"]).startswith("Access denied")

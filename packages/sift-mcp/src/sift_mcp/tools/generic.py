@@ -97,6 +97,8 @@ def run_command(
                     validate_output_path(value)
                 else:
                     validate_input_path(value)
+            elif value:  # a bare name, resolved against the working folder
+                validate_input_path(value)
             prev_was_output_flag = False
             continue
         if arg.startswith("-") and "=" not in arg:
@@ -109,6 +111,9 @@ def run_command(
                 validate_output_path(arg)
             else:
                 validate_input_path(arg)
+        elif arg:
+            # a bare name (.ssh, .claude.json), resolved against the working folder
+            validate_input_path(arg)
         prev_was_output_flag = False
 
     # Resolve binary via find_binary to prevent absolute path bypass

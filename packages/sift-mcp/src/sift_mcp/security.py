@@ -141,17 +141,30 @@ _CASE_RECORDS = frozenset(
 _WRAPPERS = frozenset({"sudo", "nice", "nohup", "time", "timeout", "stdbuf"})
 
 
+def _case_data_roots() -> list[tuple[str, list[str]]]:
+    """The rm guard's roots, each with the leading parts a path under it gets."""
+    roots = [(_get_protected_dirs()[0], [])]
+    case_dir = resolve_case_dir()
+    if case_dir:  # the active case, also when it is outside the cases dir
+        real = os.path.realpath(case_dir)
+        roots.append((real, [os.path.basename(real)]))
+    return roots
+
+
 def _harms_case_data(path: str, new_ok: bool = False) -> bool:
     """Whether deleting or overwriting path harms protected case data."""
-    cases = os.path.realpath(
-        os.environ.get("VHIR_CASES_DIR", str(Path.home() / "cases"))
-    )
     real = os.path.realpath(path)
-    if real == "/" or cases.startswith(real.rstrip("/") + "/"):
-        return True  # an ancestor of the cases root
-    if real != cases and not real.startswith(cases + "/"):
+    return any(
+        _harms_under(real, root, lead, new_ok) for root, lead in _case_data_roots()
+    )
+
+
+def _harms_under(real: str, root: str, lead: list[str], new_ok: bool) -> bool:
+    if real == "/" or root.startswith(real.rstrip("/") + "/"):
+        return True  # an ancestor of a protected root
+    if real != root and not real.startswith(root + "/"):
         return False
-    parts = [x for x in real[len(cases) :].split("/") if x]
+    parts = lead + [x for x in real[len(root) :].split("/") if x]
     if not parts:  # the cases root
         return True
     if len(parts) == 1:  # a case root, while it holds anything
@@ -237,6 +250,11 @@ _BLOCKED_DIRECTORIES = (
     "/dev",
     "/boot",
     os.path.expanduser("~/.vhir"),
+    os.path.expanduser("~/.ssh"),
+    os.path.expanduser("~/.claude.json"),
+    os.path.expanduser("~/.config/opencti-mcp"),
+    "/var/lib/vhir",
+    os.path.expanduser("~/.claude"),
 )
 
 # Exceptions within blocked directories (evidence data, not config)
@@ -318,13 +336,15 @@ def validate_input_path(path: str) -> str:
     # Handle flag=value arguments: validate the value portion as a path
     if "=" in path and path.startswith("-"):
         value = path.split("=", 1)[1]
-        if value and (value.startswith("/") or value.startswith("..") or "/" in value):
-            return validate_input_path(value)
-        return path
+        return validate_input_path(value) if value else path
 
     resolved = str(Path(path).resolve())
     for blocked in _BLOCKED_DIRECTORIES:
-        if resolved == blocked or resolved.startswith(blocked + "/"):
+        if (
+            resolved == blocked
+            or resolved.startswith(blocked + "/")
+            or resolved.startswith(blocked + ".vhir-backup-")  # vhir's own copies
+        ):
             # Check if path falls within an allowed exception (evidence data)
             if any(
                 resolved == exc or resolved.startswith(exc + "/")

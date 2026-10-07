@@ -611,6 +611,27 @@ def _atomic_yaml_write(config_path, config: dict) -> None:
         raise
 
 
+def _read_config_for_join(config_path) -> dict:
+    """gateway.yaml as a mapping; {} when absent. Refuses a file it can't use."""
+    import yaml
+
+    if not os.path.lexists(config_path):  # a dangling link is refused below
+        return {}
+    try:
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+    except (yaml.YAMLError, OSError) as e:
+        config = e
+    if not isinstance(config, dict):
+        logger.error("Join refused: cannot use %s: %s", config_path, config)
+        raise HTTPException(
+            status_code=500,
+            detail="Join refused: gateway.yaml could not be read or parsed. "
+            "Fix the file, then create a new join code.",
+        )
+    return config
+
+
 class NameHeld(Exception):
     """The examiner name is already held by a token or a credential."""
 
@@ -637,16 +658,7 @@ def _add_api_key_to_config(
         if refuse_held and _name_in_use(gateway, examiner):
             raise NameHeld(examiner)
         config_path = Path.home() / ".vhir" / "gateway.yaml"
-        if config_path.exists():
-            import yaml
-
-            try:
-                with open(config_path) as f:
-                    config = yaml.safe_load(f) or {}
-            except (yaml.YAMLError, OSError):
-                config = {}
-        else:
-            config = {}
+        config = _read_config_for_join(config_path)
 
         if not isinstance(config.get("api_keys"), dict):
             config["api_keys"] = {}
@@ -690,18 +702,9 @@ def _add_wintools_backend(
     """Add a wintools-mcp HTTP backend to the gateway config."""
     from pathlib import Path
 
-    import yaml
-
     with _CONFIG_LOCK:
         config_path = Path.home() / ".vhir" / "gateway.yaml"
-        if config_path.exists():
-            try:
-                with open(config_path) as f:
-                    config = yaml.safe_load(f) or {}
-            except (yaml.YAMLError, OSError):
-                config = {}
-        else:
-            config = {}
+        config = _read_config_for_join(config_path)
 
         if "backends" not in config:
             config["backends"] = {}

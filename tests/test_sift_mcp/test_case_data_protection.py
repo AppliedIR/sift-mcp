@@ -219,3 +219,85 @@ def test_rm_of_the_dir_holding_an_active_case_kept_elsewhere_is_refused(
 def test_a_relative_record_path_from_inside_the_case_is_refused(tree, monkeypatch):
     monkeypatch.chdir(tree["C"])
     assert _verdict(["mv", "findings.json", "DELETE/"]) == "refused"
+
+
+# An active case kept outside the cases folder is protected like one inside it
+
+
+@pytest.fixture
+def outside(tree, monkeypatch):
+    case = f"{tree['H']}/elsewhere/INC-9"
+    for d in ("audit", "evidence", "DELETE", "extractions"):
+        os.makedirs(f"{case}/{d}", exist_ok=True)
+    for name, text in {
+        "findings.json": "[]\n",
+        "timeline.json": "[]\n",
+        "approvals.jsonl": "{}\n",
+        "notes.txt": "n\n",
+        "audit/forensic-mcp.jsonl": "{}\n",
+        "evidence/disk.E01": "e",
+    }.items():
+        with open(f"{case}/{name}", "w") as f:
+            f.write(text)
+    beside = f"{tree['H']}/elsewhere/other-work"  # not a case: just a folder beside it
+    os.makedirs(beside, exist_ok=True)
+    with open(f"{beside}/keep.txt", "w") as f:
+        f.write("k\n")
+    monkeypatch.setenv("VHIR_CASE_DIR", case)
+    return {**tree, "A": case, "P": f"{tree['H']}/elsewhere", "B": beside}
+
+
+REFUSED_OUTSIDE = [
+    (
+        "moving its finding record into DELETE",
+        ["mv", "{A}/findings.json", "{A}/DELETE/"],
+    ),
+    ("tee over its record", ["tee", "{A}/findings.json"]),
+    ("truncating its timeline", ["truncate", "-s", "0", "{A}/timeline.json"]),
+    ("shredding its audit log", ["shred", "-u", "{A}/audit/forensic-mcp.jsonl"]),
+    ("unlinking its evidence", ["unlink", "{A}/evidence/disk.E01"]),
+    (
+        "copying over its approvals",
+        ["cp", "-f", "{W}/findings.json", "{A}/approvals.jsonl"],
+    ),
+    ("moving the whole case", ["mv", "{A}", "{W}/moved"]),
+    ("moving the folder that holds it", ["mv", "{P}", "{W}/moved"]),
+]
+
+
+@pytest.mark.parametrize(
+    "argv", [r[1] for r in REFUSED_OUTSIDE], ids=[r[0] for r in REFUSED_OUTSIDE]
+)
+def test_an_active_case_outside_the_cases_folder_is_protected(outside, argv):
+    assert _verdict(_fmt(argv, outside)) == "refused"
+
+
+def test_moving_its_record_into_delete_leaves_it_in_place(outside):
+    with pytest.raises(ValueError, match="case data"):
+        run_command(["mv", f"{outside['A']}/findings.json", f"{outside['A']}/DELETE/"])
+    assert os.path.isfile(f"{outside['A']}/findings.json")
+
+
+ALLOWED_OUTSIDE = [
+    ("filing new evidence", ["cp", "{W}/new.E01", "{A}/evidence/"]),
+    ("writing an extraction", ["tee", "{A}/extractions/out.txt"]),
+    ("copying a record out", ["cp", "{A}/findings.json", "{W}/copy.json"]),
+    ("moving a folder beside the case", ["mv", "{B}", "{W}/moved-beside"]),
+]
+
+
+@pytest.mark.parametrize(
+    "argv", [r[1] for r in ALLOWED_OUTSIDE], ids=[r[0] for r in ALLOWED_OUTSIDE]
+)
+def test_ordinary_work_around_an_active_case_outside_is_allowed(outside, argv):
+    assert _verdict(_fmt(argv, outside)) == "allowed"
+
+
+def test_moving_its_notes_into_delete_really_moves_them(outside):
+    result = run_command(["mv", f"{outside['A']}/notes.txt", f"{outside['A']}/DELETE/"])
+    assert result["exit_code"] == 0
+    assert os.path.isfile(f"{outside['A']}/DELETE/notes.txt")
+
+
+def test_rm_of_a_file_in_an_active_case_outside_is_still_refused(outside):
+    assert _verdict(["rm", f"{outside['A']}/notes.txt"]) == "refused"
