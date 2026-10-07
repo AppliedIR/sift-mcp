@@ -15,7 +15,7 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
-from case_dashboard import signing
+from case_dashboard import hosts, signing
 
 logger = logging.getLogger(__name__)
 
@@ -699,6 +699,9 @@ def _dashboard_api_routes() -> list[Route]:
         Route("/api/commit/plan", signing.post_commit_plan, methods=["POST"]),
         Route("/api/commit/key", signing.post_commit_key, methods=["POST"]),
         Route("/api/commit", signing.post_commit, methods=["POST"]),
+        Route("/api/hosts", hosts.get_hosts, methods=["GET"]),
+        Route("/api/hosts/decisions", hosts.post_host_decision, methods=["POST"]),
+        Route("/api/hosts/{m16}", hosts.get_host, methods=["GET"]),
     ]
 
 

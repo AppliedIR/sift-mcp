@@ -1,0 +1,349 @@
+"""The Hosts tab's API: the case's machines and the host names awaiting the
+examiner, read from the host logs, and the examiner's decisions on them.
+
+Decisions need no password (a host decision is logistical); each carries the
+examiner of the request, origin "portal" and the observation-log offset the
+page was built from, and is written to the case's dashboard audit log.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from sift_common import host_identity as hi
+from sift_common import host_proposal as hp
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
+_PAGE_DEFAULT = 50
+_PAGE_MAX = 200
+_LIST_MAX = 1_000_000  # bytes of an uploaded host list
+_STATES = (hi.CONFIRMED, hi.STARTED_NOW, hi.NEW)
+
+
+def _routes():
+    from case_dashboard import routes
+
+    return routes
+
+
+def _case_or_error():
+    routes = _routes()
+    case_dir = routes._resolve_case_dir()
+    return case_dir, (None if case_dir else routes._no_case_response())
+
+
+def _names(state: hi.HostState, pairs) -> list[dict]:
+    out = []
+    for unit, raw in pairs:
+        info = state.names.get((unit, raw)) or {}
+        out.append(
+            {
+                "unit": unit,
+                "raw": raw,
+                "locator": (state.units.get(unit) or {}).get("locator", ""),
+                "evidence": list(info.get("evidence") or []),
+                "origins": sorted(info.get("origins") or []),
+                "flags": list(state.pair_flags.get((unit, raw)) or []),
+            }
+        )
+    return out
+
+
+def _spellings(text: str) -> set[str]:
+    """A host text in compare form, and its short name when it has a domain."""
+    full = hi.spelling(text)
+    short, _ = hi.split_name(text)
+    return {s for s in (full, hi.spelling(short) if short else "") if s}
+
+
+def _text_index(state: hi.HostState) -> dict[str, set[str]]:
+    """Compare form -> machine ids, over each machine's canonical, raw names
+    and former canonicals."""
+    index: dict[str, set[str]] = {}
+    for m in state.machines.values():
+        for text in [m.canonical, *m.former, *(raw for _, raw in m.pairs)]:
+            for s in _spellings(text):
+                index.setdefault(s, set()).add(m.id)
+    return index
+
+
+def _pivots(case_dir: Path, state: hi.HostState) -> dict[str, list[dict]]:
+    """Machine id -> the findings and timeline items whose host text names it.
+    A text that names several machines is listed under each, with the others."""
+    routes = _routes()
+    index = _text_index(state)
+    out: dict[str, list[dict]] = {}
+    for kind, name in (("finding", "findings.json"), ("timeline", "timeline.json")):
+        for item in routes._load_json(case_dir / name) or []:
+            text = item.get("host") if isinstance(item, dict) else None
+            if not isinstance(text, str) or not text.strip():
+                continue
+            ids: set[str] = set()
+            for s in _spellings(text):
+                ids |= index.get(s, set())
+            for mid in sorted(ids):
+                others = sorted(state.machines[o].canonical for o in ids if o != mid)
+                out.setdefault(mid, []).append(
+                    {
+                        "kind": kind,
+                        "id": item.get("id", ""),
+                        "title": item.get("title") or item.get("description") or "",
+                        "host": text,
+                        "ambiguous_with": others,
+                    }
+                )
+    return out
+
+
+def _machine_row(state: hi.HostState, m: hi.Machine, pivots: dict) -> dict:
+    row = m.to_dict()
+    row["names"] = _names(state, m.pairs)
+    row["units"] = sorted({u for u, _ in m.pairs})
+    row["pivots"] = pivots.get(m.id, [])
+    row["query"] = f'host.id:"{m.canonical}"'
+    return row
+
+
+def _matches(m: hi.Machine, q: str) -> bool:
+    wanted = hi.spelling(q)
+    texts = [m.canonical, *m.former, *(raw for _, raw in m.pairs)]
+    return any(wanted in hi.spelling(t) for t in texts)
+
+
+async def get_hosts(request: Request) -> JSONResponse:
+    case_dir, error = _case_or_error()
+    if error:
+        return error
+    state = hi.load(case_dir)
+    all_groups = hp.propose(state)
+    groups = [g for g in all_groups if g.machine is None]  # not yet any machine's
+    counts = {s: 0 for s in _STATES}
+    for m in state.machines.values():
+        counts[m.state] = counts.get(m.state, 0) + 1
+    counts["proposed"] = len(groups)
+
+    wanted_state = request.query_params.get("state", "")
+    q = request.query_params.get("q", "")
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+        per_page = min(
+            _PAGE_MAX, max(1, int(request.query_params.get("per_page", _PAGE_DEFAULT)))
+        )
+    except ValueError:
+        return JSONResponse(
+            {"error": "page and per_page must be numbers"}, status_code=400
+        )
+    machines = sorted(
+        state.machines.values(), key=lambda m: (hi.spelling(m.canonical), m.id)
+    )
+    if wanted_state:
+        machines = [m for m in machines if m.state == wanted_state]
+    if q:
+        machines = [m for m in machines if _matches(m, q)]
+    shown = machines[(page - 1) * per_page : page * per_page]
+    pivots = _pivots(case_dir, state) if shown else {}
+    listed = state.host_list or None
+    return JSONResponse(
+        {
+            "obs_offset": state.obs_offset,
+            "counts": counts,
+            "total": len(machines),
+            "page": page,
+            "per_page": per_page,
+            "machines": [_machine_row(state, m, pivots) for m in shown],
+            "proposed": [
+                {**g.to_dict(), "names": _names(state, g.pairs)} for g in groups
+            ],
+            "host_list": (
+                {
+                    "entries": len(listed.get("entries") or []),
+                    "sha256": listed.get("sha256", ""),
+                    "examiner": listed.get("examiner", ""),
+                    "t": listed.get("t", ""),
+                }
+                if listed
+                else None
+            ),
+            "listed_without_data": (
+                hp.listed_without_data(state, all_groups) if listed else []
+            ),
+        }
+    )
+
+
+async def get_host(request: Request) -> JSONResponse:
+    """One machine, with the decisions that name it."""
+    case_dir, error = _case_or_error()
+    if error:
+        return error
+    state = hi.load(case_dir)
+    mid = request.path_params["m16"]
+    m = state.machines.get(mid) or state.machine_of_key(mid)
+    if m is None:
+        return JSONResponse({"error": "no such machine"}, status_code=404)
+    keys = set(m.keys) | {m.id}
+    history = []
+    try:
+        with open(Path(case_dir) / hi.DECISIONS, encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(rec, dict) and keys & set(_keys_named(rec.get("args"))):
+                    history.append(
+                        {
+                            k: rec.get(k)
+                            for k in ("t", "examiner", "origin", "action", "args")
+                        }
+                    )
+    except OSError:
+        pass
+    pivots = _pivots(case_dir, state)
+    return JSONResponse({**_machine_row(state, m, pivots), "history": history})
+
+
+def _keys_named(args) -> list[str]:
+    """Every machine key a decision's arguments name."""
+    if not isinstance(args, dict):
+        return []
+    keys = [args.get(k) for k in ("machine", "into", "key")]
+    keys += list(args.get("from") or []) + list(args.get("keys") or [])
+    keys += [i.get("key") for i in args.get("machines") or () if isinstance(i, dict)]
+    return [k for k in keys if isinstance(k, str)]
+
+
+def _audit(
+    case_dir: Path, examiner: str, action: str, params: dict, result: str
+) -> None:
+    from sift_common.audit import AuditWriter
+
+    AuditWriter("case-dashboard", audit_dir=str(Path(case_dir) / "audit")).log(
+        tool=f"host_{action}",
+        params=params,
+        result_summary=result,
+        source="portal",
+        extra={"examiner": examiner, "origin": "portal"},
+    )
+
+
+def _known_pairs(state: hi.HostState, raw_pairs) -> list[list[str]] | None:
+    """The pairs, when every one is a host name the case has seen."""
+    pairs = []
+    for p in raw_pairs or ():
+        if not (isinstance(p, (list, tuple)) and len(p) == 2):
+            return None
+        unit, raw = str(p[0]), str(p[1])
+        if (unit, raw) not in state.names:
+            return None
+        pairs.append([unit, raw])
+    return pairs or None
+
+
+def _confirm_items(state: hi.HostState, args: dict) -> list[dict] | str:
+    """`confirm` decision items for the groups or machines the page sent, or
+    why not."""
+    items = []
+    for g in args.get("groups") or ():
+        if not isinstance(g, dict):
+            return "each group must be an object"
+        canonical = str(g.get("canonical") or "").strip()
+        if not hi.spelling(canonical):
+            return "a host name can't be empty"
+        if g.get("machine"):  # one already in use: confirmed as it is
+            m = state.machines.get(str(g["machine"]))
+            if m is None:
+                return "no such machine"
+            if hi.spelling(canonical) != hi.spelling(m.canonical):
+                return (
+                    f"{m.canonical} is already in use; changing its name is a rename, "
+                    "not a confirmation"
+                )
+            items.append({"key": m.keys[0], "canonical": m.canonical, "pairs": []})
+            continue
+        pairs = _known_pairs(state, g.get("pairs"))
+        if pairs is None:
+            return "every pair must be a host name the case has seen"
+        items.append(
+            {"key": hi.new_machine_key(), "canonical": canonical, "pairs": pairs}
+        )
+    return items or "nothing to confirm"
+
+
+async def post_host_decision(request: Request) -> JSONResponse:
+    routes = _routes()
+    case_dir, error = _case_or_error()
+    if error:
+        return error
+    examiner = routes._resolve_examiner(request)
+    if not examiner:
+        return JSONResponse({"error": "No examiner identity"}, status_code=401)
+    raw = await request.body()
+    if len(raw) > _LIST_MAX + 4096:
+        return JSONResponse({"error": "request too large"}, status_code=413)
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "invalid request"}, status_code=400)
+    action = body.get("action")
+    args = body.get("args") if isinstance(body.get("args"), dict) else {}
+    seen = body.get("seen_offset")
+    state = hi.load(case_dir)
+
+    try:
+        if action == "list":
+            text = args.get("text")
+            if not isinstance(text, str) or not text.strip():
+                return JSONResponse(
+                    {"error": "the host list is empty"}, status_code=400
+                )
+            result = hp.upload_host_list(case_dir, text, examiner)
+            summary = f"{result.get('entries', 0)} listed, {len(result.get('confirmed', []))} confirmed"
+            _audit(
+                case_dir,
+                examiner,
+                action,
+                {"sha256": result.get("sha256", "")},
+                summary,
+            )
+            return JSONResponse({"ok": True, **result})
+        if action == "confirm":
+            items = _confirm_items(state, args)
+            if isinstance(items, str):
+                return JSONResponse({"error": items}, status_code=400)
+            record_args = {"machines": items}
+            summary = f"{len(items)} confirmed"
+        elif action == "not_a_host":
+            pairs = _known_pairs(state, args.get("pairs"))
+            if pairs is None:
+                return JSONResponse(
+                    {"error": "every pair must be a host name the case has seen"},
+                    status_code=400,
+                )
+            record_args = {"pairs": pairs}
+            summary = f"{len(pairs)} marked not a host"
+        else:
+            return JSONResponse(
+                {"error": f"unknown host decision: {str(action)[:40]!r}"},
+                status_code=400,
+            )
+        at = hi.append_decision(
+            case_dir,
+            {
+                "action": action,
+                "examiner": examiner,
+                "origin": "portal",
+                "args": record_args,
+            },
+            seen,
+        )
+    except hi.HostLogError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _audit(case_dir, examiner, action, {"count": summary.split()[0]}, summary)
+    return JSONResponse({"ok": True, "decisions_offset": at, "summary": summary})
