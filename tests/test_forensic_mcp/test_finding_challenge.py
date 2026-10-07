@@ -316,6 +316,30 @@ def test_a_withdrawal_that_cant_be_logged_is_staged_for_the_examiner(case):
     assert "Audit write failed" in result["warning"]
 
 
+@pytest.mark.parametrize(
+    "challenged, reason",
+    [
+        ({**WITHDRAWN, "contradiction": ""}, "Withdrawal refused"),
+        (
+            {**WITHDRAWN, "skeptic_audit_ids": [ELSEWHERE]},
+            "not tool output in this case's audit trail",
+        ),
+    ],
+    ids=["no contradiction", "not in trail"],
+)
+def test_a_refused_withdrawal_keeps_the_server_s_reason(case, challenged, reason):
+    marker = _stored(case, _record({**FINDING, "challenged": challenged}))
+    assert reason in marker["challenged"]["refused"]
+    assert "Withdrawal refused" in marker["challenged"]["refused"]
+
+
+def test_a_withdrawal_that_cant_be_logged_keeps_that_reason(case):
+    (case / "audit" / "forensic-mcp.jsonl").mkdir()  # every audit write fails
+    marker = _stored(case, _record({**FINDING, "challenged": WITHDRAWN}))
+    assert "could not be logged" in marker["challenged"]["refused"]
+    assert "Withdrawal refused" not in marker["challenged"]["refused"]
+
+
 def test_a_withdrawal_is_logged_in_the_active_case_whatever_vhir_case_dir_says(
     tmp_path, home, monkeypatch
 ):

@@ -1600,17 +1600,19 @@ class CaseManager:
             marker, notes = _normalize_challenge(
                 finding.get("challenged"), tool_ids, sanitized["audit_ids"]
             )
-            doubt_warnings.extend(notes)
             if marker:
                 sanitized["challenged"] = marker
                 if marker["outcome"] == "withdrawn":
-                    doubt_warnings.append(
+                    notes.append(
                         "Withdrawal could not be logged; staged for the examiner."
                         if withdrawal_unlogged
                         else "Withdrawal refused: it needs the skeptic's tool output "
                         "and the output that contradicts the observation. "
                         "Staged for the examiner."
                     )
+                    # The server's own reason, kept for the examiner at approval.
+                    marker["refused"] = " ".join(notes)
+            doubt_warnings.extend(notes)
 
         finding_record = {
             **sanitized,
