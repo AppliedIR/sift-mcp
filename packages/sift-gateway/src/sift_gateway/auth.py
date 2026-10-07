@@ -22,13 +22,12 @@ _PUBLIC_PATHS = {
     "/portal/",
     "/dashboard",
     "/dashboard/",
+    # The one static asset the portal pages load
+    "/portal/valhuntir-icon.png",
 }
 
 # Paths matched by prefix (all sub-paths are public)
 _PUBLIC_PREFIXES: tuple[str, ...] = ()
-
-# Static asset extensions that bypass auth on portal/dashboard paths
-_STATIC_ASSET_EXTS = frozenset({"png", "jpg", "svg", "ico", "css", "js"})
 
 # Maximum length for bearer tokens (DoS protection against megabyte-sized headers)
 _MAX_TOKEN_LENGTH = 1024
@@ -51,15 +50,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Public paths skip auth
         # /mcp and /mcp/* are handled by MCPAuthASGIApp (ASGI-level auth)
-        is_portal_static = (
-            request.url.path.startswith(("/portal/", "/dashboard/"))
-            and request.url.path.rsplit(".", 1)[-1] in _STATIC_ASSET_EXTS
-        )
         if (
             request.url.path in _PUBLIC_PATHS
             or request.url.path.startswith("/mcp/")
             or request.url.path.startswith(_PUBLIC_PREFIXES)
-            or is_portal_static
         ):
             request.state.examiner = None
             request.state.role = None
