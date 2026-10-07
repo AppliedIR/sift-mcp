@@ -118,7 +118,7 @@ async def get_hosts(request: Request) -> JSONResponse:
     if error:
         return error
     state = hi.load(case_dir)
-    all_groups = hp.propose(state)
+    all_groups = hp.cached_propose(case_dir, state)  # once per state of the logs
     # Every group waiting for the examiner, including one that joins a machine
     groups = [g for g in all_groups if any(p not in state.bindings for p in g.pairs)]
     counts = {s: 0 for s in _STATES}
@@ -145,6 +145,13 @@ async def get_hosts(request: Request) -> JSONResponse:
     if q:
         machines = [m for m in machines if _matches(m, q)]
     shown = machines[(page - 1) * per_page : page * per_page]
+    try:
+        ppage = max(1, int(request.query_params.get("proposed_page", 1)))
+    except ValueError:
+        return JSONResponse(
+            {"error": "proposed_page must be a number"}, status_code=400
+        )
+    proposed_shown = groups[(ppage - 1) * per_page : ppage * per_page]
     pivots = _pivots(case_dir, state) if shown else {}
     listed = state.host_list or None
     return JSONResponse(
@@ -161,8 +168,10 @@ async def get_hosts(request: Request) -> JSONResponse:
                     "names": _names(state, g.pairs),
                     "joins": state.machines[g.machine].canonical if g.machine else "",
                 }
-                for g in groups
+                for g in proposed_shown
             ],
+            "proposed_total": len(groups),
+            "proposed_page": ppage,
             "host_list": (
                 {
                     "entries": len(listed.get("entries") or []),
@@ -364,7 +373,7 @@ async def post_host_decision(request: Request) -> JSONResponse:
         if action in ("start_now", "cancel_run"):
             run_id = str(args.get("run_id") or "")
             if action == "start_now":
-                result = hg.start_now(case_dir, run_id, examiner)
+                result = hg.start_now(case_dir, run_id, examiner, seen_offset=seen)
                 summary = (
                     f"{len(result.get('machines', []))} started now for run {run_id}"
                 )
@@ -377,7 +386,23 @@ async def post_host_decision(request: Request) -> JSONResponse:
                 result, summary = {}, f"run {run_id} cancelled"
             _audit(case_dir, examiner, action, {"run_id": run_id}, summary)
             return JSONResponse({"ok": True, "summary": summary, **result})
-        if action == "confirm":
+        if action == "confirm_all":  # every proposed group, each as proposed
+            groups = [
+                {
+                    "pairs": [list(p) for p in g.pairs],
+                    "canonical": state.machines[g.machine].canonical
+                    if g.machine
+                    else g.canonical,
+                    "machine": g.machine or "",
+                }
+                for g in hp.cached_propose(case_dir, state)
+                if any(p not in state.bindings for p in g.pairs)
+            ]
+            items = _confirm_items(state, {"groups": groups})
+            action = "confirm"
+            record_args = {"machines": items}
+            summary = f"{len(items)} confirmed"
+        elif action == "confirm":
             items = _confirm_items(state, args)
             record_args = {"machines": items}
             summary = f"{len(items)} confirmed"

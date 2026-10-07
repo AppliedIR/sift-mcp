@@ -3772,7 +3772,7 @@ function renderIocs() {
 // Machines and the host names awaiting the examiner, from /api/hosts. Every
 // string from the case is escaped; buttons carry an action and an index into
 // the page's data, never case text.
-var hostsView = { page: 1, state: '', q: '', data: null, runs: [] };
+var hostsView = { page: 1, ppage: 1, state: '', q: '', data: null, runs: [] };
 
 function escapeAttr(s) {
   return escapeHtml(s).replace(/"/g, '&quot;');
@@ -3819,8 +3819,9 @@ function hostRunsHtml(runs) {
   return html;
 }
 
-function hostProposedHtml(groups) {
+function hostProposedHtml(groups, d) {
   if (!groups || !groups.length) return '';
+  d = d || {};
   var html = '<h4>Proposed <button class="btn" data-host-act="confirm_all">Confirm all proposed</button></h4>'
     + '<table class="data-table"><thead><tr><th>Host name</th><th>Names (evidence, origin)</th><th>Flags</th><th></th></tr></thead><tbody>';
   groups.forEach(function(g, i) {
@@ -3834,7 +3835,14 @@ function hostProposedHtml(groups) {
       + '<td><button class="btn" data-host-act="confirm" data-i="' + i + '">Confirm</button> '
       + '<button class="btn" data-host-act="not_a_host" data-i="' + i + '">Not a host</button></td></tr>';
   });
-  return html + '</tbody></table>';
+  html += '</tbody></table>';
+  var total = d.proposed_total || groups.length, per = d.per_page || 50, at = d.proposed_page || 1;
+  if (total > per) {
+    html += '<div>' + (at > 1 ? '<button class="btn" data-host-act="ppage" data-i="' + (at - 1) + '">Previous</button> ' : '')
+      + 'Proposed page ' + at + ' of ' + Math.ceil(total / per) + ' (' + total + ' groups)'
+      + (at * per < total ? ' <button class="btn" data-host-act="ppage" data-i="' + (at + 1) + '">Next</button>' : '') + '</div>';
+  }
+  return html;
 }
 
 function hostPivotsHtml(m) {
@@ -3883,7 +3891,7 @@ async function renderHosts() {
   if (!panel) return;
   // Don't repaint over a name the examiner is typing
   if (panel.contains(document.activeElement) && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
-  var qs = 'page=' + hostsView.page + '&state=' + encodeURIComponent(hostsView.state) + '&q=' + encodeURIComponent(hostsView.q);
+  var qs = 'page=' + hostsView.page + '&proposed_page=' + hostsView.ppage + '&state=' + encodeURIComponent(hostsView.state) + '&q=' + encodeURIComponent(hostsView.q);
   try {
     var both = await Promise.all([apiFetch('/api/hosts?' + qs), apiFetch('/api/hosts/runs')]);
     hostsView.data = both[0];
@@ -3895,10 +3903,10 @@ async function renderHosts() {
   var d = hostsView.data;
   document.getElementById('hostsHeader').innerHTML = hostsHeaderHtml(d);
   document.getElementById('hostsRuns').innerHTML = hostRunsHtml(hostsView.runs);
-  document.getElementById('hostsProposed').innerHTML = hostProposedHtml(d.proposed);
+  document.getElementById('hostsProposed').innerHTML = hostProposedHtml(d.proposed, d);
   document.getElementById('hostsBody').innerHTML = hostRowsHtml(d.machines);
   document.getElementById('hostsPager').innerHTML = hostPagerHtml(d);
-  setBadge('tab-hosts', (d.counts.proposed || 0) + hostsView.runs.length);
+  setBadge('tab-hosts', (d.proposed_total || 0) + hostsView.runs.length);
 }
 
 async function hostDecide(action, args) {
@@ -3931,8 +3939,9 @@ document.addEventListener('click', async function(ev) {
   var i = parseInt(el.getAttribute('data-i'), 10);
   var d = hostsView.data;
   if (act === 'page') { hostsView.page = i; renderHosts(); }
+  else if (act === 'ppage') { hostsView.ppage = i; renderHosts(); }
   else if (act === 'confirm') { hostDecide('confirm', { groups: [hostGroupArgs(i)] }); }
-  else if (act === 'confirm_all') { hostDecide('confirm', { groups: d.proposed.map(function(_, j) { return hostGroupArgs(j); }) }); }
+  else if (act === 'confirm_all') { hostDecide('confirm_all', {}); }
   else if (act === 'not_a_host') { hostDecide('not_a_host', { pairs: d.proposed[i].pairs }); }
   else if (act === 'confirm_machine') { var m = d.machines[i]; hostDecide('confirm', { groups: [{ machine: m.id, canonical: m.canonical }] }); }
   else if (act === 'start_now' || act === 'cancel_run') { hostDecide(act, { run_id: hostsView.runs[i].run_id }); }

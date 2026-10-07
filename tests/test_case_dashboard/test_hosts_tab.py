@@ -19,6 +19,7 @@ import case_dashboard.routes as D
 import pytest
 from sift_common import host_gate as hg
 from sift_common import host_identity as hi
+from sift_common import host_proposal as hp
 from starlette.testclient import TestClient
 
 
@@ -208,10 +209,7 @@ class TestDecisions:
             unit(case, f"evidence/WKS0{i}", f"WKS0{i}")
         page = client.get("/api/hosts").json()
         assert page["counts"]["proposed"] == 3
-        assert (
-            _decide(client, page, "confirm", {"groups": page["proposed"]}).status_code
-            == 200
-        )
+        assert _decide(client, page, "confirm_all", {}).status_code == 200
         after = client.get("/api/hosts").json()
         assert (after["counts"]["confirmed"], after["counts"]["proposed"]) == (3, 0)
 
@@ -529,3 +527,74 @@ def test_a_page_holds_at_most_200_machines(case, client):
     )
     page = client.get("/api/hosts?per_page=1000").json()
     assert (page["per_page"], len(page["machines"]), page["total"]) == (200, 200, 250)
+
+
+class TestStartNowAndProposals:
+    def test_a_unit_whose_only_name_isn_t_a_host_starts_under_its_placeholder(
+        self, case, client
+    ):
+        u = unit(case, "evidence/disk1", "WORKGROUP")
+        page = client.get("/api/hosts").json()
+        assert (
+            _decide(
+                client, page, "not_a_host", {"pairs": [[u, "WORKGROUP"]]}
+            ).status_code
+            == 200
+        )
+        hg.record_wait(case, "run-1", [u])
+        (run,) = client.get("/api/hosts/runs").json()["runs"]
+        assert [w["reason"] for w in run["unresolved"]] == [hg.REASON_NEEDS_NAME]
+        page = client.get("/api/hosts").json()
+        assert (
+            _decide(client, page, "start_now", {"run_id": "run-1"}).status_code == 200
+        )
+        (m,) = client.get("/api/hosts").json()["machines"]
+        assert m["state"] == hi.STARTED_NOW
+        assert m["canonical"] == hg.placeholder_name("evidence/disk1")
+        assert "WORKGROUP" not in [m["canonical"], *m["former"]]
+
+    def test_start_now_records_the_page_s_offset(self, case, client):
+        u = unit(case, "evidence/WKS01", "WKS01")
+        hg.record_wait(case, "run-1", [u])
+        page = client.get("/api/hosts").json()
+        unit(case, "evidence/LATER", "LATER")  # the log grows after the page
+        assert (
+            _decide(client, page, "start_now", {"run_id": "run-1"}).status_code == 200
+        )
+        (rec,) = [r for r in _decisions(case) if r["action"] == "start_now"]
+        assert rec["offset"] == page["obs_offset"]
+
+    def test_proposals_are_worked_out_once_per_state_of_the_logs(
+        self, case, client, monkeypatch
+    ):
+        unit(case, "evidence/WKS01", "WKS01")
+        calls = []
+        real = hp.propose
+        monkeypatch.setattr(hp, "propose", lambda state: calls.append(1) or real(state))
+        hp._proposals.clear()
+        client.get("/api/hosts")
+        client.get("/api/hosts?page=1")
+        assert len(calls) == 1
+        unit(case, "evidence/WKS02", "WKS02")
+        client.get("/api/hosts")
+        assert len(calls) == 2
+
+    def test_the_proposed_names_are_paged(self, case, client):
+        recs = []
+        for i in range(60):
+            u = hi.unit_key(f"evidence/Q{i:02d}")
+            recs += [
+                {"kind": "unit", "unit": u, "locator": f"evidence/Q{i:02d}"},
+                {
+                    "kind": "name",
+                    "unit": u,
+                    "raw": f"Q{i:02d}",
+                    "evidence": "e",
+                    "origin": "artifact",
+                },
+            ]
+        hi.append_observations(case, recs)
+        first = client.get("/api/hosts").json()
+        assert (len(first["proposed"]), first["proposed_total"]) == (50, 60)
+        second = client.get("/api/hosts?proposed_page=2").json()
+        assert len(second["proposed"]) == 10
