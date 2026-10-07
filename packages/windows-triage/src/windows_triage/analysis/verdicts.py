@@ -493,11 +493,18 @@ def calculate_hash_verdict(
 
     # Vulnerable driver (BYOVD attack potential)
     if is_vulnerable_driver and driver_info:
-        reasons.append(f"Vulnerable driver: {driver_info.get('product', 'unknown')}")
+        product = driver_info.get("product", "unknown")
+        # LOLDrivers' category, in any of its spellings ("malicious driver"...)
+        category = str(driver_info.get("vulnerability_type") or "")
+        malicious = "malicious" in category.lower()
+        if malicious:
+            reasons.append(f"Known malicious driver (LOLDrivers): {product}")
+        else:
+            reasons.append(f"Vulnerable driver: {product}")
         if driver_info.get("cve"):
             reasons.append(f"CVE: {driver_info['cve']}")
-        if driver_info.get("vulnerability_type"):
-            reasons.append(f"Vulnerability: {driver_info['vulnerability_type']}")
+        if category and not malicious:
+            reasons.append(f"Vulnerability: {category}")
         return VerdictResult(
             verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="high"
         )
