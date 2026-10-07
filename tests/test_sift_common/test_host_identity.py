@@ -252,7 +252,9 @@ def test_merge_relabels_and_split_restores(case):
     ka, _ = hi.get_or_mint(case, "u1", "WKS01")
     kb, _ = hi.get_or_mint(case, "u2", "wks01.corp.example.test")
     _confirm(case, ka, "WKS01", [("u1", "WKS01")])
-    hi.append_decision(case, {"action": "merge", "args": {"into": ka, "from": [kb]}}, 0)
+    hi.append_decision(
+        case, {"action": "merge", "args": {"into": ka, "from": [kb]}}, 0, door="R"
+    )
     state = hi.load(case)
     m = state.machine_of_key(kb)
     assert m.id == ka and m.keys == [ka, kb]
@@ -270,6 +272,7 @@ def test_merge_relabels_and_split_restores(case):
             },
         },
         0,
+        door="R",
     )
     state = hi.load(case)
     assert state.machine_of_key(ka).keys == [ka]
@@ -284,6 +287,7 @@ def test_rename_keeps_the_former_canonical(case):
         case,
         {"action": "rename", "args": {"machine": k, "canonical": "FIN-WS-01"}},
         seen,
+        door="R",
     )
     m = hi.load(case).machine_of_key(k)
     assert (

@@ -200,16 +200,19 @@ def test_a_shared_collector_client_never_joins_two_machine_ids(case):
     assert len(groups) == 2
 
 
-def test_a_confirm_over_two_bound_machines_keeps_the_examiners_name(case):
+def test_a_confirm_over_two_machines_in_use_is_refused_as_a_merge(case):
     a = kape(case, "evidence/a/DC01", "DC01")
     b = kape(case, "evidence/b/dc-01", "dc-01")
-    ka, _ = hi.get_or_mint(case, a, "DC01")
-    kb, _ = hi.get_or_mint(case, b, "dc-01")
-    hi.append_decision(case, {"action": "confirm", "args": {"machines": [
-        {"key": hi.new_machine_key(), "canonical": "DC01",
-         "pairs": [[b, "dc-01"], [a, "DC01"]]}]}}, hi.load(case).obs_offset)  # fmt: skip
-    m = machine(case, a, "DC01")
-    assert m.canonical == "DC01" and m is machine(case, b, "dc-01")
+    hi.get_or_mint(case, a, "DC01")
+    hi.get_or_mint(case, b, "dc-01")
+    before = (case / hi.DECISIONS).read_bytes()
+    with pytest.raises(
+        hi.HostLogError, match="in use is done with a host rename or merge"
+    ):
+        hi.append_decision(case, {"action": "confirm", "args": {"machines": [
+            {"key": hi.new_machine_key(), "canonical": "DC01",
+             "pairs": [[b, "dc-01"], [a, "DC01"]]}]}}, hi.load(case).obs_offset)  # fmt: skip
+    assert (case / hi.DECISIONS).read_bytes() == before
 
 
 def test_with_the_lists_confirmation_off_nothing_is_confirmed_by_it(case, monkeypatch):

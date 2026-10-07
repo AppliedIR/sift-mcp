@@ -642,12 +642,21 @@ def apply_host_list(case_dir, units=None) -> dict:
         state = hi.load(root)
         if not _list_entries(state):
             return {"confirmed": []}
+        from sift_common import host_guard
+
         records = list_bindings(state, units)
-        for rec in records:
-            hi._append_locked(root / hi.OBSERVATIONS, {"t": hi._now(), **rec})
-    return {
-        "confirmed": sorted({r["canonical"] for r in records if r.get("canonical")})
-    }
+        refused = host_guard.check_binds(state, records, "list")
+        drop = {i for i, _ in refused}
+        for i, rec in enumerate(records):
+            if i not in drop:
+                hi._append_locked(root / hi.OBSERVATIONS, {"t": hi._now(), **rec})
+    kept = [r for i, r in enumerate(records) if i not in drop]
+    out = {"confirmed": sorted({r["canonical"] for r in kept if r.get("canonical")})}
+    if refused:  # left for the examiner, each with why
+        out["refused"] = [
+            {"name": records[i].get("raw"), "reason": why} for i, why in refused
+        ]
+    return out
 
 
 def _guid(state: hi.HostState, unit: str) -> str:

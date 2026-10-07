@@ -228,10 +228,32 @@ def append_observations(case_dir: str | os.PathLike, records: list[dict]) -> int
     return size
 
 
-def append_decision(case_dir: str | os.PathLike, record: dict, seen_offset: int) -> int:
+def append_decision(
+    case_dir: str | os.PathLike, record: dict, seen_offset: int, door: str = "portal"
+) -> int:
     """Append one decision line that was made on a view of the observation log
-    up to ``seen_offset``. Refused when that offset is past the log's end."""
-    root = Path(case_dir)
+    up to ``seen_offset``: all of it, or none (refused when that offset is
+    past the log's end, or when any item breaks the invariants that
+    host_guard checks). ``door`` is who asks: the portal, Start now, R."""
+    return _append_decision(Path(case_dir), record, seen_offset, door, partial=False)[
+        "size"
+    ]
+
+
+def append_decision_items(
+    case_dir: str | os.PathLike, record: dict, seen_offset: int, door: str = "portal"
+) -> dict:
+    """As append_decision, for a request of many items (confirm-all, Start
+    now): the items the invariants refuse are left out and reported, the
+    rest appended. Returns {"size", "appended", "refused": [{index, reason}]}."""
+    return _append_decision(Path(case_dir), record, seen_offset, door, partial=True)
+
+
+def _append_decision(
+    root: Path, record: dict, seen_offset, door: str, partial: bool
+) -> dict:
+    from sift_common import host_guard
+
     with _log_lock(root):
         size = os.stat(root / OBSERVATIONS).st_size
         if not isinstance(seen_offset, int) or seen_offset < 0 or seen_offset > size:
@@ -239,14 +261,39 @@ def append_decision(case_dir: str | os.PathLike, record: dict, seen_offset: int)
                 f"decision refused: it refers to observation-log offset {seen_offset}, "
                 f"past the log's end ({size} bytes)"
             )
-        clash = _canonical_clash(load(root), record)
+        state = load(root)
+        clash = _canonical_clash(state, record)
         if clash:
             raise HostLogError(clash)
-        # Replayed at the log's size now, after every observation that came
-        # in since the examiner's view: one of them never overrides it
-        return _append_locked(
-            root / DECISIONS, {"t": _now(), **record, "offset": seen_offset, "at": size}
-        )
+        refused = host_guard.check_decision(state, record, door)
+        whole = [why for i, why in refused if i is None]
+        if whole or (refused and not partial):
+            i, why = refused[0]
+            where = "" if i is None else f"item {i + 1}: "
+            raise host_guard.Refused(f"decision refused: {where}{why}")
+        out_record = record
+        if refused:
+            drop = {i for i, _ in refused}
+            args = dict(record.get("args") or {})
+            args["machines"] = [
+                m for i, m in enumerate(args.get("machines") or ()) if i not in drop
+            ]
+            out_record = {**record, "args": args}
+        appended = len((out_record.get("args") or {}).get("machines") or ()) or 1
+        if partial and refused and not (out_record.get("args") or {}).get("machines"):
+            new_size, appended = os.stat(root / DECISIONS).st_size, 0
+        else:
+            # Replayed at the log's size now, after every observation that came
+            # in since the examiner's view: one of them never overrides it
+            new_size = _append_locked(
+                root / DECISIONS,
+                {"t": _now(), **out_record, "offset": seen_offset, "at": size},
+            )
+    return {
+        "size": new_size,
+        "appended": appended,
+        "refused": [{"index": i, "reason": why} for i, why in refused],
+    }
 
 
 def _canonical_clash(state: HostState, record: dict) -> str:
@@ -946,67 +993,59 @@ def get_or_mint(
                     "origin": origin,
                 }
             )
+        from sift_common import host_guard
+
+        def mint(wanted: str) -> tuple[dict, str, str]:
+            k = new_machine_key()
+            name = state.unique_canonical(wanted)
+            flags = [FLAG_AI_ORIGIN] if origin in AI_ORIGINS else []
+            if name != wanted:
+                flags.append(FLAG_CANONICAL_CLASH)
+            return ({"kind": "bind", "unit": unit, "raw": raw, "key": k, "canonical": name,
+                     "state": NEW, "machine_flags": flags}, k, name)  # fmt: skip
+
         if FLAG_NOT_A_HOST in state.pair_flags.get(pair, []):
-            # not a host: its records go with the unit's own machine, never a new one
-            owners = sorted({k for p, k in state.bindings.items() if p[0] == unit})
-            if owners:
-                m = state.machine_of_key(owners[0])
-                records.append(
-                    {"kind": "bind", "unit": unit, "raw": raw, "key": owners[0]}
+            # not a host: with its unit's own machine, or the unit's placeholder
+            own = {}
+            for p, k in state.bindings.items():
+                if p[0] == unit and p != pair and host_guard._own(state, p):
+                    m = state.machine_of_key(k)
+                    if m is not None:
+                        own.setdefault(m.id, [m, 0])[1] += 1
+            if own:
+                m = sorted(own.values(), key=lambda x: (-x[1], x[0].id))[0][0]
+                bind, key, result = (
+                    {"kind": "bind", "unit": unit, "raw": raw, "key": m.keys[0]},
+                    m.keys[0],
+                    m.canonical,
                 )
-                for rec in records:
-                    _append_locked(root / OBSERVATIONS, {"t": _now(), **rec})
-                return owners[0], m.canonical if m else raw
-        # Only a name the scan never held, read from the evidence, joins a
-        # machine by itself: a held one waits for the examiner at the gate.
-        late = (unit, raw) not in state.names and origin == ARTIFACT
-        match = _match_confirmed(state, raw) if late else None
-        listed = (
-            _late_list_binding(state, unit, raw) if late and match is None else None
-        )
-        if listed is not None:  # a host-list entry the name matches
-            key, result = listed
-            records.append(
-                {
-                    "kind": "bind",
-                    "unit": unit,
-                    "raw": raw,
-                    "key": key,
-                    "canonical": result,
-                    "state": CONFIRMED,
-                    "flags": [FLAG_MATCHED_DURING_INGEST],
-                }
-            )
-        elif match is not None:
-            key = match.keys[0]
-            records.append(
-                {
-                    "kind": "bind",
-                    "unit": unit,
-                    "raw": raw,
-                    "key": key,
-                    "flags": [FLAG_MATCHED_DURING_INGEST],
-                }
-            )
-            result = match.canonical
+            else:
+                from sift_common.host_gate import placeholder_name
+
+                locator = str((state.units.get(unit) or {}).get("locator") or unit)
+                bind, key, result = mint(placeholder_name(locator))
         else:
-            key = new_machine_key()
-            wanted = canonical or raw
-            result = state.unique_canonical(wanted)
-            machine_flags = [FLAG_AI_ORIGIN] if origin in AI_ORIGINS else []
-            if result != wanted:
-                machine_flags.append(FLAG_CANONICAL_CLASH)
-            records.append(
-                {
-                    "kind": "bind",
-                    "unit": unit,
-                    "raw": raw,
-                    "key": key,
-                    "canonical": result,
-                    "state": NEW,
-                    "machine_flags": machine_flags,
-                }
+            # Only a name the scan never held, read from the evidence, joins a
+            # machine by itself: a held one waits for the examiner at the gate.
+            late = (unit, raw) not in state.names and origin == ARTIFACT
+            match = _match_confirmed(state, raw) if late else None
+            listed = (
+                _late_list_binding(state, unit, raw) if late and match is None else None
             )
+            if listed is not None:  # a host-list entry the name matches
+                key, result = listed
+                bind = {"kind": "bind", "unit": unit, "raw": raw, "key": key,
+                        "canonical": result, "state": CONFIRMED,
+                        "flags": [FLAG_MATCHED_DURING_INGEST]}  # fmt: skip
+            elif match is not None:
+                key, result = match.keys[0], match.canonical
+                bind = {"kind": "bind", "unit": unit, "raw": raw, "key": key,
+                        "flags": [FLAG_MATCHED_DURING_INGEST]}  # fmt: skip
+            else:
+                bind, key, result = mint(canonical or raw)
+            if host_guard.check_binds(state, [bind], "late"):
+                bind, key, result = mint(canonical or raw)  # its own machine, then
+        records.append(bind)
         for rec in records:
             _append_locked(root / OBSERVATIONS, {"t": _now(), **rec})
     return key, result

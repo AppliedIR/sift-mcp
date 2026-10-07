@@ -194,10 +194,18 @@ def start_now(
         "examiner": examiner,
         "args": {"run_id": run_id, "machines": machines},
     }
-    hi.append_decision(
-        root, record, state.obs_offset if seen_offset is None else seen_offset
+    out = hi.append_decision_items(
+        root,
+        record,
+        state.obs_offset if seen_offset is None else seen_offset,
+        door="start_now",
     )
-    return {"run_id": run_id, "machines": machines}
+    refused = {r["index"] for r in out["refused"]}
+    return {
+        "run_id": run_id,
+        "machines": [m for i, m in enumerate(machines) if i not in refused],
+        "refused": [{**r, "machine": machines[r["index"]]} for r in out["refused"]],
+    }
 
 
 def cancel(case_dir: str | os.PathLike, run_id: str, examiner: str) -> None:
@@ -224,12 +232,11 @@ def wait_for_hosts(
     poll: float = 2.0,
 ) -> None:
     """Return once every unit resolves; until then call ``on_wait(summary)``
-    when what is pending changes, and poll the fold. No timeout: the examiner
-    confirms, starts now or cancels (RunCancelled). Holds no lock."""
+    on every poll, and poll the fold. No timeout: the examiner confirms,
+    starts now or cancels (RunCancelled). Holds no lock."""
     root = Path(case_dir)
     units = list(dict.fromkeys(units))
     recorded = False
-    last = None
     while True:
         state = hi.load(root)
         if run_id and run_id in state.cancelled:
@@ -240,8 +247,6 @@ def wait_for_hosts(
         if not recorded:
             record_wait(root, run_id, units)
             recorded = True
-        now = summary(pending)
-        if on_wait is not None and now != last:
-            on_wait(now)
-        last = now
+        if on_wait is not None:
+            on_wait(summary(pending))
         time.sleep(poll)

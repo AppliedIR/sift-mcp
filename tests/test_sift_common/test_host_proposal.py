@@ -487,7 +487,7 @@ def test_the_list_keeps_each_pairs_own_key(case):
     b = folder(case, "WKS01", "WKS01", where="evidence/b/WKS01")
     ka, kb = hi.get_or_mint(case, a, "WKS01")[0], hi.get_or_mint(case, b, "WKS01")[0]
     hi.append_decision(case, {"action": "merge", "args": {"into": ka, "from": [kb]}},
-                       (case / hi.OBSERVATIONS).stat().st_size)  # fmt: skip
+                       (case / hi.OBSERVATIONS).stat().st_size, door="R")  # fmt: skip
     c = folder(case, "WKS01", "WKS01", where="evidence/c/WKS01")  # not bound yet
     hp.upload_host_list(case, "WKS01\n", "ex1")
     state = hi.load(case)
