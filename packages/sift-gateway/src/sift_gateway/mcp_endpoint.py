@@ -54,6 +54,7 @@ _BACKEND_INSTRUCTIONS: dict[str, str] = {
     "forensic-rag-mcp": FORENSIC_RAG,
     "windows-triage-mcp": WINDOWS_TRIAGE,
     "opencti-mcp": OPENCTI,
+    "threatintel-mcp": OPENCTI,
     "opensearch-mcp": OPENSEARCH,
 }
 

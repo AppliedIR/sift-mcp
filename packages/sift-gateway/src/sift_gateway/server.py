@@ -60,6 +60,10 @@ from sift_gateway.rest import rest_routes
 
 logger = logging.getLogger(__name__)
 
+# A backend's earlier name, still served as a route to it when only the new
+# name is configured.
+BACKEND_ALIASES: dict[str, str] = {"threatintel-mcp": "opencti-mcp"}
+
 
 class Gateway:
     """Aggregates multiple MCP backends behind a single HTTP service.
@@ -89,6 +93,16 @@ class Gateway:
                 self.backends[name] = backend
             except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
                 logger.error("Failed to create backend %s: %s", name, exc)
+        for name, alias in BACKEND_ALIASES.items():
+            if name in self.backends and alias in self.backends:
+                logger.error(
+                    "Both %s and %s are configured: they are one threat-intel "
+                    "backend under two names, so every tool they share gets a "
+                    "backend prefix and the plain tool names (lookup_ioc) stop "
+                    "working. Keep one entry in gateway.yaml.",
+                    name,
+                    alias,
+                )
 
     @property
     def lazy_start(self) -> bool:
@@ -577,6 +591,11 @@ class Gateway:
             b_asgi = MCPAuthASGIApp(b_sm, api_keys=api_keys)
             backend_session_managers.append(b_sm)
             per_backend_routes.append(Mount(f"/mcp/{name}", app=b_asgi))
+            # The threat-intel backend's earlier name keeps working: a route to
+            # the same backend, not a second backend.
+            alias = BACKEND_ALIASES.get(name)
+            if alias and alias not in self.backends:
+                per_backend_routes.append(Mount(f"/mcp/{alias}", app=b_asgi))
 
         @contextlib.asynccontextmanager
         async def lifespan(app):
@@ -646,7 +665,9 @@ class Gateway:
         app.add_middleware(AuthMiddleware, api_keys=api_keys)
 
         # Normalize per-backend MCP paths (must be outermost = added last)
-        backend_paths = frozenset(f"/mcp/{name}" for name in self.backends)
+        backend_paths = frozenset(
+            route.path for route in per_backend_routes
+        )  # the aliases too
         app.add_middleware(_NormalizeMCPPath, backend_paths=backend_paths)
 
         return app
