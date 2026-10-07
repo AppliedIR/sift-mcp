@@ -155,6 +155,48 @@ def test_the_timeout_can_change_after_creation(sent):
     assert sent["made"][0]["timeout"] == 90
 
 
+def test_a_null_root_is_none_found(sent):
+    sent["answer"] = {"data": {"indicators": None}}
+    assert _client().indicator.list(search="x") == []
+    sent["answer"] = {"data": {"stixDomainObject": None}}
+    assert _client().stix_domain_object.read(id="m1") is None
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda c: c.indicator.list(search="x"),
+        lambda c: c.stix_domain_object.read(id="m1"),
+    ],
+    ids=["list", "read"],
+)
+def test_a_reply_without_its_root_is_an_error_not_none_found(sent, call):
+    sent["answer"] = {"data": {}}
+    with pytest.raises(GraphQLError, match="has no"):
+        call(_client())
+
+
+def test_a_reply_without_its_root_reads_as_unavailable(sent):
+    sent["answer"] = {"data": {}}
+    assert OpenCTIClient(config()).is_available() is False
+
+
+def test_relationship_ends_name_every_named_type(sent):
+    sent["answer"] = {"data": {"stixCoreRelationships": {"edges": []}}}
+    _client().stix_core_relationship.list(fromId="a", first=1)
+    query = sent["made"][0]["query"]
+    for kind in (
+        "Case",
+        "Channel",
+        "DataComponent",
+        "DataSource",
+        "Event",
+        "Narrative",
+    ):
+        assert f"... on {kind} {{ name description }}" in query, kind
+    assert "... on Language { name }" in query  # Language has no description
+
+
 # --- errors keep the classes the retry and breaker code reads ---------------
 
 

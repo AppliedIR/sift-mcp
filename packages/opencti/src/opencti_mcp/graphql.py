@@ -24,15 +24,22 @@ COMMON = "id entity_type created modified confidence objectLabel { value }"
 _NAMED_SDO = (
     "... on AttackPattern { name description x_mitre_id }"
     " ... on Campaign { name description }"
+    " ... on Case { name description }"
+    " ... on Channel { name description }"
     " ... on CourseOfAction { name description }"
+    " ... on DataComponent { name description }"
+    " ... on DataSource { name description }"
+    " ... on Event { name description }"
     " ... on Grouping { name description }"
     " ... on Identity { name description }"
     " ... on Incident { name description }"
     " ... on Indicator { name description }"
     " ... on Infrastructure { name description }"
     " ... on IntrusionSet { name description }"
+    " ... on Language { name }"  # Language has no description
     " ... on Location { name description }"
     " ... on Malware { name description }"
+    " ... on Narrative { name description }"
     " ... on Report { name description }"
     " ... on ThreatActor { name description }"
     " ... on Tool { name description }"
@@ -217,7 +224,9 @@ class _Entity:
             f"query Read($id: String!) {{ {root}(id: $id) {{ {selection} }} }}",
             {"id": id},
         )["data"]
-        node = data.get(root)
+        if root not in data:  # null is "not found"; absent is a broken reply
+            raise GraphQLError(f"OpenCTI's reply has no {root}")
+        node = data[root]
         return _flatten(node) if isinstance(node, dict) else None
 
 
@@ -313,7 +322,10 @@ class GraphQLClient:
             f"query List({', '.join(params)}) {{ {root}({', '.join(args)}) "
             f"{{ edges {{ node {{ {selection} }} }} }} }}"
         )
-        connection = self.query(query, variables)["data"].get(root)
+        data = self.query(query, variables)["data"]
+        if root not in data:  # null is "none"; absent is a broken reply
+            raise GraphQLError(f"OpenCTI's reply has no {root}")
+        connection = data[root]
         if connection is None:
             return []
         if not isinstance(connection, dict) or not isinstance(
