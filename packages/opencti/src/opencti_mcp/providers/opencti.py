@@ -8,12 +8,9 @@ UNAVAILABLE. When indicators match, one more request reads their relationships.
 
 from __future__ import annotations
 
-import ipaddress
-import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
-from urllib.parse import urlsplit
 
 import httpx
 
@@ -28,6 +25,7 @@ from . import (
     budget,
     follow_up,
     now_utc,
+    redact,
     same_value,
     unavailable,
 )
@@ -77,36 +75,6 @@ class _Failure(Exception):
     """The request didn't give a usable answer; the message is the reason."""
 
     data: dict | None = None  # what the reply did hold, if anything
-
-
-# Candidates for a literal IP address in error text; each is checked with
-# ipaddress, so a time such as 10:48:01 is left alone.
-_ADDRESS = re.compile(
-    r"\b(?:\d{1,3}\.){3}\d{1,3}\b|[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}"
-)
-
-
-def _is_address(text: str) -> bool:
-    try:
-        ipaddress.ip_address(text)
-    except ValueError:
-        return False
-    return True
-
-
-def _redact(text: str, url: str, ioc: str) -> str:
-    """Error text without the server's address: its configured host name and
-    any literal IP address other than the IOC looked up. The reason and
-    everything else stay."""
-    host = urlsplit(url).hostname
-    if host:
-        text = re.sub(re.escape(host), "<OpenCTI host>", text, flags=re.IGNORECASE)
-    return _ADDRESS.sub(
-        lambda m: (
-            "<IP address>" if m.group() != ioc and _is_address(m.group()) else m.group()
-        ),
-        text,
-    )
 
 
 def _name_eq(ioc: str) -> dict:
@@ -211,7 +179,9 @@ class OpenCTIAdapter:
         except _Failure as e:
             if version is None and e.data:
                 version = (e.data.get("about") or {}).get("version")
-            return unavailable(_redact(str(e), self.config.opencti_url, ioc), version)
+            return unavailable(
+                redact(str(e), self.config.opencti_url, ioc, "OpenCTI"), version
+            )
 
         # The server's `eq` ignores case; fuzzy hashes are compared as given.
         matches = [node for node in nodes if same_value(node.get("name"), ioc)]
@@ -263,7 +233,7 @@ class OpenCTIAdapter:
                     answer["relationships_truncated"] = True
             except _Failure as e:
                 answer["relationships"] = []
-                reason = _redact(str(e), self.config.opencti_url, ioc)
+                reason = redact(str(e), self.config.opencti_url, ioc, "OpenCTI")
                 answer["relationships_unavailable"] = (
                     f"Relationships query failed ({reason}): the related lists are "
                     "incomplete."

@@ -36,6 +36,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -246,3 +247,33 @@ def aggregate(answers: dict[str, dict]) -> str:
     if UNAVAILABLE in outcomes or not outcomes:
         return UNAVAILABLE
     return NO_MATCH
+
+
+# Candidates for a literal IP address in error text; each is checked with
+# ipaddress, so a time such as 10:48:01 is left alone.
+_ADDRESS = re.compile(
+    r"\b(?:\d{1,3}\.){3}\d{1,3}\b|[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}"
+)
+
+
+def _is_address(text: str) -> bool:
+    try:
+        ipaddress.ip_address(text)
+    except ValueError:
+        return False
+    return True
+
+
+def redact(text: str, url: str, ioc: str, platform: str) -> str:
+    """Error text without the server's address: its configured host name and
+    any literal IP address other than the IOC looked up. The reason and
+    everything else stay."""
+    host = urlsplit(url).hostname
+    if host:
+        text = re.sub(re.escape(host), f"<{platform} host>", text, flags=re.IGNORECASE)
+    return _ADDRESS.sub(
+        lambda m: (
+            "<IP address>" if m.group() != ioc and _is_address(m.group()) else m.group()
+        ),
+        text,
+    )

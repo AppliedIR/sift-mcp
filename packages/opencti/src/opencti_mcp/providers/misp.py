@@ -35,6 +35,7 @@ from . import (
     budget,
     follow_up,
     now_utc,
+    redact,
     same_value,
     unavailable,
 )
@@ -240,7 +241,7 @@ class MispAdapter:
                 raise _Failure("malformed provider data: an attribute without a value")
         except (_Failure, AttributeError) as e:
             reason = (
-                str(e)
+                redact(str(e), self.url, ioc, "MISP")
                 if isinstance(e, _Failure)
                 else "MISP's reply has an unexpected shape"
             )
@@ -284,7 +285,10 @@ class MispAdapter:
                 answer["warninglist_hits"] = hits
             except _Failure as e:
                 answer["warninglist_hits"] = None
-                answer["warninglists_unavailable"] = f"Warninglist check failed ({e})."
+                reason = redact(str(e), self.url, ioc, "MISP")
+                answer["warninglists_unavailable"] = (
+                    f"Warninglist check failed ({reason})."
+                )
         facts = self._facts_by(deadline)
         return {
             "outcome": answer.pop("outcome"),

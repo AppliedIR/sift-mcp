@@ -1,8 +1,8 @@
-"""lookup_ioc's reason for an OpenCTI failure doesn't carry the server's
-address.
+"""lookup_ioc's reason for an OpenCTI or MISP failure doesn't carry the
+server's address.
 
 The reason passed the transport's and the server's text through as written,
-so a TLS or resolve failure, or a GraphQL message, put the configured host
+so a TLS or resolve failure, or a GraphQL or MISP message, put the configured host
 name, a URL or an IP address into the reply. They are now taken out; the
 reason itself stays, as does the IOC that was looked up.
 """
@@ -16,7 +16,15 @@ from opencti_mcp.config import Config
 from opencti_mcp.server import OpenCTIMCPServer
 from pydantic import SecretStr
 
-from .threatintel_rig import REPLIES, REVOKED, Transport, lookup
+from .threatintel_rig import (
+    REPLIES,
+    REVOKED,
+    Transport,
+    lookup,
+    misp_env,
+    misp_recorded,
+    server,
+)
 
 HOST = "opencti-int.corp.example"
 URL = f"https://{HOST}:8080"
@@ -91,3 +99,55 @@ async def test_anchor_a_time_and_the_looked_up_ioc_stay(monkeypatch):
     )
     reason = await _reason(monkeypatch, answer)
     assert "Too Many Requests at 10:48:01 for 11.0.113.10" in reason, reason
+
+
+MISP_HOST = "misp-int.corp.example"
+MISP_LEAKS = (MISP_HOST, "10.20.30.40", "MISP-INT.corp.example")
+
+
+async def _misp(monkeypatch, misp_transport, search=None, check=None):
+    recorded = misp_recorded("25")
+
+    def route(method, path, body):
+        if path == "/attributes/restSearch" and search is not None:
+            return search
+        if path == "/warninglists/checkValue" and check is not None:
+            return check
+        return recorded(method, path, body)
+
+    misp_transport(route)
+    misp_env(monkeypatch, MISP_URL=f"https://{MISP_HOST}")
+    return str(await lookup(server(["misp"], cfg=None), "11.0.113.10"))
+
+
+@pytest.mark.parametrize(
+    "search, kept",
+    [
+        (
+            httpx.ConnectError("no route to MISP-INT.corp.example (10.20.30.40)"),
+            "can't reach MISP",
+        ),
+        (
+            httpx.Response(
+                403, json={"message": f"Forbidden at https://{MISP_HOST}/users"}
+            ),
+            "MISP answered HTTP 403: Forbidden at",
+        ),
+    ],
+    ids=["transport", "http"],
+)
+async def test_a_misp_reason_names_no_server_address(
+    monkeypatch, misp_transport, search, kept
+):
+    reason = await _misp(monkeypatch, misp_transport, search=search)
+    assert not [leak for leak in MISP_LEAKS if leak in reason], reason
+    assert kept in reason, reason
+
+
+async def test_a_misp_warninglist_failure_names_no_server_address(
+    monkeypatch, misp_transport
+):
+    check = httpx.ConnectError(f"reset by {MISP_HOST} (10.20.30.40)")
+    reply = await _misp(monkeypatch, misp_transport, check=check)
+    assert "Warninglist check failed" in reply
+    assert not [leak for leak in MISP_LEAKS if leak in reply], reply
