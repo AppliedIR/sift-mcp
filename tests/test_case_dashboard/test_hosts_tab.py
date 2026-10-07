@@ -661,6 +661,38 @@ class TestConfirmAllIsPerItem:
         (skip,) = body["skipped"]
         assert skip["canonical"] == "GUESS"
 
+    def test_a_flagged_group_read_from_evidence_is_skipped(self, case, client):
+        unit(case, "evidence/WKS01", "WKS01")  # one hive name: thin evidence
+        folder(case, "WKS02")
+        page = client.get("/api/hosts").json()
+        body = _confirm_all(client, page).json()
+        assert body["confirmed"] == ["WKS02"]
+        (skip,) = body["skipped"]
+        assert skip["canonical"] == "WKS01"
+        assert skip["reason"].startswith("needs the examiner: thin evidence")
+
+    def test_an_unflagged_group_with_a_name_the_ai_gave_is_skipped(self, case, client):
+        u = hi.unit_key("evidence/WKS03")
+        hi.append_observations(
+            case,
+            [
+                {"kind": "unit", "unit": u, "locator": "evidence/WKS03"},
+                {"kind": "name", "unit": u, "raw": "WKS03", "evidence": "folder name",
+                 "origin": "folder"},
+                {"kind": "name", "unit": u, "raw": "WKS03", "evidence": "x",
+                 "origin": "argument"},
+            ],
+        )  # fmt: skip
+        folder(case, "WKS02")
+        page = client.get("/api/hosts").json()
+        (group,) = (g for g in page["proposed"] if g["canonical"] == "WKS03")
+        assert not group["flags"]  # skipped for its origin, not a flag
+        body = _confirm_all(client, page).json()
+        assert body["confirmed"] == ["WKS02"]
+        assert [(s["canonical"], s["reason"]) for s in body["skipped"]] == [
+            ("WKS03", "not every name was read from evidence")
+        ]
+
     def test_without_the_page_s_decision_offset_nothing_is_written(self, case, client):
         folder(case, "WKS01")
         page = client.get("/api/hosts").json()
