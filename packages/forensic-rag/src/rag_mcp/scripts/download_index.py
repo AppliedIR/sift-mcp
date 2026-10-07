@@ -170,7 +170,13 @@ def _extract_bundle(src: Path, dest: Path) -> list[str]:
 
     def shipped(tar):
         for member in tar:
-            if _shipped_member(member.name):
+            # Only plain files and folders: a link, or a ".." part, could
+            # still land outside the shipped folders (in user/, say)
+            if (
+                _shipped_member(member.name)
+                and (member.isreg() or member.isdir())
+                and ".." not in Path(member.name).parts
+            ):
                 yield member
                 continue
             # A skipped member that would leave dest is still refused

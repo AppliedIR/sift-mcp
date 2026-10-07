@@ -577,3 +577,30 @@ def test_a_build_whose_examiner_sync_fails_still_holds_no_examiner_record(
     assert _shipped(rig) == {"user_ref_0": REF}
     state = json.loads((rig.data / "user_state.json").read_text())
     assert list(state["files"]) == ["AppliedIR/ref.md"]
+
+
+def test_two_same_stem_files_keep_the_first_and_stay_put(rig):
+    """They share record ids; the first file's record stays, as it always
+    has, and later runs don't swap it for the other's."""
+    _legacy_install(rig, examiner=False)
+    (rig.know / "notes" / "probe-note.md").unlink()
+    (rig.know / "notes" / "a.md").write_text("Notes version of a.")
+    (rig.know / "other").mkdir()
+    (rig.know / "other" / "a.md").write_text("Other version of a.")
+    _refresh(rig)
+    assert _user(rig)["user_a_0"] == "Notes version of a."
+    before = (rig.data / "user" / "metadata.json").read_bytes()
+    _refresh(rig)
+    assert _user(rig)["user_a_0"] == "Notes version of a."
+    assert (rig.data / "user" / "metadata.json").read_bytes() == before
+
+
+def test_cleanup_leaves_the_shipped_store_alone_while_uncommitted(rig):
+    _legacy_install(rig)
+    client = _client(rig.data / "chroma")
+    try:
+        col = client.get_collection("ir_knowledge")
+        assert rig.stores.cleanup_shipped(rig.data, rig.know, col) == 0
+        assert "user_probe-note_0" in col.get(include=[])["ids"]
+    finally:
+        client.close()

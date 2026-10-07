@@ -100,3 +100,34 @@ def test_a_well_formed_bundle_still_unpacks(tmp_path):
     _module()._extract_bundle(src, dest)
     assert (dest / "metadata.json").read_bytes() == b'{"records": 2}'
     assert (dest / "chroma/data.bin").read_bytes() == b"\x00\x01"
+
+
+def _hard(name: str, target: str) -> tarfile.TarInfo:
+    info = tarfile.TarInfo(name)
+    info.type = tarfile.LNKTYPE
+    info.linkname = target
+    return info
+
+
+@pytest.mark.parametrize(
+    "members, skipped",
+    [
+        ([("chroma/../user/metadata.json", b"EVIL")], ["chroma/../user/metadata.json"]),
+        (
+            [_hard("chroma/h", "user/metadata.json"), ("chroma/h", b"EVIL")],
+            ["chroma/h"],
+        ),
+    ],
+    ids=["a .. part", "a hardlink pair"],
+)
+def test_a_member_reaching_the_examiner_store_is_skipped_and_named(
+    tmp_path, members, skipped
+):
+    """Both stay inside the destination, so the data filter allows them;
+    they'd still overwrite the examiner store's commit point."""
+    dest = tmp_path / "index"
+    (dest / "user").mkdir(parents=True)
+    (dest / "user" / "metadata.json").write_text("ORIGINAL")
+    src = _bundle(tmp_path / "evil.tar.zst", members)
+    assert _module()._extract_bundle(src, dest) == skipped
+    assert (dest / "user" / "metadata.json").read_text() == "ORIGINAL"

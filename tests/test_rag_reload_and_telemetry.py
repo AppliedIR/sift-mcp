@@ -345,3 +345,14 @@ def test_a_reload_waits_for_a_search_already_running(store):
     second.join(10)
     for name in ("first", "second"):
         assert isinstance(results[name], list), results[name]
+
+
+def test_a_failed_reload_is_tried_again_once_the_store_is_back(store):
+    data, index = store
+    _top(index, "x")
+    (data / "chroma").rename(data / "chroma.away")
+    (data / "metadata.json").write_text('{"record_count": 2}')  # a change
+    with pytest.raises(FileNotFoundError):
+        index.search("x")
+    (data / "chroma.away").rename(data / "chroma")
+    assert _top(index, "first record")[0] == "first record"

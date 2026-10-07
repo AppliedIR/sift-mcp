@@ -223,8 +223,10 @@ class RAGIndex:
             )
 
     def _open_stores(self) -> None:
-        """Open the index and its per-index lookups."""
-        self._marker = self._metadata_marker()
+        """Open the index and its per-index lookups. The marker is read
+        first (so a change made meanwhile still reloads) and kept only once
+        the open succeeds (so a failed open is retried)."""
+        marker = self._metadata_marker()
         logger.info("Loading ChromaDB index...")
         chroma_path = self.index_dir / "chroma"
         if not chroma_path.exists():
@@ -260,6 +262,7 @@ class RAGIndex:
             f"Ready. {count} documents indexed from {len(self.available_sources)} sources."
         )
         logger.info(f"MITRE lookup loaded: {len(self._mitre_lookup)} technique IDs")
+        self._marker = marker
 
     def _load_available_sources(self) -> None:
         """Load source names from metadata.json or scan collection."""

@@ -203,7 +203,14 @@ def sync_examiner_store(
                 continue
             stale = set((entry or {}).get("record_ids") or [])
             stem = re.compile(rf"^user_{re.escape(_sanitize_id(path.stem))}_\d+$")
-            stale |= {i for i in have if stem.match(i)}
+            # Ids another file's entry owns stay: same-stem files share ids
+            owned = {
+                i
+                for other, e in known.items()
+                if other != rel
+                for i in e.get("record_ids") or []
+            }
+            stale |= {i for i in have if stem.match(i) and i not in owned}
             stale &= have
             if stale:
                 collection.delete(ids=sorted(stale))
