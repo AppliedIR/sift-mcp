@@ -453,3 +453,36 @@ def test_a_forwarded_name_met_while_ingesting_joins_its_machine(case):
     )
     assert (key, canonical) == ("k1", "DC01")  # never "DC01 (2)"
     assert violations(P, hi.load(case), "mint") == []
+
+
+def test_a_machine_the_examiner_confirmed_with_two_ids_still_takes_its_late_names(case):
+    obs(case, unit("u1", "A"), name("u1", "DC01"), unit("u2", "B"), name("u2", "DC01"),
+        unit("u3"), name("u3", "WEC01"))  # fmt: skip
+    hi.append_decision(
+        case,
+        {
+            "action": "confirm",
+            "args": {
+                "machines": [
+                    {
+                        "key": "k1",
+                        "canonical": "DC01",
+                        "pairs": [["u1", "DC01"], ["u2", "DC01"]],
+                    }
+                ]
+            },
+        },
+        hi.load(case).obs_offset,
+    )  # fmt: skip (the examiner's: two machine ids, theirs to keep)
+    key, _ = hi.get_or_mint(case, "u3", "DC01", evidence="ForwardedEvents Computer")
+    assert key == "k1"  # the join adds no machine id
+
+
+def test_a_not_a_host_name_is_no_rival_match_for_a_list_entry(case):
+    obs(case, unit("u1", "A"), name("u1", "DC01"), name("u1", "DC01", "Security.evtx Computer"),
+        unit("u2", "B"), name("u2", "DC01"), name("u2", "DC01", "Security.evtx Computer"))  # fmt: skip
+    hi.append_decision(case, {"action": "not_a_host", "args": {"pairs": [["u2", "DC01"]]}},
+                       hi.load(case).obs_offset)  # fmt: skip
+    hp.upload_host_list(case, "DC01\n", "ex")
+    m = hi.load(case).machine_of_pair("u1", "DC01")
+    assert m is not None and m.state == hi.CONFIRMED
