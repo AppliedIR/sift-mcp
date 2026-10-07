@@ -28,7 +28,8 @@ _DOCUMENT = (
     "this.innerHTML = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')"
     ".replace(/>/g, '&gt;');}})};\n"
 )
-_SINK = re.compile(r"""([\w-]+)="([^"<>]*)' \+ escapeHtml\(""")
+# An attribute built around escapeHtml output, on one line or across two
+_SINK = re.compile(r"""([\w-]+)="([^"<>']*)'\s*\+\s*escapeHtml\(""")
 
 pytestmark = pytest.mark.skipif(
     not shutil.which("node"), reason="node is not installed"
@@ -62,11 +63,12 @@ def test_escape_html_escapes_both_quotes(page):
 
 def _sinks():
     for name, path in sorted(PAGES.items()):
-        for n, line in enumerate(path.read_text().splitlines(), 1):
-            for m in _SINK.finditer(line):
-                yield pytest.param(
-                    name, m.group(1), m.group(2), id=f"{name}:{n}:{m.group(1)}"
-                )
+        text = path.read_text()
+        for m in _SINK.finditer(text):
+            n = text.count("\n", 0, m.start()) + 1
+            yield pytest.param(
+                name, m.group(1), m.group(2), id=f"{name}:{n}:{m.group(1)}"
+            )
 
 
 @pytest.mark.parametrize("page, attr, before", list(_sinks()))
@@ -111,3 +113,42 @@ def test_an_ioc_value_renders_inert_in_the_ioc_table():
     assert 'title="&quot; onmouseover=&quot;alert(1)"' in out
     tags = re.sub(r'="[^"]*"', '=""', out)  # quoted attribute values are inert
     assert "onmouseover" not in "".join(re.findall(r"<[^>]*>", tags)), out
+
+
+def test_the_edit_field_s_value_is_one_of_the_sinks():
+    """The inline editor's `value="' +` with escapeHtml on the next line."""
+    ids = [p.id for p in _sinks()]
+    assert any(i.startswith("v2:") and i.endswith(":value") for i in ids), ids
+
+
+def _js_escaped(page_name: str, text: str) -> str:
+    page = PAGES[page_name].read_text()
+    return _node(
+        _js_function(page, "escapeJsString")
+        + f"process.stdout.write(escapeJsString({json.dumps(text)}));"
+    )
+
+
+@pytest.mark.parametrize("page", sorted(PAGES))
+def test_escape_js_string_has_no_quote_and_reads_back(page):
+    text = 'x" onmouseover="alert(1)\' </b> & \\'
+    out = _js_escaped(page, text)
+    assert not set('"<>&') & set(out.replace("\\'", "")), out
+    # Inside the handler's single-quoted JS string, it reads back as the text
+    assert _node(f"process.stdout.write(String('{out}'));") == text
+
+
+def _handlers():
+    for name, path in sorted(PAGES.items()):
+        text = path.read_text()
+        for m in re.finditer(r"""on\w+="[^"]*?'\s*\+\s*escapeJsString\(""", text):
+            n = text.count("\n", 0, m.start()) + 1
+            yield pytest.param(name, id=f"{name}:{n}")
+
+
+@pytest.mark.parametrize(
+    "page", [p.values[0] for p in _handlers()], ids=[p.id for p in _handlers()]
+)
+def test_case_text_stays_inside_each_double_quoted_handler(page):
+    rendered = f"<x onclick=\"go('{_js_escaped(page, PAYLOAD)}')\">"
+    assert re.fullmatch(r'<x onclick="[^"]*">', rendered), rendered
