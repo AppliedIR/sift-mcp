@@ -92,6 +92,11 @@ backends:
       VHIR_EXAMINER: "${VHIR_EXAMINER}"
       OPENCTI_URL: "${OPENCTI_URL}"
       OPENCTI_TOKEN: "${OPENCTI_TOKEN}"
+      # Threat-intel platforms lookup_ioc asks (unset means opencti). To add
+      # MISP, list it here and set its address and key in this same block:
+      # THREATINTEL_PROVIDERS: "opencti,misp"
+      # MISP_URL: "${MISP_URL}"
+      # MISP_KEY: "${MISP_KEY}"
     enabled: true
 
   # --- Remote HTTP backends ---
