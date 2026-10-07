@@ -151,3 +151,55 @@ async def test_a_misp_warninglist_failure_names_no_server_address(
     reply = await _misp(monkeypatch, misp_transport, check=check)
     assert "Warninglist check failed" in reply
     assert not [leak for leak in MISP_LEAKS if leak in reply], reply
+
+
+SHORT = "http://opencti:8080"
+
+
+@pytest.mark.parametrize(
+    "text, ioc, expected",
+    [
+        (
+            f"reset by {SHORT}/graphql",
+            "11.0.113.10",
+            "reset by http://<OpenCTI host>:8080/graphql",
+        ),
+        (
+            "no indicator named evil-opencti.com; opencti-backup.example.org is down",
+            "evil-opencti.com",
+            "no indicator named evil-opencti.com; opencti-backup.example.org is down",
+        ),
+        ("from ::ffff:10.0.0.5", "x", "from <IP address>"),
+        ("from 0:0:0:0:0:ffff:10.0.0.5.", "x", "from <IP address>."),
+        (
+            "10.0.0.5:8080 at 10:48:01, v6.9.10",
+            "x",
+            "<IP address>:8080 at 10:48:01, v6.9.10",
+        ),
+    ],
+    ids=[
+        "host in a url",
+        "host inside other names",
+        "mapped v6",
+        "mapped v6 long",
+        "port, time, version",
+    ],
+)
+def test_redact_takes_out_only_the_address(text, ioc, expected):
+    from opencti_mcp.providers import redact
+
+    assert redact(text, SHORT, ioc, "OpenCTI") == expected
+
+
+async def test_a_domain_ioc_holding_the_host_name_is_kept(monkeypatch):
+    cfg = Config(opencti_url=SHORT, opencti_token=SecretStr("dummy-not-a-real-token-0"))
+    srv = OpenCTIMCPServer(cfg, provider_names=["opencti"])
+    answer = _gql(
+        "GRAPHQL_VALIDATION_FAILED",
+        f"Invalid value evil-opencti.com at {SHORT}/graphql",
+    )
+    monkeypatch.setattr(opencti_provider, "_http_post", Transport(lambda q, v: answer))
+    reply = str(await lookup(srv, "evil-opencti.com"))
+    assert "Invalid value evil-opencti.com at http://<OpenCTI host>:8080" in reply, (
+        reply
+    )

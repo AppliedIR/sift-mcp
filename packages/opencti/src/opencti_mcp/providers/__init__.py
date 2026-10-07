@@ -249,31 +249,45 @@ def aggregate(answers: dict[str, dict]) -> str:
     return NO_MATCH
 
 
-# Candidates for a literal IP address in error text; each is checked with
-# ipaddress, so a time such as 10:48:01 is left alone.
-_ADDRESS = re.compile(
-    r"\b(?:\d{1,3}\.){3}\d{1,3}\b|[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}"
-)
+# Candidate tokens for a literal IP address in error text: runs of hex digits,
+# dots and colons. Each is parsed with ipaddress, so a time such as 10:48:01
+# or a version such as 6.9.10 is left alone.
+_IP_TOKEN = re.compile(r"[0-9A-Fa-f:.]*[:.][0-9A-Fa-f:.]*")
 
 
-def _is_address(text: str) -> bool:
-    try:
-        ipaddress.ip_address(text)
-    except ValueError:
-        return False
-    return True
+def _without_ip(token: str) -> str:
+    """The token with a literal IP address replaced; its port and a trailing
+    full stop are kept."""
+    core = token.rstrip(".")
+    rest = token[len(core) :]
+    with_port = re.fullmatch(r"(.+?\.\d+)(:\d{1,5})", core)  # 10.0.0.5:8080
+    for address, port in ((core, ""), with_port.groups() if with_port else ("", "")):
+        if address:
+            try:
+                ipaddress.ip_address(address)
+            except ValueError:
+                continue
+            return "<IP address>" + port + rest
+    return token
+
+
+def _redact_part(text: str, host: str, platform: str) -> str:
+    if host:
+        # The host as a whole host name: in a URL's authority, or bounded by
+        # characters a host name can't hold. Never inside another name.
+        text = re.sub(
+            rf"(?<![A-Za-z0-9.-]){re.escape(host)}(?![A-Za-z0-9-]|\.[A-Za-z0-9])",
+            f"<{platform} host>",
+            text,
+            flags=re.IGNORECASE,
+        )
+    return _IP_TOKEN.sub(lambda m: _without_ip(m.group()), text)
 
 
 def redact(text: str, url: str, ioc: str, platform: str) -> str:
     """Error text without the server's address: its configured host name and
-    any literal IP address other than the IOC looked up. The reason and
-    everything else stay."""
-    host = urlsplit(url).hostname
-    if host:
-        text = re.sub(re.escape(host), f"<{platform} host>", text, flags=re.IGNORECASE)
-    return _ADDRESS.sub(
-        lambda m: (
-            "<IP address>" if m.group() != ioc and _is_address(m.group()) else m.group()
-        ),
-        text,
-    )
+    any literal IP address. The IOC that was looked up is never changed, and
+    the reason and everything else stay."""
+    host = urlsplit(url).hostname or ""
+    parts = text.split(ioc) if ioc else [text]
+    return ioc.join(_redact_part(part, host, platform) for part in parts)
