@@ -640,3 +640,44 @@ def test_a_units_scan_details_are_kept(case):
     unit = hi.load(case).units["u1"]
     assert unit["machine_guid"] == "11111111-2222-3333-4444-555555555555"
     assert unit["locator"] == "evidence/a" and unit["note"] == "locked volume: not read"
+
+
+def _confirm_at(case, key, canonical, pairs, seen):
+    hi.append_decision(
+        case,
+        {
+            "action": "confirm",
+            "args": {
+                "machines": [{"key": key, "canonical": canonical, "pairs": pairs}]
+            },
+        },
+        seen,
+    )
+
+
+def test_an_ingest_binding_while_the_examiner_decides_does_not_override_the_decision(
+    case,
+):
+    hi.append_observations(case, [{"kind": "name", "unit": "u1", "raw": "DC01"}])
+    seen = (case / hi.OBSERVATIONS).stat().st_size  # the examiner's view
+    hi.get_or_mint(case, "u1", "DC01")  # an ingest binds the pair meanwhile
+    key = hi.new_machine_key()
+    _confirm_at(case, key, "DC01", [["u1", "DC01"]], seen)
+    hi.get_or_mint(case, "u1", "DC01")  # and meets it again
+    state = hi.load(case)
+    m = state.machine_of_pair("u1", "DC01")
+    assert m is not None and m.canonical == "DC01" and m.state == hi.CONFIRMED
+    assert state.machine_of_key(key) is m
+    assert not [x for x in state.machines.values() if x.canonical.startswith("DC01 (")]
+
+
+def test_confirming_bound_pairs_under_a_new_key_keeps_the_name_the_examiner_gave(case):
+    hi.get_or_mint(case, "u1", "DC01")
+    seen = (case / hi.OBSERVATIONS).stat().st_size
+    key = hi.new_machine_key()
+    _confirm_at(case, key, "DC01", [["u1", "DC01"]], seen)
+    state = hi.load(case)
+    m = state.machine_of_key(key)
+    assert m is state.machine_of_pair("u1", "DC01")
+    assert m.canonical == "DC01" and m.state == hi.CONFIRMED
+    assert len(state.machines) == 1

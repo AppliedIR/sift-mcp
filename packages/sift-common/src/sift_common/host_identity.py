@@ -242,8 +242,10 @@ def append_decision(case_dir: str | os.PathLike, record: dict, seen_offset: int)
         clash = _canonical_clash(load(root), record)
         if clash:
             raise HostLogError(clash)
+        # Replayed at the log's size now, after every observation that came
+        # in since the examiner's view: one of them never overrides it
         return _append_locked(
-            root / DECISIONS, {"t": _now(), **record, "offset": seen_offset}
+            root / DECISIONS, {"t": _now(), **record, "offset": seen_offset, "at": size}
         )
 
 
@@ -470,6 +472,9 @@ class HostState:
     pair_flags: dict[tuple[str, str], list[str]] = field(default_factory=dict)
     host_list: dict | None = None
     suggestions: list[dict] = field(default_factory=list)
+    hints: list[dict] = field(
+        default_factory=list
+    )  # near spellings, found once per new name
     v1_imported: bool = False
     obs_offset: int = 0
     dec_offset: int = 0
@@ -673,6 +678,8 @@ class _Folder:
             }
         elif kind == "suggestion":
             s.suggestions.append({k: v for k, v in rec.items() if k != "kind"})
+        elif kind == "hint":
+            s.hints.append({k: v for k, v in rec.items() if k not in ("kind", "t")})
         elif kind == "v1-import":
             s.v1_imported = True
 
@@ -691,6 +698,20 @@ class _Folder:
                 canonical = str(item.get("canonical") or "")
                 pairs = [p for p in (_pair(x) for x in item.get("pairs") or ()) if p]
                 m = s.machine_of_key(key)
+                owner = next(
+                    (
+                        b
+                        for b in (s.machine_of_pair(*p) for p in pairs)
+                        if b is not None
+                    ),
+                    None,
+                )
+                if m is None and owner is not None:
+                    # Pairs already bound: their machine takes the key, so the
+                    # confirmed name isn't taken by the machine it replaces
+                    owner.keys.append(key)
+                    s.key_machine[key] = owner.id
+                    m = owner
                 if m is None:
                     m = self._new_machine(
                         key, canonical or (pairs[0][1] if pairs else key), state
@@ -761,10 +782,10 @@ class _Folder:
 def fold(observations: bytes, decisions: bytes) -> HostState:
     """Machines, bindings and names from the two host logs.
 
-    Deterministic: the same bytes give the same state. Observations are
-    applied first; each decision line is then applied after the observation
-    lines up to the offset it records, so a decision never sees names that
-    arrived after the examiner's view.
+    Deterministic: the same bytes give the same state. Each decision line is
+    applied after the observation lines that were in the log when it was
+    appended, so an observation that came in between the examiner's view and
+    the decision is folded first, and never overrides it.
     """
     folder = _Folder()
     obs_end, obs_lines = _lines(observations)
@@ -791,8 +812,8 @@ def fold(observations: bytes, decisions: bytes) -> HostState:
 
     i = 0
     for dec in dec_records:
-        offset = dec.get("offset")
-        limit = offset if isinstance(offset, int) else obs_end
+        at = dec.get("at", dec.get("offset"))
+        limit = at if isinstance(at, int) else obs_end
         while i < len(obs_records) and obs_records[i][0] <= limit:
             folder.observation(obs_records[i][1])
             i += 1
@@ -848,19 +869,6 @@ def load(case_dir: str | os.PathLike) -> HostState:
 # Get-or-mint while ingesting
 
 
-def _domain_conflict(raw: str, machine: Machine, state: HostState) -> bool:
-    """True when ``raw`` carries a domain and ``machine`` has a name with a
-    different domain."""
-    _, domain = split_name(raw)
-    if not domain:
-        return False
-    for name in (machine.canonical, *(p[1] for p in machine.pairs)):
-        _, d = split_name(name)
-        if d and d != domain:
-            return True
-    return False
-
-
 def _match_confirmed(state: HostState, raw: str) -> Machine | None:
     """The one confirmed machine whose name equals ``raw`` after spelling
     normalization; None when there is none or more than one."""
@@ -873,9 +881,34 @@ def _match_confirmed(state: HostState, raw: str) -> Machine | None:
             continue
         names = {spelling(m.canonical), *(spelling(p[1]) for p in m.pairs)}
         names |= {spelling(n) for n in m.former}
-        if target in names and not _domain_conflict(raw, m, state):
+        if target in names:  # the exact name: its domain is the machine's own
             found.append(m)
     return found[0] if len(found) == 1 else None
+
+
+def _match_list(state: HostState, raw: str):
+    """(entry name, its confirmed machine or None) for the one host-list
+    entry a name matches, or None. Where the entry's machine already has a
+    domain, the name must carry the same one."""
+    from sift_common import host_proposal
+
+    entries = [
+        e for e in ((state.host_list or {}).get("entries") or []) if isinstance(e, dict)
+    ]
+    found = host_proposal.list_matches(raw, entries)
+    if len(found) != 1:
+        return None
+    entry = found[0]["name"]
+    machine = host_proposal._machine_for_entry(state, entry)
+    if machine is not None:
+        domains = {
+            split_name(n)[1]
+            for n in (machine.canonical, *(p[1] for p in machine.pairs))
+        }
+        domains.discard("")
+        if domains and split_name(raw)[1] not in domains:
+            return None  # the machine is in another domain: this is another machine
+    return entry, machine
 
 
 def get_or_mint(
@@ -921,7 +954,29 @@ def get_or_mint(
                 }
             )
         match = None if origin in AI_ORIGINS else _match_confirmed(state, raw)
-        if match is not None:
+        listed = (
+            None
+            if match is not None or origin in AI_ORIGINS
+            else _match_list(state, raw)
+        )
+        if listed is not None:  # a host-list entry the name matches
+            entry_name, machine = listed
+            key = machine.keys[0] if machine else new_machine_key()
+            result = (
+                machine.canonical if machine else state.unique_canonical(entry_name)
+            )
+            records.append(
+                {
+                    "kind": "bind",
+                    "unit": unit,
+                    "raw": raw,
+                    "key": key,
+                    "canonical": result,
+                    "state": CONFIRMED,
+                    "flags": [FLAG_MATCHED_DURING_INGEST],
+                }
+            )
+        elif match is not None:
             key = match.keys[0]
             records.append(
                 {
