@@ -3,7 +3,9 @@
 The venv step deleted any existing directory without bin/python as a "broken
 venv" (--venv=~/.vhir wiped the install's config and tokens). Uninstall step
 [4] deleted the parent of --install-dir, and step [7] deleted the gateway
-config and credentials the user had just chosen to keep at step [6]. These run
+config and credentials the user had just chosen to keep at step [6], and
+removed the OpenSearch credentials (opensearch.yaml), which step [6] never
+listed, whatever the answers. These run
 the installer's own blocks under its shell options, in tmp_path only, with
 answers from a file and uv stubbed.
 """
@@ -204,7 +206,7 @@ def test_answering_no_keeps_the_source_code(tmp_path):
 
 # --- Uninstall steps [6] and [7]: config, then the rest of ~/.vhir -------------
 
-KEPT = ("gateway.yaml", "manifest.json", "config.yaml", "tls")
+KEPT = ("gateway.yaml", "manifest.json", "config.yaml", "opensearch.yaml", "tls")
 REST = ("hooks", "logs", "start-gateway.sh")
 
 
@@ -215,7 +217,7 @@ def _vhir_dir(home):
     (vhir / "hooks").mkdir()
     (vhir / "hooks" / "forensic-audit.sh").write_text("x")
     (vhir / "logs").mkdir()
-    for name in ("gateway.yaml", "manifest.json", "config.yaml", "start-gateway.sh"):
+    for name in KEPT[:-1] + ("start-gateway.sh",):
         (vhir / name).write_text("x")
     return vhir
 
@@ -234,6 +236,18 @@ def test_config_kept_at_step_6_survives_step_7(tmp_path):
     assert rc == 0, out
     assert all((vhir / n).exists() for n in KEPT), sorted(os.listdir(vhir))
     assert not any((vhir / n).exists() for n in REST), sorted(os.listdir(vhir))
+
+
+def test_step_6_lists_the_opensearch_credentials(tmp_path):
+    rc, out, vhir = _config_and_rest(tmp_path, "n\ny\n")
+    assert f"    {vhir / 'opensearch.yaml'}" in out.splitlines(), out
+
+
+def test_yes_at_step_6_and_no_at_step_7_removes_the_credentials(tmp_path):
+    rc, out, vhir = _config_and_rest(tmp_path, "y\nn\n")
+    assert rc == 0, out
+    assert not any((vhir / n).exists() for n in KEPT), sorted(os.listdir(vhir))
+    assert all((vhir / n).exists() for n in REST), sorted(os.listdir(vhir))
 
 
 def test_yes_at_both_steps_removes_everything(tmp_path):

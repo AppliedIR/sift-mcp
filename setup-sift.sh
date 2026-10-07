@@ -343,7 +343,7 @@ if ${UNINSTALL_MODE:-false}; then
 
     # [6] Gateway config and credentials
     CONFIG_FILES=()
-    for f in gateway.yaml manifest.json config.yaml; do
+    for f in gateway.yaml manifest.json config.yaml opensearch.yaml; do
         [[ -f "$HOME/.vhir/$f" ]] && CONFIG_FILES+=("$HOME/.vhir/$f")
     done
     TLS_DIR="$HOME/.vhir/tls"
@@ -373,7 +373,7 @@ if ${UNINSTALL_MODE:-false}; then
         EXCLUDE_ARGS=()
         $KEPT_VENV && EXCLUDE_ARGS+=(! -name "venv")
         $KEPT_SRC  && EXCLUDE_ARGS+=(! -name "src")
-        EXCLUDE_ARGS+=(! -name gateway.yaml ! -name manifest.json ! -name config.yaml ! -name tls)
+        EXCLUDE_ARGS+=(! -name gateway.yaml ! -name manifest.json ! -name config.yaml ! -name opensearch.yaml ! -name tls)
 
         REMAINING=$(find "$VHIR_DIR" -mindepth 1 -maxdepth 1 "${EXCLUDE_ARGS[@]}" 2>/dev/null | head -5)
         if [[ -n "$REMAINING" ]]; then
