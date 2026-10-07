@@ -131,7 +131,7 @@ class OpenCTIAdapter:
         return body["data"]
 
     @staticmethod
-    def _nodes(connection: Any) -> list[dict]:
+    def _nodes(connection: Any, named: bool = False) -> list[dict]:
         if not isinstance(connection, dict) or not isinstance(
             connection.get("edges"), list
         ):
@@ -142,6 +142,8 @@ class OpenCTIAdapter:
         ]
         if not all(isinstance(node, dict) for node in nodes):
             raise _Failure("OpenCTI's reply has an unexpected shape")
+        if named and not all(isinstance(node.get("name"), str) for node in nodes):
+            raise _Failure("malformed provider data: an indicator without a name")
         return nodes
 
     def lookup(self, ioc: str, ioc_type: str) -> dict:
@@ -156,7 +158,7 @@ class OpenCTIAdapter:
             )
             version = (data.get("about") or {}).get("version")
             connection = data.get("indicators")
-            nodes = self._nodes(connection)
+            nodes = self._nodes(connection, named=True)
             total = (connection.get("pageInfo") or {}).get("globalCount")
         except _Failure as e:
             if version is None and e.data:
@@ -165,13 +167,23 @@ class OpenCTIAdapter:
 
         # The server's `eq` ignores case; fuzzy hashes are compared as given.
         matches = [node for node in nodes if same_value(node.get("name"), ioc)]
+        truncated = len(nodes) > MAX_MATCHES or (
+            isinstance(total, int) and total > MAX_MATCHES
+        )
+        if truncated and not matches:
+            # The exact record may be past the ones read: not an absence.
+            return unavailable(
+                f"too many candidate matches: {total} indicators are named like "
+                f"{ioc}, and none of the first {len(nodes)} is exactly it",
+                version,
+            )
         answer: dict[str, Any] = {
             "outcome": MATCH if matches else NO_MATCH,
             "version": version,
             "queried_at": queried_at,
             "matches": matches[:MAX_MATCHES],
         }
-        if len(nodes) > MAX_MATCHES or (isinstance(total, int) and total > MAX_MATCHES):
+        if truncated:
             answer["truncated"] = True
             answer["note"] = (
                 f"{total if isinstance(total, int) else 'More than ' + str(MAX_MATCHES)}"

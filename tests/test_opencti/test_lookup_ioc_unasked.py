@@ -124,3 +124,50 @@ async def test_another_tool_on_a_degraded_start_still_raises_a_query_error():
     except OpenCTIMCPError as e:
         resp = {"error": type(e).__name__.lower(), "message": e.safe_message}
     assert resp["error"] == "queryerror", resp
+
+
+def _named(names: list) -> dict:
+    node = REPLIES["v6:lookup:ip3"]["data"]["indicators"]["edges"][0]["node"]
+    return {
+        "data": {
+            "about": {"version": "6.9.10"},
+            "indicators": {
+                "pageInfo": {"globalCount": len(names)},
+                "edges": [
+                    {"node": {**node, "id": f"indicator--{i:04d}", "name": n}}
+                    for i, n in enumerate(names)
+                ],
+            },
+        }
+    }
+
+
+async def test_too_many_candidates_with_no_exact_one_is_unavailable(
+    provider_transport,
+):
+    # 101 records the server's caseless eq returns, none in the IOC's own case:
+    # the exact record may be past the ones read.
+    stored = "96:AbCdEfGh:IjKlMn"
+    provider_transport(lambda q, v: _named([stored.swapcase()] * 101))
+    resp = await lookup(server(), stored)
+    block = resp["providers"]["opencti"]
+    assert block["outcome"] == resp["outcome"] == "UNAVAILABLE"
+    assert "too many candidate matches" in block["reason"]
+
+
+@pytest.mark.parametrize("name", [None, 7, ["x"]], ids=["null", "number", "list"])
+async def test_an_indicator_without_a_name_is_unavailable(provider_transport, name):
+    reply = _named([IP, IP])
+    reply["data"]["indicators"]["edges"][1]["node"]["name"] = name
+    provider_transport(lambda q, v: reply)
+    block = (await lookup(server(), IP))["providers"]["opencti"]
+    assert block["outcome"] == "UNAVAILABLE"
+    assert "malformed provider data" in block["reason"]
+
+
+async def test_an_indicator_missing_its_name_is_unavailable(provider_transport):
+    reply = _named([IP])
+    del reply["data"]["indicators"]["edges"][0]["node"]["name"]
+    provider_transport(lambda q, v: reply)
+    block = (await lookup(server(), IP))["providers"]["opencti"]
+    assert "malformed provider data" in block["reason"]
