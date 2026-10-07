@@ -1481,3 +1481,25 @@ class TestProcessTreeUserContext:
         assert result["user_context"]["user"] == "DOMAIN\\regular_user"
         assert result["user_context"]["user_valid"] is False
         assert result["verdict"] == "SUSPICIOUS"
+
+
+class TestThreatIntelHints:
+    """The hints name the tool, lookup_ioc, not a backend: an install
+    upgraded from an earlier version still serves it as opencti-mcp."""
+
+    async def test_descriptions_and_replies_name_the_tool(self, server):
+        import json
+
+        from mcp.types import ListToolsRequest
+
+        handler = server.server.request_handlers[ListToolsRequest]
+        tools = (await handler(ListToolsRequest(method="tools/list"))).root.tools
+        check_hash = next(t for t in tools if t.name == "check_hash")
+        assert "lookup_ioc (threat intel)" in check_hash.description
+        replies = [
+            await server._check_hash("d41d8cd98f00b204e9800998ecf8427e"),
+            await server._get_db_stats(),
+        ]
+        text = " ".join(t.description for t in tools) + json.dumps(replies)
+        assert "threatintel-mcp" not in text and "opencti-mcp" not in text
+        assert "lookup_ioc" in json.dumps(replies)

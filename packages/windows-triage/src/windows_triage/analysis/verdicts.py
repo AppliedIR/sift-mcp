@@ -5,7 +5,7 @@ This module implements the verdict calculation system that determines the
 final assessment for files, processes, services, and hashes based on
 OFFLINE analysis against local baselines.
 
-For threat intelligence (each platform's records, no verdict), use threatintel-mcp separately.
+For threat intelligence (each platform's records, no verdict), use lookup_ioc (threat intel) separately.
 
 Verdict Categories (in priority order):
 
@@ -47,7 +47,7 @@ Key Design Decisions:
        lsass.exe, csrss.exe) in non-system paths are always SUSPICIOUS.
 
     5. No MALICIOUS verdict: This module is offline-only. For threat
-       intelligence, use threatintel-mcp lookup_ioc, which returns each
+       intelligence, use lookup_ioc (threat intel), which returns each
        platform's records (no verdict).
 """
 
@@ -169,7 +169,7 @@ class Verdict(Enum):
     """Triage verdict categories (offline analysis only).
 
     Note: MALICIOUS is intentionally not included. For threat intelligence
-    records, use threatintel-mcp lookup_ioc separately.
+    records, use lookup_ioc (threat intel) separately.
     """
 
     SUSPICIOUS = "SUSPICIOUS"
@@ -211,7 +211,7 @@ def calculate_file_verdict(
     """
     Calculate verdict for a file/path check (offline analysis only).
 
-    For threat intelligence lookups, use threatintel-mcp separately.
+    For threat intelligence lookups, use lookup_ioc (threat intel) separately.
 
     Args:
         path_in_baseline: True if exact path exists in baseline
@@ -478,7 +478,7 @@ def calculate_hash_verdict(
     Calculate verdict for a hash-only lookup (offline analysis only).
 
     Checks against vulnerable driver database. For threat intelligence
-    lookups, use threatintel-mcp separately.
+    lookups, use lookup_ioc (threat intel) separately.
 
     Args:
         is_vulnerable_driver: True if hash matches vulnerable driver
@@ -511,5 +511,5 @@ def calculate_hash_verdict(
 
     # Hash not in local databases
     reasons.append("Hash not found in local databases (neutral)")
-    reasons.append("For threat intel, query threatintel-mcp")
+    reasons.append("For threat intel, use lookup_ioc (threat intel)")
     return VerdictResult(verdict=Verdict.UNKNOWN, reasons=reasons, confidence="low")

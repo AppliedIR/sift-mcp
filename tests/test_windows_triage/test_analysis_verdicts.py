@@ -366,7 +366,7 @@ class TestCalculateHashVerdict:
         """Hash not in local databases should be UNKNOWN."""
         result = calculate_hash_verdict()
         assert result.verdict == Verdict.UNKNOWN
-        assert "threatintel-mcp" in result.reasons[1]
+        assert "lookup_ioc" in result.reasons[1]
 
     def test_vulnerable_driver_with_details(self):
         """Vulnerable driver with full details."""

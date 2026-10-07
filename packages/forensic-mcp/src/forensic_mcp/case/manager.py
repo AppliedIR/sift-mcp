@@ -716,7 +716,7 @@ class CaseManager:
         if capabilities["opencti"]:
             guidance.append(
                 "- Threat intel: lookup_ioc (each platform's records, no verdict),"
-                " search_threat_intel on threatintel-mcp"
+                " search_threat_intel"
             )
         guidance.append("")
         guidance.append(

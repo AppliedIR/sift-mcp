@@ -10,7 +10,7 @@ Architecture:
     - known_good.db: Ground truth baselines from clean Windows installations
     - context.db: Risk enrichment (LOLBins, vulnerable drivers, process rules)
 
-For threat intelligence (hash/IOC records), use threatintel-mcp separately.
+For threat intelligence (hash/IOC records), use lookup_ioc (threat intel) separately.
 
 Verdict System:
     - SUSPICIOUS: Anomaly detected (wrong path, spoofing, hash mismatch,
@@ -450,7 +450,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_hash",
-                    description="Check a file hash (MD5/SHA1/SHA256) against the LOLDrivers vulnerable driver database. Returns verdict: SUSPICIOUS (known vulnerable driver) or UNKNOWN (not in LOLDrivers database). For broader threat intel (malware hashes, IOCs), use threatintel-mcp lookup_ioc instead. For filename-based analysis, use check_file.",
+                    description="Check a file hash (MD5/SHA1/SHA256) against the LOLDrivers vulnerable driver database. Returns verdict: SUSPICIOUS (known vulnerable driver) or UNKNOWN (not in LOLDrivers database). For broader threat intel (malware hashes, IOCs), use lookup_ioc (threat intel) instead. For filename-based analysis, use check_file.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -876,7 +876,7 @@ class WindowsTriageServer:
                 )
 
         # Calculate verdict using the proper verdict function
-        # Note: For threat intel, use threatintel-mcp separately
+        # Note: For threat intel, use lookup_ioc (threat intel) separately
         verdict_result = calculate_file_verdict(
             path_in_baseline=path_in_baseline,
             filename_in_baseline=filename_in_baseline,
@@ -1451,7 +1451,7 @@ class WindowsTriageServer:
     async def _check_hash(self, hash_value: str) -> dict[str, Any]:
         """Check hash against vulnerable driver database (offline only).
 
-        For threat intelligence lookups, use threatintel-mcp separately.
+        For threat intelligence lookups, use lookup_ioc (threat intel) separately.
         """
         # Defense in depth: validate inputs
         _validate_input_length(hash_value, self.config.max_hash_length, "hash")
@@ -1609,7 +1609,7 @@ class WindowsTriageServer:
         result = {
             "known_good_db": known_good_stats,
             "context_db": context_stats,
-            "note": "For threat intelligence, use threatintel-mcp separately",
+            "note": "For threat intelligence, use lookup_ioc (threat intel) separately",
         }
 
         # Add registry stats if available
