@@ -651,21 +651,42 @@ body {
 
   <div class="tab-panel" data-panel="hosts" role="tabpanel"
     id="panel-hosts" aria-labelledby="tab-hosts">
-    <div class="tab-table-wrap">
-      <h3 style="margin-bottom:12px;font-size:15px;">Impacted Hosts</h3>
+    <div class="tab-table-wrap" id="hostsPanel">
+      <h3 style="margin-bottom:12px;font-size:15px;">Hosts</h3>
+      <div id="hostsHeader" style="margin-bottom:12px"></div>
+      <div id="hostsRuns"></div>
+      <div id="hostsProposed"></div>
+      <div style="display:flex;gap:8px;margin:12px 0">
+        <select id="hostsStateFilter" aria-label="State">
+          <option value="">All states</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="started-now">Started now</option>
+          <option value="new">New</option>
+        </select>
+        <input id="hostsQuery" type="search" placeholder="Filter by host name" aria-label="Filter by host name">
+      </div>
       <table class="data-table" id="hostsTable">
         <thead>
           <tr>
-            <th data-sort="host">Host</th>
-            <th data-sort="count">Findings</th>
-            <th>Accounts</th>
-            <th data-sort="confidence">Highest Confidence</th>
-            <th data-sort="timeRange">Time Range</th>
-            <th data-sort="status">Status</th>
+            <th>Host</th>
+            <th>State</th>
+            <th>Names (evidence, origin)</th>
+            <th>Units</th>
+            <th>Flags</th>
+            <th>Findings and timeline</th>
           </tr>
         </thead>
         <tbody id="hostsBody"></tbody>
       </table>
+      <div id="hostsPager" style="margin:8px 0"></div>
+      <div id="hostDetail"></div>
+      <details style="margin-top:16px">
+        <summary>Upload a host list</summary>
+        <p style="color:var(--text-muted)">One machine per line, with an optional FQDN. Hosts it matches are confirmed.</p>
+        <textarea id="hostListText" rows="6" style="width:100%"></textarea>
+        <input type="file" id="hostListFile" accept=".txt,.csv">
+        <button class="btn" data-host-act="list">Upload</button>
+      </details>
     </div>
   </div>
 
@@ -3748,44 +3769,192 @@ function renderIocs() {
 }
 
 /* === Hosts tab === */
-function renderHosts() {
-  var hostMap = {};
-  var CONF_ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2, SPECULATIVE: 3 };
-  findings.forEach(function(f) {
-    var h = f.host || '';
-    if (!h) return;
-    if (!hostMap[h]) hostMap[h] = { host: h, findings: [], accounts: new Set(), statuses: {}, bestConf: 'SPECULATIVE', earliest: '', latest: '' };
-    var entry = hostMap[h];
-    entry.findings.push(f.id);
-    if (f.affected_account) entry.accounts.add(f.affected_account);
-    var st = (f.status || 'DRAFT').toUpperCase();
-    entry.statuses[st] = (entry.statuses[st] || 0) + 1;
-    var conf = (f.confidence || 'SPECULATIVE').toUpperCase();
-    if ((CONF_ORDER[conf] || 9) < (CONF_ORDER[entry.bestConf] || 9)) entry.bestConf = conf;
-    var ts = f.event_timestamp || '';
-    if (ts) {
-      if (!entry.earliest || ts < entry.earliest) entry.earliest = ts;
-      if (!entry.latest || ts > entry.latest) entry.latest = ts;
-    }
-  });
-  var hosts = Object.values(hostMap);
-  var html = '';
-  hosts.forEach(function(h) {
-    var statusParts = Object.keys(h.statuses).map(function(s) { return h.statuses[s] + ' ' + s.toLowerCase(); }).join(', ');
-    var timeRange = h.earliest ? escapeHtml(formatTimeShort(h.earliest)) + ' \u2013 ' + escapeHtml(formatTimeShort(h.latest)) : '';
-    html += '<tr style="cursor:pointer" onclick="setFilter(\'all\');searchQuery=\'' + escapeJsString(h.host) + '\';document.getElementById(\'searchBox\').value=searchQuery;switchTab(\'findings\');renderSidebar();showEmptyOrFirst()">';
-    html += '<td><strong>' + escapeHtml(h.host) + '</strong></td>';
-    html += '<td>' + h.findings.length + '</td>';
-    html += '<td>' + Array.from(h.accounts).map(escapeHtml).join(', ') + '</td>';
-    html += '<td><span class="badge conf-' + h.bestConf.toLowerCase() + '">' + escapeHtml(h.bestConf) + '</span></td>';
-    html += '<td>' + timeRange + '</td>';
-    html += '<td>' + escapeHtml(statusParts) + '</td>';
-    html += '</tr>';
-  });
-  if (!hosts.length) html = '<tr><td colspan="6" style="color:var(--text-muted);text-align:center;padding:24px">No host data — include host field on findings</td></tr>';
-  document.getElementById('hostsBody').innerHTML = html;
-  setBadge('tab-hosts', hosts.length);
+// Machines and the host names awaiting the examiner, from /api/hosts. Every
+// string from the case is escaped; buttons carry an action and an index into
+// the page's data, never case text.
+var hostsView = { page: 1, state: '', q: '', data: null, runs: [] };
+
+function escapeAttr(s) {
+  return escapeHtml(s).replace(/"/g, '&quot;');
 }
+
+function hostNamesHtml(names) {
+  return (names || []).map(function(n) {
+    var why = (n.evidence || []).concat(n.origins || []).join(', ');
+    var flags = (n.flags || []).length ? ' [' + escapeHtml(n.flags.join(', ')) + ']' : '';
+    return escapeHtml(n.raw) + ' <span style="color:var(--text-muted)">(' + escapeHtml(why) + ')</span>' + flags;
+  }).join('<br>');
+}
+
+function hostsHeaderHtml(d) {
+  var c = d.counts || {};
+  var html = '<div>' + ['confirmed', 'started-now', 'new', 'proposed'].map(function(k) {
+    return escapeHtml(k) + ': <strong>' + (c[k] || 0) + '</strong>';
+  }).join(' &middot; ') + '</div>';
+  if (d.host_list) {
+    html += '<div style="color:var(--text-muted)">Host list: ' + d.host_list.entries + ' entries, sha256 '
+      + escapeHtml(String(d.host_list.sha256 || '').slice(0, 12)) + ', uploaded by ' + escapeHtml(d.host_list.examiner) + '</div>';
+    if ((d.listed_without_data || []).length) {
+      html += '<div style="color:var(--text-muted)">Listed, no data yet: ' + escapeHtml(d.listed_without_data.join(', ')) + '</div>';
+    }
+  } else if (d.host_list_hint) {
+    html += '<div class="notice">' + escapeHtml(d.host_list_hint) + '</div>';
+  }
+  return html;
+}
+
+function hostRunsHtml(runs) {
+  if (!runs || !runs.length) return '';
+  var html = '<h4>Ingest runs waiting for their hosts</h4>';
+  runs.forEach(function(r, i) {
+    html += '<div class="host-run" style="margin-bottom:8px"><strong>' + escapeHtml(r.run_id) + '</strong> &mdash; '
+      + (r.unresolved || []).length + ' waiting '
+      + '<button class="btn" data-host-act="start_now" data-i="' + i + '">Start now with the proposed names</button> '
+      + '<button class="btn" data-host-act="cancel_run" data-i="' + i + '">Cancel the run</button><ul>';
+    (r.unresolved || []).forEach(function(w) {
+      html += '<li>' + escapeHtml(w.locator || w.unit) + ': ' + escapeHtml(w.raw || '(no name)') + ' &mdash; ' + escapeHtml(w.reason) + '</li>';
+    });
+    html += '</ul></div>';
+  });
+  return html;
+}
+
+function hostProposedHtml(groups) {
+  if (!groups || !groups.length) return '';
+  var html = '<h4>Proposed <button class="btn" data-host-act="confirm_all">Confirm all proposed</button></h4>'
+    + '<table class="data-table"><thead><tr><th>Host name</th><th>Names (evidence, origin)</th><th>Flags</th><th></th></tr></thead><tbody>';
+  groups.forEach(function(g, i) {
+    var flags = (g.flags || []).concat(g.conflicts || []);
+    html += '<tr><td><input data-host-canonical="' + i + '" value="' + escapeAttr(g.canonical) + '" aria-label="Host name"></td>'
+      + '<td>' + hostNamesHtml(g.names) + '</td>'
+      + '<td>' + escapeHtml(flags.join(', ')) + '</td>'
+      + '<td><button class="btn" data-host-act="confirm" data-i="' + i + '">Confirm</button> '
+      + '<button class="btn" data-host-act="not_a_host" data-i="' + i + '">Not a host</button></td></tr>';
+  });
+  return html + '</tbody></table>';
+}
+
+function hostPivotsHtml(m) {
+  var html = (m.pivots || []).map(function(p) {
+    var line = escapeHtml(p.kind) + ' ' + escapeHtml(p.id) + ': ' + escapeHtml(p.title);
+    if ((p.ambiguous_with || []).length) {
+      line += ' <span class="badge">ambiguous: also matches ' + escapeHtml(p.ambiguous_with.join(', ')) + '</span>';
+    }
+    return line;
+  }).join('<br>');
+  return html + '<div style="color:var(--text-muted)">Indexed data: <code>' + escapeHtml(m.query) + '</code></div>';
+}
+
+function hostRowsHtml(machines) {
+  if (!machines || !machines.length) {
+    return '<tr><td colspan="6" style="color:var(--text-muted);text-align:center;padding:24px">No machines yet</td></tr>';
+  }
+  return machines.map(function(m, i) {
+    var former = (m.former || []).length ? '<div style="color:var(--text-muted)">was ' + escapeHtml(m.former.join(', ')) + '</div>' : '';
+    return '<tr><td><a href="#" data-host-act="detail" data-i="' + i + '"><strong>' + escapeHtml(m.canonical) + '</strong></a>' + former + '</td>'
+      + '<td>' + escapeHtml(m.state) + (m.state !== 'confirmed' ? ' <button class="btn" data-host-act="confirm_machine" data-i="' + i + '">Confirm</button>' : '') + '</td>'
+      + '<td>' + hostNamesHtml(m.names) + '</td>'
+      + '<td>' + (m.units || []).length + '</td>'
+      + '<td>' + escapeHtml((m.flags || []).join(', ')) + '</td>'
+      + '<td>' + hostPivotsHtml(m) + '</td></tr>';
+  }).join('');
+}
+
+function hostPagerHtml(d) {
+  var pages = Math.max(1, Math.ceil((d.total || 0) / (d.per_page || 50)));
+  return (d.page > 1 ? '<button class="btn" data-host-act="page" data-i="' + (d.page - 1) + '">Previous</button> ' : '')
+    + 'Page ' + d.page + ' of ' + pages + ' (' + (d.total || 0) + ' machines)'
+    + (d.page < pages ? ' <button class="btn" data-host-act="page" data-i="' + (d.page + 1) + '">Next</button>' : '');
+}
+
+function hostDetailHtml(m) {
+  var html = '<h4>' + escapeHtml(m.canonical) + '</h4><ul>';
+  (m.history || []).forEach(function(h) {
+    html += '<li>' + escapeHtml(h.t) + ' ' + escapeHtml(h.examiner) + ' (' + escapeHtml(h.origin || '') + '): ' + escapeHtml(h.action) + '</li>';
+  });
+  return html + '</ul>';
+}
+
+async function renderHosts() {
+  var panel = document.getElementById('hostsPanel');
+  if (!panel) return;
+  // Don't repaint over a name the examiner is typing
+  if (panel.contains(document.activeElement) && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+  var qs = 'page=' + hostsView.page + '&state=' + encodeURIComponent(hostsView.state) + '&q=' + encodeURIComponent(hostsView.q);
+  try {
+    var both = await Promise.all([apiFetch('/api/hosts?' + qs), apiFetch('/api/hosts/runs')]);
+    hostsView.data = both[0];
+    hostsView.runs = both[1].runs || [];
+  } catch (e) {
+    document.getElementById('hostsHeader').innerHTML = '<div class="notice">' + escapeHtml('Hosts could not be read: ' + e.message) + '</div>';
+    return;
+  }
+  var d = hostsView.data;
+  document.getElementById('hostsHeader').innerHTML = hostsHeaderHtml(d);
+  document.getElementById('hostsRuns').innerHTML = hostRunsHtml(hostsView.runs);
+  document.getElementById('hostsProposed').innerHTML = hostProposedHtml(d.proposed);
+  document.getElementById('hostsBody').innerHTML = hostRowsHtml(d.machines);
+  document.getElementById('hostsPager').innerHTML = hostPagerHtml(d);
+  setBadge('tab-hosts', (d.counts.proposed || 0) + hostsView.runs.length);
+}
+
+async function hostDecide(action, args) {
+  try {
+    var r = await apiFetch('/api/hosts/decisions', {
+      method: 'POST',
+      body: JSON.stringify({ action: action, args: args, seen_offset: hostsView.data.obs_offset })
+    });
+    showToast(r.summary || 'Saved', 'success');
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+  document.activeElement && document.activeElement.blur && document.activeElement.blur();
+  renderHosts();
+}
+
+function hostGroupArgs(i) {
+  var g = hostsView.data.proposed[i];
+  var input = document.querySelector('[data-host-canonical="' + i + '"]');
+  return { pairs: g.pairs, canonical: input ? input.value : g.canonical };
+}
+
+document.addEventListener('click', async function(ev) {
+  var el = ev.target.closest && ev.target.closest('[data-host-act]');
+  if (!el) return;
+  ev.preventDefault();
+  var act = el.getAttribute('data-host-act');
+  var i = parseInt(el.getAttribute('data-i'), 10);
+  var d = hostsView.data;
+  if (act === 'page') { hostsView.page = i; renderHosts(); }
+  else if (act === 'confirm') { hostDecide('confirm', { groups: [hostGroupArgs(i)] }); }
+  else if (act === 'confirm_all') { hostDecide('confirm', { groups: d.proposed.map(function(_, j) { return hostGroupArgs(j); }) }); }
+  else if (act === 'not_a_host') { hostDecide('not_a_host', { pairs: d.proposed[i].pairs }); }
+  else if (act === 'confirm_machine') { var m = d.machines[i]; hostDecide('confirm', { groups: [{ machine: m.id, canonical: m.canonical }] }); }
+  else if (act === 'start_now' || act === 'cancel_run') { hostDecide(act, { run_id: hostsView.runs[i].run_id }); }
+  else if (act === 'detail') {
+    try {
+      var m = await apiFetch('/api/hosts/' + encodeURIComponent(d.machines[i].id));
+      document.getElementById('hostDetail').innerHTML = hostDetailHtml(m);
+    } catch (e) { showToast(e.message, 'error'); }
+  }
+  else if (act === 'list') {
+    var file = document.getElementById('hostListFile').files[0];
+    var text = file ? await file.text() : document.getElementById('hostListText').value;
+    hostDecide('list', { text: text });
+  }
+});
+
+document.addEventListener('change', function(ev) {
+  if (ev.target.id === 'hostsStateFilter') { hostsView.state = ev.target.value; hostsView.page = 1; renderHosts(); }
+});
+
+document.addEventListener('input', function(ev) {
+  if (ev.target.id === 'hostsQuery') {
+    hostsView.q = ev.target.value; hostsView.page = 1;
+    clearTimeout(hostsView.timer);
+    hostsView.timer = setTimeout(function() { ev.target.blur(); renderHosts(); ev.target.focus(); }, 300);
+  }
+});
 
 /* === Accounts tab === */
 function renderAccounts() {

@@ -1,7 +1,7 @@
 # escapeHtml Audit — Dashboard v2 (Post Sprint A/B)
 
 **Date:** 2026-03-16
-**Files:** `static/v2/index.html` (3209 lines), `static/index.html` (v1, unchanged)
+**Files:** `static/v2/index.html` (3209 lines at this audit; 4300 with the Hosts tab), `static/index.html` (v1, unchanged)
 **Result:** PASS — all innerHTML assignments use escapeHtml on user-controllable strings
 
 ## Counts (v2)
@@ -39,3 +39,37 @@
 ## Re-audit Required
 
 After any changes that add new innerHTML rendering code.
+
+## Hosts tab (2026-10-07)
+
+The Hosts tab replaces "Impacted Hosts" and renders host names, evidence,
+origins, flags, run ids, unit locators, reasons, history and pivots read from
+the case's host logs and findings. Every sink:
+
+| Function | Sinks | Escaping |
+|---|---|---|
+| `hostNamesHtml` | raw name, evidence, origins, flags | `escapeHtml` |
+| `hostsHeaderHtml` | state names, host-list sha256 and examiner, names listed with no data, the host-list hint | `escapeHtml`; counts are numbers |
+| `hostRunsHtml` | run id, unit locator, raw name, reason | `escapeHtml` |
+| `hostProposedHtml` | suggested host name in an `<input value="">`, names, flags and conflicts | `escapeAttr` for the value (escapes `"`), `escapeHtml` for text |
+| `hostPivotsHtml` | item kind, id, title, "ambiguous: also matches" names, the indexed-data query | `escapeHtml` |
+| `hostRowsHtml` | canonical, former names, state, flags | `escapeHtml` |
+| `hostDetailHtml` | canonical; history time, examiner, origin, action | `escapeHtml` |
+| `renderHosts` error | the error message | `escapeHtml` |
+
+- **Buttons** carry only an action name and a numeric index into the page's
+  data (`data-host-act`, `data-i`), handled by one delegated click listener:
+  no case text reaches an `onclick` string or a data attribute.
+- **`escapeAttr`:** a browser's textContent → innerHTML escapes `&`, `<` and
+  `>` but not quotes, so `escapeHtml` alone isn't safe inside a double-quoted
+  attribute; `escapeAttr` adds `&quot;`.
+- **Tests:** `tests/test_case_dashboard/test_hosts_tab.py::TestTheTabRendersCaseTextAsText`
+  runs these functions under node with `<img src=x onerror=…>` and a quote
+  breakout in every field, and checks that no tag or handler comes from case
+  text.
+
+**Known gap (pre-existing, outside the Hosts tab):** nine older sinks put
+`escapeHtml(...)` inside a double-quoted attribute (`data-id`, `class`,
+`title`, `data-audit-id`, `data-artifact-type`, `data-role`), for example the
+IOC table's `title="…"` carrying an IOC value. A value with `"` can end the
+attribute there. They should move to `escapeAttr`.

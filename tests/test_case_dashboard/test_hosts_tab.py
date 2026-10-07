@@ -9,7 +9,11 @@ audited to the case's dashboard log. Names are synthetic (RFC 2606 domains).
 from __future__ import annotations
 
 import json
+import re
+import shutil
+import subprocess
 import time
+from pathlib import Path
 
 import case_dashboard.routes as D
 import pytest
@@ -339,3 +343,94 @@ class TestPendingRuns:
 
     def test_a_case_without_a_host_list_is_encouraged_to_load_one(self, case, client):
         assert client.get("/api/hosts").json()["host_list_hint"] == hg.HOST_LIST_HINT
+
+
+# The tab's rendering, run under node. textContent in, innerHTML out, as a
+# browser escapes a text node: & < > only (not quotes).
+PORTAL = (Path(D.__file__).parent / "static" / "v2" / "index.html").read_text()
+_DOCUMENT = (
+    "const document = {createElement: () => ({set textContent(s) {"
+    "this.innerHTML = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')"
+    ".replace(/>/g, '&gt;');}})};\n"
+)
+_EVIL = '<img src=x onerror=alert(1)>"\' onmouseover="alert(2)'
+
+
+def _js_function(name: str) -> str:
+    start = PORTAL.index(f"function {name}(")
+    return PORTAL[start : PORTAL.index("\n}\n", start) + 3]
+
+
+def _render(call: str, data) -> str:
+    names = ["escapeHtml", "escapeAttr", "hostNamesHtml", "hostsHeaderHtml", "hostRunsHtml",
+             "hostProposedHtml", "hostPivotsHtml", "hostRowsHtml", "hostDetailHtml"]  # fmt: skip
+    script = (
+        _DOCUMENT
+        + "".join(_js_function(n) for n in names)
+        + f"const data = {json.dumps(data)};\n"
+        + f"process.stdout.write({call});"
+    )
+    return subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, check=True
+    ).stdout
+
+
+def _evil_name():
+    return {"unit": "u1", "raw": _EVIL, "locator": _EVIL, "evidence": [_EVIL],
+            "origins": ["artifact"], "flags": [_EVIL]}  # fmt: skip
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")
+class TestTheTabRendersCaseTextAsText:
+    def _clean(self, out: str):
+        # No case text opens a tag or lands inside one (a quote in text is harmless)
+        assert "<img" not in out, out
+        tags = re.sub(r'="[^"]*"', '=""', out)  # quoted attribute values are inert
+        assert not re.search(r"<[^>]*(onerror|onmouseover)", tags), out
+        assert "&lt;img src=x onerror=alert(1)&gt;" in out
+
+    def test_machines_names_evidence_flags_and_pivots(self):
+        machine = {
+            "id": "m1", "canonical": _EVIL, "state": "new", "former": [_EVIL],
+            "names": [_evil_name()], "units": ["u1"], "flags": [_EVIL], "query": _EVIL,
+            "pivots": [{"kind": "finding", "id": _EVIL, "title": _EVIL, "ambiguous_with": [_EVIL]}],
+        }  # fmt: skip
+        self._clean(_render("hostRowsHtml(data)", [machine]))
+
+    def test_proposed_groups_keep_the_quote_inside_the_input(self):
+        group = {"pairs": [["u1", _EVIL]], "canonical": _EVIL, "names": [_evil_name()],
+                 "flags": [_EVIL], "conflicts": [_EVIL]}  # fmt: skip
+        out = _render("hostProposedHtml(data)", [group])
+        self._clean(out)
+        assert (
+            'value="&lt;img src=x onerror=alert(1)&gt;&quot;&#39; onmouseover=&quot;alert(2)"'
+            in out
+        )
+
+    def test_runs_header_and_history(self):
+        runs = [
+            {
+                "run_id": _EVIL,
+                "unresolved": [
+                    {"unit": "u1", "locator": _EVIL, "raw": _EVIL, "reason": _EVIL}
+                ],
+            }
+        ]
+        self._clean(_render("hostRunsHtml(data)", runs))
+        header = {"counts": {}, "host_list": {"entries": 1, "sha256": _EVIL, "examiner": _EVIL},
+                  "listed_without_data": [_EVIL]}  # fmt: skip
+        self._clean(_render("hostsHeaderHtml(data)", header))
+        detail = {
+            "canonical": _EVIL,
+            "history": [
+                {"t": _EVIL, "examiner": _EVIL, "origin": _EVIL, "action": _EVIL}
+            ],
+        }
+        self._clean(_render("hostDetailHtml(data)", detail))
+
+    def test_the_ambiguity_marker_is_shown(self):
+        machine = {"canonical": "DC01", "query": 'host.id:"DC01"',
+                   "pivots": [{"kind": "finding", "id": "F-1", "title": "Logon", "ambiguous_with": ["DC01-B"]}]}  # fmt: skip
+        assert "ambiguous: also matches DC01-B" in _render(
+            "hostPivotsHtml(data)", machine
+        )
