@@ -47,11 +47,11 @@ With [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp), evidence is 
 When Claude Code is the client, additional controls are deployed:
 
 - Bubblewrap sandbox — kernel-level filesystem isolation, Bash restricted to project directory
-- 41 permission deny rules — Edit/Write blocked on case data files (findings.json, timeline.json, approvals.jsonl, etc.)
+- Permission deny rules — Edit/Write blocked on case data files (findings.json, timeline.json, approvals.jsonl, etc.), and Read blocked on `/var/lib/vhir` (the verification ledger and password files)
 - PreToolUse case-data guard — refuses Bash commands that would delete or overwrite case records, audit logs or evidence files (a best-effort check of listed commands, not a security boundary)
 - Signed decisions — each examiner's own Ed25519 key, unlocked by their passphrase, signs every approval and rejection into the case's ledger, which `vhir review --verify` checks
 - Provenance enforcement — rejects findings that lack an evidence trail in the audit log
-- PostToolUse audit hook — every Bash command logged to JSONL with SHA-256 hashes
+- PostToolUse audit hook — while a case is active, each Bash command logged to the case's JSONL audit trail with SHA-256 hashes (with no active case, nothing is logged)
 - Prompt hook — forensic discipline reminders injected on every prompt
 
 Examiners review findings in the Examiner Portal — validating artifacts, observations, and interpretations, with the full command audit trail from original evidence to final result.
@@ -232,7 +232,7 @@ claude
 
 - **Forensic discipline** — CLAUDE.md + FORENSIC_DISCIPLINE.md + reference docs
 - **Prompt reinforcement** — forensic rules injected on every prompt
-- **Audit trail** — JSONL logs with SHA-256 hashes for every Bash command and MCP query
+- **Audit trail** — JSONL logs with SHA-256 hashes for every MCP query, and for each Bash command run while a case is active
 - **RAG search** — 22K+ forensic records (Sigma, MITRE ATT&CK, LOLBAS, Atomic Red Team, and more)
 - **Windows baseline validation** — offline file/process validation against known_good.db
 - **Case management** — `/case init`, `/case open`, `/case status`, `/case list`, `/case close`
@@ -433,11 +433,11 @@ Any data loaded into the system or its component VMs, computers, or instances ru
 
 Outgoing Internet connections are required for report generation (Zeltser IR Writing MCP) and optionally used for threat intelligence (OpenCTI) and documentation (MS Learn MCP). No incoming connections from external systems should be allowed.
 
-Valhuntir is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. Clients with direct shell access (like Claude Code) can also operate outside MCP, but `vhir setup client` deploys forensic controls for Claude Code: a kernel-level sandbox restricts Bash writes, deny rules block Edit/Write to case data files, a PreToolUse hook refuses Bash commands that would delete or overwrite case records or evidence (a best-effort check of listed commands), a PostToolUse hook captures every Bash command to the audit trail, provenance enforcement ensures findings are traceable to evidence, and every examiner decision is signed into the case's ledger, which `vhir review --verify` checks (what that does and doesn't show is in the security model's stated limits). Valhuntir is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
+Valhuntir is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. Clients with direct shell access (like Claude Code) can also operate outside MCP, but `vhir setup client` deploys forensic controls for Claude Code: a kernel-level sandbox restricts Bash writes, deny rules block Edit/Write to case data files, a PreToolUse hook refuses Bash commands that would delete or overwrite case records or evidence (a best-effort check of listed commands), a PostToolUse hook records each Bash command to the audit trail while a case is active, provenance enforcement ensures findings are traceable to evidence, and every examiner decision is signed into the case's ledger, which `vhir review --verify` checks (what that does and doesn't show is in the security model's stated limits). Claude Code's deny rules and sandbox limit that client's own tools, not other programs running as the examiner's user. Valhuntir is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
 
 ## Audit Trail, Provenance, and Grounding
 
-Every MCP tool call is logged to a per-backend JSONL file in the case `audit/` directory with a unique evidence ID (`{backend}-{examiner}-{date}-{seq}`). When Claude Code is the client, a PostToolUse hook additionally captures every Bash command to `audit/claude-code.jsonl`.
+Every MCP tool call is logged to a per-backend JSONL file in the case `audit/` directory with a unique evidence ID (`{backend}-{examiner}-{date}-{seq}`). When Claude Code is the client, a PostToolUse hook additionally records each Bash command run while a case is active to `audit/claude-code.jsonl`.
 
 ### Evidence Artifacts
 

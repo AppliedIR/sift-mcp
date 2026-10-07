@@ -107,21 +107,22 @@ across sessions.
 Explain what gets logged and where:
 
 **What gets logged:**
-- Every Bash command you run (via the PostToolUse hook)
+- Every Bash command you run while a case is active (via the PostToolUse hook)
 - Every forensic-rag search query and result
 - Every windows-triage validation query
 
 **Where logs live:**
 ```
 cases/<name>/audit/
-  claude-code.jsonl           # All Bash commands
+  claude-code.jsonl           # Bash commands (while a case is active)
   forensic-rag-mcp.jsonl      # RAG search queries
   windows-triage-mcp.jsonl    # Baseline validations
 ```
 
 **JSONL format:** Each line is a JSON object with timestamp, command,
 audit_id, output hash, and session ID. The audit trail is automatic
-and tamper-evident (SHA-256 hashes of command + output).
+while a case is active, and each entry carries SHA-256 hashes of the
+command and its output.
 
 ---
 
