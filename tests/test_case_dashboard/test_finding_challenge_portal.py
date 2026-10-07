@@ -10,6 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
+import shutil
+import subprocess
+from pathlib import Path
 
 import case_dashboard.routes as D
 import forensic_mcp.case.manager as fm
@@ -159,3 +163,36 @@ def test_the_portal_shows_alternatives_the_challenge_and_withdrawals():
         "startEdit(\\'alternatives\\')",
     ):
         assert marker in page, marker
+
+
+PORTAL = (Path(D.__file__).parent / "static" / "v2" / "index.html").read_text()
+
+
+def _js_function(name: str) -> str:
+    start = PORTAL.index(f"function {name}(")
+    return PORTAL[start : PORTAL.index("\n}\n", start) + 3]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")
+def test_the_challenge_line_shows_both_reasons_escaped():
+    marker = {
+        "outcome": "withdrawn",
+        "skeptic_audit_ids": [],
+        "contradiction": "the re-run shows <img src=x onerror=alert(1)>",
+        "refused": "Withdrawal refused: it needs the skeptic's tool output.",
+    }
+    script = (
+        # textContent in, innerHTML out, as a browser escapes it
+        "const document = {createElement: () => ({set textContent(s) {"
+        "this.innerHTML = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')"
+        ".replace(/>/g, '&gt;').replace(/\"/g, '&quot;');}})};\n"
+        + _js_function("escapeHtml")
+        + _js_function("renderChallengeLine")
+        + f"process.stdout.write(renderChallengeLine({json.dumps(marker)}));"
+    )
+    out = subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, check=True
+    ).stdout
+    assert "Contradiction (client-reported): the re-run shows &lt;img" in out
+    assert "Server: Withdrawal refused: it needs the skeptic&#39;s tool output." in out
+    assert not re.search(r"<img", out)

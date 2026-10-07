@@ -311,6 +311,7 @@ body {
 /* Stale warning */
 .challenge-line { font-size: 12px; margin-top: 4px; color: var(--text-secondary); }
 .challenge-line.not-challenged { color: var(--amber); font-weight: 600; }
+.challenge-line.challenge-reason { margin-left: 12px; }
 .withdrawn-line { margin: 6px 8px; padding: 6px 8px; font-size: 12px; color: var(--amber); border: 1px solid var(--amber); border-radius: 4px; cursor: pointer; }
 .alternative { margin: 4px 0; font-size: 13px; }
 .alternative .alt-status { font-weight: 600; margin-right: 4px; }
@@ -1715,7 +1716,17 @@ function renderChallengeLine(c) {
   } else {
     text = 'Challenged (client-reported): ' + String(c.outcome || '');
   }
-  return '<div class="challenge-line">' + escapeHtml(text) + '</div>';
+  var html = '<div class="challenge-line">' + escapeHtml(text) + '</div>';
+  // The skeptic's stated contradiction, and the server's reason for staging it
+  if (c.contradiction) {
+    html += '<div class="challenge-line challenge-reason">Contradiction (client-reported): ' +
+      escapeHtml(String(c.contradiction)) + '</div>';
+  }
+  if (c.refused) {
+    html += '<div class="challenge-line challenge-reason">Server: ' +
+      escapeHtml(String(c.refused)) + '</div>';
+  }
+  return html;
 }
 
 function withdrawnText(n) {
