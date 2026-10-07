@@ -741,3 +741,57 @@ class TestOpenCaseDashboard:
 
         assert result["status"] == "browser_failed"
         assert result["url"] == "http://127.0.0.1:4508/portal/"
+
+
+class TestWintoolsSharingBeforeTheGroupApplies:
+    """A gateway started before its user joined the sift group can't chgrp.
+
+    Activation still repoints the share and tells wintools, and says the
+    group step didn't apply.
+    """
+
+    @pytest.fixture
+    def sharing(self, case_dir, monkeypatch):
+        import grp
+        import os
+        import types
+
+        import case_mcp.server as _cs
+
+        monkeypatch.setenv("HOME", str(case_dir["parent"]))
+        calls = []
+        monkeypatch.setattr(_cs, "_wintools_configured", lambda: True)
+        monkeypatch.setattr(
+            _cs, "_repoint_samba_share", lambda p: calls.append(("repoint", p))
+        )
+        monkeypatch.setattr(
+            _cs,
+            "notify_wintools_case_activated",
+            lambda c: calls.append(("notify", c)) or True,
+        )
+        monkeypatch.setattr(
+            grp, "getgrnam", lambda name: types.SimpleNamespace(gr_gid=4242)
+        )
+
+        def chown(path, uid, gid):
+            raise PermissionError(1, "Operation not permitted", path)
+
+        monkeypatch.setattr(os, "chown", chown)
+        srv = create_server()
+        return {n: t.fn for n, t in srv._tool_manager._tools.items()}, calls
+
+    def test_activate_repoints_and_notifies_with_a_warning(self, sharing, case_dir):
+        tools, calls = sharing
+        result = _parse(tools["case_activate"](case_id=case_dir["case_id"]))
+        assert result["wintools_shared"] is True
+        assert calls == [("repoint", case_dir["path"]), ("notify", case_dir["case_id"])]
+        assert any("Group permissions not applied" in w for w in result["warnings"])
+
+    def test_init_repoints_and_notifies_with_a_warning(self, sharing):
+        tools, calls = sharing
+        result = _parse(
+            tools["case_init"](name="Shared before the group", share_wintools=True)
+        )
+        assert result["wintools_shared"] is True
+        assert [c[0] for c in calls] == ["repoint", "notify"]
+        assert any("Group permissions not applied" in w for w in result["warnings"])

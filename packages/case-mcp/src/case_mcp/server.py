@@ -256,10 +256,14 @@ def create_server() -> FastMCP:
                 share_wintools = _wintools_configured()
             if share_wintools and _wintools_configured():
                 try:
-                    _set_case_wintools_permissions(Path(result["case_dir"]))
+                    perm_warning = _set_case_wintools_permissions(
+                        Path(result["case_dir"])
+                    )
                     _repoint_samba_share(Path(result["case_dir"]))
                     ok = notify_wintools_case_activated(result["case_id"])
                     result["wintools_shared"] = True
+                    if perm_warning:
+                        result.setdefault("warnings", []).append(perm_warning)
                     if not ok:
                         result.setdefault("warnings", []).append(
                             "Could not notify wintools-mcp of case activation. "
@@ -323,10 +327,12 @@ def create_server() -> FastMCP:
             case_path = Path(result["case_dir"])
             if _wintools_configured():
                 try:
-                    _set_case_wintools_permissions(case_path)
+                    perm_warning = _set_case_wintools_permissions(case_path)
                     _repoint_samba_share(case_path)
                     ok = notify_wintools_case_activated(case_id)
                     result["wintools_shared"] = True
+                    if perm_warning:
+                        result.setdefault("warnings", []).append(perm_warning)
                     if not ok:
                         result.setdefault("warnings", []).append(
                             "Could not notify wintools-mcp of case activation. "
