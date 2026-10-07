@@ -126,6 +126,8 @@ class OpenCTIAdapter:
             raise _Failure(f"timed out after {self.timeout:g}s") from e
         except httpx.HTTPError as e:
             raise _Failure(f"can't reach OpenCTI: {type(e).__name__}: {e}") from e
+        if response.status_code in (401, 403):
+            raise _Failure(f"OpenCTI refused the token (HTTP {response.status_code})")
         if response.status_code != 200:
             raise _Failure(f"OpenCTI answered HTTP {response.status_code}")
         try:

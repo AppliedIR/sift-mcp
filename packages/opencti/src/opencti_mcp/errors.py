@@ -6,6 +6,8 @@ where appropriate. Internal details should only be logged, never returned.
 
 from __future__ import annotations
 
+import builtins
+
 
 class OpenCTIMCPError(Exception):
     """Base exception for OpenCTI MCP server.
@@ -116,18 +118,26 @@ class QueryError(OpenCTIMCPError):
 
     @property
     def safe_message(self) -> str:
-        """A refused token is named: it's a setting to fix, not a server
-        fault to look for in the logs."""
-        cause = self.__cause__
-        status = getattr(getattr(cause, "response", None), "status_code", None)
-        if type(cause).__name__ in ("AuthenticationError", "AuthorizationError") or (
-            status in (401, 403)
-        ):
-            return (
-                "OpenCTI refused the API token. Check OPENCTI_TOKEN (or "
-                "~/.config/opencti-mcp/token) and that its account can read."
-            )
-        return super().safe_message
+        """A refused token or an unreachable server is named: each is a
+        setting or a server to fix, not a fault to look for in the logs."""
+        return describe_failure(self.__cause__) or super().safe_message
+
+
+def describe_failure(cause: BaseException | None) -> str | None:
+    """What an examiner can act on for a failed OpenCTI request, or None for
+    any other failure. Names no address and quotes no server text."""
+    status = getattr(getattr(cause, "response", None), "status_code", None)
+    if type(cause).__name__ in ("AuthenticationError", "AuthorizationError") or (
+        status in (401, 403)
+    ):
+        return (
+            "OpenCTI refused the API token. Check OPENCTI_TOKEN (or "
+            "~/.config/opencti-mcp/token) and that its account can read."
+        )
+    # The builtin from the GraphQL transport, or this module's own.
+    if isinstance(cause, (builtins.ConnectionError, ConnectionError, TimeoutError)):
+        return "Can't reach OpenCTI. Check that the server is up and OPENCTI_URL."
+    return None
 
 
 class RateLimitError(OpenCTIMCPError):
