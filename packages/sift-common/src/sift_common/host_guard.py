@@ -111,9 +111,8 @@ def _item_reason(state: hi.HostState, item: dict, automatic: bool) -> str:
         if m is not None:
             bound[m.id] = m
     in_use = [m for m in ([km] if km else []) + list(bound.values()) if m.pairs]
+    # (two machines in use never share a name, so a merge of two is caught here too)
     if any(m.canonical != canonical for m in in_use):
-        return IN_USE
-    if len({m.id for m in in_use}) > 1:
         return IN_USE
     target = in_use[0] if in_use else km
     result = list(dict.fromkeys([*(target.pairs if target else ()), *pairs]))

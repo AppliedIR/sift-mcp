@@ -280,3 +280,67 @@ def test_start_now_never_merges_two_machines_in_use(case):
     P = hi.load(case)
     hg.start_now(case, "r1", "ex")
     assert violations(P, hi.load(case), "start") == []
+
+
+def test_only_r_appends_a_rename_merge_or_split(case):
+    obs(case, unit("u1"), name("u1", "WKS01"), unit("u2"), name("u2", "WKS02"))
+    ka, _ = hi.get_or_mint(case, "u1", "WKS01")
+    kb, _ = hi.get_or_mint(case, "u2", "WKS02")
+    seen = hi.load(case).obs_offset
+    for rec in ({"action": "rename", "args": {"machine": ka, "canonical": "WKS09"}},
+                {"action": "merge", "args": {"into": ka, "from": [kb]}},
+                {"action": "split", "args": {"machine": ka, "keys": [ka]}}):  # fmt: skip
+        with pytest.raises(hi.HostLogError, match="from R only"):
+            hi.append_decision(case, rec, seen)
+    hi.append_decision(case, {"action": "rename", "args": {"machine": ka, "canonical": "WKS09"}},
+                       seen, door="R")  # fmt: skip
+    assert hi.load(case).machine_of_key(ka).canonical == "WKS09"
+
+
+def test_a_bind_of_a_not_a_host_name_to_another_units_machine_is_refused(case):
+    from sift_common import host_guard
+
+    obs(case, unit("u1"), name("u1", "WKS01"), unit("u2"), name("u2", "WORKGROUP"))
+    k, _ = hi.get_or_mint(case, "u1", "WKS01")
+    hi.append_decision(case, {"action": "not_a_host", "args": {"pairs": [["u2", "WORKGROUP"]]}},
+                       hi.load(case).obs_offset)  # fmt: skip
+    bind = {"kind": "bind", "unit": "u2", "raw": "WORKGROUP", "key": k}
+    (refused,) = host_guard.check_binds(hi.load(case), [bind], "list")
+    assert "not a host" in refused[1]
+
+
+def test_a_name_in_other_units_rows_doesnt_count_their_machine_ids(case):
+    obs(case, unit("u1", "A"), unit("u2", "B"),
+        name("u1", "WS1"), name("u1", "WS1", "Security.evtx Computer"),
+        name("u1", "DC01", "events.csv host column"),
+        name("u2", "WS2"), name("u2", "WS2", "Security.evtx Computer"),
+        name("u2", "DC01", "ForwardedEvents Computer"))  # fmt: skip
+    hp.upload_host_list(case, "DC01\nWS1\nWS2\n", "ex")
+    state = hi.load(case)
+    one = state.machine_of_pair("u1", "DC01")
+    assert one is not None and one is state.machine_of_pair("u2", "DC01")
+
+
+def test_a_units_only_name_marked_not_a_host_may_go_to_its_placeholder_only(case):
+    obs(case, {"kind": "unit", "unit": "u1", "locator": "ev/disk.raw@0"},
+        name("u1", "WORKGROUP"))  # fmt: skip
+    hi.append_decision(case, {"action": "not_a_host", "args": {"pairs": [["u1", "WORKGROUP"]]}},
+                       hi.load(case).obs_offset)  # fmt: skip
+    seen = hi.load(case).obs_offset
+    with pytest.raises(hi.HostLogError, match="not a host"):
+        hi.append_decision(case, {"action": "confirm", "args": {"machines": [
+            {"key": "k1", "canonical": "SRV01", "pairs": [["u1", "WORKGROUP"]]}]}}, seen)  # fmt: skip
+    placeholder = hg.placeholder_name("ev/disk.raw@0")
+    hi.append_decision(case, {"action": "confirm", "args": {"machines": [
+        {"key": "k2", "canonical": placeholder, "pairs": [["u1", "WORKGROUP"]]}]}}, seen)  # fmt: skip
+    assert hi.load(case).machine_of_pair("u1", "WORKGROUP").canonical == placeholder
+
+
+def test_a_bind_never_moves_a_name_bound_to_another_machine(case):
+    from sift_common import host_guard
+
+    obs(case, unit("u1"), name("u1", "WKS01"))
+    hi.get_or_mint(case, "u1", "WKS01")
+    bind = {"kind": "bind", "unit": "u1", "raw": "WKS01", "key": "f" * 16}
+    (refused,) = host_guard.check_binds(hi.load(case), [bind], "late")
+    assert refused[1] == "it is bound to another machine already"

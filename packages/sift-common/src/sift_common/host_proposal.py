@@ -829,11 +829,19 @@ _proposals: dict[str, tuple[tuple, list]] = {}
 def cached_propose(case_dir, state: hi.HostState | None = None) -> list[Group]:
     """`propose` of a case, computed once per state of its host logs: for
     readers (the Hosts tab, Start now), which never append."""
+    import os
     from pathlib import Path
 
-    state = state if state is not None else hi.load(case_dir)
-    key = str(Path(case_dir).resolve())
-    at = (state.obs_offset, state.dec_offset, id(state))
+    root = Path(case_dir)
+    state = state if state is not None else hi.load(root)
+    key = str(root.resolve())
+    try:  # the logs as they are: a rewritten log of the same length is another log
+        at = tuple(
+            (st.st_ino, st.st_size)
+            for st in (os.stat(root / hi.OBSERVATIONS), os.stat(root / hi.DECISIONS))
+        ) + ((state.obs_offset, state.dec_offset),)
+    except OSError:
+        return propose(state)
     hit = _proposals.get(key)
     if hit is not None and hit[0] == at:
         return hit[1]
