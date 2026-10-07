@@ -176,7 +176,7 @@ class TestDecisions:
         assert m["state"] == hi.NEW
         renamed = {"machine": m["id"], "canonical": "OTHER"}
         assert (
-            _decide(client, page, "confirm", {"groups": [renamed]}).status_code == 400
+            _decide(client, page, "confirm", {"groups": [renamed]}).status_code == 409
         )
         same = {"machine": m["id"], "canonical": "WKS01"}
         assert _decide(client, page, "confirm", {"groups": [same]}).status_code == 200
@@ -434,3 +434,98 @@ class TestTheTabRendersCaseTextAsText:
         assert "ambiguous: also matches DC01-B" in _render(
             "hostPivotsHtml(data)", machine
         )
+
+
+class TestAMachineInUseKeepsItsName:
+    def _in_use(self, case, name="WKS01"):
+        u = unit(case, f"evidence/{name}", name)
+        hi.get_or_mint(case, u, name, origin="artifact", evidence="x", canonical=name)
+        return u
+
+    def test_a_confirmation_through_its_pairs_can_t_rename_it(self, case, client):
+        """A page that still shows the name as proposed, sent after ingest bound it."""
+        u = self._in_use(case)
+        page = client.get("/api/hosts").json()
+        group = {"pairs": [[u, "WKS01"]], "canonical": "EVIL"}
+        resp = _decide(client, page, "confirm", {"groups": [group]})
+        assert resp.status_code == 409
+        assert "done with rename" in resp.json()["error"]
+        (m,) = hi.load(case).machines.values()
+        assert (m.canonical, m.former) == ("WKS01", [])
+        assert _decisions(case) == []
+
+    def test_names_of_two_machines_are_a_merge_not_a_confirmation(self, case, client):
+        a = self._in_use(case, "WKS01")
+        b = self._in_use(case, "WKS02")
+        page = client.get("/api/hosts").json()
+        group = {"pairs": [[a, "WKS01"], [b, "WKS02"]], "canonical": "WKS01"}
+        resp = _decide(client, page, "confirm", {"groups": [group]})
+        assert resp.status_code == 409 and "merge" in resp.json()["error"]
+        assert len(hi.load(case).machines) == 2
+
+    def test_a_group_that_joins_a_machine_is_shown_and_confirmed_under_it(
+        self, case, client
+    ):
+        self._in_use(case, "WKS01")
+        b = unit(case, "evidence/again/WKS01", "WKS01")
+        page = client.get("/api/hosts").json()
+        joining = [g for g in page["proposed"] if g["joins"]]
+        assert [g["joins"] for g in joining] == ["WKS01"], page["proposed"]
+        (g,) = joining
+        sent = {"pairs": g["pairs"], "machine": g["machine"], "canonical": g["joins"]}
+        assert _decide(client, page, "confirm", {"groups": [sent]}).status_code == 200
+        state = hi.load(case)
+        assert state.machine_of_pair(b, "WKS01").id == g["machine"]
+        assert len(state.machines) == 1
+
+
+def test_a_former_name_pivots_to_the_machine(case, client):
+    """Named FIRST at confirmation, then renamed: a finding that still says
+    FIRST (neither the raw name nor the current one) pivots to it."""
+    u = unit(case, "evidence/WKS-RAW", "WKS-RAW")
+    page = client.get("/api/hosts").json()
+    (g,) = page["proposed"]
+    first = {"pairs": g["pairs"], "canonical": "FIRST"}
+    assert _decide(client, page, "confirm", {"groups": [first]}).status_code == 200
+    (m,) = hi.load(case).machines.values()
+    size = (case / hi.OBSERVATIONS).stat().st_size
+    rename = {"machine": m.keys[0], "canonical": "SECOND"}
+    hi.append_decision(
+        case, {"action": "rename", "examiner": "t", "args": rename}, size
+    )
+    (case / "findings.json").write_text(
+        json.dumps([{"id": "F-tester-001", "title": "x", "host": "FIRST"}])
+    )
+    (row,) = client.get("/api/hosts").json()["machines"]
+    assert (row["canonical"], row["former"]) == ("SECOND", ["FIRST"])
+    assert [p["id"] for p in row["pivots"]] == ["F-tester-001"]
+    assert u in row["units"]
+
+
+def test_a_page_holds_at_most_200_machines(case, client):
+    recs, items = [], []
+    for i in range(250):
+        u = hi.unit_key(f"evidence/P{i:03d}")
+        recs += [
+            {"kind": "unit", "unit": u, "locator": f"evidence/P{i:03d}"},
+            {
+                "kind": "name",
+                "unit": u,
+                "raw": f"P{i:03d}",
+                "evidence": "e",
+                "origin": "artifact",
+            },
+        ]
+        items.append(
+            {
+                "key": hi.new_machine_key(),
+                "canonical": f"P{i:03d}",
+                "pairs": [[u, f"P{i:03d}"]],
+            }
+        )
+    size = hi.append_observations(case, recs)
+    hi.append_decision(
+        case, {"action": "confirm", "examiner": "t", "args": {"machines": items}}, size
+    )
+    page = client.get("/api/hosts?per_page=1000").json()
+    assert (page["per_page"], len(page["machines"]), page["total"]) == (200, 200, 250)

@@ -119,7 +119,8 @@ async def get_hosts(request: Request) -> JSONResponse:
         return error
     state = hi.load(case_dir)
     all_groups = hp.propose(state)
-    groups = [g for g in all_groups if g.machine is None]  # not yet any machine's
+    # Every group waiting for the examiner, including one that joins a machine
+    groups = [g for g in all_groups if any(p not in state.bindings for p in g.pairs)]
     counts = {s: 0 for s in _STATES}
     for m in state.machines.values():
         counts[m.state] = counts.get(m.state, 0) + 1
@@ -155,7 +156,12 @@ async def get_hosts(request: Request) -> JSONResponse:
             "per_page": per_page,
             "machines": [_machine_row(state, m, pivots) for m in shown],
             "proposed": [
-                {**g.to_dict(), "names": _names(state, g.pairs)} for g in groups
+                {
+                    **g.to_dict(),
+                    "names": _names(state, g.pairs),
+                    "joins": state.machines[g.machine].canonical if g.machine else "",
+                }
+                for g in groups
             ],
             "host_list": (
                 {
@@ -260,34 +266,60 @@ def _known_pairs(state: hi.HostState, raw_pairs) -> list[list[str]] | None:
     return pairs or None
 
 
-def _confirm_items(state: hi.HostState, args: dict) -> list[dict] | str:
-    """`confirm` decision items for the groups or machines the page sent, or
-    why not."""
+class _Refused(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+def _confirm_items(state: hi.HostState, args: dict) -> list[dict]:
+    """`confirm` decision items for the groups the page sent. A group names
+    new pairs, a machine in use (`machine`), or both (pairs that join it).
+
+    One check for every form: a group that touches a machine in use (named,
+    or through a pair already bound to it) is confirmed under that machine's
+    own name only; renaming it is done with rename, and joining two machines
+    is a merge."""
     items = []
     for g in args.get("groups") or ():
         if not isinstance(g, dict):
-            return "each group must be an object"
+            raise _Refused(400, "each group must be an object")
         canonical = str(g.get("canonical") or "").strip()
         if not hi.spelling(canonical):
-            return "a host name can't be empty"
-        if g.get("machine"):  # one already in use: confirmed as it is
+            raise _Refused(400, "a host name can't be empty")
+        pairs = _known_pairs(state, g.get("pairs")) if g.get("pairs") else []
+        if pairs is None:
+            raise _Refused(400, "every pair must be a host name the case has seen")
+        in_use = {m.id: m for m in (state.machine_of_pair(*p) for p in pairs) if m}
+        if g.get("machine"):
             m = state.machines.get(str(g["machine"]))
             if m is None:
-                return "no such machine"
+                raise _Refused(400, "no such machine")
+            in_use[m.id] = m
+        if not pairs and not in_use:
+            raise _Refused(400, "nothing to confirm")
+        if len(in_use) > 1:
+            names = ", ".join(sorted(m.canonical for m in in_use.values()))
+            raise _Refused(
+                409,
+                f"these names belong to more than one machine ({names}): merge them instead",
+            )
+        if in_use:
+            (m,) = in_use.values()
             if hi.spelling(canonical) != hi.spelling(m.canonical):
-                return (
-                    f"{m.canonical} is already in use; changing its name is a rename, "
-                    "not a confirmation"
+                raise _Refused(
+                    409,
+                    f"{m.canonical} is already in use; renaming a machine in use is done "
+                    "with rename",
                 )
-            items.append({"key": m.keys[0], "canonical": m.canonical, "pairs": []})
-            continue
-        pairs = _known_pairs(state, g.get("pairs"))
-        if pairs is None:
-            return "every pair must be a host name the case has seen"
-        items.append(
-            {"key": hi.new_machine_key(), "canonical": canonical, "pairs": pairs}
-        )
-    return items or "nothing to confirm"
+            items.append({"key": m.keys[0], "canonical": m.canonical, "pairs": pairs})
+        else:
+            items.append(
+                {"key": hi.new_machine_key(), "canonical": canonical, "pairs": pairs}
+            )
+    if not items:
+        raise _Refused(400, "nothing to confirm")
+    return items
 
 
 async def post_host_decision(request: Request) -> JSONResponse:
@@ -347,8 +379,6 @@ async def post_host_decision(request: Request) -> JSONResponse:
             return JSONResponse({"ok": True, "summary": summary, **result})
         if action == "confirm":
             items = _confirm_items(state, args)
-            if isinstance(items, str):
-                return JSONResponse({"error": items}, status_code=400)
             record_args = {"machines": items}
             summary = f"{len(items)} confirmed"
         elif action == "not_a_host":
@@ -375,6 +405,8 @@ async def post_host_decision(request: Request) -> JSONResponse:
             },
             seen,
         )
+    except _Refused as e:
+        return JSONResponse({"error": str(e)}, status_code=e.status)
     except hi.HostLogError as e:
         return JSONResponse({"error": str(e)}, status_code=409)
     except ValueError as e:

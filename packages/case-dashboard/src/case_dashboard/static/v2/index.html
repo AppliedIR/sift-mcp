@@ -3825,7 +3825,10 @@ function hostProposedHtml(groups) {
     + '<table class="data-table"><thead><tr><th>Host name</th><th>Names (evidence, origin)</th><th>Flags</th><th></th></tr></thead><tbody>';
   groups.forEach(function(g, i) {
     var flags = (g.flags || []).concat(g.conflicts || []);
-    html += '<tr><td><input data-host-canonical="' + i + '" value="' + escapeAttr(g.canonical) + '" aria-label="Host name"></td>'
+    var name = g.joins
+      ? escapeHtml(g.joins) + ' <span style="color:var(--text-muted)">(joins ' + escapeHtml(g.joins) + ')</span>'
+      : '<input data-host-canonical="' + i + '" value="' + escapeAttr(g.canonical) + '" aria-label="Host name">';
+    html += '<tr><td>' + name + '</td>'
       + '<td>' + hostNamesHtml(g.names) + '</td>'
       + '<td>' + escapeHtml(flags.join(', ')) + '</td>'
       + '<td><button class="btn" data-host-act="confirm" data-i="' + i + '">Confirm</button> '
@@ -3915,6 +3918,8 @@ async function hostDecide(action, args) {
 function hostGroupArgs(i) {
   var g = hostsView.data.proposed[i];
   var input = document.querySelector('[data-host-canonical="' + i + '"]');
+  // A group that joins a machine in use keeps that machine's name
+  if (g.machine) return { pairs: g.pairs, machine: g.machine, canonical: g.joins };
   return { pairs: g.pairs, canonical: input ? input.value : g.canonical };
 }
 
