@@ -21,6 +21,7 @@ from . import (
     NO_MATCH,
     ProviderConfigError,
     budget,
+    http_request,
     now_utc,
     same_value,
     unavailable,
@@ -51,8 +52,14 @@ RELATIONSHIPS_QUERY = (
 )
 
 
+def _post(url, *, json, headers, timeout, verify):
+    return http_request(
+        "POST", url, json=json, headers=headers, timeout=timeout, verify=verify
+    )
+
+
 # The one network call; tests replace it.
-_http_post = httpx.post
+_http_post = _post
 
 
 class _Failure(Exception):

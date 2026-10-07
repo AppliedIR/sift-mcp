@@ -15,6 +15,7 @@ import sys
 import time
 import types
 
+import httpx
 import opencti_mcp.providers.opencti as opencti_provider
 import pytest
 from mcp.types import ListToolsRequest
@@ -145,7 +146,7 @@ async def test_a_provider_past_its_budget_is_unavailable_in_time(monkeypatch):
     fake_provider(monkeypatch, "slowintel", slow, timeout=0.2)
     start = time.monotonic()
     resp = await lookup(server(["slowintel"], cfg=None), IP)
-    assert time.monotonic() - start < 2.5
+    assert time.monotonic() - start < 0.5
     assert resp["providers"]["slowintel"]["outcome"] == "UNAVAILABLE"
     assert "timed out" in resp["providers"]["slowintel"]["reason"]
 
@@ -370,3 +371,103 @@ async def test_opencti_tools_say_when_opencti_is_not_listed(
         "error": "opencti_not_configured",
         "message": "OpenCTI is not configured in this threat-intel backend.",
     }
+
+
+# --- a slow provider never holds up another --------------------------------
+
+
+def _trickler_and_healthy(monkeypatch):
+    def trickle(ioc):
+        time.sleep(5)  # far past its budget, like a server dribbling its reply
+        return block("NO_MATCH")
+
+    fake_provider(monkeypatch, "trickler", trickle, timeout=0.2)
+    fake_provider(monkeypatch, "healthy", block("MATCH", matches=[{"v": IP}]))
+    return server(["trickler", "healthy"], cfg=None)
+
+
+async def test_a_trickling_provider_never_blocks_a_healthy_one(monkeypatch):
+    srv = _trickler_and_healthy(monkeypatch)
+    reasons = []
+    for _ in range(20):
+        start = time.monotonic()
+        resp = await lookup(srv, IP)
+        assert time.monotonic() - start < 0.6
+        assert resp["providers"]["healthy"]["outcome"] == "MATCH"
+        assert resp["outcome"] == "MATCH"
+        assert resp["providers"]["trickler"]["outcome"] == "UNAVAILABLE"
+        reasons.append(resp["providers"]["trickler"]["reason"])
+    assert reasons[: providers.MAX_IN_FLIGHT] == ["timed out after 0.2s"] * 4
+    assert all(r.startswith("busy") for r in reasons[providers.MAX_IN_FLIGHT :])
+
+
+async def test_concurrent_lookups_with_a_trickling_provider_all_answer(monkeypatch):
+    srv = _trickler_and_healthy(monkeypatch)
+    start = time.monotonic()
+    replies = await asyncio.gather(*(lookup(srv, IP) for _ in range(20)))
+    assert time.monotonic() - start < 3
+    assert {r["providers"]["healthy"]["outcome"] for r in replies} == {"MATCH"}
+
+
+class _Trickle(httpx.SyncByteStream):
+    def __init__(self, chunks, delay):
+        self.chunks, self.delay = chunks, delay
+
+    def __iter__(self):
+        for chunk in self.chunks:
+            time.sleep(self.delay)
+            yield chunk
+
+
+def test_an_exchange_ends_within_its_budget_however_slowly_the_reply_comes():
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, stream=_Trickle([b"x"] * 100, 0.05))
+    )
+    start = time.monotonic()
+    with pytest.raises(httpx.ReadTimeout):
+        providers.http_request(
+            "POST", "http://opencti.invalid/graphql", timeout=0.3, transport=transport
+        )
+    assert time.monotonic() - start < 0.5
+
+
+def test_an_exchange_within_its_budget_returns_the_whole_reply():
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            201, headers={"x-a": "1"}, stream=_Trickle([b'{"a"', b": 1}"], 0.01)
+        )
+    )
+    response = providers.http_request(
+        "POST",
+        "http://opencti.invalid/graphql",
+        json={},
+        timeout=2,
+        transport=transport,
+    )
+    assert response.status_code == 201 and response.json() == {"a": 1}
+    assert response.headers["x-a"] == "1"
+
+
+def test_an_oversized_reply_is_not_read_to_the_end(monkeypatch):
+    monkeypatch.setattr(providers, "MAX_REPLY_BYTES", 10)
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, stream=_Trickle([b"x" * 8] * 3, 0))
+    )
+    with pytest.raises(httpx.ReadError, match="too large"):
+        providers.http_request(
+            "GET", "http://opencti.invalid/", timeout=2, transport=transport
+        )
+
+
+async def test_the_adapter_uses_the_bounded_exchange(monkeypatch):
+    calls = []
+
+    def fake(method, url, **kw):
+        calls.append((method, url, kw["timeout"]))
+        raise httpx.ReadTimeout("the reply did not arrive within the budget")
+
+    monkeypatch.setattr(opencti_provider, "http_request", fake)
+    monkeypatch.setattr(opencti_provider, "_http_post", opencti_provider._post)
+    resp = await lookup(server(), IP)
+    assert resp["providers"]["opencti"]["reason"] == "timed out after 12s"
+    assert calls and calls[0][0] == "POST" and calls[0][1].endswith("/graphql")
