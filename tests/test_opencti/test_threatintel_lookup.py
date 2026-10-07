@@ -10,8 +10,10 @@ that only a test knows. Nothing reaches a network.
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
 import sys
+import threading
 import time
 import types
 
@@ -146,7 +148,7 @@ async def test_a_provider_past_its_budget_is_unavailable_in_time(monkeypatch):
     fake_provider(monkeypatch, "slowintel", slow, timeout=0.2)
     start = time.monotonic()
     resp = await lookup(server(["slowintel"], cfg=None), IP)
-    assert time.monotonic() - start < 0.5
+    assert time.monotonic() - start < 0.2 + providers.GRACE_SECONDS + 0.4
     assert resp["providers"]["slowintel"]["outcome"] == "UNAVAILABLE"
     assert "timed out" in resp["providers"]["slowintel"]["reason"]
 
@@ -392,13 +394,45 @@ async def test_a_trickling_provider_never_blocks_a_healthy_one(monkeypatch):
     for _ in range(20):
         start = time.monotonic()
         resp = await lookup(srv, IP)
-        assert time.monotonic() - start < 0.6
+        assert time.monotonic() - start < 0.2 + providers.GRACE_SECONDS + 0.4
         assert resp["providers"]["healthy"]["outcome"] == "MATCH"
         assert resp["outcome"] == "MATCH"
         assert resp["providers"]["trickler"]["outcome"] == "UNAVAILABLE"
         reasons.append(resp["providers"]["trickler"]["reason"])
     assert reasons[: providers.MAX_IN_FLIGHT] == ["timed out after 0.2s"] * 4
-    assert all(r.startswith("busy") for r in reasons[providers.MAX_IN_FLIGHT :])
+    assert all(r.startswith("busy: 4 ") for r in reasons[providers.MAX_IN_FLIGHT :])
+
+
+async def test_a_burst_of_lookups_never_finds_a_healthy_provider_busy(monkeypatch):
+    fake_provider(monkeypatch, "healthy", block("MATCH", matches=[{"v": IP}]))
+    srv = server(["healthy"], cfg=None)
+    for _ in range(3):
+        replies = await asyncio.gather(*(lookup(srv, IP) for _ in range(20)))
+        assert {r["outcome"] for r in replies} == {"MATCH"}
+
+
+async def test_a_stuck_lookup_frees_its_place_once_it_finishes(monkeypatch):
+    release = threading.Event()
+
+    def stuck(ioc):
+        release.wait(5)
+        return block("NO_MATCH")
+
+    fake_provider(monkeypatch, "stuckintel", stuck, timeout=0.05)
+    srv = server(["stuckintel"], cfg=None)
+    for _ in range(providers.MAX_IN_FLIGHT):
+        await lookup(srv, IP)
+    reason = (await lookup(srv, IP))["providers"]["stuckintel"]["reason"]
+    assert reason.startswith("busy")
+    release.set()
+    deadline = time.monotonic() + 2
+    while (
+        providers._stuck.get(srv.providers["stuckintel"], 0)
+        and time.monotonic() < deadline
+    ):
+        time.sleep(0.01)
+    resp = await lookup(srv, IP)
+    assert resp["providers"]["stuckintel"]["outcome"] == "NO_MATCH"
 
 
 async def test_concurrent_lookups_with_a_trickling_provider_all_answer(monkeypatch):
@@ -409,65 +443,68 @@ async def test_concurrent_lookups_with_a_trickling_provider_all_answer(monkeypat
     assert {r["providers"]["healthy"]["outcome"] for r in replies} == {"MATCH"}
 
 
-class _Trickle(httpx.SyncByteStream):
-    def __init__(self, chunks, delay):
-        self.chunks, self.delay = chunks, delay
-
-    def __iter__(self):
-        for chunk in self.chunks:
-            time.sleep(self.delay)
-            yield chunk
-
-
-def test_an_exchange_ends_within_its_budget_however_slowly_the_reply_comes():
-    transport = httpx.MockTransport(
-        lambda request: httpx.Response(200, stream=_Trickle([b"x"] * 100, 0.05))
+def _gzip_route(request: httpx.Request) -> httpx.Response:
+    body = json.loads(request.content)
+    if "Relationships" in body["query"]:
+        reply = REPLIES["v6:relationships:revoked"]
+    else:
+        reply = REPLIES["v6:lookup:revoked"]
+    return httpx.Response(
+        200,
+        headers={"Content-Encoding": "gzip", "Content-Type": "application/json"},
+        content=gzip.compress(json.dumps(reply).encode()),
     )
-    start = time.monotonic()
-    with pytest.raises(httpx.ReadTimeout):
-        providers.http_request(
-            "POST", "http://opencti.invalid/graphql", timeout=0.3, transport=transport
-        )
-    assert time.monotonic() - start < 0.5
 
 
-def test_an_exchange_within_its_budget_returns_the_whole_reply():
-    transport = httpx.MockTransport(
-        lambda request: httpx.Response(
-            201, headers={"x-a": "1"}, stream=_Trickle([b'{"a"', b": 1}"], 0.01)
-        )
-    )
-    response = providers.http_request(
-        "POST",
-        "http://opencti.invalid/graphql",
-        json={},
-        timeout=2,
-        transport=transport,
-    )
-    assert response.status_code == 201 and response.json() == {"a": 1}
-    assert response.headers["x-a"] == "1"
-
-
-def test_an_oversized_reply_is_not_read_to_the_end(monkeypatch):
-    monkeypatch.setattr(providers, "MAX_REPLY_BYTES", 10)
-    transport = httpx.MockTransport(
-        lambda request: httpx.Response(200, stream=_Trickle([b"x" * 8] * 3, 0))
-    )
-    with pytest.raises(httpx.ReadError, match="too large"):
-        providers.http_request(
-            "GET", "http://opencti.invalid/", timeout=2, transport=transport
-        )
-
-
-async def test_the_adapter_uses_the_bounded_exchange(monkeypatch):
-    calls = []
-
-    def fake(method, url, **kw):
-        calls.append((method, url, kw["timeout"]))
-        raise httpx.ReadTimeout("the reply did not arrive within the budget")
-
-    monkeypatch.setattr(opencti_provider, "http_request", fake)
+async def test_a_gzip_compressed_reply_is_read(monkeypatch):
     monkeypatch.setattr(opencti_provider, "_http_post", opencti_provider._post)
-    resp = await lookup(server(), IP)
-    assert resp["providers"]["opencti"]["reason"] == "timed out after 12s"
-    assert calls and calls[0][0] == "POST" and calls[0][1].endswith("/graphql")
+    monkeypatch.setattr(
+        opencti_provider, "_transport", httpx.MockTransport(_gzip_route)
+    )
+    resp = await lookup(server(), REVOKED)
+    assert resp["outcome"] == "MATCH"
+    assert resp["providers"]["opencti"]["matches"][0]["revoked"] is True
+    assert len(resp["providers"]["opencti"]["relationships"]) == 3
+
+
+async def test_relationships_are_left_out_when_the_time_has_run_out(
+    provider_transport, monkeypatch
+):
+    monkeypatch.setattr(opencti_provider, "RELATIONSHIPS_MIN_SECONDS", 60)
+    t = provider_transport(recorded("6"))
+    resp = await lookup(server(), REVOKED)
+    answer = resp["providers"]["opencti"]
+    assert resp["outcome"] == answer["outcome"] == "MATCH"
+    assert answer["relationships"] == []
+    assert "time ran out" in answer["relationships_unavailable"]
+    assert all("Relationships" not in r["query"] for r in t.requests)
+
+
+def test_a_provider_that_cant_be_used_is_answered_without_a_thread(monkeypatch):
+    adapters = providers.load(
+        ["bogus", "opencti"],
+        {"opencti": providers.Unavailable("opencti is not configured")},
+    )
+
+    def no_threads(*args, **kwargs):
+        raise AssertionError("a thread was started")
+
+    monkeypatch.setattr(providers.threading, "Thread", no_threads)
+    answers = providers.lookup_all(adapters, IP, "ipv4")
+    assert {n: a["outcome"] for n, a in answers.items()} == {
+        "bogus": "UNAVAILABLE",
+        "opencti": "UNAVAILABLE",
+    }
+    assert answers["bogus"]["reason"] == "unknown provider 'bogus'"
+
+
+async def test_an_answer_just_past_the_budget_is_taken_within_the_grace(monkeypatch):
+    # The adapter's own deadline passes first, so its own answer (here,
+    # its own "timed out") reaches the caller instead of the outer one.
+    def late(ioc):
+        time.sleep(0.4)
+        return block("UNAVAILABLE", reason="the adapter's own reason")
+
+    fake_provider(monkeypatch, "lateintel", late, timeout=0.2)
+    resp = await lookup(server(["lateintel"], cfg=None), IP)
+    assert resp["providers"]["lateintel"]["reason"] == "the adapter's own reason"

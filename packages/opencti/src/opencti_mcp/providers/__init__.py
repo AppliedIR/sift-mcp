@@ -35,8 +35,6 @@ import weakref
 from datetime import datetime, timezone
 from typing import Any
 
-import httpx
-
 logger = logging.getLogger(__name__)
 
 MATCH = "MATCH"
@@ -57,15 +55,15 @@ _NAME_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
 _SSDEEP_RE = re.compile(r"\d+:[0-9A-Za-z/+]+:[0-9A-Za-z/+]+(,.*)?\Z")
 _TLSH_RE = re.compile(r"(T1)?[0-9A-Fa-f]{70}\Z")
 
-# Lookups a provider may have running at once. One that is slow or stuck
-# holds only its own slots: at the cap it is UNAVAILABLE ("busy") at once,
-# and never delays another provider.
+# Lookups a provider may leave running past their time. A provider that is
+# slow or stuck holds only these threads of its own: with this many still
+# running, it is UNAVAILABLE ("busy") at once, and never delays another.
 MAX_IN_FLIGHT = 4
+_stuck: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+_stuck_lock = threading.Lock()
+GRACE_SECONDS = 1.0
 _slots: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 _slots_lock = threading.Lock()
-
-# A reply larger than this is not read to the end.
-MAX_REPLY_BYTES = 16 * 1024 * 1024
 
 
 class ProviderConfigError(Exception):
@@ -79,36 +77,6 @@ def now_utc() -> str:
 def budget(configured: float) -> float:
     """A provider's lookup time: its own timeout, within the lookup budget."""
     return min(float(configured), LOOKUP_BUDGET_SECONDS)
-
-
-def http_request(
-    method: str,
-    url: str,
-    *,
-    json: Any = None,
-    headers: dict | None = None,
-    timeout: float,
-    verify: Any = True,
-    transport: httpx.BaseTransport | None = None,
-) -> httpx.Response:
-    """One HTTP exchange that ends within ``timeout`` seconds in all, a reply
-    trickled in slowly included (httpx's own timeouts bound each read, not
-    the whole exchange). Raises httpx.ReadTimeout past the deadline."""
-    deadline = time.monotonic() + timeout
-    with httpx.Client(verify=verify, timeout=timeout, transport=transport) as client:
-        with client.stream(method, url, json=json, headers=headers) as response:
-            body = bytearray()
-            for chunk in response.iter_bytes():
-                body += chunk
-                if time.monotonic() > deadline:
-                    raise httpx.ReadTimeout(
-                        "the reply did not arrive within the budget"
-                    )
-                if len(body) > MAX_REPLY_BYTES:
-                    raise httpx.ReadError("the reply is too large")
-            return httpx.Response(
-                response.status_code, headers=response.headers, content=bytes(body)
-            )
 
 
 def unavailable(reason: str, version: str | None = None, **facts: Any) -> dict:
@@ -222,47 +190,55 @@ def _ask(adapter: Any, ioc: str, ioc_type: str) -> dict:
         return unavailable(f"{type(e).__name__}: {e}")
 
 
-def _slots_for(adapter: Any) -> threading.BoundedSemaphore:
-    with _slots_lock:
-        slots = _slots.get(adapter)
-        if slots is None:
-            slots = _slots[adapter] = threading.BoundedSemaphore(MAX_IN_FLIGHT)
-        return slots
-
-
 def lookup_all(adapters: dict[str, Any], ioc: str, ioc_type: str) -> dict[str, dict]:
     """Ask every provider at once, each on its own thread. Each answers
-    within its budget or is UNAVAILABLE ("timed out"), so a lookup never takes
-    longer than the largest budget; a provider still running MAX_IN_FLIGHT
-    earlier lookups is UNAVAILABLE ("busy") without being asked."""
+    within its budget (plus a second's grace) or is UNAVAILABLE ("timed
+    out"), so a lookup never takes longer than that. A lookup still running
+    when its wait ends counts against its provider until it finishes; with
+    MAX_IN_FLIGHT of those, the provider is UNAVAILABLE ("busy") without
+    being asked, so a stuck one holds only its own threads."""
     start = time.monotonic()
     answers: dict[str, dict] = {}
-    running: dict[str, tuple[float, dict, threading.Event]] = {}
+    running: dict[str, tuple[Any, float, dict, threading.Event]] = {}
     for name, adapter in adapters.items():
-        slots = _slots_for(adapter)
-        if not slots.acquire(blocking=False):
+        if isinstance(adapter, Unavailable):
+            answers[name] = adapter.lookup(ioc, ioc_type)  # nothing to wait for
+            continue
+        with _stuck_lock:
+            stuck = _stuck.get(adapter, 0)
+        if stuck >= MAX_IN_FLIGHT:
             answers[name] = unavailable(
-                f"busy: {MAX_IN_FLIGHT} earlier lookups are still running"
+                f"busy: {stuck} earlier lookups are still running past their time"
             )
             continue
         box: dict = {}
         done = threading.Event()
 
-        def run(adapter=adapter, box=box, done=done, slots=slots):
+        def run(adapter=adapter, box=box, done=done):
+            answer = None
             try:
-                box["answer"] = _ask(adapter, ioc, ioc_type)
+                answer = _ask(adapter, ioc, ioc_type)
             finally:
-                slots.release()
-                done.set()
+                with _stuck_lock:
+                    box["answer"] = answer
+                    if box.get("abandoned"):
+                        _stuck[adapter] -= 1
+                    done.set()
 
         threading.Thread(target=run, name=f"threatintel-{name}", daemon=True).start()
         limit = budget(getattr(adapter, "timeout", LOOKUP_BUDGET_SECONDS))
-        running[name] = (limit, box, done)
-    for name, (limit, box, done) in running.items():
-        if done.wait(max(0.0, start + limit - time.monotonic())):
-            answers[name] = box["answer"]
-        else:
+        running[name] = (adapter, limit, box, done)
+    for name, (adapter, limit, box, done) in running.items():
+        # A second's grace: the adapter's own deadline passes first.
+        done.wait(max(0.0, start + limit + GRACE_SECONDS - time.monotonic()))
+        with _stuck_lock:
+            if not done.is_set():
+                box["abandoned"] = True
+                _stuck[adapter] = _stuck.get(adapter, 0) + 1
+        if box.get("abandoned"):
             answers[name] = unavailable(f"timed out after {limit:g}s")
+        else:
+            answers[name] = box["answer"] or unavailable("the provider gave no answer")
     return {name: answers[name] for name in adapters}
 
 

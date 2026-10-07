@@ -21,7 +21,6 @@ from . import (
     NO_MATCH,
     ProviderConfigError,
     budget,
-    http_request,
     now_utc,
     same_value,
     unavailable,
@@ -51,11 +50,17 @@ RELATIONSHIPS_QUERY = (
     " ... on IntrusionSet { name } ... on ThreatActorGroup { name } } } } } }"
 )
 
+# Leave at least this much of the budget for the relationships request;
+# with less, they are reported unavailable rather than started.
+RELATIONSHIPS_MIN_SECONDS = 1.0
+
+# The transport the requests use: None is the network. Tests set a mock one.
+_transport: httpx.BaseTransport | None = None
+
 
 def _post(url, *, json, headers, timeout, verify):
-    return http_request(
-        "POST", url, json=json, headers=headers, timeout=timeout, verify=verify
-    )
+    with httpx.Client(verify=verify, timeout=timeout, transport=_transport) as client:
+        return client.post(url, json=json, headers=headers)
 
 
 # The one network call; tests replace it.
@@ -189,7 +194,13 @@ class OpenCTIAdapter:
                 f"{total if isinstance(total, int) else 'More than ' + str(MAX_MATCHES)}"
                 f" indicators are named {ioc}; only the first {MAX_MATCHES} are listed."
             )
-        if matches:
+        if matches and deadline - time.monotonic() < RELATIONSHIPS_MIN_SECONDS:
+            answer["relationships"] = []
+            answer["relationships_unavailable"] = (
+                "Relationships were not read: the lookup's time ran out. "
+                "The related lists are incomplete."
+            )
+        elif matches:
             try:
                 data = self._query(
                     RELATIONSHIPS_QUERY,
