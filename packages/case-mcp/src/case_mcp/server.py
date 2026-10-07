@@ -298,8 +298,20 @@ def create_server() -> FastMCP:
         """
         try:
             _validate_str_length(cases_dir, "cases_dir", _MAX_NAME)
+            # An older case gets its identity, and a lost one is refused, before
+            # the active-case pointer moves (whatever vhir's version does)
+            root = Path(
+                cases_dir or os.environ.get("VHIR_CASES_DIR", _DEFAULT_CASES_DIR)
+            )
+            target = root / case_id
+            if (
+                case_id
+                and not {"/", "\\"} & set(case_id)
+                and ".." not in case_id
+                and (target / "CASE.yaml").is_file()
+            ):
+                ensure_case_uuid(target)
             result = _case_activate_data(case_id, cases_dir=cases_dir or None)
-            ensure_case_uuid(result["case_dir"])  # an older case gets one now
 
             # Repoint share and notify wintools
             case_path = Path(result["case_dir"])

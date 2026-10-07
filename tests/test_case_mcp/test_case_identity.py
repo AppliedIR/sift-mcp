@@ -86,3 +86,23 @@ def test_case_activate_refuses_a_copy(home):
     result = _tool("case_activate", case_id="C-1", cases_dir=str(home / "other"))
     assert "new-identity" in result.get("error", ""), result
     assert str(case_dir.resolve()) in result["error"]
+
+
+def test_a_lost_identity_is_refused_before_the_pointer_moves(home, monkeypatch):
+    # As with a vhir from before case identities: only case-mcp mints
+    try:
+        from vhir_cli import case_identity
+
+        monkeypatch.setattr(case_identity, "host_identity", lambda: None)
+    except ImportError:
+        pass
+    case_dir = _init(home)
+    _init(home, "C-2")  # the active case now
+    meta = _meta(case_dir)
+    lost = meta.pop("case_uuid")
+    (case_dir / "CASE.yaml").write_text(yaml.safe_dump(meta))
+    pointer = home / ".vhir" / "active_case"
+    before = pointer.read_text()
+    result = _tool("case_activate", case_id="C-1", cases_dir=str(home / "cases"))
+    assert lost in result.get("error", ""), result
+    assert pointer.read_text() == before
