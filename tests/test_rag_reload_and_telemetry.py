@@ -135,6 +135,15 @@ def test_every_chroma_client_in_a_download_sees_the_same_telemetry_setting(
         "_download_asset",
         lambda url, d: Path(d).write_bytes(Path(url).read_bytes()),
     )
+    # the examiner store's client comes first, then the index check's, then,
+    # with bundled files to update, the refresh's
+    monkeypatch.setattr(
+        dl,
+        "_sync_examiner_store",
+        lambda dest: Client(path=str(dest / "user" / "chroma")) and 0,
+    )
+    monkeypatch.setattr(dl, "_bundled_drift", lambda dest: True)
+    monkeypatch.setattr(dl, "_verify_index", lambda data_dir: Client(path="x") and True)
     dest = tmp_path / "data"
     (dest / "chroma").mkdir(parents=True)
     (dest / "user_state.json").write_text(
@@ -144,7 +153,7 @@ def test_every_chroma_client_in_a_download_sees_the_same_telemetry_setting(
     )
 
     assert dl.download_index(dest) is True
-    assert len(seen) >= 2, seen  # the index check's client and the refresh's
+    assert len(seen) == 3, seen
     assert set(seen) == {"False"}, seen
 
 

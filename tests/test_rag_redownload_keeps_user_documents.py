@@ -1,11 +1,14 @@
 """Downloading the RAG index again keeps the user's own documents.
 
-The download replaces the index, and the bundle's user_state.json lists what
-the new index holds. Writing the pre-download state back over it told the
-refresh that the user's documents were already embedded, so they were dropped
-from the index with no error. Synthetic bundles only: GitHub, the index check
-and the refresh are stubbed. The module is loaded from its file, because CI
-doesn't install forensic-rag.
+The download replaces the shipped index, and the bundle's user_state.json
+lists what the new index holds. Writing the pre-download state back over it
+told the refresh that the user's documents were already embedded, so they
+were dropped from the index with no error. The user's documents now live in
+their own store, which is brought up to date and committed before anything
+is extracted; the refresh after a download only picks up bundled files newer
+than the bundle's. Synthetic bundles only: GitHub, the index check, the
+examiner store and the refresh are stubbed. The module is loaded from its
+file, because CI doesn't install forensic-rag.
 """
 
 from __future__ import annotations
@@ -59,8 +62,13 @@ def _release(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def download(tmp_path, monkeypatch):
-    """Run download_index against a local release; return the states the refresh saw."""
+    """Run download_index against a local release; return the states the refresh saw.
+
+    `synced` records the index on disk each time the examiner store is synced;
+    set `drift["bundled"]` to have bundled files newer than the bundle's."""
     seen: list = []
+    synced: list = []
+    drift = {"bundled": False}
 
     def refresh(**kwargs):
         state = Path(kwargs["data_dir"]) / "user_state.json"
@@ -84,14 +92,24 @@ def download(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(mod, "_verify_index", lambda data_dir: True)
 
+    def sync(dest):
+        index = Path(dest) / "chroma/chroma.sqlite3"
+        synced.append(index.read_bytes() if index.exists() else None)
+        return 1
+
+    monkeypatch.setattr(mod, "_sync_examiner_store", sync)
+    monkeypatch.setattr(mod, "_bundled_drift", lambda dest: drift["bundled"])
+
     def run(dest: Path) -> list:
         assert mod.download_index(dest) is True
         return seen
 
+    run.synced = synced
+    run.drift = drift
     return run
 
 
-def test_the_refresh_after_a_redownload_sees_the_users_documents_as_new(
+def test_a_redownload_keeps_the_users_documents_and_installs_the_bundles_state(
     tmp_path, download
 ):
     dest = tmp_path / "data"
@@ -101,9 +119,24 @@ def test_the_refresh_after_a_redownload_sees_the_users_documents_as_new(
 
     seen = download(dest)
 
-    assert len(seen) == 1, "the user's documents must be re-embedded"
-    assert seen[0]["files"] == SHIPPED
+    # their own store was committed while the old index was still in place
+    assert download.synced == [b"the old index, with mine.md"]
+    assert seen == []
     assert json.loads((dest / "user_state.json").read_text())["files"] == SHIPPED
+
+
+def test_bundled_files_newer_than_the_bundle_are_refreshed_against_its_state(
+    tmp_path, download
+):
+    dest = tmp_path / "data"
+    (dest / "chroma").mkdir(parents=True)
+    (dest / "chroma/chroma.sqlite3").write_bytes(b"the old index")
+    download.drift["bundled"] = True
+
+    seen = download(dest)
+
+    assert len(seen) == 1
+    assert seen[0]["files"] == SHIPPED
 
 
 def test_a_first_download_installs_the_bundles_state_and_skips_the_refresh(

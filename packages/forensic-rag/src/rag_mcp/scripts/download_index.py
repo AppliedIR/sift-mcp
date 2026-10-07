@@ -31,6 +31,9 @@ ASSETS = ("rag-index.tar.zst", "rag-checksums.sha256")
 MAX_ATTEMPTS = 3
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 TAG_PREFIX = "rag-index-"
+# What a bundle may install: the shipped store. Anything else (a user/ tree,
+# say) is skipped and named, so the examiner's store is never overwritten.
+SHIPPED_MEMBERS = ("chroma", "sources", "metadata.json", "user_state.json")
 
 
 def _github_headers() -> dict[str, str]:
@@ -152,9 +155,28 @@ def _verify_checksums(temp_dir: Path) -> bool:
     return ok
 
 
-def _extract_bundle(src: Path, dest: Path) -> None:
-    """Extract a .tar.zst archive to dest directory."""
+def _shipped_member(name: str) -> bool:
+    name = name[2:] if name.startswith("./") else name
+    top = name.split("/", 1)[0]
+    return top in SHIPPED_MEMBERS and (top in ("chroma", "sources") or name == top)
+
+
+def _extract_bundle(src: Path, dest: Path) -> list[str]:
+    """Extract a .tar.zst archive's shipped members to dest; returns the
+    names of the members it skipped."""
     import zstandard as zstd
+
+    skipped: list[str] = []
+
+    def shipped(tar):
+        for member in tar:
+            if _shipped_member(member.name):
+                yield member
+                continue
+            # A skipped member that would leave dest is still refused
+            if hasattr(tarfile, "data_filter"):
+                tarfile.data_filter(member, str(dest))
+            skipped.append(member.name)
 
     dctx = zstd.ZstdDecompressor()
     with open(src, "rb") as compressed:
@@ -163,9 +185,10 @@ def _extract_bundle(src: Path, dest: Path) -> None:
                 # The "data" filter refuses members that leave dest: Python 3.12+,
                 # and the 3.10.12+/3.11.4+ backports
                 if hasattr(tarfile, "data_filter"):
-                    tar.extractall(path=dest, filter="data")
+                    tar.extractall(path=dest, members=shipped(tar), filter="data")
                 else:
-                    tar.extractall(path=dest)
+                    tar.extractall(path=dest, members=shipped(tar))
+    return skipped
 
 
 def _verify_index(data_dir: Path) -> bool:
@@ -257,19 +280,8 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
 
     # Preserve user state files before extraction
     ingested_state_backup = None
-    user_state_path = dest / "user_state.json"
     ingested_state_path = dest / "ingested_state.json"
-    has_user_content = False
     has_ingested_content = False
-
-    if user_state_path.exists():
-        try:
-            with open(user_state_path, encoding="utf-8") as f:
-                user_state = json.load(f)
-            if user_state.get("files"):
-                has_user_content = True
-        except (OSError, json.JSONDecodeError):
-            pass
 
     if ingested_state_path.exists():
         try:
@@ -299,6 +311,18 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
 
     tag_name = release.get("tag_name", tag)
     print(f"Release: {tag_name}")
+
+    # The examiner's own documents live in their own store, which the bundle
+    # never replaces. Bring it in line with the knowledge folder and commit it
+    # before anything is extracted; if that fails, the index is left as it is.
+    try:
+        kept = _sync_examiner_store(dest)
+    except Exception as e:
+        print(f"Your documents could not be put in their own store: {e}")
+        print("Nothing was downloaded or changed. Fix the cause, then run")
+        print("  python -m rag_mcp.refresh --skip-online")
+        print("and download again.")
+        return False
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
         temp_dir = Path(tempfile.mkdtemp(prefix="rag-index-"))
@@ -340,7 +364,9 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
 
             # Extract bundle
             print("\nExtracting bundle...")
-            _extract_bundle(temp_dir / "rag-index.tar.zst", dest)
+            skipped = _extract_bundle(temp_dir / "rag-index.tar.zst", dest)
+            for name in skipped:
+                print(f"  Skipped (not part of the shipped index): {name}")
             print("  Extraction complete")
 
             # Keep the bundle's user_state.json: it lists what the new index
@@ -368,23 +394,23 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
                 except (OSError, json.JSONDecodeError):
                     pass
 
-            # If user content existed, re-embed it into the new index
-            if has_user_content:
-                print("\nRe-embedding user documents into downloaded index...")
+            # Bundled knowledge files newer than the bundle's copies
+            if _bundled_drift(dest):
+                print("\nUpdating bundled documents in the downloaded index...")
                 try:
                     from ..refresh import refresh
 
                     result = refresh(skip_online=True, data_dir=dest)
-                    if result.status in ("success", "no_changes"):
-                        print("  User documents re-embedded")
-                    else:
+                    if result.status not in ("success", "no_changes"):
                         print(
                             f"  Warning: refresh returned {result.status}: "
                             f"{result.errors}"
                         )
                 except Exception as e:
-                    print(f"  Warning: could not re-embed user documents: {e}")
+                    print(f"  Warning: could not update bundled documents: {e}")
                     print("  Run 'python -m rag_mcp.refresh --skip-online' manually")
+
+            print(f"\nYour documents: {kept} record(s) kept in their own store.")
 
             print("\nRAG index installed successfully.")
             return True
@@ -393,6 +419,46 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     return False
+
+
+def _knowledge_dir() -> Path:
+    from ..ingest import DEFAULT_KNOWLEDGE_DIR
+
+    return Path(os.environ.get("RAG_KNOWLEDGE_DIR", DEFAULT_KNOWLEDGE_DIR))
+
+
+def _sync_examiner_store(dest: Path) -> int:
+    """Commit the examiner store from the knowledge folder; returns its
+    record count. The model is the index's, and another is refused."""
+    from ..stores import guard_model, sync_examiner_store
+
+    model_name = guard_model(dest)
+    model = None
+
+    def encode(texts: list[str]) -> list[list[float]]:
+        nonlocal model
+        if model is None:
+            from sentence_transformers import SentenceTransformer
+
+            model = SentenceTransformer(model_name)
+        return model.encode(texts).tolist()
+
+    sync = sync_examiner_store(dest, _knowledge_dir(), model_name, encode)
+    for label, rels in (
+        ("Added", sync.new),
+        ("Updated", sync.modified),
+        ("Removed", sync.deleted),
+    ):
+        for rel in rels:
+            print(f"  {label}: {rel}")
+    return sync.record_count
+
+
+def _bundled_drift(dest: Path) -> bool:
+    from ..ingest import check_for_changes
+
+    changes = check_for_changes(_knowledge_dir(), data_dir=dest, only_bundled=True)
+    return bool(changes.new or changes.modified or changes.deleted)
 
 
 def main() -> None:
@@ -411,12 +477,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.dest:
-        dest = Path(args.dest)
-    else:
-        # Default: data/ directory relative to the forensic-rag package
-        pkg_root = Path(__file__).resolve().parent.parent.parent.parent
-        dest = pkg_root / "data"
+    from ..utils import resolve_data_dir
+
+    dest = resolve_data_dir(args.dest)
 
     if download_index(dest, args.tag):
         sys.exit(0)
