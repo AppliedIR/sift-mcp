@@ -326,7 +326,7 @@ def calculate_file_verdict(
 
 def calculate_process_verdict(
     process_known: bool,
-    parent_valid: bool,
+    parent_valid: bool | None,
     path_valid: bool | None,
     user_valid: bool | None,
     findings: list[dict],
@@ -370,7 +370,7 @@ def calculate_process_verdict(
         return VerdictResult(verdict=Verdict.UNKNOWN, reasons=reasons, confidence="low")
 
     # Process is known - check relationships
-    if not parent_valid:
+    if parent_valid is False:
         reasons.append("Unexpected parent process")
         return VerdictResult(
             verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="high"
@@ -388,6 +388,12 @@ def calculate_process_verdict(
             verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="medium"
         )
 
+    if parent_valid is None:
+        reasons.append(
+            "No list of expected parents for this process; parent is not on its known-bad list"
+        )
+        return VerdictResult(verdict=Verdict.UNKNOWN, reasons=reasons, confidence="low")
+
     # All checks passed
     reasons.append("Process relationship matches expectations")
     return VerdictResult(verdict=Verdict.EXPECTED, reasons=reasons, confidence="high")
@@ -397,6 +403,8 @@ def calculate_service_verdict(
     service_in_baseline: bool,
     binary_path_matches: bool | None,
     binary_findings: list[dict],
+    not_compared: str = "no binary_path supplied",
+    baseline_executable: str = "",
 ) -> VerdictResult:
     """
     Calculate verdict for a service check.
@@ -422,12 +430,24 @@ def calculate_service_verdict(
 
     if service_in_baseline:
         if binary_path_matches is False:
-            reasons.append("Service name in baseline but binary path differs")
+            reasons.append(
+                "Service name in baseline but its executable is not the baseline's"
+                + (f" ({baseline_executable})" if baseline_executable else "")
+            )
             reasons.append("May indicate hijacked service")
             return VerdictResult(
                 verdict=Verdict.SUSPICIOUS, reasons=reasons, confidence="medium"
             )
-        reasons.append("Service matches Windows baseline")
+        if binary_path_matches is None:
+            reasons.append(
+                f"Service name is a default Windows service; executable not compared: {not_compared}"
+            )
+            return VerdictResult(
+                verdict=Verdict.UNKNOWN, reasons=reasons, confidence="low"
+            )
+        reasons.append(
+            "Service name and executable match the Windows baseline (arguments, ServiceDll and account not compared)"
+        )
         return VerdictResult(
             verdict=Verdict.EXPECTED, reasons=reasons, confidence="high"
         )

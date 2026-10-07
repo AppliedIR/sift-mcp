@@ -735,10 +735,10 @@ class TestCheckService:
 
     @pytest.mark.asyncio
     async def test_service_in_baseline(self, server):
-        """Test service that exists in baseline."""
+        """A default service name with no executable to compare is UNKNOWN."""
         result = await server._check_service(service_name="BITS", os_version="W11_22H2")
         assert result["in_baseline"] is True
-        assert result["verdict"] == "EXPECTED"
+        assert result["verdict"] == "UNKNOWN"
 
     @pytest.mark.asyncio
     async def test_service_not_in_baseline(self, server):
@@ -751,10 +751,10 @@ class TestCheckService:
 
     @pytest.mark.asyncio
     async def test_service_missing_os_version(self, server):
-        """Test that missing os_version returns error."""
+        """Without os_version every build is compared."""
         result = await server._check_service(service_name="BITS")
-        assert "error" in result
-        assert "os_version" in result["error"]
+        assert "error" not in result
+        assert result["in_baseline"] is True
 
     @pytest.mark.asyncio
     async def test_service_binary_mismatch(self, server):

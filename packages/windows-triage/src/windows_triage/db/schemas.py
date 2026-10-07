@@ -274,7 +274,7 @@ CREATE INDEX IF NOT EXISTS idx_vd_filename ON vulnerable_drivers(filename_lower)
 CREATE TABLE IF NOT EXISTS expected_processes (
     id INTEGER PRIMARY KEY,
     process_name_lower TEXT NOT NULL UNIQUE,
-    valid_parents TEXT,               -- JSON array (null = any parent allowed)
+    valid_parents TEXT,               -- JSON array (null = no allow-list: UNKNOWN unless on suspicious_parents)
     suspicious_parents TEXT,          -- JSON array (parents that indicate attack)
     never_spawns_children INTEGER DEFAULT 0,  -- If 1, this process should NEVER be a parent
     parent_exits INTEGER DEFAULT 0,

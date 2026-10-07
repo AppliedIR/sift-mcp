@@ -262,6 +262,8 @@ def parse_service_binary_path(image_path: str) -> str:
         return ""
 
     path = image_path.strip()
+    if path.startswith("\\??\\"):
+        path = path[4:]  # NT object-manager prefix
 
     # Handle quoted paths
     if path.startswith('"'):
@@ -295,4 +297,7 @@ def parse_service_binary_path(image_path: str) -> str:
     if path_lower.startswith("system32\\"):
         path = "\\windows\\system32\\" + path[9:]
 
-    return normalize_path(path)
+    path = normalize_path(path)
+    if path and "." not in path.rsplit("\\", 1)[-1]:
+        path += ".exe"  # e.g. %systemroot%\system32\msiexec /V
+    return path

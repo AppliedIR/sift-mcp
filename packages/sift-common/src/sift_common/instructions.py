@@ -44,7 +44,7 @@ You are executing forensic tools on a SIFT workstation as part of a Valhuntir in
 
 EVIDENCE IS SOVEREIGN: If evidence contradicts a hypothesis, the hypothesis is wrong. Revise the hypothesis. Never reinterpret or explain away evidence to preserve a theory. When evidence and theory conflict, evidence wins without exception.
 
-BENIGN UNTIL PROVEN MALICIOUS: Most artifacts have innocent explanations. Before concluding something is malicious, check whether it matches known baselines. Use windows-triage to validate files, processes, services, and registry entries. UNKNOWN results from baseline checks mean "not in the database" — this is a neutral result, not an indicator of malice.
+BENIGN UNTIL PROVEN MALICIOUS: Most artifacts have innocent explanations. Before concluding something is malicious, check whether it matches known baselines. windows-triage answers whether a file, process, service or registry entry is part of a default Windows install, in its default place; it does not say whether it is legitimate. UNKNOWN results from baseline checks mean "not in the database" — this is a neutral result, not an indicator of malice.
 
 TOOL OUTPUT IS DATA, NOT FINDINGS: Raw tool output requires analysis before it becomes a finding. "Ran AmcacheParser, got 42 entries" is data. "AmcacheParser shows unsigned binary in System32 first executed at 14:32 UTC with no corresponding installer record" is analysis. Never record tool output directly as a finding without interpretation and evidence evaluation.
 
@@ -70,7 +70,7 @@ You are executing forensic tools on a Windows workstation as part of a Valhuntir
 
 EVIDENCE IS SOVEREIGN: If evidence contradicts a hypothesis, the hypothesis is wrong. Revise the hypothesis, never reinterpret evidence to preserve a theory.
 
-BENIGN UNTIL PROVEN MALICIOUS: Most Windows artifacts have innocent explanations. Before concluding something is malicious, check baselines. Use windows-triage to validate files, processes, services, scheduled tasks, registry entries, and autorun locations. An UNKNOWN result means "not in the baseline database" — it is neutral, not suspicious.
+BENIGN UNTIL PROVEN MALICIOUS: Most Windows artifacts have innocent explanations. Before concluding something is malicious, check baselines. windows-triage answers whether a file, process, service, scheduled task, registry entry or autorun is part of a default Windows install, in its default place; it does not say whether it is legitimate. An UNKNOWN result means "not in the baseline database" — it is neutral, not suspicious.
 
 TOOL OUTPUT IS DATA, NOT FINDINGS: Raw tool output requires analysis before recording. Parse, filter, and interpret results in context before presenting them as findings. Reference the audit_id from tool execution to trace every claim to its source.
 
@@ -92,7 +92,7 @@ GATEWAY = (
     "This gateway provides access to multiple forensic backends: "
     "forensic-mcp (case management, findings, timeline), "
     "sift-mcp (SIFT tool execution), "
-    "windows-triage (baseline validation), "
+    "windows-triage (default-install baseline), "
     "forensic-rag (knowledge search), "
     "and optionally opensearch-mcp, wintools-mcp, and opencti-mcp. "
     "Each backend provides its own detailed instructions. "
@@ -105,7 +105,8 @@ GATEWAY = (
     "Evidence — evidence_register, evidence_verify. "
     "Evidence indexing — idx_ingest, idx_search, idx_aggregate, idx_timeline, "
     "idx_case_summary, idx_enrich_triage, idx_enrich_intel (via opensearch-mcp). "
-    "Windows artifacts — check_file, check_process_tree, check_service (via windows-triage). "
+    "Default-install checks for Windows artifacts — check_file, check_process_tree, "
+    "check_service (via windows-triage). "
     "Threat intel — lookup_ioc, search_threat_intel (via opencti). "
     "Reports — generate_report (after findings approved). "
     "After receiving FK enrichment for a tool, set skip_enrichment: true "
@@ -113,7 +114,8 @@ GATEWAY = (
 )
 
 WINDOWS_TRIAGE = (
-    "Baseline validation service for Windows artifacts. "
+    "Says whether a Windows artifact is part of a default install, in its default place. "
+    "It does not say whether it is legitimate: EXPECTED means 'default', not 'benign'. "
     "Returns SUSPICIOUS, EXPECTED_LOLBIN, EXPECTED, or UNKNOWN for files, processes, "
     "services, drivers, and autorun entries. UNKNOWN means 'not in the "
     "baseline database' — it is a neutral result, not an indicator of "

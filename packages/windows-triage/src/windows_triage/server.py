@@ -66,8 +66,10 @@ from .analysis import (
     is_system_path,
     normalize_hash,
     normalize_path,
+    parse_service_binary_path,
     validate_hash,
 )
+from .analysis.verdicts import _MASQUERADE_TARGETS
 from .audit import AuditWriter, resolve_examiner
 from .config import Config, ConfigurationError, get_config
 from .db import ContextDB, KnownGoodDB, RegistryDB
@@ -307,7 +309,7 @@ class WindowsTriageServer:
             return [
                 Tool(
                     name="check_file",
-                    description="Check a file path against the Windows baseline database. Returns verdict: EXPECTED, EXPECTED_LOLBIN (legitimate but abusable), SUSPICIOUS, or UNKNOWN (not in database — neutral, not an indicator). Pass os_version for version-specific baselines. For hash-based checks, use check_hash instead.",
+                    description="Check a file path against the Windows baseline database. Returns verdict: EXPECTED, EXPECTED_LOLBIN (a default file that can be abused), SUSPICIOUS, or UNKNOWN (not in database — neutral, not an indicator). Pass os_version for version-specific baselines. For hash-based checks, use check_hash instead.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -355,7 +357,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_service",
-                    description="Check a Windows service against the baseline for a specific OS version. Returns verdict: EXPECTED, SUSPICIOUS, or UNKNOWN. OS version is REQUIRED — services vary between Windows versions. Pass binary_path for service binary hijacking detection. For persistence via registry autoruns, use check_autorun instead.",
+                    description="Check a Windows service against the baseline. Returns verdict: EXPECTED, SUSPICIOUS, or UNKNOWN. EXPECTED needs binary_path: the service name and its executable must both be defaults (arguments, ServiceDll and account aren't compared); without binary_path the answer is UNKNOWN. os_version is optional: without it every Windows build is compared. For persistence via registry autoruns, use check_autorun instead.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -369,15 +371,15 @@ class WindowsTriageServer:
                             },
                             "os_version": {
                                 "type": "string",
-                                "description": "Target OS version (e.g., 'W11_22H2', 'W10_21H2', 'Server2022'). REQUIRED for accurate results.",
+                                "description": "Optional OS version (e.g., 'W11_22H2', 'Server2022') to compare against one build; by default every build is compared.",
                             },
                         },
-                        "required": ["service_name", "os_version"],
+                        "required": ["service_name"],
                     },
                 ),
                 Tool(
                     name="check_scheduled_task",
-                    description="Check a scheduled task against the Windows baseline. Returns verdict: EXPECTED, SUSPICIOUS, or UNKNOWN. OS version is REQUIRED — scheduled tasks vary between Windows versions. Use the full task path (e.g., '\\\\Microsoft\\\\Windows\\\\UpdateOrchestrator\\\\Schedule Scan').",
+                    description="Check a scheduled task against the Windows baseline by its path. Returns verdict: EXPECTED, SUSPICIOUS, or UNKNOWN. It matches the task path only: the action isn't in the baseline and isn't checked. OS version is REQUIRED — scheduled tasks vary between Windows versions. Use the full task path (e.g., '\\\\Microsoft\\\\Windows\\\\UpdateOrchestrator\\\\Schedule Scan').",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -395,7 +397,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_autorun",
-                    description="Check a registry autorun/persistence entry against the baseline. Returns verdict: EXPECTED, SUSPICIOUS, or UNKNOWN. OS version is REQUIRED. Covers Run/RunOnce keys and other persistence locations. For general registry key lookups, use check_registry instead.",
+                    description="Check a registry autorun/persistence entry against the baseline by key and value name. Returns verdict: EXPECTED, SUSPICIOUS, or UNKNOWN. The value data (what it runs) isn't compared. OS version is REQUIRED. Covers Run/RunOnce keys and other persistence locations. For general registry key lookups, use check_registry instead.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -499,7 +501,7 @@ class WindowsTriageServer:
                 ),
                 Tool(
                     name="check_pipe",
-                    description="Check a named pipe against known Windows pipes and known C2 framework pipes. Returns verdict: EXPECTED (standard Windows pipe), SUSPICIOUS (matches known C2 pipe patterns from Cobalt Strike, Metasploit, etc.), or UNKNOWN. Named pipes are a common C2 communication channel.",
+                    description="Check a named pipe against known Windows pipes and known C2 framework pipes. Matches by name only; the process serving the pipe isn't checked. Returns verdict: EXPECTED (standard Windows pipe), SUSPICIOUS (matches known C2 pipe patterns from Cobalt Strike, Metasploit, etc.), or UNKNOWN. Named pipes are a common C2 communication channel.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -841,6 +843,7 @@ class WindowsTriageServer:
                     )
 
         # Hash checks (optional) - local baseline validation only
+        hash_compared, hash_note = False, None
         if hash_value and not validate_hash(hash_value):
             return {"error": "Invalid hash format", "verdict": "ERROR"}
         if hash_value:
@@ -850,18 +853,22 @@ class WindowsTriageServer:
             # Check for hash mismatch with baseline
             # Hashes are compared against the path's baseline on every build; os_version narrows the path match only
             hash_matches = self.known_good_db.lookup_by_path(normalized_path)
-            if hash_matches and algorithm:
-                baseline_hashes = []
-                for entry in hash_matches:
-                    baseline_hashes.extend(h.lower() for h in entry.get(algorithm, ()))
-                if baseline_hashes and hash_normalized.lower() not in baseline_hashes:
-                    findings.append(
-                        {
-                            "type": "hash_mismatch",
-                            "severity": "critical",
-                            "description": "Hash does not match baseline - possible trojanized binary",
-                        }
-                    )
+            baseline_hashes = []
+            for entry in hash_matches if algorithm else ():
+                baseline_hashes.extend(h.lower() for h in entry.get(algorithm, ()))
+            hash_compared = bool(baseline_hashes)
+            if not hash_compared:
+                hash_note = f"Hash not compared: the baseline has no {(algorithm or 'hash').upper()} for this path"
+            elif hash_normalized.lower() in baseline_hashes:
+                hash_note = "Hash matches a baseline build of this file"
+            if baseline_hashes and hash_normalized.lower() not in baseline_hashes:
+                findings.append(
+                    {
+                        "type": "hash_mismatch",
+                        "severity": "critical",
+                        "description": "Hash does not match baseline - possible trojanized binary",
+                    }
+                )
 
         # Calculate verdict using the proper verdict function
         # Note: For threat intel, use opencti-mcp separately
@@ -877,10 +884,17 @@ class WindowsTriageServer:
             filename=filename,
         )
 
+        if hash_note:
+            verdict_result.reasons.append(hash_note)
+        elif not hash_value and str(verdict_result.verdict).startswith("EXPECTED"):
+            verdict_result.reasons.append(
+                "No hash supplied: path match only, content not checked"
+            )
         result = {
             "verdict": str(verdict_result.verdict),
             "reasons": verdict_result.reasons,
             "confidence": verdict_result.confidence,
+            "hash_compared": hash_compared,
             "path_in_baseline": path_in_baseline,
             "filename_in_baseline": filename_in_baseline,
             "is_system_path": sys_path,
@@ -934,6 +948,13 @@ class WindowsTriageServer:
         _validate_input_length(path, self.config.max_path_length, "path")
         _validate_input_length(user, self.config.max_service_name_length, "user")
 
+        # Rules are keyed on file names; a full path given for either is still
+        # checked against that process's expected paths.
+        raw_process, raw_parent = process_name, parent_name
+        process_name = extract_filename(process_name) or process_name
+        parent_name = extract_filename(parent_name) or parent_name
+        if not path and raw_process != process_name:
+            path = raw_process
         findings = []
 
         # Analyze process name for suspicious patterns (double extensions, entropy, etc.)
@@ -947,6 +968,22 @@ class WindowsTriageServer:
 
         # Check if PARENT is a process that should NEVER spawn children (injection detection)
         parent_info = self.context_db.get_expected_process(parent_name)
+        parent_path_valid = None
+        if raw_parent != parent_name and parent_info and parent_info.get("valid_paths"):
+            parent_path_valid = any(
+                normalize_path(raw_parent) == normalize_path(p)
+                for p in parent_info["valid_paths"]
+            )
+            if not parent_path_valid:
+                findings.append(
+                    {
+                        "type": "unexpected_parent_path",
+                        "severity": "high",
+                        "expected": parent_info["valid_paths"],
+                        "actual": raw_parent,
+                        "description": f"Parent {parent_name} is not at an expected path",
+                    }
+                )
         if parent_info and parent_info.get("never_spawns_children"):
             findings.append(
                 {
@@ -1003,7 +1040,7 @@ class WindowsTriageServer:
 
         # Validate parent against whitelist (if defined)
         valid_parents = proc_info.get("valid_parents") or []
-        parent_valid = True  # Default to valid if no whitelist
+        parent_valid = None  # not checked: no allow-list for this process
         if valid_parents:
             parent_valid = parent_name.lower() in [p.lower() for p in valid_parents]
             if not parent_valid:
@@ -1069,7 +1106,9 @@ class WindowsTriageServer:
         # Calculate verdict
         verdict_result = calculate_process_verdict(
             process_known=True,
-            parent_valid=parent_valid and not parent_is_suspicious,
+            parent_valid=False
+            if parent_is_suspicious or parent_path_valid is False
+            else parent_valid,
             path_valid=path_valid,
             user_valid=user_valid,
             findings=findings,
@@ -1112,16 +1151,7 @@ class WindowsTriageServer:
             os_version, self.config.max_service_name_length, "os_version"
         )
 
-        # OS version is required for accurate results
-        if not os_version:
-            return {
-                "error": "os_version is required",
-                "message": "Service baselines vary significantly between Windows versions. A service that is legitimate on Windows 10 1507 may not exist on Windows 11 and could indicate malicious activity. Please provide the target OS version (e.g., W11_22H2, W10_21H2, Server2022).",
-                "verdict": None,
-                "lookup_performed": False,
-            }
-
-        # Lookup returns list
+        # Lookup returns list (every build when os_version is not given)
         baseline_matches = self.known_good_db.lookup_service(service_name, os_version)
         in_baseline = len(baseline_matches) > 0
 
@@ -1129,12 +1159,32 @@ class WindowsTriageServer:
         binary_findings = []
         binary_path_matches = None
 
+        not_compared = "no binary_path supplied"
+        base = ""
         if binary_path and in_baseline:
             baseline_binary = baseline_matches[0].get("binary_path_pattern")
-            if baseline_binary:
-                norm_provided = normalize_path(binary_path)
-                norm_baseline = normalize_path(baseline_binary)
-                binary_path_matches = norm_provided == norm_baseline
+            given, base = (
+                parse_service_binary_path(binary_path),
+                parse_service_binary_path(baseline_binary or ""),
+            )
+            if not base:
+                not_compared = "the baseline has no executable for this service"
+            elif given.startswith(("\\driver\\", "\\filesystem\\")):
+                not_compared = "the value given is a driver object, not a file"
+            elif given == base or (
+                extract_filename(given) == extract_filename(base)
+                and self.known_good_db.path_exists(given)
+            ):
+                binary_path_matches = True
+            elif extract_filename(given) == extract_filename(base):
+                if extract_filename(given) in _MASQUERADE_TARGETS:
+                    binary_path_matches = False  # a default name moved out: masquerade
+                else:
+                    not_compared = "the executable has the default file name but is not at a default Windows path"
+            elif given.endswith(".sys") and self.known_good_db.path_exists(given):
+                not_compared = "the executable is a default Windows driver file, not the one the baseline stores for this service"
+            else:
+                binary_path_matches = False
 
             # Analyze binary filename
             binary_filename = extract_filename(binary_path)
@@ -1146,6 +1196,8 @@ class WindowsTriageServer:
             service_in_baseline=in_baseline,
             binary_path_matches=binary_path_matches,
             binary_findings=binary_findings,
+            not_compared=not_compared,
+            baseline_executable=base if binary_path and in_baseline else "",
         )
 
         result = {
@@ -1189,7 +1241,9 @@ class WindowsTriageServer:
         if in_baseline:
             return {
                 "verdict": "EXPECTED",
-                "reasons": ["Task found in Windows baseline"],
+                "reasons": [
+                    "Task path is a default Windows task; its action (command and arguments) is not in the baseline and was not checked"
+                ],
                 "confidence": "high",
                 "in_baseline": True,
                 "task_name": baseline_matches[0].get("task_name"),
@@ -1267,7 +1321,13 @@ class WindowsTriageServer:
         if in_baseline:
             return {
                 "verdict": "EXPECTED",
-                "reasons": ["Autorun found in Windows baseline"],
+                "reasons": [
+                    (
+                        "Key and value name match a default Windows autorun; the value data (what it runs) was not compared"
+                        if value_name
+                        else "Key path matches a default Windows autorun key; no value was checked"
+                    )
+                ],
                 "confidence": "high",
                 "in_baseline": True,
                 "hive": baseline_matches[0].get("hive"),
@@ -1522,6 +1582,9 @@ class WindowsTriageServer:
         if windows_pipe:
             return {
                 "verdict": "EXPECTED",
+                "reasons": [
+                    "Name matches a default Windows pipe; the process serving it was not checked"
+                ],
                 "is_windows_pipe": True,
                 "protocol": windows_pipe.get("protocol"),
                 "service_name": windows_pipe.get("service_name"),

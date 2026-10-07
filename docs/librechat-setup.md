@@ -322,7 +322,7 @@ Each MCP backend serves a distinct role. Use them together:
 - sift-mcp: Execute forensic tools. Always pass save_output: true.
 - forensic-mcp: Record findings, timeline events, and manage investigation state.
 - case-mcp: Case lifecycle, evidence registration, and log_reasoning for decision points.
-- windows-triage: Validate files, processes, services against Windows baselines before concluding anything is malicious. UNKNOWN means "not in database" — neutral, not suspicious.
+- windows-triage: Says whether files, processes and services are part of a default Windows install, in their default place; it does not say whether they are legitimate. UNKNOWN means "not in database" — neutral, not suspicious.
 - opencti: Enrich IOCs with threat context. Correlation supports but does not prove.
 - forensic-rag: Search for artifact interpretation guides and investigation procedures.
 - report-mcp: Generate reports from approved findings only.

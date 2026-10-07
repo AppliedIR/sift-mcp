@@ -116,7 +116,7 @@ User Question
 ### windows-triage
 - ANY filename (e.g., "scvhost.exe", "svchost.exe")
 - File paths, process names, parent-child relationships
-- "is this normal", "is this legitimate", "is this suspicious"
+- "is this part of a default Windows install, in its default place?" (not "is this legitimate?": a default file or service can still be misused)
 - Windows system file questions
 
 ### opencti-mcp
@@ -298,7 +298,7 @@ vol -f memory.dmp windows.svcscan
 |---------|---------|
 | SUSPICIOUS | Anomaly detected (wrong path, Unicode, injection, vulnerable driver) |
 | EXPECTED_LOLBIN | Baseline match + LOLBin capability |
-| EXPECTED | In Windows baseline |
+| EXPECTED | A default Windows file, service, task or autorun, in its default place (says nothing about how it was used) |
 | UNKNOWN | Not in database (neutral) |
 
 **Note:** windows-triage is offline-only. For MALICIOUS verdicts, use opencti-mcp.
