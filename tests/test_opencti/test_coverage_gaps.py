@@ -572,7 +572,6 @@ class TestClientRetryLogic:
 
     def test_retry_on_transient_error(self, mock_config):
         """Test retry on transient connection error."""
-        import requests
         from opencti_mcp.client import OpenCTIClient
 
         client = OpenCTIClient(mock_config)
@@ -583,7 +582,8 @@ class TestClientRetryLogic:
         def failing_then_success(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] < 2:
-                raise requests.exceptions.ConnectionError("Transient failure")
+                # what the GraphQL client raises for a transport error
+                raise ConnectionError("Transient failure")
             return [{"id": "test"}]
 
         mock_pycti.indicator.list = failing_then_success
@@ -596,15 +596,12 @@ class TestClientRetryLogic:
 
     def test_max_retries_exhausted(self, mock_config):
         """Test max retries exhausted."""
-        import requests
         from opencti_mcp.client import OpenCTIClient
 
         client = OpenCTIClient(mock_config)
 
         mock_pycti = Mock()
-        mock_pycti.indicator.list.side_effect = requests.exceptions.ConnectionError(
-            "Persistent failure"
-        )
+        mock_pycti.indicator.list.side_effect = ConnectionError("Persistent failure")
 
         with patch.object(client, "connect", return_value=mock_pycti):
             with patch("time.sleep"):  # Skip actual sleep
