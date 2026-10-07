@@ -480,6 +480,8 @@ class HostState:
     dec_offset: int = 0
     unreadable_lines: int = 0
     canon: dict[str, str] = field(default_factory=dict)  # compare form -> machine id
+    waits: dict[str, list[str]] = field(default_factory=dict)  # run id -> its units
+    cancelled: set[str] = field(default_factory=set)  # runs the examiner cancelled
 
     def machine_of_key(self, key: str) -> Machine | None:
         mid = self.key_machine.get(key)
@@ -682,6 +684,10 @@ class _Folder:
             s.hints.append({k: v for k, v in rec.items() if k not in ("kind", "t")})
         elif kind == "v1-import":
             s.v1_imported = True
+        elif kind == "run_wait":
+            run, units = rec.get("run_id"), rec.get("units")
+            if isinstance(run, str) and isinstance(units, list):
+                s.waits[run] = [u for u in units if isinstance(u, str)]
 
     # -- decisions
 
@@ -726,6 +732,10 @@ class _Folder:
                         self._absorb(m, bound)
                     elif bound is None:
                         self._bind(p, key)
+        elif action == "cancel_run":
+            run = args.get("run_id")
+            if isinstance(run, str):
+                s.cancelled.add(run)
         elif action == "not_a_host":
             for item in args.get("pairs") or ():
                 p = _pair(item)

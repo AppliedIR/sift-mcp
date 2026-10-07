@@ -131,6 +131,13 @@ def _build_platform_capabilities() -> dict:
     }
 
 
+def _host_list_hint(case_dir: Path) -> str:
+    """The host-list encouragement while the case has no list; "" otherwise."""
+    from sift_common.host_gate import host_list_hint
+
+    return host_list_hint(case_dir)
+
+
 def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
     """Reject strings exceeding max_len, containing null bytes, or path traversal."""
     if value is not None and isinstance(value, str):
@@ -281,6 +288,9 @@ def create_server() -> FastMCP:
             )
             if logged_id is None:
                 result["warning"] = "Audit write failed — action not recorded"
+            hint = _host_list_hint(Path(result["case_dir"]))
+            if hint:
+                result["host_list_hint"] = hint
             result["next_steps"] = [
                 "Ask the examiner what triggered this investigation",
                 "Survey evidence: ls evidence/",
@@ -422,6 +432,9 @@ def create_server() -> FastMCP:
             )
             if logged_id is None:
                 result["warning"] = "Audit write failed — action not recorded"
+            hint = _host_list_hint(Path(case_dir))
+            if hint:
+                result["host_list_hint"] = hint
             return result
         except (ValueError, FileNotFoundError, OSError) as e:
             return {"error": str(e)}

@@ -207,6 +207,15 @@ class TestCaseInit:
         assert "error" in result
         assert "bad" in result["error"]
 
+    def test_a_new_case_encourages_a_host_list(self, case_dir, monkeypatch):
+        from sift_common.host_gate import HOST_LIST_HINT
+
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
+        srv = create_server()
+        tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
+        result = _parse(tools["case_init"](name="Incident Alpha"))
+        assert result["host_list_hint"] == HOST_LIST_HINT
+
 
 class TestCaseActivate:
     def test_activates_case(self, case_dir):
@@ -273,6 +282,24 @@ class TestEvidenceRegister:
             )
         )
         assert "error" not in result
+
+    def test_registering_evidence_encourages_a_host_list_until_one_is_loaded(
+        self, case_dir
+    ):
+        from sift_common import host_proposal
+        from sift_common.host_gate import HOST_LIST_HINT
+
+        srv = create_server()
+        tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
+        first = case_dir["path"] / "evidence" / "a.e01"
+        first.write_text("fake evidence content")
+        result = _parse(tools["evidence_register"](path=str(first)))
+        assert result["host_list_hint"] == HOST_LIST_HINT
+        host_proposal.upload_host_list(case_dir["path"], "WKS01\n", "tester")
+        second = case_dir["path"] / "evidence" / "b.e01"
+        second.write_text("more fake evidence")
+        result = _parse(tools["evidence_register"](path=str(second)))
+        assert "error" not in result and "host_list_hint" not in result
 
     def test_missing_file_returns_error(self, case_dir):
         srv = create_server()
