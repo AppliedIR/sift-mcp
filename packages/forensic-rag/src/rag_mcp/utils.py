@@ -39,6 +39,19 @@ ALLOWED_MODELS = frozenset(
 # Default embedding model
 DEFAULT_MODEL_NAME = "BAAI/bge-base-en-v1.5"
 
+# The package's own data directory, the default data directory
+PACKAGE_DATA_DIR = Path(__file__).parent.parent.parent / "data"
+
+
+def resolve_data_dir(explicit: str | Path | None = None) -> Path:
+    """The data directory every reader and writer uses: the explicit one, else
+    RAG_INDEX_DIR, else the package's data/."""
+    if explicit:
+        return Path(explicit)
+    env = os.environ.get("RAG_INDEX_DIR")
+    return Path(env) if env else PACKAGE_DATA_DIR
+
+
 # Search limits
 MAX_TOP_K = int(os.environ.get("RAG_MAX_TOP_K", "50"))  # Maximum results to return
 MAX_RETRIEVE = 500  # Maximum results to retrieve before filtering

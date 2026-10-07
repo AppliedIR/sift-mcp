@@ -16,15 +16,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .utils import atomic_write_json, compute_file_hash
+from .utils import atomic_write_json, compute_file_hash, resolve_data_dir
 
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DEFAULT_KNOWLEDGE_DIR = PROJECT_ROOT / "knowledge"
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
-USER_STATE_FILE = DEFAULT_DATA_DIR / "user_state.json"
-INGESTED_STATE_FILE = DEFAULT_DATA_DIR / "ingested_state.json"
+
+
+def user_state_file(data_dir: Path | None = None) -> Path:
+    """The shipped store's state: the bundled knowledge files it holds."""
+    return resolve_data_dir(data_dir) / "user_state.json"
+
+
+def ingested_state_file(data_dir: Path | None = None) -> Path:
+    return resolve_data_dir(data_dir) / "ingested_state.json"
+
 
 # Accepted formats
 SUPPORTED_FORMATS = {".txt", ".md", ".json", ".jsonl"}
@@ -146,7 +154,7 @@ def _is_in_bundled_dir(path: Path, root: Path) -> bool:
 
 
 def scan_knowledge_folder(
-    folder: Path | None = None, skip_bundled: bool = False
+    folder: Path | None = None, skip_bundled: bool = False, only_bundled: bool = False
 ) -> ScanResult:
     """
     Scan folder for supported and unsupported files.
@@ -154,6 +162,7 @@ def scan_knowledge_folder(
     Args:
         folder: Knowledge directory to scan
         skip_bundled: If True, skip files in directories containing a .bundled marker
+        only_bundled: If True, keep only those files
 
     Returns:
         ScanResult with lists of supported and unsupported files
@@ -173,8 +182,10 @@ def scan_knowledge_folder(
             # Skip hidden files (e.g., .gitkeep, .bundled)
             if path.name.startswith("."):
                 continue
-            # Skip bundled content when requested
-            if skip_bundled and _is_in_bundled_dir(path, folder):
+            # Skip bundled content, or everything else, when requested
+            if (skip_bundled or only_bundled) and (
+                _is_in_bundled_dir(path, folder) != only_bundled
+            ):
                 continue
             ok, message = validate_format(path)
             if ok:
@@ -190,42 +201,44 @@ def scan_knowledge_folder(
 # =============================================================================
 
 
-def load_user_state() -> dict[str, Any]:
+def load_user_state(data_dir: Path | None = None) -> dict[str, Any]:
     """Load watched documents state."""
-    if USER_STATE_FILE.exists():
+    path = user_state_file(data_dir)
+    if path.exists():
         try:
-            with open(USER_STATE_FILE, encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 return json.load(f)
         except (OSError, json.JSONDecodeError):
             pass
     return {"version": 1, "files": {}}
 
 
-def save_user_state(state: dict[str, Any]) -> None:
+def save_user_state(state: dict[str, Any], data_dir: Path | None = None) -> None:
     """Save watched documents state.
 
     Security: Uses atomic write to prevent corruption from concurrent access.
     """
-    atomic_write_json(USER_STATE_FILE, state)
+    atomic_write_json(user_state_file(data_dir), state)
 
 
-def load_ingested_state() -> dict[str, Any]:
+def load_ingested_state(data_dir: Path | None = None) -> dict[str, Any]:
     """Load ingested documents state."""
-    if INGESTED_STATE_FILE.exists():
+    path = ingested_state_file(data_dir)
+    if path.exists():
         try:
-            with open(INGESTED_STATE_FILE, encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 return json.load(f)
         except (OSError, json.JSONDecodeError):
             pass
     return {"version": 1, "documents": {}}
 
 
-def save_ingested_state(state: dict[str, Any]) -> None:
+def save_ingested_state(state: dict[str, Any], data_dir: Path | None = None) -> None:
     """Save ingested documents state.
 
     Security: Uses atomic write to prevent corruption from concurrent access.
     """
-    atomic_write_json(INGESTED_STATE_FILE, state)
+    atomic_write_json(ingested_state_file(data_dir), state)
 
 
 # =============================================================================
@@ -520,7 +533,10 @@ def get_document_records(path: Path, source_prefix: str = "user") -> list[dict]:
 
 
 def check_for_changes(
-    folder: Path | None = None, skip_bundled: bool = False
+    folder: Path | None = None,
+    skip_bundled: bool = False,
+    data_dir: Path | None = None,
+    only_bundled: bool = False,
 ) -> ChangeSet:
     """
     Compare knowledge folder against state to find changes.
@@ -533,7 +549,7 @@ def check_for_changes(
         ChangeSet with new, modified, and deleted files
     """
     folder = folder or DEFAULT_KNOWLEDGE_DIR
-    state = load_user_state()
+    state = load_user_state(data_dir)
     files_state = state.get("files", {})
 
     new = []
@@ -541,7 +557,9 @@ def check_for_changes(
     deleted = []
 
     # Get current supported files
-    scan = scan_knowledge_folder(folder, skip_bundled=skip_bundled)
+    scan = scan_knowledge_folder(
+        folder, skip_bundled=skip_bundled, only_bundled=only_bundled
+    )
     current_files = set()
 
     for path in scan.supported:

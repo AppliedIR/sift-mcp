@@ -39,13 +39,21 @@ from .sources import (
     load_disabled_sources,
     sync_source,
 )
+from .stores import (
+    DEFAULT_SPACE,
+    ModelMismatchError,
+    cleanup_shipped,
+    examiner_files,
+    guard_model,
+    sync_examiner_store,
+)
 from .utils import (
     ALLOWED_MODELS,
-    DEFAULT_MODEL_NAME,
     augment_text_with_mitre,
     compute_file_hash,
     load_jsonl_records,
     load_mitre_lookup,
+    resolve_data_dir,
     sanitize_metadata,
 )
 
@@ -93,14 +101,23 @@ def build(
     Returns:
         BuildResult with summary
     """
-    data_dir = data_dir or Path(os.environ.get("RAG_INDEX_DIR", DEFAULT_DATA_DIR))
+    data_dir = resolve_data_dir(data_dir)
     knowledge_dir = knowledge_dir or Path(
         os.environ.get("RAG_KNOWLEDGE_DIR", DEFAULT_KNOWLEDGE_DIR)
     )
-    model_name = model_name or os.environ.get("RAG_MODEL_NAME", DEFAULT_MODEL_NAME)
 
     result = BuildResult(status="success")
     all_records = []
+
+    # The examiner store keeps the index's model; another is refused before
+    # anything is written
+    try:
+        model_name = guard_model(data_dir, model_name)
+    except ModelMismatchError as e:
+        result.status = "error"
+        result.errors.append(str(e))
+        logger.error(f"  {e}")
+        return result
 
     # Ensure directories exist and are marked as managed
     SOURCES_DIR.mkdir(parents=True, exist_ok=True)
@@ -167,12 +184,14 @@ def build(
     # =========================================================================
     logger.info("")
     logger.info("=" * 60)
-    logger.info("Phase 2: User Documents (knowledge/)")
+    logger.info("Phase 2: Bundled Documents (knowledge/)")
     logger.info("=" * 60)
 
-    scan = scan_knowledge_folder(knowledge_dir, skip_bundled=no_bundled)
-
+    # The examiner's own files go to the examiner store (after the build),
+    # never into the shipped index or its bundle
+    scan = scan_knowledge_folder(knowledge_dir, only_bundled=True)
     if no_bundled:
+        scan.supported = []
         logger.info("  (bundled content skipped: --no-bundled)")
 
     # Report unsupported files
@@ -221,7 +240,7 @@ def build(
     logger.info("Phase 3: Ingested Documents")
     logger.info("=" * 60)
 
-    ingested_state = load_ingested_state()
+    ingested_state = load_ingested_state(data_dir)
     ingested_docs = ingested_state.get("documents", {})
 
     if ingested_docs:
@@ -366,10 +385,9 @@ def build(
     logger.info("Phase 5: Saving State")
     logger.info("=" * 60)
 
-    # Save user state
-    if user_state["files"]:
-        save_user_state(user_state)
-        logger.info(f"  Saved user_state.json ({len(user_state['files'])} files)")
+    # Save the shipped state: bundled files only
+    save_user_state(user_state, data_dir)
+    logger.info(f"  Saved user_state.json ({len(user_state['files'])} bundled files)")
 
     # Collect all sources for metadata
     all_sources = set()
@@ -393,6 +411,24 @@ def build(
     with open(metadata_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
     logger.info("  Saved metadata.json")
+
+    # The examiner store: user/ is outside chroma/, so the rebuild left it
+    # alone; bring it in line with the folder, commit, then clean up
+    logger.info(f"  Your documents: {len(examiner_files(knowledge_dir))} file(s)")
+    try:
+        sync = sync_examiner_store(
+            data_dir,
+            knowledge_dir,
+            model_name,
+            lambda texts: model.encode(texts).tolist(),
+            space=(collection.metadata or {}).get("hnsw:space", DEFAULT_SPACE),
+        )
+        logger.info(f"  Examiner store: {sync.record_count} records")
+        cleanup_shipped(data_dir, knowledge_dir, collection, logger.info)
+    except Exception as e:
+        result.status = "error"
+        result.errors.append(f"Examiner store not updated: {e}")
+        logger.error(f"  Examiner store not updated: {e}")
 
     # =========================================================================
     # Summary

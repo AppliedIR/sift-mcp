@@ -25,6 +25,7 @@ from sentence_transformers import SentenceTransformer
 
 from .ingest import (
     DEFAULT_KNOWLEDGE_DIR,
+    ChangeSet,
     check_for_changes,
     get_document_records,
     load_user_state,
@@ -37,10 +38,17 @@ from .sources import (
     check_source_updates,
     sync_source,
 )
+from .stores import (
+    DEFAULT_SPACE,
+    ModelMismatchError,
+    cleanup_shipped,
+    guard_model,
+    sync_examiner_store,
+)
 from .utils import (
-    DEFAULT_MODEL_NAME,
     compute_file_hash,
     load_jsonl_records,
+    resolve_data_dir,
     sanitize_metadata,
 )
 
@@ -88,13 +96,22 @@ def refresh(
     Returns:
         RefreshResult with summary
     """
-    data_dir = data_dir or Path(os.environ.get("RAG_INDEX_DIR", DEFAULT_DATA_DIR))
+    data_dir = resolve_data_dir(data_dir)
     knowledge_dir = knowledge_dir or Path(
         os.environ.get("RAG_KNOWLEDGE_DIR", DEFAULT_KNOWLEDGE_DIR)
     )
-    model_name = model_name or os.environ.get("RAG_MODEL_NAME", DEFAULT_MODEL_NAME)
 
     result = RefreshResult(status="success")
+
+    # Both stores are embedded with the index's model; another is refused
+    # before anything is written
+    try:
+        model_name = guard_model(data_dir, model_name)
+    except ModelMismatchError as e:
+        result.status = "error"
+        result.errors.append(str(e))
+        logger.error(f"  {e}")
+        return result
 
     # Check if index exists
     chroma_path = data_dir / "chroma"
@@ -117,6 +134,44 @@ def refresh(
     if not check_only:
         logger.info(f"Loading embedding model: {model_name}")
         model = SentenceTransformer(model_name)
+
+    # =========================================================================
+    # Phase 0: the examiner's knowledge-folder files, into the examiner store
+    # =========================================================================
+    logger.info("=" * 60)
+    logger.info("Phase 0: Your Documents (the examiner store)")
+    logger.info("=" * 60)
+    try:
+        sync = sync_examiner_store(
+            data_dir,
+            knowledge_dir,
+            model_name,
+            (lambda texts: model.encode(texts).tolist()) if model else None,
+            space=(collection.metadata or {}).get("hnsw:space", DEFAULT_SPACE),
+            check_only=check_only,
+        )
+    except Exception as e:
+        result.status = "error"
+        result.errors.append(f"Examiner store not updated: {e}")
+        logger.error(f"  Examiner store not updated: {e}")
+        return result
+    for label, rels in (
+        ("NEW", sync.new),
+        ("MODIFIED", sync.modified),
+        ("DELETED", sync.deleted),
+    ):
+        for rel in rels:
+            logger.info(f"  {label}: {rel}")
+    if not (sync.new or sync.modified or sync.deleted):
+        logger.info("  No changes detected")
+    result.documents_added += len(sync.new)
+    result.documents_modified += len(sync.modified)
+    result.documents_deleted += len(sync.deleted)
+    result.records_added += sync.records_added
+    result.records_removed += sync.records_removed
+    if not check_only:
+        logger.info(f"  Examiner store: {sync.record_count} records")
+        cleanup_shipped(data_dir, knowledge_dir, collection, logger.info)
 
     # =========================================================================
     # Phase 1: Online Sources
@@ -161,13 +216,14 @@ def refresh(
     # =========================================================================
     logger.info("")
     logger.info("=" * 60)
-    logger.info("Phase 2: Checking User Documents")
+    logger.info("Phase 2: Checking Bundled Documents")
     logger.info("=" * 60)
 
-    changes = check_for_changes(knowledge_dir, skip_bundled=no_bundled)
-
     if no_bundled:
+        changes = ChangeSet(new=[], modified=[], deleted=[])
         logger.info("  (bundled content skipped: --no-bundled)")
+    else:
+        changes = check_for_changes(knowledge_dir, data_dir=data_dir, only_bundled=True)
 
     # Report changes
     if changes.new:
@@ -187,7 +243,7 @@ def refresh(
 
     # Apply changes
     if not check_only and (changes.new or changes.modified or changes.deleted):
-        state = load_user_state()
+        state = load_user_state(data_dir)
 
         # Handle deleted files
         for rel_path in changes.deleted:
@@ -238,7 +294,7 @@ def refresh(
                     "processed_at": datetime.now(timezone.utc).isoformat(),
                 }
 
-        save_user_state(state)
+        save_user_state(state, data_dir)
 
     # =========================================================================
     # Phase 3: Check for unsupported files
@@ -323,7 +379,12 @@ def refresh(
         else:
             logger.info(f"  Online sources checked: {result.sources_checked}")
         logger.info(
-            f"  User documents: {len(changes.new)} new, {len(changes.modified)} modified, {len(changes.deleted)} deleted"
+            f"  Your documents: {len(sync.new)} new, {len(sync.modified)} modified, "
+            f"{len(sync.deleted)} deleted"
+        )
+        logger.info(
+            f"  Bundled documents: {len(changes.new)} new, {len(changes.modified)} "
+            f"modified, {len(changes.deleted)} deleted"
         )
     else:
         logger.info(f"  Sources updated: {result.sources_updated}")
