@@ -45,6 +45,10 @@ When you select a finding, the detail panel shows:
 
 8. **Meta bar** — compact single line with host, account, event type, event timestamp, timeline link, and staging info. Reference data, not decision data.
 
+### Challenge, Alternatives and Withdrawals
+
+Under the badges, each finding shows its challenge line: "Challenged (client-reported): …" with the skeptic's audit ids, or **Not challenged**. The **Alternatives** section lists other explanations, each marked `[open]` or `[ruled out]` with its evidence; edit them with the pencil as a JSON list. When candidates were withdrawn after challenge, a line above the findings list gives the count, and the Overview lists each one with its contradiction and the skeptic's audit ids. The legacy `/dashboard` doesn't show any of these, and says so.
+
 ### Editing Fields
 
 Click the pencil icon (✎) next to any field label to edit. Fields become a text area with Save/Cancel buttons. The confidence badge opens a dropdown selector (HIGH, MEDIUM, LOW, SPECULATIVE).
