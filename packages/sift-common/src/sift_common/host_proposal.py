@@ -806,11 +806,16 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
                 pass  # its names hold several machines: the examiner merges them
             elif machines:  # one unconfirmed machine (new, or started now) holds them
                 m = state.machine_of_key(next(iter(held)))
-                named = entry["name"] in fresh or _entry_machines(state, entry)
-                if not named:  # it becomes the entry's machine, keeping its name
+                named = _entry_machines(state, entry)
+                if entry["name"] in fresh:
+                    ours = fresh[entry["name"]] == (m.keys[0], m.canonical)
+                elif not named:  # it becomes the entry's machine, keeping its name
                     fresh[entry["name"]] = (m.keys[0], m.canonical)
                     taken.add(hi.spelling(m.canonical))
-                if fresh.get(entry["name"]) == (m.keys[0], m.canonical):
+                    ours = True
+                else:  # the entry's machine already: the list confirms it
+                    ours = len(named) == 1 and named[0].id == m.id
+                if ours:
                     bind([p for p in own if not ps[p].ai_only and not name_flags(p[1])],
                          m.keys[0], m.canonical, entry["name"])  # fmt: skip
             else:
@@ -946,11 +951,14 @@ def _unit_held(state, unit, ps, own, entries, by_entry_units) -> str | None:
 
 
 def _entry_machines(state: hi.HostState, entry: dict) -> list:
-    """The confirmed machines the list entry already names (never the one
-    the examiner's not-a-host names are kept under)."""
+    """The machines the examiner settled (confirmed, or started now) that the
+    list entry already names (never the one the examiner's not-a-host names
+    are kept under): an entry's name never becomes a second machine."""
     found = []
     for m in state.machines.values():
-        if m.state != hi.CONFIRMED or m.canonical.startswith("unattributed:"):
+        if m.state not in (hi.CONFIRMED, hi.STARTED_NOW) or m.canonical.startswith(
+            "unattributed:"
+        ):
             continue  # not a host: the examiner's, never a list entry's
         names = {m.canonical, *(p[1] for p in m.pairs if not _not_a_host(state, p))}
         if any(

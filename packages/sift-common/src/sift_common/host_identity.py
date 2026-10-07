@@ -931,14 +931,15 @@ def load(case_dir: str | os.PathLike) -> HostState:
 
 
 def _match_confirmed(state: HostState, raw: str) -> Machine | None:
-    """The one confirmed machine whose name equals ``raw`` after spelling
-    normalization; None when there is none or more than one."""
+    """The one machine the examiner settled (confirmed, or started now) whose
+    name equals ``raw`` after spelling normalization; None when there is none
+    or more than one."""
     target = spelling(raw)
     if not target:
         return None
     found = []
     for m in state.machines.values():
-        if m.state != CONFIRMED:
+        if m.state not in (CONFIRMED, STARTED_NOW):
             continue
         names = {spelling(m.canonical)}  # a name marked not a host never matches
         names |= {spelling(p[1]) for p in m.pairs

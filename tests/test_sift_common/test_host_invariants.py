@@ -29,6 +29,7 @@ EVIDENCE = ["SYSTEM ComputerName", "Security.evtx Computer", "events.csv host co
             "ForwardedEvents Computer"]  # fmt: skip
 LISTS = ["DC01\nWKS01,wks01.corp-a.test\n", "DC01\n", "WKS01\nSRV\nREMOTE\n"]
 AUTOMATIC = {"name", "list", "confirm_all", "mint", "start"}
+SETTLED = (hi.CONFIRMED, hi.STARTED_NOW)  # what the examiner decided
 
 
 # -- the oracle (independent of host_guard)
@@ -95,7 +96,7 @@ def violations(P, Q, door) -> list:
             if (Q.names[p].get("origins") or []) != ["artifact"] or _nah(Q, p):
                 continue
             spelled = hi.spelling(p[1])
-            homes = [m for m in P.machines.values() if m.state == hi.CONFIRMED and spelled in {
+            homes = [m for m in P.machines.values() if m.state in SETTLED and spelled in {
                 hi.spelling(m.canonical), *(hi.spelling(n) for n in m.former),
                 *(hi.spelling(q[1]) for q in m.pairs if not _nah(P, q))}]  # fmt: skip
             if len(homes) != 1:
@@ -125,6 +126,22 @@ def violations(P, Q, door) -> list:
             if fine:
                 if Q.bindings.get(p) not in m.keys:
                     out.append(("late name not joined", door, p[1], m.canonical))
+    if door in (
+        "name",
+        "list",
+    ):  # the list never makes a second machine of a settled name
+        for p, key in Q.bindings.items():
+            if P.bindings.get(p) == key or p[0] == hp.LIST_UNIT or _nah(Q, p):
+                continue
+            if P.machine_of_key(key) is not None:
+                continue  # it joined a machine that was there
+            spelled = hi.spelling(p[1])
+            homes = [m for m in P.machines.values() if m.state in SETTLED and spelled in {
+                hi.spelling(m.canonical), *(hi.spelling(q[1]) for q in m.pairs if not _nah(P, q))}]  # fmt: skip
+            if len(homes) == 1:
+                out.append(
+                    ("second machine of a settled name", door, p[1], homes[0].canonical)
+                )
     if door in AUTOMATIC:  # one machine, on the machines this step changed
         for q in Q.machines.values():
             before = P.machine_of_key(q.keys[0])
@@ -486,3 +503,39 @@ def test_a_not_a_host_name_is_no_rival_match_for_a_list_entry(case):
     hp.upload_host_list(case, "DC01\n", "ex")
     m = hi.load(case).machine_of_pair("u1", "DC01")
     assert m is not None and m.state == hi.CONFIRMED
+
+
+def test_a_late_name_a_started_machine_holds_joins_it(case):
+    obs(case, unit("u1"), name("u1", "WKS01"), name("u1", "WKS01", "Security.evtx Computer"),
+        unit("u2"), name("u2", "WEC01"))  # fmt: skip
+    hg.record_wait(case, "r1", ["u1"])
+    (m,) = hg.start_now(case, "r1", "ex")["machines"]
+    P = hi.load(case)
+    key, canonical = hi.get_or_mint(
+        case, "u2", "WKS01", evidence="ForwardedEvents Computer"
+    )
+    assert (key, canonical) == (m["key"], "WKS01")  # never "WKS01 (2)"
+    assert violations(P, hi.load(case), "mint") == []
+
+
+def test_the_list_never_makes_a_second_machine_of_a_started_machines_name(case):
+    # the started unit sorts after the new one, so the list meets the new one first
+    obs(
+        case,
+        unit("u9"),
+        name("u9", "WKS01"),
+        name("u9", "WKS01", "Security.evtx Computer"),
+    )
+    hg.record_wait(case, "r1", ["u9"])
+    (m,) = hg.start_now(case, "r1", "ex")["machines"]
+    obs(
+        case,
+        unit("u2"),
+        name("u2", "WKS01"),
+        name("u2", "WKS01", "Security.evtx Computer"),
+    )
+    P = hi.load(case)
+    hp.upload_host_list(case, "WKS01\n", "ex")
+    Q = hi.load(case)
+    assert Q.machine_of_pair("u2", "WKS01").id == Q.machine_of_key(m["key"]).id
+    assert violations(P, Q, "list") == []
