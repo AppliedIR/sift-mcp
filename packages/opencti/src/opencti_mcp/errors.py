@@ -114,6 +114,21 @@ class QueryError(OpenCTIMCPError):
             message, safe_message="Query failed. Check server logs for details."
         )
 
+    @property
+    def safe_message(self) -> str:
+        """A refused token is named: it's a setting to fix, not a server
+        fault to look for in the logs."""
+        cause = self.__cause__
+        status = getattr(getattr(cause, "response", None), "status_code", None)
+        if type(cause).__name__ in ("AuthenticationError", "AuthorizationError") or (
+            status in (401, 403)
+        ):
+            return (
+                "OpenCTI refused the API token. Check OPENCTI_TOKEN (or "
+                "~/.config/opencti-mcp/token) and that its account can read."
+            )
+        return super().safe_message
+
 
 class RateLimitError(OpenCTIMCPError):
     """Rate limit exceeded.
