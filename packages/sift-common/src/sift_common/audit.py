@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import threading
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -60,9 +61,17 @@ class AuditWriter:
     file writes wrapped in try/except with fsync for durability.
     """
 
-    def __init__(self, mcp_name: str, audit_dir: str | None = None) -> None:
+    def __init__(
+        self,
+        mcp_name: str,
+        audit_dir: str | None = None,
+        case_dir_resolver: Callable[[], Path | str | None] | None = None,
+    ) -> None:
         self.mcp_name = mcp_name
         self._explicit_audit_dir = audit_dir
+        # A server that resolves its own case passes that resolver, so its
+        # audit goes to the case its tools act on. It must have no side effects.
+        self._case_dir_resolver = case_dir_resolver
         self._sequence = 0
         self._date_str = ""
         self._audit_dir: Path | None = None
@@ -75,12 +84,15 @@ class AuditWriter:
     def _get_audit_dir(self) -> Path | None:
         """Get the audit directory.
 
-        Priority: explicit audit_dir > VHIR_AUDIT_DIR > VHIR_CASE_DIR/audit/.
+        Priority: explicit audit_dir > VHIR_AUDIT_DIR > the server's own case
+        resolver > VHIR_CASE_DIR/audit/ > the active case pointer.
         """
         if self._explicit_audit_dir:
             audit_dir = Path(self._explicit_audit_dir)
         elif os.environ.get("VHIR_AUDIT_DIR"):
             audit_dir = Path(os.environ["VHIR_AUDIT_DIR"])
+        elif self._case_dir_resolver and (resolved := self._case_dir_resolver()):
+            audit_dir = Path(resolved) / "audit"
         else:
             case_dir = os.environ.get("VHIR_CASE_DIR", "").strip()
             # Validate: must be a directory with CASE.yaml
@@ -126,10 +138,56 @@ class AuditWriter:
             elif audit_dir != self._audit_dir:
                 self._sequence = max(self._sequence, self._resume_sequence(today))
             self._audit_dir = audit_dir
-            self._sequence += 1
-            seq = self._sequence
+            seq = self._mint(audit_dir, today)
         prefix = self.mcp_name.replace("-mcp", "").replace("-", "")
         return f"{prefix}-{self.examiner}-{today}-{seq:03d}"
+
+    def _mint(self, audit_dir: Path | None, today: str) -> int:
+        """Take the next sequence number, shared with every process writing this
+        audit directory under this name.
+
+        Under an exclusive lock on the `<mcp>.seq` sidecar: re-read it, take one
+        past the higher of it and this writer's own counter, and write that back,
+        so the sidecar never goes backwards. Waits while another process holds the
+        lock. Without an audit directory, or when the lock can't be taken, it
+        counts in this process only. Must be called under self._lock.
+        """
+        if audit_dir is None:
+            self._sequence += 1
+            return self._sequence
+        try:
+            import fcntl
+
+            fd = os.open(
+                audit_dir / f"{self.mcp_name}.seq", os.O_RDWR | os.O_CREAT, 0o644
+            )
+            with os.fdopen(fd, "r+", encoding="utf-8") as f:
+                fcntl.flock(f, fcntl.LOCK_EX)
+                side = 0
+                try:
+                    data = json.loads(f.read() or "{}")
+                    if isinstance(data, dict) and data.get("date") == today:
+                        if isinstance(data.get("seq"), int):
+                            side = data["seq"]
+                except (
+                    ValueError
+                ):  # not a sidecar: this writer's counter sets the floor
+                    pass
+                self._sequence = max(self._sequence, side) + 1
+                f.seek(0)
+                f.truncate()
+                f.write(json.dumps({"date": today, "seq": self._sequence}))
+                f.flush()
+        except (OSError, ImportError) as e:
+            logger.warning(
+                "Cannot lock %s.seq in %s (%s); audit ids are counted in this "
+                "process only and may repeat across processes",
+                self.mcp_name,
+                audit_dir,
+                e,
+            )
+            self._sequence += 1
+        return self._sequence
 
     def _resume_sequence(self, date_str: str) -> int:
         """Resume sequence: the higher of the sidecar and the JSONL's highest ID.
@@ -186,19 +244,6 @@ class AuditWriter:
                 "Failed to read audit log %s for sequence resume: %s", log_file, e
             )
         return max(side, max_seq)
-
-    def _write_seq_sidecar(self) -> None:
-        """Write current sequence to sidecar for fast resume."""
-        audit_dir = self._get_audit_dir()
-        if not audit_dir:
-            return
-        seq_file = audit_dir / f"{self.mcp_name}.seq"
-        try:
-            seq_file.write_text(
-                json.dumps({"date": self._date_str, "seq": self._sequence})
-            )
-        except OSError:
-            pass
 
     def _read_active_case_id(self) -> str:
         """Read case_id from ~/.vhir/active_case file.
@@ -266,7 +311,6 @@ class AuditWriter:
                 audit_id,
             )
             return None
-        self._write_seq_sidecar()
         return audit_id
 
     def _write_entry(self, entry: dict) -> bool:

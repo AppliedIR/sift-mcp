@@ -115,7 +115,9 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     """
     server = FastMCP("forensic-mcp", instructions=_INSTRUCTIONS)
     manager = CaseManager()
-    audit = AuditWriter(mcp_name="forensic-mcp")
+    audit = AuditWriter(
+        mcp_name="forensic-mcp", case_dir_resolver=manager.audit_case_dir
+    )
 
     # Expose for testing and CLI integration
     server._manager = manager

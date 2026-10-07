@@ -152,7 +152,6 @@ def create_server() -> FastMCP:
         from sift_mcp.tools.generic import run_command as _run
 
         start = time.monotonic()
-        audit_id = audit._next_audit_id()
 
         # Detect input files: LLM-first, catalog-backup, parsed-fallback
         binary = command[0].split("/")[-1] if command else ""
@@ -214,6 +213,8 @@ def create_server() -> FastMCP:
                 preview_lines=min(preview_lines, 200) if preview_lines else 0,
             )
             elapsed = time.monotonic() - start
+            # Minted when the entry is written, in the case it's written to
+            audit_id = audit._next_audit_id()
 
             # FK tool name for knowledge enrichment (td already resolved above)
             fk_name = td.knowledge_name if td else binary
@@ -225,6 +226,10 @@ def create_server() -> FastMCP:
             if exec_result.get("_parsed"):
                 resp_data = exec_result["_parsed"]
                 resp_format = exec_result["_output_format"]
+                # The preview's own flag means "shorter than the output"; the
+                # output itself may have been cut at the limit too
+                if exec_result.get("truncated"):
+                    resp_data["truncated"] = True
             else:
                 resp_data = exec_result
                 resp_format = exec_result.get("_output_format", "text")
@@ -262,6 +267,7 @@ def create_server() -> FastMCP:
                     "output_sha256": exec_result.get("output_sha256", ""),
                     "stdout_bytes": exec_result.get("stdout_total_bytes", 0),
                     "stdout_head": (exec_result.get("stdout") or "")[:500],
+                    **({"truncated": True} if exec_result.get("truncated") else {}),
                 },
                 audit_id=audit_id,
                 elapsed_ms=elapsed * 1000,
@@ -308,6 +314,7 @@ def create_server() -> FastMCP:
 
         except SiftError as e:
             elapsed = time.monotonic() - start
+            audit_id = audit._next_audit_id()
             response = build_response(
                 tool_name="run_command",
                 success=False,
@@ -327,6 +334,7 @@ def create_server() -> FastMCP:
             return response
         except (ValueError, OSError, RuntimeError) as e:
             elapsed = time.monotonic() - start
+            audit_id = audit._next_audit_id()
             logger.warning("run_command unexpected error: %s: %s", type(e).__name__, e)
             response = build_response(
                 tool_name="run_command",
@@ -347,6 +355,7 @@ def create_server() -> FastMCP:
             return response
         except Exception as e:
             elapsed = time.monotonic() - start
+            audit_id = audit._next_audit_id()
             logger.error("run_command catch-all error: %s: %s", type(e).__name__, e)
             response = build_response(
                 tool_name="run_command",

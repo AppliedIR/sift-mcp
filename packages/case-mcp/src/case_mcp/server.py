@@ -146,10 +146,8 @@ def _resolve_case_dir(case_id: str = "") -> Path:
     """Resolve case directory without sys.exit.
 
     Same priority as vhir CLI get_case_dir(), but raises ValueError
-    instead of calling sys.exit().
-
-    Side effect: sets VHIR_CASE_DIR env var so AuditWriter can find
-    the audit directory.
+    instead of calling sys.exit(). It has no side effects: the audit writer
+    calls it (through _audit_case_dir) to put each entry in this case.
     """
     if case_id:
         if ".." in case_id or "/" in case_id or "\\" in case_id:
@@ -189,10 +187,18 @@ def _resolve_case_dir(case_id: str = "") -> Path:
     raise ValueError("No active case. Use case_init or case_activate first.")
 
 
+def _audit_case_dir() -> Path | None:
+    """The case this server's tools act on, for its audit entries; None if none."""
+    try:
+        return _resolve_case_dir()
+    except (ValueError, OSError):
+        return None
+
+
 def create_server() -> FastMCP:
     """Create and configure the case management MCP server."""
     server = FastMCP("case-mcp", instructions=_INSTRUCTIONS)
-    audit = AuditWriter(mcp_name="case-mcp")
+    audit = AuditWriter(mcp_name="case-mcp", case_dir_resolver=_audit_case_dir)
 
     server._audit = audit
 

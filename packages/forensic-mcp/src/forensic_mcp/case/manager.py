@@ -574,6 +574,23 @@ class CaseManager:
     def examiner(self) -> str:
         return resolve_examiner()
 
+    def audit_case_dir(self) -> Path | None:
+        """The active case directory for audit entries, read from the pointer as
+        _require_active_case reads it, but with no side effects: no cached state
+        changes and no closed-case check. None when there's no valid case."""
+        try:
+            content = _ACTIVE_CASE_FILE.read_text().strip()
+            if not content:
+                return None
+            if os.path.isabs(content):
+                case_dir = Path(content)
+            else:
+                _validate_case_id(content)
+                case_dir = self.cases_dir / content
+            return case_dir if (case_dir / "CASE.yaml").exists() else None
+        except (OSError, ValueError):
+            return None
+
     def _require_active_case(self) -> Path:
         # Re-read active_case file on every call to detect case switches
         active_file = _ACTIVE_CASE_FILE
