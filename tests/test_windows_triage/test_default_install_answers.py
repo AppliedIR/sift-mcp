@@ -382,3 +382,42 @@ def test_windows_triage_is_described_as_a_default_install_check():
         "Validate files, processes, services against Windows baselines"
         not in (ROOT / "docs/librechat-setup.md").read_text()
     )
+
+
+# Where an ImagePath's executable ends
+
+
+@pytest.mark.parametrize(
+    "image_path, executable",
+    [
+        (
+            r"C:\Windows\System32\spoolsv.exe.evil.exe",
+            r"\windows\system32\spoolsv.exe.evil.exe",
+        ),
+        (r"C:\Program Files\Acme\svc.exe -k netsvcs", r"\program files\acme\svc.exe"),
+        (r'"C:\Program Files\Acme\svc.exe" -run', r"\program files\acme\svc.exe"),
+        (
+            r"\SystemRoot\System32\drivers\ACPI.sys",
+            r"\windows\system32\drivers\acpi.sys",
+        ),
+    ],
+    ids=[
+        "a second extension",
+        "unquoted with arguments",
+        "quoted with arguments",
+        "a driver",
+    ],
+)
+def test_an_executable_ends_where_its_token_ends(image_path, executable):
+    from windows_triage.analysis.paths import parse_service_binary_path
+
+    assert parse_service_binary_path(image_path).lower().endswith(executable)
+
+
+def test_a_default_name_with_a_second_extension_is_flagged(srv):
+    r = svc(srv, "Spooler", r"C:\Windows\System32\spoolsv.exe.evil.exe")
+    assert r["verdict"] == "SUSPICIOUS"
+
+
+def test_a_bare_name_in_capitals_is_not_a_path(srv):
+    assert tree(srv, "SVCHOST.EXE", "SERVICES.EXE")["verdict"] == "EXPECTED"

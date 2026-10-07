@@ -276,7 +276,10 @@ def parse_service_binary_path(image_path: str) -> str:
         # Unquoted - take up to first space (if any)
         # But be careful: "C:\Program Files\..." has spaces in path
         # Heuristic: if starts with drive letter or \, find .exe/.sys/.dll
-        exe_match = re.search(r'^([^"]*?\.(exe|sys|dll|ocx))', path, re.IGNORECASE)
+        # The extension must end a token: spoolsv.exe.evil.exe is not spoolsv.exe
+        exe_match = re.search(
+            r'^([^"]*?\.(exe|sys|dll|ocx))(?=\s|$)', path, re.IGNORECASE
+        )
         if exe_match:
             path = exe_match.group(1)
         else:

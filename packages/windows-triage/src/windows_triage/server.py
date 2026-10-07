@@ -80,6 +80,11 @@ from .tool_metadata import DEFAULT_METADATA, TOOL_METADATA
 logger = logging.getLogger(__name__)
 
 
+def _is_path(name: str) -> bool:
+    """A process name given with its folder (a separator), not just in another case."""
+    return "\\" in name or "/" in name
+
+
 def _validate_input_length(value: Any, max_length: int, field_name: str) -> None:
     """Validate input length to prevent resource exhaustion.
 
@@ -953,7 +958,7 @@ class WindowsTriageServer:
         raw_process, raw_parent = process_name, parent_name
         process_name = extract_filename(process_name) or process_name
         parent_name = extract_filename(parent_name) or parent_name
-        if not path and raw_process != process_name:
+        if not path and _is_path(raw_process):
             path = raw_process
         findings = []
 
@@ -969,7 +974,7 @@ class WindowsTriageServer:
         # Check if PARENT is a process that should NEVER spawn children (injection detection)
         parent_info = self.context_db.get_expected_process(parent_name)
         parent_path_valid = None
-        if raw_parent != parent_name and parent_info and parent_info.get("valid_paths"):
+        if _is_path(raw_parent) and parent_info and parent_info.get("valid_paths"):
             parent_path_valid = any(
                 normalize_path(raw_parent) == normalize_path(p)
                 for p in parent_info["valid_paths"]
