@@ -348,7 +348,9 @@ async def test_a_provider_that_raises_is_unavailable(monkeypatch):
         "fakeintel"
     ]
     assert answer["outcome"] == "UNAVAILABLE"
-    assert "socket closed" in answer["reason"]
+    # The kind of failure only: an exception's text stays in the server log
+    assert "RuntimeError" in answer["reason"]
+    assert "socket closed" not in answer["reason"]
 
 
 # --- configuration ----------------------------------------------------------

@@ -36,7 +36,6 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -164,8 +163,10 @@ def load(names: list[str], prebuilt: dict[str, Any] | None = None) -> dict[str, 
         except ProviderConfigError as e:
             adapters[name] = Unavailable(f"{name} is not configured: {e}")
         except Exception as e:
+            logger.warning("Threat-intel provider %s can't be set up: %s", name, e)
             adapters[name] = Unavailable(
-                f"provider '{name}' can't be set up: {type(e).__name__}: {e}"
+                f"provider '{name}' can't be set up ({type(e).__name__}); "
+                "the server log has the details"
             )
     return adapters
 
@@ -188,7 +189,9 @@ def _ask(adapter: Any, ioc: str, ioc_type: str) -> dict:
         return _checked(adapter.lookup(ioc, ioc_type))
     except Exception as e:
         logger.warning("Threat-intel provider failed: %s: %s", type(e).__name__, e)
-        return unavailable(f"{type(e).__name__}: {e}")
+        return unavailable(
+            f"the provider failed ({type(e).__name__}); the server log has the details"
+        )
 
 
 def _pool_for(adapter: Any) -> ThreadPoolExecutor:
@@ -249,45 +252,32 @@ def aggregate(answers: dict[str, dict]) -> str:
     return NO_MATCH
 
 
-# Candidate tokens for a literal IP address in error text: runs of hex digits,
-# dots and colons. Each is parsed with ipaddress, so a time such as 10:48:01
-# or a version such as 6.9.10 is left alone.
-_IP_TOKEN = re.compile(r"[0-9A-Fa-f:.]*[:.][0-9A-Fa-f:.]*")
+# --------------------------------------------------------------------------
+# Failure reasons. Each is written here, from the kind of failure: no text
+# from the transport, the server or its error body reaches the caller, so no
+# address, token or other server detail can leak through one.
+
+# Kept exactly: opensearch's enrichment backs off when it sees it.
+RATE_LIMITED = "Too Many Requests"
 
 
-def _without_ip(token: str) -> str:
-    """The token with a literal IP address replaced; its port and a trailing
-    full stop are kept."""
-    core = token.rstrip(".")
-    rest = token[len(core) :]
-    with_port = re.fullmatch(r"(.+?\.\d+)(:\d{1,5})", core)  # 10.0.0.5:8080
-    for address, port in ((core, ""), with_port.groups() if with_port else ("", "")):
-        if address:
-            try:
-                ipaddress.ip_address(address)
-            except ValueError:
-                continue
-            return "<IP address>" + port + rest
-    return token
+def transport_reason(platform: str, error: BaseException) -> str:
+    """Why `platform` couldn't be reached (refused, name not found, TLS)."""
+    text = str(error)
+    if "CERTIFICATE_VERIFY_FAILED" in text or "SSL" in text or "TLS" in text:
+        return f"can't reach {platform}: its TLS certificate wasn't accepted"
+    return f"can't reach {platform}"
 
 
-def _redact_part(text: str, host: str, platform: str) -> str:
-    if host:
-        # The host as a whole host name: in a URL's authority, or bounded by
-        # characters a host name can't hold. Never inside another name.
-        text = re.sub(
-            rf"(?<![A-Za-z0-9.-]){re.escape(host)}(?![A-Za-z0-9-]|\.[A-Za-z0-9])",
-            f"<{platform} host>",
-            text,
-            flags=re.IGNORECASE,
-        )
-    return _IP_TOKEN.sub(lambda m: _without_ip(m.group()), text)
+def http_reason(platform: str, status: int, credential: str) -> str:
+    """The reason for an HTTP answer other than 200."""
+    if status in (401, 403):
+        return f"{platform} refused the {credential} (HTTP {status})"
+    if status == 429:
+        return f"{platform} rate-limited the lookup: {RATE_LIMITED} (HTTP 429)"
+    return f"{platform} answered HTTP {status}"
 
 
-def redact(text: str, url: str, ioc: str, platform: str) -> str:
-    """Error text without the server's address: its configured host name and
-    any literal IP address. The IOC that was looked up is never changed, and
-    the reason and everything else stay."""
-    host = urlsplit(url).hostname or ""
-    parts = text.split(ioc) if ioc else [text]
-    return ioc.join(_redact_part(part, host, platform) for part in parts)
+def is_rate_limited(text: str) -> bool:
+    lower = text.lower()
+    return "too many requests" in lower or "rate limit" in lower

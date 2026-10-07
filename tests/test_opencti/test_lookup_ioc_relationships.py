@@ -26,7 +26,7 @@ def _relationships_fail(answer):
 @pytest.mark.parametrize(
     "answer, words",
     [
-        (REPLIES["v6:validation_error"], "GraphQL error"),
+        (REPLIES["v6:validation_error"], "OpenCTI rejected the query"),
         (httpx.Response(502, text="bad gateway"), "HTTP 502"),
         ({"data": {"stixCoreRelationships": {"edges": [None]}}}, "unexpected shape"),
         (httpx.ReadTimeout("timed out"), "timed out"),

@@ -1,10 +1,12 @@
-"""lookup_ioc's reason for an OpenCTI or MISP failure doesn't carry the
-server's address.
+"""lookup_ioc's reason for an OpenCTI or MISP failure says what kind of
+failure it was, in the product's own words, and nothing else.
 
-The reason passed the transport's and the server's text through as written,
-so a TLS or resolve failure, or a GraphQL or MISP message, put the configured host
-name, a URL or an IP address into the reply. They are now taken out; the
-reason itself stays, as does the IOC that was looked up.
+The reason passed the transport's and the server's text through, so a TLS or
+resolve failure, a GraphQL message or an HTTP error body put the server's host
+name, a URL, an IP address or the looked-up IOC into the reply. Each reason is
+now written from its category: unreachable, timed out, HTTP status, the
+credential refused, rate-limited (with "Too Many Requests", which enrichment's
+backoff reads). No text from the failure itself appears.
 """
 
 from __future__ import annotations
@@ -27,85 +29,63 @@ from .threatintel_rig import (
 )
 
 HOST = "opencti-int.corp.example"
-URL = f"https://{HOST}:8080"
-LEAKS = (HOST, "10.20.30.40", "fd00:1234::7", "opencti-int.CORP.example")
-
-
-def _server():
-    cfg = Config(opencti_url=URL, opencti_token=SecretStr("dummy-not-a-real-token-0"))
-    return OpenCTIMCPServer(cfg, provider_names=["opencti"])
+MISP_HOST = "misp-int.corp.example"
+IOC = "11.0.113.10"
+# What a failure's own text carries here, and no reason may contain
+SECRETS = (HOST, MISP_HOST, "10.20.30.40", "fd00:1234::7", "8443", "corp")
+LOUD = f"{HOST} {MISP_HOST}:8443 10.20.30.40 [fd00:1234::7] {IOC} corp"
 
 
 def _gql(code: str, message: str) -> dict:
     return {"errors": [{"message": message, "extensions": {"code": code}}]}
 
 
-async def _reason(monkeypatch, answer, ioc="11.0.113.10") -> str:
-    monkeypatch.setattr(opencti_provider, "_http_post", Transport(lambda q, v: answer))
-    reply = await lookup(_server(), ioc)
-    return str(reply)
+CATEGORIES = [
+    (httpx.ConnectError(f"[Errno 111] refused {LOUD}"), "can't reach {p}"),
+    (
+        httpx.ConnectError(f"[Errno -2] Name or service not known {LOUD}"),
+        "can't reach {p}",
+    ),
+    (
+        httpx.ConnectError(f"[SSL: CERTIFICATE_VERIFY_FAILED] for {LOUD}"),
+        "can't reach {p}: its TLS certificate wasn't accepted",
+    ),
+    (httpx.ReadTimeout(f"timed out reading {LOUD}"), "timed out after"),
+    (httpx.Response(500, text=f"upstream {LOUD}"), "{p} answered HTTP 500"),
+    (httpx.Response(401, json={"message": LOUD}), "{p} refused the {c} (HTTP 401)"),
+    (httpx.Response(403, json={"message": LOUD}), "{p} refused the {c} (HTTP 403)"),
+    (
+        httpx.Response(429, json={"message": LOUD}),
+        "{p} rate-limited the lookup: Too Many Requests (HTTP 429)",
+    ),
+]
+IDS = [
+    "refused",
+    "dns",
+    "tls",
+    "timeout",
+    "http 500",
+    "http 401",
+    "http 403",
+    "http 429",
+]
 
 
-@pytest.mark.parametrize(
-    "answer, kept",
-    [
-        (
-            httpx.ConnectError(
-                f"[SSL: CERTIFICATE_VERIFY_FAILED] Hostname mismatch, certificate "
-                f"is not valid for '{HOST}' (host='{HOST}', port=8080) {URL}/graphql"
-                " 10.20.30.40"
-            ),
-            "can't reach OpenCTI",
-        ),
-        (
-            _gql(
-                "AUTH_REQUIRED",
-                f"You must be logged in at {URL}/graphql from fd00:1234::7",
-            ),
-            "logged in",
-        ),
-        (
-            _gql(
-                "GRAPHQL_VALIDATION_FAILED",
-                "GRAPHQL_VALIDATION_FAILED near opencti-int.CORP.example:8080",
-            ),
-            "GRAPHQL_VALIDATION_FAILED",
-        ),
-    ],
-    ids=["tls", "auth", "validation"],
-)
-async def test_the_reason_names_no_server_address(monkeypatch, answer, kept):
-    reason = await _reason(monkeypatch, answer)
-    assert not [leak for leak in LEAKS if leak in reason], reason
-    assert kept in reason, reason
-
-
-async def test_a_relationships_failure_names_no_server_address(monkeypatch):
-    def route(query, variables):
-        if "ThreatIntelRelationships" in query:
-            return httpx.ConnectError(f"reset by {HOST} (10.20.30.40)")
-        return REPLIES["v7:lookup:revoked"]
-
-    monkeypatch.setattr(opencti_provider, "_http_post", Transport(route))
-    reply = str(await lookup(_server(), REVOKED))
-    assert "Relationships query failed" in reply
-    assert not [leak for leak in LEAKS if leak in reply], reply
-
-
-async def test_anchor_a_time_and_the_looked_up_ioc_stay(monkeypatch):
-    answer = _gql(
-        "GRAPHQL_VALIDATION_FAILED",
-        "Too Many Requests at 10:48:01 for 11.0.113.10",
+def _opencti_server():
+    cfg = Config(
+        opencti_url=f"https://{HOST}:8443",
+        opencti_token=SecretStr("dummy-not-a-real-token-0"),
     )
-    reason = await _reason(monkeypatch, answer)
-    assert "Too Many Requests at 10:48:01 for 11.0.113.10" in reason, reason
+    return OpenCTIMCPServer(cfg, provider_names=["opencti"])
 
 
-MISP_HOST = "misp-int.corp.example"
-MISP_LEAKS = (MISP_HOST, "10.20.30.40", "MISP-INT.corp.example")
+async def _opencti(monkeypatch, answer) -> str:
+    monkeypatch.setattr(opencti_provider, "_http_post", Transport(lambda q, v: answer))
+    reply = await lookup(_opencti_server(), IOC)
+    return reply["providers"]["opencti"]["reason"]
 
 
-async def _misp(monkeypatch, misp_transport, search=None, check=None):
+async def _misp(monkeypatch, misp_transport, search=None, check=None) -> dict:
     recorded = misp_recorded("25")
 
     def route(method, path, body):
@@ -116,90 +96,87 @@ async def _misp(monkeypatch, misp_transport, search=None, check=None):
         return recorded(method, path, body)
 
     misp_transport(route)
-    misp_env(monkeypatch, MISP_URL=f"https://{MISP_HOST}")
-    return str(await lookup(server(["misp"], cfg=None), "11.0.113.10"))
+    misp_env(monkeypatch, MISP_URL=f"https://{MISP_HOST}:8443")
+    return (await lookup(server(["misp"], cfg=None), IOC))["providers"]["misp"]
+
+
+def _clean(reason: str) -> None:
+    assert not [s for s in SECRETS if s in reason], reason
+    assert IOC not in reason, reason
+
+
+@pytest.mark.parametrize("answer, expected", CATEGORIES, ids=IDS)
+async def test_an_opencti_reason_is_its_category_only(monkeypatch, answer, expected):
+    reason = await _opencti(monkeypatch, answer)
+    assert expected.format(p="OpenCTI", c="token") in reason, reason
+    _clean(reason)
+
+
+@pytest.mark.parametrize("answer, expected", CATEGORIES, ids=IDS)
+async def test_a_misp_reason_is_its_category_only(
+    monkeypatch, misp_transport, answer, expected
+):
+    reason = (await _misp(monkeypatch, misp_transport, search=answer))["reason"]
+    assert expected.format(p="MISP", c="API key") in reason, reason
+    _clean(reason)
 
 
 @pytest.mark.parametrize(
-    "search, kept",
+    "errors, expected",
     [
         (
-            httpx.ConnectError("no route to MISP-INT.corp.example (10.20.30.40)"),
-            "can't reach MISP",
+            _gql("AUTH_REQUIRED", f"You must be logged in {LOUD}"),
+            "refused the token (AUTH_REQUIRED)",
         ),
+        (_gql("FORBIDDEN_ACCESS", LOUD), "refused the token (FORBIDDEN_ACCESS)"),
         (
-            httpx.Response(
-                403, json={"message": f"Forbidden at https://{MISP_HOST}/users"}
-            ),
-            "MISP answered HTTP 403: Forbidden at",
+            _gql("GRAPHQL_VALIDATION_FAILED", LOUD),
+            "rejected the query (GRAPHQL_VALIDATION_FAILED)",
         ),
+        (_gql("DATABASE_ERROR", LOUD), "storage error (DATABASE_ERROR)"),
+        (
+            _gql("RATE_LIMITED", f"Too Many Requests {LOUD}"),
+            "rate-limited the lookup: Too Many Requests",
+        ),
+        (_gql(f"weird {LOUD}", "x"), "rejected the query (no code)"),
     ],
-    ids=["transport", "http"],
+    ids=["auth", "forbidden", "validation", "storage", "rate limit", "not a code"],
 )
-async def test_a_misp_reason_names_no_server_address(
-    monkeypatch, misp_transport, search, kept
-):
-    reason = await _misp(monkeypatch, misp_transport, search=search)
-    assert not [leak for leak in MISP_LEAKS if leak in reason], reason
-    assert kept in reason, reason
+async def test_a_graphql_error_is_named_by_its_code_only(monkeypatch, errors, expected):
+    reason = await _opencti(monkeypatch, errors)
+    assert expected in reason, reason
+    _clean(reason)
 
 
-async def test_a_misp_warninglist_failure_names_no_server_address(
+async def test_a_relationships_failure_is_its_category_only(monkeypatch):
+    def route(query, variables):
+        if "ThreatIntelRelationships" in query:
+            return httpx.ConnectError(f"reset by {LOUD}")
+        return REPLIES["v7:lookup:revoked"]
+
+    monkeypatch.setattr(opencti_provider, "_http_post", Transport(route))
+    reply = str(await lookup(server(), REVOKED))
+    assert "Relationships query failed (can't reach OpenCTI)" in reply, reply
+    assert not [s for s in SECRETS if s in reply], reply
+
+
+async def test_a_misp_warninglist_failure_is_its_category_only(
     monkeypatch, misp_transport
 ):
-    check = httpx.ConnectError(f"reset by {MISP_HOST} (10.20.30.40)")
-    reply = await _misp(monkeypatch, misp_transport, check=check)
-    assert "Warninglist check failed" in reply
-    assert not [leak for leak in MISP_LEAKS if leak in reply], reply
-
-
-SHORT = "http://opencti:8080"
-
-
-@pytest.mark.parametrize(
-    "text, ioc, expected",
-    [
-        (
-            f"reset by {SHORT}/graphql",
-            "11.0.113.10",
-            "reset by http://<OpenCTI host>:8080/graphql",
-        ),
-        (
-            "no indicator named evil-opencti.com; opencti-backup.example.org is down",
-            "evil-opencti.com",
-            "no indicator named evil-opencti.com; opencti-backup.example.org is down",
-        ),
-        ("from ::ffff:10.0.0.5", "x", "from <IP address>"),
-        ("from 0:0:0:0:0:ffff:10.0.0.5.", "x", "from <IP address>."),
-        (
-            "10.0.0.5:8080 at 10:48:01, v6.9.10",
-            "x",
-            "<IP address>:8080 at 10:48:01, v6.9.10",
-        ),
-    ],
-    ids=[
-        "host in a url",
-        "host inside other names",
-        "mapped v6",
-        "mapped v6 long",
-        "port, time, version",
-    ],
-)
-def test_redact_takes_out_only_the_address(text, ioc, expected):
-    from opencti_mcp.providers import redact
-
-    assert redact(text, SHORT, ioc, "OpenCTI") == expected
-
-
-async def test_a_domain_ioc_holding_the_host_name_is_kept(monkeypatch):
-    cfg = Config(opencti_url=SHORT, opencti_token=SecretStr("dummy-not-a-real-token-0"))
-    srv = OpenCTIMCPServer(cfg, provider_names=["opencti"])
-    answer = _gql(
-        "GRAPHQL_VALIDATION_FAILED",
-        f"Invalid value evil-opencti.com at {SHORT}/graphql",
+    answer = await _misp(
+        monkeypatch, misp_transport, check=httpx.ConnectError(f"reset by {LOUD}")
     )
-    monkeypatch.setattr(opencti_provider, "_http_post", Transport(lambda q, v: answer))
-    reply = str(await lookup(srv, "evil-opencti.com"))
-    assert "Invalid value evil-opencti.com at http://<OpenCTI host>:8080" in reply, (
-        reply
+    assert answer["warninglists_unavailable"] == (
+        "Warninglist check failed (can't reach MISP)."
     )
+
+
+async def test_a_provider_crash_names_the_kind_of_failure_only(monkeypatch):
+    def crash(*a, **k):
+        raise RuntimeError(f"bad state {LOUD}")
+
+    monkeypatch.setattr(opencti_provider, "_http_post", crash)
+    reply = await lookup(_opencti_server(), IOC)
+    reason = reply["providers"]["opencti"]["reason"]
+    assert "RuntimeError" in reason, reason
+    _clean(reason)

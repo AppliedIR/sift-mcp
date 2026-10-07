@@ -8,6 +8,7 @@ UNAVAILABLE. When indicators match, one more request reads their relationships.
 
 from __future__ import annotations
 
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -21,12 +22,15 @@ from . import (
     MAX_IN_FLIGHT,
     MAX_MATCHES,
     NO_MATCH,
+    RATE_LIMITED,
     ProviderConfigError,
     budget,
     follow_up,
+    http_reason,
+    is_rate_limited,
     now_utc,
-    redact,
     same_value,
+    transport_reason,
     unavailable,
 )
 
@@ -86,16 +90,20 @@ def _name_eq(ioc: str) -> dict:
 
 
 def _describe(errors: Any) -> str:
+    """The reason for a GraphQL error, from its code: the server's message
+    never reaches the caller."""
     if not isinstance(errors, list) or not errors:
-        return "GraphQL error"
+        return "OpenCTI rejected the query (no code)"
     first = errors[0] if isinstance(errors[0], dict) else {}
-    code = (first.get("extensions") or {}).get("code") or first.get("name") or ""
-    message = str(first.get("message", ""))[:200]
-    if code == "DATABASE_ERROR":
-        return f"provider storage error: {message}"
+    code = str((first.get("extensions") or {}).get("code") or first.get("name") or "")
     if code in ("AUTH_REQUIRED", "FORBIDDEN_ACCESS"):
-        return f"OpenCTI refused the token ({code}): {message}"
-    return f"GraphQL error ({code or 'no code'}): {message}"
+        return f"OpenCTI refused the token ({code})"
+    if is_rate_limited(str(first.get("message", ""))):
+        return f"OpenCTI rate-limited the lookup: {RATE_LIMITED}"
+    if code == "DATABASE_ERROR":
+        return "OpenCTI reported a storage error (DATABASE_ERROR)"
+    shown = code if re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", code) else "no code"
+    return f"OpenCTI rejected the query ({shown})"
 
 
 class OpenCTIAdapter:
@@ -126,11 +134,9 @@ class OpenCTIAdapter:
         except httpx.TimeoutException as e:
             raise _Failure(f"timed out after {self.timeout:g}s") from e
         except httpx.HTTPError as e:
-            raise _Failure(f"can't reach OpenCTI: {type(e).__name__}: {e}") from e
-        if response.status_code in (401, 403):
-            raise _Failure(f"OpenCTI refused the token (HTTP {response.status_code})")
+            raise _Failure(transport_reason("OpenCTI", e)) from e
         if response.status_code != 200:
-            raise _Failure(f"OpenCTI answered HTTP {response.status_code}")
+            raise _Failure(http_reason("OpenCTI", response.status_code, "token"))
         try:
             body = response.json()
         except ValueError as e:
@@ -179,9 +185,7 @@ class OpenCTIAdapter:
         except _Failure as e:
             if version is None and e.data:
                 version = (e.data.get("about") or {}).get("version")
-            return unavailable(
-                redact(str(e), self.config.opencti_url, ioc, "OpenCTI"), version
-            )
+            return unavailable(str(e), version)
 
         # The server's `eq` ignores case; fuzzy hashes are compared as given.
         matches = [node for node in nodes if same_value(node.get("name"), ioc)]
@@ -233,7 +237,7 @@ class OpenCTIAdapter:
                     answer["relationships_truncated"] = True
             except _Failure as e:
                 answer["relationships"] = []
-                reason = redact(str(e), self.config.opencti_url, ioc, "OpenCTI")
+                reason = str(e)
                 answer["relationships_unavailable"] = (
                     f"Relationships query failed ({reason}): the related lists are "
                     "incomplete."

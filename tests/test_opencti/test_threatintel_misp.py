@@ -230,22 +230,22 @@ def _fail_search(answer):
     [
         (
             httpx.Response(403, text=MISP_REPLIES["misp25:bad_key"]["body"]),
-            "HTTP 403: Authentication failed",
+            "MISP refused the API key (HTTP 403)",
         ),
         (
             httpx.Response(403, text=MISP_REPLIES["misp24:bad_key"]["body"]),
-            "HTTP 403: Authentication failed",
+            "MISP refused the API key (HTTP 403)",
         ),
         (
             httpx.Response(500, text=MISP_REPLIES["misp24:db_down"]["body"]),
-            "HTTP 500: An Internal Error Has Occurred.",
+            "MISP answered HTTP 500",
         ),
         (httpx.ConnectError("[Errno 111] Connection refused"), "can't reach MISP"),
         (
             httpx.ConnectError(
                 "[SSL: CERTIFICATE_VERIFY_FAILED] self-signed certificate"
             ),
-            "CERTIFICATE_VERIFY_FAILED",
+            "its TLS certificate wasn't accepted",
         ),
         (httpx.ReadTimeout("read timed out"), "timed out"),
         (httpx.Response(200, text="<html>login</html>"), "not JSON"),

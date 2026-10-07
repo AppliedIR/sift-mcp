@@ -34,9 +34,10 @@ from . import (
     ProviderConfigError,
     budget,
     follow_up,
+    http_reason,
     now_utc,
-    redact,
     same_value,
+    transport_reason,
     unavailable,
 )
 
@@ -147,19 +148,13 @@ class MispAdapter:
             failure.timed_out = True
             raise failure from e
         except httpx.HTTPError as e:
-            raise _Failure(f"can't reach MISP: {type(e).__name__}: {e}") from e
+            raise _Failure(transport_reason("MISP", e)) from e
+        if response.status_code != 200:
+            raise _Failure(http_reason("MISP", response.status_code, "API key"))
         try:
             reply = response.json()
         except ValueError:
             reply = None
-        if response.status_code != 200:
-            detail = ""
-            if isinstance(reply, dict):
-                detail = str(reply.get("message") or reply.get("name") or "")[:200]
-            raise _Failure(
-                f"MISP answered HTTP {response.status_code}"
-                + (f": {detail}" if detail else "")
-            )
         if reply is None:
             raise _Failure("MISP's reply is not JSON")
         return reply
@@ -241,7 +236,7 @@ class MispAdapter:
                 raise _Failure("malformed provider data: an attribute without a value")
         except (_Failure, AttributeError) as e:
             reason = (
-                redact(str(e), self.url, ioc, "MISP")
+                str(e)
                 if isinstance(e, _Failure)
                 else "MISP's reply has an unexpected shape"
             )
@@ -285,10 +280,7 @@ class MispAdapter:
                 answer["warninglist_hits"] = hits
             except _Failure as e:
                 answer["warninglist_hits"] = None
-                reason = redact(str(e), self.url, ioc, "MISP")
-                answer["warninglists_unavailable"] = (
-                    f"Warninglist check failed ({reason})."
-                )
+                answer["warninglists_unavailable"] = f"Warninglist check failed ({e})."
         facts = self._facts_by(deadline)
         return {
             "outcome": answer.pop("outcome"),
