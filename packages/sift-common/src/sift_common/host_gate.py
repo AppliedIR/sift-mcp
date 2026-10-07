@@ -185,11 +185,9 @@ def start_now(
         rejected = [
             list(p) for p in state.names if p[0] == e["unit"] and _not_a_host(state, p)
         ]
-        held = state.canonical_owner(wanted)  # the unit's placeholder already: reused
-        if held is not None:
-            key, name = held.keys[0], held.canonical
-        else:
-            key, name = hi.new_machine_key(), canonical_for(wanted)
+        # (a unit whose placeholder machine exists waits by the names bound to it,
+        # so it's proposed above, never here)
+        key, name = hi.new_machine_key(), canonical_for(wanted)
         machines.append(
             {"key": key, "canonical": name, "pairs": [[e["unit"], name], *rejected]}
         )
