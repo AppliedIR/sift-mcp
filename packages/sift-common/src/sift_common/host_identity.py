@@ -208,6 +208,8 @@ def _append_locked(path: Path, record: dict) -> int:
             data = b"\n" + data
         written = os.write(fd, data)
         if written != len(data):
+            # Cut the part that landed: a later newline must not revive it
+            os.ftruncate(fd, size)
             raise HostLogError(
                 f"{path.name}: short write ({written} of {len(data)} bytes)"
             )
@@ -300,6 +302,32 @@ def _case_uuid_of(meta: dict) -> str:
     )
 
 
+def write_case_yaml(path: Path, meta: dict) -> None:
+    """Replace CASE.yaml with ``meta``, keeping its mode; the caller holds the
+    log lock.
+
+    The temp file is created fresh, never followed or reused: a file or link
+    already at its name is refused.
+    """
+    import yaml
+
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        raise HostLogError(f"{tmp}: already exists; refused") from None
+    try:
+        with contextlib.suppress(OSError):
+            os.fchmod(fd, path.stat().st_mode & 0o777)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(yaml.safe_dump(meta, sort_keys=False))
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
 def ensure_case_uuid(
     case_dir: str | os.PathLike, naming_version: int = 1
 ) -> tuple[str, int]:
@@ -330,6 +358,12 @@ def ensure_case_uuid(
         current = _case_uuid_of(meta)
         if current:
             c12 = current.replace("-", "")[:12]
+            if state.c12 and state.c12 != c12:
+                restore = state.case_uuid or f"(a UUID beginning {state.c12})"
+                raise HostLogError(
+                    f"{path} has case_uuid {current}, but this case's records are "
+                    f"stored under {state.c12}: restore case_uuid: {restore} in CASE.yaml"
+                )
             if state.c12 is None:  # minted elsewhere: the logs learn it
                 _append_locked(root / OBSERVATIONS, {"t": _now(), "kind": "case", "c12": c12,
                                "case_uuid": current, "reason": "case identity recorded"})  # fmt: skip
@@ -343,11 +377,7 @@ def ensure_case_uuid(
         new = str(uuid.uuid4())
         meta["case_uuid"] = new
         meta.setdefault("naming_version", naming_version)
-        tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        tmp.write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
-        with contextlib.suppress(OSError):
-            os.chmod(tmp, path.stat().st_mode & 0o777)
-        os.replace(tmp, path)
+        write_case_yaml(path, meta)
         c12 = new.replace("-", "")[:12]
         _append_locked(root / OBSERVATIONS, {"t": _now(), "kind": "case", "c12": c12,
                        "case_uuid": new, "reason": "case identity minted"})  # fmt: skip

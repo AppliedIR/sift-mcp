@@ -586,3 +586,46 @@ def test_an_identity_minted_elsewhere_is_recorded_in_the_logs(case):
     )
     assert hi.ensure_case_uuid(case) == ("0123abcdef01", 2)
     assert hi.recorded_c12(case) == "0123abcdef01"
+
+
+def test_a_case_whose_identity_was_changed_is_refused_with_the_recorded_one(case):
+    import uuid
+
+    import yaml
+
+    (case / "CASE.yaml").write_text("case_id: c\n")
+    hi.ensure_case_uuid(case)
+    recorded = yaml.safe_load((case / "CASE.yaml").read_text())["case_uuid"]
+    other = str(uuid.uuid4())  # e.g. copied from another case by hand
+    (case / "CASE.yaml").write_text(f"case_id: c\ncase_uuid: {other}\n")
+    with pytest.raises(hi.HostLogError, match=f"restore case_uuid: {recorded}"):
+        hi.ensure_case_uuid(case)
+    assert other in (case / "CASE.yaml").read_text()
+
+
+def test_a_link_planted_at_the_case_files_temp_name_is_refused(case, tmp_path):
+    (case / "CASE.yaml").write_text("case_id: c\n")
+    target = tmp_path / "elsewhere.txt"
+    target.write_text("untouched\n")
+    (case / f".CASE.yaml.{os.getpid()}.tmp").symlink_to(target)
+    with pytest.raises(hi.HostLogError, match="already exists; refused"):
+        hi.ensure_case_uuid(case)
+    assert target.read_text() == "untouched\n"
+    assert (case / "CASE.yaml").read_text() == "case_id: c\n"
+
+
+def test_a_short_write_leaves_nothing_a_later_line_could_revive(case, monkeypatch):
+    hi.append_observations(case, [{"kind": "unit", "unit": "u0"}])
+    log = case / hi.OBSERVATIONS
+    before = log.read_bytes()
+    real_write = os.write
+    monkeypatch.setattr(os, "write", lambda fd, data: real_write(fd, data[:7]))
+    with pytest.raises(hi.HostLogError, match="short write"):
+        hi.append_observations(case, [{"kind": "unit", "unit": "u1"}])
+    monkeypatch.undo()
+    assert log.read_bytes() == before
+    hi.append_observations(case, [{"kind": "unit", "unit": "u2"}])
+    assert [r.get("unit") for r in map(json.loads, log.read_text().splitlines())] == [
+        "u0",
+        "u2",
+    ]
