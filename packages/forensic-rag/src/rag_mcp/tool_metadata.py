@@ -5,6 +5,8 @@ TOOL_METADATA: dict[str, dict[str, list[str] | str]] = {
         "caveats": [
             "Results are reference knowledge, not case-specific evidence",
             "Relevance scores are semantic similarity, not confidence levels",
+            "Results with origin 'user' are the examiner's own material, "
+            "not a published reference",
         ],
         "interpretation_constraint": "Detection rules require validation in target environment",
     },

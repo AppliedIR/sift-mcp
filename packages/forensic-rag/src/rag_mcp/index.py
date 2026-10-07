@@ -18,6 +18,14 @@ from typing import Any
 import chromadb
 from sentence_transformers import SentenceTransformer
 
+from .stores import (
+    DEFAULT_SPACE,
+    USER_COLLECTION,
+    is_committed,
+    layout,
+    read_json,
+    user_dir,
+)
 from .tuning_config import TuningConfig, load_tuning_config
 from .utils import (
     ALLOWED_MODELS,
@@ -98,8 +106,15 @@ class RAGIndex:
         # download by another process changes metadata.json, and the next
         # call closes and reopens it (the lock keeps searches out meanwhile)
         self._client: Any | None = None
-        self._marker: int | None = None
+        self._marker: tuple[int | None, int | None] | None = None
         self._lock = threading.RLock()
+        # The examiner's store, merged into search only when committed and
+        # embedded like the shipped store
+        self._user_client: Any | None = None
+        self._user_collection: Any | None = None
+        self._user_meta: dict[str, Any] = {}
+        self._store_notice: str | None = None
+        self._store_warning: str | None = None
 
     @property
     def is_loaded(self) -> bool:
@@ -124,13 +139,21 @@ class RAGIndex:
             self._open_stores()
             self._loaded = True
 
-    def _metadata_marker(self) -> int | None:
-        """metadata.json's ctime: every write and every extraction changes it
-        (an extracted file keeps the archive's mtime)."""
-        try:
-            return (self.index_dir / "metadata.json").stat().st_ctime_ns
-        except OSError:
-            return None
+    def _metadata_marker(self) -> tuple[int | None, int | None]:
+        """Both stores' metadata.json ctimes: every write and every extraction
+        changes them (an extracted file keeps the archive's mtime), and the
+        examiner's appears when its store is committed."""
+
+        def ctime(path: Path) -> int | None:
+            try:
+                return path.stat().st_ctime_ns
+            except OSError:
+                return None
+
+        return (
+            ctime(self.index_dir / "metadata.json"),
+            ctime(user_dir(self.index_dir) / "metadata.json"),
+        )
 
     def _reload_if_changed(self) -> None:
         """Reopen the store when another process has changed it since loading.
@@ -146,13 +169,58 @@ class RAGIndex:
             self._open_stores()
 
     def _close_stores(self) -> None:
-        if self._client is not None:
-            try:
-                self._client.close()
-            except Exception as e:  # a failed close must not block the reopen
-                logger.warning(f"Closing the index client failed: {e}")
-        self._client = None
-        self.collection = None
+        for client in (self._client, self._user_client):
+            if client is not None:
+                try:
+                    client.close()
+                except Exception as e:  # a failed close mustn't block the reopen
+                    logger.warning(f"Closing an index client failed: {e}")
+        self._client = self._user_client = None
+        self.collection = self._user_collection = None
+
+    def _open_user_store(self) -> None:
+        """Open the examiner store when it is committed and comparable."""
+        self._user_client = self._user_collection = None
+        self._user_meta = {}
+        self._store_notice = self._store_warning = None
+        refresh = "python -m rag_mcp.refresh --skip-online"
+        if not is_committed(self.index_dir):
+            self._store_notice = (
+                "Your knowledge-folder documents aren't in their own store yet; "
+                f"run `{refresh}` once."
+            )
+            return
+        meta = read_json(user_dir(self.index_dir) / "metadata.json")
+        shipped_model = (
+            read_json(self.index_dir / "metadata.json").get("model")
+            or DEFAULT_MODEL_NAME
+        )
+        shipped_space = (self.collection.metadata or {}).get(
+            "hnsw:space", DEFAULT_SPACE
+        )
+        if (meta.get("model"), meta.get("hnsw:space")) != (
+            shipped_model,
+            shipped_space,
+        ):
+            self._store_warning = (
+                f"Your documents' store ({meta.get('model')}, "
+                f"{meta.get('hnsw:space')}) doesn't match the shipped index "
+                f"({shipped_model}, {shipped_space}), so it is left out of "
+                f"search. Run `{refresh}`."
+            )
+            return
+        try:
+            client = chromadb.PersistentClient(
+                path=str(user_dir(self.index_dir) / "chroma")
+            )
+            self._user_collection = client.get_collection(USER_COLLECTION)
+            self._user_client = client
+            self._user_meta = meta
+        except Exception as e:
+            self._store_warning = (
+                f"Your documents' store can't be opened ({e}), so it is left "
+                f"out of search. Run `{refresh}`."
+            )
 
     def _open_stores(self) -> None:
         """Open the index and its per-index lookups."""
@@ -169,9 +237,13 @@ class RAGIndex:
 
         self._client = chromadb.PersistentClient(path=str(chroma_path))
         self.collection = self._client.get_collection("ir_knowledge")
+        self._open_user_store()
 
         # Cache available sources
         self._load_available_sources()
+        for source in self._user_meta.get("sources") or []:
+            if source not in self.available_sources:
+                self.available_sources.append(source)
 
         # Build MITRE technique lookup from source data (dynamic - updates with refresh)
         self._load_mitre_lookup()
@@ -479,18 +551,13 @@ class RAGIndex:
 
         # Embed query and search
         query_embedding = self.model.encode(augmented_query).tolist()
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=retrieve_k,
-            include=["documents", "metadatas", "distances"],
-        )
+        candidates = self._nearest(query_embedding, retrieve_k)
+        merged = self._user_collection is not None
 
         # Format and filter results
         formatted = []
-        for i in range(len(results["ids"][0])):
-            doc = results["documents"][0][i]
-            meta = results["metadatas"][0][i]
-            distance = results["distances"][0][i]
+        for doc, meta, distance, origin in candidates:
+            meta = meta or {}
             score = 1 - distance
             raw_score = score
 
@@ -533,17 +600,18 @@ class RAGIndex:
                 if platform.lower() not in platform_str.lower():
                     continue
 
-            formatted.append(
-                {
-                    "rank": 0,  # Will be set after sorting
-                    "score": round(score, 3),
-                    "source": result_source if result_source else "unknown",
-                    "mitre_techniques": meta.get("mitre_techniques", ""),
-                    "platform": meta.get("platform", ""),
-                    "title": meta.get("title", ""),
-                    "text": doc[:MAX_TEXT_LENGTH],
-                }
-            )
+            item = {
+                "rank": 0,  # Will be set after sorting
+                "score": round(score, 3),
+                "source": result_source if result_source else "unknown",
+                "mitre_techniques": meta.get("mitre_techniques", ""),
+                "platform": meta.get("platform", ""),
+                "title": meta.get("title", ""),
+                "text": doc[:MAX_TEXT_LENGTH],
+            }
+            if merged:
+                item["origin"] = origin
+            formatted.append(item)
 
         # Boost MITRE matches if applicable
         if is_mitre_query and formatted:
@@ -560,12 +628,58 @@ class RAGIndex:
         # Log query metrics for production threshold monitoring
         self._log_query_metrics(query, augmented_query, formatted)
 
-        return {
+        response = {
             "results": formatted,
             "source_filter": source_filter,
             "source_ids": list(source_ids_set) if source_ids_set else None,
             "matched_sources": matched_sources if source_filter else None,
         }
+        if self._store_notice:
+            response["notice"] = self._store_notice
+        if self._store_warning:
+            response["warning"] = self._store_warning
+        return response
+
+    def _nearest(
+        self, embedding: list[float], k: int
+    ) -> list[tuple[str, dict, float, str]]:
+        """The k nearest records over both stores, by raw distance.
+
+        A record is a duplicate only when its id **and** text match: an
+        examiner file can share a bundled file's stem, and so its ids.
+        """
+        stores = [("shipped", self.collection)]
+        if self._user_collection is not None:
+            stores.append(("user", self._user_collection))
+        found = []
+        for origin, collection in stores:
+            n = k if origin == "shipped" else min(k, collection.count())
+            if n < 1:
+                continue
+            got = collection.query(
+                query_embeddings=[embedding],
+                n_results=n,
+                include=["documents", "metadatas", "distances"],
+            )
+            for i, record_id in enumerate(got["ids"][0]):
+                found.append(
+                    (
+                        got["distances"][0][i],
+                        record_id,
+                        got["documents"][0][i],
+                        got["metadatas"][0][i],
+                        origin,
+                    )
+                )
+        found.sort(key=lambda r: r[0])
+        seen: set[tuple[str, str]] = set()
+        nearest = []
+        for distance, record_id, doc, meta, origin in found:
+            if (record_id, doc) in seen:
+                continue
+            seen.add((record_id, doc))
+            nearest.append((doc, meta, distance, origin))
+        return nearest[:k]
 
     def _log_query_metrics(
         self, original_query: str, augmented_query: str, results: list[dict[str, Any]]
@@ -701,7 +815,12 @@ class RAGIndex:
             return list(self.available_sources)
 
     def _stats(self) -> dict[str, Any]:
+        user = self._user_collection
         return {
+            "user_document_count": user.count() if user is not None else 0,
+            "user_model": self._user_meta.get("model"),
+            "user_sources": list(self._user_meta.get("sources") or []),
+            "layout": layout(self.index_dir),
             "document_count": self.collection.count(),
             "source_count": len(self.available_sources),
             "sources": self.available_sources,

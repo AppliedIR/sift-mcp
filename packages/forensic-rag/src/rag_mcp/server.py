@@ -311,16 +311,23 @@ class RAGServer:
         )
 
         response = {"status": "ok", "query": query, "results": search_result["results"]}
+        warnings = []
 
         # Add context about filters
         if search_result["source_filter"]:
             if search_result["matched_sources"]:
                 response["matched_sources"] = search_result["matched_sources"]
             else:
-                response["warning"] = (
+                warnings.append(
                     f"No sources match filter '{source}'. "
                     "Use list_knowledge_sources tool to see available sources."
                 )
+        if search_result.get("warning"):
+            warnings.append(search_result["warning"])
+        if warnings:
+            response["warning"] = " | ".join(warnings)
+        if search_result.get("notice"):
+            response["notice"] = search_result["notice"]
 
         return response
 
@@ -328,7 +335,13 @@ class RAGServer:
         """List available sources."""
         loop = asyncio.get_running_loop()
         sources = await loop.run_in_executor(None, self.index.sources)
-        return {"status": "ok", "sources": sources, "count": len(sources)}
+        stats = await loop.run_in_executor(None, self.index.get_stats)
+        return {
+            "status": "ok",
+            "sources": sources,
+            "count": len(sources),
+            "user_sources": stats["user_sources"],
+        }
 
     async def _get_stats(self) -> dict[str, Any]:
         """Get index statistics."""
