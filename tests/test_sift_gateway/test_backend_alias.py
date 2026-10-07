@@ -89,6 +89,7 @@ def test_the_new_name_is_also_served_at_the_earlier_one():
         tool_map = dict(gw._tool_map)
     assert new_tools == old_tools == ["lookup_ioc", "search_threat_intel"]
     assert new_init["instructions"] == old_init["instructions"] == OPENCTI
+    assert old_init["serverInfo"]["name"] == "sift-gateway/threatintel-mcp"
     assert sorted(s["name"] for s in services) == ["sift-mcp", "threatintel-mcp"]
     assert tool_map["lookup_ioc"] == "threatintel-mcp"  # bare, not prefixed
 
@@ -123,6 +124,14 @@ def test_both_names_configured_is_logged_as_an_error(caplog):
     # each name stays its own backend's route
     with TestClient(gw.create_app()) as client:
         services = client.get("/api/v1/services").json()["services"]
+        reached = {
+            name: _session(client, f"/mcp/{name}")[0]["serverInfo"]["name"]
+            for name in ("opencti-mcp", "threatintel-mcp")
+        }
+    assert reached == {
+        "opencti-mcp": "sift-gateway/opencti-mcp",
+        "threatintel-mcp": "sift-gateway/threatintel-mcp",
+    }
     assert sorted(s["name"] for s in services) == ["opencti-mcp", "threatintel-mcp"]
 
 
