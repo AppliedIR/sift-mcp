@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -93,6 +94,12 @@ class RAGIndex:
         self._mitre_lookup: dict[str, str] = {}  # T1003 -> "OS Credential Dumping"
         self._tuning_config: TuningConfig | None = None
         self._loaded = False
+        # One client per store for the life of the process; a refresh or
+        # download by another process changes metadata.json, and the next
+        # call closes and reopens it (the lock keeps searches out meanwhile)
+        self._client: Any | None = None
+        self._marker: int | None = None
+        self._lock = threading.RLock()
 
     @property
     def is_loaded(self) -> bool:
@@ -101,19 +108,55 @@ class RAGIndex:
 
     def load(self) -> None:
         """Load the embedding model and ChromaDB index into memory."""
-        if self._loaded:
-            return
+        with self._lock:
+            if self._loaded:
+                return
 
-        # Security: validate model name against allowlist
-        if self.model_name not in ALLOWED_MODELS:
-            raise ValueError(
-                f"Model '{self.model_name}' is not allowed. "
-                "Use one of the approved embedding models."
-            )
+            # Security: validate model name against allowlist
+            if self.model_name not in ALLOWED_MODELS:
+                raise ValueError(
+                    f"Model '{self.model_name}' is not allowed. "
+                    "Use one of the approved embedding models."
+                )
 
-        logger.info(f"Loading embedding model: {self.model_name}")
-        self.model = SentenceTransformer(self.model_name)
+            logger.info(f"Loading embedding model: {self.model_name}")
+            self.model = SentenceTransformer(self.model_name)
+            self._open_stores()
+            self._loaded = True
 
+    def _metadata_marker(self) -> int | None:
+        """metadata.json's ctime: every write and every extraction changes it
+        (an extracted file keeps the archive's mtime)."""
+        try:
+            return (self.index_dir / "metadata.json").stat().st_ctime_ns
+        except OSError:
+            return None
+
+    def _reload_if_changed(self) -> None:
+        """Reopen the store when another process has changed it since loading.
+
+        Chroma caches one system per path, so the client is closed before the
+        store is reopened; otherwise the reopened handle reads the old data.
+        """
+        with self._lock:
+            if not self._loaded or self._metadata_marker() == self._marker:
+                return
+            logger.info("Index changed on disk; reloading")
+            self._close_stores()
+            self._open_stores()
+
+    def _close_stores(self) -> None:
+        if self._client is not None:
+            try:
+                self._client.close()
+            except Exception as e:  # a failed close must not block the reopen
+                logger.warning(f"Closing the index client failed: {e}")
+        self._client = None
+        self.collection = None
+
+    def _open_stores(self) -> None:
+        """Open the index and its per-index lookups."""
+        self._marker = self._metadata_marker()
         logger.info("Loading ChromaDB index...")
         chroma_path = self.index_dir / "chroma"
         if not chroma_path.exists():
@@ -124,8 +167,8 @@ class RAGIndex:
                 "or check RAG_INDEX_DIR environment variable."
             )
 
-        client = chromadb.PersistentClient(path=str(chroma_path))
-        self.collection = client.get_collection("ir_knowledge")
+        self._client = chromadb.PersistentClient(path=str(chroma_path))
+        self.collection = self._client.get_collection("ir_knowledge")
 
         # Cache available sources
         self._load_available_sources()
@@ -145,7 +188,6 @@ class RAGIndex:
             f"Ready. {count} documents indexed from {len(self.available_sources)} sources."
         )
         logger.info(f"MITRE lookup loaded: {len(self._mitre_lookup)} technique IDs")
-        self._loaded = True
 
     def _load_available_sources(self) -> None:
         """Load source names from metadata.json or scan collection."""
@@ -394,7 +436,19 @@ class RAGIndex:
         """
         if not self._loaded:
             self.load()
+        with self._lock:
+            self._reload_if_changed()
+            return self._search(query, top_k, source, source_ids, technique, platform)
 
+    def _search(
+        self,
+        query: str,
+        top_k: int,
+        source: str | None,
+        source_ids: list[str] | None,
+        technique: str | None,
+        platform: str | None,
+    ) -> dict[str, Any]:
         # Enforce top_k bounds (defense-in-depth)
         if not isinstance(top_k, int) or top_k < 1:
             top_k = 5
@@ -634,7 +688,19 @@ class RAGIndex:
         """Get index statistics (excludes internal paths for security)."""
         if not self._loaded:
             self.load()
+        with self._lock:
+            self._reload_if_changed()
+            return self._stats()
 
+    def sources(self) -> list[str]:
+        """The sources, after reopening a store another process changed."""
+        if not self._loaded:
+            self.load()
+        with self._lock:
+            self._reload_if_changed()
+            return list(self.available_sources)
+
+    def _stats(self) -> dict[str, Any]:
         return {
             "document_count": self.collection.count(),
             "source_count": len(self.available_sources),

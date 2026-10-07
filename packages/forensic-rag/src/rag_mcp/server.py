@@ -326,15 +326,9 @@ class RAGServer:
 
     async def _list_sources(self) -> dict[str, Any]:
         """List available sources."""
-        if not self.index.is_loaded:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self.index.load)
-
-        return {
-            "status": "ok",
-            "sources": self.index.available_sources,
-            "count": len(self.index.available_sources),
-        }
+        loop = asyncio.get_running_loop()
+        sources = await loop.run_in_executor(None, self.index.sources)
+        return {"status": "ok", "sources": sources, "count": len(sources)}
 
     async def _get_stats(self) -> dict[str, Any]:
         """Get index statistics."""
