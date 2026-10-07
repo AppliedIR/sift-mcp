@@ -17,6 +17,9 @@ from opencti_mcp.server import OpenCTIMCPServer
 REPLIES = json.loads(
     Path(__file__).with_name("opencti_graphql_replies.json").read_text()
 )
+MISP_REPLIES = json.loads(
+    Path(__file__).with_name("misp_rest_replies.json").read_text()
+)
 
 IP = "11.0.113.10"  # three indicators
 REVOKED = "a" * 63 + "1"  # one revoked indicator with three relationships
@@ -108,3 +111,74 @@ def fake_provider(monkeypatch, name, answer, timeout=5.0) -> list:
     module.create = Adapter
     monkeypatch.setitem(sys.modules, module.__name__, module)
     return calls
+
+
+class MispTransport:
+    """Answers the MISP adapter's requests from a route, and records each one."""
+
+    def __init__(self, route):
+        self.route = route
+        self.requests: list[dict] = []
+
+    def __call__(self, method, url, json=None, headers=None, timeout=None, verify=None):
+        path = "/" + url.split("/", 3)[3]
+        self.requests.append(
+            {
+                "method": method,
+                "path": path,
+                "body": json,
+                "headers": headers,
+                "timeout": timeout,
+                "verify": verify,
+            }
+        )
+        answer = self.route(method, path, json)
+        if isinstance(answer, BaseException):
+            raise answer
+        if isinstance(answer, httpx.Response):
+            return answer
+        return httpx.Response(200, json=answer)
+
+    def paths(self) -> list[str]:
+        return [r["path"] for r in self.requests]
+
+
+MISP_SHA = "d" * 63 + "4"
+_MISP_RECORDED = {
+    "11.0.113.10": "ip2",
+    "8.8.8.8": "listed",
+    MISP_SHA: "sha",
+    "11.0.113.20": "composite",
+    "11.0.113.99": "none",
+    "EVIL-SAMPLE.EXAMPLE": "domain",
+}
+
+
+def misp_recorded(version: str):
+    """Route requests to the replies recorded from MISP 2.4 or 2.5."""
+
+    def reply(key):
+        recorded = MISP_REPLIES[f"misp{version}:{key}"]
+        return httpx.Response(recorded["status"], json=recorded["body"])
+
+    def route(method, path, body):
+        if path == "/attributes/restSearch":
+            return reply(f"search:{_MISP_RECORDED[body['value']]}")
+        if path == "/warninglists/checkValue":
+            return reply(f"check:{_MISP_RECORDED[body['value']]}")
+        return reply(
+            {
+                "/servers/getVersion": "version",
+                "/warninglists/index": "warninglists",
+                "/decayingModel/index": "models",
+            }[path]
+        )
+
+    return route
+
+
+def misp_env(monkeypatch, **extra):
+    monkeypatch.setenv("MISP_URL", "https://127.0.0.1:9")
+    monkeypatch.setenv("MISP_KEY", "0" * 40)
+    for name, value in extra.items():
+        monkeypatch.setenv(name, value)

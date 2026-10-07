@@ -35,12 +35,14 @@ def no_provider_network(monkeypatch):
     if find_spec("opencti_mcp") is None:
         return
     import httpx
+    import opencti_mcp.providers.misp as misp_provider
     import opencti_mcp.providers.opencti as opencti_provider
 
     def refuse(*args, **kwargs):
         raise httpx.ConnectError("tests don't reach a network")
 
     monkeypatch.setattr(opencti_provider, "_http_post", refuse)
+    monkeypatch.setattr(misp_provider, "_http_request", refuse)
 
 
 @pytest.fixture
@@ -54,6 +56,22 @@ def provider_transport(monkeypatch):
     def install(route):
         transport = Transport(route)
         monkeypatch.setattr(opencti_provider, "_http_post", transport)
+        return transport
+
+    return install
+
+
+@pytest.fixture
+def misp_transport(monkeypatch):
+    """Install a route as the MISP adapter's network; returns the transport,
+    which records every request."""
+    import opencti_mcp.providers.misp as misp_provider
+
+    from .threatintel_rig import MispTransport
+
+    def install(route):
+        transport = MispTransport(route)
+        monkeypatch.setattr(misp_provider, "_http_request", transport)
         return transport
 
     return install

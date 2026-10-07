@@ -1,0 +1,1007 @@
+{
+ "_about": "REST replies recorded from MISP 2.4.198 and 2.5.48 test instances seeded with synthetic events; the warninglist and decaying-model indexes are trimmed to id, name and enabled. Failure replies keep their HTTP status.",
+ "misp24:bad_key": {
+  "body": "{\"name\":\"Authentication failed. Please make sure you pass the API key of an API enabled user along in the Authorization header.\",\"message\":\"Authentication failed. Please make sure you pass the API key of an API enabled user along in the Authorization header.\",\"url\":\"\\/attributes\\/restSearch\"}",
+  "status": 403
+ },
+ "misp24:check:composite": {
+  "body": [],
+  "status": 200
+ },
+ "misp24:check:domain": {
+  "body": [],
+  "status": 200
+ },
+ "misp24:check:ip2": {
+  "body": [],
+  "status": 200
+ },
+ "misp24:check:listed": {
+  "body": {
+   "8.8.8.8": [
+    {
+     "id": "60",
+     "matched": "8.8.8.8/32",
+     "name": "List of known IPv4 public DNS resolvers"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "misp24:check:none": {
+  "body": [],
+  "status": 200
+ },
+ "misp24:check:sha": {
+  "body": [],
+  "status": 200
+ },
+ "misp24:db_down": {
+  "body": "{\"name\":\"An Internal Error Has Occurred.\",\"message\":\"An Internal Error Has Occurred.\",\"url\":\"\\/attributes\\/restSearch\"}",
+  "status": 500
+ },
+ "misp24:models": {
+  "body": [
+   {
+    "DecayingModel": {
+     "enabled": false,
+     "id": "1",
+     "name": "Vishing model"
+    }
+   },
+   {
+    "DecayingModel": {
+     "enabled": false,
+     "id": "2",
+     "name": "Phishing model"
+    }
+   },
+   {
+    "DecayingModel": {
+     "enabled": true,
+     "id": "3",
+     "name": "NIDS Simple Decaying Model"
+    }
+   }
+  ],
+  "status": 200
+ },
+ "misp24:search:composite": {
+  "body": {
+   "response": {
+    "Attribute": [
+     {
+      "Event": {
+       "Orgc": {
+        "id": "1",
+        "local": true,
+        "name": "EXAMPLE",
+        "uuid": "353b9194-9b76-4eb0-9c88-d86afe563d41"
+       },
+       "Tag": [],
+       "analysis": "0",
+       "date": "2026-10-07",
+       "distribution": "0",
+       "extends_uuid": "",
+       "id": "2",
+       "info": "low threat published",
+       "org_id": "1",
+       "orgc_id": "1",
+       "publish_timestamp": "1791364778",
+       "published": true,
+       "sharing_group_id": "0",
+       "threat_level_id": "3",
+       "timestamp": "1791364778",
+       "uuid": "8b3ce0bd-bb1b-4885-901c-2d047733e52e"
+      },
+      "category": "Network activity",
+      "comment": "",
+      "decay_score": [
+       {
+        "DecayingModel": {
+         "id": "3",
+         "name": "NIDS Simple Decaying Model"
+        },
+        "base_score": 80,
+        "decayed": false,
+        "score": 79.63739624728709
+       }
+      ],
+      "deleted": false,
+      "disable_correlation": false,
+      "distribution": "5",
+      "event_id": "2",
+      "first_seen": null,
+      "id": "7",
+      "last_seen": null,
+      "object_id": "0",
+      "object_relation": null,
+      "sharing_group_id": "0",
+      "timestamp": "1791364778",
+      "to_ids": true,
+      "type": "domain|ip",
+      "uuid": "ec5463a0-e5b7-49a0-b677-2a71c790b33a",
+      "value": "c2-sample.example|11.0.113.20"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "misp24:search:domain": {
+  "body": {
+   "response": {
+    "Attribute": [
+     {
+      "Event": {
+       "Orgc": {
+        "id": "1",
+        "local": true,
+        "name": "EXAMPLE",
+        "uuid": "353b9194-9b76-4eb0-9c88-d86afe563d41"
+       },
+       "Tag": [],
+       "analysis": "2",
+       "date": "2026-10-07",
+       "distribution": "0",
+       "extends_uuid": "",
+       "id": "1",
+       "info": "high threat draft",
+       "org_id": "1",
+       "orgc_id": "1",
+       "publish_timestamp": "0",
+       "published": false,
+       "sharing_group_id": "0",
+       "threat_level_id": "1",
+       "timestamp": "1791364777",
+       "uuid": "0ca21579-1765-4ffd-94cc-5c71fa397ea8"
+      },
+      "category": "Network activity",
+      "comment": "",
+      "decay_score": [
+       {
+        "DecayingModel": {
+         "id": "3",
+         "name": "NIDS Simple Decaying Model"
+        },
+        "base_score": 80,
+        "decayed": false,
+        "score": 79.6365460614712
+       }
+      ],
+      "deleted": false,
+      "disable_correlation": false,
+      "distribution": "5",
+      "event_id": "1",
+      "first_seen": null,
+      "id": "3",
+      "last_seen": null,
+      "object_id": "0",
+      "object_relation": null,
+      "sharing_group_id": "0",
+      "timestamp": "1791364778",
+      "to_ids": true,
+      "type": "domain",
+      "uuid": "456dc85a-d7fc-4341-8bde-ea54bfd6893d",
+      "value": "evil-sample.example"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "misp24:search:ip2": {
+  "body": {
+   "response": {
+    "Attribute": [
+     {
+      "Event": {
+       "Orgc": {
+        "id": "1",
+        "local": true,
+        "name": "EXAMPLE",
+        "uuid": "353b9194-9b76-4eb0-9c88-d86afe563d41"
+       },
+       "Tag": [],
+       "analysis": "2",
+       "date": "2026-10-07",
+       "distribution": "0",
+       "extends_uuid": "",
+       "id": "1",
+       "info": "high threat draft",
+       "org_id": "1",
+       "orgc_id": "1",
+       "publish_timestamp": "0",
+       "published": false,
+       "sharing_group_id": "0",
+       "threat_level_id": "1",
+       "timestamp": "1791364777",
+       "uuid": "0ca21579-1765-4ffd-94cc-5c71fa397ea8"
+      },
+      "category": "Network activity",
+      "comment": "",
+      "decay_score": [
+       {
+        "DecayingModel": {
+         "id": "3",
+         "name": "NIDS Simple Decaying Model"
+        },
+        "base_score": 80,
+        "decayed": false,
+        "score": 79.63739624728709
+       }
+      ],
+      "deleted": false,
+      "disable_correlation": false,
+      "distribution": "5",
+      "event_id": "1",
+      "first_seen": null,
+      "id": "1",
+      "last_seen": null,
+      "object_id": "0",
+      "object_relation": null,
+      "sharing_group_id": "0",
+      "timestamp": "1791364778",
+      "to_ids": true,
+      "type": "ip-dst",
+      "uuid": "420f7ca7-3315-46e2-ae74-55dfe7c1af6b",
+      "value": "11.0.113.10"
+     },
+     {
+      "Event": {
+       "Orgc": {
+        "id": "1",
+        "local": true,
+        "name": "EXAMPLE",
+        "uuid": "353b9194-9b76-4eb0-9c88-d86afe563d41"
+       },
+       "Tag": [],
+       "analysis": "0",
+       "date": "2026-10-07",
+       "distribution": "0",
+       "extends_uuid": "",
+       "id": "2",
+       "info": "low threat published",
+       "org_id": "1",
+       "orgc_id": "1",
+       "publish_timestamp": "1791364778",
+       "published": true,
+       "sharing_group_id": "0",
+       "threat_level_id": "3",
+       "timestamp": "1791364778",
+       "uuid": "8b3ce0bd-bb1b-4885-901c-2d047733e52e"
+      },
+      "category": "Network activity",
+      "comment": "",
+      "decay_score": [
+       {
+        "DecayingModel": {
+         "id": "3",
+         "name": "NIDS Simple Decaying Model"
+        },
+        "base_score": 80,
+        "decayed": false,
+        "score": 79.63739624728709
+       }
+      ],
+      "deleted": false,
+      "disable_correlation": false,
+      "distribution": "5",
+      "event_id": "2",
+      "first_seen": null,
+      "id": "6",
+      "last_seen": null,
+      "object_id": "0",
+      "object_relation": null,
+      "sharing_group_id": "0",
+      "timestamp": "1791364778",
+      "to_ids": false,
+      "type": "ip-src",
+      "uuid": "d9155889-accb-4a73-9861-18794da3e433",
+      "value": "11.0.113.10"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "misp24:search:listed": {
+  "body": {
+   "response": {
+    "Attribute": [
+     {
+      "Event": {
+       "Orgc": {
+        "id": "1",
+        "local": true,
+        "name": "EXAMPLE",
+        "uuid": "353b9194-9b76-4eb0-9c88-d86afe563d41"
+       },
+       "Tag": [],
+       "analysis": "0",
+       "date": "2026-10-07",
+       "distribution": "0",
+       "extends_uuid": "",
+       "id": "2",
+       "info": "low threat published",
+       "org_id": "1",
+       "orgc_id": "1",
+       "publish_timestamp": "1791364778",
+       "published": true,
+       "sharing_group_id": "0",
+       "threat_level_id": "3",
+       "timestamp": "1791364778",
+       "uuid": "8b3ce0bd-bb1b-4885-901c-2d047733e52e"
+      },
+      "category": "Network activity",
+      "comment": "",
+      "decay_score": [
+       {
+        "DecayingModel": {
+         "id": "3",
+         "name": "NIDS Simple Decaying Model"
+        },
+        "base_score": 80,
+        "decayed": false,
+        "score": 79.63739624728709
+       }
+      ],
+      "deleted": false,
+      "disable_correlation": false,
+      "distribution": "5",
+      "event_id": "2",
+      "first_seen": null,
+      "id": "8",
+      "last_seen": null,
+      "object_id": "0",
+      "object_relation": null,
+      "sharing_group_id": "0",
+      "timestamp": "1791364778",
+      "to_ids": false,
+      "type": "ip-dst",
+      "uuid": "b913153a-e023-4a92-b3c6-fa1cbeb7d7d7",
+      "value": "8.8.8.8"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "misp24:search:none": {
+  "body": {
+   "response": {
+    "Attribute": []
+   }
+  },
+  "status": 200
+ },
+ "misp24:search:sha": {
+  "body": {
+   "response": {
+    "Attribute": [
+     {
+      "Event": {
+       "Orgc": {
+        "id": "1",
+        "local": true,
+        "name": "EXAMPLE",
+        "uuid": "353b9194-9b76-4eb0-9c88-d86afe563d41"
+       },
+       "Tag": [],
+       "analysis": "2",
+       "date": "2026-10-07",
+       "distribution": "0",
+       "extends_uuid": "",
+       "id": "1",
+       "info": "high threat draft",
+       "org_id": "1",
+       "orgc_id": "1",
+       "publish_timestamp": "0",
+       "published": false,
+       "sharing_group_id": "0",
+       "threat_level_id": "1",
+       "timestamp": "1791364777",
+       "uuid": "0ca21579-1765-4ffd-94cc-5c71fa397ea8"
+      },
+      "category": "Payload delivery",
+      "comment": "",
+      "deleted": false,
+      "disable_correlation": false,
+      "distribution": "5",
+      "event_id": "1",
+      "first_seen": null,
+      "id": "4",
+      "last_seen": null,
+      "object_id": "0",
+      "object_relation": null,
+      "sharing_group_id": "0",
+      "timestamp": "1791364778",
+      "to_ids": true,
+      "type": "sha256",
+      "uuid": "34261685-afc1-4684-a55a-1ca4ec32e02b",
+      "value": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd4"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "misp24:version": {
+  "body": {
+   "filter_sightings": true,
+   "perm_analyst_data": true,
+   "perm_galaxy_editor": true,
+   "perm_sighting": true,
+   "perm_sync": true,
+   "pymisp_recommended_version": "2.4.198",
+   "request_encoding": [
+    "gzip",
+    "br"
+   ],
+   "uuid": "d736f64c-bee7-43bc-b21e-972ff7eba1d3",
+   "version": "2.4.198"
+  },
+  "status": 200
+ },
+ "misp24:warninglists": {
+  "body": {
+   "Warninglists": [
+    {
+     "Warninglist": {
+      "enabled": true,
+      "id": "60",
+      "name": "List of known IPv4 public DNS resolvers"
+     }
+    },
+    {
+     "Warninglist": {
+      "enabled": false,
+      "id": "89",
+      "name": "List of known Zscaler IP address ranges"
+     }
+    },
+    {
+     "Warninglist": {
+      "enabled": false,
+      "id": "88",
+      "name": "List of known Wikimedia address ranges"
+     }
+    },
+    {
+     "Warninglist": {
+      "enabled": false,
+      "id": "87",
+      "name": "List of known domains to know external IP"
+     }
+    }
+   ]
+  },
+  "status": 200,
+  "trimmed": "89 lists, 4 kept"
+ },
+ "misp25:bad_key": {
+  "body": "{\"name\":\"Authentication failed. Please make sure you pass the API key of an API enabled user along in the Authorization header.\",\"message\":\"Authentication failed. Please make sure you pass the API key of an API enabled user along in the Authorization header.\",\"url\":\"\\/attributes\\/restSearch\"}",
+  "status": 403
+ },
+ "misp25:check:composite": {
+  "body": [],
+  "status": 200
+ },
+ "misp25:check:domain": {
+  "body": [],
+  "status": 200
+ },
+ "misp25:check:ip2": {
+  "body": [],
+  "status": 200
+ },
+ "misp25:check:listed": {
+  "body": {
+   "8.8.8.8": [
+    {
+     "id": "162",
+     "matched": "8.8.8.8/32",
+     "name": "List of known IPv4 public DNS resolvers"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "misp25:check:none": {
+  "body": [],
+  "status": 200
+ },
+ "misp25:check:sha": {
+  "body": [],
+  "status": 200
+ },
+ "misp25:models": {
+  "body": [
+   {
+    "DecayingModel": {
+     "enabled": false,
+     "id": "1",
+     "name": "Vishing model"
+    }
+   },
+   {
+    "DecayingModel": {
+     "enabled": false,
+     "id": "2",
+     "name": "Phishing model"
+    }
+   },
+   {
+    "DecayingModel": {
+     "enabled": true,
+     "id": "3",
+     "name": "NIDS Simple Decaying Model"
+    }
+   }
+  ],
+  "status": 200
+ },
+ "misp25:search:composite": {
+  "body": {
+   "response": {
+    "Attribute": [
+     {
+      "Event": {
+       "Org": {
+        "id": "1",
+        "name": "EXAMPLE",
+        "uuid": "7b78686f-97a3-4a7f-af96-9da2ed73c082"
+       },
+       "Orgc": {
+        "id": "1",
+        "name": "EXAMPLE",
+        "uuid": "7b78686f-97a3-4a7f-af96-9da2ed73c082"
+       },
+       "Tag": [],
+       "ThreatLevel": {
+        "id": "4",
+        "name": "Undefined"
+       },
+       "analysis": "0",
+       "date": "2026-10-07",
+       "distribution": "0",
+       "extends_uuid": "",
+       "id": "2",
+       "info": "low threat published",
+       "org_id": "1",
+       "orgc_id": "1",
+       "publish_timestamp": "1791364893",
+       "published": true,
+       "sharing_group_id": "0",
+       "threat_level_id": "3",
+       "timestamp": "1791364892",
+       "uuid": "8c01183e-1ae2-404c-b7c3-3bb4f408e1d2"
+      },
+      "category": "Network activity",
+      "comment": "",
+      "decay_score": [
+       {
+        "DecayingModel": {
+         "id": "3",
+         "name": "NIDS Simple Decaying Model"
+        },
+        "base_score": 80,
+        "decayed": false,
+        "score": 79.75530316060505
+       }
+      ],
+      "deleted": false,
+      "disable_correlation": false,
+      "distribution": "5",
+      "event_id": "2",
+      "first_seen": null,
+      "id": "7",
+      "last_seen": null,
+      "object_id": "0",
+      "object_relation": null,
+      "sharing_group_id": "0",
+      "timestamp": "1791364892",
+      "to_ids": true,
+      "type": "domain|ip",
+      "uuid": "12a1ea22-dae9-44cd-a83c-31878e980c5f",
+      "value": "c2-sample.example|11.0.113.20"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "misp25:search:domain": {
+  "body": {
+   "response": {
+    "Attribute": [
+     {
+      "Event": {
+       "Org": {
+        "id": "1",
+        "name": "EXAMPLE",
+        "uuid": "7b78686f-97a3-4a7f-af96-9da2ed73c082"
+       },
+       "Orgc": {
+        "id": "1",
+        "name": "EXAMPLE",
+        "uuid": "7b78686f-97a3-4a7f-af96-9da2ed73c082"
+       },
+       "Tag": [],
+       "ThreatLevel": {
+        "id": "2",
+        "name": "Medium"
+       },
+       "analysis": "2",
+       "date": "2026-10-07",
+       "distribution": "0",
+       "extends_uuid": "",
+       "id": "1",
+       "info": "high threat draft",
+       "org_id": "1",
+       "orgc_id": "1",
+       "publish_timestamp": "0",
+       "published": false,
+       "sharing_group_id": "0",
+       "threat_level_id": "1",
+       "timestamp": "1791364892",
+       "uuid": "712ed136-7186-483e-888d-e3e7978f2bac"
+      },
+      "category": "Network activity",
+      "comment": "",
+      "decay_score": [
+       {
+        "DecayingModel": {
+         "id": "3",
+         "name": "NIDS Simple Decaying Model"
+        },
+        "base_score": 80,
+        "decayed": false,
+        "score": 79.75404507087579
+       }
+      ],
+      "deleted": false,
+      "disable_correlation": false,
+      "distribution": "5",
+      "event_id": "1",
+      "first_seen": null,
+      "id": "3",
+      "last_seen": null,
+      "object_id": "0",
+      "object_relation": null,
+      "sharing_group_id": "0",
+      "timestamp": "1791364892",
+      "to_ids": true,
+      "type": "domain",
+      "uuid": "e43ab8e8-6f83-4a3d-9de2-af8d72429ca1",
+      "value": "evil-sample.example"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "misp25:search:ip2": {
+  "body": {
+   "response": {
+    "Attribute": [
+     {
+      "Event": {
+       "Org": {
+        "id": "1",
+        "name": "EXAMPLE",
+        "uuid": "7b78686f-97a3-4a7f-af96-9da2ed73c082"
+       },
+       "Orgc": {
+        "id": "1",
+        "name": "EXAMPLE",
+        "uuid": "7b78686f-97a3-4a7f-af96-9da2ed73c082"
+       },
+       "Tag": [],
+       "ThreatLevel": {
+        "id": "2",
+        "name": "Medium"
+       },
+       "analysis": "2",
+       "date": "2026-10-07",
+       "distribution": "0",
+       "extends_uuid": "",
+       "id": "1",
+       "info": "high threat draft",
+       "org_id": "1",
+       "orgc_id": "1",
+       "publish_timestamp": "0",
+       "published": false,
+       "sharing_group_id": "0",
+       "threat_level_id": "1",
+       "timestamp": "1791364892",
+       "uuid": "712ed136-7186-483e-888d-e3e7978f2bac"
+      },
+      "category": "Network activity",
+      "comment": "",
+      "decay_score": [
+       {
+        "DecayingModel": {
+         "id": "3",
+         "name": "NIDS Simple Decaying Model"
+        },
+        "base_score": 80,
+        "decayed": false,
+        "score": 79.75656775221992
+       }
+      ],
+      "deleted": false,
+      "disable_correlation": false,
+      "distribution": "5",
+      "event_id": "1",
+      "first_seen": null,
+      "id": "1",
+      "last_seen": null,
+      "object_id": "0",
+      "object_relation": null,
+      "sharing_group_id": "0",
+      "timestamp": "1791364892",
+      "to_ids": true,
+      "type": "ip-dst",
+      "uuid": "7ff74799-fa80-4ee8-9966-29f1ac577011",
+      "value": "11.0.113.10"
+     },
+     {
+      "Event": {
+       "Org": {
+        "id": "1",
+        "name": "EXAMPLE",
+        "uuid": "7b78686f-97a3-4a7f-af96-9da2ed73c082"
+       },
+       "Orgc": {
+        "id": "1",
+        "name": "EXAMPLE",
+        "uuid": "7b78686f-97a3-4a7f-af96-9da2ed73c082"
+       },
+       "Tag": [],
+       "ThreatLevel": {
+        "id": "4",
+        "name": "Undefined"
+       },
+       "analysis": "0",
+       "date": "2026-10-07",
+       "distribution": "0",
+       "extends_uuid": "",
+       "id": "2",
+       "info": "low threat published",
+       "org_id": "1",
+       "orgc_id": "1",
+       "publish_timestamp": "1791364893",
+       "published": true,
+       "sharing_group_id": "0",
+       "threat_level_id": "3",
+       "timestamp": "1791364892",
+       "uuid": "8c01183e-1ae2-404c-b7c3-3bb4f408e1d2"
+      },
+      "category": "Network activity",
+      "comment": "",
+      "decay_score": [
+       {
+        "DecayingModel": {
+         "id": "3",
+         "name": "NIDS Simple Decaying Model"
+        },
+        "base_score": 80,
+        "decayed": false,
+        "score": 79.75656775221992
+       }
+      ],
+      "deleted": false,
+      "disable_correlation": false,
+      "distribution": "5",
+      "event_id": "2",
+      "first_seen": null,
+      "id": "6",
+      "last_seen": null,
+      "object_id": "0",
+      "object_relation": null,
+      "sharing_group_id": "0",
+      "timestamp": "1791364892",
+      "to_ids": false,
+      "type": "ip-src",
+      "uuid": "87332b66-fbc9-49cf-8b38-a7d6efae827c",
+      "value": "11.0.113.10"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "misp25:search:listed": {
+  "body": {
+   "response": {
+    "Attribute": [
+     {
+      "Event": {
+       "Org": {
+        "id": "1",
+        "name": "EXAMPLE",
+        "uuid": "7b78686f-97a3-4a7f-af96-9da2ed73c082"
+       },
+       "Orgc": {
+        "id": "1",
+        "name": "EXAMPLE",
+        "uuid": "7b78686f-97a3-4a7f-af96-9da2ed73c082"
+       },
+       "Tag": [],
+       "ThreatLevel": {
+        "id": "4",
+        "name": "Undefined"
+       },
+       "analysis": "0",
+       "date": "2026-10-07",
+       "distribution": "0",
+       "extends_uuid": "",
+       "id": "2",
+       "info": "low threat published",
+       "org_id": "1",
+       "orgc_id": "1",
+       "publish_timestamp": "1791364893",
+       "published": true,
+       "sharing_group_id": "0",
+       "threat_level_id": "3",
+       "timestamp": "1791364892",
+       "uuid": "8c01183e-1ae2-404c-b7c3-3bb4f408e1d2"
+      },
+      "category": "Network activity",
+      "comment": "",
+      "decay_score": [
+       {
+        "DecayingModel": {
+         "id": "3",
+         "name": "NIDS Simple Decaying Model"
+        },
+        "base_score": 80,
+        "decayed": false,
+        "score": 79.75656775221992
+       }
+      ],
+      "deleted": false,
+      "disable_correlation": false,
+      "distribution": "5",
+      "event_id": "2",
+      "first_seen": null,
+      "id": "8",
+      "last_seen": null,
+      "object_id": "0",
+      "object_relation": null,
+      "sharing_group_id": "0",
+      "timestamp": "1791364892",
+      "to_ids": false,
+      "type": "ip-dst",
+      "uuid": "ab74cf80-663f-462f-966b-240937305ce1",
+      "value": "8.8.8.8"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "misp25:search:none": {
+  "body": {
+   "response": {
+    "Attribute": []
+   }
+  },
+  "status": 200
+ },
+ "misp25:search:sha": {
+  "body": {
+   "response": {
+    "Attribute": [
+     {
+      "Event": {
+       "Org": {
+        "id": "1",
+        "name": "EXAMPLE",
+        "uuid": "7b78686f-97a3-4a7f-af96-9da2ed73c082"
+       },
+       "Orgc": {
+        "id": "1",
+        "name": "EXAMPLE",
+        "uuid": "7b78686f-97a3-4a7f-af96-9da2ed73c082"
+       },
+       "Tag": [],
+       "ThreatLevel": {
+        "id": "2",
+        "name": "Medium"
+       },
+       "analysis": "2",
+       "date": "2026-10-07",
+       "distribution": "0",
+       "extends_uuid": "",
+       "id": "1",
+       "info": "high threat draft",
+       "org_id": "1",
+       "orgc_id": "1",
+       "publish_timestamp": "0",
+       "published": false,
+       "sharing_group_id": "0",
+       "threat_level_id": "1",
+       "timestamp": "1791364892",
+       "uuid": "712ed136-7186-483e-888d-e3e7978f2bac"
+      },
+      "category": "Payload delivery",
+      "comment": "",
+      "deleted": false,
+      "disable_correlation": false,
+      "distribution": "5",
+      "event_id": "1",
+      "first_seen": null,
+      "id": "4",
+      "last_seen": null,
+      "object_id": "0",
+      "object_relation": null,
+      "sharing_group_id": "0",
+      "timestamp": "1791364892",
+      "to_ids": true,
+      "type": "sha256",
+      "uuid": "f7e115b2-ce9e-4d10-a81b-7be1286166a7",
+      "value": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd4"
+     }
+    ]
+   }
+  },
+  "status": 200
+ },
+ "misp25:version": {
+  "body": {
+   "collection_sync": true,
+   "filter_sightings": true,
+   "perm_analyst_data": true,
+   "perm_galaxy_editor": true,
+   "perm_sighting": true,
+   "perm_sync": true,
+   "pymisp_recommended_version": "2.5.34.2",
+   "request_encoding": [
+    "gzip",
+    "br",
+    "zstd"
+   ],
+   "uuid": "142b7287-251f-47a1-b519-5f18c78dcdd8",
+   "version": "2.5.48"
+  },
+  "status": 200
+ },
+ "misp25:warninglists": {
+  "body": {
+   "Warninglists": [
+    {
+     "Warninglist": {
+      "enabled": true,
+      "id": "162",
+      "name": "List of known IPv4 public DNS resolvers"
+     }
+    },
+    {
+     "Warninglist": {
+      "enabled": false,
+      "id": "225",
+      "name": "List of known Zscaler IP address ranges"
+     }
+    },
+    {
+     "Warninglist": {
+      "enabled": false,
+      "id": "224",
+      "name": "ZoomEye (zoomeye.ai) IP ranges used for scanning"
+     }
+    },
+    {
+     "Warninglist": {
+      "enabled": false,
+      "id": "223",
+      "name": "ZERN (zern.io) IP ranges used for scanning"
+     }
+    }
+   ]
+  },
+  "status": 200,
+  "trimmed": "225 lists, 4 kept"
+ }
+}
