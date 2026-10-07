@@ -157,6 +157,12 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
 
         Optional: mitre_ids, iocs, event_type, artifact_ref, related_findings
 
+        alternatives (list, optional): other explanations, only when meaningful;
+          leave it out when there are none. Each: {explanation, status, evidence,
+          audit_ids}. status "open": still possible. status "ruled_out": the
+          tool output that rules it out is in evidence and its audit_ids are in
+          audit_ids; without both it is stored as open.
+
         iocs (list): indicators of compromise found in this evidence.
           Pass ALL suspicious IPs, hashes, domains, registry keys, file paths,
           and accounts. Types auto-detected, deduplication automatic.

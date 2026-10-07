@@ -61,7 +61,7 @@ When connected to remnux-mcp, escalate suspicious files for analysis. Use `analy
 
 **`record_finding()` — Present and record substantive findings as they emerge:**
 
-The intended flow is: (1) analyze tool output, (2) show evidence to the examiner using the evidence presentation format, (3) get conversational approval, (4) call `record_finding()`. A finding is something that would appear in the final IR report:
+The intended flow is: (1) analyze tool output, (2) draft the finding, (3) challenge it with the `finding-skeptic` skill where your client provides it, and reassess, (4) show the reviewed version to the examiner using the evidence presentation format, (5) get conversational approval, (6) call `record_finding()`. A finding is something that would appear in the final IR report:
 - A suspicious artifact, anomaly, or IOC with supporting evidence
 - A benign exclusion (ruling something out, with evidence why)
 - A causal link established between events
@@ -72,6 +72,8 @@ Do not batch findings at the end of the investigation. Present each finding when
 Do not record routine tool output as findings. "Ran AmcacheParser, got 42 entries" is not a finding — the audit trail already captured the tool execution. "AmcacheParser shows Mimikatz installation at 14:32 UTC, no corresponding Prefetch entry" is a finding.
 
 When `record_finding()` returns a grounding suggestion, consider running the suggested checks and updating the finding with additional evidence before moving on.
+
+**Challenge before staging (`finding-skeptic`):** run the skeptic only as its own isolated agent (a subagent or a separate thread); without one, don't challenge and leave `challenged` unset — the examiner sees "Not challenged". Withdraw a finding only when re-run output contradicts a fact in its observation, never because it "could be benign". Tell the examiner each withdrawal in one line (title and contradiction) when it happens. If the challenge can't complete, or a withdrawal call returns an error, record the finding instead. Put an alternative explanation in `alternatives` only when it is meaningful: one still possible, or one ruled out by cited tool output.
 
 **Provenance requirements:**
 
