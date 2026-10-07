@@ -216,6 +216,10 @@ def test_the_tool_description_says_it_is_no_verdict():
     (tool,) = [t for t in tools if t.name == "lookup_ioc"]
     assert "not a verdict" in tool.description
     assert "providers.* is the authoritative answer" in tool.description
+    assert (
+        "an empty relationships list with relationships_unavailable means they "
+        "were not retrieved, not that there are none" in tool.description
+    )
 
 
 # --- several providers ------------------------------------------------------
