@@ -411,8 +411,8 @@ def _normalize_challenge(
     )
     if removed:
         warnings.append(
-            f"challenged: skeptic audit id(s) {removed} removed, not tool output "
-            "in this case's audit trail."
+            f"challenged: skeptic audit id(s) {', '.join(map(str, removed))} removed, "
+            "not tool output in this case's audit trail."
         )
     marker: dict = {"outcome": raw["outcome"], "skeptic_audit_ids": ids}
     contradiction = str(raw.get("contradiction") or "")
@@ -424,6 +424,12 @@ def _normalize_challenge(
             "case's audit trail. " + not_challenged
         ]
     return marker, warnings
+
+
+def _as_reason(note: str) -> str:
+    """A challenge warning as the examiner reads it under the challenge line."""
+    text = note.removeprefix("challenged: ")
+    return text[:1].upper() + text[1:]
 
 
 def _resolve_source_evidence_static(
@@ -1610,8 +1616,10 @@ class CaseManager:
                         "and the output that contradicts the observation. "
                         "Staged for the examiner."
                     )
-                    # The server's own reason, kept for the examiner at approval.
-                    marker["refused"] = " ".join(notes)
+                    # The server's own reason, kept for the examiner at approval,
+                    # as product text: without the "challenged:" label the
+                    # warnings carry for the client
+                    marker["refused"] = " ".join(_as_reason(n) for n in notes)
             doubt_warnings.extend(notes)
 
         finding_record = {

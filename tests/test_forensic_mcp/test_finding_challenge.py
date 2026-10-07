@@ -333,6 +333,22 @@ def test_a_refused_withdrawal_keeps_the_server_s_reason(case, challenged, reason
     assert "Withdrawal refused" in marker["challenged"]["refused"]
 
 
+def test_the_server_s_reason_reads_as_product_text(case):
+    """Ids joined, no list repr, and no "challenged:" label under the
+    portal's challenge line, which already says challenged."""
+    other = "sift-tester-20261007-098"
+    challenged = {**WITHDRAWN, "skeptic_audit_ids": [OWN, ELSEWHERE, other]}
+    result = _record({**FINDING, "challenged": challenged})
+    refused = _stored(case, result)["challenged"]["refused"]
+    assert refused == (
+        "The finding's own audit ids don't count as the skeptic's re-run. "
+        f"Skeptic audit id(s) {ELSEWHERE}, {other} removed, not tool output in this "
+        "case's audit trail. Withdrawal refused: it needs the skeptic's tool output and "
+        "the output that contradicts the observation. Staged for the examiner."
+    )
+    assert f"skeptic audit id(s) {ELSEWHERE}, {other} removed" in result["warning"]
+
+
 def test_a_withdrawal_that_cant_be_logged_keeps_that_reason(case):
     (case / "audit" / "forensic-mcp.jsonl").mkdir()  # every audit write fails
     marker = _stored(case, _record({**FINDING, "challenged": WITHDRAWN}))
