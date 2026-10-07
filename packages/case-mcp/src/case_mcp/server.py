@@ -14,6 +14,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from sift_common.audit import AuditWriter, resolve_examiner
+from sift_common.host_identity import HostLogError, ensure_case_uuid
 from sift_common.instructions import CASE_MCP as _INSTRUCTIONS
 from sift_common.oplog import setup_logging
 from vhir_cli.case_io import (
@@ -241,6 +242,8 @@ def create_server() -> FastMCP:
                 cases_dir=cases_dir or None,
                 case_id=case_id or None,
             )
+            # The case's identity and host logs, before anything else writes
+            ensure_case_uuid(result["case_dir"], naming_version=2)
 
             # Auto-detect wintools when share_wintools is None
             if share_wintools is None:
@@ -276,7 +279,7 @@ def create_server() -> FastMCP:
                 "Check list_playbooks for investigation procedures",
             ]
             return result
-        except (ValueError, OSError) as e:
+        except (ValueError, OSError, HostLogError) as e:
             return {"error": str(e)}
 
     # ------------------------------------------------------------------
@@ -296,6 +299,7 @@ def create_server() -> FastMCP:
         try:
             _validate_str_length(cases_dir, "cases_dir", _MAX_NAME)
             result = _case_activate_data(case_id, cases_dir=cases_dir or None)
+            ensure_case_uuid(result["case_dir"])  # an older case gets one now
 
             # Repoint share and notify wintools
             case_path = Path(result["case_dir"])
@@ -334,7 +338,7 @@ def create_server() -> FastMCP:
                 "Follow the INVESTIGATION STARTUP sequence in your instructions",
             ]
             return result
-        except (ValueError, OSError) as e:
+        except (ValueError, OSError, HostLogError) as e:
             return {"error": str(e)}
 
     # ------------------------------------------------------------------

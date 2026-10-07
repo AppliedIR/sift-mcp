@@ -14,9 +14,9 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
 from mcp.server.fastmcp import FastMCP
 from sift_common.audit import AuditWriter
+from sift_common.host_identity import HostLogError, update_case_meta
 from sift_common.instructions import REPORT_MCP as _INSTRUCTIONS
 from sift_common.oplog import setup_logging
 from vhir_cli.case_io import (
@@ -728,11 +728,8 @@ def create_server() -> FastMCP:
                 }
 
             case_dir = _resolve_case_dir()
-            meta_file = case_dir / "CASE.yaml"
-            meta = load_case_meta(case_dir)
-            meta[field] = value
-
-            _atomic_write(meta_file, yaml.dump(meta, default_flow_style=False))
+            # Under the case identity's lock, so the UUID mint isn't lost
+            update_case_meta(case_dir, {field: value})
 
             logged_id = audit.log(
                 tool="set_case_metadata",
@@ -743,7 +740,7 @@ def create_server() -> FastMCP:
             if logged_id is None:
                 result["warning"] = "Audit write failed — action not recorded"
             return result
-        except (ValueError, OSError) as e:
+        except (ValueError, OSError, HostLogError) as e:
             return {"error": str(e)}
 
     # ------------------------------------------------------------------

@@ -389,6 +389,32 @@ def recorded_c12(case_dir: str | os.PathLike) -> str | None:
     return load(case_dir).c12
 
 
+def update_case_meta(case_dir: str | os.PathLike, changes: dict) -> dict:
+    """Set keys in a case's CASE.yaml, keeping every other key; returns it.
+
+    The load-modify-write runs under the same lock as the identity mint, so
+    neither can write over the other's change.
+    """
+    import yaml
+
+    root = Path(case_dir)
+    path = root / "CASE.yaml"
+    with _log_lock(root):
+        try:
+            meta = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except FileNotFoundError:
+            raise FileNotFoundError(f"no CASE.yaml in {root}") from None
+        if not isinstance(meta, dict):
+            raise HostLogError(f"{path}: not a mapping")
+        meta.update(changes)
+        tmp = path.with_name(f".{path.name}.{os.getpid()}.meta.tmp")
+        tmp.write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
+        with contextlib.suppress(OSError):
+            os.chmod(tmp, path.stat().st_mode & 0o777)
+        os.replace(tmp, path)
+        return meta
+
+
 # --------------------------------------------------------------------------
 # The fold
 
