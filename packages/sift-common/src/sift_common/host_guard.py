@@ -48,15 +48,20 @@ def _own(state: hi.HostState, p) -> bool:
     return not _foreign(state, p) and not _not_a_host(state, p)
 
 
-def _placeholder(state: hi.HostState, unit: str, canonical: str) -> bool:
+def placeholder_of(state, unit: str) -> set[str]:
+    """The names a unit's own placeholder machine may carry: the unit's
+    placeholder, exactly, and the examiner's `unattributed:<unit>`."""
     from sift_common import host_gate
 
-    if canonical.startswith("unattributed:"):
-        return True
     locator = str((state.units.get(unit) or {}).get("locator") or "")
-    return bool(locator) and hi.spelling(canonical).startswith(
-        hi.spelling(host_gate.placeholder_name(locator))
-    )
+    names = {f"unattributed:{unit}"}
+    if locator:
+        names.add(host_gate.placeholder_name(locator))
+    return names
+
+
+def _placeholder(state, unit: str, canonical: str) -> bool:
+    return canonical in placeholder_of(state, unit)
 
 
 def _i2(state: hi.HostState, pairs, canonical: str, added=None) -> str:

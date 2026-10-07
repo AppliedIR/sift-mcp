@@ -67,9 +67,10 @@ def violations(P, Q, door) -> list:
             continue
         m = Q.machine_of_pair(*p)
         locator = str((Q.units.get(p[0]) or {}).get("locator") or p[0])
-        placeholder = m.canonical.startswith("unattributed:") or m.canonical.startswith(
-            hg.placeholder_name(locator)
-        )
+        placeholder = m.canonical in {
+            f"unattributed:{p[0]}",
+            hg.placeholder_name(locator),
+        }
         own = [x for x in m.pairs if x[0] == p[0] and x != p
                and not _foreign(Q, x) and not _nah(Q, x)]  # fmt: skip
         if not own and not placeholder:
@@ -142,6 +143,20 @@ def violations(P, Q, door) -> list:
                 out.append(
                     ("second machine of a settled name", door, p[1], homes[0].canonical)
                 )
+    for u in {
+        p[0] for p in Q.bindings
+    }:  # one placeholder machine per unit, never "(2)"
+        locator = str((Q.units.get(u) or {}).get("locator") or u)
+        mine = hg.placeholder_name(locator)
+        names = {
+            m.canonical
+            for m in Q.machines.values()
+            if m.canonical.startswith(mine + " (")
+        }
+        if names and not any(
+            m.canonical.startswith(mine + " (") for m in P.machines.values()
+        ):
+            out.append(("second placeholder", door, u, sorted(names)))
     if door in AUTOMATIC:  # one machine, on the machines this step changed
         for q in Q.machines.values():
             before = P.machine_of_key(q.keys[0])
@@ -539,3 +554,47 @@ def test_the_list_never_makes_a_second_machine_of_a_started_machines_name(case):
     Q = hi.load(case)
     assert Q.machine_of_pair("u2", "WKS01").id == Q.machine_of_key(m["key"]).id
     assert violations(P, Q, "list") == []
+
+
+def test_a_not_a_host_name_goes_only_to_its_own_units_exact_placeholder(case):
+    from sift_common import host_guard
+
+    obs(case, {"kind": "unit", "unit": "u1", "locator": "ev/a.raw@0"}, name("u1", "WORKGROUP"),
+        {"kind": "unit", "unit": "u2", "locator": "ev/b.raw@0"}, name("u2", "OTHER"))  # fmt: skip
+    hi.append_decision(case, {"action": "not_a_host", "args": {"pairs": [["u1", "WORKGROUP"]]}},
+                       hi.load(case).obs_offset)  # fmt: skip
+    state = hi.load(case)
+    mine = hg.placeholder_name("ev/a.raw@0")
+    for other in (
+        hg.placeholder_name("ev/b.raw@0"),
+        "unattributed:u2",
+        mine + "-x",
+        mine + " (2)",
+    ):
+        bind = {"kind": "bind", "unit": "u1", "raw": "WORKGROUP", "key": "f" * 16,
+                "canonical": other}  # fmt: skip
+        assert host_guard.check_binds(state, [bind], "late"), other
+    ok = {
+        "kind": "bind",
+        "unit": "u1",
+        "raw": "WORKGROUP",
+        "key": "e" * 16,
+        "canonical": mine,
+    }
+    assert host_guard.check_binds(state, [ok], "late") == []
+
+
+def test_a_units_rejected_names_share_its_one_placeholder(case):
+    obs(case, {"kind": "unit", "unit": "u1", "locator": "ev/a.raw@0"},
+        name("u1", "WORKGROUP"), name("u1", "BUILD"))  # fmt: skip
+    hi.append_decision(case, {"action": "not_a_host", "args": {
+        "pairs": [["u1", "WORKGROUP"], ["u1", "BUILD"]]}}, hi.load(case).obs_offset)  # fmt: skip
+    P = hi.load(case)
+    k1, c1 = hi.get_or_mint(case, "u1", "WORKGROUP")
+    k2, c2 = hi.get_or_mint(case, "u1", "BUILD")
+    assert (k1, c1) == (k2, c2) == (k1, hg.placeholder_name("ev/a.raw@0"))
+    hg.record_wait(case, "r1", ["u1"])
+    hg.start_now(case, "r1", "ex")  # reuses it too
+    Q = hi.load(case)
+    assert {m.canonical for m in Q.machines.values()} == {c1}
+    assert violations(P, Q, "mint") == []

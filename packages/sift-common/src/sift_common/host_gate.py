@@ -181,14 +181,18 @@ def start_now(
     for e in waiting:  # nothing to name it by: its placeholder
         if e["raw"]:
             continue
-        name = canonical_for(placeholder_name(e["locator"]))
+        wanted = placeholder_name(e["locator"])
         rejected = [
             list(p) for p in state.names if p[0] == e["unit"] and _not_a_host(state, p)
         ]
+        held = state.canonical_owner(wanted)  # the unit's placeholder already: reused
+        if held is not None:
+            key, name = held.keys[0], held.canonical
+        else:
+            key, name = hi.new_machine_key(), canonical_for(wanted)
         machines.append(
-            {"key": hi.new_machine_key(), "canonical": name,
-             "pairs": [[e["unit"], name], *rejected]}
-        )  # fmt: skip
+            {"key": key, "canonical": name, "pairs": [[e["unit"], name], *rejected]}
+        )
     record = {
         "action": "start_now",
         "examiner": examiner,

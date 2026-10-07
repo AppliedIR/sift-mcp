@@ -1014,11 +1014,15 @@ def get_or_mint(
         if FLAG_NOT_A_HOST in state.pair_flags.get(pair, []):
             # not a host: with its unit's own machine, or the unit's placeholder
             own = {}
+            placeholders = host_guard.placeholder_of(state, unit)
             for p, k in state.bindings.items():
-                if p[0] == unit and p != pair and host_guard._own(state, p):
-                    m = state.machine_of_key(k)
-                    if m is not None:
-                        own.setdefault(m.id, [m, 0])[1] += 1
+                if p[0] != unit or p == pair:
+                    continue
+                m = state.machine_of_key(k)
+                if m is None:
+                    continue
+                if host_guard._own(state, p) or m.canonical in placeholders:
+                    own.setdefault(m.id, [m, 0])[1] += 1  # (its placeholder is its own)
             if own:
                 m = sorted(own.values(), key=lambda x: (-x[1], x[0].id))[0][0]
                 bind, key, result = (
