@@ -482,12 +482,9 @@ if [[ "$INSTALL_TRIAGE" == "true" ]]; then
     fi
 fi
 
-"$VENV_PYTHON" "$SCRIPT_DIR/deps/check-lock.py" --strict --lock "$LOCK" \
-    || fail "Installed packages differ from the dependency lock (listed above)."
-
-# OpenCTI's client installs unlocked, after the locked packages: pycti pins
-# its own. Reinstalled whenever it's already there, since the locked installs
-# above may have moved what it pins, even on a run that didn't select it.
+# OpenCTI installs with the lock like everything else. Reinstalled whenever
+# it's already there, so an install from before keeps its dependencies at the
+# lock's versions.
 _install_opencti_pkg() {
     [[ "${OPENCTI_PKG_DONE:-}" == "true" ]] && return 0
     local pkg_dir="$SCRIPT_DIR/packages/opencti"
@@ -495,20 +492,21 @@ _install_opencti_pkg() {
         warn "opencti-mcp not found at $pkg_dir"
         return 0
     fi
-    uv pip install --python "$VENV_PYTHON" --quiet -e "$pkg_dir"
+    uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" -e "$pkg_dir"
     ok "Installed opencti-mcp"
     OPENCTI_PKG_DONE=true
 }
-# The packages must agree with each other, whether or not OpenCTI's step ran
-# (a leftover pycti is skipped by --strict); what pycti moved is listed.
-_final_check() {
+# Everything installed is at the lock's versions, and the packages agree.
+_lock_checks() {
+    "$VENV_PYTHON" "$SCRIPT_DIR/deps/check-lock.py" --strict --lock "$LOCK" \
+        || fail "Installed packages differ from the dependency lock (listed above)."
     "$VENV_PYTHON" "$SCRIPT_DIR/deps/check-lock.py" --final --lock "$LOCK" \
         || fail "Installed packages conflict (listed above)."
 }
 if [[ "$INSTALL_OPENCTI" == "true" ]] || uv pip show --python "$VENV_PYTHON" opencti-mcp &>/dev/null; then
     _install_opencti_pkg
 fi
-_final_check
+_lock_checks
 
 if [[ "${VENV_ONLY:-}" == "true" ]]; then
     echo ""
@@ -801,7 +799,7 @@ fi
 if [[ "$INSTALL_OPENCTI" == "true" ]]; then
     if [[ "${OPENCTI_PKG_DONE:-}" != "true" ]]; then  # chosen just now
         _install_opencti_pkg
-        _final_check
+        _lock_checks
     fi
 
     OPENCTI_URL=""

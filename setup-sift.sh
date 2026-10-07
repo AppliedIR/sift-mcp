@@ -1073,8 +1073,7 @@ if ! awk -v v="${UV_VERSION:-0}" 'BEGIN { split(v, p, "."); a = p[1] + 0; b = p[
 fi
 
 # Every third-party package is installed at the version and hash in the lock
-# (as constraint and as build constraint). OpenCTI's client is the exception:
-# it's installed after everything else, outside the lock.
+# (as constraint and as build constraint).
 # The CPU PyTorch lock pins torch from the PyTorch CPU index, which only
 # --torch-backend reaches; 2.14.0+cpu satisfies the GPU lock's ==2.14.0, so a
 # switch to GPU has to reinstall it.
@@ -1285,28 +1284,26 @@ else
     info "opensearch-mcp not found — skipping (use --opensearch to install, or clone to $INSTALL_DIR/../opensearch-mcp)"
 fi
 
-# --- Dependency check: everything installed so far is at the lock's versions ---
-if ! "$VENV_PYTHON" "$INSTALL_DIR/deps/check-lock.py" --strict --lock "$LOCK"; then
-    err "Installed packages differ from the dependency lock (listed above)."
-    exit 1
-fi
-
-# --- OpenCTI (optional, outside the lock) ---
-# Its client, pycti, pins versions the lock can't hold (pycti 6 keeps
-# starlette 0.50 and uvicorn 0.35), so it installs last and unlocked. After
-# the opensearch-mcp install, so nothing locked runs after it. Reinstalled
-# whenever it's already there: the locked steps above may have moved what
-# pycti pins, even on a run that didn't select OpenCTI again.
+# --- OpenCTI (optional) ---
+# Installed with the lock like everything else. Reinstalled whenever it's
+# already there, so an install from before keeps its dependencies at the
+# lock's versions.
 if $INSTALL_OPENCTI || uv pip show --python "$VENV_PYTHON" opencti-mcp &>/dev/null; then
-    info "Installing opencti-mcp (outside the dependency lock)..."
-    if ! uv pip install --python "$VENV_PYTHON" --quiet -e "$INSTALL_DIR/packages/opencti"; then
+    info "Installing opencti-mcp..."
+    if ! uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" -e "$INSTALL_DIR/packages/opencti"; then
         warn "opencti install failed. Continuing without it."
         INSTALL_OPENCTI=false
     else
         ok "opencti-mcp installed"
     fi
 fi
-# The packages agree with each other; what OpenCTI's client moved is listed.
+
+# --- Dependency check: everything installed is at the lock's versions ---
+if ! "$VENV_PYTHON" "$INSTALL_DIR/deps/check-lock.py" --strict --lock "$LOCK"; then
+    err "Installed packages differ from the dependency lock (listed above)."
+    exit 1
+fi
+# The packages agree with each other.
 if ! "$VENV_PYTHON" "$INSTALL_DIR/deps/check-lock.py" --final --lock "$LOCK"; then
     err "Installed packages conflict (listed above)."
     exit 1

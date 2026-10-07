@@ -47,7 +47,7 @@ def _install(
             "USER=examiner; INSTALL_OPENSEARCH_FLAG=true; INSTALL_ERRORS=0; LOCKED=()",
             "REMOTE_MODE=false; AUTOSTART=true; TIER_DISPLAY=x; EXAMINER_NAME=x",
             "CASE_DIR=x; GATEWAY_PORT=4508; GATEWAY_CONFIG=x",
-            _slice(text, "# --- OpenSearch MCP", "# --- Dependency check"),
+            _slice(text, "# --- OpenSearch MCP", "# --- OpenCTI (optional)"),
             _slice(text, "\n# Summary\n", "# Data Maintenance"),
             _slice(text, "# Exit with error", None),
         ]

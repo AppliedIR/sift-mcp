@@ -5,7 +5,7 @@ that interpreter:
 
     <venv>/bin/python deps/check-lock.py --installed  before the first locked install
     <venv>/bin/python deps/check-lock.py --strict     after the locked installs
-    <venv>/bin/python deps/check-lock.py --final      after OpenCTI's client
+    <venv>/bin/python deps/check-lock.py --final      right after --strict
     <venv>/bin/python deps/check-lock.py --cuda-leftovers
 
 --cuda-leftovers prints the CUDA-family packages (nvidia-*, cuda-*, triton)
@@ -20,20 +20,20 @@ as requirements, so -c moves them to the lock along with everything it
 installs; nothing else would touch them.
 
 The contract for every caller (setup-sift.sh, quickstart-lite.sh, `vhir
-update`): --strict passes immediately before the unlocked OpenCTI step, and
---final runs right after it.
+update`): --strict and then --final pass after the locked installs.
 
 --strict first removes leftovers: packages `uv pip check` names that are
 installed, not editable, not in the lock, and required by no installed
 package (under any marker). An earlier install's plugin for a version the
 lock moved away from is one; each removed is named. Then it fails when any
 installed package is at a version other than the lock's, naming each one
-and the command that repairs it. --final runs after
-the unlocked OpenCTI step, and what pycti moved is listed for information;
-without pycti, any difference from the lock still fails. Both run `uv pip
-check`, which must pass, except --strict while pycti is installed: between
-the locked step and the OpenCTI step its requirements may be unmet. Both list
-installed packages the lock doesn't name, for information.
+and the command that repairs it. Both run `uv pip check`, which must pass.
+Both list installed packages the lock doesn't name, for information.
+
+OpenCTI's old client, pycti, is no longer used. An install from before may
+still have it: it is never removed here, its own unmet requirements don't
+fail the check, and --final prints one line saying so, with the command
+that removes it.
 """
 
 from __future__ import annotations
@@ -56,8 +56,8 @@ except ImportError:  # not every venv has packaging; pip's copy is the same code
 PIN = re.compile(
     r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;\\]+)\s*(?:;\s*([^\\]+?))?\s*\\?$"
 )
-# pycti 6 requires these below the lock's versions.
-PYCTI6_HOLDS = ("starlette", "uvicorn", "setuptools")
+# OpenCTI's old client: left installed by earlier installs, used by nothing.
+PYCTI = "pycti"
 # What GPU PyTorch brings; the CPU build needs none of it.
 CUDA_FAMILY = re.compile(r"^(nvidia-.+|cuda-.+|triton)$")
 
@@ -162,7 +162,7 @@ def remove_leftovers(site: list[str], pins: dict[str, str], have: dict) -> list[
             check.stdout + check.stderr,
         )
     }
-    stale = sorted((named & set(have)) - set(pins) - _required_names(site))
+    stale = sorted((named & set(have)) - set(pins) - _required_names(site) - {PYCTI})
     if stale:
         subprocess.run(
             ["uv", "pip", "uninstall", "--python", sys.executable, *stale], check=True
@@ -230,37 +230,36 @@ def main(argv: list[str] | None = None) -> int:
     py = sys.executable
 
     failed = False
-    pycti = have.get("pycti")
-    if args.final or not pycti:
-        check = subprocess.run(
-            ["uv", "pip", "check", "--python", py], capture_output=True, text=True
-        )
-        if check.returncode != 0:
-            print(
-                "  DEPENDENCY CHECK FAILED: installed packages conflict:",
-                file=sys.stderr,
-            )
-            print((check.stdout + check.stderr).rstrip(), file=sys.stderr)
-            failed = True
-
-    if differ and args.final and pycti:
+    pycti = have.get(PYCTI)
+    check = subprocess.run(
+        ["uv", "pip", "check", "--python", py], capture_output=True, text=True
+    )
+    output = (check.stdout + check.stderr).rstrip()
+    # Only pycti's own requirements unmet: it's a leftover nothing uses.
+    conflicted = {
+        _name(n) for n in re.findall(r"The package `([^`]+)` requires", output)
+    }
+    pycti_only = bool(pycti) and conflicted == {PYCTI}
+    if check.returncode != 0 and not pycti_only:
         print(
-            f"  Held at other versions by OpenCTI's client (pycti {pycti}), outside the lock:"
+            "  DEPENDENCY CHECK FAILED: installed packages conflict:",
+            file=sys.stderr,
         )
-        for n, (v, want) in differ.items():
-            print(f"    {n} {v} (lock {want})")
-        held = [n for n in PYCTI6_HOLDS if n in differ]
-        if pycti.split(".")[0] == "6" and held:
-            risk = (
-                ", and the starlette versions it allows have known security advisories"
-                if "starlette" in held
-                else ""
-            )
-            print(
-                f"  pycti 6 holds {', '.join(held)} below the lock{risk}."
-                " Upgrading OpenCTI (server and pycti) to 7.x removes the hold."
-            )
-    elif differ:
+        print(output, file=sys.stderr)
+        failed = True
+    if pycti and args.final:
+        held = (
+            ", and pycti 6 requires starlette and uvicorn below the lock's versions"
+            if pycti.split(".")[0] == "6"
+            else ""
+        )
+        print(
+            f"  pycti {pycti} is installed but no longer needed: opencti-mcp talks"
+            f" to OpenCTI directly{held}. To remove it:"
+            f" uv pip uninstall --python {shlex.quote(py)} pycti"
+        )
+
+    if differ:
         print(
             f"  DEPENDENCY CHECK FAILED: {len(differ)} package(s) differ from the lock:",
             file=sys.stderr,

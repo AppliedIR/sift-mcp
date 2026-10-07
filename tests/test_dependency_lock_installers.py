@@ -1,12 +1,11 @@
-"""Both installers install from the dependency lock, except OpenCTI's client.
+"""Both installers install everything from the dependency lock, OpenCTI too.
 
 Every `uv pip install` of first-party or third-party packages takes the lock
-as constraint and build constraint (-c, -b). OpenCTI installs last and
-unlocked: pycti pins versions the lock can't hold. uv older than 0.6.0
-ignores the lock's hashes, so the installers refuse it. The venv is checked
-against the lock after the locked installs (--strict) and again after
-OpenCTI's (--final). These run the installers' own text with uv, the venv's
-python and every other external command stubbed.
+as constraint and build constraint (-c, -b). uv older than 0.6.0 ignores the
+lock's hashes, so the installers refuse it. The venv is checked against the
+lock after the locked installs (--strict), then for conflicts (--final).
+These run the installers' own text with uv, the venv's python and every other
+external command stubbed.
 """
 
 from __future__ import annotations
@@ -53,7 +52,7 @@ def _calls(log: Path) -> list[str]:
 
 def _steps(log: Path) -> list[str]:
     """The log as steps: "locked" (-c and -b), "opencti" (its own install,
-    neither), "check --strict"/"check --final"; anything else verbatim."""
+    locked), "check --strict"/"check --final"; anything else verbatim."""
     out = []
     for line in log.read_text().splitlines():
         if line.startswith("check "):
@@ -61,7 +60,7 @@ def _steps(log: Path) -> list[str]:
         elif line.startswith("pip install"):
             locked = " -c " in line and " -b " in line
             if "packages/opencti" in line:
-                out.append(line if " -c " in line or " -b " in line else "opencti")
+                out.append("opencti" if locked else line)
             else:
                 out.append("locked" if locked else line)
     return out
@@ -91,7 +90,7 @@ def _python(tmp_path: Path, log: Path) -> Path:
 @pytest.mark.parametrize(
     "selected,installed", [(True, False), (False, True), (True, True), (False, False)]
 )
-def test_setup_sift_installs_everything_but_opencti_from_the_lock(
+def test_setup_sift_installs_everything_from_the_lock_opencti_too(
     tmp_path, selected, installed
 ):
     install_dir = tmp_path / "sift-mcp"
@@ -135,34 +134,27 @@ def test_setup_sift_installs_everything_but_opencti_from_the_lock(
     calls = _calls(log)
     locked = f"-c {lock} -b {lock}"
     _held_go_to_the_first_locked_install(log)
+    assert calls and all(locked in c for c in calls), calls
     opencti = [c for c in calls if "packages/opencti" in c]
-    others = [c for c in calls if "packages/opencti" not in c]
+    steps = _steps(log)
+    assert steps.count("check --strict") == 1 and steps.count("check --final") == 1
+    strict = steps.index("check --strict")
+    assert steps[strict + 1] == "check --final", steps
     if not (selected or installed):
-        assert not opencti and others and all(locked in c for c in others)
-        assert _steps(log).count("check --final") == 1
+        assert not opencti, calls
         return
-    # Chosen now, or there already: the locked steps above may have moved
-    # what pycti pins, so it's installed again either way.
-    assert len(opencti) == 1 and "-c " not in opencti[0] and "-b " not in opencti[0], (
-        opencti
-    )
-    assert others and all(locked in c for c in others), others
-    assert any("zstandard" in c for c in others) and any(
-        "opensearch-mcp" in c for c in others
-    )
-    # Last: nothing locked installs after it to move what it moved.
-    assert calls[-1] == opencti[0] or all(
-        "zstandard" in c for c in calls[calls.index(opencti[0]) + 1 :]
+    # Chosen now, or there already: installed again either way, so an
+    # install from before keeps its dependencies at the lock's versions.
+    assert len(opencti) == 1, opencti
+    assert any("zstandard" in c for c in calls) and any(
+        "opensearch-mcp" in c for c in calls
     )
     assert calls.index(opencti[0]) > max(
         i for i, c in enumerate(calls) if "opensearch-mcp" in c
     )
-    # Checked after the last locked install, and again after OpenCTI's.
-    steps = _steps(log)
-    tail = steps[steps.index("check --strict") - 1 :]
-    assert tail[:4] == ["locked", "check --strict", "opencti", "check --final"], steps
-    assert steps.count("check --strict") == 1 and steps.count("check --final") == 1
-    assert all(x == "locked" for x in tail[4:]), steps  # zstandard, already present
+    # Checked once everything (OpenCTI too) is installed.
+    assert steps.index("opencti") == strict - 1, steps
+    assert all(x == "locked" for x in steps[strict + 2 :]), steps  # zstandard
 
 
 @pytest.mark.parametrize("installer", ["setup-sift", "quickstart-lite"])
@@ -276,7 +268,7 @@ def _lite(
         (["--yes", "--opencti"], False, True),
     ],
 )
-def test_lite_reinstalls_opencti_after_the_locked_packages_whenever_it_is_there(
+def test_lite_installs_opencti_from_the_lock_whenever_it_is_there(
     tmp_path, args, installed, expect_opencti
 ):
     run, steps = _lite(tmp_path, *args, installed=installed)
@@ -293,22 +285,18 @@ def test_lite_reinstalls_opencti_after_the_locked_packages_whenever_it_is_there(
         "check --final",
     }
     assert set(steps) <= allowed, steps
-    # Checked after the strict check whether or not OpenCTI's step runs.
-    assert steps.count("check --final") == 1, steps
+    assert steps.count("check --strict") == 1 and steps.count("check --final") == 1
+    strict = steps.index("check --strict")
+    assert steps[strict + 1] == "check --final", steps
     if not expect_opencti:
         assert "opencti" not in steps, steps
-        assert steps.index("check --final") > steps.index("check --strict"), steps
         return
     assert steps.count("opencti") == 1, steps
-    i = steps.index("opencti")
-    # After every locked install and the strict check; checked again after it.
-    assert "locked" not in steps[i:] and "check --strict" in steps[:i], steps
-    assert steps[i + 1] == "check --final", steps
+    # With the other locked installs, before the checks.
+    assert steps.index("opencti") < strict, steps
 
 
-def test_lite_fails_on_conflicts_left_by_a_pycti_without_opencti_mcp(tmp_path):
-    """pycti is there, opencti-mcp isn't: --strict leaves `uv pip check` to
-    --final, so --final has to run though OpenCTI's step doesn't."""
+def test_lite_fails_when_the_final_check_finds_conflicts(tmp_path):
     run, steps = _lite(tmp_path, "--yes", "--venv-only", installed=False, final_rc=1)
     assert run.returncode != 0
     assert "conflict" in run.stdout + run.stderr
@@ -321,7 +309,8 @@ def test_lite_checks_again_after_opencti_chosen_at_the_prompt(tmp_path):
     run, steps = _lite(tmp_path, answers="y\n\ny\n" + "\n" * 12)
     assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
     i = steps.index("opencti")
-    assert steps[i - 1] == "check --final" and steps[i + 1] == "check --final", steps
+    assert steps[i - 1] == "check --final", steps
+    assert steps[i + 1 : i + 3] == ["check --strict", "check --final"], steps
     assert steps.count("opencti") == 1 and "locked" not in steps[i:], steps
 
 

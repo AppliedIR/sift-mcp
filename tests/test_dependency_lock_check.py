@@ -162,41 +162,68 @@ def test_unmet_requirements_fail(tmp_path):
     assert run.returncode == 1 and "requires y<2" in run.stderr
 
 
-def test_strict_leaves_requirements_to_final_while_pycti_is_installed(tmp_path):
-    run = _run(tmp_path, "--strict", {**CLEAN, "pycti": "6.9.29"}, pip_check_ok=False)
+PYCTI_CONFLICT = (
+    "The package `pycti` requires `starlette<0.51`, but `1.7.0` is installed"
+)
+
+
+@pytest.mark.parametrize("mode", ["--strict", "--final"])
+def test_a_leftover_pycti_s_own_conflicts_fail_neither_check(tmp_path, mode):
+    """An install from before keeps pycti, which nothing uses any more: its
+    own unmet requirements don't fail the check, and it isn't removed."""
+    run = _run(tmp_path, mode, {**CLEAN, "pycti": "6.9.29"}, conflict=PYCTI_CONFLICT)
     assert run.returncode == 0, run.stderr
-    assert "conflict" not in run.stderr and not run.removed
+    assert not run.removed
+    assert "conflict" not in run.stderr
 
 
-def test_final_lists_what_pycti_6_holds_and_why_it_matters(tmp_path):
-    held = {"starlette": "0.50.0", "uvicorn": "0.35.0", "setuptools": "80.9.0"}
-    run = _run(tmp_path, "--final", {**CLEAN, **held, "pycti": "6.9.29"})
-    assert run.returncode == 0, run.stderr
-    assert "pycti 6.9.29" in run.stdout
-    for line in ("starlette 0.50.0 (lock 1.7.0)", "uvicorn 0.35.0 (lock 0.54.0)"):
-        assert line in run.stdout
-    note = [x for x in run.stdout.splitlines() if "pycti 6 holds" in x]
-    assert len(note) == 1
-    assert "starlette" in note[0] and "security advisories" in note[0]
-    assert "7.x" in note[0]
-
-
-def test_final_with_pycti_7_has_no_pycti_6_note(tmp_path):
+def test_final_names_a_leftover_pycti_6_and_how_to_remove_it(tmp_path):
     run = _run(
-        tmp_path, "--final", {**CLEAN, "setuptools": "82.0.1", "pycti": "7.261002.0"}
+        tmp_path, "--final", {**CLEAN, "pycti": "6.9.29"}, conflict=PYCTI_CONFLICT
     )
+    note = [x for x in run.stdout.splitlines() if "no longer needed" in x]
+    assert len(note) == 1, run.stdout
+    assert "pycti 6.9.29 is installed but no longer needed" in note[0]
+    assert "pycti 6 requires starlette and uvicorn below the lock's versions" in note[0]
+    assert note[0].endswith(f"uv pip uninstall --python {sys.executable} pycti")
+
+
+def test_final_names_a_leftover_pycti_7_without_the_pycti_6_hold(tmp_path):
+    run = _run(tmp_path, "--final", {**CLEAN, "pycti": "7.261002.0"})
     assert run.returncode == 0, run.stderr
-    assert "setuptools 82.0.1 (lock 84.0.0)" in run.stdout
-    assert "pycti 6 holds" not in run.stdout
+    (note,) = [x for x in run.stdout.splitlines() if "no longer needed" in x]
+    assert "pycti 7.261002.0 is installed but no longer needed" in note
+    assert "below the lock" not in note
 
 
-@pytest.mark.parametrize("mode", ["--final"])
-def test_final_still_fails_on_conflicts_and_on_drift_without_pycti(tmp_path, mode):
+def test_strict_says_nothing_about_a_leftover_pycti(tmp_path):
+    run = _run(tmp_path, "--strict", {**CLEAN, "pycti": "6.9.29"})
+    assert run.returncode == 0, run.stderr
+    assert "no longer needed" not in run.stdout
+
+
+@pytest.mark.parametrize("mode", ["--strict", "--final"])
+def test_another_conflict_beside_a_leftover_pycti_still_fails(tmp_path, mode):
+    run = _run(
+        tmp_path,
+        mode,
+        {**CLEAN, "pycti": "6.9.29", OTLP: "0.66b0"},
+        requires={"pycti": [f"{OTLP}; extra == 'otel'"]},
+        conflict=PYCTI_CONFLICT + "\n" + OTLP_CONFLICT,
+    )
+    assert run.returncode == 1 and OTLP in run.stderr
+    assert not run.removed
+
+
+@pytest.mark.parametrize("mode", ["--strict", "--final"])
+def test_a_check_that_fails_unreadably_still_fails_with_pycti(tmp_path, mode):
     run = _run(tmp_path, mode, {**CLEAN, "pycti": "6.9.29"}, pip_check_ok=False)
     assert run.returncode == 1 and run.pip_checked
-    other = tmp_path / "other"
-    other.mkdir()
-    run = _run(other, mode, {**CLEAN, "starlette": "0.50.0"})
+
+
+@pytest.mark.parametrize("mode", ["--strict", "--final"])
+def test_drift_still_fails_with_a_leftover_pycti(tmp_path, mode):
+    run = _run(tmp_path, mode, {**CLEAN, "starlette": "0.50.0", "pycti": "6.9.29"})
     assert run.returncode == 1 and "starlette installed 0.50.0" in run.stderr
 
 
@@ -238,18 +265,15 @@ def test_strict_removes_a_conflicting_leftover_nothing_requires(tmp_path):
 
 
 def test_strict_keeps_what_an_installed_package_requires(tmp_path):
-    """Between the locked step and OpenCTI's: pycti conflicts, but opencti-mcp
-    requires it, and it requires the exporter (under an extra)."""
+    """A conflicting package something installed requires is kept."""
     run = _run(
         tmp_path,
         "--strict",
-        {**CLEAN, "pycti": "6.9.29", OTLP: "0.66b0"},
-        editable={"opencti-mcp": "0.6.1"},
-        requires={"opencti-mcp": ["pycti>=6"], "pycti": [f"{OTLP}; extra == 'otel'"]},
-        conflict="The package `pycti` requires `starlette<0.51`, but `1.7.0` is installed\n"
-        + OTLP_CONFLICT,
+        {**CLEAN, "needs-it": "1.0", OTLP: "0.66b0"},
+        requires={"needs-it": [OTLP]},
+        conflict=OTLP_CONFLICT,
     )
-    assert run.returncode == 0, run.stderr
+    assert run.returncode == 1
     assert not run.removed
 
 
