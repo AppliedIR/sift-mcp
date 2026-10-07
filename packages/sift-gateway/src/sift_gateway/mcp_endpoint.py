@@ -332,14 +332,15 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
     ``Server`` + ``StreamableHTTPSessionManager`` + ``MCPAuthASGIApp`` triple
     so that MCP sessions are isolated per backend.
     """
-    backend = gateway.backends[backend_name]
     instructions = _BACKEND_INSTRUCTIONS.get(backend_name)
     if instructions is None:
-        instructions = backend.instructions
+        instructions = gateway.backends[backend_name].instructions
     server = Server(f"sift-gateway/{backend_name}", instructions=instructions)
 
+    # The backend is looked up on every call: a re-join replaces it.
     @server.list_tools()
     async def _list_tools() -> list[Tool]:
+        backend = gateway.backends[backend_name]
         if not backend.started:
             try:
                 await gateway.ensure_backend_started(backend_name)
@@ -350,6 +351,7 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
 
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict) -> Sequence[TextContent]:
+        backend = gateway.backends[backend_name]
         if not backend.started:
             await gateway.ensure_backend_started(backend_name)
         backend.last_tool_call = time.monotonic()

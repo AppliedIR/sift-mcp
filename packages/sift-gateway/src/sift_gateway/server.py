@@ -64,6 +64,30 @@ logger = logging.getLogger(__name__)
 # name is configured.
 BACKEND_ALIASES: dict[str, str] = {"threatintel-mcp": "opencti-mcp"}
 
+# Pause between attempts to load a backend that joined after boot
+_LOAD_RETRY_SECONDS = 10
+
+
+async def _close_in_this_task(backend: MCPBackend) -> None:
+    """Close a backend's connection from the task that opened it.
+
+    Its transport's cancel scopes belong to that task; ``stop()`` of an HTTP
+    backend closes them from a ``wait_for`` task before Python 3.12, which
+    anyio refuses, and the error tears down the gateway's lifespan.
+    """
+    stack = getattr(backend, "_exit_stack", None)
+    backend._exit_stack = None
+    backend._session = None
+    backend._started = False
+    if stack is None:
+        return
+    try:
+        # No scope of its own around this: the stack's scopes must be the
+        # task's innermost when they exit
+        await stack.aclose()
+    except (Exception, BaseExceptionGroup) as exc:
+        logger.debug("Closing backend %s: %s", backend.name, exc)
+
 
 class Gateway:
     """Aggregates multiple MCP backends behind a single HTTP service.
@@ -80,6 +104,9 @@ class Gateway:
         self._start_locks: dict[str, asyncio.Lock] = {}
         self._reload_event = asyncio.Event()
         self._pending_backends: dict[str, dict] = {}
+        # Backends a re-join replaced that were started in another task: kept
+        # referenced so they're never finalised from the wrong task.
+        self._retired: list[MCPBackend] = []
         self._audit = AuditWriter(mcp_name="sift-gateway")
 
         # Create backend instances from config
@@ -154,7 +181,8 @@ class Gateway:
 
     async def stop(self) -> None:
         """Stop all backends."""
-        for name, backend in self.backends.items():
+        retired = [(backend.name, backend) for backend in self._retired]
+        for name, backend in [*self.backends.items(), *retired]:
             try:
                 await asyncio.wait_for(backend.stop(), timeout=10.0)
                 logger.info("Stopped backend: %s", name)
@@ -240,6 +268,9 @@ class Gateway:
         if backend.started:
             backend.last_tool_call = time.monotonic()
             return
+        if backend_name in self._pending_backends:
+            # The loader is replacing it; a start from here would race it
+            raise RuntimeError(f"Backend {backend_name} is reloading; retry shortly")
         lock = self._start_locks.setdefault(backend_name, asyncio.Lock())
         async with lock:
             if backend.started:
@@ -291,6 +322,8 @@ class Gateway:
             try:
                 await anyio.sleep(30)
                 for name, backend in self.backends.items():
+                    if name in self._pending_backends:
+                        continue  # the loader is replacing it
                     if not backend.started:
                         try:
                             await asyncio.wait_for(backend.start(), timeout=30.0)
@@ -362,8 +395,9 @@ class Gateway:
 
         Runs inside an anyio task group so that streamablehttp_client's
         cancel scopes are properly managed.  Backends started here are
-        stopped in the finally block (same task) to avoid cancel-scope
-        mismatch between start() and stop().
+        closed in this task, when a re-join replaces them and in the
+        finally block, to avoid cancel-scope mismatch between start() and
+        stop().  A re-join that never loads leaves the previous backend.
         """
         dynamic: dict[str, MCPBackend] = {}
         try:
@@ -372,10 +406,14 @@ class Gateway:
                 self._reload_event.clear()
                 pending = dict(self._pending_backends)
                 for name, conf in pending.items():
+                    prev = self.backends.get(name)
+                    if prev is not None and dynamic.get(name) is prev:
+                        del dynamic[name]
+                        await _close_in_this_task(prev)
                     loaded = False
                     for attempt in range(6):
                         if attempt > 0:
-                            await anyio.sleep(10)
+                            await anyio.sleep(_LOAD_RETRY_SECONDS)
                         try:
                             bk = create_backend(name, conf)
                             self.backends[name] = bk
@@ -390,13 +428,31 @@ class Gateway:
                             asyncio.CancelledError,
                             BaseExceptionGroup,
                         ) as exc:
-                            self.backends.pop(name, None)
+                            if prev is not None:
+                                self.backends[name] = prev
+                            else:
+                                self.backends.pop(name, None)
                             logger.warning(
                                 "Backend %s attempt %d/6: %s",
                                 name,
                                 attempt + 1,
                                 exc,
                             )
+                    if loaded and prev is not None and prev.started:
+                        self._retired.append(prev)
+                    if not loaded and prev is not None and not prev.started:
+                        # The previous backend was closed for the re-join:
+                        # bring it back from this task, as it was
+                        try:
+                            await prev.start()
+                            dynamic[name] = prev
+                            await self._build_tool_map()
+                        except (
+                            Exception,
+                            asyncio.CancelledError,
+                            BaseExceptionGroup,
+                        ) as exc:
+                            logger.warning("Backend %s not restored: %s", name, exc)
                     self._pending_backends.pop(name, None)
                     if not loaded:
                         logger.warning(
@@ -405,13 +461,8 @@ class Gateway:
                             name,
                         )
         finally:
-            for _name, bk in dynamic.items():
-                if not bk.started:
-                    continue
-                try:
-                    await bk.stop()
-                except BaseException:
-                    pass
+            for bk in reversed(list(dynamic.values())):
+                await _close_in_this_task(bk)
 
     async def list_tools(self) -> dict[str, str]:
         """Return the current tool map (tool_name -> backend_name)."""
