@@ -100,6 +100,43 @@ def _load_jsonl(path: Path) -> list[dict]:
     return entries
 
 
+def _withdrawals(case_dir: Path) -> list[dict]:
+    """Candidate findings withdrawn after challenge, oldest first.
+
+    Each is a record_finding audit entry whose result is WITHDRAWN. An entry
+    repeated in the trail counts once, by audit id and time together, so two
+    withdrawals never collapse into one.
+    """
+    audit_dir = case_dir / "audit"
+    if not audit_dir.is_dir():
+        return []
+    seen: set[tuple] = set()
+    withdrawals = []
+    for audit_file in sorted(audit_dir.glob("*.jsonl")):
+        for entry in _load_jsonl(audit_file):
+            if not isinstance(entry, dict) or entry.get("tool") != "record_finding":
+                continue
+            result = entry.get("result_summary")
+            if not isinstance(result, dict) or result.get("status") != "WITHDRAWN":
+                continue
+            key = (entry.get("audit_id"), entry.get("ts"))
+            if key in seen:
+                continue
+            seen.add(key)
+            withdrawals.append(
+                {
+                    "audit_id": entry.get("audit_id", ""),
+                    "ts": entry.get("ts", ""),
+                    "examiner": entry.get("examiner", ""),
+                    "title": result.get("title", ""),
+                    "observation": result.get("observation", ""),
+                    "contradiction": result.get("contradiction", ""),
+                    "skeptic_audit_ids": result.get("skeptic_audit_ids", []),
+                }
+            )
+    return sorted(withdrawals, key=lambda w: str(w["ts"]))
+
+
 def _resolve_examiner(request: Request) -> str | None:
     """Get examiner from auth middleware, fall back to env var."""
     from vhir_cli.identity import valid_name
@@ -406,6 +443,7 @@ async def get_summary(request: Request) -> JSONResponse:
         timeline_counts[s] = timeline_counts.get(s, 0) + 1
 
     open_todos = sum(1 for t in todos if t.get("status", "open") == "open")
+    withdrawals = _withdrawals(case_dir)
 
     return JSONResponse(
         {
@@ -413,6 +451,7 @@ async def get_summary(request: Request) -> JSONResponse:
             "timeline": {"total": len(timeline), "by_status": timeline_counts},
             "evidence": {"total": len(evidence)},
             "todos": {"total": len(todos), "open": open_todos},
+            "withdrawn": {"total": len(withdrawals), "items": withdrawals},
         }
     )
 

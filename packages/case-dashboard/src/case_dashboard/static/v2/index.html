@@ -309,6 +309,11 @@ body {
 .optional-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
 
 /* Stale warning */
+.challenge-line { font-size: 12px; margin-top: 4px; color: var(--text-secondary); }
+.challenge-line.not-challenged { color: var(--amber); font-weight: 600; }
+.withdrawn-line { margin: 6px 8px; padding: 6px 8px; font-size: 12px; color: var(--amber); border: 1px solid var(--amber); border-radius: 4px; cursor: pointer; }
+.alternative { margin: 4px 0; font-size: 13px; }
+.alternative .alt-status { font-weight: 600; margin-right: 4px; }
 .stale-warning { background: var(--amber-bg); color: var(--amber); padding: 8px 12px; border-radius: 4px; font-size: 12px; margin-bottom: 12px; border: 1px solid var(--amber); }
 
 /* Refresh badge */
@@ -577,6 +582,7 @@ body {
           </div>
         </details>
       </div>
+      <div class="withdrawn-line" id="withdrawnLine" style="display:none" onclick="switchTab('dashboard')"></div>
       <div class="sidebar-list" id="sidebarList" role="listbox" aria-label="Findings list"></div>
       <div class="sidebar-stats" id="sidebarStats"></div>
       <div class="save-status saved" id="saveStatus">All saved &#10003;</div>
@@ -924,15 +930,18 @@ async function loadAll() {
       loading.innerHTML = '<div style="width:300px"><div class="skeleton skeleton-line"></div>' +
         '<div class="skeleton skeleton-line"></div><div class="skeleton skeleton-block"></div></div>';
     }
-    const [f, d, c, tl, io] = await Promise.all([
+    const [f, d, c, tl, io, sm] = await Promise.all([
       apiFetch('/api/findings'),
       apiFetch('/api/delta'),
       apiFetch('/api/case'),
       apiFetch('/api/timeline'),
       apiFetch('/api/iocs'),
+      apiFetch('/api/summary').catch(function() { return null; }),
     ]);
     // The commit dialog signs a frozen copy: a load in flight changes nothing
     if (VHIR_SIGN.isOpen()) return;
+    if (sm) summaryData = sm;
+    renderWithdrawnLine();
     if (loading) loading.style.display = 'none';
     hideErrorBanner();
     const newIds = new Set(f.map(x => x.id));
@@ -1341,7 +1350,7 @@ function renderFinding(id) {
     if (de._snapshot) {
       var changedFields = [];
       var contentKeys = ['title','description','observation','interpretation','confidence',
-        'mitre_ids','iocs','audit_ids','related_findings','context','artifact_refs'];
+        'mitre_ids','iocs','audit_ids','related_findings','context','artifact_refs','alternatives'];
       contentKeys.forEach(function(k) {
         if (JSON.stringify(f[k]) !== JSON.stringify(de._snapshot[k])) changedFields.push(k);
       });
@@ -1389,6 +1398,7 @@ function renderFinding(id) {
   }
   html += '</div>';
   html += '</div>';
+  html += renderChallengeLine(f.challenged);
   // Editable title in sticky bar (single location — no duplicate in Zone 1)
   html += '<div class="sticky-title">';
   if (editingField === 'title') {
@@ -1449,6 +1459,20 @@ function renderFinding(id) {
     html += ' <span style="color:var(--text-secondary);font-size:13px">\u2014 ';
     html += renderEditableField('confidence_justification', eff.confidence_justification || '', f, de);
     html += '</span>';
+  }
+  html += '</div>';
+
+  // 5b. Alternatives (editable as JSON)
+  html += '<div class="field-section"><div class="field-label">Alternatives <span class="edit-pencil" onclick="startEdit(\'alternatives\')" title="Click to edit">\u270E</span></div>';
+  if (editingField === 'alternatives') {
+    html += renderEditableField('alternatives', eff.alternatives || [], f, de);
+  } else {
+    if (de && de.modifications && de.modifications.alternatives) {
+      html += '<div class="modified-original">' + renderAlternatives(de.modifications.alternatives.original) + '</div>';
+      html += '<div class="modified-new">' + renderAlternatives(eff.alternatives) + '</div>';
+    } else {
+      html += renderAlternatives(eff.alternatives);
+    }
   }
   html += '</div>';
 
@@ -1654,6 +1678,73 @@ function renderFieldWithDelta(field, value, de) {
   return '<div class="field-value">' + escapeHtml(String(value)) + '</div>';
 }
 
+// Each line is evidence- and model-derived text: escaped, never markup.
+function renderAlternatives(list) {
+  if (!Array.isArray(list) || !list.length) {
+    return '<div class="field-value" style="color:var(--text-muted)">None</div>';
+  }
+  var html = '';
+  list.forEach(function(a) {
+    if (!a || typeof a !== 'object' || Array.isArray(a)) {
+      html += '<div class="alternative">' + escapeHtml(typeof a === 'string' ? a : JSON.stringify(a)) + '</div>';
+      return;
+    }
+    var label = a.status === 'ruled_out' ? '[ruled out]' : a.status === 'open' ? '[open]' : '[' + String(a.status || 'open') + ']';
+    html += '<div class="alternative"><span class="alt-status">' + escapeHtml(label) + '</span>' + escapeHtml(String(a.explanation || ''));
+    if (a.evidence) html += '<div style="font-size:12px;color:var(--text-secondary)">' + escapeHtml(String(a.evidence)) + '</div>';
+    if (Array.isArray(a.audit_ids) && a.audit_ids.length) {
+      html += '<div style="font-size:11px;color:var(--text-muted)">audit: ' + escapeHtml(a.audit_ids.join(', ')) + '</div>';
+    }
+    html += '</div>';
+  });
+  return html;
+}
+
+function renderChallengeLine(c) {
+  if (!c || typeof c !== 'object') {
+    return '<div class="challenge-line not-challenged">Not challenged</div>';
+  }
+  var ids = Array.isArray(c.skeptic_audit_ids) ? c.skeptic_audit_ids.join(', ') : '';
+  var text;
+  if (c.outcome === 'stands') {
+    text = 'Challenged (client-reported): stands \u2014 skeptic: ' + ids;
+  } else if (c.outcome === 'revised') {
+    text = 'Challenged (client-reported): revised after challenge \u2014 skeptic: ' + ids;
+  } else if (c.outcome === 'withdrawn') {
+    text = 'Challenged (client-reported): withdrawal refused, no contradicting output cited \u2014 staged for your decision';
+  } else {
+    text = 'Challenged (client-reported): ' + String(c.outcome || '');
+  }
+  return '<div class="challenge-line">' + escapeHtml(text) + '</div>';
+}
+
+function withdrawnText(n) {
+  return n + ' candidate finding' + (n === 1 ? '' : 's') + ' withdrawn after challenge';
+}
+
+function renderWithdrawnLine() {
+  var el = document.getElementById('withdrawnLine');
+  if (!el) return;
+  var n = summaryData && summaryData.withdrawn ? summaryData.withdrawn.total || 0 : 0;
+  el.style.display = n ? '' : 'none';
+  el.textContent = n ? withdrawnText(n) + ' \u2014 open the list on the Overview' : '';
+}
+
+function renderWithdrawnList(w) {
+  if (!w || !w.total) return '';
+  var html = '<details style="margin:8px 0 12px" open><summary style="cursor:pointer;color:var(--amber);font-size:13px;font-weight:600">' + escapeHtml(withdrawnText(w.total)) + '</summary>';
+  (w.items || []).forEach(function(i) {
+    html += '<div class="evidence-artifact" style="margin:6px 0">';
+    html += '<div style="font-weight:600">' + escapeHtml(String(i.title || '')) + '</div>';
+    html += '<div style="font-size:12px">' + escapeHtml(String(i.observation || '')) + '</div>';
+    html += '<div style="font-size:12px;margin-top:4px"><strong>Contradiction:</strong> ' + escapeHtml(String(i.contradiction || '')) + '</div>';
+    html += '<div style="font-size:11px;color:var(--text-muted)">' + escapeHtml(formatTime(i.ts || '')) + ' \u00B7 ' + escapeHtml(String(i.examiner || '')) + ' \u00B7 ' + escapeHtml(String(i.audit_id || '')) +
+      ' \u00B7 skeptic: ' + escapeHtml((i.skeptic_audit_ids || []).join(', ')) + '</div>';
+    html += '</div>';
+  });
+  return html + '</details>';
+}
+
 function confClassFor(conf) {
   return 'conf-' + (conf || 'low').toLowerCase();
 }
@@ -1680,7 +1771,7 @@ function hideErrorBanner() {
 
 /* === Snapshot for stale detection === */
 var _CONTENT_KEYS = ['title','description','observation','interpretation','confidence',
-  'mitre_ids','iocs','audit_ids','related_findings','context','artifact_refs'];
+  'mitre_ids','iocs','audit_ids','related_findings','context','artifact_refs','alternatives'];
 
 function snapshotFields(obj) {
   var snap = {};
@@ -2443,6 +2534,19 @@ function saveEdit(field) {
     newValue = confEl.value;
   } else if (field === 'mitre_ids' || field === 'iocs') {
     newValue = getTagInputValues(field);
+  } else if (field === 'alternatives') {
+    var altEl = document.getElementById('editInput-alternatives');
+    if (!altEl) return;
+    try {
+      newValue = JSON.parse(altEl.value.trim() || '[]');
+    } catch (e) {
+      showToast('Alternatives must be valid JSON: ' + e.message, 'error');
+      return;
+    }
+    if (!Array.isArray(newValue)) {
+      showToast('Alternatives must be a JSON list', 'error');
+      return;
+    }
   } else {
     var editEl = document.getElementById('editInput-' + field);
     if (!editEl) return;
@@ -2488,6 +2592,10 @@ function renderEditableField(field, value, f, de) {
       html += '<input type="text" placeholder="Add + Enter" onkeydown="addTag(event, \'' + ef + '\')" />';
       html += '</div><div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'' + ef + '\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
       return html;
+    } else if (field === 'alternatives') {
+      return '<div class="inline-edit"><textarea id="editInput-alternatives" rows="8">' + escapeHtml(JSON.stringify(value || [], null, 2)) + '</textarea>' +
+        '<div style="font-size:11px;color:var(--text-muted)">A JSON list. Each: {"explanation": "...", "status": "open" or "ruled_out", "evidence": "...", "audit_ids": [...]}. [] for none.</div>' +
+        '<div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'' + ef + '\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
     } else if (field === 'context') {
       return '<div class="inline-edit"><textarea id="editInput-context" rows="5" placeholder="Add examiner context: data exposure, business impact, third-party relevance, chain of custody notes, or any finding-specific observations the report should reflect.">' + escapeHtml(String(value)) + '</textarea>' +
         '<div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'' + ef + '\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
@@ -3200,6 +3308,7 @@ async function loadDashboard() {
   try {
     summaryData = await apiFetch('/api/summary');
     renderDashboard(summaryData);
+    renderWithdrawnLine();
   } catch (e) {
     document.getElementById('dashGrid').innerHTML =
       '<div class="dash-card"><h3>Error</h3><p>' + escapeHtml(e.message) + '</p></div>';
@@ -3284,6 +3393,7 @@ function renderDashboard(summary) {
   html += tile('Evidence', evTotal, 'registered files', 'evidence');
   html += tile('TODOs', openTodos, totalTodos + ' total', 'todos');
   html += '</div>';
+  html += renderWithdrawnList(summary.withdrawn);
 
   // Commit status + action prompt (ONE location)
   if (draft > 0) {

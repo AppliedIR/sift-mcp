@@ -24,6 +24,8 @@ STRIPPED_FINDING_FIELDS = {
     "examiner_notes",
     "examiner_modifications",
     "provenance_warnings",
+    # The review step's record of the skeptic challenge, with its audit ids
+    "challenged",
 }
 
 PROFILES: dict[str, dict] = {
