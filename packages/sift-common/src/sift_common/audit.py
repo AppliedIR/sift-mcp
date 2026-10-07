@@ -127,16 +127,23 @@ class AuditWriter:
             return None
         return audit_dir
 
-    def _next_audit_id(self) -> str:
-        """Generate next audit ID: {prefix}-{examiner}-{date}-{seq}."""
+    def _next_audit_id(self, audit_dir: Path | None = None) -> str:
+        """Generate next audit ID: {prefix}-{examiner}-{date}-{seq}.
+
+        Sequenced in `audit_dir` when given (log() passes the directory it
+        writes to), else in the directory resolved now.
+        """
         today = datetime.now(timezone.utc).strftime("%Y%m%d")
         with self._lock:
-            audit_dir = self._get_audit_dir()
+            if audit_dir is None:
+                audit_dir = self._get_audit_dir()
             if today != self._date_str:
                 self._date_str = today
-                self._sequence = self._resume_sequence(today)
+                self._sequence = self._resume_sequence(today, audit_dir)
             elif audit_dir != self._audit_dir:
-                self._sequence = max(self._sequence, self._resume_sequence(today))
+                self._sequence = max(
+                    self._sequence, self._resume_sequence(today, audit_dir)
+                )
             self._audit_dir = audit_dir
             seq = self._mint(audit_dir, today)
         prefix = self.mcp_name.replace("-mcp", "").replace("-", "")
@@ -163,16 +170,15 @@ class AuditWriter:
             )
             with os.fdopen(fd, "r+", encoding="utf-8") as f:
                 fcntl.flock(f, fcntl.LOCK_EX)
-                side = 0
+                side = None
                 try:
-                    data = json.loads(f.read() or "{}")
-                    if isinstance(data, dict) and data.get("date") == today:
-                        if isinstance(data.get("seq"), int):
-                            side = data["seq"]
-                except (
-                    ValueError
-                ):  # not a sidecar: this writer's counter sets the floor
+                    data = json.loads(f.read())
+                    if isinstance(data, dict) and isinstance(data.get("seq"), int):
+                        side = data["seq"] if data.get("date") == today else 0
+                except ValueError:
                     pass
+                if side is None:  # empty or not a sidecar: the trail sets the floor
+                    side = self._highest_in_trail(audit_dir, today)
                 self._sequence = max(self._sequence, side) + 1
                 f.seek(0)
                 f.truncate()
@@ -189,13 +195,14 @@ class AuditWriter:
             self._sequence += 1
         return self._sequence
 
-    def _resume_sequence(self, date_str: str) -> int:
+    def _resume_sequence(self, date_str: str, audit_dir: Path | None = None) -> int:
         """Resume sequence: the higher of the sidecar and the JSONL's highest ID.
 
         Prevents duplicate audit IDs after server restart or a case switch.
         Must be called under self._lock.
         """
-        audit_dir = self._get_audit_dir()
+        if audit_dir is None:
+            audit_dir = self._get_audit_dir()
         if not audit_dir:
             return 0
 
@@ -211,10 +218,16 @@ class AuditWriter:
         except Exception:  # unreadable or not a sidecar: the JSONL sets the floor
             pass
 
-        # Scan the JSONL (O(n) — on startup, a date change or a case switch)
+        return max(side, self._highest_in_trail(audit_dir, date_str))
+
+    def _highest_in_trail(self, audit_dir: Path, date_str: str) -> int:
+        """The highest sequence this writer's name used on `date_str` in the JSONL.
+
+        O(n): on startup, a date change, a case switch or a damaged sidecar.
+        """
         log_file = audit_dir / f"{self.mcp_name}.jsonl"
         if not log_file.exists():
-            return side
+            return 0
         prefix = self.mcp_name.replace("-mcp", "").replace("-", "")
         pattern = f"{prefix}-{self.examiner}-{date_str}-"
         max_seq = 0
@@ -243,7 +256,7 @@ class AuditWriter:
             logger.warning(
                 "Failed to read audit log %s for sequence resume: %s", log_file, e
             )
-        return max(side, max_seq)
+        return max_seq
 
     def _read_active_case_id(self) -> str:
         """Read case_id from ~/.vhir/active_case file.
@@ -274,11 +287,17 @@ class AuditWriter:
         source_evidence: str = "",
         extra: dict[str, Any] | None = None,
     ) -> str | None:
-        """Write an audit entry. Returns the audit_id, or None when no case is active."""
-        if not self._get_audit_dir():
+        """Write an audit entry. Returns the audit_id, or None when no case is active.
+
+        The directory is resolved once: the id is minted for it (when not
+        given) and the entry is written to it, so a case switch can't put one
+        case's id into another.
+        """
+        audit_dir = self._get_audit_dir()
+        if not audit_dir:
             return None
         if audit_id is None:
-            audit_id = self._next_audit_id()
+            audit_id = self._next_audit_id(audit_dir)
 
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -305,7 +324,7 @@ class AuditWriter:
         if extra:
             entry.update(extra)
 
-        if not self._write_entry(entry):
+        if not self._write_entry(entry, audit_dir):
             logger.warning(
                 "Audit write failed for audit_id=%s — returning None",
                 audit_id,
@@ -313,13 +332,14 @@ class AuditWriter:
             return None
         return audit_id
 
-    def _write_entry(self, entry: dict) -> bool:
+    def _write_entry(self, entry: dict, audit_dir: Path | None = None) -> bool:
         """Write a single audit entry to the JSONL file with fsync.
 
         Returns True if the entry was written or no case is active (normal skip).
         Returns False only on actual write errors.
         """
-        audit_dir = self._get_audit_dir()
+        if audit_dir is None:
+            audit_dir = self._get_audit_dir()
         if not audit_dir:
             logger.debug(
                 "No active case, audit entry not written: %s/%s",

@@ -213,8 +213,6 @@ def create_server() -> FastMCP:
                 preview_lines=min(preview_lines, 200) if preview_lines else 0,
             )
             elapsed = time.monotonic() - start
-            # Minted when the entry is written, in the case it's written to
-            audit_id = audit._next_audit_id()
 
             # FK tool name for knowledge enrichment (td already resolved above)
             fk_name = td.knowledge_name if td else binary
@@ -234,11 +232,29 @@ def create_server() -> FastMCP:
                 resp_data = exec_result
                 resp_format = exec_result.get("_output_format", "text")
 
+            # Written first, in one step: the id is minted for the case the entry
+            # goes to, and the response carries that id
+            logged_id = audit.log(
+                tool="run_command",
+                params={"command": command, "purpose": purpose},
+                result_summary={
+                    "exit_code": exec_result["exit_code"],
+                    "output_file": exec_result.get("output_file", ""),
+                    "output_sha256": exec_result.get("output_sha256", ""),
+                    "stdout_bytes": exec_result.get("stdout_total_bytes", 0),
+                    "stdout_head": (exec_result.get("stdout") or "")[:500],
+                    **({"truncated": True} if exec_result.get("truncated") else {}),
+                },
+                elapsed_ms=elapsed * 1000,
+                input_files=list(input_hashes.keys()) if input_hashes else None,
+                input_sha256s=list(input_hashes.values()) if input_hashes else None,
+                input_detection_method=detection_method,
+            )
             response = build_response(
                 tool_name="run_command",
                 success=exec_result["exit_code"] == 0,
                 data=resp_data,
-                audit_id=audit_id,
+                audit_id=logged_id,
                 output_format=resp_format,
                 elapsed_seconds=elapsed,
                 exit_code=exec_result["exit_code"],
@@ -258,23 +274,6 @@ def create_server() -> FastMCP:
                 response["full_output_sha256"] = exec_result.get("output_sha256")
                 response["full_output_bytes"] = exec_result.get("stdout_total_bytes")
 
-            logged_id = audit.log(
-                tool="run_command",
-                params={"command": command, "purpose": purpose},
-                result_summary={
-                    "exit_code": exec_result["exit_code"],
-                    "output_file": exec_result.get("output_file", ""),
-                    "output_sha256": exec_result.get("output_sha256", ""),
-                    "stdout_bytes": exec_result.get("stdout_total_bytes", 0),
-                    "stdout_head": (exec_result.get("stdout") or "")[:500],
-                    **({"truncated": True} if exec_result.get("truncated") else {}),
-                },
-                audit_id=audit_id,
-                elapsed_ms=elapsed * 1000,
-                input_files=list(input_hashes.keys()) if input_hashes else None,
-                input_sha256s=list(input_hashes.values()) if input_hashes else None,
-                input_detection_method=detection_method,
-            )
             if logged_id is None:
                 response["warning"] = "Audit write failed — action not recorded"
             _NO_INPUT_CMDS = {
@@ -314,62 +313,56 @@ def create_server() -> FastMCP:
 
         except SiftError as e:
             elapsed = time.monotonic() - start
-            audit_id = audit._next_audit_id()
-            response = build_response(
-                tool_name="run_command",
-                success=False,
-                data=None,
-                audit_id=audit_id,
-                error=str(e),
-            )
             logged_id = audit.log(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": str(e)},
-                audit_id=audit_id,
                 elapsed_ms=elapsed * 1000,
+            )
+            response = build_response(
+                tool_name="run_command",
+                success=False,
+                data=None,
+                audit_id=logged_id,
+                error=str(e),
             )
             if logged_id is None:
                 response["warning"] = "Audit write failed — action not recorded"
             return response
         except (ValueError, OSError, RuntimeError) as e:
             elapsed = time.monotonic() - start
-            audit_id = audit._next_audit_id()
             logger.warning("run_command unexpected error: %s: %s", type(e).__name__, e)
-            response = build_response(
-                tool_name="run_command",
-                success=False,
-                data=None,
-                audit_id=audit_id,
-                error=str(e),
-            )
             logged_id = audit.log(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": str(e)},
-                audit_id=audit_id,
                 elapsed_ms=elapsed * 1000,
+            )
+            response = build_response(
+                tool_name="run_command",
+                success=False,
+                data=None,
+                audit_id=logged_id,
+                error=str(e),
             )
             if logged_id is None:
                 response["warning"] = "Audit write failed — action not recorded"
             return response
         except Exception as e:
             elapsed = time.monotonic() - start
-            audit_id = audit._next_audit_id()
             logger.error("run_command catch-all error: %s: %s", type(e).__name__, e)
-            response = build_response(
-                tool_name="run_command",
-                success=False,
-                data=None,
-                audit_id=audit_id,
-                error=f"Unexpected error: {type(e).__name__}",
-            )
             logged_id = audit.log(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": f"{type(e).__name__}: {e}"},
-                audit_id=audit_id,
                 elapsed_ms=elapsed * 1000,
+            )
+            response = build_response(
+                tool_name="run_command",
+                success=False,
+                data=None,
+                audit_id=logged_id,
+                error=f"Unexpected error: {type(e).__name__}",
             )
             if logged_id is None:
                 response["warning"] = "Audit write failed — action not recorded"

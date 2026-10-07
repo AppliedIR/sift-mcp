@@ -126,3 +126,61 @@ def test_a_resolver_names_the_case_and_none_falls_back(case, tmp_path):
         tool="t", params={}, result_summary="x"
     )
     assert (len(_ids(other)), len(_ids(case))) == (1, 1)
+
+
+def test_a_case_switch_between_minting_and_writing_cannot_move_the_id(
+    case, tmp_path, monkeypatch
+):
+    other = tmp_path / "case-b"
+    (other / "audit").mkdir(parents=True)
+    (other / "CASE.yaml").write_text("case_id: case-b\n")
+    writer = AuditWriter(NAME)
+    own = writer._next_audit_id(other / "audit")  # case B's own first entry
+    (other / "audit" / f"{NAME}.jsonl").write_text(json.dumps({"audit_id": own}) + "\n")
+    writer = AuditWriter(NAME)
+    mint = AuditWriter._next_audit_id
+
+    def mint_then_switch(self, *a, **k):
+        minted = mint(self, *a, **k)
+        monkeypatch.setenv("VHIR_CASE_DIR", str(other))  # the examiner switches cases
+        return minted
+
+    monkeypatch.setattr(AuditWriter, "_next_audit_id", mint_then_switch)
+    logged = writer.log(tool="t", params={}, result_summary="x")
+    assert _ids(other) == [own]
+    assert _ids(case) == [logged]
+
+
+def test_an_emptied_sidecar_does_not_bring_back_a_used_id(case):
+    writer = AuditWriter(NAME)
+    writer.log(tool="t", params={}, result_summary="x")
+    # another process logs, and leaves the sidecar truncated
+    AuditWriter(NAME).log(tool="t", params={}, result_summary="x")
+    (case / "audit" / f"{NAME}.seq").write_text("")
+    writer.log(tool="t", params={}, result_summary="x")
+    ids = _ids(case)
+    assert len(ids) == 3 and len(set(ids)) == 3, ids
+
+
+def test_an_entry_gets_its_id_from_the_case_it_is_written_to(
+    case, tmp_path, monkeypatch
+):
+    other = tmp_path / "case-b"
+    other.mkdir()
+    (other / "CASE.yaml").write_text("case_id: case-b\n")
+    for target, n in ((case, 2), (other, 1)):
+        monkeypatch.setenv("VHIR_CASE_DIR", str(target))
+        for _ in range(n):
+            AuditWriter(NAME).log(tool="t", params={}, result_summary="x")
+    monkeypatch.setenv("VHIR_CASE_DIR", str(case))
+    resolve = AuditWriter._get_audit_dir
+
+    def resolve_then_switch(self):
+        found = resolve(self)
+        monkeypatch.setenv("VHIR_CASE_DIR", str(other))  # a switch right after
+        return found
+
+    monkeypatch.setattr(AuditWriter, "_get_audit_dir", resolve_then_switch)
+    AuditWriter(NAME).log(tool="t", params={}, result_summary="x")
+    ids = _ids(case)
+    assert len(ids) == 3 and len(set(ids)) == 3, ids
