@@ -83,7 +83,7 @@ backends:
       VHIR_EXAMINER: "${VHIR_EXAMINER}"
     enabled: true
 
-  opencti-mcp:
+  threatintel-mcp:
     type: stdio
     command: "python"
     args: ["-m", "opencti_mcp"]

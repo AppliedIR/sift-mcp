@@ -69,7 +69,7 @@ class DegradedError(OpenCTIMCPError):
     ("ConnectionError") so DegradedError correctly falls through to
     the non-transient branch and raises immediately.
 
-    Operators recover via `vhir service restart opencti-mcp` after the
+    Operators recover by restarting the threat-intel backend after the
     OpenCTI server returns.
     """
 
@@ -78,7 +78,8 @@ class DegradedError(OpenCTIMCPError):
             message,
             safe_message=(
                 "OpenCTI backend in DEGRADED mode — server unreachable. "
-                "Run `vhir service restart opencti-mcp` after server returns."
+                "Run `vhir service restart threatintel-mcp` (`opencti-mcp` in"
+                " configurations from before) after the server returns."
             ),
         )
 

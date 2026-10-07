@@ -129,7 +129,7 @@ http://localhost:4508/mcp/report-mcp
 http://localhost:4508/mcp/sift-mcp
 http://localhost:4508/mcp/windows-triage-mcp
 http://localhost:4508/mcp/forensic-rag-mcp
-http://localhost:4508/mcp/opencti-mcp
+http://localhost:4508/mcp/threatintel-mcp   (also /mcp/opencti-mcp)
 http://localhost:4508/mcp/opensearch-mcp
 ```
 

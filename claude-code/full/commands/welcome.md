@@ -185,7 +185,7 @@ Gateway:          OK (X tools, Y backends)
   sift-mcp:       OK    report-mcp:     OK
   forensic-rag:   OK (N records)
   windows-triage: OK (databases loaded)
-  opencti-mcp:    [OK/NOT CONFIGURED]
+  threatintel-mcp: [OK/NOT CONFIGURED]
 
 Forensic tools:   N available (memory, filesystem, registry, ...)
 Knowledge base:   N records across M sources

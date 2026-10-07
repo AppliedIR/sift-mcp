@@ -33,7 +33,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | sift-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | forensic-rag-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | windows-triage-mcp | SIFT | — | (via gateway) | stdio subprocess |
-| opencti-mcp | SIFT | — | (via gateway) | stdio subprocess |
+| threatintel-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | opensearch-mcp | SIFT | — | (via gateway) | stdio subprocess |
 | OpenSearch | SIFT (Docker) | 9200 | — | HTTPS (local) |
 | case-dashboard | SIFT | — | (via gateway /portal/) | — |
@@ -53,7 +53,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | **sift-mcp** | Authenticated, denylist-protected forensic tool execution on Linux/SIFT. Zimmerman suite, Volatility, Sleuth Kit, Hayabusa, etc. FK-enriched response envelopes. 5 core tools, 65+ catalog entries. |
 | **forensic-rag-mcp** | Semantic search across Sigma rules, MITRE ATT&CK, Atomic Red Team, Splunk, KAPE, Velociraptor, LOLBAS, GTFOBins. |
 | **windows-triage-mcp** | Offline Windows baseline validation. Checks files, processes, services, scheduled tasks, registry, DLLs, pipes against known-good databases. |
-| **opencti-mcp** | Read-only threat intelligence from OpenCTI. IOC lookup, threat actor search, malware search, MITRE technique search. 8 tools. |
+| **threatintel-mcp** | Read-only threat intelligence. `lookup_ioc` returns each configured platform's own records (OpenCTI, MISP) with MATCH, NO_MATCH or UNAVAILABLE, not a verdict; the other tools search OpenCTI for threat actors, malware and MITRE techniques. 8 tools. Served at `/mcp/opencti-mcp` too. |
 | **opensearch-mcp** | Evidence indexing and querying at scale. 15 parsers (evtx, EZ tools, Volatility, JSON, CSV, W3C, etc.), 17 MCP tools (search, aggregate, timeline, enrichment). Deterministic content-based dedup, full provenance. Triage baseline and threat intel enrichment run as programmatic post-ingest passes. Optional — not part of the sift-mcp monorepo ([separate repo](https://github.com/AppliedIR/opensearch-mcp)). |
 | **wintools-mcp** | Catalog-gated forensic tool execution on Windows. Zimmerman suite, Hayabusa. FK-enriched response envelopes. Denylist blocks dangerous binaries. 7 tools, 31 catalog entries. |
 | **vhir CLI** | Human-only actions: approve/reject findings, review case status, manage evidence, generate reports, audit trail queries, case lifecycle (init/close/activate/migrate), execute forensic commands with audit trail, configure examiner identity. Not callable by AI. |
@@ -179,7 +179,7 @@ report-mcp
 sift-mcp ──► SIFT forensic tools
 forensic-rag-mcp
 windows-triage-mcp
-opencti-mcp
+threatintel-mcp
 ```
 
 The gateway uses the low-level MCP `Server` class (not FastMCP) because tools are discovered dynamically from backends at runtime. wintools-mcp uses `FastMCP.streamable_http_app()` because it has statically-registered tools.

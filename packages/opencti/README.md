@@ -29,13 +29,14 @@ is reported UNAVAILABLE with the reason on every lookup, and never hides
 another platform's answer. When OpenCTI isn't listed, the other OpenCTI tools
 answer `opencti_not_configured`.
 
-**To add MISP, edit the existing threat-intel backend's `env` block**; don't add
+**To add MISP, edit the existing threat-intel backend's `env` block**
+(`threatintel-mcp`, or `opencti-mcp` in configurations from before); don't add
 a second backend entry, which would put two copies of every tool behind the
 gateway. Then restart the gateway (`systemctl --user restart vhir-gateway`, or
 however you start it):
 
 ```yaml
-  opencti-mcp:
+  threatintel-mcp:
     env:
       THREATINTEL_PROVIDERS: "opencti,misp"
       OPENCTI_URL: "https://opencti.example.org"

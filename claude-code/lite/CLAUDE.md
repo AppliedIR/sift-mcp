@@ -96,8 +96,9 @@ Offline Windows file/process validation. UNKNOWN = not in database (neutral).
 - **Threats:** check_lolbin, check_hijackable_dll, check_hash, check_pipe
 - **System:** get_db_stats, get_health
 
-### opencti-mcp (Threat Intelligence) - optional
-Live threat intel from OpenCTI instance.
+### threatintel-mcp (Threat Intelligence) - optional
+Live threat intel from the configured platforms (OpenCTI, MISP).
+`lookup_ioc` returns each platform's records, not a verdict.
 - **Search:** search_threat_intel, search_entity, search_reports
 - **Lookup:** lookup_ioc, get_entity, get_relationships
 - **Recent:** get_recent_indicators
@@ -120,7 +121,7 @@ download_file(file_path="output/<artifact>")           # Retrieve artifacts
 ```
 
 **IMPORTANT:** Results are observations, not verdicts. Apply "benign
-until proven malicious." Corroborate findings with opencti-mcp and
+until proven malicious." Corroborate findings with threatintel-mcp and
 forensic-rag.
 
 ### wintools-mcp (Windows Forensic Tools) — optional, remote

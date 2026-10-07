@@ -32,7 +32,7 @@ available before planning a workflow:
 | sift-mcp | Always | Always | `vhir service status` |
 | windows-triage | No | Yes | `vhir service status` |
 | forensic-rag | No | Yes | `vhir service status` |
-| opencti-mcp | No | If configured | `vhir service status` |
+| threatintel-mcp | No | If configured | `vhir service status` |
 | remnux-mcp | No | User-provided | `vhir service status` |
 | wintools-mcp | No | User-provided | `vhir service status` |
 
@@ -59,7 +59,7 @@ User Question
                                    | YES                              | NO
                                    v                                  v
                             +--------------+              +-----------------------------------+
-                            | opencti-mcp  |              | Contains "detect", "sigma",       |
+                            | threatintel-mcp  |              | Contains "detect", "sigma",       |
                             | FIRST        |              | "event ID", "MITRE", "hunt"?      |
                             +--------------+              +-----------------------------------+
                                                                | YES           | NO
@@ -81,13 +81,13 @@ User Question
 
 | User Intent | Primary Tool | Fallback |
 |-------------|--------------|----------|
-| IOC Lookup (IP, hash, domain) | opencti-mcp `lookup_ioc` | windows-triage `check_hash` |
-| Threat Actor Intel | opencti-mcp `search_threat_intel` | forensic-rag `search` (mitre_attack) |
-| Malware Info | opencti-mcp `search_entity` (type=malware) | forensic-rag `search` (sigma, mbc) |
-| CVE Details | opencti-mcp `search_entity` (type=vulnerability) | forensic-rag `search` (cisa_kev) |
-| Mitigations | opencti-mcp `search_entity` (type=course_of_action) | forensic-rag `search` (mitre_d3fend) |
+| IOC Lookup (IP, hash, domain) | threatintel-mcp `lookup_ioc` | windows-triage `check_hash` |
+| Threat Actor Intel | threatintel-mcp `search_threat_intel` | forensic-rag `search` (mitre_attack) |
+| Malware Info | threatintel-mcp `search_entity` (type=malware) | forensic-rag `search` (sigma, mbc) |
+| CVE Details | threatintel-mcp `search_entity` (type=vulnerability) | forensic-rag `search` (cisa_kev) |
+| Mitigations | threatintel-mcp `search_entity` (type=course_of_action) | forensic-rag `search` (mitre_d3fend) |
 | Detection Rules | forensic-rag `search` (sigma, elastic, chainsaw) | — |
-| MITRE Technique | forensic-rag `search` (mitre_attack) | opencti-mcp `search_entity` (type=attack_pattern) |
+| MITRE Technique | forensic-rag `search` (mitre_attack) | threatintel-mcp `search_entity` (type=attack_pattern) |
 | Forensic Artifacts | forensic-rag `search` (velociraptor, forensic_artifacts, kape) | — |
 | File Validation | windows-triage `check_file` | — |
 | Process Validation | windows-triage `check_process_tree` | — |
@@ -126,7 +126,7 @@ User Question
 - "is this part of a default Windows install, in its default place?" (not "is this legitimate?": a default file or service can still be misused)
 - Windows system file questions
 
-### opencti-mcp
+### threatintel-mcp
 - IP addresses, hashes (32/40/64 hex chars), domains/URLs
 - "is this malicious", "check this", "lookup", "threat intel"
 - APT/threat actor names, malware names, CVE identifiers
@@ -157,21 +157,21 @@ User Question
 ### File/Process Investigation
 ```
 1. windows-triage check_file or check_process_tree   -+
-2. opencti-mcp lookup_ioc (if hash available)           +- PARALLEL
+2. threatintel-mcp lookup_ioc (if hash available)           +- PARALLEL
 3. forensic-rag search (sigma/lolbas context)         -+
 ```
 
 ### IOC Investigation
 ```
-1. opencti-mcp lookup_ioc                 -+
+1. threatintel-mcp lookup_ioc                 -+
 2. windows-triage check_hash               +- PARALLEL
 3. forensic-rag search (detection rules)  -+
 ```
 
 ### Threat Actor Research
 ```
-1. opencti-mcp search_threat_intel                    -+
-2. opencti-mcp search_entity (type=malware)            +- PARALLEL
+1. threatintel-mcp search_threat_intel                    -+
+2. threatintel-mcp search_entity (type=malware)            +- PARALLEL
 3. forensic-rag search (TTPs from mitre_attack, sigma)-+
 ```
 
@@ -180,14 +180,14 @@ User Question
 ## Investigation Workflows
 
 ### Workflow 1: IOC Investigation
-1. `opencti-mcp lookup_ioc(ioc="...")` - Check if known malicious
+1. `threatintel-mcp lookup_ioc(ioc="...")` - What each platform holds on it
 2. If not found: `windows-triage check_hash` (for drivers)
 3. `forensic-rag search(query="IOC type detection", source_ids=["sigma"])`
 4. Synthesize with evidence per FORENSIC_DISCIPLINE.md
 
 ### Workflow 2: Threat Actor Research
-1. `opencti-mcp search_threat_intel(query="...")`
-2. `opencti-mcp search_entity(type="malware", query="...")`
+1. `threatintel-mcp search_threat_intel(query="...")`
+2. `threatintel-mcp search_entity(type="malware", query="...")`
 3. `forensic-rag search(query="...", source_ids=["mitre_attack"])`
 4. `forensic-rag search(query="... detection", source_ids=["sigma"])`
 
@@ -210,7 +210,7 @@ User Question
 3. Check action_required[] — follow remediation steps (unpack, extract, re-analyze)
 4. Check suggested_next_steps[] — execute or explain why skipping
 5. PARALLEL per extracted IOC:
-   a. opencti-mcp lookup_ioc(ioc="<IP/domain/hash>")
+   a. threatintel-mcp lookup_ioc(ioc="<IP/domain/hash>")
    b. windows-triage check_hash(hash="<file hash>")
 6. forensic-rag search(query="<capabilities from capa>", source_ids=["sigma","mitre_attack"])
 7. Synthesize with evidence chain per FORENSIC_DISCIPLINE.md
@@ -223,7 +223,7 @@ Use `depth="quick"` for batch triage, `depth="deep"` for known-malicious or evas
 2. remnux-mcp analyze_file(file_path="samples/document.xlsm") -> oletools auto-selected
 3. If macros: remnux-mcp run_tool(tool="olevba", args=["--deobf","samples/document.xlsm"])
 4. remnux-mcp extract_iocs -> embedded IOCs
-5. Per IOC: opencti-mcp lookup_ioc
+5. Per IOC: threatintel-mcp lookup_ioc
 6. forensic-rag search -> macro sigma rules
 ```
 
@@ -261,7 +261,7 @@ sift-mcp run_command:
   tshark -r capture.pcap -T fields ...      # Extract fields
   bulk_extractor -o /out/ capture.pcap      # Extract artifacts
 ```
-Then check IOCs with `opencti-mcp lookup_ioc`
+Then check IOCs with `threatintel-mcp lookup_ioc`
 
 ### Workflow 11: Memory Analysis
 ```bash
@@ -278,7 +278,7 @@ sift-mcp run_command:
 1. `windows-triage check_file(path="...", hash="...")`
 2. `windows-triage check_process_tree(process="...", parent="...")`
 3. `windows-triage check_lolbin(filename="...")`
-4. `opencti-mcp lookup_ioc(ioc="<hash>")`
+4. `threatintel-mcp lookup_ioc(ioc="<hash>")`
 5. `forensic-rag search(query="filename", source_ids=["sigma", "lolbas"])`
 
 ---
@@ -292,6 +292,14 @@ sift-mcp run_command:
 | 0.75-0.84 | Good | Relevant, include in response |
 | 0.65-0.74 | Fair | May be tangential, use judgment |
 | < 0.65 | Weak | Likely not relevant, may omit |
+
+### threatintel-mcp lookup_ioc
+Each configured platform answers under `providers.<name>` with its own
+records: MATCH, NO_MATCH, or UNAVAILABLE (it couldn't be asked, which is not
+a not-found). A MATCH is the platform's record, not a verdict: read OpenCTI's
+`revoked`, `valid_until` and `x_opencti_score`, and MISP's `to_ids`, the
+event's `published` and `threat_level_id`, `decay_score` and
+`warninglist_hits`, before treating an IOC as malicious.
 
 ### OpenCTI Confidence
 | Confidence | Meaning |
@@ -308,7 +316,7 @@ sift-mcp run_command:
 | EXPECTED | A default Windows file, service, task or autorun, in its default place (says nothing about how it was used) |
 | UNKNOWN | Not in database (neutral) |
 
-**Note:** windows-triage is offline-only. For MALICIOUS verdicts, use opencti-mcp.
+**Note:** windows-triage is offline-only. For threat-intelligence records, use threatintel-mcp `lookup_ioc` (each platform's records, not a verdict).
 
 ### REMnux analyze_file Response (if available)
 

@@ -43,12 +43,12 @@ _RELATED_TOOLS: dict[str, list[str]] = {
     "binary_analysis": [
         "remnux-mcp upload_from_host + analyze_file: Analyze suspicious binaries",
         "windows-triage check_file: Validate against Windows baseline",
-        "opencti-mcp lookup_ioc: Check hash/filename against threat intel",
+        "threatintel-mcp lookup_ioc: Check hash/filename against threat intel",
     ],
     "persistence": [
         "wintools-mcp run_windows_command(autorunsc): Scan ASEPs on offline evidence via forensic workstation",
         "wintools-mcp run_windows_command(sigcheck): Verify digital signatures on binaries",
-        "opencti-mcp lookup_ioc: Check file hash against threat intelligence",
+        "threatintel-mcp lookup_ioc: Check file hash against threat intelligence",
     ],
     "execution": [
         "wintools-mcp run_windows_command(PECmd/AmcacheParser): Parse on Windows for maximum fidelity",

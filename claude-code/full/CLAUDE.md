@@ -109,7 +109,7 @@ The platform has 97+ tools across 9 backends. Use this sequence:
 When you find a suspicious file, binary, or process:
 - check_file on windows-triage for baseline validation
 - upload_from_host + analyze_file on REMnux for behavioral analysis
-- lookup_ioc on OpenCTI for threat intelligence
+- lookup_ioc on threatintel-mcp for threat intelligence
 
 When you encounter an artifact type you haven't analyzed before:
 - suggest_tools(artifact_type="...") on sift-mcp
@@ -218,8 +218,9 @@ Parse, index, and query forensic evidence at scale via OpenSearch. **Use these M
 - **Enrich:** `idx_enrich_triage` (baseline), `idx_enrich_intel` (threat intel)
 - **Detect:** `idx_list_detections` (Hayabusa/Sigma alerts)
 
-### opencti-mcp (Threat Intelligence)
-Live threat intel from OpenCTI instance.
+### threatintel-mcp (Threat Intelligence)
+Live threat intel from the configured platforms (OpenCTI, MISP).
+`lookup_ioc` returns each platform's records, not a verdict.
 
 - **Search:** `search_threat_intel`, `search_entity`, `search_reports`
 - **Lookup:** `lookup_ioc`, `get_entity`, `get_relationships`
@@ -249,7 +250,7 @@ download_file(file_path="output/<artifact>")           # Retrieve artifacts
 ```
 
 **IMPORTANT:** Results are observations, not verdicts. Apply "benign
-until proven malicious." Corroborate findings with opencti-mcp and
+until proven malicious." Corroborate findings with threatintel-mcp and
 forensic-rag.
 
 ### wintools-mcp (Windows Forensic Tools) — optional, user-provided

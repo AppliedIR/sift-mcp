@@ -94,7 +94,7 @@ GATEWAY = (
     "sift-mcp (SIFT tool execution), "
     "windows-triage (default-install baseline), "
     "forensic-rag (knowledge search), "
-    "and optionally opensearch-mcp, wintools-mcp, and opencti-mcp. "
+    "and optionally opensearch-mcp, wintools-mcp, and threatintel-mcp. "
     "Each backend provides its own detailed instructions. "
     "Most forensic tools are available via run_command including curl, "
     "wget, dd, and python3. "
@@ -107,7 +107,8 @@ GATEWAY = (
     "idx_case_summary, idx_enrich_triage, idx_enrich_intel (via opensearch-mcp). "
     "Default-install checks for Windows artifacts — check_file, check_process_tree, "
     "check_service (via windows-triage). "
-    "Threat intel — lookup_ioc, search_threat_intel (via opencti). "
+    "Threat intel — lookup_ioc (each platform's records, no verdict), "
+    "search_threat_intel (via threatintel-mcp). "
     "Reports — generate_report (after findings approved). "
     "After receiving FK enrichment for a tool, set skip_enrichment: true "
     "on subsequent calls to the same tool in the same session."
@@ -136,10 +137,13 @@ FORENSIC_RAG = (
 )
 
 OPENCTI = (
-    "Threat intelligence query service via OpenCTI. Returns indicators, "
-    "threat actors, malware families, and attack patterns. Intelligence "
-    "context informs but does not replace evidence-based analysis. "
-    "Correlation with CTI is supporting evidence, not proof."
+    "Threat intelligence from the configured platforms (OpenCTI, MISP). "
+    "lookup_ioc returns each platform's own records for the IOC, with "
+    "MATCH, NO_MATCH or UNAVAILABLE (couldn't ask) per platform: each "
+    "platform's record, not a verdict. The other tools search OpenCTI for "
+    "indicators, threat actors, malware families and attack patterns. "
+    "Intelligence context informs but does not replace evidence-based "
+    "analysis. Correlation with CTI is supporting evidence, not proof."
 )
 
 OPENSEARCH = (

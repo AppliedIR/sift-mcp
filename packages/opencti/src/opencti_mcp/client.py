@@ -335,7 +335,7 @@ class OpenCTIClient:
         # When True, tool entry points raise DegradedError immediately
         # rather than the 300s socket-hang per tool call. Cleared only
         # by a fresh successful validate_startup (typically via
-        # `vhir service restart opencti-mcp`).
+        # restarting the threat-intel backend).
         self._degraded = False
         self._degraded_reason: str = ""
 
@@ -672,7 +672,7 @@ class OpenCTIClient:
         When _degraded is set (probe failed during startup), tool calls
         raise immediately rather than each timing out for the full
         operator-configured timeout (300s default). Operator restarts
-        the backend via `vhir service restart opencti-mcp` to clear.
+        the threat-intel backend to clear it.
         """
         if self._degraded:
             label = f"{tool_name}: " if tool_name else ""
@@ -684,8 +684,8 @@ class OpenCTIClient:
                 f"{label}OpenCTI backend in DEGRADED mode "
                 f"({self._degraded_reason}). Threat-intel queries will "
                 f"fail-fast until the server is reachable. Run "
-                f"`vhir service restart opencti-mcp` after the server "
-                f"returns."
+                f"`vhir service restart threatintel-mcp` (`opencti-mcp` in "
+                f"configurations from before) after the server returns."
             )
 
     def connect(self) -> Any:

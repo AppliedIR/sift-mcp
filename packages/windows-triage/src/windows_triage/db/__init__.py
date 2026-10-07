@@ -5,7 +5,7 @@ This module provides offline forensic triage against local baselines:
 - known_good_registry.db: Full registry baselines (optional, 12GB)
 - context.db: Risk enrichment (LOLBins, vulnerable drivers, process rules)
 
-For threat intelligence (hash/IOC reputation), use opencti-mcp separately.
+For threat intelligence (hash/IOC records), use threatintel-mcp separately.
 """
 
 from .context import ContextDB

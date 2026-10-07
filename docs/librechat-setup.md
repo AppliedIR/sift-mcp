@@ -112,9 +112,9 @@ mcpServers:
     initTimeout: 30000
     serverInstructions: true
 
-  opencti-mcp:
+  threatintel-mcp:
     type: "streamable-http"
-    url: "http://<gateway>:4508/mcp/opencti-mcp"
+    url: "http://<gateway>:4508/mcp/threatintel-mcp"
     headers:
       Authorization: "Bearer <token>"
     timeout: 60000
@@ -282,7 +282,7 @@ loading is the biggest performance lever for LibreChat.
    - **Tool Search:** ON
 
 3. Add MCP Servers: select all Valhuntir backends (forensic-mcp, sift-mcp,
-   case-mcp, report-mcp, forensic-rag-mcp, windows-triage-mcp, opencti-mcp).
+   case-mcp, report-mcp, forensic-rag-mcp, windows-triage-mcp, threatintel-mcp).
 
 4. Configure deferred loading: for each backend's tools, click the clock
    icon to defer ALL tools EXCEPT these 6 (used almost every turn):

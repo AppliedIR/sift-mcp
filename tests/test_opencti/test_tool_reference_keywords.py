@@ -1,4 +1,4 @@
-"""Every opencti-mcp call in TOOL_REFERENCE.md uses keywords the tool declares."""
+"""Every threatintel-mcp call in TOOL_REFERENCE.md uses keywords the tool declares."""
 
 import asyncio
 import re
@@ -10,7 +10,7 @@ from opencti_mcp.server import OpenCTIMCPServer
 from pydantic import SecretStr
 
 ROOT = Path(__file__).parent.parent.parent
-CALL = re.compile(r"opencti-mcp\s+(\w+)\(([^)]*)\)")
+CALL = re.compile(r"threatintel-mcp\s+(\w+)\(([^)]*)\)")
 
 
 def test_tool_reference_calls_use_declared_keywords():

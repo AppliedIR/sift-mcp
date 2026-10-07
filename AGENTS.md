@@ -14,7 +14,7 @@ including evidence standards, confidence levels, and checkpoint requirements.
 - **wintools-mcp** — Windows forensic tool execution (Windows workstation)
 - **forensic-rag-mcp** — Forensic knowledge search (Sigma, MITRE, KAPE, etc.)
 - **windows-triage-mcp** — Windows baseline validation (offline)
-- **opencti-mcp** — Threat intelligence (OpenCTI)
+- **threatintel-mcp** — Threat intelligence: each platform's records (OpenCTI, MISP), not a verdict
 - **remnux-mcp** — Malware analysis (REMnux workstation, separate deployment, optional)
 
 Call `list_available_tools()` on sift-mcp or `list_windows_tools()` on wintools-mcp to see current forensic tool inventory.
