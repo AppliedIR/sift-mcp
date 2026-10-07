@@ -71,3 +71,18 @@ def test_update_case_meta_keeps_every_other_key(tmp_path):
         "extra": [1, 2],
         "severity": "high",
     }
+
+
+def test_a_link_planted_at_the_temp_name_is_refused(tmp_path):
+    import os
+
+    from sift_common.host_identity import HostLogError, update_case_meta
+
+    (tmp_path / "CASE.yaml").write_text("case_id: C\nstatus: open\n")
+    target = tmp_path / "elsewhere.txt"
+    target.write_text("untouched")
+    (tmp_path / f".CASE.yaml.{os.getpid()}.meta.tmp").symlink_to(target)
+    with pytest.raises(HostLogError, match="refused"):
+        update_case_meta(tmp_path, {"severity": "high"})
+    assert target.read_text() == "untouched"
+    assert "severity" not in (tmp_path / "CASE.yaml").read_text()

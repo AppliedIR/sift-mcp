@@ -407,11 +407,28 @@ def update_case_meta(case_dir: str | os.PathLike, changes: dict) -> dict:
         if not isinstance(meta, dict):
             raise HostLogError(f"{path}: not a mapping")
         meta.update(changes)
+        data = yaml.safe_dump(meta, sort_keys=False).encode("utf-8")
         tmp = path.with_name(f".{path.name}.{os.getpid()}.meta.tmp")
-        tmp.write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
-        with contextlib.suppress(OSError):
-            os.chmod(tmp, path.stat().st_mode & 0o777)
-        os.replace(tmp, path)
+        # Created fresh: a file or link planted at the name is refused, never
+        # written through
+        try:
+            fd = os.open(
+                tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+            )
+        except FileExistsError:
+            raise HostLogError(f"{tmp}: already exists; refused") from None
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            with contextlib.suppress(OSError):
+                os.chmod(tmp, path.stat().st_mode & 0o777)
+            os.replace(tmp, path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
         return meta
 
 
