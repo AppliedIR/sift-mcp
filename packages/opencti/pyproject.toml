@@ -24,6 +24,8 @@ classifiers = [
 ]
 
 dependencies = [
+    # lookup_ioc's providers speak HTTP directly (OpenCTI's GraphQL API).
+    "httpx>=0.27",
     "mcp>=1.26,<2",
     # Floor only. pycti major must match the operator's OpenCTI server
     # major, which is environment-specific and cannot be encoded here
