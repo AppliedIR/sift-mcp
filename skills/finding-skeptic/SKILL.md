@@ -63,8 +63,8 @@ instead.
 **Tell the examiner each withdrawal when it happens,** in one line: the title
 and the contradiction.
 
-**If the challenge can't complete,** or a withdrawal call returns any error,
-record the finding without the withdrawal.
+**If the challenge can't complete,** or a withdrawal call returns any error
+or `VALIDATION_FAILED`, record the finding without the withdrawal.
 
 **A finding already staged without a challenge is never recorded again:**
 that makes a second finding. Tell the examiner; they can edit or reject it at

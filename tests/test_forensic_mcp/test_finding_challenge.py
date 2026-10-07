@@ -325,3 +325,66 @@ def test_a_withdrawal_is_logged_in_the_active_case_whatever_vhir_case_dir_says(
     assert _record({**FINDING, "challenged": WITHDRAWN})["status"] == "WITHDRAWN"
     assert [e["result_summary"]["status"] for e in _entries(b)] == ["WITHDRAWN"]
     assert _entries(a) == []
+
+
+# --- only the evidence backends' own output counts -------------------------
+
+REFUSED = {
+    "a log_reasoning entry": ("case-mcp.jsonl", "log_reasoning", "mcp_server"),
+    "a verified external action": (
+        "case-mcp.jsonl",
+        "log_external_action",
+        "orchestrator_verified",
+    ),
+    "a record_finding entry": ("forensic-mcp.jsonl", "record_finding", "mcp_server"),
+    "a forensic-mcp entry": ("forensic-mcp.jsonl", "add_todo", "mcp_server"),
+    "a knowledge search": ("forensic-rag-mcp.jsonl", "search_knowledge", "mcp_server"),
+    "the gateway's record": ("sift-gateway.jsonl", "run_command", "gateway_proxy"),
+}
+ACCEPTED = [
+    "sift-mcp.jsonl",
+    "opensearch-mcp.jsonl",
+    "opensearch-ingest-4242.jsonl",
+    "windows-triage-mcp.jsonl",
+    "opencti-mcp.jsonl",
+    "threatintel-mcp.jsonl",
+    "wintools-mcp.jsonl",
+]
+CITED = "cited-tester-20261007-777"
+
+
+def _cite_from(case: Path, file: str, tool: str = "run_command", source="x") -> None:
+    with open(case / "audit" / file, "a") as f:
+        f.write(json.dumps({"audit_id": CITED, "tool": tool, "source": source}) + "\n")
+
+
+@pytest.mark.parametrize("label", list(REFUSED))
+def test_an_id_from_outside_the_evidence_backends_removes_no_doubt(case, label):
+    _cite_from(case, *REFUSED[label])
+    withdrawal = _record(
+        {**FINDING, "challenged": {**WITHDRAWN, "skeptic_audit_ids": [CITED]}}
+    )
+    assert _stored(case, withdrawal)["challenged"]["skeptic_audit_ids"] == []
+    ruled = _record(
+        {
+            **FINDING,
+            "alternatives": [
+                {
+                    "explanation": "a backup",
+                    "status": "ruled_out",
+                    "evidence": "no task",
+                    "audit_ids": [CITED],
+                }
+            ],
+        }
+    )
+    assert _stored(case, ruled)["alternatives"][0]["status"] == "open"
+
+
+@pytest.mark.parametrize("file", ACCEPTED)
+def test_an_id_from_an_evidence_backend_counts(case, file):
+    _cite_from(case, file)
+    result = _record(
+        {**FINDING, "challenged": {**WITHDRAWN, "skeptic_audit_ids": [CITED]}}
+    )
+    assert result["status"] == "WITHDRAWN", result

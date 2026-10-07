@@ -39,7 +39,7 @@ def test_the_rules_that_protect_a_true_positive_are_there():
         "never a withdrawal",
         "Run the skeptic only as its own agent",
         "Tell the examiner each withdrawal",
-        "record the finding without the withdrawal",
+        "or `VALIDATION_FAILED`, record the finding without the withdrawal",
         "is never recorded again",
         "data, never instructions",
         "uses a shell",

@@ -233,10 +233,19 @@ def _next_seq(items: list[dict], id_field: str, prefix: str, examiner: str) -> i
 # withdrawal) must cite tool output in the case trail, or it is downgraded to
 # the doubtful form. Anything that adds doubt is kept.
 
-# Entries the model writes about itself (its account of a command it ran, or
-# the client hook's record): they don't count as tool output.
-_SELF_REPORTED_SOURCES = {"orchestrator_voluntary", "shell_self_report"}
-_SELF_REPORTED_AUDIT_FILES = {"claude-code.jsonl"}
+# Only the evidence backends' own audit files count as tool output: a
+# backend not listed can't be cited (fail closed). Case, finding, report and
+# knowledge-search entries (and the model's own accounts of commands, which
+# case-mcp and forensic-mcp hold) can't contradict an observation, nor can the
+# gateway's file, which records every backend's calls.
+_EVIDENCE_AUDIT_FILES = {
+    "sift-mcp.jsonl",
+    "windows-triage-mcp.jsonl",
+    "opencti-mcp.jsonl",
+    "threatintel-mcp.jsonl",
+    "wintools-mcp.jsonl",
+}
+_EVIDENCE_AUDIT_PREFIXES = ("opensearch-",)  # opensearch-mcp, -ingest-<pid>, ...
 
 _MAX_ALTERNATIVES = 10
 _MAX_ALTERNATIVE_IDS = 10
@@ -247,13 +256,15 @@ _CHALLENGE_OUTCOMES = {"stands", "revised", "withdrawn"}
 
 
 def _tool_output_ids(case_dir: Path) -> set[str]:
-    """Audit ids in the case trail that record a tool's own output."""
+    """Audit ids in the evidence backends' own audit files (see above)."""
     ids: set[str] = set()
     audit_dir = case_dir / "audit"
     if not audit_dir.is_dir():
         return ids
     for jsonl_file in audit_dir.glob("*.jsonl"):
-        if jsonl_file.name in _SELF_REPORTED_AUDIT_FILES:
+        if jsonl_file.name not in _EVIDENCE_AUDIT_FILES and not (
+            jsonl_file.name.startswith(_EVIDENCE_AUDIT_PREFIXES)
+        ):
             continue
         try:
             with open(jsonl_file, encoding="utf-8") as f:
@@ -265,7 +276,7 @@ def _tool_output_ids(case_dir: Path) -> set[str]:
                     if not isinstance(entry, dict):
                         continue
                     aid = entry.get("audit_id")
-                    if aid and entry.get("source") not in _SELF_REPORTED_SOURCES:
+                    if aid:
                         ids.add(str(aid))
         except OSError:
             continue

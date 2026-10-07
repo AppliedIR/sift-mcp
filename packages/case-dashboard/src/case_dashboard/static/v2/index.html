@@ -1711,7 +1711,7 @@ function renderChallengeLine(c) {
   } else if (c.outcome === 'revised') {
     text = 'Challenged (client-reported): revised after challenge \u2014 skeptic: ' + ids;
   } else if (c.outcome === 'withdrawn') {
-    text = 'Challenged (client-reported): withdrawal refused, no contradicting output cited \u2014 staged for your decision';
+    text = 'Challenged (client-reported): withdrawn, not applied, staged for your decision \u2014 skeptic: ' + (ids || 'none');
   } else {
     text = 'Challenged (client-reported): ' + String(c.outcome || '');
   }
