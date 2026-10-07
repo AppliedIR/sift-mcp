@@ -11,6 +11,7 @@ from __future__ import annotations
 import gzip
 import json
 import ssl
+import time
 
 import httpx
 import opencti_mcp.providers.misp as misp_provider
@@ -540,3 +541,71 @@ async def test_a_lookup_never_waits_for_another_reading_the_facts(
         adapter._facts_lock.release()
     assert answer["outcome"] == "MATCH" and answer["version"] is None
     assert "/servers/getVersion" not in t.paths()
+
+
+# --- follow-ups never hold back the match; samples are composites ----------
+
+
+class _Trickle(httpx.SyncByteStream):
+    def __init__(self, body: bytes, chunk: int, delay: float):
+        self.body, self.chunk, self.delay = body, chunk, delay
+
+    def __iter__(self):
+        for i in range(0, len(self.body), self.chunk):
+            time.sleep(self.delay)
+            yield self.body[i : i + self.chunk]
+
+
+def _trickling(slow_paths):
+    """Recorded 2.5 replies; the paths named come in 250 ms chunks and take far
+    longer than a 2 s budget."""
+    base = misp_recorded("25")
+
+    def route(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        answer = base(request.method, request.url.path, body)
+        if request.url.path in slow_paths:
+            data = answer.content
+            return httpx.Response(200, stream=_Trickle(data, len(data) // 40 + 1, 0.25))
+        return answer
+
+    return route
+
+
+@pytest.mark.parametrize(
+    "slow",
+    [
+        ["/warninglists/checkValue"],
+        ["/servers/getVersion", "/warninglists/index", "/decayingModel/index"],
+    ],
+    ids=["warninglist check", "facts"],
+)
+async def test_a_trickling_follow_up_still_returns_the_match(monkeypatch, slow):
+    monkeypatch.setattr(misp_provider, "_http_request", misp_provider._send)
+    monkeypatch.setattr(
+        misp_provider, "_transport", httpx.MockTransport(_trickling(slow))
+    )
+    monkeypatch.setattr(misp_provider, "FOLLOW_UP_MIN_SECONDS", 0.1)
+    start = time.monotonic()
+    _, answer = await _misp(monkeypatch, "8.8.8.8", MISP_TIMEOUT="2")
+    assert time.monotonic() - start < 2 + providers.GRACE_SECONDS
+    assert answer["outcome"] == "MATCH" and len(answer["matches"]) == 1
+    if "/warninglists/checkValue" in slow:
+        assert answer["warninglist_hits"] is None
+        assert "timed out" in answer["warninglists_unavailable"]
+    else:
+        assert answer["version"] is None  # nothing read before
+
+
+async def test_an_md5_held_only_as_a_malware_sample_matches(
+    misp_transport, monkeypatch
+):
+    md5 = "5f0c2a9e1b7d4c3a8e6f9b0d2c4a6e81"
+    misp_transport(
+        _search_reply(
+            [{"type": "malware-sample", "value": f"dropper.exe|{md5}", "uuid": "s1"}]
+        )
+    )
+    _, answer = await _misp(monkeypatch, md5)
+    assert answer["outcome"] == "MATCH"
+    assert answer["matches"][0]["value"] == f"dropper.exe|{md5}"

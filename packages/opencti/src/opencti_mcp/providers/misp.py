@@ -20,6 +20,7 @@ import os
 import ssl
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from urllib.parse import urlparse
 
@@ -27,10 +28,12 @@ import httpx
 
 from . import (
     MATCH,
+    MAX_IN_FLIGHT,
     MAX_MATCHES,
     NO_MATCH,
     ProviderConfigError,
     budget,
+    follow_up,
     now_utc,
     same_value,
     unavailable,
@@ -77,7 +80,11 @@ def _is_the_ioc(attribute: dict, ioc: str) -> bool:
     value = attribute.get("value")
     if not isinstance(value, str):
         return False
-    halves = value.split("|") if "|" in str(attribute.get("type", "")) else [value]
+    kind = str(attribute.get("type", ""))
+    # A composite holds two values; a malware sample is "filename|md5"
+    # though its type has no "|".
+    composite = "|" in kind or kind == "malware-sample"
+    halves = value.split("|") if composite else [value]
     return any(same_value(half, ioc) for half in halves)
 
 
@@ -109,6 +116,11 @@ class MispAdapter:
         }
         self._facts_at = 0.0
         self._facts_lock = threading.Lock()
+        # The warninglist check and the facts run here, so a slow one can't
+        # hold back the answer to the search.
+        self._follow_ups = ThreadPoolExecutor(
+            max_workers=MAX_IN_FLIGHT, thread_name_prefix="misp-follow-up"
+        )
 
     def _request(self, method: str, path: str, body: Any, deadline: float) -> Any:
         remaining = deadline - time.monotonic()
@@ -195,6 +207,14 @@ class MispAdapter:
         finally:
             self._facts_lock.release()
 
+    def _facts_by(self, deadline: float) -> dict[str, Any]:
+        """The facts as far as they can be read by `deadline`; the ones read
+        before when they can't."""
+        facts, late = follow_up(
+            self._follow_ups, lambda: self._platform_facts(deadline), deadline
+        )
+        return facts if not late else dict(self._facts)
+
     def lookup(self, ioc: str, ioc_type: str) -> dict:
         queried_at = now_utc()
         deadline = time.monotonic() + self.timeout
@@ -224,7 +244,7 @@ class MispAdapter:
                 if isinstance(e, _Failure)
                 else "MISP's reply has an unexpected shape"
             )
-            return unavailable(reason, **self._platform_facts(deadline))
+            return unavailable(reason, **self._facts_by(deadline))
 
         matches = [_record(a) for a in attributes if _is_the_ioc(a, ioc)]
         if len(attributes) > MAX_MATCHES and not matches:
@@ -232,7 +252,7 @@ class MispAdapter:
             return unavailable(
                 f"too many candidate matches: more than {MAX_MATCHES} attributes "
                 f"match {ioc}, and none of those read is exactly it",
-                **self._platform_facts(deadline),
+                **self._facts_by(deadline),
             )
         answer: dict[str, Any] = {
             "outcome": MATCH if matches else NO_MATCH,
@@ -252,13 +272,20 @@ class MispAdapter:
             )
         else:
             try:
-                answer["warninglist_hits"] = self._request(
-                    "POST", "/warninglists/checkValue", {"value": ioc}, deadline
+                hits, late = follow_up(
+                    self._follow_ups,
+                    lambda: self._request(
+                        "POST", "/warninglists/checkValue", {"value": ioc}, deadline
+                    ),
+                    deadline,
                 )
+                if late:
+                    raise _Failure(f"{late} after {self.timeout:g}s")
+                answer["warninglist_hits"] = hits
             except _Failure as e:
                 answer["warninglist_hits"] = None
                 answer["warninglists_unavailable"] = f"Warninglist check failed ({e})."
-        facts = self._platform_facts(deadline)
+        facts = self._facts_by(deadline)
         return {
             "outcome": answer.pop("outcome"),
             "version": facts.pop("version"),
