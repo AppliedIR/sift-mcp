@@ -464,7 +464,7 @@ def test_a_skipped_server_never_prints_a_typed_token(tmp_path):
         INSTALL_ZELTSER="false",
     )
     assert rc == 0 and mcp.read_text() == "{", out
-    for name in ("opencti-mcp", "remnux-mcp"):
+    for name in ("threatintel-mcp", "remnux-mcp"):
         assert f"WARN NOT added: {name}. {mcp} can't be parsed;" in out
     assert out.count("CTI-SECRET-4711") == 0 and out.count("RMX-SECRET-0815") == 0
     assert out.rstrip().endswith("cp -p a\\ b c")  # the end, with the undo block
@@ -510,7 +510,7 @@ def test_anchor_the_document_written_for_all_four_servers(tmp_path):
     want = {
         "mcpServers": {
             "mine": {},
-            "opencti-mcp": {
+            "threatintel-mcp": {
                 "command": f"{tmp_path}/venv/bin/python",
                 "args": ["-I", "-m", "opencti_mcp.server"],
                 "env": {
@@ -532,6 +532,19 @@ def test_anchor_the_document_written_for_all_four_servers(tmp_path):
     assert mcp.read_text() == json.dumps(want, indent=2) + "\n"
 
 
+def test_an_entry_under_the_earlier_name_is_updated_in_place(tmp_path):
+    before = {"mine": {}, "opencti-mcp": {"command": "old"}, "after": {}}
+    rc, out, mcp = _phase5(
+        tmp_path, json.dumps({"mcpServers": before}), ADD_ALL, **INTERACTIVE
+    )
+    assert rc == 0, out
+    servers = json.loads(mcp.read_text())["mcpServers"]
+    assert "threatintel-mcp" not in servers
+    assert list(servers)[:3] == ["mine", "opencti-mcp", "after"]
+    assert servers["opencti-mcp"]["env"]["OPENCTI_URL"] == "https://cti.example.test"
+    assert "OK opencti-mcp (threat intelligence)" in out
+
+
 def test_no_process_is_given_a_token_in_its_arguments_or_environment(tmp_path):
     log = tmp_path / "argv.log"
     rc, out, mcp = _phase5(
@@ -544,7 +557,9 @@ def test_no_process_is_given_a_token_in_its_arguments_or_environment(tmp_path):
     )  # the shim saw argv and environment
     assert not [t for t in TOKENS if t in seen], seen
     servers = json.loads(mcp.read_text())["mcpServers"]
-    assert servers["opencti-mcp"]["env"]["OPENCTI_TOKEN"] == TOKENS[0]  # still stored
+    assert (
+        servers["threatintel-mcp"]["env"]["OPENCTI_TOKEN"] == TOKENS[0]
+    )  # still stored
     assert servers["remnux-mcp"]["headers"]["Authorization"] == f"Bearer {TOKENS[1]}"
 
 

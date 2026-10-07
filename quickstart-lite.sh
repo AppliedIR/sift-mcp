@@ -820,7 +820,20 @@ if [[ "$INSTALL_OPENCTI" == "true" ]]; then
         fi
     fi
     if [[ -n "$OPENCTI_URL" ]] && [[ -n "$OPENCTI_TOKEN" ]]; then
-        _add_mcp_server "opencti-mcp" "{
+        # An entry under the threat-intel server's earlier name is updated in
+        # place, under that name: never a second entry for the same server.
+        THREATINTEL_NAME=threatintel-mcp
+        if "$VENV_PYTHON" -c "
+import json, sys
+try:
+    servers = json.load(open(sys.argv[1])).get('mcpServers') or {}
+except (OSError, ValueError, AttributeError):
+    sys.exit(1)
+sys.exit(0 if 'opencti-mcp' in servers else 1)
+" "$MCP_JSON" 2>/dev/null; then
+            THREATINTEL_NAME=opencti-mcp
+        fi
+        _add_mcp_server "$THREATINTEL_NAME" "{
             \"command\": \"$VENV_DIR/bin/python\",
             \"args\": [\"-I\", \"-m\", \"opencti_mcp.server\"],
             \"env\": {
@@ -957,7 +970,7 @@ echo "Installed:"
 ok "sift-common (audit and logging)"
 [[ "$INSTALL_RAG" == "true" ]] && ok "forensic-rag (knowledge search)"
 [[ "$INSTALL_TRIAGE" == "true" ]] && ok "windows-triage (baseline validation)"
-[[ "$INSTALLED_OPENCTI" == "true" ]] && ok "opencti-mcp (threat intelligence)"
+[[ "$INSTALLED_OPENCTI" == "true" ]] && ok "$THREATINTEL_NAME (threat intelligence)"
 [[ "$INSTALLED_REMNUX" == "true" ]] && ok "remnux-mcp (malware analysis)"
 [[ "$INSTALLED_MSLEARN" == "true" ]] && ok "microsoft-learn (documentation)"
 [[ "$INSTALLED_ZELTSER" == "true" ]] && ok "zeltser-ir-writing (IR writing)"

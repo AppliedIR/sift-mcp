@@ -1768,7 +1768,11 @@ if os.environ.get("MERGE_TRIAGE") == "true":
 if os.environ.get("MERGE_RAG") == "true":
     expected.append(("forensic-rag-mcp", "rag_mcp"))
 if os.environ.get("MERGE_OPENCTI") == "true":
-    expected.append(("opencti-mcp", "opencti_mcp"))
+    expected.append(("threatintel-mcp", "opencti_mcp"))
+# The threat-intel backend's earlier name counts as present: never a second
+# entry, and the user's own entry is never renamed or rewritten.
+if "opencti-mcp" in existing:
+    existing.add("threatintel-mcp")
 if os.environ.get("MERGE_OPENSEARCH") == "true":
     expected.append(("opensearch-mcp", "opensearch_mcp"))
 
@@ -1790,7 +1794,7 @@ for name, module in expected:
             entry["args"].append("--deferred-tools")
         if name in ("case-mcp", "report-mcp", "forensic-mcp"):
             entry["env"]["VHIR_CASES_DIR"] = "${VHIR_CASES_DIR}"
-        if name == "opencti-mcp":  # the wizard's answers, on fd 3: never in argv or env
+        if name == "threatintel-mcp":  # the wizard's answers, on fd 3: never in argv or env
             url, token = (os.fdopen(3).read().split("\n") + ["", ""])[:2]
             entry["env"]["OPENCTI_URL"] = url or "${OPENCTI_URL}"
             entry["env"]["OPENCTI_TOKEN"] = token or "${OPENCTI_TOKEN}"
@@ -1859,7 +1863,7 @@ if "$INSTALL_TRIAGE" == "true":
 if "$INSTALL_RAG" == "true":
     optional.append(("forensic-rag-mcp", "rag_mcp"))
 if "$INSTALL_OPENCTI" == "true":
-    optional.append(("opencti-mcp", "opencti_mcp"))
+    optional.append(("threatintel-mcp", "opencti_mcp"))
 if "$INSTALL_OPENSEARCH" == "true":
     optional.append(("opensearch-mcp", "opensearch_mcp"))
 
@@ -1879,7 +1883,7 @@ for name, module in core_backends + optional:
         entry['args'].append('--deferred-tools')
     if name in ('case-mcp', 'report-mcp', 'forensic-mcp'):
         entry['env']['VHIR_CASES_DIR'] = '\${VHIR_CASES_DIR}'
-    if name == "opencti-mcp":
+    if name == "threatintel-mcp":
         octi_url = "$OPENCTI_URL"
         octi_token = "$OPENCTI_TOKEN"
         entry["env"]["OPENCTI_URL"] = octi_url if octi_url else "\${OPENCTI_URL}"
