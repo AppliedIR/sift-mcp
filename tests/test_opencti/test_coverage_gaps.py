@@ -33,20 +33,27 @@ from opencti_mcp.feature_flags import FeatureFlags
 class TestMainEntryPoint:
     """Tests for the __main__.py entry point."""
 
-    def test_main_with_missing_token(self):
-        """Main exits with error when token is missing."""
+    def test_main_with_missing_token_starts_with_opencti_unavailable(self):
+        """Without a token the backend still starts; OpenCTI is reported as
+        not configured, with the reason, instead of the process exiting."""
         from opencti_mcp.__main__ import main
 
         # HOME stays: without it Path.home() falls back to the password
         # database, and the startup log is appended under the real home.
         with patch.dict(os.environ, {"HOME": os.environ["HOME"]}, clear=True):
-            with patch("opencti_mcp.__main__.Config.load") as mock_load:
+            with (
+                patch("opencti_mcp.__main__.Config.load") as mock_load,
+                patch("opencti_mcp.__main__.OpenCTIMCPServer") as mock_server,
+                patch("opencti_mcp.__main__.asyncio") as mock_asyncio,
+            ):
                 mock_load.side_effect = ConfigurationError("No token configured")
+                main()
 
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-
-                assert exc_info.value.code == 1
+        args, kwargs = mock_server.call_args
+        assert args == (None,)
+        assert kwargs["opencti_reason"] == "No token configured"
+        assert kwargs["provider_names"] == ["opencti"]
+        mock_asyncio.run.assert_called_once()
 
     def test_main_with_keyboard_interrupt(self):
         """Main handles keyboard interrupt gracefully."""

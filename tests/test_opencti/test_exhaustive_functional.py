@@ -63,7 +63,6 @@ def mock_client():
     client.unified_search.return_value = {"results": [], "total": 0}
     client.get_entity.return_value = None
     client.get_relationships.return_value = []
-    client.get_indicator_context.return_value = {}
     return client
 
 

@@ -138,7 +138,7 @@ def test_a_test_that_clears_the_environment_keeps_its_logs_out_of_the_real_home(
         "HOME": str(tmp_path / "original-home"),
         "PYTHONPATH": os.pathsep.join([str(plugin), os.environ.get("PYTHONPATH", "")]),
     }
-    target = "tests/test_opencti/test_coverage_gaps.py::TestMainEntryPoint::test_main_with_missing_token"
+    target = "tests/test_opencti/test_coverage_gaps.py::TestMainEntryPoint::test_main_with_missing_token_starts_with_opencti_unavailable"
     run = subprocess.run(
         [
             sys.executable,

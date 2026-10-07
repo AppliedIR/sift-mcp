@@ -4,6 +4,8 @@ Usage:
     python -m opencti_mcp
 
 Environment Variables:
+    THREATINTEL_PROVIDERS: Comma-separated threat-intel providers lookup_ioc
+        asks (default: opencti)
     OPENCTI_URL: OpenCTI server URL (default: http://localhost:8080)
     OPENCTI_TOKEN: API token for authentication
     OPENCTI_TIMEOUT: Request timeout in seconds (default: 60)
@@ -33,6 +35,7 @@ from .config import Config
 from .errors import ConfigurationError
 from .feature_flags import get_feature_flags
 from .oplog import setup_logging
+from .providers import configured_names
 from .server import OpenCTIMCPServer
 
 
@@ -43,9 +46,19 @@ def main() -> None:
     logger = logging.getLogger("opencti_mcp")
 
     try:
-        # Load configuration
-        config = Config.load()
-        logger.info(f"Starting OpenCTI MCP server: {config}")
+        # OpenCTI's settings are needed only when it is a listed provider.
+        # When they are missing, the backend still starts: lookup_ioc
+        # reports OpenCTI UNAVAILABLE with the reason.
+        names = configured_names()
+        config: Config | None = None
+        opencti_reason = ""
+        if "opencti" in names:
+            try:
+                config = Config.load()
+            except ConfigurationError as e:
+                opencti_reason = str(e)
+                logger.error(f"OpenCTI is listed but not configured: {e}")
+        logger.info(f"Starting threat-intel backend: providers={names} {config}")
 
         # Load feature flags
         flags = get_feature_flags()
@@ -58,7 +71,7 @@ def main() -> None:
         # `_degraded` flag set by validate_startup never propagated to
         # the tool-call path (live BLOCKER caught 2026-05-11).
         client: OpenCTIClient | None = None
-        if flags.startup_validation:
+        if flags.startup_validation and config is not None:
             logger.info("Running startup validation...")
             client = OpenCTIClient(config)
             validation = client.validate_startup()
@@ -90,9 +103,16 @@ def main() -> None:
         # lifecycle tests valid; new behavior only fires when
         # validation actually built a client.
         if client is not None:
-            server = OpenCTIMCPServer(config, client=client)
+            server = OpenCTIMCPServer(
+                config,
+                client=client,
+                provider_names=names,
+                opencti_reason=opencti_reason,
+            )
         else:
-            server = OpenCTIMCPServer(config)
+            server = OpenCTIMCPServer(
+                config, provider_names=names, opencti_reason=opencti_reason
+            )
         asyncio.run(server.run())
 
     except ConfigurationError as e:

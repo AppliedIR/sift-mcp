@@ -22,6 +22,44 @@ else:
 
 
 @pytest.fixture(autouse=True)
+def default_providers(monkeypatch):
+    """Tests start from the default provider list (OpenCTI alone)."""
+    monkeypatch.delenv("THREATINTEL_PROVIDERS", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_provider_network(monkeypatch):
+    """lookup_ioc's providers never reach a network from a test: a request
+    fails as an unreachable server would, unless the test supplies its own
+    replies."""
+    if find_spec("opencti_mcp") is None:
+        return
+    import httpx
+    import opencti_mcp.providers.opencti as opencti_provider
+
+    def refuse(*args, **kwargs):
+        raise httpx.ConnectError("tests don't reach a network")
+
+    monkeypatch.setattr(opencti_provider, "_http_post", refuse)
+
+
+@pytest.fixture
+def provider_transport(monkeypatch):
+    """Install a route as the OpenCTI adapter's network; returns the
+    transport, which records every request."""
+    import opencti_mcp.providers.opencti as opencti_provider
+
+    from .threatintel_rig import Transport
+
+    def install(route):
+        transport = Transport(route)
+        monkeypatch.setattr(opencti_provider, "_http_post", transport)
+        return transport
+
+    return install
+
+
+@pytest.fixture(autouse=True)
 def reset_adaptive_metrics():
     """Reset global adaptive metrics before each test for isolation."""
     reset_global_metrics()

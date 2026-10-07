@@ -498,25 +498,31 @@ class TestStartupLifecycle:
         main()
 
         mock_config_load.assert_called_once()
-        mock_server_cls.assert_called_once_with(config)
+        mock_server_cls.assert_called_once_with(
+            config, provider_names=["opencti"], opencti_reason=""
+        )
         mock_asyncio.run.assert_called_once()
 
     # LC2 ------------------------------------------------------------------
+    @patch("opencti_mcp.__main__.asyncio")
+    @patch("opencti_mcp.__main__.OpenCTIMCPServer")
     @patch("opencti_mcp.__main__.setup_logging")
     @patch("opencti_mcp.__main__.Config.load")
-    def test_lc2_missing_token_exits_with_code_1(
-        self, mock_config_load, mock_setup_log
+    def test_lc2_missing_token_starts_with_the_reason(
+        self, mock_config_load, mock_setup_log, mock_server_cls, mock_asyncio
     ):
-        """LC2: main() with missing token exits with code 1 and clear message."""
-        mock_config_load.side_effect = ConfigurationError(
-            "OpenCTI API token not found. Set OPENCTI_TOKEN environment variable."
-        )
+        """LC2: main() with a missing token starts the backend, and hands it
+        the reason OpenCTI can't be used."""
+        reason = "OpenCTI API token not found. Set OPENCTI_TOKEN environment variable."
+        mock_config_load.side_effect = ConfigurationError(reason)
 
         from opencti_mcp.__main__ import main
 
-        with pytest.raises(SystemExit) as exc_info:
-            main()
-        assert exc_info.value.code == 1
+        main()
+        args, kwargs = mock_server_cls.call_args
+        assert args == (None,)
+        assert kwargs["opencti_reason"] == reason
+        mock_asyncio.run.assert_called_once()
 
     # LC3 ------------------------------------------------------------------
     def test_lc3_startup_validation_connects_reports_version(self, mock_server):
@@ -582,7 +588,9 @@ class TestStartupLifecycle:
             # to OpenCTIMCPServer so `_degraded` set during the probe
             # reaches the tool-call path. ANY matches the
             # MagicMock client built in this fixture.
-            mock_server_cls.assert_called_once_with(config, client=ANY)
+            mock_server_cls.assert_called_once_with(
+                config, client=ANY, provider_names=["opencti"], opencti_reason=""
+            )
             mock_asyncio.run.assert_called_once()
 
     # LC5 ------------------------------------------------------------------

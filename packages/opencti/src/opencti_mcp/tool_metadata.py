@@ -13,6 +13,8 @@ TOOL_METADATA: dict[str, dict[str, list[str] | str]] = {
         "caveats": [
             "Threat intel is point-in-time, may be stale",
             "IOC context depends on feeds ingested into this instance",
+            "Each platform's record is passed through unchanged; no verdict is computed",
+            "UNAVAILABLE means a platform couldn't be asked, not that the IOC is absent",
         ],
         "interpretation_constraint": "Absence from CTI does not mean benign",
     },

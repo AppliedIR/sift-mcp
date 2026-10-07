@@ -295,14 +295,6 @@ class TestSearchMethods:
 class TestContextMethods:
     """Tests for context/lookup methods."""
 
-    def test_get_indicator_context_not_found(self, mock_opencti_client: OpenCTIClient):
-        """Get indicator context handles not found."""
-        mock_opencti_client._client.indicator.list.return_value = []
-
-        result = mock_opencti_client.get_indicator_context("unknown-ioc")
-
-        assert result["found"] is False
-
     def test_get_recent_indicators(self, mock_opencti_client: OpenCTIClient):
         """Get recent indicators returns results."""
         results = mock_opencti_client.get_recent_indicators(days=7)

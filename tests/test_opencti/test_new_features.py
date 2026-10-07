@@ -412,7 +412,6 @@ class TestStartupDegradedMode:
         import time
 
         for method_name, args in (
-            ("get_indicator_context", ("1.2.3.4",)),
             ("get_recent_indicators", (7, 10)),
             ("get_entity", ("00000000-0000-0000-0000-000000000000",)),
         ):

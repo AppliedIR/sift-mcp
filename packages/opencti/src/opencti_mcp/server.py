@@ -12,6 +12,7 @@ Security:
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import time
@@ -21,8 +22,9 @@ from mcp.server import Server
 from mcp.types import TextContent, Tool
 from sift_common.instructions import OPENCTI as _INSTRUCTIONS
 
+from . import providers
 from .audit import AuditWriter, resolve_examiner
-from .client import OpenCTIClient
+from .client import OpenCTIClient, RateLimiter
 from .config import Config
 from .errors import (
     ConfigurationError,
@@ -30,6 +32,7 @@ from .errors import (
     RateLimitError,
     ValidationError,
 )
+from .providers import opencti as opencti_provider
 from .tool_metadata import DEFAULT_METADATA, TOOL_METADATA
 from .validation import (
     MAX_IOC_LENGTH,
@@ -112,11 +115,94 @@ _ENTITY_TYPES_SIMPLE = frozenset(
 
 VALID_ENTITY_TYPES = frozenset(_ENTITY_TYPE_METHODS.keys())
 
+# The tools other than lookup_ioc read OpenCTI alone.
+_OPENCTI_TOOLS = frozenset(
+    {
+        "get_health",
+        "search_threat_intel",
+        "search_entity",
+        "get_recent_indicators",
+        "get_entity",
+        "get_relationships",
+        "search_reports",
+    }
+)
+
+
+def _internal_address(ioc: str) -> str:
+    """The reason an IP address isn't looked up, or "" for anything else."""
+    try:
+        ip = ipaddress.ip_address(ioc)
+    except ValueError:
+        return ""
+    if ip.is_private or ip.is_loopback or ip.is_link_local:
+        return f"Internal address ({ioc}) — not in threat intelligence scope."
+    return ""
+
+
+def _opencti_summary(ioc: str, answer: dict) -> dict[str, Any]:
+    """The keys lookup_ioc carried before providers, summarised over every
+    OpenCTI record that matched. They are compatibility summaries: the
+    records under providers.opencti are the answer."""
+    summary: dict[str, Any] = {}
+    if answer.get("outcome") == providers.MATCH:
+        records = answer["matches"]
+        confidences = [
+            r["confidence"] for r in records if isinstance(r.get("confidence"), int)
+        ]
+        created = [r["created"] for r in records if isinstance(r.get("created"), str)]
+        labels = {
+            label.get("value")
+            for r in records
+            for label in (r.get("objectLabel") or [])
+            if isinstance(label, dict) and isinstance(label.get("value"), str)
+        }
+        summary.update(
+            entity_type="indicator",
+            name=ioc,
+            confidence=max(confidences, default=0),
+            labels=sorted(labels),
+            created=min(created, default=""),
+            source="opencti",
+        )
+        actors: list[str] = []
+        malware: list[str] = []
+        techniques: list[str] = []
+        for rel in answer.get("relationships") or []:
+            target = rel.get("to") or {}
+            kind = target.get("entity_type", "")
+            name = target.get("name", "")
+            if kind in ("Threat-Actor-Group", "Intrusion-Set"):
+                found_in = actors
+            elif kind == "Malware":
+                found_in = malware
+            elif kind == "Attack-Pattern":
+                found_in = techniques
+                name = target.get("x_mitre_id") or name
+            else:
+                continue
+            if name and name not in found_in:
+                found_in.append(name)
+        summary.update(
+            related_threat_actors=actors,
+            related_malware=malware,
+            mitre_techniques=techniques,
+        )
+        if answer.get("relationships_unavailable"):
+            summary["relationships_unavailable"] = answer["relationships_unavailable"]
+    return summary
+
 
 class OpenCTIMCPServer:
     """MCP server for OpenCTI threat intelligence (read-only)."""
 
-    def __init__(self, config: Config, client: OpenCTIClient | None = None) -> None:
+    def __init__(
+        self,
+        config: Config | None,
+        client: OpenCTIClient | None = None,
+        provider_names: list[str] | None = None,
+        opencti_reason: str = "",
+    ) -> None:
         """Construct the MCP server.
 
         Args:
@@ -136,9 +222,41 @@ class OpenCTIMCPServer:
                 server built a second; degraded state set on the first
                 never reached the tool-call path. Single shared
                 instance closes the gap.
+            provider_names: The threat-intel providers lookup_ioc asks
+                (default: THREATINTEL_PROVIDERS, unset meaning OpenCTI).
+            opencti_reason: Why OpenCTI can't be used, when it is listed
+                but ``config`` is None.
         """
         self.config = config
-        self.client = client if client is not None else OpenCTIClient(config)
+        self.provider_names = (
+            provider_names
+            if provider_names is not None
+            else providers.configured_names()
+        )
+        if config is None:
+            self.client = None
+            self._opencti_reason = opencti_reason or (
+                "OpenCTI is not configured in this threat-intel backend."
+            )
+        else:
+            self.client = client if client is not None else OpenCTIClient(config)
+            self._opencti_reason = ""
+        prebuilt: dict[str, Any] = {}
+        if "opencti" in self.provider_names:
+            prebuilt["opencti"] = (
+                opencti_provider.create(config)
+                if config is not None
+                else providers.Unavailable(
+                    f"opencti is not configured: {self._opencti_reason}"
+                )
+            )
+        self.providers = providers.load(self.provider_names, prebuilt)
+        # lookup_ioc shares OpenCTI's query limit when OpenCTI is configured.
+        self._lookup_limiter = (
+            self.client._query_limiter
+            if self.client is not None
+            else RateLimiter(max_calls=600, window_seconds=60)
+        )
         self.server = Server("opencti-mcp", instructions=_INSTRUCTIONS)
         self._audit = AuditWriter("opencti-mcp")
         self._register_tools()
@@ -254,7 +372,7 @@ class OpenCTIMCPServer:
                 ),
                 Tool(
                     name="lookup_ioc",
-                    description="Look up a specific IOC (IP, hash, domain, or URL) and return full context: related threat actors, malware families, MITRE techniques, and campaigns. Use for known IOCs you want to contextualize, not for broad searching. Handles all IOC types including MD5, SHA1, and SHA256 hashes.",
+                    description="Look up one IOC (IP, hash, domain, or URL) in every configured threat-intel platform. Each platform's records for an exact match are returned under providers.<name> as the platform holds them (for OpenCTI: revoked, valid_from, valid_until, x_opencti_score, confidence, labels and relationships), with outcome MATCH, NO_MATCH or UNAVAILABLE (the platform couldn't be asked, which is not a not-found). This is each platform's record, not a verdict. The top-level outcome is MATCH when any platform matched. found, confidence, labels, created, related_threat_actors, related_malware and mitre_techniques are compatibility summaries of OpenCTI's records; providers.* is the authoritative answer.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -680,8 +798,56 @@ class OpenCTIMCPServer:
         results = self._safe_results(results)
         return {"type": entity_type, "results": results, "total": len(results)}
 
+    def _lookup_ioc(self, ioc: str, ioc_type: str) -> dict[str, Any]:
+        """Ask every configured provider for its records on exactly this IOC.
+
+        ``outcome`` is MATCH when any provider matched, else UNAVAILABLE when
+        any couldn't be asked, else NO_MATCH; ``providers`` holds each one's
+        answer as the platform gave it. No verdict is computed. When OpenCTI
+        is configured, the keys the tool returned before providers are kept
+        as summaries over OpenCTI's records.
+        """
+        internal = _internal_address(ioc)
+        if internal:
+            return {
+                "found": False,
+                "ioc": ioc,
+                "outcome": providers.UNAVAILABLE,
+                "reason": internal,
+                "note": internal,
+                "providers": {},
+            }
+        if not self._lookup_limiter.check_and_record():
+            raise RateLimitError(self._lookup_limiter.wait_time(), "query")
+        answers = providers.lookup_all(self.providers, ioc, ioc_type)
+        outcome = providers.aggregate(answers)
+        result: dict[str, Any] = {
+            "ioc": ioc,
+            "outcome": outcome,
+            "found": outcome == providers.MATCH,
+        }
+        if outcome == providers.UNAVAILABLE:
+            # A "note" also marks the answer unconfirmed to callers that
+            # predate "outcome".
+            result["reason"] = "; ".join(
+                f"{name}: {answer['reason']}"
+                for name, answer in answers.items()
+                if answer["outcome"] == providers.UNAVAILABLE
+            )
+            result["note"] = f"Not answered: {result['reason']}"
+        if "opencti" in answers:
+            result.update(_opencti_summary(ioc, answers["opencti"]))
+        result["providers"] = answers
+        return result
+
     async def _dispatch_tool(self, name: str, arguments: dict) -> dict[str, Any]:
         """Dispatch tool call to appropriate handler."""
+
+        if name in _OPENCTI_TOOLS and self.client is None:
+            return {
+                "error": "opencti_not_configured",
+                "message": self._opencti_reason,
+            }
 
         if name == "get_health":
             available = await asyncio.to_thread(self.client.is_available)
@@ -721,7 +887,7 @@ class OpenCTIMCPServer:
             ioc = arguments.get("ioc", "")
             validate_length(ioc, MAX_IOC_LENGTH, "ioc")
             is_valid, ioc_type = validate_ioc(ioc)
-            result = await asyncio.to_thread(self.client.get_indicator_context, ioc)
+            result = await asyncio.to_thread(self._lookup_ioc, ioc.strip(), ioc_type)
             result["ioc_type"] = ioc_type
             return result
 

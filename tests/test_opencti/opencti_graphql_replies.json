@@ -1,0 +1,538 @@
+{
+ "_about": "GraphQL replies recorded from OpenCTI 6.9.10 and 7.261002.0 test instances seeded with synthetic records. Error replies are trimmed to message, path and code.",
+ "v6:auth_required": {
+  "data": {
+   "about": null,
+   "indicators": null
+  },
+  "errors": [
+   {
+    "extensions": {
+     "code": "AUTH_REQUIRED"
+    },
+    "message": "You must be logged in to do this.",
+    "path": [
+     "about"
+    ]
+   },
+   {
+    "extensions": {
+     "code": "AUTH_REQUIRED"
+    },
+    "message": "You must be logged in to do this.",
+    "path": [
+     "indicators"
+    ]
+   }
+  ]
+ },
+ "v6:database_error": {
+  "data": {
+   "about": {
+    "version": "6.9.10"
+   },
+   "indicators": null
+  },
+  "errors": [
+   {
+    "extensions": {
+     "code": "DATABASE_ERROR"
+    },
+    "message": "Fail to execute engine pagination",
+    "path": [
+     "indicators"
+    ]
+   }
+  ]
+ },
+ "v6:lookup:ip3": {
+  "data": {
+   "about": {
+    "version": "6.9.10"
+   },
+   "indicators": {
+    "edges": [
+     {
+      "node": {
+       "confidence": 30,
+       "created": "2026-10-07T08:31:32.872Z",
+       "id": "6a392119-d99a-4195-bfac-c90440d347d9",
+       "indicator_types": null,
+       "name": "11.0.113.10",
+       "objectLabel": [],
+       "revoked": false,
+       "valid_from": "2026-10-07T08:31:32.837Z",
+       "valid_until": "2026-11-08T04:12:51.340Z",
+       "x_opencti_detection": false,
+       "x_opencti_score": 95
+      }
+     },
+     {
+      "node": {
+       "confidence": 40,
+       "created": "2026-10-07T08:31:32.817Z",
+       "id": "34fc6ea0-5188-48fd-ba30-c976f9f1333f",
+       "indicator_types": null,
+       "name": "11.0.113.10",
+       "objectLabel": [],
+       "revoked": true,
+       "valid_from": "2026-09-01T00:00:00.000Z",
+       "valid_until": "2026-09-27T23:26:14.948Z",
+       "x_opencti_detection": false,
+       "x_opencti_score": 20
+      }
+     },
+     {
+      "node": {
+       "confidence": 90,
+       "created": "2026-10-07T08:31:32.719Z",
+       "id": "8b2d9f8b-51c8-4022-a124-1522ca2c3163",
+       "indicator_types": null,
+       "name": "11.0.113.10",
+       "objectLabel": [
+        {
+         "value": "c2"
+        }
+       ],
+       "revoked": true,
+       "valid_from": "2024-01-01T00:00:00.000Z",
+       "valid_until": "2024-02-01T00:00:00.000Z",
+       "x_opencti_detection": false,
+       "x_opencti_score": 80
+      }
+     }
+    ],
+    "pageInfo": {
+     "globalCount": 3
+    }
+   }
+  }
+ },
+ "v6:lookup:neighbour": {
+  "data": {
+   "about": {
+    "version": "6.9.10"
+   },
+   "indicators": {
+    "edges": [],
+    "pageInfo": {
+     "globalCount": 0
+    }
+   }
+  }
+ },
+ "v6:lookup:revoked": {
+  "data": {
+   "about": {
+    "version": "6.9.10"
+   },
+   "indicators": {
+    "edges": [
+     {
+      "node": {
+       "confidence": 100,
+       "created": "2026-10-07T08:31:32.502Z",
+       "id": "f62ceb60-f004-48af-a48e-f432e849f15f",
+       "indicator_types": null,
+       "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+       "objectLabel": [
+        {
+         "value": "malware"
+        }
+       ],
+       "revoked": true,
+       "valid_from": "2025-01-01T00:00:00.000Z",
+       "valid_until": "2025-02-01T00:00:00.000Z",
+       "x_opencti_detection": true,
+       "x_opencti_score": 100
+      }
+     }
+    ],
+    "pageInfo": {
+     "globalCount": 1
+    }
+   }
+  }
+ },
+ "v6:lookup:ssdeep_lower": {
+  "data": {
+   "about": {
+    "version": "6.9.10"
+   },
+   "indicators": {
+    "edges": [
+     {
+      "node": {
+       "confidence": 70,
+       "created": "2026-10-07T08:31:32.985Z",
+       "id": "2238a72a-ea44-453c-a6ca-ff158b753e0f",
+       "indicator_types": null,
+       "name": "96:AbCdEfGh:IjKlMn",
+       "objectLabel": [],
+       "revoked": false,
+       "valid_from": "2026-10-07T08:31:32.957Z",
+       "valid_until": "2027-09-12T04:05:12.616Z",
+       "x_opencti_detection": false,
+       "x_opencti_score": 70
+      }
+     }
+    ],
+    "pageInfo": {
+     "globalCount": 1
+    }
+   }
+  }
+ },
+ "v6:lookup:upper": {
+  "data": {
+   "about": {
+    "version": "6.9.10"
+   },
+   "indicators": {
+    "edges": [
+     {
+      "node": {
+       "confidence": 85,
+       "created": "2026-10-07T08:31:32.652Z",
+       "id": "cfea8eb1-0f70-482a-adcc-9e50033e2ea7",
+       "indicator_types": null,
+       "name": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC3",
+       "objectLabel": [],
+       "revoked": false,
+       "valid_from": "2026-10-07T08:31:32.611Z",
+       "valid_until": "2027-07-24T19:41:17.168Z",
+       "x_opencti_detection": false,
+       "x_opencti_score": 50
+      }
+     }
+    ],
+    "pageInfo": {
+     "globalCount": 1
+    }
+   }
+  }
+ },
+ "v6:relationships:revoked": {
+  "data": {
+   "stixCoreRelationships": {
+    "edges": [
+     {
+      "node": {
+       "from": {
+        "id": "f62ceb60-f004-48af-a48e-f432e849f15f"
+       },
+       "id": "4b2867bd-a498-4806-96d5-c252080783bb",
+       "relationship_type": "indicates",
+       "to": {
+        "entity_type": "Attack-Pattern",
+        "id": "f5a89e1d-c5b5-4ac0-8dc4-151a7612fdc5",
+        "name": "Example Technique",
+        "x_mitre_id": "T1999"
+       }
+      }
+     },
+     {
+      "node": {
+       "from": {
+        "id": "f62ceb60-f004-48af-a48e-f432e849f15f"
+       },
+       "id": "bcff9c29-3ca8-4254-af6b-f0b2ed7a7bcd",
+       "relationship_type": "indicates",
+       "to": {
+        "entity_type": "Malware",
+        "id": "0bd2510c-680f-47d7-a85f-cfb141a76c27",
+        "name": "ExampleRAT"
+       }
+      }
+     },
+     {
+      "node": {
+       "from": {
+        "id": "f62ceb60-f004-48af-a48e-f432e849f15f"
+       },
+       "id": "68dd692e-7862-46f8-be25-6aa27e04128d",
+       "relationship_type": "indicates",
+       "to": {
+        "entity_type": "Intrusion-Set",
+        "id": "988e4ae5-0ebe-4c9f-a21c-d79af68c3498",
+        "name": "Example Set"
+       }
+      }
+     }
+    ],
+    "pageInfo": {
+     "globalCount": 3
+    }
+   }
+  }
+ },
+ "v6:validation_error": {
+  "errors": [
+   {
+    "extensions": {
+     "code": "GRAPHQL_VALIDATION_FAILED"
+    },
+    "message": "Cannot query field \"x_opencti_no_such_field\" on type \"Indicator\". Did you mean \"x_opencti_score\" or \"x_opencti_stix_ids\"?",
+    "path": null
+   }
+  ]
+ },
+ "v7:auth_required": {
+  "data": {
+   "about": null,
+   "indicators": null
+  },
+  "errors": [
+   {
+    "extensions": {
+     "code": "AUTH_REQUIRED"
+    },
+    "message": "You must be logged in to do this.",
+    "path": [
+     "about"
+    ]
+   },
+   {
+    "extensions": {
+     "code": "AUTH_REQUIRED"
+    },
+    "message": "You must be logged in to do this.",
+    "path": [
+     "indicators"
+    ]
+   }
+  ]
+ },
+ "v7:lookup:ip3": {
+  "data": {
+   "about": {
+    "version": "7.261002.0"
+   },
+   "indicators": {
+    "edges": [
+     {
+      "node": {
+       "confidence": 30,
+       "created": "2026-10-07T08:31:39.688Z",
+       "id": "69794403-7a41-425f-a92e-64b58236b252",
+       "indicator_types": null,
+       "name": "11.0.113.10",
+       "objectLabel": [],
+       "revoked": false,
+       "valid_from": "2026-10-07T08:31:39.661Z",
+       "valid_until": "2026-11-08T04:12:58.164Z",
+       "x_opencti_detection": false,
+       "x_opencti_score": 95
+      }
+     },
+     {
+      "node": {
+       "confidence": 40,
+       "created": "2026-10-07T08:31:39.621Z",
+       "id": "df0b04b0-e2fd-4baf-b590-ccc5a7154ccb",
+       "indicator_types": null,
+       "name": "11.0.113.10",
+       "objectLabel": [],
+       "revoked": true,
+       "valid_from": "2026-09-01T00:00:00.000Z",
+       "valid_until": "2026-09-27T23:26:14.948Z",
+       "x_opencti_detection": false,
+       "x_opencti_score": 20
+      }
+     },
+     {
+      "node": {
+       "confidence": 90,
+       "created": "2026-10-07T08:31:39.543Z",
+       "id": "716ae557-e314-4553-969d-47fe8a14be36",
+       "indicator_types": null,
+       "name": "11.0.113.10",
+       "objectLabel": [
+        {
+         "value": "c2"
+        }
+       ],
+       "revoked": true,
+       "valid_from": "2024-01-01T00:00:00.000Z",
+       "valid_until": "2024-02-01T00:00:00.000Z",
+       "x_opencti_detection": false,
+       "x_opencti_score": 80
+      }
+     }
+    ],
+    "pageInfo": {
+     "globalCount": 3
+    }
+   }
+  }
+ },
+ "v7:lookup:neighbour": {
+  "data": {
+   "about": {
+    "version": "7.261002.0"
+   },
+   "indicators": {
+    "edges": [],
+    "pageInfo": {
+     "globalCount": 0
+    }
+   }
+  }
+ },
+ "v7:lookup:revoked": {
+  "data": {
+   "about": {
+    "version": "7.261002.0"
+   },
+   "indicators": {
+    "edges": [
+     {
+      "node": {
+       "confidence": 100,
+       "created": "2026-10-07T08:31:39.324Z",
+       "id": "58e18543-d21b-41ee-bce5-594fbf30e4ef",
+       "indicator_types": null,
+       "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
+       "objectLabel": [
+        {
+         "value": "malware"
+        }
+       ],
+       "revoked": true,
+       "valid_from": "2025-01-01T00:00:00.000Z",
+       "valid_until": "2025-02-01T00:00:00.000Z",
+       "x_opencti_detection": true,
+       "x_opencti_score": 100
+      }
+     }
+    ],
+    "pageInfo": {
+     "globalCount": 1
+    }
+   }
+  }
+ },
+ "v7:lookup:ssdeep_lower": {
+  "data": {
+   "about": {
+    "version": "7.261002.0"
+   },
+   "indicators": {
+    "edges": [
+     {
+      "node": {
+       "confidence": 70,
+       "created": "2026-10-07T08:31:39.829Z",
+       "id": "d5bbebe9-a7f1-41eb-ae2d-da2e0a093b12",
+       "indicator_types": null,
+       "name": "96:AbCdEfGh:IjKlMn",
+       "objectLabel": [],
+       "revoked": false,
+       "valid_from": "2026-10-07T08:31:39.801Z",
+       "valid_until": "2027-09-12T04:05:19.460Z",
+       "x_opencti_detection": false,
+       "x_opencti_score": 70
+      }
+     }
+    ],
+    "pageInfo": {
+     "globalCount": 1
+    }
+   }
+  }
+ },
+ "v7:lookup:upper": {
+  "data": {
+   "about": {
+    "version": "7.261002.0"
+   },
+   "indicators": {
+    "edges": [
+     {
+      "node": {
+       "confidence": 85,
+       "created": "2026-10-07T08:31:39.478Z",
+       "id": "a9eb8a50-b31c-4234-a689-792a6013df74",
+       "indicator_types": null,
+       "name": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC3",
+       "objectLabel": [],
+       "revoked": false,
+       "valid_from": "2026-10-07T08:31:39.452Z",
+       "valid_until": "2027-07-24T19:41:24.009Z",
+       "x_opencti_detection": false,
+       "x_opencti_score": 50
+      }
+     }
+    ],
+    "pageInfo": {
+     "globalCount": 1
+    }
+   }
+  }
+ },
+ "v7:relationships:revoked": {
+  "data": {
+   "stixCoreRelationships": {
+    "edges": [
+     {
+      "node": {
+       "from": {
+        "id": "58e18543-d21b-41ee-bce5-594fbf30e4ef"
+       },
+       "id": "c788ed7f-e843-4643-bbd7-816eec703268",
+       "relationship_type": "indicates",
+       "to": {
+        "entity_type": "Attack-Pattern",
+        "id": "02829851-fa55-4372-a3e9-c1f59a50dfe1",
+        "name": "Example Technique",
+        "x_mitre_id": "T1999"
+       }
+      }
+     },
+     {
+      "node": {
+       "from": {
+        "id": "58e18543-d21b-41ee-bce5-594fbf30e4ef"
+       },
+       "id": "b91d0e97-d388-47fc-95ee-2f9fac9af9f3",
+       "relationship_type": "indicates",
+       "to": {
+        "entity_type": "Malware",
+        "id": "9e0b7e8d-bdc5-428f-86f8-42b463f5df30",
+        "name": "ExampleRAT"
+       }
+      }
+     },
+     {
+      "node": {
+       "from": {
+        "id": "58e18543-d21b-41ee-bce5-594fbf30e4ef"
+       },
+       "id": "754a2c9e-5628-443d-be52-499ef904501f",
+       "relationship_type": "indicates",
+       "to": {
+        "entity_type": "Intrusion-Set",
+        "id": "e4cfeaf3-734d-4b59-851b-7b551b5d6304",
+        "name": "Example Set"
+       }
+      }
+     }
+    ],
+    "pageInfo": {
+     "globalCount": 3
+    }
+   }
+  }
+ },
+ "v7:validation_error": {
+  "errors": [
+   {
+    "extensions": {
+     "code": "GRAPHQL_VALIDATION_FAILED"
+    },
+    "message": "Cannot query field \"x_opencti_no_such_field\" on type \"Indicator\". Did you mean \"x_opencti_score\" or \"x_opencti_stix_ids\"?",
+    "path": null
+   }
+  ]
+ }
+}

@@ -36,7 +36,6 @@ from .errors import (
 )
 from .feature_flags import get_feature_flags
 from .validation import (
-    MAX_IOC_LENGTH,
     MAX_QUERY_LENGTH,
     normalize_hash,
     truncate_response,
@@ -268,38 +267,6 @@ class RateLimiter:
 # =============================================================================
 # OpenCTI Client
 # =============================================================================
-
-
-def _same_ioc(value: Any, ioc: str) -> bool:
-    """Equal as IOCs: as parsed addresses for IPs, otherwise ignoring case."""
-    import ipaddress
-
-    if not isinstance(value, str) or not value:
-        return False
-    try:
-        return ipaddress.ip_address(value) == ipaddress.ip_address(ioc)
-    except ValueError:
-        return value.lower() == ioc.lower()
-
-
-def _is_the_ioc(hit: dict, entity_type: str, ioc: str) -> bool:
-    """Whether a search hit is the queried IOC itself. An indicator's name is
-    its pattern's literal; an observable is matched on its value or any of its
-    hashes, since a file observable's name is the filename."""
-    if entity_type == "indicator":
-        values = [hit.get("name")]
-    else:
-        values = [hit.get("observable_value"), hit.get("value")]
-        values += [
-            h.get("hash") for h in hit.get("hashes") or [] if isinstance(h, dict)
-        ]
-    return any(_same_ioc(value, ioc) for value in values)
-
-
-def _hit_name(hit: dict, entity_type: str) -> str:
-    if entity_type == "indicator":
-        return hit.get("name", "")
-    return hit.get("observable_value") or hit.get("value") or hit.get("name", "")
 
 
 class OpenCTIClient:
@@ -2060,159 +2027,6 @@ class OpenCTIClient:
     # =========================================================================
     # Context Methods
     # =========================================================================
-
-    def get_indicator_context(self, ioc: str) -> dict[str, Any]:
-        """Get full context for an IOC including relationships.
-
-        Searches both Indicators and Observables to ensure complete coverage.
-        """
-        # Surrounding whitespace is not part of the IOC: the search, the exact
-        # comparison and the echoed value all use the trimmed form.
-        ioc = ioc.strip()
-        validate_length(ioc, MAX_IOC_LENGTH, "IOC")
-
-        # Private/internal IPs are not in threat intelligence scope
-        import ipaddress
-
-        try:
-            ip = ipaddress.ip_address(ioc)
-            if ip.is_private or ip.is_loopback or ip.is_link_local:
-                return {
-                    "found": False,
-                    "ioc": ioc,
-                    "note": f"Internal address ({ioc}) — not in threat intelligence scope.",
-                }
-        except ValueError:
-            pass  # Not an IP — proceed with lookup
-
-        self._check_rate_limit(self._query_limiter, "query")
-
-        try:
-            # Search for indicators first
-            results = (
-                self._execute_with_retry("indicator.list", search=ioc, first=5) or []
-            )
-
-            # Also search observables if no indicator is the IOC: a value
-            # with no indicator of its own still draws indicators that share
-            # a word with it, and may exist as an observable.
-            observables = []
-            # Not found is unconfirmed while the observable search failed.
-            unconfirmed: dict[str, str] = {}
-            if not any(_is_the_ioc(h, "indicator", ioc) for h in results):
-                try:
-                    observables = (
-                        self._execute_with_retry(
-                            "stix_cyber_observable.list", search=ioc, first=5
-                        )
-                        or []
-                    )
-                except Exception as obs_err:
-                    logger.warning("Observable search failed for %s: %s", ioc, obs_err)
-                    unconfirmed["note"] = (
-                        "Not found is unconfirmed: the observable search failed."
-                    )
-
-            if not results and not observables:
-                return {"found": False, "ioc": ioc, **unconfirmed}
-
-            # The search is full text, so its hits include objects that only
-            # share a word with the IOC: report the first hit, indicators
-            # before observables, that is the IOC itself, and when none is,
-            # return the hits as related rather than found.
-            hits = [(h, "indicator") for h in results]
-            hits += [(h, "observable") for h in observables]
-            entity, entity_type = next(
-                ((h, kind) for h, kind in hits if _is_the_ioc(h, kind, ioc)),
-                (None, None),
-            )
-            if entity is None:
-                return {
-                    "found": False,
-                    "ioc": ioc,
-                    "related": [
-                        {
-                            "name": _hit_name(h, kind),
-                            "entity_type": kind,
-                            "confidence": h.get("confidence", 0),
-                        }
-                        for h, kind in hits
-                    ],
-                    **unconfirmed,
-                }
-
-            try:
-                labels = self._extract_labels(entity)
-            except Exception:
-                labels = []
-
-            context = {
-                "found": True,
-                "ioc": ioc,
-                "entity_type": entity_type,
-                "type": entity.get(
-                    "pattern_type", entity.get("entity_type", "unknown")
-                ),
-                "name": entity.get("name", entity.get("value", "")),
-                "description": entity.get("description", "")[:500]
-                if entity.get("description")
-                else "",
-                "created": entity.get("created", ""),
-                "confidence": entity.get("confidence", 0),
-                "labels": labels,
-                "related_threat_actors": [],
-                "related_malware": [],
-                "mitre_techniques": [],
-                "source": "opencti",
-            }
-
-            # Get relationships
-            try:
-                relations = (
-                    self._execute_with_retry(
-                        "stix_core_relationship.list",
-                        fromId=entity.get("id"),
-                        first=MAX_RELATIONSHIPS,
-                    )
-                    or []
-                )
-
-                for rel in relations:
-                    target = rel.get("to", {})
-                    target_type = target.get("entity_type", "")
-                    target_name = target.get("name", "")
-
-                    if target_type in ("Threat-Actor-Group", "Intrusion-Set"):
-                        context["related_threat_actors"].append(target_name)
-                    elif target_type == "Malware":
-                        context["related_malware"].append(target_name)
-                    elif target_type == "Attack-Pattern":
-                        mitre_id = target.get("x_mitre_id", "")
-                        if mitre_id:
-                            context["mitre_techniques"].append(mitre_id)
-                        else:
-                            context["mitre_techniques"].append(target_name)
-
-            except Exception as e:
-                logger.warning(f"Failed to get relationships: {e}")
-                context["relationships_unavailable"] = (
-                    f"Relationships query failed ({type(e).__name__}): "
-                    "related_threat_actors, related_malware and mitre_techniques are incomplete."
-                )
-
-            return context
-
-        except ConnectionError:
-            # Connection errors should propagate for circuit breaker
-            raise
-        except Exception as e:
-            # GraphQL schema errors, pycti version mismatches, etc.
-            # Degrade gracefully instead of killing the lookup
-            logger.warning(f"IOC context lookup degraded for {ioc}: {e}")
-            return {
-                "ioc": ioc,
-                "error": f"Context unavailable: {e}",
-            }
 
     def get_entity(self, entity_id: str) -> dict[str, Any] | None:
         """Get any entity by its OpenCTI ID.
