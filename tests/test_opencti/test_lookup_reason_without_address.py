@@ -1,0 +1,93 @@
+"""lookup_ioc's reason for an OpenCTI failure doesn't carry the server's
+address.
+
+The reason passed the transport's and the server's text through as written,
+so a TLS or resolve failure, or a GraphQL message, put the configured host
+name, a URL or an IP address into the reply. They are now taken out; the
+reason itself stays, as does the IOC that was looked up.
+"""
+
+from __future__ import annotations
+
+import httpx
+import opencti_mcp.providers.opencti as opencti_provider
+import pytest
+from opencti_mcp.config import Config
+from opencti_mcp.server import OpenCTIMCPServer
+from pydantic import SecretStr
+
+from .threatintel_rig import REPLIES, REVOKED, Transport, lookup
+
+HOST = "opencti-int.corp.example"
+URL = f"https://{HOST}:8080"
+LEAKS = (HOST, "10.20.30.40", "fd00:1234::7", "opencti-int.CORP.example")
+
+
+def _server():
+    cfg = Config(opencti_url=URL, opencti_token=SecretStr("dummy-not-a-real-token-0"))
+    return OpenCTIMCPServer(cfg, provider_names=["opencti"])
+
+
+def _gql(code: str, message: str) -> dict:
+    return {"errors": [{"message": message, "extensions": {"code": code}}]}
+
+
+async def _reason(monkeypatch, answer, ioc="11.0.113.10") -> str:
+    monkeypatch.setattr(opencti_provider, "_http_post", Transport(lambda q, v: answer))
+    reply = await lookup(_server(), ioc)
+    return str(reply)
+
+
+@pytest.mark.parametrize(
+    "answer, kept",
+    [
+        (
+            httpx.ConnectError(
+                f"[SSL: CERTIFICATE_VERIFY_FAILED] Hostname mismatch, certificate "
+                f"is not valid for '{HOST}' (host='{HOST}', port=8080) {URL}/graphql"
+                " 10.20.30.40"
+            ),
+            "can't reach OpenCTI",
+        ),
+        (
+            _gql(
+                "AUTH_REQUIRED",
+                f"You must be logged in at {URL}/graphql from fd00:1234::7",
+            ),
+            "logged in",
+        ),
+        (
+            _gql(
+                "GRAPHQL_VALIDATION_FAILED",
+                "GRAPHQL_VALIDATION_FAILED near opencti-int.CORP.example:8080",
+            ),
+            "GRAPHQL_VALIDATION_FAILED",
+        ),
+    ],
+    ids=["tls", "auth", "validation"],
+)
+async def test_the_reason_names_no_server_address(monkeypatch, answer, kept):
+    reason = await _reason(monkeypatch, answer)
+    assert not [leak for leak in LEAKS if leak in reason], reason
+    assert kept in reason, reason
+
+
+async def test_a_relationships_failure_names_no_server_address(monkeypatch):
+    def route(query, variables):
+        if "ThreatIntelRelationships" in query:
+            return httpx.ConnectError(f"reset by {HOST} (10.20.30.40)")
+        return REPLIES["v7:lookup:revoked"]
+
+    monkeypatch.setattr(opencti_provider, "_http_post", Transport(route))
+    reply = str(await lookup(_server(), REVOKED))
+    assert "Relationships query failed" in reply
+    assert not [leak for leak in LEAKS if leak in reply], reply
+
+
+async def test_anchor_a_time_and_the_looked_up_ioc_stay(monkeypatch):
+    answer = _gql(
+        "GRAPHQL_VALIDATION_FAILED",
+        "Too Many Requests at 10:48:01 for 11.0.113.10",
+    )
+    reason = await _reason(monkeypatch, answer)
+    assert "Too Many Requests at 10:48:01 for 11.0.113.10" in reason, reason
