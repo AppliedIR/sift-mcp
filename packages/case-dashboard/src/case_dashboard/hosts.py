@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from sift_common import host_gate as hg
 from sift_common import host_identity as hi
 from sift_common import host_proposal as hp
 from starlette.requests import Request
@@ -166,11 +167,28 @@ async def get_hosts(request: Request) -> JSONResponse:
                 if listed
                 else None
             ),
+            "host_list_hint": "" if listed else hg.HOST_LIST_HINT,
             "listed_without_data": (
                 hp.listed_without_data(state, all_groups) if listed else []
             ),
         }
     )
+
+
+async def get_runs(request: Request) -> JSONResponse:
+    """Ingest runs waiting for their hosts, each with what holds it."""
+    case_dir, error = _case_or_error()
+    if error:
+        return error
+    state = hi.load(case_dir)
+    runs = []
+    for run_id, units in sorted(state.waits.items()):
+        if run_id in state.cancelled:
+            continue
+        waiting = hg.unresolved(state, units)
+        if waiting:
+            runs.append({"run_id": run_id, "units": len(units), "unresolved": waiting})
+    return JSONResponse({"obs_offset": state.obs_offset, "runs": runs})
 
 
 async def get_host(request: Request) -> JSONResponse:
@@ -311,6 +329,22 @@ async def post_host_decision(request: Request) -> JSONResponse:
                 summary,
             )
             return JSONResponse({"ok": True, **result})
+        if action in ("start_now", "cancel_run"):
+            run_id = str(args.get("run_id") or "")
+            if action == "start_now":
+                result = hg.start_now(case_dir, run_id, examiner)
+                summary = (
+                    f"{len(result.get('machines', []))} started now for run {run_id}"
+                )
+            else:
+                if run_id not in state.waits or run_id in state.cancelled:
+                    raise hi.HostLogError(
+                        f"no run {run_id!r} is waiting for host confirmation"
+                    )
+                hg.cancel(case_dir, run_id, examiner)
+                result, summary = {}, f"run {run_id} cancelled"
+            _audit(case_dir, examiner, action, {"run_id": run_id}, summary)
+            return JSONResponse({"ok": True, "summary": summary, **result})
         if action == "confirm":
             items = _confirm_items(state, args)
             if isinstance(items, str):

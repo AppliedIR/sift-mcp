@@ -13,6 +13,7 @@ import time
 
 import case_dashboard.routes as D
 import pytest
+from sift_common import host_gate as hg
 from sift_common import host_identity as hi
 from starlette.testclient import TestClient
 
@@ -147,9 +148,7 @@ class TestDecisions:
         assert "past the log's end" in resp.json()["error"]
         assert _decisions(case) == []
 
-    @pytest.mark.parametrize(
-        "action", ["merge", "split", "rename", "cancel_run", "nonsense"]
-    )
+    @pytest.mark.parametrize("action", ["merge", "split", "rename", "nonsense"])
     def test_other_actions_are_refused(self, case, client, action):
         unit(case, "evidence/WKS01", "WKS01")
         page = client.get("/api/hosts").json()
@@ -302,3 +301,41 @@ def test_five_thousand_machines_page_and_filter(case, client):
     assert (
         client.get("/api/hosts?page=100").json()["machines"][-1]["canonical"] == "H4999"
     )
+
+
+class TestPendingRuns:
+    def test_a_waiting_run_is_listed_and_start_now_releases_it(self, case, client):
+        u = unit(case, "evidence/WKS01", "WKS01")
+        hg.record_wait(case, "run-1", [u])
+        runs = client.get("/api/hosts/runs").json()["runs"]
+        assert [(r["run_id"], [w["raw"] for w in r["unresolved"]]) for r in runs] == [
+            ("run-1", ["WKS01"])
+        ]
+        page = client.get("/api/hosts").json()
+        resp = _decide(client, page, "start_now", {"run_id": "run-1"})
+        assert resp.status_code == 200, resp.text
+        assert client.get("/api/hosts/runs").json()["runs"] == []
+        assert hi.load(case).machine_of_pair(u, "WKS01").state == hi.STARTED_NOW
+        (entry,) = _audit(case)
+        assert (entry["tool"], entry["origin"]) == ("host_start_now", "portal")
+
+    def test_cancel_drops_the_run(self, case, client):
+        u = unit(case, "evidence/WKS01", "WKS01")
+        hg.record_wait(case, "run-1", [u])
+        page = client.get("/api/hosts").json()
+        assert (
+            _decide(client, page, "cancel_run", {"run_id": "run-1"}).status_code == 200
+        )
+        assert client.get("/api/hosts/runs").json()["runs"] == []
+        assert "run-1" in hi.load(case).cancelled
+
+    @pytest.mark.parametrize("action", ["start_now", "cancel_run"])
+    def test_a_run_that_isn_t_waiting_is_refused(self, case, client, action):
+        unit(case, "evidence/WKS01", "WKS01")
+        page = client.get("/api/hosts").json()
+        resp = _decide(client, page, action, {"run_id": "no-such-run"})
+        assert resp.status_code == 409
+        assert _decisions(case) == [] and _audit(case) == []
+
+    def test_a_case_without_a_host_list_is_encouraged_to_load_one(self, case, client):
+        assert client.get("/api/hosts").json()["host_list_hint"] == hg.HOST_LIST_HINT
