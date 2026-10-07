@@ -403,8 +403,7 @@ async def test_a_trickling_provider_never_blocks_a_healthy_one(monkeypatch):
         assert resp["outcome"] == "MATCH"
         assert resp["providers"]["trickler"]["outcome"] == "UNAVAILABLE"
         reasons.append(resp["providers"]["trickler"]["reason"])
-    assert reasons[: providers.MAX_IN_FLIGHT] == ["timed out after 0.2s"] * 4
-    assert all(r.startswith("busy: 4 ") for r in reasons[providers.MAX_IN_FLIGHT :])
+    assert reasons == ["timed out after 0.2s"] * 20
 
 
 async def test_a_burst_of_lookups_never_finds_a_healthy_provider_busy(monkeypatch):
@@ -415,28 +414,45 @@ async def test_a_burst_of_lookups_never_finds_a_healthy_provider_busy(monkeypatc
         assert {r["outcome"] for r in replies} == {"MATCH"}
 
 
-async def test_a_stuck_lookup_frees_its_place_once_it_finishes(monkeypatch):
+async def test_a_burst_against_a_stalled_provider_leaves_four_threads(monkeypatch):
     release = threading.Event()
 
-    def stuck(ioc):
-        release.wait(5)
+    def stalled(ioc):
+        release.wait(10)
         return block("NO_MATCH")
 
-    fake_provider(monkeypatch, "stuckintel", stuck, timeout=0.05)
-    srv = server(["stuckintel"], cfg=None)
-    for _ in range(providers.MAX_IN_FLIGHT):
-        await lookup(srv, IP)
-    reason = (await lookup(srv, IP))["providers"]["stuckintel"]["reason"]
-    assert reason.startswith("busy")
+    fake_provider(monkeypatch, "stalled", stalled, timeout=0.2)
+    srv = server(["stalled"], cfg=None)
+    try:
+        replies = await asyncio.gather(*(lookup(srv, IP) for _ in range(20)))
+        pool = providers._pools[srv.providers["stalled"]]
+        assert len(pool._threads) == providers.MAX_IN_FLIGHT
+        assert {r["providers"]["stalled"]["reason"] for r in replies} == {
+            "timed out after 0.2s"
+        }
+    finally:
+        release.set()
+
+
+async def test_a_stalled_provider_answers_again_once_it_recovers(monkeypatch):
+    release = threading.Event()
+
+    def stalled(ioc):
+        if not release.is_set():
+            release.wait(60)  # well past the five lookups below
+        return block("NO_MATCH")
+
+    calls = fake_provider(monkeypatch, "stalled", stalled, timeout=0.2)
+    srv = server(["stalled"], cfg=None)
+    for _ in range(providers.MAX_IN_FLIGHT + 1):
+        resp = await lookup(srv, IP)
+        assert resp["providers"]["stalled"]["outcome"] == "UNAVAILABLE"
     release.set()
-    deadline = time.monotonic() + 2
-    while (
-        providers._stuck.get(srv.providers["stuckintel"], 0)
-        and time.monotonic() < deadline
-    ):
-        time.sleep(0.01)
+    time.sleep(0.2)  # the four running lookups finish
     resp = await lookup(srv, IP)
-    assert resp["providers"]["stuckintel"]["outcome"] == "NO_MATCH"
+    assert resp["providers"]["stalled"]["outcome"] == "NO_MATCH"
+    # The fifth lookup timed out while queued, so it never ran.
+    assert len(calls) == providers.MAX_IN_FLIGHT + 1
 
 
 async def test_concurrent_lookups_with_a_trickling_provider_all_answer(monkeypatch):
@@ -512,3 +528,36 @@ async def test_an_answer_just_past_the_budget_is_taken_within_the_grace(monkeypa
     fake_provider(monkeypatch, "lateintel", late, timeout=0.2)
     resp = await lookup(server(["lateintel"], cfg=None), IP)
     assert resp["providers"]["lateintel"]["reason"] == "the adapter's own reason"
+
+
+class _Trickle(httpx.SyncByteStream):
+    def __init__(self, body: bytes, chunk: int, delay: float):
+        self.body, self.chunk, self.delay = body, chunk, delay
+
+    def __iter__(self):
+        for i in range(0, len(self.body), self.chunk):
+            time.sleep(self.delay)
+            yield self.body[i : i + self.chunk]
+
+
+async def test_a_trickling_relationships_reply_still_returns_the_match(monkeypatch):
+    # A 2 s budget; the relationships reply comes in 250 ms chunks and takes
+    # far longer than that.
+    def route(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if "Relationships" in body["query"]:
+            data = json.dumps(REPLIES["v6:relationships:revoked"]).encode()
+            return httpx.Response(200, stream=_Trickle(data, len(data) // 40 + 1, 0.25))
+        return httpx.Response(200, json=REPLIES["v6:lookup:revoked"])
+
+    monkeypatch.setattr(opencti_provider, "_http_post", opencti_provider._post)
+    monkeypatch.setattr(opencti_provider, "_transport", httpx.MockTransport(route))
+    monkeypatch.setattr(opencti_provider, "RELATIONSHIPS_MIN_SECONDS", 0.1)
+    start = time.monotonic()
+    resp = await lookup(server(cfg=config(timeout_seconds=2)), REVOKED)
+    assert time.monotonic() - start < 2 + providers.GRACE_SECONDS
+    answer = resp["providers"]["opencti"]
+    assert resp["outcome"] == answer["outcome"] == "MATCH"
+    assert answer["matches"][0]["revoked"] is True
+    assert answer["relationships"] == []
+    assert "timed out" in answer["relationships_unavailable"]

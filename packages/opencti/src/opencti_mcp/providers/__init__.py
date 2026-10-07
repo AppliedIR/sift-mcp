@@ -32,6 +32,8 @@ import re
 import threading
 import time
 import weakref
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import datetime, timezone
 from typing import Any
 
@@ -55,15 +57,13 @@ _NAME_RE = re.compile(r"[a-z][a-z0-9_]*\Z")
 _SSDEEP_RE = re.compile(r"\d+:[0-9A-Za-z/+]+:[0-9A-Za-z/+]+(,.*)?\Z")
 _TLSH_RE = re.compile(r"(T1)?[0-9A-Fa-f]{70}\Z")
 
-# Lookups a provider may leave running past their time. A provider that is
-# slow or stuck holds only these threads of its own: with this many still
-# running, it is UNAVAILABLE ("busy") at once, and never delays another.
+# Each provider has its own pool of this many threads, so one that is slow or
+# stuck never delays another; its lookups queue there, and a queued lookup
+# whose time runs out is dropped (UNAVAILABLE, "timed out").
 MAX_IN_FLIGHT = 4
-_stuck: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
-_stuck_lock = threading.Lock()
+_pools: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+_pools_lock = threading.Lock()
 GRACE_SECONDS = 1.0
-_slots: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
-_slots_lock = threading.Lock()
 
 
 class ProviderConfigError(Exception):
@@ -190,55 +190,50 @@ def _ask(adapter: Any, ioc: str, ioc_type: str) -> dict:
         return unavailable(f"{type(e).__name__}: {e}")
 
 
+def _pool_for(adapter: Any) -> ThreadPoolExecutor:
+    with _pools_lock:
+        pool = _pools.get(adapter)
+        if pool is None:
+            pool = _pools[adapter] = ThreadPoolExecutor(
+                max_workers=MAX_IN_FLIGHT, thread_name_prefix="threatintel"
+            )
+        return pool
+
+
+def follow_up(pool: ThreadPoolExecutor, call: Any, deadline: float) -> tuple[Any, str]:
+    """Run an optional follow-up request on `pool`, waiting at most until
+    `deadline`. Returns (its result, "") or (None, "timed out"); the call's own
+    exceptions are raised. The answer it adds to never waits longer."""
+    future: Future = pool.submit(call)
+    try:
+        return future.result(timeout=max(0.0, deadline - time.monotonic())), ""
+    except FutureTimeout:
+        future.cancel()
+        return None, "timed out"
+
+
 def lookup_all(adapters: dict[str, Any], ioc: str, ioc_type: str) -> dict[str, dict]:
-    """Ask every provider at once, each on its own thread. Each answers
-    within its budget (plus a second's grace) or is UNAVAILABLE ("timed
-    out"), so a lookup never takes longer than that. A lookup still running
-    when its wait ends counts against its provider until it finishes; with
-    MAX_IN_FLIGHT of those, the provider is UNAVAILABLE ("busy") without
-    being asked, so a stuck one holds only its own threads."""
+    """Ask every provider at once, each on its own pool of MAX_IN_FLIGHT
+    threads. Each answers within its budget (plus a second's grace) or is
+    UNAVAILABLE ("timed out"), so a lookup never takes longer than that, and
+    a stuck provider holds only its own threads."""
     start = time.monotonic()
     answers: dict[str, dict] = {}
-    running: dict[str, tuple[Any, float, dict, threading.Event]] = {}
+    running: dict[str, tuple[float, Future]] = {}
     for name, adapter in adapters.items():
         if isinstance(adapter, Unavailable):
             answers[name] = adapter.lookup(ioc, ioc_type)  # nothing to wait for
             continue
-        with _stuck_lock:
-            stuck = _stuck.get(adapter, 0)
-        if stuck >= MAX_IN_FLIGHT:
-            answers[name] = unavailable(
-                f"busy: {stuck} earlier lookups are still running past their time"
-            )
-            continue
-        box: dict = {}
-        done = threading.Event()
-
-        def run(adapter=adapter, box=box, done=done):
-            answer = None
-            try:
-                answer = _ask(adapter, ioc, ioc_type)
-            finally:
-                with _stuck_lock:
-                    box["answer"] = answer
-                    if box.get("abandoned"):
-                        _stuck[adapter] -= 1
-                    done.set()
-
-        threading.Thread(target=run, name=f"threatintel-{name}", daemon=True).start()
         limit = budget(getattr(adapter, "timeout", LOOKUP_BUDGET_SECONDS))
-        running[name] = (adapter, limit, box, done)
-    for name, (adapter, limit, box, done) in running.items():
+        running[name] = (limit, _pool_for(adapter).submit(_ask, adapter, ioc, ioc_type))
+    for name, (limit, future) in running.items():
         # A second's grace: the adapter's own deadline passes first.
-        done.wait(max(0.0, start + limit + GRACE_SECONDS - time.monotonic()))
-        with _stuck_lock:
-            if not done.is_set():
-                box["abandoned"] = True
-                _stuck[adapter] = _stuck.get(adapter, 0) + 1
-        if box.get("abandoned"):
+        wait = max(0.0, start + limit + GRACE_SECONDS - time.monotonic())
+        try:
+            answers[name] = future.result(timeout=wait)
+        except FutureTimeout:
+            future.cancel()  # dropped if it was still queued
             answers[name] = unavailable(f"timed out after {limit:g}s")
-        else:
-            answers[name] = box["answer"] or unavailable("the provider gave no answer")
     return {name: answers[name] for name in adapters}
 
 

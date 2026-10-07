@@ -9,6 +9,7 @@ UNAVAILABLE. When indicators match, one more request reads their relationships.
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import httpx
@@ -17,10 +18,12 @@ from ..config import Config
 from ..errors import ConfigurationError
 from . import (
     MATCH,
+    MAX_IN_FLIGHT,
     MAX_MATCHES,
     NO_MATCH,
     ProviderConfigError,
     budget,
+    follow_up,
     now_utc,
     same_value,
     unavailable,
@@ -98,6 +101,11 @@ class OpenCTIAdapter:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.timeout = budget(config.timeout_seconds)
+        # The relationships request runs here, so a slow one can't hold back
+        # the answer to the lookup.
+        self._follow_ups = ThreadPoolExecutor(
+            max_workers=MAX_IN_FLIGHT, thread_name_prefix="opencti-follow-up"
+        )
 
     def _query(self, query: str, variables: dict, deadline: float) -> dict:
         remaining = deadline - time.monotonic()
@@ -201,15 +209,18 @@ class OpenCTIAdapter:
                 "The related lists are incomplete."
             )
         elif matches:
+            variables = {
+                "fromId": [m["id"] for m in answer["matches"]],
+                "first": MAX_RELATIONSHIPS,
+            }
             try:
-                data = self._query(
-                    RELATIONSHIPS_QUERY,
-                    {
-                        "fromId": [m["id"] for m in answer["matches"]],
-                        "first": MAX_RELATIONSHIPS,
-                    },
+                data, late = follow_up(
+                    self._follow_ups,
+                    lambda: self._query(RELATIONSHIPS_QUERY, variables, deadline),
                     deadline,
                 )
+                if late:
+                    raise _Failure(f"{late} after {self.timeout:g}s")
                 connection = data.get("stixCoreRelationships")
                 answer["relationships"] = self._nodes(connection)
                 count = (connection.get("pageInfo") or {}).get("globalCount")
