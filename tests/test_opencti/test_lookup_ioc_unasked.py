@@ -68,7 +68,7 @@ async def test_a_lookup_that_couldnt_ask_is_unavailable_with_the_reason(
     assert block["outcome"] == resp["outcome"] == "UNAVAILABLE"
     assert reason in block["reason"], block
     assert block["matches"] == []
-    assert resp["found"] is False
+    assert resp["found"] is None  # no one could say "not found"
     assert "note" in resp and reason in resp["reason"]
 
 

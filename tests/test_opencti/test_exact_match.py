@@ -90,7 +90,7 @@ async def test_a_padded_private_address_is_not_looked_up(provider_transport):
     resp = await lookup(server(), " 10.1.2.3 ")
     assert resp["outcome"] == "UNAVAILABLE" and resp["providers"] == {}
     assert "Internal address (10.1.2.3)" in resp["reason"]
-    assert resp["found"] is False and "note" in resp
+    assert resp["found"] is None and "note" in resp
     assert t.requests == []
 
 

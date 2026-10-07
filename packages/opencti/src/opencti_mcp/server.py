@@ -141,12 +141,15 @@ def _internal_address(ioc: str) -> str:
 
 
 def _opencti_summary(ioc: str, answer: dict) -> dict[str, Any]:
-    """The keys lookup_ioc carried before providers, summarised over every
-    OpenCTI record that matched. They are compatibility summaries: the
-    records under providers.opencti are the answer."""
+    """The keys lookup_ioc carried before providers, summarised over the
+    OpenCTI records that matched and aren't revoked (a revoked indicator is
+    one the platform has withdrawn). None when no matching record is
+    current. They are compatibility summaries: the records under
+    providers.opencti, revoked ones included, are the answer."""
     summary: dict[str, Any] = {}
-    if answer.get("outcome") == providers.MATCH:
-        records = answer["matches"]
+    records = [r for r in answer.get("matches") or [] if not r.get("revoked")]
+    if answer.get("outcome") == providers.MATCH and records:
+        current = {r.get("id") for r in records}
         confidences = [
             r["confidence"] for r in records if isinstance(r.get("confidence"), int)
         ]
@@ -169,6 +172,8 @@ def _opencti_summary(ioc: str, answer: dict) -> dict[str, Any]:
         malware: list[str] = []
         techniques: list[str] = []
         for rel in answer.get("relationships") or []:
+            if (rel.get("from") or {}).get("id") not in current:
+                continue
             target = rel.get("to") or {}
             kind = target.get("entity_type", "")
             name = target.get("name", "")
@@ -372,7 +377,7 @@ class OpenCTIMCPServer:
                 ),
                 Tool(
                     name="lookup_ioc",
-                    description="Look up one IOC (IP, hash, domain, or URL) in every configured threat-intel platform. Each platform's records for an exact match are returned under providers.<name> as the platform holds them (for OpenCTI: revoked, valid_from, valid_until, x_opencti_score, confidence, labels and relationships; an empty relationships list with relationships_unavailable means they were not retrieved, not that there are none), with outcome MATCH, NO_MATCH or UNAVAILABLE (the platform couldn't be asked, which is not a not-found). This is each platform's record, not a verdict. The top-level outcome is MATCH when any platform matched. found, confidence, labels, created, related_threat_actors, related_malware and mitre_techniques are compatibility summaries of OpenCTI's records; providers.* is the authoritative answer.",
+                    description="Look up one IOC (IP, hash, domain, or URL) in every configured threat-intel platform. Each platform's records for an exact match are returned under providers.<name> as the platform holds them (for OpenCTI: revoked, valid_from, valid_until, x_opencti_score, confidence, labels and relationships; an empty relationships list with relationships_unavailable means they were not retrieved, not that there are none), with outcome MATCH, NO_MATCH or UNAVAILABLE (the platform couldn't be asked, which is not a not-found). This is each platform's record, not a verdict. The top-level outcome is MATCH when any platform matched. found is true for MATCH, false for NO_MATCH and null when UNAVAILABLE. confidence, labels, created, related_threat_actors, related_malware and mitre_techniques are compatibility summaries of OpenCTI's matching records that aren't revoked (absent when none is current); providers.* is the authoritative answer.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -810,7 +815,7 @@ class OpenCTIMCPServer:
         internal = _internal_address(ioc)
         if internal:
             return {
-                "found": False,
+                "found": None,
                 "ioc": ioc,
                 "outcome": providers.UNAVAILABLE,
                 "reason": internal,
@@ -824,7 +829,10 @@ class OpenCTIMCPServer:
         result: dict[str, Any] = {
             "ioc": ioc,
             "outcome": outcome,
-            "found": outcome == providers.MATCH,
+            # Not found is a claim no one could make when no one answered
+            "found": None
+            if outcome == providers.UNAVAILABLE
+            else outcome == providers.MATCH,
         }
         if outcome == providers.UNAVAILABLE:
             # A "note" also marks the answer unconfirmed to callers that

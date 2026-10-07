@@ -18,7 +18,7 @@ def _relationships_fail(answer):
     def route(query, variables):
         if "ThreatIntelRelationships" in query:
             return answer
-        return recorded("6")(query, variables)
+        return recorded("6", current=True)(query, variables)
 
     return route
 
@@ -70,7 +70,7 @@ async def test_an_empty_relationships_reply_is_not_marked(provider_transport):
 async def test_relationships_are_opencti_s_and_feed_the_related_lists(
     provider_transport, version
 ):
-    t = provider_transport(recorded(version))
+    t = provider_transport(recorded(version, current=True))
     resp = await lookup(server(), REVOKED)
     block = resp["providers"]["opencti"]
     assert len(block["relationships"]) == 3

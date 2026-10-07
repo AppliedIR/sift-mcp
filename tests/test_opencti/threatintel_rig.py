@@ -5,6 +5,7 @@ requests from them, and a way to install a provider only a test knows."""
 
 from __future__ import annotations
 
+import copy
 import json
 import sys
 import types
@@ -68,14 +69,20 @@ class Transport:
         return [r for r in self.requests if "ThreatIntelLookup" in r["query"]]
 
 
-def recorded(version: str):
-    """Route requests to the replies recorded from OpenCTI 6 or 7."""
+def recorded(version: str, current: bool = False):
+    """Route requests to the replies recorded from OpenCTI 6 or 7. With
+    current=True, the revoked indicator is served as not revoked."""
 
     def route(query, variables):
         if "ThreatIntelRelationships" in query:
             return REPLIES[f"v{version}:relationships:revoked"]
         ioc = variables["filters"]["filters"][0]["values"][0]
-        return REPLIES[f"v{version}:lookup:{_RECORDED[ioc]}"]
+        reply = REPLIES[f"v{version}:lookup:{_RECORDED[ioc]}"]
+        if current and _RECORDED[ioc] == "revoked":
+            reply = copy.deepcopy(reply)
+            for edge in reply["data"]["indicators"]["edges"]:
+                edge["node"]["revoked"] = False
+        return reply
 
     return route
 

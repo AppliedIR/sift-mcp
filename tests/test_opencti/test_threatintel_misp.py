@@ -391,7 +391,7 @@ async def test_both_platforms_answer_side_by_side(
     assert resp["outcome"] == "MATCH"
     assert len(resp["providers"]["opencti"]["matches"]) == 3
     assert len(resp["providers"]["misp"]["matches"]) == 2
-    assert resp["confidence"] == 90  # OpenCTI's summary is OpenCTI's alone
+    assert resp["confidence"] == 30  # OpenCTI's current record, OpenCTI's alone
 
 
 async def test_a_misconfigured_misp_doesnt_hide_opencti_s_match(

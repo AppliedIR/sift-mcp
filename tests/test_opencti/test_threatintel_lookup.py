@@ -169,19 +169,83 @@ async def test_providers_are_asked_at_the_same_time(monkeypatch):
 
 
 @pytest.mark.parametrize("version", ["6", "7"])
-async def test_the_earlier_keys_summarise_every_matched_record(
+async def test_the_earlier_keys_summarise_the_records_that_are_not_revoked(
     provider_transport, version
 ):
+    """Two of the three records are revoked, at 40 and at 90 with label c2."""
     provider_transport(recorded(version))
     resp = await lookup(server(), IP)
     records = resp["providers"]["opencti"]["matches"]
+    current = [r for r in records if not r["revoked"]]
+    assert len(records) == 3 and len(current) == 1
     assert resp["found"] is True
     assert resp["entity_type"] == "indicator" and resp["name"] == IP
-    assert resp["confidence"] == max(r["confidence"] for r in records) == 90
-    assert resp["labels"] == ["c2"]
-    assert resp["created"] == min(r["created"] for r in records)
+    assert resp["confidence"] == 30
+    assert resp["labels"] == []
+    assert resp["created"] == current[0]["created"]
     assert resp["source"] == "opencti"
     assert "description" not in resp
+
+
+@pytest.mark.parametrize("version", ["6", "7"])
+async def test_a_revoked_only_match_has_no_summary(provider_transport, version):
+    provider_transport(recorded(version))
+    resp = await lookup(server(), REVOKED)
+    block = resp["providers"]["opencti"]
+    assert resp["outcome"] == block["outcome"] == "MATCH" and resp["found"] is True
+    assert [r["revoked"] for r in block["matches"]] == [True]
+    assert len(block["relationships"]) == 3  # the platform's answer, unchanged
+    assert not {
+        "entity_type",
+        "confidence",
+        "labels",
+        "created",
+        "related_malware",
+        "mitre_techniques",
+        "related_threat_actors",
+        "relationships_unavailable",
+        "note",
+    } & set(resp)
+
+
+async def test_relationships_of_revoked_records_feed_no_summary(provider_transport):
+    """The same relationships, read as coming from one of 11.0.113.10's
+    revoked records and then from its current one."""
+    reply = recorded("6")
+    ip3 = REPLIES["v6:lookup:ip3"]["data"]["indicators"]["edges"]
+    ids = {e["node"]["revoked"]: e["node"]["id"] for e in ip3}
+    seen = {}
+    for revoked in (True, False):
+        rels = json.loads(json.dumps(REPLIES["v6:relationships:revoked"]))
+        for edge in rels["data"]["stixCoreRelationships"]["edges"]:
+            edge["node"]["from"]["id"] = ids[revoked]
+
+        def route(query, variables, rels=rels):
+            if "ThreatIntelRelationships" in query:
+                return rels
+            return reply(query, variables)
+
+        provider_transport(route)
+        seen[revoked] = await lookup(server(), IP)
+    assert seen[True]["related_malware"] == seen[True]["mitre_techniques"] == []
+    assert seen[False]["related_malware"] == ["ExampleRAT"]
+
+
+async def test_found_is_null_when_one_says_no_and_another_couldn_t_be_asked(
+    monkeypatch,
+):
+    fake_provider(monkeypatch, "says_no", block("NO_MATCH"))
+    fake_provider(monkeypatch, "down", block("UNAVAILABLE", reason="down"))
+    resp = await lookup(server(["says_no", "down"], cfg=None), IP)
+    assert resp["outcome"] == "UNAVAILABLE" and resp["found"] is None
+    assert "note" in resp
+
+
+async def test_found_is_false_only_when_every_provider_says_no(monkeypatch):
+    fake_provider(monkeypatch, "no_a", block("NO_MATCH"))
+    fake_provider(monkeypatch, "no_b", block("NO_MATCH"))
+    resp = await lookup(server(["no_a", "no_b"], cfg=None), IP)
+    assert resp["outcome"] == "NO_MATCH" and resp["found"] is False
 
 
 async def test_no_match_carries_no_record_summary(provider_transport):
