@@ -39,6 +39,11 @@ from . import (
 EVENT_FIELDS = ("uuid", "threat_level_id", "analysis", "published")
 FACTS_SECONDS = 60.0
 
+# The warninglist check and the facts are optional: each is started only
+# with at least this much of the lookup's time left, and never changes the
+# outcome of the search.
+FOLLOW_UP_MIN_SECONDS = 1.0
+
 # The transport the requests use: None is the network. Tests set a mock one.
 _transport: httpx.BaseTransport | None = None
 
@@ -54,6 +59,8 @@ _http_request = _send
 
 class _Failure(Exception):
     """The request didn't give a usable answer; the message is the reason."""
+
+    timed_out = False
 
 
 def _record(attribute: dict) -> dict:
@@ -106,7 +113,9 @@ class MispAdapter:
     def _request(self, method: str, path: str, body: Any, deadline: float) -> Any:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise _Failure(f"timed out after {self.timeout:g}s")
+            failure = _Failure(f"timed out after {self.timeout:g}s")
+            failure.timed_out = True
+            raise failure
         try:
             response = _http_request(
                 method,
@@ -121,7 +130,9 @@ class MispAdapter:
                 verify=self.verify,
             )
         except httpx.TimeoutException as e:
-            raise _Failure(f"timed out after {self.timeout:g}s") from e
+            failure = _Failure(f"timed out after {self.timeout:g}s")
+            failure.timed_out = True
+            raise failure from e
         except httpx.HTTPError as e:
             raise _Failure(f"can't reach MISP: {type(e).__name__}: {e}") from e
         try:
@@ -141,11 +152,19 @@ class MispAdapter:
         return reply
 
     def _platform_facts(self, deadline: float) -> dict[str, Any]:
-        """The facts, refreshed when older than a minute and time is left."""
-        with self._facts_lock:
-            if time.monotonic() - self._facts_at < FACTS_SECONDS:
-                return dict(self._facts)
-            facts: dict[str, Any] = {}
+        """The facts, re-read when older than a minute and time is left.
+
+        Never waits: while another lookup is re-reading them, or with too
+        little time left, the facts read last are given. A read that timed
+        out is not kept, so the next lookup tries again."""
+        if (
+            time.monotonic() - self._facts_at < FACTS_SECONDS
+            or deadline - time.monotonic() < FOLLOW_UP_MIN_SECONDS
+            or not self._facts_lock.acquire(blocking=False)
+        ):
+            return dict(self._facts)
+        try:
+            timed_out = False
             for name, path, read in (
                 ("version", "/servers/getVersion", lambda r: r.get("version")),
                 (
@@ -162,12 +181,19 @@ class MispAdapter:
                 try:
                     reply = self._request("GET", path, None, deadline)
                     value = read(reply) if isinstance(reply, (dict, list)) else None
-                except (_Failure, AttributeError):
+                except _Failure as e:
+                    if e.timed_out:
+                        timed_out = True
+                        continue  # keep what was read before
                     value = None
-                facts[name] = value if isinstance(value, (str, int)) else None
-            self._facts = facts
-            self._facts_at = time.monotonic()
-            return dict(facts)
+                except AttributeError:
+                    value = None
+                self._facts[name] = value if isinstance(value, (str, int)) else None
+            if not timed_out:
+                self._facts_at = time.monotonic()
+            return dict(self._facts)
+        finally:
+            self._facts_lock.release()
 
     def lookup(self, ioc: str, ioc_type: str) -> dict:
         queried_at = now_utc()
@@ -219,13 +245,19 @@ class MispAdapter:
                 f"More than {MAX_MATCHES} attributes have the value {ioc}; "
                 f"only the first {MAX_MATCHES} are listed."
             )
-        try:
-            answer["warninglist_hits"] = self._request(
-                "POST", "/warninglists/checkValue", {"value": ioc}, deadline
-            )
-        except _Failure as e:
+        if deadline - time.monotonic() < FOLLOW_UP_MIN_SECONDS:
             answer["warninglist_hits"] = None
-            answer["warninglists_unavailable"] = f"Warninglist check failed ({e})."
+            answer["warninglists_unavailable"] = (
+                "Warninglists were not checked: the lookup's time ran out."
+            )
+        else:
+            try:
+                answer["warninglist_hits"] = self._request(
+                    "POST", "/warninglists/checkValue", {"value": ioc}, deadline
+                )
+            except _Failure as e:
+                answer["warninglist_hits"] = None
+                answer["warninglists_unavailable"] = f"Warninglist check failed ({e})."
         facts = self._platform_facts(deadline)
         return {
             "outcome": answer.pop("outcome"),

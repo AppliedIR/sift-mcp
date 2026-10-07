@@ -450,3 +450,93 @@ async def test_a_gzip_compressed_reply_is_read(monkeypatch):
     assert answer["outcome"] == "MATCH"
     assert answer["warninglist_hits"]["8.8.8.8"][0]["id"] == "162"
     assert answer["version"] == "2.5.48"
+
+
+# --- the warninglist check and the facts never cost the match --------------
+
+
+async def test_follow_ups_are_left_out_when_the_time_has_run_out(
+    misp_transport, monkeypatch
+):
+    monkeypatch.setattr(misp_provider, "FOLLOW_UP_MIN_SECONDS", 60)
+    t = misp_transport(misp_recorded("25"))
+    _, answer = await _misp(monkeypatch, "11.0.113.10")
+    assert answer["outcome"] == "MATCH" and len(answer["matches"]) == 2
+    assert answer["warninglist_hits"] is None
+    assert "time ran out" in answer["warninglists_unavailable"]
+    assert answer["version"] is None
+    assert t.paths() == ["/attributes/restSearch"]
+
+
+async def test_a_warninglist_check_that_times_out_keeps_the_match(
+    misp_transport, monkeypatch
+):
+    base = misp_recorded("25")
+
+    def route(method, path, body):
+        if path == "/warninglists/checkValue":
+            return httpx.ReadTimeout("read timed out")
+        return base(method, path, body)
+
+    misp_transport(route)
+    _, answer = await _misp(monkeypatch, "11.0.113.10")
+    assert answer["outcome"] == "MATCH"
+    assert answer["warninglist_hits"] is None
+    assert "timed out" in answer["warninglists_unavailable"]
+
+
+async def test_facts_that_timed_out_are_read_again_next_time(
+    misp_transport, monkeypatch
+):
+    base = misp_recorded("25")
+    state = {"slow": True}
+
+    def route(method, path, body):
+        if path == "/servers/getVersion" and state["slow"]:
+            return httpx.ReadTimeout("read timed out")
+        return base(method, path, body)
+
+    t = misp_transport(route)
+    misp_env(monkeypatch)
+    srv = server(["misp"], cfg=None)
+    first = (await lookup(srv, "11.0.113.10"))["providers"]["misp"]
+    assert first["outcome"] == "MATCH" and first["version"] is None
+    assert first["warninglists_enabled"] == 1
+    state["slow"] = False
+    second = (await lookup(srv, "11.0.113.10"))["providers"]["misp"]
+    assert second["version"] == "2.5.48"
+    assert t.paths().count("/servers/getVersion") == 2
+
+
+async def test_facts_that_cant_be_read_are_not_asked_for_again_within_a_minute(
+    misp_transport, monkeypatch
+):
+    base = misp_recorded("25")
+
+    def route(method, path, body):
+        if path == "/servers/getVersion":
+            return httpx.Response(403, json={"message": "not allowed"})
+        return base(method, path, body)
+
+    t = misp_transport(route)
+    misp_env(monkeypatch)
+    srv = server(["misp"], cfg=None)
+    await lookup(srv, "11.0.113.10")
+    await lookup(srv, "11.0.113.10")
+    assert t.paths().count("/servers/getVersion") == 1
+
+
+async def test_a_lookup_never_waits_for_another_reading_the_facts(
+    misp_transport, monkeypatch
+):
+    t = misp_transport(misp_recorded("25"))
+    misp_env(monkeypatch)
+    srv = server(["misp"], cfg=None)
+    adapter = srv.providers["misp"]
+    assert adapter._facts_lock.acquire(blocking=False)
+    try:
+        answer = (await lookup(srv, "11.0.113.10"))["providers"]["misp"]
+    finally:
+        adapter._facts_lock.release()
+    assert answer["outcome"] == "MATCH" and answer["version"] is None
+    assert "/servers/getVersion" not in t.paths()
