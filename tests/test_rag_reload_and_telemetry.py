@@ -303,3 +303,45 @@ def test_a_search_during_a_reload_waits_for_it(store):
     for name in ("first", "second"):
         assert isinstance(results[name], list), results[name]
         assert results[name][0] == "a note about lateral movement"
+
+
+def test_a_reload_waits_for_a_search_already_running(store):
+    """A search reading the store holds it until it finishes, so another
+    thread's reload can't close the store under it."""
+    data, index = store
+    _top(index, "x")
+    real_nearest, real_close = index._nearest, index._close_stores
+    started, go, closed = threading.Event(), threading.Event(), threading.Event()
+
+    def held_nearest(*args):
+        started.set()
+        go.wait(10)
+        return real_nearest(*args)
+
+    def noted_close():
+        real_close()
+        closed.set()
+
+    index._nearest = held_nearest
+    index._close_stores = noted_close
+    results: dict = {}
+
+    def search(name):
+        try:
+            results[name] = _top(index, "x")
+        except Exception as e:  # noqa: BLE001 (the row is that none is raised)
+            results[name] = e
+
+    first = threading.Thread(target=search, args=("first",))
+    first.start()
+    assert started.wait(10)
+    _write(data, {"note_0": "a note"})
+    index._nearest = real_nearest
+    second = threading.Thread(target=search, args=("second",))
+    second.start()
+    closed.wait(2)  # without the lock, the reload closes the store now
+    go.set()
+    first.join(10)
+    second.join(10)
+    for name in ("first", "second"):
+        assert isinstance(results[name], list), results[name]

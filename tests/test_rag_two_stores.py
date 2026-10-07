@@ -554,3 +554,26 @@ def test_status_of_an_empty_shipped_store_beside_a_populated_examiner_store(rig)
     client.close()
     status = rig.status.get_status(data_dir=rig.data, check_updates=False)
     assert (status.document_count, status.user_document_count) == (0, 1)
+
+
+def test_with_no_bundled_the_shipped_store_still_drops_the_examiner_s_copies(rig):
+    """The bundled pass is skipped, so the cleanup alone must do it."""
+    _legacy_install(rig)
+    assert _refresh(rig, no_bundled=True).status == "success"
+    assert "user_probe-note_0" not in _shipped(rig)
+    state = json.loads((rig.data / "user_state.json").read_text())
+    assert list(state["files"]) == ["AppliedIR/ref.md"]
+
+
+def test_a_build_whose_examiner_sync_fails_still_holds_no_examiner_record(
+    rig, monkeypatch
+):
+    def fail(*a, **k):
+        raise RuntimeError("the examiner store can't be written")
+
+    monkeypatch.setattr(rig.build, "sync_examiner_store", fail)
+    result = rig.build.build(skip_online=True, data_dir=rig.data)
+    assert result.status == "error"
+    assert _shipped(rig) == {"user_ref_0": REF}
+    state = json.loads((rig.data / "user_state.json").read_text())
+    assert list(state["files"]) == ["AppliedIR/ref.md"]
