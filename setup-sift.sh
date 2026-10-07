@@ -1254,7 +1254,7 @@ if [ -d "$OPENSEARCH_MCP_DIR" ]; then
                         SETUP_OS_SCRIPT=""
                     else
                         info "Starting Docker daemon..."
-                        sudo systemctl start docker
+                        sudo systemctl start docker || true  # the check below reports it
                         if ! docker ps &>/dev/null; then
                             warn "Could not start Docker. OpenSearch setup skipped."
                             SETUP_OS_SCRIPT=""
