@@ -529,3 +529,60 @@ def test_a_name_joining_a_confirmed_machine_later_leaves_its_name_as_confirmed(c
     m = hi.load(case).machine_of_key(key)
     assert (joined, canonical) == (key, "DC01")
     assert m.canonical == "DC01" and m.former == []
+
+
+# -- appends after a torn line; locators; the case identity
+
+
+def test_a_record_appended_after_a_torn_line_is_kept(case):
+    hi.append_observations(case, [{"kind": "name", "unit": "u1", "raw": "WKS01"}])
+    with open(case / hi.OBSERVATIONS, "ab") as f:
+        f.write(b'{"kind":"name","unit":"u1","ra')  # a write that stopped short
+    hi.append_observations(case, [{"kind": "name", "unit": "u2", "raw": "WKS02"}])
+    assert set(hi.load(case).names) == {("u1", "WKS01"), ("u2", "WKS02")}
+
+
+def test_an_archive_member_and_a_file_named_like_one_are_two_units(tmp_path):
+    member = hi.unit_locator(tmp_path / "evidence.zip", tmp_path, member="host.evtx")
+    literal = hi.unit_locator(tmp_path / "evidence.zip!host.evtx", tmp_path)
+    at = hi.unit_locator(tmp_path / "disk.raw@1048576", tmp_path)
+    assert len({member, literal, at, hi.unit_locator(tmp_path / "disk.raw", tmp_path,
+                                                     offset=1048576)}) == 4  # fmt: skip
+    assert member == "evidence.zip!host.evtx" and literal == "evidence.zip%21host.evtx"
+    odd = hi.unit_locator(tmp_path / "evidence.zip", tmp_path, member="x@5")
+    assert odd != hi.unit_locator(
+        tmp_path / "evidence.zip", tmp_path, member="x", offset=5
+    )
+
+
+def test_a_case_without_an_identity_gets_one_once_and_keeps_its_other_keys(case):
+    import yaml
+
+    (case / "CASE.yaml").write_text("case_id: c\nname: Acme intrusion\n")
+    c12, version = hi.ensure_case_uuid(case)
+    meta = yaml.safe_load((case / "CASE.yaml").read_text())
+    assert meta["case_id"] == "c" and meta["name"] == "Acme intrusion"
+    assert meta["case_uuid"].replace("-", "")[:12] == c12 and version == 1
+    assert hi.ensure_case_uuid(case) == (c12, 1)  # minted once
+    state = hi.load(case)
+    assert state.c12 == c12 and state.case_uuid == meta["case_uuid"]
+
+
+def test_a_case_that_lost_its_identity_is_refused_with_the_one_to_restore(case):
+    import yaml
+
+    (case / "CASE.yaml").write_text("case_id: c\n")
+    hi.ensure_case_uuid(case)
+    lost = yaml.safe_load((case / "CASE.yaml").read_text())["case_uuid"]
+    (case / "CASE.yaml").write_text("case_id: c\n")  # the key deleted by hand
+    with pytest.raises(hi.HostLogError, match=f"restore case_uuid: {lost}"):
+        hi.ensure_case_uuid(case)
+    assert "case_uuid" not in (case / "CASE.yaml").read_text()
+
+
+def test_an_identity_minted_elsewhere_is_recorded_in_the_logs(case):
+    (case / "CASE.yaml").write_text(
+        "case_id: c\ncase_uuid: 0123abcd-ef01-4234-8567-89abcdef0123\nnaming_version: 2\n"
+    )
+    assert hi.ensure_case_uuid(case) == ("0123abcdef01", 2)
+    assert hi.recorded_c12(case) == "0123abcdef01"

@@ -95,19 +95,26 @@ def unit_locator(
     offset: int | None = None,
 ) -> str:
     """The locator of an evidence source: its case-root-relative path, or its
-    resolved path outside the case root, plus any archive member or volume
-    offset."""
+    resolved path outside the case root, plus any archive member (after
+    `!`) or volume offset (after `@`). `%`, `!` and `@` in the path and the
+    member are percent-escaped, so a file named `a.zip!b` is never the
+    member `b` of `a.zip`."""
     p = Path(path).resolve()
     text = str(p)
     if case_dir:
         root = Path(case_dir).resolve()
         with contextlib.suppress(ValueError):
             text = p.relative_to(root).as_posix() or "."
+    text = _escape(text)
     if member:
-        text += "!" + member
+        text += "!" + _escape(member)
     if offset is not None:
         text += "@" + str(int(offset))
     return text
+
+
+def _escape(text: str) -> str:
+    return text.replace("%", "%25").replace("!", "%21").replace("@", "%40")
 
 
 def unit_key(locator: str) -> str:
@@ -190,10 +197,15 @@ def _encode(record: dict) -> bytes:
 
 
 def _append_locked(path: Path, record: dict) -> int:
-    """Append one line; caller holds the log lock. Returns the new size."""
-    fd = _open_checked(path, os.O_WRONLY | os.O_APPEND)
+    """Append one line; caller holds the log lock. Returns the new size.
+    A torn last line (a write that stopped short) is ended first, so this
+    record never joins it and is lost with it."""
+    fd = _open_checked(path, os.O_RDWR | os.O_APPEND)
     try:
         data = _encode(record)
+        size = os.fstat(fd).st_size
+        if size and os.pread(fd, 1, size - 1) != b"\n":
+            data = b"\n" + data
         written = os.write(fd, data)
         if written != len(data):
             raise HostLogError(
@@ -270,9 +282,76 @@ def _canonical_clash(state: HostState, record: dict) -> str:
     return ""
 
 
-def write_case_header(case_dir: str | os.PathLike, c12: str, reason: str) -> None:
+def write_case_header(
+    case_dir: str | os.PathLike, c12: str, reason: str, case_uuid: str = ""
+) -> None:
     """Record the case identity the logs belong to. The latest header wins."""
-    append_observations(case_dir, [{"kind": "case", "c12": c12, "reason": reason}])
+    rec = {"kind": "case", "c12": c12, "reason": reason}
+    if case_uuid:
+        rec["case_uuid"] = case_uuid
+    append_observations(case_dir, [rec])
+
+
+def _case_uuid_of(meta: dict) -> str:
+    raw = str(meta.get("case_uuid") or "").strip().lower()
+    hexed = raw.replace("-", "")
+    return (
+        raw if len(hexed) == 32 and all(c in "0123456789abcdef" for c in hexed) else ""
+    )
+
+
+def ensure_case_uuid(
+    case_dir: str | os.PathLike, naming_version: int = 1
+) -> tuple[str, int]:
+    """(c12, naming_version) of a case, minting its identity if it has none.
+
+    The one place a case gets its `case_uuid`. Under the log lock, a case
+    whose CASE.yaml has none gets a UUID4 (its other keys kept, and
+    `naming_version` set when absent), and the host logs record it. A case
+    whose logs already record an identity that CASE.yaml has lost is
+    refused, naming the UUID to restore: minting again would orphan every
+    record stored under the old one.
+    """
+    import uuid
+
+    import yaml
+
+    root = Path(case_dir)
+    ensure_host_files(root)
+    path = root / "CASE.yaml"
+    with _log_lock(root):
+        try:
+            meta = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except FileNotFoundError:
+            raise FileNotFoundError(f"no CASE.yaml in {root}") from None
+        if not isinstance(meta, dict):
+            raise HostLogError(f"{path}: not a mapping")
+        state = load(root)
+        current = _case_uuid_of(meta)
+        if current:
+            c12 = current.replace("-", "")[:12]
+            if state.c12 is None:  # minted elsewhere: the logs learn it
+                _append_locked(root / OBSERVATIONS, {"t": _now(), "kind": "case", "c12": c12,
+                               "case_uuid": current, "reason": "case identity recorded"})  # fmt: skip
+            return c12, int(meta.get("naming_version") or 1)
+        if state.c12:
+            restore = state.case_uuid or f"(a UUID beginning {state.c12})"
+            raise HostLogError(
+                f"{path} has no case_uuid, but this case's records are stored under "
+                f"{state.c12}: restore case_uuid: {restore} in CASE.yaml"
+            )
+        new = str(uuid.uuid4())
+        meta["case_uuid"] = new
+        meta.setdefault("naming_version", naming_version)
+        tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
+        with contextlib.suppress(OSError):
+            os.chmod(tmp, path.stat().st_mode & 0o777)
+        os.replace(tmp, path)
+        c12 = new.replace("-", "")[:12]
+        _append_locked(root / OBSERVATIONS, {"t": _now(), "kind": "case", "c12": c12,
+                       "case_uuid": new, "reason": "case identity minted"})  # fmt: skip
+        return c12, int(meta["naming_version"])
 
 
 def recorded_c12(case_dir: str | os.PathLike) -> str | None:
@@ -309,6 +388,7 @@ class Machine:
 @dataclass
 class HostState:
     c12: str | None = None
+    case_uuid: str | None = None
     units: dict[str, dict] = field(default_factory=dict)
     names: dict[tuple[str, str], dict] = field(default_factory=dict)
     machines: dict[str, Machine] = field(default_factory=dict)
@@ -474,6 +554,11 @@ class _Folder:
         if kind == "case":
             if isinstance(rec.get("c12"), str):
                 s.c12 = rec["c12"]
+                s.case_uuid = (
+                    rec.get("case_uuid")
+                    if isinstance(rec.get("case_uuid"), str)
+                    else None
+                )
         elif kind == "unit":
             u = rec.get("unit")
             if isinstance(u, str):
