@@ -106,6 +106,7 @@ def test_an_ioc_value_renders_inert_in_the_ioc_table():
         + "function setBadge() {}\nfunction escapeJsString(s) { return String(s); }\n"
         + f"var iocsData = {json.dumps(iocs)};\n"
         + _js_function(page, "escapeHtml")
+        + _js_function(page, "verifClassFor")  # the verification badge's class
         + _js_function(page, "renderIocs")
         + "renderIocs(); process.stdout.write(els.iocsBody.innerHTML);"
     )
