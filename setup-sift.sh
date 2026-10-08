@@ -71,7 +71,7 @@ for arg in "$@"; do
             echo "Options:"
             echo "  --remote          Enable TLS + bind 0.0.0.0 (for remote clients)"
             echo "  --examiner=NAME   Set examiner identity (non-interactive)"
-            echo "  --client=CLIENT   Set LLM client (claude-code, claude-desktop, librechat, other)"
+            echo "  --client=CLIENT   Set LLM client (claude-code, codex, librechat, other)"
             echo "  --install-dir=X   Override source clone dir (default: ~/.vhir/src/sift-mcp)"
             echo "  --venv=X          Override venv path (default: ~/.vhir/venv)"
             echo "  --port=N          Override gateway port (default: 4508)"
@@ -2296,14 +2296,14 @@ if [[ -z "$CLIENT" ]] && ! $AUTO_YES; then
     echo "Which LLM client will connect to Valhuntir?"
     echo ""
     echo "  1. Claude Code      CLI agent (full forensic controls)"
-    echo "  2. Claude Desktop   Desktop app (MCP-only)"
+    echo "  2. Codex            CLI agent (Valhuntir's Codex profile)"
     echo "  3. LibreChat        Web UI (MCP-only)"
     echo "  4. Other / manual   Raw config for any MCP client"
     echo ""
     CLIENT_CHOICE=$(prompt "Choose" "1")
     case "$CLIENT_CHOICE" in
         1) CLIENT="claude-code" ;;
-        2) CLIENT="claude-desktop" ;;
+        2) CLIENT="codex" ;;
         3) CLIENT="librechat" ;;
         4) CLIENT="other" ;;
         *) CLIENT="other" ;;
@@ -2311,6 +2311,11 @@ if [[ -z "$CLIENT" ]] && ! $AUTO_YES; then
 elif [[ -z "$CLIENT" ]]; then
     # -y mode: default to claude-code
     CLIENT="claude-code"
+fi
+if [[ "$CLIENT" == "claude-desktop" ]]; then
+    err "Claude Desktop is no longer supported: the commands it runs aren't audited."
+    err "Use Claude Code (--client=claude-code) or Codex (--client=codex) on this SIFT workstation."
+    exit 1
 fi
 
 # vhir setup client -y changes the user's own Claude files (after a backup,
@@ -2466,10 +2471,11 @@ case "$CLIENT" in
         echo ""
         echo "  Type /welcome inside Claude Code for an introduction."
         ;;
-    claude-desktop)
+    codex)
         echo "  To start an investigation:"
         echo "    vhir case init <case-name>"
-        echo "  Then open Claude Desktop and ask it to activate the case."
+        echo "    cd ~/cases/<case-name>"
+        echo "    codex -p valhuntir"
         ;;
     librechat)
         echo "  To start an investigation:"
