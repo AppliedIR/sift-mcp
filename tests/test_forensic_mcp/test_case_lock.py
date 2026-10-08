@@ -110,7 +110,7 @@ def test_locking_never_makes_a_chain_file(manager, active_case):  # noqa: F811
     [
         ["10.0.0.1:8443", "evil[.]com", "hxxp://evil.com/x", "C:\\Temp\\a.exe"],
         {"IPv4": ["10.0.0.2", "10.0.0.2"], "Domains": "bad.example"},
-        [{"value": "rsydow-a", "type": "user-account"}, {"value": "10.0.0.3:80", "type": "ipv4-addr"}],
+        [{"value": "jdoe-a", "type": "user-account"}, {"value": "10.0.0.3:80", "type": "ipv4-addr"}],
         ["1.2.3.4/24", "999.1.1.1:22", "  spaced.example  ", ""],
     ],
 )  # fmt: skip

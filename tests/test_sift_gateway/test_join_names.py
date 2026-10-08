@@ -120,12 +120,12 @@ def test_a_host_that_becomes_the_owner_s_name_is_refused(gateway):
     client, _ = gateway(dict(KEYS))
     code = _mint(client).json()["code"]
     before = gateway.config()
-    r = _join(client, code, "Steve.local")
+    r = _join(client, code, "STEVE.local")
     assert r.status_code == 409 and r.json()["code"] == "NAME_IN_USE"
     text = r.json()["error"]
     assert "vhir setup join-code --name steve" in text and "vhir join --name" in text
     assert gateway.config() == before
-    assert _join(client, code, "Steve.local", name="lab2").json()["examiner"] == "lab2"
+    assert _join(client, code, "STEVE.local", name="lab2").json()["examiner"] == "lab2"
 
 
 @pytest.mark.parametrize("folder", ["passwords", "keys"])
