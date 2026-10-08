@@ -35,6 +35,16 @@ def _vhir_ledger_dir(tmp_path_factory, monkeypatch):
         return
     folder = tmp_path_factory.mktemp("vhir-ledger")
     monkeypatch.setattr(ledger, "LEDGER_DIR", folder)
+    # and the rest of /var/lib/vhir that verify and signing read: the 0.6
+    # file and the keys folder (a vhir from before signing has neither)
+    try:
+        from vhir_cli import keys, verification
+    except ImportError:
+        return
+    monkeypatch.setattr(
+        verification, "VERIFICATION_DIR", tmp_path_factory.mktemp("vhir-0.6")
+    )
+    monkeypatch.setattr(keys, "KEYS_DIR", tmp_path_factory.mktemp("vhir-keys"))
 
 
 @pytest.fixture

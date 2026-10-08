@@ -7,7 +7,6 @@ data is included in each report type.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
@@ -27,6 +26,7 @@ from vhir_cli.case_io import (
     load_todos,
 )
 from vhir_cli.commands.evidence import list_evidence_data
+from vhir_cli.ledger_verify import approved_view, verification_block, verification_json
 
 from report_mcp.profiles import PROFILES, STRIPPED_FINDING_FIELDS
 
@@ -37,27 +37,6 @@ _ACTIVE_CASE_FILE = Path.home() / ".vhir" / "active_case"
 _MAX_FILENAME = 200
 _MAX_FIELD = 500
 _MAX_REPORT_BYTES = 10 * 1024 * 1024  # 10 MB
-
-# Duplicated from vhir-cli case_io.py — report-mcp does NOT depend on
-# vhir-cli. Kept in sync manually.
-_HASH_EXCLUDE_KEYS = {
-    "status",
-    "approved_at",
-    "approved_by",
-    "rejected_at",
-    "rejected_by",
-    "rejection_reason",
-    "examiner_notes",
-    "examiner_modifications",
-    "content_hash",
-    "verification",
-    "modified_at",
-    "provenance",
-    "provenance_warnings",
-    "timeline_event_id",
-    "source_evidence",
-}
-
 
 _WRITING_GUIDANCE = """Report Writing Guidance (forensic-specific):
 
@@ -470,9 +449,11 @@ def _generate(
         pass
     evidence_count = len(evidence_list)
 
-    # Filter approved only
-    approved_findings = [f for f in all_findings if f.get("status") == "APPROVED"]
-    approved_timeline = [t for t in all_timeline if t.get("status") == "APPROVED"]
+    # Approved means verified: vhir's verify_case is the one verdict source.
+    # Every other APPROVED item is listed in verification.not_verified.
+    view = approved_view(case_dir)
+    approved_findings = view["findings"]
+    approved_timeline = view["timeline"]
 
     # Apply findings_mode
     findings_mode = profile.get("findings_mode", "all")
@@ -516,8 +497,14 @@ def _generate(
             t for t in report_timeline if t.get("timestamp", "") <= end_date
         ]
 
-    # Strip internal fields from findings
-    stripped_findings = [_strip_finding(f) for f in report_findings]
+    # Strip internal fields from findings; an approval from before signing
+    # keeps its label ("approved under 0.6 (before signing)")
+    stripped_findings = []
+    for f in report_findings:
+        out = _strip_finding(f)
+        if f.get("id") in view["labels"]:
+            out["verification"] = view["labels"][f["id"]]
+        stripped_findings.append(out)
 
     # IOC aggregation
     iocs = _extract_all_iocs(approved_findings)
@@ -530,6 +517,8 @@ def _generate(
 
     # Build summary with all findings (not just report-filtered)
     summary = _build_summary(all_findings, all_timeline, todos, evidence_count, iocs)
+    summary["findings_approved"] = len(approved_findings)
+    summary["timeline_events"] = len(approved_timeline)
 
     # Assemble report_data based on profile's data_keys
     data_keys = profile.get("data_keys", [])
@@ -586,103 +575,17 @@ def _generate(
     result["human_review_required"] = _HUMAN_REVIEW_REQUIRED
     result["generation_constraints"] = _GENERATION_CONSTRAINTS
 
-    # Verification ledger reconciliation
-    case_id = metadata.get("case_id", "")
-    if case_id:
-        try:
-            alerts = _reconcile_verification(
-                case_id, approved_findings, approved_timeline
-            )
-            if alerts:
-                result["verification_alerts"] = alerts
-                has_mismatch = any(
-                    a.get("status") == "DESCRIPTION_MISMATCH" for a in alerts
-                )
-                if has_mismatch:
-                    result["integrity_warning"] = (
-                        "One or more approved findings have been modified since "
-                        "approval. Verify integrity before including in report. "
-                        "Mismatched findings may contain unauthorized changes."
-                    )
-        except Exception as e:
-            result["verification_alerts"] = [
-                {"alert": "RECONCILIATION_ERROR", "detail": str(e)}
-            ]
+    # Every profile carries the case's signing keys with full fingerprints
+    # and each chain's head: a copy that leaves this machine is an anchor
+    result["verification"] = verification_json(view)
+    if view["not_verified"] or view["result"].failures:
+        result["integrity_warning"] = (
+            "Some APPROVED items didn't verify and are left out of report_data "
+            "(see verification.not_verified and verification.case_failures). "
+            "Run `vhir review --verify` at the SIFT terminal for each one's fix."
+        )
 
     return result
-
-
-VERIFICATION_DIR = Path("/var/lib/vhir/verification")
-
-
-def _reconcile_verification(
-    case_id: str,
-    approved_findings: list[dict],
-    approved_timeline: list[dict],
-) -> list[dict]:
-    """Bidirectional check: approved items vs verification ledger.
-
-    No password needed — this checks structural consistency (item counts,
-    description text matches) not cryptographic HMAC validity.
-    """
-    ledger_path = VERIFICATION_DIR / f"{case_id}.jsonl"
-    if not ledger_path.exists():
-        return [{"alert": "NO_VERIFICATION_LEDGER", "detail": "No ledger found"}]
-
-    ledger_entries: list[dict] = []
-    try:
-        for line in ledger_path.read_text().splitlines():
-            if line.strip():
-                ledger_entries.append(json.loads(line))
-    except (OSError, json.JSONDecodeError):
-        return [{"alert": "LEDGER_READ_ERROR", "detail": "Could not read ledger"}]
-
-    ledger_by_id = {e["finding_id"]: e for e in ledger_entries}
-    all_approved = approved_findings + approved_timeline
-    items_by_id = {i["id"]: i for i in all_approved}
-    all_ids = set(items_by_id) | set(ledger_by_id)
-
-    results: list[dict] = []
-    for item_id in sorted(all_ids):
-        item = items_by_id.get(item_id)
-        entry = ledger_by_id.get(item_id)
-        if item and not entry:
-            results.append({"id": item_id, "status": "APPROVED_NO_VERIFICATION"})
-        elif entry and not item:
-            # IOCs and auto-extracted items have ledger entries but no standalone finding
-            status = (
-                "EXTRACTED_FROM_FINDING"
-                if item_id.startswith("IOC-")
-                else "VERIFICATION_NO_FINDING"
-            )
-            results.append({"id": item_id, "status": status})
-        elif item and entry:
-            # Reconstruct hmac_text: canonical JSON of all substantive fields
-            hashable = {k: v for k, v in item.items() if k not in _HASH_EXCLUDE_KEYS}
-            live_text = json.dumps(hashable, sort_keys=True, default=str)
-            if live_text != entry.get("content_snapshot", ""):
-                results.append({"id": item_id, "status": "DESCRIPTION_MISMATCH"})
-            else:
-                results.append({"id": item_id, "status": "VERIFIED"})
-
-    # Compare counts excluding auto-extracted IOCs (they don't go through approval)
-    non_ioc_ledger = [
-        e for e in ledger_entries if not e.get("finding_id", "").startswith("IOC-")
-    ]
-    if len(all_approved) != len(non_ioc_ledger):
-        ioc_count = len(ledger_entries) - len(non_ioc_ledger)
-        results.append(
-            {
-                "id": "_summary",
-                "status": "COUNT_MISMATCH",
-                "detail": (
-                    f"approved={len(all_approved)}, "
-                    f"ledger={len(non_ioc_ledger)} "
-                    f"(+{ioc_count} auto-extracted IOCs excluded)"
-                ),
-            }
-        )
-    return results
 
 
 def _validate_iso8601(value: str) -> bool:
@@ -926,7 +829,11 @@ def create_server() -> FastMCP:
                     if version > 999:
                         return {"error": "Too many report versions (max 999)."}
 
-            _atomic_write(report_path, content)
+            # The server appends the verification block; the content can't
+            # replace it (the saved file is still writable on this box)
+            block = verification_block(approved_view(case_dir))
+            saved = content.rstrip("\n") + "\n\n```\n" + "\n".join(block) + "\n```\n"
+            _atomic_write(report_path, saved)
 
             logged_id = audit.log(
                 tool="save_report",
@@ -943,6 +850,7 @@ def create_server() -> FastMCP:
                 "filename": sanitized,
                 "profile": profile,
                 "characters": len(content),
+                "verification_block": block,
             }
             if logged_id is None:
                 result["warning"] = "Audit write failed — action not recorded"

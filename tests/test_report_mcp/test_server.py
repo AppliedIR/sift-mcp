@@ -173,6 +173,10 @@ def case_dir(tmp_path, monkeypatch):
     with open(case / "evidence.json", "w") as f:
         json.dump(evidence, f)
 
+    # only verified approvals count as approved: sign them, as approve does
+    from vhir_signing import sign_approved
+
+    sign_approved(case, "tester")
     return case
 
 
@@ -546,7 +550,10 @@ class TestSaveReport:
         assert result["characters"] == len("# Full Report\n\nContent here.")
 
         saved = (case_dir / "reports" / "full-report-2026-02-25.md").read_text()
-        assert saved == "# Full Report\n\nContent here."
+        assert saved.startswith("# Full Report\n\nContent here.\n\n```\nVERIFICATION\n")
+        assert (
+            saved.endswith("```\n") and "\n".join(result["verification_block"]) in saved
+        )
 
     def test_path_traversal_blocked(self, case_dir):
         from report_mcp.server import create_server
