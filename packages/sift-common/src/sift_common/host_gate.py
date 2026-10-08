@@ -297,11 +297,22 @@ def wait_for_hosts(
 ) -> None:
     """Return once every unit resolves; until then call ``on_wait(summary)``
     on every poll, and poll the fold. No timeout: the examiner confirms,
-    starts now or cancels (RunCancelled). Holds no lock."""
+    starts now or cancels (RunCancelled). Holds no lock between polls.
+
+    The host list's confirmations are applied once no host operation is
+    running: a scan made during one skipped them."""
+    from sift_common import host_proposal
+
     root = Path(case_dir)
     units = list(dict.fromkeys(units))
-    recorded = False
+    recorded = listed = False
     while True:
+        if not listed:
+            try:
+                host_proposal.apply_host_list(root, units)
+                listed = True
+            except hi.HostOpRunning:
+                pass  # again on the next poll
         state = hi.load(root)
         if run_id and run_id in state.cancelled:
             raise RunCancelled(f"run {run_id} was cancelled in the Hosts tab")

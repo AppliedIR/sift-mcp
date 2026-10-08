@@ -3,6 +3,7 @@ and the wait. Names are synthetic (RFC 2606 domains)."""
 
 from __future__ import annotations
 
+import json
 import threading
 
 import pytest
@@ -353,6 +354,32 @@ def test_the_wait_for_a_resolved_run_records_nothing(case):
     size = (case / hi.OBSERVATIONS).stat().st_size
     hg.wait_for_hosts(case, "run-1", [u], poll=0.02)
     assert (case / hi.OBSERVATIONS).stat().st_size == size
+
+
+def test_the_wait_applies_the_host_list_once_a_host_operation_ends(case):
+    """The unit was scanned while a host rename ran, so the list's
+    confirmation of it was skipped: the wait applies it once the rename
+    ends, and returns."""
+    hp.upload_host_list(case, "WKS01\n", "ex1")
+    op = {"kind": "rename", "canonical": "WKS02"}
+    (case / hi.OPS).write_text(
+        json.dumps({"ops": {"op-1": {**op, "state": "running"}}})
+    )
+    u = folder(case, "WKS01", "WKS01")
+    seen = []
+
+    def end_the_rename(summary):
+        seen.append(summary)
+        if len(seen) == 2:
+            (case / hi.OPS).write_text(
+                json.dumps({"ops": {"op-1": {**op, "state": "done"}}})
+            )
+        if len(seen) > 50:  # never applied: end it
+            hg.cancel(case, "run-1", "ex1")
+
+    hg.wait_for_hosts(case, "run-1", [u], end_the_rename, poll=0.02)
+    assert len(seen) == 2
+    assert hi.load(case).machine_of_pair(u, "WKS01").canonical == "WKS01"
 
 
 def test_the_host_list_hint_is_given_only_without_a_list(case):
