@@ -10,6 +10,7 @@ lock helper (it doesn't depend on vhir-cli); these rows pin it to vhir's.
 import json
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import forensic_mcp.case.manager as fm
@@ -118,3 +119,41 @@ def test_vhir_extracts_the_same_ioc_values(manager, active_case, iocs):  # noqa:
     manager.record_finding({**FINDING, "iocs": iocs})
     stored = json.loads((Path(active_case["path"]) / "iocs.json").read_text())
     assert {normalize_ioc(i["value"]) for i in stored} == ioc_values(iocs)
+
+
+def test_forensic_mcp_holds_the_lock_for_less_than_the_portal_waits(
+    manager,
+    active_case,
+    monkeypatch,  # noqa: F811
+):
+    """The portal's commit waits up to its acquisition limit for the case
+    lock, then answers LEDGER_BUSY. forensic-mcp's longest hold, recording a
+    finding (with its timeline event and IOCs) and an event on a case that
+    already holds many records, stays well under it."""
+    from case_dashboard.signing import LOCK_SECONDS
+
+    case = Path(active_case["path"])
+    many = [dict(FINDING, id=f"F-tester-{n:03d}", status="DRAFT", iocs=[f"10.0.{n // 250}.{n % 250}"])
+            for n in range(1, 501)]  # fmt: skip
+    (case / "findings.json").write_text(json.dumps(many))
+    holds, real = [], fm.case_lock
+
+    @contextmanager
+    def timed(*a, **k):
+        with real(*a, **k):
+            start = time.monotonic()
+            try:
+                yield
+            finally:
+                holds.append(time.monotonic() - start)
+
+    monkeypatch.setattr(fm, "case_lock", timed)
+    finding = dict(
+        FINDING, iocs=["10.9.9.9", "evil.example"], timestamp="2026-10-08T10:00:00Z"
+    )
+    assert manager.record_finding(finding)["status"] == "STAGED"
+    manager.record_timeline_event(
+        {"timestamp": "2026-10-08T10:00:00Z", "description": "d"}
+    )
+    assert holds, "forensic-mcp took no case lock"
+    assert max(holds) < LOCK_SECONDS / 4, holds  # a quarter of it, on a loaded box
