@@ -77,6 +77,45 @@ def test_an_address_met_while_ingesting_goes_to_the_units_placeholder(case):
     assert key2 == key
 
 
+def test_a_name_met_while_ingesting_never_takes_an_address_it_is_given(case):
+    x = unit(case, "evidence/x", two("WKS1"))
+    key, canonical = hi.get_or_mint(case, x, "WKS9", canonical="10.9.9.9", evidence="x")
+    state = hi.load(case)
+    assert canonical == "WKS9" == state.machine_of_key(key).canonical
+    assert not [m for m in state.machines.values() if hp.is_address(m.canonical)]
+
+
+def _not_a_host_name(case, x):
+    hi.append_decision(case, {"action": "not_a_host", "examiner": "ex1",
+                              "args": {"pairs": [[x, "BUILD"]]}},
+                       hi.load(case).obs_offset)  # fmt: skip
+    return "BUILD"
+
+
+@pytest.mark.parametrize("kind", ["address", "not a host", "a name"])
+def test_every_name_met_while_ingesting_is_judged_by_the_guard(case, monkeypatch, kind):
+    """Whatever way the name takes, its bind passes the guard before it's
+    appended; refused there, and refused again on a machine of its own, it
+    is refused and nothing is written."""
+    from sift_common import host_guard
+
+    x = unit(case, "evidence/x", two("WKS1") + [("BUILD", SYS)])
+    raw = {"address": "10.1.2.3", "not a host": None, "a name": "WKS9"}[kind]
+    raw = raw or _not_a_host_name(case, x)
+    judged = []
+
+    def refuse_it(state, records, door):
+        judged.extend((door, r["raw"]) for r in records if r.get("kind") == "bind")
+        return [(len(records) - 1, "refused here")]
+
+    monkeypatch.setattr(host_guard, "check_binds", refuse_it)
+    before = (case / hi.OBSERVATIONS).read_text()
+    with pytest.raises(host_guard.Refused, match="refused here"):
+        hi.get_or_mint(case, x, raw, evidence=OWN_IP)
+    assert judged == [("late", raw), ("late", raw)]
+    assert (case / hi.OBSERVATIONS).read_text() == before
+
+
 @pytest.mark.parametrize("action", ["confirm", "rename"])
 def test_no_door_names_a_machine_after_an_address(case, action):
     u = unit(case, "evidence/a", two("WKS1"))

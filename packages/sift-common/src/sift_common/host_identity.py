@@ -25,6 +25,7 @@ in the evidence. A *machine* is one host identity: one or more machine keys
 from __future__ import annotations
 
 import contextlib
+import functools
 import hashlib
 import json
 import os
@@ -1042,11 +1043,15 @@ def get_or_mint(
             return ({"kind": "bind", "unit": unit, "raw": raw, "key": k, "canonical": name,
                      "state": NEW, "machine_flags": flags}, k, name)  # fmt: skip
 
+        from sift_common.host_gate import placeholder_name
         from sift_common.host_proposal import is_address
 
-        if is_address(raw):  # never a machine's name: the unit's placeholder
-            from sift_common.host_gate import placeholder_name
+        def placeholder() -> tuple[dict, str, str]:
+            locator = str((state.units.get(unit) or {}).get("locator") or unit)
+            return mint(placeholder_name(locator))
 
+        fallback = placeholder  # a machine of its own, should the guard refuse
+        if is_address(raw):  # never a machine's name: the unit's placeholder
             own = host_guard.placeholder_of(state, unit)
             m = next((x for x in state.machines.values() if x.canonical in own), None)
             if m is not None:
@@ -1056,8 +1061,7 @@ def get_or_mint(
                     m.canonical,
                 )
             else:
-                locator = str((state.units.get(unit) or {}).get("locator") or unit)
-                bind, key, result = mint(placeholder_name(locator))
+                bind, key, result = placeholder()
         elif FLAG_NOT_A_HOST in state.pair_flags.get(pair, []):
             # not a host: with its unit's own machine, or the unit's placeholder
             own = {}
@@ -1078,13 +1082,13 @@ def get_or_mint(
                     m.canonical,
                 )
             else:
-                from sift_common.host_gate import placeholder_name
-
-                locator = str((state.units.get(unit) or {}).get("locator") or unit)
-                bind, key, result = mint(placeholder_name(locator))
+                bind, key, result = placeholder()
         else:
             # Only a name the scan never held, read from the evidence, joins a
             # machine by itself: a held one waits for the examiner at the gate.
+            # Its own machine takes the name asked for, never an address.
+            wanted = raw if is_address(canonical) else (canonical or raw)
+            fallback = functools.partial(mint, wanted)
             late = (unit, raw) not in state.names and origin == ARTIFACT
             if late and not split_name(raw)[1]:
                 # a name without a domain joins only what nothing else in the
@@ -1122,10 +1126,16 @@ def get_or_mint(
                 bind = {"kind": "bind", "unit": unit, "raw": raw, "key": key,
                         "flags": [FLAG_MATCHED_DURING_INGEST]}  # fmt: skip
             else:
-                bind, key, result = mint(canonical or raw)
-            # judged with this name's own record in place (its evidence counts)
-            if host_guard.check_binds(state, [*records, bind], "late"):
-                bind, key, result = mint(canonical or raw)  # its own machine, then
+                bind, key, result = mint(wanted)
+        # every late bind passes the one shared check, judged with this name's
+        # own record in place (its evidence counts); refused, the name gets a
+        # machine of its own, checked again, and is refused if that is too
+        found = host_guard.check_binds(state, [*records, bind], "late")
+        if found:
+            bind, key, result = fallback()
+            found = host_guard.check_binds(state, [*records, bind], "late")
+            if found:
+                raise host_guard.Refused(found[0][1])
         records.append(bind)
         for rec in records:
             _append_locked(root / OBSERVATIONS, {"t": _now(), **rec})
