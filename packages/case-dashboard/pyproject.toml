@@ -22,7 +22,7 @@ classifiers = [
 dependencies = [
     "sift-common",
     "starlette>=0.49.1",
-    "vhir-cli",
+    "vhir-cli>=0.6.4",
 ]
 
 [tool.hatch.build.targets.wheel]
