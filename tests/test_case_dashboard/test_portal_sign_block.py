@@ -251,3 +251,27 @@ def test_the_passphrase_field_is_for_the_current_password():
     assert (
         'id="commitPassword" autocomplete="current-password" disabled' in V2.read_text()
     )
+
+
+def test_a_wrapped_key_that_isn_t_the_served_public_key_is_refused(case):
+    """The page checks that the unwrapped key is the served public key: a
+    key wrapped under the right KEK and AAD, but holding another private key."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    entries = [reviewed(case, "F-steve-001")]
+    plan, key = _sign_in_node(case, entries)
+    other = Ed25519PrivateKey.generate()
+    der = other.private_bytes(serialization.Encoding.DER,
+                              serialization.PrivateFormat.PKCS8,
+                              serialization.NoEncryption())  # fmt: skip
+    kek = keys.derive_kek(PASSWORD, key["salt_ledger"])
+    nonce = b"\x01" * 12
+    blob = nonce + AESGCM(kek).encrypt(
+        nonce, der, keys._aad("steve", key["public_key"])
+    )
+    forged = dict(key, wrapped_private=keys.b64(blob))
+    assert run("sign", password=PASSWORD, key=forged, examiner="steve", plan=plan)[
+        "error"
+    ]

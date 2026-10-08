@@ -147,6 +147,14 @@ def live(portal, monkeypatch, tmp_path):
             )
         return JSONResponse({})
 
+    def uncite(request):
+        """F-steve-002 stops citing the IOC, so approving F-steve-001 now
+        cascades to it: a decision that wasn't shown."""
+        findings = portal.read("findings.json")
+        findings[1]["iocs"] = []
+        portal.write("findings.json", findings)
+        return JSONResponse({})
+
     def change(request):
         findings = portal.read("findings.json")
         findings[0]["observation"] = "changed while the dialog was open"
@@ -158,6 +166,7 @@ def live(portal, monkeypatch, tmp_path):
         routes=[
             Route("/test/move", move, methods=["POST"]),
             Route("/test/change", change, methods=["POST"]),
+            Route("/test/uncite", uncite, methods=["POST"]),
             Mount("/portal", app=create_dashboard_v2_app()),
         ]
     )
@@ -165,7 +174,9 @@ def live(portal, monkeypatch, tmp_path):
     from sift_gateway import auth
 
     monkeypatch.setattr(
-        auth, "_PUBLIC_PATHS", auth._PUBLIC_PATHS | {"/test/move", "/test/change"}
+        auth,
+        "_PUBLIC_PATHS",
+        auth._PUBLIC_PATHS | {"/test/move", "/test/change", "/test/uncite"},
     )
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
@@ -266,3 +277,45 @@ def test_another_examiners_entry_is_left_out_until_ticked(case, live):
     assert out["ticked"]["signButton"] == "Sign 2 decisions"
     assert {(ln["item_id"], ln["examiner"]) for ln in case.chain()} == {
         ("F-steve-001", "steve"), ("F-steve-002", "steve")}  # fmt: skip
+
+
+def test_an_item_changed_before_the_dialog_opened_is_refused_by_the_page(case, live):
+    """The page loaded F-steve-001, then it changed on disk. The staged entry
+    has no review hash, so the gateway plans the new text; the page compares
+    it with what it showed the examiner and refuses before any passphrase."""
+    case.stage({"id": "F-steve-001", "type": "finding", "action": "approve",
+                "modifications": {}, "staged_by": "steve"})  # fmt: skip
+    out = live([{"do": "server", "what": "change"}, {"do": "open"},
+                {"do": "snap", "as": "s"}, {"do": "sign"}])  # fmt: skip
+    assert (
+        "PLAN_CHANGED" in out["s"]["error"]
+        and "observation differ" in out["s"]["error"]
+    )
+    assert out["s"]["signDisabled"] is True
+    assert "/api/commit/key" not in out["posts"] and "/api/commit" not in out["posts"]
+    assert case.chain() == []
+
+
+def test_a_retry_that_adds_a_cascade_signs_nothing(portal, live):
+    """An IOC cited by two findings doesn't cascade from one of them. While
+    the dialog is open the other stops citing it, and the ledger moves: the
+    retry would add the IOC, which wasn't shown, so nothing is signed."""
+    enrol("steve")
+    portal.write("findings.json", [finding("F-steve-001", iocs=["198.51.100.7"]),
+                                   finding("F-steve-002", iocs=["198.51.100.7"])])  # fmt: skip
+    portal.write("timeline.json", [])
+    portal.write("iocs.json", [{"id": "IOC-steve-001", "value": "198.51.100.7",
+                                "type": "ipv4-addr", "status": "DRAFT",
+                                "source_findings": ["F-steve-001", "F-steve-002"]}])  # fmt: skip
+    portal.stage(dict(reviewed(portal, "F-steve-001"), staged_by="steve"))
+    out = live([{"do": "open"}, {"do": "snap", "as": "shown"},
+                {"do": "server", "what": "uncite"},
+                {"do": "move_before_commit", "what": "move", "times": 1},
+                {"do": "sign"}, {"do": "snap", "as": "s"}])  # fmt: skip
+    assert "IOC-steve-001" not in out["shown"]["list"]
+    assert (
+        "What would be signed changed after you reviewed it: IOC-steve-001"
+        in out["s"]["error"]
+    )
+    assert out["posts"].count("/api/commit") == 1
+    assert [ln["item_id"] for ln in portal.chain()] == ["F-steve-002"]

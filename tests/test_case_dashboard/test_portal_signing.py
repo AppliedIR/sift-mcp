@@ -225,6 +225,21 @@ def test_an_item_changed_after_the_plan_is_refused_whole(case):
     assert _snapshot(case) == before
 
 
+def test_a_body_that_would_change_is_refused_as_changed_not_as_unsigned(case):
+    """An own click carries no review hash, so only the commit's own re-plan,
+    compared with what was signed, sees the item changed."""
+    plan = case.plan([entry("F-steve-001")]).json()
+    k = case.login(plan).json()
+    sigs = case.sign(plan, k)
+    findings = case.read("findings.json")
+    findings[0]["observation"] = "changed after the plan"
+    case.write("findings.json", findings)
+    before = _snapshot(case)
+    r = case.commit(plan, sigs)
+    assert r.status_code == 409 and r.json()["code"] == "PLAN_CHANGED"
+    assert _snapshot(case) == before
+
+
 def test_a_stale_entry_is_refused_at_the_plan(case):
     stale = entry("F-steve-001", content_hash_at_review="0" * 64)
     r = case.plan([stale])
