@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 INSTRUCTIONS = ROOT / "packages/sift-common/src/sift_common/instructions.py"
 # the ten strings' total on the integrated release head, before this sentence
-BASE_TOTAL = 20045
+BASE_TOTAL = 20467
 SENTENCE = (
     ": weaker evidence than an audit_id, graded as shell evidence, and a command"
     " with an MCP route is marked so in the audit"
