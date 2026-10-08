@@ -205,6 +205,7 @@ class Group:
     conflicts: list[str] = field(default_factory=list)
     list_entry: str | None = None
     auto_confirm: bool = False
+    list_entry_id: tuple = ()  # the entry's identity (`entry_id`); not shown
 
     def to_dict(self) -> dict:
         return {
@@ -292,6 +293,12 @@ def entry_domain(entry: dict) -> str:
         if domain:
             return domain
     return ""
+
+
+def entry_id(entry: dict) -> tuple[str, str]:
+    """A list entry's identity: its name's spelling and its domain. Two
+    entries of one name in different domains are two machines."""
+    return hi.spelling(entry["name"]), entry_domain(entry)
 
 
 def list_matches(raw: str, entries: list[dict]) -> list[dict]:
@@ -455,7 +462,7 @@ def propose(state: hi.HostState) -> list[Group]:
         if entries and not matched:
             g.flags.append(FLAG_NOT_LISTED)
         elif len(matched) == 1:
-            g.list_entry = matched[0]["name"]
+            g.list_entry, g.list_entry_id = matched[0]["name"], entry_id(matched[0])
         elif len(matched) > 1:
             g.conflicts.append(
                 "matches more than one host-list entry: "
@@ -522,18 +529,19 @@ def _match_entries(g, ps, pairs, entries, state=None) -> list[dict]:
         if state is not None and _not_a_host(state, p):
             continue  # nor a name marked not a host
         for e in list_matches(p[1], entries):
-            found[e["name"]] = e
+            found[entry_id(e)] = e
     return list(found.values())
 
 
 def _list_conflicts(groups: list[Group], pairs, state, entries) -> None:
     """Two groups matching one list entry are a conflict when their domains
     or machine ids disagree: also against machines already confirmed for it."""
-    by_entry: dict[str, list[Group]] = {}
+    by_entry: dict[tuple, list[Group]] = {}
     for g in groups:
         if g.list_entry:
-            by_entry.setdefault(g.list_entry, []).append(g)
-    for entry, gs in by_entry.items():
+            by_entry.setdefault(g.list_entry_id, []).append(g)
+    for gs in by_entry.values():
+        entry = gs[0].list_entry
         if len(gs) < 2:
             continue
         domains = set()
@@ -583,7 +591,7 @@ def _canonical(g: Group, ps, pairs, taken: set[str]) -> str:
 
 def listed_without_data(state: hi.HostState, groups: list[Group]) -> list[str]:
     """Host-list entries no evidence matches yet ("no data yet")."""
-    named = {g.list_entry for g in groups if g.list_entry}
+    named = {g.list_entry_id for g in groups if g.list_entry}
     for m in state.machines.values():  # and machines the list already confirmed
         for e in _list_entries(state):
             if any(
@@ -593,8 +601,8 @@ def listed_without_data(state: hi.HostState, groups: list[Group]) -> list[str]:
                     *(p[1] for p in m.pairs if not _not_a_host(state, p)),
                 )
             ):
-                named.add(e["name"])
-    return [e["name"] for e in _list_entries(state) if e["name"] not in named]
+                named.add(entry_id(e))
+    return [e["name"] for e in _list_entries(state) if entry_id(e) not in named]
 
 
 # --------------------------------------------------------------------------
@@ -727,14 +735,14 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
         return []
     wanted = set(state_units(state) if units is None else units) - {LIST_UNIT}
     by_entry_units: dict[
-        str, list[str]
-    ] = {}  # entry -> every unit whose own names match it
+        tuple, list[str]
+    ] = {}  # entry identity -> every unit whose own names match it
     sides: dict[str, tuple] = {}
     for unit in state_units(state):
         sides[unit] = _sides(state, unit)
         ps, own, _ = sides[unit]
         for e in {
-            e["name"]
+            entry_id(e)
             for p in own
             if _eligible(ps[p], state)
             for e in list_matches(p[1], entries)
@@ -742,15 +750,15 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
             by_entry_units.setdefault(e, []).append(unit)
     records: list[dict] = []
     fresh: dict[
-        str, tuple[str, str]
-    ] = {}  # entry -> (key, canonical) minted in this pass
+        tuple, tuple[str, str]
+    ] = {}  # entry identity -> (key, canonical) minted in this pass
     taken: set[str] = set()
 
     def target(entry: dict, unit: str | None, domains: set[str]):
         """(key, canonical) the entry confirms to, or None when it can't."""
-        name = entry["name"]
-        if name in fresh:
-            return fresh[name]
+        name, eid = entry["name"], entry_id(entry)
+        if eid in fresh:
+            return fresh[eid]
         machines = _entry_machines(state, entry)
         if len(machines) > 1:
             return None  # one entry, several machines: the examiner decides
@@ -774,8 +782,8 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
         while hi.spelling(canonical) in taken:
             canonical = f"{name} ({len(taken) + 2})"
         taken.add(hi.spelling(canonical))
-        fresh[name] = (hi.new_machine_key(), canonical)
-        return fresh[name]
+        fresh[eid] = (hi.new_machine_key(), canonical)
+        return fresh[eid]
 
     def bind(pairs, key, canonical, entry_name):
         for p in pairs:
@@ -796,7 +804,7 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
         ps, own, foreign = sides[unit]
         why = _unit_held(state, unit, ps, own, entries, by_entry_units)
         if why is None:
-            matched = {e["name"]: e for p in own if _eligible(ps[p], state)
+            matched = {entry_id(e): e for p in own if _eligible(ps[p], state)
                        for e in list_matches(p[1], entries)}  # fmt: skip
             (entry,) = matched.values()
             domains = {hi.split_name(p[1])[1] for p in own if ps[p].artifact} - {""}
@@ -807,10 +815,10 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
             elif machines:  # one unconfirmed machine (new, or started now) holds them
                 m = state.machine_of_key(next(iter(held)))
                 named = _entry_machines(state, entry)
-                if entry["name"] in fresh:
-                    ours = fresh[entry["name"]] == (m.keys[0], m.canonical)
+                if entry_id(entry) in fresh:
+                    ours = fresh[entry_id(entry)] == (m.keys[0], m.canonical)
                 elif not named:  # it becomes the entry's machine, keeping its name
-                    fresh[entry["name"]] = (m.keys[0], m.canonical)
+                    fresh[entry_id(entry)] = (m.keys[0], m.canonical)
                     taken.add(hi.spelling(m.canonical))
                     ours = True
                 else:  # the entry's machine already: the list confirms it
@@ -901,7 +909,7 @@ def _unit_held(state, unit, ps, own, entries, by_entry_units) -> str | None:
     bound = [state.machine_of_pair(*p) for p in own if p in state.bindings]
     if any(m is not None and m.state == hi.CONFIRMED for m in bound):
         return "a machine the examiner confirmed holds its names"
-    matched = {e["name"]: e for p in eligible for e in list_matches(p[1], entries)}
+    matched = {entry_id(e): e for p in eligible for e in list_matches(p[1], entries)}
     if len(matched) != 1:
         return (
             "matches no list entry" if not matched else "matches several list entries"
@@ -937,7 +945,7 @@ def _unit_held(state, unit, ps, own, entries, by_entry_units) -> str | None:
     if len({e for p in own for e in ps[p].evidence}) <= 1:
         return FLAG_THIN
     # other units matching the same entry with another machine id or domain
-    others = [u for u in by_entry_units.get(entry["name"], []) if u != unit]
+    others = [u for u in by_entry_units.get(entry_id(entry), []) if u != unit]
     for get in (_guid, _client):
         mine = get(state, unit)
         if mine and any(get(state, u) and get(state, u) != mine for u in others):

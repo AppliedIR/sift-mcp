@@ -8,6 +8,10 @@ is checked against the state including the request's earlier items.
   split), which only R appends.
 - Not a host: a name marked not a host binds only to its own unit's machine (one
   holding another name of that unit's own) or to the unit's placeholder.
+- No flagged unit by the list: the host list never confirms a unit's own
+  names while the unit carries a scan flag (an unusual or non-host name, a
+  near spelling, one short name in two domains, a folder name its artifacts
+  contradict, thin evidence): the examiner decides those.
 - One machine: an automatic join (the list, a late name, Start now, a confirm-all of
   proposals) never makes a machine hold two machine ids (counted from the
   units whose own names it holds) or one name in two domains. A single
@@ -95,6 +99,37 @@ def _ids_and_domains(state, pairs) -> tuple[set, dict]:
         if domain:
             shorts.setdefault(short, set()).add(domain)
     return guids, shorts
+
+
+def unit_flag(state: hi.HostState, unit: str) -> str:
+    """The scan flag a unit's own names carry, or "": read here from the
+    state, apart from the list's own judgement of it."""
+    from sift_common import host_proposal as hp
+
+    ps, own, _ = hp._sides(state, unit)
+    if any(hp.name_flags(p[1]) for p in own if not ps[p].ai_only):
+        return "an unusual or non-host name"
+    hinted = {(h.get("unit"), h.get("raw")) for h in state.hints}
+    if any(p in hinted for p in own):
+        return "a near spelling"
+    domains: dict[str, set] = {}
+    for p in own:
+        short, domain = hi.split_name(p[1])
+        if domain:
+            domains.setdefault(short, set()).add(domain)
+    if any(len(d) > 1 for d in domains.values()):
+        return hp.FLAG_DOMAINS
+    folder = [p for p in own if ps[p].folder]
+    artifact = [p for p in own if ps[p].artifact and not hp.name_flags(p[1])]
+    if (
+        folder
+        and artifact
+        and not any(hp.close(f[1], a[1]) for f in folder for a in artifact)
+    ):
+        return hp.FLAG_FOLDER
+    if len({e for p in own for e in ps[p].evidence}) <= 1:
+        return hp.FLAG_THIN
+    return ""
 
 
 def _i3(state: hi.HostState, pairs, before=()) -> str:
@@ -223,9 +258,12 @@ def check_binds(state: hi.HostState, records: list[dict], door: str) -> list[tup
     """[(record index, reason)] for the bind records that may not be
     appended; each is judged with the earlier records (names and binds) in
     place."""
+    from sift_common.host_proposal import LIST_UNIT
+
     automatic = door in AUTOMATIC_DOORS
     v = _Overlay(state)
     refused = []
+    flagged: dict[str, str] = {}  # unit -> its scan flag, for the list
     for i, rec in enumerate(records):
         if rec.get("kind") == "name":  # its evidence counts for the binds after it
             p = hi._pair((rec.get("unit"), rec.get("raw")))
@@ -251,6 +289,13 @@ def check_binds(state: hi.HostState, records: list[dict], door: str) -> list[tup
         if before is not None and before != key:
             refused.append((i, "it is bound to another machine already"))
             continue
+        if door == "list" and p[0] != LIST_UNIT and _own(state, p):
+            if p[0] not in flagged:
+                flagged[p[0]] = unit_flag(state, p[0])
+            if flagged[p[0]]:
+                refused.append((i, f"the list never confirms a unit with a flag "
+                                   f"({flagged[p[0]]}); the examiner decides"))  # fmt: skip
+                continue
         mid = v.machine_of_key(key) or key
         canonical = v.canonical(mid) or str(rec.get("canonical") or p[1])
         had = v.pairs(mid)
