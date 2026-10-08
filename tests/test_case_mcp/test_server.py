@@ -353,6 +353,69 @@ class TestImportBundle:
         result = _parse(tools["import_bundle"](bundle_path=str(bundle_file)))
         assert "error" not in result
 
+    def _bundle(self, tmp_path):
+        bundle = {
+            "findings": [{"id": "F-other-001", "title": "t", "status": "DRAFT",
+                          "modified_at": "2026-01-01T00:00:00+00:00"}],
+            "timeline": [],
+            "ledger": {"keys": [{"examiner": "other", "fingerprint": "SHA256:x"}],
+                       "heads": [{"chain_id": "0" * 16, "seq": 1, "hash": "a" * 64}],
+                       "chains": {"0" * 16: "{}\n"}},
+        }  # fmt: skip
+        path = tmp_path / "bundle.json"
+        path.write_text(json.dumps(bundle))
+        return path
+
+    def test_an_import_adds_no_chain_and_returns_the_bundle_s_anchors(
+        self, case_dir, tmp_path
+    ):
+        srv = create_server()
+        tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
+        result = _parse(tools["import_bundle"](bundle_path=str(self._bundle(tmp_path))))
+        assert result["ledger"]["keys"][0]["fingerprint"] == "SHA256:x"
+        assert not (case_dir["path"] / "ledger").exists()
+
+    def test_an_import_waits_for_the_case_lock(self, case_dir, tmp_path):
+        import threading
+        import time
+
+        from vhir_cli import ledger
+        from vhir_cli.case_io import case_id_of
+
+        srv = create_server()
+        tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
+        path = self._bundle(tmp_path)
+        held, release = threading.Event(), threading.Event()
+
+        def commit():
+            with ledger.case_lock(case_id_of(case_dir["path"])):
+                held.set()
+                release.wait(5)
+
+        t = threading.Thread(target=commit)
+        t.start()
+        held.wait(5)
+        threading.Timer(0.3, release.set).start()
+        start = time.monotonic()
+        result = _parse(tools["import_bundle"](bundle_path=str(path)))
+        t.join()
+        assert "error" not in result and time.monotonic() - start >= 0.25
+
+    def test_a_missing_lock_folder_merges_nothing(
+        self, case_dir, tmp_path, monkeypatch
+    ):
+        from vhir_cli import ledger
+
+        monkeypatch.setattr(ledger, "LEDGER_DIR", tmp_path / "not-made")
+        before = (case_dir["path"] / "findings.json").read_bytes()
+        srv = create_server()
+        tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
+        result = _parse(tools["import_bundle"](bundle_path=str(self._bundle(tmp_path))))
+        assert (
+            "vhir update" in result["error"] and "Nothing was merged" in result["error"]
+        )
+        assert (case_dir["path"] / "findings.json").read_bytes() == before
+
 
 # ---------------------------------------------------------------------------
 # Tool handlers — audit

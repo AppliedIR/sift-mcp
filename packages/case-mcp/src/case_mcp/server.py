@@ -32,6 +32,7 @@ from vhir_cli.commands.join import (
     _repoint_samba_share,
     notify_wintools_case_activated,
 )
+from vhir_cli.ledger import LedgerError
 from vhir_cli.main import (
     _case_activate_data,
     _case_init_data,
@@ -460,7 +461,11 @@ def create_server() -> FastMCP:
     @server.tool()
     def import_bundle(bundle_path: str) -> dict:
         """Import a case data bundle from a JSON file, merging findings
-        and timeline with the active case using last-write-wins.
+        and timeline with the active case using last-write-wins, under the
+        case lock (a signed decision committed meanwhile is never
+        overwritten; APPROVED and REJECTED items are kept). The bundle's
+        signed history isn't added: its keys and heads are returned under
+        "ledger", to compare with the other box.
 
         Confirm with the examiner before importing — this modifies case
         findings and timeline data.
@@ -474,7 +479,10 @@ def create_server() -> FastMCP:
             if not bundle_file.exists():
                 return {"error": f"Bundle file not found: {bundle_path}"}
             bundle_data = json.loads(bundle_file.read_text())
-            result = _import_bundle(case_dir, bundle_data)
+            try:
+                result = _import_bundle(case_dir, bundle_data)
+            except LedgerError as e:  # the case lock: nothing was merged
+                return {"error": f"{e}. Nothing was merged."}
             logged_id = audit.log(
                 tool="import_bundle",
                 params={"bundle_path": bundle_path},
