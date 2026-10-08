@@ -190,6 +190,15 @@ def _view_key(case_dir: Path) -> tuple:
     return (str(case_dir), tuple(out))
 
 
+def _failure_note(status: str) -> str:
+    """What the portal shows for an item that fails: the recovery line verify
+    prints for its status (or the status itself, when verify prints none)."""
+    from vhir_cli.ledger_verify import RECOVERY
+
+    recovery = RECOVERY.get(status)
+    return f"{status}. Recovery: {recovery}" if recovery else status
+
+
 def _judged(case_dir: Path) -> dict:
     """{"records": {file key: [served item]}, "summary": {...}}, from one
     verify_case read."""
@@ -237,11 +246,13 @@ def _judged(case_dir: Path) -> dict:
                 )
         elif status == "APPROVED":
             item["verification"] = failed.get(rec.get("id"), "NO_SIGNED_LINE")
+            notes[rid] = _failure_note(item["verification"])
         elif verdict is not None and verdict.status not in (
             "VALID",
             "APPROVED_UNDER_0_6",
         ):
             item["verification"] = verdict.status
+            notes[rid] = _failure_note(verdict.status)
         elif verdict is not None:
             item["verification"] = "valid (not anchored)"
             notes[rid] = VALID_NOTE

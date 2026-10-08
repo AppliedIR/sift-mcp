@@ -598,6 +598,23 @@ def test_a_folder_record_that_can_t_be_written_is_named(case, tmp_path, monkeypa
     assert case.item("F-steve-001")["status"] == "DRAFT"
 
 
+def test_a_failing_item_carries_the_recovery_line_verify_prints(case):
+    from vhir_cli.ledger_verify import RECOVERY
+
+    case.stage(dict(reviewed(case, "F-steve-001"), staged_by="steve"))
+    assert case.sign_all([reviewed(case, "F-steve-001")]).status_code == 200
+    findings = case.read("findings.json")
+    findings[0]["observation"] = "changed after approval"
+    case.write("findings.json", findings)
+    served = {f["id"]: f for f in case.get("/api/findings").json()}
+    assert served["F-steve-001"]["verification"] == "ALTERED_AFTER_APPROVAL"
+    note = case.get("/api/case").json()["verification"]["badge_notes"]["F-steve-001"]
+    assert (
+        note
+        == "ALTERED_AFTER_APPROVAL. Recovery: " + RECOVERY["ALTERED_AFTER_APPROVAL"]
+    )
+
+
 def test_the_case_page_shows_the_signing_state(case):
     state = case.get("/api/case").json()["signing"]
     assert state["signing_available"] is True and state["schema"] == 3
