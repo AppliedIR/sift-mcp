@@ -83,9 +83,18 @@ DRIVER = r"""
 showToast = (m) => out.toasts.push(m);
 showErrorBanner = (m) => out.banners.push(m);
 const el = id => document.getElementById(id);
+// loadAll() returns at once while another load (the page's own start-up) is
+// in flight: wait until the page holds the case and its signing state
+async function ready() {
+  for (let i = 0; i < 400 && (isLoading || !caseMeta.signing); i++) {
+    await new Promise(r => setTimeout(r, 25));
+  }
+  if (isLoading || !caseMeta.signing) throw new Error('the page never finished loading the case');
+}
 async function test() {
   await new Promise(r => setTimeout(r, 50));
   await loadAll();
+  await ready();
   const steps = JSON.parse(process.env.STEPS);
   for (const s of steps) {
     if (s.do === 'open') await VHIR_SIGN.open();
@@ -95,7 +104,7 @@ async function test() {
       let n = 0;
       globalThis.beforeCommit = async () => { if (n++ < s.times) await _fetch(ORIGIN + '/test/' + s.what, { method: 'POST' }); };
     }
-    if (s.do === 'reload') await loadAll();
+    if (s.do === 'reload') { await loadAll(); await ready(); }
     if (s.do === 'sign') { el('commitPassword').value = process.env.PASSWORD; await VHIR_SIGN.submit(); }
     if (s.do === 'move_and_reopen_before_commit') {
       // the ledger moves, and the examiner closes and reopens, while the commit is in flight
