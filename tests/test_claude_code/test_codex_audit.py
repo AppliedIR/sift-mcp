@@ -181,3 +181,22 @@ def test_short_typed_input_carries_no_cut_marker(tmp_path):
     _run("codex-stdin-capture.sh", stop, tmp_path)
     (e,) = _lines(case)
     assert e["command"] == "x" * 2000 and "command_truncated" not in e
+
+
+def test_input_recorded_before_the_cursor_was_kept_isnt_recorded_again(tmp_path):
+    """A case holds a session's input from before the per-session cursor (or
+    from a run whose cursor write failed): the next run with nothing new keeps
+    the cursor, so a switch after it records nothing again."""
+    a = _case(tmp_path)
+    b = tmp_path / "cases" / "INC-2"
+    (b / "audit").mkdir(parents=True)
+    t = _transcript(tmp_path, "rm a.txt\n")
+    stop = {"hook_event_name": "Stop", "session_id": "s1", "cwd": str(a),
+            "transcript_path": str(t)}  # fmt: skip
+    _run("codex-stdin-capture.sh", stop, tmp_path)
+    for f in (tmp_path / ".vhir" / "codex-stdin").iterdir():
+        f.unlink()  # no cursor: as an older version left it
+    _run("codex-stdin-capture.sh", stop, tmp_path)  # nothing new in A
+    (tmp_path / ".vhir" / "active_case").write_text(str(b))
+    _run("codex-stdin-capture.sh", dict(stop, cwd=str(b)), tmp_path)
+    assert _lines(b) == [] and len(_lines(a)) == 1

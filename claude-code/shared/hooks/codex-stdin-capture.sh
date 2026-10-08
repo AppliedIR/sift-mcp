@@ -36,12 +36,13 @@ try:
     path = os.path.join(audit, "claude-code.jsonl")
     cursors = os.path.expanduser("~/.vhir/codex-stdin")
     cursor = os.path.join(cursors, hashlib.sha256(session.encode()).hexdigest()[:32])
-    done, hooks = 0, 0
+    stored, hooks = 0, 0
     try:
         with open(cursor) as f:
-            done = int(f.read().strip() or 0)  # recorded already, in whichever case
+            stored = int(f.read().strip() or 0)  # recorded already, in whichever case
     except (OSError, ValueError):
         pass
+    done = stored
     if os.path.exists(path):
         with open(path) as f:
             for ln in f:
@@ -93,10 +94,12 @@ try:
     if out:
         with open(path, "a") as f:
             f.write("\n".join(out) + "\n")
+        done = json.loads(out[-1])["transcript_line"]
+    if done > stored:  # recorded now, or before the cursor was kept: keep it
         os.makedirs(cursors, mode=0o700, exist_ok=True)
         tmp = f"{cursor}.{os.getpid()}.tmp"
         with open(tmp, "w") as f:
-            f.write(str(json.loads(out[-1])["transcript_line"]))
+            f.write(str(done))
         os.replace(tmp, cursor)
 except Exception:
     pass
