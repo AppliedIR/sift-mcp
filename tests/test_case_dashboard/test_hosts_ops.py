@@ -12,6 +12,7 @@ real job's journal and command line here (no cluster).
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -413,6 +414,7 @@ const calls = [];
 function renderHosts() { calls.push('renderHosts'); }
 function showToast(m) { calls.push('toast ' + m); }
 function hostOpsHtml() { return ''; }
+function hostDecisionsFixed() {}
 function apiHeaders() { return {}; }
 const API_BASE = '';
 var hostsView = {ops: null, wasRunning: false};
@@ -494,6 +496,51 @@ class TestTheTabSendsWhatItShowedAndClosesTheDetail:
         )
         assert during == "WKS01 detail"
         assert "open a machine again" in after and calls == ["renderHosts"]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")
+class TestHostDecisionsWaitWhileAnOperationIsUnfinished:
+    SCRIPT = """
+    const made = {};
+    function control(act) { return made[act] = made[act] || {disabled: false, title: ''}; }
+    const panel = {querySelectorAll: (q) => [control(q.match(/"(.*)"/)[1])]};
+    const fields = {hostListText: {disabled: false}, hostListFile: {disabled: false}};
+    const document = {getElementById: (id) => id === 'hostsPanel' ? panel : fields[id]};
+    var hostsView = {ops: OPS};
+    hostDecisionsFixed();
+    process.stdout.write(JSON.stringify({made, fields}));
+    """
+
+    def _run(self, ops):
+        body = "var HOST_DECISION_ACTS = " + json.dumps(
+            ["list", "start_now", "cancel_run", "confirm_all", "confirm", "not_a_host",
+             "confirm_machine"]
+        ) + ";\n" + self.SCRIPT.replace("OPS", json.dumps(ops))  # fmt: skip
+        return json.loads(_run_js(["hostOpUnfinished", "hostDecisionsFixed"], body))
+
+    @pytest.mark.parametrize("state", ["running", "incomplete"])
+    def test_every_decision_control_is_disabled(self, state):
+        out = self._run({"unfinished": {"state": state}})
+        assert out["made"] and all(c["disabled"] for c in out["made"].values())
+        assert set(out["made"]) == {"list", "start_now", "cancel_run", "confirm_all",
+                                    "confirm", "not_a_host", "confirm_machine"}  # fmt: skip
+        assert out["fields"]["hostListText"]["disabled"] is True
+        assert "unfinished" in out["made"]["list"]["title"]
+
+    def test_with_none_unfinished_they_are_enabled(self):
+        out = self._run({"unfinished": None})
+        assert not any(c["disabled"] for c in out["made"].values())
+        assert out["fields"]["hostListFile"]["disabled"] is False
+
+    def test_the_page_lists_each_decision_act_it_disables(self):
+        from .test_hosts_tab import PORTAL
+
+        listed = re.search(r"var HOST_DECISION_ACTS = (\[[^\]]*\]);", PORTAL).group(1)
+        acts = set(json.loads(listed.replace("'", '"')))
+        drawn = set(re.findall(r'data-host-act="(\w+)"', PORTAL))
+        corrections = {"page", "ppage", "detail", "op_resume", "op_rename", "op_merge",
+                       "op_split"}  # fmt: skip
+        assert drawn - corrections == acts  # every decision control the tab draws
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")

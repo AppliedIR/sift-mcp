@@ -3941,6 +3941,26 @@ function hostOpsHtml(v) {
   return html;
 }
 
+/* Host decisions (the list upload, confirmations, runs) wait while a host
+   operation is unfinished: the server refuses them then. */
+var HOST_DECISION_ACTS = ['list', 'start_now', 'cancel_run', 'confirm_all', 'confirm', 'not_a_host', 'confirm_machine'];
+function hostOpUnfinished() {
+  return !!(hostsView.ops && hostsView.ops.unfinished);
+}
+function hostDecisionsFixed() {
+  var on = hostOpUnfinished();
+  var panel = document.getElementById('hostsPanel');
+  if (!panel) return;
+  var why = on ? 'A host operation is unfinished; host decisions wait until it ends' : '';
+  HOST_DECISION_ACTS.forEach(function(act) {
+    panel.querySelectorAll('[data-host-act="' + act + '"]').forEach(function(b) { b.disabled = on; b.title = why; });
+  });
+  ['hostListText', 'hostListFile'].forEach(function(id) {
+    var f = document.getElementById(id);
+    if (f) f.disabled = on;
+  });
+}
+
 async function renderHostOps() {
   try {
     hostsView.ops = await apiFetch('/api/hosts/ops');
@@ -3949,6 +3969,7 @@ async function renderHostOps() {
     return;
   }
   document.getElementById('hostsOps').innerHTML = hostOpsHtml(hostsView.ops);
+  hostDecisionsFixed();
   clearTimeout(hostsView.opsTimer);
   // running: in the journal, or launched from here and not yet answered
   var v = hostsView.ops;
@@ -4022,6 +4043,7 @@ async function renderHosts() {
   document.getElementById('hostsBody').innerHTML = hostRowsHtml(d.machines);
   document.getElementById('hostsPager').innerHTML = hostPagerHtml(d);
   setBadge('tab-hosts', (d.proposed_total || 0) + hostsView.runs.length);
+  hostDecisionsFixed();  // as last known, until the operations are read again
   renderHostOps();
 }
 
@@ -4056,6 +4078,10 @@ document.addEventListener('click', async function(ev) {
   var act = el.getAttribute('data-host-act');
   var i = parseInt(el.getAttribute('data-i'), 10);
   var d = hostsView.data;
+  if (HOST_DECISION_ACTS.indexOf(act) >= 0 && hostOpUnfinished()) {
+    showToast('A host operation is unfinished; host decisions wait until it ends', 'error');
+    return;
+  }
   if (act === 'page') { hostsView.page = i; renderHosts(); }
   else if (act === 'ppage') { hostsView.ppage = i; renderHosts(); }
   else if (act === 'confirm') { hostDecide('confirm', { groups: [hostGroupArgs(i)] }); }
