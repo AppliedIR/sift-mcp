@@ -279,7 +279,7 @@ class TestAnOpActsOnTheMachineTheExaminerSaw:
     def test_a_change_after_the_gateway_read_the_case_is_caught_by_the_job(
         self, case, client, launch, wks, monkeypatch
     ):  # noqa: F811
-        """The race CR found: the gateway resolves the request, then a split
+        """A race: the gateway resolves the request, then a split
         moves the key before the job takes the lock. The job's own check
         refuses it."""
         real = H.r_command

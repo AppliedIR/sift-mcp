@@ -237,7 +237,7 @@ def test_the_guard_refuses_a_join_into_another_domains_machine_at_any_door(case)
 def test_a_holder_that_arrives_after_start_now_read_the_case_refuses_the_join(
     case, monkeypatch
 ):
-    """CR's race: DC01.acq lands between Start now's read and its append."""
+    """A race: DC01.acq lands between Start now's read and its append."""
     a = unit(case, "evidence/dc01", two("DC01"))
     key = confirm(case, a, "DC01", "DC01")
     x = unit(case, "evidence/ad.csv", two("DC01"))
@@ -257,7 +257,7 @@ def test_a_holder_that_arrives_after_start_now_read_the_case_refuses_the_join(
 
 
 def test_two_units_of_one_machine_id_get_their_own_names(case):
-    """CR's OLDNAME/NEWNAME: one proposed group, two units, two machines."""
+    """OLDNAME/NEWNAME: one proposed group, two units, two machines."""
     old = unit(case, "evidence/old", two("OLDNAME"), machine_guid="g-1")
     new = unit(case, "evidence/new", two("NEWNAME"), machine_guid="g-1")
     start(case, new, old)
@@ -265,7 +265,7 @@ def test_two_units_of_one_machine_id_get_their_own_names(case):
     assert machine(case, new, "NEWNAME").canonical == "NEWNAME"
 
 
-# -- CR's surviving mutants
+# -- folder-only, former and not-a-host names as holders
 
 
 def test_a_folder_only_name_never_joins_a_confirmed_machine(case):
@@ -316,7 +316,7 @@ def test_a_not_a_host_name_holds_no_short_name(case):
 
 
 def _collector(case):
-    """CR's probe: COLLECTOR holds BUILD, which the examiner then marked not a
+    """COLLECTOR holds BUILD, which the examiner then marked not a
     host; another unit's evidence really is BUILD."""
     c = unit(
         case, "evidence/collector", two("COLLECTOR") + [("BUILD", "rows host column")]
