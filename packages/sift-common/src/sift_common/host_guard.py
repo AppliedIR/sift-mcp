@@ -54,6 +54,12 @@ def _own(state: hi.HostState, p) -> bool:
     return not _foreign(state, p) and not _not_a_host(state, p)
 
 
+def _its_own_machine(had, unit: str) -> bool:
+    """Whether the machine holding `had` is the unit's own: every name it
+    holds is the unit's (the examiner decided that machine for the unit)."""
+    return all(q[0] == unit for q in had)
+
+
 def placeholder_of(state, unit: str) -> set[str]:
     """The names a unit's own placeholder machine may carry: the unit's
     placeholder, exactly (named from its locator, or from the unit when it
@@ -167,7 +173,7 @@ def _join_reason(state: hi.HostState, mid, canonical: str, had, added) -> str:
     for p in added:
         if p[0] == LIST_UNIT or _not_a_host(state, p) or is_address(p[1]):
             continue
-        if all(q[0] == p[0] for q in had):
+        if _its_own_machine(had, p[0]):
             continue  # its unit's own machine
         # the machine's names, other than this unit's own
         names = [
@@ -196,7 +202,7 @@ def _only_through_not_a_host(state: hi.HostState, canonical: str, had, added) ->
         return ""
     on = [(canonical, False), *((q[1], _not_a_host(state, q)) for q in had)]
     for p in added:
-        if all(q[0] == p[0] for q in had):
+        if _its_own_machine(had, p[0]):
             continue  # its unit's own machine
         mine = [(q[1], _not_a_host(state, q)) for q in state.names if q[0] == p[0]]
         mine.append((p[1], _not_a_host(state, p)))
@@ -314,7 +320,7 @@ def _item_reason(
         # unflagged, judged now: a confirm-all item, or a Start now join into
         # a machine that exists, never for a unit flagged at this state
         for unit in sorted({p[0] for p in added}):
-            if action == "start_now" and all(q[0] == unit for q in had):
+            if action == "start_now" and _its_own_machine(had, unit):
                 continue  # its own machine: Start now is how the examiner unblocks it
             flag = unit_flag(v.s, unit)
             if flag:
@@ -450,7 +456,7 @@ def check_binds(state: hi.HostState, records: list[dict], door: str) -> list[tup
                 refused.append((i, f"the list never confirms a unit with a flag "
                                    f"({flagged[p[0]]}); the examiner decides"))  # fmt: skip
                 continue
-            if flagged[p[0]]:
+            if flagged[p[0]] and not _its_own_machine(v.pairs(mid), p[0]):
                 refused.append((i, f"a name met while ingesting never joins a "
                                    f"confirmed machine for a unit with a flag "
                                    f"({flagged[p[0]]}); the examiner decides"))  # fmt: skip

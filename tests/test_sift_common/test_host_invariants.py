@@ -104,8 +104,11 @@ def violations(P, Q, door) -> list:
             # and the name is the unit's own: then it never joins automatically
             scanned = any(q[0] == p[0] and not _foreign(P, q) for q in P.names)
             if scanned and not _foreign(Q, p) and host_guard.unit_flag(P, p[0]):
+                # (into the unit's own machine, the examiner's decision: allowed)
                 confirmed = {k for x in P.machines.values()
-                             if x.state == hi.CONFIRMED for k in x.keys}  # fmt: skip
+                             if x.state == hi.CONFIRMED
+                             and not all(q[0] == p[0] for q in x.pairs)
+                             for k in x.keys}  # fmt: skip
                 if Q.bindings.get(p) in confirmed:
                     out.append(("a flagged unit's late name joined automatically",
                                 door, p[1], ""))  # fmt: skip

@@ -458,6 +458,20 @@ def test_a_late_exact_match_never_joins_a_flagged_unit_to_a_confirmed_machine(
     assert got != key and key not in machine(case, thin, fqdn).keys
 
 
+def test_a_flagged_units_later_spelling_joins_its_own_confirmed_machine(case):
+    """The examiner confirmed the flagged unit's own machine; a later spelling
+    of its name met while ingesting joins it (no second "(2)" machine)."""
+    from sift_common import host_guard
+
+    thin = unit(case, "evidence/thin", [("WKS20.CORP.EXAMPLE.TEST", SYS)])
+    key = confirm(case, thin, "WKS20.CORP.EXAMPLE.TEST", "WKS20.CORP.EXAMPLE.TEST")
+    assert host_guard.unit_flag(hi.load(case), thin)  # flagged still
+    got, canonical = hi.get_or_mint(
+        case, thin, "wks20.corp.example.test", evidence=EVTX
+    )
+    assert got == key and canonical == "WKS20.CORP.EXAMPLE.TEST"
+
+
 def test_a_late_exact_match_still_joins_an_unflagged_unit(case):
     fqdn = "WKS21.corp.example.test"
     b = unit(case, "evidence/b", two(fqdn))
