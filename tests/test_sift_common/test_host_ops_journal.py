@@ -94,3 +94,23 @@ def test_a_check_that_refuses_writes_nothing(case):
     with pytest.raises(ValueError):
         hi.record_op(case, "op-2", {"state": "running"}, check=refuse)
     assert (case / hi.OPS).read_bytes() == before and isinstance(seen[0], hi.HostState)
+
+
+def test_a_list_upload_and_a_late_bind_wait_for_an_unfinished_operation(case):
+    from sift_common import host_proposal as hp
+
+    u = hi.unit_key("evidence/a")
+    hi.append_observations(case, [{"kind": "unit", "unit": u, "locator": "evidence/a"}] + [
+        {"kind": "name", "unit": u, "raw": "WKS01", "evidence": ev, "origin": "artifact"}
+        for ev in ("SYSTEM ComputerName", "Security.evtx Computer")])  # fmt: skip
+    hi.record_op(case, "op-1", {"state": "running", "kind": "rename"})
+    size = (case / hi.OBSERVATIONS).stat().st_size
+    with pytest.raises(hi.HostOpRunning, match="a host rename/merge is running"):
+        hp.upload_host_list(case, "WKS01\n", "ex1")
+    with pytest.raises(hi.HostOpRunning):
+        hp.apply_host_list(case, [u])
+    with pytest.raises(hi.HostOpRunning):
+        hi.get_or_mint(case, u, "LATE-NAME", evidence="Security.evtx Computer")
+    assert (case / hi.OBSERVATIONS).stat().st_size == size  # nothing was written
+    hi.record_op(case, "op-1", {"state": "done"})
+    assert hp.upload_host_list(case, "WKS01\n", "ex1")["confirmed"] == ["WKS01"]

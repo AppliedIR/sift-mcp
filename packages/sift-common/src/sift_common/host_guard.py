@@ -330,6 +330,15 @@ def _item_reason(
 ADDRESS = "an IP address never names a machine"
 
 
+def refuse_while_operating(root, door: str) -> None:
+    """Raises HostOpRunning while the examiner's host operation (R) is
+    running or incomplete: nothing but R's own door writes host decisions or
+    binds then, or R's own decision could be refused and the case stuck.
+    Called by every writer under the host-log lock."""
+    if door != "R" and hi.unfinished_op(root):
+        raise hi.HostOpRunning("a host rename/merge is running; try again when it ends")
+
+
 def check_decision(state: hi.HostState, record: dict, door: str) -> list[tuple]:
     """[(item index or None, reason)] for what `record` may not do."""
     from sift_common.host_proposal import is_address

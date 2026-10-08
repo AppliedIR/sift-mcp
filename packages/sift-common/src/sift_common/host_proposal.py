@@ -718,6 +718,8 @@ def upload_host_list(case_dir, text: str, examiner: str) -> dict:
     """Record the examiner's host list, then confirm what it names."""
     if not examiner:
         raise hi.HostLogError("a host list needs the examiner who uploads it")
+    if hi.unfinished_op(case_dir):  # nothing is recorded while R runs
+        raise hi.HostOpRunning("a host rename/merge is running; try again when it ends")
     entries = parse_host_list(text)
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     hi.append_observations(
@@ -737,10 +739,12 @@ def apply_host_list(case_dir, units=None) -> dict:
         return {"confirmed": []}
     root = Path(case_dir)
     with hi._log_lock(root):
+        from sift_common import host_guard
+
+        host_guard.refuse_while_operating(root, "list")
         state = hi.load(root)
         if not _list_entries(state):
             return {"confirmed": []}
-        from sift_common import host_guard
 
         records = list_bindings(state, units)
         # a unit's names for one machine go together or not at all: never the

@@ -267,10 +267,7 @@ def _append_decision(
                 f"decision refused: it refers to observation-log offset {seen_offset}, "
                 f"past the log's end ({size} bytes)"
             )
-        if door != "R" and unfinished_op(root):
-            raise HostOpRunning(
-                "a host rename/merge is running; try again when it ends"
-            )
+        host_guard.refuse_while_operating(root, door)
         state = load(root)
         if record.get("action") not in (
             "confirm",
@@ -1020,6 +1017,9 @@ def get_or_mint(
         if key is not None:
             m = state.machine_of_key(key)
             return key, m.canonical if m else raw
+        from sift_common import host_guard
+
+        host_guard.refuse_while_operating(root, "late")
         records: list[dict] = []
         if (unit, raw) not in state.names:
             records.append(
