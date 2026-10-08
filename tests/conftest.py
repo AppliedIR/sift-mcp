@@ -23,6 +23,20 @@ for _var in ("VHIR_CASE_DIR", "VHIR_AUDIT_DIR"):
     os.environ.pop(_var, None)
 
 
+@pytest.fixture(autouse=True)
+def _vhir_ledger_dir(tmp_path_factory, monkeypatch):
+    """vhir's case lock and signed ledger live in /var/lib/vhir/ledger/,
+    which the installer and `vhir update` make. A test that reaches them
+    through vhir (an import takes the case lock) gets its own folder, never
+    the box's. Nothing to do with a vhir from before the ledger."""
+    try:
+        from vhir_cli import ledger
+    except ImportError:
+        return
+    folder = tmp_path_factory.mktemp("vhir-ledger")
+    monkeypatch.setattr(ledger, "LEDGER_DIR", folder)
+
+
 @pytest.fixture
 def tmp_case_dir(tmp_path):
     """Create a temporary case directory with flat structure."""
