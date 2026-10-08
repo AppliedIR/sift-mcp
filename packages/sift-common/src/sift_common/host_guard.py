@@ -299,6 +299,8 @@ def _item_reason(
         # unflagged, judged now: a confirm-all item, or a Start now join into
         # a machine that exists, never for a unit flagged at this state
         for unit in sorted({p[0] for p in added}):
+            if action == "start_now" and all(q[0] == unit for q in had):
+                continue  # its own machine: Start now is how the examiner unblocks it
             flag = unit_flag(v.s, unit)
             if flag:
                 return f"the unit is flagged now ({flag}); the examiner decides"

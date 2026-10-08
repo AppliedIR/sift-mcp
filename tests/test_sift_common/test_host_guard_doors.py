@@ -278,3 +278,25 @@ def test_start_now_makes_a_flagged_unit_its_own_machine_and_never_joins(case):
     out = start(case, thin)
     m = machine(case, thin, "WKS01")
     assert m is not None and key not in m.keys and out["refused"] == []
+
+
+def test_start_now_still_adds_a_flagged_units_names_to_its_own_machine(case):
+    thin = unit(case, "evidence/thin", [("WKS07", SYS)])  # one source: flagged
+    start(case, thin)
+    own = machine(case, thin, "WKS07")
+    hi.append_observations(
+        case,
+        [
+            {
+                "kind": "name",
+                "unit": thin,
+                "raw": "WKS07.corp.example.test",
+                "evidence": "Security.evtx Computer",
+                "origin": "artifact",
+            }
+        ],
+    )
+    out = start(case, thin, run="run-2")
+    assert out["refused"] == []
+    assert machine(case, thin, "WKS07.corp.example.test") is not None
+    assert machine(case, thin, "WKS07").id == own.id
