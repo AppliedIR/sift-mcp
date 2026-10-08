@@ -438,7 +438,15 @@ def test_badges_come_from_verify(case):
     case.sign_all([reviewed(case, "F-steve-001")])
     served = {f["id"]: f for f in case.get("/api/findings").json()}
     assert served["F-steve-001"]["verification"] == "valid (not anchored)"
-    assert "compare the fingerprint" in served["F-steve-001"]["verification_note"]
+    note = case.get("/api/case").json()["verification"]["badge_notes"]["F-steve-001"]
+    assert note.startswith("Valid (not anchored): compare the fingerprint")
+    assert keys.key_fingerprint(keys.active(keys.load("steve"))) in note
+    # an item served gains only keys its signed view leaves out
+    from vhir_cli.case_io import VIEW_EXCLUDES
+
+    assert (
+        set(served["F-steve-001"]) - set(case.item("F-steve-001")) <= VIEW_EXCLUDES[1]
+    )
     findings = case.read("findings.json")
     findings[0]["observation"] = "edited on disk"
     case.write("findings.json", findings)

@@ -118,11 +118,15 @@ def _resolve_examiner(request: Request) -> str | None:
 # Every badge comes from vhir's verify_case, the one verdict source. The view
 # is cached on the files it reads (their mtimes and sizes), and the items the
 # portal serves are the records verify judged, so a badge never describes a
-# different copy of an item.
+# different copy of an item. A served item gains only keys the signed view
+# leaves out (`verification`, `content_hash`), so the page can compare a
+# signed snapshot with it field by field; the badge's longer text is in the
+# case summary, by id.
 
-_VALID_NOTE = (
+VALID_NOTE = (
     "Valid (not anchored): compare the fingerprint with a copy kept off this machine."
 )
+LEGACY_NOTE = "Approved under 0.6, before signing: no signature covers it."
 _view_cache: dict = {"key": None, "value": None}
 
 
@@ -166,29 +170,29 @@ def _judged(case_dir: Path) -> dict:
     fps = {k["examiner"]: k["fingerprint"] for k in result.keys}
     kinds = {"findings": "finding", "timeline": "timeline", "iocs": "ioc"}
     records: dict[str, list[dict]] = {"findings": [], "timeline": [], "iocs": []}
+    notes: dict[str, str] = {}
     for key, rec in result.records:
         if not isinstance(rec, dict):
             continue
         item = dict(rec)
         # the hash a review records, recomputed (the stored one is a cache)
         item["content_hash"] = compute_content_hash(rec)
+        rid = str(rec.get("id"))
         status = rec.get("status", "DRAFT")
-        verdict = result.verdict(str(rec.get("id")))
+        verdict = result.verdict(rid)
         if verdict is not None and verdict.item_type != kinds[key]:
             verdict = None
         if id(rec) in shown:
             label = shown[id(rec)]
             if label == "approved under 0.6 (before signing)":
                 item["verification"] = label
-                item["verification_note"] = (
-                    "Signed by nobody: approved before signing began."
-                )
+                notes[rid] = LEGACY_NOTE
             else:
                 item["verification"] = "valid (not anchored)"
                 signer = rec.get("approved_by") or ""
-                item["verification_note"] = (
-                    _VALID_NOTE
-                    + (f" Key {fps[signer]}." if signer in fps else "")
+                notes[rid] = (
+                    VALID_NOTE
+                    + (f" Key: {signer} {fps[signer]}." if signer in fps else "")
                     + (f" {label}." if label else "")
                 )
         elif status == "APPROVED":
@@ -200,12 +204,13 @@ def _judged(case_dir: Path) -> dict:
             item["verification"] = verdict.status
         elif verdict is not None:
             item["verification"] = "valid (not anchored)"
-            item["verification_note"] = _VALID_NOTE
+            notes[rid] = VALID_NOTE
         else:
             item["verification"] = status.lower()
         records[key].append(item)
     summary = verification_json(view)
     summary["notices"] = list(result.notices)
+    summary["badge_notes"] = notes
     return {"records": records, "summary": summary}
 
 
