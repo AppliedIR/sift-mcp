@@ -74,3 +74,20 @@ def test_the_tool_reference_skill_is_the_tool_reference():
     )
     source = (ROOT / "claude-code" / "full" / "TOOL_REFERENCE.md").read_text()
     assert body == "\n" + source
+
+
+def test_the_manifest_the_remote_scripts_fetch_lists_every_skill_file():
+    listed = [
+        ln
+        for ln in (SKILLS / "MANIFEST").read_text().splitlines()
+        if ln and not ln.startswith("#")
+    ]
+    on_disk = sorted(
+        str(p.relative_to(SKILLS))
+        for p in SKILLS.rglob("*")
+        if p.is_file() and p.parent != SKILLS
+    )
+    assert listed == on_disk
+    assert all(
+        re.fullmatch(r"[A-Za-z0-9._/-]+", ln) and ".." not in ln for ln in listed
+    )

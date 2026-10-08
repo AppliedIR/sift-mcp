@@ -1,0 +1,23 @@
+# Every skill file the remote client scripts fetch, relative to skills/.
+# A test keeps this list equal to the files here.
+finding-skeptic/SKILL.md
+vhir-ingest/SKILL.md
+vhir-malware-escalation/SKILL.md
+vhir-playbooks/SKILL.md
+vhir-playbooks/references/credential_access.md
+vhir-playbooks/references/data_staging.md
+vhir-playbooks/references/dns_anomaly.md
+vhir-playbooks/references/email_compromise.md
+vhir-playbooks/references/log_tampering.md
+vhir-playbooks/references/malware_analysis.md
+vhir-playbooks/references/powershell_anomaly.md
+vhir-playbooks/references/remote_access.md
+vhir-playbooks/references/suspicious_autorun.md
+vhir-playbooks/references/suspicious_connection.md
+vhir-playbooks/references/suspicious_execution.md
+vhir-playbooks/references/timestomping.md
+vhir-playbooks/references/unusual_logon.md
+vhir-playbooks/references/usb_activity.md
+vhir-report-writing/SKILL.md
+vhir-tool-reference/SKILL.md
+vhir-welcome/SKILL.md
