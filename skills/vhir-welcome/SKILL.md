@@ -177,8 +177,8 @@ above, and show them in place of its control lines in the summary.
 - `~/.codex/valhuntir.config.toml` exists, and this session has the
   Valhuntir MCP servers (it was started with `codex -p valhuntir`).
   If not: "Start Codex with `codex -p valhuntir`."
-- The working directory is a case's `work/` folder (`CASE.yaml` in its
-  parent). If not: "Start Codex from `<case>/work`."
+- The working directory is a case folder (it holds `CASE.yaml`). If not:
+  "Start Codex in the case folder: `cd <case folder> && codex -p valhuntir`."
 
 #### Step 9c: Managed controls
 
