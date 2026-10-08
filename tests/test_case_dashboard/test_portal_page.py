@@ -94,8 +94,7 @@ async function ready() {
   if (isLoading || !caseMeta.signing) throw new Error('the page never finished loading the case');
 }
 async function test() {
-  // the page's own first load is in flight: loadAll() returns at once until it ends
-  while (isLoading) await new Promise(r => setTimeout(r, 10));
+  await new Promise(r => setTimeout(r, 50));
   await loadAll();
   await ready();
   const steps = JSON.parse(process.env.STEPS);
