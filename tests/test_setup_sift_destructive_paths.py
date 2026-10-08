@@ -24,7 +24,9 @@ def _block(start, end):
 
 VENV = _block("# --- Virtual environment ---", "VENV_PYTHON=")
 SOURCE = _block("    # [4] Source code", "    # [5] Shell profile")
-CONFIG_AND_REST = _block("    # [6] Gateway config", "    # [8] Approval ledgers and signing keys")
+CONFIG_AND_REST = _block(
+    "    # [6] Gateway config", "    # [8] Approval ledgers and signing keys"
+)
 _p = SCRIPT.index("prompt_yn_strict() {")
 PROMPT = SCRIPT[_p : SCRIPT.index("\n}\n", _p) + 3]
 

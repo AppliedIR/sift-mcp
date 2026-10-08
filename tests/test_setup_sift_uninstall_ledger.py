@@ -17,7 +17,9 @@ import pytest
 
 SCRIPT = (Path(__file__).parent.parent / "setup-sift.sh").read_text()
 STEP = SCRIPT[
-    SCRIPT.index("    # [8] Approval ledgers and signing keys") : SCRIPT.index("    # [9] AppArmor")
+    SCRIPT.index("    # [8] Approval ledgers and signing keys") : SCRIPT.index(
+        "    # [9] AppArmor"
+    )
 ]
 _p = SCRIPT.index("prompt_yn_strict() {")
 PROMPT = SCRIPT[_p : SCRIPT.index("\n}\n", _p) + 3]
