@@ -33,7 +33,7 @@ def _vhir_ledger_dir(tmp_path_factory, monkeypatch):
     try:  # forensic-mcp's copy of the case lock, in the same folder
         from forensic_mcp.case import manager
 
-        monkeypatch.setattr(manager, "LEDGER_DIR", folder)
+        monkeypatch.setattr(manager, "LEDGER_DIR", folder, raising=False)
     except ImportError:
         pass
     try:
