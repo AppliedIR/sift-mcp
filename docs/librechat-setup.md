@@ -44,7 +44,7 @@ vhir setup client --client=librechat --sift-url=http://localhost:4508
 ```
 
 This creates `librechat_mcp.yaml` with per-backend MCP entries, timeouts,
-initTimeout, allowedDomains, and model settings. Merge it into your
+initTimeout, allowedAddresses, the user MCP-server lock, and model settings. Merge it into your
 `librechat.yaml`.
 
 After merging, create a Valhuntir Investigation agent (see "Creating a Valhuntir
@@ -139,7 +139,7 @@ forensic discipline instructions during the MCP handshake.
 MCP handshake — backends that lazy-start and load databases need more than
 the 10s default.
 
-## allowedDomains
+## allowedAddresses
 
 LibreChat's SSRF protection blocks private IPs by default. If the gateway
 runs on localhost or a LAN IP (which it always does), MCP connections will
@@ -147,13 +147,21 @@ silently fail without this setting.
 
 ```
 mcpSettings:
-  allowedDomains:
-    - "localhost"
-    - "127.0.0.1"
-    - "<gateway-ip>"
+  allowedAddresses:
+    - "<gateway-ip>:4508"
 ```
 
-Replace `<gateway-ip>` with your gateway's hostname or IP.
+Replace `<gateway-ip>` with your gateway's hostname or IP (and add a
+wintools address the same way if you configured one). Use
+`allowedAddresses`, not `allowedDomains`: `allowedDomains` is a strict
+whitelist, so it would also block the internet MCPs (Zeltser IR Writing,
+Microsoft Learn) the file lists.
+
+## Users can't add MCP servers
+
+The file seeds `interface.mcpServers.create: false`. LibreChat applies it
+to the USER role only at its first start; after that the Admin Panel holds
+the setting. Check it there: role permissions, MCP servers, create off.
 
 ## modelSpecs
 
@@ -452,8 +460,8 @@ enforce their own server-side access controls.
 
 ### MCP connections fail silently
 
-Check `allowedDomains`. LibreChat blocks private IPs by default. Add your
-gateway hostname to the allowedDomains list.
+Check `allowedAddresses`. LibreChat blocks private IPs by default. Add your
+gateway's `host:port` to the allowedAddresses list.
 
 ### Backends fail to connect (timeout during init)
 
@@ -493,7 +501,7 @@ vhir setup client --client=librechat --sift-url=http://localhost:4508
 
 Generates `librechat_mcp.yaml` with:
 - Per-backend MCP server entries with per-backend timeouts and initTimeout
-- `allowedDomains` for the gateway hostname
+- `allowedAddresses` for the gateway (`host:port`), and `interface.mcpServers.create: false`
 - `modelSpecs` with the investigation promptPrefix, greeting, and model settings
 - `endpoints.agents.recursionLimit: 75`
 
