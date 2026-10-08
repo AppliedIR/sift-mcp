@@ -3950,12 +3950,15 @@ async function renderHostOps() {
   }
   document.getElementById('hostsOps').innerHTML = hostOpsHtml(hostsView.ops);
   clearTimeout(hostsView.opsTimer);
-  if (hostsView.ops.unfinished && hostsView.ops.unfinished.state === 'running') {
+  // running: in the journal, or launched from here and not yet answered
+  var v = hostsView.ops;
+  var running = !!((v.unfinished && v.unfinished.state === 'running') || (v.launch && v.launch.state === 'running'));
+  if (running) {
     hostsView.opsTimer = setTimeout(renderHostOps, 2000);  // its progress, until it ends
   } else if (hostsView.wasRunning) {
     hostOpEnded();
   }
-  hostsView.wasRunning = !!(hostsView.ops.unfinished && hostsView.ops.unfinished.state === 'running');
+  hostsView.wasRunning = running;
 }
 
 /* An operation ended: the machine detail open may name a machine that no
@@ -3970,7 +3973,10 @@ async function hostOp(body) {
   try {
     var res = await fetch(API_BASE + '/api/hosts/ops', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) });
     var r = await res.json().catch(function() { return {}; });
-    if (res.status === 202) showToast('The host operation is running', 'info');
+    if (res.status === 202) {
+      hostsView.wasRunning = true;  // the poll closes the detail when it ends, however soon
+      showToast('The host operation is running', 'info');
+    }
     else if (res.ok && r.state === 'done') showToast('Host operation done', 'success');
     else showToast((r.state ? r.state + ': ' : '') + (r.reason || r.error || 'refused'), 'error');
     if (res.status !== 202 && res.status !== 400) hostOpEnded();  // it ran, or the machine changed

@@ -42,6 +42,15 @@ if "--resume" in args:
     print(json.dumps({"id": op_id, **entry}))
     sys.exit(0)
 op = json.loads(args[args.index("--op") + 1])
+if "--expect" in args:  # R checks these under the case lock it holds
+    expect = json.loads(args[args.index("--expect") + 1])
+    state = hi.load(case)
+    if not isinstance(expect, dict) or any(
+        (state.machine_of_key(k) is None or state.machine_of_key(k).canonical != v)
+        for k, v in expect.items()
+    ):
+        print(json.dumps({"state": "refused", "reason": "refused: changed since you opened it"}))
+        sys.exit(2)
 op_id = "op-fake-1"
 hi.record_op(case, op_id, {"op": op, "kind": op["kind"], "canonical": op.get("canonical"),
              "before": {"keys": {"k1": 1200}, "v1": {"i|n": 34}}, "examiner": examiner,
@@ -66,8 +75,8 @@ def launch(tmp_path, monkeypatch):
     script = tmp_path / "fake_r.py"
     script.write_text(FAKE)
 
-    def command(case_dir, examiner, op, resume):
-        real = command.__wrapped__(case_dir, examiner, op, resume)
+    def command(case_dir, examiner, op, resume, expect=None):
+        real = command.__wrapped__(case_dir, examiner, op, resume, expect)
         return [sys.executable, str(script), *real[3:]]
 
     command.__wrapped__ = H.r_command
@@ -209,8 +218,12 @@ def test_without_opensearch_mcp_it_says_so(case, client, wks, monkeypatch):  # n
 
 
 class TestAnOpActsOnTheMachineTheExaminerSaw:
-    """The request carries each machine's name as the page showed it; when
-    the machine has changed since, nothing is started."""
+    """The request carries each machine's name as the page showed it; the
+    job is given them as `expect` and checks them under the case lock it
+    holds while it works, so a change made any time before (by another tab,
+    a CLI job, a host decision) refuses it, with nothing written."""
+
+    REFUSED = "refused: changed since you opened it"
 
     def test_a_form_opened_before_a_split_gave_its_id_away_is_refused(
         self, case, client, launch, wks
@@ -229,8 +242,10 @@ class TestAnOpActsOnTheMachineTheExaminerSaw:
             "/api/hosts/ops", json=rename(wks, to="WKS77", seen=seen["canonical"])
         )
         assert r.status_code == 409, r.text
-        assert r.json()["error"] == "this machine changed since you opened it; reload"
-        assert _calls(case) == [] and hi.read_ops(case)["ops"] == {}
+        assert r.json()["reason"] == self.REFUSED
+        (call,) = _calls(case)
+        assert json.loads(call[call.index("--expect") + 1]) == {a: "WKS01"}
+        assert hi.read_ops(case)["ops"] == {}  # refused before its journal entry
         # the same request with what the page shows now goes ahead
         fresh = rename(wks, to="WKS77", seen="SPLITOUT")
         assert client.post("/api/hosts/ops", json=fresh).status_code == 200
@@ -247,17 +262,55 @@ class TestAnOpActsOnTheMachineTheExaminerSaw:
         stale = {"op": {"kind": "split", "machine": wks["WKS01"], "keys": ["x"],
                         "canonical": "OTHER"}, "seen": {wks["WKS01"]: "WKS01"}}  # fmt: skip
         r = client.post("/api/hosts/ops", json=stale)
-        assert (
-            r.status_code == 409 and "changed since you opened it" in r.json()["error"]
-        )
-        assert len(_calls(case)) == 1
+        assert r.status_code == 409 and r.json()["reason"] == self.REFUSED
+        assert hi.load(case).machine_of_key(wks["WKS01"]).canonical == "WKS50"
 
     def test_a_merge_names_both_machines_as_seen(self, case, client, launch, wks):  # noqa: F811
         op = {"kind": "merge", "into": wks["WKS01"], "from": [wks["WKS02"]]}
         stale = {"op": op, "seen": {wks["WKS01"]: "WKS01", wks["WKS02"]: "OLD"}}
         assert client.post("/api/hosts/ops", json=stale).status_code == 409
+        call = _calls(case)[-1]
+        assert json.loads(call[call.index("--expect") + 1]) == {
+            wks["WKS01"]: "WKS01", wks["WKS02"]: "OLD"}  # fmt: skip
         ok = {"op": op, "seen": {wks["WKS01"]: "WKS01", wks["WKS02"]: "WKS02"}}
         assert client.post("/api/hosts/ops", json=ok).status_code == 200
+
+    def test_a_change_after_the_gateway_read_the_case_is_caught_by_the_job(
+        self, case, client, launch, wks, monkeypatch
+    ):  # noqa: F811
+        """The race CR found: the gateway resolves the request, then a split
+        moves the key before the job takes the lock. The job's own check
+        refuses it."""
+        real = H.r_command
+
+        def split_first(*a, **k):
+            _as_r_writes(case, "merge", {"into": wks["WKS01"], "from": [wks["WKS02"]]})
+            _as_r_writes(case, "split", {"machine": wks["WKS01"], "keys": [wks["WKS01"]],
+                                         "canonical": "SPLITOUT"})  # fmt: skip
+            return real(*a, **k)
+
+        monkeypatch.setattr(H, "r_command", split_first)
+        r = client.post("/api/hosts/ops", json=rename(wks, to="WKS77"))
+        assert r.status_code == 409 and r.json()["reason"] == self.REFUSED
+        assert hi.load(case).machine_of_key(wks["WKS01"]).canonical == "SPLITOUT"
+        assert hi.read_ops(case)["ops"] == {}
+
+    def test_a_host_decision_while_an_operation_runs_is_refused(
+        self, case, client, wks
+    ):  # noqa: F811
+        hi.record_op(case, "op-x", {"kind": "rename", "state": "running",
+                                    "examiner": "tester", "started": "t0"})  # fmt: skip
+        page = client.get("/api/hosts").json()
+        (m,) = [x for x in page["machines"] if x["id"] == wks["WKS02"]]
+        group = {"machine": m["id"], "canonical": m["canonical"]}  # as confirm_machine
+        r = client.post(
+            "/api/hosts/decisions",
+            json={"action": "confirm", "seen_offset": page["obs_offset"],
+                  "args": {"groups": [group]}},
+        )  # fmt: skip
+        assert (
+            r.status_code == 409 and "host rename/merge is running" in r.json()["error"]
+        )
 
 
 class TestMergeAcrossPages:
@@ -275,6 +328,10 @@ class TestMergeAcrossPages:
         (call,) = _calls(case)
         sent = json.loads(call[call.index("--op") + 1])
         assert sent == {"kind": "merge", "into": wks["WKS01"], "from": [wks["WKS03"]]}
+        assert json.loads(call[call.index("--expect") + 1]) == {
+            wks["WKS03"]: "WKS03",
+            wks["WKS01"]: "WKS01",
+        }  # the name resolved, as found
         assert hi.load(case).machine_of_key(wks["WKS03"]).canonical == "WKS01"
 
     def test_a_name_no_machine_has_starts_nothing(self, case, client, launch, wks):  # noqa: F811
@@ -293,6 +350,9 @@ def test_the_job_s_command_line():
     assert cmd[3:7] == ["--case-dir", "/c", "--examiner", "tester"]
     assert json.loads(cmd[cmd.index("--op") + 1]) == RENAME
     assert H.r_command(Path("/c"), "tester", None, "op-1")[-2:] == ["--resume", "op-1"]
+    cmd = H.r_command(Path("/c"), "tester", RENAME, None, {"m1": "WKS01"})
+    assert json.loads(cmd[cmd.index("--expect") + 1]) == {"m1": "WKS01"}
+    assert "--expect" not in H.r_command(Path("/c"), "t", None, "op-1", {"m1": "x"})
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")
@@ -384,17 +444,24 @@ class TestTheTabSendsWhatItShowedAndClosesTheDetail:
                                 "canonical": "S"}, "seen": seen}  # fmt: skip
 
     @pytest.mark.parametrize(
-        "status,closed", [(200, True), (409, True), (202, False), (400, False)]
-    )
-    def test_an_op_that_answers_at_once_closes_the_detail(self, status, closed):
+        "status,launch,closed",
+        [(200, "done", True), (409, "refused", True), (400, None, False),
+         (202, "running", False),  # still running: the poll closes it when it ends
+         (202, "done", True)],  # ended before the first poll
+    )  # fmt: skip
+    def test_an_op_that_answers_at_once_closes_the_detail(self, status, launch, closed):
+        served = json.dumps(
+            {"unfinished": None, "launch": launch and {"state": launch}}
+        )
         body = (
             _PAGE
             + f"""
+        global.setTimeout = () => 0; global.clearTimeout = () => 0;
         async function fetch() {{
           return {{status: {status}, ok: {str(status < 300).lower()},
                    json: async () => ({{state: 'done'}})}};
         }}
-        async function apiFetch() {{ return {{unfinished: null}}; }}
+        async function apiFetch() {{ return {served}; }}
         hostOp({{op: {{}}}}).then(() => process.stdout.write(
           JSON.stringify([panes.hostDetail.innerHTML, calls])));
         """

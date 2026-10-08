@@ -552,11 +552,20 @@ _FIRST_ANSWER_SECONDS = 2.0  # a refusal or a quick op answers within this
 _launches: dict[str, dict] = {}  # case dir -> the last launch from this gateway
 
 
-def r_command(case_dir: Path, examiner: str, op: dict | None, resume: str | None):
-    """The job's command line."""
+def r_command(
+    case_dir: Path,
+    examiner: str,
+    op: dict | None,
+    resume: str | None,
+    expect: dict | None = None,
+):
+    """The job's command line. `expect`: machine id -> the name the examiner
+    saw, which the job checks under its lock (a resume carries none)."""
     import sys
 
     which = ["--resume", resume] if resume else ["--op", json.dumps(op)]
+    if expect is not None and not resume:
+        which += ["--expect", json.dumps(expect)]
     return [sys.executable, "-m", "opensearch_mcp.host_ops", "--case-dir",
             str(case_dir), "--examiner", examiner, *which]  # fmt: skip
 
@@ -580,26 +589,28 @@ def _op_problem(body: dict) -> str | None:
     return None
 
 
-def _as_seen(state: hi.HostState, op: dict, seen: dict) -> tuple[dict, str | None]:
-    """The operation the job runs, and why it can't run on the case as it is
-    now (or None). A machine merged in may be named as typed (`from_name`),
-    resolved here; every machine the page named must still carry the name
-    the examiner saw (`seen`: key -> name), as the job resolves its key."""
+def _as_seen(state: hi.HostState, op: dict, seen: dict) -> tuple[dict, dict, str]:
+    """The operation the job runs, what it expects to find, and why it can't
+    be asked for at all ("" when it can). A machine merged in may be named as
+    typed (`from_name`), resolved here to its id. `expect` maps each machine
+    the operation names to the name the examiner saw (`seen`) or, for a
+    typed name, the name it resolved to: the job checks it under the case
+    lock it holds while it works, and refuses if any differs (or is gone)."""
     op = dict(op)
     typed = op.pop("from_name", None)
+    expect: dict[str, str] = {}
     if op["kind"] == "merge" and typed is not None:
         owner = state.canonical_owner(str(typed))
         if owner is None:
-            return op, f"no machine is named {str(typed)[:80]!r} in this case"
+            return op, expect, f"no machine is named {str(typed)[:80]!r} in this case"
         op["from"] = [owner.id]
+        expect[owner.id] = owner.canonical
     named = [op.get("machine"), op.get("into")]
     if typed is None:
         named += list(op.get("from") or [])
-    for key in (k for k in named if k is not None):
-        m = state.machine_of_key(str(key))
-        if m is None or seen.get(str(key)) != m.canonical:
-            return op, "this machine changed since you opened it; reload"
-    return op, None
+    for key in (str(k) for k in named if k is not None):
+        expect[key] = str(seen.get(key, ""))
+    return op, expect, ""
 
 
 def ops_view(case_dir: Path) -> dict:
@@ -675,17 +686,16 @@ async def post_op(request: Request) -> JSONResponse:
             {"error": "a host operation launched from the portal is still running"},
             status_code=409,
         )
-    op, resume = body.get("op"), body.get("resume")
+    op, resume, expect = body.get("op"), body.get("resume"), None
     if op is not None:
         try:
-            op, changed = _as_seen(hi.load(case_dir), op, body["seen"])
+            op, expect, unknown = _as_seen(hi.load(case_dir), op, body["seen"])
         except hi.HostLogError as e:
             return JSONResponse({"error": str(e)}, status_code=500)
-        if changed:
-            status = 409 if changed.startswith("this machine changed") else 400
-            return JSONResponse({"error": changed}, status_code=status)
+        if unknown:
+            return JSONResponse({"error": unknown}, status_code=400)
     proc = await asyncio.create_subprocess_exec(
-        *r_command(case_dir, examiner, op, resume),
+        *r_command(case_dir, examiner, op, resume, expect),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         start_new_session=True,  # it finishes even if the gateway restarts
