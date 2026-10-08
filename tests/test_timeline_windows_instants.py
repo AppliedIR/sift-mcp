@@ -17,6 +17,7 @@ import pytest
 import yaml
 from forensic_mcp.case.manager import CaseManager
 from report_mcp.server import _generate
+from vhir_signing import sign_approved
 
 EVENTS = {
     "E1": "2023-01-29T00:00:00Z",
@@ -44,6 +45,7 @@ def case(tmp_path, monkeypatch):
             ]
         )
     )
+    sign_approved(d)  # a report shows only approvals that verify
     pointer = tmp_path / "active_case"
     pointer.write_text(str(d))
     monkeypatch.setattr(manager_module, "_ACTIVE_CASE_FILE", pointer)
@@ -102,5 +104,6 @@ def test_anchor_a_value_that_doesn_t_parse_compares_as_text(case, site):
         {"id": "E9", "timestamp": "2023-01-29 sometime", "status": "APPROVED"}
     )
     (case / "timeline.json").write_text(json.dumps(timeline))
+    sign_approved(case)  # E9's approval too
     assert "E9" in site(case, "2023-01-29", None)
     assert "E9" not in site(case, None, "2023-01-28")
