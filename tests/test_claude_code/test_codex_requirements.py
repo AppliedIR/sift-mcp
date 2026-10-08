@@ -26,7 +26,7 @@ def test_the_shell_cant_read_the_store_the_tokens_or_the_profile():
 
 
 def test_the_hooks_run_from_the_root_owned_copies():
-    for hook in ("case-data-guard.sh --client codex", "forensic-audit.sh --client codex",
+    for hook in ("case-data-guard.sh", "forensic-audit.sh --client codex",
                  "codex-stdin-capture.sh", "case-dir-check.sh --client codex"):  # fmt: skip
         assert f'command = "{{hooks}}/{hook}"' in TEXT
         assert any((ROOT / "claude-code").rglob(hook.split()[0])), hook

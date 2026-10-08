@@ -24,7 +24,7 @@ deny_read = ["/var/lib/vhir", "{home}/.vhir/gateway.yaml", "{home}/.codex/valhun
 matcher = "^Bash$"
 [[hooks.PreToolUse.hooks]]
 type = "command"
-command = "{hooks}/case-data-guard.sh --client codex"
+command = "{hooks}/case-data-guard.sh"
 timeout = 10
 
 [[hooks.PostToolUse]]
