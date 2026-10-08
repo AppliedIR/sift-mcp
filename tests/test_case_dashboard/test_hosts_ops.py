@@ -559,6 +559,23 @@ class TestHostDecisionsWaitWhileAnOperationIsUnfinished:
         assert not any(c["disabled"] for c in out["made"].values())
         assert out["fields"]["hostListFile"]["disabled"] is False
 
+    def test_reading_the_operations_sets_the_controls(self):
+        """The table is drawn before the operations are read: reading them
+        (each poll included) sets the controls again."""
+        body = (
+            _PAGE.replace("function hostDecisionsFixed() {}\n", "")
+            + """
+        function hostDecisionsFixed() { calls.push('fixed ' + !!hostsView.ops.unfinished); }
+        global.setTimeout = () => 0; global.clearTimeout = () => 0;
+        let answers = [{unfinished: {state: 'incomplete', id: 'op-1'}}, {unfinished: null}];
+        async function apiFetch() { return answers.shift(); }
+        (async () => { await renderHostOps(); await renderHostOps();
+          process.stdout.write(JSON.stringify(calls)); })();
+        """
+        )
+        calls = json.loads(_run_js(["renderHostOps"], body))
+        assert calls == ["fixed true", "fixed false"]
+
     def test_the_page_lists_each_decision_act_it_disables(self):
         from .test_hosts_tab import PORTAL
 
