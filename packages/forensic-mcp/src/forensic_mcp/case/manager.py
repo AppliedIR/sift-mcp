@@ -6,6 +6,7 @@ Local-first: each examiner owns a flat case directory. Case lifecycle
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import logging
@@ -13,6 +14,8 @@ import os
 import re
 import tempfile
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -118,6 +121,67 @@ _PROTECTED_EVENT_FIELDS = {
 }
 
 # Keys excluded from content hash — volatile/derived fields
+# --- The case lock ---------------------------------------------------------
+# Every writer of a case's findings, timeline and IOCs holds the case lock from
+# load to save, so a signed decision committed meanwhile is never overwritten.
+# A copy of vhir_cli.ledger.case_lock (forensic-mcp doesn't depend on
+# vhir-cli); a parity test pins the lock path and the case id it locks.
+LEDGER_DIR = Path("/var/lib/vhir/ledger")
+CASE_LOCK_SECONDS = 30
+
+
+class CaseLockError(Exception):
+    """The case lock couldn't be taken; nothing was recorded."""
+
+
+def case_lock_path(case_id: str) -> Path:
+    if (
+        not case_id
+        or case_id in (".", "..")
+        or ".." in case_id
+        or "/" in case_id
+        or "\\" in case_id
+        or any(ord(c) < 32 or ord(c) == 127 for c in case_id)
+    ):
+        raise CaseLockError(f"Invalid case ID: {case_id!r}")
+    return LEDGER_DIR / f"{case_id}.lock"
+
+
+@contextmanager
+def case_lock(case_id: str, timeout: float | None = None) -> Iterator[None]:
+    """`flock` on `{case_id}.lock`, polled for up to `timeout` seconds (30 by
+    default). A new descriptor each time; never nested; never creates the
+    chain file."""
+    path = case_lock_path(case_id)
+    limit = CASE_LOCK_SECONDS if timeout is None else timeout
+    try:
+        fd = os.open(str(path), os.O_CREAT | os.O_RDWR, 0o600)
+    except OSError as e:
+        raise CaseLockError(
+            f"the case lock directory {LEDGER_DIR}/ is missing or not writable "
+            f"({e.strerror or e}); run `vhir update` to create it. Nothing was recorded."
+        ) from e
+    deadline = time.monotonic() + limit
+    try:
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise CaseLockError(
+                        f"another writer held the case lock {path} for {limit:g}s; "
+                        "nothing was recorded. Try again."
+                    ) from None
+                time.sleep(0.05)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
 _HASH_EXCLUDE_KEYS = {
     "status",
     "approved_at",
@@ -699,6 +763,10 @@ class CaseManager:
 
         return {"status": "recorded", "timestamp": ts}
 
+    def _case_id(self, case_dir: Path) -> str:
+        """The id vhir's ledger uses: CASE.yaml's `case_id`, else the folder name."""
+        return str(self._load_case_meta(case_dir).get("case_id") or case_dir.name)
+
     def record_finding(
         self,
         finding: dict,
@@ -715,8 +783,31 @@ class CaseManager:
             supporting_commands: List of shell commands that produced evidence.
                 Each dict must have command, output_excerpt, purpose.
             audit: AuditWriter instance (needed for shell audit ID generation).
+
+        Holds the case lock from the findings load through the auto-created
+        timeline event and the IOC extraction (one span). Raises
+        CaseLockError, with nothing written, when it can't be taken.
         """
         case_dir = self._require_active_case()
+        with case_lock(self._case_id(case_dir)):
+            return self._record_finding_locked(
+                case_dir,
+                finding,
+                examiner_override,
+                supporting_commands,
+                artifacts,
+                audit,
+            )
+
+    def _record_finding_locked(
+        self,
+        case_dir: Path,
+        finding: dict,
+        examiner_override: str,
+        supporting_commands: list[dict] | None,
+        artifacts: list[dict] | None,
+        audit: Any | None,
+    ) -> dict:
 
         # Validate via discipline module
         validation = validate_finding_data(finding)
@@ -1430,8 +1521,17 @@ class CaseManager:
         return max_num + 1
 
     def record_timeline_event(self, event: dict, examiner_override: str = "") -> dict:
-        """Validate and stage timeline event as DRAFT."""
+        """Validate and stage timeline event as DRAFT, under the case lock
+        (CaseLockError, with nothing written, when it can't be taken)."""
         case_dir = self._require_active_case()
+        with case_lock(self._case_id(case_dir)):
+            return self._record_timeline_event_locked(
+                case_dir, event, examiner_override
+            )
+
+    def _record_timeline_event_locked(
+        self, case_dir: Path, event: dict, examiner_override: str
+    ) -> dict:
 
         # Basic validation
         required = ["timestamp", "description"]

@@ -27,13 +27,19 @@ for _var in ("VHIR_CASE_DIR", "VHIR_AUDIT_DIR"):
 def _vhir_ledger_dir(tmp_path_factory, monkeypatch):
     """vhir's case lock and signed ledger live in /var/lib/vhir/ledger/,
     which the installer and `vhir update` make. A test that reaches them
-    through vhir (an import takes the case lock) gets its own folder, never
-    the box's. Nothing to do with a vhir from before the ledger."""
+    (through vhir, or forensic-mcp's copy of the lock) gets its own folder,
+    never the box's. Nothing to do with a vhir from before the ledger."""
+    folder = tmp_path_factory.mktemp("vhir-ledger")
+    try:  # forensic-mcp's copy of the case lock, in the same folder
+        from forensic_mcp.case import manager
+
+        monkeypatch.setattr(manager, "LEDGER_DIR", folder)
+    except ImportError:
+        pass
     try:
         from vhir_cli import ledger
     except ImportError:
         return
-    folder = tmp_path_factory.mktemp("vhir-ledger")
     monkeypatch.setattr(ledger, "LEDGER_DIR", folder)
     # and the rest of /var/lib/vhir that verify and signing read: the 0.6
     # file and the keys folder (a vhir from before signing has neither)
