@@ -108,8 +108,8 @@ def test_a_wrong_password_counts_and_serves_no_key(case):
 
 
 def test_a_commit_without_signing_in_is_refused(case):
-    before = _snapshot(case)
     plan = case.plan([reviewed(case, "F-steve-001")]).json()
+    before = _snapshot(case)  # after the plan: it may give the case its identity
     r = case.commit(plan, {"F-steve-001": "AAAA"})
     assert r.status_code == 401 and r.json()["code"] == "CHALLENGE_INVALID"
     assert _snapshot(case) == before
@@ -117,8 +117,8 @@ def test_a_commit_without_signing_in_is_refused(case):
 
 def test_a_signature_by_another_key_writes_nothing(case):
     enrol("mallory", "another long passphrase")
-    before = _snapshot(case)
     plan = case.plan([reviewed(case, "F-steve-001")]).json()
+    before = _snapshot(case)  # after the plan: it may give the case its identity
     case.login(plan)
     other = keys.load("mallory")
     k = {"wrapped_private": keys.active(other)["wrapped_private"],
@@ -130,8 +130,8 @@ def test_a_signature_by_another_key_writes_nothing(case):
 
 
 def test_a_missing_signature_writes_nothing(case):
-    before = _snapshot(case)
     plan = case.plan([reviewed(case, "F-steve-001")]).json()
+    before = _snapshot(case)  # after the plan: it may give the case its identity
     case.login(plan)
     r = case.commit(plan, {})
     assert r.status_code == 401 and r.json()["code"] == "BAD_SIGNATURE"
@@ -529,6 +529,41 @@ def test_the_first_folder_to_sign_is_recorded_and_a_copy_recorded_meanwhile_is_r
     r = case.commit(plan, case.sign(plan, k))
     assert r.status_code == 409 and r.json()["code"] == "CASE_COPY", r.text
     assert f"If {case.dir.resolve()} is the original" in r.json()["error"]
+    assert _snapshot(case) == before
+
+
+def test_an_upgraded_case_gets_its_identity_at_its_first_portal_signing(
+    case, tmp_path, monkeypatch
+):
+    """A case 0.6.4 left with no case_uuid: the plan gives it one, so the
+    commit's first line binds this folder."""
+    import yaml as _yaml
+
+    pytest.importorskip("sift_common.host_identity")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    assert "case_uuid" not in (
+        _yaml.safe_load((case.dir / "CASE.yaml").read_text()) or {}
+    )
+    case.stage(dict(reviewed(case, "F-steve-001"), staged_by="steve"))
+    assert case.sign_all([reviewed(case, "F-steve-001")]).status_code == 200
+    uuid = _yaml.safe_load((case.dir / "CASE.yaml").read_text())["case_uuid"]
+    assert case.chain()[0]["case_uuid"] == uuid
+
+
+def test_a_lost_identity_refuses_the_plan_by_name(case, tmp_path, monkeypatch):
+    from vhir_cli.case_identity import ensure_identity
+
+    pytest.importorskip("sift_common.host_identity")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    ensure_identity(case.dir)
+    lines = (case.dir / "CASE.yaml").read_text().splitlines()
+    (case.dir / "CASE.yaml").write_text(
+        "\n".join(x for x in lines if not x.startswith("case_uuid")) + "\n"
+    )
+    before = _snapshot(case)
+    r = case.plan([reviewed(case, "F-steve-001")])
+    assert r.status_code == 409 and r.json()["code"] == "CASE_IDENTITY", r.text
+    assert "case_uuid" in r.json()["error"]
     assert _snapshot(case) == before
 
 

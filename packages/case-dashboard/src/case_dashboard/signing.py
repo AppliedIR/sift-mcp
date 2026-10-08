@@ -581,6 +581,10 @@ async def post_commit_plan(request: Request) -> JSONResponse:
         retries_left = 0
     case_id = case_id_of(case_dir)
     public = keys.active(data)["public_key"]
+    try:  # a case with no identity yet gets it now, so the commit's replan binds it
+        await anyio.to_thread.run_sync(decide.mint_identity, case_dir)
+    except ledger.CaseCopy as e:
+        return _error("CASE_IDENTITY", str(e), 409)
     try:
         out = await anyio.to_thread.run_sync(
             _plan_unlocked, case_dir, case_id, entries, set(map(str, include)),
