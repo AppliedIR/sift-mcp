@@ -406,7 +406,7 @@ if ${UNINSTALL_MODE:-false}; then
         echo -e "${BOLD}[8] Verification ledger${NC}"
         # What can't be read can't be listed or counted: leave it, and go on.
         UNREADABLE=""
-        for d in "$VERIF_DIR" "$VERIF_DIR/verification" "$VERIF_DIR/passwords"; do
+        for d in "$VERIF_DIR" "$VERIF_DIR/verification" "$VERIF_DIR/passwords" "$VERIF_DIR/keys" "$VERIF_DIR/ledger"; do
             [[ ! -e "$d" ]] || { [[ -r "$d" && -x "$d" ]]; } || UNREADABLE="$d"
         done
         if [[ -n "$UNREADABLE" ]]; then
@@ -420,9 +420,17 @@ if ${UNINSTALL_MODE:-false}; then
             else
                 LEDGERS="ledger files: count unavailable, part of verification/ can't be read"
             fi
-            echo "    Removes $VERIF_DIR/ and everything in it ($LEDGERS):"
+            if [[ ! -d "$VERIF_DIR/ledger" ]]; then
+                CHAINS="0 signed chains"
+            elif FOUND=$(find "$VERIF_DIR/ledger" -name "*.jsonl" 2>/dev/null); then
+                CHAINS="$(printf '%s' "$FOUND" | grep -c . || true) signed chains"
+            else
+                CHAINS="signed chains: count unavailable, part of ledger/ can't be read"
+            fi
+            echo "    Removes $VERIF_DIR/ and everything in it ($LEDGERS, $CHAINS):"
             ls -A "$VERIF_DIR" | sed 's|^|      |'
-            echo -e "    ${YELLOW}Contains HMAC approval records for case findings.${NC}"
+            echo -e "    ${YELLOW}Contains the signed approval chains, 0.6 approval records and the examiners' signing keys.${NC}"
+            echo -e "    ${YELLOW}Without them this box can't sign for those examiners, and a case verifies only from the copies that close, export or backup put in it.${NC}"
             echo ""
             if prompt_yn_strict "    Remove $VERIF_DIR? (requires sudo)"; then
                 sudo rm -rf "$VERIF_DIR" && ok "Verification ledger removed." || warn "Could not remove $VERIF_DIR (sudo required)"
@@ -605,7 +613,7 @@ fi
 # The ledger directories may belong to another examiner OS user: never take
 # them over (that user could no longer approve or verify), and stop before
 # any sudo, so neither directory is touched.
-for d in /var/lib/vhir/verification /var/lib/vhir/passwords; do
+for d in /var/lib/vhir/verification /var/lib/vhir/passwords /var/lib/vhir/keys /var/lib/vhir/ledger; do
     if [ -d "$d" ] && [ ! -L "$d" ] && [ ! -O "$d" ] && [ "$(stat -c %u "$d")" != 0 ]; then
         err "$d/ belongs to $(stat -c %U "$d"), not $USER: the ledger is theirs. One examiner OS user per machine is supported; run the installer as $(stat -c %U "$d")."
         exit 1
@@ -626,30 +634,35 @@ else
         ok "Verification ledger: /var/lib/vhir/verification/"
     else
         err "Could not create /var/lib/vhir/verification/"
-        echo "  The HMAC verification ledger is required for finding integrity."
+        echo "  It holds the 0.6 approval records that approvals made before signing are checked against."
         echo "  Run: sudo mkdir -p /var/lib/vhir/verification && sudo chown $USER:$USER /var/lib/vhir/verification && sudo chmod 700 /var/lib/vhir/verification"
         exit 1
     fi
 fi
 
 # =============================================================================
-# Phase 1b2: Password Storage Directory
+# Phase 1b2: Signing Directories (passphrase verifiers, signing keys, ledger)
 # =============================================================================
+# passwords/: the passphrase verifiers (and 0.6 passwords); keys/: each
+# examiner's wrapped signing key; ledger/: the signed approval chains and
+# their case locks. Each is the examiner OS user's, mode 700.
 
-if [ -d /var/lib/vhir/passwords ] && [ ! -L /var/lib/vhir/passwords ] && [ -O /var/lib/vhir/passwords ] && [ -w /var/lib/vhir/passwords ]; then
-    ok "Password storage: /var/lib/vhir/passwords/"
-else
-    info "Creating password storage directory (requires sudo)..."
-    if [ ! -L /var/lib/vhir/passwords ] && sudo mkdir -p /var/lib/vhir/passwords && \
-       sudo chown "$USER:$USER" /var/lib/vhir/passwords && \
-       sudo chmod 700 /var/lib/vhir/passwords; then
-        ok "Password storage: /var/lib/vhir/passwords/"
+for d in /var/lib/vhir/passwords /var/lib/vhir/keys /var/lib/vhir/ledger; do
+    if [ -d "$d" ] && [ ! -L "$d" ] && [ -O "$d" ] && [ -w "$d" ]; then
+        ok "Signing folder: $d/"
     else
-        err "Could not create /var/lib/vhir/passwords/"
-        echo "  Run: sudo mkdir -p /var/lib/vhir/passwords && sudo chown $USER:$USER /var/lib/vhir/passwords && sudo chmod 700 /var/lib/vhir/passwords"
-        exit 1
+        info "Creating $d/ (requires sudo)..."
+        if [ ! -L "$d" ] && sudo mkdir -p "$d" && \
+           sudo chown "$USER:$USER" "$d" && \
+           sudo chmod 700 "$d"; then
+            ok "Signing folder: $d/"
+        else
+            err "Could not create $d/"
+            echo "  Run: sudo mkdir -p $d && sudo chown $USER:$USER $d && sudo chmod 700 $d"
+            exit 1
+        fi
     fi
-fi
+done
 
 # =============================================================================
 # Phase 1c: Sandbox Diagnostic + AppArmor Fix
@@ -1548,30 +1561,46 @@ if [[ -n "$SHELL_RC_EXAMINER" ]]; then
 fi
 export VHIR_EXAMINER="$EXAMINER_NAME"
 
-# --- Password setup ---
-# setup_password() reads from /dev/tty and requires termios.
-# Skip in non-interactive mode (AUTO_YES / no terminal).
+# --- Signing passphrase and key ---
+# The passphrase reads from /dev/tty. `vhir config --upgrade-key` says where
+# this examiner stands: a signing key already (it prints the fingerprint and
+# changes nothing), a 0.6 password (it upgrades it, with its own prompts), or
+# none ("No passphrase for ..."), when the installer runs --setup-password.
+# --setup-password is never run once a credential exists.
+# Skipped in non-interactive mode (AUTO_YES / no terminal).
 if [[ -t 0 ]] && ! $AUTO_YES; then
     echo ""
-    echo "Setting up your approval password..."
+    echo "Signing key for your approvals..."
     echo ""
-    echo "This password protects finding approvals and HMAC signing."
-    echo "You will need it every time you commit reviews (Examiner Portal or CLI)."
-    echo "It cannot be recovered if lost — you would need to reset it and"
-    echo "re-sign all previously approved findings."
-    echo ""
-    echo "Minimum 8 characters. Choose something memorable."
-    echo ""
-    # Flush stdin to discard typeahead before password prompt
+    # Flush stdin to discard typeahead before the prompts
     read -r -d '' -t 0.1 < /dev/tty 2>/dev/null || true
-    "$VENV_DIR/bin/vhir" config --setup-password || {
-        warn "Password setup failed or was cancelled."
-        echo "  Set your password later with: vhir config --setup-password"
-    }
+    KEY_OUT=$(mktemp)
+    KEY_RC=0
+    "$VENV_DIR/bin/vhir" config --upgrade-key 2>&1 | tee "$KEY_OUT" || KEY_RC=$?
+    if grep -q "^No passphrase for" "$KEY_OUT"; then
+        echo ""
+        echo "Setting up your approval passphrase..."
+        echo ""
+        echo "Your passphrase unlocks your signing key. You need it every time you"
+        echo "sign reviews (Examiner Portal or CLI). If you forget it, run"
+        echo "\`vhir config --forgot-password\`: you get a new key, and your earlier"
+        echo "approvals stay valid under the old one."
+        echo ""
+        echo "Minimum 8 characters; 15 or more recommended. A few random words work well."
+        echo ""
+        "$VENV_DIR/bin/vhir" config --setup-password || {
+            warn "Passphrase setup failed or was cancelled."
+            echo "  Set it later with: vhir config --setup-password"
+        }
+    elif [[ "$KEY_RC" -ne 0 ]]; then
+        warn "The signing-key step didn't complete."
+        echo "  Run it later with: vhir config --upgrade-key"
+    fi
+    rm -f "$KEY_OUT"
 else
     echo ""
-    warn "Skipping password setup (non-interactive mode)."
-    echo "  Set your password later with: vhir config --setup-password"
+    warn "Skipping the signing passphrase (non-interactive mode)."
+    echo "  Set it later with: vhir config --upgrade-key (or --setup-password if you have none)"
 fi
 
 # =============================================================================

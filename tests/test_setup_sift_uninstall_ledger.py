@@ -100,7 +100,9 @@ def test_the_prompt_lists_what_rm_removes_and_n_keeps_it(tmp_path):
     vlv = _store(tmp_path)
     rc, out, sudo = _run(tmp_path, vlv, "n\n")
     assert rc == 0 and sudo == [] and "[9] reached" in out
-    assert f"Removes {vlv}/ and everything in it (2 ledger files):" in out
+    assert (
+        f"Removes {vlv}/ and everything in it (2 ledger files, 0 signed chains):" in out
+    )
     for name in ("verification", "passwords", "snapshots"):
         assert f"      {name}" in out.splitlines(), name
     # read -p shows its prompt only on a terminal: the wording, from the step
@@ -123,7 +125,9 @@ def test_no_verification_dir_lists_the_rest(tmp_path):
     vlv = _store(tmp_path, verification=False)
     rc, out, sudo = _run(tmp_path, vlv, "n\n")
     assert (
-        rc == 0 and "(0 ledger files)" in out and "      passwords" in out.splitlines()
+        rc == 0
+        and "(0 ledger files, 0 signed chains)" in out
+        and "      passwords" in out.splitlines()
     )
 
 
@@ -140,3 +144,23 @@ def test_an_unreadable_dir_below_verification_gives_no_count(tmp_path):
     rc, out, sudo = _run(tmp_path, vlv, "n\n", lock=(sub, 0o000))
     assert rc == 0 and "[9] reached" in out
     assert "count unavailable" in out and "ledger files):" not in out
+
+
+def test_the_signed_chains_are_counted_and_named(tmp_path):
+    vlv = _store(tmp_path)
+    (vlv / "ledger").mkdir()
+    (vlv / "ledger" / "CASE-A.jsonl").write_text("{}\n")
+    (vlv / "ledger" / "CASE-A.lock").touch()
+    (vlv / "keys").mkdir()
+    rc, out, _ = _run(tmp_path, vlv, "n\n")
+    assert "(2 ledger files, 1 signed chains)" in out
+    assert "the examiners' signing keys" in out
+    assert "      keys" in out.splitlines() and "      ledger" in out.splitlines()
+
+
+@pytest.mark.parametrize("name", ["keys", "ledger"])
+def test_an_unreadable_signing_folder_is_never_removed(tmp_path, name):
+    vlv = _store(tmp_path)
+    (vlv / name).mkdir()
+    rc, out, sudo = _run(tmp_path, vlv, "y\n", lock=(vlv / name, 0))
+    assert f"Can't read {vlv / name}" in out and sudo == []

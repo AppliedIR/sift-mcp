@@ -22,7 +22,9 @@ def _block(start: str, end: str) -> str:
     return SCRIPT[i : SCRIPT.index(end, i)]
 
 
-EXAMINER = _block("# Write VHIR_EXAMINER to shell profile", "# --- Password setup ---")
+EXAMINER = _block(
+    "# Write VHIR_EXAMINER to shell profile", "# --- Signing passphrase and key ---"
+)
 PATH_PHASE = _block("# Phase 12: Add venv to PATH", "# Phase 13:")
 UNINSTALL = _block("    # [5] Shell profile", "    # [6] Gateway config")
 

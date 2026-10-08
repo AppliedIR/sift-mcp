@@ -8,6 +8,12 @@
       "mcp__wintools-mcp__*",
       "mcp__microsoft-learn__*",
       "mcp__zeltser-ir-writing__*"
+    ],
+    "deny": [
+      "Bash(vhir approve*)",
+      "Bash(*vhir approve*)",
+      "Bash(vhir reject*)",
+      "Bash(*vhir reject*)"
     ]
   },
   "hooks": {

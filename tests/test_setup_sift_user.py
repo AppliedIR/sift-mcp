@@ -18,16 +18,14 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).parent.parent / "setup-sift.sh"
-DIRS = ("verification", "passwords")
+DIRS = ("verification", "passwords", "keys", "ledger")
 
 
 def _harness(root: Path, sudo: str = '"$@"', prelude: str = "") -> str:
     text = SCRIPT.read_text()
     user = "\n".join(re.findall(r"^USER=.*$", text, re.M))
     start = text.index("# Phase 1b: Verification Ledger Directory")
-    end = text.index(
-        "# Phase", text.index("# Phase 1b2: Password Storage Directory") + 10
-    )
+    end = text.index("# Phase", text.index("# Phase 1b2: Signing Directories") + 10)
     block = text[start:end].replace("/var/lib/vhir", str(root))
     return "\n".join(
         [
@@ -65,7 +63,7 @@ def _writable(path: Path) -> bool:
 
 @pytest.fixture
 def unwritable(tmp_path):
-    """Both directories left present but not writable, as a partial install
+    """Every directory left present but not writable, as a partial install
     leaves them root-owned."""
     for name in DIRS:
         (tmp_path / "vhir" / name).mkdir(parents=True)
@@ -99,7 +97,7 @@ class TestLedgerDirectories:
             (tmp_path / "vhir" / name).mkdir(parents=True, mode=0o700)
         run = _run(tmp_path, env_user=True, sudo="exit 9")
         assert run.returncode == 0, run.stdout + run.stderr
-        assert run.stdout.count("OK ") == 2
+        assert run.stdout.count("OK ") == len(DIRS)
 
     @pytest.mark.parametrize("name", DIRS)
     @pytest.mark.parametrize("target_mode", [0o555, 0o700])
@@ -134,6 +132,6 @@ class TestLedgerDirectories:
         not_mine = '[() { if [[ $1 == -O ]]; then return 1; fi; builtin [ "$@"; }'
         run = _run(tmp_path, env_user=True, prelude=not_mine)
         assert run.returncode == 0, run.stdout + run.stderr
-        assert run.stdout.count("INFO Creating") == 2, run.stdout
+        assert run.stdout.count("INFO Creating") == len(DIRS), run.stdout
         for name in DIRS:
             assert stat.S_IMODE((tmp_path / "vhir" / name).stat().st_mode) == 0o700
