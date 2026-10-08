@@ -3,8 +3,14 @@
 # registered for PostToolUseFailure (a command that failed: the entry says
 # "failed" with the error) and PermissionDenied (a call the permission mode
 # refused: "denied" with the reason).
+# With --client codex (Codex's managed hooks): entries carry "client": "codex",
+# "event" ("shell" or "apply_patch") and "outside_case" when the session runs
+# outside the active case, and each run also records Codex's write_stdin text
+# (codex-stdin-capture.sh), which no hook sees.
 # Receives JSON on stdin from Claude Code. Never exits 2 (would block).
 set -e
+CLIENT=claude-code
+if [ "$1" = "--client" ] && [ -n "$2" ]; then CLIENT=$2; fi
 
 # 1. Read active case directory
 # Priority: VHIR_CASE_DIR env var > ~/.vhir/active_case file
@@ -45,10 +51,11 @@ try:
     sid = d.get('session_id', '')
     cwd = d.get('cwd', '')  # Claude Code sends it at the top level
     event = d.get('hook_event_name', '')
+    tool = d.get('tool_name', '')
     error = str(d.get('error', ''))
     reason = str(d.get('reason', ''))
     print(json.dumps({'command': cmd, 'tool_response': resp, 'tool_use_id': tuid, 'session_id': sid, 'cwd': cwd,
-                      'event': event, 'error': error, 'reason': reason}))
+                      'event': event, 'error': error, 'reason': reason, 'tool': tool}))
 except Exception:
     print('{}')
 " 2>/dev/null) || PARSED="{}"
@@ -96,6 +103,7 @@ OUTPUT_BYTES=$(printf '%s' "$TOOL_RESPONSE" | wc -c 2>/dev/null) || OUTPUT_BYTES
 EVENT=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('event',''))" 2>/dev/null) || EVENT=""
 ERROR=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('error',''))" 2>/dev/null) || ERROR=""
 REASON=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('reason',''))" 2>/dev/null) || REASON=""
+TOOL=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('tool',''))" 2>/dev/null) || TOOL=""
 
 # Truncate output to 2000 chars for excerpt
 OUTPUT_EXCERPT=$(printf '%s' "$TOOL_RESPONSE" | head -c 2000 2>/dev/null) || OUTPUT_EXCERPT=""
@@ -120,7 +128,19 @@ if sys.argv[9] == 'PostToolUseFailure':
     entry.update(event='failed', error=sys.argv[10][:2000])
 elif sys.argv[9] == 'PermissionDenied':
     entry.update(event='denied', denial_reason=sys.argv[11][:2000])
+if sys.argv[12] == 'codex':
+    import os
+    entry.update(client='codex', event='apply_patch' if sys.argv[13] == 'apply_patch' else 'shell')
+    case = os.path.realpath(sys.argv[14])
+    if sys.argv[7] and not (os.path.realpath(sys.argv[7]) + '/').startswith(case + '/'):
+        entry['outside_case'] = True
 print(json.dumps(entry))
-" "$TOOL_USE_ID" "$EVIDENCE_ID" "$COMMAND" "$OUTPUT_HASH" "$OUTPUT_EXCERPT" "$OUTPUT_BYTES" "$CWD" "$SESSION_ID" "$EVENT" "$ERROR" "$REASON" >> "$AUDIT_FILE" 2>/dev/null || true
+" "$TOOL_USE_ID" "$EVIDENCE_ID" "$COMMAND" "$OUTPUT_HASH" "$OUTPUT_EXCERPT" "$OUTPUT_BYTES" "$CWD" "$SESSION_ID" "$EVENT" "$ERROR" "$REASON" "$CLIENT" "$TOOL" "$CASE_DIR" >> "$AUDIT_FILE" 2>/dev/null || true
+
+# Codex: the write_stdin text typed since the last capture (a session killed
+# before its Stop hook loses none of it)
+if [ "$CLIENT" = codex ]; then
+    printf '%s' "$INPUT" | bash "$(dirname "$0")/codex-stdin-capture.sh" >/dev/null 2>&1 || true
+fi
 
 exit 0
