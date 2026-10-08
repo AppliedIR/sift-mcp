@@ -950,24 +950,32 @@ def test_existing_auto_created_events_are_left_as_they_are(manager, active_case)
 
 
 def _approve(case, finding_id):
-    """vhir's _approve_specific on the finding, the password step and the
-    HMAC ledger stood in for; returns the ids it would sign."""
+    """vhir's _approve_specific on the finding, its credential stood in for
+    (a key made here) and its ledger in the case; returns the ids it signed.
+    Skipped with a vhir from before signed decisions."""
     approve = pytest.importorskip("vhir_cli.commands.approve")
+    credentials = pytest.importorskip("vhir_cli.credentials")
     from unittest.mock import patch
 
-    signed = []
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from vhir_cli import keys, ledger
+    from vhir_cli.case_io import case_id_of
 
-    def ledger(case_dir, items, *a, **kw):
-        signed.extend(item["id"] for item in items)
-        return []
-
+    key = Ed25519PrivateKey.generate()
+    pub = keys.b64(keys.public_raw(key))
+    case_dir = Path(case["path"])
+    ledger_dir = case_dir / "test-ledger"
+    ledger_dir.mkdir(exist_ok=True)
     identity = {"examiner": "tester", "os_user": "tester", "analyst": "tester"}
     with (
-        patch.object(approve, "require_confirmation", return_value=("pw", "pw")),
-        patch.object(approve, "_write_verification_entries", side_effect=ledger),
+        patch.object(ledger, "LEDGER_DIR", ledger_dir),
+        patch.object(credentials, "preflight", return_value=False),
+        patch.object(credentials, "unlock", return_value=(key, pub)),
+        patch.object(credentials, "retired_fingerprints", return_value=[]),
     ):
-        approve._approve_specific(Path(case["path"]), [finding_id], identity, Path("x"))
-    return signed
+        approve._approve_specific(case_dir, [finding_id], identity, Path("x"))
+        lines = ledger.read_lines(ledger.chain_path(case_id_of(case_dir)))
+    return [line["item_id"] for _, _, line in lines if line]
 
 
 def test_a_forged_event_is_not_approved_or_signed_with_its_finding(
