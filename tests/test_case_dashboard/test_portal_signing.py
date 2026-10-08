@@ -499,6 +499,39 @@ def test_an_unreadable_chain_is_a_named_signing_state_not_a_500(case, how):
     assert r.status_code == 409 and r.json()["code"] == "CHAIN_UNREADABLE"
 
 
+def test_the_first_folder_to_sign_is_recorded_and_a_copy_recorded_meanwhile_is_refused(
+    case, tmp_path, monkeypatch
+):
+    """The portal records the case's folder under the case lock just before
+    its commit, as the CLI does. A plan made before another folder holding
+    the identity was recorded is refused at the commit, with nothing signed."""
+    import json as _json
+
+    from vhir_cli.case_identity import _paths_file, record_case_path
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    uuid = "11111111-2222-4333-8444-555555555555"
+    yaml = case.dir / "CASE.yaml"
+    yaml.write_text(yaml.read_text() + f"case_uuid: {uuid}\n")
+    case.stage(dict(reviewed(case, "F-steve-001"), staged_by="steve"))
+    assert case.sign_all([reviewed(case, "F-steve-001")]).status_code == 200
+    assert _json.loads(_paths_file().read_text()) == {uuid: str(case.dir.resolve())}
+    # a hand copy, recorded in place of the original (it was activated while
+    # the original was away), then the original's plan and commit
+    _paths_file().unlink()
+    copy = tmp_path / "C-1-cp"
+    copy.mkdir()
+    (copy / "CASE.yaml").write_text(yaml.read_text())
+    plan = case.plan([reviewed(case, "F-steve-002")]).json()  # no record: passes
+    record_case_path(copy)
+    k = case.login(plan).json()
+    before = _snapshot(case)
+    r = case.commit(plan, case.sign(plan, k))
+    assert r.status_code == 409 and r.json()["code"] == "CASE_COPY", r.text
+    assert f"If {case.dir.resolve()} is the original" in r.json()["error"]
+    assert _snapshot(case) == before
+
+
 def test_the_case_page_shows_the_signing_state(case):
     state = case.get("/api/case").json()["signing"]
     assert state["signing_available"] is True and state["schema"] == 3

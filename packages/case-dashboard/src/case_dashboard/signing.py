@@ -754,6 +754,7 @@ def _commit_locked(ch: dict, sigs: dict, examiner: str) -> dict:
             if not isinstance(sig, str):
                 raise _Refused(_error("BAD_SIGNATURE", f"No signature for {b['item_id']}; nothing was signed.", 401))  # fmt: skip
             lines.append(ledger.canonical({**b, "sig": sig}).decode("ascii"))
+        decide.record_folder(case_dir)  # under the case lock, before the commit
         try:
             head = ledger.commit(lock, plan.bodies, lines, public)
         except ledger.BadSignature as e:
