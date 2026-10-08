@@ -140,11 +140,11 @@ class TestValidateInputPath:
             validate_input_path("/boot/vmlinuz")
 
     def test_blocks_the_codex_profile(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
+        with pytest.raises(ValueError, match="under protected path"):
             validate_input_path(os.path.expanduser("~/.codex/valhuntir.config.toml"))
 
     def test_blocks_the_deployed_skills_codex_reads(self):
-        with pytest.raises(ValueError, match="blocked system directory"):
+        with pytest.raises(ValueError, match="under protected path"):
             validate_input_path(
                 os.path.expanduser("~/.agents/skills/vhir-playbooks/SKILL.md")
             )
