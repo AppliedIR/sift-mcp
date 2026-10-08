@@ -2044,6 +2044,10 @@ var VHIR_SIGN = (function() {
   }
   function el(id) { return document.getElementById(id); }
   function say(msg) { var e = el('commitError'); e.textContent = msg; e.style.display = msg ? '' : 'none'; }
+  // The "include" boxes, fixed while a Sign click is being carried out
+  function othersFixed(on) {
+    el('commitOthers').querySelectorAll('input[data-other]').forEach(function(box) { box.disabled = on; });
+  }
   function canSign(on, n) {
     el('commitPassword').disabled = !on;
     el('commitSubmitBtn').disabled = !on;
@@ -2095,6 +2099,7 @@ var VHIR_SIGN = (function() {
     el('commitOthers').innerHTML = html;
     el('commitOthers').querySelectorAll('input[data-other]').forEach(function(box) {
       box.onchange = function() {
+        if (state.busy) { box.checked = !box.checked; return; }  // signing: the set is fixed
         state.include[box.dataset.other] = box.checked;
         state.shown = null;
         return planAndShow(null);
@@ -2197,21 +2202,24 @@ var VHIR_SIGN = (function() {
     var password = el('commitPassword').value;
     if (!password) { say('Passphrase required.'); return; }
     var live = function() { return state === s; };
+    var plan = s.plan;  // what the Sign click confirmed; only a retry plans again
     s.busy = true;
-    canSign(false, s.plan.bodies.length);
+    othersFixed(true);
+    canSign(false, plan.bodies.length);
     el('commitProgress').style.display = '';
     say('');
     try {
-      if (Date.now() - s.planned_at > (s.plan.expires_in - 5) * 1000) {
+      if (Date.now() - s.planned_at > (plan.expires_in - 5) * 1000) {
         if (s.retried) { say('This signing request expired. Close the dialog and commit again.'); return; }
         s.retried = true;
-        if (!(await planAndShow(s.plan.challenge_id)) || !live()) return;
+        if (!(await planAndShow(plan.challenge_id)) || !live()) return;
+        plan = s.plan;
       }
-      var auth = await deriveAuth(password, s.plan.salt_auth, s.plan.iterations);
+      var auth = await deriveAuth(password, plan.salt_auth, plan.iterations);
       if (!live()) return;
-      var response = await loginResponse(auth, s.plan.nonce);
+      var response = await loginResponse(auth, plan.nonce);
       if (!live()) return;
-      var k = await signFetch('/api/commit/key', { challenge_id: s.plan.challenge_id, response: response });
+      var k = await signFetch('/api/commit/key', { challenge_id: plan.challenge_id, response: response });
       if (!live()) return;
       if (k.status !== 200) { say(k.data.error || 'Sign-in failed.'); return; }
       var key;
@@ -2222,16 +2230,17 @@ var VHIR_SIGN = (function() {
         return;
       }
       if (!live()) return;
-      var r = await commitOnce(s, key, k.data);
+      var r = await commitOnce(s, plan, key, k.data);
       if (!r) return;
       if (r.status !== 200 && !live()) return;  // a 200 was signed: done() still records it
       if (r.status === 409 && r.data.code === 'LEDGER_MOVED' || r.status === 503) {
         if (s.retried) { say(r.data.error || 'The ledger moved again. Close the dialog and commit again.'); return; }
         s.retried = true;
-        if (!(await planAndShow(s.plan.challenge_id)) || !live()) return;
-        response = await loginResponse(auth, s.plan.nonce);
+        if (!(await planAndShow(plan.challenge_id)) || !live()) return;
+        plan = s.plan;
+        response = await loginResponse(auth, plan.nonce);
         if (!live()) return;
-        var k2 = await signFetch('/api/commit/key', { challenge_id: s.plan.challenge_id, response: response });
+        var k2 = await signFetch('/api/commit/key', { challenge_id: plan.challenge_id, response: response });
         if (!live()) return;
         if (k2.status !== 200) { say(k2.data.error || 'Sign-in failed.'); return; }
         if (k2.data.wrapped_private !== k.data.wrapped_private) {
@@ -2239,7 +2248,7 @@ var VHIR_SIGN = (function() {
           say('Your passphrase changed; enter it again.');
           return;
         }
-        r = await commitOnce(s, key, k2.data);
+        r = await commitOnce(s, plan, key, k2.data);
         if (!r) return;
       }
       if (r.status !== 200) {
@@ -2251,6 +2260,7 @@ var VHIR_SIGN = (function() {
       password = null;
       s.busy = false;
       if (live()) {
+        othersFixed(false);
         el('commitPassword').value = '';
         el('commitProgress').style.display = 'none';
         if (el('commitDialog').classList.contains('visible') && s.plan) canSign(true, s.plan.bodies.length);
@@ -2260,12 +2270,15 @@ var VHIR_SIGN = (function() {
 
   // Signs this dialog's plan and posts it; null when the dialog is no
   // longer the open one by the time the signatures are made
-  async function commitOnce(s, key, served) {
-    var bad = s.plan.bodies.filter(function(pb) { return JSON.parse(pb.body).public_key !== served.public_key; });
+  async function commitOnce(s, plan, key, served) {
+    if (s.plan !== plan) {  // never sign a set other than the one the Sign click confirmed
+      return { status: 0, data: { code: 'PLAN_CHANGED', error: 'The selection changed while signing; nothing was signed. Sign again.' } };
+    }
+    var bad = plan.bodies.filter(function(pb) { return JSON.parse(pb.body).public_key !== served.public_key; });
     if (bad.length) return { status: 0, data: { code: 'PLAN_CHANGED', error: 'A body names another key: ' + bad[0].item_id } };
-    var sigs = await signBodies(key, s.plan);
+    var sigs = await signBodies(key, plan);
     if (state !== s) return null;
-    return signFetch('/api/commit', { challenge_id: s.plan.challenge_id, sigs: sigs });
+    return signFetch('/api/commit', { challenge_id: plan.challenge_id, sigs: sigs });
   }
 
   // A commit that returned 200 was signed: its entries leave the page even

@@ -359,7 +359,9 @@ async def get_case(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
     out = dict(meta) if isinstance(meta, dict) else {}
     # who signs here, the active key's fingerprint, and the case's keys and heads
-    out["signing"] = signing.signing_state(getattr(request.state, "examiner", None))
+    out["signing"] = signing.signing_state(
+        getattr(request.state, "examiner", None), case_dir
+    )
     out["you"] = _resolve_examiner(request)  # whose staged entries this page edits
     out["verification"] = (await anyio.to_thread.run_sync(_verdicts, case_dir))[
         "summary"

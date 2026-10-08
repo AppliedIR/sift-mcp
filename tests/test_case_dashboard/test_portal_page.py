@@ -107,6 +107,15 @@ async function test() {
         await VHIR_SIGN.open();
       };
     }
+    if (s.do === 'sign_then_tick') {
+      // the examiner ticks another examiner's entry while the key is being derived
+      el('commitPassword').value = process.env.PASSWORD;
+      const box = others[s.i];  // the box the dialog drew, with its handler
+      const first = VHIR_SIGN.submit();
+      box.checked = true; await box.onchange();
+      out.tickedBox = { checked: box.checked, disabledNow: others[s.i].disabled };
+      await first;
+    }
     if (s.do === 'sign_then_reopen') {
       // the examiner cancels while the key is being derived, and opens a new dialog
       el('commitPassword').value = process.env.PASSWORD;
@@ -295,6 +304,21 @@ def test_another_examiners_entry_is_left_out_until_ticked(case, live):
     assert out["ticked"]["signButton"] == "Sign 2 decisions"
     assert {(ln["item_id"], ln["examiner"]) for ln in case.chain()} == {
         ("F-steve-001", "steve"), ("F-steve-002", "steve")}  # fmt: skip
+
+
+def test_a_box_ticked_while_signing_changes_nothing_that_is_signed(case, live):
+    """The Sign click confirmed one entry: an entry ticked while the key is
+    being derived is neither planned nor signed under that click."""
+    case.stage(
+        dict(reviewed(case, "F-steve-001"), staged_by="steve"),
+        dict(reviewed(case, "F-steve-002"), staged_by="lab2"),
+    )
+    out = live([{"do": "open"}, {"do": "sign_then_tick", "i": "0"}])
+    # the boxes are disabled while signing; a change that reaches the handler
+    # anyway is undone
+    assert out["tickedBox"] == {"checked": False, "disabledNow": True}
+    assert out["posts"].count("/api/commit/plan") == 1
+    assert [ln["item_id"] for ln in case.chain()] == ["F-steve-001"]
 
 
 def test_an_item_changed_before_the_dialog_opened_is_refused_by_the_page(case, live):

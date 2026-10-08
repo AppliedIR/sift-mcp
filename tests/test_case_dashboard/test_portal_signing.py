@@ -457,6 +457,26 @@ def test_an_unfinished_update_is_named_before_anything_is_planned(case, folder):
     assert _snapshot(case) == before
 
 
+def test_a_copy_of_the_case_can_t_sign_in_the_portal(case):
+    """The chain's first line binds the folder that began it; a folder with
+    the same case id and another identity (a copy) is refused by name."""
+    yaml = case.dir / "CASE.yaml"
+    original = yaml.read_text()
+    yaml.write_text(original + "case_uuid: 11111111-2222-4333-8444-555555555555\n")
+    case.stage(dict(reviewed(case, "F-steve-001"), staged_by="steve"))
+    assert case.sign_all([reviewed(case, "F-steve-001")]).status_code == 200
+    (first,) = case.chain()
+    assert first["case_uuid"] == "11111111-2222-4333-8444-555555555555"
+    yaml.write_text(original + "case_uuid: 99999999-8888-4777-8666-555555555555\n")
+    before = _snapshot(case)
+    r = case.plan([reviewed(case, "F-steve-002")])
+    assert r.status_code == 409 and r.json()["code"] == "CASE_COPY"
+    assert r.json()["error"] == ledger.copy_text("C-1")
+    state = case.get("/api/case").json()["signing"]
+    assert (state["signing_available"], state["reason"]) == (False, "CASE_COPY")
+    assert _snapshot(case) == before
+
+
 def test_the_case_page_shows_the_signing_state(case):
     state = case.get("/api/case").json()["signing"]
     assert state["signing_available"] is True and state["schema"] == 3

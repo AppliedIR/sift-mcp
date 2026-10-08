@@ -41,6 +41,7 @@ from vhir_cli import approval_auth, credentials, decide, keys, ledger
 from vhir_cli.case_io import (
     case_id_of,
     compute_content_hash,
+    load_case_meta,
     set_status,
     signed_text,
     write_approval_log,
@@ -121,7 +122,7 @@ def no_key_text(examiner: str, state: str) -> str:
     )
 
 
-def signing_state(examiner: str | None) -> dict:
+def signing_state(examiner: str | None, case_dir: Path | None = None) -> dict:
     """For `GET /api/case`: whether this examiner can sign here, and why not."""
     if not examiner or examiner == "anonymous":
         return {"signing_available": False, "reason": "NO_API_KEYS", "schema": None,
@@ -135,6 +136,10 @@ def signing_state(examiner: str | None) -> dict:
     if credentials.signing_folders_problem():
         return {**out, "signing_available": False, "reason": "UPDATE_UNFINISHED",
                 "message": credentials.FINISH_UPDATE}  # fmt: skip
+    in_a_copy = decide.copy_problem(case_dir) if case_dir else ""
+    if in_a_copy:
+        return {**out, "signing_available": False, "reason": "CASE_COPY",
+                "message": in_a_copy}  # fmt: skip
     try:
         state = credentials.state(examiner, _config_path())
     except keys.KeysFileInvalid as e:
@@ -403,6 +408,7 @@ def make_plan(case_dir, case_id, entries, lists, examiner, public, now, head) ->
     bodies = ledger.prepare(
         case_id, decisions, examiner, public, "portal", now, head=head,
         retired=credentials.retired_fingerprints(examiner), prior_chains=refs or None,
+        case_uuid=load_case_meta(case_dir).get("case_uuid"),
     )  # fmt: skip
     return Plan(every=every, items=items, bodies=bodies, notes=notes)
 
@@ -534,6 +540,9 @@ async def post_commit_plan(request: Request) -> JSONResponse:
         return refusal
     if credentials.signing_folders_problem():  # a box updated once from 0.6
         return _error("UPDATE_UNFINISHED", credentials.FINISH_UPDATE, 409)
+    in_a_copy = decide.copy_problem(case_dir)
+    if in_a_copy:  # signing here would extend another folder's chain
+        return _error("CASE_COPY", in_a_copy, 409)
     data, refusal = _credential(examiner)
     if refusal:
         return refusal
@@ -577,6 +586,8 @@ async def post_commit_plan(request: Request) -> JSONResponse:
         return _error("LEDGER_BUSY", str(e), 503)
     except ledger.LockDirMissing as e:
         return _error("LOCK_DIR_MISSING", str(e), 500)
+    except ledger.CaseCopy as e:
+        return _error("CASE_COPY", f"{e} Nothing was signed.", 409)
     except ledger.LedgerError as e:
         return _error("LEDGER_UNREADABLE", str(e), 409)
     chosen, plan, now, head = out
@@ -800,6 +811,8 @@ async def post_commit(request: Request) -> JSONResponse:
         return _error("LEDGER_BUSY", str(e), 503)
     except ledger.LockDirMissing as e:
         return _error("LOCK_DIR_MISSING", str(e), 500)
+    except ledger.CaseCopy as e:
+        return _error("CASE_COPY", f"{e} Nothing was signed.", 409)
     except ledger.LedgerError as e:
         return _error("LEDGER_UNREADABLE", f"{e} Nothing was signed.", 409)
     plan, head = out["plan"], out["head"]
