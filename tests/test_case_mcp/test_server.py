@@ -358,7 +358,9 @@ class TestImportBundle:
             "findings": [{"id": "F-other-001", "title": "t", "status": "DRAFT",
                           "modified_at": "2026-01-01T00:00:00+00:00"}],
             "timeline": [],
-            "ledger": {"keys": [{"examiner": "other", "fingerprint": "SHA256:x"}],
+            "ledger": {"keys": [{"examiner": "other", "fingerprint": "SHA256:x",
+                                "chain_id": "0" * 16, "first_seq": 1, "last_seq": 1,
+                                "label": "not registered here"}],
                        "heads": [{"chain_id": "0" * 16, "seq": 1, "hash": "a" * 64}],
                        "chains": {"0" * 16: "{}\n"}},
         }  # fmt: skip
