@@ -1,7 +1,6 @@
 ## Codex
 
-You run in Codex with Valhuntir's profile (`codex -p valhuntir`), started in
-the case folder.
+You run in Codex with Valhuntir's profile (`codex -p valhuntir`).
 
 - **Skills** are in `~/.agents/skills/`. Read a skill's `SKILL.md` when its
   description fits the task.
