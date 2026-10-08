@@ -5,13 +5,18 @@
 # sees. It reads the session's transcript (transcript_path) and appends one
 # audit entry per write_stdin call it hasn't recorded yet, to the active
 # case's claude-code.jsonl: "client": "codex", "event": "write_stdin", the
-# text as "command", and its transcript line. The next run starts after the
-# highest line recorded for that session, so no state is kept anywhere else.
-# With no active case it writes nothing. Never blocks (always exits 0).
+# text as "command" (its first 2000 characters, with its length and sha256
+# when longer), and its transcript line. The next run starts after the
+# highest line recorded for that session in any case: a per-session cursor in
+# ~/.vhir/codex-stdin/, so input already recorded in one case is never
+# recorded again in the case made active after it. With no active case it
+# writes nothing. Never blocks (always exits 0).
 #
 CAPTURE=$(
     cat <<'PY'
-import datetime, json, os, sys
+import datetime, hashlib, json, os, sys
+
+MAX = 2000
 
 try:
     payload = json.load(sys.stdin)
@@ -29,7 +34,14 @@ try:
         audit = os.path.join(case, "audit")
         os.makedirs(audit, exist_ok=True)
     path = os.path.join(audit, "claude-code.jsonl")
+    cursors = os.path.expanduser("~/.vhir/codex-stdin")
+    cursor = os.path.join(cursors, hashlib.sha256(session.encode()).hexdigest()[:32])
     done, hooks = 0, 0
+    try:
+        with open(cursor) as f:
+            done = int(f.read().strip() or 0)  # recorded already, in whichever case
+    except (OSError, ValueError):
+        pass
     if os.path.exists(path):
         with open(path) as f:
             for ln in f:
@@ -66,17 +78,26 @@ try:
                 "event": "write_stdin",
                 "tool_use_id": str(p.get("call_id", "")),
                 "audit_id": f"hook-{examiner}-{day:%Y%m%d}-{hooks:03d}",
-                "command": chars[:2000],
+                "command": chars[:MAX],
                 "cwd": cwd,
                 "session_id": session,
                 "transcript_line": n,
             }
+            if len(chars) > MAX:  # the rest isn't recorded: say so, and what it was
+                entry["command_truncated"] = True
+                entry["command_length"] = len(chars)
+                entry["command_sha256"] = hashlib.sha256(chars.encode()).hexdigest()
             if outside:
                 entry["outside_case"] = True
             out.append(json.dumps(entry))
     if out:
         with open(path, "a") as f:
             f.write("\n".join(out) + "\n")
+        os.makedirs(cursors, mode=0o700, exist_ok=True)
+        tmp = f"{cursor}.{os.getpid()}.tmp"
+        with open(tmp, "w") as f:
+            f.write(str(json.loads(out[-1])["transcript_line"]))
+        os.replace(tmp, cursor)
 except Exception:
     pass
 PY

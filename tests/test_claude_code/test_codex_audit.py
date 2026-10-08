@@ -140,3 +140,44 @@ def test_typed_input_from_a_session_outside_the_case_is_marked(tmp_path):
     _run("codex-stdin-capture.sh", stop, tmp_path)
     (e,) = _lines(case)
     assert e["event"] == "write_stdin" and e["outside_case"] is True
+
+
+def test_input_recorded_in_one_case_isnt_recorded_again_after_a_switch(tmp_path):
+    a = _case(tmp_path)
+    b = tmp_path / "cases" / "INC-2"
+    (b / "audit").mkdir(parents=True)
+    t = _transcript(tmp_path, "rm a.txt\n")
+    stop = {"hook_event_name": "Stop", "session_id": "s1", "cwd": str(a),
+            "transcript_path": str(t)}  # fmt: skip
+    _run("codex-stdin-capture.sh", stop, tmp_path)
+    (tmp_path / ".vhir" / "active_case").write_text(str(b))  # the examiner switches
+    with t.open("a") as f:
+        f.write(_stdin_line(9, "rm b.txt\n") + "\n")
+    _run("codex-stdin-capture.sh", dict(stop, cwd=str(b)), tmp_path)
+    assert [e["command"] for e in _lines(a)] == ["rm a.txt\n"]
+    assert [e["command"] for e in _lines(b)] == ["rm b.txt\n"]
+
+
+def test_long_typed_input_is_marked_cut_with_its_length_and_hash(tmp_path):
+    import hashlib
+
+    case = _case(tmp_path)
+    typed = " " * 2000 + "rm findings.json\n"
+    t = _transcript(tmp_path, typed)
+    stop = {"hook_event_name": "Stop", "session_id": "s1", "cwd": str(case),
+            "transcript_path": str(t)}  # fmt: skip
+    _run("codex-stdin-capture.sh", stop, tmp_path)
+    (e,) = _lines(case)
+    assert e["command"] == typed[:2000] and e["command_truncated"] is True
+    assert e["command_length"] == len(typed)
+    assert e["command_sha256"] == hashlib.sha256(typed.encode()).hexdigest()
+
+
+def test_short_typed_input_carries_no_cut_marker(tmp_path):
+    case = _case(tmp_path)
+    t = _transcript(tmp_path, "x" * 2000)
+    stop = {"hook_event_name": "Stop", "session_id": "s1", "cwd": str(case),
+            "transcript_path": str(t)}  # fmt: skip
+    _run("codex-stdin-capture.sh", stop, tmp_path)
+    (e,) = _lines(case)
+    assert e["command"] == "x" * 2000 and "command_truncated" not in e
