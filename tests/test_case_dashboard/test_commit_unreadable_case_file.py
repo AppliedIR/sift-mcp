@@ -3,8 +3,8 @@
 A signed commit rewrites findings.json and timeline.json. One that is
 truncated, BOM-prefixed, not UTF-8 or unreadable is refused by name, at the
 plan and again at the commit (under the case lock), with nothing signed, the
-file left byte-identical and the staged review kept. So is a 0-byte or blank
-file (it reads as a truncation; case init writes []). A [] file commits.
+file left byte-identical and the staged review kept. A 0-byte or blank file
+reads as [] and commits, as a [] file does.
 """
 
 from __future__ import annotations
@@ -89,19 +89,10 @@ def test_a_plan_over_a_findings_file_it_cannot_read_is_refused(case):
     assert (case.dir / "findings.json").read_bytes() == before
 
 
-@pytest.mark.parametrize("findings", [b"", b"  \n"], ids=["empty", "blank"])
-def test_a_plan_over_a_0_byte_or_blank_findings_file_is_refused(case, findings):
-    entry = dict(reviewed(case, "T-steve-001", "reject"), staged_by="steve")
-    case.stage(entry)
-    path = case.dir / "findings.json"
-    path.chmod(0o644)
-    path.write_bytes(findings)
-    _refused(case.plan([entry]))
-    assert path.read_bytes() == findings and case.chain() == []
-
-
-@pytest.mark.parametrize("findings", [b"[]"], ids=["an empty list"])
-def test_a_commit_over_an_empty_findings_list_goes_ahead(case, findings):
+@pytest.mark.parametrize(
+    "findings", [b"[]", b"", b"  \n"], ids=["an empty list", "empty", "blank"]
+)
+def test_a_commit_over_an_empty_or_blank_findings_file_goes_ahead(case, findings):
     entry = dict(reviewed(case, "T-steve-001", "reject"), staged_by="steve")
     case.stage(entry)
     path = case.dir / "findings.json"
@@ -109,6 +100,9 @@ def test_a_commit_over_an_empty_findings_list_goes_ahead(case, findings):
     path.write_bytes(findings)
     r = case.sign_all([entry])
     assert r.status_code == 200, r.text
-    assert case.item("T-steve-001")["status"] == "REJECTED"
+    (event,) = case.read("timeline.json")
+    assert event["id"] == "T-steve-001" and event["status"] == "REJECTED"
     assert [ln["item_id"] for ln in case.chain()] == ["T-steve-001"]
-    assert json.loads(case.dir.joinpath("findings.json").read_text() or "[]") == []
+    assert (
+        json.loads(case.dir.joinpath("findings.json").read_text().strip() or "[]") == []
+    )
