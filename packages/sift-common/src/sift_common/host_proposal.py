@@ -51,6 +51,9 @@ _GENERIC = {
 }
 _GENERIC_PREFIX = re.compile(r"^(win-|desktop-|minint-|ec2amaz-|ip-)", re.I)
 _NOT_HOST = {"", "-", ".", "n/a", "na", "null", "none", "unknown"}
+_IPV4 = re.compile(
+    r"^\d{1,3}(\.\d{1,3}){3}$"
+)  # zero-padded too, which ipaddress refuses
 _COLLECTION = re.compile(r"([-_](triage|mem|memory))$")
 _DATE = re.compile(r"([-_]\d{8}(t\d{6})?)$")
 _VELOCIRAPTOR = re.compile(
@@ -80,16 +83,19 @@ FLAG_LISTED = "confirmed by the examiner's host list"
 
 
 def is_address(value) -> bool:
-    """An IP address, which never names a machine: one `ipaddress` reads
-    once brackets and a trailing port are taken off (it reads a zone index,
-    `%eth0`, itself). An IPv4-mapped IPv6 address is one too."""
+    """An IP address, which never names a machine: once spelled as names are
+    compared (a trailing dot off) and brackets and a trailing port are taken
+    off, a dotted quad (zero-padded too) or one `ipaddress` reads (it reads a
+    zone index, `%eth0`, itself; an IPv4-mapped IPv6 address is one too)."""
     import ipaddress
 
-    s = str(value or "").strip()
+    s = hi.spelling(value)
     if s.startswith("[") and "]" in s:  # [v6] or [v6]:port
         s = s[1 : s.index("]")]
     elif s.count(":") == 1:  # v4:port (a v6 address has two or more)
         s = s.split(":", 1)[0]
+    if _IPV4.match(s):
+        return True
     try:
         ipaddress.ip_address(s)
     except ValueError:
@@ -804,8 +810,12 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
             return None  # one entry, several machines: the examiner decides
         if machines:
             m = machines[0]
-            mdomains = {
-                hi.split_name(n)[1] for n in (m.canonical, *(p[1] for p in m.pairs))
+            mdomains = {  # a not-a-host name counts for nothing
+                hi.split_name(n)[1]
+                for n in (
+                    m.canonical,
+                    *(p[1] for p in m.pairs if not _not_a_host(state, p)),
+                )
             }
             mdomains.discard("")
             if domains and mdomains and domains != mdomains:

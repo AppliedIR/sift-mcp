@@ -35,15 +35,11 @@ class Refused(hi.HostLogError):
     status = 409
 
 
-def foreign_evidence(ev) -> bool:
-    """Only a row's host column or a forwarded log: another machine's name."""
+def _foreign(state: hi.HostState, p) -> bool:
+    ev = (state.names.get(p) or {}).get("evidence") or []
     return bool(ev) and all(
         e.endswith("host column") or e.lower().startswith("forwardedevents") for e in ev
     )
-
-
-def _foreign(state: hi.HostState, p) -> bool:
-    return foreign_evidence((state.names.get(p) or {}).get("evidence") or [])
 
 
 def _not_a_host(state: hi.HostState, p) -> bool:

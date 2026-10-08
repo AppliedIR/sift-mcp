@@ -364,14 +364,14 @@ def test_a_list_bundle_whose_link_is_refused_lands_none_of_its_names(case, monke
     assert {r["name"] for r in out.get("refused", [])} == {"DC01"}
 
 
-# -- round 2: one address function, not-a-host counts for nothing, the holder
-#    rule for machines made now, addresses follow their unit
+# -- one address function, not-a-host counts for nothing, the holder rule for
+#    machines made now
 
 
 @pytest.mark.parametrize(
     "value",
     ["10.100.218.46", "::ffff:10.100.218.46", "[fe80::1]", "fe80::1%eth0", "10.100.218.46:3389",
-     "[2001:db8::1]:445"],
+     "[2001:db8::1]:445", "010.000.000.005", "10.0.0.5."],
 )  # fmt: skip
 def test_every_form_of_an_address_is_one(value):
     assert hp.is_address(value)
@@ -379,7 +379,7 @@ def test_every_form_of_an_address_is_one(value):
 
 @pytest.mark.parametrize(
     "value",
-    ["WKS01", "dc01.corp.example.test", "10.1.2", "fe80", "build:7", "300.1.1.1"],
+    ["WKS01", "dc01.corp.example.test", "10.1.2", "fe80", "build:7"],
 )
 def test_a_host_name_is_no_address(value):
     assert not hp.is_address(value)
@@ -429,29 +429,66 @@ def test_a_confirm_all_never_makes_a_machine_of_bare_names_another_holds(case):
 OWN_IP = "Security.evtx IpAddress"  # the unit's own evidence, not a row's column
 
 
-def test_a_units_addresses_go_on_the_machine_its_name_gets(case):
+# every address waits on its unit's placeholder, its own evidence's too: a
+# unit with WKS1 and an IP is two machines until the examiner merges them
+
+
+def test_a_units_address_goes_to_its_placeholder_beside_its_named_machine(case):
     x = unit(case, "evidence/x", two("WKS1") + [("10.1.2.3", OWN_IP)])
     start(case, x)
-    m = machine(case, x, "WKS1")
-    assert machine(case, x, "10.1.2.3").id == m.id and m.canonical == "WKS1"
-    assert len({mm.id for mm in hi.load(case).machines.values() if mm.pairs}) == 1
+    m, a = machine(case, x, "WKS1"), machine(case, x, "10.1.2.3")
+    assert m.canonical == "WKS1" and a.id != m.id and a.canonical.startswith("x-")
 
 
-def test_an_address_met_while_ingesting_joins_the_units_named_machine(case):
+def test_an_address_met_while_ingesting_goes_to_the_placeholder_not_the_named_machine(
+    case,
+):
     x = unit(case, "evidence/x", two("WKS1"))
     key = confirm(case, x, "WKS1", "WKS1")
     got, canonical = hi.get_or_mint(case, x, "10.1.2.3", evidence=OWN_IP)
-    assert (got, canonical) == (key, "WKS1")
+    assert got != key and canonical.startswith("x-")
 
 
-def test_an_address_joins_the_units_machine_that_already_exists(case):
-    """Start now: the unit's named machine was confirmed before its address
-    arrived."""
+def test_an_address_never_joins_the_units_machine_that_already_exists(case):
     x = unit(case, "evidence/x", two("WKS1"))
     key = confirm(case, x, "WKS1", "WKS1")
     unit(case, "evidence/x", [("10.1.2.3", OWN_IP)])
     start(case, x)
-    assert machine(case, x, "10.1.2.3").keys[0] == key
+    a = machine(case, x, "10.1.2.3")
+    assert a.keys[0] != key and a.canonical.startswith("x-")
+
+
+def test_an_address_never_follows_a_row_columns_name(case):
+    """A collector's own name, a remote host's name from a row's column, and
+    the collector's own address."""
+    x = unit(case, "evidence/x", two("COLLECTOR") + [("AAA-REMOTE", "rows host column"),
+                                                     ("10.1.2.3", OWN_IP)])  # fmt: skip
+    start(case, x)
+    c, r, a = (machine(case, x, n) for n in ("COLLECTOR", "AAA-REMOTE", "10.1.2.3"))
+    assert a.id not in {c.id, r.id} and a.canonical.startswith("x-")
+
+
+def test_start_now_names_a_unit_whose_address_is_on_its_placeholder_already(case):
+    """The address was bound at ingest, before the unit had a name."""
+    x = unit(case, "evidence/x", [("10.1.2.3", OWN_IP)])
+    _, ph = hi.get_or_mint(case, x, "10.1.2.3", evidence=OWN_IP)
+    unit(case, "evidence/x", two("WKS7"))
+    out = start(case, x)
+    assert not out.get("refused"), out
+    assert machine(case, x, "WKS7").canonical == "WKS7"
+    assert machine(case, x, "10.1.2.3").canonical == ph
+    assert host_gate.unresolved(hi.load(case), [x]) == []
+
+
+def test_a_units_own_address_never_keeps_a_late_exact_name_out(case):
+    w = unit(case, "evidence/w", two("WKS01.corp.example.test"))
+    key = confirm(case, w, "WKS01.corp.example.test", "WKS01.corp.example.test")
+    hi.get_or_mint(case, w, "10.1.2.3", evidence=OWN_IP)
+    y = unit(case, "evidence/rows", two("WKS9"))
+    got, _ = hi.get_or_mint(
+        case, y, "WKS01.corp.example.test", evidence="rows host column"
+    )
+    assert got == key
 
 
 # another machine's address (a row's host column, a forwarded log) names some
@@ -469,16 +506,15 @@ def test_another_machines_address_goes_to_the_placeholder_at_start_now(case, evi
     assert a.canonical.startswith("x-") and not hp.is_address(a.canonical)
 
 
-def test_own_and_another_machines_addresses_part_at_start_now(case):
+def test_own_and_another_machines_addresses_share_the_placeholder(case):
     """The unit's machine exists; one address of its own and one from a row
     arrive together."""
     x = unit(case, "evidence/x", two("WKS1"))
     key = confirm(case, x, "WKS1", "WKS1")
     unit(case, "evidence/x", [("10.1.2.3", OWN_IP), ("10.9.9.9", "rows host column")])
     start(case, x)
-    assert machine(case, x, "10.1.2.3").keys[0] == key
-    other = machine(case, x, "10.9.9.9")
-    assert other.keys[0] != key and other.canonical.startswith("x-")
+    own, other = machine(case, x, "10.1.2.3"), machine(case, x, "10.9.9.9")
+    assert own.id == other.id and own.keys[0] != key and own.canonical.startswith("x-")
 
 
 def test_a_unit_of_addresses_alone_gets_one_placeholder(case):
@@ -520,6 +556,25 @@ def test_a_late_list_name_ignores_a_not_a_host_name_in_another_domain(case):
         case, x, "WKS01.corp.example.test", evidence="rows host column"
     )
     assert got == key
+
+
+def test_the_list_judges_its_machines_domains_without_a_not_a_host_name(case):
+    """The list's machine also holds WKS01.old, which the examiner marked not a
+    host: another unit's WKS01.corp still confirms to it."""
+    a = unit(
+        case,
+        "evidence/a",
+        two("WKS01.corp.example.test") + two("WKS01.old.example.test"),
+    )
+    key = confirm(case, a, "WKS01.corp.example.test", "WKS01.corp.example.test",
+                  "WKS01.old.example.test")  # fmt: skip
+    hi.append_decision(case, {"action": "not_a_host", "examiner": "ex1",
+                              "args": {"pairs": [[a, "WKS01.old.example.test"]]}},
+                       hi.load(case).obs_offset)  # fmt: skip
+    hp.upload_host_list(case, "WKS01,WKS01.corp.example.test\n", "ex1")
+    b = unit(case, "evidence/b", two("WKS01.corp.example.test"))
+    hp.apply_host_list(case, [b])
+    assert machine(case, b, "WKS01.corp.example.test").keys[0] == key
 
 
 # -- a match through a short name, on either side, needs it held once

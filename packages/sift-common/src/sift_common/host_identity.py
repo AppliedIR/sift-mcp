@@ -1034,30 +1034,11 @@ def get_or_mint(
 
         from sift_common.host_proposal import is_address
 
-        if is_address(
-            raw
-        ):  # never a machine's name: the unit's machine, or placeholder
+        if is_address(raw):  # never a machine's name: the unit's placeholder
             from sift_common.host_gate import placeholder_name
 
-            mine = {
-                state.machine_of_key(k).id
-                for q, k in state.bindings.items()
-                if q[0] == unit and not is_address(q[1])
-                and FLAG_NOT_A_HOST not in state.pair_flags.get(q, [])
-                and state.machine_of_key(k) is not None
-            }  # fmt: skip
             own = host_guard.placeholder_of(state, unit)
-            seen = [
-                *((state.names.get(pair) or {}).get("evidence") or []),
-                *([evidence] if evidence else []),
-            ]
-            m = (  # another machine's address (row column, forwarded log): the placeholder
-                state.machines[next(iter(mine))]
-                if len(mine) == 1 and not host_guard.foreign_evidence(seen)
-                else next(
-                    (x for x in state.machines.values() if x.canonical in own), None
-                )
-            )
+            m = next((x for x in state.machines.values() if x.canonical in own), None)
             if m is not None:
                 bind, key, result = (
                     {"kind": "bind", "unit": unit, "raw": raw, "key": m.keys[0]},
