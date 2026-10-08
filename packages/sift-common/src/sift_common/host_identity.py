@@ -1034,11 +1034,26 @@ def get_or_mint(
 
         from sift_common.host_proposal import is_address
 
-        if is_address(raw):  # never a machine's name: the unit's placeholder
+        if is_address(
+            raw
+        ):  # never a machine's name: the unit's machine, or placeholder
             from sift_common.host_gate import placeholder_name
 
+            mine = {
+                state.machine_of_key(k).id
+                for q, k in state.bindings.items()
+                if q[0] == unit and not is_address(q[1])
+                and FLAG_NOT_A_HOST not in state.pair_flags.get(q, [])
+                and state.machine_of_key(k) is not None
+            }  # fmt: skip
             own = host_guard.placeholder_of(state, unit)
-            m = next((x for x in state.machines.values() if x.canonical in own), None)
+            m = (
+                state.machines[next(iter(mine))]
+                if len(mine) == 1
+                else next(
+                    (x for x in state.machines.values() if x.canonical in own), None
+                )
+            )
             if m is not None:
                 bind, key, result = (
                     {"kind": "bind", "unit": unit, "raw": raw, "key": m.keys[0]},
@@ -1087,7 +1102,14 @@ def get_or_mint(
                 and domain
                 and {
                     split_name(n)[1]
-                    for n in (match.canonical, *(p[1] for p in match.pairs))
+                    for n in (
+                        match.canonical,
+                        *(
+                            p[1]
+                            for p in match.pairs  # a not-a-host name counts for nothing
+                            if FLAG_NOT_A_HOST not in state.pair_flags.get(p, [])
+                        ),
+                    )  # fmt: skip
                 }
                 - {"", domain}
             ):

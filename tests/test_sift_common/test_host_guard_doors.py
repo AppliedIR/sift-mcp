@@ -362,3 +362,80 @@ def test_a_list_bundle_whose_link_is_refused_lands_none_of_its_names(case, monke
         machine(case, u, "WKS01") is None or key not in machine(case, u, "WKS01").keys
     )
     assert {r["name"] for r in out.get("refused", [])} == {"DC01"}
+
+
+# -- round 2: one address function, not-a-host counts for nothing, the holder
+#    rule for machines made now, addresses follow their unit
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["10.100.218.46", "::ffff:10.100.218.46", "[fe80::1]", "fe80::1%eth0", "10.100.218.46:3389",
+     "[2001:db8::1]:445"],
+)  # fmt: skip
+def test_every_form_of_an_address_is_one(value):
+    assert hp.is_address(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["WKS01", "dc01.corp.example.test", "10.1.2", "fe80", "build:7", "300.1.1.1"],
+)
+def test_a_host_name_is_no_address(value):
+    assert not hp.is_address(value)
+
+
+def test_a_bracketed_v6_address_goes_to_the_units_placeholder(case):
+    x = unit(case, "evidence/edr.csv", [("[fe80::1]", "edr.csv host column"),
+                                        ("fe80::1%eth0", "edr.csv host column")])  # fmt: skip
+    start(case, x)
+    m = machine(case, x, "[fe80::1]")
+    assert m is not None and m.id == machine(case, x, "fe80::1%eth0").id
+    assert not hp.is_address(m.canonical)
+
+
+def test_a_not_a_host_name_in_another_domain_never_keeps_a_late_name_out(case):
+    """The machine also holds WKS01.old, which the examiner marked not a host:
+    it counts for nothing, so the late exact WKS01.corp joins."""
+    a = unit(
+        case,
+        "evidence/a",
+        two("WKS01.corp.example.test") + two("WKS01.old.example.test"),
+    )
+    key = confirm(case, a, "WKS01.corp.example.test", "WKS01.corp.example.test",
+                  "WKS01.old.example.test")  # fmt: skip
+    hi.append_decision(case, {"action": "not_a_host", "examiner": "ex1",
+                              "args": {"pairs": [[a, "WKS01.old.example.test"]]}},
+                       hi.load(case).obs_offset)  # fmt: skip
+    x = unit(case, "evidence/rows", two("WKS9"))
+    got, _ = hi.get_or_mint(
+        case, x, "WKS01.corp.example.test", evidence="rows host column"
+    )
+    assert got == key
+
+
+def test_a_confirm_all_never_makes_a_machine_of_bare_names_another_holds(case):
+    """A page proposed DC01 from two units; DC01.acq arrived since."""
+    a = unit(case, "evidence/a", two("DC01"))
+    b = unit(case, "evidence/b", two("DC01"))
+    page = hi.load(case).obs_offset
+    unit(case, "evidence/acq", two("DC01.acq.example.test"))
+    out = hi.append_decision_items(case, {"action": "confirm", "examiner": "ex1", "args": {
+        "proposed": True, "machines": [{"key": hi.new_machine_key(), "canonical": "DC01",
+                                        "pairs": [[a, "DC01"], [b, "DC01"]]}]}}, page)  # fmt: skip
+    assert out["appended"] == 0 and "also holds" in out["refused"][0]["reason"]
+
+
+def test_a_units_addresses_go_on_the_machine_its_name_gets(case):
+    x = unit(case, "evidence/x", two("WKS1") + [("10.1.2.3", "rows host column")])
+    start(case, x)
+    m = machine(case, x, "WKS1")
+    assert machine(case, x, "10.1.2.3").id == m.id and m.canonical == "WKS1"
+    assert len({mm.id for mm in hi.load(case).machines.values() if mm.pairs}) == 1
+
+
+def test_an_address_met_while_ingesting_joins_the_units_named_machine(case):
+    x = unit(case, "evidence/x", two("WKS1"))
+    key = confirm(case, x, "WKS1", "WKS1")
+    got, canonical = hi.get_or_mint(case, x, "10.1.2.3", evidence="rows host column")
+    assert (got, canonical) == (key, "WKS1")

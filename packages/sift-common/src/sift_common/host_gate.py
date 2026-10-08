@@ -240,11 +240,28 @@ def start_now(
              "pairs": [[e["unit"], name], *rejected,
                        *(list(p) for p in addresses.pop(e["unit"], []))]}
         )  # fmt: skip
-    for unit, pairs in sorted(addresses.items()):  # its addresses: its placeholder
+    for unit, pairs in sorted(addresses.items()):  # its addresses follow its machine
         from sift_common import host_guard
 
-        own = host_guard.placeholder_of(state, unit)
-        m = next((x for x in state.machines.values() if x.canonical in own), None)
+        item = next((it for it in machines if any(
+            p[0] == unit and not host_proposal.is_address(p[1]) for p in it["pairs"])), None)  # fmt: skip
+        if item is not None:  # the machine its names get now
+            item["pairs"] = [*item["pairs"], *(list(p) for p in pairs)]
+            continue
+        own = {state.bindings.get(q) for q in state.names
+               if q[0] == unit and q in state.bindings and not host_proposal.is_address(q[1])
+               and not _not_a_host(state, q)}  # fmt: skip
+        own_m = {state.machine_of_key(k).id: state.machine_of_key(k) for k in own if k}
+        if len(own_m) == 1:  # the machine its names have already
+            (m,) = own_m.values()
+            machines.append({"key": m.keys[0], "canonical": m.canonical,
+                             "pairs": [list(p) for p in pairs]})  # fmt: skip
+            continue
+        # no name: its placeholder
+        placeholders = host_guard.placeholder_of(state, unit)
+        m = next(
+            (x for x in state.machines.values() if x.canonical in placeholders), None
+        )
         if m is not None:
             machines.append({"key": m.keys[0], "canonical": m.canonical,
                              "pairs": [list(p) for p in pairs]})  # fmt: skip

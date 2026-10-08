@@ -153,7 +153,14 @@ def _join_reason(state: hi.HostState, mid, canonical: str, had, added) -> str:
     holds. A unit's names on its own machine aren't judged here."""
     from sift_common.host_proposal import LIST_UNIT, is_address
 
-    if not had:
+    if not had:  # a machine made now: when it links units, its bare names too
+        if len({p[0] for p in added if p[0] != LIST_UNIT}) < 2:
+            return ""
+        for p in added:
+            if p[0] == LIST_UNIT or _not_a_host(state, p) or is_address(p[1]):
+                continue
+            if not hi.split_name(p[1])[1] and _other_holders(state, p, mid, set(added)):
+                return f"{p[1]!r} is a bare name another machine or unit in the case also holds"
         return ""
     for p in added:
         if p[0] == LIST_UNIT or _not_a_host(state, p) or is_address(p[1]):
@@ -306,8 +313,8 @@ def _item_reason(
                 return f"the unit is flagged now ({flag}); the examiner decides"
     if automatic:
         added = [p for p in pairs if p not in had]
-        return _i3(v, result, had) or (
-            _join_reason(v.s, target, v.canonical(target), had, added) if target else ""
+        return _i3(v, result, had) or _join_reason(
+            v.s, target, v.canonical(target) if target else canonical, had, added
         )
     return ""
 

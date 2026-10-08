@@ -51,8 +51,6 @@ _GENERIC = {
 }
 _GENERIC_PREFIX = re.compile(r"^(win-|desktop-|minint-|ec2amaz-|ip-)", re.I)
 _NOT_HOST = {"", "-", ".", "n/a", "na", "null", "none", "unknown"}
-_IPV4 = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
-_IPV6 = re.compile(r"^[0-9a-f:]+$", re.I)
 _COLLECTION = re.compile(r"([-_](triage|mem|memory))$")
 _DATE = re.compile(r"([-_]\d{8}(t\d{6})?)$")
 _VELOCIRAPTOR = re.compile(
@@ -81,14 +79,26 @@ LIST_AUTO_CONFIRM = True
 FLAG_LISTED = "confirmed by the examiner's host list"
 
 
-def _is_ip(value: str) -> bool:
-    s = hi.spelling(value)
-    return bool(_IPV4.match(s) or (":" in s and _IPV6.match(s)))
+def is_address(value) -> bool:
+    """An IP address, which never names a machine: one `ipaddress` reads
+    once brackets, a zone index (`%eth0`) and a trailing port are taken off.
+    An IPv4-mapped IPv6 address is one too."""
+    import ipaddress
+
+    s = str(value or "").strip()
+    if s.startswith("[") and "]" in s:  # [v6] or [v6]:port
+        s = s[1 : s.index("]")]
+    elif s.count(":") == 1:  # v4:port (a v6 address has two or more)
+        s = s.split(":", 1)[0]
+    s = s.split("%", 1)[0]
+    try:
+        ipaddress.ip_address(s)
+    except ValueError:
+        return False
+    return True
 
 
-def is_address(value: str) -> bool:
-    """An IP address, which never names a machine."""
-    return _is_ip(value)
+_is_ip = is_address  # (the list's name for it)
 
 
 # --------------------------------------------------------------------------
@@ -106,7 +116,7 @@ def name_flags(raw: str) -> list[str]:
     """Why a name is never grouped with another."""
     s = hi.spelling(raw)
     flags = []
-    if s in _NOT_HOST or _IPV4.match(s) or (":" in s and _IPV6.match(s)):
+    if s in _NOT_HOST or is_address(s):
         flags.append(FLAG_NOT_HOST)
     elif "\\" in s or s.endswith("$") or "@" in s or " " in s:
         flags.append(FLAG_NOT_HOST)  # account forms, sentences
@@ -919,7 +929,8 @@ def late_list_binding(state: hi.HostState, unit: str, raw: str):
     if machines:
         m = machines[0]
         domain = hi.split_name(raw)[1]
-        theirs = {hi.split_name(n)[1] for n in (m.canonical, *(p[1] for p in m.pairs))}
+        theirs = {hi.split_name(n)[1] for n in (
+            m.canonical, *(p[1] for p in m.pairs if not _not_a_host(state, p)))}  # fmt: skip
         if domain and theirs - {"", domain}:  # judged against the machine
             return None
         return m.keys[0], m.canonical

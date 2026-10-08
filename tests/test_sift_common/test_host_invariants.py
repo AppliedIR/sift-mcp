@@ -127,8 +127,9 @@ def violations(P, Q, door) -> list:
             if len(homes) != 1:
                 continue
             m = homes[0]
-            other = {
-                hi.split_name(n)[1] for n in (m.canonical, *(q[1] for q in m.pairs))
+            other = {  # a not-a-host name counts for nothing
+                hi.split_name(n)[1]
+                for n in (m.canonical, *(q[1] for q in m.pairs if not _nah(P, q)))
             }
             if domain and other - {"", domain}:  # a machine in another domain: never
                 if Q.bindings.get(p) in m.keys:
