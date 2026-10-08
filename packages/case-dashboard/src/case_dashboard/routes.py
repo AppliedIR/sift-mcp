@@ -167,7 +167,6 @@ def _judged(case_dir: Path) -> dict:
         for i in view[key]
     }
     failed = {n["id"]: n["status"] for n in view["not_verified"]}
-    fps = {k["examiner"]: k["fingerprint"] for k in result.keys}
     kinds = {"findings": "finding", "timeline": "timeline", "iocs": "ioc"}
     records: dict[str, list[dict]] = {"findings": [], "timeline": [], "iocs": []}
     notes: dict[str, str] = {}
@@ -189,10 +188,14 @@ def _judged(case_dir: Path) -> dict:
                 notes[rid] = LEGACY_NOTE
             else:
                 item["verification"] = "valid (not anchored)"
-                signer = rec.get("approved_by") or ""
+                # the key of this item's own signing line (an examiner can have several)
                 notes[rid] = (
                     VALID_NOTE
-                    + (f" Key: {signer} {fps[signer]}." if signer in fps else "")
+                    + (
+                        f" Key: {verdict.examiner} {verdict.fingerprint}."
+                        if verdict and verdict.fingerprint
+                        else ""
+                    )
                     + (f" {label}." if label else "")
                 )
         elif status == "APPROVED":

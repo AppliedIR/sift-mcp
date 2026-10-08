@@ -97,6 +97,14 @@ async function test() {
     }
     if (s.do === 'reload') await loadAll();
     if (s.do === 'sign') { el('commitPassword').value = process.env.PASSWORD; await VHIR_SIGN.submit(); }
+    if (s.do === 'sign_then_reopen') {
+      // the examiner cancels while the key is being derived, and opens a new dialog
+      el('commitPassword').value = process.env.PASSWORD;
+      const first = VHIR_SIGN.submit();
+      VHIR_SIGN.close();
+      await VHIR_SIGN.open();
+      await first;
+    }
     if (s.do === 'snap') out[s.as] = { findings: findings.map(f => [f.id, f.observation, f.status]),
       list: el('commitList').innerHTML, error: el('commitError').textContent,
       signButton: el('commitSubmitBtn').textContent, signDisabled: el('commitSubmitBtn').disabled,
@@ -319,3 +327,14 @@ def test_a_retry_that_adds_a_cascade_signs_nothing(portal, live):
     )
     assert out["posts"].count("/api/commit") == 1
     assert [ln["item_id"] for ln in portal.chain()] == ["F-steve-002"]
+
+
+def test_a_dialog_closed_while_signing_signs_nothing(case, live):
+    """Cancel while the key is being derived, then open the dialog again: the
+    first passphrase entry stops; it never signs or posts the new dialog's
+    plan, which nobody has signed for."""
+    out = live([{"do": "open"}, {"do": "sign_then_reopen"}, {"do": "snap", "as": "s"}])
+    assert "/api/commit/key" not in out["posts"] and "/api/commit" not in out["posts"]
+    assert out["posts"].count("/api/commit/plan") == 2
+    assert out["s"]["open"] is True and out["s"]["signDisabled"] is False
+    assert case.chain() == []

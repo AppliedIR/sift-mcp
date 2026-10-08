@@ -830,9 +830,20 @@ def create_server() -> FastMCP:
                         return {"error": "Too many report versions (max 999)."}
 
             # The server appends the verification block; the content can't
-            # replace it (the saved file is still writable on this box)
+            # replace it (the saved file is still writable on this box). Its
+            # fence is longer than any backtick run inside it, so no text in
+            # the block can end it early. How a viewer renders the report
+            # still depends on the content above it; the raw file and
+            # `vhir review --findings --verify` are authoritative.
             block = verification_block(approved_view(case_dir))
-            saved = content.rstrip("\n") + "\n\n```\n" + "\n".join(block) + "\n```\n"
+            runs = [len(r) for r in re.findall(r"`+", "\n".join(block))]
+            fence = "`" * max(3, max(runs, default=0) + 1)
+            saved = (
+                content.rstrip("\n")
+                + f"\n\n{fence}\n"
+                + "\n".join(block)
+                + f"\n{fence}\n"
+            )
             _atomic_write(report_path, saved)
 
             logged_id = audit.log(

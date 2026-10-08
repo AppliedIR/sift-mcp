@@ -504,3 +504,35 @@ def test_the_password_is_never_needed_before_display(case):
     assert body["examiner"] == "steve" and body["case_id"] == "C-1"
     assert body["at"] == plan["now"] and "sig" not in body
     assert PASSWORD not in json.dumps(plan)
+
+
+def test_each_badge_names_the_key_of_its_own_line(case, monkeypatch):
+    """Two approvals by one examiner under two keys (a rotation), judged with
+    both keys pinned so the case verifies: each badge names its own line's
+    key, not the examiner's newest."""
+    from vhir_cli import ledger_verify
+
+    first = case.sign_all([reviewed(case, "F-steve-001")])
+    assert first.status_code == 200, first.text
+    old = first.json()["fingerprint"]
+    data = keys.load("steve")
+    fresh = keys.new_credential("steve", PASSWORD)
+    for k in data["keys"]:
+        k["status"] = "retired"
+    fresh["keys"] = data["keys"] + fresh["keys"]
+    keys.save("steve", fresh)
+    second = case.sign_all([reviewed(case, "F-steve-002")])
+    assert second.status_code == 200, second.text
+    new = second.json()["fingerprint"]
+    real = ledger_verify.verify_case
+    pins = [ledger_verify.parse_pin(f"steve={fp}") for fp in (old, new)]
+    monkeypatch.setattr(
+        ledger_verify, "verify_case", lambda d, **kw: real(d, expect_keys=pins)
+    )
+    notes = case.get("/api/case").json()["verification"]["badge_notes"]
+    assert (
+        f"Key: steve {old}." in notes["F-steve-001"] and new not in notes["F-steve-001"]
+    )
+    assert (
+        f"Key: steve {new}." in notes["F-steve-002"] and old not in notes["F-steve-002"]
+    )

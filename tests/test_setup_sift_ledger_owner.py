@@ -46,9 +46,18 @@ def _run(tmp_path, vdir, pdir, foreign=None):
     (stub / "stat").chmod(0o755)
     log = tmp_path / "sudo.log"
     log.write_text("")
-    block = BLOCK.replace("/var/lib/vhir/verification", str(vdir)).replace(
-        "/var/lib/vhir/passwords", str(pdir)
+    # the signing folders the block also makes: the installer's own, in tmp
+    signing = {}
+    for name in ("keys", "ledger"):
+        signing[name] = tmp_path / f"own-{name}"
+        signing[name].mkdir(mode=0o700, exist_ok=True)
+    block = (
+        BLOCK.replace("/var/lib/vhir/verification", str(vdir))
+        .replace("/var/lib/vhir/passwords", str(pdir))
+        .replace("/var/lib/vhir/keys", str(signing["keys"]))
+        .replace("/var/lib/vhir/ledger", str(signing["ledger"]))
     )
+    assert "/var/lib/vhir" not in block  # never the box's own folders
     prologue = (
         "set -euo pipefail\n"
         'info() { echo "INFO $*"; }; ok() { echo "OK $*"; }\n'

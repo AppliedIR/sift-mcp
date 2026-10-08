@@ -126,3 +126,17 @@ def test_a_saved_report_ends_with_the_server_s_block(case):
     assert saved.endswith(block + "\n```\n")
     assert "Approvals shown as approved: 1 " in block
     assert "tester SHA256:" in block and "Ledger head INC-V-1" in block
+
+
+def test_the_block_s_fence_outlasts_any_backtick_run_in_it(case, monkeypatch):
+    """A finding id or status carrying backticks can't close the block early."""
+    import report_mcp.server as rs
+
+    _write(case, [_f("F-tester-001")])
+    sign_approved(case)
+    monkeypatch.setattr(
+        rs, "verification_block", lambda view: ["VERIFICATION", "id ````x````"]
+    )
+    _save("# Report")
+    saved = (case / "reports" / "r.md").read_text()
+    assert saved.endswith("\n`````\nVERIFICATION\nid ````x````\n`````\n")
