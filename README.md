@@ -470,7 +470,7 @@ Reference sources: forensic-rag (Sigma, MITRE ATT&CK, forensic artifacts), windo
 
 ### Content Integrity
 
-Content integrity is protected by SHA-256 hashes computed at staging and verified at approval. Cross-file verification compares hashes stored in `findings.json` against those in `approvals.jsonl` to detect post-approval tampering.
+Content hashes (SHA-256) are computed at staging and checked at review, so a decision staged in the portal isn't signed over content that changed since. After approval, `vhir review --findings --verify` checks each approved item against its signed line; `approvals.jsonl` is an unsigned activity log, not verification.
 
 ## Report Generation
 

@@ -16,16 +16,21 @@ import pytest
 
 ROOT = Path(__file__).parent.parent
 SHIPPED = (
-    [ROOT / "README.md", ROOT / "ARCHITECTURE.md"]
+    [ROOT / "README.md", ROOT / "ARCHITECTURE.md", ROOT / "setup-sift.sh"]
     + sorted((ROOT / "docs").glob("*.md"))
     + sorted((ROOT / "claude-code").rglob("*.md"))
+    + sorted((ROOT / "packages" / "case-dashboard").rglob("static/**/*.html"))
 )
 FALSE = [
-    r"HMAC", r"challenge-response commit", r"re-signs?", r"cannot forge",
+    r"(?<!['\"])HMAC", r"challenge-response commit", r"re-signs?", r"cannot forge",
     r"password hash(?:es)? (?:files|restore)", r"PBKDF2-derived cryptographic signing",
+    r"post-commit alteration is detectable", r"approvals\.jsonl`? to detect",
+    r"Verification ledger",
 ]  # fmt: skip
 
 
+# WebCrypto's 'HMAC' algorithm name in the page's sign-in code is quoted;
+# prose about an HMAC ledger isn't
 @pytest.mark.parametrize("path", SHIPPED, ids=lambda p: str(p.relative_to(ROOT)))
 def test_no_shipped_doc_makes_an_old_claim(path):
     hits = [p for p in FALSE if re.search(p, path.read_text())]

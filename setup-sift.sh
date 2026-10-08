@@ -400,10 +400,10 @@ if ${UNINSTALL_MODE:-false}; then
         echo ""
     fi
 
-    # [8] Verification ledger (/var/lib/vhir)
+    # [8] Approval ledgers and signing keys (/var/lib/vhir)
     VERIF_DIR="/var/lib/vhir"
     if [[ -d "$VERIF_DIR" ]]; then
-        echo -e "${BOLD}[8] Verification ledger${NC}"
+        echo -e "${BOLD}[8] Approval ledgers and signing keys${NC}"
         # What can't be read can't be listed or counted: leave it, and go on.
         UNREADABLE=""
         for d in "$VERIF_DIR" "$VERIF_DIR/verification" "$VERIF_DIR/passwords" "$VERIF_DIR/keys" "$VERIF_DIR/ledger"; do
@@ -433,9 +433,9 @@ if ${UNINSTALL_MODE:-false}; then
             echo -e "    ${YELLOW}Without them this box can't sign for those examiners, and a case verifies only from the copies that close, export or backup put in it.${NC}"
             echo ""
             if prompt_yn_strict "    Remove $VERIF_DIR? (requires sudo)"; then
-                sudo rm -rf "$VERIF_DIR" && ok "Verification ledger removed." || warn "Could not remove $VERIF_DIR (sudo required)"
+                sudo rm -rf "$VERIF_DIR" && ok "Approval ledgers and signing keys removed." || warn "Could not remove $VERIF_DIR (sudo required)"
             else
-                info "Skipped. Ledger preserved at $VERIF_DIR"
+                info "Skipped. Ledgers and signing keys preserved at $VERIF_DIR"
             fi
         fi
         echo ""
@@ -625,13 +625,13 @@ done
 # =============================================================================
 
 if [ -d /var/lib/vhir/verification ] && [ ! -L /var/lib/vhir/verification ] && [ -O /var/lib/vhir/verification ] && [ -w /var/lib/vhir/verification ]; then
-    ok "Verification ledger: /var/lib/vhir/verification/"
+    ok "0.6 approval records: /var/lib/vhir/verification/"
 else
-    info "Creating verification ledger directory (requires sudo)..."
+    info "Creating the 0.6 approval records folder (requires sudo)..."
     if [ ! -L /var/lib/vhir/verification ] && sudo mkdir -p /var/lib/vhir/verification && \
        sudo chown "$USER:$USER" /var/lib/vhir/verification && \
        sudo chmod 700 /var/lib/vhir/verification; then
-        ok "Verification ledger: /var/lib/vhir/verification/"
+        ok "0.6 approval records: /var/lib/vhir/verification/"
     else
         err "Could not create /var/lib/vhir/verification/"
         echo "  It holds the 0.6 approval records that approvals made before signing are checked against."

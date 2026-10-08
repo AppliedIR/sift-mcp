@@ -59,6 +59,8 @@ All edits are staged locally in the browser until committed. The original value 
 
 Staged actions are shown with colored badges: green for approved, red for rejected, orange for edited.
 
+Each item's verification comes from the same check as `vhir review --verify`: it reads `valid (not anchored)`, `approved under 0.6 (before signing)`, `draft`, or a failure by name (for example `ALTERED_AFTER_APPROVAL`). A finding's Integrity panel adds "Valid (not anchored): compare the fingerprint with a copy kept off this machine." with the key of its signing line.
+
 **Batch operations:** Select multiple findings in the sidebar, then use "Approve All" or "Reject All" in the batch toolbar.
 
 ### Signing Reviews
@@ -66,11 +68,11 @@ Staged actions are shown with colored badges: green for approved, red for reject
 Press `Shift+C` or click the Commit button to sign your staged reviews. The dialog:
 
 1. Freezes what the page holds, asks the gateway for the exact decisions to be signed, and checks each one, field by field, against what you reviewed. Anything that changed refuses the plan, and nothing is signed.
-2. Lists every decision before the passphrase field opens: each item you decided, and each item decided with it ("cascade from F-…"). "Show all signed fields" shows everything a decision signs. An IOC's sources, sightings, confidence and MITRE techniques are derived, not signed.
+2. Lists every decision before the passphrase field opens: each item you decided, and each item decided with it ("cascade from F-…"). "Show all signed fields" shows every field of each item's signed snapshot (the dialog otherwise shows the main fields); the decision itself, the time, your examiner name and key, and the ledger position are signed with it. An IOC's sources, sightings, confidence and MITRE techniques are derived, not signed.
 3. Lists entries another examiner staged separately; each is signed (as you) only if you tick "Include and sign as me".
 4. Signs in with a challenge-response, unlocks your signing key and signs each decision in the browser. The passphrase never leaves the browser. The gateway checks every signature before it changes anything.
 
-After signing, the items move to APPROVED or REJECTED, the signed entries leave the pending reviews, and the dialog shows the ledger head and your key's fingerprint. TODO entries stay staged; `vhir approve --review` creates them. If the ledger moved meanwhile, the dialog plans once more and signs only if exactly the same decisions come back.
+After signing, the items move to APPROVED or REJECTED, the signed entries leave the pending reviews, and the dialog closes with a notice giving the ledger head and your key's fingerprint (the page header keeps your fingerprint and the heads). TODO entries stay staged; `vhir approve --review` creates them. If the ledger moved meanwhile, the dialog plans once more and signs only if exactly the same decisions come back.
 
 The portal needs gateway API keys (each examiner signs in with their own token) and a browser that can sign (Chrome/Edge 137+, Firefox 129+, Safari 17+, over https or an SSH tunnel to localhost). An examiner without a signing key enrols once at the SIFT terminal with `vhir enrol --name NAME`.
 
