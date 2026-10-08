@@ -2224,6 +2224,7 @@ var VHIR_SIGN = (function() {
       if (!live()) return;
       var r = await commitOnce(s, key, k.data);
       if (!r) return;
+      if (r.status !== 200 && !live()) return;  // a 200 was signed: done() still records it
       if (r.status === 409 && r.data.code === 'LEDGER_MOVED' || r.status === 503) {
         if (s.retried) { say(r.data.error || 'The ledger moved again. Close the dialog and commit again.'); return; }
         s.retried = true;

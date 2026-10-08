@@ -97,6 +97,16 @@ async function test() {
     }
     if (s.do === 'reload') await loadAll();
     if (s.do === 'sign') { el('commitPassword').value = process.env.PASSWORD; await VHIR_SIGN.submit(); }
+    if (s.do === 'move_and_reopen_before_commit') {
+      // the ledger moves, and the examiner closes and reopens, while the commit is in flight
+      let n = 0;
+      globalThis.beforeCommit = async () => {
+        if (n++ > 0) return;
+        await _fetch(ORIGIN + '/test/move', { method: 'POST' });
+        VHIR_SIGN.close();
+        await VHIR_SIGN.open();
+      };
+    }
     if (s.do === 'sign_then_reopen') {
       // the examiner cancels while the key is being derived, and opens a new dialog
       el('commitPassword').value = process.env.PASSWORD;
@@ -338,3 +348,17 @@ def test_a_dialog_closed_while_signing_signs_nothing(case, live):
     assert out["posts"].count("/api/commit/plan") == 2
     assert out["s"]["open"] is True and out["s"]["signDisabled"] is False
     assert case.chain() == []
+
+
+def test_a_dialog_closed_during_the_commit_keeps_the_new_dialog_s_retry(case, live):
+    """The ledger moves and the dialog is closed and reopened while a commit is
+    in flight: the old run stops at the refusal; it doesn't plan again on the
+    new dialog, whose one retry and error line stay its own."""
+    out = live([{"do": "open"}, {"do": "move_and_reopen_before_commit"}, {"do": "sign"},
+                {"do": "snap", "as": "s"}])  # fmt: skip
+    # the old dialog's plan and key, the new dialog's plan (posted while the
+    # old commit waited), the old commit (refused: the ledger moved); then nothing
+    assert out["posts"] == ["/api/commit/plan", "/api/commit/key", "/api/commit/plan",
+                            "/api/commit"]  # fmt: skip
+    assert out["s"]["open"] is True and out["s"]["error"] == ""
+    assert out["s"]["signDisabled"] is False
