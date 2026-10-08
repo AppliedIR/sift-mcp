@@ -255,6 +255,8 @@ _BLOCKED_DIRECTORIES = (
     os.path.expanduser("~/.config/opencti-mcp"),
     "/var/lib/vhir",
     os.path.expanduser("~/.claude"),
+    os.path.expanduser("~/.agents"),  # the deployed skills Codex reads
+    os.path.expanduser("~/.codex"),  # Codex's profile and agents
 )
 
 # Exceptions within blocked directories (evidence data, not config)

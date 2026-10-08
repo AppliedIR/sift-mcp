@@ -139,6 +139,16 @@ class TestValidateInputPath:
         with pytest.raises(ValueError, match="under protected path"):
             validate_input_path("/boot/vmlinuz")
 
+    def test_blocks_the_codex_profile(self):
+        with pytest.raises(ValueError, match="blocked system directory"):
+            validate_input_path(os.path.expanduser("~/.codex/valhuntir.config.toml"))
+
+    def test_blocks_the_deployed_skills_codex_reads(self):
+        with pytest.raises(ValueError, match="blocked system directory"):
+            validate_input_path(
+                os.path.expanduser("~/.agents/skills/vhir-playbooks/SKILL.md")
+            )
+
     def test_allows_home_directory(self):
         """Paths in /home are now allowed for forensic analysis."""
         result = validate_input_path("/home/user/evidence/disk.dd")
