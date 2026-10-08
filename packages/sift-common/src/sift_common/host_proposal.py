@@ -81,8 +81,8 @@ FLAG_LISTED = "confirmed by the examiner's host list"
 
 def is_address(value) -> bool:
     """An IP address, which never names a machine: one `ipaddress` reads
-    once brackets, a zone index (`%eth0`) and a trailing port are taken off.
-    An IPv4-mapped IPv6 address is one too."""
+    once brackets and a trailing port are taken off (it reads a zone index,
+    `%eth0`, itself). An IPv4-mapped IPv6 address is one too."""
     import ipaddress
 
     s = str(value or "").strip()
@@ -90,7 +90,6 @@ def is_address(value) -> bool:
         s = s[1 : s.index("]")]
     elif s.count(":") == 1:  # v4:port (a v6 address has two or more)
         s = s.split(":", 1)[0]
-    s = s.split("%", 1)[0]
     try:
         ipaddress.ip_address(s)
     except ValueError:

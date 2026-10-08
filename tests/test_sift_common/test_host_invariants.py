@@ -9,7 +9,9 @@ checks:
 - names stay: a machine holding names keeps its name and is never merged;
 - not a host: a not-a-host name is only with its own unit's machine or placeholder;
 - one machine: an automatic door never leaves a machine with two machine ids (from
-  the units whose own names it holds) or one name in two domains.
+  the units whose own names it holds) or one name in two domains;
+- one holder: a late name joins through a short name (its own, or the
+  machine's bare one) only when one machine or unit in the case holds it.
 
 The probes that found each breach are fixed rows. Names are synthetic.
 """
@@ -101,6 +103,32 @@ def violations(P, Q, door) -> list:
                 hi.spelling(m.canonical), *(hi.spelling(n) for n in m.former),
                 *(hi.spelling(q[1]) for q in m.pairs if not _nah(P, q))}]  # fmt: skip
             short, domain = hi.split_name(p[1])
+            joined = next((x for x in P.machines.values()  # (not its unit's own)
+                           if Q.bindings.get(p) in x.keys and x.pairs
+                           and any(q[0] != p[0] for q in x.pairs)), None)  # fmt: skip
+            if domain and joined is not None and spelled not in {
+                hi.spelling(n) for n in (
+                    joined.canonical, *(q[1] for q in joined.pairs if not _nah(P, q)))
+            }:  # through its short name: only what one machine or unit holds  # fmt: skip
+                held = {
+                    ("m", x.id)
+                    for x in P.machines.values()
+                    if short
+                    in {
+                        hi.split_name(n)[0]
+                        for n in (
+                            x.canonical,
+                            *x.former,
+                            *(q[1] for q in x.pairs if not _nah(P, q)),
+                        )
+                    }
+                }
+                held |= {("u", q[0]) for q in P.names if q not in P.bindings
+                         and q[0] != p[0] and not _nah(P, q)
+                         and hi.split_name(q[1])[0] == short}  # fmt: skip
+                if len(held) != 1:
+                    out.append(("late name joined through a short name others hold",
+                                door, p[1], joined.canonical))  # fmt: skip
             if not domain:  # bare: only what one machine or unit in the case holds
                 holders = {
                     ("m", x.id)
@@ -640,7 +668,7 @@ def test_a_units_rejected_names_share_its_one_placeholder(case):
     assert violations(P, Q, "mint") == []
 
 
-# -- T's cases (N=200 on the Start-now build), as fixed rows
+# -- cases a generated corpus found, as fixed rows
 
 
 SYS, EVTX = "SYSTEM ComputerName", "Security.evtx Computer"

@@ -35,11 +35,15 @@ class Refused(hi.HostLogError):
     status = 409
 
 
-def _foreign(state: hi.HostState, p) -> bool:
-    ev = (state.names.get(p) or {}).get("evidence") or []
+def foreign_evidence(ev) -> bool:
+    """Only a row's host column or a forwarded log: another machine's name."""
     return bool(ev) and all(
         e.endswith("host column") or e.lower().startswith("forwardedevents") for e in ev
     )
+
+
+def _foreign(state: hi.HostState, p) -> bool:
+    return foreign_evidence((state.names.get(p) or {}).get("evidence") or [])
 
 
 def _not_a_host(state: hi.HostState, p) -> bool:
@@ -150,7 +154,9 @@ def _join_reason(state: hi.HostState, mid, canonical: str, had, added) -> str:
     `mid` (holding `had`) is refused, or "": a name with a domain never
     joins a machine holding a name in another domain (through its bare names
     too), and a bare name only one no other machine or unit in the case also
-    holds. A unit's names on its own machine aren't judged here."""
+    holds. A name with a domain the machine doesn't hold exactly joins
+    through its short name, under the same rule. A unit's names on its own
+    machine aren't judged here."""
     from sift_common.host_proposal import LIST_UNIT, is_address
 
     if not had:  # a machine made now: when it links units, its bare names too
@@ -176,8 +182,14 @@ def _join_reason(state: hi.HostState, mid, canonical: str, had, added) -> str:
         domain = hi.split_name(p[1])[1]
         if domain and domains - {domain}:
             return f"{p[1]!r} would join a machine with a name in another domain"
-        if not domain and _other_holders(state, p, mid, set(had)):
-            return f"{p[1]!r} is a bare name another machine or unit in the case also holds"
+        # matched through its short name (it has none, or the machine holds it
+        # bare only): only when no other machine or unit in the case holds it
+        exact = hi.spelling(p[1]) in {hi.spelling(n) for n in names}
+        if (not domain or not exact) and _other_holders(state, p, mid, set(had)):
+            return (
+                f"{p[1]!r} would join through a short name another machine or unit"
+                " in the case also holds"
+            )
     return ""
 
 

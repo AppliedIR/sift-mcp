@@ -60,7 +60,7 @@ def machine(case, u, raw):
 
 
 def test_start_now_puts_a_units_addresses_on_its_placeholder(case):
-    """T's EDR export: its host column holds only addresses."""
+    """An EDR export whose host column holds only addresses."""
     x = unit(case, "evidence/edr.csv", [("10.100.218.46", "edr.csv host column"),
                                         ("10.100.218.47", "edr.csv host column")])  # fmt: skip
     start(case, x)
@@ -95,7 +95,7 @@ def test_no_door_names_a_machine_after_an_address(case, action):
 
 
 def _eu_dc(case):
-    """T's case: the examiner confirmed DC01.eu on the eu export's bare DC01."""
+    """The examiner confirmed DC01.eu on the eu export's bare DC01."""
     eu = unit(case, "evidence/eu-ad.csv", two("DC01"))
     return eu, confirm(case, eu, "DC01.eu.corp.example.test", "DC01")
 
@@ -328,7 +328,7 @@ def test_a_late_name_spelled_like_a_machines_name_never_joins_it_across_domains(
 
 
 def test_one_units_names_in_two_domains_are_judged_against_other_units_only(case):
-    """T's seed: the list names DC01 through the unit's dc01.a.test; its other
+    """The list names DC01 through the unit's dc01.a.test; its other
     name, in another domain, goes with it."""
     dc = unit(case, "evidence/dc", two("DC01"))
     key = confirm(case, dc, "DC01", "DC01")
@@ -426,8 +426,11 @@ def test_a_confirm_all_never_makes_a_machine_of_bare_names_another_holds(case):
     assert out["appended"] == 0 and "also holds" in out["refused"][0]["reason"]
 
 
+OWN_IP = "Security.evtx IpAddress"  # the unit's own evidence, not a row's column
+
+
 def test_a_units_addresses_go_on_the_machine_its_name_gets(case):
-    x = unit(case, "evidence/x", two("WKS1") + [("10.1.2.3", "rows host column")])
+    x = unit(case, "evidence/x", two("WKS1") + [("10.1.2.3", OWN_IP)])
     start(case, x)
     m = machine(case, x, "WKS1")
     assert machine(case, x, "10.1.2.3").id == m.id and m.canonical == "WKS1"
@@ -437,5 +440,130 @@ def test_a_units_addresses_go_on_the_machine_its_name_gets(case):
 def test_an_address_met_while_ingesting_joins_the_units_named_machine(case):
     x = unit(case, "evidence/x", two("WKS1"))
     key = confirm(case, x, "WKS1", "WKS1")
-    got, canonical = hi.get_or_mint(case, x, "10.1.2.3", evidence="rows host column")
+    got, canonical = hi.get_or_mint(case, x, "10.1.2.3", evidence=OWN_IP)
     assert (got, canonical) == (key, "WKS1")
+
+
+def test_an_address_joins_the_units_machine_that_already_exists(case):
+    """Start now: the unit's named machine was confirmed before its address
+    arrived."""
+    x = unit(case, "evidence/x", two("WKS1"))
+    key = confirm(case, x, "WKS1", "WKS1")
+    unit(case, "evidence/x", [("10.1.2.3", OWN_IP)])
+    start(case, x)
+    assert machine(case, x, "10.1.2.3").keys[0] == key
+
+
+# another machine's address (a row's host column, a forwarded log) names some
+# other, unknown machine: it waits on the unit's placeholder
+
+
+@pytest.mark.parametrize(
+    "evidence", ["rows host column", "ForwardedEvents.evtx IpAddress"]
+)
+def test_another_machines_address_goes_to_the_placeholder_at_start_now(case, evidence):
+    x = unit(case, "evidence/x", two("WKS1") + [("10.1.2.3", evidence)])
+    start(case, x)
+    m, a = machine(case, x, "WKS1"), machine(case, x, "10.1.2.3")
+    assert m.canonical == "WKS1" and a is not None and a.id != m.id
+    assert a.canonical.startswith("x-") and not hp.is_address(a.canonical)
+
+
+def test_own_and_another_machines_addresses_part_at_start_now(case):
+    """The unit's machine exists; one address of its own and one from a row
+    arrive together."""
+    x = unit(case, "evidence/x", two("WKS1"))
+    key = confirm(case, x, "WKS1", "WKS1")
+    unit(case, "evidence/x", [("10.1.2.3", OWN_IP), ("10.9.9.9", "rows host column")])
+    start(case, x)
+    assert machine(case, x, "10.1.2.3").keys[0] == key
+    other = machine(case, x, "10.9.9.9")
+    assert other.keys[0] != key and other.canonical.startswith("x-")
+
+
+def test_a_unit_of_addresses_alone_gets_one_placeholder(case):
+    x = unit(
+        case, "evidence/x", [("10.1.2.3", OWN_IP), ("10.9.9.9", "rows host column")]
+    )
+    start(case, x)
+    assert machine(case, x, "10.1.2.3").id == machine(case, x, "10.9.9.9").id
+    assert len({m.id for m in hi.load(case).machines.values() if m.pairs}) == 1
+
+
+def test_another_machines_address_joins_the_placeholder_a_run_made(case):
+    x = unit(case, "evidence/x", [])
+    start(case, x)
+    (ph,) = [m for m in hi.load(case).machines.values() if m.pairs]
+    unit(case, "evidence/x", [("10.9.9.9", "rows host column")])
+    start(case, x, run="run-2")
+    assert machine(case, x, "10.9.9.9").id == ph.id
+
+
+def test_another_machines_address_goes_to_the_placeholder_while_ingesting(case):
+    x = unit(case, "evidence/x", two("WKS1"))
+    key = confirm(case, x, "WKS1", "WKS1")
+    got, canonical = hi.get_or_mint(case, x, "10.1.2.3", evidence="rows host column")
+    assert got != key and canonical.startswith("x-")
+
+
+def test_a_late_list_name_ignores_a_not_a_host_name_in_another_domain(case):
+    """The list names WKS01; its machine also holds WKS01.old, which the
+    examiner marked not a host: the late WKS01.corp still confirms to it."""
+    a = unit(case, "evidence/a", two("WKS01") + two("WKS01.old.example.test"))
+    key = confirm(case, a, "WKS01", "WKS01", "WKS01.old.example.test")
+    hi.append_decision(case, {"action": "not_a_host", "examiner": "ex1",
+                              "args": {"pairs": [[a, "WKS01.old.example.test"]]}},
+                       hi.load(case).obs_offset)  # fmt: skip
+    hp.upload_host_list(case, "WKS01\n", "ex1")
+    x = unit(case, "evidence/rows", two("WKS9"))
+    got, _ = hi.get_or_mint(
+        case, x, "WKS01.corp.example.test", evidence="rows host column"
+    )
+    assert got == key
+
+
+# -- a match through a short name, on either side, needs it held once
+
+
+def _bare_only_machine(case):
+    """The host list confirms an AD export's bare name."""
+    ad = unit(case, "exports/ad-computers-corp.example.test.csv",
+              [("SRV-DUP1", "ad-computers-corp.example.test.csv host column")])  # fmt: skip
+    hp.upload_host_list(case, "SRV-DUP1\n", "ex1")
+    hp.apply_host_list(case, [ad])
+    m = machine(case, ad, "SRV-DUP1")
+    assert m is not None and m.state == hi.CONFIRMED and m.canonical == "SRV-DUP1"
+    return m.keys[0]
+
+
+def test_a_late_fqdn_never_joins_a_bare_only_machine_whose_short_name_others_hold(case):
+    key = _bare_only_machine(case)
+    unit(case, "evidence/corp", two("SRV-DUP1.corp.example.test"))
+    unit(case, "evidence/acq", two("SRV-DUP1.acq.example.test"))
+    edr = unit(case, "exports/edr.csv", [("WKS9", "edr.csv host column")])
+    got, _ = hi.get_or_mint(
+        case, edr, "srv-dup1.acq.example.test", evidence="edr.csv host column"
+    )
+    assert got != key
+
+
+def test_a_late_fqdn_joins_a_bare_only_machine_that_alone_holds_its_short_name(case):
+    key = _bare_only_machine(case)
+    edr = unit(case, "exports/edr.csv", [("WKS9", "edr.csv host column")])
+    got, _ = hi.get_or_mint(
+        case, edr, "srv-dup1.acq.example.test", evidence="edr.csv host column"
+    )
+    assert got == key
+
+
+def test_a_late_fqdn_the_machine_holds_exactly_joins_whatever_else_holds_its_short_name(
+    case,
+):
+    a = unit(case, "evidence/a", two("SRV-DUP1.acq.example.test"))
+    key = confirm(case, a, "SRV-DUP1.acq.example.test", "SRV-DUP1.acq.example.test")
+    unit(case, "evidence/ad", [("SRV-DUP1", "ad.csv host column")])
+    edr = unit(case, "exports/edr.csv", [("WKS9", "edr.csv host column")])
+    got, _ = hi.get_or_mint(
+        case, edr, "srv-dup1.acq.example.test", evidence="edr.csv host column"
+    )
+    assert got == key

@@ -240,9 +240,18 @@ def start_now(
              "pairs": [[e["unit"], name], *rejected,
                        *(list(p) for p in addresses.pop(e["unit"], []))]}
         )  # fmt: skip
-    for unit, pairs in sorted(addresses.items()):  # its addresses follow its machine
-        from sift_common import host_guard
+    from sift_common import host_guard
 
+    # a unit's own addresses follow its machine; another machine's (a row's
+    # host column, a forwarded log) never name it: they wait on its placeholder
+    theirs = {
+        u: [p for p in ps if host_guard._foreign(state, p)]
+        for u, ps in addresses.items()
+    }
+    for unit, pairs in sorted(addresses.items()):
+        pairs = [p for p in pairs if p not in theirs[unit]]
+        if not pairs:
+            continue
         item = next((it for it in machines if any(
             p[0] == unit and not host_proposal.is_address(p[1]) for p in it["pairs"])), None)  # fmt: skip
         if item is not None:  # the machine its names get now
@@ -259,6 +268,25 @@ def start_now(
             continue
         # no name: its placeholder
         placeholders = host_guard.placeholder_of(state, unit)
+        m = next(
+            (x for x in state.machines.values() if x.canonical in placeholders), None
+        )
+        if m is not None:
+            machines.append({"key": m.keys[0], "canonical": m.canonical,
+                             "pairs": [list(p) for p in pairs]})  # fmt: skip
+            continue
+        locator = str((state.units.get(unit) or {}).get("locator") or unit)
+        name = canonical_for(placeholder_name(locator))
+        machines.append({"key": hi.new_machine_key(), "canonical": name,
+                         "pairs": [[unit, name], *(list(p) for p in pairs)]})  # fmt: skip
+    for unit, pairs in sorted(theirs.items()):
+        if not pairs:
+            continue
+        placeholders = host_guard.placeholder_of(state, unit)
+        ph = next((it for it in machines if it["canonical"] in placeholders), None)
+        if ph is not None:  # its placeholder from this call
+            ph["pairs"] = [*ph["pairs"], *(list(p) for p in pairs)]
+            continue
         m = next(
             (x for x in state.machines.values() if x.canonical in placeholders), None
         )

@@ -1047,9 +1047,13 @@ def get_or_mint(
                 and state.machine_of_key(k) is not None
             }  # fmt: skip
             own = host_guard.placeholder_of(state, unit)
-            m = (
+            seen = [
+                *((state.names.get(pair) or {}).get("evidence") or []),
+                *([evidence] if evidence else []),
+            ]
+            m = (  # another machine's address (row column, forwarded log): the placeholder
                 state.machines[next(iter(mine))]
-                if len(mine) == 1
+                if len(mine) == 1 and not host_guard.foreign_evidence(seen)
                 else next(
                     (x for x in state.machines.values() if x.canonical in own), None
                 )
