@@ -82,13 +82,22 @@ def _load_yaml(path: Path) -> dict | None:
 
 def _load_jsonl(path: Path) -> list[dict]:
     """Load a JSONL file, skipping corrupt lines."""
-    if not path.exists():
-        return []
-    entries = []
+    return _read_jsonl(path)[0]
+
+
+def _read_jsonl(path: Path) -> tuple[list[dict], int]:
+    """A JSONL file's entries, skipping corrupt lines, and how many lines
+    weren't UTF-8 (skipped too)."""
+    entries: list[dict] = []
+    not_utf8 = 0
     try:
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
+        with open(path, "rb") as f:
+            for raw in f:
+                try:
+                    line = raw.decode("utf-8").strip()
+                except UnicodeDecodeError:
+                    not_utf8 += 1
+                    continue
                 if not line:
                     continue
                 try:
@@ -97,10 +106,10 @@ def _load_jsonl(path: Path) -> list[dict]:
                     continue
     except OSError:
         pass
-    return entries
+    return entries, not_utf8
 
 
-def _withdrawals(case_dir: Path) -> list[dict]:
+def _withdrawals(case_dir: Path) -> tuple[list[dict], int]:
     """Candidate findings withdrawn after challenge, oldest first.
 
     Each is a record_finding audit entry whose result is WITHDRAWN. An entry
@@ -109,11 +118,14 @@ def _withdrawals(case_dir: Path) -> list[dict]:
     """
     audit_dir = case_dir / "audit"
     if not audit_dir.is_dir():
-        return []
+        return [], 0
     seen: set[tuple] = set()
     withdrawals = []
+    not_utf8 = 0
     for audit_file in sorted(audit_dir.glob("*.jsonl")):
-        for entry in _load_jsonl(audit_file):
+        entries, skipped = _read_jsonl(audit_file)
+        not_utf8 += skipped
+        for entry in entries:
             if not isinstance(entry, dict) or entry.get("tool") != "record_finding":
                 continue
             result = entry.get("result_summary")
@@ -134,7 +146,7 @@ def _withdrawals(case_dir: Path) -> list[dict]:
                     "skeptic_audit_ids": result.get("skeptic_audit_ids", []),
                 }
             )
-    return sorted(withdrawals, key=lambda w: str(w["ts"]))
+    return sorted(withdrawals, key=lambda w: str(w["ts"])), not_utf8
 
 
 def _resolve_examiner(request: Request) -> str | None:
@@ -454,7 +466,14 @@ async def get_summary(request: Request) -> JSONResponse:
         timeline_counts[s] = timeline_counts.get(s, 0) + 1
 
     open_todos = sum(1 for t in todos if t.get("status", "open") == "open")
-    withdrawals = _withdrawals(case_dir)
+    withdrawals, not_utf8 = _withdrawals(case_dir)
+    withdrawn: dict = {"total": len(withdrawals), "items": withdrawals}
+    if not_utf8:
+        withdrawn["unreadable_lines"] = not_utf8
+        withdrawn["note"] = (
+            f"Audit lines skipped because they aren't UTF-8: {not_utf8}. "
+            "A withdrawal recorded on them isn't listed."
+        )
 
     return JSONResponse(
         {
@@ -462,7 +481,7 @@ async def get_summary(request: Request) -> JSONResponse:
             "timeline": {"total": len(timeline), "by_status": timeline_counts},
             "evidence": {"total": len(evidence)},
             "todos": {"total": len(todos), "open": open_todos},
-            "withdrawn": {"total": len(withdrawals), "items": withdrawals},
+            "withdrawn": withdrawn,
         }
     )
 

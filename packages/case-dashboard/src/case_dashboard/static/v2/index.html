@@ -1742,8 +1742,11 @@ function renderWithdrawnLine() {
 }
 
 function renderWithdrawnList(w) {
-  if (!w || !w.total) return '';
-  var html = '<details style="margin:8px 0 12px" open><summary style="cursor:pointer;color:var(--amber);font-size:13px;font-weight:600">' + escapeHtml(withdrawnText(w.total)) + '</summary>';
+  if (!w) return '';
+  var note = w.note ? '<div style="font-size:12px;color:var(--amber);margin:8px 0">' + escapeHtml(String(w.note)) + '</div>' : '';
+  if (!w.total) return note;
+  var html = note;
+  html += '<details style="margin:8px 0 12px" open><summary style="cursor:pointer;color:var(--amber);font-size:13px;font-weight:600">' + escapeHtml(withdrawnText(w.total)) + '</summary>';
   (w.items || []).forEach(function(i) {
     html += '<div class="evidence-artifact" style="margin:6px 0">';
     html += '<div style="font-weight:600">' + escapeHtml(String(i.title || '')) + '</div>';

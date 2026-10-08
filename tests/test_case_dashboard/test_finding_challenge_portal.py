@@ -121,6 +121,25 @@ def test_the_summary_lists_each_withdrawal_once(case):
     assert withdrawn["items"][0]["skeptic_audit_ids"] == ["sift-steve-20261007-002"]
 
 
+def test_a_line_that_isnt_utf8_is_skipped_counted_and_noted(case):
+    good = json.dumps(
+        _withdrawal("forensic-steve-20261007-001", "2026-10-07T08:00:00Z", "first")
+    )
+    raw = (
+        b'{"tool": "record_finding", "title": "\xff"}\n'
+        + good.encode()
+        + b"\n\xfe\xff\n"
+    )
+    (case / "audit" / "forensic-mcp.jsonl").write_bytes(raw)
+    withdrawn = _summary()["withdrawn"]
+    assert withdrawn["total"] == 1 and withdrawn["items"][0]["title"] == "first"
+    assert withdrawn["unreadable_lines"] == 2
+    assert withdrawn["note"] == (
+        "Audit lines skipped because they aren't UTF-8: 2. "
+        "A withdrawal recorded on them isn't listed."
+    )
+
+
 def test_anchor_a_case_without_withdrawals_counts_none(case):
     assert _summary()["withdrawn"] == {"total": 0, "items": []}
 
