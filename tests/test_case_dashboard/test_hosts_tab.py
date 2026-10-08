@@ -739,6 +739,23 @@ class TestTheGuardsRefusalsAreReported:
         ]
         assert body["confirmed"] == [second]
 
+    def test_confirm_all_reports_a_unit_flagged_since_the_page(self, case, client):
+        """The real guard: a near spelling noted after the page flags the unit
+        now, so its group is skipped with the guard's reason, and the rest go."""
+        a = folder(case, "WKS01")
+        folder(case, "WKS02")
+        page = client.get("/api/hosts").json()
+        assert not any(g["flags"] for g in page["proposed"])
+        hi.append_observations(
+            case, [{"kind": "hint", "unit": a, "raw": "WKS01", "near": "WKS07"}]
+        )
+        body = _confirm_all(client, page).json()
+        assert body["confirmed"] == ["WKS02"]
+        assert [(s["canonical"], s["reason"]) for s in body["skipped"]] == [
+            ("WKS01", "the unit is flagged now (a near spelling); the examiner decides")
+        ]
+        assert hi.load(case).machine_of_pair(a, "WKS01") is None
+
     def test_start_now_reports_what_the_guard_refused(self, case, client, monkeypatch):
         u = unit(case, "evidence/WKS01", "WKS01")
         hg.record_wait(case, "run-1", [u])
