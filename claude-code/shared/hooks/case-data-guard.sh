@@ -54,6 +54,11 @@ SEPS = {";", "&&", "||", "|", "&", "|&"}
 REDIRS = {">", ">>", ">|", "&>", "&>>"}
 WRAP = {"sudo", "env", "command", "nice", "nohup", "time", "timeout", "stdbuf", "exec"}
 CAP = 2000  # glob matches checked per argument (the 5-second bound)
+# Codex (`--client codex`) doesn't say which folder a command runs in (its
+# shell tool takes its own working directory): until the command itself cds
+# to an absolute path, a relative path can't be checked, so it's refused.
+CODEX = sys.argv[1:3] == ["--client", "codex"]
+known = not CODEX
 
 
 def refused(why, payload=None):
@@ -168,10 +173,22 @@ def expand(a):
     return hits or [a]
 
 
+def unchecked(a):
+    """Codex, with the folder unknown, and `a` a relative path."""
+    return not known and not os.path.isabs(os.path.expanduser(a))
+
+
+def refuse_relative(a):
+    block(f"{a} is a relative path, and Codex doesn't say which folder a command "
+          "runs in, so it can't be checked; use its absolute path")
+
+
 def check(seg):
-    global base
+    global base, known
     seg = [t for t in seg if t != ")"]
     for i, t in enumerate(seg[:-1]):
+        if t in REDIRS and unchecked(seg[i + 1]):
+            refuse_relative(seg[i + 1])
         if t in REDIRS and any(damage(x, new_ok=True) for x in expand(seg[i + 1])):
             block(f"redirection onto {seg[i + 1]}")
     seg = [t for i, t in enumerate(seg) if t not in REDIRS and (i == 0 or seg[i - 1] not in REDIRS)]
@@ -185,7 +202,9 @@ def check(seg):
         return
     name = os.path.basename(seg[0])
     if name == "cd":
-        base = os.path.join(base, os.path.expanduser(seg[1] if len(seg) > 1 else "~"))
+        to = os.path.expanduser(seg[1] if len(seg) > 1 else "~")
+        known = known or os.path.isabs(to)
+        base = os.path.join(base, to)
         return
     args, dd, tdir, it, no_t = [], False, None, iter(seg[1:]), False
     for a in it:
@@ -201,6 +220,10 @@ def check(seg):
             args += expand(a)
     if tdir is not None:
         args.append(tdir)
+    if name in ("rm", "rmdir", "shred", "unlink", "truncate", "mv", "cp", "install", "ln"):
+        for a in [a for a in seg[1:] if not a.startswith("-")] if not known else []:
+            if unchecked(a):
+                refuse_relative(a)
     if name in ("rm", "rmdir", "shred", "unlink", "truncate"):
         for a in args:
             if damage(a):
@@ -219,7 +242,12 @@ def check(seg):
         while rest and (rest[0] in ("-H", "-L", "-P", "-D") or rest[0].startswith("-O")):
             if rest.pop(0) == "-D" and rest:  # find's options come before its roots
                 rest.pop(0)
-        roots = itertools.takewhile(lambda a: not a.startswith("-") and a not in ("!", "("), rest)
+        roots = list(
+            itertools.takewhile(lambda a: not a.startswith("-") and a not in ("!", "("), rest)
+        )
+        for r in roots or ["."]:
+            if unchecked(r):
+                refuse_relative(r)
         for r in [x for a in roots for x in expand(a)] or ["."]:  # every starting point
             if damage(r):
                 block(f"find -delete/-exec under {r}")
@@ -259,7 +287,7 @@ couldnt_run() {
 # failed), no python3, or a Python that can't start all block.
 [ -n "$GUARD" ] || couldnt_run
 # -I: isolated, so nothing in the cwd (a planted shlex.py) or PYTHON* runs.
-python3 -I -c "$GUARD"
+python3 -I -c "$GUARD" "$@"
 rc=$?
 case $rc in 0 | 2) exit $rc ;; esac
 couldnt_run
