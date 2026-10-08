@@ -2,8 +2,7 @@
 the candidates withdrawn after challenge. The hashes cover both new keys, and
 reports keep the alternatives but not the challenge.
 
-The real _apply_delta and get_summary run on a scratch case; the HMAC ledger
-writer (which writes /var/lib/vhir) is replaced by a recorder.
+The portal's signed commit and get_summary run on a scratch case.
 """
 
 from __future__ import annotations
@@ -18,8 +17,12 @@ from pathlib import Path
 import case_dashboard.routes as D
 import forensic_mcp.case.manager as fm
 import pytest
-from report_mcp import server as report
 from report_mcp.profiles import STRIPPED_FINDING_FIELDS
+from vhir_cli.case_io import HASH_EXCLUDE_KEYS, compute_content_hash
+from vhir_cli.ledger_verify import verify_case
+
+from .conftest import enrol, reviewed
+from .conftest import finding as conftest_finding
 
 NOW0 = "2026-10-07T07:00:00+00:00"
 ALTERNATIVES = [{"explanation": "An admin's test", "status": "open"}]
@@ -27,7 +30,6 @@ ALTERNATIVES = [{"explanation": "An admin's test", "status": "open"}]
 
 @pytest.fixture
 def case(tmp_path, monkeypatch):
-    monkeypatch.setattr(D, "_write_hmac_entries", lambda *a: [])
     d = tmp_path / "C-1"
     (d / "audit").mkdir(parents=True)
     (d / "CASE.yaml").write_text("case_id: C-1\n")
@@ -47,41 +49,37 @@ def case(tmp_path, monkeypatch):
         "audit_ids": ["x-1"],
         "alternatives": ALTERNATIVES,
     }
-    finding["content_hash"] = D._compute_content_hash(finding)
+    finding["content_hash"] = compute_content_hash(finding)
     (d / "findings.json").write_text(json.dumps([finding]))
     (d / "timeline.json").write_text("[]")
     return d
 
 
-def _commit(case, action):
+@pytest.mark.parametrize("action", ["approve", "edit"])
+def test_an_examiners_edit_of_the_alternatives_is_signed_and_applied(portal, action):
+    """The portal's signed commit applies the edited alternatives."""
+    enrol("steve")
+    original = dict(conftest_finding("F-steve-001"), alternatives=ALTERNATIVES)
+    portal.write("findings.json", [original])
+    portal.write("timeline.json", [])
     edited = ALTERNATIVES + [
         {"explanation": "Scheduled backup", "status": "ruled_out", "evidence": "x"}
     ]
-    entry = {
-        "id": "F-steve-001",
-        "type": "finding",
-        "action": action,
-        "modifications": {
-            "alternatives": {"original": ALTERNATIVES, "modified": edited}
-        },
-    }
-    (case / "pending-reviews.json").write_text(
-        json.dumps({"case_id": "C-1", "items": [entry]})
-    )
-    before = json.loads((case / "findings.json").read_text())[0]["content_hash"]
-    result = D._apply_delta(case, "steve", b"k" * 32)
-    (finding,) = json.loads((case / "findings.json").read_text())
-    return result, finding, edited, before
-
-
-@pytest.mark.parametrize("action", ["approve", "edit"])
-def test_an_examiners_edit_of_the_alternatives_is_applied(case, action):
-    result, finding, edited, before = _commit(case, action)
-    assert not result.get("skipped"), result
+    entry = dict(
+        reviewed(portal, "F-steve-001", action,
+                 modifications={"alternatives": {"original": ALTERNATIVES,
+                                                 "modified": edited}}),
+        staged_by="steve",
+    )  # fmt: skip
+    portal.stage(entry)
+    r = portal.sign_all([entry])
+    assert r.status_code == 200, r.text
+    finding = portal.item("F-steve-001")
     assert finding["alternatives"] == edited
     assert finding["examiner_modifications"]["alternatives"]["modified"] == edited
-    assert finding["content_hash"] != before
-    assert finding["content_hash"] == D._compute_content_hash(finding)
+    (line,) = portal.chain()
+    assert line["item_id"] == "F-steve-001"
+    assert verify_case(portal.dir).exit_code == 0
 
 
 def _withdrawal(audit_id, ts, title="t"):
@@ -130,8 +128,8 @@ def test_anchor_a_case_without_withdrawals_counts_none(case):
 @pytest.mark.parametrize("key", ["alternatives", "challenged"])
 @pytest.mark.parametrize(
     "exclude",
-    [fm._HASH_EXCLUDE_KEYS, D._HASH_EXCLUDE_KEYS, report._HASH_EXCLUDE_KEYS],
-    ids=["forensic-mcp", "portal", "report-mcp"],
+    [fm._HASH_EXCLUDE_KEYS, HASH_EXCLUDE_KEYS],
+    ids=["forensic-mcp", "vhir (the portal and report-mcp use it)"],
 )
 def test_every_hash_covers_the_new_keys(key, exclude):
     assert key not in exclude
