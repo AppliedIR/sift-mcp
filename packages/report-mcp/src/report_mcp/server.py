@@ -39,8 +39,8 @@ _MAX_FIELD = 500
 _MAX_REPORT_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
-# Duplicated from vhir-cli case_io.py — report-mcp does NOT depend on
-# vhir-cli. Kept in sync manually.
+# A copy of vhir-cli's case_io._utc, kept in sync by hand (report-mcp imports
+# vhir-cli, but this helper isn't part of what it uses from there).
 def _utc(ts: object) -> datetime | None:
     """An ISO timestamp as an aware UTC datetime (naive read as UTC), or None.
     The fraction is made 6 digits and ±HHMM gets its colon, for Python 3.10."""
