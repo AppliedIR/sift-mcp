@@ -49,3 +49,15 @@ def test_a_failed_write_leaves_the_journal_as_it_was_and_no_temporary_file(
     assert (case / hi.OPS).read_bytes() == before
     assert sorted(p.name for p in case.iterdir() if p.name.endswith(".tmp")) == []
     assert json.loads(before)["ops"].keys() == {"op-1"}
+
+
+def test_an_operations_decision_line_is_found_by_its_id(case):
+    hi.append_decision(case, {"action": "rename", "examiner": "ex1", "op": "op-1",
+                              "args": {}}, hi.load(case).obs_offset, door="R")  # fmt: skip
+    assert hi.decided_op(case, "op-1") and not hi.decided_op(case, "op-2")
+
+
+def test_a_torn_decision_line_is_not_a_decision(case):
+    with open(case / hi.DECISIONS, "ab") as f:
+        f.write(b'{"action": "rename", "op": "op-3", "args": {')  # no newline: torn
+    assert not hi.decided_op(case, "op-3")

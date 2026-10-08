@@ -1357,6 +1357,18 @@ def record_op(case_dir: str | os.PathLike, op_id: str, fields: dict) -> dict:
     return dict(entry)
 
 
+def decided_op(case_dir: str | os.PathLike, op_id: str) -> bool:
+    """Whether the decision log holds the decision line of host operation
+    ``op_id``: written once its docs carried the new names, so a worker that
+    stopped after it had finished the operation. A torn last line isn't one."""
+    _, data = _read(Path(case_dir) / DECISIONS)
+    for raw in _lines(data)[1]:
+        rec = _parse(raw)
+        if rec is not None and rec.get("op") == op_id:
+            return True
+    return False
+
+
 def unfinished_op(case_dir: str | os.PathLike) -> dict | None:
     """The host operation that is running or incomplete, or None."""
     for op_id, op in sorted(read_ops(case_dir)["ops"].items()):
