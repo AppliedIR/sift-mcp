@@ -9,7 +9,7 @@ import time
 
 import pytest
 from case_dashboard import signing
-from vhir_cli import keys, ledger
+from vhir_cli import credentials, keys, ledger
 from vhir_cli.ledger_verify import verify_case
 
 from .conftest import PASSWORD, enrol, entry, event, finding, reviewed
@@ -436,6 +436,25 @@ def test_a_torn_ledger_is_named(case, monkeypatch):
     r = case.sign_all([reviewed(case, "F-steve-001")])
     assert r.status_code == 500 and r.json()["code"] == "LEDGER_TORN"
     assert "vhir review --verify" in r.json()["error"]
+
+
+@pytest.mark.parametrize("folder", ["keys", "ledger"])
+def test_an_unfinished_update_is_named_before_anything_is_planned(case, folder):
+    """A box updated once by 0.6's update code can lack the signing folders
+    (or have them root's): the plan is refused by name, and the page says so."""
+    target = keys.KEYS_DIR if folder == "keys" else ledger.LEDGER_DIR
+    before = _snapshot(case)
+    target.chmod(0o500)
+    try:
+        r = case.plan([reviewed(case, "F-steve-001")])
+        state = case.get("/api/case").json()["signing"]
+    finally:
+        target.chmod(0o700)
+    assert r.status_code == 409 and r.json()["code"] == "UPDATE_UNFINISHED"
+    assert r.json()["error"] == credentials.FINISH_UPDATE
+    assert (state["signing_available"], state["reason"]) == (False, "UPDATE_UNFINISHED")
+    assert state["message"] == credentials.FINISH_UPDATE
+    assert _snapshot(case) == before
 
 
 def test_the_case_page_shows_the_signing_state(case):

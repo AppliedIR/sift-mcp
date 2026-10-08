@@ -132,6 +132,9 @@ def signing_state(examiner: str | None) -> dict:
     if not valid_name(examiner):
         return {**out, "signing_available": False, "reason": "NO_EXAMINER",
                 "message": f"Invalid examiner name: {examiner!r}"}  # fmt: skip
+    if credentials.signing_folders_problem():
+        return {**out, "signing_available": False, "reason": "UPDATE_UNFINISHED",
+                "message": credentials.FINISH_UPDATE}  # fmt: skip
     try:
         state = credentials.state(examiner, _config_path())
     except keys.KeysFileInvalid as e:
@@ -529,6 +532,8 @@ async def post_commit_plan(request: Request) -> JSONResponse:
     body, refusal = await _json(request)
     if refusal:
         return refusal
+    if credentials.signing_folders_problem():  # a box updated once from 0.6
+        return _error("UPDATE_UNFINISHED", credentials.FINISH_UPDATE, 409)
     data, refusal = _credential(examiner)
     if refusal:
         return refusal
