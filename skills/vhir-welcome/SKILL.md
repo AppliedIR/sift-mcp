@@ -1,9 +1,11 @@
 ---
-name: welcome
-description: Post-install verification and onboarding for full Valhuntir
+name: vhir-welcome
+description: 'Post-install verification and onboarding for Valhuntir: checks the gateway, backends, tools, knowledge base, report profiles and this client''s controls, then explains how to work and how to start a case. Use right after installing, or when asked to verify the installation.'
+metadata:
+  source: claude-code/full/commands/welcome.md
 ---
 
-# /welcome — Post-Install Verification and Onboarding
+# Post-Install Verification and Onboarding
 
 Follow these phases in order. Report results as you go. Stop on failure.
 
@@ -133,7 +135,9 @@ Place evidence in the evidence/ subdirectory before starting.
 
 ## Phase 3: Infrastructure Confirmation
 
-### Step 8: Sandbox Test
+### Claude Code
+
+#### Step 8: Sandbox Test
 
 Run via Bash:
 ```bash
@@ -146,7 +150,7 @@ bwrap --ro-bind / / --unshare-net -- /bin/true
   items. Just note "Sandbox: needs reboot" in the summary block.
   The installer already informed the user.
 
-### Step 9: Controls Summary
+#### Step 9: Controls Summary
 
 Read settings.json (both `~/.claude/settings.json` and project
 `.claude/settings.json`). Verify:
@@ -158,10 +162,40 @@ Read settings.json (both `~/.claude/settings.json` and project
 If no case is active, note that the audit hook activates once a
 case is created. This is informational, not a failure.
 
-### Step 10: Config Conflicts
+#### Step 10: Config Conflicts
 
 Read `~/.claude.json` (if it exists). Check for `mcpServers` entries
 that duplicate gateway backends. If found, warn about double-loading.
+
+### Codex
+
+When this session is Codex, check these instead of the Claude Code steps
+above, and show them in place of its control lines in the summary.
+
+#### Step 8c: Profile and launch folder
+
+- `~/.codex/valhuntir.config.toml` exists, and this session has the
+  Valhuntir MCP servers (it was started with `codex -p valhuntir`).
+  If not: "Start Codex with `codex -p valhuntir`."
+- The working directory is a case's `work/` folder (`CASE.yaml` in its
+  parent). If not: "Start Codex from `<case>/work`."
+
+#### Step 9c: Managed controls
+
+- `/etc/codex/requirements.toml` exists and its first line is
+  `# managed-by: valhuntir`, and `/etc/codex/vhir-hooks/` holds the hooks.
+  Report "Codex controls: OK".
+- If `vhir setup test` prints CODEX CONTROLS OFF, report exactly that.
+  The examiner chose it; do not suggest turning them back on.
+- If the file is missing or doesn't carry that line, report "Codex
+  controls: NOT in effect" and the command `vhir setup client
+  --client=codex`.
+
+#### Step 10c: Sandbox
+
+Run `test -r /var/lib/vhir/passwords` via the shell. It must fail
+(the managed `deny_read`): report "deny_read: OK". If it succeeds,
+report "deny_read: NOT in effect".
 
 ### Step 11: REMnux Integration
 
