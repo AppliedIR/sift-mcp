@@ -133,12 +133,13 @@ def signing_state(examiner: str | None, case_dir: Path | None = None) -> dict:
     if not valid_name(examiner):
         return {**out, "signing_available": False, "reason": "NO_EXAMINER",
                 "message": f"Invalid examiner name: {examiner!r}"}  # fmt: skip
-    if credentials.signing_folders_problem():
+    folders = credentials.signing_folders_problem()
+    if folders:
         return {**out, "signing_available": False, "reason": "UPDATE_UNFINISHED",
-                "message": credentials.FINISH_UPDATE}  # fmt: skip
+                "message": folders}  # fmt: skip
     in_a_copy = decide.copy_problem(case_dir) if case_dir else ""
     if in_a_copy:
-        return {**out, "signing_available": False, "reason": "CASE_COPY",
+        return {**out, "signing_available": False, "reason": _copy_code(in_a_copy),
                 "message": in_a_copy}  # fmt: skip
     try:
         state = credentials.state(examiner, _config_path())
@@ -152,6 +153,10 @@ def signing_state(examiner: str | None, case_dir: Path | None = None) -> dict:
     entry = keys.active(keys.load(examiner))
     return {**out, "signing_available": True, "reason": None, "schema": 3,
             "fingerprint": keys.key_fingerprint(entry), "message": ""}  # fmt: skip
+
+
+def _copy_code(problem: str) -> str:
+    return "CHAIN_UNREADABLE" if problem == ledger.CHAIN_UNREADABLE else "CASE_COPY"
 
 
 def _keys_invalid_text(examiner: str, e: Exception) -> str:
@@ -538,11 +543,12 @@ async def post_commit_plan(request: Request) -> JSONResponse:
     body, refusal = await _json(request)
     if refusal:
         return refusal
-    if credentials.signing_folders_problem():  # a box updated once from 0.6
-        return _error("UPDATE_UNFINISHED", credentials.FINISH_UPDATE, 409)
+    folders = credentials.signing_folders_problem()
+    if folders:  # a box updated once from 0.6, or a folder that isn't ours
+        return _error("UPDATE_UNFINISHED", folders, 409)
     in_a_copy = decide.copy_problem(case_dir)
-    if in_a_copy:  # signing here would extend another folder's chain
-        return _error("CASE_COPY", in_a_copy, 409)
+    if in_a_copy:  # another folder's chain, or one that can't be read
+        return _error(_copy_code(in_a_copy), in_a_copy, 409)
     data, refusal = _credential(examiner)
     if refusal:
         return refusal

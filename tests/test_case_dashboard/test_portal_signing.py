@@ -450,10 +450,11 @@ def test_an_unfinished_update_is_named_before_anything_is_planned(case, folder):
         state = case.get("/api/case").json()["signing"]
     finally:
         target.chmod(0o700)
+    named = credentials.not_writable_text(target)  # this folder, and whose it is
     assert r.status_code == 409 and r.json()["code"] == "UPDATE_UNFINISHED"
-    assert r.json()["error"] == credentials.FINISH_UPDATE
+    assert r.json()["error"] == named
     assert (state["signing_available"], state["reason"]) == (False, "UPDATE_UNFINISHED")
-    assert state["message"] == credentials.FINISH_UPDATE
+    assert state["message"] == named
     assert _snapshot(case) == before
 
 
@@ -475,6 +476,27 @@ def test_a_copy_of_the_case_can_t_sign_in_the_portal(case):
     state = case.get("/api/case").json()["signing"]
     assert (state["signing_available"], state["reason"]) == (False, "CASE_COPY")
     assert _snapshot(case) == before
+
+
+@pytest.mark.parametrize("how", ["not UTF-8", "unreadable"])
+def test_an_unreadable_chain_is_a_named_signing_state_not_a_500(case, how):
+    case.stage(dict(reviewed(case, "F-steve-001"), staged_by="steve"))
+    assert case.sign_all([reviewed(case, "F-steve-001")]).status_code == 200
+    path = ledger.chain_path("C-1")
+    if how == "not UTF-8":
+        path.write_bytes(path.read_bytes() + b"\xff\xfe\n")
+    else:
+        path.chmod(0o000)
+    try:
+        page = case.get("/api/case")
+        r = case.plan([reviewed(case, "F-steve-002")])
+    finally:
+        path.chmod(0o600)
+    assert page.status_code == 200
+    state = page.json()["signing"]
+    assert (state["signing_available"], state["reason"]) == (False, "CHAIN_UNREADABLE")
+    assert state["message"] == ledger.CHAIN_UNREADABLE
+    assert r.status_code == 409 and r.json()["code"] == "CHAIN_UNREADABLE"
 
 
 def test_the_case_page_shows_the_signing_state(case):
