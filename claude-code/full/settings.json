@@ -107,7 +107,25 @@
       "Edit(**/.vhir/active_case)",
       "Edit(**/.vhir/gateway.yaml)",
       "Edit(**/.vhir/config.yaml)",
-      "Edit(**/.vhir/.password_lockout)"
+      "Edit(**/.vhir/.password_lockout)",
+      "Edit(~/.claude/settings.json)",
+      "Edit(~/.claude/CLAUDE.md)",
+      "Edit(~/.claude/rules/**)",
+      "Edit(~/.vhir/hooks/**)",
+      "Edit(~/.vhir/active_case)",
+      "Edit(~/.vhir/gateway.yaml)",
+      "Edit(~/.vhir/config.yaml)",
+      "Edit(~/.vhir/.password_lockout)",
+      "Edit(~/.claude/skills/**)",
+      "Edit(~/.claude/agents/**)",
+      "Edit(~/.agents/**)",
+      "Edit(~/.codex/**)",
+      "Edit(**/host-observations.jsonl)",
+      "Edit(**/host-decisions.jsonl)",
+      "Edit(**/host-ops.json)",
+      "Edit(**/host-dictionary.yaml)",
+      "Edit(**/.vhir/case-paths.json)",
+      "Edit(~/.vhir/case-paths.json)"
     ]
   },
   "sandbox": {
@@ -124,7 +142,9 @@
         "~/.vhir/.pin_lockout",
         "~/.claude/settings.json",
         "~/.claude/CLAUDE.md",
-        "~/.claude/rules"
+        "~/.claude/rules",
+        "~/.agents",
+        "~/.codex"
       ],
       "denyRead": [
         "/var/lib/vhir"
