@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -51,6 +52,9 @@ if mode == "incomplete":
     entry = hi.record_op(case, op_id, {"state": "incomplete", "reason": "<img src=x> 3 doc(s) still without the name"})
     print(json.dumps({"id": op_id, **entry}))
     sys.exit(1)
+size = os.path.getsize(os.path.join(case, hi.OBSERVATIONS))
+hi.append_decision(case, {"action": op["kind"], "examiner": examiner,
+                   "args": {k: v for k, v in op.items() if k != "kind"}}, size, door="R")
 entry = hi.record_op(case, op_id, {"state": "done", "relabelled": 1234, "finished": "t1"})
 print(json.dumps({"id": op_id, **entry}))
 """
@@ -83,24 +87,58 @@ def _calls(case):
 RENAME = {"kind": "rename", "machine": "m" * 16, "canonical": "WKS99"}
 
 
+def machines(case, *names) -> dict[str, str]:
+    """Confirmed machines named `names`; their ids by name."""
+    recs, items = [], []
+    for name in names:
+        u = hi.unit_key(f"evidence/{name}")
+        recs += [{"kind": "unit", "unit": u, "locator": f"evidence/{name}"},
+                 {"kind": "name", "unit": u, "raw": name, "evidence": "SYSTEM",
+                  "origin": "artifact"}]  # fmt: skip
+        items.append({"key": hi.new_machine_key(), "canonical": name,
+                      "pairs": [[u, name]]})  # fmt: skip
+    size = hi.append_observations(case, recs)
+    hi.append_decision(
+        case, {"action": "confirm", "examiner": "t", "args": {"machines": items}}, size
+    )
+    return {i["canonical"]: i["key"] for i in items}
+
+
+def _as_r_writes(case, action, args):
+    size = (case / hi.OBSERVATIONS).stat().st_size
+    hi.append_decision(case, {"action": action, "examiner": "t", "args": args}, size, door="R")  # fmt: skip
+
+
+@pytest.fixture
+def wks(case):
+    return machines(case, "WKS01", "WKS02", "WKS03")
+
+
+def rename(ids, name="WKS01", to="WKS99", seen=None):
+    op = {"kind": "rename", "machine": ids[name], "canonical": to}
+    return {"op": op, "seen": {ids[name]: seen or name}}
+
+
 def test_the_job_is_started_as_the_examiner_and_its_journal_served(
-    case, client, launch
+    case, client, launch, wks
 ):  # noqa: F811
-    r = client.post("/api/hosts/ops", json={"op": RENAME})
+    r = client.post("/api/hosts/ops", json=rename(wks))
     assert r.status_code == 200, r.text
     assert r.json()["state"] == "done" and r.json()["last"]["relabelled"] == 1234
     (call,) = _calls(case)
     assert call[call.index("--examiner") + 1] == "tester"
-    assert json.loads(call[call.index("--op") + 1]) == RENAME
+    assert json.loads(call[call.index("--op") + 1]) == rename(wks)["op"]
     assert [(e["tool"], e["examiner"], e["origin"]) for e in _audit(case)] == [
         ("host_op", "tester", "portal"), ("host_op", "tester", "portal")]  # fmt: skip
     view = client.get("/api/hosts/ops").json()
     assert view["unfinished"] is None and view["last"]["state"] == "done"
 
 
-def test_a_refusal_is_answered_and_changes_nothing(case, client, launch, monkeypatch):  # noqa: F811
+def test_a_refusal_is_answered_and_changes_nothing(
+    case, client, launch, wks, monkeypatch
+):  # noqa: F811
     monkeypatch.setenv("FAKE_R", "refused")
-    r = client.post("/api/hosts/ops", json={"op": RENAME})
+    r = client.post("/api/hosts/ops", json=rename(wks))
     assert (
         r.status_code == 409 and r.json()["reason"] == "a process holds the case lock"
     )
@@ -109,17 +147,17 @@ def test_a_refusal_is_answered_and_changes_nothing(case, client, launch, monkeyp
 
 
 def test_a_long_op_answers_202_and_shows_its_progress(
-    case, client, launch, monkeypatch
+    case, client, launch, wks, monkeypatch
 ):  # noqa: F811
     monkeypatch.setenv("FAKE_R", "slow")
     with client:  # one event loop for the whole row, as the gateway has
-        r = client.post("/api/hosts/ops", json={"op": RENAME})
+        r = client.post("/api/hosts/ops", json=rename(wks))
         assert r.status_code == 202 and r.json()["state"] == "running"
         view = client.get("/api/hosts/ops").json()
         running = view["unfinished"]
         assert running["state"] == "running" and running["to_relabel"] == 1234
         assert running["examiner"] == "tester" and view["launch"]["state"] == "running"
-        again = client.post("/api/hosts/ops", json={"op": RENAME})
+        again = client.post("/api/hosts/ops", json=rename(wks, "WKS02"))
         assert again.status_code == 409  # one launch at a time from the portal
         deadline = time.time() + 15
         while (
@@ -134,10 +172,10 @@ def test_a_long_op_answers_202_and_shows_its_progress(
 
 
 def test_an_incomplete_op_shows_the_banner_and_re_run_resumes_it(
-    case, client, launch, monkeypatch
+    case, client, launch, wks, monkeypatch
 ):  # noqa: F811
     monkeypatch.setenv("FAKE_R", "incomplete")
-    r = client.post("/api/hosts/ops", json={"op": RENAME})
+    r = client.post("/api/hosts/ops", json=rename(wks))
     assert r.status_code == 200 and r.json()["state"] == "incomplete"
     view = client.get("/api/hosts/ops").json()
     assert view["unfinished"]["state"] == "incomplete"
@@ -148,26 +186,105 @@ def test_an_incomplete_op_shows_the_banner_and_re_run_resumes_it(
     assert client.get("/api/hosts/ops").json()["unfinished"] is None
 
 
-def test_without_an_examiner_nothing_is_started(case, client, launch, monkeypatch):  # noqa: F811
+def test_without_an_examiner_nothing_is_started(case, client, launch, wks, monkeypatch):  # noqa: F811
     monkeypatch.delenv("VHIR_EXAMINER")
-    assert client.post("/api/hosts/ops", json={"op": RENAME}).status_code == 401
+    assert client.post("/api/hosts/ops", json=rename(wks)).status_code == 401
     assert _calls(case) == [] and _audit(case) == []
 
 
 @pytest.mark.parametrize(
     "body",
-    [{}, {"op": RENAME, "resume": "op-1"}, {"op": {"kind": "delete"}}, {"resume": ""},
-     {"op": "rename"}],
+    [{}, {"op": RENAME, "resume": "op-1", "seen": {}}, {"op": {"kind": "delete"}, "seen": {}},
+     {"resume": ""}, {"op": "rename", "seen": {}}, {"op": RENAME}],
 )  # fmt: skip
 def test_a_malformed_request_starts_nothing(case, client, launch, body):  # noqa: F811
     assert client.post("/api/hosts/ops", json=body).status_code == 400
     assert _calls(case) == []
 
 
-def test_without_opensearch_mcp_it_says_so(case, client, monkeypatch):  # noqa: F811
+def test_without_opensearch_mcp_it_says_so(case, client, wks, monkeypatch):  # noqa: F811
     monkeypatch.setattr(H, "_r_available", lambda: False)
-    r = client.post("/api/hosts/ops", json={"op": RENAME})
+    r = client.post("/api/hosts/ops", json=rename(wks))
     assert r.status_code == 503 and "opensearch-mcp" in r.json()["error"]
+
+
+class TestAnOpActsOnTheMachineTheExaminerSaw:
+    """The request carries each machine's name as the page showed it; when
+    the machine has changed since, nothing is started."""
+
+    def test_a_form_opened_before_a_split_gave_its_id_away_is_refused(
+        self, case, client, launch, wks
+    ):  # noqa: F811
+        a, b = wks["WKS01"], wks["WKS02"]
+        _as_r_writes(case, "merge", {"into": a, "from": [b]})
+        page = client.get("/api/hosts?q=WKS01").json()
+        (seen,) = [m for m in page["machines"] if m["id"] == a]
+        assert seen["keys"] == [a, b]  # the detail the examiner opened
+        # the split takes a's own key out: that id is now the split-out machine
+        _as_r_writes(
+            case, "split", {"machine": a, "keys": [a], "canonical": "SPLITOUT"}
+        )
+        assert hi.load(case).machine_of_key(a).canonical == "SPLITOUT"
+        r = client.post(
+            "/api/hosts/ops", json=rename(wks, to="WKS77", seen=seen["canonical"])
+        )
+        assert r.status_code == 409, r.text
+        assert r.json()["error"] == "this machine changed since you opened it; reload"
+        assert _calls(case) == [] and hi.read_ops(case)["ops"] == {}
+        # the same request with what the page shows now goes ahead
+        fresh = rename(wks, to="WKS77", seen="SPLITOUT")
+        assert client.post("/api/hosts/ops", json=fresh).status_code == 200
+
+    def test_a_second_tab_s_request_after_the_first_tab_renamed_is_refused(
+        self, case, client, launch, wks
+    ):  # noqa: F811
+        tab1 = client.get("/api/hosts").json()
+        tab2 = client.get("/api/hosts").json()
+        assert tab1["machines"] == tab2["machines"]
+        first = client.post("/api/hosts/ops", json=rename(wks, to="WKS50"))
+        assert first.status_code == 200, first.text
+        assert hi.load(case).machine_of_key(wks["WKS01"]).canonical == "WKS50"
+        stale = {"op": {"kind": "split", "machine": wks["WKS01"], "keys": ["x"],
+                        "canonical": "OTHER"}, "seen": {wks["WKS01"]: "WKS01"}}  # fmt: skip
+        r = client.post("/api/hosts/ops", json=stale)
+        assert (
+            r.status_code == 409 and "changed since you opened it" in r.json()["error"]
+        )
+        assert len(_calls(case)) == 1
+
+    def test_a_merge_names_both_machines_as_seen(self, case, client, launch, wks):  # noqa: F811
+        op = {"kind": "merge", "into": wks["WKS01"], "from": [wks["WKS02"]]}
+        stale = {"op": op, "seen": {wks["WKS01"]: "WKS01", wks["WKS02"]: "OLD"}}
+        assert client.post("/api/hosts/ops", json=stale).status_code == 409
+        ok = {"op": op, "seen": {wks["WKS01"]: "WKS01", wks["WKS02"]: "WKS02"}}
+        assert client.post("/api/hosts/ops", json=ok).status_code == 200
+
+
+class TestMergeAcrossPages:
+    def test_a_machine_on_another_page_is_merged_by_its_typed_name(
+        self, case, client, launch, wks
+    ):  # noqa: F811
+        page = client.get("/api/hosts?per_page=1").json()
+        assert page["total"] == 3 and [m["canonical"] for m in page["machines"]] == [
+            "WKS01"
+        ]
+        body = {"op": {"kind": "merge", "into": wks["WKS01"], "from_name": "wks03"},
+                "seen": {wks["WKS01"]: "WKS01"}}  # fmt: skip
+        r = client.post("/api/hosts/ops", json=body)
+        assert r.status_code == 200, r.text
+        (call,) = _calls(case)
+        sent = json.loads(call[call.index("--op") + 1])
+        assert sent == {"kind": "merge", "into": wks["WKS01"], "from": [wks["WKS03"]]}
+        assert hi.load(case).machine_of_key(wks["WKS03"]).canonical == "WKS01"
+
+    def test_a_name_no_machine_has_starts_nothing(self, case, client, launch, wks):  # noqa: F811
+        body = {"op": {"kind": "merge", "into": wks["WKS01"], "from_name": "NOPE"},
+                "seen": {wks["WKS01"]: "WKS01"}}  # fmt: skip
+        r = client.post("/api/hosts/ops", json=body)
+        assert (
+            r.status_code == 400 and "no machine is named 'NOPE'" in r.json()["error"]
+        )
+        assert _calls(case) == []
 
 
 def test_the_job_s_command_line():
@@ -207,9 +324,109 @@ class TestTheTabShowsTheOperation:
     def test_corrections_offer_rename_merge_and_split(self):
         m = {"id": "m1", "canonical": "WKS01", "keys": ["k1", "k2"], "history": []}
         out = _render("hostCorrectionsHtml(data)", m)
-        for act in ("op_rename", "op_split"):
+        for act in ("op_rename", "op_merge", "op_split"):
             assert f'data-host-act="{act}"' in out
         assert 'data-op-key="k1"' in out and " disabled" not in out
+        assert 'data-seen="WKS01"' in out  # the name it was opened with
+        # the merge picker takes any machine's name, not only this page's
+        assert 'data-op-field="merge_name" list="hostMergeNames"' in out
+        assert "<select" not in out
+
+
+def _run_js(names, body: str) -> str:
+    from .test_hosts_tab import PORTAL, _js_function
+
+    def source(name):  # an async function keeps its keyword
+        text = _js_function(name)
+        return "async " + text if f"async function {name}(" in PORTAL else text
+
+    return subprocess.run(
+        ["node", "-e", "".join(source(n) for n in names) + body],
+        capture_output=True, text=True, check=True,
+    ).stdout  # fmt: skip
+
+
+_PAGE = """
+const panes = {hostDetail: {innerHTML: 'WKS01 detail'}, hostsOps: {innerHTML: ''}};
+const document = {getElementById: (id) => panes[id]};
+const calls = [];
+function renderHosts() { calls.push('renderHosts'); }
+function showToast(m) { calls.push('toast ' + m); }
+function hostOpsHtml() { return ''; }
+function apiHeaders() { return {}; }
+const API_BASE = '';
+var hostsView = {ops: null, wasRunning: false};
+"""
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")
+class TestTheTabSendsWhatItShowedAndClosesTheDetail:
+    def test_each_correction_carries_the_name_the_page_showed(self):
+        body = """
+        const fields = {rename_canonical: 'NEW', merge_name: 'wks03', split_canonical: 'S'};
+        const box = {
+          getAttribute: (a) => ({'data-machine': 'm1', 'data-seen': 'WKS01'})[a],
+          querySelector: (q) => ({value: fields[q.match(/"(.*)"/)[1]]}),
+          querySelectorAll: () => [{checked: true, getAttribute: () => 'k2'},
+                                   {checked: false, getAttribute: () => 'k1'}],
+        };
+        const el = {closest: () => box};
+        process.stdout.write(JSON.stringify(['op_rename', 'op_merge', 'op_split']
+          .map((a) => hostOpFrom(el, a))));
+        """
+        rename, merge, split = json.loads(_run_js(["hostOpFrom"], body))
+        seen = {"m1": "WKS01"}
+        assert rename == {"op": {"kind": "rename", "machine": "m1", "canonical": "NEW"},
+                          "seen": seen}  # fmt: skip
+        assert merge == {"op": {"kind": "merge", "into": "m1", "from_name": "wks03"},
+                         "seen": seen}  # fmt: skip
+        assert split == {"op": {"kind": "split", "machine": "m1", "keys": ["k2"],
+                                "canonical": "S"}, "seen": seen}  # fmt: skip
+
+    @pytest.mark.parametrize(
+        "status,closed", [(200, True), (409, True), (202, False), (400, False)]
+    )
+    def test_an_op_that_answers_at_once_closes_the_detail(self, status, closed):
+        body = (
+            _PAGE
+            + f"""
+        async function fetch() {{
+          return {{status: {status}, ok: {str(status < 300).lower()},
+                   json: async () => ({{state: 'done'}})}};
+        }}
+        async function apiFetch() {{ return {{unfinished: null}}; }}
+        hostOp({{op: {{}}}}).then(() => process.stdout.write(
+          JSON.stringify([panes.hostDetail.innerHTML, calls])));
+        """
+        )
+        detail, calls = json.loads(
+            _run_js(["hostOpEnded", "hostOp", "renderHostOps"], body)
+        )
+        assert (detail != "WKS01 detail") == closed
+        assert ("renderHosts" in calls) == closed
+        if closed:
+            assert "open a machine again" in detail
+
+    def test_a_running_op_that_ends_closes_the_detail(self):
+        body = (
+            _PAGE
+            + """
+        let answers = [{unfinished: {state: 'running', id: 'op-1'}}, {unfinished: null}];
+        async function apiFetch() { return answers.shift(); }
+        global.setTimeout = () => 0; global.clearTimeout = () => 0;
+        (async () => {
+          await renderHostOps();
+          const during = panes.hostDetail.innerHTML;
+          await renderHostOps();  // the poll after it ended
+          process.stdout.write(JSON.stringify([during, panes.hostDetail.innerHTML, calls]));
+        })();
+        """
+        )
+        during, after, calls = json.loads(
+            _run_js(["hostOpEnded", "renderHostOps"], body)
+        )
+        assert during == "WKS01 detail"
+        assert "open a machine again" in after and calls == ["renderHosts"]
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")

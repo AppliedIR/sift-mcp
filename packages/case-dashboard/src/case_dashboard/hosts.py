@@ -575,7 +575,31 @@ def _op_problem(body: dict) -> str | None:
         return None if isinstance(resume, str) and resume else "resume needs an id"
     if not isinstance(op, dict) or op.get("kind") not in OP_KINDS:
         return f"an operation is one of {', '.join(OP_KINDS)}"
+    if not isinstance(body.get("seen"), dict):
+        return "an operation carries the names of the machines as the page showed them"
     return None
+
+
+def _as_seen(state: hi.HostState, op: dict, seen: dict) -> tuple[dict, str | None]:
+    """The operation the job runs, and why it can't run on the case as it is
+    now (or None). A machine merged in may be named as typed (`from_name`),
+    resolved here; every machine the page named must still carry the name
+    the examiner saw (`seen`: key -> name), as the job resolves its key."""
+    op = dict(op)
+    typed = op.pop("from_name", None)
+    if op["kind"] == "merge" and typed is not None:
+        owner = state.canonical_owner(str(typed))
+        if owner is None:
+            return op, f"no machine is named {str(typed)[:80]!r} in this case"
+        op["from"] = [owner.id]
+    named = [op.get("machine"), op.get("into")]
+    if typed is None:
+        named += list(op.get("from") or [])
+    for key in (k for k in named if k is not None):
+        m = state.machine_of_key(str(key))
+        if m is None or seen.get(str(key)) != m.canonical:
+            return op, "this machine changed since you opened it; reload"
+    return op, None
 
 
 def ops_view(case_dir: Path) -> dict:
@@ -652,6 +676,14 @@ async def post_op(request: Request) -> JSONResponse:
             status_code=409,
         )
     op, resume = body.get("op"), body.get("resume")
+    if op is not None:
+        try:
+            op, changed = _as_seen(hi.load(case_dir), op, body["seen"])
+        except hi.HostLogError as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+        if changed:
+            status = 409 if changed.startswith("this machine changed") else 400
+            return JSONResponse({"error": changed}, status_code=status)
     proc = await asyncio.create_subprocess_exec(
         *r_command(case_dir, examiner, op, resume),
         stdout=asyncio.subprocess.PIPE,

@@ -3895,14 +3895,15 @@ function hostCorrectionsHtml(m) {
   var busy = hostsView.ops && hostsView.ops.unfinished;
   var off = busy ? ' disabled title="A host operation is unfinished; resume it first"' : '';
   var others = ((hostsView.data && hostsView.data.machines) || []).filter(function(o) { return o.id !== m.id; });
-  var html = '<div class="host-corrections" data-machine="' + escapeAttr(m.id) + '"><h4>Corrections</h4>';
+  // the name the examiner sees goes with the request: the server refuses it if the machine changed since
+  var html = '<div class="host-corrections" data-machine="' + escapeAttr(m.id) + '" data-seen="' + escapeAttr(m.canonical) + '"><h4>Corrections</h4>';
   html += '<div>Rename to <input data-op-field="rename_canonical" aria-label="New host name"> '
     + '<button class="btn" data-host-act="op_rename"' + off + '>Rename</button></div>';
-  if (others.length) {
-    html += '<div>Merge into this machine: <select data-op-field="merge_from" aria-label="Machine to merge in">'
-      + others.map(function(o) { return '<option value="' + escapeAttr(o.id) + '">' + escapeHtml(o.canonical) + '</option>'; }).join('')
-      + '</select> <button class="btn" data-host-act="op_merge"' + off + '>Merge</button></div>';
-  }
+  // any machine in the case, by name (this page's are suggested); the server resolves the name
+  html += '<div>Merge into this machine: <input data-op-field="merge_name" list="hostMergeNames" aria-label="Name of the machine to merge in">'
+    + '<datalist id="hostMergeNames">'
+    + others.map(function(o) { return '<option value="' + escapeAttr(o.canonical) + '"></option>'; }).join('')
+    + '</datalist> <button class="btn" data-host-act="op_merge"' + off + '>Merge</button></div>';
   if ((m.keys || []).length > 1) {
     html += '<div>Split these keys out under a new name: '
       + m.keys.map(function(k) { return '<label><input type="checkbox" data-op-key="' + escapeAttr(k) + '"> ' + escapeHtml(k) + '</label>'; }).join(' ')
@@ -3952,9 +3953,17 @@ async function renderHostOps() {
   if (hostsView.ops.unfinished && hostsView.ops.unfinished.state === 'running') {
     hostsView.opsTimer = setTimeout(renderHostOps, 2000);  // its progress, until it ends
   } else if (hostsView.wasRunning) {
-    renderHosts();  // it ended: the machines carry their new names
+    hostOpEnded();
   }
   hostsView.wasRunning = !!(hostsView.ops.unfinished && hostsView.ops.unfinished.state === 'running');
+}
+
+/* An operation ended: the machine detail open may name a machine that no
+   longer is what it showed (a split can give its id to the split-out
+   machine), so it is closed, and the table re-read. */
+function hostOpEnded() {
+  document.getElementById('hostDetail').innerHTML = '<div style="color:var(--text-muted)">The machines changed; open a machine again for its detail.</div>';
+  renderHosts();
 }
 
 async function hostOp(body) {
@@ -3964,21 +3973,26 @@ async function hostOp(body) {
     if (res.status === 202) showToast('The host operation is running', 'info');
     else if (res.ok && r.state === 'done') showToast('Host operation done', 'success');
     else showToast((r.state ? r.state + ': ' : '') + (r.reason || r.error || 'refused'), 'error');
+    if (res.status !== 202 && res.status !== 400) hostOpEnded();  // it ran, or the machine changed
   } catch (e) {
     showToast(e.message, 'error');
   }
   renderHostOps();
 }
 
+/* The request for a correction: the operation, and the machine's name as
+   this page showed it. */
 function hostOpFrom(el, act) {
   var box = el.closest('.host-corrections');
   var machine = box.getAttribute('data-machine');
+  var seen = {};
+  seen[machine] = box.getAttribute('data-seen');
   var field = function(name) { var f = box.querySelector('[data-op-field="' + name + '"]'); return f ? f.value : ''; };
-  if (act === 'op_rename') return { kind: 'rename', machine: machine, canonical: field('rename_canonical') };
-  if (act === 'op_merge') return { kind: 'merge', into: machine, from: [field('merge_from')] };
+  if (act === 'op_rename') return { op: { kind: 'rename', machine: machine, canonical: field('rename_canonical') }, seen: seen };
+  if (act === 'op_merge') return { op: { kind: 'merge', into: machine, from_name: field('merge_name') }, seen: seen };
   var keys = Array.from(box.querySelectorAll('[data-op-key]')).filter(function(c) { return c.checked; })
     .map(function(c) { return c.getAttribute('data-op-key'); });
-  return { kind: 'split', machine: machine, keys: keys, canonical: field('split_canonical') };
+  return { op: { kind: 'split', machine: machine, keys: keys, canonical: field('split_canonical') }, seen: seen };
 }
 
 async function renderHosts() {
@@ -4044,7 +4058,7 @@ document.addEventListener('click', async function(ev) {
   else if (act === 'confirm_machine') { var m = d.machines[i]; hostDecide('confirm', { groups: [{ machine: m.id, canonical: m.canonical }] }); }
   else if (act === 'start_now' || act === 'cancel_run') { hostDecide(act, { run_id: hostsView.runs[i].run_id }); }
   else if (act === 'op_resume') { hostOp({ resume: el.getAttribute('data-op') }); }
-  else if (act === 'op_rename' || act === 'op_merge' || act === 'op_split') { hostOp({ op: hostOpFrom(el, act) }); }
+  else if (act === 'op_rename' || act === 'op_merge' || act === 'op_split') { hostOp(hostOpFrom(el, act)); }
   else if (act === 'detail') {
     try {
       var m = await apiFetch('/api/hosts/' + encodeURIComponent(d.machines[i].id));
