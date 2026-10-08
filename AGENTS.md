@@ -56,7 +56,7 @@ When `record_finding()` returns a grounding suggestion, consider running the sug
 - Pass `input_files` on every `run_command()` call — the files the command reads. The server auto-detects as backup for cataloged tools.
 - Include `host` (which system) and `affected_account` (which account) on findings — these power the Hosts and Accounts tabs in the Examiner Portal.
 - Include `event_timestamp` (ISO 8601) for when the incident event occurred — not the current time. This drives timeline auto-linkage.
-- Use `run_command()` for forensic tool calls. Reserve direct shell access for system operations (ls, cat, file). Only `run_command()` provides full provenance tracking.
+- MCP first, by advice: use `run_command()` for forensic tool calls. Reserve direct shell access for system operations (ls, cat, file), or for when an MCP tool can't do the job or its output is too large. Only `run_command()` provides full provenance tracking. A forensic tool run in the shell is never blocked, but its audit entry is marked with the MCP route it has, and you're told which tool to use.
 - Register all evidence files before analysis, including pre-processed outputs (KAPE triage, Hayabusa CSVs). If it's in the case, it should be in the evidence registry.
 - Stage findings soon after analysis — audit_ids from earlier tool calls may be lost to context compaction.
 

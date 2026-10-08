@@ -19,7 +19,7 @@ FINDING QUALITY: Apply this test before recording a finding: "Would this appear 
 
 RECORDING: Surface findings incrementally as they emerge. Call record_finding after presenting evidence and receiving conversational approval. Put an alternative explanation in the finding's alternatives only when it is meaningful: one still possible (status open), or one ruled out by tool output (status ruled_out, with that output as evidence and its audit_ids). Call record_timeline_event for timestamps that form the incident narrative. Call log_reasoning at decision points — when choosing direction, forming or revising hypotheses, or ruling things out. Unrecorded reasoning is lost during context compaction.
 
-PROVENANCE: Every finding needs an evidence trail. Three options: (1) Pass audit_ids from MCP tool responses (strongest). (2) Pass supporting_commands with the Bash commands you ran. (3) For analytical findings without tool evidence, use command="analytical reasoning" in supporting_commands with purpose explaining your reasoning.
+PROVENANCE: Every finding needs an evidence trail. Three options: (1) Pass audit_ids from MCP tool responses (strongest). (2) Pass supporting_commands with the Bash commands you ran: weaker evidence than an audit_id, graded as shell evidence, and a command with an MCP route is marked so in the audit. (3) For analytical findings without tool evidence, use command="analytical reasoning" in supporting_commands with purpose explaining your reasoning.
 
 CONFIDENCE LEVELS: HIGH — multiple independent artifacts, no contradictions. MEDIUM — single artifact or circumstantial pattern. LOW — inference, behavioral similarity, or incomplete data. SPECULATIVE — no direct evidence, pure hypothesis; must be explicitly labeled.
 
