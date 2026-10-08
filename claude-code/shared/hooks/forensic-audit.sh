@@ -110,6 +110,13 @@ OUTPUT_EXCERPT=$(printf '%s' "$TOOL_RESPONSE" | head -c 2000 2>/dev/null) || OUT
 
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+# The command's MCP route, if it has one (mcp-route.py and its table sit
+# beside this hook; without them, none)
+ROUTE=""
+if [ -f "$(dirname "$0")/mcp-route.py" ]; then
+    ROUTE=$(printf '%s' "$COMMAND" | python3 -I "$(dirname "$0")/mcp-route.py" 2>/dev/null) || ROUTE=""
+fi
+
 python3 -I -c "
 import json, sys
 entry = {
@@ -134,8 +141,28 @@ if sys.argv[12] == 'codex':
     case = os.path.realpath(sys.argv[14])
     if sys.argv[7] and not (os.path.realpath(sys.argv[7]) + '/').startswith(case + '/'):
         entry['outside_case'] = True
+if sys.argv[15]:  # the command has an MCP route: marked, never blocked
+    try:
+        route = json.loads(sys.argv[15])
+        entry.update(mcp_route=route['mcp_route'], mcp_tool=route.get('tool', ''))
+    except (ValueError, KeyError, TypeError):
+        pass
 print(json.dumps(entry))
-" "$TOOL_USE_ID" "$EVIDENCE_ID" "$COMMAND" "$OUTPUT_HASH" "$OUTPUT_EXCERPT" "$OUTPUT_BYTES" "$CWD" "$SESSION_ID" "$EVENT" "$ERROR" "$REASON" "$CLIENT" "$TOOL" "$CASE_DIR" >> "$AUDIT_FILE" 2>/dev/null || true
+" "$TOOL_USE_ID" "$EVIDENCE_ID" "$COMMAND" "$OUTPUT_HASH" "$OUTPUT_EXCERPT" "$OUTPUT_BYTES" "$CWD" "$SESSION_ID" "$EVENT" "$ERROR" "$REASON" "$CLIENT" "$TOOL" "$CASE_DIR" "$ROUTE" >> "$AUDIT_FILE" 2>/dev/null || true
+
+# A routed command: the advisory goes back to the model (after the entry is
+# written; a lookup that fails changes nothing, and stdout carries only JSON)
+if [ -n "$ROUTE" ] && [ "$EVENT" = PostToolUse ]; then
+    printf '%s' "$ROUTE" | python3 -I -c "
+import json, sys
+try:
+    advisory = json.load(sys.stdin).get('advisory', '')
+except ValueError:
+    advisory = ''
+if advisory:
+    print(json.dumps({'hookSpecificOutput': {'hookEventName': 'PostToolUse', 'additionalContext': advisory}}))
+" 2>/dev/null || true
+fi
 
 # Codex: the write_stdin text typed since the last capture (a session killed
 # before its Stop hook loses none of it)
