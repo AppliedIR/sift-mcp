@@ -61,16 +61,18 @@ Staged actions are shown with colored badges: green for approved, red for reject
 
 **Batch operations:** Select multiple findings in the sidebar, then use "Approve All" or "Reject All" in the batch toolbar.
 
-### Committing Reviews
+### Signing Reviews
 
-Press `Shift+C` or click the Commit button to finalize all staged reviews. The commit dialog:
+Press `Shift+C` or click the Commit button to sign your staged reviews. The dialog:
 
-1. Shows a summary of pending actions (approvals, rejections, edits)
-2. Requires the examiner's password for HMAC signing
-3. Uses challenge-response authentication — the password never leaves the browser
-4. Signs each approval/rejection with a cryptographic proof
+1. Freezes what the page holds, asks the gateway for the exact decisions to be signed, and checks each one, field by field, against what you reviewed. Anything that changed refuses the plan, and nothing is signed.
+2. Lists every decision before the passphrase field opens: each item you decided, and each item decided with it ("cascade from F-…"). "Show all signed fields" shows everything a decision signs. An IOC's sources, sightings, confidence and MITRE techniques are derived, not signed.
+3. Lists entries another examiner staged separately; each is signed (as you) only if you tick "Include and sign as me".
+4. Signs in with a challenge-response, unlocks your signing key and signs each decision in the browser. The passphrase never leaves the browser. The gateway checks every signature before it changes anything.
 
-After commit, findings move to APPROVED or REJECTED status. This is irreversible without re-staging.
+After signing, the items move to APPROVED or REJECTED, the signed entries leave the pending reviews, and the dialog shows the ledger head and your key's fingerprint. TODO entries stay staged; `vhir approve --review` creates them. If the ledger moved meanwhile, the dialog plans once more and signs only if exactly the same decisions come back.
+
+The portal needs gateway API keys (each examiner signs in with their own token) and a browser that can sign (Chrome/Edge 137+, Firefox 129+, Safari 17+, over https or an SSH tunnel to localhost). An examiner without a signing key enrols once at the SIFT terminal with `vhir enrol --name NAME`.
 
 ## Timeline
 
@@ -134,7 +136,7 @@ Press `?` to show the full shortcut list:
 - The portal serves over the gateway's HTTP endpoint (port 4508)
 - Static assets (images, icons) are served without authentication
 - All API endpoints require a Bearer token (from `gateway.yaml`)
-- The commit workflow uses PBKDF2 key derivation + HMAC challenge-response — the examiner's password is never transmitted
+- Signing happens in the browser with the examiner's own Ed25519 key, unlocked by their passphrase; the passphrase is never transmitted. The gateway serves the encrypted key only after a verified sign-in, and checks every signature before writing. What a verified result does and doesn't show is in the security model's stated limits
 - Content Security Policy restricts scripts to inline only (no external script loading)
 - X-Frame-Options: DENY prevents clickjacking
 

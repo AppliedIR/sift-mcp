@@ -58,7 +58,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | **wintools-mcp** | Catalog-gated forensic tool execution on Windows. Zimmerman suite, Hayabusa. FK-enriched response envelopes. Denylist blocks dangerous binaries. 7 tools, 31 catalog entries. |
 | **vhir CLI** | Human-only actions: approve/reject findings, review case status, manage evidence, generate reports, audit trail queries, case lifecycle (init/close/activate/migrate), execute forensic commands with audit trail, configure examiner identity. Not callable by AI. |
 | **sift-common** | Shared internal package. Canonical AuditWriter, operational logging (oplog), CSV/JSON/text output parsers. Used by all SIFT MCPs. |
-| **case-dashboard** (Examiner Portal) | 8-tab browser review UI mounted at `/portal/` on the gateway. Tabs: overview, findings (with provenance chain), timeline (with ruler), hosts, accounts, evidence verification, IOCs, TODOs. Keyboard shortcuts, search, resizable sidebar, light/dark theme, auto-refresh, challenge-response commit. |
+| **case-dashboard** (Examiner Portal) | 8-tab browser review UI mounted at `/portal/` on the gateway. Tabs: overview, findings (with provenance chain), timeline (with ruler), hosts, accounts, evidence verification, IOCs, TODOs. Keyboard shortcuts, search, resizable sidebar, light/dark theme, auto-refresh, signing in the browser (the gateway plans the exact decisions, checks every signature and writes them under the case lock). |
 | **forensic-knowledge** | Shared YAML data package. Tool guidance, artifact knowledge, discipline rules, playbooks, collection checklists. No runtime state. |
 
 ---

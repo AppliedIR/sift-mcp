@@ -33,7 +33,7 @@ With [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp), evidence is 
 - **Evidence indexing** — 15 parsers (evtx, EZ tools, Volatility, JSON, CSV, W3C, and more) with deterministic dedup and full provenance (via opensearch-mcp)
 - **Structured querying** — case summary, search, aggregation, timeline, field enumeration, detection listing (via opensearch-mcp)
 - **Programmatic enrichment** — triage baseline validation and threat intelligence stamping at index scale, zero LLM tokens (via opensearch-mcp)
-- **Examiner Portal** — 8-tab browser UI for review, approval, and commit (findings, timeline, hosts, accounts, evidence, IOCs, TODOs, overview) with keyboard shortcuts, search, provenance chain display, and challenge-response authentication
+- **Examiner Portal** — 8-tab browser UI for review, approval, and commit (findings, timeline, hosts, accounts, evidence, IOCs, TODOs, overview) with keyboard shortcuts, search, provenance chain display, and signing in the browser (the passphrase never leaves it)
 - **IOC auto-extraction** from findings with approval cascade
 - **Evidence provenance chain** linking findings back to registered evidence through audited tool executions
 - **RAG search** — 22K+ forensic records (Sigma, MITRE ATT&CK, LOLBAS, Atomic Red Team, and more)
@@ -49,7 +49,7 @@ When Claude Code is the client, additional controls are deployed:
 - Bubblewrap sandbox — kernel-level filesystem isolation, Bash restricted to project directory
 - 41 permission deny rules — Edit/Write blocked on case data files (findings.json, timeline.json, approvals.jsonl, etc.)
 - PreToolUse case-data guard — refuses Bash commands that would delete or overwrite case records, audit logs or evidence files (a best-effort check of listed commands, not a security boundary)
-- HMAC-signed findings — password-gated approval with PBKDF2-derived cryptographic signing
+- Signed decisions — each examiner's own Ed25519 key, unlocked by their passphrase, signs every approval and rejection into the case's ledger, which `vhir review --verify` checks
 - Provenance enforcement — rejects findings that lack an evidence trail in the audit log
 - PostToolUse audit hook — every Bash command logged to JSONL with SHA-256 hashes
 - Prompt hook — forensic discipline reminders injected on every prompt
@@ -159,7 +159,7 @@ Disk space: ~14 GB for RAG + triage databases, plus evidence and OpenSearch indi
 
 ### Valhuntir Installation
 
-Requires Python 3.10+ and sudo access. The installer handles everything: MCP servers, gateway, vhir CLI, HMAC verification ledger, examiner identity, and LLM client configuration. When you select Claude Code, the forensic controls listed above are deployed automatically.
+Requires Python 3.10+ and sudo access. The installer handles everything: MCP servers, gateway, vhir CLI, the ledger and signing-key folders, examiner identity, and LLM client configuration. When you select Claude Code, the forensic controls listed above are deployed automatically.
 
 **Quick** — Core platform only, no databases (~70 MB):
 
@@ -396,7 +396,7 @@ Some analysis tools have flag restrictions enforced by `security.py`: `find` blo
 - Any Linux/macOS machine — for Valhuntir Lite
 - Python 3.10+
 - Docker — for OpenSearch (Valhuntir with evidence indexing)
-- sudo access (required for Valhuntir's HMAC verification ledger at `/var/lib/vhir/verification/`)
+- sudo access (required for Valhuntir's ledger and signing-key folders under `/var/lib/vhir/`)
 - Forensic tools installed via SIFT package or manually
 
 ### External Dependencies
@@ -433,7 +433,7 @@ Any data loaded into the system or its component VMs, computers, or instances ru
 
 Outgoing Internet connections are required for report generation (Zeltser IR Writing MCP) and optionally used for threat intelligence (OpenCTI) and documentation (MS Learn MCP). No incoming connections from external systems should be allowed.
 
-Valhuntir is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. Clients with direct shell access (like Claude Code) can also operate outside MCP, but `vhir setup client` deploys forensic controls for Claude Code: a kernel-level sandbox restricts Bash writes, deny rules block Edit/Write to case data files, a PreToolUse hook refuses Bash commands that would delete or overwrite case records or evidence (a best-effort check of listed commands), a PostToolUse hook captures every Bash command to the audit trail, provenance enforcement ensures findings are traceable to evidence, and an HMAC verification ledger provides cryptographic proof that approved findings haven't been tampered with. Valhuntir is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
+Valhuntir is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. Clients with direct shell access (like Claude Code) can also operate outside MCP, but `vhir setup client` deploys forensic controls for Claude Code: a kernel-level sandbox restricts Bash writes, deny rules block Edit/Write to case data files, a PreToolUse hook refuses Bash commands that would delete or overwrite case records or evidence (a best-effort check of listed commands), a PostToolUse hook captures every Bash command to the audit trail, provenance enforcement ensures findings are traceable to evidence, and every examiner decision is signed into the case's ledger, which `vhir review --verify` checks (what that does and doesn't show is in the security model's stated limits). Valhuntir is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
 
 ## Audit Trail, Provenance, and Grounding
 

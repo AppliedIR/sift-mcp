@@ -74,14 +74,14 @@ Claude handles almost everything through MCP tools. No need to
 memorize lots of commands or tool names.
 
 The only CLI-only operations:
-  vhir approve            Approve findings (HMAC-signed with your password)
-  vhir reject             Reject findings with reason
+  vhir approve            Approve findings (signed with your key; your passphrase unlocks it)
+  vhir reject             Reject findings with reason (signed the same way)
   vhir exec               Run forensic command with TTY confirmation
-  vhir config --setup-password Set your approval password
-  vhir config --reset-password Change your approval password
+  vhir config --setup-password Set your passphrase and signing key
+  vhir config --reset-password Change your passphrase
 
-These require YOUR terminal confirmation. By design, Claude cannot
-approve its own findings or manage your password.
+These are for YOU at the terminal. Claude's settings deny it vhir approve
+and vhir reject, and your passphrase is read from the terminal.
 ```
 
 Do NOT add PATH warnings, export suggestions, or notes about `vhir`
@@ -97,9 +97,9 @@ How findings work:
 3. Claude calls record_finding() — staged as DRAFT
 4. Open the Examiner Portal to review: `vhir portal` or http://localhost:4508/portal/
 5. Approve, edit, or reject findings from the portal
-6. Finalize: `vhir approve --review` or portal Commit (requires your password)
-   - Applies your portal decisions
-   - Creates HMAC-signed approval records
+6. Sign: `vhir approve --review` or the portal's Commit (your passphrase)
+   - Lists every decision first, then signs exactly those
+   - Each decision is a signed line in the case's ledger
    - Status: DRAFT → APPROVED
 
 The AI proposes, the human validates. No finding is final
