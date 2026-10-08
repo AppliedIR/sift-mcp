@@ -162,12 +162,12 @@ def test_start_now_joins_a_machine_a_name_already_belongs_to(case):
 def test_start_now_never_reuses_a_taken_name(case, monkeypatch):
     u = folder(case, "WKS01", "WKS01")
     confirm(case, hi.new_machine_key(), "WKS01", [(u, "WKS01")])
-    v = unit(case, "evidence/v", [("wks-a", "SYSTEM ComputerName", "artifact")])
-    w = unit(case, "evidence/w", [("wks-b", "SYSTEM ComputerName", "artifact")])
-    # two proposals that would both be called by the taken name
+    # two other units whose own evidence gives the taken name
+    v = unit(case, "evidence/v", [("WKS01", "rows.csv host column", "artifact")])
+    w = unit(case, "evidence/w", [("WKS01", "rows.csv host column", "artifact")])
     monkeypatch.setattr(hp, "propose", lambda state: [
-        hp.Group(pairs=[(v, "wks-a")], tier=hp.PROPOSED, canonical="WKS01"),
-        hp.Group(pairs=[(w, "wks-b")], tier=hp.PROPOSED, canonical="WKS01"),
+        hp.Group(pairs=[(v, "WKS01")], tier=hp.PROPOSED, canonical="WKS01"),
+        hp.Group(pairs=[(w, "WKS01")], tier=hp.PROPOSED, canonical="WKS01"),
     ])  # fmt: skip
     hg.record_wait(case, "run-3", [v, w])
     out = hg.start_now(case, "run-3", "ex1")

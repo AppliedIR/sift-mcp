@@ -1032,7 +1032,23 @@ def get_or_mint(
             return ({"kind": "bind", "unit": unit, "raw": raw, "key": k, "canonical": name,
                      "state": NEW, "machine_flags": flags}, k, name)  # fmt: skip
 
-        if FLAG_NOT_A_HOST in state.pair_flags.get(pair, []):
+        from sift_common.host_proposal import is_address
+
+        if is_address(raw):  # never a machine's name: the unit's placeholder
+            from sift_common.host_gate import placeholder_name
+
+            own = host_guard.placeholder_of(state, unit)
+            m = next((x for x in state.machines.values() if x.canonical in own), None)
+            if m is not None:
+                bind, key, result = (
+                    {"kind": "bind", "unit": unit, "raw": raw, "key": m.keys[0]},
+                    m.keys[0],
+                    m.canonical,
+                )
+            else:
+                locator = str((state.units.get(unit) or {}).get("locator") or unit)
+                bind, key, result = mint(placeholder_name(locator))
+        elif FLAG_NOT_A_HOST in state.pair_flags.get(pair, []):
             # not a host: with its unit's own machine, or the unit's placeholder
             own = {}
             placeholders = host_guard.placeholder_of(state, unit)
@@ -1065,6 +1081,17 @@ def get_or_mint(
                 # case could also be: one machine or unit holds its short name
                 late = len(short_name_holders(state, raw)) == 1
             match = _match_confirmed(state, raw) if late else None
+            domain = split_name(raw)[1]
+            if (
+                match is not None
+                and domain
+                and {
+                    split_name(n)[1]
+                    for n in (match.canonical, *(p[1] for p in match.pairs))
+                }
+                - {"", domain}
+            ):
+                match = None  # a machine holding a name in another domain: not this one
             listed = (
                 _late_list_binding(state, unit, raw) if late and match is None else None
             )

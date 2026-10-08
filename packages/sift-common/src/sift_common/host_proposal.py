@@ -86,6 +86,11 @@ def _is_ip(value: str) -> bool:
     return bool(_IPV4.match(s) or (":" in s and _IPV6.match(s)))
 
 
+def is_address(value: str) -> bool:
+    """An IP address, which never names a machine."""
+    return _is_ip(value)
+
+
 # --------------------------------------------------------------------------
 # Names
 
@@ -335,7 +340,9 @@ def propose(state: hi.HostState) -> list[Group]:
     uf = _UF()
     for p in pairs:
         uf.find(p)
-    never = {p for p in pairs if name_flags(p[1])}
+    # never grouped: names flagged as no host name, and names the examiner
+    # marked not a host, which are never a link between units or to a machine
+    never = {p for p in pairs if name_flags(p[1]) or _not_a_host(state, p)}
     hinted = {(h.get("unit"), h.get("raw")) for h in state.hints}
 
     # Forwarded logs and row columns: another machine's names, unless the
@@ -589,6 +596,25 @@ def _canonical(g: Group, ps, pairs, taken: set[str]) -> str:
     return f"{first} ({n})"
 
 
+def own_best_name(state: hi.HostState, ps) -> str:
+    """The best name among one unit's own names `ps`, as `_canonical` picks
+    a group's: the hive's Hostname.Domain, else the most frequent FQDN, else
+    the hive's ComputerName or the folder name, else the first; ties go by
+    the names themselves."""
+    ps = sorted(ps, key=lambda p: (hi.spelling(p[1]), p[1]))
+    info = {p: state.names.get(p) or {} for p in ps}
+
+    def ev(p):
+        return info[p].get("evidence") or []
+
+    names = [p[1] for p in ps]
+    hive_fqdn = [p[1] for p in ps if any("Hostname+Domain" in e for e in ev(p))]
+    fqdns = sorted({n for n in names if "." in n}, key=lambda n: (-names.count(n), n))
+    hive_name = [p[1] for p in ps if any(e.endswith("ComputerName") for e in ev(p))]
+    folder = [p[1] for p in ps if hi.FOLDER in (info[p].get("origins") or [])]
+    return (hive_fqdn or fqdns or hive_name or folder or names)[0]
+
+
 def listed_without_data(state: hi.HostState, groups: list[Group]) -> list[str]:
     """Host-list entries no evidence matches yet ("no data yet")."""
     named = {g.list_entry_id for g in groups if g.list_entry}
@@ -659,17 +685,22 @@ def apply_host_list(case_dir, units=None) -> dict:
         from sift_common import host_guard
 
         records = list_bindings(state, units)
-        refused = host_guard.check_binds(state, records, "list")
-        drop = {i for i, _ in refused}
-        for i, rec in enumerate(records):
-            if i not in drop:
-                hi._append_locked(root / hi.OBSERVATIONS, {"t": hi._now(), **rec})
-    kept = [r for i, r in enumerate(records) if i not in drop]
+        # a unit's names for one machine go together or not at all: never the
+        # rest of them without the name that links them to it
+        kept, refused = list(records), []
+        while True:
+            found = host_guard.check_binds(state, kept, "list")
+            if not found:
+                break
+            bundles = {(kept[i].get("unit"), kept[i].get("key")) for i, _ in found}
+            refused += [(kept[i].get("raw"), why) for i, why in found]
+            kept = [r for r in kept if not (r.get("kind") == "bind" and (
+                r.get("unit"), r.get("key")) in bundles)]  # fmt: skip
+        for rec in kept:
+            hi._append_locked(root / hi.OBSERVATIONS, {"t": hi._now(), **rec})
     out = {"confirmed": sorted({r["canonical"] for r in kept if r.get("canonical")})}
     if refused:  # left for the examiner, each with why
-        out["refused"] = [
-            {"name": records[i].get("raw"), "reason": why} for i, why in refused
-        ]
+        out["refused"] = [{"name": raw, "reason": why} for raw, why in refused]
     return out
 
 
@@ -889,7 +920,7 @@ def late_list_binding(state: hi.HostState, unit: str, raw: str):
         m = machines[0]
         domain = hi.split_name(raw)[1]
         theirs = {hi.split_name(n)[1] for n in (m.canonical, *(p[1] for p in m.pairs))}
-        if domain and theirs - {""} and domain not in theirs:
+        if domain and theirs - {"", domain}:  # judged against the machine
             return None
         return m.keys[0], m.canonical
     return hi.new_machine_key(), state.unique_canonical(matched[0]["name"])

@@ -145,6 +145,10 @@ def _may_join(state: hi.HostState, m: hi.Machine, unit: str, p) -> bool:
         return True
     if m.state != hi.CONFIRMED:
         return False
+    from sift_common import host_guard
+
+    if host_guard.unit_flag(state, unit):
+        return False  # a flagged unit gets its own machine; the examiner joins it
     info = state.names.get(p) or {}
     x = host_proposal._Pair(
         unit, p[1], list(info.get("evidence") or []), set(info.get("origins") or [])
@@ -153,6 +157,9 @@ def _may_join(state: hi.HostState, m: hi.Machine, unit: str, p) -> bool:
         return False
     names = [m.canonical, *(q[1] for q in m.pairs if not _not_a_host(state, q))]
     if not any(host_proposal.list_matches(p[1], [{"name": n}]) for n in names):
+        return False
+    domain = hi.split_name(p[1])[1]  # judged against the machine, bare names and all
+    if domain and {hi.split_name(n)[1] for n in names} - {"", domain}:
         return False
     # a name without a domain: only when nothing else in the case holds it
     return bool(hi.split_name(p[1])[1]) or hi.short_name_holders(
@@ -197,10 +204,13 @@ def start_now(
     # when it is that unit's own, when they are bound to it already, or when
     # the machine is confirmed and the name is evidence's and matches one of
     # its names exactly. Every other slice is a new machine of its unit alone.
+    addresses: dict[str, list] = {}  # never a machine's name: the unit's placeholder
     for g in host_proposal.cached_propose(root, state):
         by_unit: dict[str, list] = {}
         for p in g.pairs:
-            if p in pending:
+            if p in pending and host_proposal.is_address(p[1]):
+                addresses.setdefault(p[0], []).append(p)
+            elif p in pending:
                 by_unit.setdefault(p[0], []).append(p)
         m = state.machines.get(g.machine) if g.machine else None
         for unit, pairs in sorted(by_unit.items()):
@@ -210,8 +220,8 @@ def start_now(
                 if joins:
                     machines.append({"key": m.keys[0], "canonical": m.canonical,
                                      "pairs": [list(p) for p in joins]})  # fmt: skip
-            if pairs:  # named by its own names when it leaves another machine
-                wanted = g.canonical if m is None else sorted(p[1] for p in pairs)[0]
+            if pairs:  # a machine of this unit alone, named by its own names
+                wanted = host_proposal.own_best_name(state, pairs)
                 machines.append({"key": hi.new_machine_key(),
                                  "canonical": canonical_for(wanted),
                                  "pairs": [list(p) for p in pairs]})  # fmt: skip
@@ -226,8 +236,23 @@ def start_now(
         # so it's proposed above, never here)
         key, name = hi.new_machine_key(), canonical_for(wanted)
         machines.append(
-            {"key": key, "canonical": name, "pairs": [[e["unit"], name], *rejected]}
-        )
+            {"key": key, "canonical": name,
+             "pairs": [[e["unit"], name], *rejected,
+                       *(list(p) for p in addresses.pop(e["unit"], []))]}
+        )  # fmt: skip
+    for unit, pairs in sorted(addresses.items()):  # its addresses: its placeholder
+        from sift_common import host_guard
+
+        own = host_guard.placeholder_of(state, unit)
+        m = next((x for x in state.machines.values() if x.canonical in own), None)
+        if m is not None:
+            machines.append({"key": m.keys[0], "canonical": m.canonical,
+                             "pairs": [list(p) for p in pairs]})  # fmt: skip
+            continue
+        locator = str((state.units.get(unit) or {}).get("locator") or unit)
+        name = canonical_for(placeholder_name(locator))
+        machines.append({"key": hi.new_machine_key(), "canonical": name,
+                         "pairs": [[unit, name], *(list(p) for p in pairs)]})  # fmt: skip
     record = {
         "action": "start_now",
         "examiner": examiner,

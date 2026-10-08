@@ -127,6 +127,15 @@ def violations(P, Q, door) -> list:
             if len(homes) != 1:
                 continue
             m = homes[0]
+            other = {
+                hi.split_name(n)[1] for n in (m.canonical, *(q[1] for q in m.pairs))
+            }
+            if domain and other - {"", domain}:  # a machine in another domain: never
+                if Q.bindings.get(p) in m.keys:
+                    out.append(
+                        ("joined a machine in another domain", door, p[1], m.canonical)
+                    )
+                continue
 
             def ids(pairs):
                 us = {u for u, r in pairs if u != hp.LIST_UNIT
@@ -199,14 +208,14 @@ def violations(P, Q, door) -> list:
                 out.append(("two machine ids", door, q.canonical, sorted(guids)))
             shorts: dict = {}
             for p in q.pairs:
-                if _nah(Q, p):
+                if _nah(Q, p) or hp.is_address(p[1]):  # (an address has no domain)
                     continue
                 s, d = hi.split_name(p[1])
                 if d:
                     shorts.setdefault(s, set()).add(d)
             had_shorts: dict = {}
             for p in before.pairs if before is not None else ():
-                if _nah(Q, p):
+                if _nah(Q, p) or hp.is_address(p[1]):  # (an address has no domain)
                     continue
                 s, d = hi.split_name(p[1])
                 if d:
@@ -215,6 +224,11 @@ def violations(P, Q, door) -> list:
                 out.append(
                     ("two domains", door, q.canonical, sorted(n for _, n in q.pairs))
                 )
+    for m in Q.machines.values():  # an address never names a machine, at any door
+        if hp.is_address(m.canonical) and m.canonical not in {
+            x.canonical for x in P.machines.values()
+        }:
+            out.append(("a machine named after an address", door, m.canonical, ""))
     return out
 
 
@@ -487,7 +501,8 @@ def test_a_list_entry_never_matches_through_a_not_a_host_name(case):
 
 def test_one_clashing_item_of_a_confirm_all_is_reported_and_the_rest_appended(case):
     obs(case, unit("u1"), name("u1", "WKS01"), unit("u2"), name("u2", "SRV01"),
-        unit("u3"), name("u3", "DC01"))  # fmt: skip
+        name("u2", "SRV01", "Security.evtx Computer"),
+        unit("u3"), name("u3", "DC01"), name("u3", "DC01", "Security.evtx Computer"))  # fmt: skip
     hi.get_or_mint(case, "u1", "WKS01")  # a machine called WKS01
     out = hi.append_decision_items(case, {"action": "confirm", "args": {"proposed": True,
         "machines": [{"key": "k2", "canonical": "WKS01", "pairs": [["u2", "SRV01"]]},
@@ -622,3 +637,36 @@ def test_a_units_rejected_names_share_its_one_placeholder(case):
     Q = hi.load(case)
     assert {m.canonical for m in Q.machines.values()} == {c1}
     assert violations(P, Q, "mint") == []
+
+
+# -- T's cases (N=200 on the Start-now build), as fixed rows
+
+
+SYS, EVTX = "SYSTEM ComputerName", "Security.evtx Computer"
+
+
+def test_an_exports_addresses_never_name_a_machine(case):
+    obs(case, unit("u1"), name("u1", "10.100.218.46", "edr.csv host column"),
+        name("u1", "10.100.218.47", "edr.csv host column"))  # fmt: skip
+    hg.record_wait(case, "r1", ["u1"])
+    P = hi.load(case)
+    hg.start_now(case, "r1", "ex")
+    Q = hi.load(case)
+    assert violations(P, Q, "start") == []
+    m = Q.machine_of_pair("u1", "10.100.218.46")
+    assert m is not None and not hp.is_address(m.canonical)
+
+
+def test_an_fqdn_never_joins_a_machine_of_another_domain_through_its_bare_name(case):
+    obs(case, unit("u1"), name("u1", "DC01", SYS), name("u1", "DC01", EVTX),
+        unit("u2"), name("u2", "DC01.acq.example.test", SYS),
+        name("u2", "DC01.acq.example.test", EVTX))  # fmt: skip
+    hi.append_decision(case, {"action": "confirm", "examiner": "ex", "args": {"machines": [
+        {"key": "k1", "canonical": "DC01.eu.corp.example.test", "pairs": [["u1", "DC01"]]}]}},
+        hi.load(case).obs_offset)  # fmt: skip
+    hg.record_wait(case, "r1", ["u2"])
+    P = hi.load(case)
+    hg.start_now(case, "r1", "ex")
+    Q = hi.load(case)
+    assert violations(P, Q, "start") == []
+    assert "k1" not in Q.machine_of_pair("u2", "DC01.acq.example.test").keys

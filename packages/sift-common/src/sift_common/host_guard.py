@@ -85,7 +85,7 @@ def _i2(state: hi.HostState, pairs, canonical: str, added=None) -> str:
 
 
 def _ids_and_domains(state, pairs) -> tuple[set, dict]:
-    from sift_common.host_proposal import LIST_UNIT
+    from sift_common.host_proposal import LIST_UNIT, is_address
 
     units = {p[0] for p in pairs if p[0] != LIST_UNIT and _own(state, p)}
     guids = {
@@ -93,7 +93,7 @@ def _ids_and_domains(state, pairs) -> tuple[set, dict]:
     } - {""}
     shorts: dict[str, set] = {}
     for p in pairs:
-        if _not_a_host(state, p):
+        if _not_a_host(state, p) or is_address(p[1]):  # (an address has no domain)
             continue
         short, domain = hi.split_name(p[1])
         if domain:
@@ -143,6 +143,78 @@ def _i3(state: hi.HostState, pairs, before=()) -> str:
     if any(len(d) > 1 and d != had_shorts.get(s) for s, d in shorts.items()):
         return "it would put one name in two domains on one machine"
     return ""
+
+
+def _join_reason(state: hi.HostState, mid, canonical: str, had, added) -> str:
+    """Why an automatic join of the names `added` into the existing machine
+    `mid` (holding `had`) is refused, or "": a name with a domain never
+    joins a machine holding a name in another domain (through its bare names
+    too), and a bare name only one no other machine or unit in the case also
+    holds. A unit's names on its own machine aren't judged here."""
+    from sift_common.host_proposal import LIST_UNIT, is_address
+
+    if not had:
+        return ""
+    for p in added:
+        if p[0] == LIST_UNIT or _not_a_host(state, p) or is_address(p[1]):
+            continue
+        if all(q[0] == p[0] for q in had):
+            continue  # its unit's own machine
+        # the machine's names, other than this unit's own
+        names = [
+            canonical,
+            *(q[1] for q in had if q[0] != p[0] and not _not_a_host(state, q)),
+        ]
+        domains = {hi.split_name(n)[1] for n in names if not is_address(n)} - {""}
+        domain = hi.split_name(p[1])[1]
+        if domain and domains - {domain}:
+            return f"{p[1]!r} would join a machine with a name in another domain"
+        if not domain and _other_holders(state, p, mid, set(had)):
+            return f"{p[1]!r} is a bare name another machine or unit in the case also holds"
+    return ""
+
+
+def _only_through_not_a_host(state: hi.HostState, canonical: str, had, added) -> str:
+    """Why a join of `added` into the machine holding `had` links them only
+    through a name the examiner marked not a host, or ""."""
+    if not had:
+        return ""
+    on = [(canonical, False), *((q[1], _not_a_host(state, q)) for q in had)]
+    for p in added:
+        if all(q[0] == p[0] for q in had):
+            continue  # its unit's own machine
+        mine = [(q[1], _not_a_host(state, q)) for q in state.names if q[0] == p[0]]
+        mine.append((p[1], _not_a_host(state, p)))
+
+        def shorts(names, real_only):
+            return {hi.split_name(n)[0] for n, nah in names if not (real_only and nah)}
+
+        if (shorts(mine, False) & shorts(on, False)) and not (
+            shorts(mine, True) & shorts(on, True)
+        ):
+            return (
+                f"{p[1]!r} would join a machine only through a name marked not a host"
+            )
+    return ""
+
+
+def _other_holders(state: hi.HostState, p, mid, on_target: set) -> set:
+    """The machines and units other than `mid` (and `p`'s unit) holding
+    `p`'s short name; a unit whose such names are all on `mid` already (by
+    this request) counts as `mid`."""
+    short = hi.split_name(p[1])[0]
+    out = set()
+    for h in hi.short_name_holders(state, p[1], but_unit=p[0]) - {("machine", mid)}:
+        if h[0] == "unit" and all(
+            q in on_target
+            for q in state.names
+            if q[0] == h[1]
+            and q not in state.bindings
+            and hi.split_name(q[1])[0] == short
+        ):
+            continue
+        out.add(h)
+    return out
 
 
 class _Overlay:
@@ -217,29 +289,53 @@ def _item_reason(
     target = in_use[0] if in_use else kmid
     had = v.pairs(target) if target else []
     result = list(dict.fromkeys([*had, *pairs]))
-    why = _i2(v, result, canonical, [p for p in pairs if p not in had])
+    added = [p for p in pairs if p not in had]
+    why = _i2(v, result, canonical, added) or (
+        _only_through_not_a_host(v.s, v.canonical(target), had, added) if target else ""
+    )
     if why:
         return why
+    if action == "confirm" and automatic or (action == "start_now" and had):
+        # unflagged, judged now: a confirm-all item, or a Start now join into
+        # a machine that exists, never for a unit flagged at this state
+        for unit in sorted({p[0] for p in added}):
+            flag = unit_flag(v.s, unit)
+            if flag:
+                return f"the unit is flagged now ({flag}); the examiner decides"
     if automatic:
-        return _i3(v, result, had)
+        added = [p for p in pairs if p not in had]
+        return _i3(v, result, had) or (
+            _join_reason(v.s, target, v.canonical(target), had, added) if target else ""
+        )
     return ""
+
+
+ADDRESS = "an IP address never names a machine"
 
 
 def check_decision(state: hi.HostState, record: dict, door: str) -> list[tuple]:
     """[(item index or None, reason)] for what `record` may not do."""
+    from sift_common.host_proposal import is_address
+
     action = record.get("action")
+    args = record.get("args") if isinstance(record.get("args"), dict) else {}
     if action in OPS:
-        return [] if door == "R" else [(None, "a host operation comes from R only")]
+        if door != "R":
+            return [(None, "a host operation comes from R only")]
+        return [(None, ADDRESS)] if is_address(str(args.get("canonical") or "")) else []
     if action not in ("confirm", "start_now"):
         return []
-    args = record.get("args") if isinstance(record.get("args"), dict) else {}
     automatic = action == "start_now" or bool(args.get("proposed"))
     v = _Overlay(state)
     refused = []
     for i, item in enumerate(args.get("machines") or ()):
         if not isinstance(item, dict):
             continue
-        why = _item_reason(v, action, item, automatic, examiner=action == "confirm")
+        why = (
+            ADDRESS
+            if is_address(str(item.get("canonical") or ""))
+            else _item_reason(v, action, item, automatic, examiner=action == "confirm")
+        )
         if why:
             refused.append((i, why))
             continue
@@ -300,7 +396,15 @@ def check_binds(state: hi.HostState, records: list[dict], door: str) -> list[tup
         canonical = v.canonical(mid) or str(rec.get("canonical") or p[1])
         had = v.pairs(mid)
         pairs = list(dict.fromkeys([*had, p]))
-        why = _i2(v, pairs, canonical, [p]) or (_i3(v, pairs, had) if automatic else "")
+        why = (
+            _i2(v, pairs, canonical, [p])
+            or _only_through_not_a_host(state, canonical, had, [p])
+            or (
+                _i3(v, pairs, had) or _join_reason(state, mid, canonical, had, [p])
+                if automatic
+                else ""
+            )
+        )
         if why:
             refused.append((i, why))
             continue

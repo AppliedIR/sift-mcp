@@ -84,7 +84,8 @@ def test_an_exports_bare_name_waits_apart_when_another_unit_holds_it_too(case):
 
 def test_an_exports_bare_name_joins_the_one_machine_that_holds_it(case):
     a, key = confirmed(case, "evidence/DC01-EU", "DC01.eu.corp.example.test", "DC01")
-    x = unit(case, "evidence/ad.csv", [("DC01", "ad.csv host column", "artifact")])
+    x = unit(case, "evidence/ad.csv", [("DC01", "ad.csv host column", "artifact"),
+                                       ("DC01", "ad.csv dnsHostName", "artifact")])  # fmt: skip
     start(case, x)
     assert machine(case, x, "DC01").keys[0] == key
 
@@ -92,6 +93,8 @@ def test_an_exports_bare_name_joins_the_one_machine_that_holds_it(case):
 def test_an_exact_name_with_its_domain_joins_the_confirmed_machine(case):
     a, key = confirmed(case, "evidence/DC01-EU", "DC01.eu.corp.example.test")
     x = unit(case, "evidence/rows", [("DC01.eu.corp.example.test", "rows.csv host column",
+                                      "artifact"),
+                                     ("DC01.eu.corp.example.test", "rows.csv origin",
                                       "artifact")])  # fmt: skip
     start(case, x)
     assert machine(case, x, "DC01.eu.corp.example.test").keys[0] == key
