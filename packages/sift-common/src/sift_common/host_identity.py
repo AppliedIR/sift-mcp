@@ -1325,6 +1325,38 @@ def read_ops(case_dir: str | os.PathLike) -> dict:
     return doc
 
 
+def record_op(case_dir: str | os.PathLike, op_id: str, fields: dict) -> dict:
+    """Set ``fields`` on the journal's operation ``op_id`` (new when absent)
+    and return it. The journal is written whole and replaced at once, so a
+    reader sees it before or after, never in part."""
+    import secrets
+
+    root = Path(case_dir)
+    with _log_lock(root):
+        doc = read_ops(root)
+        entry = doc["ops"].setdefault(op_id, {})
+        entry.update(fields)
+        entry["updated"] = _now()
+        data = json.dumps(doc, sort_keys=True, ensure_ascii=False, indent=1).encode(
+            "utf-8"
+        )
+        tmp = root / f".{OPS}.{os.getpid()}.{secrets.token_hex(4)}.tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        try:
+            try:
+                if os.write(fd, data) != len(data):
+                    raise HostLogError(f"{OPS}: short write")
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            os.replace(tmp, root / OPS)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.remove(tmp)
+            raise
+    return dict(entry)
+
+
 def unfinished_op(case_dir: str | os.PathLike) -> dict | None:
     """The host operation that is running or incomplete, or None."""
     for op_id, op in sorted(read_ops(case_dir)["ops"].items()):
