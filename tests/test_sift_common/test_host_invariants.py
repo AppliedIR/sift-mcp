@@ -95,8 +95,20 @@ def violations(P, Q, door) -> list:
                     ("joined through a not-a-host name", door, p[1], before.canonical)
                 )
     if door == "mint":  # a late name of one confirmed machine's own goes to it
+        from sift_common import host_guard
+
         for p in set(Q.names) - set(P.names):
             if (Q.names[p].get("origins") or []) != ["artifact"] or _nah(Q, p):
+                continue
+            # unless its unit is flagged (by the scan: it has names of its own)
+            # and the name is the unit's own: then it never joins automatically
+            scanned = any(q[0] == p[0] and not _foreign(P, q) for q in P.names)
+            if scanned and not _foreign(Q, p) and host_guard.unit_flag(P, p[0]):
+                confirmed = {k for x in P.machines.values()
+                             if x.state == hi.CONFIRMED for k in x.keys}  # fmt: skip
+                if Q.bindings.get(p) in confirmed:
+                    out.append(("a flagged unit's late name joined automatically",
+                                door, p[1], ""))  # fmt: skip
                 continue
             spelled = hi.spelling(p[1])
             homes = [m for m in P.machines.values() if m.state in SETTLED and spelled in {

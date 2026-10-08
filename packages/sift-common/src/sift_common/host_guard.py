@@ -427,9 +427,14 @@ def check_binds(state: hi.HostState, records: list[dict], door: str) -> list[tup
         from_list = door == "list" or (
             door == "late" and rec.get("state") == hi.CONFIRMED
         )
+        # a name met while ingesting that matches a confirmed machine exactly
+        # joins it automatically too (no state: the machine's own)
+        matched = door == "late" and hi.FLAG_MATCHED_DURING_INGEST in (
+            rec.get("flags") or []
+        )
         evidence = (v.new_names.get(p) or {}).get("evidence")
         if (
-            from_list
+            (from_list or matched)
             and p[0] != LIST_UNIT
             and not _foreign(state, p, evidence)
             and not _not_a_host(state, p)
@@ -441,8 +446,13 @@ def check_binds(state: hi.HostState, records: list[dict], door: str) -> list[tup
                     q[0] == p[0] and not _foreign(state, q) for q in state.names
                 )
                 flagged[p[0]] = unit_flag(state, p[0]) if scanned else ""
-            if flagged[p[0]]:
+            if flagged[p[0]] and from_list:
                 refused.append((i, f"the list never confirms a unit with a flag "
+                                   f"({flagged[p[0]]}); the examiner decides"))  # fmt: skip
+                continue
+            if flagged[p[0]]:
+                refused.append((i, f"a name met while ingesting never joins a "
+                                   f"confirmed machine for a unit with a flag "
                                    f"({flagged[p[0]]}); the examiner decides"))  # fmt: skip
                 continue
         had = v.pairs(mid)

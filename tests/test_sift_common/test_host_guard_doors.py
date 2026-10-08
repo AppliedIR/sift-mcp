@@ -435,6 +435,38 @@ def test_a_late_list_match_still_confirms_an_unflagged_units_name(case):
     assert machine(case, ok, "SRV-LATE10.corp.example.test").state == hi.CONFIRMED
 
 
+@pytest.mark.parametrize("order", ["confirmed first", "started first"])
+def test_a_late_exact_match_never_joins_a_flagged_unit_to_a_confirmed_machine(
+    case, order
+):
+    """A flagged unit (one source) meets, while ingesting, a name a confirmed
+    machine holds exactly (e.g. a stale name a memory image still carries,
+    which now belongs to another machine). It doesn't join automatically; it
+    waits for the examiner, as Start now does for a flagged unit."""
+    fqdn = "WKS20.corp.example.test"
+
+    def confirm_it():
+        b = unit(case, "evidence/b", two(fqdn))
+        return confirm(case, b, fqdn, fqdn)
+
+    key = confirm_it() if order == "confirmed first" else None
+    thin = unit(case, "evidence/thin", [("WKS07", SYS)])  # one source: flagged
+    start(case, thin)
+    if key is None:
+        key = confirm_it()
+    got, _ = hi.get_or_mint(case, thin, fqdn, evidence=EVTX)
+    assert got != key and key not in machine(case, thin, fqdn).keys
+
+
+def test_a_late_exact_match_still_joins_an_unflagged_unit(case):
+    fqdn = "WKS21.corp.example.test"
+    b = unit(case, "evidence/b", two(fqdn))
+    key = confirm(case, b, fqdn, fqdn)
+    ok = unit(case, "evidence/ok", two("WKS08"))
+    got, _ = hi.get_or_mint(case, ok, fqdn, evidence=EVTX)
+    assert got == key
+
+
 def _two_domain_dc(case):
     """A machine the examiner confirmed holding DC01 in two domains (a
     conflict for the examiner), which the host list names."""
