@@ -91,6 +91,64 @@ def test_no_door_names_a_machine_after_an_address(case, action):
                                hi.load(case).obs_offset, door="R")  # fmt: skip
 
 
+@pytest.mark.parametrize("door", ["list", "late"])
+def test_the_guard_alone_keeps_addresses_off_named_machines(case, door):
+    """Binds a door's own filters should never make: a unit's own address on
+    its named machine, and machines named after an address. The guard
+    refuses each, ahead of the list's own flag on the unit; while ingesting,
+    the unit's placeholder still takes its address."""
+    from sift_common import host_guard
+
+    x = unit(case, "evidence/x", two("WKS1") + [("10.1.2.3", OWN_IP), ("10.4.5.6", OWN_IP),
+                                                ("WKS2", SYS)])  # fmt: skip
+    key = confirm(case, x, "WKS1", "WKS1")
+    state = hi.load(case)
+    place = host_gate.placeholder_name("evidence/x")
+    records = [
+        {"kind": "bind", "unit": x, "raw": "10.1.2.3", "key": key},
+        {"kind": "bind", "unit": x, "raw": "10.4.5.6", "key": "k-new-1",
+         "canonical": "10.4.5.6"},
+        {"kind": "bind", "unit": x, "raw": "WKS2", "key": "k-new-2",
+         "canonical": "10.40.192.22."},
+        {"kind": "bind", "unit": x, "raw": "10.4.5.6", "key": "k-new-3",
+         "canonical": place},
+    ]  # fmt: skip
+    refused = dict(host_guard.check_binds(state, records, door))
+    assert [refused.get(i) for i in range(3)] == [
+        host_guard.ADDRESS_BIND,
+        host_guard.ADDRESS,
+        host_guard.ADDRESS,
+    ]
+    # (the list never confirms this unit anyway: its address flags it)
+    assert refused.get(3) is None if door == "late" else 3 in refused
+
+
+def test_the_list_lands_no_address_when_its_own_filters_let_them_through(
+    case, monkeypatch
+):
+    """The list's own filters off (its IP test and the not-a-host flag on
+    addresses): the list names an address, and puts a unit's own address
+    with the unit's WKS1 on WKS1's machine. Nothing names a machine after an
+    address, and the unit's names go together or not at all."""
+    real_flags = hp.name_flags
+    monkeypatch.setattr(hp, "_is_ip", lambda v: False)
+    monkeypatch.setattr(
+        hp, "name_flags", lambda raw: [] if hp.is_address(raw) else real_flags(raw)
+    )
+    x = unit(case, "evidence/x", two("WKS1") + [("10.1.2.3", SYS), ("10.1.2.3", EVTX)])
+    y = unit(case, "evidence/y", two("10.40.192.22"))
+    out = hp.upload_host_list(case, "WKS1\n10.40.192.22\n", "ex1")
+    state = hi.load(case)
+    assert not [
+        m.canonical for m in state.machines.values() if hp.is_address(m.canonical)
+    ]
+    for p in [(x, "10.1.2.3"), (y, "10.40.192.22")]:
+        m = state.machine_of_pair(*p)
+        assert m is None or m.canonical.startswith(("x-", "y-")), (p, m.canonical)
+    assert {r["name"] for r in out.get("refused", [])} == {"10.1.2.3", "10.40.192.22"}
+    assert out["confirmed"] == [] and machine(case, x, "WKS1") is None
+
+
 # -- a domain conflict is judged against the machine
 
 

@@ -328,6 +328,7 @@ def _item_reason(
 
 
 ADDRESS = "an IP address never names a machine"
+ADDRESS_BIND = "an IP address goes only on its unit's placeholder"
 
 
 def refuse_while_operating(root, door: str) -> None:
@@ -380,7 +381,7 @@ def check_binds(state: hi.HostState, records: list[dict], door: str) -> list[tup
     """[(record index, reason)] for the bind records that may not be
     appended; each is judged with the earlier records (names and binds) in
     place."""
-    from sift_common.host_proposal import LIST_UNIT
+    from sift_common.host_proposal import LIST_UNIT, is_address
 
     automatic = door in AUTOMATIC_DOORS
     v = _Overlay(state)
@@ -411,6 +412,16 @@ def check_binds(state: hi.HostState, records: list[dict], door: str) -> list[tup
         if before is not None and before != key:
             refused.append((i, "it is bound to another machine already"))
             continue
+        mid = v.machine_of_key(key) or key
+        canonical = v.canonical(mid) or str(rec.get("canonical") or p[1])
+        # an address never names a machine and goes only on its unit's
+        # placeholder, whatever the door's own filters let through
+        if is_address(canonical):
+            refused.append((i, ADDRESS))
+            continue
+        if is_address(p[1]) and not _placeholder(state, p[0], canonical):
+            refused.append((i, ADDRESS_BIND))
+            continue
         if door == "list" and p[0] != LIST_UNIT and _own(state, p):
             if p[0] not in flagged:
                 flagged[p[0]] = unit_flag(state, p[0])
@@ -418,8 +429,6 @@ def check_binds(state: hi.HostState, records: list[dict], door: str) -> list[tup
                 refused.append((i, f"the list never confirms a unit with a flag "
                                    f"({flagged[p[0]]}); the examiner decides"))  # fmt: skip
                 continue
-        mid = v.machine_of_key(key) or key
-        canonical = v.canonical(mid) or str(rec.get("canonical") or p[1])
         had = v.pairs(mid)
         pairs = list(dict.fromkeys([*had, p]))
         why = (
