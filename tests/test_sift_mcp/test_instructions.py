@@ -101,3 +101,16 @@ def test_opensearch_aggregation_guidance_names_both_field_forms():
         assert clause in OPENSEARCH, clause
     assert "fails loudly" not in OPENSEARCH
     assert "include_fields=true) shows them" not in OPENSEARCH
+
+
+def test_opensearch_instructions_group_hosts_by_host_id():
+    assert "idx_aggregate on event.code/user.name/host.id" in OPENSEARCH
+    assert "host.name for overview" not in OPENSEARCH
+    for clause in (
+        "filter and group by host.id",
+        "host.name is the raw name a record carried",
+        "Index names carry no host",
+        "idx_host_inventory",
+        "writes nothing until the examiner confirms its hosts",
+    ):
+        assert clause in OPENSEARCH, clause

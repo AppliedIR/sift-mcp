@@ -149,10 +149,14 @@ OPENCTI = (
 OPENSEARCH = (
     "OpenSearch evidence indexing and querying. "
     "Investigation workflow: (1) idx_case_summary for scope and available fields, "
-    "(2) idx_aggregate on event.code/user.name/host.name for overview, "
+    "(2) idx_aggregate on event.code/user.name/host.id for overview, "
     "(3) idx_search for specific indicators, "
     "(4) idx_timeline for temporal patterns, "
     "(5) idx_enrich_triage/intel for enrichment. "
+    "Hosts: filter and group by host.id, the machine's name; host.name is the raw "
+    "name a record carried. Index names carry no host. idx_host_inventory lists the "
+    "machines and the runs awaiting host confirmation: such a run writes nothing "
+    "until the examiner confirms its hosts in the portal's Hosts tab. "
     "idx_search and idx_timeline support time_from/time_to for temporal filtering. "
     'Quote special chars in queries (e.g., source.ip:"::1"). '
     "WinRM/Operational often dominates event volumes (50%+) — add "
