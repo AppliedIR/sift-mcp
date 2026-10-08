@@ -567,6 +567,37 @@ def test_a_lost_identity_refuses_the_plan_by_name(case, tmp_path, monkeypatch):
     assert _snapshot(case) == before
 
 
+def test_a_commit_whose_signatures_fail_records_no_folder(case, tmp_path, monkeypatch):
+    from vhir_cli.case_identity import _paths_file
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    plan = case.plan([reviewed(case, "F-steve-001")]).json()
+    case.login(plan)
+    r = case.commit(plan, {"F-steve-001": "AAAA"})
+    assert r.status_code == 401 and r.json()["code"] == "BAD_SIGNATURE"
+    assert not _paths_file().exists()
+
+
+def test_a_folder_record_that_can_t_be_written_is_named(case, tmp_path, monkeypatch):
+    import vhir_cli.case_identity as ci
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+    def full(case_dir):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(ci, "record_case_path", full)
+    case.stage(dict(reviewed(case, "F-steve-001"), staged_by="steve"))
+    r = case.sign_all([reviewed(case, "F-steve-001")])
+    assert r.status_code == 500 and r.json()["code"] == "CASE_RECORD_UNWRITABLE", r.text
+    assert "record of case folders couldn't be written" in r.json()["error"]
+    assert case.chain() == []  # nothing signed
+    assert [e["id"] for e in case.read("pending-reviews.json")["items"]] == [
+        "F-steve-001"
+    ]
+    assert case.item("F-steve-001")["status"] == "DRAFT"
+
+
 def test_the_case_page_shows_the_signing_state(case):
     state = case.get("/api/case").json()["signing"]
     assert state["signing_available"] is True and state["schema"] == 3

@@ -598,6 +598,8 @@ async def post_commit_plan(request: Request) -> JSONResponse:
         return _error("LOCK_DIR_MISSING", str(e), 500)
     except ledger.CaseCopy as e:
         return _error("CASE_COPY", f"{e} Nothing was signed.", 409)
+    except ledger.CaseRecordUnwritable as e:
+        return _error("CASE_RECORD_UNWRITABLE", str(e), 500)
     except ledger.LedgerError as e:
         return _error("LEDGER_UNREADABLE", str(e), 409)
     chosen, plan, now, head = out
@@ -758,9 +760,11 @@ def _commit_locked(ch: dict, sigs: dict, examiner: str) -> dict:
             if not isinstance(sig, str):
                 raise _Refused(_error("BAD_SIGNATURE", f"No signature for {b['item_id']}; nothing was signed.", 401))  # fmt: skip
             lines.append(ledger.canonical({**b, "sig": sig}).decode("ascii"))
-        decide.record_folder(case_dir)  # under the case lock, before the commit
         try:
-            head = ledger.commit(lock, plan.bodies, lines, public)
+            head = ledger.commit(
+                lock, plan.bodies, lines, public,
+                before_write=lambda: decide.record_folder(case_dir),  # once they verify
+            )  # fmt: skip
         except ledger.BadSignature as e:
             raise _Refused(
                 _error("BAD_SIGNATURE", f"{e}; nothing was signed.", 401)
@@ -824,6 +828,8 @@ async def post_commit(request: Request) -> JSONResponse:
         return _error("LOCK_DIR_MISSING", str(e), 500)
     except ledger.CaseCopy as e:
         return _error("CASE_COPY", f"{e} Nothing was signed.", 409)
+    except ledger.CaseRecordUnwritable as e:
+        return _error("CASE_RECORD_UNWRITABLE", str(e), 500)
     except ledger.LedgerError as e:
         return _error("LEDGER_UNREADABLE", f"{e} Nothing was signed.", 409)
     plan, head = out["plan"], out["head"]
