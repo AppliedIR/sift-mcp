@@ -85,6 +85,14 @@ def test_a_name_met_while_ingesting_never_takes_an_address_it_is_given(case):
     assert not [m for m in state.machines.values() if hp.is_address(m.canonical)]
 
 
+def test_an_address_of_a_unit_with_no_locator_goes_to_the_placeholder_it_is_named(case):
+    """No unit record: the placeholder is named from the unit itself, and
+    the guard knows it as the unit's."""
+    key, canonical = hi.get_or_mint(case, "u-bare", "10.1.2.3", evidence=OWN_IP)
+    assert canonical == host_gate.placeholder_name("u-bare")
+    assert hi.get_or_mint(case, "u-bare", "10.1.2.4", evidence=OWN_IP)[0] == key
+
+
 def _not_a_host_name(case, x):
     hi.append_decision(case, {"action": "not_a_host", "examiner": "ex1",
                               "args": {"pairs": [[x, "BUILD"]]}},

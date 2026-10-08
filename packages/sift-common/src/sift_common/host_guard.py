@@ -54,14 +54,12 @@ def _own(state: hi.HostState, p) -> bool:
 
 def placeholder_of(state, unit: str) -> set[str]:
     """The names a unit's own placeholder machine may carry: the unit's
-    placeholder, exactly, and the examiner's `unattributed:<unit>`."""
+    placeholder, exactly (named from its locator, or from the unit when it
+    has none, as the doors name it), and the examiner's `unattributed:<unit>`."""
     from sift_common import host_gate
 
-    locator = str((state.units.get(unit) or {}).get("locator") or "")
-    names = {f"unattributed:{unit}"}
-    if locator:
-        names.add(host_gate.placeholder_name(locator))
-    return names
+    locator = str((state.units.get(unit) or {}).get("locator") or unit)
+    return {f"unattributed:{unit}", host_gate.placeholder_name(locator)}
 
 
 def _placeholder(state, unit: str, canonical: str) -> bool:
