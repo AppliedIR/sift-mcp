@@ -1,5 +1,8 @@
 #!/bin/sh
-# PostToolUse hook: audit Bash commands to the active case audit trail.
+# PostToolUse hook: audit Bash commands to the active case audit trail. Also
+# registered for PostToolUseFailure (a command that failed: the entry says
+# "failed" with the error) and PermissionDenied (a call the permission mode
+# refused: "denied" with the reason).
 # Receives JSON on stdin from Claude Code. Never exits 2 (would block).
 set -e
 
@@ -41,7 +44,11 @@ try:
     tuid = d.get('tool_use_id', '')
     sid = d.get('session_id', '')
     cwd = d.get('cwd', '')  # Claude Code sends it at the top level
-    print(json.dumps({'command': cmd, 'tool_response': resp, 'tool_use_id': tuid, 'session_id': sid, 'cwd': cwd}))
+    event = d.get('hook_event_name', '')
+    error = str(d.get('error', ''))
+    reason = str(d.get('reason', ''))
+    print(json.dumps({'command': cmd, 'tool_response': resp, 'tool_use_id': tuid, 'session_id': sid, 'cwd': cwd,
+                      'event': event, 'error': error, 'reason': reason}))
 except Exception:
     print('{}')
 " 2>/dev/null) || PARSED="{}"
@@ -86,6 +93,9 @@ TOOL_USE_ID=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json
 SESSION_ID=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null) || SESSION_ID=""
 CWD=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null) || CWD=""
 OUTPUT_BYTES=$(printf '%s' "$TOOL_RESPONSE" | wc -c 2>/dev/null) || OUTPUT_BYTES=0
+EVENT=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('event',''))" 2>/dev/null) || EVENT=""
+ERROR=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('error',''))" 2>/dev/null) || ERROR=""
+REASON=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('reason',''))" 2>/dev/null) || REASON=""
 
 # Truncate output to 2000 chars for excerpt
 OUTPUT_EXCERPT=$(printf '%s' "$TOOL_RESPONSE" | head -c 2000 2>/dev/null) || OUTPUT_EXCERPT=""
@@ -106,7 +116,11 @@ entry = {
     'cwd': sys.argv[7],
     'session_id': sys.argv[8],
 }
+if sys.argv[9] == 'PostToolUseFailure':
+    entry.update(event='failed', error=sys.argv[10][:2000])
+elif sys.argv[9] == 'PermissionDenied':
+    entry.update(event='denied', denial_reason=sys.argv[11][:2000])
 print(json.dumps(entry))
-" "$TOOL_USE_ID" "$EVIDENCE_ID" "$COMMAND" "$OUTPUT_HASH" "$OUTPUT_EXCERPT" "$OUTPUT_BYTES" "$CWD" "$SESSION_ID" >> "$AUDIT_FILE" 2>/dev/null || true
+" "$TOOL_USE_ID" "$EVIDENCE_ID" "$COMMAND" "$OUTPUT_HASH" "$OUTPUT_EXCERPT" "$OUTPUT_BYTES" "$CWD" "$SESSION_ID" "$EVENT" "$ERROR" "$REASON" >> "$AUDIT_FILE" 2>/dev/null || true
 
 exit 0

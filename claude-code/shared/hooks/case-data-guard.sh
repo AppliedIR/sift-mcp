@@ -35,9 +35,11 @@
 #
 # The command is tokenized only: it is never run, evaluated or expanded by a
 # shell. A block exits 2 with the reason on stderr (Claude Code shows it to
-# the model); anything else exits 0. A payload it can't read, or an error of
-# its own, is blocked too (fail closed): a check that can't reach a verdict
-# mustn't look like one that passed.
+# the model), and appends an "event": "refused" line to the active case's
+# audit file (Claude Code records no other trace of it); anything else exits
+# 0. A payload it can't read, or an error of its own, is blocked too (fail
+# closed): a check that can't reach a verdict mustn't look like one that
+# passed.
 #
 GUARD=$(
     cat <<'PY'
@@ -54,13 +56,49 @@ WRAP = {"sudo", "env", "command", "nice", "nohup", "time", "timeout", "stdbuf", 
 CAP = 2000  # glob matches checked per argument (the 5-second bound)
 
 
+def refused(why, payload=None):
+    """The refusal's own line in the active case's audit file (no audit_id:
+    the command never ran). Best effort: the block stands whatever happens."""
+    try:
+        import datetime
+
+        case = os.environ.get("VHIR_CASE_DIR", "")
+        if not (case and os.path.isdir(case)):
+            with open(os.path.expanduser("~/.vhir/active_case")) as f:
+                case = f.read().strip()
+        if not (case.startswith("/") and os.path.isdir(case)):
+            return
+        audit = os.environ.get("VHIR_AUDIT_DIR", "")
+        if not (audit and os.path.isdir(audit)):
+            audit = os.path.join(case, "audit")
+            os.makedirs(audit, exist_ok=True)
+        p = payload if isinstance(payload, dict) else {}
+        ti = p.get("tool_input") if isinstance(p.get("tool_input"), dict) else {}
+        entry = {
+            "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "case-data-guard",
+            "event": "refused",
+            "command": str(ti.get("command", ""))[:2000],
+            "reason": why,
+            "cwd": str(p.get("cwd", "")),
+            "session_id": str(p.get("session_id", "")),
+            "tool_use_id": str(p.get("tool_use_id", "")),
+        }
+        with open(os.path.join(audit, "claude-code.jsonl"), "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
+
+
 def block(why):
+    refused(why, globals().get("payload"))
     print(f"BLOCKED: {why}. Case records, audit/ and evidence files are protected; "
           "move other files to the case's DELETE/ directory instead.", file=sys.stderr)
     sys.exit(2)
 
 
 def unreadable():
+    refused("the guard couldn't read the command", globals().get("payload"))
     print("BLOCKED: the case-data guard couldn't read this command, so it was blocked "
           "to be safe. If every command is blocked, the hook's input may have changed; "
           "tell the examiner.", file=sys.stderr)
