@@ -1,0 +1,47 @@
+# managed-by: valhuntir
+# Codex's managed requirements on this SIFT workstation, installed by
+# `vhir setup client --client=codex` (root-owned; every Codex session on the
+# machine follows them). {home} is the examiner's home and {hooks} the
+# root-owned copies of Valhuntir's hooks. To turn them off, see
+# sift-mcp/docs/codex.md#opt-out.
+
+# Codex's own sandbox stays on: no danger-full-access
+allowed_sandbox_modes = ["read-only", "workspace-write"]
+allowed_approval_policies = ["untrusted", "on-request", "never"]
+
+[features]
+hooks = true
+browser_use = false
+computer_use = false
+in_app_browser = false
+
+# Codex's shell can't read the signing and approval store, the gateway's
+# tokens or the Valhuntir profile (which holds a gateway token)
+[permissions.filesystem]
+deny_read = ["/var/lib/vhir", "{home}/.vhir/gateway.yaml", "{home}/.codex/valhuntir.config.toml"]
+
+[[hooks.PreToolUse]]
+matcher = "^Bash$"
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "{hooks}/case-data-guard.sh --client codex"
+timeout = 10
+
+[[hooks.PostToolUse]]
+matcher = "^(Bash|apply_patch)$"
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "{hooks}/forensic-audit.sh --client codex"
+timeout = 30
+
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "{hooks}/codex-stdin-capture.sh"
+timeout = 30
+
+[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "{hooks}/case-dir-check.sh --client codex"
+timeout = 10
