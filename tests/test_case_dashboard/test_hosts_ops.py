@@ -210,3 +210,34 @@ class TestTheTabShowsTheOperation:
         for act in ("op_rename", "op_split"):
             assert f'data-host-act="{act}"' in out
         assert 'data-op-key="k1"' in out and " disabled" not in out
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")
+class TestEveryJournalFieldIsText:
+    """host-ops.json is case data another process can write: every field the
+    banner shows renders as text."""
+
+    EVIL = "<img src=x onerror=alert(1)>"
+
+    def _clean(self, out):
+        assert "<img" not in out, out
+        assert "&lt;img src=x onerror=alert(1)&gt;" in out
+
+    def _op(self, state):
+        e = self.EVIL
+        return {"id": e, "state": state, "kind": e, "canonical": e, "reason": e,
+                "started": e, "examiner": e, "to_relabel": e, "relabelled": e}  # fmt: skip
+
+    @pytest.mark.parametrize("state", ["incomplete", "running"])
+    def test_an_unfinished_op(self, state):
+        out = _render("hostOpsHtml(data)", {"unfinished": self._op(state), "last": None,
+                                             "launch": None})  # fmt: skip
+        self._clean(out)
+
+    def test_the_last_op_and_launch(self):
+        out = _render("hostOpsHtml(data)", {"unfinished": None, "last": self._op("done"),
+                      "launch": {"state": "refused", "result": {"reason": self.EVIL}}})  # fmt: skip
+        self._clean(out)
+        assert (
+            out.count("&lt;img") >= 4
+        )  # id, kind, name and relabelled, plus the reason

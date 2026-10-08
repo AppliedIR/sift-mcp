@@ -56,7 +56,7 @@ the case's host logs and findings. Every sink:
 | `hostRowsHtml` | canonical, former names, state, flags | `escapeHtml` |
 | `hostDetailHtml` | canonical; history time, examiner, origin, action | `escapeHtml` |
 | `hostCorrectionsHtml` | machine id and keys (attributes and labels), other machines' ids and names | `escapeAttr` (attributes), `escapeHtml` (text) |
-| `hostOpsHtml` | operation id, kind, new name, reason, start time, examiner; the last request's state and reason | `escapeHtml`; the id in `data-op` with `escapeAttr` |
+| `hostOpsHtml` | every journal field shown (`host-ops.json` is case data others can write): operation id, kind, new name, reason, start time, examiner, records to relabel, records relabelled; the last request's state and reason | `escapeHtml(String(…))`; the id in `data-op` with `escapeAttr` |
 | `renderHosts` error | the error message | `escapeHtml` |
 
 - **Buttons** carry only an action name and a numeric index into the page's

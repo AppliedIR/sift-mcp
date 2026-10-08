@@ -3915,26 +3915,27 @@ function hostCorrectionsHtml(m) {
 function hostOpsHtml(v) {
   if (!v) return '';
   var u = v.unfinished, html = '';
+  // every journal field is case text (host-ops.json can be written by others): escaped
   var what = function(op) {
-    return escapeHtml(op.kind || 'host operation') + (op.canonical ? ' to ' + escapeHtml(op.canonical) : '');
+    return escapeHtml(String(op.kind || 'host operation')) + (op.canonical ? ' to ' + escapeHtml(String(op.canonical)) : '');
   };
   if (u && u.state === 'incomplete') {
     html += '<div class="notice host-op-incomplete"><strong>Host rename incomplete</strong> \u2014 '
-      + what(u) + ' (' + escapeHtml(u.id) + '): ' + escapeHtml(u.reason || '')
+      + what(u) + ' (' + escapeHtml(String(u.id)) + '): ' + escapeHtml(String(u.reason || ''))
       + '. Ingest and enrichment wait until it finishes. '
-      + '<button class="btn" data-host-act="op_resume" data-op="' + escapeAttr(u.id) + '">Re-run</button></div>';
+      + '<button class="btn" data-host-act="op_resume" data-op="' + escapeAttr(String(u.id)) + '">Re-run</button></div>';
   } else if (u) {
     var live = v.launch && v.launch.state === 'running';
-    html += '<div class="notice host-op-running">Running: ' + what(u) + ' (' + escapeHtml(u.id) + '), '
-      + (u.to_relabel || 0) + ' indexed records to relabel, started ' + escapeHtml(u.started || '') + ' by ' + escapeHtml(u.examiner || '') + '.'
-      + (live ? '' : ' <button class="btn" data-host-act="op_resume" data-op="' + escapeAttr(u.id) + '">Resume if it stopped</button>')
+    html += '<div class="notice host-op-running">Running: ' + what(u) + ' (' + escapeHtml(String(u.id)) + '), '
+      + escapeHtml(String(u.to_relabel || 0)) + ' indexed records to relabel, started ' + escapeHtml(String(u.started || '')) + ' by ' + escapeHtml(String(u.examiner || '')) + '.'
+      + (live ? '' : ' <button class="btn" data-host-act="op_resume" data-op="' + escapeAttr(String(u.id)) + '">Resume if it stopped</button>')
       + '</div>';
   } else if (v.last && v.last.state === 'done') {
-    html += '<div style="color:var(--text-muted)">Last host operation: ' + what(v.last) + ' (' + escapeHtml(v.last.id) + '), done'
-      + (v.last.relabelled != null ? ', ' + v.last.relabelled + ' records relabelled' : '') + '.</div>';
+    html += '<div style="color:var(--text-muted)">Last host operation: ' + what(v.last) + ' (' + escapeHtml(String(v.last.id)) + '), done'
+      + (v.last.relabelled != null ? ', ' + escapeHtml(String(v.last.relabelled)) + ' records relabelled' : '') + '.</div>';
   }
   if (v.launch && (v.launch.state === 'refused' || v.launch.state === 'failed') && v.launch.result) {
-    html += '<div class="notice">The last request was ' + escapeHtml(v.launch.state) + ': ' + escapeHtml(v.launch.result.reason || '') + '</div>';
+    html += '<div class="notice">The last request was ' + escapeHtml(String(v.launch.state)) + ': ' + escapeHtml(String(v.launch.result.reason || '')) + '</div>';
   }
   return html;
 }
