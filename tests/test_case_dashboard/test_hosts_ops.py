@@ -313,6 +313,33 @@ class TestAnOpActsOnTheMachineTheExaminerSaw:
             r.status_code == 409 and "host rename/merge is running" in r.json()["error"]
         )
 
+    def test_a_list_upload_while_an_operation_is_unfinished_writes_nothing(
+        self, case, client, wks
+    ):  # noqa: F811
+        """The portal's `list` action reaches the host list's binds; the
+        shared guard refuses it, and the tab shows the message."""
+        hi.record_op(case, "op-x", {"kind": "rename", "state": "incomplete",
+                                    "examiner": "tester", "started": "t0"})  # fmt: skip
+        before = (
+            (case / hi.OBSERVATIONS).read_bytes(),
+            (case / hi.DECISIONS).read_bytes(),
+        )
+        page = client.get("/api/hosts").json()
+        r = client.post(
+            "/api/hosts/decisions",
+            json={"action": "list", "seen_offset": page["obs_offset"],
+                  "args": {"text": "WKS01\nFIN-1\n"}},
+        )  # fmt: skip
+        assert r.status_code == 409
+        assert (
+            r.json()["error"]
+            == "a host rename/merge is running; try again when it ends"
+        )
+        assert (
+            (case / hi.OBSERVATIONS).read_bytes(),
+            (case / hi.DECISIONS).read_bytes(),
+        ) == before
+
 
 class TestMergeAcrossPages:
     def test_a_machine_on_another_page_is_merged_by_its_typed_name(
