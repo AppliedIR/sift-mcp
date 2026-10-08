@@ -18,11 +18,15 @@ from starlette.routing import Route
 
 from sift_gateway.auth import resolve_examiner
 from sift_gateway.join import (
+    _join_code_lock,
     check_join_rate_limit,
+    find_join_code,
     generate_join_code,
+    join_name,
+    mark_code_used,
     record_join_failure,
     store_join_code,
-    validate_and_consume_join_code,
+    valid_name,
 )
 from sift_gateway.rate_limit import check_rate_limit
 from sift_gateway.token_gen import generate_gateway_token
@@ -34,6 +38,16 @@ logger = logging.getLogger(__name__)
 
 # Maximum request body size (10 MB)
 _MAX_REQUEST_BYTES = 10 * 1024 * 1024
+
+# An examiner name is taken when a gateway token or an enrolled credential
+# holds it (vhir's credential folders)
+_PASSWORDS_DIR = "/var/lib/vhir/passwords"
+_KEYS_DIR = "/var/lib/vhir/keys"
+NAME_IN_USE = (
+    "{name} is already in use. To re-join under your own name, ask the box owner "
+    "for a code from `vhir setup join-code --name {name}`. Otherwise choose another "
+    "name with `vhir join --name`."
+)
 
 
 async def list_tools(request: Request) -> JSONResponse:
@@ -323,13 +337,37 @@ async def create_join_code(request: Request) -> JSONResponse:
             status_code=403,
         )
     expires_hours = 2
+    bound_name = None
     body = await request.body()
     if body:
         try:
             data = json.loads(body)
             expires_hours = data.get("expires_hours", 2)
+            bound_name = data.get("name") if isinstance(data, dict) else None
         except json.JSONDecodeError:
             pass
+
+    if bound_name is not None:
+        # a bound code ends that name's earlier tokens: only with API keys,
+        # never for the owner's own name (that token mints codes)
+        if not api_keys:
+            return JSONResponse(
+                {"code": "NO_API_KEYS",
+                 "error": "A join code bound to a name needs gateway API keys."},
+                status_code=403,
+            )  # fmt: skip
+        if not valid_name(bound_name):
+            return JSONResponse(
+                {"error": f"Invalid examiner name: {bound_name!r} (lower-case letters, "
+                          "digits and hyphens, at most 20 characters)"},
+                status_code=400,
+            )  # fmt: skip
+        owner = (next(iter(api_keys.values())) or {}).get("examiner")
+        if bound_name == owner:
+            return JSONResponse(
+                {"error": f"{bound_name} is the box owner's name; a join code can't take it."},
+                status_code=400,
+            )  # fmt: skip
 
     if (
         not isinstance(expires_hours, (int, float))
@@ -342,20 +380,21 @@ async def create_join_code(request: Request) -> JSONResponse:
         )
 
     code = generate_join_code()
-    store_join_code(code, expires_hours=expires_hours)
+    store_join_code(code, expires_hours=expires_hours, bound_name=bound_name)
 
     gateway = request.app.state.gateway
     gw_url = _get_gateway_url(gateway)
     parsed = urlparse(gw_url)
     host_port = f"{parsed.hostname}:{parsed.port}"
 
-    return JSONResponse(
-        {
-            "code": code,
-            "expires_hours": expires_hours,
-            "instructions": f"vhir join --sift {host_port} --code {code}",
-        }
-    )
+    out = {
+        "code": code,
+        "expires_hours": expires_hours,
+        "instructions": f"vhir join --sift {host_port} --code {code}",
+    }
+    if bound_name is not None:
+        out["name"] = bound_name
+    return JSONResponse(out)
 
 
 async def join_gateway(request: Request) -> JSONResponse:
@@ -382,21 +421,65 @@ async def join_gateway(request: Request) -> JSONResponse:
     wintools_token = body.get("wintools_token")
     wintools_cert = body.get("wintools_cert")
 
-    matched_hash = await validate_and_consume_join_code(code)
-    if not matched_hash:
-        record_join_failure(client_ip)
-        return JSONResponse(
-            {"error": "Invalid or expired join code"},
-            status_code=403,
-        )
-
-    examiner_name = hostname or machine_type
     gateway = request.app.state.gateway
+    raw_name = body.get("name") or hostname or machine_type
+    loop = asyncio.get_running_loop()
+    # Check the code and settle the name in one step, so a refused name
+    # leaves the code usable (the bcrypt work runs off the event loop)
+    async with _join_code_lock:
+        found = await loop.run_in_executor(None, find_join_code, code)
+        if not found:
+            record_join_failure(client_ip)
+            return JSONResponse(
+                {"error": "Invalid or expired join code"},
+                status_code=403,
+            )
+        bound = "bound_name" in found[1]
+        if machine_type == "wintools":
+            if bound:
+                return JSONResponse(
+                    {"error": "A join code bound to an examiner name can't join a wintools host."},
+                    status_code=403,
+                )  # fmt: skip
+            examiner_name = hostname or machine_type
+        elif bound:
+            # the name comes from the read that checked the code, never again
+            examiner_name = found[1]["bound_name"]
+            if not valid_name(examiner_name):
+                await loop.run_in_executor(None, mark_code_used, code)
+                return JSONResponse(
+                    {"error": "This join code names an invalid examiner name; ask the "
+                              "box owner for a new code."},
+                    status_code=403,
+                )  # fmt: skip
+        else:
+            examiner_name = join_name(raw_name)
+            if not valid_name(examiner_name):
+                return JSONResponse(
+                    {"error": f"{str(raw_name)[:64]!r} doesn't make an examiner name; choose "
+                              "one with `vhir join --name NAME` (lower-case letters, digits "
+                              "and hyphens, at most 20 characters)."},
+                    status_code=400,
+                )  # fmt: skip
+            if _name_in_use(gateway, examiner_name):
+                return JSONResponse(
+                    {"code": "NAME_IN_USE", "error": NAME_IN_USE.format(name=examiner_name)},
+                    status_code=409,
+                )  # fmt: skip
+        await loop.run_in_executor(None, mark_code_used, code)
 
     # Generate a bearer token only for non-wintools joins
     if machine_type != "wintools":
         new_token = generate_gateway_token()
-        _add_api_key_to_config(gateway, new_token, examiner_name)
+        try:
+            _add_api_key_to_config(
+                gateway, new_token, examiner_name, replace=bound, refuse_held=not bound
+            )
+        except NameHeld:
+            return JSONResponse(
+                {"code": "NAME_IN_USE", "error": NAME_IN_USE.format(name=examiner_name)},
+                status_code=409,
+            )  # fmt: skip
     else:
         new_token = None
 
@@ -469,6 +552,8 @@ async def join_gateway(request: Request) -> JSONResponse:
     }
     if new_token:
         response["gateway_token"] = new_token
+        response["bound"] = bound
+        response["enrol_command"] = f"vhir enrol --name {examiner_name}"
 
     if wintools_registered:
         response["wintools_registered"] = True
@@ -526,11 +611,31 @@ def _atomic_yaml_write(config_path, config: dict) -> None:
         raise
 
 
-def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
-    """Add a new API key to the gateway config and write to disk."""
+class NameHeld(Exception):
+    """The examiner name is already held by a token or a credential."""
+
+
+def _name_in_use(gateway, name: str) -> bool:
+    from pathlib import Path
+
+    tokens = getattr(gateway, "_api_keys", None) or {}
+    if any((v or {}).get("examiner") == name for v in tokens.values()):
+        return True
+    return any((Path(d) / f"{name}.json").exists() for d in (_PASSWORDS_DIR, _KEYS_DIR))
+
+
+def _add_api_key_to_config(
+    gateway, token: str, examiner: str, replace: bool = False, refuse_held: bool = False
+) -> None:
+    """Add a new API key to the gateway config and write to disk. `replace`:
+    a bound join, which first removes every earlier token of `examiner`.
+    `refuse_held`: raise NameHeld if the name is taken meanwhile. The file
+    and the running gateway change together, inside the config lock."""
     from pathlib import Path
 
     with _CONFIG_LOCK:
+        if refuse_held and _name_in_use(gateway, examiner):
+            raise NameHeld(examiner)
         config_path = Path.home() / ".vhir" / "gateway.yaml"
         if config_path.exists():
             import yaml
@@ -543,8 +648,15 @@ def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
         else:
             config = {}
 
-        if "api_keys" not in config:
+        if not isinstance(config.get("api_keys"), dict):
             config["api_keys"] = {}
+        earlier = (
+            [t for t, v in config["api_keys"].items() if (v or {}).get("examiner") == examiner]
+            if replace
+            else []
+        )  # fmt: skip
+        for t in earlier:
+            del config["api_keys"][t]
 
         config["api_keys"][token] = {
             "examiner": examiner,
@@ -559,9 +671,17 @@ def _add_api_key_to_config(gateway, token: str, examiner: str) -> None:
                 status_code=500, detail="Failed to save configuration"
             ) from e
 
-    # Also update the in-memory gateway auth keys (shared dict reference)
-    if hasattr(gateway, "_api_keys"):
-        gateway._api_keys[token] = {"examiner": examiner, "role": "examiner"}
+        # The in-memory gateway auth keys too (shared dict reference), in
+        # the same span, so the file and the running gateway agree
+        if hasattr(gateway, "_api_keys"):
+            if replace:
+                for t in [
+                    t
+                    for t, v in gateway._api_keys.items()
+                    if (v or {}).get("examiner") == examiner
+                ]:
+                    del gateway._api_keys[t]
+            gateway._api_keys[token] = {"examiner": examiner, "role": "examiner"}
 
 
 def _add_wintools_backend(

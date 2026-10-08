@@ -154,7 +154,7 @@ class TestJoinGatewayCallOrder:
     """Verify mark_code_used is called before _add_api_key_to_config (TOCTOU fix)."""
 
     def test_consume_before_config_write(self, monkeypatch):
-        """validate_and_consume_join_code() must be called before _add_api_key_to_config()."""
+        """The code is found and marked used before _add_api_key_to_config()."""
         from unittest.mock import MagicMock, patch
 
         from sift_gateway.rest import rest_routes
@@ -163,11 +163,14 @@ class TestJoinGatewayCallOrder:
 
         call_order = []
 
-        async def mock_validate_and_consume(code):
-            call_order.append("validate_and_consume")
-            return "fake_hash"
+        def mock_find(code):
+            call_order.append("find")
+            return "fake_hash", {}
 
-        def mock_add_api_key(gateway, token, examiner):
+        def mock_mark_used(code):
+            call_order.append("mark_used")
+
+        def mock_add_api_key(gateway, token, examiner, **kw):
             call_order.append("_add_api_key_to_config")
 
         def mock_generate_token():
@@ -183,10 +186,9 @@ class TestJoinGatewayCallOrder:
         client = TestClient(app, raise_server_exceptions=False)
 
         with (
-            patch(
-                "sift_gateway.rest.validate_and_consume_join_code",
-                mock_validate_and_consume,
-            ),
+            patch("sift_gateway.rest.find_join_code", mock_find),
+            patch("sift_gateway.rest.mark_code_used", mock_mark_used),
+            patch("sift_gateway.rest._name_in_use", lambda gw, name: False),
             patch("sift_gateway.rest._add_api_key_to_config", mock_add_api_key),
             patch("sift_gateway.rest.generate_gateway_token", mock_generate_token),
             patch("sift_gateway.rest.check_join_rate_limit", return_value=True),
@@ -201,4 +203,4 @@ class TestJoinGatewayCallOrder:
             )
 
         assert resp.status_code == 200
-        assert call_order == ["validate_and_consume", "_add_api_key_to_config"]
+        assert call_order == ["find", "mark_used", "_add_api_key_to_config"]

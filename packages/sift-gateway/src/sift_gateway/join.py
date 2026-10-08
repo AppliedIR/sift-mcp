@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import secrets
 import tempfile
 import threading
@@ -85,8 +86,11 @@ def generate_join_code() -> str:
     return "".join(chars[:4]) + "-" + "".join(chars[4:])
 
 
-def store_join_code(code: str, expires_hours: int = 2) -> None:
-    """Hash and store a join code with expiry."""
+def store_join_code(
+    code: str, expires_hours: int = 2, bound_name: str | None = None
+) -> None:
+    """Hash and store a join code with expiry. A code bound to a name
+    (`vhir setup join-code --name NAME`) joins as that name only."""
     state = _load_state()
     # bcrypt hash of the code
     code_bytes = code.encode("utf-8")
@@ -98,11 +102,39 @@ def store_join_code(code: str, expires_hours: int = 2) -> None:
         "expires_ts": expires_ts,
         "used": False,
     }
+    if bound_name is not None:
+        state["codes"][hashed]["bound_name"] = bound_name
     _save_state(state)
+
+
+# --- Examiner names (a copy of vhir_cli.identity's rule; a test pins it) ---
+NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,19}")
+
+
+def valid_name(name: object) -> bool:
+    return isinstance(name, str) and NAME_RE.fullmatch(name) is not None
+
+
+def join_name(raw: str) -> str:
+    """A joining machine's name as an examiner name: lower case, the part
+    before the first `.`, other characters outside `[a-z0-9-]` as `-`,
+    leading non-alphanumerics removed, at most 20 characters."""
+    name = str(raw).lower().split(".", 1)[0]
+    name = re.sub(r"[^a-z0-9-]", "-", name)
+    name = re.sub(r"^[^a-z0-9]+", "", name)
+    return name[:20]
 
 
 def validate_join_code(code: str) -> str | None:
     """Check if code matches any stored hash. Returns the hash key if valid, None otherwise."""
+    found = find_join_code(code)
+    return found[0] if found else None
+
+
+def find_join_code(code: str) -> tuple[str, dict] | None:
+    """The valid code's hash and its entry (with any `bound_name`), from the
+    one state read that checked it; None when no unused, unexpired code
+    matches."""
     state = _load_state()
     code_bytes = code.encode("utf-8")
     now = time.time()
@@ -114,7 +146,7 @@ def validate_join_code(code: str) -> str | None:
             continue
         try:
             if bcrypt.checkpw(code_bytes, hashed.encode("utf-8")):
-                return hashed
+                return hashed, dict(info)
         except (ValueError, TypeError):
             continue
     return None
