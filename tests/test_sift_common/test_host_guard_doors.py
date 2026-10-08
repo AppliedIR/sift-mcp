@@ -281,6 +281,8 @@ def test_start_now_makes_a_flagged_unit_its_own_machine_and_never_joins(case):
 
 
 def test_start_now_still_adds_a_flagged_units_names_to_its_own_machine(case):
+    from sift_common import host_guard
+
     thin = unit(case, "evidence/thin", [("WKS07", SYS)])  # one source: flagged
     start(case, thin)
     own = machine(case, thin, "WKS07")
@@ -291,12 +293,72 @@ def test_start_now_still_adds_a_flagged_units_names_to_its_own_machine(case):
                 "kind": "name",
                 "unit": thin,
                 "raw": "WKS07.corp.example.test",
-                "evidence": "Security.evtx Computer",
+                "evidence": SYS,
                 "origin": "artifact",
             }
         ],
-    )
+    )  # still one source
+    assert host_guard.unit_flag(hi.load(case), thin)  # flagged still
     out = start(case, thin, run="run-2")
     assert out["refused"] == []
-    assert machine(case, thin, "WKS07.corp.example.test") is not None
-    assert machine(case, thin, "WKS07").id == own.id
+    assert machine(case, thin, "WKS07.corp.example.test").id == own.id
+
+
+def _two_domain_dc(case):
+    """A machine the examiner confirmed holding DC01 in two domains (a
+    conflict for the examiner), which the host list names."""
+    eu = unit(case, "evidence/eu", two("DC01.eu.corp.example.test"))
+    acq = unit(case, "evidence/acq", two("DC01.acq.example.test"))
+    key = hi.new_machine_key()
+    hi.append_decision(case, {"action": "confirm", "examiner": "ex1", "args": {"machines": [
+        {"key": key, "canonical": "DC01.eu.corp.example.test",
+         "pairs": [[eu, "DC01.eu.corp.example.test"], [acq, "DC01.acq.example.test"]]}]}},
+        hi.load(case).obs_offset)  # fmt: skip
+    hp.upload_host_list(case, "DC01\n", "ex1")
+    return key
+
+
+def test_a_late_name_spelled_like_a_machines_name_never_joins_it_across_domains(case):
+    key = _two_domain_dc(case)
+    x = unit(case, "evidence/rows", two("WKS9"))
+    got, _ = hi.get_or_mint(
+        case, x, "DC01.acq.example.test", evidence="rows host column"
+    )
+    assert got != key  # neither the exact match nor the host list puts it there
+
+
+def test_one_units_names_in_two_domains_are_judged_against_other_units_only(case):
+    """T's seed: the list names DC01 through the unit's dc01.a.test; its other
+    name, in another domain, goes with it."""
+    dc = unit(case, "evidence/dc", two("DC01"))
+    key = confirm(case, dc, "DC01", "DC01")
+    hp.upload_host_list(case, "DC01\n", "ex1")
+    u = unit(case, "evidence/u", [("wks01.corp-a.test", SYS), ("dc01.a.test", EVTX)])
+    hp.apply_host_list(case, [u])
+    assert machine(case, u, "dc01.a.test").keys[0] == key
+    assert machine(case, u, "wks01.corp-a.test").keys[0] == key
+
+
+def test_a_list_bundle_whose_link_is_refused_lands_none_of_its_names(case, monkeypatch):
+    """The list puts the unit's WKS01 and its DC01 (the name the entry matched)
+    on DC01's machine. When the guard refuses DC01, WKS01 never lands there
+    alone."""
+    from sift_common import host_guard
+
+    dc = unit(case, "evidence/dc", two("DC01"))
+    key = confirm(case, dc, "DC01", "DC01")
+    hp.upload_host_list(case, "DC01\n", "ex1")
+    u = unit(case, "evidence/u", [("WKS01", SYS), ("DC01", EVTX)])
+    real = host_guard.check_binds
+
+    def refuse_the_link(state, records, door):
+        out = real(state, records, door)
+        return out + [(i, "refused here") for i, r in enumerate(records)
+                      if r.get("unit") == u and r.get("raw") == "DC01"]  # fmt: skip
+
+    monkeypatch.setattr(host_guard, "check_binds", refuse_the_link)
+    out = hp.apply_host_list(case, [u])
+    assert (
+        machine(case, u, "WKS01") is None or key not in machine(case, u, "WKS01").keys
+    )
+    assert {r["name"] for r in out.get("refused", [])} == {"DC01"}
