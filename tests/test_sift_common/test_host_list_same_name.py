@@ -115,7 +115,9 @@ def test_the_guard_refuses_the_lists_bind_of_a_flagged_unit(case, names):
             "canonical": "WKS7", "state": hi.CONFIRMED}  # fmt: skip
     ((_, why),) = host_guard.check_binds(state, [bind], "list")
     assert "never confirms a unit with a flag" in why
-    assert host_guard.check_binds(state, [bind], "late") == []  # the list's door only
+    # a name met later while ingesting, which the list matches: refused too
+    ((_, late),) = host_guard.check_binds(state, [bind], "late")
+    assert late == why
 
 
 def test_a_near_spelling_is_a_flag_too(case):

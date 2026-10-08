@@ -35,8 +35,10 @@ class Refused(hi.HostLogError):
     status = 409
 
 
-def _foreign(state: hi.HostState, p) -> bool:
-    ev = (state.names.get(p) or {}).get("evidence") or []
+def _foreign(state: hi.HostState, p, evidence=None) -> bool:
+    """A row's or a forwarded log's name. `evidence`: the name's evidence as
+    a bind sees it (a name met while ingesting isn't in the state yet)."""
+    ev = evidence or (state.names.get(p) or {}).get("evidence") or []
     return bool(ev) and all(
         e.endswith("host column") or e.lower().startswith("forwardedevents") for e in ev
     )
@@ -420,9 +422,25 @@ def check_binds(state: hi.HostState, records: list[dict], door: str) -> list[tup
         if is_address(p[1]) and not _placeholder(state, p[0], canonical):
             refused.append((i, ADDRESS_BIND))
             continue
-        if door == "list" and p[0] != LIST_UNIT and _own(state, p):
+        # the list confirms automatically, at its own door and for a name met
+        # while ingesting (a late bind it confirms): never a flagged unit's
+        from_list = door == "list" or (
+            door == "late" and rec.get("state") == hi.CONFIRMED
+        )
+        evidence = (v.new_names.get(p) or {}).get("evidence")
+        if (
+            from_list
+            and p[0] != LIST_UNIT
+            and not _foreign(state, p, evidence)
+            and not _not_a_host(state, p)
+        ):
             if p[0] not in flagged:
-                flagged[p[0]] = unit_flag(state, p[0])
+                # at the late door, a flag the scan gave: a unit with no names
+                # of its own yet has none to give (its first name is late)
+                scanned = door == "list" or any(
+                    q[0] == p[0] and not _foreign(state, q) for q in state.names
+                )
+                flagged[p[0]] = unit_flag(state, p[0]) if scanned else ""
             if flagged[p[0]]:
                 refused.append((i, f"the list never confirms a unit with a flag "
                                    f"({flagged[p[0]]}); the examiner decides"))  # fmt: skip

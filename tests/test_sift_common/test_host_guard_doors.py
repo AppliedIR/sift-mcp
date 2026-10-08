@@ -409,6 +409,32 @@ def test_start_now_still_adds_a_flagged_units_names_to_its_own_machine(case):
     assert machine(case, thin, "WKS07.corp.example.test").id == own.id
 
 
+def test_a_late_list_match_never_confirms_a_flagged_units_name(case):
+    """Start now released a flagged unit (one source); a name of its own met
+    later while ingesting, which the host list names, isn't confirmed from the
+    list: the examiner decides, as at the list's own door. (A row's or a
+    forwarded log's name isn't the unit's own, and keeps the list's rule.)"""
+    from sift_common import host_guard
+
+    thin = unit(case, "evidence/thin", [("WKS07", SYS)])  # one source: flagged
+    start(case, thin)
+    hp.upload_host_list(case, "SRV-LATE09.corp.example.test\n", "ex1")
+    assert host_guard.unit_flag(hi.load(case), thin)
+    hi.get_or_mint(case, thin, "SRV-LATE09.corp.example.test", evidence=EVTX)
+    m = machine(case, thin, "SRV-LATE09.corp.example.test")
+    assert m is not None and m.state != hi.CONFIRMED
+
+
+def test_a_late_list_match_still_confirms_an_unflagged_units_name(case):
+    ok = unit(case, "evidence/ok", two("WKS08"))
+    hp.upload_host_list(case, "SRV-LATE10.corp.example.test\n", "ex1")
+    from sift_common import host_guard
+
+    assert not host_guard.unit_flag(hi.load(case), ok)
+    hi.get_or_mint(case, ok, "SRV-LATE10.corp.example.test", evidence=EVTX)
+    assert machine(case, ok, "SRV-LATE10.corp.example.test").state == hi.CONFIRMED
+
+
 def _two_domain_dc(case):
     """A machine the examiner confirmed holding DC01 in two domains (a
     conflict for the examiner), which the host list names."""
