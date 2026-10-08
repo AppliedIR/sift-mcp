@@ -63,6 +63,12 @@ class HostLogError(RuntimeError):
     """A host log could not be written safely, or a decision was refused."""
 
 
+class HostOpRunning(HostLogError):
+    """A host decision while the examiner's host operation is unfinished."""
+
+    status = 409
+
+
 class CaseLockBusy(RuntimeError):
     """The case lock is held in a conflicting mode."""
 
@@ -260,6 +266,10 @@ def _append_decision(
             raise HostLogError(
                 f"decision refused: it refers to observation-log offset {seen_offset}, "
                 f"past the log's end ({size} bytes)"
+            )
+        if door != "R" and unfinished_op(root):
+            raise HostOpRunning(
+                "a host rename/merge is running; try again when it ends"
             )
         state = load(root)
         if record.get("action") not in (
@@ -1325,14 +1335,20 @@ def read_ops(case_dir: str | os.PathLike) -> dict:
     return doc
 
 
-def record_op(case_dir: str | os.PathLike, op_id: str, fields: dict) -> dict:
+def record_op(
+    case_dir: str | os.PathLike, op_id: str, fields: dict, check=None
+) -> dict:
     """Set ``fields`` on the journal's operation ``op_id`` (new when absent)
     and return it. The journal is written whole and replaced at once, so a
-    reader sees it before or after, never in part."""
+    reader sees it before or after, never in part. ``check(state)``, when
+    given, runs on the logs as they are under the same lock, first; it raises
+    to refuse, and nothing is written."""
     import secrets
 
     root = Path(case_dir)
     with _log_lock(root):
+        if check is not None:
+            check(load(root))
         doc = read_ops(root)
         entry = doc["ops"].setdefault(op_id, {})
         entry.update(fields)
