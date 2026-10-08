@@ -59,7 +59,9 @@ const document = {
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); else t[k] = v; return true; } }); },
   body: makeEl('body'), documentElement: makeEl('html'),
   title: '',
+  get activeElement() { return this.body; },  // a browser's, with nothing focused
 };
+document.body.tagName = 'BODY';
 const store = () => { const m = {}; return { getItem: k => m[k] ?? null, setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; } }; };
 const window = globalThis;
 window.location = { hash: '#token=' + process.env.TOKEN, pathname: '/portal/', search: '' };
