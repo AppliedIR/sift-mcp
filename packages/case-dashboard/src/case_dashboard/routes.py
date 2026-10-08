@@ -702,6 +702,8 @@ def _dashboard_api_routes() -> list[Route]:
         Route("/api/hosts", hosts.get_hosts, methods=["GET"]),
         Route("/api/hosts/decisions", hosts.post_host_decision, methods=["POST"]),
         Route("/api/hosts/runs", hosts.get_runs, methods=["GET"]),
+        Route("/api/hosts/ops", hosts.get_ops, methods=["GET"]),
+        Route("/api/hosts/ops", hosts.post_op, methods=["POST"]),
         Route("/api/hosts/{m16}", hosts.get_host, methods=["GET"]),
     ]
 

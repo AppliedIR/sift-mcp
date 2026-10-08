@@ -55,6 +55,8 @@ the case's host logs and findings. Every sink:
 | `hostPivotsHtml` | item kind, id, title, "ambiguous: also matches" names, the indexed-data query | `escapeHtml` |
 | `hostRowsHtml` | canonical, former names, state, flags | `escapeHtml` |
 | `hostDetailHtml` | canonical; history time, examiner, origin, action | `escapeHtml` |
+| `hostCorrectionsHtml` | machine id and keys (attributes and labels), other machines' ids and names | `escapeAttr` (attributes), `escapeHtml` (text) |
+| `hostOpsHtml` | operation id, kind, new name, reason, start time, examiner; the last request's state and reason | `escapeHtml`; the id in `data-op` with `escapeAttr` |
 | `renderHosts` error | the error message | `escapeHtml` |
 
 - **Buttons** carry only an action name and a numeric index into the page's

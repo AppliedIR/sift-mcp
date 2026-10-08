@@ -538,3 +538,153 @@ async def post_host_decision(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=400)
     _audit(case_dir, examiner, action, {"count": summary.split()[0]}, summary)
     return JSONResponse({"ok": True, "decisions_offset": at, "summary": summary})
+
+
+# --------------------------------------------------------------------------
+# Host operations: rename, merge and split, run by opensearch-mcp's job.
+# The job runs as its own process (it can take minutes): it takes the case
+# lock exclusively, keeps its journal in host-ops.json, and writes the
+# decision line itself once the docs carry the new names. The tab launches
+# it and shows the journal; an operation left unfinished is resumed.
+
+OP_KINDS = ("rename", "merge", "split")
+_FIRST_ANSWER_SECONDS = 2.0  # a refusal or a quick op answers within this
+_launches: dict[str, dict] = {}  # case dir -> the last launch from this gateway
+
+
+def r_command(case_dir: Path, examiner: str, op: dict | None, resume: str | None):
+    """The job's command line."""
+    import sys
+
+    which = ["--resume", resume] if resume else ["--op", json.dumps(op)]
+    return [sys.executable, "-m", "opensearch_mcp.host_ops", "--case-dir",
+            str(case_dir), "--examiner", examiner, *which]  # fmt: skip
+
+
+def _r_available() -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec("opensearch_mcp") is not None
+
+
+def _op_problem(body: dict) -> str | None:
+    op, resume = body.get("op"), body.get("resume")
+    if (op is None) == (resume is None):
+        return "give either an operation or the id of one to resume"
+    if resume is not None:
+        return None if isinstance(resume, str) and resume else "resume needs an id"
+    if not isinstance(op, dict) or op.get("kind") not in OP_KINDS:
+        return f"an operation is one of {', '.join(OP_KINDS)}"
+    return None
+
+
+def ops_view(case_dir: Path) -> dict:
+    """The journal's unfinished operation (running or incomplete), the last
+    one, and this gateway's last launch for the case."""
+    journal = hi.read_ops(case_dir)["ops"]
+    entries = [{"id": k, **v} for k, v in journal.items() if isinstance(v, dict)]
+    last = max(entries, key=lambda e: str(e.get("updated", "")), default=None)
+    unfinished = hi.unfinished_op(case_dir)
+    for e in (last, unfinished):
+        if e:
+            e["to_relabel"] = _total(e.get("before"))
+    launch = _launches.get(str(case_dir))
+    return {"unfinished": unfinished, "last": last,
+            "launch": {k: v for k, v in launch.items() if k != "task"} if launch else None}  # fmt: skip
+
+
+def _total(before) -> int:
+    if not isinstance(before, dict):
+        return 0
+    return sum(
+        int(n)
+        for part in ("keys", "v1")
+        for n in (before.get(part) or {}).values()
+        if isinstance(n, int)
+    )
+
+
+async def get_ops(request: Request) -> JSONResponse:
+    case_dir, error = _case_or_error()
+    if error:
+        return error
+    try:
+        return JSONResponse(ops_view(case_dir))
+    except hi.HostLogError as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def post_op(request: Request) -> JSONResponse:
+    """Launch a host operation, or resume an unfinished one. Answers with
+    its outcome when the job ends at once (a refusal, a quick op), else 202
+    while it runs; `GET /api/hosts/ops` follows it."""
+    import asyncio
+    from datetime import datetime, timezone
+
+    routes = _routes()
+    case_dir, error = _case_or_error()
+    if error:
+        return error
+    examiner = routes._resolve_examiner(request)
+    if not examiner:
+        return JSONResponse({"error": "No examiner identity"}, status_code=401)
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "invalid request"}, status_code=400)
+    problem = _op_problem(body)
+    if problem:
+        return JSONResponse({"error": problem}, status_code=400)
+    if not _r_available():
+        return JSONResponse(
+            {
+                "error": "host operations need opensearch-mcp, which isn't installed here"
+            },
+            status_code=503,
+        )
+    key = str(case_dir)
+    running = _launches.get(key)
+    if running and running.get("state") == "running":
+        return JSONResponse(
+            {"error": "a host operation launched from the portal is still running"},
+            status_code=409,
+        )
+    op, resume = body.get("op"), body.get("resume")
+    proc = await asyncio.create_subprocess_exec(
+        *r_command(case_dir, examiner, op, resume),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,  # it finishes even if the gateway restarts
+    )
+    launch = {"pid": proc.pid, "examiner": examiner, "state": "running",
+              "asked": op if op is not None else {"resume": resume},
+              "started": datetime.now(timezone.utc).isoformat()}  # fmt: skip
+    _launches[key] = launch
+    _audit(case_dir, examiner, "op", {"op": launch["asked"]}, "launched")
+
+    async def finish() -> None:
+        out, err = await proc.communicate()
+        lines = [x for x in out.decode("utf-8", "replace").splitlines() if x.strip()]
+        try:
+            result = json.loads(lines[-1]) if lines else {}
+        except ValueError:
+            result = {}
+        if not isinstance(result, dict) or "state" not in result:
+            tail = err.decode("utf-8", "replace").strip().splitlines()[-1:] or [
+                "no output"
+            ]
+            result = {"state": "failed", "reason": f"the job exited {proc.returncode}: {tail[0][:300]}"}  # fmt: skip
+        launch.update(state=result.get("state"), result=result)
+        _audit(case_dir, examiner, "op", {"op": launch["asked"]},
+               f"{result.get('state')}: {str(result.get('reason') or result.get('id') or '')[:200]}")  # fmt: skip
+
+    launch["task"] = task = asyncio.ensure_future(finish())
+    try:
+        await asyncio.wait_for(asyncio.shield(task), _FIRST_ANSWER_SECONDS)
+    except asyncio.TimeoutError:
+        return JSONResponse({"state": "running", **ops_view(case_dir)}, status_code=202)
+    result = launch["result"]
+    status = {"refused": 409, "failed": 500}.get(result.get("state"), 200)
+    return JSONResponse({**result, **ops_view(case_dir)}, status_code=status)

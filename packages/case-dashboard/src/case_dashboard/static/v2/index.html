@@ -654,6 +654,7 @@ body {
     <div class="tab-table-wrap" id="hostsPanel">
       <h3 style="margin-bottom:12px;font-size:15px;">Hosts</h3>
       <div id="hostsHeader" style="margin-bottom:12px"></div>
+      <div id="hostsOps" style="margin-bottom:12px"></div>
       <div id="hostsRuns"></div>
       <div id="hostsProposed"></div>
       <div style="display:flex;gap:8px;margin:12px 0">
@@ -3772,7 +3773,7 @@ function renderIocs() {
 // Machines and the host names awaiting the examiner, from /api/hosts. Every
 // string from the case is escaped; buttons carry an action and an index into
 // the page's data, never case text.
-var hostsView = { page: 1, ppage: 1, state: '', q: '', data: null, runs: [] };
+var hostsView = { page: 1, ppage: 1, state: '', q: '', data: null, runs: [], ops: null, opsTimer: null };
 
 function escapeAttr(s) {
   return escapeHtml(s).replace(/"/g, '&quot;');
@@ -3883,7 +3884,100 @@ function hostDetailHtml(m) {
   (m.history || []).forEach(function(h) {
     html += '<li>' + escapeHtml(h.t) + ' ' + escapeHtml(h.examiner) + ' (' + escapeHtml(h.origin || '') + '): ' + escapeHtml(h.action) + '</li>';
   });
-  return html + '</ul>';
+  html += '</ul>';
+  return html + hostCorrectionsHtml(m);
+}
+
+/* Corrections: rename, merge and split. Each relabels the machine's indexed
+   data in a job that runs on its own; while one is unfinished, only resuming
+   it is accepted. */
+function hostCorrectionsHtml(m) {
+  var busy = hostsView.ops && hostsView.ops.unfinished;
+  var off = busy ? ' disabled title="A host operation is unfinished; resume it first"' : '';
+  var others = ((hostsView.data && hostsView.data.machines) || []).filter(function(o) { return o.id !== m.id; });
+  var html = '<div class="host-corrections" data-machine="' + escapeAttr(m.id) + '"><h4>Corrections</h4>';
+  html += '<div>Rename to <input data-op-field="rename_canonical" aria-label="New host name"> '
+    + '<button class="btn" data-host-act="op_rename"' + off + '>Rename</button></div>';
+  if (others.length) {
+    html += '<div>Merge into this machine: <select data-op-field="merge_from" aria-label="Machine to merge in">'
+      + others.map(function(o) { return '<option value="' + escapeAttr(o.id) + '">' + escapeHtml(o.canonical) + '</option>'; }).join('')
+      + '</select> <button class="btn" data-host-act="op_merge"' + off + '>Merge</button></div>';
+  }
+  if ((m.keys || []).length > 1) {
+    html += '<div>Split these keys out under a new name: '
+      + m.keys.map(function(k) { return '<label><input type="checkbox" data-op-key="' + escapeAttr(k) + '"> ' + escapeHtml(k) + '</label>'; }).join(' ')
+      + ' <input data-op-field="split_canonical" aria-label="Name for the split-out machine"> '
+      + '<button class="btn" data-host-act="op_split"' + off + '>Split</button></div>';
+  }
+  return html + '</div>';
+}
+
+function hostOpsHtml(v) {
+  if (!v) return '';
+  var u = v.unfinished, html = '';
+  var what = function(op) {
+    return escapeHtml(op.kind || 'host operation') + (op.canonical ? ' to ' + escapeHtml(op.canonical) : '');
+  };
+  if (u && u.state === 'incomplete') {
+    html += '<div class="notice host-op-incomplete"><strong>Host rename incomplete</strong> \u2014 '
+      + what(u) + ' (' + escapeHtml(u.id) + '): ' + escapeHtml(u.reason || '')
+      + '. Ingest and enrichment wait until it finishes. '
+      + '<button class="btn" data-host-act="op_resume" data-op="' + escapeAttr(u.id) + '">Re-run</button></div>';
+  } else if (u) {
+    var live = v.launch && v.launch.state === 'running';
+    html += '<div class="notice host-op-running">Running: ' + what(u) + ' (' + escapeHtml(u.id) + '), '
+      + (u.to_relabel || 0) + ' indexed records to relabel, started ' + escapeHtml(u.started || '') + ' by ' + escapeHtml(u.examiner || '') + '.'
+      + (live ? '' : ' <button class="btn" data-host-act="op_resume" data-op="' + escapeAttr(u.id) + '">Resume if it stopped</button>')
+      + '</div>';
+  } else if (v.last && v.last.state === 'done') {
+    html += '<div style="color:var(--text-muted)">Last host operation: ' + what(v.last) + ' (' + escapeHtml(v.last.id) + '), done'
+      + (v.last.relabelled != null ? ', ' + v.last.relabelled + ' records relabelled' : '') + '.</div>';
+  }
+  if (v.launch && (v.launch.state === 'refused' || v.launch.state === 'failed') && v.launch.result) {
+    html += '<div class="notice">The last request was ' + escapeHtml(v.launch.state) + ': ' + escapeHtml(v.launch.result.reason || '') + '</div>';
+  }
+  return html;
+}
+
+async function renderHostOps() {
+  try {
+    hostsView.ops = await apiFetch('/api/hosts/ops');
+  } catch (e) {
+    document.getElementById('hostsOps').innerHTML = '<div class="notice">' + escapeHtml('Host operations could not be read: ' + e.message) + '</div>';
+    return;
+  }
+  document.getElementById('hostsOps').innerHTML = hostOpsHtml(hostsView.ops);
+  clearTimeout(hostsView.opsTimer);
+  if (hostsView.ops.unfinished && hostsView.ops.unfinished.state === 'running') {
+    hostsView.opsTimer = setTimeout(renderHostOps, 2000);  // its progress, until it ends
+  } else if (hostsView.wasRunning) {
+    renderHosts();  // it ended: the machines carry their new names
+  }
+  hostsView.wasRunning = !!(hostsView.ops.unfinished && hostsView.ops.unfinished.state === 'running');
+}
+
+async function hostOp(body) {
+  try {
+    var res = await fetch(API_BASE + '/api/hosts/ops', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) });
+    var r = await res.json().catch(function() { return {}; });
+    if (res.status === 202) showToast('The host operation is running', 'info');
+    else if (res.ok && r.state === 'done') showToast('Host operation done', 'success');
+    else showToast((r.state ? r.state + ': ' : '') + (r.reason || r.error || 'refused'), 'error');
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+  renderHostOps();
+}
+
+function hostOpFrom(el, act) {
+  var box = el.closest('.host-corrections');
+  var machine = box.getAttribute('data-machine');
+  var field = function(name) { var f = box.querySelector('[data-op-field="' + name + '"]'); return f ? f.value : ''; };
+  if (act === 'op_rename') return { kind: 'rename', machine: machine, canonical: field('rename_canonical') };
+  if (act === 'op_merge') return { kind: 'merge', into: machine, from: [field('merge_from')] };
+  var keys = Array.from(box.querySelectorAll('[data-op-key]')).filter(function(c) { return c.checked; })
+    .map(function(c) { return c.getAttribute('data-op-key'); });
+  return { kind: 'split', machine: machine, keys: keys, canonical: field('split_canonical') };
 }
 
 async function renderHosts() {
@@ -3907,6 +4001,7 @@ async function renderHosts() {
   document.getElementById('hostsBody').innerHTML = hostRowsHtml(d.machines);
   document.getElementById('hostsPager').innerHTML = hostPagerHtml(d);
   setBadge('tab-hosts', (d.proposed_total || 0) + hostsView.runs.length);
+  renderHostOps();
 }
 
 async function hostDecide(action, args) {
@@ -3947,6 +4042,8 @@ document.addEventListener('click', async function(ev) {
   else if (act === 'not_a_host') { hostDecide('not_a_host', { pairs: d.proposed[i].pairs }); }
   else if (act === 'confirm_machine') { var m = d.machines[i]; hostDecide('confirm', { groups: [{ machine: m.id, canonical: m.canonical }] }); }
   else if (act === 'start_now' || act === 'cancel_run') { hostDecide(act, { run_id: hostsView.runs[i].run_id }); }
+  else if (act === 'op_resume') { hostOp({ resume: el.getAttribute('data-op') }); }
+  else if (act === 'op_rename' || act === 'op_merge' || act === 'op_split') { hostOp({ op: hostOpFrom(el, act) }); }
   else if (act === 'detail') {
     try {
       var m = await apiFetch('/api/hosts/' + encodeURIComponent(d.machines[i].id));

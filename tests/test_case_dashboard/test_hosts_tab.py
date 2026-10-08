@@ -366,9 +366,11 @@ def _js_function(name: str) -> str:
 
 def _render(call: str, data) -> str:
     names = ["escapeHtml", "escapeAttr", "hostNamesHtml", "hostsHeaderHtml", "hostRunsHtml",
-             "hostProposedHtml", "hostPivotsHtml", "hostRowsHtml", "hostDetailHtml"]  # fmt: skip
+             "hostProposedHtml", "hostPivotsHtml", "hostRowsHtml", "hostDetailHtml",
+             "hostCorrectionsHtml", "hostOpsHtml"]  # fmt: skip
     script = (
         _DOCUMENT
+        + "var hostsView = {data: {machines: []}, ops: null};\n"
         + "".join(_js_function(n) for n in names)
         + f"const data = {json.dumps(data)};\n"
         + f"process.stdout.write({call});"
