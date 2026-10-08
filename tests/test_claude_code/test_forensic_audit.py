@@ -56,8 +56,9 @@ def _hook_input(
 ):
     return json.dumps(
         {
-            "tool_input": {"command": command, "cwd": cwd},
+            "tool_input": {"command": command},
             "tool_response": tool_response,
+            "cwd": cwd,  # top level only, as Claude Code sends it
             "tool_use_id": tool_use_id,
             "session_id": session_id,
         }
@@ -78,6 +79,18 @@ class TestWithActiveCase:
         assert entry["audit_id"].startswith("hook-tester-")
         assert entry["tool_use_id"] == "tu_123"
         assert entry["session_id"] == "sess_456"
+
+    def test_records_the_sessions_cwd(self, tmp_path):
+        """Claude Code sends cwd at the payload's top level, not in tool_input."""
+        case_dir = _make_active_case(tmp_path)
+        result = _run_hook(
+            _hook_input(cwd="/home/examiner/cases/INC-1"), _make_env(tmp_path)
+        )
+        assert result.returncode == 0
+        entry = json.loads(
+            (case_dir / "audit" / "claude-code.jsonl").read_text().strip()
+        )
+        assert entry["cwd"] == "/home/examiner/cases/INC-1"
 
     def test_creates_audit_dir(self, tmp_path):
         case_dir = _make_active_case(tmp_path)

@@ -82,8 +82,8 @@
       "Write(**/evidence.json)",
       "Edit(**/pending-reviews.json)",
       "Write(**/pending-reviews.json)",
-      "Read(/var/lib/vhir/**)",
-      "Edit(/var/lib/vhir/**)",
+      "Read(//var/lib/vhir/**)",
+      "Edit(//var/lib/vhir/**)",
       "Write(/var/lib/vhir/**)",
       "Bash(vhir approve*)",
       "Bash(*vhir approve*)",
@@ -121,6 +121,9 @@
         "~/.claude/settings.json",
         "~/.claude/CLAUDE.md",
         "~/.claude/rules"
+      ],
+      "denyRead": [
+        "/var/lib/vhir"
       ]
     }
   }

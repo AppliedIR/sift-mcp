@@ -40,7 +40,7 @@ try:
     resp = str(d.get('tool_response', ''))
     tuid = d.get('tool_use_id', '')
     sid = d.get('session_id', '')
-    cwd = ti.get('cwd', '')
+    cwd = d.get('cwd', '')  # Claude Code sends it at the top level
     print(json.dumps({'command': cmd, 'tool_response': resp, 'tool_use_id': tuid, 'session_id': sid, 'cwd': cwd}))
 except Exception:
     print('{}')
