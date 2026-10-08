@@ -111,6 +111,12 @@ def test_opensearch_instructions_group_hosts_by_host_id():
         "host.name is the raw name a record carried",
         "Index names carry no host",
         "idx_host_inventory",
-        "writes nothing until the examiner confirms its hosts",
+        "writes nothing until the examiner confirms its hosts, or chooses Start now",
     ):
         assert clause in OPENSEARCH, clause
+
+
+def test_forensic_mcp_startup_aggregates_hosts_by_host_id():
+    assert "idx_aggregate on host.id/event.code/user.name" in FORENSIC_MCP
+    assert "idx_aggregate on host.name" not in FORENSIC_MCP
+    assert "idx_host_inventory" in FORENSIC_MCP
