@@ -300,19 +300,41 @@ def _list_entries(state: hi.HostState) -> list[dict]:
     return [e for e in entries if isinstance(e, dict) and e.get("name")]
 
 
-def _entry_names(entry: dict) -> list[str]:
+# An entry's names, their compare forms and its domain, worked out once: the
+# bulk doors ask about every name against every entry. Keyed by the entry's
+# id with the entry itself kept, so an id is never reused while it's here.
+_ENTRY_INFO: dict[int, tuple[dict, tuple]] = {}
+_ENTRY_INFO_MAX = 100_000
+
+
+def _entry_info(entry: dict) -> tuple:
+    """(names, their spellings, their short names, the entry's domain)."""
+    hit = _ENTRY_INFO.get(id(entry))
+    if hit is not None and hit[0] is entry:
+        return hit[1]
     names = [entry["name"], *([entry["fqdn"]] if entry.get("fqdn") else []),
              *(entry.get("aliases") or [])]  # fmt: skip
-    return [n for n in names if isinstance(n, str) and n and not _is_ip(n)]
+    names = tuple(n for n in names if isinstance(n, str) and n and not _is_ip(n))
+    splits = [hi.split_name(n) for n in names]
+    info = (
+        names,
+        tuple(hi.spelling(n) for n in names),
+        tuple(sp[0] for sp in splits),
+        next((sp[1] for sp in splits if sp[1]), ""),
+    )
+    if len(_ENTRY_INFO) >= _ENTRY_INFO_MAX:
+        _ENTRY_INFO.clear()
+    _ENTRY_INFO[id(entry)] = (entry, info)
+    return info
+
+
+def _entry_names(entry: dict) -> list[str]:
+    return list(_entry_info(entry)[0])
 
 
 def entry_domain(entry: dict) -> str:
     """The domain a list entry names: its FQDN's, else its name's."""
-    for n in _entry_names(entry):
-        domain = hi.split_name(n)[1]
-        if domain:
-            return domain
-    return ""
+    return _entry_info(entry)[3]
 
 
 def entry_id(entry: dict) -> tuple[str, str]:
@@ -331,15 +353,36 @@ def list_matches(raw: str, entries: list[dict]) -> list[dict]:
     s = hi.spelling(raw)
     short, domain = hi.split_name(raw)
     found = []
-    for e in entries:
-        ed = entry_domain(e)
-        for n in _entry_names(e):
-            if hi.spelling(n) == s or (
-                hi.split_name(n)[0] == short and (not domain or not ed or domain == ed)
-            ):
-                found.append(e)
-                break
+    # only entries holding the short name can match (equal spellings have equal
+    # short names); the test is the same, in the list's order
+    for i in _entries_index(entries).get(short, ()):
+        e = entries[i]
+        _, spellings, shorts, ed = _entry_info(e)
+        if any(sp == s or (sh == short and (not domain or not ed or domain == ed))
+               for sp, sh in zip(spellings, shorts, strict=True)):  # fmt: skip
+            found.append(e)
     return found
+
+
+# The index of the last few entry lists asked about (a pass asks about many
+# names against one list), each kept with its list so its id isn't reused.
+_INDEX: dict[int, tuple[list, tuple[dict, int]]] = {}
+_INDEX_MAX = 8
+
+
+def _entries_index(entries: list[dict]) -> dict[str, list[int]]:
+    """Short name -> the positions of the entries holding it, ascending."""
+    hit = _INDEX.get(id(entries))
+    if hit is not None and hit[0] is entries and len(entries) == hit[1][1]:
+        return hit[1][0]
+    by_short: dict[str, list[int]] = {}
+    for i, e in enumerate(entries):
+        for sh in dict.fromkeys(_entry_info(e)[2]):
+            by_short.setdefault(sh, []).append(i)
+    if len(_INDEX) >= _INDEX_MAX:
+        _INDEX.clear()
+    _INDEX[id(entries)] = (entries, (by_short, len(entries)))
+    return by_short
 
 
 def propose(state: hi.HostState) -> list[Group]:
