@@ -170,6 +170,14 @@ body {
 .verif-draft { color: var(--text-muted); }
 .verif-unverified { color: var(--text-muted); }
 .verif-no-approval-record { color: var(--amber); }
+.verif-legacy { color: var(--amber); }
+.signing-header { font-size: 11px; color: var(--text-muted); font-family: monospace; }
+.commit-item { border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; margin-bottom: 6px; }
+.commit-field { margin-left: 8px; word-break: break-word; }
+.commit-field span { color: var(--text-muted); }
+.commit-field.derived { color: var(--text-muted); font-style: italic; }
+.commit-others-head { color: var(--text-secondary); margin-bottom: 4px; }
+.commit-other { margin-left: 8px; }
 
 /* Field sections */
 .field-section { margin-bottom: 12px; }
@@ -485,6 +493,7 @@ body {
   <div class="header">
     <div class="header-row">
       <span class="header-title" id="headerTitle"><img src="valhuntir-icon.png" alt="" style="height:24px;vertical-align:middle;margin-right:6px">Valhuntir — Examiner Portal</span>
+      <span class="signing-header" id="signingHeader"></span>
       <div class="header-actions">
         <button id="btnRefresh" title="Refresh findings">&#8635; Refresh</button>
         <span id="refreshBadge" class="refresh-badge" style="display:none"></span>
@@ -792,29 +801,32 @@ body {
   </div>
 </div>
 
-<!-- Commit dialog -->
+<!-- Commit dialog: every decision is listed before the passphrase is used -->
 <div class="dialog-overlay" id="commitDialog" role="dialog" aria-modal="true"
   aria-labelledby="commitDialogTitle">
-  <div class="dialog" style="max-width:400px">
-    <h3 id="commitDialogTitle">Commit Reviews</h3>
-    <div id="commitSummary" style="font-size:13px;margin-bottom:12px"></div>
+  <div class="dialog" style="max-width:720px;max-height:90vh;overflow:auto">
+    <h3 id="commitDialogTitle">Sign Reviews</h3>
+    <div id="commitSummary" style="font-size:13px;margin-bottom:8px"></div>
+    <div id="commitOthers" style="font-size:12px;margin-bottom:8px"></div>
+    <label style="font-size:12px;color:var(--text-secondary)"><input type="checkbox"
+      id="commitShowAll" onchange="VHIR_SIGN.toggleAll()"> Show all signed fields</label>
+    <div id="commitList" style="font-size:12px;margin:8px 0;max-height:45vh;overflow:auto"></div>
     <div id="commitPasswordRow">
       <label for="commitPassword" style="font-size:12px;color:var(--text-secondary)">
-        Enter password to confirm:</label>
-      <input type="password" id="commitPassword" autocomplete="off"
+        Your passphrase signs exactly the decisions listed above:</label>
+      <input type="password" id="commitPassword" autocomplete="current-password" disabled
+        onkeydown="if (event.key === 'Enter') { event.preventDefault(); submitCommit(); }"
         style="width:100%;margin-top:4px;padding:8px;font-size:14px;
         background:var(--bg-primary);color:var(--text-primary);
         border:1px solid var(--border);border-radius:4px">
     </div>
     <div id="commitError" style="color:var(--red);font-size:12px;margin-top:8px;display:none"></div>
     <div id="commitProgress" style="display:none;margin-top:8px">
-      <div style="font-size:12px;color:var(--text-muted)">
-        Deriving key<span id="commitDots">...</span>
-      </div>
+      <div style="font-size:12px;color:var(--text-muted)">Signing...</div>
     </div>
     <div class="dialog-actions" style="margin-top:12px">
       <button class="btn-cancel" onclick="closeCommitDialog()">Cancel</button>
-      <button class="btn-primary" id="commitSubmitBtn" onclick="submitCommit()">Commit</button>
+      <button class="btn-primary" id="commitSubmitBtn" onclick="submitCommit()" disabled>Sign 0 decisions</button>
     </div>
   </div>
 </div>
@@ -912,12 +924,15 @@ async function loadAll() {
       loading.innerHTML = '<div style="width:300px"><div class="skeleton skeleton-line"></div>' +
         '<div class="skeleton skeleton-line"></div><div class="skeleton skeleton-block"></div></div>';
     }
-    const [f, d, c, tl] = await Promise.all([
+    const [f, d, c, tl, io] = await Promise.all([
       apiFetch('/api/findings'),
       apiFetch('/api/delta'),
       apiFetch('/api/case'),
       apiFetch('/api/timeline'),
+      apiFetch('/api/iocs'),
     ]);
+    // The commit dialog signs a frozen copy: a load in flight changes nothing
+    if (VHIR_SIGN.isOpen()) return;
     if (loading) loading.style.display = 'none';
     hideErrorBanner();
     const newIds = new Set(f.map(x => x.id));
@@ -928,8 +943,10 @@ async function loadAll() {
     previousFindingIds = newIds;
     findings = f;
     timelineEvents = tl || [];
+    iocsData = io || [];
     delta = d && d.items ? d : { version: 1, case_id: '', items: [] };
     caseMeta = c || {};
+    renderSigningHeader();
     if (caseMeta.case_id) {
       document.getElementById('headerTitle').innerHTML = '<img src="valhuntir-icon.png" alt="" style="height:24px;vertical-align:middle;margin-right:6px">Valhuntir \u2014 ' + escapeHtml(caseMeta.case_id);
       document.title = 'Valhuntir \u2014 ' + caseMeta.case_id;
@@ -1004,13 +1021,49 @@ function showEmptyOrFirst() {
   }
 }
 
+/* === Verification (from vhir's verify; the portal takes no pins) === */
+function verifClassFor(v) {
+  if (v === 'valid (not anchored)') return 'verif-confirmed';
+  if (v === 'approved under 0.6 (before signing)') return 'verif-legacy';
+  if (v === 'draft' || v === 'rejected' || v === 'unverified (verify failed)') return 'verif-draft';
+  return 'verif-tampered';
+}
+
+// The active key's fingerprint and the case's heads, always in the header
+function renderSigningHeader() {
+  var el = document.getElementById('signingHeader');
+  if (!el) return;
+  var s = caseMeta.signing || {};
+  var v = caseMeta.verification || {};
+  var parts = [];
+  if (s.fingerprint) parts.push('Your key: ' + s.fingerprint);
+  else if (s.message) parts.push(s.message);
+  (v.heads || []).forEach(function(h) { parts.push(h); });
+  if ((v.case_failures || []).length) {
+    parts.push('VERIFY FAILS: ' + v.case_failures.map(function(f) { return f.code; }).join(', '));
+  }
+  el.textContent = parts.join(' \u00B7 ');
+  el.title = v.not_anchored || '';
+}
+
 /* === Delta management === */
+// Entries are keyed by (id, staged_by): the page edits only the examiner's
+// own entry for an id. Others' entries are shown in the commit dialog.
+function me() {
+  return (caseMeta.signing && caseMeta.signing.examiner) || caseMeta.you || '';
+}
+
+function isOwn(e) {
+  return !!e && e.staged_by === me();
+}
+
 function getDeltaEntry(id) {
-  return delta.items.find(i => i.id === id) || null;
+  return delta.items.find(function(i) { return i.id === id && isOwn(i) && i.action !== 'todo'; }) || null;
 }
 
 function setDeltaEntry(entry) {
-  const idx = delta.items.findIndex(i => i.id === entry.id);
+  entry.staged_by = me();
+  const idx = delta.items.findIndex(function(i) { return i.id === entry.id && isOwn(i) && i.action !== 'todo'; });
   if (idx >= 0) delta.items[idx] = entry;
   else delta.items.push(entry);
   delta.modified_at = new Date().toISOString();
@@ -1021,7 +1074,7 @@ function setDeltaEntry(entry) {
 }
 
 function removeDeltaEntry(id) {
-  delta.items = delta.items.filter(i => i.id !== id);
+  delta.items = delta.items.filter(function(i) { return !(i.id === id && isOwn(i) && i.action !== 'todo'); });
   delta.modified_at = new Date().toISOString();
   scheduleSave();
   updateCommitButton();
@@ -1051,10 +1104,11 @@ window.addEventListener('beforeunload', function() {
 });
 
 function deltaForSave() {
-  // Strip _snapshot (in-memory only, not persisted) to avoid bloating the delta file
+  // Only the examiner's own entries are posted; the server keeps everyone
+  // else's. Strip _snapshot (in-memory only, not persisted).
   var copy = Object.assign({}, delta);
   if (copy.items) {
-    copy.items = copy.items.map(function(item) {
+    copy.items = copy.items.filter(isOwn).map(function(item) {
       if (!item._snapshot) return item;
       var clean = Object.assign({}, item);
       delete clean._snapshot;
@@ -1261,7 +1315,7 @@ function renderFinding(id) {
   const type = f.type || 'finding';
   const typeClass = 'badge-' + type.toLowerCase();
   const verif = f.verification || 'draft';
-  const verifClass = 'verif-' + verif.replace(/ /g, '-');
+  const verifClass = verifClassFor(verif);
   const conf = (eff.confidence || 'LOW').toUpperCase();
   const confClass = 'conf-' + conf.toLowerCase();
 
@@ -1533,6 +1587,8 @@ function renderFinding(id) {
   html += '<details style="margin-top:12px;color:var(--text-muted);font-size:12px">';
   html += '<summary>Integrity</summary>';
   html += '<div style="margin-top:4px">Verification: <span class="' + escapeHtml(verifClass) + '">' + escapeHtml(verif) + '</span>';
+  var verifNote = ((caseMeta.verification || {}).badge_notes || {})[f.id];
+  if (verifNote) html += '<div>' + escapeHtml(verifNote) + '</div>';
   html += ' | Provenance: <span class="' + escapeHtml(provClass) + '">' + escapeHtml(prov) + '</span></div>';
   if (f.content_hash) html += '<div style="font-family:monospace">Content hash: ' + escapeHtml(f.content_hash.slice(0, 16)) + '...</div>';
   if (f.modified_at) html += '<div style="font-family:monospace">Modified: ' + escapeHtml(f.modified_at) + '</div>';
@@ -1714,7 +1770,7 @@ async function doSkip() {
   if (!de) return;
   try {
     await apiFetch('/api/delta/' + encodeURIComponent(selectedId), { method: 'DELETE' });
-    delta.items = delta.items.filter(i => i.id !== selectedId);
+    delta.items = delta.items.filter(i => !(i.id === selectedId && isOwn(i) && i.action !== 'todo'));
     delta.modified_at = new Date().toISOString();
     setSaveStatus('saved');
   } catch (e) {
@@ -1737,139 +1793,493 @@ function advanceToNext() {
 }
 
 /* === Commit === */
-function openCommitDialog() {
-  if (!delta.items || delta.items.length === 0) return;
+// BEGIN vhir-commit-sign
+/* The commit dialog. Everything that decides what is signed, and every use
+   of the passphrase, is in this block:
+   1. Opening the dialog freezes the staged entries and the loaded items.
+   2. /api/commit/plan (the session token only) returns the exact body
+      strings that would be signed. Each is checked, field by field, against
+      the frozen copy before anything is shown; any difference refuses.
+   3. Every body is displayed. Only then are the passphrase field and the
+      Sign button enabled.
+   4. The passphrase signs in (/api/commit/key), unwraps the signing key
+      here, and signs each body string as handed. The gateway checks every
+      signature before it writes anything.
+   A moved or busy ledger is planned again once, under the same frozen
+   copy; anything other than the displayed set refuses. */
+var VHIR_SIGN = (function() {
+  // vhir case_io: the keys a view-1 signed snapshot leaves out (pinned to
+  // vhir by a test), and an IOC's four derived fields.
+  var VIEW1_EXCLUDES = ['approved_at', 'approved_by', 'content_hash', 'examiner_modifications',
+    'examiner_notes', 'modified_at', 'provenance', 'provenance_warnings', 'reattested_at',
+    'reattested_by', 'rejected_at', 'rejected_by', 'rejection_reason', 'source_evidence',
+    'status', 'verification'];
+  var IOC_DERIVED = ['confidence', 'mitre_techniques', 'sightings', 'source_findings'];
+  var EDITABLE = ['alternatives', 'confidence', 'confidence_justification', 'context',
+    'description', 'interpretation', 'iocs', 'mitre_ids', 'observation', 'source', 'tags',
+    'timestamp', 'title'];
+  var IOC_EDITABLE = ['description', 'tags'];
+  var STATUS_AFTER = { approve: 'APPROVED', reject: 'REJECTED' };
+  var KEY_UNWRAP_FAILED = "Your password is correct, but your signing-key file doesn't " +
+    'open with it; it may have been replaced. At the SIFT terminal run ' +
+    '`vhir enrol --name EXAMINER --forgot`.';
+  var PLAN_CHANGED = 'The pending reviews or the items changed after this dialog opened. ' +
+    'Close it and review again.';
 
-  var counts = { approve: 0, reject: 0, edit: 0 };
-  delta.items.forEach(function(d) { counts[d.action] = (counts[d.action] || 0) + 1; });
-  var parts = [];
-  if (counts.approve) parts.push(counts.approve + ' approved');
-  if (counts.reject) parts.push(counts.reject + ' rejected');
-  if (counts.edit) parts.push(counts.edit + ' edited');
-  document.getElementById('commitSummary').textContent =
-    'Committing ' + delta.items.length + ' review(s): ' + parts.join(', ');
-
-  document.getElementById('commitPassword').value = '';
-  document.getElementById('commitError').style.display = 'none';
-  document.getElementById('commitProgress').style.display = 'none';
-  document.getElementById('commitPasswordRow').style.display = '';
-  document.getElementById('commitSubmitBtn').disabled = false;
-  document.getElementById('commitDialog').classList.add('visible');
-  setTimeout(function() { document.getElementById('commitPassword').focus(); }, 50);
-}
-
-function closeCommitDialog() {
-  document.getElementById('commitDialog').classList.remove('visible');
-}
-
-var _commitInProgress = false;
-async function submitCommit() {
-  if (_commitInProgress) return;
-  _commitInProgress = true;
-
-  // Flush pending debounced save before commit; abort on failure.
-  // Without this, a fast autofill-and-Enter can hit /api/commit
-  // before the latest delta has been persisted.
-  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-  try {
-    await saveDelta();
-  } catch (e) {
-    _commitInProgress = false;
-    showCommitError('Could not save pending changes: ' +
-      (e.message || 'unknown error') +
-      '. Retry commit after resolving.');
-    return;
+  function kindOf(id) {
+    return id.indexOf('IOC-') === 0 ? 'ioc' : (id.indexOf('T-') === 0 ? 'timeline' : 'finding');
   }
-
-  var pw = document.getElementById('commitPassword').value;
-  if (!pw) {
-    _commitInProgress = false;
-    showCommitError('Password required.');
-    return;
+  function enc(s) { return new TextEncoder().encode(s); }
+  function hex(buf) {
+    return Array.from(new Uint8Array(buf)).map(function(b) {
+      return ('0' + b.toString(16)).slice(-2);
+    }).join('');
   }
-
-  document.getElementById('commitSubmitBtn').disabled = true;
-  document.getElementById('commitPasswordRow').style.display = 'none';
-  document.getElementById('commitProgress').style.display = '';
-  document.getElementById('commitError').style.display = 'none';
-
-  try {
-    // 1. Get challenge
-    var challenge = await apiFetch('/api/commit/challenge');
-
-    // 2. Derive key via Web Crypto (PBKDF2)
-    var enc = new TextEncoder();
-    var keyMaterial = await crypto.subtle.importKey(
-      'raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']
-    );
-    var salt = hexToBytes(challenge.salt);
-    var derivedBits = await crypto.subtle.deriveBits(
-      { name: 'PBKDF2', salt: salt, iterations: challenge.iterations,
-        hash: challenge.hash_algorithm },
-      keyMaterial, 256
-    );
-
-    // 3. HMAC-SHA256(derived_key, nonce)
-    var hmacKey = await crypto.subtle.importKey(
-      'raw', derivedBits, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-    );
-    var sig = await crypto.subtle.sign('HMAC', hmacKey, enc.encode(challenge.nonce));
-    var response = bytesToHex(new Uint8Array(sig));
-
-    // 4. Submit
-    var result = await apiFetch('/api/commit', {
-      method: 'POST',
-      body: JSON.stringify({
-        challenge_id: challenge.challenge_id,
-        response: response,
-      }),
+  function unhex(h) {
+    var out = new Uint8Array(h.length / 2);
+    for (var i = 0; i < out.length; i++) out[i] = parseInt(h.substr(i * 2, 2), 16);
+    return out;
+  }
+  function b64(buf) {
+    var s = '', bytes = new Uint8Array(buf);
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  }
+  function unb64(s) {
+    var bin = atob(s), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  function join(a, b) {
+    var out = new Uint8Array(a.length + b.length);
+    out.set(a, 0); out.set(b, a.length);
+    return out;
+  }
+  // One text per JSON value, whatever its key order, for field-by-field equality
+  function canon(v) {
+    if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+    if (v && typeof v === 'object') {
+      return '{' + Object.keys(v).sort().map(function(k) {
+        return JSON.stringify(k) + ':' + canon(v[k]);
+      }).join(',') + '}';
+    }
+    return JSON.stringify(v === undefined ? null : v);
+  }
+  function differing(a, b) {
+    var keys = {};
+    Object.keys(a || {}).forEach(function(k) { keys[k] = 1; });
+    Object.keys(b || {}).forEach(function(k) { keys[k] = 1; });
+    return Object.keys(keys).sort().filter(function(k) {
+      return canon((a || {})[k]) !== canon((b || {})[k]);
     });
+  }
 
-    closeCommitDialog();
+  // The signed view of an item: what a snapshot of it must equal
+  function signedView(item, kind) {
+    var out = {};
+    Object.keys(item).forEach(function(k) {
+      if (VIEW1_EXCLUDES.indexOf(k) >= 0) return;
+      if (kind === 'ioc' && IOC_DERIVED.indexOf(k) >= 0) return;
+      out[k] = item[k];
+    });
+    return out;
+  }
+  // The item as an entry would have it signed: its edits applied
+  function afterEntry(item, entry, kind) {
+    var out = JSON.parse(JSON.stringify(item));
+    var mods = entry.modifications || {};
+    var editable = kind === 'ioc' ? IOC_EDITABLE : EDITABLE;
+    Object.keys(mods).forEach(function(f) {
+      if (editable.indexOf(f) >= 0) out[f] = mods[f].modified;
+    });
+    if (kind === 'ioc' && STATUS_AFTER[entry.action]) out.manually_reviewed = true;
+    return out;
+  }
+  function findIn(frozen, kind, id) {
+    var list = kind === 'ioc' ? frozen.iocs : (kind === 'timeline' ? frozen.timelineEvents : frozen.findings);
+    return (list || []).find(function(x) { return x.id === id; }) || null;
+  }
+  async function sha256hex(text) {
+    return hex(await crypto.subtle.digest('SHA-256', enc(text)));
+  }
 
-    // 5. Clear delta and refresh
-    delta = { version: 1, case_id: delta.case_id || '', items: [], created_at: new Date().toISOString(), modified_at: new Date().toISOString() };
-    await saveDelta();
-    await loadAll();
+  /* Each way the plan differs from what the dialog froze; empty when it is
+     exactly the selected entries and their cascades. */
+  async function checkPlan(frozen, plan, selected) {
+    var problems = [];
+    var byId = {};
+    selected.forEach(function(e) { byId[e.id] = e; });
+    var bodies = [];
+    for (var i = 0; i < plan.bodies.length; i++) {
+      var b;
+      try { b = JSON.parse(plan.bodies[i].body); } catch (_) {
+        problems.push('a body does not parse'); continue;
+      }
+      if (b.item_id !== plan.bodies[i].item_id) problems.push(b.item_id + ': mislabelled');
+      bodies.push(b);
+    }
+    var direct = bodies.filter(function(b) { return !b.coupled_from; });
+    var directIds = direct.map(function(b) { return b.item_id; }).sort();
+    var wanted = selected.map(function(e) { return e.id; }).sort();
+    if (canon(directIds) !== canon(wanted)) {
+      problems.push('the decisions planned (' + directIds.join(', ') + ') are not the ones selected (' +
+        wanted.join(', ') + ')');
+    }
+    var decidedBy = {};
+    direct.forEach(function(b) { decidedBy[b.item_id] = b; });
+    for (var j = 0; j < bodies.length; j++) {
+      var body = bodies[j], id = body.item_id, kind = kindOf(id);
+      var item = findIn(frozen, kind, id);
+      if (body.examiner !== frozen.examiner) problems.push(id + ': signed as ' + body.examiner);
+      if (body.case_id !== frozen.case_id) problems.push(id + ': another case');
+      if (body.at !== plan.now) problems.push(id + ': not dated by this plan');
+      if (body.mode !== 'portal') problems.push(id + ': not a portal decision');
+      if (body.type !== kind) problems.push(id + ': the wrong item type');
+      if (!item) { problems.push(id + ': not among the items this dialog loaded'); continue; }
+      if (await sha256hex(body.content_snapshot) !== body.content_sha256) {
+        problems.push(id + ': its snapshot does not match its hash');
+      }
+      var snap;
+      try { snap = JSON.parse(body.content_snapshot); } catch (_) {
+        problems.push(id + ': its snapshot does not parse'); continue;
+      }
+      var expected;
+      if (!body.coupled_from) {
+        var e = byId[id];
+        if (!e) { problems.push(id + ': not selected'); continue; }
+        var after = e.action === 'edit' ? (item.status || 'DRAFT') : STATUS_AFTER[e.action];
+        if (body.decision !== e.action || body.status_after !== after) {
+          problems.push(id + ': planned as ' + body.decision + ' -> ' + body.status_after);
+        }
+        expected = signedView(afterEntry(item, e, kind), kind);
+      } else {
+        var src = decidedBy[body.coupled_from];
+        if (!src) { problems.push(id + ': a cascade from ' + body.coupled_from + ', which is not decided here'); continue; }
+        var follows = src.status_after === body.status_after &&
+          body.decision === (body.status_after === 'APPROVED' ? 'approve' : 'reject');
+        if (!follows) problems.push(id + ': does not follow ' + body.coupled_from);
+        expected = signedView(item, kind);
+      }
+      var fields = differing(snap, expected);
+      if (fields.length) problems.push(id + ': ' + fields.join(', ') + ' differ');
+    }
+    return problems;
+  }
+
+  // What the dialog displayed, one tuple per body: a later plan must equal it
+  function shownOf(plan) {
+    return plan.bodies.map(function(pb) {
+      var b = JSON.parse(pb.body);
+      return [b.item_id, b.type, b.decision, b.status_after, b.coupled_from || '', b.content_sha256].join('|');
+    }).sort();
+  }
+
+  async function pbkdf2(password, prefix, saltHex, iterations) {
+    var material = await crypto.subtle.importKey('raw', enc(password), 'PBKDF2', false, ['deriveBits']);
+    return crypto.subtle.deriveBits(
+      { name: 'PBKDF2', salt: join(enc(prefix), unhex(saltHex)), iterations: iterations, hash: 'SHA-256' },
+      material, 256);
+  }
+  function deriveAuth(password, saltHex, iterations) { return pbkdf2(password, 'vhir-auth\0', saltHex, iterations); }
+  function deriveKek(password, saltHex, iterations) { return pbkdf2(password, 'vhir-kek\0', saltHex, iterations); }
+
+  async function loginResponse(auth, nonce) {
+    var key = await crypto.subtle.importKey('raw', auth, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    return hex(await crypto.subtle.sign('HMAC', key, enc(nonce)));
+  }
+  async function fingerprint(publicB64) {
+    var digest = await crypto.subtle.digest('SHA-256', unb64(publicB64));
+    return 'SHA256:' + b64(digest).replace(/=+$/, '');
+  }
+  // The examiner's private key: unwrapped with the KEK, bound by the AAD to
+  // the examiner and the public key, and checked against that public key
+  async function unwrapKey(kek, served, examiner) {
+    var blob = unb64(served.wrapped_private);
+    var aad = enc('vhir-ledger-key|3|' + examiner + '|' + await fingerprint(served.public_key));
+    var aes = await crypto.subtle.importKey('raw', kek, 'AES-GCM', false, ['decrypt']);
+    var der = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: blob.slice(0, 12), additionalData: aad }, aes, blob.slice(12));
+    var key = await crypto.subtle.importKey('pkcs8', der, { name: 'Ed25519' }, true, ['sign']);
+    var jwk = await crypto.subtle.exportKey('jwk', key);
+    var x = jwk.x.replace(/-/g, '+').replace(/_/g, '/');
+    while (x.length % 4) x += '=';
+    if (x !== served.public_key) throw new Error('the unwrapped key is not the served public key');
+    return key;
+  }
+  async function signBodies(key, plan) {
+    var sigs = {};
+    for (var i = 0; i < plan.bodies.length; i++) {
+      var b = plan.bodies[i];
+      sigs[b.item_id] = b64(await crypto.subtle.sign({ name: 'Ed25519' }, key, enc(b.body)));
+    }
+    return sigs;
+  }
+
+  // Before the examiner starts reviewing: can this browser sign here?
+  async function loadProblem() {
+    if (!window.isSecureContext) return 'Open the portal over https, or through an SSH tunnel to localhost, to sign approvals.';
+    try {
+      await crypto.subtle.importKey('raw',
+        unhex('d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a'),
+        { name: 'Ed25519' }, false, ['verify']);
+    } catch (_) {
+      return "This browser can't sign approvals (Chrome/Edge 137+, Firefox 129+, Safari 17+ needed); " +
+        'use `vhir approve --review`.';
+    }
+    return '';
+  }
+
+  /* --- The dialog --- */
+  var state = null;
+
+  async function signFetch(path, body) {
+    var res;
+    try {
+      res = await fetch(API_BASE + path, { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) });
+    } catch (e) {
+      return { status: 0, data: { code: 'NETWORK', error: e.message || 'network error' } };
+    }
+    var data = await res.json().catch(function() { return { error: res.statusText }; });
+    return { status: res.status, data: data };
+  }
+  function el(id) { return document.getElementById(id); }
+  function say(msg) { var e = el('commitError'); e.textContent = msg; e.style.display = msg ? '' : 'none'; }
+  function canSign(on, n) {
+    el('commitPassword').disabled = !on;
+    el('commitSubmitBtn').disabled = !on;
+    el('commitSubmitBtn').textContent = 'Sign ' + (n || 0) + ' decision' + (n === 1 ? '' : 's');
+  }
+  function stripLocal(e) {
+    var out = Object.assign({}, e);
+    delete out._snapshot;
+    return out;
+  }
+  function own(e) { return e.staged_by === state.frozen.examiner; }
+
+  async function open() {
+    if (state && state.busy) return;
+    var signing = caseMeta.signing || {};
+    el('commitDialog').classList.add('visible');
+    el('commitList').innerHTML = '';
+    el('commitOthers').innerHTML = '';
+    el('commitPassword').value = '';
+    canSign(false, 0);
+    say('');
+    if (window.vhirLoadProblem) { say(window.vhirLoadProblem); return; }
+    if (!signing.signing_available) { say(signing.message || 'Signing is not available here.'); return; }
+    // 1. freeze: every later step reads only this copy
+    state = {
+      frozen: structuredClone({ items: delta.items.map(stripLocal), findings: findings,
+        timelineEvents: timelineEvents, iocs: iocsData, case_id: caseMeta.case_id,
+        examiner: signing.examiner }),
+      include: {}, plan: null, shown: null, retried: false, busy: false
+    };
+    renderOthers();
+    await planAndShow(null);
+  }
+
+  function renderOthers() {
+    var mine = {};
+    state.frozen.items.forEach(function(e) { if (own(e) && e.action !== 'todo') mine[e.id] = 1; });
+    var others = state.frozen.items.filter(function(e) { return !own(e) && e.action !== 'todo'; });
+    if (!others.length) return;
+    var html = '<div class="commit-others-head">Staged by someone else; not included unless you tick them:</div>';
+    others.forEach(function(e, i) {
+      var who = e.staged_by || 'unknown';
+      html += '<div class="commit-other">' + escapeHtml(e.id) + ' — ' + escapeHtml(e.action) +
+        ' (staged by ' + escapeHtml(who) + ') ';
+      if (mine[e.id]) html += '<em>you have your own entry for ' + escapeHtml(e.id) + '</em>';
+      else html += '<label><input type="checkbox" data-other="' + i + '"> Include and sign as me</label>';
+      html += '</div>';
+    });
+    el('commitOthers').innerHTML = html;
+    el('commitOthers').querySelectorAll('input[data-other]').forEach(function(box) {
+      box.onchange = function() {
+        state.include[box.dataset.other] = box.checked;
+        state.shown = null;
+        planAndShow(null);
+      };
+    });
+    state.others = others;
+  }
+
+  function selection() {
+    var picked = state.frozen.items.filter(function(e) { return own(e) && e.action !== 'todo'; });
+    (state.others || []).forEach(function(e, i) { if (state.include[i]) picked.push(e); });
+    return picked;
+  }
+
+  // 2. plan, check against the frozen copy, and (first time) display
+  async function planAndShow(retryOf) {
+    canSign(false, 0);
+    var selected = selection();
+    if (!selected.length) { say('Nothing of yours is staged to sign.'); return false; }
+    var body = { entries: selected, include_others: selected.filter(function(e) { return !own(e); }).map(function(e) { return e.id; }) };
+    if (retryOf) body.retry_of = retryOf;
+    var r = await signFetch('/api/commit/plan', body);
+    if (r.status !== 200) { say(r.data.error || ('Planning failed (' + r.status + ')')); return false; }
+    var problems = await checkPlan(state.frozen, r.data, selected);
+    if (problems.length) {
+      say('PLAN_CHANGED: ' + PLAN_CHANGED + ' (' + problems.join('; ') + ')');
+      return false;
+    }
+    var shown = shownOf(r.data);
+    if (retryOf) {
+      if (canon(shown) !== canon(state.shown)) {
+        var was = {};
+        state.shown.forEach(function(t) { was[t] = 1; });
+        var changed = shown.filter(function(t) { return !was[t]; }).map(function(t) { return t.split('|')[0]; });
+        say('PLAN_CHANGED: What would be signed changed after you reviewed it: ' +
+          (changed.join(', ') || 'items left out') + '. Close this dialog and review again.');
+        return false;
+      }
+    } else {
+      state.shown = shown;
+      render(r.data);
+    }
+    state.plan = r.data;
+    state.selected = selected;
+    state.planned_at = Date.now();
+    say('');
+    canSign(true, r.data.bodies.length);
+    return true;
+  }
+
+  // 3. display every body, direct and cascaded, from what will be signed
+  function render(plan) {
+    var all = el('commitShowAll').checked;
+    var brief = { finding: ['title', 'observation', 'interpretation', 'confidence'],
+      timeline: ['timestamp', 'description'], ioc: ['value', 'type', 'category', 'tags', 'description'] };
+    var html = '';
+    plan.bodies.forEach(function(pb) {
+      var b = JSON.parse(pb.body), snap = JSON.parse(b.content_snapshot), kind = b.type;
+      html += '<div class="commit-item"><div><strong>' + escapeHtml(b.item_id) + '</strong> — ' +
+        escapeHtml(b.decision) + (b.coupled_from ? ' (cascade from ' + escapeHtml(b.coupled_from) + ')' : '') + '</div>';
+      var fields = all ? Object.keys(snap).sort() : brief[kind].filter(function(k) { return k in snap; });
+      fields.forEach(function(k) {
+        var v = snap[k];
+        html += '<div class="commit-field"><span>' + escapeHtml(k) + ':</span> ' +
+          escapeHtml(typeof v === 'string' ? v : JSON.stringify(v)) + '</div>';
+      });
+      if (kind === 'ioc') {
+        var item = findIn(state.frozen, 'ioc', b.item_id) || {};
+        var derived = IOC_DERIVED.filter(function(k) { return k in item; });
+        if (derived.length) {
+          html += '<div class="commit-field derived">' + escapeHtml(derived.join(', ')) + ': derived, not signed</div>';
+        }
+      }
+      html += '</div>';
+    });
+    el('commitList').innerHTML = html;
+    el('commitSummary').textContent = 'You are about to sign ' + plan.bodies.length +
+      ' decision' + (plan.bodies.length === 1 ? '' : 's') + ' as ' + state.frozen.examiner + '. ' +
+      'Read each one; what is listed is exactly what is signed.';
+  }
+
+  function toggleAll() { if (state && state.plan) render(state.plan); }
+
+  // 4. sign in, unwrap, sign, commit (one retry on a moved or busy ledger)
+  async function submit() {
+    if (!state || state.busy || !state.plan) return;
+    var password = el('commitPassword').value;
+    if (!password) { say('Passphrase required.'); return; }
+    state.busy = true;
+    canSign(false, state.plan.bodies.length);
+    el('commitProgress').style.display = '';
+    say('');
+    try {
+      if (Date.now() - state.planned_at > (state.plan.expires_in - 5) * 1000) {
+        if (state.retried) { say('This signing request expired. Close the dialog and commit again.'); return; }
+        state.retried = true;
+        if (!(await planAndShow(state.plan.challenge_id))) return;
+      }
+      var auth = await deriveAuth(password, state.plan.salt_auth, state.plan.iterations);
+      var k = await signFetch('/api/commit/key', { challenge_id: state.plan.challenge_id,
+        response: await loginResponse(auth, state.plan.nonce) });
+      if (k.status !== 200) { say(k.data.error || 'Sign-in failed.'); return; }
+      var key;
+      try {
+        key = await unwrapKey(await deriveKek(password, k.data.salt_ledger, k.data.iterations), k.data, state.frozen.examiner);
+      } catch (_) {
+        say('KEY_UNWRAP_FAILED: ' + KEY_UNWRAP_FAILED.replace('EXAMINER', state.frozen.examiner));
+        return;
+      }
+      var r = await commitOnce(key, k.data);
+      if (r.status === 409 && r.data.code === 'LEDGER_MOVED' || r.status === 503) {
+        if (state.retried) { say(r.data.error || 'The ledger moved again. Close the dialog and commit again.'); return; }
+        state.retried = true;
+        if (!(await planAndShow(state.plan.challenge_id))) return;
+        var k2 = await signFetch('/api/commit/key', { challenge_id: state.plan.challenge_id,
+          response: await loginResponse(auth, state.plan.nonce) });
+        if (k2.status !== 200) { say(k2.data.error || 'Sign-in failed.'); return; }
+        if (k2.data.wrapped_private !== k.data.wrapped_private) {
+          el('commitPassword').value = '';
+          say('Your passphrase changed; enter it again.');
+          return;
+        }
+        r = await commitOnce(key, k2.data);
+      }
+      if (r.status !== 200) { say((r.data.code ? r.data.code + ': ' : '') + (r.data.error || 'Commit failed.')); return; }
+      done(r.data);
+    } finally {
+      password = null;
+      el('commitPassword').value = '';
+      el('commitProgress').style.display = 'none';
+      if (state) {
+        state.busy = false;
+        if (el('commitDialog').classList.contains('visible') && state.plan) canSign(true, state.plan.bodies.length);
+      }
+    }
+  }
+
+  async function commitOnce(key, served) {
+    var bad = state.plan.bodies.filter(function(pb) { return JSON.parse(pb.body).public_key !== served.public_key; });
+    if (bad.length) return { status: 0, data: { code: 'PLAN_CHANGED', error: 'A body names another key: ' + bad[0].item_id } };
+    var sigs = await signBodies(key, state.plan);
+    return signFetch('/api/commit', { challenge_id: state.plan.challenge_id, sigs: sigs });
+  }
+
+  function done(result) {
+    // the signed entries leave the page, so a later save can't stage them again
+    var signed = state.selected;
+    delta.items = delta.items.filter(function(e) {
+      return !signed.some(function(s) { return s.id === e.id && (s.staged_by || '') === (e.staged_by || ''); });
+    });
+    close();
+    var msg = 'Signed: ' + (result.approved || 0) + ' approved, ' + (result.rejected || 0) +
+      ' rejected, ' + (result.edited || 0) + ' edited. ' + (result.head_line || '');
+    if (result.todo_note) msg += ' ' + result.todo_note;
+    showToast(msg, 'success');
+    try { localStorage.setItem('vhir-has-committed', 'true'); } catch (_) {}
     updateCommitButton();
-    showToast('Committed: ' + (result.approved || 0) + ' approved, ' +
-      (result.rejected || 0) + ' rejected, ' + (result.edited || 0) + ' edited', 'success');
-    try { localStorage.setItem('vhir-has-committed', 'true'); } catch(_) {}
-    _commitInProgress = false;
-
-  } catch (e) {
-    _commitInProgress = false;
-    document.getElementById('commitPasswordRow').style.display = '';
-    document.getElementById('commitProgress').style.display = 'none';
-    document.getElementById('commitSubmitBtn').disabled = false;
-    showCommitError(e.message || 'Commit failed');
+    loadAll();
   }
-}
 
-function showCommitError(msg) {
-  var el = document.getElementById('commitError');
-  el.textContent = msg;
-  el.style.display = '';
-}
-
-function hexToBytes(hex) {
-  var bytes = new Uint8Array(hex.length / 2);
-  for (var i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  function close() {
+    el('commitDialog').classList.remove('visible');
+    el('commitPassword').value = '';
+    state = null;
   }
-  return bytes;
-}
 
-function bytesToHex(bytes) {
-  return Array.from(bytes).map(function(b) {
-    return ('0' + b.toString(16)).slice(-2);
-  }).join('');
-}
+  return { open: open, close: close, submit: submit, toggleAll: toggleAll, loadProblem: loadProblem,
+    isOpen: function() { return el('commitDialog').classList.contains('visible'); },
+    // for the signing tests
+    _test: { checkPlan: checkPlan, shownOf: shownOf, deriveAuth: deriveAuth, deriveKek: deriveKek,
+      loginResponse: loginResponse, unwrapKey: unwrapKey, signBodies: signBodies,
+      signedView: signedView, afterEntry: afterEntry, fingerprint: fingerprint,
+      VIEW1_EXCLUDES: VIEW1_EXCLUDES, IOC_DERIVED: IOC_DERIVED, EDITABLE: EDITABLE,
+      IOC_EDITABLE: IOC_EDITABLE } };
+})();
+
+function openCommitDialog() { VHIR_SIGN.open(); }
+function closeCommitDialog() { VHIR_SIGN.close(); }
+function submitCommit() { VHIR_SIGN.submit(); }
+// END vhir-commit-sign
 
 function updateCommitButton() {
   var btn = document.getElementById('commitBtn');
   if (!btn) return;
-  btn.disabled = !delta.items || delta.items.length === 0;
+  btn.disabled = !delta.items || !delta.items.some(function(e) { return isOwn(e) && e.action !== 'todo'; });
 }
 
 /* === Filter dimensions === */
@@ -2896,7 +3306,7 @@ function renderDashboard(summary) {
   html += '<div style="margin-bottom:4px"><strong>Audit trail</strong> \u2014 every tool execution, finding record, and approval decision is logged with timestamps and the examiner identity. The AI cannot modify or delete audit entries</div>';
   html += '<div style="margin-bottom:4px"><strong>Content hashing</strong> \u2014 findings are hashed at creation. If a finding is modified after you reviewed it, the hash changes and the approval is flagged as stale</div>';
   html += '<div style="margin-bottom:4px"><strong>Human-only approval</strong> \u2014 the AI stages findings as <span class="badge badge-draft">DRAFT</span>. Only a human examiner (via the Examiner Portal or the CLI) can move them to <span class="badge badge-approved">\u2713 APPROVED</span> or <span class="badge badge-rejected">\u2717 REJECTED</span>. The AI cannot approve its own work</div>';
-  html += '<div><strong>Password-signed commits</strong> \u2014 when you commit, your password generates an HMAC signature over the approved content. This proves that a specific examiner reviewed and approved specific findings at a specific time</div>';
+  html += '<div><strong>Signed decisions</strong> \u2014 when you sign, your passphrase unlocks your signing key in this browser, and each decision is signed over the exact content listed in the dialog. Verify checks every signature; compare the key fingerprint with a copy kept off this machine (any earlier report, export or backup) to confirm the key is yours</div>';
   html += '</div></details>';
 
   // --- The Platform ---
@@ -3145,6 +3555,8 @@ function renderIocs() {
     if (uniqueHosts.length > 0) {
       html += '<div><strong>Hosts:</strong> ' + uniqueHosts.map(escapeHtml).join(', ') + '</div>';
     }
+    html += '<div><strong>Verification:</strong> <span class="' + verifClassFor(ioc.verification || 'draft') + '">' + escapeHtml(ioc.verification || 'draft') + '</span></div>';
+    html += '<div style="color:var(--text-muted);font-style:italic">Sources, sightings, confidence and MITRE techniques are derived, not signed.</div>';
     if (ioc.source_findings && ioc.source_findings.length) {
       html += '<div><strong>Findings:</strong> ' + ioc.source_findings.map(function(fid) {
         return '<a style="color:var(--accent);cursor:pointer" onclick="event.stopPropagation();setFilter(\'all\');switchTab(\'findings\');selectFinding(\'' + escapeJsString(fid) + '\')">' + escapeHtml(fid) + '</a>';
@@ -3393,7 +3805,7 @@ function renderTimelineCompactRow(ev, de, isFocused) {
       escapeHtml(evType) + '</span>';
     html += '<span class="badge badge-' + status.toLowerCase() + '">' +
       escapeHtml(status) + '</span>';
-    html += '<span class="verif-' + verif.replace(/ /g, '-') +
+    html += '<span class="' + verifClassFor(verif) +
       '" style="font-size:10px">' + escapeHtml(verif) + '</span>';
     html += '</div>';
 
@@ -3751,7 +4163,7 @@ async function doTimelineSkip(id) {
   if (!de) return;
   try {
     await apiFetch('/api/delta/' + encodeURIComponent(id), { method: 'DELETE' });
-    delta.items = delta.items.filter(function(i) { return i.id !== id; });
+    delta.items = delta.items.filter(function(i) { return !(i.id === id && isOwn(i) && i.action !== 'todo'); });
     delta.modified_at = new Date().toISOString();
     setSaveStatus('saved');
   } catch (e) {
@@ -4007,6 +4419,10 @@ document.getElementById('timelineTypeFilter').addEventListener('change', functio
 
 /* === Init === */
 initTheme();
+VHIR_SIGN.loadProblem().then(function(p) {
+  window.vhirLoadProblem = p;
+  if (p) showErrorBanner(p);
+});
 loadAll();
 
 // Auto-refresh every 15s — skip if loading, dialog open, or editing

@@ -650,29 +650,19 @@ body {
   </div>
 </div>
 
-<!-- Commit dialog -->
+<!-- Commit: signing happens in the Examiner Portal (one signing page) -->
 <div class="dialog-overlay" id="commitDialog" role="dialog" aria-modal="true"
   aria-labelledby="commitDialogTitle">
   <div class="dialog" style="max-width:400px">
-    <h3 id="commitDialogTitle">Commit Reviews</h3>
-    <div id="commitSummary" style="font-size:13px;margin-bottom:12px"></div>
-    <div id="commitPasswordRow">
-      <label for="commitPassword" style="font-size:12px;color:var(--text-secondary)">
-        Enter password to confirm:</label>
-      <input type="password" id="commitPassword" autocomplete="off"
-        style="width:100%;margin-top:4px;padding:8px;font-size:14px;
-        background:var(--bg-primary);color:var(--text-primary);
-        border:1px solid var(--border);border-radius:4px">
-    </div>
-    <div id="commitError" style="color:var(--red);font-size:12px;margin-top:8px;display:none"></div>
-    <div id="commitProgress" style="display:none;margin-top:8px">
-      <div style="font-size:12px;color:var(--text-muted)">
-        Deriving key<span id="commitDots">...</span>
-      </div>
+    <h3 id="commitDialogTitle">Sign Reviews</h3>
+    <div style="font-size:13px;margin-bottom:12px">
+      Your reviews are saved. Sign them in the Examiner Portal, which shows every
+      decision before your passphrase signs it:
+      <a href="/portal/" id="portalLink">open the Examiner Portal</a>.
+      Or at the SIFT terminal: <code>vhir approve --review</code>.
     </div>
     <div class="dialog-actions" style="margin-top:12px">
-      <button class="btn-cancel" onclick="closeCommitDialog()">Cancel</button>
-      <button class="btn-primary" id="commitSubmitBtn" onclick="submitCommit()">Commit</button>
+      <button class="btn-cancel" onclick="closeCommitDialog()">Close</button>
     </div>
   </div>
 </div>
@@ -1398,111 +1388,15 @@ function advanceToNext() {
 }
 
 /* === Commit === */
+// This deprecated page doesn't sign: the dialog links to the Examiner Portal.
 function openCommitDialog() {
-  if (!delta.items || delta.items.length === 0) return;
-
-  var counts = { approve: 0, reject: 0, edit: 0 };
-  delta.items.forEach(function(d) { counts[d.action] = (counts[d.action] || 0) + 1; });
-  var parts = [];
-  if (counts.approve) parts.push(counts.approve + ' approved');
-  if (counts.reject) parts.push(counts.reject + ' rejected');
-  if (counts.edit) parts.push(counts.edit + ' edited');
-  document.getElementById('commitSummary').textContent =
-    'Committing ' + delta.items.length + ' review(s): ' + parts.join(', ');
-
-  document.getElementById('commitPassword').value = '';
-  document.getElementById('commitError').style.display = 'none';
-  document.getElementById('commitProgress').style.display = 'none';
-  document.getElementById('commitPasswordRow').style.display = '';
-  document.getElementById('commitSubmitBtn').disabled = false;
+  var link = document.getElementById('portalLink');
+  if (link && token) link.href = '/portal/#token=' + encodeURIComponent(token);
   document.getElementById('commitDialog').classList.add('visible');
-  setTimeout(function() { document.getElementById('commitPassword').focus(); }, 50);
 }
 
 function closeCommitDialog() {
   document.getElementById('commitDialog').classList.remove('visible');
-}
-
-async function submitCommit() {
-  var pw = document.getElementById('commitPassword').value;
-  if (!pw) {
-    showCommitError('Password required.');
-    return;
-  }
-
-  document.getElementById('commitSubmitBtn').disabled = true;
-  document.getElementById('commitPasswordRow').style.display = 'none';
-  document.getElementById('commitProgress').style.display = '';
-  document.getElementById('commitError').style.display = 'none';
-
-  try {
-    // 1. Get challenge
-    var challenge = await apiFetch('/api/commit/challenge');
-
-    // 2. Derive key via Web Crypto (PBKDF2)
-    var enc = new TextEncoder();
-    var keyMaterial = await crypto.subtle.importKey(
-      'raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']
-    );
-    var salt = hexToBytes(challenge.salt);
-    var derivedBits = await crypto.subtle.deriveBits(
-      { name: 'PBKDF2', salt: salt, iterations: challenge.iterations,
-        hash: challenge.hash_algorithm },
-      keyMaterial, 256
-    );
-
-    // 3. HMAC-SHA256(derived_key, nonce)
-    var hmacKey = await crypto.subtle.importKey(
-      'raw', derivedBits, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-    );
-    var sig = await crypto.subtle.sign('HMAC', hmacKey, enc.encode(challenge.nonce));
-    var response = bytesToHex(new Uint8Array(sig));
-
-    // 4. Submit
-    var result = await apiFetch('/api/commit', {
-      method: 'POST',
-      body: JSON.stringify({
-        challenge_id: challenge.challenge_id,
-        response: response,
-      }),
-    });
-
-    closeCommitDialog();
-
-    // 5. Clear delta and refresh
-    delta = { version: 1, case_id: delta.case_id || '', items: [], created_at: new Date().toISOString(), modified_at: new Date().toISOString() };
-    await saveDelta();
-    await loadAll();
-    updateCommitButton();
-    showToast('Committed: ' + result.approved + ' approved, ' +
-      result.rejected + ' rejected, ' + result.edited + ' edited', 'success');
-
-  } catch (e) {
-    document.getElementById('commitPasswordRow').style.display = '';
-    document.getElementById('commitProgress').style.display = 'none';
-    document.getElementById('commitSubmitBtn').disabled = false;
-    showCommitError(e.message || 'Commit failed');
-  }
-}
-
-function showCommitError(msg) {
-  var el = document.getElementById('commitError');
-  el.textContent = msg;
-  el.style.display = '';
-}
-
-function hexToBytes(hex) {
-  var bytes = new Uint8Array(hex.length / 2);
-  for (var i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
-  }
-  return bytes;
-}
-
-function bytesToHex(bytes) {
-  return Array.from(bytes).map(function(b) {
-    return ('0' + b.toString(16)).slice(-2);
-  }).join('');
 }
 
 function updateCommitButton() {
@@ -2006,7 +1900,6 @@ document.addEventListener('keydown', function(e) {
   // Commit dialog — must come BEFORE the generic .dialog-overlay.visible check
   if (document.getElementById('commitDialog').classList.contains('visible')) {
     if (e.key === 'Escape') closeCommitDialog();
-    if (e.key === 'Enter') submitCommit();
     return;
   }
 
