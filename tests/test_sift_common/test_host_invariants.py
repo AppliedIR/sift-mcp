@@ -100,6 +100,30 @@ def violations(P, Q, door) -> list:
             homes = [m for m in P.machines.values() if m.state in SETTLED and spelled in {
                 hi.spelling(m.canonical), *(hi.spelling(n) for n in m.former),
                 *(hi.spelling(q[1]) for q in m.pairs if not _nah(P, q))}]  # fmt: skip
+            short, domain = hi.split_name(p[1])
+            if not domain:  # bare: only what one machine or unit in the case holds
+                holders = {
+                    ("m", x.id)
+                    for x in P.machines.values()
+                    if short
+                    in {
+                        hi.split_name(x.canonical)[0],
+                        *(hi.split_name(f)[0] for f in x.former),
+                        *(hi.split_name(q[1])[0] for q in x.pairs if not _nah(P, q)),
+                    }
+                }
+                holders |= {
+                    ("u", q[0])
+                    for q in P.names
+                    if q not in P.bindings
+                    and not _nah(P, q)
+                    and hi.split_name(q[1])[0] == short
+                }
+                if len(holders) != 1:
+                    existing = {k for x in P.machines.values() for k in x.keys}
+                    if Q.bindings.get(p) in existing:
+                        out.append(("ambiguous bare late name joined", door, p[1], ""))
+                    continue  # fmt: skip
             if len(homes) != 1:
                 continue
             m = homes[0]

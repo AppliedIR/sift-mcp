@@ -950,6 +950,27 @@ def _match_confirmed(state: HostState, raw: str) -> Machine | None:
     return found[0] if len(found) == 1 else None
 
 
+def short_name_holders(state: HostState, raw: str, but_unit: str = "") -> set:
+    """The machines (any state) and the units with names not yet bound that
+    hold ``raw``'s short name, across the whole case (``but_unit``'s own
+    names aside)."""
+    short = split_name(raw)[0]
+    holders: set[tuple[str, str]] = set()
+    for m in state.machines.values():
+        names = [m.canonical, *m.former]
+        names += [
+            p[1] for p in m.pairs if FLAG_NOT_A_HOST not in state.pair_flags.get(p, [])
+        ]
+        if any(split_name(n)[0] == short for n in names):
+            holders.add(("machine", m.id))
+    for p in state.names:
+        if p in state.bindings or FLAG_NOT_A_HOST in state.pair_flags.get(p, []):
+            continue
+        if split_name(p[1])[0] == short and p[0] != but_unit:
+            holders.add(("unit", p[0]))
+    return holders
+
+
 def _late_list_binding(state: HostState, unit: str, raw: str):
     """(key, canonical) of the one host-list entry a late name confirms to,
     under the list's one rule (host_proposal.late_list_binding), or None."""
@@ -1039,6 +1060,10 @@ def get_or_mint(
             # Only a name the scan never held, read from the evidence, joins a
             # machine by itself: a held one waits for the examiner at the gate.
             late = (unit, raw) not in state.names and origin == ARTIFACT
+            if late and not split_name(raw)[1]:
+                # a name without a domain joins only what nothing else in the
+                # case could also be: one machine or unit holds its short name
+                late = len(short_name_holders(state, raw)) == 1
             match = _match_confirmed(state, raw) if late else None
             listed = (
                 _late_list_binding(state, unit, raw) if late and match is None else None

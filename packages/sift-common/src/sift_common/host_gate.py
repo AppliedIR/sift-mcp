@@ -134,6 +134,32 @@ def record_wait(case_dir: str | os.PathLike, run_id: str, units) -> None:
     )
 
 
+def _may_join(state: hi.HostState, m: hi.Machine, unit: str, p) -> bool:
+    """Whether Start now may put name `p` of `unit` on machine `m`, which
+    already exists: its own unit's machine, one it's bound to already, or a
+    confirmed machine one of whose names it matches exactly (equal domains
+    where both have one), from evidence, not the AI's."""
+    from sift_common import host_proposal
+
+    if state.bindings.get(p) in m.keys or all(q[0] == unit for q in m.pairs):
+        return True
+    if m.state != hi.CONFIRMED:
+        return False
+    info = state.names.get(p) or {}
+    x = host_proposal._Pair(
+        unit, p[1], list(info.get("evidence") or []), set(info.get("origins") or [])
+    )
+    if not x.artifact or x.ai_only:
+        return False
+    names = [m.canonical, *(q[1] for q in m.pairs if not _not_a_host(state, q))]
+    if not any(host_proposal.list_matches(p[1], [{"name": n}]) for n in names):
+        return False
+    # a name without a domain: only when nothing else in the case holds it
+    return bool(hi.split_name(p[1])[1]) or hi.short_name_holders(
+        state, p[1], but_unit=unit
+    ) == {("machine", m.id)}
+
+
 def start_now(
     case_dir: str | os.PathLike,
     run_id: str,
@@ -166,18 +192,29 @@ def start_now(
         taken.add(hi.spelling(name))
         return name
 
+    # Start now names; it never merges. A proposed group's names are split
+    # by unit, and a unit's names join a machine that already exists only
+    # when it is that unit's own, when they are bound to it already, or when
+    # the machine is confirmed and the name is evidence's and matches one of
+    # its names exactly. Every other slice is a new machine of its unit alone.
     for g in host_proposal.cached_propose(root, state):
-        pairs = [p for p in g.pairs if p in pending]
-        if not pairs:
-            continue
-        if g.machine:  # a machine already holds some of them: they join it
-            m = state.machines[g.machine]
-            key, canonical = m.keys[0], m.canonical
-        else:
-            key, canonical = hi.new_machine_key(), canonical_for(g.canonical)
-        machines.append(
-            {"key": key, "canonical": canonical, "pairs": [list(p) for p in pairs]}
-        )
+        by_unit: dict[str, list] = {}
+        for p in g.pairs:
+            if p in pending:
+                by_unit.setdefault(p[0], []).append(p)
+        m = state.machines.get(g.machine) if g.machine else None
+        for unit, pairs in sorted(by_unit.items()):
+            if m is not None:
+                joins = [p for p in pairs if _may_join(state, m, unit, p)]
+                pairs = [p for p in pairs if p not in joins]
+                if joins:
+                    machines.append({"key": m.keys[0], "canonical": m.canonical,
+                                     "pairs": [list(p) for p in joins]})  # fmt: skip
+            if pairs:  # named by its own names when it leaves another machine
+                wanted = g.canonical if m is None else sorted(p[1] for p in pairs)[0]
+                machines.append({"key": hi.new_machine_key(),
+                                 "canonical": canonical_for(wanted),
+                                 "pairs": [list(p) for p in pairs]})  # fmt: skip
     for e in waiting:  # nothing to name it by: its placeholder
         if e["raw"]:
             continue
