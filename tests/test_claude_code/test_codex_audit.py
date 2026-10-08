@@ -130,3 +130,13 @@ def test_claude_codes_entries_carry_no_client(tmp_path):
     _run("forensic-audit.sh", _call(case), tmp_path)
     (e,) = _lines(case)
     assert "client" not in e and "event" not in e
+
+
+def test_typed_input_from_a_session_outside_the_case_is_marked(tmp_path):
+    case = _case(tmp_path)
+    t = _transcript(tmp_path, "rm x\n")
+    stop = {"hook_event_name": "Stop", "session_id": "s1",
+            "cwd": str(tmp_path / "projects" / "notes"), "transcript_path": str(t)}  # fmt: skip
+    _run("codex-stdin-capture.sh", stop, tmp_path)
+    (e,) = _lines(case)
+    assert e["event"] == "write_stdin" and e["outside_case"] is True
