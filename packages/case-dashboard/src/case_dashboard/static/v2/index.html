@@ -2097,7 +2097,7 @@ var VHIR_SIGN = (function() {
       box.onchange = function() {
         state.include[box.dataset.other] = box.checked;
         state.shown = null;
-        planAndShow(null);
+        return planAndShow(null);
       };
     });
     state.others = others;
@@ -2117,7 +2117,10 @@ var VHIR_SIGN = (function() {
     var body = { entries: selected, include_others: selected.filter(function(e) { return !own(e); }).map(function(e) { return e.id; }) };
     if (retryOf) body.retry_of = retryOf;
     var r = await signFetch('/api/commit/plan', body);
-    if (r.status !== 200) { say(r.data.error || ('Planning failed (' + r.status + ')')); return false; }
+    if (r.status !== 200) {
+      say((r.data.code ? r.data.code + ': ' : '') + (r.data.error || ('Planning failed (' + r.status + ')')));
+      return false;
+    }
     var problems = await checkPlan(state.frozen, r.data, selected);
     if (problems.length) {
       say('PLAN_CHANGED: ' + PLAN_CHANGED + ' (' + problems.join('; ') + ')');
