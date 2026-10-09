@@ -59,6 +59,18 @@ def _detect_artifact_context(command: list[str]) -> str | None:
     return None
 
 
+def _writable(path: str, base) -> bool:
+    """Whether the run may write there (the check the run itself applies): a
+    path it would refuse, such as /, is never walked."""
+    from sift_mcp.security import validate_output_path
+
+    try:
+        validate_output_path(path, base=base)
+    except ValueError:
+        return False
+    return True
+
+
 def _under(path: str, folder: str) -> bool:
     real, top = os.path.realpath(path), os.path.realpath(folder)
     return real == top or real.startswith(top + os.sep)
@@ -233,7 +245,7 @@ def create_server() -> FastMCP:
         flagged = [
             w
             for w in command_files.named(command, get_output_flags(), op_dir)[1]
-            if not (op_dir and _under(w, op_dir))
+            if not (op_dir and _under(w, op_dir)) and _writable(w, op_dir)
         ]
         before = command_files.files_at(flagged)
         # A mount tool's run: the mounts there are before it, to see what it

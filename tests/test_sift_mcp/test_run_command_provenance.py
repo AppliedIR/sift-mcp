@@ -113,3 +113,28 @@ def test_parallel_runs_writing_one_folder_leave_its_files_ambiguous(case):
 def test_the_tool_says_to_give_parallel_runs_distinct_output_folders():
     doc = create_server()._tool_manager._tools["run_command"].fn.__doc__
     assert "Give parallel runs distinct output folders" in doc
+
+
+def test_an_output_flag_that_will_be_refused_is_never_walked(case, monkeypatch):
+    from sift_mcp import command_files
+
+    walked = []
+    real = command_files.files_at
+
+    def spy(paths):
+        walked.extend(paths)
+        return real([p for p in paths if p != "/"])
+
+    monkeypatch.setattr(command_files, "files_at", spy)
+    r = asyncio.run(
+        create_server().call_tool(
+            "run_command",
+            {
+                "command": [sys.executable, "-c", "pass", "--output", "/"],
+                "purpose": "t",
+            },
+        )
+    )
+    r = r[0] if isinstance(r, tuple) else r
+    assert json.loads(r[0].text)["success"] is False  # refused: outside the case
+    assert "/" not in walked
