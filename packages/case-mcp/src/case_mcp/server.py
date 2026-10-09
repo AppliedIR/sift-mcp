@@ -482,10 +482,11 @@ def create_server() -> FastMCP:
     def evidence_verify() -> dict:
         """Verify integrity of all registered evidence files by comparing
         current SHA-256 hashes against the registry. Reports OK, MODIFIED,
-        MISSING, or ERROR for each file."""
+        MISSING, or ERROR for each file (a folder root's, file by file), or
+        PENDING with a job_id while a large file hashes: call again later."""
         try:
             case_dir = _resolve_case_dir()
-            result = verify_evidence_data(case_dir)
+            result = verify_evidence_data(case_dir, folder_hasher=_folder_hashes)
             return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}

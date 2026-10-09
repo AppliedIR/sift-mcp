@@ -88,3 +88,18 @@ def test_a_file_changed_after_its_job_is_hashed_again(
     again = _parse(server["evidence_register"](path=str(kape)))
     assert again["status"] == "hashing" and again["job_id"] != first["job_id"], again
     assert _registry(case_dir) == []
+
+
+def test_the_ais_verify_of_a_folder_is_pending_then_ok(
+    server, case_dir, kape, monkeypatch
+):  # noqa: F811
+    _parse(server["evidence_register"](path=str(kape)))  # all small: in the call
+    monkeypatch.setattr(fi, "INLINE_LIMIT", 100)
+    first = _parse(server["evidence_verify"]())
+    by = {r["path"].rsplit("/", 1)[1]: r for r in first["results"]}
+    assert by["Security.evtx"]["status"] == "OK"
+    assert by["pagefile.sys"]["status"] == "PENDING" and first["pending"] == 1
+    _wait(case_dir, by["pagefile.sys"]["job_id"])
+    second = _parse(server["evidence_verify"]())
+    assert [r["status"] for r in second["results"]] == ["OK", "OK"], second
+    assert "pending" not in second
