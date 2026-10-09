@@ -21,8 +21,9 @@ logger = logging.getLogger(__name__)
 
 INLINE_LIMIT = 1_000_000_000  # bytes a tool call may hash before it answers
 _CHUNK = 1 << 20
-# a file's key is (real path, size, mtime_ns), a list's the tuple of its files'
-# keys -> the id of the job hashing it, while that job runs
+# (the case, a file's key: real path, size, mtime_ns; or a list's: the tuple of
+# its files' keys) -> the id of the job hashing it, while that job runs. Per
+# case: a job's closing entry goes to the case that asked.
 _jobs: dict[tuple, str] = {}
 _jobs_lock = threading.Lock()
 
@@ -165,8 +166,9 @@ def _file_key(path: str) -> tuple:
 
 
 def _start(key: tuple, paths, case_dir: str, requested_by: str) -> str:
-    """The id of the job hashing `paths` (one path, or a list) in this
-    process: the running one for the same key, else a new daemon thread."""
+    """The id of the job hashing `paths` (one path, or a list) for this case in
+    this process: the running one for the same key, else a new daemon thread."""
+    key = (os.path.realpath(case_dir), key)
     with _jobs_lock:
         if key in _jobs:
             return _jobs[key]

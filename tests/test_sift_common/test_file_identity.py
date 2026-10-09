@@ -245,3 +245,30 @@ def test_without_a_case_a_folders_large_files_stay_unhashed(tmp_path):
     f.write_bytes(b"b" * 400)
     b = fi.hash_files_for_call([f], case_dir="", requested_by="t", inline_limit=100)
     assert (b.done, b.job_id, b.pending, b.not_regular) == ({}, "", [str(f)], [])
+
+
+@pytest.mark.parametrize("batch", [False, True], ids=["one file", "a folder"])
+def test_one_file_pending_in_two_cases_closes_in_each(
+    case, tmp_path, monkeypatch, batch
+):
+    """The active case switched while a large file hashed: each case's pending
+    hash gets its own job, and its own closing entry."""
+    other = tmp_path / "case-b"
+    (other / "audit").mkdir(parents=True)
+    f = case / "pagefile.sys"
+    f.write_bytes(b"P" * 400)
+    go, real = threading.Event(), fi.hash_file
+    monkeypatch.setattr(fi, "hash_file", lambda p: go.wait(10) and real(p))
+
+    def ask(c):
+        if batch:
+            return fi.hash_files_for_call(
+                [f], case_dir=c, requested_by="t", inline_limit=10
+            ).job_id
+        return fi.hash_for_call(f, case_dir=c, requested_by="t", inline_limit=10).job_id
+
+    a, b = ask(case), ask(other)
+    go.set()
+    assert a != b
+    for c, job in ((case, a), (other, b)):
+        assert _closed(c, job)["tool"] == "hash_complete"
