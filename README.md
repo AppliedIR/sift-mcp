@@ -4,7 +4,7 @@
 [![CI](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/AppliedIR/sift-mcp/blob/main/LICENSE)
 
-Monorepo for all SIFT-side Valhuntir components. 11 packages: forensic-mcp (23 tools), case-mcp (15 tools), report-mcp (6 tools), sift-mcp (5 tools), sift-gateway, forensic-knowledge, forensic-rag (3 tools), windows-triage (13 tools), opencti (8 tools), sift-common, and case-dashboard. With optional [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp) (21 tools) for evidence indexing and querying at scale. Part of the [Valhuntir](https://github.com/AppliedIR/Valhuntir) platform.
+Monorepo for all SIFT-side Valhuntir components. 11 packages: forensic-mcp (23 tools), case-mcp (15 tools), report-mcp (6 tools), sift-mcp (5 tools), sift-gateway, forensic-knowledge, forensic-rag (3 tools), windows-triage (13 tools), opencti (8 tools; the threatintel-mcp backend), sift-common, and case-dashboard. With optional [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp) (21 tools) for evidence indexing and querying at scale. Part of the [Valhuntir](https://github.com/AppliedIR/Valhuntir) platform.
 
 **[Documentation](https://appliedir.github.io/Valhuntir/)** ·
 [Getting Started](https://appliedir.github.io/Valhuntir/getting-started/) ·
@@ -94,7 +94,7 @@ graph LR
     SM["sift-mcp<br/>5 tools · Linux forensic<br/>tool execution"]
     RAG["forensic-rag<br/>3 tools · semantic search<br/>22K records"]
     WT["windows-triage<br/>13 tools · offline baseline<br/>validation"]
-    OC["opencti<br/>8 tools · threat<br/>intelligence"]
+    OC["threatintel-mcp<br/>8 tools · threat<br/>intelligence"]
     OS["opensearch-mcp<br/>21 tools · evidence indexing,<br/>query, enrichment"]
     CD["Examiner Portal<br/>browser review + commit"]
     FK["forensic-knowledge<br/>shared YAML data"]
@@ -333,7 +333,7 @@ Every tool response is wrapped in a structured envelope enriched by forensic-kno
   "tool": "run_command",
   "data": {"output": {"rows": ["..."], "total_rows": 42}},
   "data_provenance": "tool_output_may_contain_untrusted_evidence",
-  "audit_id": "sift-steve-20260220-01KHXQE4JR7WN9RMEGFD2ED8E8",
+  "audit_id": "sift-steve-20260220-01khxqe4jr7wn9rmegfd2ed8e8",
   "examiner": "steve",
   "caveats": [
     "Amcache entries indicate file presence, not execution"
@@ -366,7 +366,7 @@ A denylist blocks destructive system commands (mkfs, dd, fdisk, shutdown, etc.).
 Additional protections:
 - `subprocess.run(shell=False)` — no shell, no arbitrary command chains
 - Argument sanitization — shell metacharacters blocked
-- Path validation — input paths under /proc, /sys, /dev, /etc, /boot, ~/.vhir, ~/.ssh, ~/.claude, ~/.claude.json (and its `.vhir-backup-*` copies), ~/.agents, ~/.codex, ~/.config/opencti-mcp and /var/lib/vhir are refused, including bare names in the working folder (so a search pattern that names one, such as `grep .ssh log.txt` run from the home folder, is refused too). Defence in depth only: text inside `python -c` or `bash -c`, recursive reads of a parent folder (`tar ~`), and a symlinked home folder or `~/.claude` aren't checked
+- Path validation — input paths under /proc, /sys, /dev, /etc, /boot, ~/.vhir, ~/.ssh, ~/.claude, ~/.claude.json (and its `.vhir-backup-*` copies), ~/.agents, ~/.codex, ~/.config/opencti-mcp (the threat-intel token) and /var/lib/vhir are refused, including bare names in the working folder (so a search pattern that names one, such as `grep .ssh log.txt` run from the home folder, is refused too). Defence in depth only: text inside `python -c` or `bash -c`, recursive reads of a parent folder (`tar ~`), and a symlinked home folder or `~/.claude` aren't checked
 - `rm` protection — case directories protected from deletion
 - Case-data protection — commands that would delete or overwrite case records, `audit/` or evidence files are refused (rm, mv, cp, install, ln, tee, truncate, shred, unlink, also under sudo, nice, nohup, time, timeout and stdbuf); `bash -c`, `python -c`, `dd`, a tool's own output options, a wrapper option that takes a value (`timeout -s KILL`, `stdbuf -o 0`, `sudo --user`), an attached or combined `-t` (`-t<dir>`, `-ft <dir>`), an option value placed after the operands of cp, install or ln (`--suffix .bak`, `-m 0644`), a single-operand `ln` (the link is created in the current folder) and an evidence file that is a symlink to a file outside the cases dir are not checked
 - Output truncation — large output capped
@@ -437,7 +437,7 @@ Valhuntir is designed so that AI interactions flow through MCP tools, enabling s
 
 ## Audit Trail, Provenance, and Grounding
 
-Every MCP tool call is logged to a per-backend JSONL file in the case `audit/` directory with a unique evidence ID (`{backend}-{examiner}-{date}-{seq}`). When Claude Code is the client, a PostToolUse hook additionally records each Bash command run while a case is active to `audit/claude-code.jsonl`.
+Every MCP tool call is logged to a per-backend JSONL file in the case `audit/` directory with a unique evidence ID (`{backend}-{examiner}-{date}-{ulid}`). When Claude Code is the client, a PostToolUse hook additionally records each Bash command run while a case is active to `audit/claude-code.jsonl`.
 
 ### Evidence Artifacts
 
@@ -454,7 +454,7 @@ When a finding is staged, `record_finding()` classifies its provenance by scanni
 | SHELL | Not in audit trail — provided via `supporting_commands` | Self-reported |
 | NONE | Not found anywhere | Rejected by hard gate |
 
-The finding is stamped with its provenance tier. Findings with NONE provenance and no supporting commands are rejected. The **Evidence Provenance Chain** in the Examiner Portal traces the full path from finding back to registered evidence.
+The finding is stamped with its provenance tier. Findings with NONE provenance and no supporting commands are rejected. Each evidence artifact is also traced to registered evidence through the links the case recorded (a registered path or folder manifest, a run's recorded inputs and outputs by path and hash, a recorded mount) and graded FULL, DECLARED (the AI said so), AMBIGUOUS (more than one recorded origin, each named), BROKEN (with where and why) or CITED-UNVERIFIED (the quote isn't in what the cited operation produced); the finding's grade is its worst artifact's, and an item merged from another case is IMPORTED. The **Evidence Provenance Chain** in the Examiner Portal, `vhir review` and the report show each chain from finding back to registered evidence.
 
 ### Grounding
 
