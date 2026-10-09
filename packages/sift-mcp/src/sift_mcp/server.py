@@ -200,13 +200,13 @@ def create_server() -> FastMCP:
         audit_dir = audit._get_audit_dir(case_dir)
         op_id = audit._next_audit_id(audit_dir) if audit_dir else None
         input_hashes: dict[str, str] = {}
-        input_registered: list[str] = []
+        input_registered: list[dict] = []  # [{path, sha256}], from the registry
         for fpath in detected_inputs:
             try:
                 p = Path(fpath).resolve()
                 if case_dir and (reg := fi.registered_hash(case_dir, p)):
                     input_hashes[str(p)] = reg
-                    input_registered.append(str(p))
+                    input_registered.append({"path": str(p), "sha256": reg})
                     continue
                 r = fi.hash_for_call(
                     p,

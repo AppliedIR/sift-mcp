@@ -69,7 +69,8 @@ def test_a_registered_input_takes_the_registry_hash_without_being_read(
     monkeypatch.setattr(fi, "hash_file", never)
     e = _run_on(case, z)
     assert _input(e, z) == "ab" * 32
-    assert e["input_registered"] == [str(z.resolve())]
+    # the contract shape every writer uses: [{path, sha256}], from the registry
+    assert e["input_registered"] == [{"path": str(z.resolve()), "sha256": "ab" * 32}]
 
 
 def test_an_input_that_isnt_registered_is_hashed(case):
