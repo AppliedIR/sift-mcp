@@ -275,8 +275,9 @@ def completed_hashes(case_dir, paths) -> dict[str, dict]:
     can't be set back, so a rewrite with its mtime set back isn't taken; a
     file fixed after a failure has a new ctime, so it's hashed again). A
     failure is taken once, by the call that follows its job, which stops the
-    automatic retry; after that it's left out, so the next request hashes the
-    file again. Files with nothing recorded are left out."""
+    automatic retry (see `take_failures`); after that it's left out, so the
+    next request hashes the file again. Files with nothing recorded are left
+    out."""
     rows = _completed_rows(case_dir)
     found: dict[str, dict] = {}
     for path in map(str, paths):
@@ -291,13 +292,21 @@ def completed_hashes(case_dir, paths) -> dict[str, dict]:
         if row.get("sha256"):
             found[path] = {"sha256": row["sha256"]}
         elif row.get("error"):
-            taken = (str(row.get("job_id", "")), os.path.realpath(path))
             with _jobs_lock:
-                if taken in _taken:
+                if (str(row.get("job_id", "")), os.path.realpath(path)) in _taken:
                     continue
-                _taken.add(taken)
-            found[path] = {"error": row["error"]}
+            found[path] = {"error": row["error"], "job_id": str(row.get("job_id", ""))}
     return found
+
+
+def take_failures(found: dict) -> None:
+    """Mark the failures in `completed_hashes`' result as taken, so the next
+    request hashes those files again. Call it only once they're used: on a
+    call that starts no job of its own."""
+    with _jobs_lock:
+        for path, r in found.items():
+            if "error" in r:
+                _taken.add((r.get("job_id", ""), os.path.realpath(path)))
 
 
 def completed_hash(case_dir, path) -> str | None:

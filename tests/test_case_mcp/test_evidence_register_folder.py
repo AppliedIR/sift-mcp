@@ -184,3 +184,38 @@ def test_a_failure_is_taken_once_then_the_next_request_hashes_again(
     assert fi.completed_hashes(case_dir["path"], [big]) == {
         big: {"sha256": hashlib.sha256(b"P" * 400).hexdigest()}
     }
+
+
+def test_failures_are_taken_only_on_the_call_that_starts_no_job(
+    server,
+    case_dir,
+    kape,
+    monkeypatch,  # noqa: F811
+):
+    """A failed in an earlier job; B needs hashing. The call that starts B's
+    job must not use up A's failure, or each call re-hashes the other: A, B,
+    A, B, and the folder never registers."""
+    monkeypatch.setattr(fi, "INLINE_LIMIT", 100)
+    real = fi.hash_file
+
+    def unreadable(path):
+        if str(path).endswith(".sys"):
+            raise OSError(5, "Input/output error", str(path))
+        return real(path)
+
+    monkeypatch.setattr(fi, "hash_file", unreadable)
+    a = str(kape / "pagefile.sys")
+    earlier = fi.hash_files_for_call([a], case_dir=str(case_dir["path"]),
+                                     requested_by="t", inline_limit=100)  # fmt: skip
+    _wait(case_dir, earlier.job_id)  # A's failure, recorded, not yet taken
+    (kape / "hiberfil.sys").write_bytes(b"H" * 400)  # B
+    first = _parse(server["evidence_register"](path=str(kape)))
+    assert first.get("status") == "hashing", first
+    _wait(case_dir, first["job_id"])
+    second = _parse(server["evidence_register"](path=str(kape)))
+    assert second.get("kind") == "folder", second
+    m = json.loads((case_dir["path"] / second["manifest_path"]).read_text())
+    assert sorted(u["path"].rsplit("/", 1)[1] for u in m["unreadable"]) == [
+        "hiberfil.sys",
+        "pagefile.sys",
+    ]

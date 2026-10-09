@@ -142,9 +142,10 @@ def _host_list_hint(case_dir: Path) -> str:
 def _folder_hashes(case_dir, paths: list[str]) -> tuple[dict[str, str], str, dict]:
     """A folder's file hashes within a tool call's time limit: what a
     completed background job recorded for an unchanged file is taken (its
-    hash, or the error it couldn't be read with); the rest are hashed in the
-    call up to the inline limit, else in one background job, whose id means
-    "call again"."""
+    hash, or the error it couldn't be read with: used up only by a call that
+    starts no job, so a failure is never lost while another file hashes); the
+    rest are hashed in the call up to the inline limit, else in one background
+    job, whose id means "call again"."""
     done = fi.completed_hashes(case_dir, paths)
     hashes = {p: r["sha256"] for p, r in done.items() if "sha256" in r}
     errors = {p: r["error"] for p, r in done.items() if "error" in r}
@@ -156,6 +157,8 @@ def _folder_hashes(case_dir, paths: list[str]) -> tuple[dict[str, str], str, dic
     )
     hashes.update((p, r.sha256) for p, r in batch.done.items())
     errors.update((p, "not a regular file") for p in batch.not_regular)
+    if not batch.job_id:  # used now: the next request hashes them again
+        fi.take_failures(done)
     return hashes, batch.job_id, errors
 
 
