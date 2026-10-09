@@ -107,7 +107,8 @@ def test_an_input_that_is_the_registered_folder_itself_traces_to_the_folder(c):
     folder = c.register_folder(str(c.d / "evidence/kape"))
     t = pv.trace_file(pv.load_case(c.d), str(c.d / "evidence/kape"))
     assert t.grade == "FULL", t
-    assert t.root == {"path": folder["path"], "sha256": folder["manifest_sha256"]}
+    assert t.root == {"path": folder["path"], "sha256": folder["manifest_sha256"],
+                      "label": "examiner"}  # fmt: skip
     assert [link["method"] for link in t.links] == ["registered-path"]
 
 
@@ -119,7 +120,8 @@ def test_vol_on_sample_two_traces_through_the_7z_extraction_to_the_7z(c):
         "sift-tester-20261009-002", ["vol", "-f", s2, "windows.pslist"], [s2], "PID 4\n"
     )
     t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
-    assert t.grade == "FULL" and t.root == {"path": z, "sha256": sha(z)}, t
+    assert t.grade == "FULL", t
+    assert t.root == {"path": z, "sha256": sha(z), "label": "examiner"}
     assert [(link["method"], link["audit_id"]) for link in t.links] == [
         ("registered-path", ""),
         ("recorded-id", "sift-tester-20261009-001"),
@@ -234,3 +236,33 @@ def test_an_operation_with_no_recorded_inputs_is_a_named_break(c):
          params={"command": ["hostname"]}, result_summary={"exit_code": 0})  # fmt: skip
     t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
     assert t.grade == "BROKEN" and t.break_["kind"] == "no-inputs", t
+
+
+def test_each_link_carries_its_entry_lines_hash_and_the_root_its_label(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    _, s2 = c.extract("sift-tester-20261009-001", z)
+    c.run("sift-tester-20261009-002", ["vol", "-f", s2], [s2], "PID 4\n")
+    lines = (c.d / "audit" / "sift-mcp.jsonl").read_bytes().splitlines()
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
+    by = {(link["method"], link["audit_id"]): link for link in t.links}
+    for method, aid, n in (("recorded-id", "sift-tester-20261009-001", 0),
+                           ("hash+place", "sift-tester-20261009-001", 0),
+                           ("recorded-id", "sift-tester-20261009-002", 1)):  # fmt: skip
+        assert by[(method, aid)]["entry_sha256"] == hashlib.sha256(lines[n]).hexdigest()
+    for link in t.links:
+        assert set(link) == {"method", "audit_id", "entry_sha256", "from", "to"}
+
+
+@pytest.mark.parametrize(
+    "extra,label",
+    [({}, "examiner"), ({"registered_via": "mcp"}, "AI-registered"),
+     ({"acquired_by": "wt-tester-20261009-005"}, "acquired by wt-tester-20261009-005")],
+    ids=["examiner", "the AI", "an acquisition"],
+)  # fmt: skip
+def test_the_root_says_who_registered_it(c, extra, label):
+    mem = c.file("evidence/acquired/mem.raw", "acquired memory")
+    c.register(mem, **extra)
+    c.run("sift-tester-20261009-001", ["vol", "-f", mem], [mem], "PID 4\n")
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
+    assert t.grade == "FULL" and t.root["label"] == label, t

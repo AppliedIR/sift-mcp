@@ -102,6 +102,13 @@ def _manifest_rows(case: Case, folder: dict) -> list[dict]:
     return [r for r in rows if isinstance(r, dict)]
 
 
+def _label(root: dict) -> str:
+    """Who registered a root: an acquisition, the AI, or the examiner."""
+    if root.get("acquired_by"):
+        return f"acquired by {root['acquired_by']}"
+    return "AI-registered" if root.get("registered_via") == "mcp" else "examiner"
+
+
 def _registered(case: Case, real: str, sha256: str) -> Trace | None:
     """FULL when the path is a registered root (a file, with the registry's
     hash, unread; or a folder, with its manifest's hash), or a file listed in a
@@ -112,7 +119,7 @@ def _registered(case: Case, real: str, sha256: str) -> Trace | None:
             sha = r.get(
                 "manifest_sha256" if r.get("kind") == "folder" else "sha256", ""
             )
-            root = {"path": real, "sha256": sha}
+            root = {"path": real, "sha256": sha, "label": _label(r)}
             to = {"path": real, "sha256": root["sha256"]}
             return Trace("FULL", root, [root], [_link("registered-path", frm, to)])
     rel = os.path.relpath(real, case.dir.resolve())
@@ -126,6 +133,7 @@ def _registered(case: Case, real: str, sha256: str) -> Trace | None:
                     "path": real,
                     "sha256": row.get("sha256", ""),
                     "folder": r["path"],
+                    "label": _label(r),
                 }
                 to = {"path": real, "sha256": root["sha256"]}
                 return Trace("FULL", root, [root], [_link("manifest", frm, to)])
