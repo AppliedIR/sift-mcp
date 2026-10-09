@@ -166,16 +166,52 @@ def _job_hash(case: Case, real: str, job_id: str) -> str | None:
     return None
 
 
+def _mount_link(case, real, sha, st_dev, at, seen) -> Trace | None:
+    """A file under a recorded mount point links only by that mount: the same
+    filesystem (st_dev), read inside the mount's recorded life. None when no
+    recorded mount holds the path."""
+    under = [
+        (e, line)
+        for items in case.by_id.values()
+        for e, line in items
+        if isinstance(e.get("mount"), dict)
+        and isinstance(e["mount"].get("mount_point"), str)
+        and (real + os.sep).startswith(
+            os.path.realpath(e["mount"]["mount_point"]) + os.sep
+        )
+    ]
+    if not under:
+        return None
+    for e, line in under:
+        end = (case.by_id.get(e.get("unmounted_by", "")) or [({}, b"")])[0][0].get("ts")
+        if (st_dev is not None and e["mount"].get("st_dev") == st_dev
+                and (at is None or (e.get("ts", "") <= at and (not end or at <= end)))):  # fmt: skip
+            mp = os.path.realpath(e["mount"]["mount_point"])
+            to = {"path": mp, "sha256": ""}
+            trace = _trace_entry(case, e, line, seen, to)
+            return _extend(trace, _link("recorded-mount", {"path": real, "sha256": sha}, to,
+                                        e, line))  # fmt: skip
+    return _broken("mount-mismatch", f"{real} is under a recorded mount point, but not "
+                   "read from that mount's filesystem during its recorded life",
+                   "read it through the recorded mount, or record the mount it was "
+                   "read from")  # fmt: skip
+
+
 def trace_file(
-    case: Case, path, sha256: str | None = None, *, realpath=None, _seen=frozenset()
-) -> Trace:
+    case: Case, path, sha256: str | None = None, *, realpath=None, st_dev=None,
+    _at=None, _seen=frozenset(),
+) -> Trace:  # fmt: skip
     """The registered evidence a file came from: the file is a registered root,
-    or in a registered folder's manifest; or it's an earlier operation's
-    recorded output at this path with this SHA-256, traced on through that
-    operation's inputs. A hash at another path never links."""
+    or in a registered folder's manifest; or it was read through a recorded
+    mount of a registered image (its st_dev matching, inside the mount's life);
+    or it's an earlier operation's recorded output at this path with this
+    SHA-256, traced on through that operation's inputs. A hash at another path
+    never links."""
     real = realpath or os.path.realpath(path)
     sha = sha256 or ""
-    found = _registered(case, real, sha)
+    found = _registered(case, real, sha) or _mount_link(
+        case, real, sha, st_dev, _at, _seen
+    )
     if found:
         return found
     if sha.startswith("pending:"):
@@ -242,9 +278,12 @@ def _trace_entry(
         return _broken("no-inputs", f"{aid} recorded no inputs")
     shas = e.get("input_sha256s") or []
     reals = e.get("input_realpaths") or []
+    devs = e.get("input_st_devs") or []
     traces = [
         trace_file(case, f, shas[n] if n < len(shas) else "",
-                   realpath=reals[n] if n < len(reals) else None, _seen=seen | {aid})
+                   realpath=reals[n] if n < len(reals) else None,
+                   st_dev=devs[n] if n < len(devs) else None,
+                   _at=e.get("ts"), _seen=seen | {aid})
         for n, f in enumerate(files)
     ]  # fmt: skip
     rs = e.get("result_summary") if isinstance(e.get("result_summary"), dict) else {}

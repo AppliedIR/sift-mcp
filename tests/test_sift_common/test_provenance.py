@@ -266,3 +266,43 @@ def test_the_root_says_who_registered_it(c, extra, label):
     c.run("sift-tester-20261009-001", ["vol", "-f", mem], [mem], "PID 4\n")
     t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
     assert t.grade == "FULL" and t.root["label"] == label, t
+
+
+def _mounted(c, st_dev, **read):
+    a = c.file("evidence/imgA.raw", "image A")
+    c.register(a)
+    mp = str(c.d / "mnt")
+    sec = c.file("mnt/Windows/System32/winevt/Logs/Security.evtx", "evtx inside A")
+    c.mount("sift-tester-20261009-001", a, mp, 2049, ts="2026-10-09T01:00:00Z",
+            **read.pop("mount_extra", {}))  # fmt: skip
+    c.run("sift-tester-20261009-002", ["EvtxECmd", "-f", sec], [sec], "4624 alice\n",
+          input_realpaths=[sec], input_st_devs=[st_dev],
+          ts=read.pop("ts", "2026-10-09T02:00:00Z"))  # fmt: skip
+    return a, pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
+
+
+def test_a_read_through_a_recorded_mount_links_by_the_mount_to_the_image(c):
+    a, t = _mounted(c, 2049)
+    assert t.grade == "FULL" and t.root["path"] == a, t
+    assert [(link["method"], link["audit_id"]) for link in t.links] == [
+        ("registered-path", ""),
+        ("recorded-id", "sift-tester-20261009-001"),
+        ("recorded-mount", "sift-tester-20261009-001"),
+        ("recorded-id", "sift-tester-20261009-002"),
+    ]
+
+
+def test_another_filesystem_under_the_mount_point_breaks(c):
+    _, t = _mounted(c, 64768)
+    assert t.grade == "BROKEN" and t.break_["kind"] == "mount-mismatch", t
+
+
+def test_a_read_after_the_recorded_unmount_or_before_the_mount_breaks(c):
+    c.op("sift-mcp", "sift-tester-20261009-009", tool="run_command",
+         params={"command": ["umount"]}, ts="2026-10-09T01:30:00Z")  # fmt: skip
+    _, t = _mounted(c, 2049, mount_extra={"unmounted_by": "sift-tester-20261009-009"})
+    assert t.break_["kind"] == "mount-mismatch", t
+    _, early = _mounted(
+        TrailCase(c.d.parent / "case2"), 2049, ts="2026-10-09T00:30:00Z"
+    )
+    assert early.break_["kind"] == "mount-mismatch", early
