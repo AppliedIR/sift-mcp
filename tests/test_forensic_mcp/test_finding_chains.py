@@ -829,31 +829,105 @@ def test_a_quote_in_no_returned_document_is_cited_unverified(c):
     assert g(res, st)[0] == "CITED-UNVERIFIED", g(res, st)
 
 
-def test_a_quoted_enrichment_field_links_to_the_enrichment_not_the_evidence(c):
-    """Enrichment: a reference step (enrich_triage, {source, source_version}),
-    and the returned record names it in result_docs[].enrichment."""
-    z, s1, s2 = _ingested_samples(c)
+def _enrich(c, aid="opensearch-tester-20261009-050"):
+    """Enrichment: a reference step (enrich_triage, {source, source_version})."""
     c.op(
         "opensearch-mcp",
-        "opensearch-tester-20261009-050",
+        aid,
         tool="enrich_triage",
         params={"index": "case-x-*"},
         result_summary="started",
         reference={"source": "windows-triage", "source_version": "2026.10"},
     )
+
+
+def _triaged(op):
     doc = _doc(
         "d2",
         "opensearch-ingest-7-20261009-012",
         **{"process.name": "evil.exe", "triage.verdict": "SUSPICIOUS"},
     )
-    aid = _search(c, [doc], groups={"triage": "opensearch-tester-20261009-050"})
+    return [doc], {"triage": op}
+
+
+def test_a_quoted_enrichment_field_is_graded_by_its_records_evidence(c):
+    """The returned record names its enrichment step in result_docs[].enrichment:
+    the quote links to that step as reference data, and the record is followed
+    to its evidence as usual."""
+    z, s1, s2 = _ingested_samples(c)
+    _enrich(c)
+    docs, groups = _triaged("opensearch-tester-20261009-050")
+    aid = _search(c, docs, groups=groups)
     res, st = c.find([{"content": "SUSPICIOUS", "audit_id": aid}])
-    assert g(res, st)[:2] == ("BROKEN", "reference"), g(res, st)
-    last = st["artifacts"][0]["provenance_chain"][-1]
+    assert g(res, st) == ("FULL", None, z), g(res, st)
+    a = st["artifacts"][0]
+    last = a["provenance_chain"][-1]
+    assert last.get("method") == "reference", last
+    assert last.get("audit_id") == "opensearch-tester-20261009-050"
+    assert last.get("reference") == {
+        "source": "windows-triage",
+        "source_version": "2026.10",
+    }
+    assert sha(s2) in _chain(st) and sha(s1) not in _chain(st)
     assert (
-        last.get("method") == "reference"
-        and last.get("audit_id") == "opensearch-tester-20261009-050"
+        "reference: windows-triage, 2026.10, op opensearch-tester-20261009-050"
+        in a["provenance_reason"]
     )
+    assert st["provenance_grade"] == "FULL"
+
+
+def test_enrichment_whose_step_isnt_recorded_is_a_named_break(c):
+    z, s1, s2 = _ingested_samples(c)
+    docs, groups = _triaged("opensearch-tester-20261009-051")  # never logged
+    aid = _search(c, docs, groups=groups)
+    res, st = c.find([{"content": "SUSPICIOUS", "audit_id": aid}])
+    assert g(res, st)[:2] == ("BROKEN", "reference-not-recorded"), g(res, st)
+    assert "opensearch-tester-20261009-051" in st["artifacts"][0]["provenance_reason"]
+    assert st["provenance_grade"] == "BROKEN"
+
+
+def test_a_query_logged_before_0_6_4_is_labelled_so_not_cited_unverified(c):
+    """Before 0.6.4 a query recorded neither its results nor its response."""
+    _ingested_samples(c)
+    aid = "opensearch-tester-20261009-060"
+    c.op(
+        "opensearch-mcp",
+        aid,
+        tool="idx_search",
+        params={"query": "evil.exe", "index": "case-x-*", "limit": 10},
+        result_summary="1 total, 1 returned",
+    )
+    res, st = c.find([{"content": "evil.exe", "audit_id": aid}])
+    assert g(res, st)[:2] == ("BROKEN", "recorded-before-0.6.4"), g(res, st)
+    assert st["artifacts"][0]["provenance_reason"].startswith("recorded before 0.6.4")
+
+
+def test_a_query_with_recorded_results_but_no_saved_response_is_cited_unverified(c):
+    """It recorded what it returned, but not the response the quote is checked
+    against."""
+    _ingested_samples(c)
+    aid = "opensearch-tester-20261009-061"
+    c.op(
+        "opensearch-mcp",
+        aid,
+        tool="idx_search",
+        params={
+            "query": "evil.exe",
+            "result_docs": [
+                {
+                    "_index": "case-x-vol",
+                    "_id": "d2",
+                    "ingest_audit_id": "opensearch-ingest-7-20261009-012",
+                    "content_hash": "",
+                    "original_sha256": "",
+                }
+            ],
+            "result_ingests": ["opensearch-ingest-7-20261009-012"],
+        },
+        result_summary="1 total, 1 returned",
+    )
+    res, st = c.find([{"content": "evil.exe", "audit_id": aid}])
+    assert g(res, st)[:2] == ("CITED-UNVERIFIED", "cited-unverified"), g(res, st)
 
 
 def test_one_id_on_two_entries_is_ambiguous_never_the_last_copy(c):

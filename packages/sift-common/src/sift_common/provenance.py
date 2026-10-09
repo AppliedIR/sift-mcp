@@ -495,6 +495,11 @@ def _trace_entry(
 
 ARTIFACT_GRADES = ("CITED-UNVERIFIED", "BROKEN", "AMBIGUOUS", "DECLARED", "FULL")
 _ENRICHMENT = ("triage", "threat_intel")  # fields written by enrichment, not evidence
+# opensearch-mcp's queries; from 0.6.4 each records the ingests its results came from
+_QUERIES = frozenset({"idx_search", "idx_count", "idx_aggregate", "idx_get_event",
+                      "idx_timeline", "idx_field_values", "idx_case_summary",
+                      "idx_list_detections", "idx_host_inventory"})  # fmt: skip
+BEFORE_064 = "recorded before 0.6.4"
 
 
 def _norm(text: str) -> str:
@@ -541,15 +546,22 @@ def _flat(record, prefix: str = "") -> list[tuple[str, str]]:
     return [(prefix.rstrip("."), _norm(str(record)))]
 
 
-def _reference(case: Case, e: dict, line: bytes, to=None) -> Trace:
-    """Reference data (threat intel, a triage baseline, enrichment) links to the
-    operation that looked it up; it never stands in for evidence."""
+def _reference_link(e: dict, line: bytes) -> dict:
+    """The link to the operation that looked reference data up."""
     ref = e.get("reference") if isinstance(e.get("reference"), dict) else {}
     resp = ref.get("response") if isinstance(ref.get("response"), dict) else {}
     link = _link("reference", {"path": "", "sha256": ""},
-                 to or {"path": resp.get("path", ""), "sha256": resp.get("sha256", "")}, e, line)  # fmt: skip
+                 {"path": resp.get("path", ""), "sha256": resp.get("sha256", "")}, e, line)  # fmt: skip
     link["reference"] = {"source": ref.get("source", ""),
                          "source_version": ref.get("source_version", "")}  # fmt: skip
+    return link
+
+
+def _reference(case: Case, e: dict, line: bytes) -> Trace:
+    """Reference data (threat intel, a triage baseline) links to the operation
+    that looked it up; it never stands in for evidence."""
+    link = _reference_link(e, line)
+    ref = e.get("reference") if isinstance(e.get("reference"), dict) else {}
     why = f"reference data from {ref.get('source') or e.get('tool', '')}, not evidence"
     return Trace("BROKEN", links=[link], reason=why,
                  break_={"kind": "reference", "detail": why, "fix": ""})  # fmt: skip
@@ -565,8 +577,12 @@ def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
       returned record (a document query, then only the matched records are
       followed through their ingests) or in the response (a summary, then
       every ingest it counted is followed).
-    - Reference data (a lookup, a line found only in enrichment fields) links
-      to the operation that wrote it, graded BROKEN "reference".
+    - Reference data (a lookup) links to the operation that looked it up,
+      graded BROKEN "reference". A line found only in a record's enrichment
+      fields links to the operation that wrote them, and the record is
+      followed to its evidence as usual.
+    - A query logged before 0.6.4 recorded nothing to follow: BROKEN, "recorded
+      before 0.6.4".
     A quote the operation didn't produce is CITED-UNVERIFIED."""
     items = case.by_id.get(audit_id) or []
     if len(items) != 1:
@@ -582,6 +598,10 @@ def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
     params = e.get("params") if isinstance(e.get("params"), dict) else {}
     if "result_docs" in params or "result_ingests" in params or "response" in e:
         return _trace_query(case, e, line, params, quote)
+    if e.get("tool") in _QUERIES:  # neither results nor a response: an older query
+        return _broken("recorded-before-0.6.4", f"{audit_id} was {BEFORE_064}: it "
+                       "records no results to follow", "run the query again and cite that",
+                       reason=f"{BEFORE_064}: {audit_id} records no results to follow")  # fmt: skip
     texts = _run_texts(case, e)
     missing = [q for q in quote if not any(q in t for t in texts)]
     if missing:
@@ -619,7 +639,8 @@ def _match_back(
     case: Case, e: dict, line: bytes, docs: list[dict], quote: list[str]
 ) -> Trace:
     """Each quoted line in a returned record; only those records are followed.
-    A line found only in enrichment fields links to the enrichment."""
+    A line found only in a record's enrichment fields also links to the
+    operation that wrote them: reference data, annotated, never the grade."""
     try:
         returned = json.loads(Path(e["response"]["path"]).read_text(encoding="utf-8"))
     except (OSError, ValueError, KeyError, TypeError):
@@ -630,7 +651,7 @@ def _match_back(
         else [returned]
     )
     by_key = {(d.get("_index"), d.get("_id")): d for d in docs}
-    evidence, enrichment = {}, {}
+    followed, enrichment = {}, {}
     for q in quote:
         hits = [
             (r, f)
@@ -647,18 +668,32 @@ def _match_back(
             if d is None:
                 return _broken("no-results-recorded", f"{e['audit_id']} didn't record the "
                                f"record {r.get('_id')} it returned")  # fmt: skip
-            (evidence if ev else enrichment)[(d.get("_index"), d.get("_id"))] = d
-    if not evidence:  # only enrichment fields were quoted
-        ops = [op for d in enrichment.values()
-               for op in _enrichment_ops(d.get("enrichment"))]  # fmt: skip
-        found = [x for op in ops for x in case.by_id.get(op, [])]
-        if not found:
-            return _broken("reference", f"{e['audit_id']}: the quote is enrichment data "
-                           "whose operation isn't recorded")  # fmt: skip
-        return _reference(case, *found[0])
-    return _follow(
-        case, e, line, [(d.get("ingest_audit_id", ""), d) for d in evidence.values()]
+            followed[(d.get("_index"), d.get("_id"))] = d
+            if not ev:
+                enrichment[(d.get("_index"), d.get("_id"))] = d
+    t = _follow(
+        case, e, line, [(d.get("ingest_audit_id", ""), d) for d in followed.values()]
     )
+    ops = list(dict.fromkeys(op for d in enrichment.values()
+                             for op in _enrichment_ops(d.get("enrichment"))))  # fmt: skip
+    if enrichment and not ops:
+        return _broken("reference-not-recorded", f"{e['audit_id']}: the quote is "
+                       "enrichment data that names no operation", links=t.links)  # fmt: skip
+    notes = []
+    for op in ops:
+        found = case.by_id.get(op) or []
+        if not found:
+            return _broken("reference-not-recorded", f"{e['audit_id']}: the quote is "
+                           f"enrichment data from {op}, which isn't recorded",
+                           "enrich again, then query and cite that", links=t.links)  # fmt: skip
+        link = _reference_link(*found[0])
+        t.links.append(link)
+        ref = link["reference"]
+        notes.append(f"reference: {ref['source'] or found[0][0].get('tool', '')}, "
+                     f"{ref['source_version'] or 'version not recorded'}, op {op}")  # fmt: skip
+    if notes:
+        t.reason = "; ".join([t.reason, *notes] if t.reason else notes)
+    return t
 
 
 def _enrichment_ops(groups) -> list[str]:
