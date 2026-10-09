@@ -37,7 +37,7 @@ from pathlib import Path
 import anyio
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from vhir_cli import approval_auth, credentials, decide, keys, ledger
+from vhir_cli import approval_auth, approval_checks, credentials, decide, keys, ledger
 from vhir_cli.case_io import (
     case_id_of,
     compute_content_hash,
@@ -71,6 +71,9 @@ _STATUS_AFTER = {"approve": "APPROVED", "reject": "REJECTED"}
 # An IOC's value and type are what the examiner decides; its tags and
 # description are the only fields the portal edits
 _IOC_EDITABLE = frozenset({"tags", "description"})
+
+# A typed approval override reason: at most this many characters
+_REASON_CHARS = 2000
 
 _challenges: dict[str, dict] = {}
 
@@ -387,12 +390,29 @@ def _direct(entries, lists, examiner: str, now: str):
     return direct, refused
 
 
-def make_plan(case_dir, case_id, entries, lists, examiner, public, now, head) -> Plan:
+def make_plan(case_dir, case_id, entries, lists, examiner, public, now, head,
+              approval_override_reasons=None) -> Plan:  # fmt: skip
     """The bodies `entries` give against `lists` (which this edits in place,
-    as the commit applies them), chained from `head` and dated `now`."""
+    as the commit applies them), chained from `head` and dated `now`. Each
+    direct approval runs the approval checks; one that failed needs its
+    reason in `approval_override_reasons` ({item id: reason}), else it is
+    refused as CHECKS_FAILED with its checks."""
     from vhir_cli.ledger_verify import chain_references
 
     direct, refused = _direct(entries, lists, examiner, now)
+    if refused:
+        return Plan(refused=refused)
+    reasons = approval_override_reasons or {}
+    for d in direct:
+        if d.decision != "approve" or d.type not in ("finding", "timeline"):
+            continue
+        d.checks = approval_checks.check_item(case_dir, d.item, d.type)
+        if d.checks["result"] != "failed":
+            continue
+        if reasons.get(d.id):
+            d.approval_override_reason = reasons[d.id]
+        else:
+            refused.append({"id": d.id, "reason": "CHECKS_FAILED", "checks": d.checks})
     if refused:
         return Plan(refused=refused)
     for d in direct:  # the reloaded record with only this decision on it
@@ -406,7 +426,10 @@ def make_plan(case_dir, case_id, entries, lists, examiner, public, now, head) ->
     decisions = [
         {"item_id": d.id, "type": d.type, "decision": d.decision,
          "status_after": d.status_after, "coupled_from": d.coupled_from,
-         "content_snapshot": signed_text(item, d.type)}
+         "content_snapshot": signed_text(item, d.type),
+         **({"checks": d.checks} if d.checks is not None else {}),
+         **({"approval_override_reason": d.approval_override_reason}
+            if d.approval_override_reason is not None else {})}
         for d, item in zip(every, items, strict=True)
     ]  # fmt: skip
     refs, notes = chain_references(case_dir, case_id)
@@ -567,6 +590,10 @@ async def post_commit_plan(request: Request) -> JSONResponse:
     include = body.get("include_others") or []
     if not isinstance(include, list):
         return _error("BAD_REQUEST", "include_others must be a list of ids", 400)
+    reasons = body.get("approval_override_reasons") or {}
+    problem = _reasons_problem(reasons, entries)
+    if problem:
+        return _error("BAD_REQUEST", problem, 400)
     retries_left = 1
     retry_of = body.get("retry_of")
     if retry_of is not None:
@@ -588,7 +615,7 @@ async def post_commit_plan(request: Request) -> JSONResponse:
     try:
         out = await anyio.to_thread.run_sync(
             _plan_unlocked, case_dir, case_id, entries, set(map(str, include)),
-            examiner, public,
+            examiner, public, reasons,
         )  # fmt: skip
     except _Refused as r:
         return r.response
@@ -607,6 +634,7 @@ async def post_commit_plan(request: Request) -> JSONResponse:
         "examiner": examiner, "case_dir": str(case_dir), "case_id": case_id,
         "nonce": secrets.token_hex(32), "now": now, "head": head,
         "entries": copy.deepcopy(chosen), "texts": plan.texts(),
+        "approval_override_reasons": dict(reasons),
         "created": time.time(), "expires": time.time() + CHALLENGE_SECONDS,
         "login_ok": False, "used": False, "retries_left": retries_left,
     }  # fmt: skip
@@ -636,7 +664,26 @@ async def post_commit_plan(request: Request) -> JSONResponse:
     )
 
 
-def _plan_unlocked(case_dir, case_id, entries, include, examiner, public):
+def _reasons_problem(reasons, entries) -> str:
+    """Why an `approval_override_reasons` map is refused ("" when it isn't):
+    {entry id: a typed reason of at most 2000 characters}."""
+    if not isinstance(reasons, dict):
+        return "approval_override_reasons must be a map of item id to reason"
+    ids = {e.get("id") for e in entries if isinstance(e, dict)}
+    for item_id, reason in reasons.items():
+        if item_id not in ids:
+            return f"approval_override_reasons names {item_id!r}, which isn't an entry"
+        if not isinstance(reason, str) or not reason.strip():
+            return f"the approval override reason for {item_id} is empty"
+        if len(reason) > _REASON_CHARS:
+            return (
+                f"the approval override reason for {item_id} is longer than "
+                f"{_REASON_CHARS} characters"
+            )
+    return ""
+
+
+def _plan_unlocked(case_dir, case_id, entries, include, examiner, public, reasons=None):
     """The plan `/plan` returns: read without the lock (nothing is written;
     the commit plans again under it)."""
     stored = _stored_entries(case_dir)
@@ -653,13 +700,28 @@ def _plan_unlocked(case_dir, case_id, entries, include, examiner, public):
     lists, refusal = _read_lists(case_dir)
     if refusal:
         raise _Refused(refusal)
-    plan = make_plan(case_dir, case_id, chosen, lists, examiner, public, now, head)
+    plan = make_plan(case_dir, case_id, chosen, lists, examiner, public, now, head,
+                     approval_override_reasons=reasons)  # fmt: skip
     if plan.refused:
         raise _Refused(_plan_changed(plan.refused))
     return chosen, plan, now, head
 
 
+def _checks_failed(items: list[dict]) -> JSONResponse:
+    return _error(
+        "CHECKS_FAILED",
+        "An approval check failed for "
+        + ", ".join(i["id"] for i in items)
+        + ". Type why you approve each anyway, or close this dialog. Nothing was signed.",
+        409,
+        items=[{"id": i["id"], "checks": i["checks"]} for i in items],
+    )
+
+
 def _plan_changed(items: list[dict]) -> JSONResponse:
+    failed = [i for i in items if i.get("reason") == "CHECKS_FAILED"]
+    if failed:
+        return _checks_failed(failed)
     return _error(
         "PLAN_CHANGED",
         "What would be signed changed after you reviewed it: "
@@ -744,7 +806,8 @@ def _commit_locked(ch: dict, sigs: dict, examiner: str) -> dict:
         if refusal:
             raise _Refused(refusal)
         plan = make_plan(case_dir, case_id, ch["entries"], lists, examiner, public,
-                         ch["now"], ch["head"])  # fmt: skip
+                         ch["now"], ch["head"],
+                         approval_override_reasons=ch.get("approval_override_reasons"))  # fmt: skip
         if plan.refused:
             raise _Refused(_plan_changed(plan.refused))
         if plan.texts() != ch["texts"]:

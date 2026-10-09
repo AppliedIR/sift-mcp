@@ -176,6 +176,8 @@ body {
 .commit-field { margin-left: 8px; word-break: break-word; }
 .commit-field span { color: var(--text-muted); }
 .commit-field.derived { color: var(--text-muted); font-style: italic; }
+.commit-field.check-failed { color: var(--danger, #c0392b); }
+.commit-reason { width: 100%; margin: 4px 0 0 8px; font: inherit; }
 .commit-others-head { color: var(--text-secondary); margin-bottom: 4px; }
 .commit-other { margin-left: 8px; }
 
@@ -1935,12 +1937,17 @@ function advanceToNext() {
    A moved or busy ledger is planned again once, under the same frozen
    copy; anything other than the displayed set refuses. */
 var VHIR_SIGN = (function() {
-  // vhir case_io: the keys a view-1 signed snapshot leaves out (pinned to
-  // vhir by a test), and an IOC's four derived fields.
+  // vhir case_io: the keys a view-1 and a view-2 signed snapshot leave out
+  // (pinned to vhir by a test), and an IOC's four derived fields. View 2
+  // also signs the provenance fields and the record of edits.
   var VIEW1_EXCLUDES = ['approved_at', 'approved_by', 'content_hash', 'examiner_modifications',
     'examiner_notes', 'modified_at', 'provenance', 'provenance_warnings', 'reattested_at',
     'reattested_by', 'rejected_at', 'rejected_by', 'rejection_reason', 'source_evidence',
     'status', 'verification'];
+  var VIEW2_EXCLUDES = ['approved_at', 'approved_by', 'content_hash', 'examiner_notes',
+    'modified_at', 'reattested_at', 'reattested_by', 'rejected_at', 'rejected_by',
+    'rejection_reason', 'status', 'verification'];
+  var VIEWS = { 1: VIEW1_EXCLUDES, 2: VIEW2_EXCLUDES };
   var IOC_DERIVED = ['confidence', 'mitre_techniques', 'sightings', 'source_findings'];
   var EDITABLE = ['alternatives', 'confidence', 'confidence_justification', 'context',
     'description', 'interpretation', 'iocs', 'mitre_ids', 'observation', 'source', 'tags',
@@ -2001,23 +2008,28 @@ var VHIR_SIGN = (function() {
     });
   }
 
-  // The signed view of an item: what a snapshot of it must equal
-  function signedView(item, kind) {
-    var out = {};
+  // The signed view of an item in a view: what a snapshot of it must equal
+  function signedView(item, kind, view) {
+    var excluded = VIEWS[view || 1], out = {};
     Object.keys(item).forEach(function(k) {
-      if (VIEW1_EXCLUDES.indexOf(k) >= 0) return;
+      if (excluded.indexOf(k) >= 0) return;
       if (kind === 'ioc' && IOC_DERIVED.indexOf(k) >= 0) return;
       out[k] = item[k];
     });
     return out;
   }
-  // The item as an entry would have it signed: its edits applied
-  function afterEntry(item, entry, kind) {
+  // The item as an entry would have it signed: its edits applied, each
+  // recorded in examiner_modifications as the gateway records it
+  function afterEntry(item, entry, kind, examiner, now) {
     var out = JSON.parse(JSON.stringify(item));
     var mods = entry.modifications || {};
     var editable = kind === 'ioc' ? IOC_EDITABLE : EDITABLE;
     Object.keys(mods).forEach(function(f) {
-      if (editable.indexOf(f) >= 0) out[f] = mods[f].modified;
+      if (editable.indexOf(f) < 0) return;
+      out[f] = mods[f].modified;
+      out.examiner_modifications = out.examiner_modifications || {};
+      out.examiner_modifications[f] = { original: mods[f].original, modified: mods[f].modified,
+        modified_by: examiner, modified_at: now };
     });
     if (kind === 'ioc' && STATUS_AFTER[entry.action]) out.manually_reviewed = true;
     return out;
@@ -2031,9 +2043,11 @@ var VHIR_SIGN = (function() {
   }
 
   /* Each way the plan differs from what the dialog froze; empty when it is
-     exactly the selected entries and their cascades. */
-  async function checkPlan(frozen, plan, selected) {
+     exactly the selected entries and their cascades, and each override
+     reason is the one typed (`reasons`: item id -> reason). */
+  async function checkPlan(frozen, plan, selected, reasons) {
     var problems = [];
+    reasons = reasons || {};
     var byId = {};
     selected.forEach(function(e) { byId[e.id] = e; });
     var bodies = [];
@@ -2062,6 +2076,13 @@ var VHIR_SIGN = (function() {
       if (body.at !== plan.now) problems.push(id + ': not dated by this plan');
       if (body.mode !== 'portal') problems.push(id + ': not a portal decision');
       if (body.type !== kind) problems.push(id + ': the wrong item type');
+      if (!VIEWS[body.view]) { problems.push(id + ': signs view ' + body.view + ', which this page does not know'); continue; }
+      if ('approval_override_reason' in body && body.approval_override_reason !== reasons[id]) {
+        problems.push(id + ': its override reason is not the one typed');
+      }
+      if (body.coupled_from && ('checks' in body || 'approval_override_reason' in body)) {
+        problems.push(id + ': a cascade carrying approval checks');
+      }
       if (!item) { problems.push(id + ': not among the items this dialog loaded'); continue; }
       if (await sha256hex(body.content_snapshot) !== body.content_sha256) {
         problems.push(id + ': its snapshot does not match its hash');
@@ -2078,14 +2099,14 @@ var VHIR_SIGN = (function() {
         if (body.decision !== e.action || body.status_after !== after) {
           problems.push(id + ': planned as ' + body.decision + ' -> ' + body.status_after);
         }
-        expected = signedView(afterEntry(item, e, kind), kind);
+        expected = signedView(afterEntry(item, e, kind, frozen.examiner, plan.now), kind, body.view);
       } else {
         var src = decidedBy[body.coupled_from];
         if (!src) { problems.push(id + ': a cascade from ' + body.coupled_from + ', which is not decided here'); continue; }
         var follows = src.status_after === body.status_after &&
           body.decision === (body.status_after === 'APPROVED' ? 'approve' : 'reject');
         if (!follows) problems.push(id + ': does not follow ' + body.coupled_from);
-        expected = signedView(item, kind);
+        expected = signedView(item, kind, body.view);
       }
       var fields = differing(snap, expected);
       if (fields.length) problems.push(id + ': ' + fields.join(', ') + ' differ');
@@ -2203,7 +2224,7 @@ var VHIR_SIGN = (function() {
       frozen: structuredClone({ items: delta.items.map(stripLocal), findings: findings,
         timelineEvents: timelineEvents, iocs: iocsData, case_id: caseMeta.case_id,
         examiner: signing.examiner }),
-      include: {}, plan: null, shown: null, retried: false, busy: false
+      include: {}, plan: null, shown: null, retried: false, busy: false, reasons: {}
     };
     renderOthers();
     await planAndShow(null);
@@ -2253,13 +2274,19 @@ var VHIR_SIGN = (function() {
     if (!selected.length) { say('Nothing of yours is staged to sign.'); return false; }
     var body = { entries: selected, include_others: selected.filter(function(e) { return !own(e); }).map(function(e) { return e.id; }) };
     if (retryOf) body.retry_of = retryOf;
+    if (Object.keys(s.reasons).length) body.approval_override_reasons = s.reasons;
     var r = await signFetch('/api/commit/plan', body);
     if (state !== s) return false;
+    if (r.status === 409 && r.data.code === 'CHECKS_FAILED' && !retryOf) {
+      renderFailed(r.data.items || []);
+      say('CHECKS_FAILED: ' + (r.data.error || 'An approval check failed.'));
+      return false;
+    }
     if (r.status !== 200) {
       say((r.data.code ? r.data.code + ': ' : '') + (r.data.error || ('Planning failed (' + r.status + ')')));
       return false;
     }
-    var problems = await checkPlan(s.frozen, r.data, selected);
+    var problems = await checkPlan(s.frozen, r.data, selected, s.reasons);
     if (state !== s) return false;
     if (problems.length) {
       say('PLAN_CHANGED: ' + PLAN_CHANGED + ' (' + problems.join('; ') + ')');
@@ -2287,6 +2314,73 @@ var VHIR_SIGN = (function() {
     return true;
   }
 
+  // A finding's roots, its grade (with its reason when it isn't FULL) and its
+  // failed checks, as display lines; `item` is the signed snapshot or the
+  // frozen item
+  function provenanceLines(item, checks) {
+    var lines = [], seen = {};
+    if (checks && checks.detail) lines.push(['', 'checks: not applicable: ' + checks.detail]);
+    if (item && 'title' in item && !item.imported_from) {
+      if (item.provenance_schema !== 2) {
+        lines.push(['', 'provenance: recorded before 0.6.4']);
+      } else {
+        (item.artifacts || []).forEach(function(a) {
+          var r = a && a.provenance_root;
+          if (!r || !r.path || seen[r.path + '|' + r.sha256]) return;
+          seen[r.path + '|' + r.sha256] = 1;
+          lines.push(['', 'root: ' + r.path + ' ' + String(r.sha256 || '').slice(0, 16) + '… (' + (r.label || '') + ')']);
+        });
+        if (item.provenance_grade) lines.push(['', 'provenance: ' + item.provenance_grade]);
+        (item.artifacts || []).forEach(function(a) {
+          if (a && a.provenance_grade && a.provenance_grade !== 'FULL') {
+            lines.push(['', '  ' + a.provenance_grade + ': ' + (a.provenance_reason || '')]);
+          }
+        });
+      }
+    }
+    ((checks && checks.items) || []).forEach(function(c) {
+      if (c.status === 'failed') {
+        lines.push(['check-failed', 'check failed: ' + (c.code || c.check) + ' ' + c.subject + ': ' + c.detail]);
+      }
+    });
+    return lines;
+  }
+  function linesHtml(lines) {
+    return lines.map(function(l) {
+      return '<div class="commit-field ' + l[0] + '">' + escapeHtml(l[1]) + '</div>';
+    }).join('');
+  }
+
+  // A plan refused because a check failed: each failed item with its
+  // provenance and checks, and a box for the reason to approve it anyway
+  function renderFailed(items) {
+    var s = state, html = '';
+    items.forEach(function(f) {
+      var item = findIn(s.frozen, kindOf(f.id), f.id);
+      html += '<div class="commit-item"><div><strong>' + escapeHtml(f.id) + '</strong> — approve</div>' +
+        linesHtml(provenanceLines(item, f.checks)) +
+        '<label class="commit-field">Why approve it anyway (required; signed with the approval):' +
+        '<textarea class="commit-reason" maxlength="2000" data-reason="' + escapeHtml(f.id) + '">' +
+        escapeHtml(s.reasons[f.id] || '') + '</textarea></label></div>';
+    });
+    html += '<button type="button" id="commitReplan">Plan again with these reasons</button>';
+    el('commitList').innerHTML = html;
+    el('commitSummary').textContent = 'An approval check failed. Nothing can be signed until you ' +
+      'type a reason for each failed item, or close this dialog.';
+    el('commitReplan').onclick = function() {
+      if (state !== s || s.busy) return;
+      var typed = {}, missing = [];
+      el('commitList').querySelectorAll('textarea[data-reason]').forEach(function(t) {
+        var v = t.value.trim();
+        if (v) typed[t.dataset.reason] = v; else missing.push(t.dataset.reason);
+      });
+      if (missing.length) { say('Type a reason for ' + missing.join(', ') + '.'); return; }
+      s.reasons = typed;
+      s.shown = null;
+      return planAndShow(null);
+    };
+  }
+
   // 3. display every body, direct and cascaded, from what will be signed
   function render(plan) {
     var all = el('commitShowAll').checked;
@@ -2297,6 +2391,12 @@ var VHIR_SIGN = (function() {
       var b = JSON.parse(pb.body), snap = JSON.parse(b.content_snapshot), kind = b.type;
       html += '<div class="commit-item"><div><strong>' + escapeHtml(b.item_id) + '</strong> — ' +
         escapeHtml(b.decision) + (b.coupled_from ? ' (cascade from ' + escapeHtml(b.coupled_from) + ')' : '') + '</div>';
+      if (!b.coupled_from && b.checks) {
+        html += linesHtml(provenanceLines(snap, b.checks));
+        if (b.approval_override_reason) {
+          html += linesHtml([['check-failed', 'approved with override: ' + b.approval_override_reason]]);
+        }
+      }
       var fields = all ? Object.keys(snap).sort() : brief[kind].filter(function(k) { return k in snap; });
       fields.forEach(function(k) {
         var v = snap[k];
@@ -2437,7 +2537,8 @@ var VHIR_SIGN = (function() {
     _test: { checkPlan: checkPlan, shownOf: shownOf, deriveAuth: deriveAuth, deriveKek: deriveKek,
       loginResponse: loginResponse, unwrapKey: unwrapKey, signBodies: signBodies,
       signedView: signedView, afterEntry: afterEntry, fingerprint: fingerprint,
-      VIEW1_EXCLUDES: VIEW1_EXCLUDES, IOC_DERIVED: IOC_DERIVED, EDITABLE: EDITABLE,
+      VIEW1_EXCLUDES: VIEW1_EXCLUDES, VIEW2_EXCLUDES: VIEW2_EXCLUDES, IOC_DERIVED: IOC_DERIVED,
+      EDITABLE: EDITABLE, provenanceLines: provenanceLines,
       IOC_EDITABLE: IOC_EDITABLE } };
 })();
 

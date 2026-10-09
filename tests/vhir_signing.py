@@ -23,6 +23,9 @@ _FILES = (
     ("iocs.json", "ioc"),
 )
 _KEYS: dict[tuple[str, str], Ed25519PrivateKey] = {}
+# What vhir's approving paths sign for an item that records no chain (as
+# every test item here): the approval checks don't apply
+NOT_CHECKED = {"result": "not-applicable", "items": []}
 
 
 def _rewrite(path: Path, items: list) -> None:
@@ -52,7 +55,8 @@ def sign_approved(case_dir: Path, examiner: str = "tester") -> Ed25519PrivateKey
         decisions = [
             {"item_id": i["id"], "type": kind, "decision": "approve",
              "status_after": "APPROVED", "coupled_from": None,
-             "content_snapshot": signed_text(i, kind)}
+             "content_snapshot": signed_text(i, kind),
+             **({"checks": NOT_CHECKED} if kind != "ioc" else {})}
             for i in approved
         ]  # fmt: skip
         if not decisions:
