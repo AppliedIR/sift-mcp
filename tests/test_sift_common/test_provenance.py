@@ -476,3 +476,39 @@ def test_a_pending_output_whose_job_failed_breaks_with_its_reason(c):
     t = _read(c, s2)
     assert (t.grade, t.break_["kind"]) == ("BROKEN", "hash-failed"), t.as_dict()
     assert "EIO" in t.reason
+
+
+# --- only an earlier operation can be a file's origin ---------------------------
+
+
+def test_an_operation_after_the_read_is_never_the_files_origin(c):
+    """Read at 01:00 a file made outside the tools; at 02:00 an op wrote the same
+    bytes to the same path. The read's file has no recorded origin."""
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    s2 = c.file("extractions/x1/sample2.raw", "sample two")
+    c.run("sift-tester-20261009-002", ["vol", "-f", s2, "windows.pslist"], [s2],
+          "PID 4\n", ts="2026-10-09T01:00:00Z")  # fmt: skip
+    c.op("sift-mcp", "sift-tester-20261009-003", tool="run_command",
+         params={"command": ["7z", "x", z], "purpose": "p"}, ts="2026-10-09T02:00:00Z",
+         input_files=[z], input_sha256s=[""], input_detection_method="parsed",
+         result_summary={"exit_code": 0, "output_files": [s2],
+                         "output_sha256s": [sha(s2)]})  # fmt: skip
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
+    assert (t.grade, t.break_["kind"]) == ("BROKEN", "no-recorded-origin"), t.as_dict()
+
+
+def test_a_later_identical_write_leaves_the_earlier_origin_alone(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    _s1, s2 = c.extract("sift-tester-20261009-001", z)  # 00:00
+    c.run("sift-tester-20261009-002", ["vol", "-f", s2, "windows.pslist"], [s2],
+          "PID 4\n", ts="2026-10-09T01:00:00Z")  # fmt: skip
+    c.op("sift-mcp", "sift-tester-20261009-003", tool="run_command",  # same path, bytes
+         params={"command": ["7z", "x", z], "purpose": "p"}, ts="2026-10-09T02:00:00Z",
+         input_files=[z], input_sha256s=[""], input_detection_method="parsed",
+         result_summary={"exit_code": 0, "output_files": [s2],
+                         "output_sha256s": [sha(s2)]})  # fmt: skip
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
+    assert t.grade == "FULL", t.as_dict()
+    assert "sift-tester-20261009-003" not in {l["audit_id"] for l in t.links}

@@ -247,7 +247,8 @@ def trace_file(
     or in a registered folder's manifest; or it was read through a recorded
     mount of a registered image (its st_dev matching, inside the mount's life);
     or it's an earlier operation's recorded output at this path with this
-    SHA-256, traced on through that operation's inputs. A hash at another path
+    SHA-256, traced on through that operation's inputs ("earlier": before the
+    reading entry, in time, then in the trail's order). A hash at another path
     never links.
 
     An ingest accepts an input whose trace is FULL, and refuses any other with
@@ -270,6 +271,8 @@ def trace_file(
     producers, waiting = [], None
     for items in case.by_id.values():
         for e, line in items:
+            if _at is not None and _when(case, e) >= _at:
+                continue  # only an earlier operation can be its origin
             for out, out_sha in _outputs(case, e):
                 if os.path.realpath(out) != real:
                     continue
