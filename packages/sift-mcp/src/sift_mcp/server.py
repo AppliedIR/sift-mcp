@@ -223,6 +223,8 @@ def create_server() -> FastMCP:
                 timeout=timeout or None,
                 save_output=save_output,
                 preview_lines=min(preview_lines, 200) if preview_lines else 0,
+                # minted once the command ends, in the case its entry goes to
+                op_id=audit._next_audit_id,
             )
             elapsed = time.monotonic() - start
 
@@ -245,9 +247,11 @@ def create_server() -> FastMCP:
                 resp_format = exec_result.get("_output_format", "text")
 
             # Written first, in one step: the id is minted for the case the entry
-            # goes to, and the response carries that id
+            # goes to (when the output was kept, just before, naming its folder),
+            # and the response carries that id
             logged_id = audit.log(
                 tool="run_command",
+                audit_id=exec_result.get("op_id"),
                 params={"command": command, "purpose": purpose},
                 result_summary={
                     "exit_code": exec_result["exit_code"],

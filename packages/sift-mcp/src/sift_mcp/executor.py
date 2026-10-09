@@ -11,6 +11,7 @@ import os
 import subprocess
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,7 @@ def execute(
     cwd: str | None = None,
     save_output: bool = False,
     save_dir: str | None = None,
+    op_id=None,
 ) -> dict[str, Any]:
     """Execute a command as a subprocess (shell=False).
 
@@ -53,6 +55,9 @@ def execute(
         cwd: Working directory.
         save_output: If True, write stdout/stderr to files with SHA-256 hashes.
         save_dir: Directory for saved output (defaults to cwd/extracted/).
+        op_id: Called when the output is kept in a case, after the command ends:
+            the operation's id, which names its folder (`extractions/<id>/`) and
+            comes back as `op_id`.
 
     Returns:
         Dict with exit_code, stdout, stderr, elapsed_seconds, and optional saved file info.
@@ -143,13 +148,11 @@ def execute(
         case_dir = resolve_case_dir()
 
         if case_dir and (stdout_raw or stderr_raw):
-            _save_output(
-                cmd_list,
-                stdout_raw,
-                stderr_raw,
-                save_dir or os.path.join(case_dir, "extractions"),
-                response,
-            )
+            folder = os.path.join(case_dir, "extractions")
+            if op_id and not save_dir:  # each operation's output in its own folder
+                response["op_id"] = op_id()
+                folder = os.path.join(folder, response["op_id"])
+            _save_output(cmd_list, stdout_raw, stderr_raw, save_dir or folder, response)
         elif save_output and (stdout_raw or stderr_raw):
             _save_output(
                 cmd_list,
@@ -233,12 +236,14 @@ def _save_output(
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     safe_cmd = "".join(c if c.isalnum() or c in "-_" else "_" for c in cmd_list[0])[:40]
-    prefix = f"{ts}_{safe_cmd}"
+    # unique, and created exclusively: a saved output is never replaced, so its
+    # recorded hash always describes it
+    prefix = f"{ts}_{safe_cmd}_{uuid.uuid4().hex[:8]}"
 
     if stdout:
         try:
             stdout_path = out_dir / f"{prefix}_stdout.txt"
-            with open(stdout_path, "wb") as f:
+            with open(stdout_path, "xb") as f:
                 f.write(stdout)
                 f.flush()
                 os.fsync(f.fileno())
@@ -250,7 +255,7 @@ def _save_output(
     if stderr:
         try:
             stderr_path = out_dir / f"{prefix}_stderr.txt"
-            with open(stderr_path, "wb") as f:
+            with open(stderr_path, "xb") as f:
                 f.write(stderr)
                 f.flush()
                 os.fsync(f.fileno())

@@ -133,3 +133,76 @@ def test_run_command_records_the_scope_of_its_output_hash(tmp_path, monkeypatch)
     s = s["result_summary"]
     assert s["output_sha256_scope"] == "prefix" and r["output_sha256_scope"] == "prefix"
     assert s["output_sha256"] == hashlib.sha256(b"x" * s["stdout_bytes"]).hexdigest()
+
+
+class _Frozen:
+    """One UTC second for every save."""
+
+    @staticmethod
+    def now(tz=None):
+        from datetime import datetime as real
+
+        return real(2026, 10, 9, 12, 0, 0, tzinfo=tz)
+
+
+def _case(tmp_path, monkeypatch):
+    case = tmp_path / "case"
+    case.mkdir()
+    (case / "CASE.yaml").write_text("case_id: case\nstatus: open\n")
+    monkeypatch.setenv("VHIR_CASE_DIR", str(case))
+    monkeypatch.delenv("SIFT_MAX_OUTPUT", raising=False)
+    monkeypatch.setattr("sift_mcp.executor.datetime", _Frozen)
+    return case
+
+
+def test_two_runs_in_one_second_keep_two_files_under_their_own_ids(
+    tmp_path, monkeypatch
+):
+    case = _case(tmp_path, monkeypatch)
+    ids = iter(["sift-examiner1-20261009-001", "sift-examiner1-20261009-002"])
+    runs = [
+        execute(_writes(out), op_id=lambda: next(ids)) for out in (b"one\n", b"two\n")
+    ]
+    for run, out, n in zip(runs, (b"one\n", b"two\n"), ("001", "002"), strict=True):
+        saved = Path(run["output_file"])
+        assert saved.parent == case / "extractions" / f"sift-examiner1-20261009-{n}"
+        assert saved.read_bytes() == out and run["op_id"].endswith(n)
+        assert run["output_sha256"] == hashlib.sha256(out).hexdigest()
+
+
+def test_two_saves_to_one_folder_in_one_second_dont_overwrite(no_case, monkeypatch):
+    monkeypatch.setattr("sift_mcp.executor.datetime", _Frozen)
+    out = no_case / "out"
+    a = execute(_writes(b"one\n"), save_output=True, save_dir=str(out))
+    b = execute(_writes(b"two\n"), save_output=True, save_dir=str(out))
+    assert a["output_file"] != b["output_file"]
+    assert Path(a["output_file"]).read_bytes() == b"one\n"
+    assert Path(b["output_file"]).read_bytes() == b"two\n"
+
+
+def test_run_command_saves_each_output_under_its_audit_id(tmp_path, monkeypatch):
+    case = _case(tmp_path, monkeypatch)
+    home = tmp_path / "home"
+    (home / ".vhir").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("VHIR_EXAMINER", "examiner1")
+    for var in ("VHIR_AUDIT_DIR", "VHIR_ACTIVE_CASE"):
+        monkeypatch.delenv(var, raising=False)
+    from sift_mcp.server import create_server
+
+    server = create_server()
+    for out in ("one", "two"):
+        script = tmp_path / f"{out}.py"
+        script.write_text(f"print({out!r})\n")
+        asyncio.run(server.call_tool(
+            "run_command", {"command": [sys.executable, str(script)], "purpose": "t"}))  # fmt: skip
+    entries = [
+        json.loads(x)
+        for x in (case / "audit" / "sift-mcp.jsonl").read_text().splitlines()
+    ]
+    assert len({e["audit_id"] for e in entries}) == 2
+    for e, out in zip(entries, (b"one\n", b"two\n"), strict=True):
+        saved = Path(e["result_summary"]["output_file"])
+        assert saved.parent == case / "extractions" / e["audit_id"]
+        assert saved.read_bytes() == out
+        assert e["result_summary"]["output_sha256"] == hashlib.sha256(out).hexdigest()

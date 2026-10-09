@@ -48,6 +48,7 @@ def run_command(
     save_dir: str | None = None,
     cwd: str | None = None,
     preview_lines: int = 0,
+    op_id=None,
 ) -> dict:
     """Execute a command if its binary is not on the denylist.
 
@@ -131,6 +132,7 @@ def run_command(
         cwd=cwd,
         save_output=save_output,
         save_dir=save_dir,
+        op_id=op_id,
     )
 
     # Parse output based on catalog format when output exceeds byte budget

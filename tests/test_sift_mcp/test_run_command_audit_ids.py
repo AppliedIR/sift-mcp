@@ -186,5 +186,8 @@ def test_saved_output_and_its_audit_stay_in_the_same_case(tmp_path, home, monkey
     _point(home, b)
     monkeypatch.setenv("VHIR_CASE_DIR", str(a))
     r = _run(tmp_path, "import sys; sys.stdout.write('line\\n' * 3000)\n")
-    assert Path(r["full_output_path"]).parents[1] == a
+    saved = Path(r["full_output_path"])
+    assert (
+        saved.parents[2] == a and saved.parent.name == r["audit_id"]
+    )  # its op's folder
     assert len(_entries(a)) == 1 and _entries(b) == []
