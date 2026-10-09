@@ -196,7 +196,8 @@ def _one(path: str) -> dict:
         try:  # the file as it was, so the failure is taken only while it's unchanged
             st = os.stat(path)
             row.update(size=st.st_size, st_dev=st.st_dev, st_ino=st.st_ino,
-                       mtime_ns=st.st_mtime_ns, ctime_ns=st.st_ctime_ns)  # fmt: skip
+                       mtime_ns=st.st_mtime_ns, ctime_ns=st.st_ctime_ns,
+                       st_mode=st.st_mode)  # fmt: skip
         except OSError:
             pass
         return row
@@ -273,8 +274,9 @@ def completed_hashes(case_dir, paths) -> dict[str, dict]:
     `{path: {"sha256": …} or {"error": …}}`, taken only while a file is
     unchanged: the same device, inode, size, mtime and ctime as then (ctime
     can't be set back, so a rewrite with its mtime set back isn't taken; a
-    file fixed after a failure has a new ctime, so it's hashed again). A
-    failure is taken once, by the call that follows its job, which stops the
+    file fixed after a failure has a new ctime, so it's hashed again; a
+    failure also needs the same permissions, as a coarse ctime may not tick
+    when they're fixed). A failure is taken once, by the call that follows its job, which stops the
     automatic retry (see `take_failures`); after that it's left out, so the
     next request hashes the file again. Files with nothing recorded are left
     out."""
@@ -291,7 +293,7 @@ def completed_hashes(case_dir, paths) -> dict[str, dict]:
             continue
         if row.get("sha256"):
             found[path] = {"sha256": row["sha256"]}
-        elif row.get("error"):
+        elif row.get("error") and row.get("st_mode") == st.st_mode:
             with _jobs_lock:
                 if (str(row.get("job_id", "")), os.path.realpath(path)) in _taken:
                     continue

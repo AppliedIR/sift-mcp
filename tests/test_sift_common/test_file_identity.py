@@ -312,6 +312,7 @@ def test_a_rewrite_backdated_to_the_same_size_and_mtime_is_not_taken(case):
 def test_a_failed_background_hash_is_taken_until_the_file_changes(case, monkeypatch):
     f = case / "locked.sys"
     f.write_bytes(b"L" * 400)
+    os.chmod(f, 0o644)  # whatever the umask, the fix below changes the mode
 
     def unreadable(path):
         raise PermissionError("Permission denied")
@@ -321,7 +322,37 @@ def test_a_failed_background_hash_is_taken_until_the_file_changes(case, monkeypa
     _closed(case, b.job_id)
     got = fi.completed_hashes(case, [f])
     assert "Permission denied" in got[str(f)]["error"] and "sha256" not in got[str(f)]
-    os.chmod(f, 0o600)  # fixing it changes its ctime: a new request hashes it again
+    os.chmod(f, 0o600)  # fixing it changes its mode (and ctime): hashed again
+    assert fi.completed_hashes(case, [f]) == {}
+
+
+def test_a_recorded_failure_no_longer_applies_once_the_permissions_change(
+    case, monkeypatch
+):
+    """Permissions fixed within one ctime tick (a coarse filesystem clock):
+    every other stat field is as recorded, and the failure is still dropped."""
+    f = case / "locked.sys"
+    f.write_bytes(b"L" * 400)
+    os.chmod(f, 0o000)
+
+    def unreadable(path):
+        raise PermissionError("Permission denied")
+
+    monkeypatch.setattr(fi, "hash_file", unreadable)
+    b = fi.hash_files_for_call([f], case_dir=case, requested_by="t", inline_limit=10)
+    _closed(case, b.job_id)
+    assert "Permission denied" in fi.completed_hashes(case, [f])[str(f)]["error"]
+    real, then = os.stat, os.stat(f)
+
+    class Fixed:  # the recorded stat, with only the mode changed
+        def __getattr__(self, name):
+            return 0o100600 if name == "st_mode" else getattr(then, name)
+
+    monkeypatch.setattr(
+        fi.os,
+        "stat",
+        lambda p, *a, **k: Fixed() if str(p) == str(f) else real(p, *a, **k),
+    )
     assert fi.completed_hashes(case, [f]) == {}
 
 
