@@ -153,3 +153,19 @@ def test_a_mount_that_failed_records_no_mount(case, tmp_path):
 def test_a_command_that_mounts_nothing_has_no_mount_record(case):
     e = run(case, ["ls", str(case)])
     assert "mount" not in e and "umount" not in e
+
+
+def test_an_umount_that_failed_records_no_umount(case, tmp_path):
+    img = _image(case)
+    mnt = case / "mnt"
+    mnt.mkdir()
+    run(case, ["mount", str(img), str(mnt)])
+    (tmp_path / "bin" / "umount").write_text(FAIL)
+    asyncio.run(
+        create_server().call_tool(
+            "run_command", {"command": ["umount", str(mnt)], "purpose": "t"}
+        )
+    )
+    lines = (case / "audit" / "sift-mcp.jsonl").read_text().splitlines()
+    e = json.loads(lines[-1])
+    assert e["result_summary"]["exit_code"] == 32 and "umount" not in e

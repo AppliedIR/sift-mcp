@@ -128,3 +128,31 @@ def test_a_backend_keeps_the_version_it_reports_for_itself():
     init = SimpleNamespace(serverInfo=SimpleNamespace(name="x", version="2.0.1"))
     assert _version_of(init) == "2.0.1"
     assert _version_of(SimpleNamespace()) == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["stdio", "http"])
+async def test_a_started_backend_keeps_the_version_it_reported(kind, monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from sift_gateway.backends import http_backend, stdio_backend
+
+    session = MagicMock()
+    session.initialize = AsyncMock(
+        return_value=SimpleNamespace(
+            instructions="i", serverInfo=SimpleNamespace(name="s", version="3.1.0")
+        )
+    )
+    session.list_tools = AsyncMock(return_value=SimpleNamespace(tools=[]))
+    stack = MagicMock()
+    transport = (object(), object()) if kind == "stdio" else (object(),) * 3
+    stack.enter_async_context = AsyncMock(side_effect=[transport, session])
+    stack.aclose = AsyncMock()
+    if kind == "stdio":
+        monkeypatch.setattr(stdio_backend, "AsyncExitStack", lambda: stack)
+        backend = stdio_backend.StdioMCPBackend("triage", {"command": "true"})
+    else:
+        monkeypatch.setattr(http_backend, "AsyncExitStack", lambda: stack)
+        backend = http_backend.HttpMCPBackend("cti", {"url": "http://127.0.0.1:9/mcp"})
+    await backend.start()
+    assert backend.server_version == "3.1.0"
