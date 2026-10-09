@@ -273,8 +273,8 @@ This matters because LibreChat supports MCP tools only — not resources.
 Without `--deferred-tools`, the LLM cannot access methodology, validation
 schemas, or playbooks.
 
-Verify with `vhir service status` — forensic-mcp should show 26 tools
-(12 base + 14 deferred).
+Verify with `vhir service status` — forensic-mcp should show 23 tools
+(9 base + 14 deferred).
 
 ## Creating a Valhuntir Agent (Step-by-Step)
 

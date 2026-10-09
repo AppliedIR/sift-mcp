@@ -54,7 +54,7 @@ These are structural facts. If a diagram, README, or plan contradicts any of the
 | **forensic-rag-mcp** | Semantic search across Sigma rules, MITRE ATT&CK, Atomic Red Team, Splunk, KAPE, Velociraptor, LOLBAS, GTFOBins. |
 | **windows-triage-mcp** | Offline Windows baseline validation. Checks files, processes, services, scheduled tasks, registry, DLLs, pipes against known-good databases. |
 | **threatintel-mcp** | Read-only threat intelligence. `lookup_ioc` returns each configured platform's own records (OpenCTI, MISP) with MATCH, NO_MATCH or UNAVAILABLE, not a verdict; the other tools search OpenCTI for threat actors, malware and MITRE techniques. 8 tools. Served at `/mcp/opencti-mcp` too. |
-| **opensearch-mcp** | Evidence indexing and querying at scale. 15 parsers (evtx, EZ tools, Volatility, JSON, CSV, W3C, etc.), 17 MCP tools (search, aggregate, timeline, enrichment). Deterministic content-based dedup, full provenance. Triage baseline and threat intel enrichment run as programmatic post-ingest passes. Optional — not part of the sift-mcp monorepo ([separate repo](https://github.com/AppliedIR/opensearch-mcp)). |
+| **opensearch-mcp** | Evidence indexing and querying at scale. 15 parsers (evtx, EZ tools, Volatility, JSON, CSV, W3C, etc.), 21 MCP tools (search, aggregate, timeline, enrichment, host inventory). Deterministic content-based dedup, full provenance. Triage baseline and threat intel enrichment run as programmatic post-ingest passes. Optional — not part of the sift-mcp monorepo ([separate repo](https://github.com/AppliedIR/opensearch-mcp)). |
 | **wintools-mcp** | Catalog-gated forensic tool execution on Windows. Zimmerman suite, Hayabusa. FK-enriched response envelopes. Denylist blocks dangerous binaries. 7 tools, 31 catalog entries. |
 | **vhir CLI** | Human-only actions: approve/reject findings, review case status, manage evidence, generate reports, audit trail queries, case lifecycle (init/close/activate/migrate), execute forensic commands with audit trail, configure examiner identity. Not callable by AI. |
 | **sift-common** | Shared internal package. Canonical AuditWriter, operational logging (oplog), CSV/JSON/text output parsers. Used by all SIFT MCPs. |
@@ -240,7 +240,7 @@ Generated `.mcp.json` example:
 | Repo | GitHub | Purpose |
 |------|--------|---------|
 | [sift-mcp](https://github.com/AppliedIR/sift-mcp) | AppliedIR/sift-mcp | SIFT monorepo: 11 packages (forensic-mcp, case-mcp, report-mcp, sift-mcp, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti, sift-common, case-dashboard), SIFT installer, platform docs |
-| [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp) | AppliedIR/opensearch-mcp | Evidence indexing + querying via OpenSearch (17 tools, 15 parsers). Optional. |
+| [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp) | AppliedIR/opensearch-mcp | Evidence indexing + querying via OpenSearch (21 tools, 15 parsers). Optional. |
 | [wintools-mcp](https://github.com/AppliedIR/wintools-mcp) | AppliedIR/wintools-mcp | Windows tool execution MCP + Windows installer |
 | [Valhuntir](https://github.com/AppliedIR/valhuntir) | AppliedIR/valhuntir | CLI + this architecture doc |
 

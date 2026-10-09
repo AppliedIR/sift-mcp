@@ -4,7 +4,7 @@
 [![CI](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/AppliedIR/sift-mcp/blob/main/LICENSE)
 
-Monorepo for all SIFT-side Valhuntir components. 11 packages: forensic-mcp (23 tools), case-mcp (15 tools), report-mcp (6 tools), sift-mcp (5 tools), sift-gateway, forensic-knowledge, forensic-rag (3 tools), windows-triage (13 tools), opencti (8 tools), sift-common, and case-dashboard. With optional [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp) (17 tools) for evidence indexing and querying at scale. Part of the [Valhuntir](https://github.com/AppliedIR/Valhuntir) platform.
+Monorepo for all SIFT-side Valhuntir components. 11 packages: forensic-mcp (23 tools), case-mcp (15 tools), report-mcp (6 tools), sift-mcp (5 tools), sift-gateway, forensic-knowledge, forensic-rag (3 tools), windows-triage (13 tools), opencti (8 tools), sift-common, and case-dashboard. With optional [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp) (21 tools) for evidence indexing and querying at scale. Part of the [Valhuntir](https://github.com/AppliedIR/Valhuntir) platform.
 
 **[Documentation](https://appliedir.github.io/Valhuntir/)** ·
 [Getting Started](https://appliedir.github.io/Valhuntir/getting-started/) ·
@@ -23,13 +23,13 @@ Valhuntir is a forensic investigation platform that connects AI to structured MC
 
 The platform is **LLM client agnostic** — connect any locally installed MCP-compatible client through the gateway. Supported clients include Claude Code and Codex (agents with a shell, set up with Valhuntir's controls), self-hosted LibreChat and Open WebUI (MCP-only, with a locked configuration), and any client that supports Streamable HTTP transport with Bearer token authentication. The client must run on your machine or local network — cloud-hosted services cannot reach internal gateway addresses. Forensic discipline is provided structurally at the gateway and MCP layer, not through client-specific prompt engineering, so the same rigor applies regardless of which AI model or client drives the investigation.
 
-With [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp), evidence is parsed programmatically and indexed into OpenSearch, giving the LLM 17 purpose-built query tools instead of consuming billions of tokens reading raw artifacts. A 30-host triage collection with 50 million records becomes instantly searchable. Triage baseline and threat intelligence enrichment run programmatically — zero LLM tokens consumed. OpenSearch integration is optional but recommended for investigations at scale.
+With [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp), evidence is parsed programmatically and indexed into OpenSearch, giving the LLM 21 purpose-built query tools instead of consuming billions of tokens reading raw artifacts. A 30-host triage collection with 50 million records becomes instantly searchable. Triage baseline and threat intelligence enrichment run programmatically — zero LLM tokens consumed. OpenSearch integration is optional but recommended for investigations at scale.
 
 > Looking for a simpler setup without the gateway or OpenSearch? See [Valhuntir Lite](#valhuntir-lite).
 
 ### What You Get
 
-- **Gateway** with auth + lifecycle management (up to 90 tools across 8 backends)
+- **Gateway** with auth + lifecycle management (up to 94 tools across 8 backends)
 - **Evidence indexing** — 15 parsers (evtx, EZ tools, Volatility, JSON, CSV, W3C, and more) with deterministic dedup and full provenance (via opensearch-mcp)
 - **Structured querying** — case summary, search, aggregation, timeline, field enumeration, detection listing (via opensearch-mcp)
 - **Programmatic enrichment** — triage baseline validation and threat intelligence stamping at index scale, zero LLM tokens (via opensearch-mcp)
@@ -95,7 +95,7 @@ graph LR
     RAG["forensic-rag<br/>3 tools · semantic search<br/>22K records"]
     WT["windows-triage<br/>13 tools · offline baseline<br/>validation"]
     OC["opencti<br/>8 tools · threat<br/>intelligence"]
-    OS["opensearch-mcp<br/>17 tools · evidence indexing,<br/>query, enrichment"]
+    OS["opensearch-mcp<br/>21 tools · evidence indexing,<br/>query, enrichment"]
     CD["Examiner Portal<br/>browser review + commit"]
     FK["forensic-knowledge<br/>shared YAML data"]
     CASE["Case Directory"]
