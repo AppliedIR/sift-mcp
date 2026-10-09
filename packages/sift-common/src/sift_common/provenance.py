@@ -39,6 +39,9 @@ class Case:
     by_id: dict[str, list[tuple[dict, bytes]]]  # audit id -> (entry, its line)
     # id(entry) -> (ts, log, line): when; the trail's own order breaks a tie
     order: dict[int, tuple] = field(default_factory=dict)
+    # indexes built once, on first use: folders' manifest rows, recorded
+    # outputs by real path, hash jobs, mounts and unmounts
+    cache: dict = field(default_factory=dict, repr=False)
 
 
 @dataclass
@@ -138,9 +141,10 @@ def _registered(case: Case, real: str, sha256: str) -> Trace | None:
     rel = os.path.relpath(real, case.dir.resolve())
     for r in case.roots:
         if r.get("kind") == "folder" and real.startswith(r["path"] + os.sep):
-            row = next(
-                (x for x in _manifest_rows(case, r) if x.get("path") == rel), None
-            )
+            key = ("rows", r["path"])
+            if key not in case.cache:
+                case.cache[key] = {x.get("path"): x for x in _manifest_rows(case, r)}
+            row = case.cache[key].get(rel)
             if row:
                 root = {
                     "path": real,
@@ -176,28 +180,38 @@ def _outputs(case: Case, entry: dict) -> list[tuple[str, str]]:
     return [(p, h) for p, h in out if isinstance(p, str) and isinstance(h, str) and h]
 
 
+def _index(case: Case, name: str, build) -> dict:
+    """An index of the trail, built once per case: `build(entry, line)` gives
+    the (key, value) pairs each entry adds."""
+    if name not in case.cache:
+        index: dict = defaultdict(list)
+        for items in case.by_id.values():
+            for e, line in items:
+                for key, value in build(e, line):
+                    index[key].append(value)
+        case.cache[name] = index
+    return case.cache[name]
+
+
 def _job(case: Case, real: str, job_id: str) -> tuple[str, Trace | dict]:
     """What background hash job `job_id` recorded for the file: its hash and
     the `recorded-id` link to the entry that closed the job; or a named break,
     "hash pending" while nothing has closed it, "hash failed" with its reason."""
-    for items in case.by_id.values():
-        for e, line in items:
-            if e.get("tool") not in ("hash_complete", "hash_failed"):
+    jobs = _index(case, "jobs", lambda e, line: [(e.get("job_id"), (e, line))]
+                  if e.get("tool") in ("hash_complete", "hash_failed") else [])  # fmt: skip
+    for e, line in jobs.get(job_id, []):
+        for row in e.get("files") or [e]:
+            if not isinstance(row, dict):
                 continue
-            if e.get("job_id") != job_id:
+            if os.path.realpath(str(row.get("path", ""))) != real:
                 continue
-            for row in e.get("files") or [e]:
-                if not isinstance(row, dict):
-                    continue
-                if os.path.realpath(str(row.get("path", ""))) != real:
-                    continue
-                if row.get("sha256"):
-                    frm = {"path": real, "sha256": f"pending:{job_id}"}
-                    to = {"path": real, "sha256": row["sha256"]}
-                    return row["sha256"], _link("recorded-id", frm, to, e, line)
-                why = f"hash of {real} failed (job {job_id}): {row.get('error', '')}"
-                return "", _broken("hash-failed", why, "run the step again so the "
-                                   "file is hashed")  # fmt: skip
+            if row.get("sha256"):
+                frm = {"path": real, "sha256": f"pending:{job_id}"}
+                to = {"path": real, "sha256": row["sha256"]}
+                return row["sha256"], _link("recorded-id", frm, to, e, line)
+            why = f"hash of {real} failed (job {job_id}): {row.get('error', '')}"
+            return "", _broken("hash-failed", why, "run the step again so the "
+                               "file is hashed")  # fmt: skip
     return "", _broken("hash-pending", f"hash pending (job {job_id}): {real}",
                        "wait for the job to finish, then trace again")  # fmt: skip
 
@@ -208,16 +222,14 @@ def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
     the mount's recorded life, which ends at the first `umount` entry naming
     that point's realpath and mount id; with no read time, only while the
     mount is still live. None when no recorded mount holds the path."""
-    entries = [(e, line) for items in case.by_id.values() for e, line in items]
-    under = [
-        (e, line, p)
-        for e, line in entries
-        if isinstance(e.get("mount"), dict)
-        for p in e["mount"].get("points") or []
-        if isinstance(p, dict)
-        and isinstance(p.get("realpath"), str)
-        and (real + os.sep).startswith(p["realpath"].rstrip(os.sep) + os.sep)
-    ]
+    points = _index(case, "mounts", lambda e, line: [
+        ("point", (e, line, p)) for p in (e["mount"].get("points") or [])
+        if isinstance(p, dict) and isinstance(p.get("realpath"), str)]
+        if isinstance(e.get("mount"), dict) else []).get("point", [])  # fmt: skip
+    entries = _index(case, "umounts", lambda e, line: [("umount", (e, line))]
+                     if isinstance(e.get("umount"), dict) else []).get("umount", [])  # fmt: skip
+    under = [(e, line, p) for e, line, p in points
+             if (real + os.sep).startswith(p["realpath"].rstrip(os.sep) + os.sep)]  # fmt: skip
     if not under:
         return None
     for e, line, p in under:
@@ -272,22 +284,20 @@ def trace_file(
     # each recorded output at this path; one recorded pending is taken through
     # its job, and while no job gives it a hash, that's the named break
     producers, waiting = [], None
-    for items in case.by_id.values():
-        for e, line in items:
-            if _at is not None and _when(case, e) >= _at:
-                continue  # only an earlier operation can be its origin
-            for out, out_sha in _outputs(case, e):
-                if os.path.realpath(out) != real:
-                    continue
-                job_link = None
-                if out_sha.startswith("pending:"):
-                    out_sha, got = _job(case, real, out_sha.split(":", 1)[1])
-                    if not out_sha:
-                        waiting = waiting or got
-                        continue
-                    job_link = got
-                if sha and out_sha == sha:
-                    producers.append((e, line, out_sha, job_link))
+    outputs = _index(case, "outputs", lambda e, line: [
+        (os.path.realpath(out), (e, line, h)) for out, h in _outputs(case, e)])  # fmt: skip
+    for e, line, out_sha in outputs.get(real, []):
+        if _at is not None and _when(case, e) >= _at:
+            continue  # only an earlier operation can be its origin
+        job_link = None
+        if out_sha.startswith("pending:"):
+            out_sha, got = _job(case, real, out_sha.split(":", 1)[1])
+            if not out_sha:
+                waiting = waiting or got
+                continue
+            job_link = got
+        if sha and out_sha == sha:
+            producers.append((e, line, out_sha, job_link))
     if len(producers) > 1:  # never the last writer: each is named
         named = [{"audit_id": e["audit_id"], "entry_sha256": entry_sha256(line),
                   "path": real, "sha256": h} for e, line, h, _j in producers]  # fmt: skip

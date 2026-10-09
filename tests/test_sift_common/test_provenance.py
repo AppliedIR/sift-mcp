@@ -539,3 +539,34 @@ def test_with_no_read_time_only_a_mount_still_live_links(c):
     ended = pv.trace_file(pv.load_case(c.d), sec, sha(sec), st_dev=2049)
     assert ended.break_["kind"] == "mount-mismatch", ended.as_dict()
     assert "no read time" in ended.reason
+
+
+# --- tracing many files reads each manifest and each entry's outputs once -------
+
+
+def test_tracing_a_folders_members_reads_its_manifest_and_outputs_once(c, monkeypatch):
+    """A KAPE folder's files traced input by input, at ingest: linear, not
+    quadratic."""
+    k = c.d / "evidence" / "kape"
+    files = [c.file(f"evidence/kape/f{n}.evtx", f"evtx {n}") for n in range(40)]
+    c.register_folder(str(k))
+    for n in range(10):
+        c.run(f"sift-tester-20261009-1{n:02d}", ["true"], [], "")
+    counts = {"rows": 0, "outputs": 0}
+    rows, outputs = pv._manifest_rows, pv._outputs
+
+    def counted_rows(*a):
+        counts["rows"] += 1
+        return rows(*a)
+
+    def counted_outputs(*a):
+        counts["outputs"] += 1
+        return outputs(*a)
+
+    monkeypatch.setattr(pv, "_manifest_rows", counted_rows)
+    monkeypatch.setattr(pv, "_outputs", counted_outputs)
+    case = pv.load_case(c.d)
+    assert all(pv.trace_file(case, f, sha(f)).grade == "FULL" for f in files)
+    for f in files:  # and not as roots: through the outputs
+        pv.trace_file(case, f + ".copy", sha(f))
+    assert counts == {"rows": 1, "outputs": 10}, counts
