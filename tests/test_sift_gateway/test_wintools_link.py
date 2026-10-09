@@ -30,6 +30,7 @@ from .wintools_rig import (
     GatewayServer,
     Logs,
     Remote,
+    SilentRemote,
     aggregate,
     answers,
     backend_entry,
@@ -224,7 +225,10 @@ def test_each_form_of_the_join_cert_is_stored_as_pem(link, form):
     link.untouched(gw)
 
 
-@pytest.mark.parametrize("bad", [5, ["x"], "not a certificate", {"value": 5}])
+GARBLED = "-----BEGIN CERTIFICATE-----\nMIIBnotacert\n-----END CERTIFICATE-----\n"
+
+
+@pytest.mark.parametrize("bad", [5, ["x"], "not a certificate", {"value": 5}, GARBLED])
 def test_a_join_cert_that_is_not_pem_is_refused_and_the_code_stays_usable(link, bad):
     a = link.remote("A")
     gw = link.boot()
@@ -537,3 +541,53 @@ def test_a_service_restart_reads_the_pinned_cert_file_again(link):
     assert c.server_name == PER_BACKEND and c.tools() == WINTOOLS_TOOLS
     assert c.call("get_share_info")["text"] == "get_share_info:A"
     link.untouched(gw)
+
+
+def test_a_rejoin_queued_while_a_load_runs_is_loaded_next(link):
+    gw = link.boot()
+    a = link.remote("A", start=False)  # the loader keeps retrying it
+    assert gw.join(a, a.token, a.pem).status_code == 200
+    until(lambda: link.logs.lines("attempt 1/6"), "the first load never started", 10)
+    b = link.remote("B")
+    assert gw.join(b, b.token, b.pem).status_code == 200  # while A's load runs
+    c = answers(gw, "B", timeout=40)
+    assert c.server_name == PER_BACKEND and c.tools() == WINTOOLS_TOOLS
+    conf = yaml.safe_load(link.config.read_text())["backends"]["wintools-mcp"]
+    assert (conf["url"], conf["bearer_token"]) == (b.url, b.token)
+    link.untouched(gw)
+
+
+def test_a_remote_that_never_answers_leaves_the_loader_free_within_5s(link):
+    gw = link.boot()
+    silent = SilentRemote("silent", make_cert(link.certs, "wintools-silent"))
+    link._remotes.append(silent.start())
+    t0 = time.monotonic()
+    assert gw.join(silent, silent.token, silent.pem).status_code == 200
+    first = until(
+        lambda: link.logs.lines("attempt 1/6"), "no answer was never named", 12
+    )
+    assert time.monotonic() - t0 < 9
+    assert "no answer in 5s" in first[0], first
+    b = link.remote("B")
+    assert gw.join(b, b.token, b.pem).status_code == 200
+    c = answers(gw, "B", timeout=20)
+    assert c.server_name == PER_BACKEND and c.tools() == WINTOOLS_TOOLS
+    link.untouched(gw)
+
+
+def test_a_failed_config_write_puts_the_old_pin_back(link, monkeypatch):
+    from sift_gateway import rest
+
+    a, b = link.remote("A", start=False), link.remote("B", start=False)
+    before = link.live(a)
+    pin = link.vhir / "tls" / "wintools-cert.pem"
+    conf = {"type": "http", "url": b.url, "bearer_token": b.token, "enabled": True,
+            "joined": True, "tls_cert": str(pin), "tls_cert_pem": b.pem}  # fmt: skip
+
+    def full(*args, **kw):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(rest, "_atomic_yaml_write", full)
+    with pytest.raises(OSError):
+        rest.save_joined_backend("wintools-mcp", conf)
+    assert link.live_files() == before  # A's entry with A's pin, never B's

@@ -158,7 +158,20 @@ class HttpMCPBackend(MCPBackend):
         runner = asyncio.ensure_future(self._run(url, headers, ready, self._stop_event))
         self._runner = runner
         try:
-            await ready
+            # connecting and the first answers, within the start budget
+            await asyncio.wait_for(ready, timeout=_CONNECT_TIMEOUT)
+        except asyncio.TimeoutError:
+            runner.cancel()
+            self.last_error = f"no answer in {_CONNECT_TIMEOUT:.0f}s"
+            logger.error(
+                "Backend %s failed to start (http -> %s): %s",
+                self.name,
+                url,
+                self.last_error,
+            )
+            raise RuntimeError(
+                f"{self.name} unreachable at {url}: {self.last_error}"
+            ) from None
         except asyncio.CancelledError:
             runner.cancel()
             raise

@@ -449,12 +449,13 @@ class Gateway:
                         del dynamic[name]
                         await _close_in_this_task(prev)
                     if conf is None:  # a stop: closed above, nothing to load
-                        self._pending_backends.pop(name, None)
-                        self._reloaded[name].set()
+                        self._done_with(name, conf)
                         continue
                     loaded = False
                     attempts = 1 if self._single_attempt.pop(name, None) is conf else 6
                     for attempt in range(attempts):
+                        if self._pending_backends.get(name) is not conf:
+                            break  # a newer join for this name came: load that
                         if attempt > 0:
                             await anyio.sleep(_LOAD_RETRY_SECONDS)
                         try:
@@ -468,7 +469,12 @@ class Gateway:
                             self.backends[name] = bk
                             await self._build_tool_map()
                             dynamic[name] = bk
-                            self._hot[name] = self._made_live(name, conf)
+                            # only the newest join is written: a newer one
+                            # waiting is loaded next, and saved if it loads
+                            newest = self._pending_backends.get(name) is conf
+                            self._hot[name] = (
+                                self._made_live(name, conf) if newest else conf
+                            )
                             self._unloaded.pop(name, None)
                             self._load_errors.pop(name, None)
                             loaded = True
@@ -513,9 +519,7 @@ class Gateway:
                             BaseExceptionGroup,
                         ) as exc:
                             logger.warning("Backend %s not restored: %s", name, exc)
-                    self._pending_backends.pop(name, None)
-                    if name in self._reloaded:
-                        self._reloaded[name].set()
+                    self._done_with(name, conf)
                     if not loaded:
                         await self._build_tool_map()
                         logger.warning(
@@ -529,6 +533,17 @@ class Gateway:
         finally:
             for bk in reversed(list(dynamic.values())):
                 await _close_in_this_task(bk)
+
+    def _done_with(self, name: str, conf: dict | None) -> None:
+        """A load (or stop) of ``conf`` has finished: clear its slot, unless a
+        newer one for this name was queued meanwhile; that one stays, and
+        the loader runs again for it."""
+        if self._pending_backends.get(name, conf) is conf:
+            self._pending_backends.pop(name, None)
+            if name in self._reloaded:
+                self._reloaded[name].set()
+        else:
+            self._reload_event.set()
 
     def _made_live(self, name: str, conf: dict) -> dict:
         """A join that loaded is written to disk now, and only now: until

@@ -18,7 +18,30 @@ from starlette.testclient import TestClient
 OWNER = "vhir_gw_" + "a" * 24
 EXAMINER = "vhir_gw_" + "b" * 24
 WINTOOLS_TOKEN = "vhir_wt_" + "c" * 24
-CERT = "-----BEGIN CERTIFICATE-----\nMIIBsyntheticAAAA\n-----END CERTIFICATE-----\n"
+
+
+def _cert() -> str:
+    """A throwaway self-signed certificate, as the Windows installer sends."""
+    import datetime
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "wintools-mcp")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (
+        x509.CertificateBuilder().subject_name(name).issuer_name(name)
+        .public_key(key.public_key()).serial_number(x509.random_serial_number())
+        .not_valid_before(now).not_valid_after(now + datetime.timedelta(days=1))
+        .sign(key, hashes.SHA256())
+    )  # fmt: skip
+    return cert.public_bytes(serialization.Encoding.PEM).decode()
+
+
+CERT = _cert()
 WINTOOLS_URL = "https://192.0.2.10:4624/mcp"
 OTHER_URL = "http://203.0.113.66:4624/mcp"
 

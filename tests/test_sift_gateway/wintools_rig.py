@@ -198,6 +198,20 @@ class Remote:
         self.start()
 
 
+class SilentRemote(Remote):
+    """Accepts the connection and the TLS handshake, then never answers."""
+
+    def _app(self):
+        from starlette.applications import Starlette
+
+        async def hang(request):
+            await asyncio.sleep(3600)
+
+        return Starlette(
+            routes=[Route("/mcp", hang, methods=["GET", "POST", "DELETE"])]
+        )
+
+
 class Blackhole:
     """A TCP forwarder in front of a remote. ``hold()``: the host is gone,
     and nothing comes back on new or open connections. ``release()``: it's

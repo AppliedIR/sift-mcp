@@ -308,7 +308,10 @@ async def restart_service(request: Request) -> JSONResponse:
         conf = _configured_backend(name)
     if conf is not None:
         gateway._single_attempt[name] = conf
-        await gateway.reload_backend(name, conf)
+        if not await _reloaded_in_time(gateway, name, conf):
+            return JSONResponse(
+                {"error": f"{name} is still loading; see /health"}, status_code=504
+            )
         loaded = gateway.backends.get(name)
         if name not in gateway._unloaded and loaded is not None and loaded.started:
             return JSONResponse({"status": "restarted", "name": name})
@@ -322,7 +325,11 @@ async def restart_service(request: Request) -> JSONResponse:
         # reloaded as a new backend, which reads its pinned cert again
         if name not in gateway._hot and backend.started:
             await asyncio.wait_for(in_own_task(backend.stop()), timeout=20.0)
-        await gateway.reload_backend(name, gateway._hot.get(name, backend.config))
+        conf = gateway._hot.get(name, backend.config)
+        if not await _reloaded_in_time(gateway, name, conf):
+            return JSONResponse(
+                {"error": f"{name} is still loading; see /health"}, status_code=504
+            )
         if not gateway.backends[name].started:
             return JSONResponse(
                 {"error": f"Failed to start service {name} during restart"},
@@ -437,6 +444,23 @@ async def create_join_code(request: Request) -> JSONResponse:
     return JSONResponse(out)
 
 
+# How long a service restart waits on the loader: one start's budget, plus
+# the tool map and a stop before it
+_RESTART_WAIT = 15.0
+
+
+async def _reloaded_in_time(gateway, name: str, conf: dict) -> bool:
+    """Have the loader load ``conf`` now; False if it isn't done in time (it
+    goes on, and /health shows the result)."""
+    try:
+        await asyncio.wait_for(
+            asyncio.shield(gateway.reload_backend(name, conf)), _RESTART_WAIT
+        )
+    except asyncio.TimeoutError:
+        return False
+    return True
+
+
 def _configured_backend(name: str) -> dict | None:
     """``name``'s enabled entry in gateway.yaml, or None."""
     from pathlib import Path
@@ -483,7 +507,15 @@ def _cert_text(cert) -> str | None:
     if not isinstance(cert, str):
         return None
     cert = cert.lstrip("\ufeff")
-    return cert if cert.strip().startswith("-----BEGIN CERTIFICATE-----") else None
+    if not cert.strip().startswith("-----BEGIN CERTIFICATE-----"):
+        return None
+    import ssl
+
+    try:  # a certificate that can actually be pinned, not just its marker
+        ssl.create_default_context(cadata=cert)
+    except (ssl.SSLError, ValueError):
+        return None
+    return cert
 
 
 async def join_gateway(request: Request) -> JSONResponse:
@@ -794,8 +826,9 @@ def save_joined_backend(name: str, conf: dict) -> dict:
         config_path = Path.home() / ".vhir" / "gateway.yaml"
         config = _read_config_for_join(config_path)
         pem = conf.get("tls_cert_pem")
+        pin = Path(entry["tls_cert"]) if pem else None
+        old_pin = pin.read_bytes() if pin is not None and pin.is_file() else None
         if pem:
-            pin = Path(entry["tls_cert"])
             pin.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             fd, tmp = tempfile.mkstemp(dir=str(pin.parent), suffix=".tmp")
             try:
@@ -811,8 +844,22 @@ def save_joined_backend(name: str, conf: dict) -> dict:
                 raise
             logger.info("Stored wintools TLS cert at %s", pin)
         config.setdefault("backends", {})[name] = entry
-        _atomic_yaml_write(config_path, config)
+        try:
+            _atomic_yaml_write(config_path, config)
+        except BaseException:
+            # never the old entry with the new pin: put the old pin back
+            if pin is not None and old_pin is not None:
+                _atomic_write_bytes(pin, old_pin)
+            raise
     return entry
+
+
+def _atomic_write_bytes(path, data: bytes) -> None:
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
 
 
 def _get_gateway_url(gateway) -> str:
