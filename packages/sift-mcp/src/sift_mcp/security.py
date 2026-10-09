@@ -132,6 +132,7 @@ _CASE_RECORDS = frozenset(
         "approvals.jsonl",
         "iocs.json",
         "evidence.json",
+        "evidence-verified.json",
         "todos.json",
         "CASE.yaml",
         "actions.jsonl",

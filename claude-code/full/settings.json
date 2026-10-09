@@ -93,6 +93,7 @@
       "Edit(**/actions.jsonl)",
       "Edit(**/audit/*.jsonl)",
       "Edit(**/evidence.json)",
+      "Edit(**/evidence-verified.json)",
       "Edit(**/pending-reviews.json)",
       "Read(//var/lib/vhir/**)",
       "Edit(//var/lib/vhir/**)",

@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
+import subprocess
 
 import pytest
 from case_dashboard import signing
@@ -78,6 +80,14 @@ def plan(case, entries, reasons=None):
     return case.post("/api/commit/plan", body)
 
 
+def given(case, reason=REASON, fid="F-steve-001") -> dict:
+    """A reason as the dialog sends it: for the failed checks the plan showed."""
+    r = plan(case, [reviewed(case, fid)])
+    assert r.status_code == 409, r.text
+    (item,) = [i for i in r.json()["items"] if i["id"] == fid]
+    return {fid: {"reason": reason, "failed_sha256": item["failed_sha256"]}}
+
+
 def bodies(r) -> list[dict]:
     return [json.loads(b["body"]) for b in r.json()["bodies"]]
 
@@ -119,7 +129,7 @@ def test_make_plan_signs_the_reason_with_the_failed_checks(case):
     lists, _ = signing._read_lists(case.dir)
     p = signing.make_plan(case.dir, "C-1", [reviewed(case, "F-steve-001")], lists,
                           "steve", public_key(), "2026-10-09T01:00:00+00:00", None,
-                          approval_override_reasons={"F-steve-001": REASON})  # fmt: skip
+                          approval_override_reasons=given(case))  # fmt: skip
     (b,) = p.bodies
     assert (b["v"], b["approval_override_reason"], b["checks"]["result"]) == (
         4, REASON, "failed",
@@ -129,10 +139,11 @@ def test_make_plan_signs_the_reason_with_the_failed_checks(case):
 def test_a_typed_reason_is_signed_and_verifies(case):
     change_root(case)
     entries = [reviewed(case, "F-steve-001")]
-    r = plan(case, entries, {"F-steve-001": REASON})
+    reasons = given(case)
+    r = plan(case, entries, reasons)
     assert r.status_code == 200, r.text
     ch = signing._challenges[r.json()["challenge_id"]]
-    assert ch["approval_override_reasons"] == {"F-steve-001": REASON}
+    assert ch["approval_override_reasons"] == reasons
     p = r.json()
     k = case.login(p)
     c = case.commit(p, case.sign(p, k.json()))
@@ -146,7 +157,8 @@ def test_a_typed_reason_is_signed_and_verifies(case):
 
 
 def test_a_reason_for_an_item_whose_checks_pass_isn_t_signed(case):
-    r = plan(case, [reviewed(case, "F-steve-001")], {"F-steve-001": REASON})
+    reasons = {"F-steve-001": {"reason": REASON, "failed_sha256": "0" * 64}}
+    r = plan(case, [reviewed(case, "F-steve-001")], reasons)
     assert r.status_code == 200, r.text
     (b,) = bodies(r)
     assert b["checks"]["result"] == "ok" and "approval_override_reason" not in b
@@ -167,7 +179,7 @@ def test_evidence_changed_between_plan_and_commit_refuses_the_commit(case):
 
 def test_a_reason_planned_then_a_check_passing_at_commit_refuses_it(case):
     change_root(case)
-    r = plan(case, [reviewed(case, "F-steve-001")], {"F-steve-001": REASON})
+    r = plan(case, [reviewed(case, "F-steve-001")], given(case))
     p = r.json()
     k = case.login(p)
     sigs = case.sign(p, k.json())
@@ -179,10 +191,12 @@ def test_a_reason_planned_then_a_check_passing_at_commit_refuses_it(case):
 
 @pytest.mark.parametrize("reasons,says", [
     (["F-steve-001"], "must be a map"),
-    ({"F-steve-009": REASON}, "isn't an entry"),
-    ({"F-steve-001": "   "}, "is empty"),
-    ({"F-steve-001": 5}, "is empty"),
-    ({"F-steve-001": "x" * 2001}, "longer than 2000"),
+    ({"F-steve-009": {"reason": REASON, "failed_sha256": "0" * 64}}, "isn't an entry"),
+    ({"F-steve-001": REASON}, "names no failed checks"),
+    ({"F-steve-001": {"reason": REASON}}, "names no failed checks"),
+    ({"F-steve-001": {"reason": "   ", "failed_sha256": "0" * 64}}, "is empty"),
+    ({"F-steve-001": {"reason": 5, "failed_sha256": "0" * 64}}, "is empty"),
+    ({"F-steve-001": {"reason": "x" * 2001, "failed_sha256": "0" * 64}}, "longer than 2000"),
 ])  # fmt: skip
 def test_a_bad_reasons_map_is_a_400(case, reasons, says):
     r = plan(case, [reviewed(case, "F-steve-001")], reasons)
@@ -191,7 +205,7 @@ def test_a_bad_reasons_map_is_a_400(case, reasons, says):
 
 def test_a_reason_of_2000_characters_is_taken(case):
     change_root(case)
-    r = plan(case, [reviewed(case, "F-steve-001")], {"F-steve-001": "x" * 2000})
+    r = plan(case, [reviewed(case, "F-steve-001")], given(case, "x" * 2000))
     assert r.status_code == 200, r.text
 
 
@@ -258,10 +272,17 @@ def test_the_page_accepts_an_edited_entry_in_view_2(case):
 def test_the_page_accepts_the_reason_it_typed_and_refuses_another(case):
     change_root(case)
     entries = [reviewed(case, "F-steve-001")]
-    r = plan(case, entries, {"F-steve-001": REASON})
-    assert check(case, r.json(), entries, {"F-steve-001": REASON}) == []
-    problems = check(case, r.json(), entries, {"F-steve-001": "something else"})
+    reasons = given(case)
+    r = plan(case, entries, reasons)
+    assert check(case, r.json(), entries, reasons) == []
+    other = {"F-steve-001": dict(reasons["F-steve-001"], reason="something else")}
+    problems = check(case, r.json(), entries, other)
     assert problems == ["F-steve-001: its override reason is not the one typed"]
+    elsewhere = {"F-steve-001": dict(reasons["F-steve-001"], failed_sha256="0" * 64)}
+    problems = check(case, r.json(), entries, elsewhere)
+    assert problems == [
+        "F-steve-001: its override reason was typed for other failed checks"
+    ]
 
 
 def test_the_page_refuses_a_view_it_doesn_t_know(case):
@@ -322,5 +343,150 @@ def test_the_dialog_plans_again_with_the_reasons_not_as_a_retry():
         1
     )
     assert "data-reason" in fn and "planAndShow(null)" in fn and "retry" not in fn
-    assert "body.approval_override_reasons = s.reasons" in text
-    assert "r.data.code === 'CHECKS_FAILED' && !retryOf" in text
+    assert (
+        "if (!retryOf && Object.keys(s.reasons).length) body.approval_override_reasons"
+        in text
+    )
+
+
+# --- A reason is bound to the failures it was typed for -----------------------
+
+
+def _edit_audit_line(case):
+    p = case.dir / "audit" / "sift-mcp.jsonl"
+    p.write_text(p.read_text().replace("windows.pslist", "windows.psscan"))
+
+
+def test_a_reason_for_other_failures_is_refused_and_the_new_ones_shown(case):
+    change_root(case)
+    reasons = given(case)  # typed for ROOT_CHANGED alone
+    _edit_audit_line(case)  # now ENTRY_CHANGED too
+    r = plan(case, [reviewed(case, "F-steve-001")], reasons)
+    assert r.status_code == 409 and r.json()["code"] == "CHECKS_FAILED"
+    (item,) = r.json()["items"]
+    codes = [i["code"] for i in item["checks"]["items"] if i["status"] == "failed"]
+    assert codes == ["ENTRY_CHANGED", "ROOT_CHANGED"]
+    assert item["failed_sha256"] != reasons["F-steve-001"]["failed_sha256"]
+
+
+def test_the_page_hashes_failed_checks_as_the_server_does(case):
+    from vhir_cli import approval_checks
+
+    change_root(case)
+    _edit_audit_line(case)
+    r = plan(case, [reviewed(case, "F-steve-001")])
+    (item,) = r.json()["items"]
+    node = shutil.which("node") or pytest.skip("node isn't installed")
+    script = ("var API_BASE = ''; function apiHeaders() { return {}; }\n" + block()
+              + "\nconst I = JSON.parse(require('fs').readFileSync(0, 'utf8'));"
+              "VHIR_SIGN._test.failedSha256(I.checks).then(h => process.stdout.write(h));")  # fmt: skip
+    out = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60,
+                         input=json.dumps({"checks": item["checks"]}))  # fmt: skip
+    assert (
+        out.stdout
+        == item["failed_sha256"]
+        == approval_checks.failed_sha256(item["checks"])
+    )
+
+
+def test_what_was_shown_includes_the_failed_checks_and_the_reason(case):
+    change_root(case)
+    entries = [reviewed(case, "F-steve-001")]
+    p = plan(case, entries, given(case)).json()
+    node = shutil.which("node") or pytest.skip("node isn't installed")
+    script = ("var API_BASE = ''; function apiHeaders() { return {}; }\n" + block()
+              + "\nconst I = JSON.parse(require('fs').readFileSync(0, 'utf8'));"
+              "process.stdout.write(JSON.stringify(VHIR_SIGN._test.shownOf(I.plan)));")  # fmt: skip
+    out = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60,
+                         input=json.dumps({"plan": p}))  # fmt: skip
+    (shown,) = json.loads(out.stdout)
+    assert "ROOT_CHANGED" in shown and REASON in shown
+
+
+def test_a_retry_sends_no_reason_and_shows_its_failures_again():
+    text = block()
+    plan_fn = re.search(
+        r"async function planAndShow\(retryOf\) \{(.*?)\n  \}\n", text, re.S
+    ).group(1)
+    assert "if (!retryOf && Object.keys(s.reasons).length)" in plan_fn
+    assert "r.data.code === 'CHECKS_FAILED') {" in plan_fn  # a retry's too
+    assert "checkPlan(s.frozen, r.data, selected, retryOf ? {} : s.reasons)" in plan_fn
+
+
+def test_the_dialog_keeps_earlier_reasons_and_shows_them():
+    fn = re.search(
+        r"function renderFailed\(items\) \{(.*?)\n  \}\n", block(), re.S
+    ).group(1)
+    assert "s.reasons = Object.assign({}, s.reasons, typed)" in fn
+    assert "Your earlier reason, for other failed checks: " in fn
+    assert (
+        "earlier.reason" in fn
+        and "</textarea>" in fn
+        and "escapeHtml(s.reasons" not in fn
+    )
+
+
+# --- Every root; a large root hashed in the background --------------------------
+
+
+def test_every_root_is_checked_and_shown(case):
+    other = case.dir / "evidence" / "second.raw"
+    other.write_bytes(b"a second input " * 40)
+    osha = register_evidence_data(case.dir, str(other), "steve")["sha256"]
+    fs = case.read("findings.json")
+    a = fs[0]["artifacts"][0]
+    a["provenance_roots"] = [a["provenance_root"],
+                             {"path": str(other), "sha256": osha, "label": "examiner-registered"}]  # fmt: skip
+    fs[0]["content_hash"] = compute_content_hash(fs[0])
+    case.write("findings.json", fs)
+    with open(other, "ab") as f:
+        f.write(b"changed")
+    r = plan(case, [reviewed(case, "F-steve-001")])
+    (item,) = r.json()["items"]
+    failed = [
+        (i["code"], i["subject"])
+        for i in item["checks"]["items"]
+        if i["status"] == "failed"
+    ]
+    assert failed == [("ROOT_CHANGED", str(other))]
+    node = shutil.which("node") or pytest.skip("node isn't installed")
+    script = ("var API_BASE = ''; function apiHeaders() { return {}; }\n" + block()
+              + "\nconst I = JSON.parse(require('fs').readFileSync(0, 'utf8'));"
+              "process.stdout.write(JSON.stringify(VHIR_SIGN._test.provenanceLines(I.item, I.checks)));")  # fmt: skip
+    out = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60,
+                         input=json.dumps({"item": fs[0], "checks": item["checks"]}))  # fmt: skip
+    lines = [t for _, t in json.loads(out.stdout)]
+    assert any(t.startswith(f"root: {other} ") for t in lines)
+    assert any(
+        t.startswith(f"root: {case.dir / 'evidence' / 'mem.raw'} ") for t in lines
+    )
+
+
+def test_a_large_root_without_stat_fields_is_hashed_in_the_background(
+    case, monkeypatch
+):
+    import threading
+
+    from vhir_cli import approval_checks
+
+    reg = json.loads((case.dir / "evidence.json").read_text())
+    for e in reg["files"]:
+        for k in approval_checks._STAT_KEYS:
+            e.pop(k, None)
+    (case.dir / "evidence.json").write_text(json.dumps(reg))
+    monkeypatch.setattr(approval_checks, "INLINE_LIMIT", 10)
+    r = plan(case, [reviewed(case, "F-steve-001")])
+    assert r.status_code == 409, r.text
+    (item,) = r.json()["items"]
+    failed = [
+        (i["code"], i["detail"])
+        for i in item["checks"]["items"]
+        if i["status"] == "failed"
+    ]
+    assert failed == [("ROOT_UNVERIFIED", "not yet verified (hashing)")]
+    for t in threading.enumerate():
+        if t.name == "approval-root-hash":
+            t.join(timeout=30)
+    r = plan(case, [reviewed(case, "F-steve-001")])
+    assert r.status_code == 200, r.text
+    assert bodies(r)[0]["checks"]["result"] == "ok"

@@ -1363,6 +1363,10 @@ function provGrade(f, a) {
   return {text: text, color: text === 'FULL' ? 'var(--green)' : (text === PROV_LEGACY ? 'var(--text-muted)' : 'var(--amber)'),
     reason: reasons.join('; ')};
 }
+function provRoots(a) {
+  var roots = a && Array.isArray(a.provenance_roots) && a.provenance_roots.length ? a.provenance_roots : [a && a.provenance_root];
+  return roots.filter(function(r) { return r && typeof r === 'object' && r.path; });
+}
 function provRootLabel(r) {
   if (r.label) return String(r.label);
   if (r.kind === 'folder') return 'folder (' + (r.file_count || '?') + ' files)';
@@ -1561,8 +1565,7 @@ function renderFinding(id) {
   var pRoots = {};
   if (f.provenance_schema === 2) {
     (f.artifacts || []).forEach(function(a) {
-      var r = a && a.provenance_root;
-      if (r && r.path) pRoots[r.path] = r;
+      provRoots(a).forEach(function(r) { pRoots[r.path] = r; });
     });
   }
   Object.keys(pRoots).forEach(function(k) { metaParts.push(escapeHtml(k) + ' (' + escapeHtml(provRootLabel(pRoots[k])) + ')'); });
@@ -2094,9 +2097,17 @@ var VHIR_SIGN = (function() {
     return hex(await crypto.subtle.digest('SHA-256', enc(text)));
   }
 
+  // A result's failed checks, and the hash an override reason is bound to
+  // (vhir approval_checks.failed_sha256: the same canonical JSON)
+  function failedOf(checks) {
+    return ((checks && checks.items) || []).filter(function(i) { return i.status === 'failed'; });
+  }
+  async function failedSha256(checks) { return sha256hex(canon(failedOf(checks))); }
+
   /* Each way the plan differs from what the dialog froze; empty when it is
      exactly the selected entries and their cascades, and each override
-     reason is the one typed (`reasons`: item id -> reason). */
+     reason is the one typed for exactly the failed checks the body carries
+     (`reasons`: item id -> {reason, failed_sha256}). */
   async function checkPlan(frozen, plan, selected, reasons) {
     var problems = [];
     reasons = reasons || {};
@@ -2129,8 +2140,13 @@ var VHIR_SIGN = (function() {
       if (body.mode !== 'portal') problems.push(id + ': not a portal decision');
       if (body.type !== kind) problems.push(id + ': the wrong item type');
       if (!VIEWS[body.view]) { problems.push(id + ': signs view ' + body.view + ', which this page does not know'); continue; }
-      if ('approval_override_reason' in body && body.approval_override_reason !== reasons[id]) {
-        problems.push(id + ': its override reason is not the one typed');
+      if ('approval_override_reason' in body) {
+        var typed = reasons[id];
+        if (!typed || body.approval_override_reason !== typed.reason) {
+          problems.push(id + ': its override reason is not the one typed');
+        } else if (await failedSha256(body.checks) !== typed.failed_sha256) {
+          problems.push(id + ': its override reason was typed for other failed checks');
+        }
       }
       if (body.coupled_from && ('checks' in body || 'approval_override_reason' in body)) {
         problems.push(id + ': a cascade carrying approval checks');
@@ -2170,7 +2186,8 @@ var VHIR_SIGN = (function() {
   function shownOf(plan) {
     return plan.bodies.map(function(pb) {
       var b = JSON.parse(pb.body);
-      return [b.item_id, b.type, b.decision, b.status_after, b.coupled_from || '', b.content_sha256].join('|');
+      return [b.item_id, b.type, b.decision, b.status_after, b.coupled_from || '', b.content_sha256,
+        canon(failedOf(b.checks)), b.approval_override_reason || ''].join('|');
     }).sort();
   }
 
@@ -2326,10 +2343,13 @@ var VHIR_SIGN = (function() {
     if (!selected.length) { say('Nothing of yours is staged to sign.'); return false; }
     var body = { entries: selected, include_others: selected.filter(function(e) { return !own(e); }).map(function(e) { return e.id; }) };
     if (retryOf) body.retry_of = retryOf;
-    if (Object.keys(s.reasons).length) body.approval_override_reasons = s.reasons;
+    // a reason goes only with a plan the examiner asked for: never reused by a retry
+    if (!retryOf && Object.keys(s.reasons).length) body.approval_override_reasons = s.reasons;
     var r = await signFetch('/api/commit/plan', body);
     if (state !== s) return false;
-    if (r.status === 409 && r.data.code === 'CHECKS_FAILED' && !retryOf) {
+    if (r.status === 409 && r.data.code === 'CHECKS_FAILED') {
+      s.plan = null;
+      s.shown = null;
       renderFailed(r.data.items || []);
       say('CHECKS_FAILED: ' + (r.data.error || 'An approval check failed.'));
       return false;
@@ -2338,7 +2358,7 @@ var VHIR_SIGN = (function() {
       say((r.data.code ? r.data.code + ': ' : '') + (r.data.error || ('Planning failed (' + r.status + ')')));
       return false;
     }
-    var problems = await checkPlan(s.frozen, r.data, selected, s.reasons);
+    var problems = await checkPlan(s.frozen, r.data, selected, retryOf ? {} : s.reasons);
     if (state !== s) return false;
     if (problems.length) {
       say('PLAN_CHANGED: ' + PLAN_CHANGED + ' (' + problems.join('; ') + ')');
@@ -2366,6 +2386,16 @@ var VHIR_SIGN = (function() {
     return true;
   }
 
+  // (the page's provRoots and provRootLabel, kept here so this block stands alone)
+  function rootsOf(a) {
+    var roots = a && Array.isArray(a.provenance_roots) && a.provenance_roots.length ? a.provenance_roots : [a && a.provenance_root];
+    return roots.filter(function(r) { return r && typeof r === 'object' && r.path; });
+  }
+  function rootLabel(r) {
+    if (r.label) return String(r.label);
+    if (r.kind === 'folder') return 'folder (' + (r.file_count || '?') + ' files)';
+    return r.registered_via === 'mcp' ? 'AI-registered' : 'examiner-registered';
+  }
   // A finding's roots, its grade (with its reason when it isn't FULL) and its
   // failed checks, as display lines; `item` is the signed snapshot or the
   // frozen item
@@ -2377,10 +2407,11 @@ var VHIR_SIGN = (function() {
         lines.push(['', 'provenance: recorded before 0.6.4']);
       } else {
         (item.artifacts || []).forEach(function(a) {
-          var r = a && a.provenance_root;
-          if (!r || !r.path || seen[r.path + '|' + r.sha256]) return;
-          seen[r.path + '|' + r.sha256] = 1;
-          lines.push(['', 'root: ' + r.path + ' ' + String(r.sha256 || '').slice(0, 16) + '… (' + (r.label || '') + ')']);
+          rootsOf(a).forEach(function(r) {
+            if (seen[r.path + '|' + r.sha256]) return;
+            seen[r.path + '|' + r.sha256] = 1;
+            lines.push(['', 'root: ' + r.path + ' ' + String(r.sha256 || '').slice(0, 16) + '… (' + rootLabel(r) + ')']);
+          });
         });
         if (item.provenance_grade) lines.push(['', 'provenance: ' + item.provenance_grade]);
         (item.artifacts || []).forEach(function(a) {
@@ -2407,13 +2438,17 @@ var VHIR_SIGN = (function() {
   // provenance and checks, and a box for the reason to approve it anyway
   function renderFailed(items) {
     var s = state, html = '';
+    s.failedFor = {};
     items.forEach(function(f) {
       var item = findIn(s.frozen, kindOf(f.id), f.id);
+      var earlier = s.reasons[f.id];
+      s.failedFor[f.id] = f.failed_sha256;
       html += '<div class="commit-item"><div><strong>' + escapeHtml(f.id) + '</strong> — approve</div>' +
         linesHtml(provenanceLines(item, f.checks)) +
+        (earlier ? linesHtml([['', 'Your earlier reason, for other failed checks: ' + earlier.reason]]) : '') +
         '<label class="commit-field">Why approve it anyway (required; signed with the approval):' +
         '<textarea class="commit-reason" maxlength="2000" data-reason="' + escapeHtml(f.id) + '">' +
-        escapeHtml(s.reasons[f.id] || '') + '</textarea></label></div>';
+        '</textarea></label></div>';
     });
     html += '<button type="button" id="commitReplan">Plan again with these reasons</button>';
     el('commitList').innerHTML = html;
@@ -2423,11 +2458,11 @@ var VHIR_SIGN = (function() {
       if (state !== s || s.busy) return;
       var typed = {}, missing = [];
       el('commitList').querySelectorAll('textarea[data-reason]').forEach(function(t) {
-        var v = t.value.trim();
-        if (v) typed[t.dataset.reason] = v; else missing.push(t.dataset.reason);
+        var v = t.value.trim(), id = t.dataset.reason;
+        if (v) typed[id] = { reason: v, failed_sha256: s.failedFor[id] }; else missing.push(id);
       });
       if (missing.length) { say('Type a reason for ' + missing.join(', ') + '.'); return; }
-      s.reasons = typed;
+      s.reasons = Object.assign({}, s.reasons, typed);  // earlier reasons for other items stand
       s.shown = null;
       return planAndShow(null);
     };
@@ -2590,7 +2625,7 @@ var VHIR_SIGN = (function() {
       loginResponse: loginResponse, unwrapKey: unwrapKey, signBodies: signBodies,
       signedView: signedView, afterEntry: afterEntry, fingerprint: fingerprint,
       VIEW1_EXCLUDES: VIEW1_EXCLUDES, VIEW2_EXCLUDES: VIEW2_EXCLUDES, IOC_DERIVED: IOC_DERIVED,
-      EDITABLE: EDITABLE, provenanceLines: provenanceLines,
+      EDITABLE: EDITABLE, provenanceLines: provenanceLines, failedSha256: failedSha256,
       IOC_EDITABLE: IOC_EDITABLE } };
 })();
 

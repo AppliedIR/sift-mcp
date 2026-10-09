@@ -6,7 +6,8 @@
 #
 # Protected, under ${VHIR_CASES_DIR:-~/cases}: the case records at a case root
 # (findings.json, timeline.json, approvals.jsonl, iocs.json, evidence.json,
-# todos.json, CASE.yaml, actions.jsonl, pending-reviews.json), everything in
+# evidence-verified.json, todos.json, CASE.yaml, actions.jsonl,
+# pending-reviews.json), everything in
 # audit/, every existing file in evidence/ (and evidence/ while non-empty),
 # each non-empty case root and the cases root. Everything else is allowed:
 # other files, reports/, work/, .outputs/, extractions/, filing new files into
@@ -46,7 +47,8 @@ GUARD=$(
 import glob, itertools, json, os, shlex, sys
 
 RECORDS = {"findings.json", "timeline.json", "approvals.jsonl", "iocs.json", "evidence.json",
-           "todos.json", "CASE.yaml", "actions.jsonl", "pending-reviews.json"}
+           "evidence-verified.json", "todos.json", "CASE.yaml", "actions.jsonl",
+           "pending-reviews.json"}
 # "(" opens a subshell or a find group: stripped like a keyword, so a find
 # expression stays in one segment; ")" is dropped.
 KEYWORDS = {"if", "then", "else", "elif", "do", "while", "until", "{", "}", "!", "fi", "done", "("}

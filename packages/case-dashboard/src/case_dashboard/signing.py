@@ -395,8 +395,10 @@ def make_plan(case_dir, case_id, entries, lists, examiner, public, now, head,
     """The bodies `entries` give against `lists` (which this edits in place,
     as the commit applies them), chained from `head` and dated `now`. Each
     direct approval runs the approval checks; one that failed needs its
-    reason in `approval_override_reasons` ({item id: reason}), else it is
-    refused as CHECKS_FAILED with its checks."""
+    reason in `approval_override_reasons` ({item id: {reason,
+    failed_sha256}}), given for exactly the failed checks it now has (their
+    `approval_checks.failed_sha256`); else it is refused as CHECKS_FAILED with
+    its checks. A large root is hashed in the background meanwhile."""
     from vhir_cli.ledger_verify import chain_references
 
     direct, refused = _direct(entries, lists, examiner, now)
@@ -406,12 +408,13 @@ def make_plan(case_dir, case_id, entries, lists, examiner, public, now, head,
     for d in direct:
         if d.decision != "approve" or d.type not in ("finding", "timeline"):
             continue
-        d.checks = approval_checks.check_item(case_dir, d.item, d.type)
+        d.checks = approval_checks.check_item(case_dir, d.item, d.type, background=True)
         if d.checks["result"] != "failed":
             continue
-        if reasons.get(d.id):
-            d.approval_override_reason = reasons[d.id]
-        else:
+        given = reasons.get(d.id) or {}
+        if given.get("failed_sha256") == approval_checks.failed_sha256(d.checks):
+            d.approval_override_reason = given["reason"]
+        else:  # none, or given for other failures than these
             refused.append({"id": d.id, "reason": "CHECKS_FAILED", "checks": d.checks})
     if refused:
         return Plan(refused=refused)
@@ -666,13 +669,17 @@ async def post_commit_plan(request: Request) -> JSONResponse:
 
 def _reasons_problem(reasons, entries) -> str:
     """Why an `approval_override_reasons` map is refused ("" when it isn't):
-    {entry id: a typed reason of at most 2000 characters}."""
+    {entry id: {"reason": a typed reason of at most 2000 characters,
+    "failed_sha256": the failed checks it was given for}}."""
     if not isinstance(reasons, dict):
         return "approval_override_reasons must be a map of item id to reason"
     ids = {e.get("id") for e in entries if isinstance(e, dict)}
-    for item_id, reason in reasons.items():
+    for item_id, given in reasons.items():
         if item_id not in ids:
             return f"approval_override_reasons names {item_id!r}, which isn't an entry"
+        if not isinstance(given, dict) or not isinstance(given.get("failed_sha256"), str):
+            return f"the approval override reason for {item_id} names no failed checks"
+        reason = given.get("reason")
         if not isinstance(reason, str) or not reason.strip():
             return f"the approval override reason for {item_id} is empty"
         if len(reason) > _REASON_CHARS:
@@ -714,7 +721,11 @@ def _checks_failed(items: list[dict]) -> JSONResponse:
         + ", ".join(i["id"] for i in items)
         + ". Type why you approve each anyway, or close this dialog. Nothing was signed.",
         409,
-        items=[{"id": i["id"], "checks": i["checks"]} for i in items],
+        items=[
+            {"id": i["id"], "checks": i["checks"],
+             "failed_sha256": approval_checks.failed_sha256(i["checks"])}
+            for i in items
+        ],  # fmt: skip
     )
 
 
