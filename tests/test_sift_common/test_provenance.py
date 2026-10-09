@@ -100,3 +100,12 @@ def test_a_folder_file_outside_its_manifest_or_behind_a_changed_one_doesnt_link(
     manifest = c.d / folder["manifest_path"]
     manifest.write_bytes(manifest.read_bytes() + b" ")
     assert pv.trace_file(pv.load_case(c.d), f1, sha(f1)).grade == "BROKEN"
+
+
+def test_an_input_that_is_the_registered_folder_itself_traces_to_the_folder(c):
+    c.file("evidence/kape/C/System.evtx", "system evtx")
+    folder = c.register_folder(str(c.d / "evidence/kape"))
+    t = pv.trace_file(pv.load_case(c.d), str(c.d / "evidence/kape"))
+    assert t.grade == "FULL", t
+    assert t.root == {"path": folder["path"], "sha256": folder["manifest_sha256"]}
+    assert [link["method"] for link in t.links] == ["registered-path"]

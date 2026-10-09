@@ -103,12 +103,16 @@ def _manifest_rows(case: Case, folder: dict) -> list[dict]:
 
 
 def _registered(case: Case, real: str, sha256: str) -> Trace | None:
-    """FULL when the file is a registered root, by its path (the registry's
-    hash; the file isn't read), or listed in a registered folder's manifest."""
+    """FULL when the path is a registered root (a file, with the registry's
+    hash, unread; or a folder, with its manifest's hash), or a file listed in a
+    registered folder's manifest."""
     frm = {"path": real, "sha256": sha256}
     for r in case.roots:
-        if r.get("kind") != "folder" and r["path"] == real:
-            root = {"path": real, "sha256": r.get("sha256", "")}
+        if r["path"] == real:  # a file, or a folder root's own path
+            sha = r.get(
+                "manifest_sha256" if r.get("kind") == "folder" else "sha256", ""
+            )
+            root = {"path": real, "sha256": sha}
             to = {"path": real, "sha256": root["sha256"]}
             return Trace("FULL", root, [root], [_link("registered-path", frm, to)])
     rel = os.path.relpath(real, case.dir.resolve())
