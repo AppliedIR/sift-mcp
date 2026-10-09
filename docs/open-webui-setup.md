@@ -35,7 +35,7 @@ Start Open WebUI with the env file, e.g.
 | Setting | Value | Why |
 |---|---|---|
 | `ENABLE_PLUGINS` | `False` | Python Tools and Functions run on the Open WebUI server, which is equivalent to giving them a shell. This stops them running. It doesn't stop an admin creating them. |
-| `USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS` | `False` | Users can't add workspace tools, unless a group they're in allows it (see below). |
+| `USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS` | `False` | Users can't add workspace tools. With `ENABLE_PLUGINS=False` no tool code can load anyway. |
 | `ENABLE_DIRECT_INTEGRATIONS` | `False` | Users don't see the Integrations tab, where they'd add their own tool and terminal connections. Hiding it doesn't disable connections they already have. |
 | `ENABLE_DIRECT_CONNECTIONS` | `False` | Users can't connect their own OpenAI-compatible API endpoints. |
 | `USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS` | `False` | Users can't connect their own tool servers, unless a group they're in allows it (see below). Admins always can. |
@@ -46,11 +46,12 @@ Start Open WebUI with the env file, e.g.
 first start Open WebUI writes the other seven into its database, and from then
 on the database value is used, whatever the environment says. No Admin Panel
 save is needed for that to happen. On an instance that has started before,
-set each of the seven in the Admin Panel (checked on Open WebUI 0.11.4):
+set the seven as below (checked on Open WebUI 0.11.4); Tools Access needs nothing while
+plugins stay disabled:
 
 | Setting | Where in the Admin Panel |
 |---|---|
-| `USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS` | **Users > Groups > Default permissions > Edit**, and **each group's Edit > Permissions**: turn **Tools Access** off |
+| `USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS` | Nothing to set: with plugins disabled (as this profile sets), the **Tools Access** switch isn't shown and no tool code can load |
 | `ENABLE_DIRECT_INTEGRATIONS` | **Settings > Integrations**, User Connections: turn **Direct Integrations** off |
 | `ENABLE_DIRECT_CONNECTIONS` | **Settings > Connections**, User Connections: turn **Direct Connections** off |
 | `USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS` | **Users > Groups > Default permissions > Edit**, and **each group's Edit > Permissions**; Features Permissions: turn **Direct Tool Servers** off |
@@ -60,12 +61,12 @@ set each of the seven in the Admin Panel (checked on Open WebUI 0.11.4):
 
 A fresh instance started with the env file takes all eight.
 
-**The two `USER_PERMISSIONS_` keys are defaults only.** Open WebUI gives a user
-a permission when the defaults or any group they're in allows it, so a group
-that allows Tools Access or Direct Tool Servers gives it to its members
-whatever the defaults say. Turn both off in every group (**Users > Groups >**
-the group **> Edit > Permissions**), on a fresh instance too, and in each
-group you add later.
+**`USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS` is a default only.** Open WebUI
+gives a user a permission when the defaults or any group they're in allows it,
+so a group that allows Direct Tool Servers gives it to its members whatever
+the defaults say. Turn it off in every group (**Users > Groups >** the group
+**> Edit > Permissions**, Features Permissions), on a fresh instance too, and
+in each group you add later.
 
 ## Adding the backends
 
