@@ -37,6 +37,8 @@ class Case:
     dir: Path
     roots: list[dict]  # the registry's entries: files, and folders with a manifest
     by_id: dict[str, list[tuple[dict, bytes]]]  # audit id -> (entry, its line)
+    # id(entry) -> (ts, log, line): when; the trail's own order breaks a tie
+    order: dict[int, tuple] = field(default_factory=dict)
 
 
 @dataclass
@@ -65,19 +67,25 @@ def load_case(case_dir) -> Case:
     files = registry.get("files") if isinstance(registry, dict) else registry
     roots = [e for e in files or [] if isinstance(e, dict) and e.get("path")]
     by_id: dict[str, list[tuple[dict, bytes]]] = defaultdict(list)
-    for log in sorted((d / "audit").glob("*.jsonl")):
+    order: dict[int, tuple] = {}
+    for n_log, log in enumerate(sorted((d / "audit").glob("*.jsonl"))):
         try:
             data = log.read_bytes()
         except OSError:
             continue
-        for line in data.splitlines():
+        for n, line in enumerate(data.splitlines()):
             try:
                 entry = json.loads(line)
             except ValueError:
                 continue
             if isinstance(entry, dict) and isinstance(entry.get("audit_id"), str):
                 by_id[entry["audit_id"]].append((entry, line))
-    return Case(d, roots, dict(by_id))
+                order[id(entry)] = (str(entry.get("ts", "")), n_log, n)
+    return Case(d, roots, dict(by_id), order)
+
+
+def _when(case: Case, entry: dict) -> tuple:
+    return case.order.get(id(entry), (str(entry.get("ts", "")), 0, 0))
 
 
 def _broken(kind: str, detail: str, fix: str = "", reason: str = "", links=()) -> Trace:
@@ -200,11 +208,11 @@ def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
     if not under:
         return None
     for e, line, p in under:
-        start = e.get("ts", "")
-        end = min((u.get("ts", "") for u, _ in entries if isinstance(u.get("umount"), dict)
+        start = _when(case, e)
+        end = min((_when(case, u) for u, _ in entries if isinstance(u.get("umount"), dict)
                    and u["umount"].get("realpath") == p["realpath"]
                    and u["umount"].get("mnt_id") == p.get("mnt_id")
-                   and u.get("ts", "") >= start), default=None)  # fmt: skip
+                   and _when(case, u) >= start), default=None)  # fmt: skip
         if (st_dev is not None and p.get("st_dev") == st_dev
                 and (mnt_id is None or p.get("mnt_id") is None or mnt_id == p["mnt_id"])
                 and (at is None or (start <= at and (end is None or at <= end)))):  # fmt: skip
@@ -331,7 +339,7 @@ def _trace_entry(
     traces = []
     for i in inputs:
         t = trace_file(case, i["path"], i["sha256"], realpath=i["realpath"],
-                       st_dev=i["st_dev"], mnt_id=i["mnt_id"], _at=e.get("ts"),
+                       st_dev=i["st_dev"], mnt_id=i["mnt_id"], _at=_when(case, e),
                        _seen=seen | {aid})  # fmt: skip
         if i["declared"] and t.grade == "FULL":  # an input only the AI named
             f = {

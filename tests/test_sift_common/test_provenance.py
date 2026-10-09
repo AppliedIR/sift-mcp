@@ -405,3 +405,23 @@ def test_a_wintools_op_links_by_its_case_relative_sift_paths(c):
     assert [link["method"] for link in t.links] == [
         "registered-path", "recorded-id", "hash+place",
     ]  # fmt: skip
+
+
+def test_with_one_timestamp_the_trails_order_says_whether_the_mount_was_live(c):
+    """Entries written within one clock tick share a timestamp: the order they
+    were written in decides whether a read came before the unmount."""
+    a = c.file("evidence/imgA.raw", "image A")
+    c.register(a)
+    mp = str(c.d / "mnt")
+    sec = c.file("mnt/Security.evtx", "evtx inside A")
+    c.mount("sift-tester-20261009-001", a, mp, 2049)
+    c.run("sift-tester-20261009-002", ["EvtxECmd", "-f", sec], [sec], "4624\n",
+          input_realpaths=[sec], input_st_devs=[2049])  # fmt: skip
+    c.umount("sift-tester-20261009-003", mp, 2049)
+    c.run("sift-tester-20261009-004", ["EvtxECmd", "-f", sec], [sec], "4624\n",
+          input_realpaths=[sec], input_st_devs=[2049])  # fmt: skip
+    case = pv.load_case(c.d)
+    assert pv.trace_op(case, "sift-tester-20261009-002").grade == "FULL"
+    assert (
+        pv.trace_op(case, "sift-tester-20261009-004").break_["kind"] == "mount-mismatch"
+    )
