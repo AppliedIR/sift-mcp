@@ -496,8 +496,64 @@ def _trace_entry(
 ARTIFACT_GRADES = ("CITED-UNVERIFIED", "BROKEN", "AMBIGUOUS", "DECLARED", "FULL")
 
 
+def _norm(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _quote_lines(content: str) -> list[str]:
+    """A quote's lines, normalized; blank lines and elisions ("...") skipped."""
+    lines = [_norm(line) for line in str(content).splitlines()]
+    return [line for line in lines if line and line not in ("...", "…")]
+
+
+def _saved(path, sha256) -> str | None:
+    """A saved file's text when it still has its recorded SHA-256, else None."""
+    try:
+        data = Path(path).read_bytes()
+    except (OSError, TypeError):
+        return None
+    if not sha256 or hashlib.sha256(data).hexdigest() != sha256:
+        return None
+    return _norm(data.decode("utf-8", errors="replace"))
+
+
+def _unverified(why: str, links=()) -> Trace:
+    return Trace("CITED-UNVERIFIED", links=list(links), reason=why,
+                 break_={"kind": "cited-unverified", "detail": why,
+                         "fix": "quote the output the cited operation produced"})  # fmt: skip
+
+
+def _run_texts(case: Case, e: dict) -> list[str]:
+    """What a run's quote is checked against: its saved output and its
+    recorded output files, each only while it has its recorded hash."""
+    rs = e.get("result_summary") if isinstance(e.get("result_summary"), dict) else {}
+    pairs = [(rs.get("output_file"), rs.get("output_sha256"))] + _outputs(case, e)
+    return [t for t in (_saved(p, h) for p, h in pairs if p) if t is not None]
+
+
 def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
-    """A finding artifact's chain to registered evidence."""
+    """A finding artifact: its quoted content checked against what the cited
+    operation produced, then its chain to registered evidence.
+
+    - A run: each quoted line must be in its saved output, or in one of its
+      recorded output files, unchanged since; then the run's trace.
+    - A query: the saved response must be unchanged; each line must be in a
+      returned record (a document query, then only the matched records are
+      followed through their ingests) or in the response (a summary, then
+      every ingest it counted is followed).
+    - Reference data (a lookup, a line found only in enrichment fields) links
+      to the operation that wrote it, graded BROKEN "reference".
+    A quote the operation didn't produce is CITED-UNVERIFIED."""
+    items = case.by_id.get(audit_id) or []
+    if len(items) != 1:
+        return trace_op(case, audit_id)  # no entry, or one id on several
+    e, line = items[0]
+    quote = _quote_lines(content)
+    texts = _run_texts(case, e)
+    missing = [q for q in quote if not any(q in t for t in texts)]
+    if missing:
+        return _unverified(f"{missing[0]!r} isn't in {audit_id}'s saved output or its "
+                           "recorded output files, as they were recorded")  # fmt: skip
     return trace_op(case, audit_id)
 
 
