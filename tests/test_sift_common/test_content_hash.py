@@ -73,3 +73,15 @@ def test_any_other_change_changes_it():
         changed = json.loads(json.dumps(SENT))
         changed[field] = value
         assert content_hash(changed) != content_hash(SENT), field
+
+
+def test_values_json_cant_write_hash_as_the_opensearch_client_sends_them():
+    import datetime as dt
+    import decimal
+    import uuid
+
+    when = dt.datetime(2026, 10, 9, 12, 0, tzinfo=dt.timezone.utc)
+    u = uuid.UUID("12345678123456781234567812345678")
+    sent = {"t": when, "d": dt.date(2026, 10, 9), "u": u, "n": decimal.Decimal("1.5")}
+    stored = {"t": when.isoformat(), "d": "2026-10-09", "u": str(u), "n": 1.5}
+    assert content_hash(sent) == content_hash(stored)

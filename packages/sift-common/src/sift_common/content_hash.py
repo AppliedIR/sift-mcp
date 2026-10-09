@@ -12,8 +12,11 @@ what the evtx pipeline adds to a stored record (``winlog.event_data``'s
 
 from __future__ import annotations
 
+import datetime
+import decimal
 import hashlib
 import json
+import uuid
 
 FIELD = "vhir.content_hash"
 
@@ -49,6 +52,19 @@ def canonical_fields(record: dict) -> dict:
     }
 
 
+def _as_sent(value):
+    """A value JSON can't write, as the OpenSearch client sends it: dates and
+    times ISO 8601, a UUID its text, a Decimal a float. Anything else the
+    client would refuse; its text keeps the hash defined."""
+    if isinstance(value, (datetime.date, datetime.time)):
+        return value.isoformat()
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if isinstance(value, decimal.Decimal):
+        return float(value)
+    return str(value)
+
+
 def content_hash(record: dict) -> str:
     """SHA-256 (hex) of the record's canonical JSON."""
     text = json.dumps(
@@ -56,5 +72,6 @@ def content_hash(record: dict) -> str:
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
+        default=_as_sent,
     )
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
