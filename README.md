@@ -333,7 +333,7 @@ Every tool response is wrapped in a structured envelope enriched by forensic-kno
   "tool": "run_command",
   "data": {"output": {"rows": ["..."], "total_rows": 42}},
   "data_provenance": "tool_output_may_contain_untrusted_evidence",
-  "audit_id": "sift-steve-20260220-001",
+  "audit_id": "sift-steve-20260220-01KHXQE4JR7WN9RMEGFD2ED8E8",
   "examiner": "steve",
   "caveats": [
     "Amcache entries indicate file presence, not execution"
