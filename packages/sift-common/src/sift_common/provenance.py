@@ -117,6 +117,21 @@ def _manifest_rows(case: Case, folder: dict) -> list[dict]:
     return [r for r in rows if isinstance(r, dict)]
 
 
+def _other_hash(real: str, recorded: str, registered: str) -> Trace | None:
+    """A break when the operation recorded a hash for a registered file and it
+    isn't the registered one: those weren't the registered bytes."""
+    if (
+        recorded
+        and not recorded.startswith("pending:")
+        and registered
+        and (recorded != registered)
+    ):
+        return _broken("hash-mismatch", f"{real} was recorded with SHA-256 {recorded}, "
+                       f"but is registered with {registered}", "verify the evidence "
+                       "(vhir evidence verify), then run the step again")  # fmt: skip
+    return None
+
+
 def _label(root: dict) -> str:
     """Who registered a root: an acquisition, the AI, or the examiner."""
     if root.get("acquired_by"):
@@ -138,6 +153,8 @@ def _registered(case: Case, real: str, sha256: str) -> Trace | None:
             sha = r.get(
                 "manifest_sha256" if r.get("kind") == "folder" else "sha256", ""
             )
+            if r.get("kind") != "folder" and (bad := _other_hash(real, sha256, sha)):
+                return bad
             root = {"path": real, "sha256": sha, "label": _label(r)}
             to = {"path": real, "sha256": root["sha256"]}
             return Trace("FULL", root, [root], [_link("registered-path", frm, to)])
@@ -148,6 +165,8 @@ def _registered(case: Case, real: str, sha256: str) -> Trace | None:
             if key not in case.cache:
                 case.cache[key] = {x.get("path"): x for x in _manifest_rows(case, r)}
             row = case.cache[key].get(rel)
+            if row and (bad := _other_hash(real, sha256, row.get("sha256", ""))):
+                return bad
             if row:
                 root = {
                     "path": real,

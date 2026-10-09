@@ -584,3 +584,12 @@ def test_an_empty_file_never_links_by_hash_and_place(c):
                          "output_sha256s": [sha(empty)]})  # fmt: skip
     t = pv.trace_file(pv.load_case(c.d), empty, sha(empty))
     assert (t.grade, t.break_["kind"]) == ("BROKEN", "no-recorded-origin"), t.as_dict()
+
+
+def test_a_registered_input_recorded_with_another_hash_breaks(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    t = pv.trace_file(pv.load_case(c.d), z, "ab" * 32)
+    assert (t.grade, t.break_["kind"]) == ("BROKEN", "hash-mismatch"), t.as_dict()
+    assert pv.trace_file(pv.load_case(c.d), z, sha(z)).grade == "FULL"
+    assert pv.trace_file(pv.load_case(c.d), z, "").grade == "FULL"  # none recorded
