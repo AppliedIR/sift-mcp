@@ -100,3 +100,65 @@ def test_the_page_shows_a_folder_s_result_with_its_count():
     assert ">FAILED (2 files, 1 not OK)<" in shown["failed"]
     assert "Hashing (2 files); verify again shortly" in shown["pending"]
     assert "Error" not in "".join(shown.values())
+
+
+# --- Large members: hashed in the background, as case-mcp's verify does -------
+
+
+def _wait(case_dir, job_id):
+    import time
+
+    log = case_dir / "audit" / "file-identity.jsonl"
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if log.exists() and job_id in log.read_text():
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"{job_id} never closed")
+
+
+@pytest.fixture
+def large(portal, kape, monkeypatch):
+    from sift_common import file_identity as fi
+
+    monkeypatch.setattr(fi, "INLINE_LIMIT", 100)  # both members are "large"
+    return fi
+
+
+def test_a_large_member_is_pending_then_its_recorded_hash_is_taken(
+    portal, kape, large, monkeypatch
+):
+    first = verify(portal, kape["path"]).json()
+    assert first["status"] == "pending"
+    (job,) = {r["job_id"] for r in first["not_ok"]}
+    _wait(portal.dir, job)
+    monkeypatch.setattr(
+        large, "hash_file", None
+    )  # taken from the job, never read again
+    assert verify(portal, kape["path"]).json()["status"] == "verified"
+
+
+def test_a_failed_member_is_reported_once_then_asked_for_again(
+    portal, kape, large, monkeypatch
+):
+    real, failed = large.hash_file, []
+
+    def flaky(path):
+        if str(path).endswith("System.evtx") and not failed:
+            failed.append(path)
+            raise OSError(5, "Input/output error", str(path))
+        return real(path)
+
+    monkeypatch.setattr(large, "hash_file", flaky)
+    first = verify(portal, kape["path"]).json()
+    _wait(portal.dir, first["not_ok"][0]["job_id"])
+    second = verify(portal, kape["path"]).json()  # the failure, taken: no new job
+    assert second["status"] == "failed"
+    assert [(Path(r["path"]).name, r["status"]) for r in second["not_ok"]] == [
+        ("System.evtx", "ERROR")
+    ]
+    assert "Input/output error" in second["not_ok"][0]["error"]
+    third = verify(portal, kape["path"]).json()  # asked again, never retried forever
+    assert third["status"] == "pending"
+    _wait(portal.dir, third["not_ok"][0]["job_id"])
+    assert verify(portal, kape["path"]).json()["status"] == "verified"

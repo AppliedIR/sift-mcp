@@ -610,21 +610,29 @@ async def delete_delta_item(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "remaining": remaining})
 
 
-def _folder_hashes(case_dir, paths: list[str]) -> tuple[dict[str, str], str]:
-    """A folder's file hashes within a request's time: a completed background
-    hash of an unchanged file is taken; the rest are hashed now up to the
-    inline limit, else in one background job (verify again for its result)."""
+def _folder_hashes(case_dir, paths: list[str]) -> tuple[dict[str, str], str, dict]:
+    """A folder's file hashes within a request's time, as case-mcp's
+    evidence_verify takes them: what a completed background job recorded for
+    an unchanged file (its hash, or the error it couldn't be read with, used
+    up only by a call that starts no job), read once for all the files; the
+    rest hashed now up to the inline limit, else in one background job
+    (verify again for its result)."""
     from sift_common import file_identity as fi
 
-    hashes = {p: h for p in paths if (h := fi.completed_hash(case_dir, p))}
+    done = fi.completed_hashes(case_dir, paths)
+    hashes = {p: r["sha256"] for p, r in done.items() if "sha256" in r}
+    errors = {p: r["error"] for p, r in done.items() if "error" in r}
     batch = fi.hash_files_for_call(
-        [p for p in paths if p not in hashes],
+        [p for p in paths if p not in done],
         case_dir=case_dir,
         requested_by="portal_verify",
         inline_limit=fi.INLINE_LIMIT,
     )
     hashes.update((p, r.sha256) for p, r in batch.done.items())
-    return hashes, batch.job_id
+    errors.update((p, "not a regular file") for p in batch.not_regular)
+    if not batch.job_id:  # used now: the next verify hashes them again
+        fi.take_failures(done)
+    return hashes, batch.job_id, errors
 
 
 def _verify_folder(case_dir: Path, entry: dict) -> dict:
