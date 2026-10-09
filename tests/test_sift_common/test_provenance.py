@@ -593,3 +593,16 @@ def test_a_registered_input_recorded_with_another_hash_breaks(c):
     assert (t.grade, t.break_["kind"]) == ("BROKEN", "hash-mismatch"), t.as_dict()
     assert pv.trace_file(pv.load_case(c.d), z, sha(z)).grade == "FULL"
     assert pv.trace_file(pv.load_case(c.d), z, "").grade == "FULL"  # none recorded
+
+
+def test_a_producer_in_another_log_at_the_same_time_is_still_the_origin(c):
+    """Logs have no order between them: a tie in time is "later" only within
+    one log, where the trail says which came first."""
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    _s1, s2 = c.extract("sift-tester-20261009-001", z, log="sift-mcp")
+    c.op("opensearch-ingest-1", "opensearch-ingest-1-20261009-001", tool="ingest_vol3",
+         input_files=[s2], input_sha256s=[sha(s2)],
+         input_detection_method="parsed")  # fmt: skip
+    t = pv.trace_op(pv.load_case(c.d), "opensearch-ingest-1-20261009-001")
+    assert t.grade == "FULL", t.as_dict()

@@ -94,6 +94,13 @@ def _when(case: Case, entry: dict) -> tuple:
     return case.order.get(id(entry), (str(entry.get("ts", "")), 0, 0))
 
 
+def _not_before(case: Case, entry: dict, at: tuple) -> bool:
+    """Whether `entry` came at or after `at`: later in time, or at the same time
+    and not earlier in the same log. Logs have no order between them."""
+    ts, log, n = _when(case, entry)
+    return ts > at[0] or (ts == at[0] and log == at[1] and n >= at[2])
+
+
 def _broken(kind: str, detail: str, fix: str = "", reason: str = "", links=()) -> Trace:
     return Trace("BROKEN", links=list(links), reason=reason or detail,
                  break_={"kind": kind, "detail": detail, "fix": fix})  # fmt: skip
@@ -309,7 +316,7 @@ def trace_file(
     outputs = _index(case, "outputs", lambda e, line: [
         (os.path.realpath(out), (e, line, h)) for out, h in _outputs(case, e)])  # fmt: skip
     for e, line, out_sha in outputs.get(real, []):
-        if _at is not None and _when(case, e) >= _at:
+        if _at is not None and _not_before(case, e, _at):
             continue  # only an earlier operation can be its origin
         job_link = None
         if out_sha.startswith("pending:"):
