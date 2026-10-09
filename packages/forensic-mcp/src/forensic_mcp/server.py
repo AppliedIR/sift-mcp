@@ -6,6 +6,7 @@ import json
 import logging
 
 from mcp.server.fastmcp import FastMCP
+from sift_common.approvals import mark_approvals
 from sift_common.instructions import FORENSIC_MCP as _INSTRUCTIONS
 
 from forensic_mcp.audit import AuditWriter
@@ -347,6 +348,9 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - id, title, observation, interpretation, confidence, confidence_justification, type
         - audit_ids: list of evidence trail IDs
         - status: DRAFT, APPROVED, or REJECTED
+        - approval_verification (APPROVED only): VALID, or why its approval
+          doesn't verify (e.g. ALTERED_AFTER_APPROVAL): then treat it as not
+          approved; `warning` names each such finding
         - provenance: MCP, HOOK, SHELL, or NONE (string — how evidence was obtained)
         - content_hash: SHA-256 for integrity verification
         - artifacts: list of {source, extraction, content, content_type, purpose} (if provided)
@@ -360,12 +364,17 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
             paginated = (
                 all_findings[offset : offset + limit] if limit > 0 else all_findings
             )
-            return {
+            out = {
                 "findings": paginated,
                 "total": total,
                 "limit": limit,
                 "offset": offset,
             }
+            # an APPROVED finding is shown as approved only if it verifies
+            warning = mark_approvals(manager._require_active_case(), paginated)
+            if warning:
+                out["warning"] = warning
+            return out
         except Exception as e:
             logger.error("get_findings failed: %s", e)
             return {

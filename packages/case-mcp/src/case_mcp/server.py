@@ -14,6 +14,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from sift_common import file_identity as fi
+from sift_common.approvals import mark_approvals
 from sift_common.audit import AuditWriter, resolve_examiner
 from sift_common.host_identity import HostLogError, ensure_case_uuid
 from sift_common.instructions import CASE_MCP as _INSTRUCTIONS
@@ -515,6 +516,8 @@ def create_server() -> FastMCP:
         try:
             case_dir = _resolve_case_dir()
             result = _export_bundle(case_dir, since=since)
+            # an exported APPROVED finding carries whether it verifies
+            unverified = mark_approvals(case_dir, result.get("findings", []))
             logged_id = audit.log(
                 tool="export_bundle",
                 params={"since": since},
@@ -525,6 +528,10 @@ def create_server() -> FastMCP:
             )
             if logged_id is None:
                 result["warning"] = "Audit write failed — action not recorded"
+            if unverified:
+                result["warning"] = " ".join(
+                    filter(None, [result.get("warning"), unverified])
+                )
             return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}
