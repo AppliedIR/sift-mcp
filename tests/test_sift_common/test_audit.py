@@ -1,9 +1,13 @@
 """Unit tests for sift_common.audit — AuditWriter, resolve_examiner, _sanitize_slug."""
 
 import json
+import re
 
 import pytest
 from sift_common.audit import AuditWriter, _sanitize_slug, resolve_examiner
+
+# <prefix>-<examiner>-<YYYYMMDD>-<26-char lowercase ULID>
+ULID_ID = re.compile(r"^test-tester-[0-9]{8}-[0-9a-hjkmnp-tv-z]{26}\Z")
 
 
 @pytest.fixture(autouse=True)
@@ -101,18 +105,15 @@ class TestAuditWriter:
         monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
         eid = writer.log(tool="t", params={}, result_summary="ok")
-        assert eid.startswith("test-tester-")
-        assert eid.endswith("-001")
+        assert ULID_ID.match(eid), eid
 
-    def test_sequential_audit_ids(self, tmp_path, monkeypatch):
+    def test_each_audit_id_is_new(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
         monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
-        ids = [writer.log(tool="t", params={}, result_summary="ok") for _ in range(3)]
-        assert ids[0].endswith("-001")
-        assert ids[1].endswith("-002")
-        assert ids[2].endswith("-003")
+        ids = [writer.log(tool="t", params={}, result_summary="ok") for _ in range(50)]
+        assert len(set(ids)) == 50 and all(ULID_ID.match(i) for i in ids), ids
 
     def test_explicit_audit_id(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
@@ -146,20 +147,16 @@ class TestAuditWriter:
         entry = json.loads((audit_dir / "test-mcp.jsonl").read_text().strip())
         assert entry["elapsed_ms"] == 42.5
 
-    def test_resume_sequence_after_restart(self, tmp_path, monkeypatch):
+    def test_a_restarted_writer_never_repeats_an_id(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
         monkeypatch.setenv("VHIR_EXAMINER", "tester")
-
-        # Write 3 entries with first writer
         w1 = AuditWriter("test-mcp", audit_dir=str(audit_dir))
-        for _ in range(3):
-            w1.log(tool="t", params={}, result_summary="ok")
-
-        # Create new writer (simulates restart)
-        w2 = AuditWriter("test-mcp", audit_dir=str(audit_dir))
-        eid = w2.log(tool="t", params={}, result_summary="ok")
-        assert eid.endswith("-004")
+        ids = [w1.log(tool="t", params={}, result_summary="ok") for _ in range(3)]
+        w2 = AuditWriter("test-mcp", audit_dir=str(audit_dir))  # a restart
+        ids.append(w2.log(tool="t", params={}, result_summary="ok"))
+        assert len(set(ids)) == 4, ids
+        assert sorted(p.name for p in audit_dir.iterdir()) == ["test-mcp.jsonl"]
 
     def test_get_entries(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
@@ -188,16 +185,14 @@ class TestAuditWriter:
         writer = AuditWriter("test-mcp")
         assert writer.get_entries() == []
 
-    def test_reset_counter(self, tmp_path, monkeypatch):
+    def test_reset_counter_is_kept_and_changes_nothing(self, tmp_path, monkeypatch):
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
         monkeypatch.setenv("VHIR_EXAMINER", "tester")
         writer = AuditWriter("test-mcp", audit_dir=str(audit_dir))
-        writer.log(tool="t", params={}, result_summary="ok")
+        first = writer.log(tool="t", params={}, result_summary="ok")
         writer.reset_counter()
-        # After reset, sequence should resume from file
-        eid = writer.log(tool="t", params={}, result_summary="ok")
-        assert eid.endswith("-002")
+        assert writer.log(tool="t", params={}, result_summary="ok") != first
 
     def test_examiner_property(self, monkeypatch):
         monkeypatch.setenv("VHIR_EXAMINER", "alice")

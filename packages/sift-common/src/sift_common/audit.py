@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import re
-import threading
+import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -57,8 +57,8 @@ def resolve_examiner() -> str:
 class AuditWriter:
     """Writes audit entries to a per-MCP JSONL file.
 
-    Thread-safe: sequence counter protected by lock,
-    file writes wrapped in try/except with fsync for durability.
+    Ids need no counter or lock: each ends in a ULID. File writes are wrapped
+    in try/except with fsync for durability.
     """
 
     def __init__(
@@ -72,10 +72,6 @@ class AuditWriter:
         # A server that resolves its own case passes that resolver, so its
         # audit goes to the case its tools act on. It must have no side effects.
         self._case_dir_resolver = case_dir_resolver
-        self._sequence = 0
-        self._date_str = ""
-        self._audit_dir: Path | None = None
-        self._lock = threading.Lock()
 
     @property
     def examiner(self) -> str:
@@ -135,135 +131,15 @@ class AuditWriter:
         return audit_dir
 
     def _next_audit_id(self, audit_dir: Path | None = None) -> str:
-        """Generate next audit ID: {prefix}-{examiner}-{date}-{seq}.
+        """Generate the next audit ID: {prefix}-{examiner}-{date}-{ulid}.
 
-        Sequenced in `audit_dir` when given (log() passes the directory it
-        writes to), else in the directory resolved now.
+        The ULID (48-bit milliseconds, 80 random bits) makes the id unique
+        without a counter, across processes, cases and installations.
+        `audit_dir` is accepted for callers that pass it.
         """
         today = datetime.now(timezone.utc).strftime("%Y%m%d")
-        with self._lock:
-            if audit_dir is None:
-                audit_dir = self._get_audit_dir()
-            if today != self._date_str:
-                self._date_str = today
-                self._sequence = self._resume_sequence(today, audit_dir)
-            elif audit_dir != self._audit_dir:
-                self._sequence = max(
-                    self._sequence, self._resume_sequence(today, audit_dir)
-                )
-            self._audit_dir = audit_dir
-            seq = self._mint(audit_dir, today)
         prefix = self.mcp_name.replace("-mcp", "").replace("-", "")
-        return f"{prefix}-{self.examiner}-{today}-{seq:03d}"
-
-    def _mint(self, audit_dir: Path | None, today: str) -> int:
-        """Take the next sequence number, shared with every process writing this
-        audit directory under this name.
-
-        Under an exclusive lock on the `<mcp>.seq` sidecar: re-read it, take one
-        past the higher of it and this writer's own counter, and write that back,
-        so the sidecar never goes backwards. Waits while another process holds the
-        lock. Without an audit directory, or when the lock can't be taken, it
-        counts in this process only. Must be called under self._lock.
-        """
-        if audit_dir is None:
-            self._sequence += 1
-            return self._sequence
-        try:
-            import fcntl
-
-            fd = os.open(
-                audit_dir / f"{self.mcp_name}.seq", os.O_RDWR | os.O_CREAT, 0o644
-            )
-            with os.fdopen(fd, "r+", encoding="utf-8") as f:
-                fcntl.flock(f, fcntl.LOCK_EX)
-                side = None
-                try:
-                    data = json.loads(f.read())
-                    if isinstance(data, dict) and isinstance(data.get("seq"), int):
-                        side = data["seq"] if data.get("date") == today else 0
-                except ValueError:
-                    pass
-                if side is None:  # empty or not a sidecar: the trail sets the floor
-                    side = self._highest_in_trail(audit_dir, today)
-                self._sequence = max(self._sequence, side) + 1
-                f.seek(0)
-                f.truncate()
-                f.write(json.dumps({"date": today, "seq": self._sequence}))
-                f.flush()
-        except (OSError, ImportError) as e:
-            logger.warning(
-                "Cannot lock %s.seq in %s (%s); audit ids are counted in this "
-                "process only and may repeat across processes",
-                self.mcp_name,
-                audit_dir,
-                e,
-            )
-            self._sequence += 1
-        return self._sequence
-
-    def _resume_sequence(self, date_str: str, audit_dir: Path | None = None) -> int:
-        """Resume sequence: the higher of the sidecar and the JSONL's highest ID.
-
-        Prevents duplicate audit IDs after server restart or a case switch.
-        Must be called under self._lock.
-        """
-        if audit_dir is None:
-            audit_dir = self._get_audit_dir()
-        if not audit_dir:
-            return 0
-
-        side = 0
-        seq_file = audit_dir / f"{self.mcp_name}.seq"
-        try:
-            if seq_file.exists():
-                data = json.loads(seq_file.read_text())
-                if data.get("date") == date_str:
-                    seq = data.get("seq", 0)
-                    if isinstance(seq, int):
-                        side = seq
-        except Exception:  # unreadable or not a sidecar: the JSONL sets the floor
-            pass
-
-        return max(side, self._highest_in_trail(audit_dir, date_str))
-
-    def _highest_in_trail(self, audit_dir: Path, date_str: str) -> int:
-        """The highest sequence this writer's name used on `date_str` in the JSONL.
-
-        O(n): on startup, a date change, a case switch or a damaged sidecar.
-        """
-        log_file = audit_dir / f"{self.mcp_name}.jsonl"
-        if not log_file.exists():
-            return 0
-        prefix = self.mcp_name.replace("-mcp", "").replace("-", "")
-        pattern = f"{prefix}-{self.examiner}-{date_str}-"
-        max_seq = 0
-        try:
-            with open(log_file, encoding="utf-8", errors="replace") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or date_str not in line:
-                        continue
-                    try:
-                        entry = json.loads(line)
-                        if not isinstance(entry, dict):
-                            continue
-                        eid = entry.get("audit_id", "")
-                        if not isinstance(eid, str):
-                            continue
-                        if eid.startswith(pattern):
-                            try:
-                                seq = int(eid[len(pattern) :])
-                                max_seq = max(max_seq, seq)
-                            except ValueError:
-                                pass
-                    except Exception:  # a line that is not an entry
-                        continue
-        except OSError as e:
-            logger.warning(
-                "Failed to read audit log %s for sequence resume: %s", log_file, e
-            )
-        return max_seq
+        return f"{prefix}-{self.examiner}-{today}-{new_ulid()}"
 
     def _read_active_case_id(self) -> str:
         """Read case_id from ~/.vhir/active_case file.
@@ -408,15 +284,16 @@ class AuditWriter:
         return entries
 
     def reset_counter(self) -> None:
-        """Reset the audit ID counter. For testing only."""
-        with self._lock:
-            self._sequence = 0
-            self._date_str = ""
-        # Remove sidecar so _resume_sequence starts fresh
-        audit_dir = self._get_audit_dir()
-        if audit_dir:
-            seq_file = audit_dir / f"{self.mcp_name}.seq"
-            seq_file.unlink(missing_ok=True)
+        """Kept for callers' tests: ids no longer use a counter."""
+
+
+_ULID_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz"  # Crockford base32, lowercase
+
+
+def new_ulid() -> str:
+    """A 26-character lowercase ULID: 48-bit milliseconds, 80 random bits."""
+    n = (time.time_ns() // 1_000_000) << 80 | int.from_bytes(os.urandom(10), "big")
+    return "".join(_ULID_ALPHABET[(n >> s) & 31] for s in range(125, -1, -5))
 
 
 def _case_id_of(case_dir: str | Path) -> str:

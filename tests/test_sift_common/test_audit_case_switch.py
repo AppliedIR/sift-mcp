@@ -1,15 +1,17 @@
-"""Audit IDs are never issued twice within one audit directory.
+"""Audit IDs are never issued twice, whatever the case switches.
 
-The writer kept one sequence per process and resumed it only when the date
-changed, so after a case switch it handed out IDs the other case already held.
-It now resumes on a switch too, never below where it was: an ID minted in one
-case can still be logged into the other after the switch.
+The writer kept one sequence per process and resumed it from each case's
+sidecar and log, so a case switch could hand out IDs the other case already
+held. Each ID now ends in a ULID: no per-case sequence, sidecar or log scan,
+so a switch, a restart, a date change or an unreadable log line can't repeat
+one, and an ID minted in one case can still be logged into another.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -20,6 +22,7 @@ from sift_common.audit import AuditWriter
 DAY1 = dt.datetime(2026, 10, 1, 12, tzinfo=dt.timezone.utc)
 DAY2 = dt.datetime(2026, 10, 2, 12, tzinfo=dt.timezone.utc)
 NAME = "test-mcp"
+ULID_TAIL = re.compile(r"-[0-9]{8}-[0-9a-hjkmnp-tv-z]{26}\Z")
 
 
 @pytest.fixture(autouse=True)
@@ -59,37 +62,36 @@ def _log(writer: AuditWriter, n: int) -> list[str]:
 
 def _ids(case: Path) -> list[str]:
     log = case / "audit" / f"{NAME}.jsonl"
-    return [
-        json.loads(line)["audit_id"] for line in log.read_text().splitlines() if line
-    ]
+    lines = [json.loads(x) for x in log.read_text().splitlines() if x]
+    return [e["audit_id"] for e in lines if isinstance(e, dict) and "audit_id" in e]
 
 
 def _dups(case: Path) -> list[str]:
     return [i for i, n in Counter(_ids(case)).items() if n > 1]
 
 
-def _sidecar(case: Path) -> dict:
-    return json.loads((case / "audit" / f"{NAME}.seq").read_text())
+def _no_sidecar(*cases: Path) -> bool:
+    return not any((c / "audit" / f"{NAME}.seq").exists() for c in cases)
 
 
 @pytest.fixture
 def a_with_32(tmp_path, monkeypatch):
-    """Case A already holds today's IDs 001-032, written by an earlier process."""
+    """Case A already holds 32 of today's IDs, written by an earlier process."""
     a = _case(tmp_path, "A")
     _use(monkeypatch, a)
     _log(AuditWriter(NAME), 32)
     return a
 
 
-def test_a_switch_away_and_back_continues_the_case(tmp_path, monkeypatch, a_with_32):
+def test_a_switch_away_and_back_never_repeats_an_id(tmp_path, monkeypatch, a_with_32):
     b = _case(tmp_path, "B")
     writer = AuditWriter(NAME)
     _use(monkeypatch, b)
     _log(writer, 8)
     _use(monkeypatch, a_with_32)
     got = _log(writer, 2)
-    assert [i[-3:] for i in got] == ["033", "034"]
-    assert _sidecar(a_with_32)["seq"] == 34 and not _dups(a_with_32)
+    assert all(ULID_TAIL.search(i) for i in got), got
+    assert not _dups(a_with_32) and _no_sidecar(a_with_32, b)
 
 
 def test_alternating_cases_across_a_date_change(
@@ -126,26 +128,13 @@ def test_starting_in_the_case_with_fewer_ids(tmp_path, monkeypatch):
     assert (_dups(a), _dups(b)) == ([], [])
 
 
-def test_a_corrupt_sidecar_after_a_switch_resumes_from_the_log(
-    tmp_path, monkeypatch, a_with_32
-):
-    (a_with_32 / "audit" / f"{NAME}.seq").write_text("{garbage")
-    b = _case(tmp_path, "B")
-    writer = AuditWriter(NAME)
-    _use(monkeypatch, b)
-    _log(writer, 3)
-    _use(monkeypatch, a_with_32)
-    assert _log(writer, 1)[0].endswith("-033")
-
-
 @pytest.mark.parametrize(
     "restart", [True, False], ids=["after a restart", "same process"]
 )
 def test_an_id_minted_elsewhere_then_one_minted_here(
     tmp_path, monkeypatch, a_with_32, restart
 ):
-    """forensic-mcp logs shell IDs with log(audit_id=...); that write records
-    the writer's counter from another case in this case's sidecar."""
+    """forensic-mcp logs shell IDs with log(audit_id=...) into this case."""
     b = _case(tmp_path, "B")
     writer = AuditWriter(NAME)
     _use(monkeypatch, b)
@@ -155,7 +144,7 @@ def test_an_id_minted_elsewhere_then_one_minted_here(
         tool="cmd", params={}, result_summary="x", audit_id="shell-tester-20261001-001"
     )
     got = _log(AuditWriter(NAME) if restart else writer, 1)
-    assert got[0].endswith("-033") and not _dups(a_with_32)
+    assert ULID_TAIL.search(got[0]) and not _dups(a_with_32)
 
 
 def test_minting_with_no_case_then_a_case(monkeypatch, a_with_32):
@@ -164,7 +153,14 @@ def test_minting_with_no_case_then_a_case(monkeypatch, a_with_32):
     writer._next_audit_id()
     writer._next_audit_id()
     _use(monkeypatch, a_with_32)
-    assert _log(writer, 1)[0].endswith("-033")
+    assert ULID_TAIL.search(_log(writer, 1)[0]) and not _dups(a_with_32)
+
+
+def test_an_id_carries_the_day_it_was_minted(monkeypatch, clock, a_with_32):
+    writer = AuditWriter(NAME)
+    first = writer._next_audit_id()
+    clock[0] = DAY2
+    assert "-20261001-" in first and "-20261002-" in _log(writer, 1)[0]
 
 
 @pytest.fixture
@@ -246,8 +242,7 @@ def test_a_foreign_id_logged_into_a_case_then_a_restart(tmp_path, monkeypatch):
 def test_a_log_line_of_another_shape_is_skipped_on_a_switch(
     tmp_path, monkeypatch, line
 ):
-    """Valid JSON that isn't an audit entry, carrying today's date: the scan
-    that now runs on every switch raised on it."""
+    """Valid JSON that isn't an audit entry: nothing reads the log to mint."""
     x, y = _case(tmp_path, "X"), _case(tmp_path, "Y")
     _use(monkeypatch, y)
     _log(AuditWriter(NAME), 7)
@@ -257,7 +252,7 @@ def test_a_log_line_of_another_shape_is_skipped_on_a_switch(
     _use(monkeypatch, x)
     _log(writer, 3)
     _use(monkeypatch, y)
-    assert _log(writer, 1)[0].endswith("-008")
+    assert ULID_TAIL.search(_log(writer, 1)[0]) and not _dups(y)
 
 
 _DEEP = 100_000
@@ -268,68 +263,21 @@ BAD_LINES = {
 }
 
 
-@pytest.mark.parametrize("sidecar", ["missing", "behind at 8"])
 @pytest.mark.parametrize("bad", sorted(BAD_LINES))
-def test_a_log_line_that_cannot_be_read(monkeypatch, a_with_32, bad, sidecar):
-    """Each aborted the scan, and with it the next log()."""
-    audit_dir = a_with_32 / "audit"
-    with open(audit_dir / f"{NAME}.jsonl", "ab") as f:
+def test_a_log_line_that_cannot_be_read(monkeypatch, a_with_32, bad):
+    """Each aborted the old scan, and with it the next log()."""
+    with open(a_with_32 / "audit" / f"{NAME}.jsonl", "ab") as f:
         f.write(BAD_LINES[bad])
-    seq = audit_dir / f"{NAME}.seq"
-    if sidecar == "missing":
-        seq.unlink()
-    else:
-        seq.write_text(json.dumps({"date": "20261001", "seq": 8}))
-    assert _log(AuditWriter(NAME), 1)[0].endswith("-033")
+    assert ULID_TAIL.search(_log(AuditWriter(NAME), 1)[0])
 
 
-def test_a_sidecar_that_is_not_a_record_on_a_switch(tmp_path, monkeypatch, a_with_32):
-    (a_with_32 / "audit" / f"{NAME}.seq").write_text("[32]")
-    writer = AuditWriter(NAME)
-    _use(monkeypatch, _case(tmp_path, "B"))
-    _log(writer, 2)
-    _use(monkeypatch, a_with_32)
-    assert _log(writer, 1)[0].endswith("-033")
-
-
-@pytest.mark.parametrize("seq", ["12", 40.5], ids=["a string", "a float"])
-def test_a_sidecar_seq_that_is_not_an_int_on_a_switch(
-    tmp_path, monkeypatch, a_with_32, seq
-):
-    (a_with_32 / "audit" / f"{NAME}.seq").write_text(
-        json.dumps({"date": "20261001", "seq": seq})
-    )
-    writer = AuditWriter(NAME)
-    _use(monkeypatch, _case(tmp_path, "B"))
-    _log(writer, 2)
-    _use(monkeypatch, a_with_32)
-    assert _log(writer, 1)[0].endswith("-033")
-
-
-def _set_sidecar(case: Path, seq: int, date: str = "20261001") -> None:
-    (case / "audit" / f"{NAME}.seq").write_text(json.dumps({"date": date, "seq": seq}))
-
-
-def test_a_sidecar_ahead_of_the_log_sets_the_next_id(tmp_path, monkeypatch):
-    """IDs 009-032 were issued but never reached the log: the sidecar holds
-    the higher sequence, and resuming from the log alone reissues 009."""
-    a = _case(tmp_path, "A")
-    _use(monkeypatch, a)
-    _log(AuditWriter(NAME), 8)
-    _set_sidecar(a, 32)
-    assert _log(AuditWriter(NAME), 1) == ["test-tester-20261001-033"]
-
-
-def test_a_sidecar_with_no_log_sets_the_next_id(tmp_path, monkeypatch):
-    a = _case(tmp_path, "A")
-    _use(monkeypatch, a)
-    _set_sidecar(a, 32)
-    assert AuditWriter(NAME)._next_audit_id() == "test-tester-20261001-033"
-
-
-def test_a_sidecar_from_another_day_is_ignored(tmp_path, monkeypatch):
-    a = _case(tmp_path, "A")
-    _use(monkeypatch, a)
-    _log(AuditWriter(NAME), 8)
-    _set_sidecar(a, 32, date="20260930")
-    assert _log(AuditWriter(NAME), 1) == ["test-tester-20261001-009"]
+def test_no_sidecar_is_read_or_written(tmp_path, monkeypatch, a_with_32):
+    """A sidecar an older version left, of any shape, changes nothing."""
+    for text in ("[32]", "{garbage", json.dumps({"date": "20261001", "seq": 99})):
+        (a_with_32 / "audit" / f"{NAME}.seq").write_text(text)
+        writer = AuditWriter(NAME)
+        _use(monkeypatch, _case(tmp_path, f"B{len(text)}"))
+        _log(writer, 2)
+        _use(monkeypatch, a_with_32)
+        assert ULID_TAIL.search(_log(writer, 1)[0]) and not _dups(a_with_32)
+        assert (a_with_32 / "audit" / f"{NAME}.seq").read_text() == text

@@ -1,9 +1,10 @@
 """Audit ids stay unique when several processes write one audit trail.
 
-Each writer kept its sequence in memory and rewrote the shared sidecar from
-it after every entry, so two processes with the same name (two sessions on
-one project) handed out the same ids. The sequence is now taken under a lock
-on the sidecar, which only ever moves forward.
+Ids came from a sequence, counted per case and shared through a locked
+sidecar; when the lock couldn't be taken, a process counted alone and could
+repeat ids. Each id now ends in a ULID (milliseconds and 80 random bits), so
+no counter, sidecar or lock is needed, and ids are unique across processes,
+writers and cases.
 """
 
 from __future__ import annotations
@@ -74,15 +75,23 @@ def test_writers_in_four_processes_at_once_never_share_an_id(case, tmp_path):
     assert Counter(ids).most_common(1)[0][1] == 1
 
 
-def test_the_sidecar_never_goes_back(case):
+def test_two_writers_on_one_case_never_share_an_id_and_keep_no_counter(case):
     ahead, behind = AuditWriter(NAME), AuditWriter(NAME)
     behind.log(tool="t", params={}, result_summary="x")
     for _ in range(5):
         ahead.log(tool="t", params={}, result_summary="x")
     behind.log(tool="t", params={}, result_summary="x")
-    side = json.loads((case / "audit" / f"{NAME}.seq").read_text())
-    assert side["seq"] == 7
     assert len(set(_ids(case))) == 7
+    assert not (case / "audit" / f"{NAME}.seq").exists()
+
+
+def test_two_cases_first_ids_differ(case, tmp_path, monkeypatch):
+    other = tmp_path / "case-b"
+    other.mkdir()
+    (other / "CASE.yaml").write_text("case_id: case-b\n")
+    first = AuditWriter(NAME).log(tool="t", params={}, result_summary="x")
+    monkeypatch.setenv("VHIR_CASE_DIR", str(other))
+    assert AuditWriter(NAME).log(tool="t", params={}, result_summary="x") != first
 
 
 # A writer given no resolver keeps its old choice of case
@@ -151,15 +160,16 @@ def test_a_case_switch_between_minting_and_writing_cannot_move_the_id(
     assert _ids(case) == [logged]
 
 
-def test_an_emptied_sidecar_does_not_bring_back_a_used_id(case):
+def test_a_sidecar_from_an_older_version_is_left_alone(case):
+    seq = case / "audit" / f"{NAME}.seq"
+    seq.parent.mkdir()
+    seq.write_text('{"date": "20261001", "seq": 41}')
     writer = AuditWriter(NAME)
-    writer.log(tool="t", params={}, result_summary="x")
-    # another process logs, and leaves the sidecar truncated
-    AuditWriter(NAME).log(tool="t", params={}, result_summary="x")
-    (case / "audit" / f"{NAME}.seq").write_text("")
-    writer.log(tool="t", params={}, result_summary="x")
-    ids = _ids(case)
-    assert len(ids) == 3 and len(set(ids)) == 3, ids
+    ids = [writer.log(tool="t", params={}, result_summary="x") for _ in range(3)]
+    assert len(set(ids)) == 3, ids
+    assert seq.read_text() == '{"date": "20261001", "seq": 41}'
+    writer.reset_counter()
+    assert seq.exists()
 
 
 def test_an_entry_gets_its_id_from_the_case_it_is_written_to(

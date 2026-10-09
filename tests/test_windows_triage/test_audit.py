@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 from unittest.mock import patch
 
@@ -26,9 +27,9 @@ class TestAuditWriter:
         assert parts[1] == "tester"
         assert len(parts[2]) == 8
         assert parts[2].isdigit()
-        assert len(parts[-1]) == 3
+        assert re.fullmatch(r"[0-9a-hjkmnp-tv-z]{26}", parts[-1])  # a ULID
 
-    def test_monotonic_sequence(self, tmp_path, monkeypatch):
+    def test_each_id_is_new(self, tmp_path, monkeypatch):
         monkeypatch.setenv("VHIR_EXAMINER", "tester")
         monkeypatch.setenv("VHIR_CASE_DIR", str(tmp_path))
         (tmp_path / "CASE.yaml").touch(exist_ok=True)
@@ -37,8 +38,7 @@ class TestAuditWriter:
             writer.log(tool="check_file", params={}, result_summary={})
             for _ in range(5)
         ]
-        seqs = [int(eid.split("-")[-1]) for eid in ids]
-        assert seqs == [1, 2, 3, 4, 5]
+        assert len(set(ids)) == 5, ids
 
     def test_reset_counter(self, monkeypatch, tmp_path):
         monkeypatch.setenv("VHIR_EXAMINER", "tester")
@@ -53,7 +53,7 @@ class TestAuditWriter:
             audit_file.unlink()
         writer.reset_counter()
         eid = writer.log(tool="check_file", params={}, result_summary={})
-        assert eid.endswith("-001")
+        assert re.fullmatch(r"[0-9a-hjkmnp-tv-z]{26}", eid.split("-")[-1])
 
     def test_writes_jsonl(self, tmp_path, monkeypatch):
         monkeypatch.setenv("VHIR_EXAMINER", "tester")
@@ -122,17 +122,17 @@ class TestAuditWriter:
         assert len(ids) == 10
         assert len(set(ids)) == 10
 
-    def test_resumes_after_restart(self, tmp_path, monkeypatch):
+    def test_a_restart_never_repeats_an_id(self, tmp_path, monkeypatch):
         monkeypatch.setenv("VHIR_EXAMINER", "tester")
         monkeypatch.setenv("VHIR_CASE_DIR", str(tmp_path))
         (tmp_path / "CASE.yaml").touch(exist_ok=True)
         writer1 = AuditWriter("windows-triage-mcp")
-        writer1.log(tool="check_file", params={}, result_summary={})
-        writer1.log(tool="check_file", params={}, result_summary={})
+        a = writer1.log(tool="check_file", params={}, result_summary={})
+        b = writer1.log(tool="check_file", params={}, result_summary={})
 
         writer2 = AuditWriter("windows-triage-mcp")
         eid = writer2.log(tool="check_file", params={}, result_summary={})
-        assert eid.endswith("-003")
+        assert len({a, b, eid}) == 3
 
     def test_get_entries(self, tmp_path, monkeypatch):
         monkeypatch.setenv("VHIR_EXAMINER", "tester")

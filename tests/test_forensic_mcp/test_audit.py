@@ -1,5 +1,6 @@
 """Tests for audit trail write + read round-trip."""
 
+import re
 import threading
 
 import pytest
@@ -62,35 +63,25 @@ class TestAuditRoundTrip:
         assert entries[0]["params"] == {"key": "val"}
 
 
-class TestSequenceResume:
-    def test_resumes_after_restart(self, manager, active_case):
-        """New AuditWriter resumes sequence from existing JSONL, not from 0."""
+class TestIdsAcrossRestarts:
+    def test_a_restart_never_repeats_an_id(self, manager, active_case):
+        """A new AuditWriter (a server restart) on the same audit file."""
         writer1 = AuditWriter("forensic-mcp")
-        eid1 = writer1.log(tool="t1", params={}, result_summary="ok")
-        eid2 = writer1.log(tool="t2", params={}, result_summary="ok")
-        eid3 = writer1.log(tool="t3", params={}, result_summary="ok")
-        # eid3 should end in -003
-        assert eid3.endswith("-003")
-
-        # Simulate server restart -- new writer, same audit file
+        ids = [
+            writer1.log(tool=f"t{i}", params={}, result_summary="ok") for i in (1, 2, 3)
+        ]
         writer2 = AuditWriter("forensic-mcp")
-        eid4 = writer2.log(tool="t4", params={}, result_summary="ok")
-        # Should resume from 003 -> 004, not restart at 001
-        assert eid4.endswith("-004"), f"Expected -004 suffix, got {eid4}"
+        ids.append(writer2.log(tool="t4", params={}, result_summary="ok"))
+        assert len(set(ids)) == 4, ids
 
-    def test_resumes_across_date_change(self, manager, active_case):
-        """Sequence resets to 0 on new day (no existing entries for that date)."""
-        writer = AuditWriter("forensic-mcp")
-        # Write entry for today
-        eid1 = writer.log(tool="t1", params={}, result_summary="ok")
-        assert "-001" in eid1
+    def test_an_id_carries_todays_date_and_a_ulid(self, manager, active_case):
+        from datetime import datetime, timezone
 
-        # Force date change by clearing cached date
-        writer._date_str = ""
-        writer._sequence = 0
-        # Next call will re-scan and find existing entries for today
-        eid2 = writer.log(tool="t2", params={}, result_summary="ok")
-        assert eid2.endswith("-002")
+        eid = AuditWriter("forensic-mcp").log(tool="t1", params={}, result_summary="ok")
+        today = datetime.now(timezone.utc).strftime("%Y%m%d")
+        assert re.fullmatch(
+            rf"forensic-[a-z0-9-]+-{today}-[0-9a-hjkmnp-tv-z]{{26}}", eid
+        )
 
 
 class TestThreadSafety:
