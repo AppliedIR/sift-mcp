@@ -425,3 +425,54 @@ def test_with_one_timestamp_the_trails_order_says_whether_the_mount_was_live(c):
     assert (
         pv.trace_op(case, "sift-tester-20261009-004").break_["kind"] == "mount-mismatch"
     )
+
+
+# --- an output recorded while its hash was pending resolves through its job -----
+
+
+def _pending_extraction(c, job="hash-0123456789abcdef"):
+    """A 7z extraction whose large output was recorded as `pending:<job>`, then
+    read by vol: P1 hashes outputs over the inline limit in the background."""
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    s2 = c.file("extractions/x1/sample2.raw", "sample two")
+    c.op("sift-mcp", "sift-tester-20261009-001", tool="run_command",
+         params={"command": ["7z", "x", z], "purpose": "p"},
+         input_files=[z], input_sha256s=[""], input_detection_method="parsed",
+         result_summary={"exit_code": 0, "output_files": [s2],
+                         "output_sha256s": [f"pending:{job}"]})  # fmt: skip
+    return z, s2
+
+
+def _read(c, s2):
+    c.run("sift-tester-20261009-002", ["vol", "-f", s2, "windows.pslist"], [s2],
+          "PID 4 System\n", ts="2026-10-09T00:00:05Z")  # fmt: skip
+    return pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
+
+
+def test_a_pending_output_links_through_its_completed_job(c):
+    z, s2 = _pending_extraction(c)
+    c.op("file-identity", "fileidentity-tester-20261009-001", tool="hash_complete",
+         job_id="hash-0123456789abcdef", path=s2, sha256=sha(s2),
+         ts="2026-10-09T00:00:02Z")  # fmt: skip
+    t = _read(c, s2)
+    assert t.grade == "FULL" and t.root["sha256"] == sha(z), t.as_dict()
+    job = [l for l in t.links if l["audit_id"] == "fileidentity-tester-20261009-001"]
+    assert job and job[0]["method"] == "recorded-id", t.links
+
+
+def test_a_pending_output_whose_job_is_still_running_is_a_named_break(c):
+    _z, s2 = _pending_extraction(c)
+    t = _read(c, s2)
+    assert (t.grade, t.break_["kind"]) == ("BROKEN", "hash-pending"), t.as_dict()
+    assert "hash pending (job hash-0123456789abcdef)" in t.reason
+
+
+def test_a_pending_output_whose_job_failed_breaks_with_its_reason(c):
+    _z, s2 = _pending_extraction(c)
+    c.op("file-identity", "fileidentity-tester-20261009-001", tool="hash_failed",
+         job_id="hash-0123456789abcdef", path=s2, error="OSError: [Errno 5] EIO",
+         ts="2026-10-09T00:00:02Z")  # fmt: skip
+    t = _read(c, s2)
+    assert (t.grade, t.break_["kind"]) == ("BROKEN", "hash-failed"), t.as_dict()
+    assert "EIO" in t.reason

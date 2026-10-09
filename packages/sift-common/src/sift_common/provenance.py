@@ -176,17 +176,30 @@ def _outputs(case: Case, entry: dict) -> list[tuple[str, str]]:
     return [(p, h) for p, h in out if isinstance(p, str) and isinstance(h, str) and h]
 
 
-def _job_hash(case: Case, real: str, job_id: str) -> str | None:
-    """The hash a completed background job recorded for the file."""
+def _job(case: Case, real: str, job_id: str) -> tuple[str, Trace | dict]:
+    """What background hash job `job_id` recorded for the file: its hash and
+    the `recorded-id` link to the entry that closed the job; or a named break,
+    "hash pending" while nothing has closed it, "hash failed" with its reason."""
     for items in case.by_id.values():
-        for e, _ in items:
-            if e.get("tool") == "hash_complete" and e.get("job_id") == job_id:
-                for row in e.get("files") or [e]:
-                    if os.path.realpath(row.get("path", "")) == real and row.get(
-                        "sha256"
-                    ):
-                        return row["sha256"]
-    return None
+        for e, line in items:
+            if e.get("tool") not in ("hash_complete", "hash_failed"):
+                continue
+            if e.get("job_id") != job_id:
+                continue
+            for row in e.get("files") or [e]:
+                if not isinstance(row, dict):
+                    continue
+                if os.path.realpath(str(row.get("path", ""))) != real:
+                    continue
+                if row.get("sha256"):
+                    frm = {"path": real, "sha256": f"pending:{job_id}"}
+                    to = {"path": real, "sha256": row["sha256"]}
+                    return row["sha256"], _link("recorded-id", frm, to, e, line)
+                why = f"hash of {real} failed (job {job_id}): {row.get('error', '')}"
+                return "", _broken("hash-failed", why, "run the step again so the "
+                                   "file is hashed")  # fmt: skip
+    return "", _broken("hash-pending", f"hash pending (job {job_id}): {real}",
+                       "wait for the job to finish, then trace again")  # fmt: skip
 
 
 def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
@@ -246,32 +259,44 @@ def trace_file(
     )
     if found:
         return found
+    via = []  # the job link, when the file's own hash was recorded pending
     if sha.startswith("pending:"):
-        job = sha.split(":", 1)[1]
-        sha = _job_hash(case, real, job) or ""
+        sha, got = _job(case, real, sha.split(":", 1)[1])
         if not sha:
-            return _broken("hash-pending", f"{real}: hash job {job} never completed",
-                           "run the step again so the file is hashed")  # fmt: skip
-    producers = [
-        (e, line, out_sha)
-        for items in case.by_id.values()
-        for e, line in items
-        for out, out_sha in _outputs(case, e)
-        if sha and out_sha == sha and os.path.realpath(out) == real
-    ]
+            return got
+        via = [got]
+    # each recorded output at this path; one recorded pending is taken through
+    # its job, and while no job gives it a hash, that's the named break
+    producers, waiting = [], None
+    for items in case.by_id.values():
+        for e, line in items:
+            for out, out_sha in _outputs(case, e):
+                if os.path.realpath(out) != real:
+                    continue
+                job_link = None
+                if out_sha.startswith("pending:"):
+                    out_sha, got = _job(case, real, out_sha.split(":", 1)[1])
+                    if not out_sha:
+                        waiting = waiting or got
+                        continue
+                    job_link = got
+                if sha and out_sha == sha:
+                    producers.append((e, line, out_sha, job_link))
     if len(producers) > 1:  # never the last writer: each is named
         named = [{"audit_id": e["audit_id"], "entry_sha256": entry_sha256(line),
-                  "path": real, "sha256": h} for e, line, h in producers]  # fmt: skip
+                  "path": real, "sha256": h} for e, line, h, _j in producers]  # fmt: skip
         return Trace("AMBIGUOUS", candidates=named, reason=f"{real} is a recorded "
                      f"output of {len(named)} operations: " + ", ".join(
                          x["audit_id"] for x in named))  # fmt: skip
     if producers:
-        e, line, out_sha = producers[0]
+        e, line, out_sha, job_link = producers[0]
         frm, to = {"path": real, "sha256": sha}, {"path": real, "sha256": out_sha}
-        return _extend(
-            _trace_entry(case, e, line, _seen, to),
-            _link("hash+place", frm, to, e, line),
-        )
+        t = _trace_entry(case, e, line, _seen, to)
+        for link in ([job_link] if job_link else []) + via:  # the jobs' hashes
+            t = _extend(t, link)
+        return _extend(t, _link("hash+place", frm, to, e, line))
+    if waiting is not None:
+        return waiting
     return _broken("no-recorded-origin", f"{real} (SHA-256 {sha or 'not recorded'}) "
                    "has no recorded origin", _FIX_ORIGIN, NO_ORIGIN)  # fmt: skip
 
