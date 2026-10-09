@@ -356,7 +356,8 @@ def trace_file(
         if out_sha.startswith("pending:"):
             out_sha, got = _job(case, real, out_sha.split(":", 1)[1])
             if not out_sha:
-                waiting = waiting or got
+                if waiting is None or got.grade == "AMBIGUOUS":  # never lost to order
+                    waiting = got
                 continue
             job_link = got
         if sha and sha != _EMPTY_SHA256 and out_sha == sha:  # empty: no origin

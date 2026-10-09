@@ -715,3 +715,26 @@ def test_a_file_under_two_mounts_live_at_its_read_is_ambiguous(c):
          input_st_devs=[2049], input_detection_method="parsed")  # fmt: skip
     t = pv.trace_op(pv.load_case(c.d), "zzz-reader-20261009-001")
     assert t.grade == "AMBIGUOUS", t.as_dict()
+
+
+def test_an_ambiguous_job_after_a_pending_one_still_makes_the_trace_ambiguous(c):
+    """The order of the outputs never decides: a running job first, then a job
+    whose closings disagree, then a writer with the matching hash."""
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    s2 = c.file("extractions/x1/sample2.raw", "sample two")
+    for n, h in (
+        (1, "pending:hash-running"),
+        (2, "pending:hash-disagree"),
+        (3, sha(s2)),
+    ):
+        c.op("sift-mcp", f"sift-tester-20261009-00{n}", tool="run_command",
+             params={"command": ["7z", "x", z], "purpose": "p"},
+             input_files=[z], input_sha256s=[""], input_detection_method="parsed",
+             result_summary={"exit_code": 0, "output_files": [s2],
+                             "output_sha256s": [h]})  # fmt: skip
+    for n, h in ((1, sha(s2)), (2, "ab" * 32)):
+        c.op("file-identity", f"fileidentity-tester-20261009-00{n}", tool="hash_complete",
+             job_id="hash-disagree", path=s2, sha256=h)  # fmt: skip
+    t = pv.trace_file(pv.load_case(c.d), s2, sha(s2))
+    assert t.grade == "AMBIGUOUS", t.as_dict()
