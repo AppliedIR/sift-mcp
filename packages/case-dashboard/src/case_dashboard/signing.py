@@ -677,7 +677,9 @@ def _reasons_problem(reasons, entries) -> str:
     for item_id, given in reasons.items():
         if item_id not in ids:
             return f"approval_override_reasons names {item_id!r}, which isn't an entry"
-        if not isinstance(given, dict) or not isinstance(given.get("failed_sha256"), str):
+        if not isinstance(given, dict) or not isinstance(
+            given.get("failed_sha256"), str
+        ):
             return f"the approval override reason for {item_id} names no failed checks"
         reason = given.get("reason")
         if not isinstance(reason, str) or not reason.strip():
@@ -722,8 +724,11 @@ def _checks_failed(items: list[dict]) -> JSONResponse:
         + ". Type why you approve each anyway, or close this dialog. Nothing was signed.",
         409,
         items=[
-            {"id": i["id"], "checks": i["checks"],
-             "failed_sha256": approval_checks.failed_sha256(i["checks"])}
+            {
+                "id": i["id"],
+                "checks": i["checks"],
+                "failed_sha256": approval_checks.failed_sha256(i["checks"]),
+            }
             for i in items
         ],  # fmt: skip
     )
