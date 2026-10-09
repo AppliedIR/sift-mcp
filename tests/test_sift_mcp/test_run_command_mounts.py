@@ -22,7 +22,7 @@ BASE_INFO = "22 1 8:1 / / rw,relatime shared:1 - ext4 /dev/sda1 rw\n"
 MOUNT = """#!/bin/sh
 tgt=; prev=
 for a; do
-  case "$prev" in --target|-T) tgt=$a;; esac
+  case "$prev" in --target) tgt=$a;; esac
   case "$a" in --target=*) tgt=${a#--target=};; esac
   prev=$a; last=$a
 done
@@ -254,8 +254,3 @@ def test_a_mount_names_its_target_with_the_target_option(case):
     e = run(case, ["mount", str(img), "--target", str(mnt2)])
     (point,) = e["mount"]["points"]
     assert point["realpath"] == str(mnt2.resolve())
-    mnt3 = case / "mnt3"
-    mnt3.mkdir()
-    e = run(case, ["mount", "-T", str(mnt3), str(img)])
-    (point,) = e["mount"]["points"]
-    assert point["realpath"] == str(mnt3.resolve())

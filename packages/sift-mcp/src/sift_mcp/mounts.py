@@ -88,7 +88,7 @@ def mount_record(command, before: dict[int, str], inputs, registered, base=None)
         ),
         None,
     )
-    # mount's --target=X too (-T X and --target X leave X as a positional)
+    # mount's --target=X too (--target X leaves X as a positional)
     targets = _positionals(args)
     targets += [a.split("=", 1)[1] for a in args if a.startswith("--target=")]
     named = {os.path.realpath(command_files.absolute(a, base)): a for a in targets}
