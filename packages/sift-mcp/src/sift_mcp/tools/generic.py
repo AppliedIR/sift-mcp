@@ -50,6 +50,7 @@ def run_command(
     preview_lines: int = 0,
     op_id=None,
     case_dir: str | None = None,
+    before_run=None,
 ) -> dict:
     """Execute a command if its binary is not on the denylist.
 
@@ -130,6 +131,9 @@ def run_command(
 
     # Sanitize any args after the binary
     sanitize_extra_args(command[1:], tool_name=binary)
+
+    if before_run is not None:  # the command passed every check: about to run
+        before_run()
 
     exec_result = execute(
         command,

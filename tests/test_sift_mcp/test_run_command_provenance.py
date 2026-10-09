@@ -138,3 +138,31 @@ def test_an_output_flag_that_will_be_refused_is_never_walked(case, monkeypatch):
     r = r[0] if isinstance(r, tuple) else r
     assert json.loads(r[0].text)["success"] is False  # refused: outside the case
     assert "/" not in walked
+
+
+def test_an_acquisition_written_outside_the_case_is_recorded(case, tmp_path):
+    src = case / "evidence" / "src.raw"
+    _register(case, src, b"SOURCE DISK")
+    ext = tmp_path / "external"
+    ext.mkdir()
+    image = ext / "x.img"
+    code = (
+        "import sys\n"
+        "args = dict(a.split('=', 1) for a in sys.argv[1:])\n"
+        "open(args['of'], 'wb').write(open(args['if'], 'rb').read())\n"
+    )
+    r = asyncio.run(
+        create_server().call_tool(
+            "run_command",
+            {
+                "command": [sys.executable, "-c", code, f"if={src}", f"of={image}"],
+                "purpose": "t",
+            },
+        )
+    )
+    r = r[0] if isinstance(r, tuple) else r
+    aid = json.loads(r[0].text)["audit_id"]
+    lines = (case / "audit" / "sift-mcp.jsonl").read_text().splitlines()
+    (e,) = [x for x in map(json.loads, lines) if x["audit_id"] == aid]
+    outs = {o["path"]: o for o in e.get("outputs", [])}
+    assert outs[str(image)]["sha256"] == hashlib.sha256(b"SOURCE DISK").hexdigest()
