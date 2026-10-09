@@ -489,3 +489,24 @@ def _trace_entry(
         return Trace(worst.grade, worst.root, roots, links, worst.candidates,
                      worst.break_, worst.reason)  # fmt: skip
     return Trace("FULL", roots[0], roots, links)
+
+
+# --- Artifacts: what a finding cites, checked against what it quotes ---------
+
+ARTIFACT_GRADES = ("CITED-UNVERIFIED", "BROKEN", "AMBIGUOUS", "DECLARED", "FULL")
+
+
+def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
+    """A finding artifact's chain to registered evidence."""
+    return trace_op(case, audit_id)
+
+
+def finding_grade(artifacts: list[Trace]) -> str:
+    """A finding's grade: the worst of its evidence artifacts. Reference
+    artifacts (threat intel, baselines, enrichment) are left out when there's
+    evidence; a finding with no artifacts is DECLARED. Never PARTIAL."""
+    evidence = [t for t in artifacts if (t.break_ or {}).get("kind") != "reference"]
+    graded = evidence or artifacts
+    if not graded:
+        return "DECLARED"
+    return min((t.grade for t in graded), key=ARTIFACT_GRADES.index)
