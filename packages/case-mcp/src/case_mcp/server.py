@@ -715,6 +715,31 @@ def create_server() -> FastMCP:
         if hook_audit_id:
             _validate_str_length(hook_audit_id, "hook_audit_id", _MAX_SHORT)
 
+        # The files it names, where they are and their hashes: registered
+        # evidence by the registry's hash, unread; others hashed (in the
+        # background when large); a folder unhashed
+        from sift_common import file_place
+
+        case_dir = _audit_case_dir()
+        inputs, registered = [], []
+        for f in input_files or []:
+            rec, reg = file_place.input_record(case_dir, f, "log_external_action")
+            inputs.append(rec)
+            if reg:
+                registered.append(reg)
+        outputs = [
+            file_place.output_record(case_dir, f, "log_external_action")
+            for f in output_files or []
+        ]
+        files, shas = file_place.listed(inputs, registered)
+        fields: dict = {"declared": True}
+        if inputs:
+            fields["inputs"] = inputs
+        if registered:
+            fields["input_registered"] = registered
+        if outputs:
+            fields["outputs"] = outputs
+
         audit_id = audit.log(
             tool="log_external_action",
             params={
@@ -730,8 +755,10 @@ def create_server() -> FastMCP:
                 "output_files": output_files or [],
             },
             source=source,
-            input_files=input_files or None,
-            extra={"declared": True},
+            input_files=files or None,
+            input_sha256s=shas if files else None,
+            extra=fields,
+            case_dir=case_dir,
         )
         result = {
             "status": "logged",
