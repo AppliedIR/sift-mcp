@@ -307,3 +307,34 @@ def test_a_rewrite_backdated_to_the_same_size_and_mtime_is_not_taken(case):
     os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns))  # mtime set back, as touch -d does
     assert os.stat(f).st_mtime_ns == st.st_mtime_ns and os.stat(f).st_size == 400
     assert fi.completed_hash(case, f) is None  # ctime moved: the record isn't this file
+
+
+def test_a_failed_background_hash_is_taken_until_the_file_changes(case, monkeypatch):
+    f = case / "locked.sys"
+    f.write_bytes(b"L" * 400)
+
+    def unreadable(path):
+        raise PermissionError("Permission denied")
+
+    monkeypatch.setattr(fi, "hash_file", unreadable)
+    b = fi.hash_files_for_call([f], case_dir=case, requested_by="t", inline_limit=10)
+    _closed(case, b.job_id)
+    got = fi.completed_hashes(case, [f])
+    assert "Permission denied" in got[str(f)]["error"] and "sha256" not in got[str(f)]
+    os.chmod(f, 0o600)  # fixing it changes its ctime: a new request hashes it again
+    assert fi.completed_hashes(case, [f]) == {}
+
+
+def test_completed_hashes_read_the_log_once_for_many_files(case, monkeypatch):
+    files = []
+    for n in range(50):
+        files.append(case / f"f{n}.bin")
+        files[-1].write_bytes(b"x" * (100 + n))
+    b = fi.hash_files_for_call(files, case_dir=case, requested_by="t", inline_limit=10)
+    _closed(case, b.job_id)
+    reads, real = [], fi._completed_rows
+    monkeypatch.setattr(fi, "_completed_rows", lambda c: reads.append(c) or real(c))
+    got = fi.completed_hashes(case, files)
+    assert len(reads) == 1 and len(got) == 50
+    assert got[str(files[7])]["sha256"] == hashlib.sha256(b"x" * 107).hexdigest()
+    assert fi.completed_hash(case, files[7]) == got[str(files[7])]["sha256"]

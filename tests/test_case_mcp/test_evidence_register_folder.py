@@ -103,3 +103,49 @@ def test_the_ais_verify_of_a_folder_is_pending_then_ok(
     second = _parse(server["evidence_verify"]())
     assert [r["status"] for r in second["results"]] == ["OK", "OK"], second
     assert "pending" not in second
+
+
+def test_a_large_member_that_cant_be_read_is_listed_not_hashed_forever(
+    server,
+    case_dir,
+    kape,
+    monkeypatch,  # noqa: F811
+):
+    monkeypatch.setattr(fi, "INLINE_LIMIT", 100)
+    big = kape / "pagefile.sys"
+    big.chmod(0)
+    try:
+        first = _parse(server["evidence_register"](path=str(kape)))
+        _wait(case_dir, first["job_id"])
+        second = _parse(server["evidence_register"](path=str(kape)))  # no new job
+        assert second.get("kind") == "folder", second
+        m = json.loads((case_dir["path"] / second["manifest_path"]).read_text())
+        assert [u["path"].rsplit("/", 1)[1] for u in m["unreadable"]] == [
+            "pagefile.sys"
+        ]
+    finally:
+        big.chmod(0o644)
+
+
+def test_verify_of_a_member_that_turned_unreadable_ends_as_an_error(
+    server,
+    case_dir,
+    kape,
+    monkeypatch,  # noqa: F811
+):
+    monkeypatch.setattr(fi, "INLINE_LIMIT", 100)
+    first = _parse(server["evidence_register"](path=str(kape)))
+    _wait(case_dir, first["job_id"])
+    assert _parse(server["evidence_register"](path=str(kape)))["kind"] == "folder"
+    big = kape / "pagefile.sys"
+    big.chmod(0)
+    try:
+        v = _parse(server["evidence_verify"]())
+        (pending,) = [r for r in v["results"] if r["status"] == "PENDING"]
+        _wait(case_dir, pending["job_id"])
+        v = _parse(server["evidence_verify"]())  # the failure is taken: no new job
+        by = {r["path"].rsplit("/", 1)[1]: r for r in v["results"]}
+        assert by["pagefile.sys"]["status"] == "ERROR", by
+        assert "Permission" in by["pagefile.sys"]["error"] and "pending" not in v
+    finally:
+        big.chmod(0o644)

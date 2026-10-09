@@ -139,20 +139,24 @@ def _host_list_hint(case_dir: Path) -> str:
     return host_list_hint(case_dir)
 
 
-def _folder_hashes(case_dir, paths: list[str]) -> tuple[dict[str, str], str]:
-    """A folder's file hashes within a tool call's time limit: a completed
-    background hash of an unchanged file is taken; the rest are hashed in the
+def _folder_hashes(case_dir, paths: list[str]) -> tuple[dict[str, str], str, dict]:
+    """A folder's file hashes within a tool call's time limit: what a
+    completed background job recorded for an unchanged file is taken (its
+    hash, or the error it couldn't be read with); the rest are hashed in the
     call up to the inline limit, else in one background job, whose id means
     "call again"."""
-    hashes = {p: h for p in paths if (h := fi.completed_hash(case_dir, p))}
+    done = fi.completed_hashes(case_dir, paths)
+    hashes = {p: r["sha256"] for p, r in done.items() if "sha256" in r}
+    errors = {p: r["error"] for p, r in done.items() if "error" in r}
     batch = fi.hash_files_for_call(
-        [p for p in paths if p not in hashes],
+        [p for p in paths if p not in done],
         case_dir=case_dir,
         requested_by="evidence_register",
         inline_limit=fi.INLINE_LIMIT,
     )
     hashes.update((p, r.sha256) for p, r in batch.done.items())
-    return hashes, batch.job_id
+    errors.update((p, "not a regular file") for p in batch.not_regular)
+    return hashes, batch.job_id, errors
 
 
 def _validate_str_length(value: str | None, field: str, max_len: int) -> None:

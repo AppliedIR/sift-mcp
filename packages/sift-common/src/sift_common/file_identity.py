@@ -192,7 +192,14 @@ def _one(path: str) -> dict:
         return {"path": path, "sha256": r.sha256, "size": r.size, "st_dev": r.st_dev,
                 "st_ino": r.st_ino, "mtime_ns": r.mtime_ns, "ctime_ns": r.ctime_ns}  # fmt: skip
     except Exception as e:  # noqa: BLE001 -- a pending hash must always close
-        return {"path": path, "error": f"{type(e).__name__}: {e}"}
+        row = {"path": path, "error": f"{type(e).__name__}: {e}"}
+        try:  # the file as it was, so the failure is taken only while it's unchanged
+            st = os.stat(path)
+            row.update(size=st.st_size, st_dev=st.st_dev, st_ino=st.st_ino,
+                       mtime_ns=st.st_mtime_ns, ctime_ns=st.st_ctime_ns)  # fmt: skip
+        except OSError:
+            pass
+        return row
 
 
 def _job(key, job_id: str, paths, case_dir: str, requested_by: str) -> None:
@@ -232,34 +239,56 @@ def _job(key, job_id: str, paths, case_dir: str, requested_by: str) -> None:
 _STAT_KEY = ("st_dev", "st_ino", "size", "mtime_ns", "ctime_ns")
 
 
-def completed_hash(case_dir, path) -> str | None:
-    """The hash a completed background job recorded for `path` in this case,
-    taken only while the file is unchanged: the same device, inode, size,
-    mtime and ctime as when it was hashed (ctime can't be set back, so a
-    rewrite with its mtime set back isn't taken). Else None."""
-    log = Path(case_dir) / "audit" / "file-identity.jsonl"
+def _completed_rows(case_dir) -> dict[str, dict]:
+    """Each file's last recorded background result in this case (a hash or an
+    error), by real path, read from the log once."""
     try:
-        st = os.stat(path)
-        lines = log.read_text(encoding="utf-8").splitlines()
+        lines = (Path(case_dir) / "audit" / "file-identity.jsonl").read_text(
+            encoding="utf-8").splitlines()  # fmt: skip
     except OSError:
-        return None
-    real = os.path.realpath(path)
-    now = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
-    found = None
+        return {}
+    rows: dict[str, dict] = {}
     for line in lines:
         try:
             entry = json.loads(line)
         except ValueError:
             continue
-        if not isinstance(entry, dict) or entry.get("tool") != "hash_complete":
+        if not isinstance(entry, dict) or entry.get("tool") not in (
+            "hash_complete", "hash_failed",
+        ):  # fmt: skip
             continue
         for row in entry.get("files") or [entry]:
-            if (
-                isinstance(row, dict)
-                and row.get("sha256")
-                and isinstance(row.get("path"), str)
-                and os.path.realpath(row["path"]) == real
-                and tuple(row.get(k) for k in _STAT_KEY) == now
-            ):
-                found = row["sha256"]
+            if isinstance(row, dict) and isinstance(row.get("path"), str):
+                rows[os.path.realpath(row["path"])] = row
+    return rows
+
+
+def completed_hashes(case_dir, paths) -> dict[str, dict]:
+    """What completed background jobs recorded for these files in this case,
+    `{path: {"sha256": …} or {"error": …}}`, taken only while a file is
+    unchanged: the same device, inode, size, mtime and ctime as then (ctime
+    can't be set back, so a rewrite with its mtime set back isn't taken; a
+    file fixed after a failure has a new ctime, so it's hashed again). Files
+    with nothing recorded are left out."""
+    rows = _completed_rows(case_dir)
+    found: dict[str, dict] = {}
+    for path in map(str, paths):
+        row = rows.get(os.path.realpath(path))
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        now = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+        if row is None or tuple(row.get(k) for k in _STAT_KEY) != now:
+            continue
+        if row.get("sha256"):
+            found[path] = {"sha256": row["sha256"]}
+        elif row.get("error"):
+            found[path] = {"error": row["error"]}
     return found
+
+
+def completed_hash(case_dir, path) -> str | None:
+    """The hash a completed background job recorded for `path` while it's
+    unchanged (see `completed_hashes`), else None."""
+    return completed_hashes(case_dir, [path]).get(str(path), {}).get("sha256")
