@@ -253,6 +253,7 @@ def create_server() -> FastMCP:
                     "exit_code": exec_result["exit_code"],
                     "output_file": exec_result.get("output_file", ""),
                     "output_sha256": exec_result.get("output_sha256", ""),
+                    "output_sha256_scope": exec_result.get("output_sha256_scope", ""),
                     "stdout_bytes": exec_result.get("stdout_total_bytes", 0),
                     "stdout_head": (exec_result.get("stdout") or "")[:500],
                     **({"truncated": True} if exec_result.get("truncated") else {}),
@@ -284,6 +285,7 @@ def create_server() -> FastMCP:
             )
 
             response["output_sha256"] = exec_result.get("output_sha256", "")
+            response["output_sha256_scope"] = exec_result.get("output_sha256_scope", "")
             # Add full output metadata if file was saved
             if exec_result.get("output_file"):
                 response["full_output_path"] = exec_result["output_file"]

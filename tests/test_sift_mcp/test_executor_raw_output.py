@@ -93,3 +93,43 @@ def test_in_a_case_every_output_is_kept_whatever_its_size(tmp_path, monkeypatch)
     saved = Path(r["output_file"])
     assert saved.parent == case / "extractions" and saved.read_bytes() == OUT
     assert "output_file" not in execute(_writes(b""))
+
+
+def test_a_hash_of_output_cut_at_the_limit_says_it_covers_a_prefix(
+    no_case, monkeypatch
+):
+    monkeypatch.setenv("SIFT_MAX_OUTPUT", "20000")
+    r = execute(_writes(b"x" * 50000))
+    assert r["output_sha256_scope"] == "prefix"
+    assert (
+        r["output_sha256"] == hashlib.sha256(b"x" * r["stdout_total_bytes"]).hexdigest()
+    )
+    assert execute(_writes(OUT))["output_sha256_scope"] == "full"
+
+
+def test_run_command_records_the_scope_of_its_output_hash(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    (home / ".vhir").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("VHIR_EXAMINER", "examiner1")
+    monkeypatch.setenv("SIFT_MAX_OUTPUT", "20000")
+    for var in ("VHIR_CASE_DIR", "VHIR_AUDIT_DIR", "VHIR_ACTIVE_CASE"):
+        monkeypatch.delenv(var, raising=False)
+    case = tmp_path / "case"
+    case.mkdir()
+    (case / "CASE.yaml").write_text("case_id: case\nstatus: open\n")
+    (home / ".vhir" / "active_case").write_text(str(case))
+    from sift_mcp.server import create_server
+
+    script = tmp_path / "big.py"
+    script.write_text("import sys\nsys.stdout.write('x' * 50000)\n")
+    r = asyncio.run(
+        create_server().call_tool(
+            "run_command", {"command": [sys.executable, str(script)], "purpose": "t"}
+        )
+    )
+    r = json.loads((r[0] if isinstance(r, tuple) else r)[0].text)
+    s = json.loads((case / "audit" / "sift-mcp.jsonl").read_text().splitlines()[-1])
+    s = s["result_summary"]
+    assert s["output_sha256_scope"] == "prefix" and r["output_sha256_scope"] == "prefix"
+    assert s["output_sha256"] == hashlib.sha256(b"x" * s["stdout_bytes"]).hexdigest()

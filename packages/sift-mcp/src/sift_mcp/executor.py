@@ -132,6 +132,8 @@ def execute(
             "stdout_total_bytes": stdout_byte_count,
             # the bytes the tool wrote, whether or not they're saved
             "output_sha256": hashlib.sha256(stdout_raw).hexdigest(),
+            # cut at max_output_bytes: the hash covers only what was read
+            "output_sha256_scope": "prefix" if truncated else "full",
         }
         if truncated:
             response["truncated"] = True
