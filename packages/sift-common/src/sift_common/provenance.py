@@ -348,6 +348,8 @@ def trace_file(
             job_link = got
         if sha and sha != _EMPTY_SHA256 and out_sha == sha:  # empty: no origin
             producers.append((e, line, out_sha, job_link))
+    if waiting is not None and waiting.grade == "AMBIGUOUS":
+        return waiting  # an origin that can't be named isn't passed over for another
     if len(producers) > 1:  # never the last writer: each is named
         named = [{"audit_id": e["audit_id"], "entry_sha256": entry_sha256(line),
                   "path": real, "sha256": h} for e, line, h, _j in producers]  # fmt: skip

@@ -674,3 +674,20 @@ def test_tracing_a_many_file_jobs_outputs_reads_each_row_once(c, monkeypatch):
     monkeypatch.setattr(pv.os.path, "realpath", counted)
     assert all(pv.trace_file(case, f, sha(f)).grade == "FULL" for f in files)
     assert calls[0] < 20 * len(files), calls[0]  # linear: a scan per lookup was ~108
+
+
+def test_a_pending_output_whose_job_is_ambiguous_isnt_passed_over_for_another(c):
+    """Its closings disagree: that origin can't be named, so another producer
+    at the same path doesn't make the trace FULL."""
+    z, s2 = _pending_extraction(c)
+    for n, h in ((1, sha(s2)), (2, "ab" * 32)):
+        c.op("file-identity", f"fileidentity-tester-20261009-00{n}", tool="hash_complete",
+             job_id="hash-0123456789abcdef", path=s2, sha256=h,
+             ts="2026-10-09T00:00:02Z")  # fmt: skip
+    c.op("sift-mcp", "sift-tester-20261009-005", tool="run_command",  # another writer
+         params={"command": ["cp", z, s2], "purpose": "p"}, ts="2026-10-09T00:00:03Z",
+         input_files=[z], input_sha256s=[""], input_detection_method="parsed",
+         result_summary={"exit_code": 0, "output_files": [s2],
+                         "output_sha256s": [sha(s2)]})  # fmt: skip
+    t = _read(c, s2)
+    assert t.grade == "AMBIGUOUS", t.as_dict()
