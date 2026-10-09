@@ -7,9 +7,11 @@ entry can be compared with a hash in another.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import stat
 from dataclasses import dataclass
+from pathlib import Path
 
 _CHUNK = 1 << 20
 
@@ -44,3 +46,23 @@ def hash_file(path) -> HashResult:
     return HashResult(
         str(path), h.hexdigest(), st.st_size, st.st_dev, st.st_ino, st.st_mtime_ns
     )
+
+
+def registered_hash(case_dir, path) -> str | None:
+    """The registry's hash when `path` is a registered file (compared by its
+    real path), else None. The file itself is never read: a registered input
+    links to the registry by its path."""
+    try:
+        registry = json.loads((Path(case_dir) / "evidence.json").read_text())
+    except (OSError, ValueError):
+        return None
+    files = registry.get("files") if isinstance(registry, dict) else registry
+    real = os.path.realpath(path)
+    for entry in files if isinstance(files, list) else []:
+        if (
+            isinstance(entry, dict)
+            and entry.get("path") == real
+            and entry.get("sha256")
+        ):
+            return entry["sha256"]
+    return None
