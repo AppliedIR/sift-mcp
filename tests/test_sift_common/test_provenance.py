@@ -606,3 +606,22 @@ def test_a_producer_in_another_log_at_the_same_time_is_still_the_origin(c):
          input_detection_method="parsed")  # fmt: skip
     t = pv.trace_op(pv.load_case(c.d), "opensearch-ingest-1-20261009-001")
     assert t.grade == "FULL", t.as_dict()
+
+
+# --- a job's closing entry, mounts across logs, and many-file jobs ---------------
+
+
+@pytest.mark.parametrize("log", ["aaa-reader", "zzz-reader"])
+def test_a_read_at_the_mounts_time_in_another_log_links_whatever_the_logs_names(c, log):
+    """Logs have no order between them: a tie in time across logs never
+    decides whether the mount was live, so the log's name can't either."""
+    a = c.file("evidence/imgA.raw", "image A")
+    c.register(a)
+    mp = str(c.d / "mnt")
+    sec = c.file("mnt/Windows/System32/winevt/Logs/Security.evtx", "evtx inside A")
+    c.mount("sift-tester-20261009-001", a, mp, 2049, ts="2026-10-09T01:00:00Z")
+    c.op(log, f"{log}-20261009-001", tool="EvtxECmd", ts="2026-10-09T01:00:00Z",
+         input_files=[sec], input_sha256s=[sha(sec)], input_realpaths=[sec],
+         input_st_devs=[2049], input_detection_method="parsed")  # fmt: skip
+    t = pv.trace_op(pv.load_case(c.d), f"{log}-20261009-001")
+    assert t.grade == "FULL", t.as_dict()

@@ -94,6 +94,18 @@ def _when(case: Case, entry: dict) -> tuple:
     return case.order.get(id(entry), (str(entry.get("ts", "")), 0, 0))
 
 
+def _before(case: Case, entry: dict, at: tuple) -> bool:
+    """Whether `entry` came before `at`: earlier in time, or at the same time
+    and earlier in the same log. A tie across logs is neither before nor after."""
+    ts, log, n = _when(case, entry)
+    return ts < at[0] or (ts == at[0] and log == at[1] and n < at[2])
+
+
+def _after(case: Case, entry: dict, at: tuple) -> bool:
+    ts, log, n = _when(case, entry)
+    return ts > at[0] or (ts == at[0] and log == at[1] and n > at[2])
+
+
 def _not_before(case: Case, entry: dict, at: tuple) -> bool:
     """Whether `entry` came at or after `at`: later in time, or at the same time
     and not earlier in the same log. Logs have no order between them."""
@@ -263,14 +275,17 @@ def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
         return None
     for e, line, p in under:
         start = _when(case, e)
-        end = min((_when(case, u) for u, _ in entries if isinstance(u.get("umount"), dict)
-                   and u["umount"].get("realpath") == p["realpath"]
-                   and u["umount"].get("mnt_id") == p.get("mnt_id")
-                   and _when(case, u) >= start), default=None)  # fmt: skip
+        # this mount's unmounts: its point's realpath and mount id, not before it
+        ends = [u for u, _ in entries if u["umount"].get("realpath") == p["realpath"]
+                and u["umount"].get("mnt_id") == p.get("mnt_id")
+                and not _before(case, u, start)]  # fmt: skip
+        # live at the read: mounted not after it, and no unmount before it (a tie
+        # across logs counts as neither); with no read time, only if never unmounted
+        live = (not ends if at is None else not _after(case, e, at)
+                and not any(_before(case, u, at) for u in ends))  # fmt: skip
         if (st_dev is not None and p.get("st_dev") == st_dev
                 and (mnt_id is None or p.get("mnt_id") is None or mnt_id == p["mnt_id"])
-                and (end is None if at is None  # no read time: only a mount still live
-                     else start <= at and (end is None or at <= end))):  # fmt: skip
+                and live):  # fmt: skip
             to = {"path": p["realpath"], "sha256": ""}
             trace = _trace_entry(case, e, line, seen, to)
             return _extend(trace, _link("recorded-mount", {"path": real, "sha256": sha}, to,
