@@ -35,10 +35,10 @@ Start Open WebUI with the env file, e.g.
 | Setting | Value | Why |
 |---|---|---|
 | `ENABLE_PLUGINS` | `False` | Python Tools and Functions run on the Open WebUI server, which is equivalent to giving them a shell. This stops them running. It doesn't stop an admin creating them. |
-| `USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS` | `False` | Users can't add workspace tools. |
+| `USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS` | `False` | Users can't add workspace tools, unless a group they're in allows it (see below). |
 | `ENABLE_DIRECT_INTEGRATIONS` | `False` | Users don't see the Integrations tab, where they'd add their own tool and terminal connections. Hiding it doesn't disable connections they already have. |
 | `ENABLE_DIRECT_CONNECTIONS` | `False` | Users can't connect their own OpenAI-compatible API endpoints. |
-| `USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS` | `False` | Users can't connect their own tool servers. Admins always can. |
+| `USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS` | `False` | Users can't connect their own tool servers, unless a group they're in allows it (see below). Admins always can. |
 | `ENABLE_CODE_INTERPRETER` | `False` | No code interpreter. |
 | `CODE_INTERPRETER_ENGINE`, `CODE_EXECUTION_ENGINE` | `pyodide` | If an admin turns code execution on, it runs in the browser, not on a server. Never point either at Jupyter or Open Terminal. |
 
@@ -50,15 +50,22 @@ set each of the seven in the Admin Panel (checked on Open WebUI 0.11.4):
 
 | Setting | Where in the Admin Panel |
 |---|---|
-| `USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS` | **Users > Groups > Default permissions > Edit**: turn **Tools Access** off |
+| `USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS` | **Users > Groups > Default permissions > Edit**, and **each group's Edit > Permissions**: turn **Tools Access** off |
 | `ENABLE_DIRECT_INTEGRATIONS` | **Settings > Integrations**, User Connections: turn **Direct Integrations** off |
 | `ENABLE_DIRECT_CONNECTIONS` | **Settings > Connections**, User Connections: turn **Direct Connections** off |
-| `USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS` | **Users > Groups > Default permissions > Edit**, Features Permissions: turn **Direct Tool Servers** off |
+| `USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS` | **Users > Groups > Default permissions > Edit**, and **each group's Edit > Permissions**; Features Permissions: turn **Direct Tool Servers** off |
 | `ENABLE_CODE_INTERPRETER` | **Settings > Code Execution**, Code Interpreter: turn **Enable Code Interpreter** off |
 | `CODE_INTERPRETER_ENGINE` | **Settings > Code Execution**, Code Interpreter: **Code Interpreter Engine** Pyodide |
 | `CODE_EXECUTION_ENGINE` | **Settings > Code Execution**: **Code Execution Engine** Pyodide |
 
 A fresh instance started with the env file takes all eight.
+
+**The two `USER_PERMISSIONS_` keys are defaults only.** Open WebUI gives a user
+a permission when the defaults or any group they're in allows it, so a group
+that allows Tools Access or Direct Tool Servers gives it to its members
+whatever the defaults say. Turn both off in every group (**Users > Groups >**
+the group **> Edit > Permissions**), on a fresh instance too, and in each
+group you add later.
 
 ## Adding the backends
 
