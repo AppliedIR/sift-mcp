@@ -42,12 +42,12 @@ With [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp), evidence is 
 - **Structured JSON case files** with integrity verification
 - **Formal report generation** (6 profiles) with Zeltser IR Writing guidance
 - **Audit trail** — JSONL logs with SHA-256 hashes for every MCP tool call and Bash command
-- **Optional add-ons** — OpenCTI threat intelligence, REMnux malware analysis, Microsoft Learn, Zeltser IR Writing
+- **Optional add-ons** — OpenCTI or MISP threat intelligence, REMnux malware analysis, Microsoft Learn, Zeltser IR Writing
 
 When Claude Code is the client, additional controls are deployed:
 
 - Bubblewrap sandbox — kernel-level filesystem isolation, Bash restricted to project directory
-- Permission deny rules — Edit/Write blocked on case data files (findings.json, timeline.json, approvals.jsonl, etc.), and Read blocked on `/var/lib/vhir` (the verification ledger and password files)
+- Permission deny rules — Edit/Write blocked on case data files (findings.json, timeline.json, approvals.jsonl, etc.), and Read blocked on `/var/lib/vhir` (the ledgers, signing keys and passphrase files)
 - PreToolUse case-data guard — refuses Bash commands that would delete or overwrite case records, audit logs or evidence files (a best-effort check of listed commands, not a security boundary)
 - Signed decisions — each examiner's own Ed25519 key, unlocked by their passphrase, signs every approval and rejection into the case's ledger, which `vhir review --verify` checks
 - Provenance enforcement — rejects findings that lack an evidence trail in the audit log
@@ -366,7 +366,7 @@ A denylist blocks destructive system commands (mkfs, dd, fdisk, shutdown, etc.).
 Additional protections:
 - `subprocess.run(shell=False)` — no shell, no arbitrary command chains
 - Argument sanitization — shell metacharacters blocked
-- Path validation — input paths under /proc, /sys, /dev, /etc, /boot, ~/.vhir, ~/.ssh, ~/.claude, ~/.claude.json (and its `.vhir-backup-*` copies), ~/.config/opencti-mcp and /var/lib/vhir are refused, including bare names in the working folder (so a search pattern that names one, such as `grep .ssh log.txt` run from the home folder, is refused too). Defence in depth only: text inside `python -c` or `bash -c`, recursive reads of a parent folder (`tar ~`), and a symlinked home folder or `~/.claude` aren't checked
+- Path validation — input paths under /proc, /sys, /dev, /etc, /boot, ~/.vhir, ~/.ssh, ~/.claude, ~/.claude.json (and its `.vhir-backup-*` copies), ~/.agents, ~/.codex, ~/.config/opencti-mcp and /var/lib/vhir are refused, including bare names in the working folder (so a search pattern that names one, such as `grep .ssh log.txt` run from the home folder, is refused too). Defence in depth only: text inside `python -c` or `bash -c`, recursive reads of a parent folder (`tar ~`), and a symlinked home folder or `~/.claude` aren't checked
 - `rm` protection — case directories protected from deletion
 - Case-data protection — commands that would delete or overwrite case records, `audit/` or evidence files are refused (rm, mv, cp, install, ln, tee, truncate, shred, unlink, also under sudo, nice, nohup, time, timeout and stdbuf); `bash -c`, `python -c`, `dd`, a tool's own output options, a wrapper option that takes a value (`timeout -s KILL`, `stdbuf -o 0`, `sudo --user`), an attached or combined `-t` (`-t<dir>`, `-ft <dir>`), an option value placed after the operands of cp, install or ln (`--suffix .bak`, `-m 0644`), a single-operand `ln` (the link is created in the current folder) and an evidence file that is a symlink to a file outside the cases dir are not checked
 - Output truncation — large output capped
@@ -431,7 +431,7 @@ All Valhuntir components are assumed to run on a private forensic network, prote
 
 Any data loaded into the system or its component VMs, computers, or instances runs the risk of being exposed to the underlying AI. Only place data on these systems that you are willing to send to your AI provider.
 
-Outgoing Internet connections are required for report generation (Zeltser IR Writing MCP) and optionally used for threat intelligence (OpenCTI) and documentation (MS Learn MCP). No incoming connections from external systems should be allowed.
+Outgoing Internet connections are required for report generation (Zeltser IR Writing MCP) and optionally used for threat intelligence (OpenCTI, MISP) and documentation (MS Learn MCP). No incoming connections from external systems should be allowed.
 
 Valhuntir is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. Clients with direct shell access (like Claude Code) can also operate outside MCP, but `vhir setup client` deploys forensic controls for Claude Code: a kernel-level sandbox restricts Bash writes, deny rules block Edit/Write to case data files, a PreToolUse hook refuses Bash commands that would delete or overwrite case records or evidence (a best-effort check of listed commands), a PostToolUse hook records each Bash command to the audit trail while a case is active, provenance enforcement ensures findings are traceable to evidence, and every examiner decision is signed into the case's ledger, which `vhir review --verify` checks (what that does and doesn't show is in the security model's stated limits). Claude Code's deny rules and sandbox limit that client's own tools, not other programs running as the examiner's user. Valhuntir is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
 
