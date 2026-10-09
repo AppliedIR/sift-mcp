@@ -141,10 +141,18 @@ def _registered(case: Case, real: str, sha256: str) -> Trace | None:
     return None
 
 
-def _outputs(entry: dict) -> list[tuple[str, str]]:
+def _where(case: Case, record: dict):
+    """A record's path on this box: wintools records its SIFT path relative to
+    the case ('/' separators), never compared by its Windows path."""
+    rel = record.get("sift_path")
+    return str(case.dir.joinpath(*rel.split("/"))) if isinstance(rel, str) and rel else (
+        record.get("path"))  # fmt: skip
+
+
+def _outputs(case: Case, entry: dict) -> list[tuple[str, str]]:
     """An entry's recorded outputs (path, SHA-256): one record each
     (`outputs[]`), its output files, and its saved stdout."""
-    out = [(o.get("path"), o.get("sha256")) for o in entry.get("outputs") or []
+    out = [(_where(case, o), o.get("sha256")) for o in entry.get("outputs") or []
            if isinstance(o, dict)]  # fmt: skip
     rs = entry.get("result_summary")
     if not isinstance(rs, dict):
@@ -236,7 +244,7 @@ def trace_file(
         (e, line, out_sha)
         for items in case.by_id.values()
         for e, line in items
-        for out, out_sha in _outputs(e)
+        for out, out_sha in _outputs(case, e)
         if sha and out_sha == sha and os.path.realpath(out) == real
     ]
     if len(producers) > 1:  # never the last writer: each is named
@@ -277,17 +285,17 @@ def _extend(t: Trace, link: dict) -> Trace:
     return t
 
 
-def _inputs(e: dict) -> list[dict]:
+def _inputs(case: Case, e: dict) -> list[dict]:
     """An entry's inputs: one record each (`inputs[]`), else the parallel lists.
     An input the AI declared is marked: `found: declared` or `declared: true`
     on its record, or, in the lists, one the AI listed (`llm`) that isn't in
     the command."""
     if isinstance(e.get("inputs"), list):
-        return [{"path": i["path"], "sha256": i.get("sha256") or "",
+        return [{"path": _where(case, i), "sha256": i.get("sha256") or "",
                  "realpath": i.get("realpath"), "st_dev": i.get("st_dev"),
                  "mnt_id": i.get("mnt_id"),
                  "declared": i.get("found") == "declared" or i.get("declared") is True}
-                for i in e["inputs"] if isinstance(i, dict) and isinstance(i.get("path"), str)]  # fmt: skip
+                for i in e["inputs"] if isinstance(i, dict) and isinstance(_where(case, i), str)]  # fmt: skip
     files = e.get("input_files") or []
     shas = e.get("input_sha256s") or []
     reals = e.get("input_realpaths") or []
@@ -313,7 +321,7 @@ def _trace_entry(
     aid = e["audit_id"]
     if aid in seen:
         return _broken("cycle", f"{aid} is recorded as its own origin")
-    inputs = _inputs(e)
+    inputs = _inputs(case, e)
     if not inputs:
         return _broken("no-inputs", f"{aid} recorded no inputs")
     traces = []

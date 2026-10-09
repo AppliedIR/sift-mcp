@@ -386,3 +386,22 @@ def test_an_output_recorded_on_its_own_record_links_by_hash_and_place(c):
     t = pv.trace_file(pv.load_case(c.d), s2, sha(s2))
     assert t.grade == "FULL" and t.root["path"] == z, t
     assert t.links[-1]["method"] == "hash+place"
+
+
+def test_a_wintools_op_links_by_its_case_relative_sift_paths(c):
+    """wintools records each file's SIFT path relative to the case ('/'
+    separators); its Windows path is never compared."""
+    hive = c.file("evidence/SYSTEM", "system hive")
+    c.register(hive)
+    csv = c.file("work/recmd/out.csv", "ControlSet001,1\n")
+    c.op("wintools-mcp", "wt-tester-20261009-003", tool="run_windows_command",
+         params={"command": ["RECmd.exe", "-f", "C:\\cases\\x\\evidence\\SYSTEM"]},
+         inputs=[{"path": "C:\\cases\\x\\evidence\\SYSTEM", "sift_path": "evidence/SYSTEM"}],
+         outputs=[{"path": "C:\\cases\\x\\work\\recmd\\out.csv",
+                   "share_path": "work\\recmd\\out.csv", "sift_path": "work/recmd/out.csv",
+                   "sha256": sha(csv)}])  # fmt: skip
+    t = pv.trace_file(pv.load_case(c.d), csv, sha(csv))
+    assert t.grade == "FULL" and t.root["path"] == hive, t
+    assert [link["method"] for link in t.links] == [
+        "registered-path", "recorded-id", "hash+place",
+    ]  # fmt: skip
