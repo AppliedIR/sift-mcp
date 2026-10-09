@@ -19,16 +19,32 @@ from sift_mcp import command_files
 MOUNT_TOOLS = frozenset({"ewfmount", "mount", "qemu-nbd", "xmount", "losetup"})
 _FUSERMOUNT = frozenset({"fusermount", "fusermount3"})
 _WRAPPERS = frozenset({"sudo", "nice", "nohup", "time", "timeout", "stdbuf"})
+# A wrapper's options that take the next argument as their value
+_VALUE_OPTS = {
+    "sudo": frozenset(
+        {"-u", "-g", "-C", "-h", "-p", "-U", "-r", "-t", "-D", "-R", "-T"}
+    ),
+    "timeout": frozenset({"-s", "-k", "--signal", "--kill-after"}),
+    "nice": frozenset({"-n", "--adjustment"}),
+    "stdbuf": frozenset({"-i", "-o", "-e", "--input", "--output", "--error"}),
+}
 
 
 def tool_of(command: list[str]) -> tuple[str, list[str]]:
     """The tool a command runs, past any wrapper (sudo, timeout, ...), and
     its arguments."""
     cmd = list(command)
-    while cmd and os.path.basename(cmd[0]) in _WRAPPERS:
+    while cmd and (wrapper := os.path.basename(cmd[0])) in _WRAPPERS:
         cmd.pop(0)
-        while cmd and (cmd[0].startswith("-") or cmd[0][:1].isdigit()):
-            cmd.pop(0)
+        takes_value = _VALUE_OPTS.get(wrapper, frozenset())
+        while cmd and cmd[0].startswith("-"):
+            opt = cmd.pop(0)
+            if opt == "--":
+                break
+            if opt in takes_value and cmd:
+                cmd.pop(0)  # its value: sudo -u root, timeout -s KILL
+        if wrapper == "timeout" and cmd:
+            cmd.pop(0)  # the duration
     if not cmd:
         return "", []
     return os.path.basename(cmd[0]), cmd[1:]

@@ -28,7 +28,10 @@ for a; do last=$a; done
 grep -v " $(realpath "$last") " "$FAKE_MOUNTINFO" > "$FAKE_MOUNTINFO.new"
 mv "$FAKE_MOUNTINFO.new" "$FAKE_MOUNTINFO"
 """
-SUDO = '#!/bin/sh\nexec "$@"\n'
+SUDO = """#!/bin/sh
+while [ "${1#-}" != "$1" ]; do case "$1" in -u|-g) shift;; esac; shift; done
+exec "$@"
+"""
 # Mounts, then stays running a while, so two of these overlap
 SLOW_MOUNT = """#!/bin/sh
 for a; do last=$a; done
@@ -175,6 +178,31 @@ def test_an_umount_that_failed_records_no_umount(case, tmp_path):
     lines = (case / "audit" / "sift-mcp.jsonl").read_text().splitlines()
     e = json.loads(lines[-1])
     assert e["result_summary"]["exit_code"] == 32 and "umount" not in e
+
+
+@pytest.mark.parametrize(
+    "command, tool",
+    [
+        (["sudo", "-u", "root", "mount", "a", "b"], "mount"),
+        (["sudo", "-g", "disk", "dc3dd", "if=a"], "dc3dd"),
+        (["sudo", "-E", "--", "umount", "b"], "umount"),
+        (["timeout", "-s", "KILL", "30", "ewfmount", "a", "b"], "ewfmount"),
+        (["nice", "-n", "5", "sudo", "mount", "a", "b"], "mount"),
+    ],
+)
+def test_the_tool_is_found_past_wrappers_and_their_option_values(command, tool):
+    from sift_mcp import mounts
+
+    assert mounts.tool_of(command)[0] == tool
+
+
+def test_sudo_with_a_user_still_records_the_mount(case):
+    img = _image(case)
+    mnt = case / "mnt"
+    mnt.mkdir()
+    e = run(case, ["sudo", "-u", "root", "mount", str(img), str(mnt)])
+    (point,) = e["mount"]["points"]
+    assert point["realpath"] == str(mnt.resolve())
 
 
 def test_two_mounts_at_once_each_record_only_their_own_point(case, tmp_path):

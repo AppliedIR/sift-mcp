@@ -33,7 +33,12 @@ def case(tmp_path, monkeypatch):
     (home / ".vhir" / "active_case").write_text(str(d))
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for name, body in (("dc3dd", DC3DD), ("sudo", '#!/bin/sh\nexec "$@"\n')):
+    sudo = (
+        "#!/bin/sh\n"
+        'while [ "${1#-}" != "$1" ]; do case "$1" in -u|-g) shift;; esac; shift; done\n'
+        'exec "$@"\n'
+    )
+    for name, body in (("dc3dd", DC3DD), ("sudo", sudo)):
         (bin_dir / name).write_text(body)
         (bin_dir / name).chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
@@ -53,7 +58,7 @@ def test_the_catalog_marks_the_acquisition_tools():
     assert not get_tool_def("7z").acquisition
 
 
-@pytest.mark.parametrize("sudo", [[], ["sudo"]])
+@pytest.mark.parametrize("sudo", [[], ["sudo"], ["sudo", "-g", "disk"]])
 def test_an_acquisition_writes_in_its_folder_and_is_marked(case, sudo):
     src = case / "evidence" / "src.raw"
     src.write_bytes(b"SOURCE DISK")
