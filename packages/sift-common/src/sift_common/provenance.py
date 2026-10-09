@@ -142,13 +142,15 @@ def _registered(case: Case, real: str, sha256: str) -> Trace | None:
 
 
 def _outputs(entry: dict) -> list[tuple[str, str]]:
-    """An entry's recorded outputs (path, SHA-256): its output files, and its
-    saved stdout."""
+    """An entry's recorded outputs (path, SHA-256): one record each
+    (`outputs[]`), its output files, and its saved stdout."""
+    out = [(o.get("path"), o.get("sha256")) for o in entry.get("outputs") or []
+           if isinstance(o, dict)]  # fmt: skip
     rs = entry.get("result_summary")
     if not isinstance(rs, dict):
-        return []
+        rs = {}
     files, shas = rs.get("output_files") or [], rs.get("output_sha256s") or []
-    out = list(zip(files, shas, strict=False))
+    out += list(zip(files, shas, strict=False))
     if rs.get("output_file"):
         out.append((rs["output_file"], rs.get("output_sha256", "")))
     return [(p, h) for p, h in out if isinstance(p, str) and isinstance(h, str) and h]

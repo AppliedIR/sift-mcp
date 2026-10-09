@@ -366,3 +366,15 @@ def test_an_input_marked_declared_on_its_own_record_is_declared(c, mark):
 def test_where_both_record_a_mount_id_they_must_match(c, mnt_id, grade):
     _, t = _mounted(c, 2049, input_mnt_ids=[mnt_id])  # the mount recorded 2049
     assert t.grade == grade, t
+
+
+def test_an_output_recorded_on_its_own_record_links_by_hash_and_place(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    s2 = c.file("extractions/op-1/sample2.raw", "sample two")
+    c.op("sift-mcp", "sift-tester-20261009-001", tool="run_command",
+         params={"command": ["7z", "x", z]}, inputs=[{"path": z, "realpath": z}],
+         outputs=[{"path": s2, "sha256": sha(s2), "size": 10}])  # fmt: skip
+    t = pv.trace_file(pv.load_case(c.d), s2, sha(s2))
+    assert t.grade == "FULL" and t.root["path"] == z, t
+    assert t.links[-1]["method"] == "hash+place"
