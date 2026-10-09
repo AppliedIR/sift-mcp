@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 
 INLINE_LIMIT = 1_000_000_000  # bytes a tool call may hash before it answers
 _CHUNK = 1 << 20
-_jobs: dict[tuple, str] = {}  # (real path, size, mtime_ns) -> job id, while it runs
+# a file's key is (real path, size, mtime_ns), a list's the tuple of its files'
+# keys -> the id of the job hashing it, while that job runs
+_jobs: dict[tuple, str] = {}
 _jobs_lock = threading.Lock()
 
 
@@ -47,6 +49,17 @@ class Pending:
 
     path: str
     job_id: str
+
+
+@dataclass(frozen=True)
+class Batch:
+    """A list of files: `done` hashed in the call, `pending` in job `job_id`
+    ("" with no case: unhashed), `not_regular` refused unread."""
+
+    done: dict[str, HashResult]
+    job_id: str
+    pending: list[str]
+    not_regular: list[str]
 
 
 def hash_file(path) -> HashResult:
@@ -103,45 +116,107 @@ def hash_for_call(
     if not case_dir:
         return None
     key = (os.path.realpath(path), st.st_size, st.st_mtime_ns)
+    return Pending(str(path), _start(key, str(path), str(case_dir), requested_by))
+
+
+def hash_files_for_call(
+    paths, *, case_dir, requested_by: str = "", inline_limit: int = INLINE_LIMIT
+) -> Batch:
+    """The hashes of a list of files (a folder's manifest) for a tool call that
+    must answer in time: regular files are hashed in the call while their
+    summed sizes stay within `inline_limit`, and every other one in a single
+    background job, as `hash_for_call` does for one file. A FIFO, device or
+    directory is listed in `not_regular`, unread. Without a case the rest
+    stay unhashed."""
+    done: dict[str, HashResult] = {}
+    rest: list[str] = []
+    not_regular: list[str] = []
+    budget = inline_limit
+    for p in map(str, paths):
+        try:
+            st = os.stat(p)
+        except OSError:
+            rest.append(p)  # its job records why it can't be read
+            continue
+        if not stat.S_ISREG(st.st_mode):
+            not_regular.append(p)
+        elif st.st_size <= budget:
+            try:
+                done[p] = hash_file(p)
+                budget -= st.st_size
+            except (OSError, NotRegularFile):
+                rest.append(p)
+        else:
+            rest.append(p)
+    if not rest or not case_dir:
+        return Batch(done, "", rest, not_regular)
+    key = tuple(_file_key(p) for p in rest)
+    return Batch(
+        done, _start(key, rest, str(case_dir), requested_by), rest, not_regular
+    )
+
+
+def _file_key(path: str) -> tuple:
+    try:
+        st = os.stat(path)
+        return (os.path.realpath(path), st.st_size, st.st_mtime_ns)
+    except OSError:
+        return (os.path.realpath(path), -1, -1)
+
+
+def _start(key: tuple, paths, case_dir: str, requested_by: str) -> str:
+    """The id of the job hashing `paths` (one path, or a list) in this
+    process: the running one for the same key, else a new daemon thread."""
     with _jobs_lock:
         if key in _jobs:
-            return Pending(str(path), _jobs[key])
+            return _jobs[key]
         job_id = _jobs[key] = f"hash-{uuid.uuid4().hex[:16]}"
     threading.Thread(
-        target=_hash_job,
-        args=(key, job_id, str(path), str(case_dir), requested_by),
+        target=_job,
+        args=(key, job_id, paths, case_dir, requested_by),
         name=f"file-identity-{job_id}",
         daemon=True,
     ).start()
-    return Pending(str(path), job_id)
+    return job_id
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _hash_job(key, job_id: str, path: str, case_dir: str, requested_by: str) -> None:
-    """Hash one file and close its pending hash, either way."""
+def _one(path: str) -> dict:
+    try:
+        r = hash_file(path)
+        return {"path": path, "sha256": r.sha256, "size": r.size,
+                "st_ino": r.st_ino, "mtime_ns": r.mtime_ns}  # fmt: skip
+    except Exception as e:  # noqa: BLE001 -- a pending hash must always close
+        return {"path": path, "error": f"{type(e).__name__}: {e}"}
+
+
+def _job(key, job_id: str, paths, case_dir: str, requested_by: str) -> None:
+    """Hash the job's files and close its pending hashes, either way: one
+    `hash_complete` entry (a one-file job's fields at the top level, a list
+    job's in `files[]`), or `hash_failed` when nothing could be read."""
     from sift_common.audit import AuditWriter
 
     started = _now()
     try:
-        r = hash_file(path)
-        tool = "hash_complete"
-        result = {"sha256": r.sha256, "size": r.size, "st_ino": r.st_ino,
-                  "mtime_ns": r.mtime_ns}  # fmt: skip
-    except Exception as e:  # noqa: BLE001 -- a pending hash must always close
-        tool, result = "hash_failed", {"error": f"{type(e).__name__}: {e}"}
+        if isinstance(paths, str):
+            result = _one(paths)
+            files = [result]
+        else:
+            files = [_one(p) for p in paths]
+            result = {"files": files}
     finally:
         with _jobs_lock:
             _jobs.pop(key, None)
+    tool = "hash_complete" if any("sha256" in f for f in files) else "hash_failed"
     logged = AuditWriter("file-identity", audit_dir=str(Path(case_dir) / "audit")).log(
         tool=tool,
-        params={"path": path},
+        params={"path": paths} if isinstance(paths, str) else {"files": len(paths)},
         result_summary=result,
         extra={
             "job_id": job_id,
-            "path": path,
             "requested_by": requested_by,
             "started": started,
             "finished": _now(),
@@ -149,4 +224,4 @@ def _hash_job(key, job_id: str, path: str, case_dir: str, requested_by: str) -> 
         },
     )
     if logged is None:
-        logger.warning("%s for %s (%s) was not recorded", tool, path, job_id)
+        logger.warning("%s (%s) was not recorded", tool, job_id)

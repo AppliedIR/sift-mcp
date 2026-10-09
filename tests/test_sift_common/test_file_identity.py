@@ -175,3 +175,73 @@ def test_a_fifo_is_refused_before_any_hashing(case):
 def _entries(case):
     log = case / "audit" / "file-identity.jsonl"
     return [json.loads(x) for x in log.read_text().splitlines()]
+
+
+def test_a_folders_files_hash_inline_within_the_limit_and_the_rest_in_one_job(case):
+    kape = case / "evidence" / "kape"
+    kape.mkdir(parents=True)
+    small = kape / "Security.evtx"
+    small.write_bytes(b"A" * 40)
+    big = [kape / "pagefile0.sys", kape / "pagefile1.sys"]
+    for f in big:
+        f.write_bytes(b"P" * 400)
+    fifo = kape / "pipe"
+    os.mkfifo(fifo)
+    b = fi.hash_files_for_call([small, *big, fifo], case_dir=case,
+                               requested_by="evidence_register", inline_limit=100)  # fmt: skip
+    assert set(b.done) == {str(small)}
+    assert b.done[str(small)].sha256 == hashlib.sha256(b"A" * 40).hexdigest()
+    assert b.not_regular == [str(fifo)] and b.pending == [str(p) for p in big]
+    done = _closed(case, b.job_id)
+    assert (
+        done["tool"] == "hash_complete" and done["requested_by"] == "evidence_register"
+    )
+    assert [(f["path"], f["sha256"]) for f in done["files"]] == [
+        (str(p), hashlib.sha256(b"P" * 400).hexdigest()) for p in big
+    ]
+    assert "sha256" not in done  # a list's hashes are per file
+
+
+def test_the_inline_bytes_of_a_folder_never_pass_the_limit(case):
+    files = []
+    for i, n in enumerate((60, 60, 30)):
+        files.append(case / f"f{i}")
+        files[-1].write_bytes(b"x" * n)
+    b = fi.hash_files_for_call(files, case_dir=case, requested_by="t", inline_limit=100)
+    assert sum(r.size for r in b.done.values()) <= 100
+    assert set(b.done) | set(b.pending) == {str(f) for f in files}
+    _closed(case, b.job_id)
+
+
+def test_a_folder_job_that_reads_nothing_fails_and_one_that_reads_some_completes(
+    case, monkeypatch
+):
+    a, c = case / "a.bin", case / "c.bin"
+    a.write_bytes(b"a" * 400)
+    c.write_bytes(b"c" * 400)
+    real = fi.hash_file
+
+    def some(path):
+        if str(path).endswith("a.bin"):
+            raise OSError("unreadable")
+        return real(path)
+
+    monkeypatch.setattr(fi, "hash_file", some)
+    b = fi.hash_files_for_call([a, c], case_dir=case, requested_by="t", inline_limit=10)
+    done = _closed(case, b.job_id)
+    assert done["tool"] == "hash_complete"
+    assert "unreadable" in done["files"][0]["error"] and "sha256" in done["files"][1]
+    monkeypatch.setattr(
+        fi, "hash_file", lambda p: (_ for _ in ()).throw(OSError("gone"))
+    )
+    os.utime(a, ns=(1, 1))  # a new list key: a new job
+    b2 = fi.hash_files_for_call([a], case_dir=case, requested_by="t", inline_limit=10)
+    failed = _closed(case, b2.job_id)
+    assert failed["tool"] == "hash_failed" and "gone" in failed["files"][0]["error"]
+
+
+def test_without_a_case_a_folders_large_files_stay_unhashed(tmp_path):
+    f = tmp_path / "big.bin"
+    f.write_bytes(b"b" * 400)
+    b = fi.hash_files_for_call([f], case_dir="", requested_by="t", inline_limit=100)
+    assert (b.done, b.job_id, b.pending, b.not_regular) == ({}, "", [str(f)], [])
