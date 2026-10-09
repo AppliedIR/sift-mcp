@@ -512,3 +512,16 @@ def test_a_later_identical_write_leaves_the_earlier_origin_alone(c):
     t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
     assert t.grade == "FULL", t.as_dict()
     assert "sift-tester-20261009-003" not in {l["audit_id"] for l in t.links}
+
+
+def test_a_producer_whose_id_is_on_two_entries_is_ambiguous(c):
+    """Reached as a file's origin, not only through trace_op."""
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    _s1, s2 = c.extract("sift-tester-20261009-001", z)
+    c.op("opensearch-mcp", "sift-tester-20261009-001", tool="idx_search")  # same id
+    c.run("sift-tester-20261009-002", ["vol", "-f", s2, "windows.pslist"], [s2],
+          "PID 4\n", ts="2026-10-09T01:00:00Z")  # fmt: skip
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
+    assert t.grade == "AMBIGUOUS", t.as_dict()
+    assert [x["audit_id"] for x in t.candidates] == ["sift-tester-20261009-001"] * 2

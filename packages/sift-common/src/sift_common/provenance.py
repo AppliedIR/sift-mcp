@@ -309,12 +309,19 @@ def trace_op(case: Case, audit_id: str) -> Trace:
     items = case.by_id.get(audit_id)
     if not items:
         return _broken("no-entry", f"no audit entry records {audit_id}")
-    if len(items) > 1:  # until ids are unique: never the last copy
-        named = [{"audit_id": audit_id, "entry_sha256": entry_sha256(line),
-                  "tool": e.get("tool", "")} for e, line in items]  # fmt: skip
-        return Trace("AMBIGUOUS", candidates=named,
-                     reason=f"{audit_id} is on {len(items)} audit entries")  # fmt: skip
     return _trace_entry(case, *items[0], frozenset())
+
+
+def _one_entry(case: Case, audit_id: str) -> Trace | None:
+    """AMBIGUOUS, naming each, when one audit id is on several entries, however
+    the trace reached it: never the last copy (until ids are unique)."""
+    items = case.by_id.get(audit_id) or []
+    if len(items) < 2:
+        return None
+    named = [{"audit_id": audit_id, "entry_sha256": entry_sha256(line),
+              "tool": e.get("tool", "")} for e, line in items]  # fmt: skip
+    return Trace("AMBIGUOUS", candidates=named,
+                 reason=f"{audit_id} is on {len(items)} audit entries")  # fmt: skip
 
 
 _WORST = ("BROKEN", "AMBIGUOUS", "DECLARED", "FULL")
@@ -361,6 +368,8 @@ def _trace_entry(
     aid = e["audit_id"]
     if aid in seen:
         return _broken("cycle", f"{aid} is recorded as its own origin")
+    if (twice := _one_entry(case, aid)) is not None:
+        return twice
     inputs = _inputs(case, e)
     if not inputs:
         return _broken("no-inputs", f"{aid} recorded no inputs")
