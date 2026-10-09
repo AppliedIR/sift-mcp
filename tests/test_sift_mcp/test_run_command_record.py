@@ -285,3 +285,24 @@ def test_large_outputs_are_hashed_in_one_background_job(case, monkeypatch):
         case / "extractions" / e["audit_id"] / "a.raw"
     )
     assert outs["bigger.raw"]["sha256"].startswith("pending:hash-")
+
+
+def test_rm_reads_a_relative_target_in_the_runs_folder(case):
+    other = case / "extractions" / "other.txt"
+    other.write_text("keep")
+    resp, _ = run(case, ["rm", "../other.txt"])
+    assert resp["success"] is False and "Blocked: rm in case directory" in resp["error"]
+    assert other.read_text() == "keep"
+
+
+def test_a_dd_style_output_outside_the_runs_folder_is_an_output(case):
+    src = case / "evidence" / "src.raw"
+    src.write_bytes(b"SRC")
+    dst = case / "extractions" / "img.dd"
+    code = (
+        "import sys\n"
+        "args = dict(a.split('=', 1) for a in sys.argv[1:])\n"
+        "open(args['of'], 'wb').write(open(args['if'], 'rb').read())\n"
+    )
+    _, e = run(case, [PY, "-c", code, f"if={src}", f"of={dst}"])
+    assert _outs(e)["img.dd"]["sha256"] == _sha(dst)
