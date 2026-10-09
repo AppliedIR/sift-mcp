@@ -440,7 +440,10 @@ def create_server() -> FastMCP:
         its large files hash in the background it answers {"status":
         "hashing", "job_id"} and registers nothing: call again later.
 
-        Confirm with the examiner before registering.
+        You may register original evidence; the entry is marked as registered
+        by the AI, and the examiner sees that root when approving a finding.
+        Files the case's tools made (under extractions/, or recorded as an
+        operation's output) are refused: register the original they came from.
         """
         try:
             _validate_str_length(description, "description", _MAX_TEXT)

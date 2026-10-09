@@ -219,3 +219,12 @@ def test_failures_are_taken_only_on_the_call_that_starts_no_job(
         "hiberfil.sys",
         "pagefile.sys",
     ]
+
+
+def test_the_register_tool_tells_the_ai_it_may_register_and_what_is_refused():
+    from case_mcp.server import create_server
+
+    tool = create_server()._tool_manager._tools["evidence_register"]
+    doc = " ".join((tool.fn.__doc__ or "").split())
+    assert "Confirm with the examiner" not in doc
+    assert "marked as registered by the AI" in doc and "refused" in doc
