@@ -140,3 +140,16 @@ def test_an_approval_from_0_6_keeps_the_checks_own_wording(tmp_path, monkeypatch
     items = [dict(old)]
     assert mark_approvals(d, items) == ""
     assert items[0]["approval_verification"] == "approved under 0.6 (before signing)"
+
+
+def test_altered_approval_stamps_on_verified_content_are_never_valid(case):
+    """Who approved, and when, are part of the approval: the content hash
+    doesn't cover them, so they're compared with the verified record."""
+    stored = _by_id(json.loads((case / "findings.json").read_text()))["F-tester-001"]
+    by = dict(stored, approved_by="someone-else")
+    at = dict(stored, approved_at="2020-01-01T00:00:00+00:00")
+    items = [dict(stored), by, at]
+    warning = mark_approvals(case, items)
+    assert [i["approval_verification"] for i in items] == [
+        "VALID", "UNVERIFIED", "UNVERIFIED"]  # fmt: skip
+    assert warning.count("F-tester-001 UNVERIFIED") == 2

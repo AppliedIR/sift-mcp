@@ -12,7 +12,7 @@ from pathlib import Path
 def mark_approvals(case_dir, items: list) -> str:
     """Set `approval_verification` on each APPROVED finding in `items`: "VALID"
     only when the item is the record the check verified (same id, same
-    content hash), the check's own wording for one approved under 0.6, its
+    content hash, same approved_by and approved_at), the check's own wording for one approved under 0.6, its
     status when the check lists it as not verified, and UNVERIFIED for
     anything else (an id the check didn't judge, content that differs from
     what it verified, or the check not running). Returns a one-line warning
@@ -31,7 +31,7 @@ def mark_approvals(case_dir, items: list) -> str:
         marks = {n["id"]: n["status"] for n in view["not_verified"]}
         for record in view["findings"]:
             v = verdicts[str(record["id"])]
-            marks[record["id"]] = (v.content_sha256, v.view, view["labels"].get(
+            marks[record["id"]] = (record, v.content_sha256, v.view, view["labels"].get(
                 record["id"]) if v.status == "APPROVED_UNDER_0_6" else "VALID")  # fmt: skip
     except Exception as e:  # noqa: BLE001 - never read as approved when unchecked
         marks, why = {}, f" (couldn't verify: {e})"
@@ -39,8 +39,9 @@ def mark_approvals(case_dir, items: list) -> str:
     for item in approved:
         mark, ok = marks.get(item.get("id"), "UNVERIFIED"), False
         if isinstance(mark, tuple):  # verified: only if this is that record
-            sha, view_n, label = mark
-            ok = _record_sha(item, "finding", view_n) == sha
+            verified, sha, view_n, label = mark
+            ok = _record_sha(item, "finding", view_n) == sha and all(
+                item.get(k) == verified.get(k) for k in ("approved_by", "approved_at"))  # fmt: skip
             mark = label if ok else "UNVERIFIED"
         item["approval_verification"] = mark
         if not ok:
