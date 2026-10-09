@@ -279,6 +279,7 @@ def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
              if (real + os.sep).startswith(p["realpath"].rstrip(os.sep) + os.sep)]  # fmt: skip
     if not under:
         return None
+    matches = []
     for e, line, p in under:
         start = _when(case, e)
         # this mount's unmounts: its point's realpath and mount id, not before it
@@ -292,10 +293,22 @@ def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
         if (st_dev is not None and p.get("st_dev") == st_dev
                 and (mnt_id is None or p.get("mnt_id") is None or mnt_id == p["mnt_id"])
                 and live):  # fmt: skip
-            to = {"path": p["realpath"], "sha256": ""}
-            trace = _trace_entry(case, e, line, seen, to)
-            return _extend(trace, _link("recorded-mount", {"path": real, "sha256": sha}, to,
-                                        e, line))  # fmt: skip
+            matches.append((e, line, p))
+    if (
+        len(matches) > 1
+    ):  # more than one mount could have served the read: never the first
+        named = [{"audit_id": e.get("audit_id", ""), "entry_sha256": entry_sha256(line),
+                  "path": p["realpath"], "image": e["mount"].get("image", "")}
+                 for e, line, p in matches]  # fmt: skip
+        return Trace("AMBIGUOUS", candidates=named, reason=f"{real} could have been read "
+                     f"through {len(named)} recorded mounts: " + ", ".join(
+                         x["audit_id"] for x in named))  # fmt: skip
+    if matches:
+        e, line, p = matches[0]
+        to = {"path": p["realpath"], "sha256": ""}
+        trace = _trace_entry(case, e, line, seen, to)
+        return _extend(trace, _link("recorded-mount", {"path": real, "sha256": sha}, to,
+                                    e, line))  # fmt: skip
     why = (" (no read time recorded, so only a mount still live counts)"
            if at is None else "")  # fmt: skip
     return _broken("mount-mismatch", f"{real} is under a recorded mount point, but not "

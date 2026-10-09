@@ -13,6 +13,7 @@ breaks: FULL, DECLARED, AMBIGUOUS or BROKEN.
 from __future__ import annotations
 
 import hashlib
+import os
 
 import pytest
 from sift_common import provenance as pv
@@ -690,4 +691,27 @@ def test_a_pending_output_whose_job_is_ambiguous_isnt_passed_over_for_another(c)
          result_summary={"exit_code": 0, "output_files": [s2],
                          "output_sha256s": [sha(s2)]})  # fmt: skip
     t = _read(c, s2)
+    assert t.grade == "AMBIGUOUS", t.as_dict()
+
+
+def test_a_file_under_two_mounts_live_at_its_read_is_ambiguous(c):
+    """Two mounts at one point, tied in time across logs, same st_dev; the read
+    names no mount id. Neither is the first."""
+    a = c.file("evidence/imgA.raw", "image A")
+    b = c.file("evidence/imgB.raw", "image B")
+    c.register(a)
+    c.register(b)
+    mp = str(c.d / "mnt")
+    sec = c.file("mnt/Windows/System32/winevt/Logs/Security.evtx", "evtx")
+    ts = "2026-10-09T01:00:00Z"
+    c.mount("sift-tester-20261009-001", a, mp, 2049, ts=ts)
+    c.umount("sift-tester-20261009-002", mp, 2049, ts=ts)
+    c.op("opensearch-ingest-1", "opensearch-ingest-1-20261009-001", tool="mount_image",
+         ts=ts, input_files=[b], input_sha256s=[""], input_detection_method="parsed",
+         mount={"image": b, "points": [{"target": mp, "realpath": os.path.realpath(mp),
+                                         "st_dev": 2049, "mnt_id": 4242}]})  # fmt: skip
+    c.op("zzz-reader", "zzz-reader-20261009-001", tool="EvtxECmd", ts=ts,
+         input_files=[sec], input_sha256s=[sha(sec)], input_realpaths=[sec],
+         input_st_devs=[2049], input_detection_method="parsed")  # fmt: skip
+    t = pv.trace_op(pv.load_case(c.d), "zzz-reader-20261009-001")
     assert t.grade == "AMBIGUOUS", t.as_dict()
