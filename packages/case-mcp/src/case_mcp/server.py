@@ -691,8 +691,8 @@ def create_server() -> FastMCP:
             purpose: Why this command was run.
             analyst_override: Override examiner identity.
             hook_audit_id: If the command was captured by the PostToolUse
-                hook, pass its audit_id here to cross-reference. Upgrades
-                provenance from voluntary to verified.
+                hook, pass its audit_id here to cross-reference. The entry
+                stays declared either way.
             input_files: Files the command read (for provenance chain).
             output_files: Files the command produced.
         """
@@ -708,37 +708,12 @@ def create_server() -> FastMCP:
                 "cannot trace to evidence. Add input_files to enable chain resolution."
             )
 
-        # Determine source tier based on hook_audit_id
+        # What the AI says it ran is recorded as it says: declared, never
+        # upgraded by finding a hook entry (that only shows a command ran,
+        # not what it read or wrote). The hook id is a cross-reference only.
         source = "orchestrator_voluntary"
         if hook_audit_id:
             _validate_str_length(hook_audit_id, "hook_audit_id", _MAX_SHORT)
-            # Verify hook_audit_id exists in audit trail
-            case_dir = _resolve_case_dir()
-            if case_dir:
-                hook_found = False
-                audit_dir = case_dir / "audit"
-                for hook_file in (
-                    sorted(audit_dir.glob("*.jsonl")) if audit_dir.is_dir() else []
-                ):
-                    if hook_found:
-                        break
-                    try:
-                        with open(hook_file, encoding="utf-8") as f:
-                            for line in f:
-                                line = line.strip()
-                                if not line or hook_audit_id not in line:
-                                    continue
-                                try:
-                                    entry = json.loads(line)
-                                    if entry.get("audit_id") == hook_audit_id:
-                                        hook_found = True
-                                        break
-                                except (json.JSONDecodeError, ValueError):
-                                    continue
-                    except OSError:
-                        pass
-                if hook_found:
-                    source = "orchestrator_verified"
 
         audit_id = audit.log(
             tool="log_external_action",
@@ -756,16 +731,14 @@ def create_server() -> FastMCP:
             },
             source=source,
             input_files=input_files or None,
+            extra={"declared": True},
         )
         result = {
             "status": "logged",
             "audit_id": audit_id,
             "source": source,
-            "note": (
-                "orchestrator_verified -- cross-referenced with hook entry"
-                if source == "orchestrator_verified"
-                else "orchestrator_voluntary -- not independently verified"
-            ),
+            "declared": True,
+            "note": "declared: recorded as reported, not checked against what ran",
         }
         if audit_id is None:
             result["warning"] = "Audit write failed — action not recorded"
