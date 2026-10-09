@@ -232,10 +232,25 @@ async def list_services(request: Request) -> JSONResponse:
     return JSONResponse({"services": services, "count": len(services)})
 
 
+def _served_name(gateway, name: str) -> str:
+    """The backend `name` names: the threat-intel backend answers to its
+    earlier name too."""
+    from sift_gateway.server import BACKEND_ALIASES
+
+    if name in gateway.backends or name in gateway._unloaded:
+        return name
+    for current, earlier in BACKEND_ALIASES.items():
+        if name == earlier and (
+            current in gateway.backends or current in gateway._unloaded
+        ):
+            return current
+    return name
+
+
 async def start_service(request: Request) -> JSONResponse:
     """POST /api/v1/services/{name}/start — start a backend and rebuild tool map."""
     gateway = request.app.state.gateway
-    name = request.path_params["name"]
+    name = _served_name(gateway, request.path_params["name"])
 
     if name not in gateway.backends:
         return JSONResponse({"error": f"Unknown backend: {name}"}, status_code=404)
@@ -268,7 +283,7 @@ async def start_service(request: Request) -> JSONResponse:
 async def stop_service(request: Request) -> JSONResponse:
     """POST /api/v1/services/{name}/stop — stop a backend and rebuild tool map."""
     gateway = request.app.state.gateway
-    name = request.path_params["name"]
+    name = _served_name(gateway, request.path_params["name"])
 
     if name not in gateway.backends:
         return JSONResponse({"error": f"Unknown backend: {name}"}, status_code=404)
@@ -299,7 +314,7 @@ async def stop_service(request: Request) -> JSONResponse:
 async def restart_service(request: Request) -> JSONResponse:
     """POST /api/v1/services/{name}/restart — stop + start a backend."""
     gateway = request.app.state.gateway
-    name = request.path_params["name"]
+    name = _served_name(gateway, request.path_params["name"])
 
     # A join the loader gave up on, or a backend pasted into gateway.yaml by
     # hand: load it now, through the loader

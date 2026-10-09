@@ -73,4 +73,15 @@ def load_config(path: str) -> dict:
             f"Config file must contain a YAML mapping, got {type(raw).__name__}: {path}"
         )
 
-    return _walk_and_interpolate(raw)
+    config = _walk_and_interpolate(raw)
+    # The threat-intel backend has one name on every install: an entry under
+    # its earlier name is loaded as `threatintel-mcp`, in memory only (the
+    # gateway still answers to `opencti-mcp`). Both configured: left as is.
+    backends = config.get("backends")
+    if isinstance(backends, dict) and "opencti-mcp" in backends:
+        if "threatintel-mcp" not in backends:
+            config["backends"] = {
+                ("threatintel-mcp" if k == "opencti-mcp" else k): v
+                for k, v in backends.items()
+            }
+    return config
