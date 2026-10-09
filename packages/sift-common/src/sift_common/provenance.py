@@ -172,28 +172,31 @@ def _job_hash(case: Case, real: str, job_id: str) -> str | None:
 def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
     """A file under a recorded mount point links only by that mount: the same
     filesystem (st_dev, and the mount id where both record one), read inside
-    the mount's recorded life. None when no
-    recorded mount holds the path."""
+    the mount's recorded life, which ends at the first `umount` entry naming
+    that point's realpath and mount id. None when no recorded mount holds the
+    path."""
+    entries = [(e, line) for items in case.by_id.values() for e, line in items]
     under = [
-        (e, line)
-        for items in case.by_id.values()
-        for e, line in items
+        (e, line, p)
+        for e, line in entries
         if isinstance(e.get("mount"), dict)
-        and isinstance(e["mount"].get("mount_point"), str)
-        and (real + os.sep).startswith(
-            os.path.realpath(e["mount"]["mount_point"]) + os.sep
-        )
+        for p in e["mount"].get("points") or []
+        if isinstance(p, dict)
+        and isinstance(p.get("realpath"), str)
+        and (real + os.sep).startswith(p["realpath"].rstrip(os.sep) + os.sep)
     ]
     if not under:
         return None
-    for e, line in under:
-        end = (case.by_id.get(e.get("unmounted_by", "")) or [({}, b"")])[0][0].get("ts")
-        mount_id = e["mount"].get("mnt_id")
-        if (st_dev is not None and e["mount"].get("st_dev") == st_dev
-                and (mnt_id is None or mount_id is None or mnt_id == mount_id)
-                and (at is None or (e.get("ts", "") <= at and (not end or at <= end)))):  # fmt: skip
-            mp = os.path.realpath(e["mount"]["mount_point"])
-            to = {"path": mp, "sha256": ""}
+    for e, line, p in under:
+        start = e.get("ts", "")
+        end = min((u.get("ts", "") for u, _ in entries if isinstance(u.get("umount"), dict)
+                   and u["umount"].get("realpath") == p["realpath"]
+                   and u["umount"].get("mnt_id") == p.get("mnt_id")
+                   and u.get("ts", "") >= start), default=None)  # fmt: skip
+        if (st_dev is not None and p.get("st_dev") == st_dev
+                and (mnt_id is None or p.get("mnt_id") is None or mnt_id == p["mnt_id"])
+                and (at is None or (start <= at and (end is None or at <= end)))):  # fmt: skip
+            to = {"path": p["realpath"], "sha256": ""}
             trace = _trace_entry(case, e, line, seen, to)
             return _extend(trace, _link("recorded-mount", {"path": real, "sha256": sha}, to,
                                         e, line))  # fmt: skip

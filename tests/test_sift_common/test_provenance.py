@@ -274,8 +274,7 @@ def _mounted(c, st_dev, **read):
     c.register(a)
     mp = str(c.d / "mnt")
     sec = c.file("mnt/Windows/System32/winevt/Logs/Security.evtx", "evtx inside A")
-    c.mount("sift-tester-20261009-001", a, mp, 2049, ts="2026-10-09T01:00:00Z",
-            **read.pop("mount_extra", {}))  # fmt: skip
+    c.mount("sift-tester-20261009-001", a, mp, 2049, ts="2026-10-09T01:00:00Z")
     c.run("sift-tester-20261009-002", ["EvtxECmd", "-f", sec], [sec], "4624 alice\n",
           input_realpaths=[sec], input_st_devs=[st_dev],
           ts=read.pop("ts", "2026-10-09T02:00:00Z"), **read)  # fmt: skip
@@ -298,15 +297,24 @@ def test_another_filesystem_under_the_mount_point_breaks(c):
     assert t.grade == "BROKEN" and t.break_["kind"] == "mount-mismatch", t
 
 
-def test_a_read_after_the_recorded_unmount_or_before_the_mount_breaks(c):
-    c.op("sift-mcp", "sift-tester-20261009-009", tool="run_command",
-         params={"command": ["umount"]}, ts="2026-10-09T01:30:00Z")  # fmt: skip
-    _, t = _mounted(c, 2049, mount_extra={"unmounted_by": "sift-tester-20261009-009"})
+def test_a_read_after_its_mounts_unmount_or_before_the_mount_breaks(c):
+    c.umount(
+        "sift-tester-20261009-009", str(c.d / "mnt"), 2049, ts="2026-10-09T01:30:00Z"
+    )
+    _, t = _mounted(c, 2049)  # read at 02:00, after the 01:30 unmount
     assert t.break_["kind"] == "mount-mismatch", t
     _, early = _mounted(
         TrailCase(c.d.parent / "case2"), 2049, ts="2026-10-09T00:30:00Z"
     )
     assert early.break_["kind"] == "mount-mismatch", early
+
+
+def test_an_unmount_of_another_mount_at_that_point_doesnt_end_it(c):
+    c.umount(
+        "sift-tester-20261009-009", str(c.d / "mnt"), 77, ts="2026-10-09T01:30:00Z"
+    )
+    _, t = _mounted(c, 2049)
+    assert t.grade == "FULL", t
 
 
 def test_every_trace_an_ingest_would_refuse_says_why(c):

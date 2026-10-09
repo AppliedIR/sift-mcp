@@ -99,5 +99,12 @@ class TrailCase:
                 params={"command": ["mount", "-o", "ro,loop", image, mount_point]},
                 result_summary={"exit_code": 0}, input_files=[image], input_sha256s=[""],
                 input_detection_method="parsed",
-                mount={"image": image, "mount_point": mount_point, "st_dev": st_dev,
-                       "mnt_id": st_dev}, **extra)  # fmt: skip
+                mount={"image": image, "points": [
+                    {"target": mount_point, "realpath": os.path.realpath(mount_point),
+                     "st_dev": st_dev, "mnt_id": st_dev}]}, **extra)  # fmt: skip
+
+    def umount(self, aid: str, mount_point: str, mnt_id: int, **extra) -> None:
+        self.op("sift-mcp", aid, tool="run_command",
+                params={"command": ["umount", mount_point]},
+                umount={"realpath": os.path.realpath(mount_point), "mnt_id": mnt_id},
+                **extra)  # fmt: skip
