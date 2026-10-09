@@ -194,3 +194,26 @@ async def _per_backend(gw, backend, tool):
         params=types.CallToolRequestParams(name=tool, arguments={}),
     )
     return await handler(request)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["aggregate", "per-backend"])
+async def test_a_lookup_is_answered_when_its_case_path_cant_be_read(
+    case, tmp_path, monkeypatch, endpoint
+):
+    locked = tmp_path / "locked"
+    (locked / "case-x").mkdir(parents=True)
+    locked.chmod(0)  # stat inside it fails: the case path can't be read
+    monkeypatch.setenv("VHIR_CASE_DIR", str(locked / "case-x"))
+    try:
+        backend = Source("opencti-mcp")
+        gw = _gateway(backend)
+        if endpoint == "aggregate":
+            result = await gw.call_tool("lookup_ioc", {"ioc": "x"})
+            assert [c.text for c in result] == [BODY]
+        else:
+            result = await _per_backend(gw, backend, "lookup_ioc")
+            assert [c.text for c in result.root.content] == [BODY]
+    finally:
+        locked.chmod(0o755)
+    assert not [e for e in _entries(case) if "reference" in e]

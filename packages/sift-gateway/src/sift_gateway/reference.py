@@ -49,7 +49,11 @@ def case_for(backend_name: str, tool: str) -> str:
         return ""
     from sift_common import resolve_case_dir
 
-    return resolve_case_dir()
+    try:
+        return resolve_case_dir()
+    except OSError as e:  # an unreadable case path: answered, not recorded
+        logger.warning("reference call %s: no case to record it in: %s", tool, e)
+        return ""
 
 
 def record(audit, backend_name: str, backend, tool: str, arguments: dict, result,
