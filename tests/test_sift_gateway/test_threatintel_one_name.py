@@ -70,9 +70,10 @@ def _answers(gw, route: str) -> bool:
     ).root.isError
 
 
-def _mounts(gw) -> set[str]:
+def _mounts(gw) -> dict:
+    """Each /mcp/ route's app: the earlier name is served by the same one."""
     return {
-        r.path
+        r.path: r.app
         for r in gw.create_app().routes
         if getattr(r, "path", "").startswith("/mcp/")
     }
@@ -89,7 +90,8 @@ def test_an_upgraded_config_is_listed_and_routed_under_the_one_name(yaml_path):
     assert list(gw.backends) == ["threatintel-mcp"]
     listed = [s["name"] for s in _rest(gw).get("/api/v1/services").json()["services"]]
     assert listed == ["threatintel-mcp"]
-    assert {"/mcp/threatintel-mcp", "/mcp/opencti-mcp"} <= _mounts(gw)
+    m = _mounts(gw)
+    assert m["/mcp/opencti-mcp"] is m["/mcp/threatintel-mcp"]
     assert _answers(gw, "threatintel-mcp")
     assert _sha(yaml_path) == before  # started: never written
 
@@ -127,7 +129,8 @@ def test_a_new_config_is_unchanged_anchor(yaml_path):
     _write(yaml_path, "threatintel-mcp")
     gw = _gateway(yaml_path)
     assert list(gw.backends) == ["threatintel-mcp"]
-    assert {"/mcp/threatintel-mcp", "/mcp/opencti-mcp"} <= _mounts(gw)
+    m = _mounts(gw)
+    assert m["/mcp/opencti-mcp"] is m["/mcp/threatintel-mcp"]
     assert _answers(gw, "threatintel-mcp")
 
 
