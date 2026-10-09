@@ -1367,6 +1367,18 @@ function provRoots(a) {
   var roots = a && Array.isArray(a.provenance_roots) && a.provenance_roots.length ? a.provenance_roots : [a && a.provenance_root];
   return roots.filter(function(r) { return r && typeof r === 'object' && r.path; });
 }
+// The start of a SHA-256; a hash still being computed names its job
+function provHash(sha) {
+  sha = String(sha || '');
+  return sha.indexOf('pending:') === 0 ? 'pending (job ' + sha.slice(8) + ')' : sha.slice(0, 16);
+}
+// One of an AMBIGUOUS artifact's candidates, by the fields it has
+function provCandidate(c) {
+  var parts = [String(c.audit_id || '?')];
+  ['tool', 'path', 'image'].forEach(function(k) { if (c[k]) parts.push(k + '=' + c[k]); });
+  if ('sha256' in c) parts.push(c.sha256 ? 'sha256=' + provHash(c.sha256) : 'no hash');
+  return parts.join(' ');
+}
 function provRootLabel(r) {
   if (r.label) return String(r.label);
   if (r.kind === 'folder') return 'folder (' + (r.file_count || '?') + ' files)';
@@ -2978,7 +2990,7 @@ async function loadToolInvocations(finding) {
     }
     var pf = function(d) {
       d = d || {};
-      return escapeHtml(String(d.path || '?').split(/[\\/]/).pop()) + ' <span style="font-family:monospace">' + escapeHtml(String(d.sha256 || '').slice(0, 16)) + '</span>';
+      return escapeHtml(String(d.path || '?').split(/[\\/]/).pop()) + ' <span style="font-family:monospace">' + escapeHtml(provHash(d.sha256)) + '</span>';
     };
     if (step.from || step.to) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">' + (step.from ? pf(step.from) + ' \u2192 ' : '\u2192 ') + pf(step.to) + '</div>';
     if (cmd) h += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
@@ -2998,6 +3010,9 @@ async function loadToolInvocations(finding) {
     var steps = chain;  // stored root first, and rendered so
     var h = '<div style="padding:2px 0 2px 8px;margin:2px 0">';
     steps.forEach(function(step) { h += renderStep(step); });
+    (art.provenance_candidates || []).forEach(function(c) {  // what made it AMBIGUOUS
+      if (c && typeof c === 'object') h += '<div style="font-size:10px;color:var(--amber);margin-left:12px">candidate: ' + escapeHtml(provCandidate(c)) + '</div>';
+    });
     h += '</div>';
     return h;
   }
@@ -3810,12 +3825,16 @@ async function verifyEvidence(idx) {
       (result.status === 'failed' ? ', ' + bad + ' not OK' : '') +
       (c.PENDING ? ', ' + c.PENDING + ' still hashing' : '') +
       (result.note ? ': ' + result.note : '') + ')' : '';
+    // a registration's notes, as `vhir evidence verify` prints them
+    var warn = (result.notes || []).map(function(n) {
+      return '<div style="color:var(--amber);font-size:11px">WARNING: ' + escapeHtml(n) + '</div>';
+    }).join('');
     if (result.status === 'verified') {
-      cell.innerHTML = '<span class="verify-ok">Verified' + escapeHtml(of) + '</span>';
+      cell.innerHTML = '<span class="verify-ok">Verified' + escapeHtml(of) + '</span>' + warn;
     } else if (result.status === 'failed') {
-      cell.innerHTML = '<span class="verify-fail">FAILED' + escapeHtml(of) + '</span>';
+      cell.innerHTML = '<span class="verify-fail">FAILED' + escapeHtml(of) + '</span>' + warn;
     } else if (result.status === 'pending') {
-      cell.innerHTML = '<span style="color:var(--text-muted)">Hashing' + escapeHtml(of) + '; verify again shortly</span>';
+      cell.innerHTML = '<span style="color:var(--text-muted)">Hashing' + escapeHtml(of) + '; verify again shortly</span>' + warn;
     } else {
       cell.innerHTML = '<span style="color:var(--text-muted)">' + escapeHtml(result.status) + '</span>';
     }

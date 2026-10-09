@@ -97,6 +97,18 @@ FINDINGS = [
             art("BROKEN", QUERY_064, root=None, brk={"kind": "recorded-before-0.6.4"},
                 label="old query"),
             art("FULL", chain=RUN, label="the run")),
+    chained("F-steve-010", "FULL", art("FULL", chain=[*RUN, link(
+        "recorded-id", "sift-steve-030", f"{X}/3/big.bin", "pending:hash-0123456789abcdef",
+        f"{X}/3/big.bin", HOUT)])),
+    chained("F-steve-011", "AMBIGUOUS", {**art("AMBIGUOUS", "two operations wrote a.csv",
+                                               root=None), "provenance_candidates": [
+        {"audit_id": "sift-steve-040", "entry_sha256": "e" * 64, "path": f"{X}/4/a.csv",
+         "sha256": HCSV},
+        {"audit_id": "sift-steve-041", "entry_sha256": "e" * 64, "path": f"{X}/4/a.csv",
+         "sha256": ""},
+        {"audit_id": "sift-steve-042", "entry_sha256": "e" * 64, "tool": "run_command"},
+        {"audit_id": "sift-steve-043", "entry_sha256": "e" * 64, "path": "/mnt/case/disk",
+         "image": IMG["path"]}]}),
 ]  # fmt: skip
 
 DRIVER = r"""
@@ -281,6 +293,20 @@ def test_an_evidence_row_lists_the_findings_whose_chain_resolves_to_it(portal):
     rows = {e["path"]: e for e in portal.get("/api/evidence").json()}
     assert rows[ROOT["path"]]["referenced_by"] == [
         "F-steve-001", "F-steve-002", "F-steve-003", "F-steve-005", "F-steve-007",
-        "F-steve-009", "F-steve-021",
+        "F-steve-009", "F-steve-010", "F-steve-021",
     ]  # fmt: skip
     assert rows[IMG["path"]]["referenced_by"] == ["F-steve-006", "F-steve-021"]
+
+
+def test_a_hash_still_being_computed_names_its_job_never_reads_as_a_hash(shown):
+    p = shown["F-steve-010"]["panel"]
+    assert "pending (job hash-0123456789abcdef)" in p
+    assert "pending:hash" not in p
+
+
+def test_each_candidate_of_an_ambiguous_artifact_is_listed_by_the_fields_it_has(shown):
+    p = text(shown["F-steve-011"]["panel"])
+    assert f"candidate: sift-steve-040 path={X}/4/a.csv sha256={HCSV[:16]}" in p
+    assert f"candidate: sift-steve-041 path={X}/4/a.csv no hash" in p
+    assert "candidate: sift-steve-042 tool=run_command " in p
+    assert f"candidate: sift-steve-043 path=/mnt/case/disk image={IMG['path']} " in p

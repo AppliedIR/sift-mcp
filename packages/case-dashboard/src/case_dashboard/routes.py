@@ -640,15 +640,28 @@ def _folder_hashes(case_dir, paths: list[str]) -> tuple[dict[str, str], str, dic
     return hashes, batch.job_id, errors
 
 
+def _notes(entry: dict) -> list[str]:
+    """A registration's notes, which `vhir evidence verify` prints as warnings:
+    a hash nothing vouches for, a derivation left unchecked."""
+    return [str(entry[k]) for k in ("hash_note", "derivation_note") if entry.get(k)]
+
+
 def _verify_folder(case_dir: Path, entry: dict) -> dict:
     """A folder root verified as `vhir evidence verify` does: its manifest
     unchanged, and each file in it. Verified when every file is; pending
-    while any is still hashing; failed otherwise."""
+    while any is still hashing; failed otherwise. Its notes, and those of a
+    member registered on its own, are shown with it."""
     from collections import Counter
 
     from vhir_cli.commands import evidence
 
     results = evidence._verify_folder(case_dir, entry, _folder_hashes)
+    raw = _load_json(case_dir / "evidence.json")
+    files = raw.get("files", []) if isinstance(raw, dict) else (raw or [])
+    members = {r["path"] for r in results}
+    notes = _notes(entry) + [n for e in files if isinstance(e, dict)
+                             and e.get("kind") != "folder" and e.get("path") in members
+                             for n in _notes(e)]  # fmt: skip
     counts = Counter(r["status"] for r in results)
     # a change found is never hidden behind files still hashing; an empty
     # folder (registered with no files) has nothing that differs
@@ -662,6 +675,7 @@ def _verify_folder(case_dir: Path, entry: dict) -> dict:
         "counts": dict(counts),
         "not_ok": [r for r in results if r["status"] != "OK"],
         **({"note": "registered with no files"} if not results else {}),
+        **({"notes": list(dict.fromkeys(notes))} if notes else {}),
     }
 
 
@@ -726,6 +740,7 @@ async def verify_evidence(request: Request) -> JSONResponse:
             "computed_sha256": computed_hash,
             "stored_sha256": stored_hash,
             "status": "verified" if match else "failed",
+            **({"notes": _notes(entry)} if _notes(entry) else {}),
         }
     )
 

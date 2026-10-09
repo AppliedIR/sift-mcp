@@ -93,6 +93,7 @@ def test_the_page_shows_a_folder_s_result_with_its_count():
             "counts": {},
             "note": "registered with no files",
         },
+        {"status": "failed", "files": "-n", "notes": ["changed while hashing"]},
     ):
         script = (
             "var cell = {innerHTML: ''}; var evidenceData = [{path: '/e/kape'}];"
@@ -115,6 +116,7 @@ def test_the_page_shows_a_folder_s_result_with_its_count():
     )
     assert ">Verified (0 files: registered with no files)<" in shown["verified0"]
     assert "Error" not in "".join(shown.values())
+    assert "WARNING: changed while hashing" in shown["failed-n"]
 
 
 # --- Large members: hashed in the background, as case-mcp's verify does -------
@@ -221,3 +223,38 @@ def test_an_empty_folder_root_verifies_with_a_note(portal):
     assert (body["status"], body["files"], body["note"]) == (
         "verified", 0, "registered with no files",
     )  # fmt: skip
+
+
+# --- A registration's notes, which `vhir evidence verify` prints as warnings --
+
+
+def _note(portal, path, **notes):
+    reg = json.loads((portal.dir / "evidence.json").read_text())
+    for e in reg["files"]:
+        if e.get("path") == path:
+            e.update(notes)
+    (portal.dir / "evidence.json").write_text(json.dumps(reg))
+
+
+def test_a_folder_root_s_notes_and_its_members_are_shown_with_it(portal, kape):
+    member = register_evidence_data(
+        portal.dir, str(Path(kape["path"]) / "System.evtx"), "steve"
+    )
+    _note(
+        portal, kape["path"], derivation_note="derivation unchecked: audit unreadable"
+    )
+    _note(portal, member["path"], hash_note="changed while hashing")
+    body = verify(portal, kape["path"]).json()
+    assert body["status"] == "verified"
+    assert body["notes"] == ["derivation unchecked: audit unreadable",
+                             "changed while hashing"]  # fmt: skip
+
+
+def test_a_file_root_s_notes_are_shown_with_it(portal, kape):
+    f = portal.dir / "evidence" / "mem.raw"
+    f.write_bytes(b"memory " * 50)
+    entry = register_evidence_data(portal.dir, str(f), "steve")
+    assert "notes" not in verify(portal, entry["path"]).json()
+    _note(portal, entry["path"], hash_note="changed while hashing")
+    body = verify(portal, entry["path"]).json()
+    assert (body["status"], body["notes"]) == ("verified", ["changed while hashing"])
