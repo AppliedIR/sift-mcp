@@ -177,6 +177,17 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
           Required: source, extraction, content, audit_id
           Optional: content_type, purpose, output_ref
           audit_id: REQUIRED — copy from the tool response envelope.
+          content: quote it as the cited tool returned it; it's checked
+          against that tool's saved output (or the query's returned records).
+
+        Each artifact gets a provenance grade, with a reason for any but FULL:
+          FULL: every link recorded, from the cited output to registered evidence.
+          DECLARED: a link you asserted (log_external_action, an input you named).
+          AMBIGUOUS: more than one recorded origin; each is named.
+          BROKEN: where the chain stops (e.g. a file made outside recorded tools,
+            or reference data such as threat intel, which is never evidence).
+          CITED-UNVERIFIED: the quote isn't in what the cited tool produced.
+        Cite the operation whose output you quote; register only originals.
 
         Tip: stage findings soon after analysis — audit_ids from earlier tool
         calls may be lost to context compaction.
