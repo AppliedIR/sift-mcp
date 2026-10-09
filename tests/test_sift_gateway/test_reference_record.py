@@ -152,6 +152,8 @@ async def test_a_started_backend_keeps_the_version_it_reported(kind, monkeypatch
     transport = (object(), object()) if kind == "stdio" else (object(),) * 3
     stack.enter_async_context = AsyncMock(side_effect=[transport, session])
     stack.aclose = AsyncMock()
+    stack.__aenter__ = AsyncMock(return_value=stack)  # also used as `async with`
+    stack.__aexit__ = AsyncMock(return_value=False)
     if kind == "stdio":
         monkeypatch.setattr(stdio_backend, "AsyncExitStack", lambda: stack)
         backend = stdio_backend.StdioMCPBackend("triage", {"command": "true"})
@@ -159,7 +161,10 @@ async def test_a_started_backend_keeps_the_version_it_reported(kind, monkeypatch
         monkeypatch.setattr(http_backend, "AsyncExitStack", lambda: stack)
         backend = http_backend.HttpMCPBackend("cti", {"url": "http://127.0.0.1:9/mcp"})
     await backend.start()
-    assert backend.server_version == "3.1.0"
+    try:
+        assert backend.server_version == "3.1.0"
+    finally:
+        await backend.stop()
 
 
 @pytest.mark.asyncio
