@@ -195,8 +195,8 @@ CASE_MCP = (
 REPORT_MCP = (
     "Report generation tools for the Valhuntir forensic investigation platform. "
     "Only approved findings and timeline events appear in reports. "
-    "Provenance, confidence, and content hashes are internal working notes "
-    "for the pre-approval review process — they do not appear in reports. "
+    "Confidence and content hashes are internal working notes; they stay out of "
+    "reports. The server appends each approved finding's provenance to saved reports. "
     "Use Zeltser IR Writing MCP tools as guided by the zeltser_guidance section "
     "in generate_report output. Set case metadata incrementally as information "
     "emerges during the investigation. Save reports with descriptive filenames."

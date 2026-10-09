@@ -1327,6 +1327,48 @@ function selectFinding(id) {
   if (content) content.scrollTop = 0;
 }
 
+/* A finding's provenance as the chain resolver stored it; nothing here
+   computes a grade. A finding recorded before 0.6.4, and a query logged
+   before it, read "recorded before 0.6.4", never a grade; an import names
+   the case its chain lives in. vhir's provenance_view has the same rules. */
+var PROV_LEGACY = 'recorded before 0.6.4';
+function provBefore064(a) {
+  return !!(a && a.provenance_break && a.provenance_break.kind === 'recorded-before-0.6.4');
+}
+function provGrade(f, a) {
+  var imp = f && f.imported_from, src = a || f || {};
+  if (imp && typeof imp === 'object' && src.provenance_grade === 'IMPORTED') {
+    return {text: 'IMPORTED', color: 'var(--amber)', reason: 'chain lives in case ' + (imp.case_id || '?') +
+      ' (imported from ' + (imp.examiner || '?') + ', exported ' + (imp.exported_at || '?') + ')'};
+  }
+  if (!f || f.provenance_schema !== 2) return {text: PROV_LEGACY, color: 'var(--text-muted)', reason: ''};
+  if (a) {
+    var why = String(a.provenance_reason || '');
+    if (provBefore064(a)) {
+      return {text: PROV_LEGACY, color: 'var(--text-muted)',
+        reason: why.indexOf(PROV_LEGACY + ': ') === 0 ? why.slice(PROV_LEGACY.length + 2) : why};
+    }
+    var ag = a.provenance_grade || '?';
+    return {text: ag, color: ag === 'FULL' ? 'var(--green)' : 'var(--amber)', reason: why};
+  }
+  var arts = (f.artifacts || []).filter(function(x) { return x && typeof x === 'object'; });
+  var g = f.provenance_grade || '?';
+  var broken = arts.filter(function(x) { return x.provenance_grade === 'BROKEN'; });
+  var text = g === 'BROKEN' && broken.length && broken.every(provBefore064) ? PROV_LEGACY : g;
+  var reasons = [];
+  arts.forEach(function(x) {
+    var r = provGrade(f, x).reason;
+    if (r && reasons.indexOf(r) < 0) reasons.push(r);
+  });
+  return {text: text, color: text === 'FULL' ? 'var(--green)' : (text === PROV_LEGACY ? 'var(--text-muted)' : 'var(--amber)'),
+    reason: reasons.join('; ')};
+}
+function provRootLabel(r) {
+  if (r.label) return String(r.label);
+  if (r.kind === 'folder') return 'folder (' + (r.file_count || '?') + ' files)';
+  return r.registered_via === 'mcp' ? 'AI-registered' : 'examiner-registered';
+}
+
 function renderFinding(id) {
   const f = findings.find(x => x.id === id);
   if (!f) return;
@@ -1403,9 +1445,9 @@ function renderFinding(id) {
     html += '<span class="badge ' + escapeHtml(statusClass) + '">' + escapeHtml(status) + '</span>';
   }
   // Provenance grade badge — system-verified evidence chain completeness
-  if (f.provenance_grade) {
-    var pgColor = f.provenance_grade === 'FULL' ? 'var(--green)' : 'var(--amber)';
-    html += '<span class="badge" style="background:transparent;border:1px solid ' + pgColor + ';color:' + pgColor + ';font-size:10px">' + escapeHtml(f.provenance_grade) + '</span>';
+  if (f.provenance_grade || f.provenance_schema === 2) {
+    var pg = provGrade(f);
+    html += '<span class="badge" style="background:transparent;border:1px solid ' + pg.color + ';color:' + pg.color + ';font-size:10px">' + escapeHtml(pg.text) + '</span>';
   }
   // Host + event timestamp (decision-relevant context, always visible)
   var stickyContext = [];
@@ -1516,7 +1558,17 @@ function renderFinding(id) {
   if (f.affected_account) metaParts.push(escapeHtml(f.affected_account));
   if (f.event_type) metaParts.push('<span class="badge badge-timeline">' + escapeHtml(f.event_type) + '</span>');
   if (f.event_timestamp) metaParts.push(escapeHtml(formatTime(f.event_timestamp)));
-  if (f.source_evidence) metaParts.push(escapeHtml(f.source_evidence));
+  var pRoots = {};
+  if (f.provenance_schema === 2) {
+    (f.artifacts || []).forEach(function(a) {
+      var r = a && a.provenance_root;
+      if (r && r.path) pRoots[r.path] = r;
+    });
+  }
+  Object.keys(pRoots).forEach(function(k) { metaParts.push(escapeHtml(k) + ' (' + escapeHtml(provRootLabel(pRoots[k])) + ')'); });
+  if (!Object.keys(pRoots).length && f.source_evidence) metaParts.push(escapeHtml(f.source_evidence));
+  var pReason = provGrade(f).reason;
+  if (pReason) metaParts.push(escapeHtml(pReason));
   if (f.timeline_event_id) metaParts.push('<a style="color:var(--accent);cursor:pointer" onclick="switchTab(\'timeline\');focusTimelineEvent(\'' + escapeJsString(f.timeline_event_id) + '\')">' + escapeHtml(f.timeline_event_id) + '</a>');
   metaParts.push('staged ' + (staged ? escapeHtml(staged) : '') + ' by ' + escapeHtml(examiner));
   html += metaParts.join(' \u00B7 ');
@@ -2843,7 +2895,7 @@ async function loadToolInvocations(finding) {
   var ungrouped = [];
   artifacts.forEach(function(art) {
     if (!art.provenance_grade && !art.audit_id) return;
-    var src = art.source_evidence || '';
+    var src = (art.provenance_root || {}).path || art.source_evidence || '';
     if (src) {
       if (!evidenceGroups[src]) evidenceGroups[src] = [];
       evidenceGroups[src].push(art);
@@ -2882,7 +2934,18 @@ async function loadToolInvocations(finding) {
     else if (step.hostname) h += ' \u00B7 ' + escapeHtml(step.hostname);
     if (step.artifact_type) h += ')';
     h += elapsed;
+    if (step.method) h += ' <span style="font-size:10px;color:var(--text-secondary)">[' + escapeHtml(step.method) + ']</span>';
     if (step.audit_id) h += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(step.audit_id) + ']</span>';
+    var ref = step.reference;
+    if (ref && typeof ref === 'object') {
+      h += ' <span style="font-size:10px;color:var(--text-secondary)">reference: ' + escapeHtml(ref.source || '?') + ', ' +
+        escapeHtml(ref.source_version || 'version not recorded') + '</span>';
+    }
+    var pf = function(d) {
+      d = d || {};
+      return escapeHtml(String(d.path || '?').split(/[\\/]/).pop()) + ' <span style="font-family:monospace">' + escapeHtml(String(d.sha256 || '').slice(0, 16)) + '</span>';
+    };
+    if (step.from || step.to) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">' + (step.from ? pf(step.from) + ' \u2192 ' : '\u2192 ') + pf(step.to) + '</div>';
     if (cmd) h += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
     var outFile = fullEntry && (fullEntry.result_summary || {}).output_file;
     if (outFile) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">\u2192 ' + escapeHtml(outFile.split('/').pop()) + '</div>';
@@ -2897,8 +2960,7 @@ async function loadToolInvocations(finding) {
     // Server now guarantees the terminal "query" step is present in
     // the chain (manager.py appends art.audit_id with role='query' if
     // missing). Portal just renders what the server provides.
-    // Reverse for chronological order (evidence → ... → tool).
-    var steps = chain.slice().reverse();
+    var steps = chain;  // stored root first, and rendered so
     var h = '<div style="padding:2px 0 2px 8px;margin:2px 0">';
     steps.forEach(function(step) { h += renderStep(step); });
     h += '</div>';
@@ -2908,33 +2970,37 @@ async function loadToolInvocations(finding) {
   // Render each evidence group
   Object.keys(evidenceGroups).forEach(function(src) {
     var group = evidenceGroups[src];
-    var allFull = group.every(function(a) { return a.provenance_grade === 'FULL'; });
+    var allFull = group.every(function(a) { return provGrade(finding, a).text === 'FULL'; });
     var gradeColor = allFull ? 'var(--green)' : 'var(--amber)';
+    var gRoot = group[0].provenance_root;
     html += '<div style="padding:6px 10px;margin-bottom:6px;background:var(--bg-secondary);border-left:3px solid ' + gradeColor + ';border-radius:4px">';
-    html += '<strong>' + escapeHtml(src.split('/').pop()) + '</strong>';
-    html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + (allFull ? 'FULL' : 'PARTIAL') + '</span>';
-    html += ' <span style="color:var(--text-muted);font-size:10px">(registered evidence)</span>';
+    html += '<strong>' + escapeHtml(src.split(/[\\/]/).pop()) + '</strong>';
+    if (gRoot && gRoot.path) html += ' <span style="color:var(--text-muted);font-size:10px">(' + escapeHtml(provRootLabel(gRoot)) + ')</span>';
     group.forEach(function(art, idx) {
       var label = truncateLabel(art.extraction || art.content_type || 'artifact ' + (idx + 1));
+      var ag = provGrade(finding, art);
       html += '<div style="margin:6px 0 2px 4px;font-size:11px;color:var(--text-primary)">';
       html += '<span style="font-weight:600">' + escapeHtml(label) + '</span>';
+      html += ' <span style="color:' + ag.color + ';font-weight:600;font-size:10px">' + escapeHtml(ag.text) + '</span>';
+      if (ag.reason) html += ' <span style="color:var(--text-muted);font-size:10px">' + escapeHtml(ag.reason) + '</span>';
       html += '</div>';
-      html += renderArtifact(art);
+      if (ag.text !== 'IMPORTED') html += renderArtifact(art);  // an import's chain is the other case's
     });
     html += '</div>';
   });
 
   // Render ungrouped artifacts (no source_evidence resolved)
   ungrouped.forEach(function(art, idx) {
-    var gradeColor = art.provenance_grade === 'FULL' ? 'var(--green)' : 'var(--amber)';
+    var ug = provGrade(finding, art), gradeColor = ug.color;
     html += '<div style="padding:6px 10px;margin-bottom:6px;background:var(--bg-secondary);border-left:3px solid ' + gradeColor + ';border-radius:4px">';
-    html += '<strong>' + escapeHtml((art.source || '').split('/').pop() || 'artifact') + '</strong>';
-    if (art.provenance_grade) html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + escapeHtml(art.provenance_grade) + '</span>';
+    html += '<strong>' + escapeHtml((art.source || '').split(/[\\/]/).pop() || 'artifact') + '</strong>';
+    html += ' <span style="color:' + gradeColor + ';font-weight:600;font-size:10px">' + escapeHtml(ug.text) + '</span>';
+    if (ug.reason) html += ' <span style="color:var(--text-muted);font-size:10px">' + escapeHtml(ug.reason) + '</span>';
     var label = truncateLabel(art.extraction || art.content_type || 'artifact ' + (idx + 1));
     html += '<div style="margin:6px 0 2px 4px;font-size:11px;color:var(--text-primary)">';
     html += '<span style="font-weight:600">' + escapeHtml(label) + '</span>';
     html += '</div>';
-    html += renderArtifact(art);
+    if (ug.text !== 'IMPORTED') html += renderArtifact(art);
     html += '</div>';
   });
 

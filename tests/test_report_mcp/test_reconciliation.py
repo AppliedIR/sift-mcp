@@ -139,4 +139,5 @@ def test_the_block_s_fence_outlasts_any_backtick_run_in_it(case, monkeypatch):
     )
     _save("# Report")
     saved = (case / "reports" / "r.md").read_text()
-    assert saved.endswith("\n`````\nVERIFICATION\nid ````x````\n`````\n")
+    fenced = saved[saved.index("\n`````\nVERIFICATION\nid ````x````\n\nPROVENANCE\n") :]
+    assert fenced.endswith("\n`````\n") and fenced.count("`````\n") == 2

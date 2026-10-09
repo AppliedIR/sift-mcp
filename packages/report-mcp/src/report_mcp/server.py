@@ -27,6 +27,7 @@ from vhir_cli.case_io import (
 )
 from vhir_cli.commands.evidence import list_evidence_data
 from vhir_cli.ledger_verify import approved_view, verification_block, verification_json
+from vhir_cli.provenance_view import provenance_block
 
 from report_mcp.profiles import PROFILES, STRIPPED_FINDING_FIELDS
 
@@ -875,7 +876,8 @@ def create_server() -> FastMCP:
             # the block can end it early. How a viewer renders the report
             # still depends on the content above it; the raw file and
             # `vhir review --findings --verify` are authoritative.
-            block = verification_block(approved_view(case_dir))
+            view = approved_view(case_dir)
+            block = verification_block(view) + [""] + provenance_block(view)
             runs = [len(r) for r in re.findall(r"`+", "\n".join(block))]
             fence = "`" * max(3, max(runs, default=0) + 1)
             saved = (

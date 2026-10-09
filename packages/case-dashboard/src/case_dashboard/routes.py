@@ -345,11 +345,16 @@ async def get_evidence(request: Request) -> JSONResponse:
         fid = f.get("id", "")
         if not fid:
             continue
-        # Link via artifact source paths
-        for art in f.get("artifacts", []):
-            src = art.get("source", "")
-            if src:
-                ref_index.setdefault(src, []).append(fid)
+        # Link by the root each artifact's chain resolved to (else the
+        # evidence it names), never by the AI-supplied `source`
+        for art in f.get("artifacts") or []:
+            if not isinstance(art, dict):
+                continue
+            root = (art.get("provenance_root") or {}).get("path") or art.get(
+                "source_evidence"
+            )
+            if root and fid not in ref_index.get(root, []):
+                ref_index.setdefault(root, []).append(fid)
 
     # Enrich evidence items
     for item in evidence:
