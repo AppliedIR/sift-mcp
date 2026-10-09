@@ -58,6 +58,8 @@ class ToolDefinition:
     common_flags: list[dict] = field(default_factory=list)
     # FK tool name for knowledge lookup (defaults to binary name)
     fk_tool_name: str = ""
+    # Its outputs are acquired evidence (a disk or memory image)
+    acquisition: bool = False
 
     @property
     def knowledge_name(self) -> str:
@@ -119,6 +121,7 @@ def load_catalog() -> dict[str, ToolDefinition]:
                 description=tool_entry.get("description", ""),
                 common_flags=tool_entry.get("common_flags", []),
                 fk_tool_name=tool_entry.get("fk_tool_name", ""),
+                acquisition=tool_entry.get("acquisition", False) is True,
             )
             _catalog_cache[name.lower()] = td
 

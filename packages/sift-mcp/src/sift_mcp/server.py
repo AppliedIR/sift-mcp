@@ -239,6 +239,10 @@ def create_server() -> FastMCP:
         from sift_mcp import mounts
 
         pre_mounts = mounts.mounted() if mounts.is_mount(command) else None
+        # An acquisition tool's run (also behind sudo): its outputs are
+        # acquired evidence
+        tool_name = mounts.tool_of(command)[0]
+        acquired = tool_name if (t := get_tool_def(tool_name)) and t.acquisition else ""
         unmounting = mounts.umount_record(command, op_dir)
 
         try:
@@ -318,6 +322,11 @@ def create_server() -> FastMCP:
                     **({"inputs": inputs} if inputs else {}),
                     **({"outputs": outputs} if outputs else {}),
                     **({"mount": mount} if mount else {}),
+                    **(
+                        {"acquisition": True, "acquisition_tool": acquired}
+                        if acquired
+                        else {}
+                    ),
                     **({"umount": unmounting} if unmounting and ok else {}),
                     **(
                         {"input_registered": registered}

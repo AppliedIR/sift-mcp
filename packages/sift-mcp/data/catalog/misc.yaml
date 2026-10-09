@@ -46,6 +46,7 @@ tools:
     interactive: false
     description: "Forensic disk imaging with inline hashing"
     fk_tool_name: dc3dd
+    acquisition: true
 
   - name: ewfacquire
     binary: ewfacquire
@@ -55,6 +56,7 @@ tools:
     interactive: false
     description: "E01/EWF format forensic imaging"
     fk_tool_name: ewfacquire
+    acquisition: true
 
   - name: ewfmount
     binary: ewfmount
