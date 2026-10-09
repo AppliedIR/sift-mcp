@@ -1319,3 +1319,58 @@ def test_an_input_carrying_another_mount_id_breaks(c):
         ]
     )
     assert g(res, st)[:2] == ("BROKEN", "mount-mismatch"), g(res, st)
+
+
+# --- roots, producers and hashes, as recorded ------------------------------------
+
+
+def test_an_op_whose_inputs_reach_two_roots_is_full_listing_both(c):
+    """Sample 2 from the 7z and a separately registered image, compared."""
+    z = _seven_zip(c)
+    _s1, s2 = _extract(c, "sift-tester-20261009-001", z)
+    other = c.file("evidence/rd01-memory.raw", "raw memory")
+    c.register(other)
+    c.run(
+        "sift-tester-20261009-002", ["cmp", s2, other], [s2, other], "differ: byte 1\n"
+    )
+    res, st = c.find(
+        [{"content": "differ: byte 1", "audit_id": "sift-tester-20261009-002"}]
+    )
+    assert g(res, st)[0] == "FULL", g(res, st)
+    roots = {r["path"] for r in st["artifacts"][0].get("provenance_roots", [])}
+    assert roots == {z, other}, roots
+
+
+def test_a_producer_recorded_after_its_consumer_doesnt_link(c):
+    z = _seven_zip(c)
+    s2 = c.file("extractions/late/sample2.raw", "sample two")
+    c.run(
+        "sift-tester-20261009-002",
+        ["vol", "-f", s2, "windows.pslist"],
+        [s2],
+        "PID 4 System\n",
+    )
+    c.op("sift-mcp", "sift-tester-20261009-003", ts="2026-10-09T05:00:00Z",
+         tool="run_command",
+         params={"command": ["7z", "x", z, "-oextractions/late"], "purpose": "p"},
+         input_files=[z], input_sha256s=[""], input_detection_method="parsed",
+         result_summary={"exit_code": 0, "output_files": [s2],
+                         "output_sha256s": [sha(s2)]})  # fmt: skip
+    res, st = c.find(
+        [{"content": "PID 4 System", "audit_id": "sift-tester-20261009-002"}]
+    )
+    assert g(res, st)[:2] == ("BROKEN", "no-recorded-origin"), g(res, st)
+
+
+def test_a_recorded_hash_differing_from_the_registered_one_is_a_hash_mismatch(c):
+    z = _seven_zip(c)
+    out = c.file("extractions/l.txt", "sample2.raw\n")
+    c.op("sift-mcp", "sift-tester-20261009-001", tool="run_command",
+         params={"command": ["7z", "l", z], "purpose": "p"},
+         input_files=[z], input_sha256s=["ab" * 32], input_detection_method="parsed",
+         result_summary={"exit_code": 0, "output_file": out,
+                         "output_sha256": sha(out)})  # fmt: skip
+    res, st = c.find(
+        [{"content": "sample2.raw", "audit_id": "sift-tester-20261009-001"}]
+    )
+    assert g(res, st)[:2] == ("BROKEN", "hash-mismatch"), g(res, st)
