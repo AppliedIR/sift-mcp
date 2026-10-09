@@ -36,7 +36,7 @@ Start Open WebUI with the env file, e.g.
 |---|---|---|
 | `ENABLE_PLUGINS` | `False` | Python Tools and Functions run on the Open WebUI server, which is equivalent to giving them a shell. This stops them running. It doesn't stop an admin creating them. |
 | `USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS` | `False` | Users can't add workspace tools. |
-| `ENABLE_DIRECT_INTEGRATIONS` | `False` | Users can't connect their own tool servers from the browser. |
+| `ENABLE_DIRECT_INTEGRATIONS` | `False` | Users don't see the Integrations tab, where they'd add their own tool and terminal connections. Hiding it doesn't disable connections they already have. |
 | `ENABLE_CODE_INTERPRETER` | `False` | No code interpreter. |
 | `CODE_INTERPRETER_ENGINE`, `CODE_EXECUTION_ENGINE` | `pyodide` | If an admin turns code execution on, it runs in the browser, not on a server. Never point either at Jupyter or Open Terminal. |
 
@@ -49,7 +49,7 @@ set each of the five in the Admin Panel (checked on Open WebUI 0.11.4):
 | Setting | Where in the Admin Panel |
 |---|---|
 | `USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS` | **Users > Groups > Default permissions > Edit**: turn **Tools Access** off |
-| `ENABLE_DIRECT_INTEGRATIONS` | **Settings > Connections**: turn **Direct Connections** off |
+| `ENABLE_DIRECT_INTEGRATIONS` | **Settings > Integrations**, User Connections: turn **Direct Integrations** off |
 | `ENABLE_CODE_INTERPRETER` | **Settings > Code Execution**, Code Interpreter: turn **Enable Code Interpreter** off |
 | `CODE_INTERPRETER_ENGINE` | **Settings > Code Execution**, Code Interpreter: **Code Interpreter Engine** Pyodide |
 | `CODE_EXECUTION_ENGINE` | **Settings > Code Execution**: **Code Execution Engine** Pyodide |
