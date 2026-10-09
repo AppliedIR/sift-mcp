@@ -111,8 +111,8 @@ def _build_platform_capabilities() -> dict:
         )
     if capabilities["remnux"]:
         guidance.append(
-            "- Malware analysis: upload_from_host + analyze_file on REMnux;"
-            " log each REMnux step with log_external_action (recorded as declared)"
+            "- Malware analysis on REMnux, each step logged with log_external_action"
+            " (recorded as declared): upload_from_host + analyze_file"
         )
     if capabilities["wintools"]:
         guidance.append(
