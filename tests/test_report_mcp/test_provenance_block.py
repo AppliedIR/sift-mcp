@@ -86,5 +86,5 @@ def test_the_instructions_say_provenance_is_appended_to_reports():
     from sift_common.instructions import REPORT_MCP
 
     assert "Provenance" not in REPORT_MCP.split("stay out of")[0]
-    assert "appends each approved finding's provenance to saved reports" in REPORT_MCP
+    assert "saved reports end with each approved finding's provenance" in REPORT_MCP
     assert "they do not appear in reports" not in REPORT_MCP
