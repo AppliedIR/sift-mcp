@@ -306,3 +306,20 @@ def test_a_read_after_the_recorded_unmount_or_before_the_mount_breaks(c):
         TrailCase(c.d.parent / "case2"), 2049, ts="2026-10-09T00:30:00Z"
     )
     assert early.break_["kind"] == "mount-mismatch", early
+
+
+def test_every_trace_an_ingest_would_refuse_says_why(c):
+    """An ingest accepts an input whose trace is FULL and refuses any other with
+    its break's fix, or its reason."""
+    assert "FULL" in pv.trace_file.__doc__ and "refuse" in pv.trace_file.__doc__
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    s2 = c.file("extractions/shared/sample2.raw", "sample two")
+    for aid in ("sift-tester-20261009-001", "sift-tester-20261009-002"):
+        c.op("sift-mcp", aid, tool="run_command", input_files=[z], input_sha256s=[""],
+             result_summary={"output_files": [s2], "output_sha256s": [sha(s2)]})  # fmt: skip
+    loose = c.file("extractions/loose/x.raw", "x")
+    case = pv.load_case(c.d)
+    for t in (pv.trace_file(case, s2, sha(s2)), pv.trace_file(case, loose, sha(loose))):
+        assert t.grade != "FULL" and ((t.break_ or {}).get("fix") or t.reason), t
+    assert pv.trace_file(case, z).grade == "FULL"

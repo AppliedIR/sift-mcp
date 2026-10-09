@@ -206,7 +206,10 @@ def trace_file(
     mount of a registered image (its st_dev matching, inside the mount's life);
     or it's an earlier operation's recorded output at this path with this
     SHA-256, traced on through that operation's inputs. A hash at another path
-    never links."""
+    never links.
+
+    An ingest accepts an input whose trace is FULL, and refuses any other with
+    the trace's `break_["fix"]`, or its `reason` when it has no break."""
     real = realpath or os.path.realpath(path)
     sha = sha256 or ""
     found = _registered(case, real, sha) or _mount_link(
