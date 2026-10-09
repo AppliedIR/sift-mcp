@@ -234,14 +234,17 @@ async def list_services(request: Request) -> JSONResponse:
 
 def _served_name(gateway, name: str) -> str:
     """The backend `name` names: the threat-intel backend answers to its
-    earlier name too."""
+    earlier name too, loaded or only in gateway.yaml (where it is read under
+    its current name, as at start)."""
     from sift_gateway.server import BACKEND_ALIASES
 
     if name in gateway.backends or name in gateway._unloaded:
         return name
     for current, earlier in BACKEND_ALIASES.items():
         if name == earlier and (
-            current in gateway.backends or current in gateway._unloaded
+            current in gateway.backends
+            or current in gateway._unloaded
+            or _configured_backend(name) is None  # not configured as itself
         ):
             return current
     return name

@@ -140,3 +140,51 @@ def test_both_names_configured_keep_todays_behaviour(yaml_path, caplog):
     gw = Gateway(load_config(str(yaml_path)))
     assert sorted(gw.backends) == ["opencti-mcp", "threatintel-mcp"]
     assert "Both threatintel-mcp and opencti-mcp are configured" in caplog.text
+
+
+def test_restart_by_the_earlier_name_loads_a_backend_only_in_gateway_yaml(
+    yaml_path, monkeypatch
+):
+    """Configured after start (pasted into gateway.yaml, or a join the loader
+    gave up on): the earlier name reaches it, as the current name does."""
+    import sift_gateway.rest as rest
+
+    yaml_path.write_text(
+        yaml.safe_dump({"gateway": {}, "api_keys": {}, "backends": {}})
+    )
+    gw = Gateway(load_config(str(yaml_path)))
+    _write(yaml_path, "opencti-mcp")
+    loaded = []
+
+    async def reloaded(gateway, name, conf):
+        loaded.append((name, conf))
+        return True
+
+    monkeypatch.setattr(rest, "_reloaded_in_time", reloaded)
+    r = _rest(gw).post("/api/v1/services/opencti-mcp/restart")
+    assert r.status_code != 404, r.text
+    assert loaded == [("threatintel-mcp", ENTRY)]
+
+
+def test_restart_by_the_earlier_name_keeps_an_entry_configured_as_itself(
+    yaml_path, monkeypatch
+):
+    """Both names in gateway.yaml (today's behaviour, both loaded under their
+    own names): the earlier name is that entry, never the other."""
+    import sift_gateway.rest as rest
+
+    yaml_path.write_text(
+        yaml.safe_dump({"gateway": {}, "api_keys": {}, "backends": {}})
+    )
+    gw = Gateway(load_config(str(yaml_path)))
+    yaml_path.write_text(yaml.safe_dump({"backends": {"opencti-mcp": ENTRY,
+                                                      "threatintel-mcp": ENTRY}}))  # fmt: skip
+    loaded = []
+
+    async def reloaded(gateway, name, conf):
+        loaded.append(name)
+        return True
+
+    monkeypatch.setattr(rest, "_reloaded_in_time", reloaded)
+    _rest(gw).post("/api/v1/services/opencti-mcp/restart")
+    assert loaded == ["opencti-mcp"]
