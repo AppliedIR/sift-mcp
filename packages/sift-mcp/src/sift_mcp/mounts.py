@@ -77,10 +77,11 @@ def mount_record(command, before: dict[int, str], inputs, registered, base=None)
     }
     points = []
     for mid, point, _ in file_place.mounts():
-        if mid in before:
-            continue
         real = os.path.realpath(point)
-        p: dict = {"target": named.get(real, point), "realpath": real}
+        # only this command's own targets: another run may mount at the same time
+        if mid in before or real not in named:
+            continue
+        p: dict = {"target": named[real], "realpath": real}
         try:
             p["st_dev"] = os.stat(real).st_dev
         except OSError:

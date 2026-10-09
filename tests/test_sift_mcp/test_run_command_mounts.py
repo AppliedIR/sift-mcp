@@ -29,6 +29,12 @@ grep -v " $(realpath "$last") " "$FAKE_MOUNTINFO" > "$FAKE_MOUNTINFO.new"
 mv "$FAKE_MOUNTINFO.new" "$FAKE_MOUNTINFO"
 """
 SUDO = '#!/bin/sh\nexec "$@"\n'
+# Mounts, then stays running a while, so two of these overlap
+SLOW_MOUNT = """#!/bin/sh
+for a; do last=$a; done
+echo "$((1000 + $$ % 50000)) 22 7:5 / $(realpath "$last") ro - ntfs3 /dev/loop$$ ro" >> "$FAKE_MOUNTINFO"
+sleep 1
+"""
 FAIL = "#!/bin/sh\nexit 32\n"
 
 
@@ -169,3 +175,33 @@ def test_an_umount_that_failed_records_no_umount(case, tmp_path):
     lines = (case / "audit" / "sift-mcp.jsonl").read_text().splitlines()
     e = json.loads(lines[-1])
     assert e["result_summary"]["exit_code"] == 32 and "umount" not in e
+
+
+def test_two_mounts_at_once_each_record_only_their_own_point(case, tmp_path):
+    import threading
+
+    (tmp_path / "bin" / "mount").write_text(SLOW_MOUNT)
+    img = _image(case)
+    targets = [case / "mnt-a", case / "mnt-b"]
+    for t in targets:
+        t.mkdir()
+
+    def go(t):
+        asyncio.run(
+            create_server().call_tool(
+                "run_command", {"command": ["mount", str(img), str(t)], "purpose": "t"}
+            )
+        )
+
+    threads = [threading.Thread(target=go, args=(t,)) for t in targets]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    lines = (case / "audit" / "sift-mcp.jsonl").read_text().splitlines()
+    entries = [json.loads(x) for x in lines if '"mount"' in x]
+    got = sorted(p["realpath"] for e in entries for p in e["mount"]["points"])
+    assert len(entries) == 2 and got == sorted(str(t.resolve()) for t in targets)
+    for e in entries:
+        (point,) = e["mount"]["points"]
+        assert point["target"] in e["params"]["command"]
