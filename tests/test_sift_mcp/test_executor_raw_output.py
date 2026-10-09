@@ -79,3 +79,17 @@ def test_run_command_reports_and_records_the_output_hash(tmp_path, monkeypatch):
     entry = json.loads((case / "audit" / "sift-mcp.jsonl").read_text().splitlines()[-1])
     assert r["output_sha256"] == hashlib.sha256(OUT).hexdigest()
     assert entry["result_summary"]["output_sha256"] == hashlib.sha256(OUT).hexdigest()
+
+
+def test_in_a_case_every_output_is_kept_whatever_its_size(tmp_path, monkeypatch):
+    """A 51-byte pslist a finding cites is kept, as its exact bytes, without
+    save_output; an output with no bytes saves no file."""
+    case = tmp_path / "case"
+    case.mkdir()
+    (case / "CASE.yaml").write_text("case_id: case\n")
+    monkeypatch.setenv("VHIR_CASE_DIR", str(case))
+    monkeypatch.delenv("SIFT_MAX_OUTPUT", raising=False)
+    r = execute(_writes(OUT))  # save_output not set
+    saved = Path(r["output_file"])
+    assert saved.parent == case / "extractions" and saved.read_bytes() == OUT
+    assert "output_file" not in execute(_writes(b""))

@@ -136,11 +136,11 @@ def execute(
         if truncated:
             response["truncated"] = True
 
-        # Threshold-based save: auto-save when output exceeds response budget
+        # In a case every output is kept, whatever its size or save_output:
+        # those are the bytes a finding cites. Without a case, when asked.
         case_dir = resolve_case_dir()
-        exceeds_budget = stdout_byte_count > config.response_byte_budget
 
-        if exceeds_budget and case_dir:
+        if case_dir and (stdout_raw or stderr_raw):
             _save_output(
                 cmd_list,
                 stdout_raw,

@@ -75,11 +75,12 @@ class TestAutoSave:
 
         assert Path(result["output_file"]).exists()
 
-    def test_no_save_when_under_budget(self, tmp_path, monkeypatch):
-        """Output < budget → no file saved."""
+    def test_saved_in_a_case_when_under_budget(self, tmp_path, monkeypatch):
+        """Output < budget in a case → still saved: a finding may cite it."""
+        (tmp_path / "CASE.yaml").write_text("case_id: test\n")
         monkeypatch.setenv("VHIR_CASE_DIR", str(tmp_path))
         result = execute(["echo", "small"])
-        assert "output_file" not in result
+        assert result["output_file"].startswith(str(tmp_path / "extractions"))
 
     def test_no_save_without_case_dir(self, monkeypatch):
         """Output > budget but no VHIR_CASE_DIR → no file saved."""
