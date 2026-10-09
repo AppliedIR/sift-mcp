@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from sift_common import file_identity as fi
 from sift_common.audit import AuditWriter, resolve_examiner
 from sift_common.host_identity import HostLogError, ensure_case_uuid
 from sift_common.instructions import CASE_MCP as _INSTRUCTIONS
@@ -136,6 +137,22 @@ def _host_list_hint(case_dir: Path) -> str:
     from sift_common.host_gate import host_list_hint
 
     return host_list_hint(case_dir)
+
+
+def _folder_hashes(case_dir, paths: list[str]) -> tuple[dict[str, str], str]:
+    """A folder's file hashes within a tool call's time limit: a completed
+    background hash of an unchanged file is taken; the rest are hashed in the
+    call up to the inline limit, else in one background job, whose id means
+    "call again"."""
+    hashes = {p: h for p in paths if (h := fi.completed_hash(case_dir, p))}
+    batch = fi.hash_files_for_call(
+        [p for p in paths if p not in hashes],
+        case_dir=case_dir,
+        requested_by="evidence_register",
+        inline_limit=fi.INLINE_LIMIT,
+    )
+    hashes.update((p, r.sha256) for p, r in batch.done.items())
+    return hashes, batch.job_id
 
 
 def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
@@ -411,7 +428,10 @@ def create_server() -> FastMCP:
     @server.tool()
     def evidence_register(path: str, description: str = "") -> dict:
         """Register an evidence file with the active case. Computes
-        SHA-256 hash and adds to evidence registry.
+        SHA-256 hash and adds to evidence registry. A folder (a KAPE
+        collection) registers as one root with a manifest of its files; while
+        its large files hash in the background it answers {"status":
+        "hashing", "job_id"} and registers nothing: call again later.
 
         Confirm with the examiner before registering.
         """
@@ -425,6 +445,7 @@ def create_server() -> FastMCP:
                 examiner=examiner,
                 description=description,
                 registered_via="mcp",  # the AI's: its host names never confirm a machine
+                folder_hasher=_folder_hashes,
             )
             logged_id = audit.log(
                 tool="evidence_register",
