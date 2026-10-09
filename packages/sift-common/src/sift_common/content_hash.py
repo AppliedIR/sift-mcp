@@ -2,12 +2,14 @@
 computed on the record as the ingest sends it or on its ``_source`` as
 OpenSearch returns it.
 
-The record is flattened to dotted keys and dumped as JSON with sorted keys,
-no spaces, and non-ASCII kept (UTF-8). Left out: the hash itself; the fields
-that later operations change (``host.id`` on a host rename or merge,
-``vhir.prev_ids``, the ``triage`` and ``threat_intel`` enrichment groups); and
-what the evtx pipeline adds to a stored record (``winlog.event_data``'s
-``_pipeline_error``, and its ``Data_raw`` when ``Data`` is an object).
+The record, as structured when sent (``{"a.b": 1}`` and ``{"a": {"b": 1}}``
+differ), is dumped as JSON with sorted keys, no spaces, and non-ASCII kept
+(UTF-8). Left out, each by its dotted name however the record nests it: the
+hash itself; the fields that later operations change (``host.id`` on a host
+rename or merge, ``vhir.prev_ids``, the ``triage`` and ``threat_intel``
+enrichment groups); and what the evtx pipeline adds to a stored record
+(``winlog.event_data``'s ``_pipeline_error``, and its ``Data_raw`` when
+``Data`` is an object).
 """
 
 from __future__ import annotations
@@ -37,19 +39,29 @@ def _flatten(value: dict, prefix: str, out: dict, objects: set) -> None:
         out[name] = item
 
 
+def _pruned(value: dict, prefix: str, drop) -> dict:
+    return {
+        key: _pruned(item, f"{prefix}{key}.", drop) if isinstance(item, dict) else item
+        for key, item in value.items()
+        if not drop(f"{prefix}{key}")
+    }
+
+
 def canonical_fields(record: dict) -> dict:
-    """The record's fields that the hash covers, by dotted name."""
+    """The record as structured when sent, without the fields the hash leaves out."""
     flat: dict = {}
     objects: set = set()
     _flatten(record, "", flat, objects)
     data_is_object = _DATA in objects
-    return {
-        name: value
-        for name, value in flat.items()
-        if name not in _LEFT_OUT
-        and not any(name == g or name.startswith(f"{g}.") for g in _LEFT_OUT_GROUPS)
-        and not (name == _DATA_RAW and data_is_object)
-    }
+
+    def drop(name: str) -> bool:
+        return (
+            name in _LEFT_OUT
+            or any(name == g or name.startswith(f"{g}.") for g in _LEFT_OUT_GROUPS)
+            or (name == _DATA_RAW and data_is_object)
+        )
+
+    return _pruned(record, "", drop)
 
 
 def _as_sent(value):

@@ -1,6 +1,6 @@
 """A record's content hash is the same on the record the ingest sends and on
-its ``_source`` as stored: nested or dotted, with the fields later operations
-change and what the evtx pipeline adds left out."""
+its ``_source`` as stored, with the fields later operations change and what
+the evtx pipeline adds left out, however the record nests them."""
 
 from __future__ import annotations
 
@@ -18,24 +18,31 @@ SENT = {
 }
 
 
-def test_it_is_the_sha256_of_the_sorted_compact_utf8_json_of_the_dotted_fields():
-    record = {"b": {"c": 1}, "a": "é"}
+def test_it_is_the_sha256_of_the_sorted_compact_utf8_json_of_the_record():
+    record = {"b": {"d": 2, "c": 1}, "a": "é"}
     expected = hashlib.sha256(
-        json.dumps({"a": "é", "b.c": 1}, sort_keys=True, separators=(",", ":"),
-                   ensure_ascii=False).encode("utf-8")
+        json.dumps({"a": "é", "b": {"c": 1, "d": 2}}, sort_keys=True,
+                   separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     ).hexdigest()  # fmt: skip
     assert content_hash(record) == expected
 
 
-def test_nested_and_dotted_forms_hash_alike():
-    nested = {
-        "@timestamp": SENT["@timestamp"],
-        "winlog": {"event_data": {"Data": {"Name": "a"}, "TargetUserName": "bob"}},
-        "message": "café",
-        "host": {"name": "dc01"},
-        "vhir": {"ingest_audit_id": SENT["vhir.ingest_audit_id"]},
-    }
-    assert content_hash(nested) == content_hash(SENT)
+def test_nested_and_dotted_forms_of_a_field_never_collide():
+    assert content_hash({"a.b": 1}) != content_hash({"a": {"b": 1}})
+    both = {"event": {"action": "a"}, "event.action": "b"}
+    changed = {"event": {"action": "x"}, "event.action": "b"}
+    assert content_hash(both) != content_hash(changed)  # neither form shadows the other
+    reordered = {"event.action": "b", "event": {"action": "a"}}
+    assert content_hash(both) == content_hash(reordered)
+
+
+def test_a_left_out_field_is_left_out_nested_or_dotted():
+    nested = {"vhir": {"content_hash": "f" * 64, "x": 1}, "host": {"id": "H"}}
+    assert content_hash(nested) == content_hash({"vhir": {"x": 1}, "host": {}})
+    stored = {"winlog": {"event_data": {"Data": {"N": "a"}, "Data_raw": "{N=a}"}}}
+    assert content_hash(stored) == content_hash(
+        {"winlog": {"event_data": {"Data": {"N": "a"}}}}
+    )
 
 
 def test_what_later_operations_change_is_left_out():
@@ -62,7 +69,7 @@ def test_the_pipelines_additions_are_left_out_when_data_is_an_object():
 
 def test_data_raw_counts_when_the_parser_set_it_for_a_non_object_data():
     record = {"winlog.event_data": {"Data_raw": "plain text"}}
-    assert "winlog.event_data.Data_raw" in canonical_fields(record)
+    assert canonical_fields(record) == record
     assert content_hash(record) != content_hash(
         {"winlog.event_data": {"Data_raw": "other"}}
     )
