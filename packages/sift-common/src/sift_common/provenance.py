@@ -494,6 +494,7 @@ def _trace_entry(
 # --- Artifacts: what a finding cites, checked against what it quotes ---------
 
 ARTIFACT_GRADES = ("CITED-UNVERIFIED", "BROKEN", "AMBIGUOUS", "DECLARED", "FULL")
+_ENRICHMENT = ("triage", "threat_intel")  # fields written by enrichment, not evidence
 
 
 def _norm(text: str) -> str:
@@ -540,6 +541,20 @@ def _flat(record, prefix: str = "") -> list[tuple[str, str]]:
     return [(prefix.rstrip("."), _norm(str(record)))]
 
 
+def _reference(case: Case, e: dict, line: bytes, to=None) -> Trace:
+    """Reference data (threat intel, a triage baseline, enrichment) links to the
+    operation that looked it up; it never stands in for evidence."""
+    ref = e.get("reference") if isinstance(e.get("reference"), dict) else {}
+    resp = ref.get("response") if isinstance(ref.get("response"), dict) else {}
+    link = _link("reference", {"path": "", "sha256": ""},
+                 to or {"path": resp.get("path", ""), "sha256": resp.get("sha256", "")}, e, line)  # fmt: skip
+    link["reference"] = {"source": ref.get("source", ""),
+                         "source_version": ref.get("source_version", "")}  # fmt: skip
+    why = f"reference data from {ref.get('source') or e.get('tool', '')}, not evidence"
+    return Trace("BROKEN", links=[link], reason=why,
+                 break_={"kind": "reference", "detail": why, "fix": ""})  # fmt: skip
+
+
 def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
     """A finding artifact: its quoted content checked against what the cited
     operation produced, then its chain to registered evidence.
@@ -558,6 +573,12 @@ def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
         return trace_op(case, audit_id)  # no entry, or one id on several
     e, line = items[0]
     quote = _quote_lines(content)
+    if isinstance(e.get("reference"), dict):
+        resp = e["reference"].get("response") or {}
+        text = _saved(resp.get("path"), resp.get("sha256")) if resp else None
+        if resp and (text is None or not all(q in text for q in quote)):
+            return _unverified(f"the quote isn't in {audit_id}'s saved response")
+        return _reference(case, e, line)
     params = e.get("params") if isinstance(e.get("params"), dict) else {}
     if "result_docs" in params or "result_ingests" in params or "response" in e:
         return _trace_query(case, e, line, params, quote)
@@ -597,7 +618,8 @@ def _trace_query(
 def _match_back(
     case: Case, e: dict, line: bytes, docs: list[dict], quote: list[str]
 ) -> Trace:
-    """Each quoted line in a returned record; only those records are followed."""
+    """Each quoted line in a returned record; only those records are followed.
+    A line found only in enrichment fields links to the enrichment."""
     try:
         returned = json.loads(Path(e["response"]["path"]).read_text(encoding="utf-8"))
     except (OSError, ValueError, KeyError, TypeError):
@@ -608,7 +630,7 @@ def _match_back(
         else [returned]
     )
     by_key = {(d.get("_index"), d.get("_id")): d for d in docs}
-    evidence = {}
+    evidence, enrichment = {}, {}
     for q in quote:
         hits = [
             (r, f)
@@ -617,17 +639,36 @@ def _match_back(
             for f, v in _flat(r)
             if q in v
         ]
+        ev = [r for r, f in hits if f.split(".")[0] not in _ENRICHMENT]
         if not hits:
             return _unverified(f"{q!r} is in no record {e['audit_id']} returned")
-        for r, _f in hits:
+        for r in ev or [r for r, _f in hits]:
             d = by_key.get((r.get("_index"), r.get("_id")))
             if d is None:
                 return _broken("no-results-recorded", f"{e['audit_id']} didn't record the "
                                f"record {r.get('_id')} it returned")  # fmt: skip
-            evidence[(d.get("_index"), d.get("_id"))] = d
+            (evidence if ev else enrichment)[(d.get("_index"), d.get("_id"))] = d
+    if not evidence:  # only enrichment fields were quoted
+        ops = [op for d in enrichment.values()
+               for op in _enrichment_ops(d.get("enrichment"))]  # fmt: skip
+        found = [x for op in ops for x in case.by_id.get(op, [])]
+        if not found:
+            return _broken("reference", f"{e['audit_id']}: the quote is enrichment data "
+                           "whose operation isn't recorded")  # fmt: skip
+        return _reference(case, *found[0])
     return _follow(
         case, e, line, [(d.get("ingest_audit_id", ""), d) for d in evidence.values()]
     )
+
+
+def _enrichment_ops(groups) -> list[str]:
+    if not isinstance(groups, dict):
+        return []
+    ops = []
+    for k in _ENRICHMENT:
+        v = groups.get(k)
+        ops += [v] if isinstance(v, str) else [x for x in v or [] if isinstance(x, str)]
+    return ops
 
 
 def _follow(case: Case, e: dict, line: bytes, follow: list) -> Trace:
