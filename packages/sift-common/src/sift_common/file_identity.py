@@ -146,7 +146,7 @@ def _hash_job(key, job_id: str, path: str, case_dir: str, requested_by: str) -> 
             "started": started,
             "finished": _now(),
             **result,
-        },  # fmt: skip
+        },
     )
     if logged is None:
         logger.warning("%s for %s (%s) was not recorded", tool, path, job_id)
