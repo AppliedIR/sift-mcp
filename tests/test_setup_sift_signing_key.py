@@ -72,7 +72,7 @@ def test_a_signing_key_is_reported_and_setup_never_runs(tmp_path):
     assert "Signing key fingerprint: SHA256:x" in p.stdout
 
 
-@pytest.mark.parametrize("message", ["Incorrect password.", "No passphrase was set."])
+@pytest.mark.parametrize("message", ["Incorrect passphrase.", "No passphrase was set."])
 def test_a_failed_upgrade_says_how_to_retry_and_never_runs_setup(tmp_path, message):
     p, calls = _run(tmp_path, message, 1)
     assert calls == ["config --upgrade-key"]

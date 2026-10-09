@@ -275,3 +275,9 @@ def test_a_wrapped_key_that_isn_t_the_served_public_key_is_refused(case):
     assert run("sign", password=PASSWORD, key=forged, examiner="steve", plan=plan)[
         "error"
     ]
+
+
+def test_the_key_message_says_passphrase_as_the_cli_does():
+    lead = "Your passphrase is correct, but your signing-key file doesn't "
+    assert keys.KeyUnwrapFailed.MESSAGE.startswith(lead)  # the CLI's
+    assert f'var KEY_UNWRAP_FAILED = "{lead}"' in V2.read_text()

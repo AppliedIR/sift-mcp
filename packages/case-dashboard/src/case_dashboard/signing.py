@@ -110,7 +110,7 @@ def _signer(request: Request) -> tuple[str | None, JSONResponse | None]:
 def no_key_text(examiner: str, state: str) -> str:
     if state == "legacy":
         return (
-            f"{examiner} has a 0.6 password and no signing key yet. At the SIFT "
+            f"{examiner} has a 0.6 passphrase and no signing key yet. At the SIFT "
             f"terminal run `vhir enrol --name {examiner} --upgrade` (or "
             "`vhir config --upgrade-key` for this box's own examiner), or sign the "
             "staged reviews there with `vhir approve --review`."
@@ -703,7 +703,7 @@ async def post_commit_key(request: Request) -> JSONResponse:
         approval_auth._record_failure(examiner)
         remaining = approval_auth._MAX_PASSWORD_ATTEMPTS - approval_auth._recent_failure_count(examiner)  # fmt: skip
         msg = (
-            f"Incorrect password. {remaining} attempt(s) remaining."
+            f"Incorrect passphrase. {remaining} attempt(s) remaining."
             if remaining > 0
             else f"Too many failed attempts. Locked for {approval_auth._LOCKOUT_SECONDS}s."
         )

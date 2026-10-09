@@ -83,6 +83,7 @@ def test_a_0_6_password_names_the_upgrade(case, box):
     r = case.plan([reviewed(case, "F-steve-001")], examiner="lab2")
     assert r.json()["code"] == "NO_SIGNING_KEY"
     assert "vhir enrol --name lab2 --upgrade" in r.json()["error"]
+    assert "lab2 has a 0.6 passphrase and no signing key yet" in r.json()["error"]
     state = case.get("/api/case", examiner="lab2").json()["signing"]
     assert state["signing_available"] is False and state["schema"] == "0.6"
 
@@ -100,7 +101,7 @@ def test_a_wrong_password_counts_and_serves_no_key(case):
     r = case.login(plan, password="wrong passphrase here")
     assert r.status_code == 401 and r.json()["code"] == "BAD_PASSWORD"
     assert "wrapped_private" not in r.json()
-    assert "2 attempt(s) remaining" in r.json()["error"]
+    assert r.json()["error"] == "Incorrect passphrase. 2 attempt(s) remaining."
     case.login(plan, password="wrong passphrase here")
     case.login(plan, password="wrong passphrase here")
     r = case.login(plan)
