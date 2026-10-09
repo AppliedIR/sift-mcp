@@ -44,10 +44,15 @@ def link(method, aid, fp, fh, tp, th, **extra):
 
 
 def art(grade, reason="", chain=(), root=ROOT, brk=None, label="pslist"):
-    return {"source": "s", "extraction": label, "content": "PID 4242", "audit_id": "x-1",
-            "provenance_grade": grade, "provenance_reason": reason,
-            "provenance_chain": list(chain), "provenance_root": root,
-            "provenance_break": brk}  # fmt: skip
+    """An artifact as the resolver stores it: `source_evidence` is the root's
+    path when a root was reached."""
+    a = {"source": "s", "extraction": label, "content": "PID 4242", "audit_id": "x-1",
+         "provenance_grade": grade, "provenance_reason": reason,
+         "provenance_chain": list(chain), "provenance_root": root,
+         "provenance_break": brk}  # fmt: skip
+    if root:
+        a["source_evidence"] = root["path"]
+    return a
 
 
 def chained(fid, grade, *arts):
