@@ -1374,3 +1374,35 @@ def test_a_recorded_hash_differing_from_the_registered_one_is_a_hash_mismatch(c)
         [{"content": "sample2.raw", "audit_id": "sift-tester-20261009-001"}]
     )
     assert g(res, st)[:2] == ("BROKEN", "hash-mismatch"), g(res, st)
+
+
+# --- a summary's counts, the decoded response, size caps, placeholders -----------
+
+
+def _summary(c, aid, body, **counts):
+    """A summary query (idx_count) as P4 writes it: result_ingests, and the
+    counts of records with no ingest or past the cap, with its saved response."""
+    resp = c.file(f"extractions/{aid}/response.json", json.dumps(body))
+    c.op("opensearch-mcp", aid, tool="idx_count",
+         params={"query": "4624", "result_ingests": ["opensearch-ingest-7-20261009-012"],
+                 **counts},
+         result_summary="counted", response={"path": resp, "sha256": sha(resp)})  # fmt: skip
+    return aid
+
+
+@pytest.mark.parametrize(
+    "counts, kind, said",
+    [
+        ({"result_ingests_missing": 100}, "ingests-unrecorded",
+         "100 documents with no recorded ingest"),
+        ({"result_ingests_overflow": 7, "result_ingests_cap": 1000},
+         "ingests-unrecorded", "ingests not fully listed (7)"),
+    ],
+    ids=["records with no ingest", "ingests past the cap"],
+)  # fmt: skip
+def test_a_summary_with_records_it_cant_trace_is_never_full(c, counts, kind, said):
+    _ingested_samples(c)
+    aid = _summary(c, "opensearch-tester-20261009-070", {"count": 120}, **counts)
+    res, st = c.find([{"content": "120", "audit_id": aid}])
+    assert g(res, st)[:2] == ("BROKEN", kind), g(res, st)
+    assert said in st["artifacts"][0]["provenance_reason"]

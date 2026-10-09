@@ -629,10 +629,25 @@ def _trace_query(
         return _unverified(f"the quote isn't in what {aid} returned")
     if docs and e.get("tool") != "idx_list_detections":
         return _match_back(case, e, line, docs, quote)
+    # a summary (or detections) counts records it can't trace: never FULL
+    missing = _count(params.get("result_ingests_missing"))
+    overflow = _count(params.get("result_ingests_overflow"))
+    if missing:
+        return _broken("ingests-unrecorded", f"{aid} counted {missing} documents with "
+                       "no recorded ingest", "query only records an ingest wrote, and "
+                       "cite that")  # fmt: skip
+    if overflow:
+        return _broken("ingests-unrecorded", f"{aid}: ingests not fully listed "
+                       f"({overflow})", "narrow the query so every ingest it counts "
+                       "is listed, and cite that")  # fmt: skip
     follow = [(d.get("ingest_audit_id", ""), d) for d in docs] or [
         (i, None) for i in ingests
     ]
     return _follow(case, e, line, follow)
+
+
+def _count(value) -> int:
+    return value if isinstance(value, int) and value > 0 else 0
 
 
 def _match_back(
