@@ -20,8 +20,14 @@ from sift_mcp.server import create_server
 BASE_INFO = "22 1 8:1 / / rw,relatime shared:1 - ext4 /dev/sda1 rw\n"
 
 MOUNT = """#!/bin/sh
-for a; do last=$a; done
-echo "$((70 + $(wc -l < "$FAKE_MOUNTINFO"))) 22 7:5 / $(realpath "$last") ro - $KIND $SRC ro" >> "$FAKE_MOUNTINFO"
+tgt=; prev=
+for a; do
+  case "$prev" in --target|-T) tgt=$a;; esac
+  case "$a" in --target=*) tgt=${a#--target=};; esac
+  prev=$a; last=$a
+done
+[ -n "$tgt" ] || tgt=$last
+echo "$((70 + $(wc -l < "$FAKE_MOUNTINFO"))) 22 7:5 / $(realpath "$tgt") ro - $KIND $SRC ro" >> "$FAKE_MOUNTINFO"
 """
 UMOUNT = """#!/bin/sh
 for a; do last=$a; done
@@ -233,3 +239,23 @@ def test_two_mounts_at_once_each_record_only_their_own_point(case, tmp_path):
     for e in entries:
         (point,) = e["mount"]["points"]
         assert point["target"] in e["params"]["command"]
+
+
+def test_a_mount_names_its_target_with_the_target_option(case):
+    img = _image(case)
+    mnt = case / "mnt"
+    mnt.mkdir()
+    e = run(case, ["mount", f"--source={img}", f"--target={mnt}"])
+    (point,) = e["mount"]["points"]
+    assert point["realpath"] == str(mnt.resolve()) and point["target"] == str(mnt)
+    e = run(case, ["umount", str(mnt)])
+    mnt2 = case / "mnt2"
+    mnt2.mkdir()
+    e = run(case, ["mount", str(img), "--target", str(mnt2)])
+    (point,) = e["mount"]["points"]
+    assert point["realpath"] == str(mnt2.resolve())
+    mnt3 = case / "mnt3"
+    mnt3.mkdir()
+    e = run(case, ["mount", "-T", str(mnt3), str(img)])
+    (point,) = e["mount"]["points"]
+    assert point["realpath"] == str(mnt3.resolve())

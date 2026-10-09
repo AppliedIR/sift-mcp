@@ -88,9 +88,13 @@ def mount_record(command, before: dict[int, str], inputs, registered, base=None)
         ),
         None,
     )
-    named = {
-        os.path.realpath(command_files.absolute(a, base)): a for a in _positionals(args)
-    }
+    targets = _positionals(args)  # and mount's own forms: --target=X, --target X, -T X
+    for i, a in enumerate(args):
+        if a.startswith("--target="):
+            targets.append(a.split("=", 1)[1])
+        elif a in ("--target", "-T") and i + 1 < len(args):
+            targets.append(args[i + 1])
+    named = {os.path.realpath(command_files.absolute(a, base)): a for a in targets}
     points = []
     for mid, point, _ in file_place.mounts():
         real = os.path.realpath(point)
