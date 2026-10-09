@@ -618,7 +618,9 @@ def _flat(record, prefix: str = "") -> list[tuple[str, str]]:
         return [x for k, v in record.items() for x in _flat(v, f"{prefix}{k}.")]
     if isinstance(record, list):
         return [x for v in record for x in _flat(v, prefix)]
-    return [(prefix.rstrip("."), _norm(str(record)))]
+    # a string as returned; any other scalar as JSON spells it (true, null, 3)
+    text = record if isinstance(record, str) else json.dumps(record)
+    return [(prefix.rstrip("."), _norm(text))]
 
 
 def _reference_link(e: dict, line: bytes) -> dict:
