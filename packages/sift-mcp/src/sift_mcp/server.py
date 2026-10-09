@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from sift_common.instructions import SIFT_MCP as _INSTRUCTIONS
@@ -152,46 +151,28 @@ def create_server() -> FastMCP:
 
         start = time.monotonic()
 
-        # Detect input files: LLM-first, catalog-backup, parsed-fallback
+        # The inputs are what the command names: each existing file or folder
+        # it passes (bare, or as a --flag=value), never an output flag's value
+        # and never the caller's list in their place
+        from sift_mcp import command_files
+        from sift_mcp.security import get_output_flags
+
         binary = command[0].split("/")[-1] if command else ""
         td = get_tool_def(binary)
-        detection_method = ""
-        detected_inputs: list[str] = []
+        parsed = command_files.inputs(command, get_output_flags())
+        if parsed:
+            detection_method = "parsed"
+        elif td and not td.input_flag:
+            detection_method = ""  # Tool has no inputs (e.g., hostname)
+        else:
+            detection_method = "none"
 
-        if input_files:
-            detected_inputs = input_files
-            detection_method = "llm"
-        elif td and td.input_flag:
-            # Cataloged tool: find flag in command, take next element
-            try:
-                idx = command.index(td.input_flag)
-                if idx + 1 < len(command):
-                    detected_inputs = [command[idx + 1]]
-                    detection_method = "catalog"
-            except ValueError:
-                pass
-        if not detected_inputs and not detection_method:
-            # Fallback: check command tokens for existing files
-            for token in command[1:]:
-                if token.startswith("-"):
-                    continue
-                p = Path(token)
-                if p.is_file():
-                    detected_inputs.append(str(p))
-            if detected_inputs:
-                detection_method = "parsed"
-            elif td and not td.input_flag:
-                detection_method = ""  # Tool has no inputs (e.g., hostname)
-            else:
-                detection_method = "none"
-
-        # Hash input files, with no size cap. A registered file links to the
-        # registry by its path and isn't read; any other is hashed in the call
-        # up to the inline limit, else in the background (`pending:<job>` until
-        # its hash_complete entry). Wrapped per-file: provenance must never
-        # block forensic work
-        from sift_common import file_identity as fi
-        from sift_common import resolve_case_dir
+        # Each input with where it is and its hash, with no size cap. A
+        # registered file links to the registry by its path and isn't read; any
+        # other is hashed in the call up to the inline limit, else in the
+        # background (`pending:<job>` until its hash_complete entry); a folder
+        # isn't hashed. Provenance must never block forensic work
+        from sift_common import file_place, resolve_case_dir
 
         # One case per call, resolved as it starts: the audit id is minted for
         # it, and the output and the entry are kept in it, whatever case is
@@ -199,27 +180,14 @@ def create_server() -> FastMCP:
         case_dir = resolve_case_dir()
         audit_dir = audit._get_audit_dir(case_dir)
         op_id = audit._next_audit_id(audit_dir) if audit_dir else None
-        input_hashes: dict[str, str] = {}
-        input_registered: list[dict] = []  # [{path, sha256}], from the registry
-        for fpath in detected_inputs:
-            try:
-                p = Path(fpath).resolve()
-                if case_dir and (reg := fi.registered_hash(case_dir, p)):
-                    input_hashes[str(p)] = reg
-                    input_registered.append({"path": str(p), "sha256": reg})
-                    continue
-                r = fi.hash_for_call(
-                    p,
-                    case_dir=case_dir,
-                    requested_by="run_command",
-                    inline_limit=fi.INLINE_LIMIT,
-                )
-                if isinstance(r, fi.Pending):
-                    input_hashes[str(p)] = f"pending:{r.job_id}"
-                elif r is not None:
-                    input_hashes[str(p)] = r.sha256
-            except (OSError, fi.NotRegularFile):
-                continue
+        inputs: list[dict] = []
+        registered: list[dict] = []  # [{path, sha256}], from the registry
+        for fpath in parsed:
+            rec, reg = file_place.input_record(case_dir, fpath, "run_command")
+            inputs.append(rec)
+            if reg:
+                registered.append(reg)
+        listed_files, listed_shas = file_place.listed(inputs, registered)
 
         try:
             exec_result = _run(
@@ -268,12 +236,18 @@ def create_server() -> FastMCP:
                     **({"truncated": True} if exec_result.get("truncated") else {}),
                 },
                 elapsed_ms=elapsed * 1000,
-                input_files=list(input_hashes.keys()) if input_hashes else None,
-                input_sha256s=list(input_hashes.values()) if input_hashes else None,
+                input_files=listed_files or None,
+                input_sha256s=listed_shas if listed_files else None,
                 input_detection_method=detection_method,
-                extra={"input_registered": input_registered}
-                if input_registered
-                else None,
+                extra={
+                    **({"inputs": inputs} if inputs else {}),
+                    **(
+                        {"input_registered": registered}
+                        if registered
+                        else {}
+                    ),
+                }
+                or None,
             )
             response = build_response(
                 tool_name="run_command",
@@ -331,7 +305,7 @@ def create_server() -> FastMCP:
                     "Could not detect input files — pass input_files parameter "
                     "for provenance chain linking."
                 )
-            elif detection_method == "llm" and not input_hashes:
+            elif detection_method == "llm" and not listed_files:
                 response["input_files_warning"] = (
                     "input_files provided but none resolved to existing files. "
                     "Provenance chain will be incomplete."

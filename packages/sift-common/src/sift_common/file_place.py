@@ -86,7 +86,12 @@ def _hash(path: str, case_dir, requested_by: str):
     ``pending:<job_id>``, or None (a large file with no case to record its
     job, or one that can't be read)."""
     try:
-        r = fi.hash_for_call(path, case_dir=case_dir or "", requested_by=requested_by)
+        r = fi.hash_for_call(
+            path,
+            case_dir=case_dir or "",
+            requested_by=requested_by,
+            inline_limit=fi.INLINE_LIMIT,  # read now: the limit in force
+        )
     except (OSError, fi.NotRegularFile):
         return None
     return f"pending:{r.job_id}" if isinstance(r, fi.Pending) else r

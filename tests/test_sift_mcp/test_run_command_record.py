@@ -1,0 +1,119 @@
+"""run_command records what a run read and wrote, from the command itself.
+
+The inputs are the files and folders the command names (bare, or as a
+--flag=value; never an output flag's value), each with where it is (realpath,
+st_dev, mount id) and its hash. The real run_command runs in-process on a
+scratch case under a scratch HOME.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import os
+import sys
+from pathlib import Path
+
+import pytest
+from sift_mcp.server import create_server
+
+PY = sys.executable
+
+
+@pytest.fixture
+def case(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    (home / ".vhir").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("VHIR_EXAMINER", "examiner1")
+    for var in ("VHIR_CASE_DIR", "VHIR_AUDIT_DIR", "VHIR_ACTIVE_CASE"):
+        monkeypatch.delenv(var, raising=False)
+    d = tmp_path / "cases" / "case-a"
+    (d / "evidence").mkdir(parents=True)
+    (d / "extractions").mkdir()
+    (d / "CASE.yaml").write_text("case_id: case-a\nstatus: open\n")
+    (home / ".vhir" / "active_case").write_text(str(d))
+    return d
+
+
+def _sha(p: Path) -> str:
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def run(case: Path, command: list[str], **kw) -> tuple[dict, dict]:
+    """(the response, the run's entry)."""
+    r = asyncio.run(
+        create_server().call_tool(
+            "run_command", {"command": command, "purpose": "t", **kw}
+        )
+    )
+    r = r[0] if isinstance(r, tuple) else r
+    resp = json.loads(r[0].text)
+    lines = (case / "audit" / "sift-mcp.jsonl").read_text().splitlines()
+    entries = [json.loads(x) for x in lines if x.strip()]
+    return resp, [e for e in entries if e["tool"] == "run_command"][-1]
+
+
+def _register(case: Path, *files: Path) -> None:
+    rows = [{"path": str(f.resolve()), "sha256": _sha(f)} for f in files]
+    (case / "evidence.json").write_text(json.dumps({"files": rows}))
+
+
+def _by_real(entry: dict) -> dict:
+    return {i["realpath"]: i for i in entry["inputs"]}
+
+
+def test_the_input_is_the_file_the_command_names_not_the_ais_list(case):
+    s1 = case / "extractions" / "sample1.raw"
+    s1.write_bytes(b"S1")
+    s2 = case / "extractions" / "sample2.raw"
+    s2.write_bytes(b"S2")
+    _, e = run(case, [PY, "-c", "pass", "-f", str(s2)], input_files=[str(s1)])
+    assert e["input_files"] == [str(s2.resolve())]
+    assert e["input_sha256s"] == [_sha(s2)]
+    assert _by_real(e)[str(s2.resolve())]["sha256"] == _sha(s2)
+
+
+def test_each_input_records_where_it_is(case):
+    f = case / "evidence" / "a.raw"
+    f.write_bytes(b"A")
+    _, e = run(case, [PY, "-c", "pass", str(f)])
+    (i,) = e["inputs"]
+    st = os.stat(f)
+    assert i["path"] == str(f) and i["realpath"] == str(f.resolve())
+    assert i["st_dev"] == st.st_dev and isinstance(i["mnt_id"], int)
+    assert i["sha256"] == _sha(f)
+
+
+def test_a_flag_value_is_an_input_and_an_output_flags_value_is_not(case):
+    a = case / "evidence" / "a.evtx"
+    a.write_bytes(b"A")
+    out = case / "extractions" / "out"
+    out.mkdir()
+    (out / "earlier.csv").write_text("x")
+    _, e = run(case, [PY, "-c", "pass", f"--file={a}", "--csv", str(out)])
+    assert list(_by_real(e)) == [str(a.resolve())]
+
+
+def test_a_registered_input_links_by_its_path_and_a_folder_is_unhashed(case):
+    img = case / "evidence" / "disk.E01"
+    img.write_bytes(b"E01")
+    _register(case, img)
+    folder = case / "evidence" / "logs"
+    folder.mkdir()
+    _, e = run(case, [PY, "-c", "pass", str(img), str(folder)])
+    ins = _by_real(e)
+    assert "sha256" not in ins[str(img.resolve())]
+    assert e["input_registered"] == [str(img.resolve())]
+    assert "sha256" not in ins[str(folder.resolve())]
+    assert e["input_sha256s"] == [_sha(img), ""]
+
+
+def test_dd_style_operands_read_if_and_never_of(case):
+    src = case / "evidence" / "src.raw"
+    src.write_bytes(b"SRC")
+    dst = case / "extractions" / "old.dd"
+    dst.write_bytes(b"OLD")
+    _, e = run(case, [PY, "-c", "pass", f"if={src}", f"of={dst}"])
+    assert list(_by_real(e)) == [str(src.resolve())]
