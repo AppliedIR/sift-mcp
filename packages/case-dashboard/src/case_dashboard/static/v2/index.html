@@ -2994,7 +2994,10 @@ async function loadToolInvocations(finding) {
       d = d || {};
       return escapeHtml(String(d.path || '?').split(/[\\/]/).pop()) + ' <span style="font-family:monospace">' + escapeHtml(provHash(d.sha256)) + '</span>';
     };
-    if (step.from || step.to) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">' + (step.from ? pf(step.from) + ' \u2192 ' : '\u2192 ') + pf(step.to) + '</div>';
+    // a reference link starts at its source (a lookup), not at a file
+    var src = ref && typeof ref === 'object' && !(step.from && step.from.path)
+      ? escapeHtml(ref.source || '?') + ' (' + escapeHtml(ref.source_version || 'version not recorded') + ')' : null;
+    if (step.from || step.to) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">' + (src ? src + ' \u2192 ' : step.from ? pf(step.from) + ' \u2192 ' : '\u2192 ') + pf(step.to) + '</div>';
     if (cmd) h += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
     var outFile = fullEntry && (fullEntry.result_summary || {}).output_file;
     if (outFile) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">\u2192 ' + escapeHtml(outFile.split('/').pop()) + '</div>';
@@ -3791,7 +3794,7 @@ function renderEvidence() {
     const refs = ev.referenced_by || [];
 
     html += '<tr>';
-    html += '<td>' + escapeHtml(path) + '</td>';
+    html += '<td>' + escapeHtml(path) + (ev.kind === 'folder' ? ' <span style="color:var(--text-muted);font-size:11px">folder (' + escapeHtml(String(ev.file_count == null ? '?' : ev.file_count)) + ' files)</span>' : '') + '</td>';
     html += '<td class="hash" title="' + escapeHtml(sha) + '">' + escapeHtml(sha.substring(0, 12)) + '...</td>';
     html += '<td>' + escapeHtml(desc) + '</td>';
     html += '<td>' + escapeHtml(regAt) + '</td>';

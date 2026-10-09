@@ -94,6 +94,7 @@ def test_the_page_shows_a_folder_s_result_with_its_count():
             "note": "registered with no files",
         },
         {"status": "failed", "files": "-n", "notes": ["changed while hashing"]},
+        {"status": "pending", "files": "-f", "job_id": "hash-1"},  # a large file
     ):
         script = (
             "var cell = {innerHTML: ''}; var evidenceData = [{path: '/e/kape'}];"
@@ -117,6 +118,7 @@ def test_the_page_shows_a_folder_s_result_with_its_count():
     assert ">Verified (0 files: registered with no files)<" in shown["verified0"]
     assert "Error" not in "".join(shown.values())
     assert "WARNING: changed while hashing" in shown["failed-n"]
+    assert ">Hashing; verify again shortly<" in shown["pending-f"]
 
 
 # --- Large members: hashed in the background, as case-mcp's verify does -------
@@ -258,3 +260,32 @@ def test_a_file_root_s_notes_are_shown_with_it(portal, kape):
     _note(portal, entry["path"], hash_note="changed while hashing")
     body = verify(portal, entry["path"]).json()
     assert (body["status"], body["notes"]) == ("verified", ["changed while hashing"])
+
+
+# --- A large single file: hashed in the background too, never "Error" ---------
+
+
+def test_a_large_file_is_pending_then_verified_from_its_recorded_hash(
+    portal, monkeypatch
+):
+    """A file above the inline limit (an E01) would outlast the page's 30 s
+    request: its Verify answers "pending", and the next one takes the hash
+    the job recorded."""
+    from sift_common import file_identity as fi
+
+    f = portal.dir / "evidence" / "disk.E01"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_bytes(b"EVF " * 100)
+    portal.write("findings.json", [])
+    entry = register_evidence_data(portal.dir, str(f), "steve")
+    with monkeypatch.context() as m:
+        m.setattr(fi, "INLINE_LIMIT", 100)
+        first = verify(portal, entry["path"])
+        assert first.status_code == 200, first.text
+        assert first.json()["status"] == "pending" and first.json()["job_id"]
+        _wait(portal.dir, first.json()["job_id"])
+        m.setattr(fi, "hash_file", None)  # taken from the job, never read again
+        assert verify(portal, entry["path"]).json()["status"] == "verified"
+    with open(f, "ab") as fh:
+        fh.write(b"tampered")
+    assert verify(portal, entry["path"]).json()["status"] == "failed"  # inline again

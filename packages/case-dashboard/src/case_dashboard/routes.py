@@ -1,6 +1,5 @@
 """Case dashboard routes — Starlette sub-app for finding review."""
 
-import hashlib
 import json
 import logging
 import os
@@ -351,7 +350,10 @@ async def get_evidence(request: Request) -> JSONResponse:
         for art in f.get("artifacts") or []:
             if not isinstance(art, dict):
                 continue
-            paths = [r["path"] for r in roots_of(art)] or [art.get("source_evidence")]
+            roots = roots_of(art)
+            paths = [r["path"] for r in roots] or [art.get("source_evidence")]
+            # a folder member's root is listed under its folder's row too
+            paths += [r["folder"] for r in roots if r.get("folder")]
             for root in paths:
                 if root and fid not in ref_index.get(root, []):
                     ref_index.setdefault(root, []).append(fid)
@@ -616,7 +618,7 @@ async def delete_delta_item(request: Request) -> JSONResponse:
 
 
 def _folder_hashes(case_dir, paths: list[str]) -> tuple[dict[str, str], str, dict]:
-    """A folder's file hashes within a request's time, as case-mcp's
+    """A folder's (or one file's) hashes within a request's time, as case-mcp's
     evidence_verify takes them: what a completed background job recorded for
     an unchanged file (its hash, or the error it couldn't be read with, used
     up only by a call that starts no job), read once for all the files; the
@@ -719,19 +721,26 @@ async def verify_evidence(request: Request) -> JSONResponse:
             status_code=404,
         )
 
-    # Hash the file
-    h = hashlib.sha256()
-    try:
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                h.update(chunk)
-    except OSError as e:
-        logger.error("Cannot read evidence file %s: %s", file_path, e)
+    # Hashed as a folder's files are: inline up to the limit, else in a
+    # background job the page asks about again (a large image would outlast
+    # the page's request)
+    p = str(file_path)
+    hashes, job_id, errors = await anyio.to_thread.run_sync(
+        _folder_hashes, case_dir, [p]
+    )
+    if p in errors:
+        logger.error("Cannot read evidence file %s: %s", file_path, errors[p])
+        return JSONResponse({"error": "Cannot read file"}, status_code=500)
+    if p not in hashes:
         return JSONResponse(
-            {"error": "Cannot read file"},
-            status_code=500,
+            {
+                "path": entry["path"],
+                "status": "pending",
+                "job_id": job_id,
+                **({"notes": _notes(entry)} if _notes(entry) else {}),
+            }
         )
-    computed_hash = h.hexdigest()
+    computed_hash = hashes[p]
 
     match = computed_hash == stored_hash
     return JSONResponse(

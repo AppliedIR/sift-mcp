@@ -318,3 +318,59 @@ def test_each_candidate_of_an_ambiguous_artifact_is_listed_by_the_fields_it_has(
         f"candidate: sift-steve-043 entry={'e' * 16} path=/mnt/case/disk image={IMG['path']} "
         in p
     )
+
+
+def test_a_reference_step_starts_at_its_source_never_at_a_question_mark(shown):
+    p = text(shown["F-steve-007"]["panel"])
+    assert "lookup_ioc (opencti 6.4) → response.json" in p
+    assert "? →" not in p
+
+
+def test_a_folder_row_lists_the_findings_rooted_at_its_members(portal):
+    kape = f"{EV}/kape"
+    portal.write("evidence.json", {"files": [
+        {"path": kape, "kind": "folder", "file_count": 2, "manifest_sha256": "1" * 64,
+         "registered_by": "steve"}]})  # fmt: skip
+    member = {"path": f"{kape}/Security.evtx", "sha256": HCSV, "folder": kape,
+              "label": "examiner-registered"}  # fmt: skip
+    f = chained("F-steve-030", "FULL", art("FULL", root=member, chain=[link(
+        "manifest", "sift-steve-050", member["path"], HCSV, member["path"], HCSV)]))  # fmt: skip
+    portal.write("findings.json", [f])
+    rows = {e["path"]: e for e in portal.get("/api/evidence").json()}
+    assert rows[kape]["referenced_by"] == ["F-steve-030"]
+
+
+def test_a_folder_row_shows_its_file_count():
+    node = shutil.which("node") or pytest.skip("node isn't installed")
+    page = PAGE.read_text()
+    start = page.index("function renderEvidence(")
+    fn = page[start : page.index("\n}\n", start) + 3]
+    esc = page.index("function escapeHtml(")
+    script = (
+        "var out = {innerHTML: ''}; var evidenceSortCol = 'path', evidenceSortAsc = true;"
+        "var document = {getElementById: function() { return out; },"
+        " querySelectorAll: function() { return []; },"
+        " createElement: function() { return {set textContent(s) { this.innerHTML = String(s); }}; }};"
+        "function formatTime(t) { return t || ''; } function escapeJsString(s) { return s; }"
+        "var evidenceData = "
+        + json.dumps(
+            [
+                {
+                    "path": "/e/kape",
+                    "kind": "folder",
+                    "file_count": 12,
+                    "manifest_sha256": "1" * 64,
+                },
+                {"path": "/e/mem.raw", "sha256": "2" * 64},
+            ]
+        )
+        + ";\n"  # fmt: skip
+        + page[esc : page.index("\n}\n", esc) + 3]
+        + fn
+        + "\nrenderEvidence(); process.stdout.write(out.innerHTML);"
+    )
+    r = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr[-500:]
+    rows = r.stdout.split("<tr>")
+    assert "folder (12 files)" in next(x for x in rows if "/e/kape" in x)
+    assert "files)" not in next(x for x in rows if "/e/mem.raw" in x)
