@@ -229,3 +229,18 @@ async def test_an_error_reply_records_no_hashes(case, endpoint):
     result = await _call(_gateway(reply), endpoint)
     assert result.isError is True
     assert _entries(case, "wintools_pending_hashes") == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["per-backend", "aggregate"])
+async def test_a_case_that_cant_be_read_never_fails_the_call(case, endpoint):
+    gw = _gateway(_reply(_pending("evidence/disk.E01")))
+
+    def unreadable(*a, **k):
+        raise PermissionError(13, "Permission denied", str(case))
+
+    gw._audit._get_audit_dir = unreadable
+    result = await _call(gw, endpoint)
+    assert result.isError is False  # the call answers; nothing is recorded
+    assert json.loads(result.content[0].text)["audit_id"] == AUDIT_ID
+    assert _entries(case, "wintools_pending_hashes") == []

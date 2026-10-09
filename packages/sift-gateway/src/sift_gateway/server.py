@@ -561,9 +561,14 @@ class Gateway:
         another backend): its pending hashes are recorded there."""
         if backend_name not in JOINABLE:
             return ""
-        audit_dir = await asyncio.to_thread(self._audit._get_audit_dir)
-        case_dir = audit_dir.parent if audit_dir else None
-        return str(case_dir) if case_dir and (case_dir / "CASE.yaml").is_file() else ""
+        try:
+            audit_dir = await asyncio.to_thread(self._audit._get_audit_dir)
+            case_dir = audit_dir.parent if audit_dir else None
+            ok = bool(case_dir) and (case_dir / "CASE.yaml").is_file()
+        except Exception as exc:  # noqa: BLE001 - a case that can't be read never fails the call
+            logger.warning("No case for %s's pending hashes: %s", backend_name, exc)
+            return ""
+        return str(case_dir) if ok else ""
 
     async def record_pending_hashes(
         self, backend_name: str, result, case_dir: str
