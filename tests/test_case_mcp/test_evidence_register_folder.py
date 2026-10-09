@@ -149,3 +149,38 @@ def test_verify_of_a_member_that_turned_unreadable_ends_as_an_error(
         assert "Permission" in by["pagefile.sys"]["error"] and "pending" not in v
     finally:
         big.chmod(0o644)
+
+
+def test_a_failure_is_taken_once_then_the_next_request_hashes_again(
+    server,
+    case_dir,
+    kape,
+    monkeypatch,  # noqa: F811
+):
+    """A transient read error (EIO) stops the automatic retry, once: the
+    registration it belongs to lists the file as unreadable. The examiner's
+    next request hashes it again, and the file, readable now, clears it."""
+    monkeypatch.setattr(fi, "INLINE_LIMIT", 100)
+    real, failed = fi.hash_file, []
+
+    def flaky(path):
+        if str(path).endswith("pagefile.sys") and not failed:
+            failed.append(path)
+            raise OSError(5, "Input/output error", str(path))
+        return real(path)
+
+    monkeypatch.setattr(fi, "hash_file", flaky)
+    first = _parse(server["evidence_register"](path=str(kape)))
+    _wait(case_dir, first["job_id"])
+    second = _parse(server["evidence_register"](path=str(kape)))  # takes the failure
+    m = json.loads((case_dir["path"] / second["manifest_path"]).read_text())
+    assert [u["path"].rsplit("/", 1)[1] for u in m["unreadable"]] == ["pagefile.sys"]
+    third = _parse(server["evidence_register"](path=str(kape)))  # asked again
+    assert third.get("status") == "hashing" and third["job_id"] != first["job_id"], (
+        third
+    )
+    _wait(case_dir, third["job_id"])
+    big = str(kape / "pagefile.sys")
+    assert fi.completed_hashes(case_dir["path"], [big]) == {
+        big: {"sha256": hashlib.sha256(b"P" * 400).hexdigest()}
+    }

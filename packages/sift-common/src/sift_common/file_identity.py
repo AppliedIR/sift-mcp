@@ -259,8 +259,13 @@ def _completed_rows(case_dir) -> dict[str, dict]:
             continue
         for row in entry.get("files") or [entry]:
             if isinstance(row, dict) and isinstance(row.get("path"), str):
-                rows[os.path.realpath(row["path"])] = row
+                rows[os.path.realpath(row["path"])] = {
+                    **row, "job_id": entry.get("job_id", "")}  # fmt: skip
     return rows
+
+
+# Recorded failures already taken in this process, by (job id, real path)
+_taken: set[tuple[str, str]] = set()
 
 
 def completed_hashes(case_dir, paths) -> dict[str, dict]:
@@ -268,8 +273,10 @@ def completed_hashes(case_dir, paths) -> dict[str, dict]:
     `{path: {"sha256": …} or {"error": …}}`, taken only while a file is
     unchanged: the same device, inode, size, mtime and ctime as then (ctime
     can't be set back, so a rewrite with its mtime set back isn't taken; a
-    file fixed after a failure has a new ctime, so it's hashed again). Files
-    with nothing recorded are left out."""
+    file fixed after a failure has a new ctime, so it's hashed again). A
+    failure is taken once, by the call that follows its job, which stops the
+    automatic retry; after that it's left out, so the next request hashes the
+    file again. Files with nothing recorded are left out."""
     rows = _completed_rows(case_dir)
     found: dict[str, dict] = {}
     for path in map(str, paths):
@@ -284,6 +291,11 @@ def completed_hashes(case_dir, paths) -> dict[str, dict]:
         if row.get("sha256"):
             found[path] = {"sha256": row["sha256"]}
         elif row.get("error"):
+            taken = (str(row.get("job_id", "")), os.path.realpath(path))
+            with _jobs_lock:
+                if taken in _taken:
+                    continue
+                _taken.add(taken)
             found[path] = {"error": row["error"]}
     return found
 
