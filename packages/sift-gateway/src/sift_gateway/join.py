@@ -152,6 +152,21 @@ def find_join_code(code: str) -> tuple[str, dict] | None:
     return None
 
 
+def revoke_unused_join_codes() -> int:
+    """End every unused, unexpired join code. Returns how many it ended."""
+    state = _load_state()
+    now = time.time()
+    live = [
+        hashed
+        for hashed, info in state["codes"].items()
+        if not info.get("used", False) and now <= info.get("expires_ts", 0)
+    ]
+    for hashed in live:
+        del state["codes"][hashed]
+    _save_state(state)
+    return len(live)
+
+
 def mark_code_used(code: str) -> None:
     """Mark a join code as used."""
     state = _load_state()

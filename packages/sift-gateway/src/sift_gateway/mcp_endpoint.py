@@ -234,6 +234,11 @@ def _extract_bearer_token(scope: dict) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+def _error(text: str) -> CallToolResult:
+    """A failure on the gateway's side, flagged as an error to the client."""
+    return CallToolResult(content=[TextContent(type="text", text=text)], isError=True)
+
+
 def create_mcp_server(gateway: Any) -> Server:
     """Build a low-level MCP ``Server`` that proxies through *gateway*.
 
@@ -265,15 +270,10 @@ def create_mcp_server(gateway: Any) -> Server:
             result = await gateway.call_tool(name, arguments, examiner=examiner)
         except KeyError as e:
             logger.warning("MCP call_tool unknown tool: %s", e)
-            return [TextContent(type="text", text=f"Error: unknown tool {name}")]
+            return _error(f"Error: unknown tool {name}")
         except (RuntimeError, ConnectionError, OSError) as e:
             logger.error("MCP call_tool backend error for %s: %s", name, e)
-            return [
-                TextContent(
-                    type="text",
-                    text=f"Error: backend failure for {name} — backend will auto-restart on next call, retry once",
-                )
-            ]
+            return _error(f"Error: {name} failed: {e}")
         except Exception as e:
             # Catch ClosedResourceError / BrokenResourceError (anyio) and
             # similar transport errors that indicate a dead session.
@@ -285,12 +285,9 @@ def create_mcp_server(gateway: Any) -> Server:
                     type(e).__name__,
                     e,
                 )
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Error: backend connection lost for {name} — retry once to trigger reconnect",
-                    )
-                ]
+                return _error(
+                    f"Error: backend connection lost for {name} — retry once to trigger reconnect"
+                )
             raise  # Re-raise non-transport exceptions to fall through to generic handler
         except (asyncio.CancelledError, BaseExceptionGroup) as e:
             logger.error(
@@ -299,12 +296,9 @@ def create_mcp_server(gateway: Any) -> Server:
                 type(e).__name__,
                 e,
             )
-            return [
-                TextContent(
-                    type="text",
-                    text=f"Error: unexpected failure for {name} — if this persists, report to examiner",
-                )
-            ]
+            return _error(
+                f"Error: unexpected failure for {name} — if this persists, report to examiner"
+            )
 
         # Normalise to list of TextContent for the MCP protocol
         contents: list[TextContent] = []
@@ -333,27 +327,35 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
     so that MCP sessions are isolated per backend.
     """
     instructions = _BACKEND_INSTRUCTIONS.get(backend_name)
-    if instructions is None:
+    if instructions is None and backend_name in gateway.backends:
         instructions = gateway.backends[backend_name].instructions
     server = Server(f"sift-gateway/{backend_name}", instructions=instructions)
 
-    # The backend is looked up on every call: a re-join replaces it.
+    # The backend is looked up on every call: a re-join replaces it, and a
+    # joinable backend's endpoint exists before its first join.
     @server.list_tools()
     async def _list_tools() -> list[Tool]:
-        backend = gateway.backends[backend_name]
+        backend = gateway.backends.get(backend_name)
+        if backend is None:
+            raise RuntimeError(gateway.not_loaded_text(backend_name))
         if not backend.started:
             try:
                 await gateway.ensure_backend_started(backend_name)
-            except (asyncio.TimeoutError, RuntimeError, ConnectionError, OSError):
-                raise RuntimeError(f"Backend {backend_name} failed to start") from None
+            except (asyncio.TimeoutError, RuntimeError, ConnectionError, OSError) as e:
+                raise RuntimeError(f"{backend_name} is not available: {e}") from None
         backend.last_tool_call = time.monotonic()
         return await backend.list_tools()
 
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict) -> Sequence[TextContent]:
-        backend = gateway.backends[backend_name]
-        if not backend.started:
-            await gateway.ensure_backend_started(backend_name)
+        backend = gateway.backends.get(backend_name)
+        if backend is None:
+            return _error(f"Error: {gateway.not_loaded_text(backend_name)}")
+        try:
+            if not backend.started:
+                await gateway.ensure_backend_started(backend_name)
+        except (asyncio.TimeoutError, RuntimeError, ConnectionError, OSError) as e:
+            return _error(f"Error: {backend_name} is not available: {e}")
         backend.last_tool_call = time.monotonic()
 
         examiner = None
@@ -378,12 +380,7 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
             logger.error(
                 "Per-backend call_tool error for %s/%s: %s", backend_name, name, e
             )
-            return [
-                TextContent(
-                    type="text",
-                    text=f"Error: backend failure for {name} — backend will auto-restart on next call, retry once",
-                )
-            ]
+            return _error(f"Error: {name} failed: {e}")
         except (Exception, asyncio.CancelledError, BaseExceptionGroup) as e:
             logger.error(
                 "Per-backend call_tool unexpected error for %s/%s: %s: %s",
@@ -392,12 +389,10 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
                 type(e).__name__,
                 e,
             )
-            return [
-                TextContent(
-                    type="text",
-                    text=f"Error: unexpected failure for {name} — if this persists, report to examiner",
-                )
-            ]
+            return _error(
+                f"Error: unexpected failure for {name} ({type(e).__name__}) — "
+                "if this persists, report to examiner"
+            )
 
         # Normalise to list of TextContent
         contents: list[TextContent] = []

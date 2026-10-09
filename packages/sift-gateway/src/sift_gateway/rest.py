@@ -1,6 +1,7 @@
 """REST API routes for /api/v1/."""
 
 import asyncio
+import contextlib
 import hmac
 import json
 import logging
@@ -18,6 +19,7 @@ from starlette.routing import Route
 
 from sift_gateway.auth import resolve_examiner
 from sift_gateway.backends.base import in_own_task
+from sift_gateway.backends.http_backend import HttpMCPBackend
 from sift_gateway.join import (
     _join_code_lock,
     check_join_rate_limit,
@@ -26,6 +28,7 @@ from sift_gateway.join import (
     join_name,
     mark_code_used,
     record_join_failure,
+    revoke_unused_join_codes,
     store_join_code,
     valid_name,
 )
@@ -298,12 +301,28 @@ async def restart_service(request: Request) -> JSONResponse:
     gateway = request.app.state.gateway
     name = request.path_params["name"]
 
+    # A join the loader gave up on, or a backend pasted into gateway.yaml by
+    # hand: load it now, through the loader
+    conf = gateway._unloaded.get(name)
+    if conf is None and name not in gateway.backends:
+        conf = _configured_backend(name)
+    if conf is not None:
+        gateway._single_attempt[name] = conf
+        await gateway.reload_backend(name, conf)
+        loaded = gateway.backends.get(name)
+        if name not in gateway._unloaded and loaded is not None and loaded.started:
+            return JSONResponse({"status": "restarted", "name": name})
+        return JSONResponse({"error": gateway.not_loaded_text(name)}, status_code=500)
+
     if name not in gateway.backends:
         return JSONResponse({"error": f"Unknown backend: {name}"}, status_code=404)
 
     backend = gateway.backends[name]
-    if name in gateway._hot:  # started by the loader: only its task restarts it
-        await gateway.reload_backend(name, gateway._hot[name])
+    if name in gateway._hot or isinstance(backend, HttpMCPBackend):
+        # reloaded as a new backend, which reads its pinned cert again
+        if name not in gateway._hot and backend.started:
+            await asyncio.wait_for(in_own_task(backend.stop()), timeout=20.0)
+        await gateway.reload_backend(name, gateway._hot.get(name, backend.config))
         if not gateway.backends[name].started:
             return JSONResponse(
                 {"error": f"Failed to start service {name} during restart"},
@@ -418,6 +437,55 @@ async def create_join_code(request: Request) -> JSONResponse:
     return JSONResponse(out)
 
 
+def _configured_backend(name: str) -> dict | None:
+    """``name``'s enabled entry in gateway.yaml, or None."""
+    from pathlib import Path
+
+    from sift_gateway.config import load_config
+
+    try:
+        config = load_config(str(Path.home() / ".vhir" / "gateway.yaml"))
+    except Exception:  # noqa: BLE001 - no usable file: nothing to load
+        return None
+    entry = (config.get("backends") or {}).get(name)
+    if isinstance(entry, dict) and entry.get("enabled", True):
+        return entry
+    return None
+
+
+async def revoke_join_codes(request: Request) -> JSONResponse:
+    """DELETE /api/v1/setup/join-code — end every unused join code.
+
+    Only the gateway owner's key may, as for creating one.
+    """
+    api_keys = getattr(request.app.state.gateway, "_api_keys", None) or {}
+    token = request.headers.get("authorization", "")[7:].strip()
+    if api_keys and not hmac.compare_digest(token, next(iter(api_keys))):
+        return JSONResponse(
+            {"error": "Only the gateway owner can revoke join codes"},
+            status_code=403,
+        )
+    loop = asyncio.get_running_loop()
+    async with _join_code_lock:
+        revoked = await loop.run_in_executor(None, revoke_unused_join_codes)
+    return JSONResponse({"revoked": revoked})
+
+
+def _cert_text(cert) -> str | None:
+    """The PEM text of a join's ``wintools_cert``, or None if it has none.
+
+    It is a string (a UTF-8 BOM is dropped), or the object PowerShell 5.1
+    makes of a string that carries note properties (``{"value": ...}``), or
+    ``{"cert": ...}``.
+    """
+    if isinstance(cert, dict):
+        cert = cert.get("value", cert.get("cert"))
+    if not isinstance(cert, str):
+        return None
+    cert = cert.lstrip("\ufeff")
+    return cert if cert.strip().startswith("-----BEGIN CERTIFICATE-----") else None
+
+
 async def join_gateway(request: Request) -> JSONResponse:
     """POST /api/v1/setup/join — exchange join code for gateway credentials.
 
@@ -441,6 +509,14 @@ async def join_gateway(request: Request) -> JSONResponse:
     wintools_url = body.get("wintools_url")
     wintools_token = body.get("wintools_token")
     wintools_cert = body.get("wintools_cert")
+    if machine_type == "wintools" and wintools_cert:
+        # checked before the code is looked up, so a refusal leaves it usable
+        wintools_cert = _cert_text(wintools_cert)
+        if wintools_cert is None:
+            return JSONResponse(
+                {"error": "wintools_cert must be a PEM certificate"},
+                status_code=400,
+            )
 
     gateway = request.app.state.gateway
     raw_name = body.get("name") or hostname or machine_type
@@ -518,33 +594,13 @@ async def join_gateway(request: Request) -> JSONResponse:
                 {"error": "wintools_url must include a hostname"},
                 status_code=400,
             )
-        # Store pinned TLS cert if provided
-        cert_path_str = None
-        if wintools_cert:
-            logger.debug("wintools_cert first 50 chars: %r", wintools_cert[:50])
-            # Accept string or dict with "cert" key (PowerShell may serialize either)
-            if isinstance(wintools_cert, dict):
-                wintools_cert = wintools_cert.get("cert", "")
-            if not isinstance(wintools_cert, str):
-                wintools_cert = ""
-            # Strip UTF-8 BOM that PowerShell 5.1 Get-Content -Raw may prepend
-            wintools_cert = wintools_cert.lstrip("\ufeff")
-            from pathlib import Path
+        # Nothing is written yet: the backend serving now, its gateway.yaml
+        # entry and its pinned cert stay as they are until this join loads
+        # (the loader writes them then). A damaged gateway.yaml refuses it now.
+        from pathlib import Path
 
-            cert_path = Path.home() / ".vhir" / "tls" / "wintools-cert.pem"
-            cert_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            if wintools_cert.strip().startswith("-----BEGIN CERTIFICATE-----"):
-                cert_path.write_text(wintools_cert)
-                os.chmod(str(cert_path), 0o600)
-                cert_path_str = str(cert_path)
-                logger.info("Stored wintools TLS cert at %s", cert_path)
-            else:
-                logger.warning("Invalid wintools_cert in join body (not PEM)")
-
-        # Write to disk
-        _add_wintools_backend(
-            gateway, wintools_url, wintools_token, tls_cert=cert_path_str
-        )
+        with _CONFIG_LOCK:
+            _read_config_for_join(Path.home() / ".vhir" / "gateway.yaml")
         wintools_registered = True
 
         # Schedule background loading.  The backend loader retries until
@@ -555,9 +611,11 @@ async def join_gateway(request: Request) -> JSONResponse:
             "url": wintools_url,
             "bearer_token": wintools_token,
             "enabled": True,
+            "joined": True,
         }
-        if cert_path_str:
-            backend_config["tls_cert"] = cert_path_str
+        if wintools_cert:
+            backend_config["tls_cert"] = str(_live_pin_path())
+            backend_config["tls_cert_pem"] = wintools_cert
         gateway._pending_backends["wintools-mcp"] = backend_config
         gateway._reload_event.set()
 
@@ -720,35 +778,41 @@ def _add_api_key_to_config(
             gateway._api_keys[token] = {"examiner": examiner, "role": "examiner"}
 
 
-def _add_wintools_backend(
-    gateway, url: str, token: str, tls_cert: str | None = None
-) -> None:
-    """Add a wintools-mcp HTTP backend to the gateway config."""
+def _live_pin_path():
     from pathlib import Path
 
+    return Path.home() / ".vhir" / "tls" / "wintools-cert.pem"
+
+
+def save_joined_backend(name: str, conf: dict) -> dict:
+    """Write a join that has loaded: its pinned cert, then its gateway.yaml
+    entry. Returns the entry as written."""
+    from pathlib import Path
+
+    entry = {k: v for k, v in conf.items() if k not in ("joined", "tls_cert_pem")}
     with _CONFIG_LOCK:
         config_path = Path.home() / ".vhir" / "gateway.yaml"
         config = _read_config_for_join(config_path)
-
-        if "backends" not in config:
-            config["backends"] = {}
-
-        config["backends"]["wintools-mcp"] = {
-            "type": "http",
-            "url": url,
-            "bearer_token": token,
-            "enabled": True,
-        }
-        if tls_cert:
-            config["backends"]["wintools-mcp"]["tls_cert"] = tls_cert
-
-        try:
-            _atomic_yaml_write(config_path, config)
-        except OSError as e:
-            logger.error("Failed to write gateway config: %s", e)
-            raise HTTPException(
-                status_code=500, detail="Failed to save configuration"
-            ) from e
+        pem = conf.get("tls_cert_pem")
+        if pem:
+            pin = Path(entry["tls_cert"])
+            pin.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            fd, tmp = tempfile.mkstemp(dir=str(pin.parent), suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w") as f:
+                    f.write(pem)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.chmod(tmp, 0o600)
+                os.replace(tmp, pin)
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp)
+                raise
+            logger.info("Stored wintools TLS cert at %s", pin)
+        config.setdefault("backends", {})[name] = entry
+        _atomic_yaml_write(config_path, config)
+    return entry
 
 
 def _get_gateway_url(gateway) -> str:
@@ -863,6 +927,7 @@ def rest_routes() -> list[Route]:
         Route("/api/v1/services/{name}/stop", stop_service, methods=["POST"]),
         Route("/api/v1/services/{name}/restart", restart_service, methods=["POST"]),
         Route("/api/v1/setup/join-code", create_join_code, methods=["POST"]),
+        Route("/api/v1/setup/join-code", revoke_join_codes, methods=["DELETE"]),
         Route("/api/v1/setup/join", join_gateway, methods=["POST"]),
         Route("/api/v1/setup/join-status", join_status, methods=["GET"]),
     ]

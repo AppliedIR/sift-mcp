@@ -58,6 +58,13 @@ async def health_endpoint(request: Request) -> JSONResponse:
         *(_check_one(n, b) for n, b in gateway.backends.items())
     )
     backend_health = dict(results)
+    # A joined backend that isn't loaded is an error, not missing
+    for name in list(getattr(gateway, "_unloaded", {})):
+        entry = {"status": "error", "error": gateway.not_loaded_text(name)}
+        current = gateway.backends.get(name)
+        if current is not None and current.started:
+            entry["serving_previous"] = True
+        backend_health[name] = entry
 
     tools_count = len(gateway._tool_map)
     all_ok = all(h.get("status") == "ok" for h in backend_health.values())

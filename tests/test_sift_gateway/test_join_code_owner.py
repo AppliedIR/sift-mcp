@@ -158,15 +158,17 @@ def test_the_owner_mints_and_an_examiner_joins(gateway):
 )
 def test_the_owner_mints_and_a_wintools_host_joins(gateway, existing, url, cert):
     client, gw = gateway(dict(TWO_KEYS), wintools=existing)
+    before = gateway.wintools()
     r = _mint(client, OWNER)
     assert r.status_code == 200
     token = "vhir_wt_" + "d" * 24
     joined = _wintools_join(client, r.json()["code"], url, token, cert)
     assert joined.status_code == 200
-    after = gateway.wintools()
-    assert after["url"] == url and after["bearer_token"] == token
-    assert bool(after.get("tls_cert")) == bool(cert)
-    assert gw._pending_backends["wintools-mcp"]["url"] == url
+    # handed to the loader, which writes gateway.yaml only once it loads
+    pending = gw._pending_backends["wintools-mcp"]
+    assert pending["url"] == url and pending["bearer_token"] == token
+    assert pending.get("tls_cert_pem") == cert
+    assert gateway.wintools() == before
 
 
 def test_single_user_mode_mints_without_a_key(gateway):

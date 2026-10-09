@@ -25,6 +25,7 @@ def _stub(backend, is_error: bool):
     backend._started = True
     backend._tools_cache = [Tool(name="check", inputSchema={"type": "object"})]
     backend._session = MagicMock()
+    backend._session.send_ping = AsyncMock()  # the check before each call
     backend._session.call_tool = AsyncMock(
         return_value=CallToolResult(
             content=FAILED if is_error else OK, isError=is_error

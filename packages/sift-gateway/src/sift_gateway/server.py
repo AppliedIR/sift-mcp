@@ -57,7 +57,7 @@ from sift_gateway.mcp_endpoint import (
     create_mcp_server,
     create_session_manager,
 )
-from sift_gateway.rest import rest_routes
+from sift_gateway.rest import rest_routes, save_joined_backend
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,14 @@ BACKEND_ALIASES: dict[str, str] = {"threatintel-mcp": "opencti-mcp"}
 # Pause between attempts to load a backend that joined after boot
 _LOAD_RETRY_SECONDS = 10
 
+# How often the late-start checker runs, and retries a join that isn't loaded
+_LATE_START_SECONDS = 30
+
+# Backends the join API can add while the gateway runs. Their per-backend
+# endpoint exists from boot, so a first join is served there, never by the
+# aggregate endpoint.
+JOINABLE: tuple[str, ...] = ("wintools-mcp",)
+
 
 async def _close_in_this_task(backend: MCPBackend) -> None:
     """Close a backend's connection from the task that opened it.
@@ -75,7 +83,13 @@ async def _close_in_this_task(backend: MCPBackend) -> None:
     Its transport's cancel scopes belong to that task; ``stop()`` of an HTTP
     backend closes them from a ``wait_for`` task before Python 3.12, which
     anyio refuses, and the error tears down the gateway's lifespan.
+    An HTTP backend's runner task opens and closes its connection, so a
+    stop only asks it to.
     """
+    if isinstance(backend, HttpMCPBackend):
+        with anyio.CancelScope(shield=True):  # bounded by its stop timeout
+            await backend.stop()
+        return
     stack = getattr(backend, "_exit_stack", None)
     backend._exit_stack = None
     backend._session = None
@@ -111,6 +125,16 @@ class Gateway:
         # Backends the loader started, by config: only its task may stop them
         self._hot: dict[str, dict] = {}
         self._reloaded: dict[str, asyncio.Event] = {}
+        # A joined backend the loader couldn't load (yet), by its config, and
+        # why: /health shows it, the late-start checker retries it, and a
+        # service restart loads it
+        self._unloaded: dict[str, dict] = {}
+        self._load_errors: dict[str, str] = {}
+        # Loads the checker or a restart queued, by the config queued: one
+        # attempt each (a join gets 6), and a checker's retry loads the new
+        # backend before closing the one still serving
+        self._single_attempt: dict[str, dict] = {}
+        self._retrying: dict[str, dict] = {}
         self._audit = AuditWriter(mcp_name="sift-gateway")
 
         # Create backend instances from config
@@ -324,8 +348,14 @@ class Gateway:
         """Periodically retry failed backends and re-sync case on started ones."""
         while True:
             try:
-                await anyio.sleep(30)
-                for name, backend in self.backends.items():
+                await anyio.sleep(_LATE_START_SECONDS)
+                for name, conf in list(self._unloaded.items()):
+                    if name not in self._pending_backends:
+                        self._single_attempt[name] = conf
+                        self._retrying[name] = conf
+                        self._pending_backends[name] = conf
+                        self._reload_event.set()
+                for name, backend in list(self.backends.items()):
                     if name in self._pending_backends:
                         continue  # the loader is replacing it
                     if not backend.started:
@@ -413,7 +443,9 @@ class Gateway:
                 pending = dict(self._pending_backends)
                 for name, conf in pending.items():
                     prev = self.backends.get(name)
-                    if prev is not None and dynamic.get(name) is prev:
+                    # a retry leaves the backend serving now until the new one is up
+                    retry = conf is not None and self._retrying.pop(name, None) is conf
+                    if prev is not None and dynamic.get(name) is prev and not retry:
                         del dynamic[name]
                         await _close_in_this_task(prev)
                     if conf is None:  # a stop: closed above, nothing to load
@@ -421,16 +453,24 @@ class Gateway:
                         self._reloaded[name].set()
                         continue
                     loaded = False
-                    for attempt in range(6):
+                    attempts = 1 if self._single_attempt.pop(name, None) is conf else 6
+                    for attempt in range(attempts):
                         if attempt > 0:
                             await anyio.sleep(_LOAD_RETRY_SECONDS)
                         try:
                             bk = create_backend(name, conf)
-                            self.backends[name] = bk
+                            if not retry:
+                                self.backends[name] = bk
                             await bk.start()
+                            if retry and prev is not None and dynamic.get(name) is prev:
+                                del dynamic[name]
+                                await _close_in_this_task(prev)
+                            self.backends[name] = bk
                             await self._build_tool_map()
                             dynamic[name] = bk
-                            self._hot[name] = conf
+                            self._hot[name] = self._made_live(name, conf)
+                            self._unloaded.pop(name, None)
+                            self._load_errors.pop(name, None)
                             loaded = True
                             logger.info("Loaded backend: %s", name)
                             break
@@ -443,15 +483,24 @@ class Gateway:
                                 self.backends[name] = prev
                             else:
                                 self.backends.pop(name, None)
+                            # kept from the first failure: /health shows it now
+                            self._unloaded[name] = conf
+                            self._load_errors[name] = str(exc) or type(exc).__name__
                             logger.warning(
-                                "Backend %s attempt %d/6: %s",
+                                "Backend %s attempt %d/%d: %s",
                                 name,
                                 attempt + 1,
+                                attempts,
                                 exc,
                             )
                     if loaded and prev is not None and prev.started:
                         self._retired.append(prev)
-                    if not loaded and prev is not None and not prev.started:
+                    if (
+                        not loaded
+                        and not retry
+                        and prev is not None
+                        and not prev.started
+                    ):
                         # The previous backend was closed for the re-join:
                         # bring it back from this task, as it was
                         try:
@@ -468,14 +517,40 @@ class Gateway:
                     if name in self._reloaded:
                         self._reloaded[name].set()
                     if not loaded:
+                        await self._build_tool_map()
                         logger.warning(
-                            "Could not load %s after retries — "
-                            "restart gateway to load it",
+                            "Could not load %s yet (%s); retrying every %ds, or "
+                            "run 'vhir service restart %s' once it is up",
+                            name,
+                            self._load_errors.get(name, "no answer"),
+                            _LATE_START_SECONDS,
                             name,
                         )
         finally:
             for bk in reversed(list(dynamic.values())):
                 await _close_in_this_task(bk)
+
+    def _made_live(self, name: str, conf: dict) -> dict:
+        """A join that loaded is written to disk now, and only now: until
+        then the files still hold the backend that served before it."""
+        if not conf.get("joined"):
+            return conf
+        try:
+            return save_joined_backend(name, conf)
+        except Exception as exc:  # noqa: BLE001 - it serves; a restart re-joins
+            logger.error("Could not save the %s join: %s", name, exc)
+            return conf
+
+    def not_loaded_text(self, name: str) -> str:
+        """Why ``name`` isn't served: joined but not loaded, or never joined."""
+        if name in self._unloaded:
+            why = self._load_errors.get(name) or "no answer yet"
+            return (
+                f"{name} is joined but not loaded: {why} (it is kept until "
+                "the gateway restarts; after a restart, join again with a new "
+                "join code)"
+            )
+        return f"{name} is not joined to this gateway"
 
     async def reload_backend(self, name: str, conf: dict | None) -> None:
         """Have the loader stop (``conf`` None) or reload a backend it started,
@@ -658,7 +733,7 @@ class Gateway:
         # Build per-backend MCP endpoints
         backend_session_managers = []
         per_backend_routes = []
-        for name in self.backends:
+        for name in [*self.backends, *(n for n in JOINABLE if n not in self.backends)]:
             b_server = create_backend_mcp_server(gateway, name)
             b_sm = create_session_manager(b_server)
             b_asgi = MCPAuthASGIApp(b_sm, api_keys=api_keys)
