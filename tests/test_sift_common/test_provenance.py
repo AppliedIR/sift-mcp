@@ -570,3 +570,17 @@ def test_tracing_a_folders_members_reads_its_manifest_and_outputs_once(c, monkey
     for f in files:  # and not as roots: through the outputs
         pv.trace_file(case, f + ".copy", sha(f))
     assert counts == {"rows": 1, "outputs": 10}, counts
+
+
+def test_an_empty_file_never_links_by_hash_and_place(c):
+    """Every empty file has one hash: it says nothing about where it came from."""
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    empty = c.file("extractions/x1/empty.log", b"")
+    c.op("sift-mcp", "sift-tester-20261009-001", tool="run_command",
+         params={"command": ["7z", "x", z], "purpose": "p"},
+         input_files=[z], input_sha256s=[""], input_detection_method="parsed",
+         result_summary={"exit_code": 0, "output_files": [empty],
+                         "output_sha256s": [sha(empty)]})  # fmt: skip
+    t = pv.trace_file(pv.load_case(c.d), empty, sha(empty))
+    assert (t.grade, t.break_["kind"]) == ("BROKEN", "no-recorded-origin"), t.as_dict()

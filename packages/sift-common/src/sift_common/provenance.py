@@ -27,6 +27,9 @@ _FIX_ORIGIN = (
 )
 
 
+_EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
+
+
 def entry_sha256(line: bytes) -> str:
     """The SHA-256 of an audit entry's line, as written (without its newline)."""
     return hashlib.sha256(line).hexdigest()
@@ -296,7 +299,7 @@ def trace_file(
                 waiting = waiting or got
                 continue
             job_link = got
-        if sha and out_sha == sha:
+        if sha and sha != _EMPTY_SHA256 and out_sha == sha:  # empty: no origin
             producers.append((e, line, out_sha, job_link))
     if len(producers) > 1:  # never the last writer: each is named
         named = [{"audit_id": e["audit_id"], "entry_sha256": entry_sha256(line),
