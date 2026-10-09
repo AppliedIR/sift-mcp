@@ -79,8 +79,8 @@ def run_command(
 
     # rm-specific: allow execution but protect evidence directories
     if binary == "rm":
-        validate_rm_targets(command[1:])
-    validate_case_data_targets(command)
+        validate_rm_targets(command[1:], base=cwd)
+    validate_case_data_targets(command, base=cwd)
 
     # Validate any arguments that look like file paths
     output_flags = get_output_flags()
@@ -96,11 +96,11 @@ def run_command(
                 if value.startswith("/dev/") and binary in _DEV_PATH_TOOLS:
                     pass  # Device path for disk forensics
                 elif flag_part in output_flags:
-                    validate_output_path(value)
+                    validate_output_path(value, base=cwd)
                 else:
-                    validate_input_path(value)
+                    validate_input_path(value, base=cwd)
             elif value:  # a bare name, resolved against the working folder
-                validate_input_path(value)
+                validate_input_path(value, base=cwd)
             prev_was_output_flag = False
             continue
         if arg.startswith("-") and "=" not in arg:
@@ -110,12 +110,12 @@ def run_command(
             if arg.startswith("/dev/") and binary in _DEV_PATH_TOOLS:
                 pass  # Device path for disk forensics
             elif prev_was_output_flag:
-                validate_output_path(arg)
+                validate_output_path(arg, base=cwd)
             else:
-                validate_input_path(arg)
+                validate_input_path(arg, base=cwd)
         elif arg:
             # a bare name (.ssh, .claude.json), resolved against the working folder
-            validate_input_path(arg)
+            validate_input_path(arg, base=cwd)
         prev_was_output_flag = False
 
     # Resolve binary via find_binary to prevent absolute path bypass

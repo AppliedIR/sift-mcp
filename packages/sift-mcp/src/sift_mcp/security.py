@@ -12,6 +12,12 @@ from sift_mcp.config import resolve_case_dir
 _DANGEROUS_PATTERNS = [";", "&&", "||", "`", "$(", "${"]
 
 
+def _at(path: str, base: str | None) -> str:
+    """A relative path as the run sees it: resolved in its working folder
+    (``base``), else in this process's."""
+    return os.path.join(base, path) if base and not os.path.isabs(path) else path
+
+
 def _get_policy() -> dict:
     """Lazy-load security policy from YAML catalog."""
     return load_security_policy()
@@ -87,7 +93,7 @@ def is_denied(binary_name: str) -> bool:
     return binary_name.lower() in _get_policy()["denied_binaries"]
 
 
-def validate_rm_targets(args: list[str]) -> None:
+def validate_rm_targets(args: list[str], base: str | None = None) -> None:
     """Block rm from targeting evidence storage directories.
 
     rm is allowed for general cleanup but blocked inside evidence
@@ -100,7 +106,7 @@ def validate_rm_targets(args: list[str]) -> None:
     )
     path_args = [a for a in args if not a.startswith("-")]
     for arg in path_args:
-        resolved = str(Path(arg).resolve())
+        resolved = str(Path(_at(arg, base)).resolve())
         if resolved == "/":
             raise ValueError("Blocked: rm targeting filesystem root")
         for protected in _get_protected_dirs():
@@ -180,7 +186,7 @@ def _harms_under(real: str, root: str, lead: list[str], new_ok: bool) -> bool:
     return False
 
 
-def validate_case_data_targets(command: list[str]) -> None:
+def validate_case_data_targets(command: list[str], base: str | None = None) -> None:
     """Refuse commands that delete or overwrite case records, audit/ or evidence.
 
     Moving other files into the case's DELETE/ directory, filing new files
@@ -224,6 +230,7 @@ def validate_case_data_targets(command: list[str]) -> None:
             args.append(a)
     if tdir is not None:
         args.append(tdir)
+    args = [_at(a, base) for a in args]
     bad = []
     if name in ("rm", "shred", "unlink", "truncate", "tee"):
         bad = [a for a in args if _harms_case_data(a, new_ok=name == "tee")]
@@ -283,7 +290,7 @@ _OUTPUT_BLOCKED_DIRECTORIES = _BLOCKED_DIRECTORIES + (
 )
 
 
-def validate_output_path(path: str) -> str:
+def validate_output_path(path: str, base: str | None = None) -> str:
     """Validate that an output path is safe to write to.
 
     Stricter than validate_input_path. When VHIR_CASE_DIR is set, the
@@ -293,7 +300,7 @@ def validate_output_path(path: str) -> str:
     Case-dir containment is checked first so that case directories
     under /home are allowed.
     """
-    resolved = str(Path(path).resolve())
+    resolved = str(Path(_at(path, base)).resolve())
 
     # Case-dir containment: if inside case dir, it's allowed
     case_dir = resolve_case_dir()
@@ -309,7 +316,7 @@ def validate_output_path(path: str) -> str:
     # No case dir: allow /tmp and cwd before checking blocked dirs
     if resolved.startswith("/tmp/") or resolved == "/tmp":
         return resolved
-    cwd = str(Path.cwd().resolve())
+    cwd = str(Path(base or Path.cwd()).resolve())
     if resolved == cwd or resolved.startswith(cwd + "/"):
         return resolved
 
@@ -328,7 +335,7 @@ def validate_output_path(path: str) -> str:
     )
 
 
-def validate_input_path(path: str) -> str:
+def validate_input_path(path: str, base: str | None = None) -> str:
     """Validate that an input file path is not under a protected path.
 
     Resolves symlinks, then checks against a blocklist of sensitive system
@@ -339,9 +346,9 @@ def validate_input_path(path: str) -> str:
     # Handle flag=value arguments: validate the value portion as a path
     if "=" in path and path.startswith("-"):
         value = path.split("=", 1)[1]
-        return validate_input_path(value) if value else path
+        return validate_input_path(value, base) if value else path
 
-    resolved = str(Path(path).resolve())
+    resolved = str(Path(_at(path, base)).resolve())
     for blocked in _BLOCKED_DIRECTORIES:
         if (
             resolved == blocked

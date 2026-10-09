@@ -186,3 +186,20 @@ def test_a_relative_path_names_a_file_in_the_runs_folder(case):
     (i,) = e["inputs"]
     assert i["realpath"] == str((earlier / "a.raw").resolve())
     assert resp["success"] is True
+
+
+def test_a_relative_path_reaching_the_audit_is_refused(case):
+    log = case / "audit" / "sift-mcp.jsonl"
+    run(case, [PY, "-c", "pass"])  # the audit exists
+    resp, _ = run(case, ["rm", "../../audit/sift-mcp.jsonl"])
+    assert resp["success"] is False and "Blocked" in resp["error"]
+    assert log.exists()
+    resp, _ = run(case, ["cp", "/etc/hostname", "../../evidence.json"])
+    assert resp["success"] is False and "Blocked" in resp["error"]
+
+
+def test_a_relative_output_path_is_checked_where_the_run_writes(case):
+    code = "import sys\nopen(sys.argv[2], 'w').write('csv')"
+    resp, _ = run(case, [PY, "-c", code, "--csv", "../mine.csv"])
+    assert resp["success"] is True, resp.get("error")
+    assert (case / "extractions" / "mine.csv").read_text() == "csv"
