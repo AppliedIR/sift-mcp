@@ -119,6 +119,8 @@ def test_the_page_shows_a_folder_s_result_with_its_count():
     assert "Error" not in "".join(shown.values())
     assert "WARNING: changed while hashing" in shown["failed-n"]
     assert ">Hashing; verify again shortly<" in shown["pending-f"]
+    for k in ("pending-f", "pending2"):  # the result comes from verifying again
+        assert 'onclick="verifyEvidence(0)">Verify again</button>' in shown[k], k
 
 
 # --- Large members: hashed in the background, as case-mcp's verify does -------

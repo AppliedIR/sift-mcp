@@ -3839,7 +3839,9 @@ async function verifyEvidence(idx) {
     } else if (result.status === 'failed') {
       cell.innerHTML = '<span class="verify-fail">FAILED' + escapeHtml(of) + '</span>' + warn;
     } else if (result.status === 'pending') {
-      cell.innerHTML = '<span style="color:var(--text-muted)">Hashing' + escapeHtml(of) + '; verify again shortly</span>' + warn;
+      // still hashing in the background: the result comes from verifying again
+      cell.innerHTML = '<span style="color:var(--text-muted)">Hashing' + escapeHtml(of) + '; verify again shortly</span>' + warn +
+        ' <button class="verify-btn" onclick="verifyEvidence(' + idx + ')">Verify again</button>';
     } else {
       cell.innerHTML = '<span style="color:var(--text-muted)">' + escapeHtml(result.status) + '</span>';
     }
