@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from mcp.server.fastmcp import FastMCP
 from sift_common.instructions import SIFT_MCP as _INSTRUCTIONS
@@ -134,9 +135,10 @@ def create_server() -> FastMCP:
             purpose: Why this command is being run (audit trail).
             timeout: Override timeout in seconds (0 = default).
             save_output: Save stdout/stderr to files with SHA-256 hashes.
-            input_files: Files this command reads. Pass the paths you
-                referenced in the command. Server auto-detects as backup
-                for cataloged tools.
+            input_files: Other files the command reads that its arguments
+                don't name (a list file, a config). Recorded as declared: what
+                you say it read. The files and folders the command names are
+                found from the command itself.
             preview_lines: Max lines in inline preview for large outputs
                 (0 = default ~10KB budget, max 200). Useful when you need
                 more context from a grep or timeline query.
@@ -188,6 +190,19 @@ def create_server() -> FastMCP:
             if reg:
                 registered.append(reg)
         listed_files, listed_shas = file_place.listed(inputs, registered)
+        # A file the caller lists that the command doesn't name: recorded as
+        # declared (the AI says the run read it), never as a parsed input
+        named = {os.path.realpath(p) for p in parsed}
+        missing: list[str] = []
+        for f in input_files or []:
+            path = command_files.absolute(f)
+            if os.path.realpath(path) in named:
+                continue
+            named.add(os.path.realpath(path))
+            rec, _ = file_place.input_record(case_dir, path, "run_command")
+            if "st_dev" not in rec:
+                missing.append(f)
+            inputs.append({**rec, "found": "declared"})
 
         try:
             exec_result = _run(
@@ -300,15 +315,16 @@ def create_server() -> FastMCP:
                 "dmesg",
                 "printenv",
             }
-            if detection_method == "none" and binary not in _NO_INPUT_CMDS:
+            if missing:
                 response["input_files_warning"] = (
-                    "Could not detect input files — pass input_files parameter "
-                    "for provenance chain linking."
+                    "input_files named files that don't exist: "
+                    + ", ".join(missing)
+                    + ". They are recorded as declared, as given."
                 )
-            elif detection_method == "llm" and not listed_files:
+            elif detection_method == "none" and binary not in _NO_INPUT_CMDS:
                 response["input_files_warning"] = (
-                    "input_files provided but none resolved to existing files. "
-                    "Provenance chain will be incomplete."
+                    "The command names no existing file or folder, so the run "
+                    "records no inputs."
                 )
             return response
 

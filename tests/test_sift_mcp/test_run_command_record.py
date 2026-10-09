@@ -117,3 +117,33 @@ def test_dd_style_operands_read_if_and_never_of(case):
     dst.write_bytes(b"OLD")
     _, e = run(case, [PY, "-c", "pass", f"if={src}", f"of={dst}"])
     assert list(_by_real(e)) == [str(src.resolve())]
+
+
+def test_a_file_only_the_ai_listed_is_recorded_as_declared(case):
+    s1 = case / "extractions" / "sample1.raw"
+    s1.write_bytes(b"S1")
+    s2 = case / "extractions" / "sample2.raw"
+    s2.write_bytes(b"S2")
+    _, e = run(case, [PY, "-c", "pass", "-f", str(s2)], input_files=[str(s1), str(s2)])
+    ins = _by_real(e)
+    assert ins[str(s1.resolve())]["found"] == "declared"
+    assert ins[str(s1.resolve())]["sha256"] == _sha(s1)
+    assert "found" not in ins[str(s2.resolve())]  # the command names it
+    assert e["input_files"] == [str(s2.resolve())]
+
+
+def test_the_tool_doesnt_ask_for_files_the_command_already_names(case):
+    doc = create_server()._tool_manager._tools["run_command"].fn.__doc__
+    assert "Pass the paths you" not in doc and "declared" in doc
+    _, e = run(case, [PY, "-c", "pass"])
+    resp, _ = run(case, ["ls", "-1"])  # names nothing that exists
+    assert "pass input_files" not in json.dumps(resp)
+    resp, _ = run(case, [PY, "-c", "pass"], input_files=["/nonexistent/x.raw"])
+    assert "/nonexistent/x.raw" in resp["input_files_warning"]
+
+
+def test_the_shared_guidance_doesnt_ask_for_input_files_on_every_call():
+    root = Path(__file__).resolve().parents[2]
+    agents = (root / "AGENTS.md").read_text()
+    assert "Pass `input_files` on every" not in agents
+    assert "recorded as declared" in agents

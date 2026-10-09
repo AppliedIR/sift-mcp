@@ -14,7 +14,7 @@ _DD_IN = frozenset({"if", "ifs"})
 _DD_OUT = frozenset({"of", "ofs", "hof", "hofs", "log", "hlog", "mlog"})
 
 
-def _abs(path: str, base: str | None) -> str:
+def absolute(path: str, base: str | None = None) -> str:
     """A relative path resolved against the run's working folder."""
     return path if os.path.isabs(path) else os.path.join(base or os.getcwd(), path)
 
@@ -28,25 +28,25 @@ def named(command: list[str], output_flags, base: str | None = None):
     for tok in command[1:]:
         if after_output_flag:
             after_output_flag = False
-            writes.append(_abs(tok, base))
+            writes.append(absolute(tok, base))
             continue
         if tok.startswith("-"):
             if "=" in tok:
                 flag, value = tok.split("=", 1)
                 if value:
                     (writes if flag in output_flags else reads).append(
-                        _abs(value, base)
+                        absolute(value, base)
                     )
             else:
                 after_output_flag = tok in output_flags
             continue
         key, eq, value = tok.partition("=")
         if eq and value and key in _DD_OUT:
-            writes.append(_abs(value, base))
+            writes.append(absolute(value, base))
         elif eq and value and key in _DD_IN:
-            reads.append(_abs(value, base))
+            reads.append(absolute(value, base))
         elif tok:
-            reads.append(_abs(tok, base))
+            reads.append(absolute(tok, base))
     return reads, writes
 
 

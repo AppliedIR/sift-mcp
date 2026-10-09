@@ -53,7 +53,7 @@ When `record_finding()` returns a grounding suggestion, consider running the sug
 **Provenance requirements:**
 
 - Every artifact MUST include `audit_id` from the tool response that produced the data. Artifacts without audit_id are rejected.
-- Pass `input_files` on every `run_command()` call — the files the command reads. The server auto-detects as backup for cataloged tools.
+- `run_command()` records the files and folders its command names as the run's inputs. Pass `input_files` only for other files the command reads that its arguments don't name (a list file, a config): they are recorded as declared.
 - Include `host` (which system) and `affected_account` (which account) on findings — these power the Hosts and Accounts tabs in the Examiner Portal.
 - Include `event_timestamp` (ISO 8601) for when the incident event occurred — not the current time. This drives timeline auto-linkage.
 - MCP first, by advice: use `run_command()` for forensic tool calls. Reserve direct shell access for system operations (ls, cat, file), or for when an MCP tool can't do the job or its output is too large. Only `run_command()` provides full provenance tracking. A forensic tool run in the shell is never blocked, but its audit entry is marked with the MCP route it has, and you're told which tool to use.
