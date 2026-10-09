@@ -1372,9 +1372,11 @@ function provHash(sha) {
   sha = String(sha || '');
   return sha.indexOf('pending:') === 0 ? 'pending (job ' + sha.slice(8) + ')' : sha.slice(0, 16);
 }
-// One of an AMBIGUOUS artifact's candidates, by the fields it has
+// One of an AMBIGUOUS artifact's candidates, by the fields it has (two can
+// share an audit id: its audit line's hash tells them apart)
 function provCandidate(c) {
   var parts = [String(c.audit_id || '?')];
+  if (c.entry_sha256) parts.push('entry=' + String(c.entry_sha256).slice(0, 16));
   ['tool', 'path', 'image'].forEach(function(k) { if (c[k]) parts.push(k + '=' + c[k]); });
   if ('sha256' in c) parts.push(c.sha256 ? 'sha256=' + provHash(c.sha256) : 'no hash');
   return parts.join(' ');
