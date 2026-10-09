@@ -102,3 +102,41 @@ def test_the_marker_is_only_in_the_response_never_written_back(case):
     assert {n: (case / n).read_bytes() for n in before} == before
     stored = json.loads((case / "findings.json").read_text())
     assert not any("approval_verification" in f for f in stored)
+
+
+def test_content_that_isnt_the_record_verified_is_never_valid(case):
+    """The tool's read and the check's read can see different files (a
+    writer flipping findings.json between them, or a case switch): VALID
+    holds only for the record the check verified, by its content hash, and
+    an id the check never judged is UNVERIFIED."""
+    stored = _by_id(json.loads((case / "findings.json").read_text()))
+    flipped = dict(stored["F-tester-001"], interpretation="ALTERED, then put back")
+    unseen = _finding("F-tester-009")
+    items = [stored["F-tester-001"], flipped, unseen]
+    warning = mark_approvals(case, items)
+    assert [i["approval_verification"] for i in items] == [
+        "VALID", "UNVERIFIED", "UNVERIFIED"]  # fmt: skip
+    assert "F-tester-001 UNVERIFIED" in warning
+    assert "F-tester-009 UNVERIFIED" in warning
+
+
+def test_an_approval_from_0_6_keeps_the_checks_own_wording(tmp_path, monkeypatch):
+    from vhir_cli import verification
+    from vhir_cli.ledger_verify import signed_text
+
+    d = tmp_path / "INC-06"
+    d.mkdir()
+    (d / "CASE.yaml").write_text("case_id: INC-06\n")
+    (d / "timeline.json").write_text("[]")
+    old = dict(_finding("F-tester-001"), approved_by="tester",
+               approved_at="2026-01-02T03:04:05+00:00")  # fmt: skip
+    (d / "findings.json").write_text(json.dumps([old]))
+    monkeypatch.setattr(verification, "VERIFICATION_DIR", tmp_path / "verification")
+    verification.VERIFICATION_DIR.mkdir()
+    (verification.VERIFICATION_DIR / "INC-06.jsonl").write_text(json.dumps({
+        "finding_id": old["id"], "type": "finding", "hmac": "00", "hmac_version": 2,
+        "content_snapshot": signed_text(old, "finding", 0), "approved_by": "tester",
+        "approved_at": old["approved_at"], "case_id": "INC-06"}) + "\n")  # fmt: skip
+    items = [dict(old)]
+    assert mark_approvals(d, items) == ""
+    assert items[0]["approval_verification"] == "approved under 0.6 (before signing)"

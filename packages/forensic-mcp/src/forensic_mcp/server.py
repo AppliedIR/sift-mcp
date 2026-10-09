@@ -359,7 +359,8 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - Metadata: staged, modified_at, created_by, examiner
         """
         try:
-            all_findings = manager.get_findings(status or None)
+            case_dir = manager._require_active_case()  # one case for both reads
+            all_findings = manager.get_findings(status or None, case_dir)
             total = len(all_findings)
             paginated = (
                 all_findings[offset : offset + limit] if limit > 0 else all_findings
@@ -371,7 +372,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
                 "offset": offset,
             }
             # an APPROVED finding is shown as approved only if it verifies
-            warning = mark_approvals(manager._require_active_case(), paginated)
+            warning = mark_approvals(case_dir, paginated)
             if warning:
                 out["warning"] = warning
             return out

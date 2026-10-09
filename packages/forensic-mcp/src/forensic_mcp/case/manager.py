@@ -1472,9 +1472,11 @@ class CaseManager:
 
         return {"status": "STAGED", "event_id": event_id}
 
-    def get_findings(self, status: str | None = None) -> list[dict]:
-        """Return local findings."""
-        case_dir = self._require_active_case()
+    def get_findings(
+        self, status: str | None = None, case_dir: Path | None = None
+    ) -> list[dict]:
+        """Return local findings (of `case_dir`, else the active case)."""
+        case_dir = case_dir or self._require_active_case()
         findings = self._load_findings(case_dir)
         if status:
             findings = [f for f in findings if f.get("status") == status.upper()]
