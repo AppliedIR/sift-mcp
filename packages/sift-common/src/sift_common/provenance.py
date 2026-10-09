@@ -556,24 +556,25 @@ def _found_in(path, sha256, lines: list[str], cap: int | None) -> tuple[set, str
     return (found if digest.hexdigest() == sha256 else set()), ""
 
 
-def _saved_values(path, sha256) -> list[str] | None:
+def _saved_values(path, sha256) -> tuple[list[str] | None, str]:
     """A saved response's values as returned: the JSON decoded, every value
     normalized; the text itself when it isn't JSON. None when it's missing or
-    no longer has its recorded SHA-256. Never the JSON-escaped text."""
+    no longer has its recorded SHA-256, or too large to check, with why.
+    Never the JSON-escaped text."""
     try:
         if os.path.getsize(path) > _QUOTE_FILE_CAP:
-            return None
+            return None, f"saved response too large to check ({path})"
         data = Path(path).read_bytes()
     except (OSError, TypeError):
-        return None
+        return None, ""
     if not sha256 or hashlib.sha256(data).hexdigest() != sha256:
-        return None
+        return None, ""
     text = data.decode("utf-8", errors="replace")
     try:
         decoded = json.loads(text)
     except ValueError:
-        return [_norm(text)]
-    return [v for _f, v in _flat(decoded)]
+        return [_norm(text)], ""
+    return [v for _f, v in _flat(decoded)], ""
 
 
 def _in_values(quote: list[str], values: list[str]) -> bool:
@@ -671,9 +672,10 @@ def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
                            "output it produced")  # fmt: skip
     if isinstance(e.get("reference"), dict):
         resp = e["reference"].get("response") or {}
-        values = _saved_values(resp.get("path"), resp.get("sha256")) if resp else None
+        values, why = (_saved_values(resp.get("path"), resp.get("sha256"))
+                       if resp else (None, ""))  # fmt: skip
         if resp and (values is None or not _in_values(quote, values)):
-            return _unverified(f"the quote isn't in {audit_id}'s saved response")
+            return _unverified(why or f"the quote isn't in {audit_id}'s saved response")
         return _reference(case, e, line)
     params = e.get("params") if isinstance(e.get("params"), dict) else {}
     if "result_docs" in params or "result_ingests" in params or "response" in e:
@@ -700,10 +702,10 @@ def _trace_query(
         return _broken("no-results-recorded", f"{aid} recorded no results to follow",
                        "run the query again and cite that")  # fmt: skip
     resp = e.get("response") if isinstance(e.get("response"), dict) else {}
-    values = _saved_values(resp.get("path"), resp.get("sha256"))
+    values, why = _saved_values(resp.get("path"), resp.get("sha256"))
     if values is None:
         return _unverified(
-            f"{aid}'s saved response is missing or changed since the query"
+            why or f"{aid}'s saved response is missing or changed since the query"
         )
     if not _in_values(quote, values):
         return _unverified(f"the quote isn't in what {aid} returned")

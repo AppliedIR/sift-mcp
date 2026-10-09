@@ -1602,3 +1602,44 @@ def test_a_quote_from_an_output_recorded_pending_is_checked_through_its_job(c):
          job_id="hash-csv", path=csv, sha256=sha(csv))  # fmt: skip
     res, st = c.find([{"content": "4624,bob", "audit_id": "sift-tester-20261009-001"}])
     assert g(res, st)[0] == "FULL", g(res, st)
+
+
+@pytest.mark.parametrize(
+    "value, quoted", [(True, "true"), (None, "null"), (False, "false")]
+)
+def test_a_json_literal_is_quoted_as_json_spells_it(c, value, quoted):
+    resp = c.file(
+        "extractions/opencti-3.json", json.dumps({"ioc": "x", "malicious": value})
+    )
+    c.op("opencti-mcp", "opencti-tester-20261009-003", tool="lookup_ioc",
+         params={"ioc": "x"}, result_summary="found",
+         reference={"source": "opencti", "source_version": "6.4",
+                    "response": {"path": resp, "sha256": sha(resp)}})  # fmt: skip
+    res, st = c.find([{"content": f"malicious {quoted}",
+                       "audit_id": "opencti-tester-20261009-003"}])  # fmt: skip
+    assert g(res, st)[:2] == ("CITED-UNVERIFIED", "cited-unverified"), g(res, st)
+    res, st = c.find([{"content": quoted, "audit_id": "opencti-tester-20261009-003"}])
+    assert g(res, st)[:2] == ("BROKEN", "reference"), g(res, st)
+
+
+def test_a_duplicate_enrichment_step_never_hides_a_worse_evidence_grade(c):
+    """The record's ingest isn't recorded (BROKEN) and its step's id is on two
+    entries (AMBIGUOUS): the worse grade stands, with its links."""
+    _ingested_samples(c)
+    _enrich(c)
+    c.op("sift-mcp", "opensearch-tester-20261009-050", tool="run_command")  # same id
+    doc = _doc("d2", "opensearch-ingest-7-20261009-099",  # an ingest never recorded
+               **{"process.name": "evil.exe", "triage.verdict": "SUSPICIOUS"})  # fmt: skip
+    aid = _search(c, [doc], groups={"triage": "opensearch-tester-20261009-050"})
+    res, st = c.find([{"content": "SUSPICIOUS", "audit_id": aid}])
+    assert g(res, st)[0] == "BROKEN", g(res, st)
+    assert st["artifacts"][0]["provenance_chain"], st["artifacts"][0]
+
+
+def test_a_response_over_the_cap_says_its_too_large(c, monkeypatch):
+    monkeypatch.setattr(pv, "_QUOTE_FILE_CAP", 16)
+    _ingested_samples(c)
+    aid = _summary(c, "opensearch-tester-20261009-072", {"count": 120, "pad": "x" * 64})
+    res, st = c.find([{"content": "120", "audit_id": aid}])
+    assert g(res, st)[0] == "CITED-UNVERIFIED", g(res, st)
+    assert "too large to check" in st["artifacts"][0]["provenance_reason"]
