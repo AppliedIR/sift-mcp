@@ -10,7 +10,7 @@ from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.types import Tool
 
-from sift_gateway.backends.base import MCPBackend, ToolResult
+from sift_gateway.backends.base import MCPBackend, ToolResult, _version_of
 
 if sys.version_info < (3, 11):
     from exceptiongroup import BaseExceptionGroup
@@ -130,6 +130,7 @@ class StdioMCPBackend(MCPBackend):
                 self._session.initialize(), timeout=_INITIALIZE_TIMEOUT
             )
             self._instructions = result.instructions
+            self._server_version = _version_of(result)
             self._started = True
             logger.info("Backend %s started (stdio)", self.name)
         except asyncio.TimeoutError:

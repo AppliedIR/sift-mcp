@@ -25,6 +25,11 @@ async def in_own_task(coro):
     return await asyncio.ensure_future(coro)
 
 
+def _version_of(init_result) -> str:
+    info = getattr(init_result, "serverInfo", None)
+    return str(getattr(info, "version", "") or "")
+
+
 class MCPBackend(ABC):
     """Base class for all MCP backend connections.
 
@@ -37,6 +42,7 @@ class MCPBackend(ABC):
         self.config = config
         self._started = False
         self._instructions: str | None = None
+        self._server_version: str = ""  # serverInfo.version from initialize()
         self.last_tool_call: float = 0.0  # time.monotonic() of last activity
 
     @property
@@ -51,6 +57,11 @@ class MCPBackend(ABC):
     def instructions(self) -> str | None:
         """Instructions captured from the backend during initialize()."""
         return self._instructions
+
+    @property
+    def server_version(self) -> str:
+        """The version the backend reported for itself during initialize()."""
+        return self._server_version
 
     @abstractmethod
     async def start(self) -> None:

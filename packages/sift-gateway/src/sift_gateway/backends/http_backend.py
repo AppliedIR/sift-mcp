@@ -13,7 +13,7 @@ from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
 
-from sift_gateway.backends.base import MCPBackend, ToolResult
+from sift_gateway.backends.base import MCPBackend, ToolResult, _version_of
 
 if sys.version_info < (3, 11):
     from exceptiongroup import BaseExceptionGroup
@@ -209,6 +209,7 @@ class HttpMCPBackend(MCPBackend):
                     ClientSession(read_stream, write_stream)
                 )
                 result = await session.initialize()
+                self._server_version = _version_of(result)
                 # Verify session is usable before declaring started — prevents
                 # race where initialize() succeeds but call_tool() gets 404.
                 tools_result = await session.list_tools()

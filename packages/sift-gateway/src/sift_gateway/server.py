@@ -778,6 +778,13 @@ class Gateway:
                 logger.warning("Gateway audit failed for %s: %s", actual_name, exc)
             await self.record_pending_hashes(backend_name, result, case_at_start)
 
+        if not getattr(result, "is_error", False):
+            from sift_gateway import reference
+
+            await asyncio.to_thread(
+                reference.record, self._audit, backend_name, backend, actual_name,
+                arguments, result, examiner,
+            )  # fmt: skip
         return result
 
     def create_app(self) -> Starlette:

@@ -440,6 +440,12 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
             return CallToolResult(content=contents, isError=True)
         if isinstance(backend, HttpMCPBackend):  # an error reply records nothing
             await gateway.record_pending_hashes(backend_name, result, case_at_start)
+        from sift_gateway import reference
+
+        await asyncio.to_thread(
+            reference.record, gateway._audit, backend_name, backend, name,
+            arguments, result, examiner,
+        )  # fmt: skip
         return contents
 
     return server
