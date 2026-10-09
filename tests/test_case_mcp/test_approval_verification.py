@@ -87,3 +87,18 @@ def test_when_the_check_cant_run_an_approval_is_never_shown_as_verified(
     warning = mark_approvals(case, items)
     assert items[0]["approval_verification"] == "UNVERIFIED"
     assert "couldn't verify: ledger unreadable" in warning
+
+
+def test_the_marker_is_only_in_the_response_never_written_back(case):
+    """`approval_verification` is a read-time annotation: both tools mark
+    their response copies, and the case files stay byte-identical."""
+    from forensic_mcp.server import create_server
+
+    before = {n: (case / n).read_bytes() for n in ("findings.json", "timeline.json")}
+    got = create_server()._tool_manager._tools["get_findings"].fn()
+    out = cms.create_server()._tool_manager._tools["export_bundle"].fn()
+    assert any("approval_verification" in f for f in got["findings"])
+    assert any("approval_verification" in f for f in out["findings"])
+    assert {n: (case / n).read_bytes() for n in before} == before
+    stored = json.loads((case / "findings.json").read_text())
+    assert not any("approval_verification" in f for f in stored)
