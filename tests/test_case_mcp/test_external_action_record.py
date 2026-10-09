@@ -123,3 +123,17 @@ def test_a_file_that_isnt_there_is_kept_as_named(case):
     (e,) = _entries(case)
     (i,) = e["inputs"]
     assert i["path"] == "/nonexistent/a.raw" and "st_dev" not in i and "sha256" not in i
+
+
+def test_the_remnux_guidance_asks_for_each_step_to_be_logged(tmp_path, monkeypatch):
+    from case_mcp.server import _build_platform_capabilities
+
+    (tmp_path / ".claude.json").write_text(
+        json.dumps({"mcpServers": {"remnux-mcp": {}}})
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    guidance = _build_platform_capabilities()["investigation_guidance"]
+    (line,) = [x for x in guidance.splitlines() if "REMnux" in x]
+    assert "log_external_action" in line
+    doc = create_server()._tool_manager._tools["log_external_action"].fn.__doc__
+    assert "REMnux" in doc

@@ -1003,3 +1003,16 @@ def test_a_findings_own_event_is_approved_and_signed_with_it(manager, active_cas
     signed = _approve(active_case, result["finding_id"])
     (event,) = _timeline(active_case)
     assert event["status"] == "APPROVED" and event["id"] in signed
+
+
+def test_the_remnux_guidance_asks_for_each_step_to_be_logged(
+    manager, active_case, tmp_path, monkeypatch
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".vhir").mkdir()
+    (home / ".vhir" / "gateway.yaml").write_text("backends:\n  remnux-mcp: {}\n")
+    monkeypatch.setenv("HOME", str(home))
+    guidance = manager.get_case_status()["investigation_guidance"]
+    (line,) = [x for x in guidance.splitlines() if "REMnux" in x]
+    assert "log_external_action" in line

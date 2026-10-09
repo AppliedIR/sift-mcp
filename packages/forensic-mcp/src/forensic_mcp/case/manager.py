@@ -824,7 +824,8 @@ class CaseManager:
             )
         if capabilities["remnux"]:
             guidance.append(
-                "- Malware analysis: upload_from_host + analyze_file on REMnux"
+                "- Malware analysis: upload_from_host + analyze_file on REMnux;"
+                " log each REMnux step with log_external_action (recorded as declared)"
             )
         if capabilities["wintools"]:
             guidance.append(

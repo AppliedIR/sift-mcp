@@ -110,7 +110,10 @@ def _build_platform_capabilities() -> dict:
             "- Evidence indexing: idx_ingest for structured querying at scale"
         )
     if capabilities["remnux"]:
-        guidance.append("- Malware analysis: upload_from_host + analyze_file on REMnux")
+        guidance.append(
+            "- Malware analysis: upload_from_host + analyze_file on REMnux;"
+            " log each REMnux step with log_external_action (recorded as declared)"
+        )
     if capabilities["wintools"]:
         guidance.append(
             "- Windows offline analysis: run_windows_command on forensic workstation"
@@ -683,7 +686,12 @@ def create_server() -> FastMCP:
         (e.g., via Bash or another backend). Response includes an audit_id
         field that can be used in record_finding's audit_ids list. Without
         this record, the action has no audit entry and findings cannot
-        reference it.
+        reference it. Log each REMnux step here too (upload, analysis,
+        download), naming the files it read and wrote.
+
+        The entry is recorded as declared: what you report, not checked
+        against what ran. Registered evidence named in input_files links by
+        its registered path; any other file named is hashed as it is now.
 
         Args:
             command: The command that was executed.
