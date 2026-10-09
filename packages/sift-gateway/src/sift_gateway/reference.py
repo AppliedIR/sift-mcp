@@ -51,7 +51,7 @@ def case_for(backend_name: str, tool: str) -> str:
 
     try:
         return resolve_case_dir()
-    except OSError as e:  # an unreadable case path: answered, not recorded
+    except Exception as e:  # noqa: BLE001 -- an unreadable case: answered, not recorded
         logger.warning("reference call %s: no case to record it in: %s", tool, e)
         return ""
 

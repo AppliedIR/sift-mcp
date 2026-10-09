@@ -217,3 +217,22 @@ async def test_a_lookup_is_answered_when_its_case_path_cant_be_read(
     finally:
         locked.chmod(0o755)
     assert not [e for e in _entries(case) if "reference" in e]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["aggregate", "per-backend"])
+async def test_a_lookup_is_answered_when_the_case_pointer_isnt_text(
+    case, monkeypatch, endpoint
+):
+    monkeypatch.delenv("VHIR_CASE_DIR")
+    pointer = Path(os.environ["HOME"]) / ".vhir" / "active_case"
+    pointer.write_bytes(b"\xff\xfe/not/utf-8")
+    backend = Source("opencti-mcp")
+    gw = _gateway(backend)
+    if endpoint == "aggregate":
+        result = await gw.call_tool("lookup_ioc", {"ioc": "x"})
+        assert [c.text for c in result] == [BODY]
+    else:
+        result = await _per_backend(gw, backend, "lookup_ioc")
+        assert [c.text for c in result.root.content] == [BODY]
+    assert not [e for e in _entries(case) if "reference" in e]
