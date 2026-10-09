@@ -531,6 +531,15 @@ def _run_texts(case: Case, e: dict) -> list[str]:
     return [t for t in (_saved(p, h) for p, h in pairs if p) if t is not None]
 
 
+def _flat(record, prefix: str = "") -> list[tuple[str, str]]:
+    """(dotted field, normalized value) for every scalar in a returned record."""
+    if isinstance(record, dict):
+        return [x for k, v in record.items() for x in _flat(v, f"{prefix}{k}.")]
+    if isinstance(record, list):
+        return [x for v in record for x in _flat(v, prefix)]
+    return [(prefix.rstrip("."), _norm(str(record)))]
+
+
 def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
     """A finding artifact: its quoted content checked against what the cited
     operation produced, then its chain to registered evidence.
@@ -549,12 +558,104 @@ def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
         return trace_op(case, audit_id)  # no entry, or one id on several
     e, line = items[0]
     quote = _quote_lines(content)
+    params = e.get("params") if isinstance(e.get("params"), dict) else {}
+    if "result_docs" in params or "result_ingests" in params or "response" in e:
+        return _trace_query(case, e, line, params, quote)
     texts = _run_texts(case, e)
     missing = [q for q in quote if not any(q in t for t in texts)]
     if missing:
         return _unverified(f"{missing[0]!r} isn't in {audit_id}'s saved output or its "
                            "recorded output files, as they were recorded")  # fmt: skip
     return trace_op(case, audit_id)
+
+
+def _trace_query(
+    case: Case, e: dict, line: bytes, params: dict, quote: list[str]
+) -> Trace:
+    aid = e["audit_id"]
+    docs = [d for d in params.get("result_docs") or [] if isinstance(d, dict)]
+    ingests = [i for i in params.get("result_ingests") or [] if isinstance(i, str)]
+    if not docs and not ingests:
+        return _broken("no-results-recorded", f"{aid} recorded no results to follow",
+                       "run the query again and cite that")  # fmt: skip
+    resp = e.get("response") if isinstance(e.get("response"), dict) else {}
+    text = _saved(resp.get("path"), resp.get("sha256"))
+    if text is None:
+        return _unverified(
+            f"{aid}'s saved response is missing or changed since the query"
+        )
+    if not all(q in text for q in quote):
+        return _unverified(f"the quote isn't in what {aid} returned")
+    if docs and e.get("tool") != "idx_list_detections":
+        return _match_back(case, e, line, docs, quote)
+    follow = [(d.get("ingest_audit_id", ""), d) for d in docs] or [
+        (i, None) for i in ingests
+    ]
+    return _follow(case, e, line, follow)
+
+
+def _match_back(
+    case: Case, e: dict, line: bytes, docs: list[dict], quote: list[str]
+) -> Trace:
+    """Each quoted line in a returned record; only those records are followed."""
+    try:
+        returned = json.loads(Path(e["response"]["path"]).read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError, TypeError):
+        returned = {}
+    records = (
+        returned.get("results")
+        if isinstance(returned.get("results"), list)
+        else [returned]
+    )
+    by_key = {(d.get("_index"), d.get("_id")): d for d in docs}
+    evidence = {}
+    for q in quote:
+        hits = [
+            (r, f)
+            for r in records
+            if isinstance(r, dict)
+            for f, v in _flat(r)
+            if q in v
+        ]
+        if not hits:
+            return _unverified(f"{q!r} is in no record {e['audit_id']} returned")
+        for r, _f in hits:
+            d = by_key.get((r.get("_index"), r.get("_id")))
+            if d is None:
+                return _broken("no-results-recorded", f"{e['audit_id']} didn't record the "
+                               f"record {r.get('_id')} it returned")  # fmt: skip
+            evidence[(d.get("_index"), d.get("_id"))] = d
+    return _follow(
+        case, e, line, [(d.get("ingest_audit_id", ""), d) for d in evidence.values()]
+    )
+
+
+def _follow(case: Case, e: dict, line: bytes, follow: list) -> Trace:
+    """Each followed record's ingest traced to its roots; then the query's own
+    link per record."""
+    traces, links = [], []
+    for ingest, doc in follow:
+        t = trace_op(case, ingest) if ingest else _broken(
+            "no-results-recorded", f"{e['audit_id']} returned a record with no ingest")  # fmt: skip
+        traces.append(t)
+        links += t.links
+        link = _link(
+            "recorded-id",
+            {"path": "", "sha256": ""},
+            {"path": "", "sha256": ""},
+            e,
+            line,
+        )
+        if doc is not None:
+            link["document"] = {"_index": doc.get("_index", ""), "_id": doc.get("_id", ""),
+                                "content_hash": doc.get("content_hash", "")}  # fmt: skip
+        links.append(link)
+    worst = min(traces, key=lambda t: _WORST.index(t.grade))
+    roots = list({r["path"]: r for t in traces for r in t.roots}.values())
+    if worst.grade != "FULL":
+        return Trace(worst.grade, worst.root, roots, links, worst.candidates,
+                     worst.break_, worst.reason)  # fmt: skip
+    return Trace("FULL", roots[0], roots, links)
 
 
 def finding_grade(artifacts: list[Trace]) -> str:
