@@ -147,3 +147,42 @@ def test_the_shared_guidance_doesnt_ask_for_input_files_on_every_call():
     agents = (root / "AGENTS.md").read_text()
     assert "Pass `input_files` on every" not in agents
     assert "recorded as declared" in agents
+
+
+def test_a_run_works_in_its_own_empty_folder_named_by_its_audit_id(case):
+    code = "import os\nprint(sorted(os.listdir('.')))\nopen('made.txt', 'w').write('x')"
+    resp, e = run(case, [PY, "-c", code])
+    folder = case / "extractions" / e["audit_id"]
+    assert resp["audit_id"] == e["audit_id"]
+    assert (folder / "made.txt").read_text() == "x"
+    assert e["result_summary"]["stdout_head"].strip() == "[]"
+
+
+def test_without_a_case_a_run_keeps_the_process_folder(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    (home / ".vhir").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    for var in ("VHIR_CASE_DIR", "VHIR_AUDIT_DIR", "VHIR_ACTIVE_CASE"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.chdir(tmp_path)
+    r = asyncio.run(
+        create_server().call_tool(
+            "run_command",
+            {"command": [PY, "-c", "import os\nprint(os.getcwd())"], "purpose": "t"},
+        )
+    )
+    r = r[0] if isinstance(r, tuple) else r
+    assert str(tmp_path) in r[0].text
+
+
+def test_a_relative_path_names_a_file_in_the_runs_folder(case):
+    code = "import sys\nprint(open(sys.argv[1]).read())"
+    resp, e = run(case, [PY, "-c", code, "../earlier/a.raw"])
+    assert not e.get("inputs")  # nothing there yet
+    earlier = case / "extractions" / "earlier"
+    earlier.mkdir()
+    (earlier / "a.raw").write_text("A")
+    resp, e = run(case, [PY, "-c", code, "../earlier/a.raw"])
+    (i,) = e["inputs"]
+    assert i["realpath"] == str((earlier / "a.raw").resolve())
+    assert resp["success"] is True

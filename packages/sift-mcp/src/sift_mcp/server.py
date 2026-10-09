@@ -127,6 +127,8 @@ def create_server() -> FastMCP:
         fdisk, and python3. Only mkfs, shutdown, kill, and raw socket
         tools (nc/ncat) are blocked. Tools in the forensic catalog
         get enriched responses with caveats and corroboration suggestions.
+        In a case the command runs in its own empty folder,
+        extractions/<audit_id>/, so a relative path means a path there.
         Deleting or overwriting case records, audit/ or evidence files is refused;
         bash -c, python -c, dd and a tool's own output options are not checked.
 
@@ -161,13 +163,6 @@ def create_server() -> FastMCP:
 
         binary = command[0].split("/")[-1] if command else ""
         td = get_tool_def(binary)
-        parsed = command_files.inputs(command, get_output_flags())
-        if parsed:
-            detection_method = "parsed"
-        elif td and not td.input_flag:
-            detection_method = ""  # Tool has no inputs (e.g., hostname)
-        else:
-            detection_method = "none"
 
         # Each input with where it is and its hash, with no size cap. A
         # registered file links to the registry by its path and isn't read; any
@@ -182,6 +177,27 @@ def create_server() -> FastMCP:
         case_dir = resolve_case_dir()
         audit_dir = audit._get_audit_dir(case_dir)
         op_id = audit._next_audit_id(audit_dir) if audit_dir else None
+        # In a case the run works in its own folder, named by its audit id and
+        # created empty first: what it writes there is its output, not the
+        # gateway's. Without a case it keeps the process's folder
+        op_dir = None
+        if case_dir and op_id:
+            op_dir = os.path.join(case_dir, "extractions", op_id)
+            try:
+                os.makedirs(op_dir)
+            except FileExistsError:
+                pass
+            except OSError as e:
+                logger.warning("run_command: no op folder %s: %s", op_dir, e)
+                op_dir = None
+        # A relative path in the command is resolved in the run's own folder
+        parsed = command_files.inputs(command, get_output_flags(), op_dir)
+        if parsed:
+            detection_method = "parsed"
+        elif td and not td.input_flag:
+            detection_method = ""  # Tool has no inputs (e.g., hostname)
+        else:
+            detection_method = "none"
         inputs: list[dict] = []
         registered: list[dict] = []  # [{path, sha256}], from the registry
         for fpath in parsed:
@@ -195,7 +211,7 @@ def create_server() -> FastMCP:
         named = {os.path.realpath(p) for p in parsed}
         missing: list[str] = []
         for f in input_files or []:
-            path = command_files.absolute(f)
+            path = command_files.absolute(f, op_dir)
             if os.path.realpath(path) in named:
                 continue
             named.add(os.path.realpath(path))
@@ -213,6 +229,7 @@ def create_server() -> FastMCP:
                 preview_lines=min(preview_lines, 200) if preview_lines else 0,
                 op_id=(lambda: op_id) if op_id else None,
                 case_dir=case_dir,
+                cwd=op_dir,
             )
             elapsed = time.monotonic() - start
 
