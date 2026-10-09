@@ -40,9 +40,21 @@ Start Open WebUI with the env file, e.g.
 | `ENABLE_CODE_INTERPRETER` | `False` | No code interpreter. |
 | `CODE_INTERPRETER_ENGINE`, `CODE_EXECUTION_ENGINE` | `pyodide` | If an admin turns code execution on, it runs in the browser, not on a server. Never point either at Jupyter or Open Terminal. |
 
-Open WebUI keeps some settings in its database after the first start, and
-there the Admin Panel value wins over the environment. On an existing
-instance, check each setting in the Admin Panel as well.
+**On an existing instance, the env file sets only `ENABLE_PLUGINS`.** At its
+first start Open WebUI writes the other five into its database, and from then
+on the database value is used, whatever the environment says. No Admin Panel
+save is needed for that to happen. On an instance that has started before,
+set each of the five in the Admin Panel (checked on Open WebUI 0.11.4):
+
+| Setting | Where in the Admin Panel |
+|---|---|
+| `USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS` | **Users > Groups > Default permissions > Edit**: turn **Tools Access** off |
+| `ENABLE_DIRECT_INTEGRATIONS` | **Settings > Connections**: turn **Direct Connections** off |
+| `ENABLE_CODE_INTERPRETER` | **Settings > Code Execution**, Code Interpreter: turn **Enable Code Interpreter** off |
+| `CODE_INTERPRETER_ENGINE` | **Settings > Code Execution**, Code Interpreter: **Code Interpreter Engine** Pyodide |
+| `CODE_EXECUTION_ENGINE` | **Settings > Code Execution**: **Code Execution Engine** Pyodide |
+
+A fresh instance started with the env file takes all six.
 
 ## Adding the backends
 
