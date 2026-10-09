@@ -203,3 +203,20 @@ def test_a_relative_output_path_is_checked_where_the_run_writes(case):
     resp, _ = run(case, [PY, "-c", code, "--csv", "../mine.csv"])
     assert resp["success"] is True, resp.get("error")
     assert (case / "extractions" / "mine.csv").read_text() == "csv"
+
+
+def test_an_attached_output_flag_is_checked_as_an_output(case, tmp_path):
+    resp, _ = run(case, [PY, "-c", "pass", f"-o{tmp_path / 'outside'}"])
+    assert resp["success"] is False and "outside the case" in resp["error"]
+    resp, _ = run(case, [PY, "-c", "pass", "-o../mine"])
+    assert resp["success"] is True, resp.get("error")
+
+
+def test_an_attached_output_flags_path_is_where_the_command_writes():
+    from sift_mcp import command_files
+
+    reads, writes = command_files.named(
+        ["7z", "x", "/c/a.7z", "-o/c/out", "-ofoo"], frozenset({"-o"}), "/c/op"
+    )
+    assert reads == ["/c/op/x", "/c/a.7z"]
+    assert writes == ["/c/out", "/c/op/foo"]

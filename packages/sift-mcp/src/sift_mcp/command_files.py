@@ -2,8 +2,8 @@
 
 Read from the command itself, never from a list the caller gives: an input
 is an argument naming an existing file or folder, bare or as the value of a
-``--flag=value``; an output flag's value is where the tool writes, never an
-input. dd-style operands (``if=``, ``of=``) are read the same way.
+``--flag=value``; an output flag's value (also attached, ``-o<path>``) is
+where the tool writes, never an input. dd-style operands (``if=``, ``of=``) are read the same way.
 """
 
 from __future__ import annotations
@@ -37,6 +37,8 @@ def named(command: list[str], output_flags, base: str | None = None):
                     (writes if flag in output_flags else reads).append(
                         absolute(value, base)
                     )
+            elif not tok.startswith("--") and len(tok) > 2 and tok[:2] in output_flags:
+                writes.append(absolute(tok[2:], base))  # attached: -o<path>
             else:
                 after_output_flag = tok in output_flags
             continue

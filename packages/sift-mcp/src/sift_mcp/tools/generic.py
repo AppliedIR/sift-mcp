@@ -104,6 +104,10 @@ def run_command(
             prev_was_output_flag = False
             continue
         if arg.startswith("-") and "=" not in arg:
+            if not arg.startswith("--") and len(arg) > 2 and arg[:2] in output_flags:
+                validate_output_path(arg[2:], base=cwd)  # attached: -o<path>
+                prev_was_output_flag = False
+                continue
             prev_was_output_flag = arg in output_flags
             continue
         if arg.startswith("/") or arg.startswith("..") or "/" in arg:
