@@ -204,12 +204,12 @@ def create_server() -> FastMCP:
         else:
             detection_method = "none"
         inputs: list[dict] = []
-        registered: list[dict] = []  # [{path, sha256}], from the registry
+        registered: list[dict] = []
         for fpath in parsed:
             rec, reg = file_place.input_record(case_dir, fpath, "run_command")
             inputs.append(rec)
             if reg:
-                registered.append(reg)
+                registered.append(reg)  # {path, sha256}: the registry's
         listed_files, listed_shas = file_place.listed(inputs, registered)
         # A file the caller lists that the command doesn't name: recorded as
         # declared (the AI says the run read it), never as a parsed input
@@ -328,11 +328,7 @@ def create_server() -> FastMCP:
                         else {}
                     ),
                     **({"umount": unmounting} if unmounting and ok else {}),
-                    **(
-                        {"input_registered": registered}
-                        if registered
-                        else {}
-                    ),
+                    **({"input_registered": registered} if registered else {}),
                 }
                 or None,
             )

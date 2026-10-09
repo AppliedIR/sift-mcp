@@ -108,7 +108,7 @@ def test_a_mount_records_its_image_and_the_point_it_mounted(case, sudo):
     e = run(case, [*sudo, "mount", "-o", "ro,loop", str(img), str(mnt)])
     (point,) = e["mount"]["points"]
     assert e["mount"]["image"] == str(img.resolve())
-    assert e["input_registered"] == [str(img.resolve())]
+    assert e["input_registered"] == [{"path": str(img.resolve()), "sha256": "e" * 64}]
     assert point == {
         "target": str(mnt),
         "realpath": str(mnt.resolve()),

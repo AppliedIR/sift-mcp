@@ -105,7 +105,7 @@ def test_a_registered_input_links_by_its_path_and_a_folder_is_unhashed(case):
     _, e = run(case, [PY, "-c", "pass", str(img), str(folder)])
     ins = _by_real(e)
     assert "sha256" not in ins[str(img.resolve())]
-    assert e["input_registered"] == [str(img.resolve())]
+    assert e["input_registered"] == [{"path": str(img.resolve()), "sha256": _sha(img)}]
     assert "sha256" not in ins[str(folder.resolve())]
     assert e["input_sha256s"] == [_sha(img), ""]
 
