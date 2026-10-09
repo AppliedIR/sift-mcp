@@ -145,7 +145,6 @@ def create_server() -> FastMCP:
                 repeat calls to the same tool (already in context from
                 first call).
         """
-        import hashlib
         import time
 
         from sift_mcp.catalog import get_tool_def
@@ -186,22 +185,35 @@ def create_server() -> FastMCP:
             else:
                 detection_method = "none"
 
-        # Hash input files (chunked, 1GB cap)
-        # Wrapped per-file — provenance must never block forensic work
+        # Hash input files, with no size cap. A registered file links to the
+        # registry by its path and isn't read; any other is hashed in the call
+        # up to the inline limit, else in the background (`pending:<job>` until
+        # its hash_complete entry). Wrapped per-file: provenance must never
+        # block forensic work
+        from sift_common import file_identity as fi
+        from sift_common import resolve_case_dir
+
+        case_dir = resolve_case_dir()
         input_hashes: dict[str, str] = {}
+        input_registered: list[str] = []
         for fpath in detected_inputs:
             try:
                 p = Path(fpath).resolve()
-                if p.is_file():
-                    if p.stat().st_size > 1_000_000_000:
-                        input_hashes[str(p)] = "skipped:too_large"
-                    else:
-                        h = hashlib.sha256()
-                        with open(p, "rb") as hf:
-                            for chunk in iter(lambda: hf.read(65536), b""):
-                                h.update(chunk)
-                        input_hashes[str(p)] = h.hexdigest()
-            except OSError:
+                if case_dir and (reg := fi.registered_hash(case_dir, p)):
+                    input_hashes[str(p)] = reg
+                    input_registered.append(str(p))
+                    continue
+                r = fi.hash_for_call(
+                    p,
+                    case_dir=case_dir,
+                    requested_by="run_command",
+                    inline_limit=fi.INLINE_LIMIT,
+                )
+                if isinstance(r, fi.Pending):
+                    input_hashes[str(p)] = f"pending:{r.job_id}"
+                elif r is not None:
+                    input_hashes[str(p)] = r.sha256
+            except (OSError, fi.NotRegularFile):
                 continue
 
         try:
@@ -249,6 +261,9 @@ def create_server() -> FastMCP:
                 input_files=list(input_hashes.keys()) if input_hashes else None,
                 input_sha256s=list(input_hashes.values()) if input_hashes else None,
                 input_detection_method=detection_method,
+                extra={"input_registered": input_registered}
+                if input_registered
+                else None,
             )
             response = build_response(
                 tool_name="run_command",
