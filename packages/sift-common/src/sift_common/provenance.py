@@ -414,12 +414,20 @@ def _extend(t: Trace, link: dict) -> Trace:
 
 
 def _inputs(case: Case, e: dict) -> list[dict]:
-    """An entry's inputs: one record each (`inputs[]`), else the parallel lists.
+    """An entry's inputs: one record each (`inputs[]`, a registered one with
+    its hash from `input_registered`), else the parallel lists.
     An input the AI declared is marked: `found: declared` or `declared: true`
     on its record, or, in the lists, one the AI listed (`llm`) that isn't in
     the command."""
     if isinstance(e.get("inputs"), list):
-        return [{"path": _where(case, i), "sha256": i.get("sha256") or "",
+        # a registered input's record carries no hash: the registry's, as the
+        # run read it, is in input_registered ([{path, sha256}]), so a file
+        # registered again with other bytes since breaks rather than links
+        reg = {r["path"]: r.get("sha256") or "" for r in e.get("input_registered") or []
+               if isinstance(r, dict) and isinstance(r.get("path"), str)}  # fmt: skip
+        return [{"path": _where(case, i),
+                 "sha256": i.get("sha256") or reg.get(i.get("realpath") or "")
+                 or reg.get(_where(case, i)) or "",
                  "realpath": i.get("realpath"), "st_dev": i.get("st_dev"),
                  "mnt_id": i.get("mnt_id"),
                  "declared": i.get("found") == "declared" or i.get("declared") is True}
