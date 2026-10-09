@@ -269,6 +269,31 @@ def _extend(t: Trace, link: dict) -> Trace:
     return t
 
 
+def _inputs(e: dict) -> list[dict]:
+    """An entry's inputs: one record each (`inputs[]`), else the parallel lists.
+    An input the AI declared is marked: `found: declared` or `declared: true`
+    on its record, or, in the lists, one the AI listed (`llm`) that isn't in
+    the command."""
+    if isinstance(e.get("inputs"), list):
+        return [{"path": i["path"], "sha256": i.get("sha256") or "",
+                 "realpath": i.get("realpath"), "st_dev": i.get("st_dev"),
+                 "declared": i.get("found") == "declared" or i.get("declared") is True}
+                for i in e["inputs"] if isinstance(i, dict) and isinstance(i.get("path"), str)]  # fmt: skip
+    files = e.get("input_files") or []
+    shas = e.get("input_sha256s") or []
+    reals = e.get("input_realpaths") or []
+    devs = e.get("input_st_devs") or []
+    command = (e.get("params") or {}).get("command")
+    said = {str(t) for t in command} if isinstance(command, list) else set()
+    said |= {os.path.realpath(t) for t in said}
+    llm = e.get("input_detection_method") == "llm"
+    return [{"path": f, "sha256": shas[n] if n < len(shas) else "",
+             "realpath": reals[n] if n < len(reals) else None,
+             "st_dev": devs[n] if n < len(devs) else None,
+             "declared": llm and f not in said and os.path.realpath(f) not in said}
+            for n, f in enumerate(files) if isinstance(f, str)]  # fmt: skip
+
+
 def _trace_entry(
     case: Case, e: dict, line: bytes, seen: frozenset, output: dict | None = None
 ) -> Trace:
@@ -277,21 +302,25 @@ def _trace_entry(
     aid = e["audit_id"]
     if aid in seen:
         return _broken("cycle", f"{aid} is recorded as its own origin")
-    files = [f for f in e.get("input_files") or [] if isinstance(f, str)]
-    if not files:
+    inputs = _inputs(e)
+    if not inputs:
         return _broken("no-inputs", f"{aid} recorded no inputs")
-    shas = e.get("input_sha256s") or []
-    reals = e.get("input_realpaths") or []
-    devs = e.get("input_st_devs") or []
-    traces = [
-        trace_file(case, f, shas[n] if n < len(shas) else "",
-                   realpath=reals[n] if n < len(reals) else None,
-                   st_dev=devs[n] if n < len(devs) else None,
-                   _at=e.get("ts"), _seen=seen | {aid})
-        for n, f in enumerate(files)
-    ]  # fmt: skip
+    traces = []
+    for i in inputs:
+        t = trace_file(case, i["path"], i["sha256"], realpath=i["realpath"],
+                       st_dev=i["st_dev"], _at=e.get("ts"), _seen=seen | {aid})  # fmt: skip
+        if i["declared"] and t.grade == "FULL":  # an input only the AI named
+            f = {
+                "path": i["realpath"] or os.path.realpath(i["path"]),
+                "sha256": i["sha256"],
+            }
+            t = Trace("DECLARED", t.root, t.roots, t.links + [_link("declared", f, f, e, line)],
+                      reason=f"declared by the AI: {f['path']}, an input of {aid}")  # fmt: skip
+        traces.append(t)
     rs = e.get("result_summary") if isinstance(e.get("result_summary"), dict) else {}
-    frm = {"path": os.path.realpath(files[0]), "sha256": shas[0] if shas else ""}
+    first = inputs[0]
+    frm = {"path": first["realpath"] or os.path.realpath(first["path"]),
+           "sha256": first["sha256"]}  # fmt: skip
     to = output or {
         "path": rs.get("output_file", ""),
         "sha256": rs.get("output_sha256", ""),

@@ -65,7 +65,8 @@ class TrailCase:
             f.write(line + b"\n")
         return line
 
-    def run(self, aid: str, cmd: list, inputs: list, out_text: str, **extra) -> str:
+    def run(self, aid: str, cmd: list, inputs: list, out_text: str, method="parsed",
+            **extra) -> str:  # fmt: skip
         """A run_command entry: hashed inputs, its stdout saved."""
         out = self.file(f"extractions/{aid}.txt", out_text)
         self.op("sift-mcp", aid, tool="run_command",
@@ -74,7 +75,7 @@ class TrailCase:
                                 "output_sha256": sha(out)},
                 input_files=inputs,
                 input_sha256s=[sha(i) if Path(i).is_file() else "" for i in inputs],
-                input_detection_method="parsed", **extra)  # fmt: skip
+                input_detection_method=method, **extra)  # fmt: skip
         return out
 
     def extract(

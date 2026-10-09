@@ -324,3 +324,38 @@ def test_every_trace_an_ingest_would_refuse_says_why(c):
     for t in (pv.trace_file(case, s2, sha(s2)), pv.trace_file(case, loose, sha(loose))):
         assert t.grade != "FULL" and ((t.break_ or {}).get("fix") or t.reason), t
     assert pv.trace_file(case, z).grade == "FULL"
+
+
+def _two_hives(c):
+    a = c.file("evidence/SYSTEM", "system hive")
+    b = c.file("evidence/SOFTWARE", "software hive")
+    c.register(a)
+    c.register(b)
+    return a, b
+
+
+def test_an_input_the_ai_listed_that_isnt_in_the_command_is_declared(c):
+    a, b = _two_hives(c)
+    c.run("sift-tester-20261009-001", ["RECmd", "-f", a], [a, b], "ControlSet001\n",
+          method="llm")  # fmt: skip
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
+    assert t.grade == "DECLARED" and b in t.reason, t
+    (declared,) = [link for link in t.links if link["method"] == "declared"]
+    assert (
+        declared["from"]["path"] == b
+        and declared["audit_id"] == "sift-tester-20261009-001"
+    )
+    c.run("sift-tester-20261009-002", ["RECmd", "-f", a], [a], "ControlSet001\n",
+          method="llm")  # fmt: skip
+    assert pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002").grade == "FULL"
+
+
+@pytest.mark.parametrize("mark", [{"found": "declared"}, {"declared": True}])
+def test_an_input_marked_declared_on_its_own_record_is_declared(c, mark):
+    a, b = _two_hives(c)
+    c.op("sift-mcp", "sift-tester-20261009-001", tool="run_command",
+         params={"command": ["RECmd", "-f", a]},
+         inputs=[{"path": a, "realpath": a, "st_dev": 2049, "found": "parsed"},
+                 {"path": b, "realpath": b, "st_dev": 2049, **mark}])  # fmt: skip
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
+    assert t.grade == "DECLARED" and [r["path"] for r in t.roots] == [a, b], t
