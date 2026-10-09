@@ -556,6 +556,41 @@ class Gateway:
             logger.error("Could not save the %s join: %s", name, exc)
             return conf
 
+    async def record_pending_hashes(self, backend_name: str, result) -> None:
+        """Hash in the active case the files a wintools reply left pending,
+        and record them. Never fails the call."""
+        if backend_name not in JOINABLE:
+            return
+        from sift_gateway.pending_hashes import hash_in_case, pending_files
+
+        files = pending_files(result)
+        if not files:
+            return
+        try:
+            audit_dir = await asyncio.to_thread(self._audit._get_audit_dir)
+            case_dir = audit_dir.parent if audit_dir else None
+            if case_dir is None or not (case_dir / "CASE.yaml").is_file():
+                logger.warning(
+                    "%d pending %s hashes not recorded: no active case",
+                    len(files),
+                    backend_name,
+                )
+                return
+            source = _extract_audit_id(result)
+            records = await asyncio.to_thread(
+                hash_in_case, case_dir, files, source or backend_name
+            )
+            await asyncio.to_thread(
+                self._audit.log,
+                tool="wintools_pending_hashes",
+                params={"backend": backend_name, "backend_audit_id": source},
+                result_summary={"files": len(records)},
+                source="gateway_proxy",
+                extra={"files": records},
+            )
+        except Exception as exc:  # noqa: BLE001 - the call's answer stands
+            logger.error("Pending %s hashes not recorded: %s", backend_name, exc)
+
     def not_loaded_text(self, name: str) -> str:
         """Why ``name`` isn't served: joined but not loaded, or never joined."""
         if name in self._unloaded:
@@ -724,6 +759,7 @@ class Gateway:
                 )
             except Exception as exc:
                 logger.warning("Gateway audit failed for %s: %s", actual_name, exc)
+            await self.record_pending_hashes(backend_name, result)
 
         return result
 

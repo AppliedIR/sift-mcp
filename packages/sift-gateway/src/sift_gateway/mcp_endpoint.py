@@ -434,6 +434,7 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
                 logger.warning(
                     "Gateway audit failed for %s/%s: %s", backend_name, name, exc
                 )
+            await gateway.record_pending_hashes(backend_name, result)
 
         if getattr(result, "is_error", False):
             return CallToolResult(content=contents, isError=True)
