@@ -167,9 +167,10 @@ def _job_hash(case: Case, real: str, job_id: str) -> str | None:
     return None
 
 
-def _mount_link(case, real, sha, st_dev, at, seen) -> Trace | None:
+def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
     """A file under a recorded mount point links only by that mount: the same
-    filesystem (st_dev), read inside the mount's recorded life. None when no
+    filesystem (st_dev, and the mount id where both record one), read inside
+    the mount's recorded life. None when no
     recorded mount holds the path."""
     under = [
         (e, line)
@@ -185,7 +186,9 @@ def _mount_link(case, real, sha, st_dev, at, seen) -> Trace | None:
         return None
     for e, line in under:
         end = (case.by_id.get(e.get("unmounted_by", "")) or [({}, b"")])[0][0].get("ts")
+        mount_id = e["mount"].get("mnt_id")
         if (st_dev is not None and e["mount"].get("st_dev") == st_dev
+                and (mnt_id is None or mount_id is None or mnt_id == mount_id)
                 and (at is None or (e.get("ts", "") <= at and (not end or at <= end)))):  # fmt: skip
             mp = os.path.realpath(e["mount"]["mount_point"])
             to = {"path": mp, "sha256": ""}
@@ -199,7 +202,7 @@ def _mount_link(case, real, sha, st_dev, at, seen) -> Trace | None:
 
 
 def trace_file(
-    case: Case, path, sha256: str | None = None, *, realpath=None, st_dev=None,
+    case: Case, path, sha256: str | None = None, *, realpath=None, st_dev=None, mnt_id=None,
     _at=None, _seen=frozenset(),
 ) -> Trace:  # fmt: skip
     """The registered evidence a file came from: the file is a registered root,
@@ -214,7 +217,7 @@ def trace_file(
     real = realpath or os.path.realpath(path)
     sha = sha256 or ""
     found = _registered(case, real, sha) or _mount_link(
-        case, real, sha, st_dev, _at, _seen
+        case, real, sha, st_dev, mnt_id, _at, _seen
     )
     if found:
         return found
@@ -277,12 +280,14 @@ def _inputs(e: dict) -> list[dict]:
     if isinstance(e.get("inputs"), list):
         return [{"path": i["path"], "sha256": i.get("sha256") or "",
                  "realpath": i.get("realpath"), "st_dev": i.get("st_dev"),
+                 "mnt_id": i.get("mnt_id"),
                  "declared": i.get("found") == "declared" or i.get("declared") is True}
                 for i in e["inputs"] if isinstance(i, dict) and isinstance(i.get("path"), str)]  # fmt: skip
     files = e.get("input_files") or []
     shas = e.get("input_sha256s") or []
     reals = e.get("input_realpaths") or []
     devs = e.get("input_st_devs") or []
+    mnts = e.get("input_mnt_ids") or []
     command = (e.get("params") or {}).get("command")
     said = {str(t) for t in command} if isinstance(command, list) else set()
     said |= {os.path.realpath(t) for t in said}
@@ -290,6 +295,7 @@ def _inputs(e: dict) -> list[dict]:
     return [{"path": f, "sha256": shas[n] if n < len(shas) else "",
              "realpath": reals[n] if n < len(reals) else None,
              "st_dev": devs[n] if n < len(devs) else None,
+             "mnt_id": mnts[n] if n < len(mnts) else None,
              "declared": llm and f not in said and os.path.realpath(f) not in said}
             for n, f in enumerate(files) if isinstance(f, str)]  # fmt: skip
 
@@ -308,7 +314,8 @@ def _trace_entry(
     traces = []
     for i in inputs:
         t = trace_file(case, i["path"], i["sha256"], realpath=i["realpath"],
-                       st_dev=i["st_dev"], _at=e.get("ts"), _seen=seen | {aid})  # fmt: skip
+                       st_dev=i["st_dev"], mnt_id=i["mnt_id"], _at=e.get("ts"),
+                       _seen=seen | {aid})  # fmt: skip
         if i["declared"] and t.grade == "FULL":  # an input only the AI named
             f = {
                 "path": i["realpath"] or os.path.realpath(i["path"]),

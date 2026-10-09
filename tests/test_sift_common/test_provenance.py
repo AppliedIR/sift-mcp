@@ -278,7 +278,7 @@ def _mounted(c, st_dev, **read):
             **read.pop("mount_extra", {}))  # fmt: skip
     c.run("sift-tester-20261009-002", ["EvtxECmd", "-f", sec], [sec], "4624 alice\n",
           input_realpaths=[sec], input_st_devs=[st_dev],
-          ts=read.pop("ts", "2026-10-09T02:00:00Z"))  # fmt: skip
+          ts=read.pop("ts", "2026-10-09T02:00:00Z"), **read)  # fmt: skip
     return a, pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
 
 
@@ -359,3 +359,10 @@ def test_an_input_marked_declared_on_its_own_record_is_declared(c, mark):
                  {"path": b, "realpath": b, "st_dev": 2049, **mark}])  # fmt: skip
     t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
     assert t.grade == "DECLARED" and [r["path"] for r in t.roots] == [a, b], t
+
+
+@pytest.mark.parametrize("mnt_id,grade", [(2049, "FULL"), (77, "BROKEN")],
+                         ids=["same mount id", "another mount id"])  # fmt: skip
+def test_where_both_record_a_mount_id_they_must_match(c, mnt_id, grade):
+    _, t = _mounted(c, 2049, input_mnt_ids=[mnt_id])  # the mount recorded 2049
+    assert t.grade == grade, t
