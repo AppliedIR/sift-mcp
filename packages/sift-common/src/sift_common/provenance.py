@@ -789,7 +789,12 @@ def _match_back(
                                    "isn't recorded", "enrich again, then query and cite that",
                                    links=t.links)  # fmt: skip
                 if (twice := _one_entry(case, op)) is not None:
-                    return twice
+                    # the worse grade stands, with the evidence's links
+                    if _WORST.index(t.grade) < _WORST.index("AMBIGUOUS"):
+                        t.candidates += twice.candidates
+                        return t
+                    return Trace("AMBIGUOUS", t.root, t.roots, t.links,
+                                 t.candidates + twice.candidates, None, twice.reason)  # fmt: skip
                 link = _reference_link(*found[0])
                 t.links.append(link)
                 ref = link["reference"]
