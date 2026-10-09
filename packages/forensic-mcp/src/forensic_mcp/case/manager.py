@@ -212,6 +212,12 @@ def _compute_content_hash(item: dict) -> str:
     vhir-cli. Kept in sync manually.
     """
     hashable = {k: v for k, v in item.items() if k not in _HASH_EXCLUDE_KEYS}
+    imported = hashable.get("imported_from")
+    if isinstance(imported, dict) and "imported_at" in imported:
+        # when it was imported isn't content: a re-import keeps the hash
+        hashable["imported_from"] = {
+            k: v for k, v in imported.items() if k != "imported_at"
+        }
     canonical = json.dumps(hashable, sort_keys=True, default=str)
     return hashlib.sha256(canonical.encode()).hexdigest()
 
