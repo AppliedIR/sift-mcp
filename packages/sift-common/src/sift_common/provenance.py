@@ -508,6 +508,12 @@ def _norm(text: str) -> str:
     return " ".join(text.split())
 
 
+def quotable(content) -> bool:
+    """Whether a quote has any text to check (a letter or digit), not only
+    whitespace, ellipses or punctuation."""
+    return any(ch.isalnum() for ch in str(content or ""))
+
+
 def _quote_lines(content: str) -> list[str]:
     """A quote's lines, normalized; blank lines and elisions ("...") skipped."""
     lines = [_norm(line) for line in str(content).splitlines()]
@@ -653,6 +659,9 @@ def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
         return trace_op(case, audit_id)  # no entry, or one id on several
     e, line = items[0]
     quote = _quote_lines(content)
+    if not quote or not quotable(content):  # a placeholder: nothing to check
+        return _unverified(f"nothing quotable was given for {audit_id}: quote the "
+                           "output it produced")  # fmt: skip
     if isinstance(e.get("reference"), dict):
         resp = e["reference"].get("response") or {}
         values = _saved_values(resp.get("path"), resp.get("sha256")) if resp else None
@@ -788,6 +797,9 @@ def _enrichment_ops(groups) -> list[str]:
 def _follow(case: Case, e: dict, line: bytes, follow: list) -> Trace:
     """Each followed record's ingest traced to its roots, its recorded original
     compared with them; then the query's own link per record."""
+    if not follow:
+        return _broken("no-results-recorded", f"{e['audit_id']}: no returned record "
+                       "was followed")  # fmt: skip
     traces, links = [], []
     for ingest, doc in follow:
         t = trace_op(case, ingest) if ingest else _broken(

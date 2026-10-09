@@ -1496,3 +1496,33 @@ def test_a_quote_only_in_an_output_past_the_cap_is_unverified_saying_why(
     res, st = c.find([{"content": "4624,bob", "audit_id": "sift-tester-20261009-001"}])
     assert g(res, st)[0] == "CITED-UNVERIFIED", g(res, st)
     assert "output too large to check" in st["artifacts"][0]["provenance_reason"]
+
+
+@pytest.mark.parametrize("content", ["...", "   ", "…\n...", "-- -- --", ""])
+def test_an_artifact_with_nothing_quotable_is_rejected_asking_for_the_output(
+    c, content
+):
+    z = _seven_zip(c)
+    s1, s2 = _extract(c, "sift-tester-20261009-001", z)
+    c.run("sift-tester-20261009-002", ["vol", "-f", s2, "windows.pslist"], [s2],
+          "PID 4 System\n")  # fmt: skip
+    res, st = c.find([{"content": content, "audit_id": "sift-tester-20261009-002"}])
+    assert st is None and res["status"] == "REJECTED", res
+    assert "paste the actual output" in res["error"].lower(), res
+
+
+@pytest.mark.parametrize("op", ["run", "query"])
+def test_the_library_never_crashes_on_a_placeholder_quote(c, op):
+    """Called directly (an ingest check, a re-grade): no quotable line is
+    CITED-UNVERIFIED, for a run and for a query."""
+    _ingested_samples(c)
+    if op == "run":
+        z = c.file("evidence/other.7z", "other")
+        c.register(z)
+        c.run("sift-tester-20261009-002", ["7z", "l", z], [z], "PID 4 System\n")
+        aid = "sift-tester-20261009-002"
+    else:
+        aid = _search(c, [_doc("d2", "opensearch-ingest-7-20261009-012",
+                               **{"process.name": "evil.exe"})])  # fmt: skip
+    t = pv.trace_artifact(pv.load_case(c.d), aid, "...")
+    assert t.grade == "CITED-UNVERIFIED", t.as_dict()

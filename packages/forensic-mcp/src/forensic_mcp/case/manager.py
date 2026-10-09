@@ -1060,6 +1060,15 @@ class CaseManager:
                 content = art.get("content", "").strip()
                 if not content:
                     content = art.get("raw_data", "").strip()
+                if source and extraction and not pv.quotable(content):
+                    return {
+                        "status": "REJECTED",
+                        "error": (
+                            f"Artifact from {source[:100]} has no quotable text. "
+                            "Paste the actual output lines the cited operation "
+                            "produced, as returned, not a placeholder."
+                        ),
+                    }
                 if not source or not extraction or not content:
                     continue
                 validated_artifacts.append(
