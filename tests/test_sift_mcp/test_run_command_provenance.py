@@ -65,3 +65,51 @@ def test_a_run_on_evidence_registered_again_with_the_same_bytes_is_full(case):
     t = pv.trace_artifact(pv.load_case(case), aid, "MEMORY")
     assert t.grade == "FULL", t
     assert t.root["sha256"] == hashlib.sha256(b"MEMORY").hexdigest()
+
+
+WRITE_ONE = (
+    "import sys, time\n"
+    "time.sleep(0.5)\n"
+    "open(sys.argv[3] + '/' + sys.argv[4], 'w').write(sys.argv[4] + ' rows')\n"
+    "time.sleep(1)\n"
+)
+
+
+def test_parallel_runs_writing_one_folder_leave_its_files_ambiguous(case):
+    import threading
+
+    src = case / "evidence" / "mem.raw"
+    _register(case, src, b"MEMORY")
+    shared = case / "extractions" / "shared"
+    shared.mkdir(parents=True)
+    ids = {}
+
+    def go(name):
+        cmd = [sys.executable, "-c", WRITE_ONE, str(src), "--csv", str(shared), name]
+        r = asyncio.run(
+            create_server().call_tool("run_command", {"command": cmd, "purpose": "t"})
+        )
+        r = r[0] if isinstance(r, tuple) else r
+        ids[name] = json.loads(r[0].text)["audit_id"]
+
+    threads = [threading.Thread(target=go, args=(n,)) for n in ("a.csv", "b.csv")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    pc = pv.load_case(case)
+    for name in ("a.csv", "b.csv"):
+        f = shared / name
+        t = pv.trace_file(pc, f, hashlib.sha256(f.read_bytes()).hexdigest())
+        assert t.grade == "AMBIGUOUS", t  # never FULL to one of them
+        assert sorted(x["audit_id"] for x in t.candidates) == sorted(ids.values())
+    # a finding citing a later run that read one of them
+    aid = _cited_run(case, shared / "a.csv")
+    t = pv.trace_artifact(pv.load_case(case), aid, "a.csv rows")
+    assert t.grade == "AMBIGUOUS", t
+    assert sorted(x["audit_id"] for x in t.candidates) == sorted(ids.values())
+
+
+def test_the_tool_says_to_give_parallel_runs_distinct_output_folders():
+    doc = create_server()._tool_manager._tools["run_command"].fn.__doc__
+    assert "Give parallel runs distinct output folders" in doc

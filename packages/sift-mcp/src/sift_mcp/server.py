@@ -134,6 +134,8 @@ def create_server() -> FastMCP:
         get enriched responses with caveats and corroboration suggestions.
         In a case the command runs in its own empty folder,
         extractions/<audit_id>/, so a relative path means a path there.
+        Give parallel runs distinct output folders: files new in a folder two
+        runs share are recorded as both runs' outputs, and trace as ambiguous.
         Deleting or overwriting case records, audit/ or evidence files is refused;
         bash -c, python -c, dd and a tool's own output options are not checked.
 
