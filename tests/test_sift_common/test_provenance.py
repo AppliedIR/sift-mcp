@@ -168,3 +168,42 @@ def test_an_input_hashed_in_the_background_links_through_its_completed_job(c):
     assert t.grade == "FULL" and t.links[-1]["from"]["sha256"] == sha(s2), t
     unclosed = pv.trace_file(pv.load_case(c.d), s2, "pending:hash-fedcba9876543210")
     assert unclosed.break_["kind"] == "hash-pending", unclosed
+
+
+def test_sample_two_extracted_twice_to_one_path_is_ambiguous_naming_both(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    s2 = c.file("extractions/shared/sample2.raw", "sample two")
+    for aid in ("sift-tester-20261009-001", "sift-tester-20261009-002"):
+        c.op("sift-mcp", aid, tool="run_command", params={"command": ["7z", "x", z]},
+             input_files=[z], input_sha256s=[""],
+             result_summary={"output_files": [s2], "output_sha256s": [sha(s2)]})  # fmt: skip
+    c.run("sift-tester-20261009-003", ["vol", "-f", s2], [s2], "PID 4\n")
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-003")
+    assert t.grade == "AMBIGUOUS", t  # never the last writer
+    assert {x["audit_id"] for x in t.candidates} == {
+        "sift-tester-20261009-001", "sift-tester-20261009-002",
+    }  # fmt: skip
+    assert "2 operations" in t.reason
+
+
+def test_one_id_on_two_entries_is_ambiguous_never_the_last_copy(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    s1, s2 = c.extract("sift-tester-20261009-001", z)
+    c.run("sift-tester-20261009-002", ["vol", "-f", s1], [s1], "PID 4\n")
+    c.run("sift-tester-20261009-002", ["vol", "-f", s2], [s2], "PID 4\n")
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
+    assert t.grade == "AMBIGUOUS" and len(t.candidates) == 2, t
+    assert len({x["entry_sha256"] for x in t.candidates}) == 2
+
+
+def test_an_operation_whose_inputs_reach_two_roots_is_ambiguous(c):
+    a = c.file("evidence/imgA.raw", "image A")
+    b = c.file("evidence/imgB.raw", "image B")
+    c.register(a)
+    c.register(b)
+    c.run("sift-tester-20261009-001", ["cmp", a, b], [a, b], "differ\n")
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
+    assert t.grade == "AMBIGUOUS" and {r["path"] for r in t.roots} == {a, b}, t
+    assert {x["path"] for x in t.candidates} == {a, b}

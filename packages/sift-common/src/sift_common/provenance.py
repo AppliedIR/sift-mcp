@@ -183,7 +183,13 @@ def trace_file(
         for out, out_sha in _outputs(e)
         if sha and out_sha == sha and os.path.realpath(out) == real
     ]
-    if len(producers) == 1:
+    if len(producers) > 1:  # never the last writer: each is named
+        named = [{"audit_id": e["audit_id"], "entry_sha256": entry_sha256(line),
+                  "path": real, "sha256": h} for e, line, h in producers]  # fmt: skip
+        return Trace("AMBIGUOUS", candidates=named, reason=f"{real} is a recorded "
+                     f"output of {len(named)} operations: " + ", ".join(
+                         x["audit_id"] for x in named))  # fmt: skip
+    if producers:
         e, line, out_sha = producers[0]
         frm, to = {"path": real, "sha256": sha}, {"path": real, "sha256": out_sha}
         return _extend(
@@ -199,6 +205,11 @@ def trace_op(case: Case, audit_id: str) -> Trace:
     items = case.by_id.get(audit_id)
     if not items:
         return _broken("no-entry", f"no audit entry records {audit_id}")
+    if len(items) > 1:  # until ids are unique: never the last copy
+        named = [{"audit_id": audit_id, "entry_sha256": entry_sha256(line),
+                  "tool": e.get("tool", "")} for e, line in items]  # fmt: skip
+        return Trace("AMBIGUOUS", candidates=named,
+                     reason=f"{audit_id} is on {len(items)} audit entries")  # fmt: skip
     return _trace_entry(case, *items[0], frozenset())
 
 
@@ -238,6 +249,12 @@ def _trace_entry(
     links.append(_link("recorded-id", frm, to, e, line))
     worst = min(traces, key=lambda t: _WORST.index(t.grade))
     roots = list({r["path"]: r for t in traces for r in t.roots}.values())
+    if worst.grade in ("BROKEN", "AMBIGUOUS"):
+        return Trace(worst.grade, worst.root, roots, links, worst.candidates,
+                     worst.break_, worst.reason)  # fmt: skip
+    if len(roots) > 1:
+        return Trace("AMBIGUOUS", roots[0], roots, links, roots,
+                     reason=f"{aid}'s inputs reach {len(roots)} registered roots")  # fmt: skip
     if worst.grade != "FULL":
         return Trace(worst.grade, worst.root, roots, links, worst.candidates,
                      worst.break_, worst.reason)  # fmt: skip
