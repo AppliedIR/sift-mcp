@@ -141,16 +141,16 @@ def execute(
         if exceeds_budget and case_dir:
             _save_output(
                 cmd_list,
-                stdout,
-                stderr,
+                stdout_raw,
+                stderr_raw,
                 save_dir or os.path.join(case_dir, "extractions"),
                 response,
             )
-        elif save_output and (stdout or stderr):
+        elif save_output and (stdout_raw or stderr_raw):
             _save_output(
                 cmd_list,
-                stdout,
-                stderr,
+                stdout_raw,
+                stderr_raw,
                 save_dir or (str(Path(cwd) / "extracted") if cwd else None),
                 response,
             )
@@ -178,12 +178,12 @@ def _truncate(text: str, max_chars: int) -> str:
 
 def _save_output(
     cmd_list: list[str],
-    stdout: str,
-    stderr: str,
+    stdout: bytes,
+    stderr: bytes,
     save_dir: str | None,
     response: dict,
 ) -> None:
-    """Save stdout/stderr to files with SHA-256 hashes."""
+    """Save stdout/stderr, as the bytes the tool wrote, with their SHA-256."""
     if not save_dir:
         return
 
@@ -234,25 +234,23 @@ def _save_output(
     if stdout:
         try:
             stdout_path = out_dir / f"{prefix}_stdout.txt"
-            stdout_bytes = stdout.encode("utf-8", errors="replace")
             with open(stdout_path, "wb") as f:
-                f.write(stdout_bytes)
+                f.write(stdout)
                 f.flush()
                 os.fsync(f.fileno())
             response["output_file"] = str(stdout_path)
-            response["output_sha256"] = hashlib.sha256(stdout_bytes).hexdigest()
+            response["output_sha256"] = hashlib.sha256(stdout).hexdigest()
         except OSError as e:
             logger.warning("Failed to save stdout to %s: %s", stdout_path, e)
 
     if stderr:
         try:
             stderr_path = out_dir / f"{prefix}_stderr.txt"
-            stderr_bytes = stderr.encode("utf-8", errors="replace")
             with open(stderr_path, "wb") as f:
-                f.write(stderr_bytes)
+                f.write(stderr)
                 f.flush()
                 os.fsync(f.fileno())
             response["stderr_file"] = str(stderr_path)
-            response["stderr_sha256"] = hashlib.sha256(stderr_bytes).hexdigest()
+            response["stderr_sha256"] = hashlib.sha256(stderr).hexdigest()
         except OSError as e:
             logger.warning("Failed to save stderr to %s: %s", stderr_path, e)
