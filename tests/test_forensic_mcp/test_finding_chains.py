@@ -1584,3 +1584,21 @@ def test_an_enrichment_step_whose_id_is_on_two_entries_is_ambiguous(c):
     aid = _search(c, docs, groups=groups)
     res, st = c.find([{"content": "SUSPICIOUS", "audit_id": aid}])
     assert g(res, st)[0] == "AMBIGUOUS", g(res, st)
+
+
+def test_a_quote_from_an_output_recorded_pending_is_checked_through_its_job(c):
+    """The tool's CSV was hashed in the background: its recorded hash is
+    pending:<job> until the job closes, and the check takes the job's hash."""
+    ev = c.file("evidence/Security.evtx", "evtx")
+    c.register(ev)
+    csv = _evtx_csv_run(c, ev)
+    lines = (c.d / "audit" / "sift-mcp.jsonl").read_text().splitlines()
+    entry = json.loads(lines[-1])
+    entry["result_summary"]["output_sha256s"] = ["pending:hash-csv"]
+    (c.d / "audit" / "sift-mcp.jsonl").write_text(
+        "\n".join(lines[:-1] + [json.dumps(entry)]) + "\n"
+    )
+    c.op("file-identity", "fileidentity-tester-20261009-001", tool="hash_complete",
+         job_id="hash-csv", path=csv, sha256=sha(csv))  # fmt: skip
+    res, st = c.find([{"content": "4624,bob", "audit_id": "sift-tester-20261009-001"}])
+    assert g(res, st)[0] == "FULL", g(res, st)

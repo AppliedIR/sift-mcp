@@ -600,6 +600,11 @@ def _run_missing(case: Case, e: dict, quote: list[str]) -> tuple[list[str], list
             break
         if not path:
             continue
+        if isinstance(sha256, str) and sha256.startswith("pending:"):
+            sha256, got = _job(case, os.path.realpath(path), sha256.split(":", 1)[1])
+            if not sha256:  # the job is still running or failed: not checkable yet
+                skipped.append(got.reason)
+                continue
         found, why = _found_in(path, sha256, missing, cap)
         if why:
             skipped.append(why)
