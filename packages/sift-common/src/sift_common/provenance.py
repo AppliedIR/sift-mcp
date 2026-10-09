@@ -631,12 +631,20 @@ def _match_back(
 
 
 def _follow(case: Case, e: dict, line: bytes, follow: list) -> Trace:
-    """Each followed record's ingest traced to its roots; then the query's own
-    link per record."""
+    """Each followed record's ingest traced to its roots, its recorded original
+    compared with them; then the query's own link per record."""
     traces, links = [], []
     for ingest, doc in follow:
         t = trace_op(case, ingest) if ingest else _broken(
             "no-results-recorded", f"{e['audit_id']} returned a record with no ingest")  # fmt: skip
+        if doc is not None and t.grade in ("FULL", "DECLARED"):
+            original = doc.get("original_sha256")
+            stamped = {original} if isinstance(original, str) else set(original or [])
+            reached = {r.get("sha256") for r in t.roots}
+            if stamped - {""} and stamped != reached:
+                t = _broken("stamp-mismatch", f"record {doc.get('_id')} is stamped as from "
+                            f"{sorted(stamped)}, but its chain reaches {sorted(reached)}",
+                            links=t.links)  # fmt: skip
         traces.append(t)
         links += t.links
         link = _link(
