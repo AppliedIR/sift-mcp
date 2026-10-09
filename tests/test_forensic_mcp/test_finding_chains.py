@@ -1381,7 +1381,7 @@ def test_a_recorded_hash_differing_from_the_registered_one_is_a_hash_mismatch(c)
 
 
 def _summary(c, aid, body, **counts):
-    """A summary query (idx_count) as P4 writes it: result_ingests, and the
+    """A summary query (idx_count) as opensearch-mcp records it: result_ingests, and the
     counts of records with no ingest or past the cap, with its saved response."""
     resp = c.file(f"extractions/{aid}/response.json", json.dumps(body))
     c.op("opensearch-mcp", aid, tool="idx_count",
