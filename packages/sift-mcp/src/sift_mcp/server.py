@@ -234,6 +234,12 @@ def create_server() -> FastMCP:
             if not (op_dir and _under(w, op_dir))
         ]
         before = command_files.files_at(flagged)
+        # A mount tool's run: the mounts there are before it, to see what it
+        # mounts. An umount's: the mount it removes, read before it runs
+        from sift_mcp import mounts
+
+        pre_mounts = mounts.mounted() if mounts.is_mount(command) else None
+        unmounting = mounts.umount_record(command, op_dir)
 
         try:
             exec_result = _run(
@@ -281,6 +287,12 @@ def create_server() -> FastMCP:
                 if before.get(p) != key and p not in made
             ]
             outputs = file_place.output_records(case_dir, made, "run_command")
+            ok = exec_result["exit_code"] == 0
+            mount = None
+            if pre_mounts is not None and ok:
+                mount = mounts.mount_record(
+                    command, pre_mounts, inputs, registered, op_dir
+                )
 
             # Written first, to the call's case, with the id its output's
             # folder is named by; the response carries that id
@@ -305,6 +317,8 @@ def create_server() -> FastMCP:
                 extra={
                     **({"inputs": inputs} if inputs else {}),
                     **({"outputs": outputs} if outputs else {}),
+                    **({"mount": mount} if mount else {}),
+                    **({"umount": unmounting} if unmounting and ok else {}),
                     **(
                         {"input_registered": registered}
                         if registered
