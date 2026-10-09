@@ -42,19 +42,27 @@ def _raw(result) -> bytes:
     return "\n".join(parts).encode("utf-8")
 
 
-def record(audit, backend_name: str, backend, tool: str, arguments: dict, result,
-           examiner=None) -> str | None:  # fmt: skip
-    """Save a reference call's response and write its entry; the entry's
-    audit id, or None (no case, or not a reference call). Never raises: a
-    lookup is answered whether or not it could be recorded."""
+def case_for(backend_name: str, tool: str) -> str:
+    """The case a reference call is recorded in, resolved once as it starts
+    (whatever case is active when it answers); "" for any other call."""
     if not is_reference(backend_name, tool):
+        return ""
+    from sift_common import resolve_case_dir
+
+    return resolve_case_dir()
+
+
+def record(audit, backend_name: str, backend, tool: str, arguments: dict, result,
+           examiner=None, case_dir: str = "") -> str | None:  # fmt: skip
+    """Save a reference call's response in ``case_dir`` (from :func:`case_for`)
+    and write its entry there; the entry's audit id, or None (no case, or not
+    a reference call). Never raises: a lookup is answered whether or not it
+    could be recorded."""
+    if not case_dir or not is_reference(backend_name, tool):
         return None
     try:
-        from sift_common import resolve_case_dir
-
         from sift_gateway.audit_helpers import _truncate_params
 
-        case_dir = resolve_case_dir()
         audit_dir = audit._get_audit_dir(case_dir) if case_dir else None
         if not audit_dir:
             return None

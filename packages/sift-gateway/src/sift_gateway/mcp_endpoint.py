@@ -374,6 +374,9 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
             arguments = {**arguments, "analyst_override": examiner}
 
         case_at_start = await gateway.case_at_start(backend_name)
+        from sift_gateway import reference
+
+        ref_case = reference.case_for(backend_name, name)  # as it starts
         _start = time.monotonic()
         try:
             result = await backend.call_tool(name, arguments)
@@ -440,11 +443,9 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
             return CallToolResult(content=contents, isError=True)
         if isinstance(backend, HttpMCPBackend):  # an error reply records nothing
             await gateway.record_pending_hashes(backend_name, result, case_at_start)
-        from sift_gateway import reference
-
         await asyncio.to_thread(
             reference.record, gateway._audit, backend_name, backend, name,
-            arguments, result, examiner,
+            arguments, result, examiner, ref_case,
         )  # fmt: skip
         return contents
 

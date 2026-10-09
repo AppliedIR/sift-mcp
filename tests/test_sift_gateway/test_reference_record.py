@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,9 +22,10 @@ BODY = json.dumps({"ioc": "1.2.3.4", "providers": {"opencti": {"outcome": "NO_MA
 
 
 class Source(MCPBackend):
-    def __init__(self, name, version="", error=False):
+    def __init__(self, name, version="", error=False, switch_to=None):
         super().__init__(name, {"type": "stdio", "enabled": True})
         self._started, self._server_version, self._error = True, version, error
+        self._switch_to = switch_to  # another case made active during the lookup
 
     async def start(self):
         self._started = True
@@ -35,6 +37,8 @@ class Source(MCPBackend):
         return []
 
     async def call_tool(self, name, arguments):
+        if self._switch_to is not None:
+            os.environ["VHIR_CASE_DIR"] = str(self._switch_to)
         out = [TextContent(type="text", text=BODY)]
         if self._error:
             out = type("R", (list,), {"is_error": True})(out)
@@ -156,3 +160,37 @@ async def test_a_started_backend_keeps_the_version_it_reported(kind, monkeypatch
         backend = http_backend.HttpMCPBackend("cti", {"url": "http://127.0.0.1:9/mcp"})
     await backend.start()
     assert backend.server_version == "3.1.0"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["aggregate", "per-backend"])
+async def test_a_lookup_stays_in_the_case_it_started_in(case, tmp_path, endpoint):
+    other = tmp_path / "case-b"
+    (other / "audit").mkdir(parents=True)
+    (other / "CASE.yaml").write_text("case_id: case-b\n")
+    backend = Source("opencti-mcp", "0.6.4", switch_to=other)
+    gw = _gateway(backend)
+    if endpoint == "aggregate":
+        await gw.call_tool("lookup_ioc", {"ioc": "1.2.3.4"})
+    else:
+        await _per_backend(gw, backend, "lookup_ioc")
+    _check(case, "lookup_ioc", "opencti-mcp", "0.6.4")
+    assert not (other / "extractions").exists() and not _entries(other)
+
+
+@pytest.mark.asyncio
+async def test_an_error_reply_on_its_own_endpoint_is_not_a_reference(case):
+    backend = Source("windows-triage-mcp", error=True)
+    await _per_backend(_gateway(backend), backend, "check_file")
+    assert not [e for e in _entries(case) if "reference" in e]
+    assert not (case / "extractions").exists()
+
+
+async def _per_backend(gw, backend, tool):
+    server = create_backend_mcp_server(gw, backend.name)
+    handler = server.request_handlers[types.CallToolRequest]
+    request = types.CallToolRequest(
+        method="tools/call",
+        params=types.CallToolRequestParams(name=tool, arguments={}),
+    )
+    return await handler(request)

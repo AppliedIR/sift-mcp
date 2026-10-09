@@ -730,6 +730,9 @@ class Gateway:
             examiner,
         )
         case_at_start = await self.case_at_start(backend_name)
+        from sift_gateway import reference
+
+        ref_case = reference.case_for(backend_name, actual_name)  # as it starts
         _start = time.monotonic()
         try:
             result = await asyncio.wait_for(
@@ -779,11 +782,9 @@ class Gateway:
             await self.record_pending_hashes(backend_name, result, case_at_start)
 
         if not getattr(result, "is_error", False):
-            from sift_gateway import reference
-
             await asyncio.to_thread(
                 reference.record, self._audit, backend_name, backend, actual_name,
-                arguments, result, examiner,
+                arguments, result, examiner, ref_case,
             )  # fmt: skip
         return result
 
