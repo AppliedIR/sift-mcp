@@ -449,6 +449,12 @@ async def get_iocs(request: Request) -> JSONResponse:
     return JSONResponse(await _served(case_dir, "iocs"))
 
 
+def _machines(case_dir: Path) -> int:
+    from sift_common import host_identity
+
+    return len(host_identity.load(case_dir).machines)
+
+
 async def get_summary(request: Request) -> JSONResponse:
     case_dir = _resolve_case_dir()
     if not case_dir:
@@ -487,6 +493,8 @@ async def get_summary(request: Request) -> JSONResponse:
             "evidence": {"total": len(evidence)},
             "todos": {"total": len(todos), "open": open_todos},
             "withdrawn": withdrawn,
+            # machines, as the Hosts tab counts them (host identity), not host texts
+            "hosts": {"machines": await anyio.to_thread.run_sync(_machines, case_dir)},
         }
     )
 
@@ -537,6 +545,22 @@ async def post_delta(request: Request) -> JSONResponse:
     if not poster:
         return JSONResponse({"error": "No examiner identity"}, status_code=401)
 
+    # A page loaded on another case (the active case changed since) never
+    # saves its entries into this one
+    from vhir_cli.case_io import case_id_of
+
+    active = case_id_of(case_dir)
+    if data.get("case_id") != active:
+        return JSONResponse(
+            {
+                "code": "CASE_CHANGED",
+                "error": f"The active case is now {active}, not "
+                f"{data.get('case_id') or 'the one this page loaded'}. Reload the "
+                "page; nothing was saved.",
+            },
+            status_code=409,
+        )
+
     # Symlink protection
     if signing.is_symlink(case_dir):
         return JSONResponse(
@@ -586,6 +610,48 @@ async def delete_delta_item(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "remaining": remaining})
 
 
+def _folder_hashes(case_dir, paths: list[str]) -> tuple[dict[str, str], str]:
+    """A folder's file hashes within a request's time: a completed background
+    hash of an unchanged file is taken; the rest are hashed now up to the
+    inline limit, else in one background job (verify again for its result)."""
+    from sift_common import file_identity as fi
+
+    hashes = {p: h for p in paths if (h := fi.completed_hash(case_dir, p))}
+    batch = fi.hash_files_for_call(
+        [p for p in paths if p not in hashes],
+        case_dir=case_dir,
+        requested_by="portal_verify",
+        inline_limit=fi.INLINE_LIMIT,
+    )
+    hashes.update((p, r.sha256) for p, r in batch.done.items())
+    return hashes, batch.job_id
+
+
+def _verify_folder(case_dir: Path, entry: dict) -> dict:
+    """A folder root verified as `vhir evidence verify` does: its manifest
+    unchanged, and each file in it. Verified when every file is; pending
+    while any is still hashing; failed otherwise."""
+    from collections import Counter
+
+    from vhir_cli.commands import evidence
+
+    results = evidence._verify_folder(case_dir, entry, _folder_hashes)
+    counts = Counter(r["status"] for r in results)
+    status = (
+        "verified" if results and counts["OK"] == len(results)
+        else "pending" if counts["PENDING"]
+        else "failed"
+    )  # fmt: skip
+    return {
+        "path": entry["path"],
+        "kind": "folder",
+        "status": status,
+        "files": len(results),
+        "counts": dict(counts),
+        "not_ok": [r for r in results if r["status"] != "OK"],
+    }
+
+
 async def verify_evidence(request: Request) -> JSONResponse:
     case_dir = _resolve_case_dir()
     if not case_dir:
@@ -606,6 +672,11 @@ async def verify_evidence(request: Request) -> JSONResponse:
         return JSONResponse(
             {"error": f"Not in evidence registry: {req_path}"},
             status_code=404,
+        )
+
+    if entry.get("kind") == "folder":  # file by file against its manifest, as vhir does
+        return JSONResponse(
+            await anyio.to_thread.run_sync(_verify_folder, case_dir, entry)
         )
 
     stored_hash = entry.get("sha256", "")

@@ -49,8 +49,8 @@ def test_one_examiners_save_keeps_the_others_entries(case):
     stored = _items(case)
     assert [e for e in stored if e["staged_by"] == "lab2"] == json.loads(theirs)
     assert [e["id"] for e in stored if e["staged_by"] == "steve"] == ["F-2"]
-    _save(case, [])  # the examiner's own entries are replaced, theirs kept
-    assert _items(case) == json.loads(theirs)
+    _save(case, [])  # a post never drops an entry it doesn't name: DELETE does
+    assert [e["id"] for e in _items(case)] == ["F-1", "F-2"]
 
 
 def test_an_equal_copy_keeps_its_stamps(case):
@@ -130,3 +130,53 @@ def test_a_symlinked_file_is_refused(case, tmp_path):
     r = _save(case, [entry("F-1")])
     assert r.status_code == 403
     assert target.read_text() == "{}"
+
+
+# --- A page loaded on another case, and entries a post doesn't name ---------
+
+
+def test_a_save_for_another_case_is_refused_and_nothing_changes(case):
+    _save(case, [entry("F-1")])
+    before = case.read("pending-reviews.json")
+    r = case.post("/api/delta", {"case_id": "C-OTHER", "items": [entry("F-9")]})
+    assert r.status_code == 409 and r.json()["code"] == "CASE_CHANGED"
+    assert (
+        "The active case is now C-1, not C-OTHER. Reload the page" in r.json()["error"]
+    )
+    assert case.read("pending-reviews.json") == before
+
+
+def test_a_save_naming_no_case_is_refused(case):
+    r = case.post("/api/delta", {"items": [entry("F-1")]})
+    assert r.status_code == 409 and r.json()["code"] == "CASE_CHANGED"
+    assert case.read("pending-reviews.json") is None
+
+
+def test_a_save_keeps_the_posters_entries_it_doesnt_name(case):
+    _save(case, [entry("F-1"), entry("F-2")])
+    _save(case, [dict(entry("F-2"), action="reject")])  # a page that knew of F-2 only
+    assert [(e["id"], e["action"]) for e in _items(case)] == [
+        ("F-1", "approve"),
+        ("F-2", "reject"),
+    ]
+
+
+def test_a_page_left_open_on_x_never_writes_into_y(case, tmp_path, monkeypatch):
+    """The active case switches from X to Y while a page is open on X: its
+    save is refused, Y keeps its own entry, and X gets nothing."""
+    x, y = case.dir, tmp_path / "C-Y"
+    y.mkdir()
+    (y / "CASE.yaml").write_text("case_id: C-Y\n")
+    (y / "findings.json").write_text("[]")
+    staged = dict(entry("F-steve-101"), staged_by="steve")
+    (y / "pending-reviews.json").write_text(
+        json.dumps({"case_id": "C-Y", "items": [staged]})
+    )
+    loaded = case.get("/api/delta").json()  # the page, on X
+    loaded.setdefault("case_id", "C-1")
+    loaded["items"].append(entry("F-1"))
+    monkeypatch.setenv("VHIR_CASE_DIR", str(y))  # the case is switched
+    r = case.post("/api/delta", loaded)
+    assert r.status_code == 409
+    assert json.loads((y / "pending-reviews.json").read_text())["items"] == [staged]
+    assert not (x / "pending-reviews.json").exists()

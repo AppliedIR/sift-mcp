@@ -268,19 +268,28 @@ def _load_delta_locked(case_dir: Path) -> dict:
     return delta
 
 
+def _own_key(entry: dict) -> tuple:
+    # one decision per id; TODO entries are kept each
+    clean = stripped(entry)
+    todo = str(clean.get("action")).lower() == "todo"
+    return (clean.get("id"), json.dumps(clean, sort_keys=True) if todo else "")
+
+
 def merge_post(stored: list[dict], posted: list[dict], poster: str):
-    """The stored entries after `poster` posts `posted`: the poster's own
-    entries are replaced by the posted ones; everyone else's, and entries
-    with no `staged_by`, are kept as they are. A posted copy equal to a
-    stored entry of the poster's keeps its stamps; any other posted entry of
-    the poster's is stamped as theirs. A posted entry carrying someone
-    else's `staged_by`, or equal to an unstamped stored entry, is dropped.
-    Returns (entries, dropped)."""
+    """The stored entries after `poster` posts `posted`: a posted entry of
+    the poster's replaces their stored one for the same id (a TODO is kept
+    each); their stored entries the post doesn't name are kept, as is
+    everyone else's and any with no `staged_by` (an entry leaves only by
+    DELETE or by being signed). A posted copy equal to a stored entry of the
+    poster's keeps its stamps; any other posted entry of the poster's is
+    stamped as theirs. A posted entry carrying someone else's `staged_by`,
+    or equal to an unstamped stored entry, is dropped. Returns (entries,
+    dropped)."""
     kept = [s for s in stored if s.get("staged_by") != poster]
     unknown = [stripped(s) for s in stored if not s.get("staged_by")]
     mine = [s for s in stored if s.get("staged_by") == poster]
     dropped: list[dict] = []
-    own: dict[tuple, dict] = {}
+    own: dict[tuple, dict] = {_own_key(s): s for s in mine}
     for p in posted:
         who = p.get("staged_by")
         if who not in (None, "", poster):
@@ -291,10 +300,7 @@ def merge_post(stored: list[dict], posted: list[dict], poster: str):
             dropped.append({"id": p.get("id"), "staged_by": None})
             continue
         same = next((s for s in mine if stripped(s) == clean), None)
-        # one decision per id (the last posted); TODO entries are kept each
-        todo = str(clean.get("action")).lower() == "todo"
-        key = (clean.get("id"), json.dumps(clean, sort_keys=True) if todo else "")
-        own[key] = same if same is not None else {**clean, "staged_by": poster}
+        own[_own_key(p)] = same if same is not None else {**clean, "staged_by": poster}
     return kept + list(own.values()), dropped
 
 

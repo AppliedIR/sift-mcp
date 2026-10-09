@@ -3626,7 +3626,9 @@ function renderDashboard(summary) {
   }
   html += tile('Findings', total, draft + ' draft \u00B7 ' + approved + ' approved', 'findings');
   html += tile('Timeline', tlTotal, tlDraft + ' draft \u00B7 ' + (tlByStatus.APPROVED||0) + ' curated', 'timeline');
-  html += tile('Hosts', hostSet.size, 'impacted systems', 'hosts');
+  // the case's machines, as the Hosts tab counts them; a finding's host text isn't one
+  var machines = (summary.hosts || {}).machines;
+  html += tile('Hosts', machines === undefined ? hostSet.size : machines, 'machines in the case', 'hosts');
   html += tile('Accounts', acctSet.size, 'involved accounts', 'accounts');
   html += tile('Evidence', evTotal, 'registered files', 'evidence');
   html += tile('TODOs', openTodos, totalTodos + ' total', 'todos');
@@ -3801,10 +3803,15 @@ async function verifyEvidence(idx) {
   try {
     const result = await apiFetch('/api/evidence/' + encodeURIComponent(ev.path || '') + '/verify', { method: 'POST' });
     if (!cell) return;
+    // a folder root: verified file by file, its counts shown
+    var of = result.kind === 'folder' ? ' (' + (result.files || 0) + ' files' +
+      (result.status === 'failed' ? ', ' + ((result.not_ok || []).length) + ' not OK' : '') + ')' : '';
     if (result.status === 'verified') {
-      cell.innerHTML = '<span class="verify-ok">Verified</span>';
+      cell.innerHTML = '<span class="verify-ok">Verified' + escapeHtml(of) + '</span>';
     } else if (result.status === 'failed') {
-      cell.innerHTML = '<span class="verify-fail">FAILED</span>';
+      cell.innerHTML = '<span class="verify-fail">FAILED' + escapeHtml(of) + '</span>';
+    } else if (result.status === 'pending') {
+      cell.innerHTML = '<span style="color:var(--text-muted)">Hashing' + escapeHtml(of) + '; verify again shortly</span>';
     } else {
       cell.innerHTML = '<span style="color:var(--text-muted)">' + escapeHtml(result.status) + '</span>';
     }
