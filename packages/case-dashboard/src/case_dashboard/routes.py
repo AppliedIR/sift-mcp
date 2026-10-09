@@ -423,6 +423,11 @@ async def get_case(request: Request) -> JSONResponse:
         logger.error("Corrupt CASE.yaml: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
     out = dict(meta) if isinstance(meta, dict) else {}
+    # the case id a staged-review save is checked against (the folder's name
+    # when CASE.yaml names none)
+    from vhir_cli.case_io import case_id_of
+
+    out["case_id"] = case_id_of(case_dir)
     # who signs here, the active key's fingerprint, and the case's keys and heads
     out["signing"] = signing.signing_state(
         getattr(request.state, "examiner", None), case_dir
@@ -645,11 +650,10 @@ def _verify_folder(case_dir: Path, entry: dict) -> dict:
 
     results = evidence._verify_folder(case_dir, entry, _folder_hashes)
     counts = Counter(r["status"] for r in results)
-    status = (
-        "verified" if results and counts["OK"] == len(results)
-        else "pending" if counts["PENDING"]
-        else "failed"
-    )  # fmt: skip
+    # a change found is never hidden behind files still hashing; an empty
+    # folder (registered with no files) has nothing that differs
+    bad = counts["MODIFIED"] + counts["MISSING"] + counts["ERROR"]
+    status = "failed" if bad else "pending" if counts["PENDING"] else "verified"
     return {
         "path": entry["path"],
         "kind": "folder",
@@ -657,6 +661,7 @@ def _verify_folder(case_dir: Path, entry: dict) -> dict:
         "files": len(results),
         "counts": dict(counts),
         "not_ok": [r for r in results if r["status"] != "OK"],
+        **({"note": "registered with no files"} if not results else {}),
     }
 
 

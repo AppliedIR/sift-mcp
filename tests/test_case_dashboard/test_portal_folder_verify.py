@@ -78,9 +78,21 @@ def test_the_page_shows_a_folder_s_result_with_its_count():
 
     shown = {}
     for result in (
-        {"kind": "folder", "status": "verified", "files": 2},
-        {"kind": "folder", "status": "failed", "files": 2, "not_ok": [{}]},
-        {"kind": "folder", "status": "pending", "files": 2},
+        {"kind": "folder", "status": "verified", "files": 2, "counts": {"OK": 2}},
+        {
+            "kind": "folder",
+            "status": "failed",
+            "files": 2,
+            "counts": {"MODIFIED": 1, "PENDING": 1},
+        },
+        {"kind": "folder", "status": "pending", "files": 2, "counts": {"PENDING": 2}},
+        {
+            "kind": "folder",
+            "status": "verified",
+            "files": 0,
+            "counts": {},
+            "note": "registered with no files",
+        },
     ):
         script = (
             "var cell = {innerHTML: ''}; var evidenceData = [{path: '/e/kape'}];"
@@ -95,10 +107,13 @@ def test_the_page_shows_a_folder_s_result_with_its_count():
             [node, "-e", script], capture_output=True, text=True, timeout=60
         )
         assert out.returncode == 0, out.stderr[-500:]
-        shown[result["status"]] = out.stdout
-    assert ">Verified (2 files)<" in shown["verified"]
-    assert ">FAILED (2 files, 1 not OK)<" in shown["failed"]
-    assert "Hashing (2 files); verify again shortly" in shown["pending"]
+        shown[result["status"] + str(result["files"])] = out.stdout
+    assert ">Verified (2 files)<" in shown["verified2"]
+    assert ">FAILED (2 files, 1 not OK, 1 still hashing)<" in shown["failed2"]
+    assert (
+        "Hashing (2 files, 2 still hashing); verify again shortly" in shown["pending2"]
+    )
+    assert ">Verified (0 files: registered with no files)<" in shown["verified0"]
     assert "Error" not in "".join(shown.values())
 
 
@@ -177,3 +192,32 @@ def test_a_verify_reads_the_job_log_once_for_all_its_files(
     monkeypatch.setattr(large, "_completed_rows", counted)
     verify(portal, kape["path"])
     assert len(reads) == 1  # not once per file
+
+
+def test_a_change_found_is_never_hidden_behind_files_still_hashing(
+    portal, kape, large, monkeypatch
+):
+    """One member changed (hashed now), another still hashing: failed, with
+    the change named and the pending count shown."""
+    small = Path(kape["path"]) / "Security.evtx"
+    with open(small, "ab") as f:
+        f.write(b"tampered")
+    monkeypatch.setattr(large, "INLINE_LIMIT", small.stat().st_size)  # only it, now
+    body = verify(portal, kape["path"]).json()
+    assert body["status"] == "failed"
+    assert body["counts"] == {"MODIFIED": 1, "PENDING": 1}
+    assert [(Path(r["path"]).name, r["status"]) for r in body["not_ok"]] == [
+        ("Security.evtx", "MODIFIED"),
+        ("System.evtx", "PENDING"),
+    ]
+
+
+def test_an_empty_folder_root_verifies_with_a_note(portal):
+    empty = portal.dir / "evidence" / "empty"
+    empty.mkdir(parents=True)
+    portal.write("findings.json", [])
+    entry = register_evidence_data(portal.dir, str(empty), "steve")
+    body = verify(portal, entry["path"]).json()
+    assert (body["status"], body["files"], body["note"]) == (
+        "verified", 0, "registered with no files",
+    )  # fmt: skip

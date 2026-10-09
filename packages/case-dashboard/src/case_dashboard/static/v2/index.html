@@ -3804,8 +3804,12 @@ async function verifyEvidence(idx) {
     const result = await apiFetch('/api/evidence/' + encodeURIComponent(ev.path || '') + '/verify', { method: 'POST' });
     if (!cell) return;
     // a folder root: verified file by file, its counts shown
+    var c = result.counts || {};
+    var bad = (c.MODIFIED || 0) + (c.MISSING || 0) + (c.ERROR || 0);
     var of = result.kind === 'folder' ? ' (' + (result.files || 0) + ' files' +
-      (result.status === 'failed' ? ', ' + ((result.not_ok || []).length) + ' not OK' : '') + ')' : '';
+      (result.status === 'failed' ? ', ' + bad + ' not OK' : '') +
+      (c.PENDING ? ', ' + c.PENDING + ' still hashing' : '') +
+      (result.note ? ': ' + result.note : '') + ')' : '';
     if (result.status === 'verified') {
       cell.innerHTML = '<span class="verify-ok">Verified' + escapeHtml(of) + '</span>';
     } else if (result.status === 'failed') {

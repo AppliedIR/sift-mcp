@@ -180,3 +180,11 @@ def test_a_page_left_open_on_x_never_writes_into_y(case, tmp_path, monkeypatch):
     assert r.status_code == 409
     assert json.loads((y / "pending-reviews.json").read_text())["items"] == [staged]
     assert not (x / "pending-reviews.json").exists()
+
+
+def test_a_case_whose_case_yaml_names_no_id_still_saves(case):
+    (case.dir / "CASE.yaml").write_text("name: no id here\n")
+    case_id = case.get("/api/case").json()["case_id"]
+    assert case_id == case.dir.name  # the folder's name, as the server's own rule
+    r = case.post("/api/delta", {"case_id": case_id, "items": [entry("F-1")]})
+    assert r.status_code == 200, r.text
