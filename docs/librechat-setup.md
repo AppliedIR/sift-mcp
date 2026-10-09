@@ -14,12 +14,13 @@ essential for correct setup.
 
 **Standard mode** uses the `modelSpecs` preset. The `promptPrefix` injects
 forensic discipline as a system prompt every request. All tool definitions
-load into every request context. Simpler but heavier (~51K tokens of tool
-schemas per turn with 64 tools).
+load into every request context. Simpler but heavier: the tool schemas take
+a large share of each turn's context (the
+[tool counts per backend](../README.md) add up).
 
 **Agents mode (recommended)** uses Agent Instructions configured in the UI.
-Tool Search and deferred loading reduce per-turn context from ~51K to ~5K
-tokens. The `promptPrefix` from modelSpecs is NOT used in Agents mode —
+Tool Search and deferred loading keep most tool schemas out of each turn's
+context until they're needed. The `promptPrefix` from modelSpecs is NOT used in Agents mode —
 agents have a separate prompt pipeline.
 
 In Agents mode, the LLM receives context from three tiers:
@@ -305,12 +306,12 @@ loading is the biggest performance lever for LibreChat.
    - Max context tokens: 200000
    - Max Agent Steps: 75
 
-**Why this matters:** Without deferred loading, 64 tool definitions
-(~800 tokens each = ~51K tokens) load into every request. With deferred
-loading, only 6 core tools load (~5K tokens) and the rest are discovered
-on demand via Tool Search. That recovers 23% of the context window.
-With `promptCache`, all system content (~7K tokens) is cached at 90%
-discount after turn 1.
+**Why this matters:** Without deferred loading, every backend's tool
+definitions load into every request, and they take a large share of the
+context window (see the [tool counts per backend](../README.md)). With
+deferred loading, only the 6 core tools load and the rest are discovered on
+demand via Tool Search. With `promptCache`, all system content is cached at
+a 90% discount after turn 1.
 
 ## Agent Instructions
 
