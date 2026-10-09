@@ -114,7 +114,9 @@ def test_a_command_that_switches_cases_and_times_out_stays_in_its_case(tmp_path,
     _point(home, a)
     r = _run(tmp_path, _switch_to(b, home) + "import time; time.sleep(30)\n", timeout=2)
     assert r["success"] is False
-    assert [e["audit_id"] for e in _entries(a)] == [r["audit_id"]]
+    assert [(e["audit_id"], e["case_id"]) for e in _entries(a)] == [
+        (r["audit_id"], "case-a")
+    ]
     assert _only_own_001(b)
 
 

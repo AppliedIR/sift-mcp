@@ -300,11 +300,14 @@ class AuditWriter:
         The directory is resolved once: the id is minted for it (when not
         given) and the entry is written to it, so a case switch can't put one
         case's id into another. `case_dir` is the case the caller resolved
-        when its operation started ("" for none): the entry goes there.
+        when its operation started ("" for none): the entry goes there, with
+        that case's id.
         """
         audit_dir = self._get_audit_dir(case_dir)
         if not audit_dir:
             return None
+        if not case_id and case_dir:
+            case_id = _case_id_of(case_dir)
         if audit_id is None:
             audit_id = self._next_audit_id(audit_dir)
 
@@ -414,6 +417,20 @@ class AuditWriter:
         if audit_dir:
             seq_file = audit_dir / f"{self.mcp_name}.seq"
             seq_file.unlink(missing_ok=True)
+
+
+def _case_id_of(case_dir: str | Path) -> str:
+    """A case's id: its CASE.yaml case_id, else its folder's name."""
+    import yaml
+
+    try:
+        meta = yaml.safe_load((Path(case_dir) / "CASE.yaml").read_text())
+        if isinstance(meta, dict) and isinstance(meta.get("case_id"), str):
+            if meta["case_id"].strip():
+                return meta["case_id"].strip()
+    except (OSError, ValueError, yaml.YAMLError) as e:
+        logger.debug("No case_id in %s/CASE.yaml: %s", case_dir, e)
+    return Path(case_dir).name
 
 
 def _summarize(result: Any) -> Any:

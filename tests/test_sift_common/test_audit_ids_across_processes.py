@@ -184,3 +184,23 @@ def test_an_entry_gets_its_id_from_the_case_it_is_written_to(
     AuditWriter(NAME).log(tool="t", params={}, result_summary="x")
     ids = _ids(case)
     assert len(ids) == 3 and len(set(ids)) == 3, ids
+
+
+@pytest.mark.parametrize(
+    "case_yaml, expected",
+    [
+        ("case_id: INC-7\n", "INC-7"),
+        ("case_id: [x\n", "case-b"),  # malformed: the folder's name
+        ("name: no id\n", "case-b"),
+    ],
+    ids=["its case_id", "malformed CASE.yaml", "no case_id"],
+)
+def test_an_entry_for_a_given_case_carries_that_cases_id(
+    case, tmp_path, case_yaml, expected
+):
+    other = tmp_path / "case-b"
+    other.mkdir()
+    (other / "CASE.yaml").write_text(case_yaml)
+    AuditWriter(NAME).log(tool="t", params={}, result_summary="x", case_dir=other)
+    log = other / "audit" / f"{NAME}.jsonl"
+    assert json.loads(log.read_text())["case_id"] == expected

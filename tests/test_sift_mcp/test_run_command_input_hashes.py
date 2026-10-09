@@ -127,7 +127,7 @@ def test_a_case_switch_during_the_command_moves_nothing(case, tmp_path):
         for x in (case / "audit" / "sift-mcp.jsonl").read_text().splitlines()
     ]
     out = Path(entry["result_summary"]["output_file"])
-    assert entry["audit_id"] == resp["audit_id"]
+    assert entry["audit_id"] == resp["audit_id"] and entry["case_id"] == "case-a"
     assert out.parent == case / "extractions" / entry["audit_id"], out
     assert out.read_bytes() == b"PID 4 System\n"
     assert not (b / "audit").exists() and not (b / "extractions").exists()
