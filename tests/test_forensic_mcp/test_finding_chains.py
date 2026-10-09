@@ -684,7 +684,7 @@ def test_threat_intel_is_kept_out_of_the_findings_grade(c):
         [
             {"content": "evil.example.com", "audit_id": "sift-tester-20261009-002"},
             {
-                "content": '"labels": ["c2"]',
+                "content": "c2",  # a value as returned, never the JSON text
                 "audit_id": "opencti-tester-20261009-001",
                 "source": "OpenCTI",
             },
@@ -1406,3 +1406,38 @@ def test_a_summary_with_records_it_cant_trace_is_never_full(c, counts, kind, sai
     res, st = c.find([{"content": "120", "audit_id": aid}])
     assert g(res, st)[:2] == ("BROKEN", kind), g(res, st)
     assert said in st["artifacts"][0]["provenance_reason"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [r"C:\Windows\System32\evil.exe", 'cmd /c "whoami /all"'],
+    ids=["a Windows path", "a quote mark in a value"],
+)
+def test_a_quote_is_matched_against_the_decoded_response(c, value):
+    """JSON escapes backslashes and quote marks: the quote is checked against
+    the values as returned, never the escaped text."""
+    _ingested_samples(c)
+    doc = _doc("d2", "opensearch-ingest-7-20261009-012", **{"process.cmd": value})
+    aid = _search(c, [doc])
+    res, st = c.find([{"content": value, "audit_id": aid}])
+    assert g(res, st)[0] == "FULL", g(res, st)
+
+
+def test_a_summarys_quote_is_matched_against_its_decoded_response(c):
+    _ingested_samples(c)
+    aid = _summary(c, "opensearch-tester-20261009-071",
+                   {"top": [{"key": r"C:\Windows\evil.exe", "count": 3}]})  # fmt: skip
+    res, st = c.find([{"content": r"C:\Windows\evil.exe", "audit_id": aid}])
+    assert g(res, st)[0] == "FULL", g(res, st)
+
+
+def test_a_reference_responses_quote_is_matched_decoded(c):
+    resp = c.file("extractions/opencti-2.json",
+                  json.dumps({"ioc": r"C:\Users\Public\evil.exe", "labels": ["c2"]}))  # fmt: skip
+    c.op("opencti-mcp", "opencti-tester-20261009-002", tool="lookup_ioc",
+         params={"ioc": "evil.exe"}, result_summary="found",
+         reference={"source": "opencti", "source_version": "6.4",
+                    "response": {"path": resp, "sha256": sha(resp)}})  # fmt: skip
+    res, st = c.find([{"content": r"C:\Users\Public\evil.exe",
+                       "audit_id": "opencti-tester-20261009-002"}])  # fmt: skip
+    assert g(res, st)[:2] == ("BROKEN", "reference"), g(res, st)

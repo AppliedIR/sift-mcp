@@ -523,6 +523,28 @@ def _saved(path, sha256) -> str | None:
     return _norm(data.decode("utf-8", errors="replace"))
 
 
+def _saved_values(path, sha256) -> list[str] | None:
+    """A saved response's values as returned: the JSON decoded, every value
+    normalized; the text itself when it isn't JSON. None when it's missing or
+    no longer has its recorded SHA-256. Never the JSON-escaped text."""
+    try:
+        data = Path(path).read_bytes()
+    except (OSError, TypeError):
+        return None
+    if not sha256 or hashlib.sha256(data).hexdigest() != sha256:
+        return None
+    text = data.decode("utf-8", errors="replace")
+    try:
+        decoded = json.loads(text)
+    except ValueError:
+        return [_norm(text)]
+    return [v for _f, v in _flat(decoded)]
+
+
+def _in_values(quote: list[str], values: list[str]) -> bool:
+    return all(any(q in v for v in values) for q in quote)
+
+
 def _unverified(why: str, links=()) -> Trace:
     return Trace("CITED-UNVERIFIED", links=list(links), reason=why,
                  break_={"kind": "cited-unverified", "detail": why,
@@ -591,8 +613,8 @@ def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
     quote = _quote_lines(content)
     if isinstance(e.get("reference"), dict):
         resp = e["reference"].get("response") or {}
-        text = _saved(resp.get("path"), resp.get("sha256")) if resp else None
-        if resp and (text is None or not all(q in text for q in quote)):
+        values = _saved_values(resp.get("path"), resp.get("sha256")) if resp else None
+        if resp and (values is None or not _in_values(quote, values)):
             return _unverified(f"the quote isn't in {audit_id}'s saved response")
         return _reference(case, e, line)
     params = e.get("params") if isinstance(e.get("params"), dict) else {}
@@ -620,12 +642,12 @@ def _trace_query(
         return _broken("no-results-recorded", f"{aid} recorded no results to follow",
                        "run the query again and cite that")  # fmt: skip
     resp = e.get("response") if isinstance(e.get("response"), dict) else {}
-    text = _saved(resp.get("path"), resp.get("sha256"))
-    if text is None:
+    values = _saved_values(resp.get("path"), resp.get("sha256"))
+    if values is None:
         return _unverified(
             f"{aid}'s saved response is missing or changed since the query"
         )
-    if not all(q in text for q in quote):
+    if not _in_values(quote, values):
         return _unverified(f"the quote isn't in what {aid} returned")
     if docs and e.get("tool") != "idx_list_detections":
         return _match_back(case, e, line, docs, quote)
