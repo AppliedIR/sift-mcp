@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -83,8 +84,56 @@ def _broken(kind: str, detail: str, fix: str = "", reason: str = "", links=()) -
                  break_={"kind": kind, "detail": detail, "fix": fix})  # fmt: skip
 
 
+def _link(method: str, frm: dict, to: dict, entry=None, line=b"") -> dict:
+    return {"method": method, "audit_id": (entry or {}).get("audit_id", ""),
+            "entry_sha256": entry_sha256(line) if line else "", "from": frm, "to": to}  # fmt: skip
+
+
+def _manifest_rows(case: Case, folder: dict) -> list[dict]:
+    """A folder root's manifest rows; none when it's missing or no longer has
+    the hash recorded at registration."""
+    try:
+        data = (case.dir / folder["manifest_path"]).read_bytes()
+        if hashlib.sha256(data).hexdigest() != folder.get("manifest_sha256"):
+            return []
+        rows = json.loads(data)["files"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    return [r for r in rows if isinstance(r, dict)]
+
+
+def _registered(case: Case, real: str, sha256: str) -> Trace | None:
+    """FULL when the file is a registered root, by its path (the registry's
+    hash; the file isn't read), or listed in a registered folder's manifest."""
+    frm = {"path": real, "sha256": sha256}
+    for r in case.roots:
+        if r.get("kind") != "folder" and r["path"] == real:
+            root = {"path": real, "sha256": r.get("sha256", "")}
+            to = {"path": real, "sha256": root["sha256"]}
+            return Trace("FULL", root, [root], [_link("registered-path", frm, to)])
+    rel = os.path.relpath(real, case.dir.resolve())
+    for r in case.roots:
+        if r.get("kind") == "folder" and real.startswith(r["path"] + os.sep):
+            row = next(
+                (x for x in _manifest_rows(case, r) if x.get("path") == rel), None
+            )
+            if row:
+                root = {
+                    "path": real,
+                    "sha256": row.get("sha256", ""),
+                    "folder": r["path"],
+                }
+                to = {"path": real, "sha256": root["sha256"]}
+                return Trace("FULL", root, [root], [_link("manifest", frm, to)])
+    return None
+
+
 def trace_file(case: Case, path, sha256: str | None = None) -> Trace:
     """The registered evidence a file came from."""
+    real = os.path.realpath(path)
+    found = _registered(case, real, sha256 or "")
+    if found:
+        return found
     return _broken("no-recorded-origin", f"{path} (SHA-256 {sha256 or 'not recorded'}) "
                    "has no recorded origin", _FIX_ORIGIN, NO_ORIGIN)  # fmt: skip
 

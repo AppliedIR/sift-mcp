@@ -60,3 +60,43 @@ def test_a_file_with_no_recorded_origin_is_a_named_break_with_a_fix(c):
 
 def test_an_entry_line_hash_is_the_sha256_of_its_bytes():
     assert pv.entry_sha256(b'{"a": 1}') == hashlib.sha256(b'{"a": 1}').hexdigest()
+
+
+def test_a_registered_file_links_by_its_path_with_the_registry_hash(c, tmp_path):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    root = c.register(z)
+    with open(z, "w") as f:
+        f.write(
+            "changed after registration"
+        )  # not re-hashed: that's the approval check's
+    link = tmp_path / "via-link.7z"
+    link.symlink_to(z)
+    for p in (z, str(link)):
+        t = pv.trace_file(pv.load_case(c.d), p, "")
+        assert t.grade == "FULL" and t.root["path"] == root["path"], t
+        assert t.root["sha256"] == root["sha256"] and t.roots == [t.root]
+        (first,) = t.links
+        assert first["method"] == "registered-path"
+        assert first["to"] == {"path": root["path"], "sha256": root["sha256"]}
+
+
+def test_a_file_in_a_registered_folders_manifest_links_by_the_manifest(c):
+    f1 = c.file(
+        "evidence/kape/C/Windows/System32/winevt/Logs/System.evtx", "system evtx"
+    )
+    folder = c.register_folder(str(c.d / "evidence/kape"))
+    t = pv.trace_file(pv.load_case(c.d), f1, sha(f1))
+    assert t.grade == "FULL" and t.root["sha256"] == sha(f1), t
+    assert t.root["path"] == f1 and t.root["folder"] == folder["path"]
+    assert [link["method"] for link in t.links] == ["manifest"]
+
+
+def test_a_folder_file_outside_its_manifest_or_behind_a_changed_one_doesnt_link(c):
+    f1 = c.file("evidence/kape/a.evtx", "a")
+    folder = c.register_folder(str(c.d / "evidence/kape"))
+    late = c.file("evidence/kape/late.evtx", "added later")
+    case = pv.load_case(c.d)
+    assert pv.trace_file(case, late, sha(late)).break_["kind"] == "no-recorded-origin"
+    manifest = c.d / folder["manifest_path"]
+    manifest.write_bytes(manifest.read_bytes() + b" ")
+    assert pv.trace_file(pv.load_case(c.d), f1, sha(f1)).grade == "BROKEN"
