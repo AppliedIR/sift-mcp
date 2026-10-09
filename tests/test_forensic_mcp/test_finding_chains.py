@@ -1526,3 +1526,61 @@ def test_the_library_never_crashes_on_a_placeholder_quote(c, op):
                                **{"process.name": "evil.exe"})])  # fmt: skip
     t = pv.trace_artifact(pv.load_case(c.d), aid, "...")
     assert t.grade == "CITED-UNVERIFIED", t.as_dict()
+
+
+# --- an enrichment step is the one its record names, for the group matched -----
+
+
+def _enriched_search(c, records):
+    """records: [(doc, {"triage": op} / {"threat_intel": [ops]})]: each returned
+    record with the enrichment steps its own result_docs entry names."""
+    aid = "opensearch-tester-20261009-080"
+    resp = c.file(f"extractions/{aid}/response.json",
+                  json.dumps({"results": [d for d, _g in records]}))  # fmt: skip
+    c.op("opensearch-mcp", aid, tool="idx_search",
+         params={"query": "x", "result_ingests": ["opensearch-ingest-7-20261009-012"],
+                 "result_docs": [{"_index": d["_index"], "_id": d["_id"],
+                                  "ingest_audit_id": d["vhir.ingest_audit_id"],
+                                  "content_hash": "", "original_sha256": "",
+                                  **({"enrichment": g} if g else {})}
+                                 for d, g in records]},
+         result_summary="2", response={"path": resp, "sha256": sha(resp)})  # fmt: skip
+    return aid
+
+
+def test_a_triage_quote_isnt_satisfied_by_a_threat_intel_step(c):
+    _ingested_samples(c)
+    _enrich(c, "opensearch-tester-20261009-051")  # a threat-intel step, recorded
+    doc = _doc("d2", "opensearch-ingest-7-20261009-012",
+               **{"triage.verdict": "SUSPICIOUS", "threat_intel.hits": 0})  # fmt: skip
+    aid = _enriched_search(
+        c, [(doc, {"threat_intel": ["opensearch-tester-20261009-051"]})]
+    )
+    res, st = c.find([{"content": "SUSPICIOUS", "audit_id": aid}])
+    assert g(res, st)[:2] == ("BROKEN", "reference-not-recorded"), g(res, st)
+
+
+def test_one_records_step_never_covers_anothers_missing_one(c):
+    _ingested_samples(c)
+    _enrich(c)  # opensearch-tester-20261009-050
+    a = _doc(
+        "d1", "opensearch-ingest-7-20261009-012", **{"triage.verdict": "SUSPICIOUS"}
+    )
+    b = _doc(
+        "d2", "opensearch-ingest-7-20261009-012", **{"triage.verdict": "MALICIOUS"}
+    )
+    aid = _enriched_search(c, [(a, {"triage": "opensearch-tester-20261009-050"}),
+                               (b, None)])  # fmt: skip
+    res, st = c.find([{"content": "SUSPICIOUS\nMALICIOUS", "audit_id": aid}])
+    assert g(res, st)[:2] == ("BROKEN", "reference-not-recorded"), g(res, st)
+    assert "d2" in st["artifacts"][0]["provenance_reason"]
+
+
+def test_an_enrichment_step_whose_id_is_on_two_entries_is_ambiguous(c):
+    _ingested_samples(c)
+    _enrich(c)
+    c.op("sift-mcp", "opensearch-tester-20261009-050", tool="run_command")  # same id
+    docs, groups = _triaged("opensearch-tester-20261009-050")
+    aid = _search(c, docs, groups=groups)
+    res, st = c.find([{"content": "SUSPICIOUS", "audit_id": aid}])
+    assert g(res, st)[0] == "AMBIGUOUS", g(res, st)

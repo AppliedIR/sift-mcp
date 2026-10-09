@@ -739,7 +739,7 @@ def _match_back(
         else [returned]
     )
     by_key = {(d.get("_index"), d.get("_id")): d for d in docs}
-    followed, enrichment = {}, {}
+    followed, enriched = {}, {}  # enriched: record -> the groups its lines matched
     for q in quote:
         hits = [
             (r, f)
@@ -756,42 +756,47 @@ def _match_back(
             if d is None:
                 return _broken("no-results-recorded", f"{e['audit_id']} didn't record the "
                                f"record {r.get('_id')} it returned")  # fmt: skip
-            followed[(d.get("_index"), d.get("_id"))] = d
+            key = (d.get("_index"), d.get("_id"))
+            followed[key] = d
             if not ev:
-                enrichment[(d.get("_index"), d.get("_id"))] = d
+                enriched.setdefault(key, set()).update(
+                    f.split(".")[0] for hit, f in hits if hit is r
+                )
     t = _follow(
         case, e, line, [(d.get("ingest_audit_id", ""), d) for d in followed.values()]
     )
-    ops = list(dict.fromkeys(op for d in enrichment.values()
-                             for op in _enrichment_ops(d.get("enrichment"))))  # fmt: skip
-    if enrichment and not ops:
-        return _broken("reference-not-recorded", f"{e['audit_id']}: the quote is "
-                       "enrichment data that names no operation", links=t.links)  # fmt: skip
     notes = []
-    for op in ops:
-        found = case.by_id.get(op) or []
-        if not found:
-            return _broken("reference-not-recorded", f"{e['audit_id']}: the quote is "
-                           f"enrichment data from {op}, which isn't recorded",
-                           "enrich again, then query and cite that", links=t.links)  # fmt: skip
-        link = _reference_link(*found[0])
-        t.links.append(link)
-        ref = link["reference"]
-        notes.append(f"reference: {ref['source'] or found[0][0].get('tool', '')}, "
-                     f"{ref['source_version'] or 'version not recorded'}, op {op}")  # fmt: skip
+    for key, groups in enriched.items():  # each record's own steps, per group matched
+        d = followed[key]
+        for group in sorted(groups):
+            ops = _group_ops(d.get("enrichment"), group)
+            if not ops:
+                return _broken("reference-not-recorded", f"{e['audit_id']}: record "
+                               f"{d.get('_id')}'s {group} data names no step that wrote it",
+                               links=t.links)  # fmt: skip
+            for op in ops:
+                found = case.by_id.get(op) or []
+                if not found:
+                    return _broken("reference-not-recorded", f"{e['audit_id']}: record "
+                                   f"{d.get('_id')}'s {group} data is from {op}, which "
+                                   "isn't recorded", "enrich again, then query and cite that",
+                                   links=t.links)  # fmt: skip
+                if (twice := _one_entry(case, op)) is not None:
+                    return twice
+                link = _reference_link(*found[0])
+                t.links.append(link)
+                ref = link["reference"]
+                notes.append(f"reference: {ref['source'] or found[0][0].get('tool', '')}, "
+                             f"{ref['source_version'] or 'version not recorded'}, op {op}")  # fmt: skip
     if notes:
         t.reason = "; ".join([t.reason, *notes] if t.reason else notes)
     return t
 
 
-def _enrichment_ops(groups) -> list[str]:
-    if not isinstance(groups, dict):
-        return []
-    ops = []
-    for k in _ENRICHMENT:
-        v = groups.get(k)
-        ops += [v] if isinstance(v, str) else [x for x in v or [] if isinstance(x, str)]
-    return ops
+def _group_ops(groups, group: str) -> list[str]:
+    """The step ids a returned record names for one enrichment group."""
+    v = groups.get(group) if isinstance(groups, dict) else None
+    return [v] if isinstance(v, str) else [x for x in v or [] if isinstance(x, str)]
 
 
 def _follow(case: Case, e: dict, line: bytes, follow: list) -> Trace:
