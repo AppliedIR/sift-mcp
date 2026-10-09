@@ -6,6 +6,7 @@ ran. Payloads have the shape Claude Code sends. Values are synthetic."""
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -94,14 +95,17 @@ def test_the_guard_records_its_refusal_and_the_record_stays(tmp_path):
     assert entry["event"] == "refused" and entry["command"] == "rm findings.json"
     assert entry["reason"] == "rm on findings.json" and "audit_id" not in entry
     assert (case / "findings.json").read_text() == "[]\n"
-    # an audit id the hook mints later doesn't count the refusal
+    # the hook's entry after it has its own id; the refusal has none
     _hook(
         "forensic-audit.sh",
         _payload("PostToolUse", "ls", case, tool_response="x"),
         tmp_path,
         case,
     )
-    assert _lines(case)[-1]["audit_id"].endswith("-001")
+    ids = [e.get("audit_id") for e in _lines(case)]
+    assert ids[0] is None and re.match(
+        r"^hook-[a-z0-9-]+-[0-9]{8}-[0-9a-z]{26}\Z", ids[1]
+    )
 
 
 def test_an_allowed_command_writes_nothing_from_the_guard(tmp_path):

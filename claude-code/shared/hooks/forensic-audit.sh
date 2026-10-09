@@ -75,14 +75,11 @@ mkdir -p "$AUDIT_DIR" 2>/dev/null || exit 0
 
 AUDIT_FILE="$AUDIT_DIR/claude-code.jsonl"
 
-# 5. Generate audit_id with sequence number
-SEQ=1
-if [ -f "$AUDIT_FILE" ]; then
-    EXISTING=$(grep -c '"hook-' "$AUDIT_FILE" 2>/dev/null) || EXISTING=0
-    SEQ=$((EXISTING + 1))
-fi
+# 5. Generate audit_id: the date, then a ULID (48-bit milliseconds, 80 random
+# bits), so it's unique without a counter: parallel calls never share one
 TODAY=$(date -u +%Y%m%d)
-EVIDENCE_ID="hook-${EXAMINER}-${TODAY}-$(printf '%03d' "$SEQ")"
+ULID=$(python3 -I -c "import os,time;n=(time.time_ns()//1000000)<<80|int.from_bytes(os.urandom(10),'big');print(''.join('0123456789abcdefghjkmnpqrstvwxyz'[(n>>s)&31] for s in range(125,-1,-5)))" 2>/dev/null) || exit 0
+EVIDENCE_ID="hook-${EXAMINER}-${TODAY}-${ULID}"
 
 # 6. Compute SHA-256 of command + output
 TOOL_RESPONSE=$(printf '%s' "$PARSED" | python3 -I -c "import sys,json; print(json.load(sys.stdin).get('tool_response',''))" 2>/dev/null) || TOOL_RESPONSE=""

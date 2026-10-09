@@ -2,8 +2,12 @@
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
+
+# hook-<examiner>-<YYYYMMDD>-<26-char lowercase ULID>
+ULID_ID = re.compile(r"^hook-tester-[0-9]{8}-[0-9a-hjkmnp-tv-z]{26}\Z")
 
 HOOK_SCRIPT = (
     Path(__file__).parent.parent.parent
@@ -101,20 +105,45 @@ class TestWithActiveCase:
         assert result.returncode == 0
         assert (case_dir / "audit" / "claude-code.jsonl").exists()
 
-    def test_audit_id_sequencing(self, tmp_path):
+    def test_each_call_gets_its_own_audit_id(self, tmp_path):
         case_dir = _make_active_case(tmp_path)
         env = _make_env(tmp_path)
-        # Run twice
         _run_hook(_hook_input(command="first"), env)
         _run_hook(_hook_input(command="second"), env)
         audit_file = case_dir / "audit" / "claude-code.jsonl"
-        lines = audit_file.read_text().strip().split("\n")
-        assert len(lines) == 2
-        e1 = json.loads(lines[0])
-        e2 = json.loads(lines[1])
-        # Second should have higher sequence
-        assert e1["audit_id"].endswith("-001")
-        assert e2["audit_id"].endswith("-002")
+        ids = [json.loads(x)["audit_id"] for x in audit_file.read_text().splitlines()]
+        assert len(ids) == 2 and ids[0] != ids[1], ids
+        assert all(ULID_ID.match(i) for i in ids), ids
+
+    def test_parallel_calls_never_share_an_audit_id(self, tmp_path):
+        """The 7z and vol3 commands sent together, as the AI does: each call
+        gets its own id, so a citation of one can't resolve to another."""
+        case_dir = _make_active_case(tmp_path)
+        env = _make_env(tmp_path)
+        cmds = [
+            "7z x evidence/mem.7z -oextract",
+            "vol -f extract/mem2.raw windows.pslist",
+        ]
+        procs = [
+            subprocess.Popen(
+                ["sh", str(HOOK_SCRIPT)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                env=env,
+            )
+            for _ in range(12)
+        ]
+        for i, p in enumerate(procs):
+            p.stdin.write(_hook_input(command=cmds[i % 2], tool_use_id=f"tu{i}"))
+            p.stdin.close()
+        for p in procs:
+            p.wait(timeout=60)
+        audit_file = case_dir / "audit" / "claude-code.jsonl"
+        ids = [json.loads(x)["audit_id"] for x in audit_file.read_text().splitlines()]
+        assert len(ids) == 12 and len(set(ids)) == 12, sorted(ids)
+        assert all(ULID_ID.match(i) for i in ids), ids
 
     def test_output_truncation(self, tmp_path):
         case_dir = _make_active_case(tmp_path)
