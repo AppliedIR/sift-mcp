@@ -14,6 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
+from vhir_cli.provenance_view import roots_of
 
 from case_dashboard import hosts, signing
 
@@ -345,16 +346,15 @@ async def get_evidence(request: Request) -> JSONResponse:
         fid = f.get("id", "")
         if not fid:
             continue
-        # Link by the root each artifact's chain resolved to (else the
+        # Link by every root each artifact's chain resolved to (else the
         # evidence it names), never by the AI-supplied `source`
         for art in f.get("artifacts") or []:
             if not isinstance(art, dict):
                 continue
-            root = (art.get("provenance_root") or {}).get("path") or art.get(
-                "source_evidence"
-            )
-            if root and fid not in ref_index.get(root, []):
-                ref_index.setdefault(root, []).append(fid)
+            paths = [r["path"] for r in roots_of(art)] or [art.get("source_evidence")]
+            for root in paths:
+                if root and fid not in ref_index.get(root, []):
+                    ref_index.setdefault(root, []).append(fid)
 
     # Enrich evidence items
     for item in evidence:

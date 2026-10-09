@@ -275,10 +275,12 @@ def test_an_evidence_row_lists_the_findings_whose_chain_resolves_to_it(portal):
     named_only = finding(
         "F-steve-020", artifacts=[{"source": ROOT["path"], "audit_id": "x"}]
     )
-    portal.write("findings.json", FINDINGS + [named_only])
+    second = chained("F-steve-021", "FULL", art("FULL", chain=RUN))
+    second["artifacts"][0]["provenance_roots"] = [ROOT, IMG]  # an operation over both
+    portal.write("findings.json", FINDINGS + [named_only, second])
     rows = {e["path"]: e for e in portal.get("/api/evidence").json()}
     assert rows[ROOT["path"]]["referenced_by"] == [
         "F-steve-001", "F-steve-002", "F-steve-003", "F-steve-005", "F-steve-007",
-        "F-steve-009",
+        "F-steve-009", "F-steve-021",
     ]  # fmt: skip
-    assert rows[IMG["path"]]["referenced_by"] == ["F-steve-006"]
+    assert rows[IMG["path"]]["referenced_by"] == ["F-steve-006", "F-steve-021"]
