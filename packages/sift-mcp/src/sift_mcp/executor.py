@@ -43,6 +43,7 @@ def execute(
     save_output: bool = False,
     save_dir: str | None = None,
     op_id=None,
+    case_dir: str | None = None,
 ) -> dict[str, Any]:
     """Execute a command as a subprocess (shell=False).
 
@@ -58,6 +59,8 @@ def execute(
         op_id: Called when the output is kept in a case, after the command ends:
             the operation's id, which names its folder (`extractions/<id>/`) and
             comes back as `op_id`.
+        case_dir: The case the operation belongs to, resolved by the caller
+            when it started ("" for none); resolved now when not given.
 
     Returns:
         Dict with exit_code, stdout, stderr, elapsed_seconds, and optional saved file info.
@@ -145,14 +148,19 @@ def execute(
 
         # In a case every output is kept, whatever its size or save_output:
         # those are the bytes a finding cites. Without a case, when asked.
-        case_dir = resolve_case_dir()
+        if case_dir is None:
+            case_dir = resolve_case_dir()
+        elif case_dir and not os.path.isfile(os.path.join(case_dir, "CASE.yaml")):
+            case_dir = ""  # moved away since the call started: never recreated
 
         if case_dir and (stdout_raw or stderr_raw):
             folder = os.path.join(case_dir, "extractions")
             if op_id and not save_dir:  # each operation's output in its own folder
                 response["op_id"] = op_id()
                 folder = os.path.join(folder, response["op_id"])
-            _save_output(cmd_list, stdout_raw, stderr_raw, save_dir or folder, response)
+            _save_output(
+                cmd_list, stdout_raw, stderr_raw, save_dir or folder, response, case_dir
+            )
         elif save_output and (stdout_raw or stderr_raw):
             _save_output(
                 cmd_list,
@@ -160,6 +168,7 @@ def execute(
                 stderr_raw,
                 save_dir or (str(Path(cwd) / "extracted") if cwd else None),
                 response,
+                case_dir,
             )
 
         return response
@@ -189,8 +198,10 @@ def _save_output(
     stderr: bytes,
     save_dir: str | None,
     response: dict,
+    case_dir: str | None = None,
 ) -> None:
-    """Save stdout/stderr, as the bytes the tool wrote, with their SHA-256."""
+    """Save stdout/stderr, as the bytes the tool wrote, with their SHA-256.
+    `case_dir`: the operation's case, as resolved for it ("" for none)."""
     if not save_dir:
         return
 
@@ -218,7 +229,8 @@ def _save_output(
         raise ExecutionError(f"Refusing to write output to system directory: {out_dir}")
 
     # When case dir is known, restrict save_dir to within the case directory
-    case_dir = resolve_case_dir() or None
+    if case_dir is None:
+        case_dir = resolve_case_dir()
     if case_dir:
         try:
             case_resolved = Path(case_dir).resolve()

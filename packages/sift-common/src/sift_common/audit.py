@@ -81,16 +81,23 @@ class AuditWriter:
     def examiner(self) -> str:
         return resolve_examiner()
 
-    def _get_audit_dir(self) -> Path | None:
+    def _get_audit_dir(self, case_dir: str | Path | None = None) -> Path | None:
         """Get the audit directory.
 
-        Priority: explicit audit_dir > VHIR_AUDIT_DIR > the server's own case
+        Priority: explicit audit_dir > VHIR_AUDIT_DIR > `case_dir` (a case the
+        caller resolved already; "" for none; nothing when it's no longer a
+        case) > the server's own case
         resolver > VHIR_CASE_DIR/audit/ > the active case pointer.
         """
         if self._explicit_audit_dir:
             audit_dir = Path(self._explicit_audit_dir)
         elif os.environ.get("VHIR_AUDIT_DIR"):
             audit_dir = Path(os.environ["VHIR_AUDIT_DIR"])
+        elif case_dir is not None:
+            # none, or moved away since it was resolved: never recreated
+            if not case_dir or not (Path(case_dir) / "CASE.yaml").is_file():
+                return None
+            audit_dir = Path(case_dir) / "audit"
         elif self._case_dir_resolver and (resolved := self._case_dir_resolver()):
             audit_dir = Path(resolved) / "audit"
         else:
@@ -286,14 +293,16 @@ class AuditWriter:
         input_detection_method: str = "",
         source_evidence: str = "",
         extra: dict[str, Any] | None = None,
+        case_dir: str | Path | None = None,
     ) -> str | None:
         """Write an audit entry. Returns the audit_id, or None when no case is active.
 
         The directory is resolved once: the id is minted for it (when not
         given) and the entry is written to it, so a case switch can't put one
-        case's id into another.
+        case's id into another. `case_dir` is the case the caller resolved
+        when its operation started ("" for none): the entry goes there.
         """
-        audit_dir = self._get_audit_dir()
+        audit_dir = self._get_audit_dir(case_dir)
         if not audit_dir:
             return None
         if audit_id is None:

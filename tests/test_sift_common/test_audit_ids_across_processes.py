@@ -175,8 +175,8 @@ def test_an_entry_gets_its_id_from_the_case_it_is_written_to(
     monkeypatch.setenv("VHIR_CASE_DIR", str(case))
     resolve = AuditWriter._get_audit_dir
 
-    def resolve_then_switch(self):
-        found = resolve(self)
+    def resolve_then_switch(self, *args):
+        found = resolve(self, *args)
         monkeypatch.setenv("VHIR_CASE_DIR", str(other))  # a switch right after
         return found
 

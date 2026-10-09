@@ -1,9 +1,11 @@
-"""run_command's audit entry: one id per entry in its case, and cut output says so.
+"""run_command's audit entry: one case per call, and cut output says so.
 
 The id used to be minted when the command started, in the case active then,
 and written when it ended, into the case active then. A command that switched
-cases (or started with none) wrote an id the other case already held. The id
-is now minted when the entry is written. Output cut at the size limit is
+cases (or started with none) wrote an id the other case already held. Now the
+case is resolved once, when the call starts: the id is minted there, and the
+entry and the output are kept there, so a switch during the command moves
+nothing and the other case gets nothing. Output cut at the size limit is
 marked as cut in the audit entry and in the response's data.
 
 The real run_command runs in-process on scratch cases under a scratch HOME.
@@ -15,7 +17,6 @@ import asyncio
 import json
 import os
 import sys
-from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -92,39 +93,40 @@ def _switch_to(case: Path, home: Path) -> str:
     return f"open({str(home / '.vhir' / 'active_case')!r}, 'w').write({str(case)!r})\n"
 
 
-def test_a_command_that_switches_cases_gets_an_id_the_new_case_does_not_hold(
+def _only_own_001(case: Path) -> bool:
+    return [e["audit_id"] for e in _entries(case)] == [OWN_001]
+
+
+def test_a_command_that_switches_cases_is_audited_in_the_case_it_started_in(
     tmp_path, home
 ):
     a, b = _case(tmp_path, "case-a"), _case(tmp_path, "case-b")
     _preload_own_001(b)
     _point(home, a)
     r = _run(tmp_path, _switch_to(b, home) + "print('done')\n")
-    ids = [e["audit_id"] for e in _entries(b)]
-    assert Counter(ids).most_common(1)[0][1] == 1, ids
-    assert r["audit_id"] in ids and r["audit_id"] != OWN_001
+    assert [e["audit_id"] for e in _entries(a)] == [r["audit_id"]]
+    assert _only_own_001(b) and not (b / "extractions").exists()
 
 
-def test_a_command_that_switches_cases_and_times_out_gets_a_fresh_id(tmp_path, home):
+def test_a_command_that_switches_cases_and_times_out_stays_in_its_case(tmp_path, home):
     a, b = _case(tmp_path, "case-a"), _case(tmp_path, "case-b")
     _preload_own_001(b)
     _point(home, a)
     r = _run(tmp_path, _switch_to(b, home) + "import time; time.sleep(30)\n", timeout=2)
     assert r["success"] is False
-    ids = [e["audit_id"] for e in _entries(b)]
-    assert Counter(ids).most_common(1)[0][1] == 1, ids
-    assert r["audit_id"] in ids
+    assert [e["audit_id"] for e in _entries(a)] == [r["audit_id"]]
+    assert _only_own_001(b)
 
 
-def test_a_command_started_with_no_case_gets_an_id_the_new_case_does_not_hold(
+def test_a_command_started_with_no_case_is_not_written_to_a_case_opened_during_it(
     tmp_path, home
 ):
     b = _case(tmp_path, "case-b")
     _preload_own_001(b)
     _point(home, None)
     r = _run(tmp_path, _switch_to(b, home) + "print('done')\n")
-    ids = [e["audit_id"] for e in _entries(b)]
-    assert Counter(ids).most_common(1)[0][1] == 1, ids
-    assert r["audit_id"] in ids
+    assert r["audit_id"] is None and "not recorded" in r["warning"]
+    assert _only_own_001(b) and not (b / "extractions").exists()
 
 
 def test_a_case_moved_away_during_a_command_is_not_recreated(tmp_path, home):

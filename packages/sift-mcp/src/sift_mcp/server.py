@@ -193,7 +193,12 @@ def create_server() -> FastMCP:
         from sift_common import file_identity as fi
         from sift_common import resolve_case_dir
 
+        # One case per call, resolved as it starts: the audit id is minted for
+        # it, and the output and the entry are kept in it, whatever case is
+        # active when the command ends
         case_dir = resolve_case_dir()
+        audit_dir = audit._get_audit_dir(case_dir)
+        op_id = audit._next_audit_id(audit_dir) if audit_dir else None
         input_hashes: dict[str, str] = {}
         input_registered: list[str] = []
         for fpath in detected_inputs:
@@ -223,8 +228,8 @@ def create_server() -> FastMCP:
                 timeout=timeout or None,
                 save_output=save_output,
                 preview_lines=min(preview_lines, 200) if preview_lines else 0,
-                # minted once the command ends, in the case its entry goes to
-                op_id=audit._next_audit_id,
+                op_id=(lambda: op_id) if op_id else None,
+                case_dir=case_dir,
             )
             elapsed = time.monotonic() - start
 
@@ -246,12 +251,12 @@ def create_server() -> FastMCP:
                 resp_data = exec_result
                 resp_format = exec_result.get("_output_format", "text")
 
-            # Written first, in one step: the id is minted for the case the entry
-            # goes to (when the output was kept, just before, naming its folder),
-            # and the response carries that id
+            # Written first, to the call's case, with the id its output's
+            # folder is named by; the response carries that id
             logged_id = audit.log(
                 tool="run_command",
-                audit_id=exec_result.get("op_id"),
+                audit_id=op_id,
+                case_dir=case_dir,
                 params={"command": command, "purpose": purpose},
                 result_summary={
                     "exit_code": exec_result["exit_code"],
@@ -340,6 +345,8 @@ def create_server() -> FastMCP:
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": str(e)},
                 elapsed_ms=elapsed * 1000,
+                audit_id=op_id,
+                case_dir=case_dir,
             )
             response = build_response(
                 tool_name="run_command",
@@ -359,6 +366,8 @@ def create_server() -> FastMCP:
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": str(e)},
                 elapsed_ms=elapsed * 1000,
+                audit_id=op_id,
+                case_dir=case_dir,
             )
             response = build_response(
                 tool_name="run_command",
@@ -378,6 +387,8 @@ def create_server() -> FastMCP:
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": f"{type(e).__name__}: {e}"},
                 elapsed_ms=elapsed * 1000,
+                audit_id=op_id,
+                case_dir=case_dir,
             )
             response = build_response(
                 tool_name="run_command",

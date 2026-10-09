@@ -99,3 +99,35 @@ def test_an_input_over_the_limit_is_pending_until_its_hash_completes(case, monke
     assert done["tool"] == "hash_complete" and done["path"] == str(s2.resolve())
     assert done["sha256"] == hashlib.sha256(b"m" * 4096).hexdigest()
     assert done["requested_by"] == "run_command"
+
+
+def test_a_case_switch_during_the_command_moves_nothing(case, tmp_path):
+    """The case is resolved once, when the call starts: its audit id is minted
+    there, and its output and entry are kept there, whatever case is active
+    when the command ends. The other case gets nothing."""
+    b = tmp_path / "cases" / "case-b"
+    b.mkdir(parents=True)
+    (b / "CASE.yaml").write_text("case_id: case-b\nstatus: open\n")
+    pointer = Path.home() / ".vhir" / "active_case"
+    script = tmp_path / "switch.py"  # the examiner switches cases mid-command
+    script.write_text(
+        f"from pathlib import Path\nPath({str(pointer)!r}).write_text({str(b)!r})\n"
+        "print('PID 4 System')\n"
+    )
+    r = asyncio.run(
+        create_server().call_tool(
+            "run_command", {"command": [sys.executable, str(script)], "purpose": "t"}
+        )
+    )
+    r = r[0] if isinstance(r, tuple) else r
+    resp = json.loads(r[0].text)
+    assert pointer.read_text() == str(b)  # the switch happened
+    (entry,) = [
+        json.loads(x)
+        for x in (case / "audit" / "sift-mcp.jsonl").read_text().splitlines()
+    ]
+    out = Path(entry["result_summary"]["output_file"])
+    assert entry["audit_id"] == resp["audit_id"]
+    assert out.parent == case / "extractions" / entry["audit_id"], out
+    assert out.read_bytes() == b"PID 4 System\n"
+    assert not (b / "audit").exists() and not (b / "extractions").exists()
