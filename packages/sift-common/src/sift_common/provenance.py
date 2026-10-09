@@ -132,18 +132,113 @@ def _registered(case: Case, real: str, sha256: str) -> Trace | None:
     return None
 
 
-def trace_file(case: Case, path, sha256: str | None = None) -> Trace:
-    """The registered evidence a file came from."""
-    real = os.path.realpath(path)
-    found = _registered(case, real, sha256 or "")
+def _outputs(entry: dict) -> list[tuple[str, str]]:
+    """An entry's recorded outputs (path, SHA-256): its output files, and its
+    saved stdout."""
+    rs = entry.get("result_summary")
+    if not isinstance(rs, dict):
+        return []
+    files, shas = rs.get("output_files") or [], rs.get("output_sha256s") or []
+    out = list(zip(files, shas, strict=False))
+    if rs.get("output_file"):
+        out.append((rs["output_file"], rs.get("output_sha256", "")))
+    return [(p, h) for p, h in out if isinstance(p, str) and isinstance(h, str) and h]
+
+
+def _job_hash(case: Case, real: str, job_id: str) -> str | None:
+    """The hash a completed background job recorded for the file."""
+    for items in case.by_id.values():
+        for e, _ in items:
+            if e.get("tool") == "hash_complete" and e.get("job_id") == job_id:
+                for row in e.get("files") or [e]:
+                    if os.path.realpath(row.get("path", "")) == real and row.get(
+                        "sha256"
+                    ):
+                        return row["sha256"]
+    return None
+
+
+def trace_file(
+    case: Case, path, sha256: str | None = None, *, realpath=None, _seen=frozenset()
+) -> Trace:
+    """The registered evidence a file came from: the file is a registered root,
+    or in a registered folder's manifest; or it's an earlier operation's
+    recorded output at this path with this SHA-256, traced on through that
+    operation's inputs. A hash at another path never links."""
+    real = realpath or os.path.realpath(path)
+    sha = sha256 or ""
+    found = _registered(case, real, sha)
     if found:
         return found
-    return _broken("no-recorded-origin", f"{path} (SHA-256 {sha256 or 'not recorded'}) "
+    if sha.startswith("pending:"):
+        job = sha.split(":", 1)[1]
+        sha = _job_hash(case, real, job) or ""
+        if not sha:
+            return _broken("hash-pending", f"{real}: hash job {job} never completed",
+                           "run the step again so the file is hashed")  # fmt: skip
+    producers = [
+        (e, line, out_sha)
+        for items in case.by_id.values()
+        for e, line in items
+        for out, out_sha in _outputs(e)
+        if sha and out_sha == sha and os.path.realpath(out) == real
+    ]
+    if len(producers) == 1:
+        e, line, out_sha = producers[0]
+        frm, to = {"path": real, "sha256": sha}, {"path": real, "sha256": out_sha}
+        return _extend(
+            _trace_entry(case, e, line, _seen, to),
+            _link("hash+place", frm, to, e, line),
+        )
+    return _broken("no-recorded-origin", f"{real} (SHA-256 {sha or 'not recorded'}) "
                    "has no recorded origin", _FIX_ORIGIN, NO_ORIGIN)  # fmt: skip
 
 
 def trace_op(case: Case, audit_id: str) -> Trace:
     """The registered evidence a recorded operation's inputs came from."""
-    if not case.by_id.get(audit_id):
+    items = case.by_id.get(audit_id)
+    if not items:
         return _broken("no-entry", f"no audit entry records {audit_id}")
-    return _broken("no-inputs", f"{audit_id} recorded no inputs")
+    return _trace_entry(case, *items[0], frozenset())
+
+
+_WORST = ("BROKEN", "AMBIGUOUS", "DECLARED", "FULL")
+
+
+def _extend(t: Trace, link: dict) -> Trace:
+    t.links.append(link)
+    return t
+
+
+def _trace_entry(
+    case: Case, e: dict, line: bytes, seen: frozenset, output: dict | None = None
+) -> Trace:
+    """An operation's trace: each recorded input's, then the operation, to the
+    output being followed (else its saved stdout)."""
+    aid = e["audit_id"]
+    if aid in seen:
+        return _broken("cycle", f"{aid} is recorded as its own origin")
+    files = [f for f in e.get("input_files") or [] if isinstance(f, str)]
+    if not files:
+        return _broken("no-inputs", f"{aid} recorded no inputs")
+    shas = e.get("input_sha256s") or []
+    reals = e.get("input_realpaths") or []
+    traces = [
+        trace_file(case, f, shas[n] if n < len(shas) else "",
+                   realpath=reals[n] if n < len(reals) else None, _seen=seen | {aid})
+        for n, f in enumerate(files)
+    ]  # fmt: skip
+    rs = e.get("result_summary") if isinstance(e.get("result_summary"), dict) else {}
+    frm = {"path": os.path.realpath(files[0]), "sha256": shas[0] if shas else ""}
+    to = output or {
+        "path": rs.get("output_file", ""),
+        "sha256": rs.get("output_sha256", ""),
+    }
+    links = [link for t in traces for link in t.links]
+    links.append(_link("recorded-id", frm, to, e, line))
+    worst = min(traces, key=lambda t: _WORST.index(t.grade))
+    roots = list({r["path"]: r for t in traces for r in t.roots}.values())
+    if worst.grade != "FULL":
+        return Trace(worst.grade, worst.root, roots, links, worst.candidates,
+                     worst.break_, worst.reason)  # fmt: skip
+    return Trace("FULL", roots[0], roots, links)

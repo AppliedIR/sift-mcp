@@ -109,3 +109,62 @@ def test_an_input_that_is_the_registered_folder_itself_traces_to_the_folder(c):
     assert t.grade == "FULL", t
     assert t.root == {"path": folder["path"], "sha256": folder["manifest_sha256"]}
     assert [link["method"] for link in t.links] == ["registered-path"]
+
+
+def test_vol_on_sample_two_traces_through_the_7z_extraction_to_the_7z(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    s1, s2 = c.extract("sift-tester-20261009-001", z)
+    c.run(
+        "sift-tester-20261009-002", ["vol", "-f", s2, "windows.pslist"], [s2], "PID 4\n"
+    )
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
+    assert t.grade == "FULL" and t.root == {"path": z, "sha256": sha(z)}, t
+    assert [(link["method"], link["audit_id"]) for link in t.links] == [
+        ("registered-path", ""),
+        ("recorded-id", "sift-tester-20261009-001"),
+        ("hash+place", "sift-tester-20261009-001"),
+        ("recorded-id", "sift-tester-20261009-002"),
+    ]
+    assert t.links[2]["to"] == {"path": s2, "sha256": sha(s2)}
+    assert "sample1" not in str(t.as_dict())
+
+
+def test_an_unrecorded_copy_of_the_7z_doesnt_link_by_its_hash(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    copy = c.file(
+        "extractions/work/copy-of-mem.7z", "7z bytes"
+    )  # same hash, other path
+    c.run("sift-tester-20261009-001", ["7z", "x", copy], [copy], "sample2.raw\n")
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
+    assert t.grade == "BROKEN" and t.break_["kind"] == "no-recorded-origin", t
+    assert t.reason == "no recorded origin: made outside recorded tools"
+
+
+def test_an_output_at_the_same_path_with_another_hash_doesnt_link(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    _, s2 = c.extract("sift-tester-20261009-001", z)
+    with open(s2, "w") as f:
+        f.write("rewritten after the extraction")
+    t = pv.trace_file(pv.load_case(c.d), s2, sha(s2))
+    assert t.break_["kind"] == "no-recorded-origin" and sha(s2) in t.break_["detail"]
+
+
+def test_an_input_hashed_in_the_background_links_through_its_completed_job(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    _, s2 = c.extract("sift-tester-20261009-001", z)
+    c.op(
+        "file-identity",
+        "fileidentity-tester-20261009-001",
+        tool="hash_complete",
+        job_id="hash-0123456789abcdef",
+        path=s2,
+        sha256=sha(s2),
+    )
+    t = pv.trace_file(pv.load_case(c.d), s2, "pending:hash-0123456789abcdef")
+    assert t.grade == "FULL" and t.links[-1]["from"]["sha256"] == sha(s2), t
+    unclosed = pv.trace_file(pv.load_case(c.d), s2, "pending:hash-fedcba9876543210")
+    assert unclosed.break_["kind"] == "hash-pending", unclosed
