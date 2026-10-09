@@ -272,3 +272,38 @@ def test_one_file_pending_in_two_cases_closes_in_each(
     assert a != b
     for c, job in ((case, a), (other, b)):
         assert _closed(c, job)["tool"] == "hash_complete"
+
+
+def test_a_completed_background_hash_is_taken_for_the_unchanged_file(case):
+    f = case / "pagefile.sys"
+    f.write_bytes(b"P" * 400)
+    b = fi.hash_files_for_call([f], case_dir=case, requested_by="t", inline_limit=10)
+    done = _closed(case, b.job_id)
+    st = os.stat(f)
+    (row,) = done["files"]
+    assert (row["st_dev"], row["st_ino"], row["ctime_ns"]) == (
+        st.st_dev, st.st_ino, st.st_ctime_ns,
+    )  # fmt: skip
+    assert fi.completed_hash(case, f) == hashlib.sha256(b"P" * 400).hexdigest()
+    assert fi.completed_hash(case, case / "other.sys") is None
+
+
+def test_a_one_file_job_is_taken_too(case):
+    f = case / "sample2.raw"
+    f.write_bytes(b"m" * 400)
+    p = fi.hash_for_call(f, case_dir=case, requested_by="t", inline_limit=10)
+    _closed(case, p.job_id)
+    assert fi.completed_hash(case, f) == hashlib.sha256(b"m" * 400).hexdigest()
+
+
+def test_a_rewrite_backdated_to_the_same_size_and_mtime_is_not_taken(case):
+    f = case / "pagefile.sys"
+    f.write_bytes(b"P" * 400)
+    b = fi.hash_files_for_call([f], case_dir=case, requested_by="t", inline_limit=10)
+    _closed(case, b.job_id)
+    st = os.stat(f)
+    time.sleep(0.01)
+    f.write_bytes(b"Q" * 400)  # same size
+    os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns))  # mtime set back, as touch -d does
+    assert os.stat(f).st_mtime_ns == st.st_mtime_ns and os.stat(f).st_size == 400
+    assert fi.completed_hash(case, f) is None  # ctime moved: the record isn't this file

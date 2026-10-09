@@ -41,6 +41,7 @@ class HashResult:
     st_dev: int
     st_ino: int
     mtime_ns: int
+    ctime_ns: int = 0
 
 
 @dataclass(frozen=True)
@@ -75,9 +76,8 @@ def hash_file(path) -> HashResult:
         h = hashlib.sha256()
         while chunk := f.read(_CHUNK):
             h.update(chunk)
-    return HashResult(
-        str(path), h.hexdigest(), st.st_size, st.st_dev, st.st_ino, st.st_mtime_ns
-    )
+    return HashResult(str(path), h.hexdigest(), st.st_size, st.st_dev, st.st_ino,
+                      st.st_mtime_ns, st.st_ctime_ns)  # fmt: skip
 
 
 def registered_hash(case_dir, path) -> str | None:
@@ -189,8 +189,8 @@ def _now() -> str:
 def _one(path: str) -> dict:
     try:
         r = hash_file(path)
-        return {"path": path, "sha256": r.sha256, "size": r.size,
-                "st_ino": r.st_ino, "mtime_ns": r.mtime_ns}  # fmt: skip
+        return {"path": path, "sha256": r.sha256, "size": r.size, "st_dev": r.st_dev,
+                "st_ino": r.st_ino, "mtime_ns": r.mtime_ns, "ctime_ns": r.ctime_ns}  # fmt: skip
     except Exception as e:  # noqa: BLE001 -- a pending hash must always close
         return {"path": path, "error": f"{type(e).__name__}: {e}"}
 
@@ -227,3 +227,39 @@ def _job(key, job_id: str, paths, case_dir: str, requested_by: str) -> None:
     )
     if logged is None:
         logger.warning("%s (%s) was not recorded", tool, job_id)
+
+
+_STAT_KEY = ("st_dev", "st_ino", "size", "mtime_ns", "ctime_ns")
+
+
+def completed_hash(case_dir, path) -> str | None:
+    """The hash a completed background job recorded for `path` in this case,
+    taken only while the file is unchanged: the same device, inode, size,
+    mtime and ctime as when it was hashed (ctime can't be set back, so a
+    rewrite with its mtime set back isn't taken). Else None."""
+    log = Path(case_dir) / "audit" / "file-identity.jsonl"
+    try:
+        st = os.stat(path)
+        lines = log.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    real = os.path.realpath(path)
+    now = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+    found = None
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict) or entry.get("tool") != "hash_complete":
+            continue
+        for row in entry.get("files") or [entry]:
+            if (
+                isinstance(row, dict)
+                and row.get("sha256")
+                and isinstance(row.get("path"), str)
+                and os.path.realpath(row["path"]) == real
+                and tuple(row.get(k) for k in _STAT_KEY) == now
+            ):
+                found = row["sha256"]
+    return found
