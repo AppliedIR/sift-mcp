@@ -5,9 +5,10 @@ A link is one of: the file is a registered root (by its path); it's listed in
 a registered folder's manifest; it's an earlier operation's recorded output at
 the same path with the same SHA-256; it was read through a recorded mount; an
 operation's recorded inputs. A path alone, a name, an order or a host never
-links. A trace is graded FULL (every link recorded, to a root), DECLARED (a
-link the AI asserted), AMBIGUOUS (more than one origin or root, all named) or
-BROKEN (with the kind of break, what's missing and how to fix it).
+links. A trace is graded FULL (every link recorded, to its roots: an
+operation reading several registered files lists each), DECLARED (a link the
+AI asserted), AMBIGUOUS (one file with more than one recorded origin, all
+named) or BROKEN (with the kind of break, what's missing and how to fix it).
 """
 
 from __future__ import annotations
@@ -304,9 +305,6 @@ def _trace_entry(
     if worst.grade in ("BROKEN", "AMBIGUOUS"):
         return Trace(worst.grade, worst.root, roots, links, worst.candidates,
                      worst.break_, worst.reason)  # fmt: skip
-    if len(roots) > 1:
-        return Trace("AMBIGUOUS", roots[0], roots, links, roots,
-                     reason=f"{aid}'s inputs reach {len(roots)} registered roots")  # fmt: skip
     if declared:
         reason = f"declared by the AI: {aid} ({e.get('tool', '')})"
         return Trace("DECLARED", roots[0], roots, links, reason=reason)

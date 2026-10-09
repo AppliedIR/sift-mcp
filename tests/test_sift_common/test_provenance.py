@@ -200,15 +200,16 @@ def test_one_id_on_two_entries_is_ambiguous_never_the_last_copy(c):
     assert len({x["entry_sha256"] for x in t.candidates}) == 2
 
 
-def test_an_operation_whose_inputs_reach_two_roots_is_ambiguous(c):
-    a = c.file("evidence/imgA.raw", "image A")
-    b = c.file("evidence/imgB.raw", "image B")
+def test_an_operation_whose_inputs_reach_two_roots_is_full_listing_both(c):
+    """RECmd on SYSTEM and SOFTWARE: two inputs, two roots, both recorded."""
+    a = c.file("evidence/SYSTEM", "system hive")
+    b = c.file("evidence/SOFTWARE", "software hive")
     c.register(a)
     c.register(b)
-    c.run("sift-tester-20261009-001", ["cmp", a, b], [a, b], "differ\n")
+    c.run("sift-tester-20261009-001", ["RECmd", a, b], [a, b], "ControlSet001\n")
     t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
-    assert t.grade == "AMBIGUOUS" and {r["path"] for r in t.roots} == {a, b}, t
-    assert {x["path"] for x in t.candidates} == {a, b}
+    assert t.grade == "FULL" and t.root["path"] == a, t
+    assert [r["path"] for r in t.roots] == [a, b] and t.candidates == []
 
 
 @pytest.mark.parametrize("hook", [True, False], ids=["hook and declared", "declared"])
