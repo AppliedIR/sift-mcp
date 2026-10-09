@@ -108,7 +108,7 @@ def test_an_input_that_is_the_registered_folder_itself_traces_to_the_folder(c):
     t = pv.trace_file(pv.load_case(c.d), str(c.d / "evidence/kape"))
     assert t.grade == "FULL", t
     assert t.root == {"path": folder["path"], "sha256": folder["manifest_sha256"],
-                      "label": "examiner"}  # fmt: skip
+                      "label": "examiner-registered"}  # fmt: skip
     assert [link["method"] for link in t.links] == ["registered-path"]
 
 
@@ -121,7 +121,7 @@ def test_vol_on_sample_two_traces_through_the_7z_extraction_to_the_7z(c):
     )
     t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
     assert t.grade == "FULL", t
-    assert t.root == {"path": z, "sha256": sha(z), "label": "examiner"}
+    assert t.root == {"path": z, "sha256": sha(z), "label": "examiner-registered"}
     assert [(link["method"], link["audit_id"]) for link in t.links] == [
         ("registered-path", ""),
         ("recorded-id", "sift-tester-20261009-001"),
@@ -257,7 +257,7 @@ def test_each_link_carries_its_entry_lines_hash_and_the_root_its_label(c):
 
 @pytest.mark.parametrize(
     "extra,label",
-    [({}, "examiner"), ({"registered_via": "mcp"}, "AI-registered"),
+    [({}, "examiner-registered"), ({"registered_via": "mcp"}, "AI-registered"),
      ({"acquired_by": "wt-tester-20261009-005"}, "acquired by wt-tester-20261009-005")],
     ids=["examiner", "the AI", "an acquisition"],
 )  # fmt: skip

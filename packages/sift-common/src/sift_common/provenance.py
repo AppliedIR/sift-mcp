@@ -107,7 +107,11 @@ def _label(root: dict) -> str:
     """Who registered a root: an acquisition, the AI, or the examiner."""
     if root.get("acquired_by"):
         return f"acquired by {root['acquired_by']}"
-    return "AI-registered" if root.get("registered_via") == "mcp" else "examiner"
+    return (
+        "AI-registered"
+        if root.get("registered_via") == "mcp"
+        else "examiner-registered"
+    )
 
 
 def _registered(case: Case, real: str, sha256: str) -> Trace | None:
