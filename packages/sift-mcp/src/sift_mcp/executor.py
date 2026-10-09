@@ -130,6 +130,8 @@ def execute(
             "elapsed_seconds": round(elapsed, 2),
             "command": cmd_list,
             "stdout_total_bytes": stdout_byte_count,
+            # the bytes the tool wrote, whether or not they're saved
+            "output_sha256": hashlib.sha256(stdout_raw).hexdigest(),
         }
         if truncated:
             response["truncated"] = True

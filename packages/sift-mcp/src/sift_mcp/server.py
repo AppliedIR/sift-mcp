@@ -283,6 +283,7 @@ def create_server() -> FastMCP:
                 artifact_context=artifact_hint,
             )
 
+            response["output_sha256"] = exec_result.get("output_sha256", "")
             # Add full output metadata if file was saved
             if exec_result.get("output_file"):
                 response["full_output_path"] = exec_result["output_file"]
