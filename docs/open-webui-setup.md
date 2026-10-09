@@ -37,24 +37,28 @@ Start Open WebUI with the env file, e.g.
 | `ENABLE_PLUGINS` | `False` | Python Tools and Functions run on the Open WebUI server, which is equivalent to giving them a shell. This stops them running. It doesn't stop an admin creating them. |
 | `USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS` | `False` | Users can't add workspace tools. |
 | `ENABLE_DIRECT_INTEGRATIONS` | `False` | Users don't see the Integrations tab, where they'd add their own tool and terminal connections. Hiding it doesn't disable connections they already have. |
+| `ENABLE_DIRECT_CONNECTIONS` | `False` | Users can't connect their own OpenAI-compatible API endpoints. |
+| `USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS` | `False` | Users can't connect their own tool servers. Admins always can. |
 | `ENABLE_CODE_INTERPRETER` | `False` | No code interpreter. |
 | `CODE_INTERPRETER_ENGINE`, `CODE_EXECUTION_ENGINE` | `pyodide` | If an admin turns code execution on, it runs in the browser, not on a server. Never point either at Jupyter or Open Terminal. |
 
 **On an existing instance, the env file sets only `ENABLE_PLUGINS`.** At its
-first start Open WebUI writes the other five into its database, and from then
+first start Open WebUI writes the other seven into its database, and from then
 on the database value is used, whatever the environment says. No Admin Panel
 save is needed for that to happen. On an instance that has started before,
-set each of the five in the Admin Panel (checked on Open WebUI 0.11.4):
+set each of the seven in the Admin Panel (checked on Open WebUI 0.11.4):
 
 | Setting | Where in the Admin Panel |
 |---|---|
 | `USER_PERMISSIONS_WORKSPACE_TOOLS_ACCESS` | **Users > Groups > Default permissions > Edit**: turn **Tools Access** off |
 | `ENABLE_DIRECT_INTEGRATIONS` | **Settings > Integrations**, User Connections: turn **Direct Integrations** off |
+| `ENABLE_DIRECT_CONNECTIONS` | **Settings > Connections**, User Connections: turn **Direct Connections** off |
+| `USER_PERMISSIONS_FEATURES_DIRECT_TOOL_SERVERS` | **Users > Groups > Default permissions > Edit**, Features Permissions: turn **Direct Tool Servers** off |
 | `ENABLE_CODE_INTERPRETER` | **Settings > Code Execution**, Code Interpreter: turn **Enable Code Interpreter** off |
 | `CODE_INTERPRETER_ENGINE` | **Settings > Code Execution**, Code Interpreter: **Code Interpreter Engine** Pyodide |
 | `CODE_EXECUTION_ENGINE` | **Settings > Code Execution**: **Code Execution Engine** Pyodide |
 
-A fresh instance started with the env file takes all six.
+A fresh instance started with the env file takes all eight.
 
 ## Adding the backends
 
