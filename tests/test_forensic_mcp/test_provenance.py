@@ -103,6 +103,21 @@ class TestClassifyProvenance:
         assert result["summary"] == "HOOK"
         assert "hook-tester-20260225-001" in result["hook"]
 
+    def test_ids_with_a_ulid_tail_are_classified(self, manager, active_case):
+        """The 7z finding cites the vol3 run and the Bash extraction by their
+        new ids: each is found by the file it's in, not rejected as malformed."""
+        case_dir = Path(active_case["path"])
+        run = "sift-tester-20261009-01jbx2q3r4s5t6v7w8x9yz0abc"
+        bash = "hook-tester-20261009-01jbx2q3r4s5t6v7w8x9yz0abd"
+        (case_dir / "audit" / "sift-mcp.jsonl").write_text(
+            json.dumps({"audit_id": run, "tool": "run_command"}) + "\n"
+        )
+        (case_dir / "audit" / "claude-code.jsonl").write_text(
+            json.dumps({"audit_id": bash, "source": "claude-code-hook"}) + "\n"
+        )
+        result = manager._classify_provenance([run, bash], case_dir)
+        assert (result["mcp"], result["hook"], result["none"]) == ([run], [bash], [])
+
     def test_shell_prefix_without_audit_is_none(self, manager, active_case):
         """shell-* prefix alone does not grant SHELL tier — must exist in audit trail."""
         case_dir = Path(active_case["path"])

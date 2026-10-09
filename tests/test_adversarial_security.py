@@ -37,6 +37,23 @@ class TestAuditIdValidation:
         assert pattern.match("forensic-bob-20260225-123")
         assert pattern.match("windowstriage-testuser-20260225-9999")
 
+    def test_accepts_a_ulid_tail(self, pattern):
+        """New ids end in a 26-character lowercase ULID; old ids still match."""
+        assert pattern.match("sift-alice-20261009-01jbx2q3r4s5t6v7w8x9yz0abc")
+        assert pattern.match("hook-bob-smith-20261009-7zzzzzzzzzzzzzzzzzzzzzzzzz")
+
+    def test_rejects_a_tail_that_is_almost_a_ulid(self, pattern):
+        for tail in (
+            "01jbx2q3r4s5t6v7w8x9yz0ab",  # 25
+            "01jbx2q3r4s5t6v7w8x9yz0abcd",  # 27
+            "01JBX2Q3R4S5T6V7W8X9YZ0ABC",  # uppercase
+            "01jbx2q3r4s5t6v7w8x9yz0abi",  # i, l, o and u aren't Crockford
+            "01jbx2q3r4s5t6v7w8x9yz0abl",
+            "01jbx2q3r4s5t6v7w8x9yz0abo",
+            "01jbx2q3r4s5t6v7w8x9yz0abu",
+        ):
+            assert not pattern.match(f"sift-alice-20261009-{tail}"), tail
+
     def test_rejects_empty(self, pattern):
         assert not pattern.match("")
 

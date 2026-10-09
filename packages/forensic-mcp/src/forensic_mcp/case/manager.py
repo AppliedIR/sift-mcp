@@ -77,9 +77,11 @@ CASES_DIR_ENV = "VHIR_CASES_DIR"
 DEFAULT_CASES_DIR = str(Path.home() / "cases")
 _ACTIVE_CASE_FILE = Path.home() / ".vhir" / "active_case"
 
-# Audit ID format: prefix-examiner-YYYYMMDD-NNN (all lowercase alphanumeric + hyphens)
+# Audit ID format: prefix-examiner-YYYYMMDD-<26-char lowercase ULID>, or the
+# older -NNN sequence (all lowercase alphanumeric + hyphens)
 _AUDIT_ID_PATTERN = re.compile(
-    r"^[a-z]+-[a-z0-9](?:[a-z0-9-]*[a-z0-9])?-[0-9]{8}-[0-9]{3,}\Z"
+    r"^[a-z]+-[a-z0-9](?:[a-z0-9-]*[a-z0-9])?-[0-9]{8}-"
+    r"(?:[0-9]{3,}|[0-9a-hjkmnp-tv-z]{26})\Z"
 )
 
 # Allowlist: only these fields pass through from user-supplied finding data
