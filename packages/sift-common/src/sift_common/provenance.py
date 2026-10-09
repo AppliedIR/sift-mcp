@@ -13,9 +13,11 @@ named) or BROKEN (with the kind of break, what's missing and how to fix it).
 
 from __future__ import annotations
 
+import codecs
 import hashlib
 import json
 import os
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -512,15 +514,40 @@ def _quote_lines(content: str) -> list[str]:
     return [line for line in lines if line and line not in ("...", "…")]
 
 
-def _saved(path, sha256) -> str | None:
-    """A saved file's text when it still has its recorded SHA-256, else None."""
+_QUOTE_FILE_CAP = 64 << 20  # a recorded output file larger than this isn't read
+_CHUNK = 1 << 20
+
+
+def _found_in(path, sha256, lines: list[str], cap: int | None) -> tuple[set, str]:
+    """Which quoted lines a saved file holds, read in bounded chunks with an
+    overlap (whitespace normalized across them), the file counted only when it
+    still has its recorded SHA-256. Returns (found, why skipped): a file over
+    `cap` isn't read at all, and says so."""
     try:
-        data = Path(path).read_bytes()
+        size = os.path.getsize(path)
     except (OSError, TypeError):
-        return None
-    if not sha256 or hashlib.sha256(data).hexdigest() != sha256:
-        return None
-    return _norm(data.decode("utf-8", errors="replace"))
+        return set(), ""
+    if cap is not None and size > cap:
+        return set(), f"output too large to check ({path})"
+    if not sha256:
+        return set(), ""
+    digest = hashlib.sha256()
+    decode = codecs.getincrementaldecoder("utf-8")(errors="replace").decode
+    keep = max((len(q) for q in lines), default=0)
+    found, carry = set(), ""
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(_CHUNK), b""):
+                digest.update(chunk)
+                text = re.sub(r"\s+", " ", decode(chunk))
+                if carry.endswith(" ") and text.startswith(" "):
+                    text = text[1:]
+                window = carry + text
+                found |= {q for q in lines if q in window}
+                carry = window[-keep:] if keep else ""
+    except OSError:
+        return set(), ""
+    return (found if digest.hexdigest() == sha256 else set()), ""
 
 
 def _saved_values(path, sha256) -> list[str] | None:
@@ -528,6 +555,8 @@ def _saved_values(path, sha256) -> list[str] | None:
     normalized; the text itself when it isn't JSON. None when it's missing or
     no longer has its recorded SHA-256. Never the JSON-escaped text."""
     try:
+        if os.path.getsize(path) > _QUOTE_FILE_CAP:
+            return None
         data = Path(path).read_bytes()
     except (OSError, TypeError):
         return None
@@ -551,12 +580,25 @@ def _unverified(why: str, links=()) -> Trace:
                          "fix": "quote the output the cited operation produced"})  # fmt: skip
 
 
-def _run_texts(case: Case, e: dict) -> list[str]:
-    """What a run's quote is checked against: its saved output and its
-    recorded output files, each only while it has its recorded hash."""
+def _run_missing(case: Case, e: dict, quote: list[str]) -> tuple[list[str], list[str]]:
+    """The quoted lines a run's saved output and recorded output files don't
+    hold, each file only while it has its recorded hash; and the files too
+    large to check. The saved stdout is searched first, then each output file
+    (up to the size cap) only while lines are still missing."""
     rs = e.get("result_summary") if isinstance(e.get("result_summary"), dict) else {}
-    pairs = [(rs.get("output_file"), rs.get("output_sha256"))] + _outputs(case, e)
-    return [t for t in (_saved(p, h) for p, h in pairs if p) if t is not None]
+    missing, skipped = list(quote), []
+    sources = [(rs.get("output_file"), rs.get("output_sha256"), None)]
+    sources += [(p, h, _QUOTE_FILE_CAP) for p, h in _outputs(case, e)]
+    for path, sha256, cap in sources:
+        if not missing:
+            break
+        if not path:
+            continue
+        found, why = _found_in(path, sha256, missing, cap)
+        if why:
+            skipped.append(why)
+        missing = [q for q in missing if q not in found]
+    return missing, skipped
 
 
 def _flat(record, prefix: str = "") -> list[tuple[str, str]]:
@@ -624,11 +666,11 @@ def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
         return _broken("recorded-before-0.6.4", f"{audit_id} was {BEFORE_064}: it "
                        "records no results to follow", "run the query again and cite that",
                        reason=f"{BEFORE_064}: {audit_id} records no results to follow")  # fmt: skip
-    texts = _run_texts(case, e)
-    missing = [q for q in quote if not any(q in t for t in texts)]
+    missing, skipped = _run_missing(case, e, quote)
     if missing:
         return _unverified(f"{missing[0]!r} isn't in {audit_id}'s saved output or its "
-                           "recorded output files, as they were recorded")  # fmt: skip
+                           "recorded output files, as they were recorded"
+                           + "".join(f"; {why}" for why in skipped))  # fmt: skip
     return trace_op(case, audit_id)
 
 

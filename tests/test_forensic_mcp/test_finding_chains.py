@@ -18,6 +18,7 @@ import forensic_mcp.case.manager as _mgr
 import pytest
 import yaml
 from forensic_mcp.case.manager import CaseManager
+from sift_common import provenance as pv
 
 EMPTY = hashlib.sha256(b"").hexdigest()
 CASE_ID = "INC-2026-1009000000"
@@ -1441,3 +1442,57 @@ def test_a_reference_responses_quote_is_matched_decoded(c):
     res, st = c.find([{"content": r"C:\Users\Public\evil.exe",
                        "audit_id": "opencti-tester-20261009-002"}])  # fmt: skip
     assert g(res, st)[:2] == ("BROKEN", "reference"), g(res, st)
+
+
+def _run_with_big_output(c, size):
+    """A run whose stdout says one thing and whose recorded output file (a raw
+    image, sparse) is `size` bytes."""
+    ev = c.file("evidence/Security.evtx", "evtx")
+    c.register(ev)
+    big = c.d / "extractions" / "sift-tester-20261009-001" / "image.raw"
+    big.parent.mkdir(parents=True, exist_ok=True)
+    with open(big, "wb") as f:
+        f.truncate(size)
+    h = hashlib.sha256()
+    with open(big, "rb") as f:  # the recorded hash of the zeros, streamed
+        for chunk in iter(lambda: f.read(1 << 24), b""):
+            h.update(chunk)
+    out = c.file("extractions/sift-tester-20261009-001/stdout.txt", "4 GiB copied\n")
+    c.op("sift-mcp", "sift-tester-20261009-001", tool="run_command",
+         params={"command": ["dd", f"if={ev}", f"of={big}"], "purpose": "p"},
+         input_files=[ev], input_sha256s=[""], input_detection_method="parsed",
+         result_summary={"exit_code": 0, "output_file": out, "output_sha256": sha(out),
+                         "output_files": [str(big)],
+                         "output_sha256s": [h.hexdigest()]})  # fmt: skip
+    return big
+
+
+def test_a_quote_in_stdout_never_reads_a_multi_gb_output(c):
+    """Bounded memory and time: the quote is found in stdout first, and a
+    recorded output past the size cap is never read."""
+    import time
+    import tracemalloc
+
+    _run_with_big_output(c, 4 << 30)
+    tracemalloc.start()
+    t0 = time.monotonic()
+    res, st = c.find(
+        [{"content": "4 GiB copied", "audit_id": "sift-tester-20261009-001"}]
+    )
+    elapsed = time.monotonic() - t0
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+    assert g(res, st)[0] == "FULL", g(res, st)
+    assert elapsed < 5 and peak < 64 << 20, (elapsed, peak)
+
+
+def test_a_quote_only_in_an_output_past_the_cap_is_unverified_saying_why(
+    c, monkeypatch
+):
+    monkeypatch.setattr(pv, "_QUOTE_FILE_CAP", 64, raising=False)
+    ev = c.file("evidence/Security.evtx", "evtx")
+    c.register(ev)
+    _evtx_csv_run(c, ev, csv_text="EventId,User\n" + "4624,bob\n" * 20)
+    res, st = c.find([{"content": "4624,bob", "audit_id": "sift-tester-20261009-001"}])
+    assert g(res, st)[0] == "CITED-UNVERIFIED", g(res, st)
+    assert "output too large to check" in st["artifacts"][0]["provenance_reason"]
