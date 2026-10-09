@@ -237,24 +237,30 @@ def _index(case: Case, name: str, build) -> dict:
 def _job(case: Case, real: str, job_id: str) -> tuple[str, Trace | dict]:
     """What background hash job `job_id` recorded for the file: its hash and
     the `recorded-id` link to the entry that closed the job; or a named break,
-    "hash pending" while nothing has closed it, "hash failed" with its reason."""
-    jobs = _index(case, "jobs", lambda e, line: [(e.get("job_id"), (e, line))]
-                  if e.get("tool") in ("hash_complete", "hash_failed") else [])  # fmt: skip
-    for e, line in jobs.get(job_id, []):
-        for row in e.get("files") or [e]:
-            if not isinstance(row, dict):
-                continue
-            if os.path.realpath(str(row.get("path", ""))) != real:
-                continue
-            if row.get("sha256"):
-                frm = {"path": real, "sha256": f"pending:{job_id}"}
-                to = {"path": real, "sha256": row["sha256"]}
-                return row["sha256"], _link("recorded-id", frm, to, e, line)
-            why = f"hash of {real} failed (job {job_id}): {row.get('error', '')}"
-            return "", _broken("hash-failed", why, "run the step again so the "
-                               "file is hashed")  # fmt: skip
-    return "", _broken("hash-pending", f"hash pending (job {job_id}): {real}",
-                       "wait for the job to finish, then trace again")  # fmt: skip
+    "hash pending" while nothing has closed it, "hash failed" with its reason.
+    AMBIGUOUS, each named, when the closing entry's id is on several entries
+    or two closing entries disagree."""
+    closes = _index(case, "jobs", lambda e, line: [
+        ((e.get("job_id"), os.path.realpath(str(row.get("path", "")))), (e, line, row))
+        for row in (e.get("files") or [e]) if isinstance(row, dict)]
+        if e.get("tool") in ("hash_complete", "hash_failed") else []).get((job_id, real), [])  # fmt: skip
+    if not closes:
+        return "", _broken("hash-pending", f"hash pending (job {job_id}): {real}",
+                           "wait for the job to finish, then trace again")  # fmt: skip
+    if len({(r.get("sha256"), r.get("error")) for _e, _l, r in closes}) > 1:
+        named = [{"audit_id": e.get("audit_id", ""), "entry_sha256": entry_sha256(line),
+                  "path": real, "sha256": r.get("sha256", "")} for e, line, r in closes]  # fmt: skip
+        return "", Trace("AMBIGUOUS", candidates=named, reason=f"job {job_id} was closed "
+                         f"{len(named)} times for {real}, with different results")  # fmt: skip
+    e, line, row = closes[0]
+    if (twice := _one_entry(case, e.get("audit_id", ""))) is not None:
+        return "", twice
+    if row.get("sha256"):
+        frm = {"path": real, "sha256": f"pending:{job_id}"}
+        to = {"path": real, "sha256": row["sha256"]}
+        return row["sha256"], _link("recorded-id", frm, to, e, line)
+    why = f"hash of {real} failed (job {job_id}): {row.get('error', '')}"
+    return "", _broken("hash-failed", why, "run the step again so the file is hashed")
 
 
 def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:

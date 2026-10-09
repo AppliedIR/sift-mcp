@@ -611,6 +611,28 @@ def test_a_producer_in_another_log_at_the_same_time_is_still_the_origin(c):
 # --- a job's closing entry, mounts across logs, and many-file jobs ---------------
 
 
+def test_a_pending_output_whose_closing_entrys_id_is_on_two_entries_is_ambiguous(c):
+    z, s2 = _pending_extraction(c)
+    c.op("file-identity", "fileidentity-tester-20261009-001", tool="hash_complete",
+         job_id="hash-0123456789abcdef", path=s2, sha256=sha(s2),
+         ts="2026-10-09T00:00:02Z")  # fmt: skip
+    c.op("sift-mcp", "fileidentity-tester-20261009-001", tool="run_command")  # same id
+    t = _read(c, s2)
+    assert t.grade == "AMBIGUOUS", t.as_dict()
+
+
+def test_two_closing_entries_for_one_job_and_file_that_disagree_are_ambiguous(c):
+    z, s2 = _pending_extraction(c)
+    for n, h in ((1, sha(s2)), (2, "ab" * 32)):
+        c.op("file-identity", f"fileidentity-tester-20261009-00{n}", tool="hash_complete",
+             job_id="hash-0123456789abcdef", path=s2, sha256=h,
+             ts="2026-10-09T00:00:02Z")  # fmt: skip
+    t = _read(c, s2)
+    assert t.grade == "AMBIGUOUS", t.as_dict()
+    assert {x["audit_id"] for x in t.candidates} == {
+        "fileidentity-tester-20261009-001", "fileidentity-tester-20261009-002"}  # fmt: skip
+
+
 @pytest.mark.parametrize("log", ["aaa-reader", "zzz-reader"])
 def test_a_read_at_the_mounts_time_in_another_log_links_whatever_the_logs_names(c, log):
     """Logs have no order between them: a tie in time across logs never
@@ -625,3 +647,30 @@ def test_a_read_at_the_mounts_time_in_another_log_links_whatever_the_logs_names(
          input_st_devs=[2049], input_detection_method="parsed")  # fmt: skip
     t = pv.trace_op(pv.load_case(c.d), f"{log}-20261009-001")
     assert t.grade == "FULL", t.as_dict()
+
+
+def test_tracing_a_many_file_jobs_outputs_reads_each_row_once(c, monkeypatch):
+    """One background job closing 200 files: each file's lookup is indexed,
+    not a scan of every row."""
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    files = [c.file(f"extractions/x1/s{n}.raw", f"sample {n}") for n in range(200)]
+    c.op("sift-mcp", "sift-tester-20261009-001", tool="run_command",
+         params={"command": ["7z", "x", z], "purpose": "p"},
+         input_files=[z], input_sha256s=[""], input_detection_method="parsed",
+         result_summary={"exit_code": 0, "output_files": files,
+                         "output_sha256s": ["pending:hash-many"] * len(files)})  # fmt: skip
+    c.op("file-identity", "fileidentity-tester-20261009-001", tool="hash_complete",
+         job_id="hash-many", files=[{"path": f, "sha256": sha(f)} for f in files],
+         ts="2026-10-09T00:00:02Z")  # fmt: skip
+    case = pv.load_case(c.d)
+    calls = [0]
+    realpath = pv.os.path.realpath
+
+    def counted(p, **kw):
+        calls[0] += 1
+        return realpath(p, **kw)
+
+    monkeypatch.setattr(pv.os.path, "realpath", counted)
+    assert all(pv.trace_file(case, f, sha(f)).grade == "FULL" for f in files)
+    assert calls[0] < 20 * len(files), calls[0]  # linear: a scan per lookup was ~108
