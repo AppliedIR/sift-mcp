@@ -162,3 +162,18 @@ def test_a_failed_member_is_reported_once_then_asked_for_again(
     assert third["status"] == "pending"
     _wait(portal.dir, third["not_ok"][0]["job_id"])
     assert verify(portal, kape["path"]).json()["status"] == "verified"
+
+
+def test_a_verify_reads_the_job_log_once_for_all_its_files(
+    portal, kape, large, monkeypatch
+):
+    reads = []
+    real = large._completed_rows
+
+    def counted(case_dir):
+        reads.append(case_dir)
+        return real(case_dir)
+
+    monkeypatch.setattr(large, "_completed_rows", counted)
+    verify(portal, kape["path"])
+    assert len(reads) == 1  # not once per file
