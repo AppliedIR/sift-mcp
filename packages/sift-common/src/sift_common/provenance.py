@@ -245,8 +245,10 @@ def _trace_entry(
         "path": rs.get("output_file", ""),
         "sha256": rs.get("output_sha256", ""),
     }
+    # an entry the AI declared (log_external_action) links as declared
+    declared = e.get("declared") is True or e.get("tool") == "log_external_action"
     links = [link for t in traces for link in t.links]
-    links.append(_link("recorded-id", frm, to, e, line))
+    links.append(_link("declared" if declared else "recorded-id", frm, to, e, line))
     worst = min(traces, key=lambda t: _WORST.index(t.grade))
     roots = list({r["path"]: r for t in traces for r in t.roots}.values())
     if worst.grade in ("BROKEN", "AMBIGUOUS"):
@@ -255,6 +257,9 @@ def _trace_entry(
     if len(roots) > 1:
         return Trace("AMBIGUOUS", roots[0], roots, links, roots,
                      reason=f"{aid}'s inputs reach {len(roots)} registered roots")  # fmt: skip
+    if declared:
+        reason = f"declared by the AI: {aid} ({e.get('tool', '')})"
+        return Trace("DECLARED", roots[0], roots, links, reason=reason)
     if worst.grade != "FULL":
         return Trace(worst.grade, worst.root, roots, links, worst.candidates,
                      worst.break_, worst.reason)  # fmt: skip

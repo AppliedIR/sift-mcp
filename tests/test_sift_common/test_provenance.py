@@ -207,3 +207,30 @@ def test_an_operation_whose_inputs_reach_two_roots_is_ambiguous(c):
     t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
     assert t.grade == "AMBIGUOUS" and {r["path"] for r in t.roots} == {a, b}, t
     assert {x["path"] for x in t.candidates} == {a, b}
+
+
+@pytest.mark.parametrize("hook", [True, False], ids=["hook and declared", "declared"])
+def test_a_bash_extraction_declared_with_log_external_action_is_declared(c, hook):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    s2 = c.file("extractions/bash/sample2.raw", "sample two")
+    if hook:  # the hook records the command, not what it made
+        c.op("claude-code", "hook-tester-20261009-001", tool="Bash",
+             params={"command": f"7z x {z} -oextractions/bash"})  # fmt: skip
+    c.op("case-mcp", "case-tester-20261009-001", tool="log_external_action",
+         params={"command": f"7z x {z} -oextractions/bash", "purpose": "p"},
+         result_summary={"output_files": [s2], "output_sha256s": [sha(s2)]},
+         input_files=[z], declared=True)  # fmt: skip
+    c.run("sift-tester-20261009-002", ["vol", "-f", s2], [s2], "PID 4\n")
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
+    assert t.grade == "DECLARED" and t.root["path"] == z, t
+    methods = {(link["method"], link["audit_id"]) for link in t.links}
+    assert ("declared", "case-tester-20261009-001") in methods
+    assert "case-tester-20261009-001" in t.reason
+
+
+def test_an_operation_with_no_recorded_inputs_is_a_named_break(c):
+    c.op("sift-mcp", "sift-tester-20261009-001", tool="run_command",
+         params={"command": ["hostname"]}, result_summary={"exit_code": 0})  # fmt: skip
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
+    assert t.grade == "BROKEN" and t.break_["kind"] == "no-inputs", t
