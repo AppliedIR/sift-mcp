@@ -59,6 +59,11 @@ def _detect_artifact_context(command: list[str]) -> str | None:
     return None
 
 
+def _under(path: str, folder: str) -> bool:
+    real, top = os.path.realpath(path), os.path.realpath(folder)
+    return real == top or real.startswith(top + os.sep)
+
+
 def create_server() -> FastMCP:
     """Create and configure the sift MCP server with core tools."""
     server = FastMCP("sift-mcp", instructions=_INSTRUCTIONS)
@@ -220,6 +225,16 @@ def create_server() -> FastMCP:
                 missing.append(f)
             inputs.append({**rec, "found": "declared"})
 
+        # Where the run says it writes outside its own folder (an output
+        # flag's value), as it stands before the run: what is new or changed
+        # there afterwards is the run's output too
+        flagged = [
+            w
+            for w in command_files.named(command, get_output_flags(), op_dir)[1]
+            if not (op_dir and _under(w, op_dir))
+        ]
+        before = command_files.files_at(flagged)
+
         try:
             exec_result = _run(
                 command,
@@ -251,6 +266,22 @@ def create_server() -> FastMCP:
                 resp_data = exec_result
                 resp_format = exec_result.get("_output_format", "text")
 
+            # Its outputs: every file in its own folder (but the saved stdout,
+            # recorded as output_file) and every file new or changed under an
+            # output flag's value, each hashed
+            saved = os.path.realpath(exec_result.get("output_file") or "")
+            made = [
+                p
+                for p in (command_files.files_at([op_dir]) if op_dir else {})
+                if os.path.realpath(p) != saved
+            ]
+            made += [
+                p
+                for p, key in command_files.files_at(flagged).items()
+                if before.get(p) != key and p not in made
+            ]
+            outputs = file_place.output_records(case_dir, made, "run_command")
+
             # Written first, to the call's case, with the id its output's
             # folder is named by; the response carries that id
             logged_id = audit.log(
@@ -273,6 +304,7 @@ def create_server() -> FastMCP:
                 input_detection_method=detection_method,
                 extra={
                     **({"inputs": inputs} if inputs else {}),
+                    **({"outputs": outputs} if outputs else {}),
                     **(
                         {"input_registered": registered}
                         if registered

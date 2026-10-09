@@ -9,6 +9,7 @@ where the tool writes, never an input. dd-style operands (``if=``, ``of=``) are 
 from __future__ import annotations
 
 import os
+import stat
 
 _DD_IN = frozenset({"if", "ifs"})
 _DD_OUT = frozenset({"of", "ofs", "hof", "hofs", "log", "hlog", "mlog"})
@@ -60,4 +61,28 @@ def inputs(command: list[str], output_flags, base: str | None = None) -> list[st
         if os.path.exists(p) and os.path.realpath(p) not in seen:
             seen.add(os.path.realpath(p))
             out.append(p)
+    return out
+
+
+def files_at(paths) -> dict[str, tuple[int, int, int]]:
+    """Each regular file at or under the paths (symlinks not followed), with
+    what tells a rewrite: (inode, size, mtime_ns)."""
+    out: dict[str, tuple[int, int, int]] = {}
+
+    def add(p: str) -> None:
+        try:
+            st = os.lstat(p)
+        except OSError:
+            return
+        if stat.S_ISREG(st.st_mode):
+            out[p] = (st.st_ino, st.st_size, st.st_mtime_ns)
+
+    for top in paths:
+        if os.path.isdir(top) and not os.path.islink(top):
+            for root, dirs, names in os.walk(top):
+                dirs.sort()
+                for n in sorted(names):
+                    add(os.path.join(root, n))
+        else:
+            add(top)
     return out

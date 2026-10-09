@@ -108,14 +108,13 @@ def test_its_files_are_recorded_with_their_place_and_hash(case):
 def test_a_large_file_is_hashed_in_the_background(case, monkeypatch):
     from sift_common import file_identity as fi
 
+    monkeypatch.setattr(fi, "INLINE_LIMIT", 1)
     big = case / "extractions" / "big.raw"
     big.write_bytes(b"BIG")
-    pending = fi.Pending(str(big), "hash-0123456789abcdef")
-    monkeypatch.setattr(fi, "hash_for_call", lambda *a, **k: pending)
     _log(input_files=[str(big)], output_files=[str(big)])
     (e,) = _entries(case)
-    assert e["inputs"][0]["sha256"] == "pending:hash-0123456789abcdef"
-    assert e["outputs"][0]["sha256"] == "pending:hash-0123456789abcdef"
+    assert e["inputs"][0]["sha256"].startswith("pending:hash-")
+    assert e["outputs"][0]["sha256"].startswith("pending:hash-")
 
 
 def test_a_file_that_isnt_there_is_kept_as_named(case):

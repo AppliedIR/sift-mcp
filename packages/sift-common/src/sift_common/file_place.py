@@ -115,25 +115,40 @@ def input_record(case_dir, path, requested_by: str = "") -> tuple[dict, dict | N
     return rec, None
 
 
+def output_records(case_dir, paths, requested_by: str = "") -> list[dict]:
+    """The files a call wrote, each hashed with its size, inode and mtime:
+    in the call while their summed sizes stay within the inline limit, the
+    rest in one background job (``pending:<job_id>``)."""
+    paths = [str(p) for p in paths]
+    batch = fi.hash_files_for_call(
+        [p for p in paths if os.path.isfile(p)],  # a missing one: nothing to hash
+        case_dir=case_dir or "",
+        requested_by=requested_by,
+        inline_limit=fi.INLINE_LIMIT,  # read now: the limit in force
+    )
+    recs = []
+    for p in paths:
+        rec = place(p)
+        h = batch.done.get(p)
+        if h is not None:
+            rec.update(
+                sha256=h.sha256, size=h.size, st_ino=h.st_ino, mtime_ns=h.mtime_ns
+            )
+        else:
+            if batch.job_id and p in batch.pending:
+                rec["sha256"] = f"pending:{batch.job_id}"
+            try:
+                st = os.stat(p)
+                rec.update(size=st.st_size, st_ino=st.st_ino, mtime_ns=st.st_mtime_ns)
+            except OSError:
+                pass
+        recs.append(rec)
+    return recs
+
+
 def output_record(case_dir, path, requested_by: str = "") -> dict:
-    """A file a call wrote, hashed (``pending:<job_id>`` when large), with its
-    size, inode and mtime."""
-    rec = place(path)
-    real = rec.get("realpath")
-    if "st_dev" not in rec:
-        return rec
-    h = _hash(real, case_dir, requested_by)
-    if isinstance(h, fi.HashResult):
-        rec.update(sha256=h.sha256, size=h.size, st_ino=h.st_ino, mtime_ns=h.mtime_ns)
-        return rec
-    if h is not None:
-        rec["sha256"] = h
-    try:
-        st = os.stat(real)
-        rec.update(size=st.st_size, st_ino=st.st_ino, mtime_ns=st.st_mtime_ns)
-    except OSError:
-        pass
-    return rec
+    """One file a call wrote (see ``output_records``)."""
+    return output_records(case_dir, [path], requested_by)[0]
 
 
 def listed(inputs: list[dict], registered: list[dict]) -> tuple[list[str], list[str]]:

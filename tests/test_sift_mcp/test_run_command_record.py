@@ -220,3 +220,68 @@ def test_an_attached_output_flags_path_is_where_the_command_writes():
     )
     assert reads == ["/c/op/x", "/c/a.7z"]
     assert writes == ["/c/out", "/c/op/foo"]
+
+
+def _outs(entry: dict) -> dict:
+    return {Path(o["path"]).name: o for o in entry.get("outputs", [])}
+
+
+WRITE = (
+    "import os, sys\n"
+    "for p in sys.argv[1:]:\n"
+    "    os.makedirs(os.path.dirname(p) or '.', exist_ok=True)\n"
+    "    open(p, 'w').write(os.path.basename(p))\n"
+)
+
+
+def test_the_files_a_run_writes_in_its_folder_are_its_outputs(case):
+    resp, e = run(case, [PY, "-c", WRITE + "print('done')", "s1.raw", "sub/s2.raw"])
+    folder = case / "extractions" / e["audit_id"]
+    outs = _outs(e)
+    for name, p in (
+        ("s1.raw", folder / "s1.raw"),
+        ("s2.raw", folder / "sub" / "s2.raw"),
+    ):
+        o = outs[name]
+        st = os.stat(p)
+        assert o["sha256"] == _sha(p) and o["size"] == st.st_size
+        assert o["st_ino"] == st.st_ino and o["mtime_ns"] == st.st_mtime_ns
+    # the saved stdout is the run's output_file, not listed twice
+    assert e["result_summary"]["output_file"]
+    assert Path(e["result_summary"]["output_file"]).name not in outs
+
+
+def test_new_and_changed_files_under_an_output_flag_are_outputs(case):
+    out = case / "extractions" / "ez"
+    out.mkdir()
+    (out / "earlier.csv").write_text("old")
+    (out / "changed.csv").write_text("old")
+    code = (
+        "import sys\n"
+        "open(sys.argv[2] + '/new.csv', 'w').write('new')\n"
+        "open(sys.argv[2] + '/changed.csv', 'w').write('changed!')\n"
+    )
+    _, e = run(case, [PY, "-c", code, "--csv", str(out)])
+    outs = _outs(e)
+    assert set(outs) == {"new.csv", "changed.csv"}
+    assert outs["new.csv"]["sha256"] == _sha(out / "new.csv")
+    assert outs["changed.csv"]["sha256"] == _sha(out / "changed.csv")
+
+
+def test_an_output_flags_file_is_an_output(case):
+    target = case / "extractions" / "one.json"
+    code = "import sys\nopen(sys.argv[1].split('=', 1)[1], 'w').write('{}')"
+    _, e = run(case, [PY, "-c", code, f"--json={target}"])
+    assert _outs(e)["one.json"]["sha256"] == _sha(target)
+
+
+def test_large_outputs_are_hashed_in_one_background_job(case, monkeypatch):
+    from sift_common import file_identity as fi
+
+    monkeypatch.setattr(fi, "INLINE_LIMIT", 5)
+    _, e = run(case, [PY, "-c", WRITE, "a.raw", "bigger.raw"])
+    outs = _outs(e)
+    assert outs["a.raw"]["sha256"] == _sha(
+        case / "extractions" / e["audit_id"] / "a.raw"
+    )
+    assert outs["bigger.raw"]["sha256"].startswith("pending:hash-")
