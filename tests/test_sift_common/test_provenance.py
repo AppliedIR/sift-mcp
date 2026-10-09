@@ -525,3 +525,17 @@ def test_a_producer_whose_id_is_on_two_entries_is_ambiguous(c):
     t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-002")
     assert t.grade == "AMBIGUOUS", t.as_dict()
     assert [x["audit_id"] for x in t.candidates] == ["sift-tester-20261009-001"] * 2
+
+
+def test_with_no_read_time_only_a_mount_still_live_links(c):
+    """An ingest checks a file directly, with no read time: the mount must not
+    have been unmounted."""
+    a, _ = _mounted(c, 2049)
+    sec = str(c.d / "mnt/Windows/System32/winevt/Logs/Security.evtx")
+    live = pv.trace_file(pv.load_case(c.d), sec, sha(sec), st_dev=2049)
+    assert live.grade == "FULL" and live.root["path"] == a, live.as_dict()
+    c.umount("sift-tester-20261009-009", str(c.d / "mnt"), 2049,
+             ts="2026-10-09T03:00:00Z")  # fmt: skip
+    ended = pv.trace_file(pv.load_case(c.d), sec, sha(sec), st_dev=2049)
+    assert ended.break_["kind"] == "mount-mismatch", ended.as_dict()
+    assert "no read time" in ended.reason

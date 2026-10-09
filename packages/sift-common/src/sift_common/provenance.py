@@ -206,8 +206,8 @@ def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
     """A file under a recorded mount point links only by that mount: the same
     filesystem (st_dev, and the mount id where both record one), read inside
     the mount's recorded life, which ends at the first `umount` entry naming
-    that point's realpath and mount id. None when no recorded mount holds the
-    path."""
+    that point's realpath and mount id; with no read time, only while the
+    mount is still live. None when no recorded mount holds the path."""
     entries = [(e, line) for items in case.by_id.values() for e, line in items]
     under = [
         (e, line, p)
@@ -228,13 +228,16 @@ def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
                    and _when(case, u) >= start), default=None)  # fmt: skip
         if (st_dev is not None and p.get("st_dev") == st_dev
                 and (mnt_id is None or p.get("mnt_id") is None or mnt_id == p["mnt_id"])
-                and (at is None or (start <= at and (end is None or at <= end)))):  # fmt: skip
+                and (end is None if at is None  # no read time: only a mount still live
+                     else start <= at and (end is None or at <= end))):  # fmt: skip
             to = {"path": p["realpath"], "sha256": ""}
             trace = _trace_entry(case, e, line, seen, to)
             return _extend(trace, _link("recorded-mount", {"path": real, "sha256": sha}, to,
                                         e, line))  # fmt: skip
+    why = (" (no read time recorded, so only a mount still live counts)"
+           if at is None else "")  # fmt: skip
     return _broken("mount-mismatch", f"{real} is under a recorded mount point, but not "
-                   "read from that mount's filesystem during its recorded life",
+                   f"read from that mount's filesystem during its recorded life{why}",
                    "read it through the recorded mount, or record the mount it was "
                    "read from")  # fmt: skip
 
