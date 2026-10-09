@@ -433,7 +433,8 @@ def test_with_one_timestamp_the_trails_order_says_whether_the_mount_was_live(c):
 
 def _pending_extraction(c, job="hash-0123456789abcdef"):
     """A 7z extraction whose large output was recorded as `pending:<job>`, then
-    read by vol: P1 hashes outputs over the inline limit in the background."""
+    read by vol: file identity hashes outputs over the inline limit in the
+    background."""
     z = c.file("evidence/mem.7z", "7z bytes")
     c.register(z)
     s2 = c.file("extractions/x1/sample2.raw", "sample two")
