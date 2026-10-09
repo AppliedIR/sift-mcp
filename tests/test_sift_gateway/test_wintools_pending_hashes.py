@@ -176,3 +176,56 @@ async def test_a_reply_with_nothing_pending_records_nothing(case):
     hashed = {"sift_path": "evidence/a.bin", "sha256": "cd" * 32}
     await _call(_gateway(_reply(hashed)), "per-backend")
     assert _entries(case, "wintools_pending_hashes") == []
+
+
+# --- The case is the one the call started in; a reply never fails the call ----
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["per-backend", "aggregate"])
+async def test_a_case_switched_during_the_call_doesnt_take_its_hashes(
+    case, tmp_path, monkeypatch, endpoint
+):
+    disk = case / "evidence" / "disk.E01"
+    disk.write_bytes(b"IN CASE ONE")
+    other = tmp_path / "cases" / "CASE-2"
+    (other / "audit").mkdir(parents=True)
+    (other / "evidence").mkdir()
+    (other / "CASE.yaml").write_text("case_id: CASE-2\n")
+    (other / "evidence" / "disk.E01").write_bytes(b"A DIFFERENT FILE")
+    gw = _gateway(_reply(_pending("evidence/disk.E01")))
+    reply = gw.backends["wintools-mcp"]._session.call_tool.return_value
+
+    async def switch_then_answer(*a, **k):
+        monkeypatch.setenv("VHIR_CASE_DIR", str(other))  # switched mid-call
+        return reply
+
+    gw.backends["wintools-mcp"]._session.call_tool = AsyncMock(
+        side_effect=switch_then_answer
+    )
+    await _call(gw, endpoint)
+    (entry,) = _entries(case, "wintools_pending_hashes")
+    assert entry["case_id"] == "CASE-1"
+    assert entry["files"][0]["sha256"] == sha(b"IN CASE ONE")
+    assert _entries(other, "wintools_pending_hashes") == []
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_reply_never_fails_the_call(case):
+    bad = CallToolResult(content=[TextContent(type="text", text=json.dumps(
+        {"audit_id": AUDIT_ID, "inputs": 1, "note": "pending"}))])  # fmt: skip
+    result = await _call(_gateway(bad), "per-backend")
+    assert result.isError is False
+    assert json.loads(result.content[0].text)["inputs"] == 1
+    assert _entries(case, "wintools_pending_hashes") == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["per-backend", "aggregate"])
+async def test_an_error_reply_records_no_hashes(case, endpoint):
+    (case / "evidence" / "disk.E01").write_bytes(b"X")
+    reply = _reply(_pending("evidence/disk.E01"))
+    reply.isError = True
+    result = await _call(_gateway(reply), endpoint)
+    assert result.isError is True
+    assert _entries(case, "wintools_pending_hashes") == []

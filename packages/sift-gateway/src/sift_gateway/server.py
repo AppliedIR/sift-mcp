@@ -556,20 +556,30 @@ class Gateway:
             logger.error("Could not save the %s join: %s", name, exc)
             return conf
 
-    async def record_pending_hashes(self, backend_name: str, result) -> None:
-        """Hash in the active case the files a wintools reply left pending,
-        and record them. Never fails the call."""
+    async def case_at_start(self, backend_name: str) -> str:
+        """The active case when a wintools call starts ("" for none, or for
+        another backend): its pending hashes are recorded there."""
         if backend_name not in JOINABLE:
+            return ""
+        audit_dir = await asyncio.to_thread(self._audit._get_audit_dir)
+        case_dir = audit_dir.parent if audit_dir else None
+        return str(case_dir) if case_dir and (case_dir / "CASE.yaml").is_file() else ""
+
+    async def record_pending_hashes(
+        self, backend_name: str, result, case_dir: str
+    ) -> None:
+        """Hash, in the case active when the call started (`case_dir`), the
+        files a wintools reply left pending, and record them there. An error
+        reply has none. Never fails the call, whatever the reply holds."""
+        if backend_name not in JOINABLE or getattr(result, "is_error", False):
             return
         from sift_gateway.pending_hashes import hash_in_case, pending_files
 
-        files = pending_files(result)
-        if not files:
-            return
         try:
-            audit_dir = await asyncio.to_thread(self._audit._get_audit_dir)
-            case_dir = audit_dir.parent if audit_dir else None
-            if case_dir is None or not (case_dir / "CASE.yaml").is_file():
+            files = pending_files(result)
+            if not files:
+                return
+            if not case_dir:
                 logger.warning(
                     "%d pending %s hashes not recorded: no active case",
                     len(files),
@@ -578,7 +588,7 @@ class Gateway:
                 return
             source = _extract_audit_id(result)
             records = await asyncio.to_thread(
-                hash_in_case, case_dir, files, source or backend_name
+                hash_in_case, Path(case_dir), files, source or backend_name
             )
             await asyncio.to_thread(
                 self._audit.log,
@@ -587,6 +597,7 @@ class Gateway:
                 result_summary={"files": len(records)},
                 source="gateway_proxy",
                 extra={"files": records},
+                case_dir=case_dir,
             )
         except Exception as exc:  # noqa: BLE001 - the call's answer stands
             logger.error("Pending %s hashes not recorded: %s", backend_name, exc)
@@ -713,6 +724,7 @@ class Gateway:
             backend_name,
             examiner,
         )
+        case_at_start = await self.case_at_start(backend_name)
         _start = time.monotonic()
         try:
             result = await asyncio.wait_for(
@@ -759,7 +771,7 @@ class Gateway:
                 )
             except Exception as exc:
                 logger.warning("Gateway audit failed for %s: %s", actual_name, exc)
-            await self.record_pending_hashes(backend_name, result)
+            await self.record_pending_hashes(backend_name, result, case_at_start)
 
         return result
 

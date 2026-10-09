@@ -373,6 +373,7 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
         if examiner and name in ANALYST_TOOLS:
             arguments = {**arguments, "analyst_override": examiner}
 
+        case_at_start = await gateway.case_at_start(backend_name)
         _start = time.monotonic()
         try:
             result = await backend.call_tool(name, arguments)
@@ -434,10 +435,11 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
                 logger.warning(
                     "Gateway audit failed for %s/%s: %s", backend_name, name, exc
                 )
-            await gateway.record_pending_hashes(backend_name, result)
 
         if getattr(result, "is_error", False):
             return CallToolResult(content=contents, isError=True)
+        if isinstance(backend, HttpMCPBackend):  # an error reply records nothing
+            await gateway.record_pending_hashes(backend_name, result, case_at_start)
         return contents
 
     return server
