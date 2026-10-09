@@ -188,8 +188,8 @@ CASE_MCP = (
     "Case management tools for the Valhuntir forensic investigation platform. "
     "Use case_init to create cases and case_activate to switch between them. "
     "Evidence registration (evidence_register) computes SHA-256 hashes "
-    "for integrity verification. All evidence modifications require "
-    "examiner confirmation. Query case_status for investigation progress."
+    "for integrity verification. You may register originals: each is "
+    "marked as the AI's. Query case_status for investigation progress."
 )
 
 REPORT_MCP = (
