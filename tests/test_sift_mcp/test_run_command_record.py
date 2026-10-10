@@ -312,8 +312,9 @@ def test_a_dd_style_output_outside_the_runs_folder_is_an_output(case):
 def test_what_a_run_wrote_in_its_folder_can_be_read_over_the_share(case, tmp_path):
     """Tools write some outputs 0600 or inside 0700 folders (a memory dump
     through mkstemp, an archive's restored modes); the share can't read
-    those. After the run, its own folder's files gain group and other read
-    and its folders search too. A link's target outside is left as it was."""
+    those. After the run, its own folder's files gain group read and its
+    folders group search, never anything for other users. A link's target
+    outside is left as it was."""
     outside = tmp_path / "outside.bin"
     outside.write_bytes(b"O")
     outside.chmod(0o600)
@@ -332,7 +333,7 @@ def test_what_a_run_wrote_in_its_folder_can_be_read_over_the_share(case, tmp_pat
     assert resp["success"] is True
     op = case / "extractions" / e["audit_id"]
     for name in ("dump.dmp", "iso/f.txt"):
-        assert (op / name).stat().st_mode & 0o044 == 0o044, name
-    assert (op / "iso").stat().st_mode & 0o055 == 0o055
+        assert (op / name).stat().st_mode & 0o077 == 0o040, name
+    assert (op / "iso").stat().st_mode & 0o077 == 0o050
     assert (op / "link").is_symlink()
     assert outside.stat().st_mode & 0o777 == 0o600

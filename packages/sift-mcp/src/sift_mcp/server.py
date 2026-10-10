@@ -61,10 +61,10 @@ def _detect_artifact_context(command: list[str]) -> str | None:
 
 
 def _share_readable(folder: str) -> None:
-    """Give group and other read to what a run wrote in its own folder, and
-    search to its folders, so the share can read it: tools write some outputs
-    0600 or inside 0700 folders (a dump through mkstemp, an archive's restored
-    modes). Never through a link, and only what this user owns."""
+    """Give the group read to what a run wrote in its own folder, and search
+    to its folders, so the share can read it: tools write some outputs 0600 or
+    inside 0700 folders (a dump through mkstemp, an archive's restored modes).
+    Never other users, never through a link, and only what this user owns."""
     uid = os.geteuid()
     flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
     for root, dirs, files in os.walk(folder):  # never into a linked folder
@@ -80,9 +80,9 @@ def _share_readable(folder: str) -> None:
                 if st.st_uid != uid:
                     continue
                 if stat.S_ISDIR(st.st_mode):
-                    add = 0o055
+                    add = 0o050
                 elif stat.S_ISREG(st.st_mode):
-                    add = 0o044
+                    add = 0o040
                 else:
                     continue
                 if st.st_mode & add != add:
