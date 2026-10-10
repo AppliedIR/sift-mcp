@@ -534,3 +534,18 @@ def test_the_opencti_leftovers_are_pycti_and_what_only_it_brought_in(tmp_path):
 
 def test_no_pycti_no_opencti_leftovers(tmp_path):
     assert _leftovers(tmp_path, {**CLEAN, "fastapi": "0.124.4"}, {}) == []
+
+
+def test_one_kept_for_something_else_keeps_what_it_requires_too(tmp_path):
+    """pycti brought a and b; a hand-installed service needs a, and a needs b:
+    removing b would break a, so neither is offered."""
+    dists = {**CLEAN, "pycti": "6.9.29", "a": "1.0", "b": "1.0", "c": "1.0",
+             "service": "1.0"}  # fmt: skip
+    requires = {"pycti": ["a", "b", "c"], "service": ["a"], "a": ["b"]}
+    assert _leftovers(tmp_path, dists, requires) == ["pycti", "c"]
+
+
+def test_pycti_isn_t_offered_when_something_else_requires_it(tmp_path):
+    dists = {**CLEAN, "pycti": "6.9.29", "fastapi": "0.124.4", "my-intel": "1.0"}
+    requires = {"pycti": ["fastapi"], "my-intel": ["pycti>=6"]}
+    assert _leftovers(tmp_path, dists, requires) == []

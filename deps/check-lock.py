@@ -146,8 +146,15 @@ def opencti_leftovers(site: list[str], pins: dict, have: dict) -> tuple[list, di
     if PYCTI not in have:
         return [], {}
     brought = (_brought_by_pycti(site) & set(have)) - set(pins)
-    used = _requirers(site, brought, but={PYCTI} | brought)
-    return [PYCTI, *sorted(brought - set(used))], used
+    gone = set(brought)
+    while True:  # one kept because something needs it keeps what it requires too
+        used = _requirers(site, gone | {PYCTI}, but={PYCTI} | gone)
+        if PYCTI in used:  # something else needs pycti: none of it is left over
+            return [], {}
+        if not gone & set(used):
+            break
+        gone -= set(used)
+    return [PYCTI, *sorted(gone)], _requirers(site, brought - gone, but={PYCTI} | gone)
 
 
 def _cpu_lock(lock: Path) -> bool:
