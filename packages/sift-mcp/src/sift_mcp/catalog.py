@@ -174,7 +174,8 @@ def load_security_policy() -> dict:
 
     Returns dict with keys: dangerous_flags (set), tool_allowed_flags (dict of sets),
     tool_blocked_flags (dict of sets), denied_binaries (frozenset),
-    output_flags (frozenset).
+    output_flags (frozenset), and per tool the output flags it adds and the
+    global ones that are a switch for it (dicts of frozensets).
     """
     global _security_cache
     if _security_cache is not None:
@@ -199,6 +200,12 @@ def load_security_policy() -> dict:
         },
         "denied_binaries": frozenset(doc.get("denied_binaries", [])),
         "output_flags": frozenset(doc.get("output_flags", [])),
+        "tool_output_flags": {
+            k: frozenset(v) for k, v in (doc.get("tool_output_flags") or {}).items()
+        },
+        "tool_switch_flags": {
+            k: frozenset(v) for k, v in (doc.get("tool_switch_flags") or {}).items()
+        },
     }
     return _security_cache
 

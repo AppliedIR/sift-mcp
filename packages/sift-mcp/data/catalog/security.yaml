@@ -10,10 +10,20 @@ dangerous_flags:
   - "--script"
   - "--invoke"
 
+# "-e" (any case) stays dangerous: it runs code for interpreters (perl,
+# ruby, node), and pwsh's -enc/-EncodedCommand ignore case. These tools'
+# -e/-E only select or extract; the check lowercases, so "-e" allows both.
 tool_allowed_flags:
-  run_bulk_extractor:
-    - "-e"
-    - "-x"
+  bulk_extractor: ["-e", "-x"]  # enable / disable a scanner
+  grep: ["-e"]                  # a pattern; -E extended regex
+  egrep: ["-e"]
+  fgrep: ["-e"]
+  zgrep: ["-e"]
+  sed: ["-e"]                   # a script; -E extended regex
+  strings: ["-e"]               # the encoding (-e l for UTF-16LE)
+  tshark: ["-e"]                # a field (-T fields -e); -E field options
+  binwalk: ["-e"]               # extract; -E entropy
+  ewfacquire: ["-e"]            # examiner name; -E evidence number
 
 tool_blocked_flags:
   find:
@@ -49,6 +59,39 @@ output_flags:
   - "--output"
   - "--json"
   - "--jsonl"
+
+# Output flags of one tool only (a global -w would be wrong: AmcacheParser's
+# -w is an input)
+tool_output_flags:
+  unzip: ["-d"]
+  ewfacquire: ["-t"]
+  tshark: ["-w"]
+  hashdeep: ["-W"]
+  psort.py: ["-w"]
+  log2timeline.py: ["--storage-file"]
+  vol: ["--output-dir"]
+  MFTECmd: &ez_outputs ["--body", "--html", "--xml", "--dumpTo"]
+  AmcacheParser: *ez_outputs
+  AppCompatCacheParser: *ez_outputs
+  EvtxECmd: *ez_outputs
+  JLECmd: *ez_outputs
+  LECmd: *ez_outputs
+  PECmd: *ez_outputs
+  RBCmd: *ez_outputs
+  RECmd: *ez_outputs
+  SBECmd: *ez_outputs
+  SQLECmd: *ez_outputs
+  SrumECmd: *ez_outputs
+  bstrings: *ez_outputs
+
+# Global output flags that are a switch for a tool: the next token is no output
+tool_switch_flags:
+  strings: ["-o"]   # print offsets
+  grep: ["-o"]      # only the match
+  zgrep: ["-o"]
+  ls: ["-o"]        # long list without group
+  hexdump: ["-o"]   # two-byte octal
+  tar: ["-o"]       # no same owner
 
 denied_binaries:
   # Filesystem destruction — no forensic use, no unblocked equivalent

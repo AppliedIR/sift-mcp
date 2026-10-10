@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+
 from sift_mcp.catalog import get_tool_def
 from sift_mcp.config import get_config
 from sift_mcp.environment import find_binary
@@ -36,7 +39,27 @@ _DEV_PATH_TOOLS = {
     "tsk_recover",
     "sorter",
     "dd",
+    "dc3dd",
+    "ewfacquire",
+    "ewfmount",
+    "vshadowinfo",
+    "vshadowmount",
 }
+
+
+_EZ_TOOLS_DIR = Path("/opt/zimmermantools")
+
+
+def _ez_launcher(binary: str, resolved: str) -> list[str]:
+    """`dotnet <Tool>.dll` for an EZ tool whose .dll is installed, else the tool."""
+    dotnet = shutil.which("dotnet")
+    for dll in (
+        _EZ_TOOLS_DIR / f"{binary}.dll",
+        _EZ_TOOLS_DIR / binary / f"{binary}.dll",
+    ):
+        if dotnet and dll.is_file():
+            return [dotnet, str(dll)]
+    return [resolved]
 
 
 def run_command(
@@ -84,7 +107,7 @@ def run_command(
     validate_case_data_targets(command, base=cwd)
 
     # Validate any arguments that look like file paths
-    output_flags = get_output_flags()
+    output_flags = get_output_flags(binary)
     prev_was_output_flag = False
     for arg in command[1:]:
         # Check flag=value arguments for path values
@@ -131,6 +154,9 @@ def run_command(
 
     # Sanitize any args after the binary
     sanitize_extra_args(command[1:], tool_name=binary)
+    # SIFT's EZ-tool wrappers expand their arguments unquoted (a path with a
+    # space splits): run the tool's .dll with dotnet directly when it is there
+    command = _ez_launcher(binary, resolved) + command[1:]
 
     if before_run is not None:  # the command passed every check: about to run
         before_run()

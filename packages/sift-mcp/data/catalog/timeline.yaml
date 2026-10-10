@@ -9,12 +9,21 @@ tools:
     output_format: json
     timeout_seconds: 1800
     interactive: false
-    description: "Sigma-based Windows event log analyzer"
+    description: >-
+      Sigma-based Windows event log analyzer. Starts with a subcommand:
+      `hayabusa json-timeline -d <evtx dir> -o <file> -w` (or csv-timeline;
+      dfir-timeline in hayabusa 4.x). SIFT installs 3.9.0.
     fk_tool_name: Hayabusa
     common_flags:
+      - flag: "json-timeline"
+        description: "Subcommand: a JSONL timeline of detections (csv-timeline for CSV; dfir-timeline in 4.x)"
+        required: true
       - flag: "-o"
         description: "Output file path"
         required: false
+      - flag: "-w"
+        description: "No wizard (--no-wizard): run without the interactive rule-selection prompts"
+        required: true
       - flag: "--min-level"
         description: "Minimum alert level (informational, low, medium, high, critical)"
         required: false

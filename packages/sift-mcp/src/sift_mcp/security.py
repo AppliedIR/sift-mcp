@@ -271,9 +271,14 @@ _BLOCKED_EXCEPTIONS = (
 )
 
 
-def get_output_flags() -> frozenset:
-    """Return the set of flags that take output path values."""
-    return _get_policy()["output_flags"]
+def get_output_flags(tool: str = "") -> frozenset:
+    """The flags whose value is an output path, for `tool`: the global ones,
+    less those that are a switch for it (`grep -o`), plus its own (`tshark -w`)."""
+    p = _get_policy()
+    switches = p.get("tool_switch_flags", {}).get(tool, frozenset())
+    return (p["output_flags"] - switches) | p.get("tool_output_flags", {}).get(
+        tool, frozenset()
+    )
 
 
 # Directories blocked for output (superset of _BLOCKED_DIRECTORIES)

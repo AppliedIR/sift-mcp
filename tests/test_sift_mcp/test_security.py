@@ -367,7 +367,9 @@ class TestSanitizeExtraArgs:
         assert result == ["-r", "--verbose", "-o", "output.txt"]
 
     def test_bulk_extractor_e_flag_allowed(self):
-        result = sanitize_extra_args(["-e", "email"], "run_bulk_extractor")
+        result = sanitize_extra_args(
+            ["-e", "email"], "bulk_extractor"
+        )  # the binary run_command passes
         assert result == ["-e", "email"]
 
     # --- Per-tool blocked flags ---
@@ -442,8 +444,8 @@ class TestSecurityPolicyYAML:
         assert "dd" not in policy["denied_binaries"]
         assert "kill" in policy["denied_binaries"]
 
-        assert "run_bulk_extractor" in policy["tool_allowed_flags"]
-        assert "-e" in policy["tool_allowed_flags"]["run_bulk_extractor"]
+        assert "bulk_extractor" in policy["tool_allowed_flags"]
+        assert "-e" in policy["tool_allowed_flags"]["bulk_extractor"]
 
         assert "find" in policy["tool_blocked_flags"]
         assert "-exec" in policy["tool_blocked_flags"]["find"]

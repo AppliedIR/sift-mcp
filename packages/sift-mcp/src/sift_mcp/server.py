@@ -232,7 +232,7 @@ def create_server() -> FastMCP:
                 logger.warning("run_command: no op folder %s: %s", op_dir, e)
                 op_dir = None
         # A relative path in the command is resolved in the run's own folder
-        parsed = command_files.inputs(command, get_output_flags(), op_dir)
+        parsed = command_files.inputs(command, get_output_flags(binary), op_dir)
         if parsed:
             detection_method = "parsed"
         elif td and not td.input_flag:
@@ -266,7 +266,7 @@ def create_server() -> FastMCP:
         # there afterwards is the run's output too
         flagged = [
             w
-            for w in command_files.named(command, get_output_flags(), op_dir)[1]
+            for w in command_files.named(command, get_output_flags(binary), op_dir)[1]
             if not (op_dir and _under(w, op_dir))
         ]
         # taken once the command has passed its checks, just before it runs:
