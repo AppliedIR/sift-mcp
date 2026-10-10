@@ -237,9 +237,12 @@ def _search(
                 "_index": d["_index"],
                 "_id": d["_id"],
                 "ingest_audit_id": d["vhir.ingest_audit_id"],
-                "content_hash": hashlib.sha256(
-                    json.dumps(d, sort_keys=True).encode()
-                ).hexdigest(),
+                # a record's own vhir.content_hash when given ("" for one
+                # indexed before 0.6.4), else one made here
+                "content_hash": d.get(
+                    "vhir.content_hash",
+                    hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest(),
+                ),
                 "original_sha256": d.get("vhir.original", ""),
                 **({"enrichment": groups} if groups else {}),
             }
@@ -718,6 +721,51 @@ def test_a_record_from_a_registered_file_stamped_with_its_hash_is_full(c):
     )
     res, st = c.find([{"content": "evil.exe", "audit_id": aid}])
     assert g(res, st)[0] == "FULL", g(res, st)
+
+
+def _unregistered_ingest(c, aid):
+    """An ingest whose input no registered evidence or recorded tool made."""
+    f = c.file("work/Security.evtx", "copied by hand")
+    c.op(
+        "opensearch-mcp",
+        aid,
+        tool="idx_ingest",
+        params={"path": f, "hostname": "dev01", "run_id": "run-o"},
+        input_files=[f],
+        input_sha256s=[sha(f)],
+        result_summary="ok",
+    )
+
+
+def _cite(c, ingest, **fields):
+    aid = _search(c, [_doc("o1", ingest, **{"event.code": "4624", **fields})])
+    return c.find([{"content": "4624", "audit_id": aid}])
+
+
+def test_a_record_indexed_before_064_says_so_not_made_outside_recorded_tools(c):
+    """A record a 0.6.3 ingest wrote: an id ending in a counter, no content
+    hash. It stays BROKEN, named as recorded before 0.6.4."""
+    old = "opensearch-tester-20261003-004"
+    _unregistered_ingest(c, old)
+    res, st = _cite(c, old, **{"vhir.content_hash": ""})
+    a = st["artifacts"][0]
+    assert g(res, st)[:2] == ("BROKEN", "recorded-before-0.6.4"), g(res, st)
+    assert a["provenance_break"]["fix"] == "re-ingest its source in 0.6.4 to trace it"
+    assert "indexed before 0.6.4 and carries no provenance" in a["provenance_reason"]
+
+
+def test_a_064_ingest_with_no_content_hash_is_not_called_older(c):
+    new = "opensearch-tester-20261010-01m4jqrv8a3pvvm7vnfq1t2g0c"
+    _unregistered_ingest(c, new)
+    res, st = _cite(c, new, **{"vhir.content_hash": ""})
+    assert g(res, st)[:2] == ("BROKEN", "no-recorded-origin"), g(res, st)
+
+
+def test_a_stamped_record_with_no_origin_is_still_made_outside_recorded_tools(c):
+    old = "opensearch-tester-20261003-004"
+    _unregistered_ingest(c, old)
+    res, st = _cite(c, old)  # a content hash: written by 0.6.4's stamp
+    assert g(res, st)[:2] == ("BROKEN", "no-recorded-origin"), g(res, st)
 
 
 def test_a_file_in_a_registered_folder_links_by_its_manifest(c):

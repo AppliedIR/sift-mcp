@@ -510,6 +510,8 @@ _QUERIES = frozenset({"idx_search", "idx_count", "idx_aggregate", "idx_get_event
                       "idx_timeline", "idx_field_values", "idx_case_summary",
                       "idx_list_detections", "idx_host_inventory"})  # fmt: skip
 BEFORE_064 = "recorded before 0.6.4"
+# An audit id's tail before 0.6.4 was a counter; from 0.6.4 it's a ULID
+_COUNTER_ID = re.compile(r"-[0-9]{3,}\Z")
 
 
 def _norm(text: str) -> str:
@@ -869,6 +871,17 @@ def _follow(case: Case, e: dict, line: bytes, follow: list) -> Trace:
     for ingest, doc in follow:
         t = trace_op(case, ingest) if ingest else _broken(
             "no-results-recorded", f"{e['audit_id']} returned a record with no ingest")  # fmt: skip
+        if (t.grade == "BROKEN" and (t.break_ or {}).get("kind") == "no-recorded-origin"
+                and doc is not None and not doc.get("content_hash")
+                and _COUNTER_ID.search(ingest)):  # fmt: skip
+            # an ingest whose id ends in a counter ran before 0.6.4, and a
+            # record with no content hash was never stamped: not made outside
+            # recorded tools, but indexed with no provenance to follow
+            t = _broken("recorded-before-0.6.4", f"record {doc.get('_id')} ({ingest}) "
+                        "was indexed before 0.6.4 and carries no provenance",
+                        "re-ingest its source in 0.6.4 to trace it",
+                        reason=f"{BEFORE_064}: this record was indexed before 0.6.4 and "
+                        "carries no provenance; re-ingest its source in 0.6.4 to trace it")  # fmt: skip
         if doc is not None and t.grade in ("FULL", "DECLARED"):
             original = doc.get("original_sha256")
             stamped = {original} if isinstance(original, str) else set(original or [])
