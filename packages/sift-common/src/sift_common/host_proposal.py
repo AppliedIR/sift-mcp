@@ -276,6 +276,9 @@ class _UF:
     def __init__(self):
         self.parent: dict = {}
         self.proposed: dict = {}
+        # each group's own sets (its domains, machine ids, confirmed machines),
+        # merged on union, so a check never rescans every name
+        self.sets: dict = {}
 
     def find(self, x):
         self.parent.setdefault(x, x)
@@ -284,10 +287,19 @@ class _UF:
             x = self.parent[x]
         return x
 
+    def of(self, x, key: str) -> set:
+        return self.sets.get(self.find(x), {}).get(key, set())
+
     def union(self, a, b, certain: bool) -> None:
         ra, rb = self.find(a), self.find(b)
         if ra == rb:
             return  # already one machine: a weaker reason changes nothing
+        big, small = self.sets.get(ra, {}), self.sets.pop(rb, {})
+        if sum(map(len, small.values())) > sum(map(len, big.values())):
+            big, small = small, big  # the smaller merged into the larger
+        for key, values in small.items():
+            big.setdefault(key, set()).update(values)
+        self.sets[ra] = big
         self.parent[rb] = ra
         self.proposed[ra] = (
             self.proposed.get(ra, False)
@@ -418,6 +430,21 @@ def propose(state: hi.HostState) -> list[Group]:
             ):
                 foreign.add(p)
 
+    # The machines each unit's own names are confirmed to. Units confirmed to
+    # different machines are never joined, by a name or a machine id they
+    # share: images built from one template carry its names and its id. Only
+    # a unit's own names carry it: a forwarded name never the collector's.
+    confirmed: dict[str, set] = {}
+    for p in pairs:
+        m = state.machine_of_pair(*p)
+        if p not in foreign and m is not None and m.state == hi.CONFIRMED:
+            confirmed.setdefault(p[0], set()).add(m.id)
+    # Each name's own sets, merged as groups join (`_UF.sets`)
+    for p in pairs:
+        guid = str((state.units.get(p[0]) or {}).get("machine_guid") or "").lower()
+        uf.sets[p] = {"domains": {hi.split_name(p[1])[1]} - {""}, "ids": {guid} - {""},
+                      "confirmed": set() if p in foreign else set(confirmed.get(p[0], ()))}  # fmt: skip
+
     def groupable(
         p,
     ) -> bool:  # a near spelling is only a hint: no rule joins it to its match
@@ -437,34 +464,11 @@ def propose(state: hi.HostState) -> list[Group]:
     # Across units: spelling-equal artifact names (certain), equal short
     # names (collection and date tokens set aside) with compatible domains
     # (proposed), a shared machine id (proposed).
-    def domains_of(root) -> set[str]:
-        return {hi.split_name(p[1])[1] for p in pairs if uf.find(p) == root} - {""}
-
-    def ids_of(root) -> set[str]:
-        units = {p[0] for p in pairs if uf.find(p) == root}
-        return {
-            str(state.units[u]["machine_guid"]).lower()
-            for u in units
-            if (state.units.get(u) or {}).get("machine_guid")
-        }
-
     id_clash: set = set()
-    # The machines each unit's own names are confirmed to. Units confirmed to
-    # different machines are never joined, by a name or a machine id they
-    # share: images built from one template carry its names and its id.
-    confirmed: dict[str, set] = {}
-    for p in pairs:
-        m = state.machine_of_pair(*p)
-        if p not in foreign and m is not None and m.state == hi.CONFIRMED:
-            confirmed.setdefault(p[0], set()).add(m.id)
     shared: set = set()
 
     def confirmed_apart(a, b) -> bool:
-        def of(root) -> set:
-            units = {p[0] for p in pairs if uf.find(p) == root}
-            return set().union(*(confirmed.get(u, set()) for u in units))
-
-        ma, mb = of(uf.find(a)), of(uf.find(b))
+        ma, mb = uf.of(a, "confirmed"), uf.of(b, "confirmed")
         return bool(ma) and bool(mb) and ma != mb
 
     def may_join(a, b) -> bool:
@@ -473,11 +477,10 @@ def propose(state: hi.HostState) -> list[Group]:
         if confirmed_apart(a, b):
             shared.update({a, b})  # left apart, and said so
             return False
-        ra, rb = uf.find(a), uf.find(b)
-        if len(ids_of(ra) | ids_of(rb)) > 1:
+        if len(uf.of(a, "ids") | uf.of(b, "ids")) > 1:
             id_clash.update({a, b})
             return False
-        return len(domains_of(ra) | domains_of(rb)) <= 1
+        return len(uf.of(a, "domains") | uf.of(b, "domains")) <= 1
 
     ordered = sorted(p for p in pairs if groupable(p))
     by_spelling: dict[str, list] = {}
@@ -530,6 +533,7 @@ def propose(state: hi.HostState) -> list[Group]:
     entries = _list_entries(state)
     result: list[Group] = []
     taken = {hi.spelling(m.canonical) for m in state.machines.values()}
+    next_n: dict = {}  # each name's "(n)" count so far
     for root, ps in sorted(groups.items(), key=lambda kv: kv[1][0]):
         bound = sorted({state.bindings[p] for p in ps if p in state.bindings})
         machines = sorted({state.key_machine.get(k) for k in bound} - {None})
@@ -560,7 +564,7 @@ def propose(state: hi.HostState) -> list[Group]:
                 + ", ".join(sorted(e["name"] for e in matched))
             )
         if not g.canonical:
-            g.canonical = _canonical(g, ps, pairs, taken)
+            g.canonical = _canonical(g, ps, pairs, taken, next_n)
             taken.add(hi.spelling(g.canonical))
         result.append(g)
     _list_conflicts(result, pairs, state, entries)
@@ -651,11 +655,12 @@ def _list_conflicts(groups: list[Group], pairs, state, entries) -> None:
                 )
 
 
-def _canonical(g: Group, ps, pairs, taken: set[str]) -> str:
+def _canonical(g: Group, ps, pairs, taken: set[str], next_n: dict | None = None) -> str:
     """The list name; else the hive's Hostname.Domain; else the most
     frequent FQDN; else the hive's ComputerName or the folder name; else the
     first name. A second machine of a taken name gets its FQDN, or
-    `<name> (<domain>)`, or `<name> (n)`."""
+    `<name> (<domain>)`, or `<name> (n)`: `next_n` keeps where each name's
+    count stopped, so many groups of one name stay linear."""
     hive_fqdn = [
         p[1] for p in ps if any("Hostname+Domain" in e for e in pairs[p].evidence)
     ]
@@ -674,9 +679,11 @@ def _canonical(g: Group, ps, pairs, taken: set[str]) -> str:
     short, domain = hi.split_name(first)
     if domain and hi.spelling(f"{first.split('.')[0]} ({domain})") not in taken:
         return f"{first.split('.')[0]} ({domain})"
-    n = 2
+    counts = next_n if next_n is not None else {}
+    n = counts.get(hi.spelling(first), 2)
     while hi.spelling(f"{first} ({n})") in taken:
         n += 1
+    counts[hi.spelling(first)] = n + 1
     return f"{first} ({n})"
 
 

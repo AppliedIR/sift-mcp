@@ -210,6 +210,48 @@ def test_a_rename_of_a_confirmed_machine_is_still_proposed(case):
     assert "LAPTOP7" in _names(g) and hp.FLAG_CLONE in g.flags
 
 
+def test_a_forwarded_name_never_carries_the_collector_s_machine(case):
+    """A confirmed collector (WEC01) forwarding SRV01's events, and SRV01
+    confirmed: the forwarded name joins SRV01, never "SRV01 (2)"."""
+    wec = unit(case, "evidence/wec01", [
+        ("WEC01", "SYSTEM ComputerName", "artifact"),
+        ("SRV01", "ForwardedEvents.evtx Computer", "artifact")])  # fmt: skip
+    srv = folder(case, "SRV01", "SRV01")
+    confirm(case, wec, "WEC01", "WEC01")
+    confirm(case, srv, "SRV01", "SRV01")
+    g = group_of(groups(case), "WEC01")
+    assert _names(g) == ["WEC01"]
+    (joined,) = [g for g in groups(case) if (wec, "SRV01") in g.pairs]
+    assert (srv, "SRV01") in joined.pairs and joined.canonical == "SRV01"
+    assert hp.FLAG_SHARED not in joined.flags
+
+
+def test_a_proposal_of_five_thousand_template_built_machines_is_linear(case):
+    """Thousands of hosts built from one template (its names and its machine
+    id on every one), each confirmed: well under a few seconds."""
+    import time
+
+    recs, binds = [], []
+    for i in range(5000):
+        u = hi.unit_key(f"evidence/h{i}")
+        recs.append({"kind": "unit", "unit": u, "locator": f"evidence/h{i}",
+                     "machine_guid": GUID})  # fmt: skip
+        names = [
+            (f"HOST{i:05d}", "SYSTEM ComputerName"),
+            *[(n, e) for n, e, _ in TEMPLATE],
+        ]
+        recs += [{"kind": "name", "unit": u, "raw": r, "evidence": e, "origin": "artifact"}
+                 for r, e in names]  # fmt: skip
+        binds.append({"kind": "bind", "unit": u, "raw": f"HOST{i:05d}", "state": hi.CONFIRMED,
+                      "key": hi.new_machine_key(), "canonical": f"HOST{i:05d}"})  # fmt: skip
+    hi.append_observations(case, recs + binds)
+    state = hi.load(case)
+    started = time.perf_counter()
+    gs = hp.propose(state)
+    assert time.perf_counter() - started < 5  # about 0.8 s; quadratic was over a minute
+    assert sum(1 for g in gs if g.machine) == 5000  # every machine its own
+
+
 def test_names_from_a_forwarded_log_are_their_own_machines(case):
     unit(case, "evidence/WEC01", [
         ("WEC01", "folder name", "folder"),
