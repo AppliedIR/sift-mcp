@@ -1450,13 +1450,14 @@ BACKEND_ID, GATEWAY_ID = (
 )
 
 
-def _lookup(c, gateways=1, own=True):
+def _lookup(c, gateways=1, own=True, indent=None):
     """A lookup as the gateway records it: the backend's own entry (its id is
     the one its reply gives the client), and the gateway's reference entry for
-    the call, under its own id, naming the backend's."""
+    the call, under its own id, naming the backend's. The saved reply."""
     resp = c.file("extractions/opencti-4.json", json.dumps(
         {"ioc": "203.0.113.10", "found": True, "labels": ["c2"],
-         "providers": {"opencti": {"outcome": "MATCH"}}, "audit_id": BACKEND_ID}))  # fmt: skip
+         "providers": {"opencti": {"outcome": "MATCH"}}, "audit_id": BACKEND_ID},
+        indent=indent))  # fmt: skip
     if own:  # a backend with no case to write in writes no entry of its own
         c.op("opencti-mcp", BACKEND_ID, tool="lookup_ioc", params={"ioc": "203.0.113.10"},
              result_summary={"found": True})  # fmt: skip
@@ -1466,6 +1467,7 @@ def _lookup(c, gateways=1, own=True):
              backend="opencti-mcp", backend_audit_id=BACKEND_ID,
              reference={"source": "opencti-mcp", "source_version": "1.30.0",
                         "response": {"path": resp, "sha256": sha(resp)}})  # fmt: skip
+    return Path(resp).read_text()
 
 
 @pytest.mark.parametrize("cited", [BACKEND_ID, GATEWAY_ID])
@@ -1478,6 +1480,25 @@ def test_a_lookups_quote_is_reference_data_by_either_id(c, cited, quote):
     res, st = c.find([{"content": quote, "audit_id": cited}])
     assert g(res, st)[:2] == ("BROKEN", "reference"), g(res, st)
     assert st["artifacts"][0]["provenance_chain"][-1]["audit_id"] == GATEWAY_ID
+
+
+@pytest.mark.parametrize("cited", [BACKEND_ID, GATEWAY_ID])
+@pytest.mark.parametrize("field", ['"ioc"', '"found"', '"outcome"'])
+def test_a_line_copied_from_the_indented_reply_is_reference_data(c, cited, field):
+    """The sources reply with indent=2: a line copied as it is, its comma too
+    when it isn't the last in its object."""
+    text = _lookup(c, indent=2)
+    (line,) = [x for x in text.splitlines() if x.strip().startswith(field)]
+    res, st = c.find([{"content": line, "audit_id": cited}])
+    assert g(res, st)[:2] == ("BROKEN", "reference"), (line, g(res, st))
+
+
+@pytest.mark.parametrize("quote", ['"found": true,,', '"found",', '"MATCH",',
+                                   '"found": "true",'])  # fmt: skip
+def test_only_one_comma_after_a_whole_pair_is_taken(c, quote):
+    _lookup(c, indent=2)
+    res, st = c.find([{"content": quote, "audit_id": BACKEND_ID}])
+    assert g(res, st)[:2] == ("CITED-UNVERIFIED", "cited-unverified"), g(res, st)
 
 
 @pytest.mark.parametrize("cited", [BACKEND_ID, GATEWAY_ID])

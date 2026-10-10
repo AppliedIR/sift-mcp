@@ -603,8 +603,14 @@ def _pairs(record, key=None) -> list[str]:
 
 
 def _in_values(quote: list[str], values: list[str], pairs=frozenset()) -> bool:
-    """Each quoted line is in a value, or is a whole `"field": value` pair."""
-    return all(q in pairs or any(q in v for v in values) for q in quote)
+    """Each quoted line is in a value, or is a whole `"field": value` pair,
+    with or without the one comma an indented JSON reply ends it with."""
+    return all(
+        q in pairs
+        or (q.endswith(",") and q[:-1] in pairs)
+        or any(q in v for v in values)
+        for q in quote
+    )
 
 
 def _unverified(why: str, links=()) -> Trace:
