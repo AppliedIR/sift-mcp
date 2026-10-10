@@ -110,6 +110,14 @@ FINDINGS = [
         {"audit_id": "sift-steve-042", "entry_sha256": "2" * 64, "tool": "run_command"},
         {"audit_id": "sift-steve-043", "entry_sha256": "e" * 64, "path": "/mnt/case/disk",
          "image": IMG["path"]}]}),
+    # as the resolver stores a reference link: its `from` empty (the live U-41 one)
+    chained("F-steve-012", "BROKEN", art(
+        "BROKEN", "reference data from opencti-mcp, not evidence", root=None,
+        brk={"kind": "reference"}, label="intel", chain=[{
+            "method": "reference", "audit_id": "siftgateway-steve-001",
+            "entry_sha256": "e" * 64, "from": {"path": "", "sha256": ""},
+            "to": {"path": f"{X}/g/response.json", "sha256": "7" * 64},
+            "reference": {"source": "opencti-mcp", "source_version": "1.30.0"}}])),
 ]  # fmt: skip
 
 DRIVER = r"""
@@ -254,8 +262,11 @@ def test_a_mixed_finding_reads_before_0_6_4_and_each_artifact_its_own_grade(show
 
 def test_a_reference_link_names_its_source_and_version_and_full_keeps_its_reason(shown):
     s = shown["F-steve-007"]
-    # the link's own line (the artifact's reason goes on: ", op …")
-    assert "reference: lookup_ioc, opencti 6.4</span>" in s["panel"]
+    # the link's own line names its source once (the artifact's reason, on the
+    # card, goes on: ", op …")
+    p = text(s["panel"])
+    assert "reference: lookup_ioc (opencti 6.4) → response.json" in p
+    assert "opencti 6.4</span>" not in s["panel"]  # not again beside the step
     assert ">FULL<" in s["card"] and "op opencti-steve-001" in s["card"]
 
 
@@ -374,3 +385,11 @@ def test_a_folder_row_shows_its_file_count():
     rows = r.stdout.split("<tr>")
     assert "folder (12 files)" in next(x for x in rows if "/e/kape" in x)
     assert "files)" not in next(x for x in rows if "/e/mem.raw" in x)
+
+
+def test_a_reference_step_names_its_source_once(shown):
+    """The live U-41 step read "reference: opencti-mcp, 1.30.0opencti-mcp
+    (1.30.0)": the source belongs on the link's own line, once."""
+    p = text(shown["F-steve-012"]["panel"])
+    assert "reference: opencti-mcp (1.30.0) → response.json" in p
+    assert p.count("1.30.0") == 1 and "1.30.0opencti" not in p, p

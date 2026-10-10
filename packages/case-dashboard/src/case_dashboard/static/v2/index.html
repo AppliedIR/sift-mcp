@@ -2991,17 +2991,18 @@ async function loadToolInvocations(finding) {
     if (step.method) h += ' <span style="font-size:10px;color:var(--text-secondary)">[' + escapeHtml(step.method) + ']</span>';
     if (step.audit_id) h += ' <span style="color:var(--text-muted);font-family:monospace;font-size:10px">[' + escapeHtml(step.audit_id) + ']</span>';
     var ref = step.reference;
-    if (ref && typeof ref === 'object') {
-      h += ' <span style="font-size:10px;color:var(--text-secondary)">reference: ' + escapeHtml(ref.source || '?') + ', ' +
-        escapeHtml(ref.source_version || 'version not recorded') + '</span>';
+    var named = ref && typeof ref === 'object'
+      ? escapeHtml(ref.source || '?') + ' (' + escapeHtml(ref.source_version || 'version not recorded') + ')' : '';
+    // a reference link starts at its source (a lookup), not at a file: the
+    // source is named once, there; one from a file names it beside the step
+    var src = named && !(step.from && step.from.path) ? 'reference: ' + named : null;
+    if (named && !src) {
+      h += ' <span style="font-size:10px;color:var(--text-secondary)">reference: ' + named + '</span>';
     }
     var pf = function(d) {
       d = d || {};
       return escapeHtml(String(d.path || '?').split(/[\\/]/).pop()) + ' <span style="font-family:monospace">' + escapeHtml(provHash(d.sha256)) + '</span>';
     };
-    // a reference link starts at its source (a lookup), not at a file
-    var src = ref && typeof ref === 'object' && !(step.from && step.from.path)
-      ? escapeHtml(ref.source || '?') + ' (' + escapeHtml(ref.source_version || 'version not recorded') + ')' : null;
     if (step.from || step.to) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">' + (src ? src + ' \u2192 ' : step.from ? pf(step.from) + ' \u2192 ' : '\u2192 ') + pf(step.to) + '</div>';
     if (cmd) h += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
     var outFile = fullEntry && (fullEntry.result_summary || {}).output_file;
