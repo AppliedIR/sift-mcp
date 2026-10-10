@@ -6,6 +6,8 @@ import os
 import re
 from pathlib import Path
 
+from sift_common import SYSTEM_DIRS
+
 from sift_mcp.catalog import load_security_policy
 from sift_mcp.config import resolve_case_dir
 
@@ -252,16 +254,11 @@ def validate_case_data_targets(command: list[str], base: str | None = None) -> N
 
 
 _BLOCKED_DIRECTORIES = (
-    "/etc",
-    "/proc",
-    "/sys",
-    "/dev",
-    "/boot",
+    *SYSTEM_DIRS,  # /etc, /proc, /sys, /dev, /boot, /var/lib/vhir
     os.path.expanduser("~/.vhir"),
     os.path.expanduser("~/.ssh"),
     os.path.expanduser("~/.claude.json"),
     os.path.expanduser("~/.config/opencti-mcp"),
-    "/var/lib/vhir",
     os.path.expanduser("~/.claude"),
     os.path.expanduser("~/.agents"),  # the deployed skills Codex reads
     os.path.expanduser("~/.codex"),  # Codex's profile and agents

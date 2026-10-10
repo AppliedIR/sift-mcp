@@ -5,6 +5,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+# The system's folders and Valhuntir's own keys: never read as evidence, even
+# through a registered link (sift-mcp blocks them for every tool's input too)
+SYSTEM_DIRS = ("/etc", "/proc", "/sys", "/dev", "/boot", "/var/lib/vhir")
+
 
 def resolve_case_dir() -> str:
     """Resolve the active case directory.
