@@ -169,3 +169,22 @@ def test_an_ez_tools_path_with_a_space_is_one_argument(tmp_path, monkeypatch):
     evidence.write_bytes(b"x")
     generic.run_command(["MFTECmd", "-f", str(evidence)], cwd=str(tmp_path))
     assert out.read_text().splitlines()[-2:] == ["-f", str(evidence)]
+
+
+def test_an_ez_tool_in_a_folder_of_another_case_still_runs_via_dotnet(
+    tmp_path, monkeypatch
+):
+    """SIFT installs EvtxECmd as EvtxeCmd/EvtxECmd.dll."""
+    ez = tmp_path / "zimmermantools"
+    (ez / "EvtxeCmd").mkdir(parents=True)
+    dll = ez / "EvtxeCmd" / "EvtxECmd.dll"
+    dll.write_bytes(b"")
+    monkeypatch.setattr(generic, "_EZ_TOOLS_DIR", ez, raising=False)
+    monkeypatch.setattr(generic.shutil, "which", lambda name: f"/usr/bin/{name}")
+    assert generic._ez_launcher("EvtxECmd", "/usr/local/bin/EvtxECmd") == [
+        "/usr/bin/dotnet",
+        str(dll),
+    ]
+    assert generic._ez_launcher("PECmd", "/usr/local/bin/PECmd") == [
+        "/usr/local/bin/PECmd"
+    ]

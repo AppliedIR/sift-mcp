@@ -53,10 +53,13 @@ _EZ_TOOLS_DIR = Path("/opt/zimmermantools")
 def _ez_launcher(binary: str, resolved: str) -> list[str]:
     """`dotnet <Tool>.dll` for an EZ tool whose .dll is installed, else the tool."""
     dotnet = shutil.which("dotnet")
-    for dll in (
-        _EZ_TOOLS_DIR / f"{binary}.dll",
-        _EZ_TOOLS_DIR / binary / f"{binary}.dll",
-    ):
+    dlls = [_EZ_TOOLS_DIR / f"{binary}.dll"]
+    try:  # its own folder, whatever its case (SIFT has EvtxeCmd/EvtxECmd.dll)
+        dlls += [d / f"{binary}.dll" for d in sorted(_EZ_TOOLS_DIR.iterdir())
+                 if d.is_dir() and d.name.lower() == binary.lower()]  # fmt: skip
+    except OSError:
+        pass
+    for dll in dlls:
         if dotnet and dll.is_file():
             return [dotnet, str(dll)]
     return [resolved]
