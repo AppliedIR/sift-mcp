@@ -754,6 +754,28 @@ def test_a_record_indexed_before_064_says_so_not_made_outside_recorded_tools(c):
     assert "indexed before 0.6.4 and carries no provenance" in a["provenance_reason"]
 
 
+def test_a_record_indexed_before_064_keeps_the_links_its_chain_recorded(c):
+    """The relabel names the record as older; the ingest's links and root
+    that were followed stay in its chain."""
+    reg = c.file("evidence/dev01/Security.evtx", "registered evtx")
+    c.register(reg)
+    loose = c.file("work/System.evtx", "copied by hand")
+    old = "opensearch-tester-20261003-004"
+    c.op(
+        "opensearch-mcp",
+        old,
+        tool="idx_ingest",
+        params={"path": reg, "hostname": "dev01", "run_id": "run-o"},
+        input_files=[reg, loose],
+        input_sha256s=[sha(reg), sha(loose)],
+        result_summary="ok",
+    )
+    res, st = _cite(c, old, **{"vhir.content_hash": ""})
+    assert g(res, st)[:2] == ("BROKEN", "recorded-before-0.6.4"), g(res, st)
+    methods = [link.get("method") for link in st["artifacts"][0]["provenance_chain"]]
+    assert "registered-path" in methods, methods
+
+
 def test_a_064_ingest_with_no_content_hash_is_not_called_older(c):
     new = "opensearch-tester-20261010-01m4jqrv8a3pvvm7vnfq1t2g0c"
     _unregistered_ingest(c, new)

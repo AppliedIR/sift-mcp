@@ -877,11 +877,12 @@ def _follow(case: Case, e: dict, line: bytes, follow: list) -> Trace:
             # an ingest whose id ends in a counter ran before 0.6.4, and a
             # record with no content hash was never stamped: not made outside
             # recorded tools, but indexed with no provenance to follow
-            t = _broken("recorded-before-0.6.4", f"record {doc.get('_id')} ({ingest}) "
-                        "was indexed before 0.6.4 and carries no provenance",
-                        "re-ingest its source in 0.6.4 to trace it",
-                        reason=f"{BEFORE_064}: this record was indexed before 0.6.4 and "
-                        "carries no provenance; re-ingest its source in 0.6.4 to trace it")  # fmt: skip
+            old = _broken("recorded-before-0.6.4", f"record {doc.get('_id')} ({ingest}) "
+                          "was indexed before 0.6.4 and carries no provenance",
+                          "re-ingest its source in 0.6.4 to trace it",
+                          reason=f"{BEFORE_064}: this record was indexed before 0.6.4 and "
+                          "carries no provenance; re-ingest its source in 0.6.4 to trace it")  # fmt: skip
+            t.break_, t.reason = old.break_, old.reason  # its links and roots stay
         if doc is not None and t.grade in ("FULL", "DECLARED"):
             original = doc.get("original_sha256")
             stamped = {original} if isinstance(original, str) else set(original or [])
