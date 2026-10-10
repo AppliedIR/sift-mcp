@@ -333,7 +333,7 @@ def test_an_examiner_name_already_used_is_refused_and_offered_as_a_merge(case):
     assert {m.canonical for m in state.machines.values()} == {"DC01", "dc01 (2)"}
 
 
-# -- pre-0.7 cases
+# -- pre-0.6.4 cases
 
 
 def test_v1_import_seeds_canonicals_from_the_stamped_host_id_and_flags_merges(case):
@@ -355,6 +355,11 @@ def test_v1_import_seeds_canonicals_from_the_stamped_host_id_and_flags_merges(ca
     assert hi.FLAG_V1_MERGED in by_name["WKS01"].flags
     assert hi.FLAG_V1_MERGED not in by_name["SRV01"].flags
     assert len(by_name["WKS01"].pairs) == 2
+    # each old index is a unit named for the layout it comes from
+    assert {(u["locator"], u["source"]) for u in state.units.values()} == {
+        ("pre-0.6.4 index case-acme-evtx-wks01", "pre-0.6.4 index"),
+        ("pre-0.6.4 index case-acme-evtx-srv01", "pre-0.6.4 index"),
+    }
     # A new collection of the same machine joins it.
     k, c = hi.get_or_mint(case, "new-unit", "WKS01")
     assert c == "WKS01" and state.machine_of_key(k) is not None

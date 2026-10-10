@@ -1143,7 +1143,7 @@ def get_or_mint(
 
 
 # --------------------------------------------------------------------------
-# Pre-0.7 cases
+# Pre-0.6.4 cases
 
 
 def import_v1(
@@ -1151,12 +1151,12 @@ def import_v1(
     dictionary_hosts: dict,
     pairs: list[tuple[str, str, str]],
 ) -> bool:
-    """Seed the logs of a pre-0.7 case once.
+    """Seed the logs of a pre-0.6.4 case once.
 
     ``dictionary_hosts`` is the v1 ``host-dictionary.yaml`` ``hosts`` map;
-    ``pairs`` is ``(index, host.name, host.id)`` from the case's pre-0.7
+    ``pairs`` is ``(index, host.name, host.id)`` from the case's pre-0.6.4
     indices. Each v1 machine becomes a confirmed machine whose canonical is
-    the ``host.id`` its records carry, so pre-0.7 and new records agree; a v1
+    the ``host.id`` its records carry, so pre-0.6.4 and new records agree; a v1
     machine that joined differently spelled names was merged automatically
     and is flagged for the examiner. Returns False when already imported.
     """
@@ -1213,7 +1213,7 @@ def import_v1(
             flags = [FLAG_V1_MERGED] if v1 in auto_merged else []
             seen_units: set[str] = set()
             for index, name in sorted(set(groups[v1])):
-                locator = f"pre-0.7 index {index}"
+                locator = f"pre-0.6.4 index {index}"
                 u = unit_key(locator)
                 if u not in seen_units:
                     records.append(
@@ -1221,7 +1221,7 @@ def import_v1(
                             "kind": "unit",
                             "unit": u,
                             "locator": locator,
-                            "source": "pre-0.7 index",
+                            "source": "pre-0.6.4 index",
                         }
                     )
                     seen_units.add(u)
