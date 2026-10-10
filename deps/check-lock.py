@@ -7,6 +7,10 @@ that interpreter:
     <venv>/bin/python deps/check-lock.py --strict     after the locked installs
     <venv>/bin/python deps/check-lock.py --final      right after --strict
     <venv>/bin/python deps/check-lock.py --cuda-leftovers
+    <venv>/bin/python deps/check-lock.py --opencti-leftovers
+
+--opencti-leftovers prints pycti and what it brought in that nothing else
+installed requires, one name per line: what `vhir update` offers to remove.
 
 --cuda-leftovers prints the CUDA-family packages (nvidia-*, cuda-*, triton)
 the lock doesn't pin and nothing outside them requires, one "name bytes" line
@@ -117,13 +121,13 @@ def _brought_by_pycti(site: list[str]) -> set[str]:
     return set()
 
 
-def _requirers(site: list[str], names, but: str) -> dict[str, list[str]]:
+def _requirers(site: list[str], names, but) -> dict[str, list[str]]:
     """Which installed packages (but `but`) require each of `names` outside any
     extra (one asked for only with an extra isn't installed for it)."""
     by: dict[str, list[str]] = {}
     for dist in importlib.metadata.distributions(path=site):
         who = dist.metadata["Name"] or ""
-        for req in dist.requires or [] if _name(who) != but else []:
+        for req in dist.requires or [] if _name(who) not in but else []:
             if "extra" in req.partition(";")[2]:
                 continue
             m = re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", req)
@@ -134,6 +138,16 @@ def _requirers(site: list[str], names, but: str) -> dict[str, list[str]]:
             ):
                 by.setdefault(_name(m.group(0)), []).append(who)
     return {n: sorted(w) for n, w in by.items()}
+
+
+def opencti_leftovers(site: list[str], pins: dict, have: dict) -> tuple[list, dict]:
+    """pycti and what it brought in that nothing else installed requires
+    (outside any extra), and {name: what else requires it} for the rest."""
+    if PYCTI not in have:
+        return [], {}
+    brought = (_brought_by_pycti(site) & set(have)) - set(pins)
+    used = _requirers(site, brought, but={PYCTI} | brought)
+    return [PYCTI, *sorted(brought - set(used))], used
 
 
 def _cpu_lock(lock: Path) -> bool:
@@ -231,6 +245,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--final", action="store_true")
     mode.add_argument("--installed", action="store_true")
     mode.add_argument("--cuda-leftovers", action="store_true")
+    mode.add_argument("--opencti-leftovers", action="store_true")
     parser.add_argument(
         "--lock", type=Path, default=Path(__file__).with_name("vhir.lock")
     )
@@ -246,6 +261,10 @@ def main(argv: list[str] | None = None) -> int:
     have = installed_versions(site)
     if args.installed:
         print(" ".join(sorted(n for n in have if n in pins)))
+        return 0
+    if args.opencti_leftovers:  # what update offers to remove, one per line
+        for n in opencti_leftovers(site, pins, have)[0]:
+            print(n)
         return 0
     if args.cuda_leftovers:
         for n in cuda_leftovers(site, pins, have):
@@ -292,8 +311,9 @@ def main(argv: list[str] | None = None) -> int:
             f" uv pip uninstall --python {shlex.quote(py)} pycti"
         )
     others = sorted(conflicted - {PYCTI}) if pycti_only else []
-    used = _requirers(site, others, but=PYCTI) if args.final else {}
-    unused = [n for n in others if n not in used]
+    removable, used_by = opencti_leftovers(site, pins, have) if args.final else ([], {})
+    unused = [n for n in others if n in removable]
+    used = {n: used_by[n] for n in others if n in used_by}
     if unused and args.final:
         print(
             f"  {', '.join(unused)}: left by an earlier install, not in the lock,"

@@ -504,3 +504,33 @@ def test_final_without_leftovers_prints_no_hint(tmp_path):
         lock_text=CPU_LOCK,
     ).stdout
     assert "CUDA packages" not in out
+
+
+# --- What update offers to remove: pycti and what only it uses ---------------
+
+
+def _leftovers(tmp_path, dists, requires):
+    run = _run(tmp_path, "--opencti-leftovers", dists, requires=requires)
+    assert run.returncode == 0, run.stderr
+    return run.stdout.split()
+
+
+def test_the_opencti_leftovers_are_pycti_and_what_only_it_brought_in(tmp_path):
+    """As on a real 0.6.3+OpenCTI venv: what only pycti requires (outside an
+    extra) is listed; the lock's packages, a package something else needs, and
+    one asked for only under an extra elsewhere are handled each as they are."""
+    dists = {**CLEAN, "pycti": "6.9.29", "fastapi": "0.124.4", "stix2": "3.0.1",
+             "stix2-patterns": "2.0.0", "pika": "1.3.2", "my-api": "1.0",
+             "transformers": "5.19.0", "otel-extra": "1.0"}  # fmt: skip
+    requires = {
+        "pycti": ["fastapi<0.125.0,>=0.124.0", "stix2>=3", "pika", "starlette<0.51",
+                  "otel-extra ; extra == 'otel'"],
+        "stix2": ["stix2-patterns"],  # one leftover needing another
+        "my-api": ["pika"],  # something else uses pika: never listed
+        "transformers": ["fastapi ; extra == 'serving'"],  # only an extra: not a use
+    }  # fmt: skip
+    assert _leftovers(tmp_path, dists, requires) == ["pycti", "fastapi", "stix2"]
+
+
+def test_no_pycti_no_opencti_leftovers(tmp_path):
+    assert _leftovers(tmp_path, {**CLEAN, "fastapi": "0.124.4"}, {}) == []
