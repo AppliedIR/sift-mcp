@@ -640,6 +640,86 @@ def test_a_record_stamped_with_another_root_is_a_stamp_mismatch(c):
     assert g(res, st)[:2] == ("BROKEN", "stamp-mismatch"), g(res, st)
 
 
+def _kansa(c, name="kansa"):
+    """A registered folder holding one CSV; returns (member, manifest hash)."""
+    f = c.file(f"evidence/{name}/WKS05-Autorunsc.csv", f"{name} autoruns csv")
+    folder = str(c.d / "evidence" / name)
+    c.register(
+        folder,
+        kind="folder",
+        manifest=[{"relpath": "WKS05-Autorunsc.csv", "sha256": sha(f)}],
+    )
+    rows = json.loads((c.d / "evidence.json").read_text())["files"]
+    return f, next(r["manifest_sha256"] for r in rows if r["path"] == folder)
+
+
+def _ingest(c, aid, f):
+    c.op(
+        "opensearch-ingest-7",
+        aid,
+        tool="ingest_delimited",
+        params={"run_id": "run-k"},
+        input_files=[f],
+        input_sha256s=[sha(f)],
+        input_detection_method="parsed",
+    )
+
+
+def test_a_record_from_a_registered_folder_stamped_with_its_manifest_is_full(c):
+    """Ingest stamps a folder member's records with the folder and its
+    manifest's hash; the chain reaches the member through that manifest."""
+    f, manifest = _kansa(c)
+    _ingest(c, "opensearch-ingest-7-20261009-020", f)
+    aid = _search(
+        c,
+        [
+            _doc(
+                "k1",
+                "opensearch-ingest-7-20261009-020",
+                **{"process.name": "evil.exe", "vhir.original": manifest},
+            )
+        ],
+    )
+    res, st = c.find([{"content": "evil.exe", "audit_id": aid}])
+    assert g(res, st)[0] == "FULL", g(res, st)
+
+
+def test_a_folder_record_stamped_with_another_folders_manifest_is_a_mismatch(c):
+    f, _ = _kansa(c)
+    _, other = _kansa(c, "velociraptor")
+    _ingest(c, "opensearch-ingest-7-20261009-020", f)
+    aid = _search(
+        c,
+        [
+            _doc(
+                "k1",
+                "opensearch-ingest-7-20261009-020",
+                **{"process.name": "evil.exe", "vhir.original": other},
+            )
+        ],
+    )
+    res, st = c.find([{"content": "evil.exe", "audit_id": aid}])
+    assert g(res, st)[:2] == ("BROKEN", "stamp-mismatch"), g(res, st)
+
+
+def test_a_record_from_a_registered_file_stamped_with_its_hash_is_full(c):
+    f = c.file("evidence/WKS05-Autorunsc.csv", "single autoruns csv")
+    c.register(f)
+    _ingest(c, "opensearch-ingest-7-20261009-020", f)
+    aid = _search(
+        c,
+        [
+            _doc(
+                "k1",
+                "opensearch-ingest-7-20261009-020",
+                **{"process.name": "evil.exe", "vhir.original": sha(f)},
+            )
+        ],
+    )
+    res, st = c.find([{"content": "evil.exe", "audit_id": aid}])
+    assert g(res, st)[0] == "FULL", g(res, st)
+
+
 def test_a_file_in_a_registered_folder_links_by_its_manifest(c):
     f1 = c.file(
         "evidence/kape/C/Windows/System32/winevt/Logs/System.evtx", "kape system evtx"

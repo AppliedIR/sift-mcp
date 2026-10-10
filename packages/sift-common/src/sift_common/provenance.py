@@ -873,7 +873,13 @@ def _follow(case: Case, e: dict, line: bytes, follow: list) -> Trace:
             original = doc.get("original_sha256")
             stamped = {original} if isinstance(original, str) else set(original or [])
             reached = {r.get("sha256") for r in t.roots}
-            if stamped - {""} and stamped != reached:
+            # Ingest stamps a folder member's records with the folder's
+            # manifest hash: a root reached through that manifest is named by it
+            manifests = {r["path"]: r.get("manifest_sha256", "")
+                         for r in case.roots if r.get("kind") == "folder"}  # fmt: skip
+            by_folder = {manifests.get(r["folder"], "") if r.get("folder")
+                         else r.get("sha256") for r in t.roots}  # fmt: skip
+            if stamped - {""} and stamped not in (reached, by_folder):
                 t = _broken("stamp-mismatch", f"record {doc.get('_id')} is stamped as from "
                             f"{sorted(stamped)}, but its chain reaches {sorted(reached)}",
                             links=t.links)  # fmt: skip
