@@ -120,7 +120,8 @@ def test_content_that_isnt_the_record_verified_is_never_valid(case):
     assert "F-tester-009 UNVERIFIED" in warning
 
 
-def test_an_approval_from_0_6_keeps_the_checks_own_wording(tmp_path, monkeypatch):
+def _case_06(tmp_path, monkeypatch):
+    """A case approved under 0.6: a legacy line, nothing signed."""
     from vhir_cli import verification
     from vhir_cli.ledger_verify import signed_text
 
@@ -137,9 +138,35 @@ def test_an_approval_from_0_6_keeps_the_checks_own_wording(tmp_path, monkeypatch
         "finding_id": old["id"], "type": "finding", "hmac": "00", "hmac_version": 2,
         "content_snapshot": signed_text(old, "finding", 0), "approved_by": "tester",
         "approved_at": old["approved_at"], "case_id": "INC-06"}) + "\n")  # fmt: skip
+    pointer = tmp_path / "active_case"
+    pointer.write_text(str(d))
+    monkeypatch.setenv("VHIR_CASE_DIR", str(d))
+    monkeypatch.setattr(fmm, "_ACTIVE_CASE_FILE", pointer)
+    monkeypatch.setattr(cms, "_ACTIVE_CASE_FILE", pointer)
+    return d, old
+
+
+SHOWN_06 = "approved before 0.6.4 (before signing)"  # as people read it
+
+
+def test_an_approval_from_0_6_is_marked_as_people_read_it(tmp_path, monkeypatch):
+    d, old = _case_06(tmp_path, monkeypatch)
     items = [dict(old)]
     assert mark_approvals(d, items) == ""
-    assert items[0]["approval_verification"] == "approved under 0.6 (before signing)"
+    assert items[0]["approval_verification"] == SHOWN_06
+
+
+def test_get_findings_and_export_mark_a_0_6_approval_as_people_read_it(
+    tmp_path, monkeypatch
+):
+    from forensic_mcp.server import create_server
+
+    _case_06(tmp_path, monkeypatch)
+    got = create_server()._tool_manager._tools["get_findings"].fn()
+    out = cms.create_server()._tool_manager._tools["export_bundle"].fn()
+    for res in (got, out):
+        assert [f["approval_verification"] for f in res["findings"]] == [SHOWN_06]
+        assert "warning" not in res
 
 
 def test_altered_approval_stamps_on_verified_content_are_never_valid(case):

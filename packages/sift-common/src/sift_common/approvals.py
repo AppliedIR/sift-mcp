@@ -24,15 +24,19 @@ def mark_approvals(case_dir, items: list) -> str:
         return ""
     why = ""
     try:
+        from vhir_cli import ledger_verify
         from vhir_cli.ledger_verify import _record_sha, approved_view
+
+        # what people (and the AI relaying it) read; nothing matches this marker
+        shown = getattr(ledger_verify, "shown_label", lambda label: label)
 
         view = approved_view(Path(case_dir))
         verdicts = {v.item_id: v for v in view["result"].items}
         marks = {n["id"]: n["status"] for n in view["not_verified"]}
         for record in view["findings"]:
             v = verdicts[str(record["id"])]
-            marks[record["id"]] = (record, v.content_sha256, v.view, view["labels"].get(
-                record["id"]) if v.status == "APPROVED_UNDER_0_6" else "VALID")  # fmt: skip
+            marks[record["id"]] = (record, v.content_sha256, v.view, shown(view["labels"].get(
+                record["id"])) if v.status == "APPROVED_UNDER_0_6" else "VALID")  # fmt: skip
     except Exception as e:  # noqa: BLE001 - never read as approved when unchecked
         marks, why = {}, f" (couldn't verify: {e})"
     bad = []
