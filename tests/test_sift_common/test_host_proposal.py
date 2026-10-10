@@ -226,6 +226,23 @@ def test_a_forwarded_name_never_carries_the_collector_s_machine(case):
     assert hp.FLAG_SHARED not in joined.flags
 
 
+def test_a_forwarded_name_confirmed_as_another_machine_keeps_its_own_binding(case):
+    """The examiner confirmed WEC01's forwarded "SRV01" as srv01.remote, a
+    machine other than the local SRV01: the two never join, and the shared
+    name is flagged."""
+    wec = unit(case, "evidence/wec01", [
+        ("WEC01", "SYSTEM ComputerName", "artifact"),
+        ("SRV01", "ForwardedEvents.evtx Computer", "artifact")])  # fmt: skip
+    srv = folder(case, "SRV01", "SRV01")
+    confirm(case, wec, "WEC01", "WEC01")
+    confirm(case, wec, "srv01.remote", "SRV01")  # the forwarded name, its own machine
+    confirm(case, srv, "SRV01", "SRV01")
+    gs = groups(case)
+    (forwarded,) = [g for g in gs if (wec, "SRV01") in g.pairs]
+    assert (srv, "SRV01") not in forwarded.pairs
+    assert hp.FLAG_SHARED in forwarded.flags
+
+
 def test_a_proposal_of_five_thousand_template_built_machines_is_linear(case):
     """Thousands of hosts built from one template (its names and its machine
     id on every one), each confirmed: well under a few seconds."""
