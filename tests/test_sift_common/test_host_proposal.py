@@ -134,6 +134,82 @@ def test_one_machine_id_under_two_names_is_proposed_and_flagged(case):
     assert any(p[1] == "LAPTOP7" for p in g.pairs) and hp.FLAG_CLONE in g.flags
 
 
+# -- two machines built from one template: its names, and its machine id
+
+GUID = "11111111-2222-3333-4444-555555555555"
+TEMPLATE = [("tpl-packer", "Amazon EC2Launch.evtx Computer", "artifact"),
+            ("OFFDEVS-TUHMGJE", "Microsoft-Windows-CodeIntegrity%4Operational.evtx Computer",
+             "artifact")]  # fmt: skip
+
+
+def built(case, locator, name, **attrs):
+    return unit(case, locator, [(name, "SYSTEM ComputerName", "artifact"),
+                                (f"{name.lower()}.example.test",
+                                 "SYSTEM Tcpip Hostname+Domain", "artifact"),
+                                *TEMPLATE], **attrs)  # fmt: skip
+
+
+def confirm(case, u, canonical, *raws):
+    key = hi.new_machine_key()
+    hi.append_observations(case, [
+        {"kind": "bind", "unit": u, "raw": r, "key": key, "canonical": canonical,
+         "state": hi.CONFIRMED} for r in raws])  # fmt: skip
+
+
+def _names(g):
+    return sorted(p[1] for p in g.pairs)
+
+
+def test_two_confirmed_machines_with_one_template_id_stay_two(case):
+    """The live case: the examiner confirmed rd01 (its template names with it,
+    from the host list) and wkstn05; both images carry the template's
+    MachineGuid and names. Never one group of both machines' names."""
+    u1 = built(case, "evidence/rd01.E01", "RD01", machine_guid=GUID)
+    u2 = built(case, "evidence/wkstn05.vhdx", "WKSTN05", machine_guid=GUID)
+    confirm(
+        case, u1, "rd01", "RD01", "rd01.example.test", "tpl-packer", "OFFDEVS-TUHMGJE"
+    )
+    confirm(case, u2, "wkstn05", "WKSTN05", "wkstn05.example.test")
+    gs = groups(case)
+    rd01, wk = group_of(gs, "RD01"), group_of(gs, "WKSTN05")
+    assert rd01 is not wk and "WKSTN05" not in _names(rd01)
+    for g in gs:
+        assert "names of more than one machine: confirm, or merge them" not in g.flags
+        assert hp.FLAG_CLONE not in g.flags
+
+
+def test_a_template_name_is_never_attributed_across_confirmed_machines(case):
+    """wkstn05's own tpl-packer is never proposed onto rd01's machine: it is
+    left on its own, flagged as shared."""
+    u1 = built(case, "evidence/rd01.E01", "RD01")
+    u2 = built(case, "evidence/wkstn05.vhdx", "WKSTN05")
+    confirm(
+        case, u1, "rd01", "RD01", "rd01.example.test", "tpl-packer", "OFFDEVS-TUHMGJE"
+    )
+    confirm(case, u2, "wkstn05", "WKSTN05", "wkstn05.example.test")
+    gs = groups(case)
+    theirs = [g for g in gs if (u2, "tpl-packer") in g.pairs]
+    assert len(theirs) == 1 and theirs[0].pairs == [(u2, "tpl-packer")]
+    assert hp.FLAG_SHARED in theirs[0].flags and theirs[0].machine is None
+
+
+def test_unconfirmed_template_clones_are_still_one_flagged_proposal(case):
+    built(case, "evidence/rd01.E01", "RD01", machine_guid=GUID)
+    built(case, "evidence/wkstn05.vhdx", "WKSTN05", machine_guid=GUID)
+    g = group_of(groups(case), "RD01")
+    assert "WKSTN05" in _names(g) and hp.FLAG_CLONE in g.flags  # for the examiner
+    assert not any("shared by more than one machine" in f for f in g.flags)
+
+
+def test_a_rename_of_a_confirmed_machine_is_still_proposed(case):
+    """One machine id, one side confirmed: a rename, proposed as before."""
+    u1 = folder(case, "WKS01", "WKS01", machine_guid=GUID)
+    folder(case, "LAPTOP7", "LAPTOP7", machine_guid=GUID)
+    confirm(case, u1, "WKS01", "WKS01")
+    g = group_of(groups(case), "WKS01")
+    assert "LAPTOP7" in _names(g) and hp.FLAG_CLONE in g.flags
+
+
 def test_names_from_a_forwarded_log_are_their_own_machines(case):
     unit(case, "evidence/WEC01", [
         ("WEC01", "folder name", "folder"),

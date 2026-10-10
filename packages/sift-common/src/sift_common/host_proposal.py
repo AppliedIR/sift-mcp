@@ -70,6 +70,7 @@ FLAG_FOLDER = (
 FLAG_THIN = "thin evidence: one source only"
 FLAG_AI_ONLY = "named only by an argument, a file name or a file the AI can write"
 FLAG_CLONE = "one machine id under different names: a rename or a clone?"
+FLAG_SHARED = "shared by more than one machine (a template or clone name?)"
 FLAG_NOT_LISTED = "not on the host list"
 FLAG_NEAR = "a near spelling of another name"
 
@@ -448,9 +449,30 @@ def propose(state: hi.HostState) -> list[Group]:
         }
 
     id_clash: set = set()
+    # The machines each unit's own names are confirmed to. Units confirmed to
+    # different machines are never joined, by a name or a machine id they
+    # share: images built from one template carry its names and its id.
+    confirmed: dict[str, set] = {}
+    for p in pairs:
+        m = state.machine_of_pair(*p)
+        if p not in foreign and m is not None and m.state == hi.CONFIRMED:
+            confirmed.setdefault(p[0], set()).add(m.id)
+    shared: set = set()
+
+    def confirmed_apart(a, b) -> bool:
+        def of(root) -> set:
+            units = {p[0] for p in pairs if uf.find(p) == root}
+            return set().union(*(confirmed.get(u, set()) for u in units))
+
+        ma, mb = of(uf.find(a)), of(uf.find(b))
+        return bool(ma) and bool(mb) and ma != mb
 
     def may_join(a, b) -> bool:
-        """One machine only if the domains and machine ids agree."""
+        """One machine only if the domains and machine ids agree, and the
+        examiner hasn't confirmed the two sides as different machines."""
+        if confirmed_apart(a, b):
+            shared.update({a, b})  # left apart, and said so
+            return False
         ra, rb = uf.find(a), uf.find(b)
         if len(ids_of(ra) | ids_of(rb)) > 1:
             id_clash.update({a, b})
@@ -494,6 +516,8 @@ def propose(state: hi.HostState) -> list[Group]:
                 guids = {_guid(state, a[0]), _guid(state, b[0])} - {""}
                 if key == "client_id" and len(guids) > 1:
                     continue  # one collector client, two machines
+                if confirmed_apart(a, b):
+                    continue  # one template's id on two confirmed machines
                 if not close(a[1], b[1]):
                     clone_roots.update({uf.find(a), uf.find(b)})
                 uf.union(a, b, certain=False)
@@ -521,6 +545,8 @@ def propose(state: hi.HostState) -> list[Group]:
         g.flags.extend(f for f in flags if f not in g.flags)
         if root in clone_roots:
             g.flags.append(FLAG_CLONE)
+        if shared & set(ps):
+            g.flags.append(FLAG_SHARED)
         if g.flags:
             g.tier = FLAGGED if not g.machine else g.tier
         matched = _match_entries(g, ps, pairs, entries, state)
