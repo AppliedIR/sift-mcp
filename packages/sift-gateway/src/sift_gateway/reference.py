@@ -65,7 +65,7 @@ def record(audit, backend_name: str, backend, tool: str, arguments: dict, result
     if not case_dir or not is_reference(backend_name, tool):
         return None
     try:
-        from sift_gateway.audit_helpers import _truncate_params
+        from sift_gateway.audit_helpers import _extract_audit_id, _truncate_params
 
         audit_dir = audit._get_audit_dir(case_dir) if case_dir else None
         if not audit_dir:
@@ -87,6 +87,7 @@ def record(audit, backend_name: str, backend, tool: str, arguments: dict, result
             case_dir=case_dir,
             extra={
                 "backend": backend_name,
+                "backend_audit_id": _extract_audit_id(result),
                 "examiner": examiner,
                 "reference": {
                     "source": source,

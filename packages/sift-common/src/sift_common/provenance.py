@@ -564,11 +564,12 @@ def _found_in(path, sha256, lines: list[str], cap: int | None) -> tuple[set, str
     return (found if digest.hexdigest() == sha256 else set()), ""
 
 
-def _saved_values(path, sha256) -> tuple[list[str] | None, str]:
+def _saved_values(path, sha256, pairs=None) -> tuple[list[str] | None, str]:
     """A saved response's values as returned: the JSON decoded, every value
     normalized; the text itself when it isn't JSON. None when it's missing or
     no longer has its recorded SHA-256, or too large to check, with why.
-    Never the JSON-escaped text."""
+    Never the JSON-escaped text. Given a set, `pairs` also gets each
+    `"field": value` line the decoded JSON holds (see `_pairs`)."""
     try:
         if os.path.getsize(path) > _QUOTE_FILE_CAP:
             return None, f"saved response too large to check ({path})"
@@ -582,11 +583,28 @@ def _saved_values(path, sha256) -> tuple[list[str] | None, str]:
         decoded = json.loads(text)
     except ValueError:
         return [_norm(text)], ""
+    if pairs is not None:
+        pairs.update(_pairs(decoded))
     return [v for _f, v in _flat(decoded)], ""
 
 
-def _in_values(quote: list[str], values: list[str]) -> bool:
-    return all(any(q in v for v in values) for q in quote)
+def _pairs(record, key=None) -> list[str]:
+    """Each scalar under its own key as a JSON reply shows it, normalized:
+    `"outcome": "MATCH"`, `"found": true`; a string as returned, never
+    JSON-escaped. A list's items aren't paired with the list's key."""
+    if isinstance(record, dict):
+        return [p for k, v in record.items() for p in _pairs(v, k)]
+    if isinstance(record, list):
+        return [p for v in record for p in _pairs(v)]
+    if key is None:
+        return []
+    value = f'"{record}"' if isinstance(record, str) else json.dumps(record)
+    return [_norm(f'"{key}": {value}')]
+
+
+def _in_values(quote: list[str], values: list[str], pairs=frozenset()) -> bool:
+    """Each quoted line is in a value, or is a whole `"field": value` pair."""
+    return all(q in pairs or any(q in v for v in values) for q in quote)
 
 
 def _unverified(why: str, links=()) -> Trace:
@@ -664,13 +682,26 @@ def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
       followed through their ingests) or in the response (a summary, then
       every ingest it counted is followed).
     - Reference data (a lookup) links to the operation that looked it up,
-      graded BROKEN "reference". A line found only in a record's enrichment
-      fields links to the operation that wrote them, and the record is
-      followed to its evidence as usual.
+      graded BROKEN "reference"; cited by the backend's own id, it links to
+      the gateway's one entry for that call. A `"field": value` line counts
+      when the response holds that field with that value. A line found only in
+      a record's enrichment fields links to the operation that wrote them, and
+      the record is followed to its evidence as usual.
     - A query logged before 0.6.4 recorded nothing to follow: BROKEN, "recorded
       before 0.6.4".
     A quote the operation didn't produce is CITED-UNVERIFIED."""
     items = case.by_id.get(audit_id) or []
+    if len(items) <= 1 and not any(
+        isinstance(e.get("reference"), dict) for e, _ in items
+    ):
+        # a backend's own id, as its reply gave it: the gateway's one reference
+        # entry for that call, when there is exactly one
+        saved = _index(case, "by_backend_id", lambda e, line: [
+            (e["backend_audit_id"], (e, line))] if isinstance(e.get("reference"), dict)
+            and isinstance(e.get("backend_audit_id"), str) and e["backend_audit_id"]
+            else [])  # fmt: skip
+        if len(saved.get(audit_id, [])) == 1:
+            items = saved[audit_id]
     if len(items) != 1:
         return trace_op(case, audit_id)  # no entry, or one id on several
     e, line = items[0]
@@ -680,9 +711,10 @@ def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
                            "output it produced")  # fmt: skip
     if isinstance(e.get("reference"), dict):
         resp = e["reference"].get("response") or {}
-        values, why = (_saved_values(resp.get("path"), resp.get("sha256"))
+        pairs: set = set()
+        values, why = (_saved_values(resp.get("path"), resp.get("sha256"), pairs)
                        if resp else (None, ""))  # fmt: skip
-        if resp and (values is None or not _in_values(quote, values)):
+        if resp and (values is None or not _in_values(quote, values, pairs)):
             return _unverified(why or f"the quote isn't in {audit_id}'s saved response")
         return _reference(case, e, line)
     params = e.get("params") if isinstance(e.get("params"), dict) else {}

@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -94,6 +95,16 @@ async def test_a_lookup_through_the_gateway_keeps_its_response(case):
     result = await gw.call_tool("lookup_ioc", {"ioc": "1.2.3.4"}, examiner="ann")
     assert [c.text for c in result] == [BODY]  # answered as before
     _check(case, "lookup_ioc", "opencti-mcp", "0.6.4")
+
+
+@pytest.mark.asyncio
+async def test_the_entry_names_the_id_the_backends_reply_gave(case, monkeypatch):
+    body = json.dumps({"ioc": "1.2.3.4", "audit_id": "opencti-ann-20261010-001"})
+    monkeypatch.setattr(sys.modules[__name__], "BODY", body)
+    await _gateway(Source("opencti-mcp", "0.6.4")).call_tool("lookup_ioc", {"ioc": "x"})
+    (e,) = [e for e in _entries(case) if "reference" in e]
+    assert e["backend_audit_id"] == "opencti-ann-20261010-001"
+    assert e["audit_id"] != e["backend_audit_id"]
 
 
 @pytest.mark.asyncio

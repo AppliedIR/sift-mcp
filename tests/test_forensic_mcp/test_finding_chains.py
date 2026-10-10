@@ -1444,6 +1444,70 @@ def test_a_reference_responses_quote_is_matched_decoded(c):
     assert g(res, st)[:2] == ("BROKEN", "reference"), g(res, st)
 
 
+BACKEND_ID, GATEWAY_ID = (
+    "opencti-tester-20261010-001",
+    "sift-gateway-tester-20261010-001",
+)
+
+
+def _lookup(c, gateways=1, own=True):
+    """A lookup as the gateway records it: the backend's own entry (its id is
+    the one its reply gives the client), and the gateway's reference entry for
+    the call, under its own id, naming the backend's."""
+    resp = c.file("extractions/opencti-4.json", json.dumps(
+        {"ioc": "203.0.113.10", "found": True, "labels": ["c2"],
+         "providers": {"opencti": {"outcome": "MATCH"}}, "audit_id": BACKEND_ID}))  # fmt: skip
+    if own:  # a backend with no case to write in writes no entry of its own
+        c.op("opencti-mcp", BACKEND_ID, tool="lookup_ioc", params={"ioc": "203.0.113.10"},
+             result_summary={"found": True})  # fmt: skip
+    for n in range(gateways):
+        c.op("sift-gateway", GATEWAY_ID[:-1] + str(n + 1), tool="lookup_ioc",
+             params={"ioc": "203.0.113.10"}, result_summary="reference response saved",
+             backend="opencti-mcp", backend_audit_id=BACKEND_ID,
+             reference={"source": "opencti-mcp", "source_version": "1.30.0",
+                        "response": {"path": resp, "sha256": sha(resp)}})  # fmt: skip
+
+
+@pytest.mark.parametrize("cited", [BACKEND_ID, GATEWAY_ID])
+@pytest.mark.parametrize("quote", ["MATCH", '"outcome": "MATCH"', '"found": true',
+                                   '"ioc":  "203.0.113.10"'])  # fmt: skip
+def test_a_lookups_quote_is_reference_data_by_either_id(c, cited, quote):
+    """Cited by the id its reply gave, or by the gateway's: a value, or a
+    `"field": value` line as the reply shows it, is reference data."""
+    _lookup(c)
+    res, st = c.find([{"content": quote, "audit_id": cited}])
+    assert g(res, st)[:2] == ("BROKEN", "reference"), g(res, st)
+    assert st["artifacts"][0]["provenance_chain"][-1]["audit_id"] == GATEWAY_ID
+
+
+@pytest.mark.parametrize("cited", [BACKEND_ID, GATEWAY_ID])
+@pytest.mark.parametrize("quote", ["NO_MATCH", '"outcome": "NO_MATCH"', "outcome",
+                                   '"labels": "c2"', '"opencti": "MATCH"',
+                                   '"found": "true"'])  # fmt: skip
+def test_a_quote_the_lookup_didnt_return_is_unverified(c, cited, quote):
+    _lookup(c)
+    res, st = c.find([{"content": quote, "audit_id": cited}])
+    assert g(res, st)[:2] == ("CITED-UNVERIFIED", "cited-unverified"), g(res, st)
+
+
+def test_a_backend_id_with_no_entry_of_its_own_reaches_the_lookup(c):
+    """The resolver follows it; record_finding still refuses an id with no
+    entry in the trail, before any grading, as it did."""
+    _lookup(c, own=False)
+    t = pv.trace_artifact(pv.load_case(c.d), BACKEND_ID, '"outcome": "MATCH"')
+    assert (t.grade, t.break_["kind"]) == ("BROKEN", "reference"), t
+    res, st = c.find([{"content": '"outcome": "MATCH"', "audit_id": BACKEND_ID}])
+    assert g(res, st)[:2] == ("NOT-STAGED", "REJECTED"), g(res, st)
+
+
+def test_a_backend_id_on_two_gateway_entries_is_never_followed(c):
+    """Two reference entries name the same backend id: neither is picked; the
+    backend's own entry is checked, as before."""
+    _lookup(c, gateways=2)
+    res, st = c.find([{"content": "MATCH", "audit_id": BACKEND_ID}])
+    assert g(res, st)[:2] == ("CITED-UNVERIFIED", "cited-unverified"), g(res, st)
+
+
 def _run_with_big_output(c, size):
     """A run whose stdout says one thing and whose recorded output file (a raw
     image, sparse) is `size` bytes."""
