@@ -118,11 +118,14 @@ def _brought_by_pycti(site: list[str]) -> set[str]:
 
 
 def _requirers(site: list[str], names, but: str) -> dict[str, list[str]]:
-    """Which installed packages (but `but`) require each of `names`."""
+    """Which installed packages (but `but`) require each of `names` outside any
+    extra (one asked for only with an extra isn't installed for it)."""
     by: dict[str, list[str]] = {}
     for dist in importlib.metadata.distributions(path=site):
         who = dist.metadata["Name"] or ""
         for req in dist.requires or [] if _name(who) != but else []:
+            if "extra" in req.partition(";")[2]:
+                continue
             m = re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", req)
             if (
                 m

@@ -203,8 +203,10 @@ def test_what_pycti_brought_in_is_never_advised_away_when_something_else_uses_it
     """fastapi also required by a package installed by hand: still tolerated,
     but left out of the uninstall line and named with what requires it."""
     run = _run(tmp_path, "--final",
-               {**CLEAN, "pycti": "6.9.29", "fastapi": "0.115.0", "my-api": "1.0"},
-               requires={"pycti": ["fastapi"], "my-api": ["fastapi>=0.100"]},
+               {**CLEAN, "pycti": "6.9.29", "fastapi": "0.115.0", "my-api": "1.0",
+                "transformers": "5.19.0"},
+               requires={"pycti": ["fastapi"], "my-api": ["fastapi>=0.100"],
+                         "transformers": ["fastapi ; extra == 'serving'"]},
                conflict=PYCTI_CONFLICT + "\n" + FASTAPI_CONFLICT)  # fmt: skip
     assert run.returncode == 0, run.stderr
     assert not run.removed
@@ -213,6 +215,26 @@ def test_what_pycti_brought_in_is_never_advised_away_when_something_else_uses_it
         "  fastapi: also required by my-api; its own requirements aren't met" in lines
     )
     assert not [x for x in lines if "uninstall" in x and "fastapi" in x]
+
+
+def test_a_package_asking_for_fastapi_only_with_an_extra_doesn_t_count_as_using_it(
+    tmp_path,
+):
+    """As on a real 0.6.3+OpenCTI venv: chromadb, huggingface_hub, sse-starlette
+    and transformers name fastapi only under extras, so it's pycti's alone and
+    the note says how to remove it."""
+    extras = {"chromadb": "dev", "huggingface-hub": "oauth",
+              "sse-starlette": "examples", "transformers": "serving"}  # fmt: skip
+    run = _run(tmp_path, "--final",
+               {**CLEAN, "pycti": "6.9.29", "fastapi": "0.124.4",
+                **{n: "1.0" for n in extras}},
+               requires={"pycti": ["fastapi<0.125.0,>=0.124.0"],
+                         **{n: [f"fastapi>=0.115 ; extra == '{e}'"] for n, e in extras.items()}},
+               conflict=PYCTI_CONFLICT + "\n" + FASTAPI_CONFLICT)  # fmt: skip
+    assert run.returncode == 0, run.stderr
+    (note,) = [x for x in run.stdout.splitlines() if x.startswith("  fastapi:")]
+    assert note.endswith(f"uv pip uninstall --python {sys.executable} fastapi")
+    assert "also required by" not in run.stdout
 
 
 def test_a_conflict_in_a_locked_package_still_fails_beside_leftovers(tmp_path):
