@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import stat
 
 from mcp.server.fastmcp import FastMCP
 from sift_common.instructions import SIFT_MCP as _INSTRUCTIONS
@@ -57,6 +58,39 @@ def _detect_artifact_context(command: list[str]) -> str | None:
                 return artifact
 
     return None
+
+
+def _share_readable(folder: str) -> None:
+    """Give group and other read to what a run wrote in its own folder, and
+    search to its folders, so the share can read it: tools write some outputs
+    0600 or inside 0700 folders (a dump through mkstemp, an archive's restored
+    modes). Never through a link, and only what this user owns."""
+    uid = os.geteuid()
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+    for root, dirs, files in os.walk(folder):  # never into a linked folder
+        names = [root] if root == folder else []
+        names += [os.path.join(root, n) for n in dirs + files]
+        for path in names:
+            try:
+                fd = os.open(path, flags)
+            except OSError:  # a link, or what can't be opened
+                continue
+            try:
+                st = os.fstat(fd)
+                if st.st_uid != uid:
+                    continue
+                if stat.S_ISDIR(st.st_mode):
+                    add = 0o055
+                elif stat.S_ISREG(st.st_mode):
+                    add = 0o044
+                else:
+                    continue
+                if st.st_mode & add != add:
+                    os.fchmod(fd, stat.S_IMODE(st.st_mode) | add)
+            except OSError:
+                pass
+            finally:
+                os.close(fd)
 
 
 def _under(path: str, folder: str) -> bool:
@@ -285,6 +319,8 @@ def create_server() -> FastMCP:
                 resp_data = exec_result
                 resp_format = exec_result.get("_output_format", "text")
 
+            if op_dir:
+                _share_readable(op_dir)
             # Its outputs: every file in its own folder (but the saved stdout,
             # recorded as output_file) and every file new or changed under an
             # output flag's value, each hashed

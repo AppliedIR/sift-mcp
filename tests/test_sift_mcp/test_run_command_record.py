@@ -185,6 +185,7 @@ def test_a_relative_path_names_a_file_in_the_runs_folder(case):
     resp, e = run(case, [PY, "-c", code, "../earlier/a.raw"])
     (i,) = e["inputs"]
     assert i["realpath"] == str((earlier / "a.raw").resolve())
+    print("RESP", json.dumps(resp)[:1500])
     assert resp["success"] is True
 
 
@@ -306,3 +307,32 @@ def test_a_dd_style_output_outside_the_runs_folder_is_an_output(case):
     )
     _, e = run(case, [PY, "-c", code, f"if={src}", f"of={dst}"])
     assert _outs(e)["img.dd"]["sha256"] == _sha(dst)
+
+
+def test_what_a_run_wrote_in_its_folder_can_be_read_over_the_share(case, tmp_path):
+    """Tools write some outputs 0600 or inside 0700 folders (a memory dump
+    through mkstemp, an archive's restored modes); the share can't read
+    those. After the run, its own folder's files gain group and other read
+    and its folders search too. A link's target outside is left as it was."""
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(b"O")
+    outside.chmod(0o600)
+    tool = tmp_path / "tool.py"
+    tool.write_text(
+        "import os, sys\n"
+        "open('dump.dmp', 'wb').write(b'D')\n"
+        "os.chmod('dump.dmp', 0o600)\n"
+        "os.mkdir('iso')\n"
+        "open('iso/f.txt', 'wb').write(b'F')\n"
+        "os.chmod('iso/f.txt', 0o600)\n"
+        "os.chmod('iso', 0o700)\n"
+        "os.symlink(sys.argv[1], 'link')\n"
+    )
+    resp, e = run(case, [PY, str(tool), str(outside)])
+    assert resp["success"] is True
+    op = case / "extractions" / e["audit_id"]
+    for name in ("dump.dmp", "iso/f.txt"):
+        assert (op / name).stat().st_mode & 0o044 == 0o044, name
+    assert (op / "iso").stat().st_mode & 0o055 == 0o055
+    assert (op / "link").is_symlink()
+    assert outside.stat().st_mode & 0o777 == 0o600
