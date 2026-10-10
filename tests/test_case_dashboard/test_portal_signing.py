@@ -660,9 +660,35 @@ def test_a_0_6_approval_is_labelled(case, box):
             "hmac": "00", "hmac_version": 2, "case_id": "C-1", "type": "finding"}  # fmt: skip
     (box / "verification" / "C-1.jsonl").write_text(json.dumps(line) + "\n")
     served = {f["id"]: f for f in case.get("/api/findings").json()}
-    assert (
+    assert (  # vhir's token, as machine readers match it
         served["F-steve-001"]["verification"] == "approved under 0.6 (before signing)"
     )
+    # the note people read names the release it came before
+    note = case.get("/api/case").json()["verification"]["badge_notes"]["F-steve-001"]
+    assert note == "Approved before 0.6.4, before signing: no signature covers it."
+
+
+def test_the_page_shows_a_0_6_approval_as_before_0_6_4():
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    node = shutil.which("node") or pytest.skip("node isn't installed")
+    page = (Path(signing.__file__).parent / "static" / "v2" / "index.html").read_text()
+
+    def fn(name):
+        start = page.index(f"function {name}(")
+        return page[start : page.index("\n}\n", start) + 3]
+
+    script = (
+        fn("verifText") + fn("verifClassFor")
+        + "var v = 'approved under 0.6 (before signing)';"
+        "process.stdout.write(verifText(v) + '|' + verifClassFor(v) + '|' + verifText('draft'));"
+    )  # fmt: skip
+    out = subprocess.run(
+        [node, "-e", script], capture_output=True, text=True, timeout=60
+    )
+    assert out.stdout == "approved before 0.6.4 (before signing)|verif-legacy|draft"
 
 
 def test_served_items_carry_the_recomputed_content_hash(case):

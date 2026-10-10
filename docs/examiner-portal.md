@@ -63,7 +63,7 @@ All edits are staged locally in the browser until committed. The original value 
 
 Staged actions are shown with colored badges: green for approved, red for rejected, orange for edited.
 
-Each item's verification comes from the same check as `vhir review --verify`: it reads `valid (not anchored)`, `approved under 0.6 (before signing)`, `draft`, or a failure by name (for example `ALTERED_AFTER_APPROVAL`). A finding's Integrity panel adds "Valid (not anchored): compare the fingerprint with a copy kept off this machine." with the key of its signing line.
+Each item's verification comes from the same check as `vhir review --verify`: it reads `valid (not anchored)`, `approved before 0.6.4 (before signing)`, `draft`, or a failure by name (for example `ALTERED_AFTER_APPROVAL`). A finding's Integrity panel adds "Valid (not anchored): compare the fingerprint with a copy kept off this machine." with the key of its signing line.
 
 **Batch operations:** Select multiple findings in the sidebar, then use "Approve All" or "Reject All" in the batch toolbar.
 

@@ -175,7 +175,7 @@ def _resolve_examiner(request: Request) -> str | None:
 VALID_NOTE = (
     "Valid (not anchored): compare the fingerprint with a copy kept off this machine."
 )
-LEGACY_NOTE = "Approved under 0.6, before signing: no signature covers it."
+LEGACY_NOTE = "Approved before 0.6.4, before signing: no signature covers it."
 _view_cache: dict = {"key": None, "value": None}
 
 

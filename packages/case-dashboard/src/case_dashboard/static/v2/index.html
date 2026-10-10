@@ -1056,6 +1056,11 @@ function showEmptyOrFirst() {
 }
 
 /* === Verification (from vhir's verify; the portal takes no pins) === */
+// vhir's label for an approval from before signing, as people read it (the
+// value served, and matched below, stays vhir's token)
+function verifText(v) {
+  return v === 'approved under 0.6 (before signing)' ? 'approved before 0.6.4 (before signing)' : v;
+}
 function verifClassFor(v) {
   if (v === 'valid (not anchored)') return 'verif-confirmed';
   if (v === 'approved under 0.6 (before signing)') return 'verif-legacy';
@@ -1704,7 +1709,7 @@ function renderFinding(id) {
   // Integrity (collapsed — verification, provenance, hash)
   html += '<details style="margin-top:12px;color:var(--text-muted);font-size:12px">';
   html += '<summary>Integrity</summary>';
-  html += '<div style="margin-top:4px">Verification: <span class="' + escapeHtml(verifClass) + '">' + escapeHtml(verif) + '</span>';
+  html += '<div style="margin-top:4px">Verification: <span class="' + escapeHtml(verifClass) + '">' + escapeHtml(verifText(verif)) + '</span>';
   var verifNote = ((caseMeta.verification || {}).badge_notes || {})[f.id];
   if (verifNote) html += '<div>' + escapeHtml(verifNote) + '</div>';
   html += ' | Provenance: <span class="' + escapeHtml(provClass) + '">' + escapeHtml(prov) + '</span></div>';
@@ -3983,7 +3988,7 @@ function renderIocs() {
     if (uniqueHosts.length > 0) {
       html += '<div><strong>Hosts:</strong> ' + uniqueHosts.map(escapeHtml).join(', ') + '</div>';
     }
-    html += '<div><strong>Verification:</strong> <span class="' + verifClassFor(ioc.verification || 'draft') + '">' + escapeHtml(ioc.verification || 'draft') + '</span></div>';
+    html += '<div><strong>Verification:</strong> <span class="' + verifClassFor(ioc.verification || 'draft') + '">' + escapeHtml(verifText(ioc.verification || 'draft')) + '</span></div>';
     html += '<div style="color:var(--text-muted);font-style:italic">Sources, sightings, confidence and MITRE techniques are derived, not signed.</div>';
     if (ioc.source_findings && ioc.source_findings.length) {
       html += '<div><strong>Findings:</strong> ' + ioc.source_findings.map(function(fid) {
@@ -4541,7 +4546,7 @@ function renderTimelineCompactRow(ev, de, isFocused) {
     html += '<span class="badge badge-' + status.toLowerCase() + '">' +
       escapeHtml(status) + '</span>';
     html += '<span class="' + verifClassFor(verif) +
-      '" style="font-size:10px">' + escapeHtml(verif) + '</span>';
+      '" style="font-size:10px">' + escapeHtml(verifText(verif)) + '</span>';
     html += '</div>';
 
     // Delta + stale warnings
