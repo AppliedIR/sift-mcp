@@ -178,6 +178,30 @@ def test_two_confirmed_machines_with_one_template_id_stay_two(case):
         assert hp.FLAG_CLONE not in g.flags
 
 
+@pytest.mark.parametrize("state", [hi.NEW, hi.STARTED_NOW])
+def test_an_own_name_bound_to_an_unconfirmed_machine_keeps_its_unit_s_confirmation(
+    case, state
+):
+    """The live case, with wkstn05's template names bound to a machine not yet
+    confirmed (a late get_or_mint): they keep wkstn05's confirmation and never
+    join rd01's."""
+    u1 = built(case, "evidence/rd01.E01", "RD01", machine_guid=GUID)
+    u2 = built(case, "evidence/wkstn05.vhdx", "WKSTN05", machine_guid=GUID)
+    confirm(
+        case, u1, "rd01", "RD01", "rd01.example.test", "tpl-packer", "OFFDEVS-TUHMGJE"
+    )
+    confirm(case, u2, "wkstn05", "WKSTN05", "wkstn05.example.test")
+    key = hi.new_machine_key()
+    hi.append_observations(case, [
+        {"kind": "bind", "unit": u2, "raw": r, "key": key, "canonical": "wk-tpl",
+         "state": state} for r in ("tpl-packer", "OFFDEVS-TUHMGJE")])  # fmt: skip
+    gs = groups(case)
+    (theirs,) = [g for g in gs if (u2, "tpl-packer") in g.pairs]
+    assert (u1, "tpl-packer") not in theirs.pairs
+    for g in gs:
+        assert "names of more than one machine: confirm, or merge them" not in g.flags
+
+
 def test_a_template_name_is_never_attributed_across_confirmed_machines(case):
     """wkstn05's own tpl-packer is never proposed onto rd01's machine: it is
     left on its own, flagged as shared."""

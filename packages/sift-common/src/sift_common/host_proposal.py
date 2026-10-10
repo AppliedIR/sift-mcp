@@ -440,15 +440,15 @@ def propose(state: hi.HostState) -> list[Group]:
         if p not in foreign and m is not None and m.state == hi.CONFIRMED:
             confirmed.setdefault(p[0], set()).add(m.id)
     # Each name's own sets, merged as groups join (`_UF.sets`). A name's
-    # confirmed machine is its own binding's when it has one; an unbound name
-    # of the unit's own carries the unit's; an unbound forwarded one, none.
+    # confirmed machine is its binding's when that machine is confirmed;
+    # otherwise a name of the unit's own carries the unit's, a forwarded one none.
     for p in pairs:
         guid = str((state.units.get(p[0]) or {}).get("machine_guid") or "").lower()
         m = state.machine_of_pair(*p)
         own = {m.id} if m is not None and m.state == hi.CONFIRMED else set()
         unbound = set() if p in foreign else set(confirmed.get(p[0], ()))
         uf.sets[p] = {"domains": {hi.split_name(p[1])[1]} - {""}, "ids": {guid} - {""},
-                      "confirmed": own if p in state.bindings else unbound}  # fmt: skip
+                      "confirmed": own or unbound}  # fmt: skip
 
     def groupable(
         p,
