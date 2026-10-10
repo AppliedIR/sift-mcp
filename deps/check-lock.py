@@ -31,9 +31,9 @@ and the command that repairs it. Both run `uv pip check`, which must pass.
 Both list installed packages the lock doesn't name, for information.
 
 OpenCTI's old client, pycti, is no longer used. An install from before may
-still have it: it is never removed here, its own unmet requirements don't
-fail the check, and --final prints one line saying so, with the command
-that removes it.
+still have it, and what it brought in (fastapi): none is removed here, their
+own unmet requirements don't fail the check, and --final names them, with
+the command that removes them.
 """
 
 from __future__ import annotations
@@ -103,6 +103,18 @@ def _required_names(site: list[str]) -> set[str]:
             if m:
                 names.add(_name(m.group(0)))
     return names
+
+
+def _brought_by_pycti(site: list[str]) -> set[str]:
+    """What pycti requires outside any extra: installed with it."""
+    for dist in importlib.metadata.distributions(path=site):
+        if _name(dist.metadata["Name"] or "") == PYCTI:
+            reqs = [
+                r for r in dist.requires or [] if "extra" not in r.partition(";")[2]
+            ]
+            return {_name(m.group(0)) for r in reqs
+                    if (m := re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", r))}  # fmt: skip
+    return set()
 
 
 def _cpu_lock(lock: Path) -> bool:
@@ -235,11 +247,13 @@ def main(argv: list[str] | None = None) -> int:
         ["uv", "pip", "check", "--python", py], capture_output=True, text=True
     )
     output = (check.stdout + check.stderr).rstrip()
-    # Only pycti's own requirements unmet: it's a leftover nothing uses.
+    # Only pycti's own requirements unmet, and those of what it brought in
+    # (fastapi): leftovers nothing here uses. Any other conflict still fails.
     conflicted = {
         _name(n) for n in re.findall(r"The package `([^`]+)` requires", output)
     }
-    pycti_only = bool(pycti) and conflicted == {PYCTI}
+    pycti_tree = {PYCTI} | _brought_by_pycti(site) - set(pins) if pycti else set()
+    pycti_only = bool(conflicted) and conflicted <= pycti_tree
     if check.returncode != 0 and not pycti_only:
         print(
             "  DEPENDENCY CHECK FAILED: installed packages conflict:",
@@ -257,6 +271,13 @@ def main(argv: list[str] | None = None) -> int:
             f"  pycti {pycti} is installed but no longer needed: opencti-mcp talks"
             f" to OpenCTI directly{held}. To remove it:"
             f" uv pip uninstall --python {shlex.quote(py)} pycti"
+        )
+    others = sorted(conflicted - {PYCTI}) if pycti_only else []
+    if others and args.final:
+        print(
+            f"  {', '.join(others)}: left by an earlier install, not in the lock,"
+            " and needing versions the lock doesn't have; nothing here uses them."
+            f" To remove: uv pip uninstall --python {shlex.quote(py)} {' '.join(others)}"
         )
 
     if differ:

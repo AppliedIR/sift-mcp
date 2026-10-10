@@ -177,6 +177,34 @@ def test_a_leftover_pycti_s_own_conflicts_fail_neither_check(tmp_path, mode):
     assert "conflict" not in run.stderr
 
 
+FASTAPI_CONFLICT = (
+    "The package `fastapi` requires `starlette>=0.40.0,<0.51.0`, but `1.7.0` is"
+    " installed"
+)
+
+
+@pytest.mark.parametrize("mode", ["--strict", "--final"])
+def test_what_pycti_brought_in_doesn_t_fail_the_check_either(tmp_path, mode):
+    """A 0.6.3 OpenCTI install also left pycti's fastapi, whose starlette pin
+    the lock's starlette doesn't meet: still only leftovers, so it passes."""
+    run = _run(tmp_path, mode, {**CLEAN, "pycti": "6.9.29", "fastapi": "0.115.0"},
+               requires={"pycti": ["fastapi"]},  # as pycti 6 declares it
+               conflict=PYCTI_CONFLICT + "\n" + FASTAPI_CONFLICT)  # fmt: skip
+    assert run.returncode == 0, run.stderr
+    assert not run.removed and "conflict" not in run.stderr
+    if mode == "--final":
+        (note,) = [x for x in run.stdout.splitlines() if x.startswith("  fastapi:")]
+        assert note.endswith(f"uv pip uninstall --python {sys.executable} fastapi")
+
+
+def test_a_conflict_in_a_locked_package_still_fails_beside_leftovers(tmp_path):
+    locked = next(iter(CLEAN))
+    run = _run(tmp_path, "--final", {**CLEAN, "pycti": "6.9.29", "fastapi": "0.115.0"},
+               requires={"pycti": ["fastapi"]}, conflict=PYCTI_CONFLICT + "\n" + FASTAPI_CONFLICT + "\n"
+               f"The package `{locked}` requires `y<2`, but `2.0` is installed")  # fmt: skip
+    assert run.returncode == 1 and "installed packages conflict" in run.stderr
+
+
 def test_final_names_a_leftover_pycti_6_and_how_to_remove_it(tmp_path):
     run = _run(
         tmp_path, "--final", {**CLEAN, "pycti": "6.9.29"}, conflict=PYCTI_CONFLICT
