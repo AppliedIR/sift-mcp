@@ -117,6 +117,22 @@ def _brought_by_pycti(site: list[str]) -> set[str]:
     return set()
 
 
+def _requirers(site: list[str], names, but: str) -> dict[str, list[str]]:
+    """Which installed packages (but `but`) require each of `names`."""
+    by: dict[str, list[str]] = {}
+    for dist in importlib.metadata.distributions(path=site):
+        who = dist.metadata["Name"] or ""
+        for req in dist.requires or [] if _name(who) != but else []:
+            m = re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", req)
+            if (
+                m
+                and _name(m.group(0)) in names
+                and who not in by.get(_name(m.group(0)), [])
+            ):
+                by.setdefault(_name(m.group(0)), []).append(who)
+    return {n: sorted(w) for n, w in by.items()}
+
+
 def _cpu_lock(lock: Path) -> bool:
     """The CPU-PyTorch variant (regen-lock.sh marks it in the header)."""
     return any(
@@ -273,11 +289,17 @@ def main(argv: list[str] | None = None) -> int:
             f" uv pip uninstall --python {shlex.quote(py)} pycti"
         )
     others = sorted(conflicted - {PYCTI}) if pycti_only else []
-    if others and args.final:
+    used = _requirers(site, others, but=PYCTI) if args.final else {}
+    unused = [n for n in others if n not in used]
+    if unused and args.final:
         print(
-            f"  {', '.join(others)}: left by an earlier install, not in the lock,"
+            f"  {', '.join(unused)}: left by an earlier install, not in the lock,"
             " and needing versions the lock doesn't have; nothing here uses them."
-            f" To remove: uv pip uninstall --python {shlex.quote(py)} {' '.join(others)}"
+            f" To remove: uv pip uninstall --python {shlex.quote(py)} {' '.join(unused)}"
+        )
+    for n, by in sorted(used.items()):  # never advised away: something uses it
+        print(
+            f"  {n}: also required by {', '.join(by)}; its own requirements aren't met"
         )
 
     if differ:

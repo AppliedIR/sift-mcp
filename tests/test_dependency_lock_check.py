@@ -197,6 +197,24 @@ def test_what_pycti_brought_in_doesn_t_fail_the_check_either(tmp_path, mode):
         assert note.endswith(f"uv pip uninstall --python {sys.executable} fastapi")
 
 
+def test_what_pycti_brought_in_is_never_advised_away_when_something_else_uses_it(
+    tmp_path,
+):
+    """fastapi also required by a package installed by hand: still tolerated,
+    but left out of the uninstall line and named with what requires it."""
+    run = _run(tmp_path, "--final",
+               {**CLEAN, "pycti": "6.9.29", "fastapi": "0.115.0", "my-api": "1.0"},
+               requires={"pycti": ["fastapi"], "my-api": ["fastapi>=0.100"]},
+               conflict=PYCTI_CONFLICT + "\n" + FASTAPI_CONFLICT)  # fmt: skip
+    assert run.returncode == 0, run.stderr
+    assert not run.removed
+    lines = run.stdout.splitlines()
+    assert (
+        "  fastapi: also required by my-api; its own requirements aren't met" in lines
+    )
+    assert not [x for x in lines if "uninstall" in x and "fastapi" in x]
+
+
 def test_a_conflict_in_a_locked_package_still_fails_beside_leftovers(tmp_path):
     locked = next(iter(CLEAN))
     run = _run(tmp_path, "--final", {**CLEAN, "pycti": "6.9.29", "fastapi": "0.115.0"},
