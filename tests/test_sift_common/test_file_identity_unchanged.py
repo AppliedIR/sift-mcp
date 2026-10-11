@@ -170,7 +170,7 @@ def test_the_byte_count_catches_a_change_the_stat_did_not_show(tmp_path, monkeyp
     assert e.value.fields == ["size"]
 
 
-# (e) end to end through run_command, the route the UAT used
+# (e) end to end through the run_command route an examiner uses
 @pytest.fixture
 def run_case(tmp_path, monkeypatch):
     home = tmp_path / "home"
@@ -190,7 +190,7 @@ def test_a_run_that_changes_its_input_in_place_closes_with_a_failure(
     run_case, monkeypatch
 ):
     """The job is held until the run returns, so it reads the file the run
-    left (the UAT's ordering: its truncate finished before the job read)."""
+    left (the measured ordering: its truncate finished before the job read)."""
     from sift_mcp.server import create_server
 
     monkeypatch.setattr(fi, "INLINE_LIMIT", 100)
