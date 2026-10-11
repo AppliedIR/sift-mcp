@@ -233,6 +233,17 @@ def _one(path: str, called: tuple = ()) -> dict:
         return row
 
 
+def _called(key: tuple, paths) -> list[tuple]:
+    """Each file's stat key when the call asked, from its job key (`_start`'s
+    `(case, a file's key or a list's)`); () where none is known: no check."""
+    fk = key[1] if len(key) > 1 else ()
+    keys = [fk] if isinstance(paths, str) else list(fk)
+    got = [k[1:] if isinstance(k, tuple) and len(k) == 6 and k[1] != -1 else ()
+           for k in keys]  # fmt: skip
+    n = 1 if isinstance(paths, str) else len(paths)
+    return got if len(got) == n else [()] * n
+
+
 def _job(key, job_id: str, paths, case_dir: str, requested_by: str) -> None:
     """Hash the job's files and close its pending hashes, either way: one
     `hash_complete` entry (a one-file job's fields at the top level, a list
@@ -241,9 +252,7 @@ def _job(key, job_id: str, paths, case_dir: str, requested_by: str) -> None:
 
     started = _now()
     try:
-        # each file's stat key when the call asked (an unstatable one: no check)
-        keys = [key[1]] if isinstance(paths, str) else list(key[1])
-        called = [k[1:] if k[1] != -1 else () for k in keys]
+        called = _called(key, paths)
         if isinstance(paths, str):
             result = _one(paths, called[0])
             files = [result]
