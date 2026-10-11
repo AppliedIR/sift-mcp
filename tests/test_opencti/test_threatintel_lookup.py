@@ -12,10 +12,12 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
+import math
 import sys
 import threading
 import time
 import types
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 import opencti_mcp.providers.opencti as opencti_provider
@@ -521,11 +523,23 @@ async def test_a_stalled_provider_answers_again_once_it_recovers(monkeypatch):
     assert len(calls) == providers.MAX_IN_FLIGHT + 1
 
 
+def _default_executor_threads() -> int:
+    """The threads asyncio.to_thread runs on: its default executor's size,
+    from the CPU count (8 on a 4-CPU machine)."""
+    pool = ThreadPoolExecutor()
+    pool.shutdown()
+    return pool._max_workers
+
+
 async def test_concurrent_lookups_with_a_trickling_provider_all_answer(monkeypatch):
+    """Each lookup is a to_thread call, so 20 at once run in batches of the
+    default executor's size, each held at most the trickler's budget plus
+    grace: on any CPU count, never longer than those batches."""
     srv = _trickler_and_healthy(monkeypatch)
+    batches = math.ceil(20 / _default_executor_threads())
     start = time.monotonic()
     replies = await asyncio.gather(*(lookup(srv, IP) for _ in range(20)))
-    assert time.monotonic() - start < 3
+    assert time.monotonic() - start < batches * (0.2 + providers.GRACE_SECONDS) + 0.6
     assert {r["providers"]["healthy"]["outcome"] for r in replies} == {"MATCH"}
 
 
