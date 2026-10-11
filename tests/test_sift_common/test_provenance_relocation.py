@@ -229,21 +229,44 @@ def test_a_chain_that_ends_at_another_folder_isnt_used(m, tmp_path):
     assert m.grades() == ("BROKEN", "BROKEN", "CITED-UNVERIFIED")
 
 
-def test_an_op_recorded_after_the_restore_keeps_the_originals_path(m, tmp_path):
-    """A copy beside the original reading the original's registered file."""
+@pytest.mark.parametrize("registered", [True, False])
+def test_an_op_recorded_after_the_restore_keeps_the_originals_path(m, registered):
+    """A copy beside the original reading the original's file. Restore
+    re-points the copy's registry to the copy's own files, so unless the
+    original's is registered again the run isn't FULL: it's never taken to
+    the copy's registered file."""
     m.relocate(m.old)
     orig = m.at_old(m.disk)
     os.makedirs(os.path.dirname(orig))
     with open(orig, "wb") as f:
         f.write(b"EVIDENCE" * 100)
-    m.register(orig)
+    if registered:
+        m.register(orig)
     m.op("sift-mcp", LATER, tool="run_command", params={"command": ["strings", orig]},
          input_files=[orig], input_sha256s=[""], input_realpaths=[orig],
          input_detection_method="parsed")  # fmt: skip
     case = pv.load_case(m.d)
     assert _mapper(case, _entry(case, LATER), orig) == orig
     t = pv.trace_op(case, LATER)
-    assert t.grade == "FULL" and t.root["path"] == orig, t
+    if registered:
+        assert t.grade == "FULL" and t.root["path"] == orig, t
+    else:
+        assert t.grade != "FULL", t
+
+
+def test_a_recorded_path_that_climbs_out_with_dot_dot_isnt_mapped(m, tmp_path):
+    """/old/C/../shared/out.csv is outside the case: mapped as text it would
+    name /C/../shared/out.csv, where a file with the same bytes isn't the
+    one the run wrote."""
+    shared = tmp_path / "shared" / "out.csv"
+    shared.parent.mkdir()
+    shared.write_bytes(open(m.out, "rb").read())
+    dotted = os.path.join(m.old, "..", "shared", "out.csv")
+    m.run_record(outputs=[{"path": dotted, "realpath": dotted, "sha256": sha(m.out)}])
+    m.relocate(m.old)
+    case = pv.load_case(m.d)
+    assert _mapper(case, _entry(case, AID), dotted) == dotted
+    assert pv.trace_file(case, str(shared), sha(m.out)).grade != "FULL"
 
 
 def test_an_op_appended_after_the_restore_with_an_earlier_time_isnt_mapped(m):

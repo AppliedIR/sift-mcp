@@ -133,9 +133,12 @@ def relocated(case: Case, entry: dict, path):
     """A path `entry` recorded, where it is now: taken through each relocation
     recorded after the entry in its own log, in order, each once, and used
     only when the last one taken ends at this case's folder. Any other path,
-    or one already in the case, is the path as recorded."""
+    one already in the case, or one with a `..` (it may climb out of the
+    folder it names) is the path as recorded."""
     edges = case.moves.get(id(entry))
     if not edges or not isinstance(path, str) or _under(path, case.here):
+        return path
+    if ".." in path.split("/"):
         return path
     p, last = path, None
     for roots, to in edges:
