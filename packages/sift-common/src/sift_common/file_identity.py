@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 
 INLINE_LIMIT = 1_000_000_000  # bytes a tool call may hash before it answers
 _CHUNK = 1 << 20
-# (the case, a file's key: real path, size, mtime_ns; or a list's: the tuple of
-# its files' keys) -> the id of the job hashing it, while that job runs. Per
-# case: a job's closing entry goes to the case that asked.
+# (the case, a file's key: real path, st_dev, st_ino, size, mtime_ns, ctime_ns;
+# or a list's: the tuple of its files' keys) -> the id of the job hashing it,
+# while that job runs. Per case: a job's closing entry goes to the case that asked.
 _jobs: dict[tuple, str] = {}
 _jobs_lock = threading.Lock()
 
@@ -31,6 +31,26 @@ _jobs_lock = threading.Lock()
 class NotRegularFile(ValueError):
     """Only a regular file has an identity hash: a FIFO, device, socket or
     directory is refused without being read."""
+
+
+_STAT_KEY = ("st_dev", "st_ino", "size", "mtime_ns", "ctime_ns")
+
+
+def _stat_key(st) -> tuple:
+    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+
+
+class FileChanged(OSError):
+    """The file changed while it was hashed (its `fields`), so no hash names
+    its bytes. An OSError: callers that handle a read error handle this."""
+
+    def __init__(self, path, fields):
+        self.fields = fields
+        super().__init__(f"{path} changed while it was hashed: {', '.join(fields)}")
+
+
+def _changed(before: tuple, after: tuple) -> list[str]:
+    return [k for k, a, b in zip(_STAT_KEY, before, after, strict=True) if a != b]
 
 
 @dataclass(frozen=True)
@@ -73,9 +93,14 @@ def hash_file(path) -> HashResult:
         os.close(fd)
         raise NotRegularFile(f"{path} is not a regular file")
     with os.fdopen(fd, "rb") as f:
-        h = hashlib.sha256()
+        h, read = hashlib.sha256(), 0
         while chunk := f.read(_CHUNK):
             h.update(chunk)
+            read += len(chunk)
+        # the bytes hashed are the file's only if nothing changed while they were read
+        fields = _changed(_stat_key(st), _stat_key(os.fstat(f.fileno())))
+    if fields or read != st.st_size:
+        raise FileChanged(path, fields or ["size"])
     return HashResult(str(path), h.hexdigest(), st.st_size, st.st_dev, st.st_ino,
                       st.st_mtime_ns, st.st_ctime_ns)  # fmt: skip
 
@@ -116,7 +141,8 @@ def hash_for_call(
         return hash_file(path)
     if not case_dir:
         return None
-    key = (os.path.realpath(path), st.st_size, st.st_mtime_ns)
+    # the job hashes the file only while it is still as it is now
+    key = (os.path.realpath(path), *_stat_key(st))
     return Pending(str(path), _start(key, str(path), str(case_dir), requested_by))
 
 
@@ -159,10 +185,9 @@ def hash_files_for_call(
 
 def _file_key(path: str) -> tuple:
     try:
-        st = os.stat(path)
-        return (os.path.realpath(path), st.st_size, st.st_mtime_ns)
+        return (os.path.realpath(path), *_stat_key(os.stat(path)))
     except OSError:
-        return (os.path.realpath(path), -1, -1)
+        return (os.path.realpath(path), -1, -1, -1, -1, -1)
 
 
 def _start(key: tuple, paths, case_dir: str, requested_by: str) -> str:
@@ -186,13 +211,18 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _one(path: str) -> dict:
+def _one(path: str, called: tuple = ()) -> dict:
+    """`called`: the file's stat key when the call asked (its job key's entry)."""
     try:
         r = hash_file(path)
+        now = (r.st_dev, r.st_ino, r.size, r.mtime_ns, r.ctime_ns)
+        if called and (fields := _changed(called, now)):
+            raise FileChanged(path, fields)
         return {"path": path, "sha256": r.sha256, "size": r.size, "st_dev": r.st_dev,
                 "st_ino": r.st_ino, "mtime_ns": r.mtime_ns, "ctime_ns": r.ctime_ns}  # fmt: skip
     except Exception as e:  # noqa: BLE001 -- a pending hash must always close
-        row = {"path": path, "error": f"{type(e).__name__}: {e}"}
+        row = {"path": path, "error": f"changed since the call: {', '.join(e.fields)}"
+               if isinstance(e, FileChanged) else f"{type(e).__name__}: {e}"}  # fmt: skip
         try:  # the file as it was, so the failure is taken only while it's unchanged
             st = os.stat(path)
             row.update(size=st.st_size, st_dev=st.st_dev, st_ino=st.st_ino,
@@ -211,11 +241,14 @@ def _job(key, job_id: str, paths, case_dir: str, requested_by: str) -> None:
 
     started = _now()
     try:
+        # each file's stat key when the call asked (an unstatable one: no check)
+        keys = [key[1]] if isinstance(paths, str) else list(key[1])
+        called = [k[1:] if k[1] != -1 else () for k in keys]
         if isinstance(paths, str):
-            result = _one(paths)
+            result = _one(paths, called[0])
             files = [result]
         else:
-            files = [_one(p) for p in paths]
+            files = [_one(p, c) for p, c in zip(paths, called, strict=True)]
             result = {"files": files}
     finally:
         with _jobs_lock:
@@ -235,9 +268,6 @@ def _job(key, job_id: str, paths, case_dir: str, requested_by: str) -> None:
     )
     if logged is None:
         logger.warning("%s (%s) was not recorded", tool, job_id)
-
-
-_STAT_KEY = ("st_dev", "st_ino", "size", "mtime_ns", "ctime_ns")
 
 
 def _completed_rows(case_dir) -> dict[str, dict]:
