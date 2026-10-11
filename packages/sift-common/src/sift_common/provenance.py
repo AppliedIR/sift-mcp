@@ -47,6 +47,10 @@ class Case:
     # indexes built once, on first use: folders' manifest rows, recorded
     # outputs by real path, hash jobs, mounts and unmounts
     cache: dict = field(default_factory=dict, repr=False)
+    # this folder's realpath, and id(entry) -> the relocations recorded after
+    # the entry in its own log, in order: ((former roots), new root)
+    here: str = ""
+    moves: dict[int, tuple] = field(default_factory=dict, repr=False)
 
 
 @dataclass
@@ -76,11 +80,13 @@ def load_case(case_dir) -> Case:
     roots = [e for e in files or [] if isinstance(e, dict) and e.get("path")]
     by_id: dict[str, list[tuple[dict, bytes]]] = defaultdict(list)
     order: dict[int, tuple] = {}
+    here, moves = os.path.realpath(d), {}
     for n_log, log in enumerate(sorted((d / "audit").glob("*.jsonl"))):
         try:
             data = log.read_bytes()
         except OSError:
             continue
+        entries = []
         for n, line in enumerate(data.splitlines()):
             try:
                 entry = json.loads(line)
@@ -89,7 +95,55 @@ def load_case(case_dir) -> Case:
             if isinstance(entry, dict) and isinstance(entry.get("audit_id"), str):
                 by_id[entry["audit_id"]].append((entry, line))
                 order[id(entry)] = (str(entry.get("ts", "")), n_log, n)
-    return Case(d, roots, dict(by_id), order)
+                entries.append(entry)
+        after: tuple = ()  # by position in the log, never by a recorded time
+        for entry in reversed(entries):
+            if after:
+                moves[id(entry)] = after
+            if edge := _edge(entry, here):
+                after = (edge, *after)
+    return Case(d, roots, dict(by_id), order, here=here, moves=moves)
+
+
+def _root(path: str) -> str:
+    return "/" + os.path.normpath(path).strip("/")
+
+
+def _under(path: str, root: str) -> bool:
+    return path == root or path.startswith(root.rstrip("/") + "/")
+
+
+def _edge(e: dict, here: str) -> tuple | None:
+    """A restore's relocation entry as ((former roots), new root). None for
+    any other entry, and for one naming `/`, this folder or a folder above it
+    as a former root."""
+    frm, to = e.get("relocated_from"), e.get("to")
+    if e.get("tool") != "restore" or not isinstance(to, str) or not to.startswith("/"):
+        return None
+    frm = [frm] if isinstance(frm, str) else frm if isinstance(frm, list) else []
+    if not frm or not all(isinstance(r, str) and r.startswith("/") for r in frm):
+        return None
+    roots = tuple(_root(r) for r in frm)
+    if any(r == "/" or _under(here, r) for r in roots):
+        return None
+    return roots, _root(to)
+
+
+def relocated(case: Case, entry: dict, path):
+    """A path `entry` recorded, where it is now: taken through each relocation
+    recorded after the entry in its own log, in order, each once, and used
+    only when the last one taken ends at this case's folder. Any other path,
+    or one already in the case, is the path as recorded."""
+    edges = case.moves.get(id(entry))
+    if not edges or not isinstance(path, str) or _under(path, case.here):
+        return path
+    p, last = path, None
+    for roots, to in edges:
+        for r in roots:
+            if _under(p, r):
+                p, last = to + p[len(r) :], to
+                break
+    return p if last == case.here else path
 
 
 def _when(case: Case, entry: dict) -> tuple:
@@ -200,12 +254,12 @@ def _registered(case: Case, real: str, sha256: str) -> Trace | None:
     return None
 
 
-def _where(case: Case, record: dict):
+def _where(case: Case, record: dict, e=None):
     """A record's path on this box: wintools records its SIFT path relative to
     the case ('/' separators), never compared by its Windows path."""
     rel = record.get("sift_path")
     return str(case.dir.joinpath(*rel.split("/"))) if isinstance(rel, str) and rel else (
-        record.get("path"))  # fmt: skip
+        relocated(case, e, record.get("path")))  # fmt: skip
 
 
 def _outputs(case: Case, entry: dict) -> list[tuple[str, str]]:
@@ -220,7 +274,8 @@ def _outputs(case: Case, entry: dict) -> list[tuple[str, str]]:
     out += list(zip(files, shas, strict=False))
     if rs.get("output_file"):
         out.append((rs["output_file"], rs.get("output_sha256", "")))
-    return [(p, h) for p, h in out if isinstance(p, str) and isinstance(h, str) and h]
+    return [(relocated(case, entry, p), h) for p, h in out
+            if isinstance(p, str) and isinstance(h, str) and h]  # fmt: skip
 
 
 def _index(case: Case, name: str, build) -> dict:
@@ -243,7 +298,8 @@ def _job(case: Case, real: str, job_id: str) -> tuple[str, Trace | dict]:
     AMBIGUOUS, each named, when the closing entry's id is on several entries
     or two closing entries disagree."""
     closes = _index(case, "jobs", lambda e, line: [
-        ((e.get("job_id"), os.path.realpath(str(row.get("path", "")))), (e, line, row))
+        ((e.get("job_id"), os.path.realpath(relocated(case, e, str(row.get("path", ""))))),
+         (e, line, row))
         for row in (e.get("files") or [e]) if isinstance(row, dict)]
         if e.get("tool") in ("hash_complete", "hash_failed") else []).get((job_id, real), [])  # fmt: skip
     if not closes:
@@ -423,15 +479,17 @@ def _inputs(case: Case, e: dict) -> list[dict]:
         # a registered input's record carries no hash: the registry's, as the
         # run read it, is in input_registered ([{path, sha256}]), so a file
         # registered again with other bytes since breaks rather than links
-        reg = {r["path"]: r.get("sha256") or "" for r in e.get("input_registered") or []
+        reg = {relocated(case, e, r["path"]): r.get("sha256") or ""
+               for r in e.get("input_registered") or []
                if isinstance(r, dict) and isinstance(r.get("path"), str)}  # fmt: skip
-        return [{"path": _where(case, i),
-                 "sha256": i.get("sha256") or reg.get(i.get("realpath") or "")
-                 or reg.get(_where(case, i)) or "",
-                 "realpath": i.get("realpath"), "st_dev": i.get("st_dev"),
+        return [{"path": _where(case, i, e),
+                 "sha256": i.get("sha256") or reg.get(r or "")
+                 or reg.get(_where(case, i, e)) or "",
+                 "realpath": r, "st_dev": i.get("st_dev"),
                  "mnt_id": i.get("mnt_id"),
                  "declared": i.get("found") == "declared" or i.get("declared") is True}
-                for i in e["inputs"] if isinstance(i, dict) and isinstance(_where(case, i), str)]  # fmt: skip
+                for i in e["inputs"] if isinstance(i, dict) and isinstance(_where(case, i, e), str)
+                for r in [relocated(case, e, i.get("realpath"))]]  # fmt: skip
     files = e.get("input_files") or []
     shas = e.get("input_sha256s") or []
     reals = e.get("input_realpaths") or []
@@ -441,8 +499,8 @@ def _inputs(case: Case, e: dict) -> list[dict]:
     said = {str(t) for t in command} if isinstance(command, list) else set()
     said |= {os.path.realpath(t) for t in said}
     llm = e.get("input_detection_method") == "llm"
-    return [{"path": f, "sha256": shas[n] if n < len(shas) else "",
-             "realpath": reals[n] if n < len(reals) else None,
+    return [{"path": relocated(case, e, f), "sha256": shas[n] if n < len(shas) else "",
+             "realpath": relocated(case, e, reals[n]) if n < len(reals) else None,
              "st_dev": devs[n] if n < len(devs) else None,
              "mnt_id": mnts[n] if n < len(mnts) else None,
              "declared": llm and f not in said and os.path.realpath(f) not in said}
@@ -628,7 +686,9 @@ def _run_missing(case: Case, e: dict, quote: list[str]) -> tuple[list[str], list
     (up to the size cap) only while lines are still missing."""
     rs = e.get("result_summary") if isinstance(e.get("result_summary"), dict) else {}
     missing, skipped = list(quote), []
-    sources = [(rs.get("output_file"), rs.get("output_sha256"), None)]
+    sources = [
+        (relocated(case, e, rs.get("output_file")), rs.get("output_sha256"), None)
+    ]
     sources += [(p, h, _QUOTE_FILE_CAP) for p, h in _outputs(case, e)]
     for path, sha256, cap in sources:
         if not missing:
@@ -720,7 +780,7 @@ def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
     if isinstance(e.get("reference"), dict):
         resp = e["reference"].get("response") or {}
         pairs: set = set()
-        values, why = (_saved_values(resp.get("path"), resp.get("sha256"), pairs)
+        values, why = (_saved_values(relocated(case, e, resp.get("path")), resp.get("sha256"), pairs)
                        if resp else (None, ""))  # fmt: skip
         if resp and (values is None or not _in_values(quote, values, pairs)):
             return _unverified(why or f"the quote isn't in {audit_id}'s saved response")
@@ -750,7 +810,9 @@ def _trace_query(
         return _broken("no-results-recorded", f"{aid} recorded no results to follow",
                        "run the query again and cite that")  # fmt: skip
     resp = e.get("response") if isinstance(e.get("response"), dict) else {}
-    values, why = _saved_values(resp.get("path"), resp.get("sha256"))
+    values, why = _saved_values(
+        relocated(case, e, resp.get("path")), resp.get("sha256")
+    )
     if values is None:
         return _unverified(
             why or f"{aid}'s saved response is missing or changed since the query"
@@ -787,7 +849,8 @@ def _match_back(
     A line found only in a record's enrichment fields also links to the
     operation that wrote them: reference data, annotated, never the grade."""
     try:
-        returned = json.loads(Path(e["response"]["path"]).read_text(encoding="utf-8"))
+        path = relocated(case, e, e["response"]["path"])
+        returned = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError, KeyError, TypeError):
         returned = {}
     records = (
