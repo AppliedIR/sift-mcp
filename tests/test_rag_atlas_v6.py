@@ -175,6 +175,25 @@ def test_atlas_v6_gives_technique_and_case_study_records(rag, monkeypatch, fmt):
     assert "References:\n- Report: https://example.invalid/r" in case["text"]
 
 
+def test_a_one_edge_mapping_counts_and_an_edge_without_a_target_is_skipped(
+    rag, monkeypatch
+):
+    doc = _atlas()
+    rel = doc["relationships"]
+    rel["AML.T0002"]["achieves"] = _edge(
+        "AML.T0002", "achieves", "AML.TA0005"
+    )  # not a list
+    rel["AML.CS0001"]["employs"].append(
+        {"relationship-type": "employs", "step-id": "S02"}
+    )
+    result, records = _sync(rag, monkeypatch, doc)
+    by_id = {r["metadata"]["atlas_id"]: r for r in records}
+    assert by_id["AML.T0002"]["metadata"]["tactics"] == "Execution"
+    case = by_id["AML.CS0001"]["metadata"]["atlas_techniques"]
+    assert case == "AML.T0001.000, AML.T0002"
+    assert not [r for r in records if "None" in r["text"]]
+
+
 @pytest.mark.parametrize(
     "doc, latest, message",
     [
