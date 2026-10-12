@@ -240,7 +240,7 @@ CREATE TABLE IF NOT EXISTS hijackable_dlls (
     vulnerable_exe_path TEXT,
     expected_paths TEXT,      -- JSON array
     vendor TEXT,
-    UNIQUE(dll_name_lower, vulnerable_exe)
+    UNIQUE(dll_name_lower, vulnerable_exe_path, hijack_type)  -- one row per install path and type
 );
 
 CREATE INDEX IF NOT EXISTS idx_hjk_dll ON hijackable_dlls(dll_name_lower);

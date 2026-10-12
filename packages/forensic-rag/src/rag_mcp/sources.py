@@ -159,6 +159,7 @@ SOURCES: dict[str, SourceConfig] = {
         description="Splunk Security Content",
         source_type="github_releases",
         repo="splunk/security_content",
+        branch="develop",  # the upstream default; main is frozen at 2022
         parser="parse_splunk",
         paths=["detections/"],
     ),
@@ -1266,12 +1267,10 @@ Known False Positives: {doc.get("known_false_positives", "None documented")}
 
 References: {chr(10).join(doc.get("references", []) or ["None"])}
 """
-            # Extract MITRE techniques from tags
-            techniques = []
-            tags = doc.get("tags", {})
-            if isinstance(tags, dict):
-                for tag in tags.get("mitre_attack_id", []) or []:
-                    techniques.append(tag)
+            # develop keeps the ids at the top level, as a list or one string
+            techniques = doc.get("mitre_attack_id") or []
+            if isinstance(techniques, str):
+                techniques = [techniques]
 
             records.append(
                 {
@@ -1295,9 +1294,15 @@ References: {chr(10).join(doc.get("references", []) or ["None"])}
 def parse_lolbas(repo_dir: Path, output_path: Path) -> int:
     """Parse LOLBAS entries."""
     records = []
-    yml_dir = repo_dir / "yml" / "OSBinaries"
+    # the four categories the triage importer reads
+    # (HonorableMentions is left out by design, as there)
+    yml_files = [
+        f
+        for category in ("OSBinaries", "OSLibraries", "OSScripts", "OtherMSBinaries")
+        for f in sorted((repo_dir / "yml" / category).glob("*.yml"))
+    ]
 
-    for yaml_file in yml_dir.rglob("*.yml"):
+    for yaml_file in yml_files:
         try:
             with open(yaml_file, encoding="utf-8") as f:
                 doc = yaml.safe_load(f)

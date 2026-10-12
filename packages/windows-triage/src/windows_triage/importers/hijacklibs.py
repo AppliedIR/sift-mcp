@@ -8,6 +8,8 @@ from typing import Any
 
 import yaml
 
+from ..db.schemas import CONTEXT_SCHEMA
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,57 +24,72 @@ def import_hijacklibs(db_path: Path, hijacklibs_dir: Path) -> dict:
     Returns:
         Dict with import statistics
     """
-    stats = {"dlls_imported": 0, "entries_imported": 0, "errors": 0, "skipped": 0}
+    stats = {
+        "dlls_imported": 0,
+        "entries_imported": 0,
+        "duplicates": 0,
+        "errors": 0,
+        "skipped": 0,
+    }
 
     yml_dir = hijacklibs_dir / "yml"
     if not yml_dir.exists():
         logger.error(f"HijackLibs yml directory not found: {yml_dir}")
         return stats
 
+    # Parse everything first: the table is replaced only when there is data
+    parsed = []
+    for yml_file in sorted(yml_dir.rglob("*.yml")):
+        try:
+            entries = _parse_hijacklib_yaml(yml_file)
+        except Exception as e:
+            stats["errors"] += 1
+            if stats["errors"] <= 10:
+                logger.warning(f"Error processing {yml_file}: {e}")
+            continue
+        if entries:
+            parsed.append(entries)
+        else:
+            stats["skipped"] += 1
+    if not parsed:
+        logger.error(
+            f"HijackLibs: 0 entries parsed from {yml_dir}; hijackable_dlls left unchanged"
+        )
+        return stats
+
     conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
     try:
-        # Process all YAML files recursively
-        for yml_file in yml_dir.rglob("*.yml"):
-            try:
-                entries = _parse_hijacklib_yaml(yml_file)
-                if not entries:
-                    stats["skipped"] += 1
-                    continue
-
-                dll_counted = False
-                for entry in entries:
-                    cursor.execute(
-                        """
-                        INSERT OR REPLACE INTO hijackable_dlls (
-                            dll_name_lower, hijack_type, vulnerable_exe,
-                            vulnerable_exe_path, expected_paths, vendor
-                        ) VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                        (
-                            entry["dll_name_lower"],
-                            entry["hijack_type"],
-                            entry["vulnerable_exe"],
-                            entry["vulnerable_exe_path"],
-                            json.dumps(entry["expected_paths"]),
-                            entry["vendor"],
-                        ),
-                    )
-                    stats["entries_imported"] += 1
-                    if not dll_counted:
-                        stats["dlls_imported"] += 1
-                        dll_counted = True
-
-            except Exception as e:
-                stats["errors"] += 1
-                if stats["errors"] <= 10:
-                    logger.warning(f"Error processing {yml_file}: {e}")
-
+        # One transaction: a context.db made before 0.6.5 gets the (dll, exe
+        # path, type) key, and the old table survives any failure before commit
+        conn.executescript(
+            "BEGIN; DROP TABLE IF EXISTS hijackable_dlls;" + CONTEXT_SCHEMA
+        )
+        cursor = conn.cursor()
+        for entries in parsed:
+            stats["dlls_imported"] += 1
+            for entry in entries:
+                cursor.execute(
+                    """
+                    INSERT OR IGNORE INTO hijackable_dlls (
+                        dll_name_lower, hijack_type, vulnerable_exe,
+                        vulnerable_exe_path, expected_paths, vendor
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        entry["dll_name_lower"],
+                        entry["hijack_type"],
+                        entry["vulnerable_exe"],
+                        entry["vulnerable_exe_path"],
+                        json.dumps(entry["expected_paths"]),
+                        entry["vendor"],
+                    ),
+                )
+                stats["entries_imported" if cursor.rowcount else "duplicates"] += 1
         conn.commit()
         logger.info(
             f"Imported {stats['dlls_imported']} hijackable DLLs "
-            f"({stats['entries_imported']} vulnerable exe entries)"
+            f"({stats['entries_imported']} vulnerable exe entries; "
+            f"{stats['duplicates']} duplicate entries not stored)"
         )
 
     finally:

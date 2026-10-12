@@ -159,7 +159,8 @@ def _parse_lolbas_yml(yml_path: Path, category: str) -> dict[str, Any] | None:
     functions = set()
     mitre_techniques = set()
 
-    for cmd in data.get("Commands", []):
+    # a list key that is present but empty loads as None
+    for cmd in data.get("Commands") or []:
         if cmd.get("Category"):
             functions.add(cmd["Category"])
         if cmd.get("MitreID"):
@@ -167,19 +168,19 @@ def _parse_lolbas_yml(yml_path: Path, category: str) -> dict[str, Any] | None:
 
     # Extract expected paths
     expected_paths = []
-    for path_entry in data.get("Full_Path", []):
+    for path_entry in data.get("Full_Path") or []:
         if path_entry.get("Path"):
             expected_paths.append(path_entry["Path"].lower())
 
     # Extract detection info
     detection_items = []
-    for det in data.get("Detection", []):
+    for det in data.get("Detection") or []:
         if det.get("IOC"):
             detection_items.append(f"IOC: {det['IOC']}")
 
     # Handle aliases
     aliases = []
-    for alias_entry in data.get("Aliases", []):
+    for alias_entry in data.get("Aliases") or []:
         if alias_entry.get("Alias"):
             aliases.append(alias_entry["Alias"].lower())
 
