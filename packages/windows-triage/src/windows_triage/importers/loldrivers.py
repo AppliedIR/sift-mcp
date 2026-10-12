@@ -121,11 +121,7 @@ def _parse_loldriver_yaml(yaml_path: Path) -> dict[str, Any] | None:
         Dict with parsed driver data, or None if invalid
     """
     with open(yaml_path, encoding="utf-8") as f:
-        try:
-            data = yaml.safe_load(f)
-        except yaml.YAMLError as e:
-            logger.warning(f"YAML parse error in {yaml_path}: {e}")
-            return None
+        data = yaml.safe_load(f)  # a parse failure is the caller's error, named
 
     if not data:
         return None

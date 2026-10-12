@@ -100,12 +100,14 @@ Name: Simple.exe
         assert result is None
 
     def test_parse_invalid_yaml(self, tmp_path):
-        """Test parsing invalid YAML."""
+        """Invalid YAML raises: import_lolbas counts it as an error, by name."""
+        import yaml
+
         yml_file = tmp_path / "Invalid.yml"
         yml_file.write_text("{ invalid: yaml: content")
 
-        result = _parse_lolbas_yml(yml_file, "OSBinaries")
-        assert result is None
+        with pytest.raises(yaml.YAMLError):
+            _parse_lolbas_yml(yml_file, "OSBinaries")
 
     def test_parse_no_name(self, tmp_path):
         """Test parsing YAML without Name field."""

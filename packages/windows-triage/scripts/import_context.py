@@ -119,6 +119,11 @@ def main():
     stats = import_process_expectations(db_path=context_db)
     logger.info(f"  Process rules: {stats['processes_imported']}")
     total_stats["process_rules"] = stats["processes_imported"]
+    if stats["errors"] or not stats["processes_imported"]:
+        problems.append(
+            f"Process expectations: {stats['errors']} error(s), "
+            f"{stats['processes_imported']} imported"
+        )
 
     # Print summary
     print("\n" + "=" * 60)

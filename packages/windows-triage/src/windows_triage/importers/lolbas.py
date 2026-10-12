@@ -143,11 +143,7 @@ def _parse_lolbas_yml(yml_path: Path, category: str) -> dict[str, Any] | None:
         Dict with parsed LOLBin data, or None if invalid
     """
     with open(yml_path, encoding="utf-8") as f:
-        try:
-            data = yaml.safe_load(f)
-        except yaml.YAMLError as e:
-            logger.warning(f"YAML parse error in {yml_path}: {e}")
-            return None
+        data = yaml.safe_load(f)  # a parse failure is the caller's error, named
 
     if not data or not data.get("Name"):
         return None

@@ -21,7 +21,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from windows_triage.importers import import_hijacklibs, import_lolbas
+from windows_triage.importers import import_hijacklibs, import_lolbas, import_loldrivers
 
 from .test_context_imports_keep_rows import HIJACKLIBS, _dbs, _tree
 
@@ -220,3 +220,75 @@ def test_an_update_with_errors_isnt_recorded_and_the_next_one_retries(
         is True
     )
     assert us.get_last_sync(ctx, us.SOURCES[source]["db_source_key"]) == "c2"
+
+
+# --- a malformed LOLBAS or LOLDrivers file is an error, named: never a skip ---
+
+GOOD = {  # source -> (folder in the clone, a good file, the count that names it)
+    "lolbas": ("yml/OSBinaries", "a.yml",
+               "Name: a.exe\nDescription: d\nCommands:\n- Command: a.exe x\n  Category: Execute\n",
+               "lolbins_imported"),
+    "loldrivers": ("yaml", "d.yaml",
+                   "Category: vulnerable driver\nKnownVulnerableSamples:\n"
+                   "- Filename: d.sys\n  SHA256: " + "ab" * 32 + "\n",
+                   "samples_imported"),
+}  # fmt: skip
+MALFORMED = "Name: bad\nCommands: [unclosed\n"  # a YAML error
+
+
+@pytest.mark.parametrize("source", GOOD)
+def test_a_malformed_file_is_an_error_named_and_the_update_isnt_recorded(
+    tmp_path, caplog, source
+):
+    folder, good_name, good, count = GOOD[source]
+    bad_name = "bad" + Path(good_name).suffix
+    ctx = _dbs(tmp_path)
+    us = _update_sources()
+
+    def clone(url, dest, depth=1):
+        (dest / folder).mkdir(parents=True)
+        (dest / folder / good_name).write_text(good, encoding="utf-8")
+        (dest / folder / bad_name).write_text(MALFORMED, encoding="utf-8")
+        return True
+
+    us.shallow_clone = clone
+    us.SOURCES[source]["db"] = ctx.name
+    with caplog.at_level("WARNING"):
+        ok = us.update_context_source(
+            source, tmp_path, {"latest_commit": "c1"}, False, False
+        )
+    assert ok is False
+    assert us.get_last_sync(ctx, us.SOURCES[source]["db_source_key"]) is None
+    errors = [r.getMessage() for r in caplog.records if bad_name in r.getMessage()]
+    assert any(m.startswith("Error processing ") for m in errors), errors
+    assert any("1 error(s), 1 imported; not recorded as synced" in r.getMessage()
+               for r in caplog.records), [r.getMessage() for r in caplog.records]  # fmt: skip
+    importer = {"lolbas": import_lolbas, "loldrivers": import_loldrivers}[source]
+    root = tmp_path / "direct"
+    clone("", root)
+    stats = importer(ctx, root)
+    assert (stats["errors"], stats["skipped"], stats[count]) == (1, 0, 1)
+
+
+def test_import_context_fails_on_a_process_expectations_error(tmp_path, capsys):
+    """A rule without process_name is an importer error: exit non-zero, named."""
+    spec = importlib.util.spec_from_file_location(
+        "import_context_pe_under_test", SCRIPTS / "import_context.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    data = tmp_path / "pkg" / "data"
+    data.mkdir(parents=True)
+    _dbs(data)
+    _tree(data / "sources" / "HijackLibs" / "yml", HIJACKLIBS)
+    rules = tmp_path / "rules.yaml"
+    rules.write_text("processes:\n- user_type: SYSTEM\n", encoding="utf-8")
+    real = mod.import_process_expectations
+    mod.import_process_expectations = lambda db_path: real(
+        db_path=db_path, yaml_path=rules
+    )
+    mod.__file__ = str(tmp_path / "pkg" / "scripts" / "import_context.py")
+    with pytest.raises(SystemExit) as e:
+        mod.main()
+    assert e.value.code not in (0, None)
+    assert "Process expectations: 1 error(s), 0 imported" in capsys.readouterr().out
