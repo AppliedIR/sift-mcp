@@ -1299,10 +1299,11 @@ class CaseManager:
             text = (
                 f"{finding.get('observation', '')} {finding.get('interpretation', '')}"
             )
-            submitted = {
-                str(i).lower().strip()
+            submitted = {  # a string IOC, or a dict IOC's value
+                str(i.get("value") if isinstance(i, dict) else i).lower().strip()
                 for i in (finding.get("iocs") or [])
                 if isinstance(i, str)
+                or (isinstance(i, dict) and i.get("value") is not None)
             }
             mentioned_ips = set(
                 re.findall(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", text)
