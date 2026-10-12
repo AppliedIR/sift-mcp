@@ -460,7 +460,8 @@ class TestImportBundle:
                  for ln in f.read_text().splitlines() if ln.strip()]  # fmt: skip
         return [e for e in lines if e.get("tool") == "import_bundle"]
 
-    @pytest.mark.parametrize("levels", [2000, 100_000])
+    # beyond every json decoder: 3.10 stops near 1000 levels, 3.12 and 3.13 near 10,000
+    @pytest.mark.parametrize("levels", [20_000, 100_000])
     def test_a_bundle_too_deep_to_decode_is_refused_by_name_and_audited(
         self, case_dir, tmp_path, levels
     ):
