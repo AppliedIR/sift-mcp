@@ -18,7 +18,10 @@
 #   parent_exits: True if parent normally exits after spawning this process
 #   valid_paths: Expected executable paths (null = kernel process or any location)
 #   user_type: SYSTEM, USER, or EITHER
-#   valid_users: Specific user accounts expected (null = any user of type)
+#   valid_users: Accounts always accepted for this process, beside its user_type
+#                (a domain-less entry also matches under Window Manager). On a
+#                SYSTEM rule, SYSTEM always passes; LOCAL SERVICE and NETWORK
+#                SERVICE pass only when listed here or when this is null
 #   min_instances: Minimum expected running instances
 #   max_instances: Maximum expected (null = unlimited)
 #   per_session: True if one instance expected per user session

@@ -42,9 +42,9 @@ baseline, and that's OK. Only flag as suspicious if actual indicators present.
 from __future__ import annotations
 
 import atexit
-import fnmatch
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -83,6 +83,69 @@ logger = logging.getLogger(__name__)
 def _is_path(name: str) -> bool:
     """A process name given with its folder (a separator), not just in another case."""
     return "\\" in name or "/" in name
+
+
+def _has_directory(path: str) -> bool:
+    """The input names a folder or drive: a bare name (svchost.exe) says nothing about where the file is."""
+    return any(sep in path for sep in ("\\", "/", ":"))
+
+
+def _path_matches(path: str, expected: list[str]) -> bool:
+    """A path is one of the expected paths; a `*` stands for one folder name (not . or ..)."""
+    normalized = normalize_path(path)
+    for p in expected:
+        pattern = re.escape(normalize_path(p)).replace(r"\*", r"(?!\.\.?\\)[^\\]+")
+        if re.fullmatch(pattern, normalized):
+            return True
+    return False
+
+
+# Built-in service accounts, by name and by SID, as logs, tools and service settings write them.
+_SERVICE_ACCOUNTS = {
+    "SYSTEM": "SYSTEM",
+    "LOCALSYSTEM": "SYSTEM",
+    "LOCAL SYSTEM": "SYSTEM",
+    "S-1-5-18": "SYSTEM",
+    "LOCAL SERVICE": "LOCAL SERVICE",
+    "LOCALSERVICE": "LOCAL SERVICE",
+    "S-1-5-19": "LOCAL SERVICE",
+    "NETWORK SERVICE": "NETWORK SERVICE",
+    "NETWORKSERVICE": "NETWORK SERVICE",
+    "S-1-5-20": "NETWORK SERVICE",
+}
+
+
+def _account(user: str) -> tuple[str, str]:
+    domain, _, name = user.strip().upper().rpartition("\\")
+    return domain, name
+
+
+def _user_valid(user: str, proc_info: dict) -> bool:
+    """Is this account expected for the process? valid_users first, then its user_type."""
+    domain, name = _account(user)
+    listed = proc_info.get("valid_users") or ()
+    for expected in listed:
+        e_domain, e_name = _account(expected)
+        # DWM-1 is listed without its domain; Windows writes it as Window Manager\DWM-1
+        if e_name == name and (
+            e_domain == domain or (not e_domain and domain == "WINDOW MANAGER")
+        ):
+            return True
+    service = _SERVICE_ACCOUNTS.get(name)
+    user_type = proc_info.get("user_type")
+    if user_type == "SYSTEM":
+        if service is None or domain not in ("", "NT AUTHORITY"):
+            return False
+        # SYSTEM always; LOCAL/NETWORK SERVICE only where the rule lists no accounts, or lists that one
+        return (
+            service == "SYSTEM"
+            or not listed
+            or service in {_SERVICE_ACCOUNTS.get(_account(e)[1]) for e in listed}
+        )
+    if user_type == "USER":
+        # a service account under any spelling or domain (NT AUTHORITY\SYSTEM, S-1-5-18)
+        return service is None
+    return True
 
 
 def _validate_input_length(value: Any, max_length: int, field_name: str) -> None:
@@ -783,6 +846,7 @@ class WindowsTriageServer:
 
         # Check if this directory is a known location for this filename
         dir_path = extract_directory(path)
+        no_directory = not _has_directory(path)
         dir_known = (
             self.known_good_db.is_directory_known_for_file(filename, dir_path)
             if filename_in_baseline and not path_in_baseline and dir_path
@@ -820,21 +884,11 @@ class WindowsTriageServer:
         # For protected processes, check if path matches their specific valid_paths
         # (not just generic is_system_path)
         protected_path_valid = True  # Default to True for non-protected processes
-        if is_protected:
+        if is_protected and not no_directory:
             proc_info = self.context_db.get_expected_process(filename)
             if proc_info and proc_info.get("valid_paths"):
                 valid_paths = proc_info["valid_paths"]
-                # Check if normalized path matches any valid path
-                protected_path_valid = False
-                for valid_path in valid_paths:
-                    # Handle wildcards (e.g., "\\programdata\\...\\*\\msmpeng.exe")
-                    if "*" in valid_path:
-                        if fnmatch.fnmatch(normalized_path, valid_path):
-                            protected_path_valid = True
-                            break
-                    elif normalized_path == valid_path:
-                        protected_path_valid = True
-                        break
+                protected_path_valid = _path_matches(path, valid_paths)
 
                 if not protected_path_valid:
                     findings.append(
@@ -879,7 +933,8 @@ class WindowsTriageServer:
         # Note: For threat intel, use lookup_ioc (threat intel) separately
         verdict_result = calculate_file_verdict(
             path_in_baseline=path_in_baseline,
-            filename_in_baseline=filename_in_baseline,
+            # A bare name can't be in the wrong place: only its name is judged
+            filename_in_baseline=filename_in_baseline and not no_directory,
             is_system_path=sys_path,
             filename_findings=findings,
             lolbin_info=lolbin_info,
@@ -888,6 +943,8 @@ class WindowsTriageServer:
             dir_normalized=dir_path,
             filename=filename,
         )
+        if no_directory and str(verdict_result.verdict) == "UNKNOWN":
+            verdict_result.reasons = ["No directory given: path not checked"]
 
         if hash_note:
             verdict_result.reasons.append(hash_note)
@@ -975,10 +1032,7 @@ class WindowsTriageServer:
         parent_info = self.context_db.get_expected_process(parent_name)
         parent_path_valid = None
         if _is_path(raw_parent) and parent_info and parent_info.get("valid_paths"):
-            parent_path_valid = any(
-                normalize_path(raw_parent) == normalize_path(p)
-                for p in parent_info["valid_paths"]
-            )
+            parent_path_valid = _path_matches(raw_parent, parent_info["valid_paths"])
             if not parent_path_valid:
                 findings.append(
                     {
@@ -1061,11 +1115,10 @@ class WindowsTriageServer:
 
         # Validate path if provided
         path_valid = None
-        if path:
+        if path and _has_directory(path):  # a bare name doesn't say where the file is
             valid_paths = proc_info.get("valid_paths", [])
             if valid_paths:
-                normalized = normalize_path(path)
-                path_valid = any(normalized == normalize_path(p) for p in valid_paths)
+                path_valid = _path_matches(path, valid_paths)
                 if not path_valid:
                     findings.append(
                         {
@@ -1081,21 +1134,7 @@ class WindowsTriageServer:
         user_valid = None
         if user:
             user_type = proc_info.get("user_type")
-            if user_type == "SYSTEM":
-                user_valid = user.upper() in [
-                    "SYSTEM",
-                    "LOCAL SERVICE",
-                    "NETWORK SERVICE",
-                    "NT AUTHORITY\\SYSTEM",
-                ]
-            elif user_type == "USER":
-                user_valid = user.upper() not in [
-                    "SYSTEM",
-                    "LOCAL SERVICE",
-                    "NETWORK SERVICE",
-                ]
-            else:
-                user_valid = True
+            user_valid = _user_valid(user, proc_info)
 
             if user_valid is False:
                 findings.append(
