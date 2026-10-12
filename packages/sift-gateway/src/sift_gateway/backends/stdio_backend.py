@@ -109,6 +109,9 @@ class StdioMCPBackend(MCPBackend):
     async def start(self) -> None:
         if self._started:
             return
+        # a new generation before anything of the new session is published: a
+        # call still in flight on the old one is already stale
+        self._generation += 1
 
         command = self.config.get("command", "python")
         args = self.config.get("args", [])
@@ -155,7 +158,6 @@ class StdioMCPBackend(MCPBackend):
             )
             self._instructions = result.instructions
             self._server_version = _version_of(result)
-            self._generation += 1
             self._started = True
             logger.info("Backend %s started (stdio)", self.name)
         except asyncio.TimeoutError:

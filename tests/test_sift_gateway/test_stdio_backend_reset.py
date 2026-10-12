@@ -246,3 +246,41 @@ async def test_r8_an_old_sessions_late_failure_never_resets_the_replacement(back
         await second  # it still fails: it ran on the old child
     assert backend.started is True and backend._session is new
     assert await _pid(backend) != old_pid
+
+
+async def test_r9_an_old_failure_during_the_replacements_start_never_resets_it(
+    backend, monkeypatch
+):
+    """Codex's ordering on a705586: the replacement is published while its
+    initialize is still awaited, and an old call fails meanwhile. The old
+    call's generation is already stale, so the replacement survives."""
+    import anyio
+    from sift_gateway.backends import stdio_backend
+
+    old_pid = await _pid(backend)
+    failing, initializing = asyncio.Event(), asyncio.Event()
+
+    async def held_call(name, arguments):  # an old session's call, failing on cue
+        await failing.wait()
+        raise anyio.ClosedResourceError()
+
+    backend._session.call_tool = held_call
+    old_call = asyncio.ensure_future(backend.call_tool("ping", {}))
+    await asyncio.sleep(0.1)
+    await backend._safe_cleanup(context="the old child died")  # a first failure
+    real_initialize = stdio_backend.ClientSession.initialize
+
+    async def held_initialize(self):
+        await initializing.wait()
+        return await real_initialize(self)
+
+    monkeypatch.setattr(stdio_backend.ClientSession, "initialize", held_initialize)
+    restart = asyncio.ensure_future(in_own_task(backend.start()))
+    await asyncio.sleep(0.5)  # the replacement is published, its initialize held
+    failing.set()
+    with pytest.raises(anyio.ClosedResourceError):
+        await old_call
+    initializing.set()
+    await restart
+    assert backend.started is True
+    assert await _pid(backend) != old_pid
