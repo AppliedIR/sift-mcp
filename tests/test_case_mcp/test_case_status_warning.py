@@ -1,11 +1,11 @@
-"""fmreads2-065: case-mcp's case_status warns about approvals that don't
-verify, and forensic-mcp's reads answer an error as an error.
+"""case-mcp's case_status warns about approvals that don't verify, and
+forensic-mcp's reads answer an error as an error.
 
-- SPEC-001: case_status keeps its counts (by status, as documented) and adds
-  `warning`, the same text get_findings and get_timeline give, naming every
-  APPROVED finding and event that doesn't verify. At 66eb607 it said nothing.
-- SPEC-002: get_findings and get_timeline answer `{"error": …, findings or
-  events: [], "total": 0}`. At 66eb607 the error was a row in the list.
+- case_status keeps its counts (by status, as documented) and adds `warning`,
+  the same text get_findings and get_timeline give, naming every APPROVED
+  finding and event that doesn't verify. Before, it said nothing.
+- get_findings and get_timeline answer `{"error": …, findings or events: [],
+  "total": 0}`. Before, the error was a row in the list.
 
 The real servers run in-process on scratch cases (test_timeline_reads' rig).
 """
@@ -41,11 +41,11 @@ def _counts(out):
     return {k: out[k] for k in COUNTS}
 
 
-# --- SPEC-001: case_status --------------------------------------------------------
+# --- case_status ------------------------------------------------------------------
 
 
 @pytest.mark.usefixtures("approved")
-def test_c1_case_status_names_findings_and_events_that_dont_verify(approved):  # noqa: F811
+def test_case_status_names_findings_and_events_that_dont_verify(approved):  # noqa: F811
     out = _status()
     assert out["warning"] == (
         "Not approved as recorded: F-rig-002 ALTERED_AFTER_APPROVAL, "
@@ -56,7 +56,7 @@ def test_c1_case_status_names_findings_and_events_that_dont_verify(approved):  #
     assert (out["finding_approved"], out["timeline_approved"]) == (2, 3)
 
 
-def test_c2_no_warning_when_every_approval_verifies(tmp_path, monkeypatch):
+def test_no_warning_when_every_approval_verifies(tmp_path, monkeypatch):
     d = _make_case(tmp_path, "INC-V", [_finding(1, "APPROVED"), _finding(2)],
                    [_event(1, "APPROVED")], monkeypatch)  # fmt: skip
     sign_approved(d)
@@ -65,7 +65,7 @@ def test_c2_no_warning_when_every_approval_verifies(tmp_path, monkeypatch):
     assert (out["finding_approved"], out["timeline_approved"]) == (1, 1)
 
 
-def test_c2b_an_approval_from_0_6_counts_with_no_warning(tmp_path, monkeypatch):
+def test_an_approval_from_0_6_counts_with_no_warning(tmp_path, monkeypatch):
     """The 0.6 label isn't VALID, and isn't a fault: no warning, counted."""
     d, _ = _case_06(tmp_path, monkeypatch)
     out = _status()
@@ -75,8 +75,10 @@ def test_c2b_an_approval_from_0_6_counts_with_no_warning(tmp_path, monkeypatch):
     assert [f["approval_verification"] for f in got["findings"]] == [SHOWN_06]
 
 
-@pytest.mark.parametrize("ledger_state", ["none", "unreadable"], ids=["C3", "C3b"])
-def test_c3_no_approved_items_reply_as_at_the_base(tmp_path, monkeypatch, ledger_state):
+@pytest.mark.parametrize(
+    "ledger_state", ["none", "unreadable"], ids=["no-ledger", "unreadable-ledger"]
+)
+def test_no_approved_items_reply_as_at_the_base(tmp_path, monkeypatch, ledger_state):
     d = _make_case(tmp_path, "INC-D", [_finding(1)], [_event(1)], monkeypatch)
     if ledger_state == "unreadable":
         ledger.LEDGER_DIR.mkdir(parents=True, exist_ok=True)
@@ -89,7 +91,7 @@ def test_c3_no_approved_items_reply_as_at_the_base(tmp_path, monkeypatch, ledger
     assert {k: out[k] for k in expected} == expected
 
 
-def test_c3c_an_approved_item_with_no_ledger_line_is_named(tmp_path, monkeypatch):
+def test_an_approved_item_with_no_ledger_line_is_named(tmp_path, monkeypatch):
     d = _make_case(tmp_path, "INC-N", [_finding(1, "APPROVED")], [], monkeypatch)
     out = _status()
     assert (
@@ -108,13 +110,13 @@ def test_the_tool_list_says_the_counts_are_by_status():
     assert "The counts are by status; `warning` names any APPROVED finding" in text
 
 
-# --- SPEC-002: an error is an error, not a row ------------------------------------
+# --- an error is an error, not a row ---------------------------------------------
 
 
 @pytest.mark.parametrize(
     "tool,key", [("get_findings", "findings"), ("get_timeline", "events")]
 )
-def test_c4_no_active_case_is_an_error_with_an_empty_list(
+def test_no_active_case_is_an_error_with_an_empty_list(
     tmp_path, monkeypatch, tool, key
 ):
     monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
@@ -126,7 +128,7 @@ def test_c4_no_active_case_is_an_error_with_an_empty_list(
 
 @pytest.mark.parametrize("tool,key,name", [("get_findings", "findings", "findings.json"),
                                            ("get_timeline", "events", "timeline.json")])  # fmt: skip
-def test_c5_a_corrupt_file_is_an_error_with_an_empty_list(
+def test_a_corrupt_file_is_an_error_with_an_empty_list(
     tmp_path, monkeypatch, tool, key, name
 ):
     d = _make_case(tmp_path, "INC-C", [], [], monkeypatch)

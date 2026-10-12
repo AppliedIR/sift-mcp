@@ -1,7 +1,7 @@
-"""The IOC completeness warning reads a dict IOC by its value (fmreads2-065
-SPEC-003): `{"type": "ip", "value": "10.1.2.3"}` lists 10.1.2.3, as the
-string form does; a dict with no value lists nothing. At 66eb607 only string
-IOCs were read, so every dict-form IOC was reported missing from the list."""
+"""The IOC completeness warning reads a dict IOC by its value:
+`{"type": "ip", "value": "10.1.2.3"}` lists 10.1.2.3, as the string form
+does; a dict with no value lists nothing. Before, only string IOCs were read,
+so every dict-form IOC was reported missing from the list."""
 
 from __future__ import annotations
 
@@ -37,16 +37,16 @@ def _missing(mgr, iocs):
 @pytest.mark.parametrize(
     "iocs",
     [
-        [{"type": "ip", "value": LISTED}],  # C7
+        [{"type": "ip", "value": LISTED}],
         [
             {"type": "ip", "value": LISTED},
             {"type": "ip"},
             {"type": "x", "value": 7},
-        ],  # C7b
-        [LISTED],  # C7c: the string form, as before
+        ],  # one with no value, one with an int value
+        [LISTED],  # the string form, as before
         [{"type": "ip", "value": " 10.1.2.3 "}],  # normalised as the string form is
     ],
-    ids=["C7-dict", "C7b-no-value-and-int", "C7c-string", "dict-spaced"],
+    ids=["dict", "no-value-and-int", "string", "dict-spaced"],
 )
 @pytest.mark.usefixtures("active_case")
 def test_only_the_unlisted_ip_is_named(manager, iocs):  # noqa: F811
@@ -57,6 +57,6 @@ def test_only_the_unlisted_ip_is_named(manager, iocs):  # noqa: F811
 
 @pytest.mark.usefixtures("active_case")
 def test_with_no_iocs_both_are_named(manager):  # noqa: F811
-    """C8 (control): no iocs at all, as at the base."""
+    """No iocs at all: both are named, as before."""
     named, warning = _missing(manager, None)
     assert sorted(named) == sorted([LISTED, UNLISTED]), warning
