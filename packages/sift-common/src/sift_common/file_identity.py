@@ -305,10 +305,10 @@ def _completed_rows(case_dir) -> dict[str, dict]:
     """Each file's last recorded background result in this case (a hash or an
     error), by real path, read from the log once."""
     try:
-        lines = (Path(case_dir) / "audit" / "file-identity.jsonl").read_text(
-            encoding="utf-8").splitlines()  # fmt: skip
-    except OSError:
+        raw = read_regular(Path(case_dir) / "audit" / "file-identity.jsonl")
+    except (OSError, NotRegularFile):
         return {}
+    lines = raw.decode("utf-8").splitlines()
     rows: dict[str, dict] = {}
     for line in lines:
         try:

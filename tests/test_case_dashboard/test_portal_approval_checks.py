@@ -490,3 +490,77 @@ def test_a_large_root_without_stat_fields_is_hashed_in_the_background(
     r = plan(case, [reviewed(case, "F-steve-001")])
     assert r.status_code == 200, r.text
     assert bodies(r)[0]["checks"]["result"] == "ok"
+
+
+# --- An audit log the checks can't read ---------------------------------------
+# It could hold another entry for a chained id: the plan, and the commit, are
+# refused as AUDIT_UNREADABLE naming it, and nothing is signed.
+
+_NON_ROOT = pytest.mark.skipif(
+    __import__("os").geteuid() == 0, reason="mode 000 doesn't stop root"
+)
+
+
+def _unreadable(why: str) -> str:
+    return (
+        f"The approval checks couldn't read {why}: an entry there could change their "
+        "result. Nothing was signed. Make each log a readable regular file, then "
+        "approve again."
+    )
+
+
+def _duplicate_unreadable(case):
+    """A second line for the chained entry, in a log made mode 000."""
+    import os
+
+    line = (case.dir / "audit" / "sift-mcp.jsonl").read_text()
+    log = case.dir / "audit" / "wintools-mcp.jsonl"
+    log.write_text(line)
+    os.chmod(log, 0)
+
+
+@_NON_ROOT
+def test_a_log_the_checks_cant_read_refuses_the_plan(case):
+    _duplicate_unreadable(case)
+    r = plan(case, [reviewed(case, "F-steve-001")])
+    assert r.status_code == 409, r.text
+    assert r.json() == {
+        "code": "AUDIT_UNREADABLE",
+        "error": _unreadable("audit/wintools-mcp.jsonl (Permission denied)"),
+    }
+    assert case.chain() == [] and case.item("F-steve-001")["status"] == "DRAFT"
+
+
+@_NON_ROOT
+def test_an_audit_folder_the_checks_cant_list_refuses_the_plan(case):
+    import os
+
+    os.chmod(case.dir / "audit", 0)
+    try:
+        r = plan(case, [reviewed(case, "F-steve-001")])
+    finally:
+        os.chmod(case.dir / "audit", 0o755)
+    assert r.status_code == 409, r.text
+    assert r.json() == {
+        "code": "AUDIT_UNREADABLE",
+        "error": _unreadable("audit/ (Permission denied)"),
+    }
+    assert case.chain() == []
+
+
+@_NON_ROOT
+def test_a_log_made_unreadable_between_plan_and_commit_refuses_the_commit(case):
+    entries = [reviewed(case, "F-steve-001")]
+    r = plan(case, entries)
+    assert r.status_code == 200, r.text
+    p = r.json()
+    k = case.login(p)
+    sigs = case.sign(p, k.json())
+    _duplicate_unreadable(case)
+    c = case.commit(p, sigs)
+    assert c.status_code == 409, c.text
+    assert c.json()["code"] == "AUDIT_UNREADABLE"
+    assert c.json()["error"] == _unreadable(
+        "audit/wintools-mcp.jsonl (Permission denied)"
+    )
+    assert case.chain() == [] and case.item("F-steve-001")["status"] == "DRAFT"

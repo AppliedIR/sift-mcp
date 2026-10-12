@@ -414,7 +414,14 @@ def make_plan(case_dir, case_id, entries, lists, examiner, public, now, head,
     for d in direct:
         if d.decision != "approve" or d.type not in ("finding", "timeline"):
             continue
-        d.checks = approval_checks.check_item(case_dir, d.item, d.type, background=True)
+        try:
+            d.checks = approval_checks.check_item(
+                case_dir, d.item, d.type, background=True
+            )
+        except (
+            approval_checks.AuditUnreadable
+        ) as e:  # nothing to override: refused whole
+            raise _Refused(_error("AUDIT_UNREADABLE", str(e), 409)) from e
         if d.checks["result"] != "failed":
             continue
         given = reasons.get(d.id) or {}
