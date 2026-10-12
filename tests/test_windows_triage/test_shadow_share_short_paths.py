@@ -126,6 +126,14 @@ SHORT = [
     (PT, {'process_name': 'msmpeng.exe', 'parent_name': 'cmd.exe', 'path': 'C:\\PROGRA~1' + MSMP},
      dict(verdict='SUSPICIOUS', confidence='high', finding_types=['unexpected_parent', 'unexpected_path'],
           reasons=['Unexpected parent process', SHORT_REASON])),
+    # a path finding about a path with no 8.3 reading is certain too: the other path's 8.3
+    # reading doesn't cap it (c1: the parent is the certain one; r1: the child is). Was medium
+    (PT, {'process_name': 'msmpeng.exe', 'parent_name': 'C:\\Temp\\services.exe', 'path': 'C:\\PROGRA~1' + MSMP},
+     dict(verdict='SUSPICIOUS', confidence='high', finding_types=['unexpected_parent_path', 'unexpected_path'],
+          reasons=['Unexpected parent process', SHORT_REASON])),
+    (PT, {'process_name': 'cmd.exe', 'parent_name': 'C:\\PROGRA~1' + MSMP, 'path': 'C:\\Temp\\cmd.exe'},
+     dict(verdict='SUSPICIOUS', confidence='high', finding_types=['unexpected_parent_path', 'unexpected_path'],
+          reasons=['Unexpected parent process', SHORT_REASON])),
     # no long name the short one can stand for makes it a default place: as before, no reason
     (CF, {'path': 'C:\\Windows\\WinSxS\\AMD64_~1\\svchost.exe'}, dict(PROTECTED_WRONG, reasons=wrong_place('svchost.exe'))),
     (CF, {'path': 'C:\\PROGRA~123456' + MSMP}, dict(PROTECTED_WRONG, reasons=wrong_place('msmpeng.exe'))),
@@ -191,6 +199,23 @@ NEITHER = [
             verdict="SUSPICIOUS",
             confidence="high",
             finding_types=["unexpected_parent", "unexpected_path"],
+            user_valid=None,
+            reasons=[
+                "Unexpected parent process",
+                MACHINE_ACCOUNT_NOT_JUDGED,
+                SHORT_REASON,
+            ],
+        ),
+    ),
+    (
+        (
+            "C:\\Temp\\services.exe",
+            "C:\\PROGRA~1" + MSMP,
+        ),  # c2: the parent's path is certainly wrong, so its finding supports the verdict (was LOW)
+        dict(
+            verdict="SUSPICIOUS",
+            confidence="high",
+            finding_types=["unexpected_parent_path", "unexpected_path"],
             user_valid=None,
             reasons=[
                 "Unexpected parent process",

@@ -145,11 +145,11 @@ def _path_only(findings: list[dict]) -> bool:
     return all(f.get("type") in _PATH_FINDINGS for f in findings)
 
 
-def _short_caps(verdict_result, findings: list[dict]) -> None:
+def _short_caps(verdict_result, findings: list[dict], certain: bool = False) -> None:
     """The verdict stands; an 8.3 path that could be the expected one caps confidence at MEDIUM,
     only when the verdict rests on path findings alone."""
     verdict_result.reasons.append(SHORT_NAME_REASON)
-    if verdict_result.confidence == "high" and _path_only(findings):
+    if verdict_result.confidence == "high" and not certain and _path_only(findings):
         verdict_result.confidence = "medium"
 
 
@@ -1189,11 +1189,14 @@ class WindowsTriageServer:
         # Check if PARENT is a process that should NEVER spawn children (injection detection)
         parent_info = self.context_db.get_expected_process(parent_name)
         parent_path_valid = None
-        short_name = False  # an 8.3 short folder that could be the expected path
+        # short_name: an 8.3 folder that could be the expected path;
+        # certain: a path finding about a path without one (the cap can't apply)
+        short_name = certain = False
         if _is_path(raw_parent) and parent_info and parent_info.get("valid_paths"):
             parent_path_valid = _path_matches(raw_parent, parent_info["valid_paths"])
             if not parent_path_valid:
                 short_name = _short_could_be(raw_parent, parent_info["valid_paths"])
+                certain = not short_name
                 findings.append(
                     {
                         "type": "unexpected_parent_path",
@@ -1282,7 +1285,8 @@ class WindowsTriageServer:
             if valid_paths:
                 path_valid = _path_matches(path, valid_paths)
                 if not path_valid:
-                    short_name = short_name or _short_could_be(path, valid_paths)
+                    short = _short_could_be(path, valid_paths)
+                    short_name, certain = short_name or short, certain or not short
                     findings.append(
                         {
                             "type": "unexpected_path",
@@ -1325,8 +1329,8 @@ class WindowsTriageServer:
             if str(verdict_result.verdict) == "EXPECTED":
                 verdict_result.confidence = "medium"  # the account wasn't checked
         if short_name:
-            _short_caps(verdict_result, findings)
-        if not_judged and short_name and _path_only(findings):
+            _short_caps(verdict_result, findings, certain)
+        if not_judged and short_name and not certain and _path_only(findings):
             verdict_result.confidence = "low"  # nothing checked supports the verdict
 
         result = {
