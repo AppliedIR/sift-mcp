@@ -835,7 +835,7 @@ class WindowsTriageServer:
         sys_path = is_system_path(path)
 
         # Check baseline (returns list)
-        baseline_matches = self.known_good_db.lookup_by_path(
+        baseline_matches = self.known_good_db.lookup_by_normalized_path(
             normalized_path, os_version
         )
         path_in_baseline = len(baseline_matches) > 0
@@ -911,7 +911,7 @@ class WindowsTriageServer:
 
             # Check for hash mismatch with baseline
             # Hashes are compared against the path's baseline on every build; os_version narrows the path match only
-            hash_matches = self.known_good_db.lookup_by_path(normalized_path)
+            hash_matches = self.known_good_db.lookup_by_normalized_path(normalized_path)
             baseline_hashes = []
             for entry in hash_matches if algorithm else ():
                 baseline_hashes.extend(h.lower() for h in entry.get(algorithm, ()))
@@ -1217,7 +1217,7 @@ class WindowsTriageServer:
                 not_compared = "the value given is a driver object, not a file"
             elif given == base or (
                 extract_filename(given) == extract_filename(base)
-                and self.known_good_db.path_exists(given)
+                and self.known_good_db.normalized_path_exists(given)
             ):
                 binary_path_matches = True
             elif extract_filename(given) == extract_filename(base):
@@ -1225,7 +1225,9 @@ class WindowsTriageServer:
                     binary_path_matches = False  # a default name moved out: masquerade
                 else:
                     not_compared = "the executable has the default file name but is not at a default Windows path"
-            elif given.endswith(".sys") and self.known_good_db.path_exists(given):
+            elif given.endswith(".sys") and self.known_good_db.normalized_path_exists(
+                given
+            ):
                 not_compared = "the executable is a default Windows driver file, not the one the baseline stores for this service"
             else:
                 binary_path_matches = False

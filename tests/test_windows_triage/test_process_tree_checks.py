@@ -24,7 +24,6 @@ from pathlib import Path
 
 import pytest
 from mcp.types import CallToolRequest, CallToolRequestParams
-from windows_triage.analysis.paths import normalize_path
 from windows_triage.config import Config
 from windows_triage.db import ContextDB, KnownGoodDB
 from windows_triage.importers.process_expectations import import_process_expectations
@@ -51,6 +50,7 @@ BASELINE_FILES = [
     r"C:\Program Files\Windows Defender\MsMpEng.exe",
     r"C:\Program Files\Windows Defender\NisSrv.exe",
     r"C:\Windows\System32\notepad.exe",
+    r"C:\Windows\System32\spoolsv.exe",
 ]
 
 
@@ -67,6 +67,8 @@ def srv(tmp_path_factory):
         for p in BASELINE_FILES
     ]
     kg.upsert_files_batch(files, W10, "FileHashes.csv")
+    kg.upsert_service("Spooler", W10, binary_path=r"%SystemRoot%\System32\spoolsv.exe")
+    kg.connect().commit()
     kg.close()
     ctx = ContextDB(root / "context.db", read_only=False)
     ctx.init_schema()
@@ -383,18 +385,71 @@ def test_a_service_account_reads_the_same_on_a_system_only_process_in_every_form
     assert set(verdicts.values()) == {("SUSPICIOUS", "medium", False)}, verdicts
 
 
-def test_normalising_a_path_twice_changes_nothing():
-    """The lookup normalises again what was normalised: a second pass is a no-op."""
-    tables = ROWS_1 + ROWS_2 + ROWS_3 + ROWS_4 + ROWS_5
-    inputs = {
-        v
-        for _, args, _ in tables
-        for k, v in args.items()
-        if k in ("path", "process_name", "parent_name")
-    }
-    unstable = {
-        v: (normalize_path(v), normalize_path(normalize_path(v)))
-        for v in sorted(inputs)
-        if normalize_path(normalize_path(v)) != normalize_path(v)
-    }
-    assert unstable == {}
+# A path is normalised once on its way to a verdict. A device or volume
+# prefix only counts at the very start of what was given: after a drive, or
+# after one prefix already taken, `Device\HarddiskVolume3` is a folder anyone
+# can make, never the volume's root.
+NESTED = [
+    r"C:\Device\HarddiskVolume3\Windows\System32\{f}",
+    r"\\?\C:\Device\HarddiskVolume3\Windows\System32\{f}",
+    r"\\?\\\?\C:\Windows\System32\{f}",
+    r"\Device\HarddiskVolume3\Device\HarddiskVolume3\Windows\System32\{f}",
+    r"\\?\GLOBALROOT\Device\HarddiskVolume3\Device\HarddiskVolume3\Windows\System32\{f}",
+    r"C:\VOLUME{{01d9a7c6b3e5f210-9a2b4c6d}}\Windows\System32\{f}",
+]
+
+
+@pytest.mark.parametrize("form", NESTED)
+@pytest.mark.parametrize("f", ["rundll32.exe", "cmd.exe", "svchost.exe"])
+def test_a_device_prefix_inside_a_path_is_a_folder_for_check_file(srv, form, f):
+    got = answer(srv, CF, {"path": form.format(f=f)})
+    assert got["verdict"] not in ("EXPECTED", "EXPECTED_LOLBIN"), got
+    assert got["path_in_baseline"] is False, got
+
+
+@pytest.mark.parametrize("form", NESTED)
+def test_a_device_prefix_inside_a_path_is_a_folder_for_check_process_tree(srv, form):
+    path = form.format(f="svchost.exe")
+    as_path = answer(srv, PT, dict(process_name="svchost.exe", parent_name="services.exe",
+                                   path=path))  # fmt: skip
+    as_parent = answer(srv, PT, dict(process_name="svchost.exe",
+                                     parent_name=form.format(f="services.exe")))  # fmt: skip
+    assert (as_path["verdict"], as_path["finding_types"]) == (
+        "SUSPICIOUS",
+        ["unexpected_path"],
+    )
+    assert as_parent["verdict"] == "SUSPICIOUS"
+    assert as_parent["finding_types"] == ["unexpected_parent_path"]
+
+
+@pytest.mark.parametrize("form", NESTED)
+def test_a_device_prefix_inside_a_service_binary_path_is_a_folder(srv, form):
+    args = {"service_name": "Spooler", "binary_path": form.format(f="spoolsv.exe")}
+    got = answer(srv, "check_service", args)
+    assert got["verdict"] != "EXPECTED", got
+
+
+def test_a_verdict_never_normalises_a_path_it_already_normalised(srv, monkeypatch):
+    """Each normalize_path output is recorded; none is ever its input again
+    (that second pass is what strips a prefix found inside a path)."""
+    from windows_triage import server
+    from windows_triage.analysis import paths
+    from windows_triage.db import known_good
+
+    real, outputs, again = paths.normalize_path, set(), []
+
+    def counted(p):
+        if p in outputs:
+            again.append(p)
+        out = real(p)
+        if out != p:
+            outputs.add(out)
+        return out
+
+    for mod in (paths, server, known_good):
+        monkeypatch.setattr(mod, "normalize_path", counted)
+    path = NESTED[0].format(f="rundll32.exe")
+    answer(srv, CF, {"path": path, "hash": "aa" * 32})
+    answer(srv, PT, {"process_name": path, "parent_name": path, "path": path})
+    answer(srv, "check_service", {"service_name": "Spooler", "binary_path": path})
+    assert again == []
