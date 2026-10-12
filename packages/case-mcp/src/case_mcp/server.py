@@ -547,7 +547,9 @@ def create_server() -> FastMCP:
         """Import a case data bundle from a JSON file, merging findings
         and timeline with the active case using last-write-wins, under the
         case lock (a signed decision committed meanwhile is never
-        overwritten; APPROVED and REJECTED items are kept). The bundle's
+        overwritten; APPROVED and REJECTED items are kept; an item recorded
+        in this case is never replaced, its incoming copy counted under
+        "own"). The bundle's
         signed history isn't added: its keys and heads are returned under
         "ledger", to compare with the other box.
 
