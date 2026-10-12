@@ -453,3 +453,36 @@ def test_a_verdict_never_normalises_a_path_it_already_normalised(srv, monkeypatc
     answer(srv, PT, {"process_name": path, "parent_name": path, "path": path})
     answer(srv, "check_service", {"service_name": "Spooler", "binary_path": path})
     assert again == []
+
+
+# A service's ImagePath is normalised once too: a second NT prefix after the
+# first is part of the path, never stripped again.
+@pytest.mark.parametrize(
+    "binary_path",
+    [
+        r"\??\\??\C:\Windows\System32\spoolsv.exe",
+        r"\??\\\?\C:\Windows\System32\spoolsv.exe",
+        r"\??\\\.\C:\Windows\System32\spoolsv.exe",
+    ],
+)
+def test_a_service_path_with_two_nt_prefixes_is_never_expected(srv, binary_path):
+    got = answer(
+        srv, "check_service", {"service_name": "Spooler", "binary_path": binary_path}
+    )
+    assert got["verdict"] != "EXPECTED", got
+
+
+@pytest.mark.parametrize(
+    "binary_path",
+    [
+        r"\??\C:\Windows\System32\spoolsv.exe",
+        r"\??\C:\Windows\System32\spoolsv.exe -k netsvcs",
+        r"C:\Windows\System32\spoolsv.exe",
+        r"%SystemRoot%\System32\spoolsv.exe",
+    ],
+)
+def test_a_service_path_with_one_nt_prefix_reads_as_before(srv, binary_path):
+    got = answer(
+        srv, "check_service", {"service_name": "Spooler", "binary_path": binary_path}
+    )
+    assert (got["verdict"], got["confidence"]) == ("EXPECTED", "high"), got

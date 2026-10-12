@@ -285,9 +285,9 @@ def parse_service_binary_path(image_path: str) -> str:
     if not image_path:
         return ""
 
+    # An NT prefix (\??\) is stripped by normalize_path below, once: stripped
+    # here too, a second prefix after it would be taken as well
     path = image_path.strip()
-    if path.startswith("\\??\\"):
-        path = path[4:]  # NT object-manager prefix
 
     # Handle quoted paths
     if path.startswith('"'):
