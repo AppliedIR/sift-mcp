@@ -608,6 +608,7 @@ def _pairs(record, key=None) -> list[str]:
 
 
 _STRUCTURAL = {"{", "}", "[", "]", "{}", "[]"}
+_OPENER = re.compile(r'"[^"]*": [\[{]')  # a `"field": {` or `"field": [` line
 
 
 def _bare(q: str) -> str:
@@ -793,10 +794,19 @@ def _trace_query(
     if not _in_values(quote, values, shown):
         return _unverified(f"the quote isn't in what {aid} returned")
     if docs and e.get("tool") != "idx_list_detections":
-        t = _match_back(case, e, line, docs, quote)
-        if t is not None:
-            return t  # else every line is the reply's own (total, count): a summary
+        return _match_back(case, e, line, docs, quote)
     # a summary (or detections) counts records it can't trace: never FULL
+    if (unrecorded := _summary_break(e, params)) is not None:
+        return unrecorded
+    follow = [(d.get("ingest_audit_id", ""), d) for d in docs] or [
+        (i, None) for i in ingests
+    ]
+    return _follow(case, e, line, follow)
+
+
+def _summary_break(e: dict, params: dict) -> Trace | None:
+    """A summary's break when it counted records no listed ingest wrote."""
+    aid = e["audit_id"]
     missing = _count(params.get("result_ingests_missing"))
     overflow = _count(params.get("result_ingests_overflow"))
     if missing:
@@ -807,10 +817,7 @@ def _trace_query(
         return _broken("ingests-unrecorded", f"{aid}: ingests not fully listed "
                        f"({overflow})", "narrow the query so every ingest it counts "
                        "is listed, and cite that")  # fmt: skip
-    follow = [(d.get("ingest_audit_id", ""), d) for d in docs] or [
-        (i, None) for i in ingests
-    ]
-    return _follow(case, e, line, follow)
+    return None
 
 
 def _count(value) -> int:
@@ -847,13 +854,31 @@ def _match_back(
         else set()
     )
     shown = [_rendered(r) for r in records]
-    for i, q in enumerate(quote[:-1]):  # an opener counts only with the line it opens
-        if any(ch.isalnum() for ch in q) and _bare(q).endswith(("{", "[")):
-            nxt = _bare(quote[i + 1])
-            if not any(ls[k] == _bare(q) and ls[k + 1] == nxt
-                       for ls in shown for k in range(len(ls) - 1)):  # fmt: skip
-                return _unverified(f"{q!r} isn't followed by {quote[i + 1]!r} in any "
-                                   f"record {aid} returned")  # fmt: skip
+    # a `"field": {` line counts only with the lines it opens, up to its close,
+    # running on in one record as shown: a sibling's line can't be spliced in
+    for i, q in enumerate(quote):
+        if not _OPENER.fullmatch(_bare(q)):
+            continue
+        seg, depth = [], 0
+        for x in quote[i:]:
+            b = _bare(x)
+            seg.append(b)
+            if _OPENER.fullmatch(b) or b in ("{", "["):
+                depth += 1
+            elif b in ("}", "]"):
+                depth -= 1
+            if depth == 0:
+                break
+        held = max((n for ls in shown for k in range(len(ls)) for n in range(1, len(seg) + 1)
+                    if ls[k:k + n] == seg[:n]), default=0)  # fmt: skip
+        if len(seg) == 1:
+            return _unverified(f"{q!r} isn't followed by a line it opens: quote the lines "
+                               "under it too")  # fmt: skip
+        if held < len(seg):
+            nxt = quote[i + max(held, 1)]
+            return _unverified(
+                f"{q!r} isn't followed by {nxt!r} in any record {aid} returned"
+            )
 
     def groups(
         r,
@@ -910,11 +935,20 @@ def _match_back(
                 enriched.setdefault(key, set()).update(
                     f.split(".")[0] for hit, f in hits if hit is r
                 )
-    if summary:
-        return None
+    if summary:  # a line of the reply's own speaks for every record it returned
+        params = e.get("params") if isinstance(e.get("params"), dict) else {}
+        if (unrecorded := _summary_break(e, params)) is not None:
+            return unrecorded
+        followed.update(by_key)
     t = _follow(
         case, e, line, [(d.get("ingest_audit_id", ""), d) for d in followed.values()]
     )
+    counted = returned.get("total") if listed else None
+    if (summary and isinstance(counted, int) and counted > len(records)
+            and _WORST.index(t.grade) > _WORST.index("AMBIGUOUS")):  # fmt: skip
+        t = Trace("AMBIGUOUS", t.root, t.roots, t.links, t.candidates, None,
+                  f"{aid} counted {counted} records and returned {len(records)}: "
+                  "the ones not returned aren't traced")  # fmt: skip
     notes = []
     for key, groups in enriched.items():  # each record's own steps, per group matched
         d = followed[key]

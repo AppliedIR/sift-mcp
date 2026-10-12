@@ -21,7 +21,9 @@ import pytest
 from .test_finding_chains import (  # noqa: F401 - c is a fixture
     _doc,
     _ingest,
+    _ingested_samples,
     _search,
+    _triaged,
     c,
     g,
     sha,
@@ -330,3 +332,84 @@ def test_the_reason_names_the_line_missing_from_both(c, lea):
 def test_steps_with_an_output_grade_as_before(c, lea):
     assert _lea_grade(c, lea[0]["a4"], "hxxp://evil.example/beacon.php")[:2] == DECL
     assert _lea_grade(c, lea[0]["run"], "hxxp://evil.example/beacon.php")[:2] == FULL
+
+
+# --- a reply's own line never stands in for the checks on the rest ----------------
+
+
+def test_a_summary_line_doesnt_skip_an_enrichment_check(c):
+    """The record's triage data names a step that isn't recorded: BROKEN,
+    with or without the reply's own `"total": 1` quoted beside it."""
+    _ingested_samples(c)
+    docs, groups = _triaged("opensearch-tester-20261009-151")  # never logged
+    aid = "opensearch-tester-20261009-150"
+    body = {"results": docs, "total": len(docs), "audit_id": aid}
+    _search(c, docs, aid=aid, groups=groups, text=json.dumps(body))
+    for quote in ("SUSPICIOUS", '"total": 1,\nSUSPICIOUS'):
+        res, st = c.find([{"content": quote, "audit_id": aid}])
+        assert g(res, st)[:2] == ("BROKEN", "reference-not-recorded"), (
+            quote,
+            g(res, st),
+        )
+
+
+def test_a_total_over_records_not_returned_is_never_full(q):
+    """The reply counts 1000 records and returned one: its total speaks for
+    999 records nothing traces, so the quote is at best AMBIGUOUS."""
+    c = q.c
+    aid = "opensearch-tester-20261009-160"
+    docs = [_rec("d1", ING_A, **{"user.name": "bob", "vhir.content_hash": "c"})]
+    _search(
+        c,
+        docs,
+        aid=aid,
+        text=json.dumps({"results": docs, "total": 1000, "audit_id": aid}),
+    )
+    res, st = c.find([{"content": '"total": 1000', "audit_id": aid}])
+    a = st["artifacts"][0]
+    assert a["provenance_grade"] == "AMBIGUOUS", a
+    assert "counted 1000 records and returned 1:" in a["provenance_reason"], a
+
+
+def test_every_line_under_an_opener_is_read_in_that_object(q):
+    """`"port": 1` is source's, not destination's: spliced under
+    destination's opener it is no line the reply showed."""
+    c = q.c
+    aid = "opensearch-tester-20261009-170"
+    d = {"_index": IDX, "_id": "d5p", "source": {"ip": "10.0.0.5", "port": 1},
+         "destination": {"ip": "8.8.8.8", "port": 53}, "vhir.ingest_audit_id": ING_A}  # fmt: skip
+    _search(
+        c, [d], aid=aid, text=json.dumps({"results": [d], "total": 1, "audit_id": aid})
+    )
+    ok = '"destination": {\n"ip": "8.8.8.8",\n"port": 53'
+    spliced = '"destination": {\n"ip": "8.8.8.8",\n"port": 1'
+    assert _grade_aid(c, aid, ok)[:2] == FULL
+    assert _grade_aid(c, aid, spliced)[:2] == UNV
+
+
+def test_an_opener_with_no_line_after_it_is_refused(q):
+    """`"user": {` last in the quote opens nothing that was quoted: carol's
+    line before it doesn't make it hers."""
+    assert _grade(q, "nested", '"name": "carol",\n"user": {')[:2] == UNV
+
+
+def test_a_value_ending_in_a_brace_is_no_opener(q):
+    """A bare value that ends in `{` quoted before another line grades as
+    before: only a `"field": {` line opens an object."""
+    c = q.c
+    aid = "opensearch-tester-20261009-180"
+    d = _rec("d1", ING_A, **{"process.executable": "powershell -c {", "user.name": "bob",
+             "vhir.content_hash": "c"})  # fmt: skip
+    _search(
+        c, [d], aid=aid, text=json.dumps({"results": [d], "total": 1, "audit_id": aid})
+    )
+    assert _grade_aid(c, aid, "powershell -c {\nbob") == FULL + (["d1"],)
+
+
+def _grade_aid(c, aid, content):
+    res, st = c.find([{"content": content, "audit_id": aid}])
+    chain = (st["artifacts"][0].get("provenance_chain") or []) if st else []
+    ids = sorted(
+        {lk["document"]["_id"] for lk in chain if isinstance(lk.get("document"), dict)}
+    )
+    return (*g(res, st)[:2], ids)
