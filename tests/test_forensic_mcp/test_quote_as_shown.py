@@ -142,7 +142,7 @@ def test_lines_copied_from_the_reply_as_shown(q):
         "the total over a record with no origin": ("two", '"total": 2', BROKEN + (["d1", "d2"],)),
         "a whole count reply": ("count", q.text["count"], FULL + ([],)),
         "a count pair": ("count", '"count": 1234', FULL + ([],)),
-        "a line every record shows, and a pair": ("two", f'"_index": "{IDX}",\n"user.name": "bob"', FULL + (["d1"],)),
+        "a line every record shows, and the next": ("two", f'"_index": "{IDX}",\n"@timestamp": "2026-01-01T00:00:00Z"', FULL + (["d1"],)),
         "a pair line with escapes, as shown": ("two", _line(q, "two", '"process.executable"'), FULL + (["d1"],)),
         "null as shown": ("scored", '"parent": null', FULL + (["d1"],)),
         "a float as shown": ("scored", '"score": 1.0', FULL + (["d1"],)),
@@ -195,10 +195,15 @@ def test_a_near_miss_stays_unverified(q, name, content):
     assert _grade(q, name, content)[:2] == UNV
 
 
-def test_the_reasons_name_what_no_one_record_holds(q):
-    for name, content, why in (
-        ("scored", '"user.name": "bob",\n"event.code": "4625",', "no one record"),
-        ("ips", '"destination": {\n"ip": "10.0.0.5"', "isn't followed by"),
+def test_the_reason_says_the_lines_dont_appear_together(q):
+    why = "lines don't appear together in one returned record"
+    for name, content in (
+        ("scored", '"user.name": "bob",\n"event.code": "4625",'),
+        ("ips", '"destination": {\n"ip": "10.0.0.5"'),
+        (
+            "two",
+            f'"_index": "{IDX}",\n"user.name": "bob"',
+        ),  # one record's, not together
     ):
         res, st = q.c.find([{"content": content, "audit_id": q.aid[name]}])
         assert why in st["artifacts"][0]["provenance_reason"], (
@@ -413,3 +418,62 @@ def _grade_aid(c, aid, content):
         {lk["document"]["_id"] for lk in chain if isinstance(lk.get("document"), dict)}
     )
     return (*g(res, st)[:2], ids)
+
+
+def test_an_escaped_quote_in_a_key_splices_nothing(q):
+    """A key holding a quote is shown escaped; a sibling's line after it is
+    still no line the reply showed there."""
+    c = q.c
+    aid = "opensearch-tester-20261009-190"
+    d = {"_index": IDX, "_id": "d5e", 'dst"x': {"ip": "8.8.8.8", "port": 53},
+         "src": {"port": 1}, "vhir.ingest_audit_id": ING_A}  # fmt: skip
+    _search(
+        c, [d], aid=aid, text=json.dumps({"results": [d], "total": 1, "audit_id": aid})
+    )
+    assert _grade_aid(c, aid, '"dst\\"x": {\n"ip": "8.8.8.8",\n"port": 53')[:2] == FULL
+    assert _grade_aid(c, aid, '"dst\\"x": {\n"ip": "8.8.8.8",\n"port": 1')[:2] == UNV
+
+
+def test_lines_shown_together_follow_the_record_that_shows_them(q):
+    """carol's `"user": {` block is d3's; d10 (no recorded origin) shows both
+    lines too, but not together, and isn't followed."""
+    c = q.c
+    aid = "opensearch-tester-20261009-191"
+    d3 = {
+        "_index": IDX,
+        "_id": "d3",
+        "user": {"name": "carol"},
+        "vhir.ingest_audit_id": ING_A,
+    }
+    d10 = {"_index": IDX, "_id": "d10", "user": {"id": 1}, "name": "carol",
+           "vhir.ingest_audit_id": ING_B}  # fmt: skip
+    body = {"results": [d3, d10], "total": 2, "audit_id": aid}
+    _search(c, [d3, d10], aid=aid, text=json.dumps(body))
+    assert _grade_aid(c, aid, '"user": {\n"name": "carol"') == FULL + (["d3"],)
+
+
+def test_a_long_quote_is_checked_quickly(q):
+    """One object of 300 fields quoted as shown, from its opener to its close,
+    in a reply of 30 such records."""
+    import time
+
+    from sift_common import provenance as pv
+
+    c = q.c
+    aid = "opensearch-tester-20261009-192"
+    docs = [{"_index": IDX, "_id": f"big{i}", "vhir.ingest_audit_id": ING_A,
+             "data": {f"field_{n:03d}": f"value {i}.{n}" for n in range(300)}}
+            for i in range(30)]  # fmt: skip
+    _search(
+        c,
+        docs,
+        aid=aid,
+        text=json.dumps({"results": docs, "total": 30, "audit_id": aid}),
+    )
+    lines = _shown(docs[7]).splitlines()
+    quote = "\n".join(lines[lines.index('  "data": {') : -1])
+    assert len(quote) >= 5000, len(quote)
+    case = pv.load_case(c.d)
+    start = time.perf_counter()
+    t = pv.trace_artifact(case, aid, quote)
+    assert time.perf_counter() - start < 0.1 and t.grade == "FULL", t

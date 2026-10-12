@@ -608,7 +608,6 @@ def _pairs(record, key=None) -> list[str]:
 
 
 _STRUCTURAL = {"{", "}", "[", "]", "{}", "[]"}
-_OPENER = re.compile(r'"[^"]*": [\[{]')  # a `"field": {` or `"field": [` line
 
 
 def _bare(q: str) -> str:
@@ -826,17 +825,17 @@ def _count(value) -> int:
 
 def _match_back(
     case: Case, e: dict, line: bytes, docs: list[dict], quote: list[str]
-) -> Trace | None:
+) -> Trace:
     """Each quoted line in a returned record; only those records are followed.
     A line is in a record when it is in one of its values, or is a whole line
     of the record as the reply showed it (its evidence fields, or one
-    enrichment group's). A brace line names no record. When some records hold
-    every quoted line, only they are followed; a quote with a `"field": value`
-    line no one record holds whole, or a `"field": {` line not directly
-    followed by the next quoted line in one record, is unverified. A line
-    found only in a record's enrichment fields also links to the operation
-    that wrote them: reference data, annotated, never the grade. None when a
-    line is only the reply's own (`"total": 2`): the query is a summary."""
+    enrichment group's). A quote with a JSON line (`"field": value`, a brace)
+    counts only when its lines appear together and in order in one record as
+    shown, and only those records are followed; bare values follow the
+    records holding every line, when any does. A line only of the reply's own
+    (`"total": 2`) speaks for every record it returned, and the other checks
+    still run. A line found only in a record's enrichment fields also links to
+    the operation that wrote them: reference data, annotated, never the grade."""
     aid = e["audit_id"]
     try:
         returned = json.loads(Path(e["response"]["path"]).read_text(encoding="utf-8"))
@@ -853,32 +852,8 @@ def _match_back(
         if listed
         else set()
     )
-    shown = [_rendered(r) for r in records]
-    # a `"field": {` line counts only with the lines it opens, up to its close,
-    # running on in one record as shown: a sibling's line can't be spliced in
-    for i, q in enumerate(quote):
-        if not _OPENER.fullmatch(_bare(q)):
-            continue
-        seg, depth = [], 0
-        for x in quote[i:]:
-            b = _bare(x)
-            seg.append(b)
-            if _OPENER.fullmatch(b) or b in ("{", "["):
-                depth += 1
-            elif b in ("}", "]"):
-                depth -= 1
-            if depth == 0:
-                break
-        held = max((n for ls in shown for k in range(len(ls)) for n in range(1, len(seg) + 1)
-                    if ls[k:k + n] == seg[:n]), default=0)  # fmt: skip
-        if len(seg) == 1:
-            return _unverified(f"{q!r} isn't followed by a line it opens: quote the lines "
-                               "under it too")  # fmt: skip
-        if held < len(seg):
-            nxt = quote[i + max(held, 1)]
-            return _unverified(
-                f"{q!r} isn't followed by {nxt!r} in any record {aid} returned"
-            )
+    # each record as the reply showed it, one line each, to find a quote's lines in
+    texts = ["\n" + "\n".join(_rendered(r)) + "\n" for r in records]
 
     def groups(
         r,
@@ -893,6 +868,13 @@ def _match_back(
         ]
 
     grouped = [(r, groups(r)) for r in records]
+    # each record's values, and all of them in one string: a line is looked
+    # for once per record, and its fields only in a record that holds it
+    flats = [
+        (r, flat, "\0".join(v for _f, v in flat))
+        for r in records
+        for flat in [_flat(r)]
+    ]
     by_key = {(d.get("_index"), d.get("_id")): d for d in docs}
     followed, enriched, summary = (
         {},
@@ -900,10 +882,18 @@ def _match_back(
         False,
     )  # enriched: record -> the groups matched
     per_line = []  # (quoted line, its hits)
+    block = []  # the quoted lines that are a record's, braces included, in order
     for q in quote:
         if _bare(q) in _STRUCTURAL:
-            continue  # a brace: in the reply (checked at the gate), names no record
-        hits = [(r, f) for r in records for f, v in _flat(r) if q in v]
+            block.append(q)  # a brace names no record, but is part of what was shown
+            continue
+        hits = [
+            (r, f)
+            for r, flat, joined in flats
+            if q in joined
+            for f, v in flat
+            if q in v
+        ]
         hits += [(r, g) for r, gl in grouped for g, lines in gl if _bare(q) in lines]
         if not hits:
             if _bare(q) in top:
@@ -911,15 +901,23 @@ def _match_back(
                 continue
             return _unverified(f"{q!r} is in no record {aid} returned")
         per_line.append((q, hits))
-    # the records that hold every quoted line, when any does: a hit copied
-    # whole follows that hit, not every record sharing one of its lines
-    whole = (
-        set.intersection(*[{id(r) for r, _f in h} for _q, h in per_line])
-        if per_line
-        else set()
-    )
-    if not whole and any(q.startswith('"') and '": ' in q for q, _h in per_line):
-        return _unverified(f"no one record {aid} returned holds every quoted line")
+        block.append(q)
+    if len(block) > 1 and any(_bare(q) in _STRUCTURAL or (q.startswith('"') and '": ' in q)
+                              for q in block):  # fmt: skip
+        # JSON lines count only as shown: together, in order, in one record
+        wanted = "\n" + "\n".join(_bare(q) for q in block) + "\n"
+        whole = {
+            id(r) for r, text in zip(records, texts, strict=True) if wanted in text
+        }
+        if not whole:
+            return _unverified(
+                f"lines don't appear together in one returned record ({aid})"
+            )
+    else:
+        # bare values: the records holding every line, when any does, are
+        # followed, not every record sharing one of them
+        whole = (set.intersection(*[{id(r) for r, _f in h} for _q, h in per_line])
+                 if per_line else set())  # fmt: skip
     for _q, hits in per_line:
         if whole:
             hits = [(r, f) for r, f in hits if id(r) in whole]
