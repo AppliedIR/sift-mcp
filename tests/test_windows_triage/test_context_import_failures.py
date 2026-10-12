@@ -176,3 +176,47 @@ def test_import_context_exits_non_zero_and_says_why_on_errors(
         "HijackLibs: 1 file(s) skipped, unreadable: x/bad.yml"
         in capsys.readouterr().out
     )
+
+
+# --- every context source: an update with errors isn't recorded, and retries ---
+
+STATS = {  # an importer's stats for a run with one unreadable file, and a clean one
+    "lolbas": ("import_lolbas", {"lolbins_imported": 5, "errors": 1, "skipped": 0},
+               {"lolbins_imported": 5, "errors": 0, "skipped": 0}),
+    "loldrivers": ("import_loldrivers",
+                   {"vulnerable_imported": 5, "malicious_imported": 0, "samples_imported": 9, "errors": 1, "skipped": 0},
+                   {"vulnerable_imported": 5, "malicious_imported": 0, "samples_imported": 9, "errors": 0, "skipped": 0}),
+    "hijacklibs": ("import_hijacklibs", {"dlls_imported": 3, "entries_imported": 6, "errors": 1},
+                   {"dlls_imported": 3, "entries_imported": 6, "errors": 0}),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("source", STATS)
+def test_an_update_with_errors_isnt_recorded_and_the_next_one_retries(
+    tmp_path, monkeypatch, source
+):
+    import windows_triage.importers as importers
+
+    func, failing, clean = STATS[source]
+    ctx = _dbs(tmp_path)
+    us = _update_sources()
+    us.shallow_clone = lambda url, dest, depth=1: dest.mkdir(parents=True) or True
+    us.SOURCES[source]["db"] = ctx.name
+    monkeypatch.setattr(importers, func, lambda **k: dict(failing))
+    assert (
+        us.update_context_source(
+            source, tmp_path, {"latest_commit": "c1"}, False, False
+        )
+        is False
+    )
+    assert us.get_last_sync(ctx, us.SOURCES[source]["db_source_key"]) is None
+    monkeypatch.setattr(
+        importers, func, lambda **k: dict(clean)
+    )  # upstream fixed: the next run
+    assert (
+        us.update_context_source(
+            source, tmp_path, {"latest_commit": "c2"}, False, False
+        )
+        is True
+    )
+    assert us.get_last_sync(ctx, us.SOURCES[source]["db_source_key"]) == "c2"
