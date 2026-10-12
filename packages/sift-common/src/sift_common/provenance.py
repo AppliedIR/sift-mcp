@@ -22,6 +22,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from sift_common.file_identity import NotRegularFile, open_regular, read_regular
+
 NO_ORIGIN = "no recorded origin: made outside recorded tools"
 _FIX_ORIGIN = (
     "register the original evidence and make this file with a recorded tool "
@@ -51,6 +53,8 @@ class Case:
     # the entry in its own log, in order: ((former roots), new root)
     here: str = ""
     moves: dict[int, tuple] = field(default_factory=dict, repr=False)
+    # audit logs that couldn't be read, each "audit/<name> (<why>)"
+    skipped: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -73,7 +77,7 @@ def load_case(case_dir) -> Case:
     """The registry's roots and every audit entry with its line bytes, read once."""
     d = Path(case_dir)
     try:
-        registry = json.loads((d / "evidence.json").read_text(encoding="utf-8"))
+        registry = json.loads(read_regular(d / "evidence.json").decode("utf-8"))
     except (OSError, ValueError):
         registry = {}
     files = registry.get("files") if isinstance(registry, dict) else registry
@@ -81,10 +85,15 @@ def load_case(case_dir) -> Case:
     by_id: dict[str, list[tuple[dict, bytes]]] = defaultdict(list)
     order: dict[int, tuple] = {}
     here, moves = os.path.realpath(d), {}
+    skipped: list[str] = []
     for n_log, log in enumerate(sorted((d / "audit").glob("*.jsonl"))):
         try:
-            data = log.read_bytes()
-        except OSError:
+            data = read_regular(log)
+        except NotRegularFile:
+            skipped.append(f"audit/{log.name} (not a regular file)")
+            continue
+        except OSError as e:
+            skipped.append(f"audit/{log.name} ({e.strerror or type(e).__name__})")
             continue
         entries = []
         for n, line in enumerate(data.splitlines()):
@@ -102,7 +111,7 @@ def load_case(case_dir) -> Case:
                 moves[id(entry)] = after
             if edge := _edge(entry, here):
                 after = (edge, *after)
-    return Case(d, roots, dict(by_id), order, here=here, moves=moves)
+    return Case(d, roots, dict(by_id), order, here=here, moves=moves, skipped=skipped)
 
 
 def _root(path: str) -> str:
@@ -186,7 +195,7 @@ def _manifest_rows(case: Case, folder: dict) -> list[dict]:
     """A folder root's manifest rows; none when it's missing or no longer has
     the hash recorded at registration."""
     try:
-        data = (case.dir / folder["manifest_path"]).read_bytes()
+        data = read_regular(case.dir / folder["manifest_path"])
         if hashlib.sha256(data).hexdigest() != folder.get("manifest_sha256"):
             return []
         rows = json.loads(data)["files"]
@@ -613,7 +622,7 @@ def _found_in(path, sha256, lines: list[str], cap: int | None) -> tuple[set, str
     keep = max((len(q) for q in lines), default=0)
     found, carry = set(), ""
     try:
-        with open(path, "rb") as f:
+        with open_regular(path) as f:
             for chunk in iter(lambda: f.read(_CHUNK), b""):
                 digest.update(chunk)
                 text = re.sub(r"\s+", " ", decode(chunk))
@@ -622,7 +631,7 @@ def _found_in(path, sha256, lines: list[str], cap: int | None) -> tuple[set, str
                 window = carry + text
                 found |= {q for q in lines if q in window}
                 carry = window[-keep:] if keep else ""
-    except OSError:
+    except (OSError, NotRegularFile):
         return set(), ""
     return (found if digest.hexdigest() == sha256 else set()), ""
 
@@ -637,8 +646,8 @@ def _saved_values(path, sha256, pairs=None, shown=None) -> tuple[list[str] | Non
     try:
         if os.path.getsize(path) > _QUOTE_FILE_CAP:
             return None, f"saved response too large to check ({path})"
-        data = Path(path).read_bytes()
-    except (OSError, TypeError):
+        data = read_regular(path)
+    except (OSError, TypeError, NotRegularFile):
         return None, ""
     if not sha256 or hashlib.sha256(data).hexdigest() != sha256:
         return None, ""
@@ -761,6 +770,26 @@ def _reference(case: Case, e: dict, line: bytes) -> Trace:
 
 
 def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
+    """`_trace_artifact`, and the audit logs it couldn't read: one could hold
+    another entry for any id, so with one skipped the trace is never better
+    than AMBIGUOUS, and its reason names each skipped log."""
+    t = _trace_artifact(case, audit_id, content)
+    if not case.skipped:
+        return t
+    why = (f"couldn't read {', '.join(case.skipped)}: an entry there could "
+           f"change {audit_id}'s trace")  # fmt: skip
+    reason = (
+        f"{t.reason}; {why}" if t.reason else why
+    )  # a DECLARED's own reason stays first
+    if t.grade in ("FULL", "DECLARED"):
+        fix = "make each log a readable regular file, then record the finding again"
+        return Trace("AMBIGUOUS", t.root, t.roots, t.links, t.candidates,
+                     {"kind": "audit-unreadable", "detail": why, "fix": fix}, reason)  # fmt: skip
+    t.reason = reason
+    return t
+
+
+def _trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
     """A finding artifact: its quoted content checked against what the cited
     operation produced, then its chain to registered evidence.
 
@@ -905,7 +934,7 @@ def _match_back(
     aid = e["audit_id"]
     try:
         path = relocated(case, e, e["response"]["path"])
-        returned = json.loads(Path(path).read_text(encoding="utf-8"))
+        returned = json.loads(read_regular(path).decode("utf-8"))
     except (OSError, ValueError, KeyError, TypeError):
         returned = {}
     listed = isinstance(returned, dict) and isinstance(returned.get("results"), list)
