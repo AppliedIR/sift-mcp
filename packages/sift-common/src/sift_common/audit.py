@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import stat
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -237,7 +238,19 @@ class AuditWriter:
             return True
         try:
             log_file = audit_dir / f"{self.mcp_name}.jsonl"
-            with open(log_file, "a", encoding="utf-8") as f:
+            # Non-blocking, and only into a regular file: a FIFO there would
+            # wait for a reader, or hand the entry to one
+            fd = os.open(
+                log_file, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NONBLOCK, 0o666
+            )
+            try:  # the descriptor is closed on any failure before fdopen owns it
+                if not stat.S_ISREG(os.fstat(fd).st_mode):
+                    raise OSError(f"{log_file} is not a regular file")
+                f = os.fdopen(fd, "a", encoding="utf-8")
+            except BaseException:
+                os.close(fd)
+                raise
+            with f:
                 f.write(json.dumps(entry, default=str) + "\n")
                 f.flush()
                 os.fsync(f.fileno())
