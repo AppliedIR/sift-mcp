@@ -178,3 +178,38 @@ async def test_r4c_an_mcp_error_other_than_connection_closed_leaves_the_backend(
     with pytest.raises(McpError):
         await backend.call_tool("ping", {})
     assert backend.started is True
+
+
+async def test_r7_two_overlapping_failures_and_a_restart_keep_the_new_session(backend):
+    """Two failed requests clean up the same session while a third restarts
+    the backend: a cleanup that finishes after the restart never clears the
+    new session (codex on 09d10b3)."""
+    old_pid = await _pid(backend)
+    old_stack = backend._exit_stack
+    gates, closes = [asyncio.Event(), asyncio.Event()], []
+
+    class HeldClose:  # the session's close, suspended until its gate opens
+        async def aclose(self):
+            gate = gates[min(len(closes), 1)]
+            closes.append(gate)
+            await gate.wait()
+
+    backend._exit_stack = HeldClose()
+    first = asyncio.ensure_future(backend._safe_cleanup(context="first failure"))
+    second = asyncio.ensure_future(backend._safe_cleanup(context="second failure"))
+    await asyncio.sleep(0.1)
+    gates[0].set()
+    await asyncio.sleep(0.1)
+    assert backend.started is False
+    await in_own_task(backend.start())  # the next request restarts it
+    new = backend._session
+    gates[1].set()
+    await asyncio.gather(first, second)
+    assert backend.started is True and backend._session is new
+    assert await _pid(backend) != old_pid
+    assert len(closes) == 1  # the session was closed once
+    os.kill(old_pid, signal.SIGKILL)  # the stand-in's first child
+    try:
+        await in_own_task(old_stack.aclose())
+    except BaseException:  # noqa: BLE001 - its own task's scopes: cleanup only
+        pass

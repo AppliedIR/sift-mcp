@@ -75,13 +75,18 @@ class StdioMCPBackend(MCPBackend):
         into the log message so journalctl distinguishes start-cleanup
         from list_tools-cleanup from stop-cleanup.
         """
-        if self._exit_stack is None:
-            self._session = None
-            self._tools_cache = None
-            self._started = False
+        # Detach this session's state before awaiting its close: a second
+        # cleanup of the same session (two failed requests) finds nothing to
+        # close, and a request that restarts the backend meanwhile keeps its
+        # new session; a close finishing later never clears it.
+        stack, self._exit_stack = self._exit_stack, None
+        self._session = None
+        self._tools_cache = None
+        self._started = False
+        if stack is None:
             return
         try:
-            await self._exit_stack.aclose()
+            await stack.aclose()
         except BaseException as exc:
             level = logging.DEBUG if "cancel scope" in str(exc) else logging.WARNING
             logger.log(
@@ -92,11 +97,6 @@ class StdioMCPBackend(MCPBackend):
                 type(exc).__name__,
                 exc,
             )
-        finally:
-            self._exit_stack = None
-            self._session = None
-            self._tools_cache = None
-            self._started = False
 
     async def start(self) -> None:
         if self._started:
