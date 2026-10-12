@@ -136,3 +136,9 @@ def test_a_marker_it_cant_take_says_what_it_was_in_words(case, value, said):  # 
     result = _record({**FINDING, "challenged": value})
     warning = str(result.get("warning"))
     assert said in warning and "not int" not in warning and "(got null)" not in warning
+
+
+def test_a_value_listed_twice_is_counted_once(case):  # noqa: F811
+    result = _record({**FINDING, "observation": "Beacon to 10.1.2.6 seen.",
+                      "iocs": ["10.1.2.6", "10.1.2.6:443"]})  # fmt: skip
+    assert result["iocs_extracted"] == 1

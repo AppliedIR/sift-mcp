@@ -1296,7 +1296,7 @@ class CaseManager:
         except Exception as exc:
             logger.warning("IOC processing failed: %s", exc)
             warnings.append(f"IOC processing failed: {exc}")
-        iocs_extracted = len(stored_iocs)  # what was stored, not what was sent
+        iocs_extracted = len(set(stored_iocs))  # the IOCs stored, each once
 
         # IOC completeness check — warn if text mentions IOCs not in the list
         try:
