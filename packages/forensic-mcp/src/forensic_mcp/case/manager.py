@@ -399,10 +399,19 @@ def _normalize_challenge(
     not_challenged = "The finding will show as not challenged."
     if raw is None:
         return None, []
-    if not isinstance(raw, dict) or raw.get("outcome") not in _CHALLENGE_OUTCOMES:
+    if not isinstance(raw, dict):
+        kind = {str: "a string", list: "a list"}.get(type(raw), type(raw).__name__)
         return None, [
-            "challenged dropped: expected outcome stands, revised or withdrawn. "
-            + not_challenged
+            'challenged dropped: expected an object, {"outcome": "stands", '
+            '"revised" or "withdrawn", "skeptic_audit_ids": [the skeptic\'s '
+            f"audit ids]}}, not {kind}. " + not_challenged
+        ]
+    outcome = raw.get("outcome")
+    if not isinstance(outcome, str) or outcome not in _CHALLENGE_OUTCOMES:
+        got = json.dumps(outcome, default=str)[:40]
+        return None, [
+            'challenged dropped: its outcome must be "stands", "revised" or '
+            f'"withdrawn" (got {got}). ' + not_challenged
         ]
     raw_ids = raw.get("skeptic_audit_ids")
     if isinstance(raw_ids, str):
@@ -1380,7 +1389,7 @@ class CaseManager:
             "observation": observation,
             "interpretation": str(finding.get("interpretation") or ""),
             "confidence": str(finding.get("confidence") or ""),
-            "audit_ids": own_ids,
+            "audit_ids": list(dict.fromkeys(own_ids)),  # each once, as staged
             "skeptic_audit_ids": marker["skeptic_audit_ids"],
             "contradiction": marker["contradiction"],
             "message": (
@@ -1491,6 +1500,7 @@ class CaseManager:
         start_date: str | None = None,
         end_date: str | None = None,
         event_type: str | None = None,
+        case_dir: Path | None = None,
     ) -> list[dict]:
         """Return local timeline, sorted chronologically.
 
@@ -1502,7 +1512,7 @@ class CaseManager:
         - end_date: ISO date/datetime upper bound on timestamp
         - event_type: exact match against event_type field
         """
-        case_dir = self._require_active_case()
+        case_dir = case_dir or self._require_active_case()
         events = self._load_timeline(case_dir)
         events.sort(key=lambda t: t.get("timestamp", ""))
         if status:

@@ -452,3 +452,59 @@ def test_a_line_that_isn_t_utf8_doesn_t_block_recording(case):
     assert stored["challenged"]["skeptic_audit_ids"] == [SKEPTIC]
     assert stored["alternatives"][0]["status"] == "ruled_out"
     assert stored["provenance"] == "MCP"
+
+
+# --- what record_finding says about a marker it can't take --------------------
+
+NOT_AN_OBJECT = (
+    'challenged dropped: expected an object, {"outcome": "stands", "revised" or '
+    '"withdrawn", "skeptic_audit_ids": [the skeptic\'s audit ids]}, not a string. '
+    "The finding will show as not challenged."
+)
+
+
+def _bad_outcome(got: str) -> str:
+    return (
+        'challenged dropped: its outcome must be "stands", "revised" or "withdrawn" '
+        f"(got {got}). The finding will show as not challenged."
+    )
+
+
+@pytest.mark.parametrize(
+    "challenged, said",
+    [
+        ("revised", NOT_AN_OBJECT),
+        ({"outcome": "maybe", "skeptic_audit_ids": [SKEPTIC]}, _bad_outcome('"maybe"')),
+        (
+            {"outcome": ["revised"], "skeptic_audit_ids": [SKEPTIC]},
+            _bad_outcome('["revised"]'),
+        ),
+    ],
+    ids=["text", "unknown outcome", "outcome a list"],
+)
+def test_a_marker_it_cant_take_is_dropped_with_what_is_wrong(case, challenged, said):
+    result = _record({**FINDING, "challenged": challenged})
+    assert "challenged" not in _stored(case, result)  # staged, never an exception
+    assert said in result["warning"]
+
+
+def test_a_withdrawal_lists_each_of_its_own_audit_ids_once_in_order(case):
+    """The finding's own ids [C, A] plus an artifact citing A: A is listed
+    once, after C, in the reply and in the audit entry (C, A isn't sorted)."""
+    c, a = HOOK, OWN  # two of the finding's own ids, out of sorted order
+    finding = {**FINDING, "audit_ids": [c, a], "challenged": WITHDRAWN}
+    result = _record(
+        finding, artifacts=[{"audit_id": a, "source": "x", "content": "y"}]
+    )
+    assert result["status"] == "WITHDRAWN"
+    assert result["audit_ids"] == [c, a]
+    assert _entries(case)[-1]["result_summary"]["audit_ids"] == [c, a]
+
+
+def test_the_tool_list_says_what_challenged_takes():
+    tools = {t.name: t for t in asyncio.run(create_server().list_tools())}
+    assert (
+        'challenged (dict, optional): after the skeptic\'s challenge, {"outcome": '
+        '"stands", "revised" or "withdrawn", "skeptic_audit_ids": [the skeptic\'s own '
+        'audit ids]}; withdrawn also takes "contradiction".'
+    ) in " ".join(tools["record_finding"].description.split())

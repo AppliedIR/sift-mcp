@@ -8,9 +8,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+_VIEW_KEYS = {"finding": "findings", "timeline": "timeline"}
 
-def mark_approvals(case_dir, items: list) -> str:
-    """Set `approval_verification` on each APPROVED finding in `items`: "VALID"
+
+def mark_approvals(case_dir, items: list, kind: str = "finding", *, timeline=()) -> str:
+    """Set `approval_verification` on each APPROVED item in `items` (of
+    `kind`, finding or timeline) and in `timeline` (events), with one check
+    and one warning for both: "VALID"
     only when the item is the record the check verified (same id, same
     content hash, same approved_by and approved_at), the check's own wording for one approved under 0.6, its
     status when the check lists it as not verified, and UNVERIFIED for
@@ -18,8 +22,9 @@ def mark_approvals(case_dir, items: list) -> str:
     what it verified, or the check not running). Returns a one-line warning
     naming those that aren't approved as recorded ("" when all are)."""
     approved = [
-        i for i in items if isinstance(i, dict) and i.get("status") == "APPROVED"
-    ]
+        (i, k) for group, k in ((items, kind), (timeline, "timeline")) for i in group
+        if isinstance(i, dict) and i.get("status") == "APPROVED"
+    ]  # fmt: skip
     if not approved:
         return ""
     why = ""
@@ -33,18 +38,22 @@ def mark_approvals(case_dir, items: list) -> str:
         view = approved_view(Path(case_dir))
         verdicts = {v.item_id: v for v in view["result"].items}
         marks = {n["id"]: n["status"] for n in view["not_verified"]}
-        for record in view["findings"]:
-            v = verdicts[str(record["id"])]
-            marks[record["id"]] = (record, v.content_sha256, v.view, shown(view["labels"].get(
-                record["id"])) if v.status == "APPROVED_UNDER_0_6" else "VALID")  # fmt: skip
+        for k in {k for _, k in approved}:
+            for record in view[_VIEW_KEYS[k]]:
+                v = verdicts[str(record["id"])]
+                marks[(k, record["id"])] = (record, v.content_sha256, v.view, shown(view["labels"].get(
+                    record["id"])) if v.status == "APPROVED_UNDER_0_6" else "VALID")  # fmt: skip
     except Exception as e:  # noqa: BLE001 - never read as approved when unchecked
         marks, why = {}, f" (couldn't verify: {e})"
     bad = []
-    for item in approved:
-        mark, ok = marks.get(item.get("id"), "UNVERIFIED"), False
+    for item, item_kind in approved:
+        mark = marks.get(
+            (item_kind, item.get("id")), marks.get(item.get("id"), "UNVERIFIED")
+        )
+        ok = False
         if isinstance(mark, tuple):  # verified: only if this is that record
             verified, sha, view_n, label = mark
-            ok = _record_sha(item, "finding", view_n) == sha and all(
+            ok = _record_sha(item, item_kind, view_n) == sha and all(
                 item.get(k) == verified.get(k) for k in ("approved_by", "approved_at"))  # fmt: skip
             mark = label if ok else "UNVERIFIED"
         item["approval_verification"] = mark
