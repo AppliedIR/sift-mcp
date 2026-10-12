@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from sift_common import file_identity as fi
 from sift_common import provenance as pv
 
 from forensic_mcp.audit import resolve_examiner
@@ -268,8 +269,13 @@ _CHALLENGE_OUTCOMES = {"stands", "revised", "withdrawn"}
 @contextlib.contextmanager
 def _audit_text(path: Path):
     """An audit file's lines, decoded one at a time: a line that isn't UTF-8
-    is skipped with a warning, so it can't block every read of the trail."""
-    with open(path, "rb") as f:
+    is skipped with a warning, so it can't block every read of the trail. A
+    FIFO, device or socket raises OSError unread, as an unreadable file does."""
+    try:
+        f = fi.open_regular(path)
+    except fi.NotRegularFile as e:
+        raise OSError(str(e)) from e
+    with f:
         yield _decoded_lines(f, path)
 
 
@@ -1976,10 +1982,11 @@ class CaseManager:
         if not path.exists():
             return default
         try:
-            data = path.read_text()
-        except OSError as e:
+            raw = fi.read_regular(path)
+        except (OSError, fi.NotRegularFile) as e:
             logger.error("Failed to read JSON file %s: %s", path, e)
             raise ValueError(f"Cannot read {path.name}: {e}") from e
+        data = raw.decode()
         if not data.strip():
             return default
         try:
