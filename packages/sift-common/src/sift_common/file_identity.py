@@ -84,6 +84,24 @@ class Batch:
     not_regular: list[str]
 
 
+def open_regular(path):
+    """`path` open for reading as bytes, only if it is a regular file. It is
+    opened non-blocking and its descriptor checked before any read, so a
+    FIFO or device is refused (NotRegularFile) without waiting or reading.
+    A link is followed, and its target checked."""
+    fd = os.open(os.fspath(path), os.O_RDONLY | os.O_NONBLOCK)
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise NotRegularFile(f"{path} is not a regular file")
+    return os.fdopen(fd, "rb")
+
+
+def read_regular(path) -> bytes:
+    """The bytes of `path`, a regular file (see `open_regular`)."""
+    with open_regular(path) as f:
+        return f.read()
+
+
 def hash_file(path) -> HashResult:
     """The SHA-256 of the whole file, however large. The file is opened
     non-blocking and checked before any read, so a FIFO never blocks."""
@@ -110,7 +128,8 @@ def registered_hash(case_dir, path) -> str | None:
     real path), else None. The file itself is never read: a registered input
     links to the registry by its path."""
     try:
-        registry = json.loads((Path(case_dir) / "evidence.json").read_text())
+        # a registry that isn't a regular file reads as none, and never blocks
+        registry = json.loads(read_regular(Path(case_dir) / "evidence.json").decode())
     except (OSError, ValueError):
         return None
     files = registry.get("files") if isinstance(registry, dict) else registry
