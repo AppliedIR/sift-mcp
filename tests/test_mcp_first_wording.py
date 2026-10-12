@@ -16,6 +16,13 @@ SENTENCE = (
     ": weaker evidence than an audit_id, graded as shell evidence, and a command"
     " with an MCP route is marked so in the audit"
 )
+# the OpenSearch guidance on EZ-tool CSV times, as approved; added after a space
+EZ_SENTENCE = (
+    "EZ-tool CSV indices made by idx_ingest (mft, usn, amcache, shimcache, registry, ...)"
+    " carry file and key times, not event times: they aren't in time windows, the default"
+    " timeline or the case time range, so query them by their own date field (e.g."
+    " Created0x10) with index=."
+)
 
 
 def _strings():
@@ -31,10 +38,15 @@ def test_forensic_mcp_says_shell_evidence_is_graded_and_marked():
     assert SENTENCE in _strings()["FORENSIC_MCP"]
 
 
+def test_opensearch_says_ez_csv_indices_carry_no_event_time_once():
+    assert _strings()["OPENSEARCH"].count(EZ_SENTENCE) == 1
+
+
 def test_the_backend_instructions_stay_within_their_budget():
     strings = _strings()
     assert len(strings) == 10
-    assert sum(len(v) for v in strings.values()) <= BASE_TOTAL + len(SENTENCE)
+    budget = BASE_TOTAL + len(SENTENCE) + len(EZ_SENTENCE) + 1
+    assert sum(len(v) for v in strings.values()) <= budget
 
 
 def test_the_agents_core_says_mcp_first_by_advice_never_a_block():
