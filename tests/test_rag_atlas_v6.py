@@ -50,7 +50,9 @@ def rag(monkeypatch, tmp_path):
             monkeypatch.setitem(sys.modules, name, types.ModuleType(name))
     st = types.SimpleNamespace(SentenceTransformer=_model)
     monkeypatch.setitem(sys.modules, "sentence_transformers", st)
-    monkeypatch.setitem(sys.modules, "chromadb", types.SimpleNamespace(__version__="stand-in"))
+    monkeypatch.setitem(
+        sys.modules, "chromadb", types.SimpleNamespace(__version__="stand-in")
+    )
     s = importlib.import_module("rag_mcp.sources")
     b = importlib.import_module("rag_mcp.build")
     br = importlib.import_module("rag_mcp.scripts.build_release")
@@ -94,9 +96,21 @@ def _atlas(fmt="6.0.0"):
             "AML.TA0005": {"id": "AML.TA0005", "name": "Execution"},
         },
         "techniques": {
-            "AML.T0001": {"id": "AML.T0001", "name": "Gather Data", "description": "d1"},
-            "AML.T0001.000": {"id": "AML.T0001.000", "name": "From Papers", "description": "d2"},
-            "AML.T0002": {"id": "AML.T0002", "name": "Inject Prompt", "description": "d3"},
+            "AML.T0001": {
+                "id": "AML.T0001",
+                "name": "Gather Data",
+                "description": "d1",
+            },
+            "AML.T0001.000": {
+                "id": "AML.T0001.000",
+                "name": "From Papers",
+                "description": "d2",
+            },
+            "AML.T0002": {
+                "id": "AML.T0002",
+                "name": "Inject Prompt",
+                "description": "d3",
+            },
         },
         "mitigations": {"AML.M0001": {"id": "AML.M0001", "name": "Limit Disclosure"}},
         "case-studies": {
@@ -117,9 +131,13 @@ def _upstream(dest, doc, latest=True):
     """The repo layout: dist/v6/ATLAS-<release>.yaml, and ATLAS-latest.yaml a
     link to it; dist/ATLAS.yaml is the frozen v5 file."""
     (dest / "dist/v6").mkdir(parents=True)
-    (dest / "dist/ATLAS.yaml").write_text("id: ATLAS\nversion: 5.6.0\n", encoding="utf-8")
+    (dest / "dist/ATLAS.yaml").write_text(
+        "id: ATLAS\nversion: 5.6.0\n", encoding="utf-8"
+    )
     if doc is not None:
-        (dest / "dist/v6/ATLAS-2026.09.yaml").write_text(yaml.safe_dump(doc), encoding="utf-8")
+        (dest / "dist/v6/ATLAS-2026.09.yaml").write_text(
+            yaml.safe_dump(doc), encoding="utf-8"
+        )
     if latest:
         (dest / "dist/ATLAS-latest.yaml").symlink_to("v6/ATLAS-2026.09.yaml")
 
@@ -151,7 +169,9 @@ def test_atlas_v6_gives_technique_and_case_study_records(rag, monkeypatch, fmt):
     assert "Mitigations:\n- Limit Disclosure\n" in by_id["AML.T0001"]["text"]
     case = by_id["AML.CS0001"]
     assert case["metadata"]["type"] == "case_study"
-    assert case["metadata"]["atlas_techniques"] == "AML.T0001.000, AML.T0002"  # step order
+    assert (
+        case["metadata"]["atlas_techniques"] == "AML.T0001.000, AML.T0002"
+    )  # step order
     assert "References:\n- Report: https://example.invalid/r" in case["text"]
 
 
@@ -164,7 +184,9 @@ def test_atlas_v6_gives_technique_and_case_study_records(rag, monkeypatch, fmt):
     ],
     ids=["format-7", "no-file"],
 )  # fmt: skip
-def test_another_layout_or_format_major_fails_the_source(rag, monkeypatch, doc, latest, message):
+def test_another_layout_or_format_major_fails_the_source(
+    rag, monkeypatch, doc, latest, message
+):
     result, records = _sync(rag, monkeypatch, doc, latest)
     assert (result.status, result.message, records) == ("error", message, [])
 
@@ -180,17 +202,30 @@ def test_a_release_build_stops_before_indexing_when_a_source_fails(
     (rag.data / "sources").mkdir(parents=True)
     old = rag.data / "sources" / "mitre_atlas.jsonl"
     if stale_cache:  # what an earlier build left: it must not ship
-        old.write_text(json.dumps({"text": "old", "metadata": {"source": "mitre_atlas"}}) + "\n")
-    monkeypatch.setattr(s, "clone_repo", lambda repo, branch, dest: _upstream(dest, doc, latest) or True)
+        old.write_text(
+            json.dumps({"text": "old", "metadata": {"source": "mitre_atlas"}}) + "\n"
+        )
+    monkeypatch.setattr(
+        s, "clone_repo", lambda repo, branch, dest: _upstream(dest, doc, latest) or True
+    )
     loaded = []
     real_load = rag.build.load_jsonl_records
-    monkeypatch.setattr(rag.build, "load_jsonl_records", lambda p: loaded.append(Path(p).name) or real_load(p))
-    monkeypatch.setattr(sys, "argv", ["build_release", "--output-dir", str(tmp_path / "out")])
+    monkeypatch.setattr(
+        rag.build,
+        "load_jsonl_records",
+        lambda p: loaded.append(Path(p).name) or real_load(p),
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["build_release", "--output-dir", str(tmp_path / "out")]
+    )
     out = io.StringIO()
     with contextlib.redirect_stdout(out), pytest.raises(SystemExit) as exit_:
         rag.build_release.main()
     assert exit_.value.code == 1
     failed = [x for x in out.getvalue().splitlines() if x.startswith("Build failed")]
-    assert len(failed) == 1 and "['mitre_atlas: ATLAS: dist/ATLAS-latest.yaml " in failed[0]
+    assert (
+        len(failed) == 1
+        and "['mitre_atlas: ATLAS: dist/ATLAS-latest.yaml " in failed[0]
+    )
     assert ("format-version 7.0.0" if doc else "not found") in failed[0]
     assert "mitre_atlas.jsonl" not in loaded  # no old records reach an index

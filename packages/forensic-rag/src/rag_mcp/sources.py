@@ -1684,7 +1684,11 @@ def parse_atlas(repo_dir: Path, output_path: Path) -> int:
     rels = doc.get("relationships") or {}
 
     def edges(source_id: str, kind: str) -> list:
-        return [e for e in ((rels.get(source_id) or {}).get(kind) or []) if isinstance(e, dict)]
+        return [
+            e
+            for e in ((rels.get(source_id) or {}).get(kind) or [])
+            if isinstance(e, dict)
+        ]
 
     procedures: dict[str, list[str]] = {}
     mitigated_by: dict[str, list[str]] = {}
