@@ -89,6 +89,19 @@ def test_the_refusals_are_not_oserrors():
     assert not issubclass(fi.NotRegularFile, OSError)
 
 
+@pytest.mark.parametrize("end", [b"\n", b"\r\n", b""], ids=["LF", "CRLF", "last-line"])
+def test_the_cap_counts_a_line_s_content_not_its_line_end(tmp_path, end):
+    """Case logs written on Windows end their lines in CRLF: a line of exactly
+    the cap is read with either end, or none, and one byte more is refused."""
+    p = tmp_path / "wintools-mcp.jsonl"
+    p.write_bytes(b"x" * fi.LINE_CAP + end)
+    assert [len(raw) for raw in fi.capped_lines(p)] == [fi.LINE_CAP + len(end)]
+    p.write_bytes(b"x" * (fi.LINE_CAP + 1) + end)
+    with pytest.raises(fi.CaseFileTooBig) as e:
+        list(fi.capped_lines(p))
+    assert e.value.line == 1
+
+
 def test_the_cap_boundary_and_a_long_line_named_never_held(tmp_path):
     p = tmp_path / "a.jsonl"
     with open(p, "wb") as f:

@@ -168,16 +168,18 @@ def _case_fd(path, follow: bool = True) -> int:
 def capped_lines(path, follow: bool = True):
     """Each line of a regular case log, as bytes with its newline; the file is
     opened and checked now. A line over LINE_CAP raises CaseFileTooBig naming
-    it: no more than LINE_CAP + 1 bytes of it are read, and it is never split."""
+    it: no more than LINE_CAP + 2 bytes of it are read, and it is never split."""
     return _capped(os.fdopen(_case_fd(path, follow), "rb"), path)
 
 
 def _capped(f, path):
     with f:
         n = 0
-        while raw := f.readline(LINE_CAP + 1):
+        while raw := f.readline(LINE_CAP + 2):
             n += 1
-            if len(raw) > LINE_CAP and not raw.endswith(b"\n"):
+            # the cap counts a line's content, not its \n or \r\n
+            end = 2 if raw.endswith(b"\r\n") else 1 if raw.endswith(b"\n") else 0
+            if len(raw) - end > LINE_CAP:
                 raise CaseFileTooBig(
                     f"{path} line {n} is longer than {LINE_CAP >> 20} MiB, so the "
                     f"file wasn't read past it. {_keep_a_copy(path)}",
