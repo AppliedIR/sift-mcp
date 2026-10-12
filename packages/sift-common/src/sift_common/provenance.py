@@ -902,6 +902,11 @@ def _match_back(
             return _unverified(f"{q!r} is in no record {aid} returned")
         per_line.append((q, hits))
         block.append(q)
+    last = block[-1] if block else ""
+    if last.startswith('"') and '": ' in last and _bare(last).endswith(("{", "[")):
+        # an opener claims the object or list it opens: it needs its child quoted
+        return _unverified(f"{last!r} isn't followed by a line it opens: quote the lines "
+                           "under it too")  # fmt: skip
     if len(block) > 1 and any(_bare(q) in _STRUCTURAL or (q.startswith('"') and '": ' in q)
                               for q in block):  # fmt: skip
         # JSON lines count only as shown: together, in order, in one record

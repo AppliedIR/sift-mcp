@@ -477,3 +477,22 @@ def test_a_long_quote_is_checked_quickly(q):
     start = time.perf_counter()
     t = pv.trace_artifact(case, aid, quote)
     assert time.perf_counter() - start < 0.1 and t.grade == "FULL", t
+
+
+def test_an_opener_needs_its_quoted_child(q):
+    """carol's `"name"` line, then `"user": {` (bob's object): the opener is
+    a line the record shows, but on its own it claims a structure it doesn't
+    quote."""
+    c = q.c
+    aid = "opensearch-tester-20261009-193"
+    o1 = {"_index": IDX, "_id": "o1", "name": "carol", "user": {"name": "bob"},
+          "vhir.ingest_audit_id": ING_A}  # fmt: skip
+    _search(
+        c,
+        [o1],
+        aid=aid,
+        text=json.dumps({"results": [o1], "total": 1, "audit_id": aid}),
+    )
+    assert _grade_aid(c, aid, '"user": {')[:2] == UNV
+    assert _grade_aid(c, aid, '"name": "carol",\n"user": {')[:2] == UNV
+    assert _grade_aid(c, aid, '"user": {\n"name": "bob"') == FULL + (["o1"],)
