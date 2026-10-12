@@ -105,6 +105,101 @@ def read_regular(path) -> bytes:
         return f.read()
 
 
+LINE_CAP = 16 << 20  # the longest line a case log may hold
+DOC_CAP = 16 << 20  # the largest case document read whole
+
+
+class CaseFileTooBig(ValueError):
+    """A case log line over LINE_CAP, or a case document over DOC_CAP: refused
+    by name, never held whole. Like NotRegularFile, never an OSError: a reader
+    that passes over an unreadable file (`except OSError`) must not pass over
+    this one. `line`: the line's number, None for a document."""
+
+    def __init__(self, text: str, line: int | None = None):
+        super().__init__(text)
+        self.line = line
+
+
+_HOLDS = {  # what a case file holds, for the text that refuses it (vhir's case_io.holds)
+    "approvals.jsonl": "approval records", "findings.json": "findings",
+    "timeline.json": "timeline events", "iocs.json": "IOCs",
+    "keys.json": "signing-key records", "verification.jsonl": "0.6 approval records",
+    # sift's own files
+    "evidence.json": "evidence records", "todos.json": "TODOs",
+    "pending-reviews.json": "staged reviews", "CASE.yaml": "case details",
+    "actions.jsonl": "action records", "host-ops.json": "host-operation records",
+    "host-observations.jsonl": "host observations", "host-decisions.jsonl": "host decisions",
+}  # fmt: skip
+
+
+def _holds(path) -> str:
+    p = Path(path)
+    if p.name in _HOLDS:
+        return _HOLDS[p.name]
+    return "audit entries" if p.parent.name == "audit" else "case records"
+
+
+def _keep_a_copy(path) -> str:
+    return (f"It holds the case's {_holds(path)}: keep a copy of it before you move it "
+            "out of the case, then try again.")  # fmt: skip
+
+
+def _case_fd(path, follow: bool = True) -> int:
+    """`path` opened non-blocking and checked on the descriptor: a FIFO,
+    device, socket or directory raises NotRegularFile, unread."""
+    flags = os.O_RDONLY | os.O_NONBLOCK | (0 if follow else os.O_NOFOLLOW)
+    fd = os.open(os.fspath(path), flags)
+    try:
+        mode = os.fstat(fd).st_mode
+        if stat.S_ISDIR(mode):
+            raise NotRegularFile(f"{path} is a folder, not a file. Put the case's "
+                                 "own file back, then try again.")  # fmt: skip
+        if not stat.S_ISREG(mode):
+            raise NotRegularFile(
+                f"{path} isn't a regular file (a named pipe, socket or device). "
+                "Put the case's own file back, then try again."
+            )
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def capped_lines(path, follow: bool = True):
+    """Each line of a regular case log, as bytes with its newline; the file is
+    opened and checked now. A line over LINE_CAP raises CaseFileTooBig naming
+    it: no more than LINE_CAP + 1 bytes of it are read, and it is never split."""
+    return _capped(os.fdopen(_case_fd(path, follow), "rb"), path)
+
+
+def _capped(f, path):
+    with f:
+        n = 0
+        while raw := f.readline(LINE_CAP + 1):
+            n += 1
+            if len(raw) > LINE_CAP and not raw.endswith(b"\n"):
+                raise CaseFileTooBig(
+                    f"{path} line {n} is longer than {LINE_CAP >> 20} MiB, so the "
+                    f"file wasn't read past it. {_keep_a_copy(path)}",
+                    n,
+                )
+            yield raw
+
+
+def read_document(path, follow: bool = True) -> bytes:
+    """A regular case document's bytes, read whole only when its size is at
+    most DOC_CAP (checked on the descriptor before any read)."""
+    with os.fdopen(_case_fd(path, follow), "rb") as f:
+        size = os.fstat(f.fileno()).st_size
+        data = f.read(DOC_CAP + 1) if size <= DOC_CAP else b""
+    if size > DOC_CAP or len(data) > DOC_CAP:  # grown since fstat: refused too
+        raise CaseFileTooBig(
+            f"{path} is larger than {DOC_CAP >> 20} MiB, so it wasn't read. "
+            f"{_keep_a_copy(path)}"
+        )
+    return data
+
+
 def hash_file(path) -> HashResult:
     """The SHA-256 of the whole file, however large. The file is opened
     non-blocking and checked before any read, so a FIFO never blocks."""
