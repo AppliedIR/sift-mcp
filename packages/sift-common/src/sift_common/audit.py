@@ -243,10 +243,14 @@ class AuditWriter:
             fd = os.open(
                 log_file, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NONBLOCK, 0o666
             )
-            if not stat.S_ISREG(os.fstat(fd).st_mode):
+            try:  # the descriptor is closed on any failure before fdopen owns it
+                if not stat.S_ISREG(os.fstat(fd).st_mode):
+                    raise OSError(f"{log_file} is not a regular file")
+                f = os.fdopen(fd, "a", encoding="utf-8")
+            except BaseException:
                 os.close(fd)
-                raise OSError(f"{log_file} is not a regular file")
-            with os.fdopen(fd, "a", encoding="utf-8") as f:
+                raise
+            with f:
                 f.write(json.dumps(entry, default=str) + "\n")
                 f.flush()
                 os.fsync(f.fileno())

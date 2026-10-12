@@ -113,3 +113,35 @@ def test_read_regular_reads_a_regular_file_and_refuses_anything_else(tmp_path):
             kind,
             why,
         )
+
+
+def _open_fds() -> int:
+    return len(os.listdir("/proc/self/fd"))
+
+
+@pytest.mark.skipif(
+    not os.path.isdir("/proc/self/fd"), reason="counts open fds by /proc"
+)
+def test_an_error_after_the_open_closes_the_descriptor(case, monkeypatch):
+    """An EIO from fstat after a successful open: the reader and the audit
+    append each give their failure, and no descriptor is left open (a
+    long-lived server would otherwise run out of them)."""
+    import errno
+
+    from sift_common.audit import AuditWriter
+
+    d, x, _, _ = case
+    (d / "audit").mkdir()
+    writer = AuditWriter("sift-mcp", audit_dir=str(d / "audit"))
+    real = os.fstat
+
+    def eio(fd):
+        raise OSError(errno.EIO, "Input/output error")
+
+    before = _open_fds()
+    with monkeypatch.context() as m:
+        m.setattr(os, "fstat", eio)
+        for _ in range(50):
+            assert fi.registered_hash(d, x) is None
+            assert writer._write_entry({"audit_id": "x"}, d / "audit") is False
+    assert os.fstat is real and _open_fds() == before

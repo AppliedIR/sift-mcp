@@ -90,10 +90,13 @@ def open_regular(path):
     FIFO or device is refused (NotRegularFile) without waiting or reading.
     A link is followed, and its target checked."""
     fd = os.open(os.fspath(path), os.O_RDONLY | os.O_NONBLOCK)
-    if not stat.S_ISREG(os.fstat(fd).st_mode):
+    try:  # the descriptor is closed on any failure before fdopen owns it
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise NotRegularFile(f"{path} is not a regular file")
+        return os.fdopen(fd, "rb")
+    except BaseException:
         os.close(fd)
-        raise NotRegularFile(f"{path} is not a regular file")
-    return os.fdopen(fd, "rb")
+        raise
 
 
 def read_regular(path) -> bytes:
