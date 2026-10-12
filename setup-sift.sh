@@ -1202,6 +1202,17 @@ fi
 
 # --- OpenSearch MCP (evidence indexing — optional) ---
 OPENSEARCH_SETUP_FAILED=""  # the setup script to re-run, if it ran and failed
+OPENSEARCH_SNAPSHOTS_FAILED=""  # the same, when only its snapshots weren't set up
+# setup-opensearch.sh exits 3 when OpenSearch runs but its snapshots aren't set up
+opensearch_setup_failed() {
+    if [ "$1" -eq 3 ]; then
+        warn "OpenSearch is running, but its snapshots aren't set up (see above)."
+        OPENSEARCH_SNAPSHOTS_FAILED="$SETUP_OS_SCRIPT"
+    else
+        warn "OpenSearch setup failed. Run manually: $SETUP_OS_SCRIPT"
+        OPENSEARCH_SETUP_FAILED="$SETUP_OS_SCRIPT"
+    fi
+}
 OPENSEARCH_MCP_DIR="$INSTALL_DIR/../opensearch-mcp"
 if [ ! -d "$OPENSEARCH_MCP_DIR" ]; then
     OPENSEARCH_MCP_DIR="$HOME/.vhir/src/opensearch-mcp"
@@ -1245,8 +1256,7 @@ if [ -d "$OPENSEARCH_MCP_DIR" ]; then
                             if sg docker -c 'bash "'"$SETUP_OS_SCRIPT"'"'; then
                                 ok "OpenSearch setup complete"
                             else
-                                warn "OpenSearch setup failed. Run manually: $SETUP_OS_SCRIPT"
-                                OPENSEARCH_SETUP_FAILED="$SETUP_OS_SCRIPT"
+                                opensearch_setup_failed $?
                             fi
                         else
                             warn "Could not add $USER to docker group. OpenSearch setup skipped."
@@ -1272,8 +1282,7 @@ if [ -d "$OPENSEARCH_MCP_DIR" ]; then
                 if bash "$SETUP_OS_SCRIPT"; then
                     ok "OpenSearch setup complete"
                 else
-                    warn "OpenSearch setup failed. Run manually: $SETUP_OS_SCRIPT"
-                    OPENSEARCH_SETUP_FAILED="$SETUP_OS_SCRIPT"
+                    opensearch_setup_failed $?
                 fi
             fi
         fi
@@ -2393,6 +2402,11 @@ fi
 if [ -n "$OPENSEARCH_SETUP_FAILED" ]; then
     echo ""
     err "OpenSearch setup failed: evidence indexing won't work. Re-run: bash $OPENSEARCH_SETUP_FAILED"
+    INSTALL_ERRORS=$((INSTALL_ERRORS + 1))
+fi
+if [ -n "$OPENSEARCH_SNAPSHOTS_FAILED" ]; then
+    echo ""
+    err "OpenSearch snapshots aren't set up: 'vhir backup --include-opensearch' can't save indices. Re-run: bash $OPENSEARCH_SNAPSHOTS_FAILED"
     INSTALL_ERRORS=$((INSTALL_ERRORS + 1))
 fi
 
