@@ -326,6 +326,13 @@ class HttpMCPBackend(MCPBackend):
                     timeout=_TOOL_CALL_TIMEOUT,
                 )
                 return ToolResult(result.content, is_error=bool(result.isError))
+            except asyncio.TimeoutError:
+                # before OSError, which a TimeoutError is from Python 3.11: the
+                # call may still be running on the remote, so it's never sent again
+                raise asyncio.TimeoutError(
+                    f"Backend {self.name}: {name} gave no answer in "
+                    f"{_TOOL_CALL_TIMEOUT}s; it wasn't sent again, as it may still be running"
+                ) from None
             except (
                 ConnectionError,
                 OSError,
