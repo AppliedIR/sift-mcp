@@ -159,6 +159,10 @@ OPENSEARCH = (
     "until the examiner confirms its hosts, or chooses Start now, in the portal's "
     "Hosts tab. "
     "idx_search and idx_timeline support time_from/time_to for temporal filtering. "
+    "EZ-tool CSV indices made by idx_ingest (mft, usn, amcache, shimcache, registry, ...) "
+    "carry file and key times, not event times: they aren't in time windows, the default "
+    "timeline or the case time range, so query them by their own date field (e.g. "
+    "Created0x10) with index=. "
     'Quote special chars in queries (e.g., source.ip:"::1"). '
     "WinRM/Operational often dominates event volumes (50%+) — add "
     'NOT winlog.channel:"Microsoft-Windows-WinRM/Operational" '

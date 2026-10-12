@@ -24,6 +24,13 @@ EVTX_SENTENCE = (
     " case's index was updated. A search on that field doesn't find it, so 0 hits"
     " there doesn't prove absence."
 )
+# the OpenSearch guidance on EZ-tool CSV times, as approved; added after a space
+EZ_SENTENCE = (
+    "EZ-tool CSV indices made by idx_ingest (mft, usn, amcache, shimcache, registry, ...)"
+    " carry file and key times, not event times: they aren't in time windows, the default"
+    " timeline or the case time range, so query them by their own date field (e.g."
+    " Created0x10) with index=."
+)
 
 
 def _strings():
@@ -43,10 +50,14 @@ def test_opensearch_says_long_evtx_values_are_not_indexed():
     assert EVTX_SENTENCE in _strings()["OPENSEARCH"]
 
 
+def test_opensearch_says_ez_csv_indices_carry_no_event_time_once():
+    assert _strings()["OPENSEARCH"].count(EZ_SENTENCE) == 1
+
+
 def test_the_backend_instructions_stay_within_their_budget():
     strings = _strings()
     assert len(strings) == 10
-    budget = BASE_TOTAL + len(SENTENCE) + len(EVTX_SENTENCE) + 1
+    budget = BASE_TOTAL + len(SENTENCE) + len(EVTX_SENTENCE) + len(EZ_SENTENCE) + 2
     assert sum(len(v) for v in strings.values()) <= budget
 
 
