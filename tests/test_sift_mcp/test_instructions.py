@@ -103,6 +103,18 @@ def test_opensearch_aggregation_guidance_names_both_field_forms():
     assert "include_fields=true) shows them" not in OPENSEARCH
 
 
+def test_opensearch_says_long_evtx_event_data_values_are_not_indexed():
+    """A long 4103 Payload or Sysmon 13 Details is stored but not indexed, so
+    0 hits on its field isn't absence. Said right after the bare-name rule."""
+    sentence = (
+        "An evtx winlog.event_data keyword value longer than 8,191 characters "
+        "(ScriptBlockText: 32,766), or longer than 1,024 in records stored before "
+        "the case's index was updated, is kept in the record but not indexed: a "
+        "search on that field doesn't find it, so 0 hits there doesn't prove absence."
+    )
+    assert f"use the bare name. {sentence} " in OPENSEARCH
+
+
 def test_opensearch_instructions_group_hosts_by_host_id():
     assert "idx_aggregate on event.code/user.name/host.id" in OPENSEARCH
     assert "host.name for overview" not in OPENSEARCH
