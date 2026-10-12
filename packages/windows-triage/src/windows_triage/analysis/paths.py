@@ -64,6 +64,34 @@ _VOLUME_PREFIX = re.compile(
 )
 
 
+# A shadow copy of a volume, or an admin share of this machine (C$, ADMIN$), ahead of a
+# path: not the live path. Anchored, as the volume forms are.
+_ORIGIN = re.compile(
+    r"(?P<shadow>(?:(?:\\\\[?.]\\|\\\?\?\\|\\)globalroot)?\\device\\harddiskvolumeshadowcopy[0-9]+)(?=\\)"
+    r"|(?:\\\\[?.]\\unc|\\\?\?\\unc|\\|\\device\\mup)\\(?:localhost|127\.0\.0\.1)"
+    r"\\(?:[a-z]|(?P<admin>admin))\$(?=\\)",
+    re.IGNORECASE | re.ASCII,  # no lower(): a KELVIN SIGN is not a k
+)
+# what such a prefix may wrap: another shadow copy, or a volume named by device or GUID
+_INNER = re.compile(
+    r"\\(?:globalroot\\)?device\\harddiskvolume(?P<shadow>shadowcopy)?[0-9]+(?=\\)"
+    r"|\\(?:globalroot\\)?volume\{[0-9a-f-]+\}(?=\\)",
+    re.IGNORECASE | re.ASCII,
+)
+
+
+def path_origin(path: str) -> tuple[str, str, str | None] | None:
+    """For a path in a shadow copy or given through a local admin share: (the outermost
+    prefix as given, "shadow" | "share" | "admin", "shadow" | "volume" | None for what it wraps)."""
+    low = path.replace("/", "\\") if path else ""
+    m = _ORIGIN.match(low)
+    if not m:
+        return None
+    inner = _INNER.match(low, m.end())
+    kind = "shadow" if m["shadow"] else "admin" if m["admin"] else "share"
+    return path[: m.end()], kind, inner and ("shadow" if inner["shadow"] else "volume")
+
+
 def normalize_path(path: str) -> str:
     r"""
     Normalize a Windows path for database storage and lookup.
