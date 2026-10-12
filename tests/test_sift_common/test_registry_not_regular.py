@@ -11,37 +11,48 @@ from __future__ import annotations
 
 import hashlib
 import json
-import multiprocessing as mp
 import os
+import pickle
 import resource
+import select
+import signal
 
 import pytest
 from sift_common import file_identity as fi
 
-CTX = mp.get_context("fork")
-
-
-def _child(fn, q):
-    # a read from a device fails, rather than taking the box's memory
-    resource.setrlimit(resource.RLIMIT_AS, (2 << 30, 2 << 30))
-    try:
-        q.put(("ok", fn()))
-    except BaseException as e:  # noqa: BLE001 - reported to the parent
-        q.put(("raised", f"{type(e).__name__}: {e}"))
-
 
 def _within(fn, timeout=5.0):
-    """What `fn` returns in a forked child, or 'blocked' if it doesn't within
-    `timeout` (the child is then killed)."""
-    q = CTX.Queue()
-    p = CTX.Process(target=_child, args=(fn, q))
-    p.start()
-    p.join(timeout)
-    if p.is_alive():
-        p.kill()
-        p.join()
-        return ("blocked",)
-    return q.get(timeout=5)
+    """What `fn` returns in a forked child, or ("blocked",) if it doesn't
+    within `timeout` (the child is then killed). The child's address space is
+    capped at its size plus 1 GiB, so a read from a device fails instead of
+    taking the box's memory; it starts no thread, so the cap can't stop it
+    answering."""
+    r, w = os.pipe()
+    pid = os.fork()
+    if pid == 0:  # the child: answer through the pipe, then exit at once
+        os.close(r)
+        try:
+            with open("/proc/self/statm") as f:
+                size = int(f.read().split()[0]) * os.sysconf("SC_PAGE_SIZE")
+            resource.setrlimit(resource.RLIMIT_AS, (size + (1 << 30), size + (1 << 30)))
+            out = ("ok", fn())
+        except BaseException as e:  # noqa: BLE001 - reported to the parent
+            out = ("raised", f"{type(e).__name__}: {e}")
+        os.write(w, pickle.dumps(out))
+        os._exit(0)
+    os.close(w)
+    try:
+        ready, _, _ = select.select([r], [], [], timeout)
+        if not ready:
+            os.kill(pid, signal.SIGKILL)
+            return ("blocked",)
+        data = b""
+        while chunk := os.read(r, 65536):
+            data += chunk
+        return pickle.loads(data)
+    finally:
+        os.close(r)
+        os.waitpid(pid, 0)
 
 
 @pytest.fixture
