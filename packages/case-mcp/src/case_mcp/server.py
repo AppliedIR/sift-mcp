@@ -20,6 +20,9 @@ from sift_common.host_identity import HostLogError, ensure_case_uuid
 from sift_common.instructions import CASE_MCP as _INSTRUCTIONS
 from sift_common.oplog import setup_logging
 from vhir_cli.case_io import (
+    bundle_too_deep as _bundle_too_deep,
+)
+from vhir_cli.case_io import (
     export_bundle as _export_bundle,
 )
 from vhir_cli.case_io import (
@@ -562,11 +565,15 @@ def create_server() -> FastMCP:
                 return {"error": "Bundle path must be within case directory or /tmp"}
             if not bundle_file.exists():
                 return {"error": f"Bundle file not found: {bundle_path}"}
-            bundle_data = json.loads(bundle_file.read_text())
             try:
-                result = _import_bundle(case_dir, bundle_data)
-            except LedgerError as e:  # the case lock: nothing was merged
-                return {"error": f"{e}. Nothing was merged."}
+                bundle_data = json.loads(bundle_file.read_text())
+            except RecursionError:  # too deep to decode: refused by name, and audited
+                result = _bundle_too_deep()
+            else:
+                try:
+                    result = _import_bundle(case_dir, bundle_data)
+                except LedgerError as e:  # the case lock: nothing was merged
+                    return {"error": f"{e}. Nothing was merged."}
             logged_id = audit.log(
                 tool="import_bundle",
                 params={"bundle_path": bundle_path},
