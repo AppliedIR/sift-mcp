@@ -369,7 +369,14 @@ class KnownGoodDB:
         Returns:
             List of matching entries with file info and hashes
         """
-        path_normalized = normalize_path(path)
+        return self.lookup_by_normalized_path(normalize_path(path), os_version)
+
+    def lookup_by_normalized_path(
+        self, path_normalized: str, os_version: str | None = None
+    ) -> list[dict[str, Any]]:
+        """lookup_by_path for a path normalize_path already gave: it isn't
+        normalised again (a second pass would take a prefix found inside it,
+        like C:\\Device\\HarddiskVolume3\\, for the volume's root)."""
         # Use cached version if caching is enabled
         if self.cache_size > 0:
             # Cache key includes os_version; returns tuple for hashability
@@ -496,7 +503,10 @@ class KnownGoodDB:
 
     def path_exists(self, path: str) -> bool:
         """Check if exact path exists in baseline."""
-        path_normalized = normalize_path(path)
+        return self.normalized_path_exists(normalize_path(path))
+
+    def normalized_path_exists(self, path_normalized: str) -> bool:
+        """path_exists for a path normalize_path already gave, not normalised again."""
         if self.cache_size > 0:
             return self._path_exists_cached(path_normalized)
         return self._path_exists_uncached(path_normalized)
