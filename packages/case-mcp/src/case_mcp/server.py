@@ -522,8 +522,12 @@ def create_server() -> FastMCP:
         try:
             case_dir = _resolve_case_dir()
             result = _export_bundle(case_dir, since=since)
-            # an exported APPROVED finding carries whether it verifies
-            unverified = mark_approvals(case_dir, result.get("findings", []))
+            # an exported APPROVED finding or event carries whether it verifies
+            unverified = mark_approvals(
+                case_dir,
+                result.get("findings", []),
+                timeline=result.get("timeline", []),
+            )
             logged_id = audit.log(
                 tool="export_bundle",
                 params={"since": since},

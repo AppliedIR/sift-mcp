@@ -28,6 +28,16 @@ def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
             raise ValueError(f"{field} contains invalid null byte")
 
 
+def _page(items: list, limit: int, offset: int) -> tuple[list, bool]:
+    """One page of items, and whether more follow it. limit 0 (or less) is
+    every item from offset on."""
+    if offset < 0:
+        raise ValueError("offset must be 0 or more")
+    if limit > 0:
+        return items[offset : offset + limit], len(items) > offset + limit
+    return items[offset:], False
+
+
 def _build_finding_considerations(finding: dict) -> list[str]:
     """Assemble pre-acceptance guidance for a staged finding."""
     from forensic_knowledge import loader
@@ -163,6 +173,10 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
           audit_ids}. status "open": still possible. status "ruled_out": the
           tool output that rules it out is in evidence and its audit_ids are in
           audit_ids; without both it is stored as open.
+
+        challenged (dict, optional): after the skeptic's challenge, {"outcome":
+          "stands", "revised" or "withdrawn", "skeptic_audit_ids": [the
+          skeptic's own audit ids]}; withdrawn also takes "contradiction".
 
         iocs (list): indicators of compromise found in this evidence.
           Pass ALL suspicious IPs, hashes, domains, registry keys, file paths,
@@ -364,9 +378,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
             case_dir = manager._require_active_case()  # one case for both reads
             all_findings = manager.get_findings(status or None, case_dir)
             total = len(all_findings)
-            paginated = (
-                all_findings[offset : offset + limit] if limit > 0 else all_findings
-            )
+            paginated, _ = _page(all_findings, limit, offset)
             out = {
                 "findings": paginated,
                 "total": total,
@@ -414,8 +426,13 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - offset: Skip first N events (for pagination).
 
         Response includes total count so the LLM knows if results were truncated.
+
+        Each APPROVED event carries approval_verification: VALID, or why its
+        approval doesn't verify (e.g. ALTERED_AFTER_APPROVAL): then treat it
+        as not approved; `warning` names each such event.
         """
         try:
+            case_dir = manager._require_active_case()  # one case for both reads
             all_events = manager.get_timeline(
                 status=status or None,
                 source=source or None,
@@ -423,16 +440,22 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
                 start_date=start_date or None,
                 end_date=end_date or None,
                 event_type=event_type or None,
+                case_dir=case_dir,
             )
             total = len(all_events)
-            paginated = all_events[offset : offset + limit] if limit > 0 else all_events
-            return {
+            paginated, has_more = _page(all_events, limit, offset)
+            out = {
                 "events": paginated,
                 "total": total,
                 "limit": limit,
                 "offset": offset,
-                "has_more": total > offset + limit,
+                "has_more": has_more,
             }
+            # an APPROVED event is shown as approved only if it verifies
+            warning = mark_approvals(case_dir, paginated, "timeline")
+            if warning:
+                out["warning"] = warning
+            return out
         except Exception as e:
             logger.error("get_timeline failed: %s", e)
             return {
