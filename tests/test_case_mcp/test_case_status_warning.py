@@ -12,6 +12,8 @@ The real servers run in-process on scratch cases (test_timeline_reads' rig).
 
 from __future__ import annotations
 
+import json
+
 import case_mcp.server as cms
 import forensic_mcp.case.manager as fmm
 import pytest
@@ -100,6 +102,57 @@ def test_an_approved_item_with_no_ledger_line_is_named(tmp_path, monkeypatch):
     )
     assert out["finding_approved"] == 1  # counted by status, as documented
     assert _counts(out) == _counts(_case_status_data(d))
+
+
+def _with_odd_id(tmp_path, monkeypatch, where, odd):
+    """A case whose approvals verify, then an APPROVED item whose id is `odd`
+    (a list or a dict) written into its findings or timeline file."""
+    d = _make_case(tmp_path, "INC-O", [_finding(1, "APPROVED")], [_event(1, "APPROVED")],
+                   monkeypatch)  # fmt: skip
+    sign_approved(d)
+    name, item = (
+        ("findings.json", _finding(2))
+        if where == "finding"
+        else ("timeline.json", _event(2))
+    )
+    items = json.loads((d / name).read_text())
+    items.append({**item, "id": odd, "status": "APPROVED"})
+    (d / name).write_text(json.dumps(items))
+    return d
+
+
+ODD_IDS = {"list": ["F-rig-002"], "dict": {"id": "F-rig-002"}}
+
+
+@pytest.mark.parametrize("where", ["finding", "event"])
+@pytest.mark.parametrize("shape", list(ODD_IDS))
+def test_an_approved_item_with_a_list_or_dict_id_is_named_not_a_raise(
+    tmp_path, monkeypatch, shape, where
+):
+    _with_odd_id(tmp_path, monkeypatch, where, ODD_IDS[shape])
+    out = _status()
+    assert "error" not in out, out
+    assert (
+        out["warning"]
+        == f"Not approved as recorded: {ODD_IDS[shape]} UNVERIFIED. {NOT_RECORDED}"
+    )
+    assert (out["finding_approved"], out["timeline_approved"]) == (
+        (2, 1) if where == "finding" else (1, 2)
+    )
+
+
+@pytest.mark.parametrize("shape", list(ODD_IDS))
+def test_get_findings_names_a_list_or_dict_id_and_lists_every_finding(
+    tmp_path, monkeypatch, shape
+):
+    _with_odd_id(tmp_path, monkeypatch, "finding", ODD_IDS[shape])
+    out = _tool("get_findings")()
+    assert "error" not in out, out
+    assert [f["approval_verification"] for f in out["findings"]] == [
+        "VALID",
+        "UNVERIFIED",
+    ]
+    assert f"{ODD_IDS[shape]} UNVERIFIED" in out["warning"]
 
 
 def test_the_tool_list_says_the_counts_are_by_status():
