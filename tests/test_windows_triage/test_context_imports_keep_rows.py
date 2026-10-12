@@ -153,6 +153,27 @@ def test_nothing_parsed_leaves_the_table_and_says_so(tmp_path, caplog):
     ]
 
 
+def test_a_file_that_fails_to_parse_leaves_the_table_and_names_it(tmp_path, caplog):
+    ctx = _dbs(tmp_path, old=True)
+    before = _table(ctx)
+    files = {
+        "microsoft/built-in/sspicli.yml": HIJACKLIBS["microsoft/built-in/sspicli.yml"],
+        "bad/a.yml": "Name: [unclosed\n",
+        "bad/b.yml": "Name: 5\nVulnerableExecutables: []\n",  # parses, then raises
+    }
+    caplog.set_level(logging.INFO)
+    stats = import_hijacklibs(ctx, _tree(tmp_path / "HijackLibs/yml", files).parent)
+    assert (
+        _table(ctx) == before
+    )  # all or nothing: the parsed file's rows don't replace it
+    assert stats["errors"] == 2
+    error = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert [r.message for r in error] == [
+        "HijackLibs: 2 file(s) failed to parse (bad/a.yml, bad/b.yml); "
+        "hijackable_dlls left unchanged"
+    ]
+
+
 def test_an_interrupted_import_keeps_the_old_table(tmp_path, monkeypatch):
     ctx = _dbs(tmp_path, old=True)
     before = _table(ctx)

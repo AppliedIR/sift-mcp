@@ -37,13 +37,16 @@ def import_hijacklibs(db_path: Path, hijacklibs_dir: Path) -> dict:
         logger.error(f"HijackLibs yml directory not found: {yml_dir}")
         return stats
 
-    # Parse everything first: the table is replaced only when there is data
+    # Parse everything first: the table is replaced only when every file
+    # parses and there is data
     parsed = []
+    failed: list[str] = []
     for yml_file in sorted(yml_dir.rglob("*.yml")):
         try:
             entries = _parse_hijacklib_yaml(yml_file)
         except Exception as e:
             stats["errors"] += 1
+            failed.append(str(yml_file.relative_to(yml_dir)))
             if stats["errors"] <= 10:
                 logger.warning(f"Error processing {yml_file}: {e}")
             continue
@@ -51,6 +54,15 @@ def import_hijacklibs(db_path: Path, hijacklibs_dir: Path) -> dict:
             parsed.append(entries)
         else:
             stats["skipped"] += 1
+    if failed:  # all or nothing: a rebuild would drop the failed files' rows
+        named = ", ".join(failed[:10]) + (
+            f" and {len(failed) - 10} more" if len(failed) > 10 else ""
+        )
+        logger.error(
+            f"HijackLibs: {len(failed)} file(s) failed to parse ({named}); "
+            "hijackable_dlls left unchanged"
+        )
+        return stats
     if not parsed:
         logger.error(
             f"HijackLibs: 0 entries parsed from {yml_dir}; hijackable_dlls left unchanged"
@@ -109,11 +121,7 @@ def _parse_hijacklib_yaml(yml_path: Path) -> list[dict[str, Any]]:
         List of dicts with parsed hijackable DLL entries
     """
     with open(yml_path, encoding="utf-8") as f:
-        try:
-            data = yaml.safe_load(f)
-        except yaml.YAMLError as e:
-            logger.warning(f"YAML parse error in {yml_path}: {e}")
-            return []
+        data = yaml.safe_load(f)  # a YAML error is the caller's: a file that failed
 
     if not data or not data.get("Name"):
         return []
