@@ -52,6 +52,17 @@ _ENV_EXPANSIONS = {
     "\\systemroot\\": "\\windows\\",
 }
 
+# Win32 and NT namespace prefixes (\\?\, \\.\, \??\), then a volume named by
+# device or GUID (\Device\HarddiskVolumeN, \\?\GLOBALROOT\Device\...,
+# \VOLUME{...} as PECmd prints it, \\?\Volume{GUID}). The volume becomes the
+# root, as a drive letter does. UNC (\\?\UNC\...), \Device\Mup and shadow
+# copies are not local volumes and are left as they are. A volume without a
+# leading \ counts only right after a \\?\-style prefix.
+_NT_PREFIX = re.compile(r"(?:\\\\[?.]\\|\\\?\?\\)")
+_VOLUME_PREFIX = re.compile(
+    r"(?:globalroot\\)?(?:device\\harddiskvolume\d+|volume\{[0-9a-f-]+\})(?=\\)"
+)
+
 
 def normalize_path(path: str) -> str:
     r"""
@@ -87,8 +98,21 @@ def normalize_path(path: str) -> str:
     if not path:
         return path
 
-    # Lowercase first so env-var matching is case-insensitive.
-    path = path.lower()
+    # Lowercase first so env-var matching is case-insensitive; one separator
+    # from the start, so a second pass changes nothing.
+    path = path.lower().replace("/", "\\")
+
+    # Device and volume forms of a local path (\\?\C:\..., \Device\HarddiskVolume3\...)
+    prefix = _NT_PREFIX.match(path)
+    if prefix:
+        path = path[prefix.end() :]
+    volume = (
+        _VOLUME_PREFIX.match(path, 0 if prefix else 1)
+        if prefix or path.startswith("\\")
+        else None
+    )
+    if volume:
+        path = path[volume.end() :]
 
     # Env-var / system-path expansion. Runs before drive-strip so
     # `%systemdrive%\windows\...` (placeholder produces "", leaving the
@@ -261,9 +285,9 @@ def parse_service_binary_path(image_path: str) -> str:
     if not image_path:
         return ""
 
+    # An NT prefix (\??\) is stripped by normalize_path below, once: stripped
+    # here too, a second prefix after it would be taken as well
     path = image_path.strip()
-    if path.startswith("\\??\\"):
-        path = path[4:]  # NT object-manager prefix
 
     # Handle quoted paths
     if path.startswith('"'):
