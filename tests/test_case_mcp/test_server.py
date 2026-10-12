@@ -454,6 +454,52 @@ class TestImportBundle:
         )
         assert (case_dir["path"] / "findings.json").read_bytes() == before
 
+    @staticmethod
+    def _audited(case_dir) -> list:
+        lines = [json.loads(ln) for f in (case_dir["path"] / "audit").glob("*.jsonl")
+                 for ln in f.read_text().splitlines() if ln.strip()]  # fmt: skip
+        return [e for e in lines if e.get("tool") == "import_bundle"]
+
+    # beyond every json decoder: 3.10 stops near 1000 levels, 3.12 and 3.13 near 10,000
+    @pytest.mark.parametrize("levels", [20_000, 100_000])
+    def test_a_bundle_too_deep_to_decode_is_refused_by_name_and_audited(
+        self, case_dir, tmp_path, levels
+    ):
+        from vhir_cli.case_io import bundle_too_deep
+
+        finding = {"id": "F-other-001", "title": "t", "status": "DRAFT",
+                   "modified_at": "2026-01-01T00:00:00+00:00"}  # fmt: skip
+        text = json.dumps(finding)[:-1] + ', "x": ' + "[" * levels + "]" * levels + "}"
+        path = tmp_path / "deep.json"
+        path.write_text('{"case_id": "INC-C", "findings": [' + text + "]}")
+        before = {n: (case_dir["path"] / n).read_bytes()
+                  for n in ("findings.json", "timeline.json")}  # fmt: skip
+        srv = create_server()
+        tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
+        result = _parse(tools["import_bundle"](bundle_path=str(path)))
+        assert result == bundle_too_deep()
+        (entry,) = self._audited(case_dir)
+        assert entry["params"] == {"bundle_path": str(path)}
+        assert bundle_too_deep()["message"] in json.dumps(entry)
+        after = {n: (case_dir["path"] / n).read_bytes() for n in before}
+        assert after == before
+
+    def test_a_bundle_100_levels_deep_still_merges_and_is_audited(
+        self, case_dir, tmp_path
+    ):
+        inner: list = []
+        for _ in range(98):  # the item is level 1, its field's lists 2..100
+            inner = [inner]
+        finding = {"id": "F-other-001", "title": "t", "status": "DRAFT",
+                   "modified_at": "2026-01-01T00:00:00+00:00", "x": inner}  # fmt: skip
+        path = tmp_path / "deep.json"
+        path.write_text(json.dumps({"case_id": "INC-C", "findings": [finding]}))
+        srv = create_server()
+        tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
+        result = _parse(tools["import_bundle"](bundle_path=str(path)))
+        assert result["status"] == "merged" and result["findings"]["added"] == 1
+        assert len(self._audited(case_dir)) == 1
+
 
 # ---------------------------------------------------------------------------
 # Tool handlers — audit
