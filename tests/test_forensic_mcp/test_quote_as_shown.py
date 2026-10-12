@@ -250,10 +250,14 @@ def test_a_value_every_record_shares_follows_the_record_holding_the_rest(q):
 
 
 @pytest.fixture
-def lea(c):
-    from case_mcp.server import create_server
+def lea(c, monkeypatch):
+    import case_mcp.server as _cs
+    import forensic_mcp.case.manager as _mgr
 
-    tool = create_server()._tool_manager._tools["log_external_action"].fn
+    # case-mcp fixes its active_case path from HOME when first imported, maybe
+    # by an earlier test: point it at this case's, as `c` does forensic-mcp's
+    monkeypatch.setattr(_cs, "_ACTIVE_CASE_FILE", _mgr._ACTIVE_CASE_FILE)
+    tool = _cs.create_server()._tool_manager._tools["log_external_action"].fn
     ev = c.file("evidence/mem.raw", "MZ....hxxp://evil.example/beacon.php....")
     c.register(ev)
     summary = (
