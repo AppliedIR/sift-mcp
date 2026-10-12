@@ -695,7 +695,9 @@ def create_server() -> FastMCP:
 
         Args:
             command: The command that was executed.
-            output_summary: Summary of what the command produced.
+            output_summary: What the command produced. With no output_files, a
+                finding citing this step is checked against this text, so
+                include the lines you will quote.
             purpose: Why this command was run.
             analyst_override: Override examiner identity.
             hook_audit_id: If the command was captured by the PostToolUse

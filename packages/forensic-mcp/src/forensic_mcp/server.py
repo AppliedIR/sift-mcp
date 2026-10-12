@@ -178,8 +178,10 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
           Required: source, extraction, content, audit_id
           Optional: content_type, purpose, output_ref
           audit_id: REQUIRED — copy from the tool response envelope.
-          content: quote it as the cited tool returned it; it's checked
-          against that tool's saved output (or the query's returned records).
+          content: quote it as the cited tool returned it, JSON lines
+          included; it's checked against that tool's saved output (or the
+          query's returned records; for log_external_action with no
+          output_files, its output_summary).
 
         Each artifact gets a provenance grade, with a reason for any but FULL:
           FULL: every link recorded, from the cited output to registered evidence.

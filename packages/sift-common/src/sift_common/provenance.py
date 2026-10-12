@@ -627,12 +627,13 @@ def _found_in(path, sha256, lines: list[str], cap: int | None) -> tuple[set, str
     return (found if digest.hexdigest() == sha256 else set()), ""
 
 
-def _saved_values(path, sha256, pairs=None) -> tuple[list[str] | None, str]:
+def _saved_values(path, sha256, pairs=None, shown=None) -> tuple[list[str] | None, str]:
     """A saved response's values as returned: the JSON decoded, every value
     normalized; the text itself when it isn't JSON. None when it's missing or
     no longer has its recorded SHA-256, or too large to check, with why.
     Never the JSON-escaped text. Given a set, `pairs` also gets each
-    `"field": value` line the decoded JSON holds (see `_pairs`)."""
+    `"field": value` line the decoded JSON holds (see `_pairs`), and `shown`
+    each line of the reply as the AI was shown it (see `_rendered`)."""
     try:
         if os.path.getsize(path) > _QUOTE_FILE_CAP:
             return None, f"saved response too large to check ({path})"
@@ -648,6 +649,8 @@ def _saved_values(path, sha256, pairs=None) -> tuple[list[str] | None, str]:
         return [_norm(text)], ""
     if pairs is not None:
         pairs.update(_pairs(decoded))
+    if shown is not None:
+        shown.update(_rendered(decoded))
     return [v for _f, v in _flat(decoded)], ""
 
 
@@ -663,6 +666,21 @@ def _pairs(record, key=None) -> list[str]:
         return []
     value = f'"{record}"' if isinstance(record, str) else json.dumps(record)
     return [_norm(f'"{key}": {value}')]
+
+
+_STRUCTURAL = {"{", "}", "[", "]", "{}", "[]"}
+
+
+def _bare(q: str) -> str:
+    """A line without the one trailing comma an indented JSON reply ends it with."""
+    return q[:-1] if q.endswith(",") else q
+
+
+def _rendered(obj) -> list[str]:
+    """`obj`'s lines as an MCP reply shows it (indent=2 JSON), normalized,
+    each without its trailing comma, in order: what a quote copies."""
+    text = json.dumps(obj, indent=2, ensure_ascii=False, default=str)
+    return [n for n in (_bare(_norm(line)) for line in text.splitlines()) if n]
 
 
 def _in_values(quote: list[str], values: list[str], pairs=frozenset()) -> bool:
@@ -783,7 +801,8 @@ def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
     if isinstance(e.get("reference"), dict):
         resp = e["reference"].get("response") or {}
         pairs: set = set()
-        values, why = (_saved_values(relocated(case, e, resp.get("path")), resp.get("sha256"), pairs)
+        values, why = (_saved_values(relocated(case, e, resp.get("path")), resp.get("sha256"),
+                                     pairs, pairs)
                        if resp else (None, ""))  # fmt: skip
         if resp and (values is None or not _in_values(quote, values, pairs)):
             return _unverified(why or f"the quote isn't in {audit_id}'s saved response")
@@ -796,11 +815,27 @@ def trace_artifact(case: Case, audit_id: str, content: str) -> Trace:
                        "records no results to follow", "run the query again and cite that",
                        reason=f"{BEFORE_064}: {audit_id} records no results to follow")  # fmt: skip
     missing, skipped = _run_missing(case, e, quote)
+    if missing and (said := _declared_summary(e)) is not None:
+        missing = [q for q in missing if q not in said]
     if missing:
         return _unverified(f"{missing[0]!r} isn't in {audit_id}'s saved output or its "
                            "recorded output files, as they were recorded"
                            + "".join(f"; {why}" for why in skipped))  # fmt: skip
     return trace_op(case, audit_id)
+
+
+def _declared_summary(e: dict) -> str | None:
+    """A log_external_action entry's own output_summary, normalized, when the
+    step recorded no output to check a quote against."""
+    if e.get("tool") != "log_external_action":
+        return None
+    rs = e.get("result_summary") if isinstance(e.get("result_summary"), dict) else {}
+    if rs.get("output_file") or rs.get("output_files") or e.get("outputs"):
+        return None
+    said = (e.get("params") if isinstance(e.get("params"), dict) else {}).get(
+        "output_summary"
+    )
+    return _norm(said) if isinstance(said, str) else None
 
 
 def _trace_query(
@@ -813,18 +848,30 @@ def _trace_query(
         return _broken("no-results-recorded", f"{aid} recorded no results to follow",
                        "run the query again and cite that")  # fmt: skip
     resp = e.get("response") if isinstance(e.get("response"), dict) else {}
+    shown: set = set()
     values, why = _saved_values(
-        relocated(case, e, resp.get("path")), resp.get("sha256")
+        relocated(case, e, resp.get("path")), resp.get("sha256"), shown=shown
     )
     if values is None:
         return _unverified(
             why or f"{aid}'s saved response is missing or changed since the query"
         )
-    if not _in_values(quote, values):
+    if not _in_values(quote, values, shown):
         return _unverified(f"the quote isn't in what {aid} returned")
     if docs and e.get("tool") != "idx_list_detections":
         return _match_back(case, e, line, docs, quote)
     # a summary (or detections) counts records it can't trace: never FULL
+    if (unrecorded := _summary_break(e, params)) is not None:
+        return unrecorded
+    follow = [(d.get("ingest_audit_id", ""), d) for d in docs] or [
+        (i, None) for i in ingests
+    ]
+    return _follow(case, e, line, follow)
+
+
+def _summary_break(e: dict, params: dict) -> Trace | None:
+    """A summary's break when it counted records no listed ingest wrote."""
+    aid = e["audit_id"]
     missing = _count(params.get("result_ingests_missing"))
     overflow = _count(params.get("result_ingests_overflow"))
     if missing:
@@ -835,10 +882,7 @@ def _trace_query(
         return _broken("ingests-unrecorded", f"{aid}: ingests not fully listed "
                        f"({overflow})", "narrow the query so every ingest it counts "
                        "is listed, and cite that")  # fmt: skip
-    follow = [(d.get("ingest_audit_id", ""), d) for d in docs] or [
-        (i, None) for i in ingests
-    ]
-    return _follow(case, e, line, follow)
+    return None
 
 
 def _count(value) -> int:
@@ -849,35 +893,111 @@ def _match_back(
     case: Case, e: dict, line: bytes, docs: list[dict], quote: list[str]
 ) -> Trace:
     """Each quoted line in a returned record; only those records are followed.
-    A line found only in a record's enrichment fields also links to the
-    operation that wrote them: reference data, annotated, never the grade."""
+    A line is in a record when it is in one of its values, or is a whole line
+    of the record as the reply showed it (its evidence fields, or one
+    enrichment group's). A quote with a JSON line (`"field": value`, a brace)
+    counts only when its lines appear together and in order in one record as
+    shown, and only those records are followed; bare values follow the
+    records holding every line, when any does. A line only of the reply's own
+    (`"total": 2`) speaks for every record it returned, and the other checks
+    still run. A line found only in a record's enrichment fields also links to
+    the operation that wrote them: reference data, annotated, never the grade."""
+    aid = e["audit_id"]
     try:
         path = relocated(case, e, e["response"]["path"])
         returned = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError, KeyError, TypeError):
         returned = {}
-    records = (
-        returned.get("results")
-        if isinstance(returned.get("results"), list)
-        else [returned]
+    listed = isinstance(returned, dict) and isinstance(returned.get("results"), list)
+    records = [
+        r
+        for r in (returned["results"] if listed else [returned])
+        if isinstance(r, dict)
+    ]
+    top = (
+        set(_rendered({k: v for k, v in returned.items() if k != "results"}))
+        if listed
+        else set()
     )
+    # each record as the reply showed it, one line each, to find a quote's lines in
+    texts = ["\n" + "\n".join(_rendered(r)) + "\n" for r in records]
+
+    def groups(
+        r,
+    ):  # each record's lines as shown: its evidence fields, each enrichment group
+        parts = [{k: v for k, v in r.items() if k.split(".")[0] not in _ENRICHMENT}]
+        parts += [
+            {k: v for k, v in r.items() if k.split(".")[0] == g} for g in _ENRICHMENT
+        ]
+        names = ["evidence", *_ENRICHMENT]
+        return [
+            (n, set(_rendered(sub))) for n, sub in zip(names, parts, strict=True) if sub
+        ]
+
+    grouped = [(r, groups(r)) for r in records]
+    # each record's values, and all of them in one string: a line is looked
+    # for once per record, and its fields only in a record that holds it
+    flats = [
+        (r, flat, "\0".join(v for _f, v in flat))
+        for r in records
+        for flat in [_flat(r)]
+    ]
     by_key = {(d.get("_index"), d.get("_id")): d for d in docs}
-    followed, enriched = {}, {}  # enriched: record -> the groups its lines matched
+    followed, enriched, summary = (
+        {},
+        {},
+        False,
+    )  # enriched: record -> the groups matched
+    per_line = []  # (quoted line, its hits)
+    block = []  # the quoted lines that are a record's, braces included, in order
     for q in quote:
+        if _bare(q) in _STRUCTURAL:
+            block.append(q)  # a brace names no record, but is part of what was shown
+            continue
         hits = [
             (r, f)
-            for r in records
-            if isinstance(r, dict)
-            for f, v in _flat(r)
+            for r, flat, joined in flats
+            if q in joined
+            for f, v in flat
             if q in v
         ]
-        ev = [r for r, f in hits if f.split(".")[0] not in _ENRICHMENT]
+        hits += [(r, g) for r, gl in grouped for g, lines in gl if _bare(q) in lines]
         if not hits:
-            return _unverified(f"{q!r} is in no record {e['audit_id']} returned")
+            if _bare(q) in top:
+                summary = True
+                continue
+            return _unverified(f"{q!r} is in no record {aid} returned")
+        per_line.append((q, hits))
+        block.append(q)
+    last = block[-1] if block else ""
+    if last.startswith('"') and '": ' in last and _bare(last).endswith(("{", "[")):
+        # an opener claims the object or list it opens: it needs its child quoted
+        return _unverified(f"{last!r} isn't followed by a line it opens: quote the lines "
+                           "under it too")  # fmt: skip
+    if len(block) > 1 and any(_bare(q) in _STRUCTURAL or (q.startswith('"') and '": ' in q)
+                              for q in block):  # fmt: skip
+        # JSON lines count only as shown: together, in order, in one record
+        wanted = "\n" + "\n".join(_bare(q) for q in block) + "\n"
+        whole = {
+            id(r) for r, text in zip(records, texts, strict=True) if wanted in text
+        }
+        if not whole:
+            return _unverified(
+                f"lines don't appear together in one returned record ({aid})"
+            )
+    else:
+        # bare values: the records holding every line, when any does, are
+        # followed, not every record sharing one of them
+        whole = (set.intersection(*[{id(r) for r, _f in h} for _q, h in per_line])
+                 if per_line else set())  # fmt: skip
+    for _q, hits in per_line:
+        if whole:
+            hits = [(r, f) for r, f in hits if id(r) in whole]
+        ev = [r for r, f in hits if f.split(".")[0] not in _ENRICHMENT]
         for r in ev or [r for r, _f in hits]:
             d = by_key.get((r.get("_index"), r.get("_id")))
             if d is None:
-                return _broken("no-results-recorded", f"{e['audit_id']} didn't record the "
+                return _broken("no-results-recorded", f"{aid} didn't record the "
                                f"record {r.get('_id')} it returned")  # fmt: skip
             key = (d.get("_index"), d.get("_id"))
             followed[key] = d
@@ -885,9 +1005,20 @@ def _match_back(
                 enriched.setdefault(key, set()).update(
                     f.split(".")[0] for hit, f in hits if hit is r
                 )
+    if summary:  # a line of the reply's own speaks for every record it returned
+        params = e.get("params") if isinstance(e.get("params"), dict) else {}
+        if (unrecorded := _summary_break(e, params)) is not None:
+            return unrecorded
+        followed.update(by_key)
     t = _follow(
         case, e, line, [(d.get("ingest_audit_id", ""), d) for d in followed.values()]
     )
+    counted = returned.get("total") if listed else None
+    if (summary and isinstance(counted, int) and counted > len(records)
+            and _WORST.index(t.grade) > _WORST.index("AMBIGUOUS")):  # fmt: skip
+        t = Trace("AMBIGUOUS", t.root, t.roots, t.links, t.candidates, None,
+                  f"{aid} counted {counted} records and returned {len(records)}: "
+                  "the ones not returned aren't traced")  # fmt: skip
     notes = []
     for key, groups in enriched.items():  # each record's own steps, per group matched
         d = followed[key]
