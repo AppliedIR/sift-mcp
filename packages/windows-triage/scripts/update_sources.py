@@ -503,6 +503,13 @@ def update_context_source(
                 logger.info(
                     f"  Imported {stats['entries_imported']} hijackable DLL entries"
                 )
+                if stats["errors"] or not stats["entries_imported"]:
+                    # never recorded as synced: the next update tries again
+                    logger.error(
+                        f"  HijackLibs: {stats['errors']} error(s), "
+                        f"{stats['entries_imported']} entries; not recorded as synced"
+                    )
+                    return False
 
             set_last_sync(
                 db_path, source["db_source_key"], status["latest_commit"], source["url"]

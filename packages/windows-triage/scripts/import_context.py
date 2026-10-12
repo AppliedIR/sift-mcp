@@ -53,6 +53,7 @@ def main():
         sys.exit(1)
 
     total_stats = {}
+    problems: list[str] = []  # an importer with errors, or nothing imported
 
     # Import LOLBAS
     lolbas_dir = sources_dir / "LOLBAS"
@@ -61,6 +62,10 @@ def main():
         stats = import_lolbas(db_path=context_db, lolbas_dir=lolbas_dir)
         logger.info(f"  LOLBins imported: {stats['lolbins_imported']}")
         total_stats["lolbins"] = stats["lolbins_imported"]
+        if stats["errors"] or not stats["lolbins_imported"]:
+            problems.append(
+                f"LOLBAS: {stats['errors']} error(s), {stats['lolbins_imported']} imported"
+            )
     else:
         logger.warning("LOLBAS not cloned. Skipping.")
         logger.warning(
@@ -78,6 +83,10 @@ def main():
         logger.info(f"  Malicious drivers:  {stats['malicious_imported']}")
         logger.info(f"  Total samples:      {stats['samples_imported']}")
         total_stats["drivers"] = stats["samples_imported"]
+        if stats["errors"] or not stats["samples_imported"]:
+            problems.append(
+                f"LOLDrivers: {stats['errors']} error(s), {stats['samples_imported']} imported"
+            )
     else:
         logger.warning("LOLDrivers not cloned. Skipping.")
         logger.warning(
@@ -92,6 +101,15 @@ def main():
         logger.info(f"  Hijackable DLLs:    {stats['dlls_imported']}")
         logger.info(f"  Vulnerable entries: {stats['entries_imported']}")
         total_stats["hijackable_dlls"] = stats["entries_imported"]
+        if stats["skipped_files"]:
+            names = ", ".join(stats["skipped_files"][:10])
+            problems.append(
+                f"HijackLibs: {len(stats['skipped_files'])} file(s) skipped, unreadable: {names}"
+            )
+        elif stats["errors"] or not stats["entries_imported"]:
+            problems.append(
+                f"HijackLibs: {stats['errors']} error(s), {stats['entries_imported']} entries"
+            )
     else:
         logger.warning("HijackLibs not cloned. Skipping.")
         logger.warning("  Clone: git clone https://github.com/wietze/HijackLibs.git")
@@ -127,6 +145,11 @@ def main():
         print(f"  {table}: {count}")
 
     conn.close()
+    if problems:  # a source that failed or found nothing never passes as imported
+        print("\nIMPORT FAILED:")
+        for line in problems:
+            print(f"  {line}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

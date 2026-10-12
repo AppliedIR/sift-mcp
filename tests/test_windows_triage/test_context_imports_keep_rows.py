@@ -119,11 +119,12 @@ def test_every_install_path_and_type_is_a_row(tmp_path, caplog, old):
     )
     key, rows = _table(ctx)
     assert (key, len(rows)) == ("NEW", 6)
-    assert stats == {
-        "dlls_imported": 4, "entries_imported": 6, "duplicates": 1, "errors": 0, "skipped": 0
+    assert stats == {  # was dlls_imported 4: the files, where sqlite.dll is one DLL
+        "dlls_imported": 3, "entries_imported": 6, "duplicates": 1, "errors": 0, "skipped": 0,
+        "skipped_files": [],
     }  # fmt: skip
     assert (
-        "Imported 4 hijackable DLLs (6 vulnerable exe entries; 1 duplicate entries not stored)"
+        "Imported 3 hijackable DLLs (6 vulnerable exe entries; 1 duplicate entries not stored)"
         in (caplog.messages)
     )
     sspicli = _scenarios(_ask(tmp_path, "check_hijackable_dll", "sspicli.dll"))
@@ -153,9 +154,11 @@ def test_nothing_parsed_leaves_the_table_and_says_so(tmp_path, caplog):
     ]
 
 
-def test_a_file_that_fails_to_parse_leaves_the_table_and_names_it(tmp_path, caplog):
+def test_a_file_that_fails_to_parse_is_skipped_and_named(tmp_path, caplog):
+    """Was all or nothing (the table left unchanged), which let one bad
+    upstream file block every later update: now the file is skipped by name
+    and counted, and the rest replace the table."""
     ctx = _dbs(tmp_path, old=True)
-    before = _table(ctx)
     files = {
         "microsoft/built-in/sspicli.yml": HIJACKLIBS["microsoft/built-in/sspicli.yml"],
         "bad/a.yml": "Name: [unclosed\n",
@@ -163,14 +166,12 @@ def test_a_file_that_fails_to_parse_leaves_the_table_and_names_it(tmp_path, capl
     }
     caplog.set_level(logging.INFO)
     stats = import_hijacklibs(ctx, _tree(tmp_path / "HijackLibs/yml", files).parent)
-    assert (
-        _table(ctx) == before
-    )  # all or nothing: the parsed file's rows don't replace it
-    assert stats["errors"] == 2
+    key, rows = _table(ctx)
+    assert (key, len(rows)) == ("NEW", 2)  # sspicli's two install paths
+    assert (stats["errors"], stats["skipped_files"]) == (2, ["bad/a.yml", "bad/b.yml"])
     error = [r for r in caplog.records if r.levelname == "ERROR"]
     assert [r.message for r in error] == [
-        "HijackLibs: 2 file(s) failed to parse (bad/a.yml, bad/b.yml); "
-        "hijackable_dlls left unchanged"
+        "HijackLibs: 2 file(s) skipped, unreadable: bad/a.yml, bad/b.yml"
     ]
 
 

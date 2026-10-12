@@ -175,6 +175,11 @@ def build(
                         # Try to use existing cache if available
                         if not cache_path.exists():
                             continue
+                    elif strict_sources and not fetch_result.records:
+                        # a sync that found nothing is no source for a release
+                        result.status = "error"
+                        result.errors.append(f"{name}: 0 records")
+                        return result
 
             # Load from cache
             if cache_path.exists():

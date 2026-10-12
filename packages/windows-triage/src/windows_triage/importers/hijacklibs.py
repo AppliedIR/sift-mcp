@@ -32,15 +32,17 @@ def import_hijacklibs(db_path: Path, hijacklibs_dir: Path) -> dict:
         "skipped": 0,
     }
 
+    stats["skipped_files"] = []  # files that can't be read, by name
     yml_dir = hijacklibs_dir / "yml"
     if not yml_dir.exists():
         logger.error(f"HijackLibs yml directory not found: {yml_dir}")
+        stats["errors"] += 1  # an error, not an empty source
         return stats
 
-    # Parse everything first: the table is replaced only when every file
-    # parses and there is data
+    # Parse everything first: a file that can't be read is skipped by name and
+    # counted, and the table is rebuilt from the rest when there is data
     parsed = []
-    failed: list[str] = []
+    failed: list[str] = stats["skipped_files"]
     for yml_file in sorted(yml_dir.rglob("*.yml")):
         try:
             entries = _parse_hijacklib_yaml(yml_file)
@@ -54,15 +56,11 @@ def import_hijacklibs(db_path: Path, hijacklibs_dir: Path) -> dict:
             parsed.append(entries)
         else:
             stats["skipped"] += 1
-    if failed:  # all or nothing: a rebuild would drop the failed files' rows
+    if failed:  # one unreadable upstream file never blocks the others
         named = ", ".join(failed[:10]) + (
             f" and {len(failed) - 10} more" if len(failed) > 10 else ""
         )
-        logger.error(
-            f"HijackLibs: {len(failed)} file(s) failed to parse ({named}); "
-            "hijackable_dlls left unchanged"
-        )
-        return stats
+        logger.error(f"HijackLibs: {len(failed)} file(s) skipped, unreadable: {named}")
     if not parsed:
         logger.error(
             f"HijackLibs: 0 entries parsed from {yml_dir}; hijackable_dlls left unchanged"
@@ -77,8 +75,9 @@ def import_hijacklibs(db_path: Path, hijacklibs_dir: Path) -> dict:
             "BEGIN; DROP TABLE IF EXISTS hijackable_dlls;" + CONTEXT_SCHEMA
         )
         cursor = conn.cursor()
+        # distinct DLLs: one named in two vendors' files is one DLL
+        stats["dlls_imported"] = len({e["dll_name_lower"] for es in parsed for e in es})
         for entries in parsed:
-            stats["dlls_imported"] += 1
             for entry in entries:
                 cursor.execute(
                     """
@@ -132,7 +131,10 @@ def _parse_hijacklib_yaml(yml_path: Path) -> list[dict[str, Any]]:
 
     # Get expected locations
     expected_paths = []
-    for loc in data.get("ExpectedLocations", []):
+    # a list key that is present but empty loads as None: read it as none
+    for loc in data.get("ExpectedLocations") or []:
+        if not isinstance(loc, str):
+            continue
         # Normalize path variables
         normalized = _normalize_path_var(loc)
         if normalized:
@@ -141,7 +143,9 @@ def _parse_hijacklib_yaml(yml_path: Path) -> list[dict[str, Any]]:
     entries = []
 
     # Process each vulnerable executable
-    for vuln_exe in data.get("VulnerableExecutables", []):
+    for vuln_exe in data.get("VulnerableExecutables") or []:
+        if not isinstance(vuln_exe, dict):  # a null item: skipped, not the file
+            continue
         exe_path = vuln_exe.get("Path", "")
         if not exe_path:
             continue

@@ -161,6 +161,8 @@ def _parse_lolbas_yml(yml_path: Path, category: str) -> dict[str, Any] | None:
 
     # a list key that is present but empty loads as None
     for cmd in data.get("Commands") or []:
+        if not isinstance(cmd, dict):  # a null item: skipped, not the binary
+            continue
         if cmd.get("Category"):
             functions.add(cmd["Category"])
         if cmd.get("MitreID"):
@@ -169,7 +171,7 @@ def _parse_lolbas_yml(yml_path: Path, category: str) -> dict[str, Any] | None:
     # Extract expected paths
     expected_paths = []
     for path_entry in data.get("Full_Path") or []:
-        if path_entry.get("Path"):
+        if isinstance(path_entry, dict) and path_entry.get("Path"):
             expected_paths.append(path_entry["Path"].lower())
 
     # Extract detection info
