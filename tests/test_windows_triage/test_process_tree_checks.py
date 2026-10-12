@@ -365,12 +365,22 @@ def test_machine_and_built_in_accounts_are_not_a_person(srv, row):
     check(srv, *row)
 
 
+YAML_ACCOUNTS = """\
+#   user_type: SYSTEM (SYSTEM, LOCAL SERVICE or NETWORK SERVICE, bare or under
+#              NT AUTHORITY, by name or SID; a machine account NAME$ is not
+#              judged), USER (any account but a service, machine (NAME$) or
+#              other built-in one), or EITHER (any account)
+#   valid_users: Accounts always accepted for this process, beside its user_type
+#                (a domain-less entry also matches under Window Manager, and a
+#                DWM-<n> entry stands for any session number). On a SYSTEM rule,
+#                SYSTEM (bare or under NT AUTHORITY) always passes; LOCAL SERVICE
+#                and NETWORK SERVICE pass only when listed here or when this is null
+#   min_instances:"""
+
+
 def test_the_yaml_says_how_accounts_are_read():
-    text = YAML.read_text()
-    assert "a machine account NAME$ is not\n#              judged)" in text
-    assert "other built-in one), or EITHER (any account)\n#   valid_users:" in text
-    assert "DWM-<n> entry stands for any session number). On a SYSTEM rule," in text
-    assert "SYSTEM (bare or under NT AUTHORITY) always passes;" in text
+    # the whole block, up to the next key: an added or missing sentence fails
+    assert YAML_ACCOUNTS in YAML.read_text()
 
 
 @pytest.mark.parametrize("row", ROWS_1, ids=[label(r) for r in ROWS_1])
