@@ -55,6 +55,8 @@ from typing import Any
 
 import yaml
 
+from ._lists import items
+
 logger = logging.getLogger(__name__)
 
 
@@ -155,10 +157,7 @@ def _parse_lolbas_yml(yml_path: Path, category: str) -> dict[str, Any] | None:
     functions = set()
     mitre_techniques = set()
 
-    # a list key that is present but empty loads as None
-    for cmd in data.get("Commands") or []:
-        if not isinstance(cmd, dict):  # a null item: skipped, not the binary
-            continue
+    for cmd in items(data, "Commands", dict):
         if cmd.get("Category"):
             functions.add(cmd["Category"])
         if cmd.get("MitreID"):
@@ -166,8 +165,8 @@ def _parse_lolbas_yml(yml_path: Path, category: str) -> dict[str, Any] | None:
 
     # Extract expected paths
     expected_paths = []
-    for path_entry in data.get("Full_Path") or []:
-        if isinstance(path_entry, dict) and path_entry.get("Path"):
+    for path_entry in items(data, "Full_Path", dict):
+        if path_entry.get("Path"):
             expected_paths.append(path_entry["Path"].lower())
 
     # Extract detection info

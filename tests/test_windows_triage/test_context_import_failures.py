@@ -292,3 +292,56 @@ def test_import_context_fails_on_a_process_expectations_error(tmp_path, capsys):
         mod.main()
     assert e.value.code not in (0, None)
     assert "Process expectations: 1 error(s), 0 imported" in capsys.readouterr().out
+
+
+# --- a list key that isn't a list is a file error, not read as empty ---
+
+NOT_A_LIST = {  # (source, key, form) -> the odd file, beside the good ones
+    ("hijacklibs", "VulnerableExecutables", "mapping"):
+        "Name: odd.dll\nVendor: X\nVulnerableExecutables:\n  Path: 'C:\\x\\x.exe'\n  Type: Sideloading\n",
+    ("hijacklibs", "VulnerableExecutables", "string"):
+        "Name: odd.dll\nVendor: X\nVulnerableExecutables: 'C:\\x\\x.exe'\n",
+    ("hijacklibs", "ExpectedLocations", "mapping"):
+        f"Name: odd.dll\nVendor: X\nExpectedLocations:\n  a: '%SYSTEM32%'\nVulnerableExecutables:\n{EXE}",
+    ("hijacklibs", "ExpectedLocations", "string"):
+        f"Name: odd.dll\nVendor: X\nExpectedLocations: '%SYSTEM32%'\nVulnerableExecutables:\n{EXE}",
+    ("lolbas", "Commands", "mapping"):
+        "Name: b.exe\nCommands:\n  Command: b.exe x\n  Category: Execute\n",
+    ("lolbas", "Commands", "string"): "Name: b.exe\nCommands: b.exe x\n",
+    ("lolbas", "Full_Path", "mapping"): "Name: b.exe\nFull_Path:\n  Path: C:\\b.exe\n",
+    ("lolbas", "Full_Path", "string"): "Name: b.exe\nFull_Path: C:\\b.exe\n",
+    ("lolbas", "Full_Path", "item a string"): "Name: b.exe\nFull_Path:\n- C:\\b.exe\n",
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("case", NOT_A_LIST, ids=["-".join(c) for c in NOT_A_LIST])
+def test_a_list_key_that_isnt_a_list_is_a_file_error_and_not_recorded(
+    tmp_path, caplog, case
+):
+    source, key, _ = case
+    if source == "hijacklibs":
+        files = {f"yml/{k}": v for k, v in HIJACKLIBS.items()} | {
+            "yml/x/odd.yml": NOT_A_LIST[case]
+        }
+    else:
+        files = {
+            "yml/OSBinaries/a.yml": GOOD["lolbas"][2],
+            "yml/OSBinaries/b.yml": NOT_A_LIST[case],
+        }
+    ctx = _dbs(tmp_path)
+    us = _update_sources()
+    us.shallow_clone = lambda url, dest, depth=1: bool(_tree(dest, files))
+    us.SOURCES[source]["db"] = ctx.name
+    with caplog.at_level("WARNING"):
+        ok = us.update_context_source(
+            source, tmp_path, {"latest_commit": "c1"}, False, False
+        )
+    assert ok is False
+    assert us.get_last_sync(ctx, us.SOURCES[source]["db_source_key"]) is None
+    said = [r.getMessage() for r in caplog.records]
+    assert any(m.startswith("Error processing ") and key in m for m in said), said
+    importer = {"hijacklibs": import_hijacklibs, "lolbas": import_lolbas}[source]
+    stats = importer(ctx, _tree(tmp_path / "direct", files))
+    assert stats["errors"] == 1
+    if source == "hijacklibs":
+        assert stats["skipped_files"] == ["x/odd.yml"]

@@ -9,6 +9,7 @@ from typing import Any
 import yaml
 
 from ..db.schemas import CONTEXT_SCHEMA
+from ._lists import items
 
 logger = logging.getLogger(__name__)
 
@@ -131,10 +132,7 @@ def _parse_hijacklib_yaml(yml_path: Path) -> list[dict[str, Any]]:
 
     # Get expected locations
     expected_paths = []
-    # a list key that is present but empty loads as None: read it as none
-    for loc in data.get("ExpectedLocations") or []:
-        if not isinstance(loc, str):
-            continue
+    for loc in items(data, "ExpectedLocations", str):
         # Normalize path variables
         normalized = _normalize_path_var(loc)
         if normalized:
@@ -143,9 +141,7 @@ def _parse_hijacklib_yaml(yml_path: Path) -> list[dict[str, Any]]:
     entries = []
 
     # Process each vulnerable executable
-    for vuln_exe in data.get("VulnerableExecutables") or []:
-        if not isinstance(vuln_exe, dict):  # a null item: skipped, not the file
-            continue
+    for vuln_exe in items(data, "VulnerableExecutables", dict):
         exe_path = vuln_exe.get("Path", "")
         if not exe_path:
             continue
