@@ -16,6 +16,14 @@ SENTENCE = (
     ": weaker evidence than an audit_id, graded as shell evidence, and a command"
     " with an MCP route is marked so in the audit"
 )
+# the OpenSearch guidance on long evtx values, as approved; added after a space
+EVTX_SENTENCE = (
+    "An evtx winlog.event_data keyword value longer than its field's limit is kept"
+    " in the record but not indexed: 8,191 characters (ScriptBlockText: 32,766), or"
+    " 1,024 for fields other than ScriptBlockText in records stored before the"
+    " case's index was updated. A search on that field doesn't find it, so 0 hits"
+    " there doesn't prove absence."
+)
 
 
 def _strings():
@@ -31,10 +39,15 @@ def test_forensic_mcp_says_shell_evidence_is_graded_and_marked():
     assert SENTENCE in _strings()["FORENSIC_MCP"]
 
 
+def test_opensearch_says_long_evtx_values_are_not_indexed():
+    assert EVTX_SENTENCE in _strings()["OPENSEARCH"]
+
+
 def test_the_backend_instructions_stay_within_their_budget():
     strings = _strings()
     assert len(strings) == 10
-    assert sum(len(v) for v in strings.values()) <= BASE_TOTAL + len(SENTENCE)
+    budget = BASE_TOTAL + len(SENTENCE) + len(EVTX_SENTENCE) + 1
+    assert sum(len(v) for v in strings.values()) <= budget
 
 
 def test_the_agents_core_says_mcp_first_by_advice_never_a_block():
