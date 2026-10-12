@@ -213,3 +213,36 @@ async def test_r7_two_overlapping_failures_and_a_restart_keep_the_new_session(ba
         await in_own_task(old_stack.aclose())
     except BaseException:  # noqa: BLE001 - its own task's scopes: cleanup only
         pass
+
+
+async def test_r8_an_old_sessions_late_failure_never_resets_the_replacement(backend):
+    """Codex's ordering on c594912: two calls pending on the old session; the
+    first fails, a request restarts the backend, then the second fails. The
+    second is the old child's failure: the replacement stays and answers."""
+    import anyio
+
+    old_pid = await _pid(backend)
+    gates = [asyncio.Event(), asyncio.Event()]
+    held = []
+
+    async def held_call(name, arguments):  # the old session's calls, failing on cue
+        gate = gates[len(held)]
+        held.append(gate)
+        await gate.wait()
+        raise anyio.ClosedResourceError()
+
+    backend._session.call_tool = held_call
+    first = asyncio.ensure_future(backend.call_tool("ping", {}))
+    second = asyncio.ensure_future(backend.call_tool("ping", {}))
+    await asyncio.sleep(0.1)
+    gates[0].set()
+    with pytest.raises(anyio.ClosedResourceError):
+        await first
+    assert backend.started is False  # the current session's failure: reset
+    await in_own_task(backend.start())  # the next request restarts it
+    new = backend._session
+    gates[1].set()
+    with pytest.raises(anyio.ClosedResourceError):
+        await second  # it still fails: it ran on the old child
+    assert backend.started is True and backend._session is new
+    assert await _pid(backend) != old_pid

@@ -53,6 +53,14 @@ class StdioMCPBackend(MCPBackend):
         self._session: ClientSession | None = None
         self._exit_stack: AsyncExitStack | None = None
         self._tools_cache: list[Tool] | None = None
+        self._generation = 0  # bumped by each start: which session a call ran on
+
+    async def _reset_if_current(self, generation: int, *, context: str) -> None:
+        """Reset after the child of session `generation` is gone. A newer
+        session (another request restarted the backend meanwhile) is left
+        alone: this failure was the old child's."""
+        if generation == self._generation:
+            await self._safe_cleanup(context=context)
 
     async def _safe_cleanup(self, *, context: str) -> None:
         """Cleanup that handles None _exit_stack and downgrades cancel-scope noise.
@@ -147,6 +155,7 @@ class StdioMCPBackend(MCPBackend):
             )
             self._instructions = result.instructions
             self._server_version = _version_of(result)
+            self._generation += 1
             self._started = True
             logger.info("Backend %s started (stdio)", self.name)
         except asyncio.TimeoutError:
@@ -195,6 +204,7 @@ class StdioMCPBackend(MCPBackend):
             raise RuntimeError(f"Backend {self.name} is not started")
 
         if self._tools_cache is None:
+            generation = self._generation
             try:
                 result = await asyncio.wait_for(
                     self._session.list_tools(), timeout=_TOOL_LIST_TIMEOUT
@@ -202,7 +212,9 @@ class StdioMCPBackend(MCPBackend):
                 self._tools_cache = result.tools
             except Exception as exc:
                 if _gone(exc):  # restarted lazily by the gateway's next call
-                    await self._safe_cleanup(context="list_tools cleanup after error")
+                    await self._reset_if_current(
+                        generation, context="list_tools cleanup after error"
+                    )
                 raise
         return self._tools_cache
 
@@ -210,6 +222,7 @@ class StdioMCPBackend(MCPBackend):
         if not self._started or not self._session:
             raise RuntimeError(f"Backend {self.name} is not started")
 
+        generation = self._generation
         try:
             result = await asyncio.wait_for(
                 self._session.call_tool(name, arguments), timeout=_TOOL_CALL_TIMEOUT
@@ -217,12 +230,15 @@ class StdioMCPBackend(MCPBackend):
             return ToolResult(result.content, is_error=bool(result.isError))
         except Exception as exc:
             if _gone(exc):  # restarted lazily by the gateway's next call
-                await self._safe_cleanup(context="call_tool cleanup after error")
+                await self._reset_if_current(
+                    generation, context="call_tool cleanup after error"
+                )
             raise
 
     async def health_check(self) -> dict:
         if not self._started or not self._session:
             return {"status": "stopped", "type": "stdio"}
+        generation = self._generation
         try:
             await self.list_tools()
             # the cache answers without the child: ask the child itself
@@ -237,7 +253,9 @@ class StdioMCPBackend(MCPBackend):
                     "error": f"no answer to a ping within {_PING_TIMEOUT} s"}  # fmt: skip
         except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
             if _gone(exc):
-                await self._safe_cleanup(context="health check cleanup after error")
+                await self._reset_if_current(
+                    generation, context="health check cleanup after error"
+                )
             logger.warning(
                 "Backend %s health check failed: %s: %s",
                 self.name,
