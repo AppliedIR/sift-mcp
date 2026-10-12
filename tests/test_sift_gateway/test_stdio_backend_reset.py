@@ -86,14 +86,14 @@ async def _kill(b) -> int:
     return pid
 
 
-async def test_r1_a_call_after_the_child_died_fails_and_resets(backend):
+async def test_a_call_after_the_child_died_fails_and_resets(backend):
     await _kill(backend)
     with pytest.raises(Exception):
         await backend.call_tool("ping", {})
     assert backend.started is False  # was True: every later call failed too
 
 
-async def test_r1b_a_child_that_dies_mid_call_costs_one_failed_call(backend):
+async def test_a_child_that_dies_mid_call_costs_one_failed_call(backend):
     with pytest.raises(Exception):
         await backend.call_tool("die", {})
     assert backend.started is False  # an McpError "Connection closed" is gone too
@@ -101,7 +101,7 @@ async def test_r1b_a_child_that_dies_mid_call_costs_one_failed_call(backend):
     assert "pid" in _text(await backend.call_tool("ping", {}))
 
 
-async def test_r2_the_gateway_restarts_it_on_the_next_call(config):
+async def test_the_gateway_restarts_it_on_the_next_call(config):
     gw = Gateway({"backends": {"standin": config}})
     gw._notify_backend_case = AsyncMock()
     await gw.start()
@@ -117,7 +117,7 @@ async def test_r2_the_gateway_restarts_it_on_the_next_call(config):
         await gw.stop()
 
 
-async def test_r3_health_after_the_child_died_isnt_ok_and_names_the_error(backend):
+async def test_health_after_the_child_died_isnt_ok_and_names_the_error(backend):
     await _kill(backend)
     health = await backend.health_check()
     assert health["status"] == "error" and health["error"], (
@@ -127,19 +127,19 @@ async def test_r3_health_after_the_child_died_isnt_ok_and_names_the_error(backen
     assert (await backend.health_check())["status"] == "stopped"
 
 
-async def test_r4_a_tools_own_error_leaves_the_backend(backend):
+async def test_a_tools_own_error_leaves_the_backend(backend):
     pid = await _pid(backend)
     result = await backend.call_tool("err", {})
     assert result.is_error
     assert backend.started is True and await _pid(backend) == pid
 
 
-async def test_r5_a_healthy_backend_is_ok(backend):
+async def test_a_healthy_backend_is_ok(backend):
     health = await backend.health_check()
     assert health == {"status": "ok", "type": "stdio", "tools": 4}
 
 
-async def test_r6_health_during_a_long_call_is_busy_and_the_call_completes(backend):
+async def test_health_during_a_long_call_is_busy_and_the_call_completes(backend):
     """A sync tool holds the child past the 5 s ping: busy, never a reset
     (on 3.12 the timeout is an OSError, which once cleaned it up)."""
     pid = await _pid(backend)
@@ -152,7 +152,7 @@ async def test_r6_health_during_a_long_call_is_busy_and_the_call_completes(backe
     assert (await backend.health_check())["status"] == "ok"
 
 
-async def test_r4b_a_call_that_times_out_leaves_the_backend(backend, monkeypatch):
+async def test_a_call_that_times_out_leaves_the_backend(backend, monkeypatch):
     """A timeout is never "gone" (on 3.12 it's an OSError): the busy child stays."""
     from sift_gateway.backends import stdio_backend
 
@@ -165,7 +165,7 @@ async def test_r4b_a_call_that_times_out_leaves_the_backend(backend, monkeypatch
     assert await _pid(backend) == pid
 
 
-async def test_r4c_an_mcp_error_other_than_connection_closed_leaves_the_backend(
+async def test_an_mcp_error_other_than_connection_closed_leaves_the_backend(
     backend, monkeypatch
 ):
     from mcp.shared.exceptions import McpError
@@ -180,7 +180,7 @@ async def test_r4c_an_mcp_error_other_than_connection_closed_leaves_the_backend(
     assert backend.started is True
 
 
-async def test_r7_two_overlapping_failures_and_a_restart_keep_the_new_session(backend):
+async def test_two_overlapping_failures_and_a_restart_keep_the_new_session(backend):
     """Two failed requests clean up the same session while a third restarts
     the backend: a cleanup that finishes after the restart never clears the
     new session (codex on 09d10b3)."""
@@ -215,7 +215,7 @@ async def test_r7_two_overlapping_failures_and_a_restart_keep_the_new_session(ba
         pass
 
 
-async def test_r8_an_old_sessions_late_failure_never_resets_the_replacement(backend):
+async def test_an_old_sessions_late_failure_never_resets_the_replacement(backend):
     """Codex's ordering on c594912: two calls pending on the old session; the
     first fails, a request restarts the backend, then the second fails. The
     second is the old child's failure: the replacement stays and answers."""
@@ -248,7 +248,7 @@ async def test_r8_an_old_sessions_late_failure_never_resets_the_replacement(back
     assert await _pid(backend) != old_pid
 
 
-async def test_r9_an_old_failure_during_the_replacements_start_never_resets_it(
+async def test_an_old_failure_during_the_replacements_start_never_resets_it(
     backend, monkeypatch
 ):
     """Codex's ordering on a705586: the replacement is published while its
