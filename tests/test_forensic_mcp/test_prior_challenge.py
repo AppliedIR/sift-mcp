@@ -20,22 +20,32 @@ import pytest
 from .test_finding_challenge import FINDING, _record, _stored, case, home  # noqa: F401
 
 BEFORE, AFTER = "2000-01-01T00:00:00+00:00", "2099-01-01T00:00:00+00:00"
-E1, E2, E3, E4, BIG = (f"sift-tester-20261013-0{n:02d}" for n in (21, 22, 23, 24, 25))
-S1, S2, S3, U1, R1, R2 = (
+MFT, PREFETCH, EVTX, RUN_KEY, HAYABUSA = (
+    f"sift-tester-20261013-0{n:02d}" for n in (21, 22, 23, 24, 25)
+)
+SKEPTIC_MFT, SKEPTIC_AMCACHE, SKEPTIC_EVTX, DATE, MFT_AGAIN, PREFETCH_AGAIN = (
     f"sift-tester-20261013-0{n:02d}" for n in (31, 32, 33, 34, 35, 36)
 )
 RUNS = [
-    (E1, "MFTECmd -f C/$MFT --csv /out/mft", BEFORE),
-    (E2, "PECmd -d C/Windows/Prefetch --csv /out/pf", BEFORE),
-    (BIG, "hayabusa csv-timeline -d evtx -o /out/hb.csv", BEFORE),
-    (E3, "EvtxECmd -f Security.evtx", BEFORE),
-    (S1, "MFTECmd -f C/$MFT  --csv /out/mft2", BEFORE),  # the skeptic's cited re-run
-    (S2, "AmcacheParser -f Amcache.hve", BEFORE),  # the skeptic ran it, didn't cite it
-    (S3, "EvtxECmd -f Security.evtx --inc 4625", BEFORE),
-    (U1, "date", AFTER),  # unrelated, after the challenge
-    (R1, "MFTECmd  -f C/$MFT --csv /out/mft", AFTER),  # the same command, re-run
-    (R2, "PECmd -d C/Windows/Prefetch --csv /out/pf", AFTER),
-    (E4, "RECmd --bn Run.reb -d hives", AFTER),
+    (MFT, "MFTECmd -f C/$MFT --csv /out/mft", BEFORE),
+    (PREFETCH, "PECmd -d C/Windows/Prefetch --csv /out/pf", BEFORE),
+    (HAYABUSA, "hayabusa csv-timeline -d evtx -o /out/hb.csv", BEFORE),
+    (EVTX, "EvtxECmd -f Security.evtx", BEFORE),
+    (
+        SKEPTIC_MFT,
+        "MFTECmd -f C/$MFT  --csv /out/mft2",
+        BEFORE,
+    ),  # the skeptic's cited re-run
+    (
+        SKEPTIC_AMCACHE,
+        "AmcacheParser -f Amcache.hve",
+        BEFORE,
+    ),  # the skeptic ran it, didn't cite it
+    (SKEPTIC_EVTX, "EvtxECmd -f Security.evtx --inc 4625", BEFORE),
+    (DATE, "date", AFTER),  # unrelated, after the challenge
+    (MFT_AGAIN, "MFTECmd  -f C/$MFT --csv /out/mft", AFTER),  # the same command, re-run
+    (PREFETCH_AGAIN, "PECmd -d C/Windows/Prefetch --csv /out/pf", AFTER),
+    (RUN_KEY, "RECmd --bn Run.reb -d hives", AFTER),
 ]
 WITHDRAWN_BECAUSE = "MFT re-run shows evil.exe under the vendor installer path."
 CONTESTED_BECAUSE = "The logon fits the admin's jump host."
@@ -47,14 +57,17 @@ def challenged_case(case):  # noqa: F811
         for aid, cmd, ts in RUNS:
             f.write(json.dumps({"audit_id": aid, "tool": "run_command", "ts": ts,
                                 "params": {"command": cmd}, "source": "mcp_server"}) + "\n")  # fmt: skip
-    withdrawn = {"outcome": "withdrawn", "skeptic_audit_ids": [S1],
+    withdrawn = {"outcome": "withdrawn", "skeptic_audit_ids": [SKEPTIC_MFT],
                  "contradiction": WITHDRAWN_BECAUSE}  # fmt: skip
-    assert _record({**FINDING, "audit_ids": [E1, E2], "challenged": withdrawn})[
+    assert _record({**FINDING, "audit_ids": [MFT, PREFETCH], "challenged": withdrawn})[
         "status"
     ] == ("WITHDRAWN")
-    contested = {"outcome": "contested", "skeptic_audit_ids": [S3],
+    contested = {"outcome": "contested", "skeptic_audit_ids": [SKEPTIC_EVTX],
                  "contradiction": CONTESTED_BECAUSE}  # fmt: skip
-    _stored(case, _record({**FINDING, "audit_ids": [BIG, E3], "challenged": contested}))
+    _stored(
+        case,
+        _record({**FINDING, "audit_ids": [HAYABUSA, EVTX], "challenged": contested}),
+    )
     return case
 
 
@@ -63,17 +76,17 @@ def _draft(case, ids, **params):  # noqa: F811
 
 
 SHAPES = {
-    "reworded and reordered": ([E2, E1], {}, "withdrawn", []),
-    "plus an unrelated new run": ([E1, E2, U1], {}, "withdrawn", [U1]),
-    "plus the skeptic's cited re-run": ([E1, E2, S1], {}, "withdrawn", []),
-    "plus the skeptic's uncited run": ([E1, E2, S2], {}, "withdrawn", []),
-    "the same command re-run": ([R1, E2], {}, "withdrawn", []),
-    "both commands re-run": ([R1, R2], {}, "withdrawn", []),
+    "reworded and reordered": ([PREFETCH, MFT], {}, "withdrawn", []),
+    "plus an unrelated new run": ([MFT, PREFETCH, DATE], {}, "withdrawn", [DATE]),
+    "plus the skeptic's cited re-run": ([MFT, PREFETCH, SKEPTIC_MFT], {}, "withdrawn", []),
+    "plus the skeptic's uncited run": ([MFT, PREFETCH, SKEPTIC_AMCACHE], {}, "withdrawn", []),
+    "the same command re-run": ([MFT_AGAIN, PREFETCH], {}, "withdrawn", []),
+    "both commands re-run": ([MFT_AGAIN, PREFETCH_AGAIN], {}, "withdrawn", []),
     "a shell-only re-draft": ([], {"supporting_commands": [
         {"command": "MFTECmd -f C/$MFT --csv /out/mft", "purpose": "creation time",
          "output_excerpt": "evil.exe created 10:00"}]}, "withdrawn", []),
-    "another finding sharing a contested run": ([BIG], {}, "contested", []),
-    "another finding sharing it, with new evidence": ([BIG, E4], {}, "contested", [E4]),
+    "another finding sharing a contested run": ([HAYABUSA], {}, "contested", []),
+    "another finding sharing it, with new evidence": ([HAYABUSA, RUN_KEY], {}, "contested", [RUN_KEY]),
 }  # fmt: skip
 
 
@@ -91,16 +104,16 @@ def test_a_draft_that_ran_what_a_challenged_one_ran_carries_its_challenge(
 
 
 def test_the_new_entries_are_named_by_what_they_ran(challenged_case):
-    prior = _draft(challenged_case, [E1, E2, U1])["prior_challenge"]
-    assert prior[0]["new_since"] == [{"audit_id": U1, "ran": "date"}]
+    prior = _draft(challenged_case, [MFT, PREFETCH, DATE])["prior_challenge"]
+    assert prior[0]["new_since"] == [{"audit_id": DATE, "ran": "date"}]
 
 
 def test_a_draft_that_ran_nothing_a_challenged_one_ran_carries_no_flag(challenged_case):
-    assert "prior_challenge" not in _draft(challenged_case, [E4])
+    assert "prior_challenge" not in _draft(challenged_case, [RUN_KEY])
 
 
 def test_the_flag_never_blocks_and_is_said_when_staged(challenged_case):
-    result = _record({**FINDING, "audit_ids": [E1, E2]})
+    result = _record({**FINDING, "audit_ids": [MFT, PREFETCH]})
     assert result["status"] == "STAGED"
     assert (
         "previously withdrawn" in result["warning"]
