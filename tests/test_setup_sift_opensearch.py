@@ -74,3 +74,22 @@ def test_a_setup_that_works_leaves_the_install_alone(tmp_path, docker_group):
     assert "SETUP-RAN" in run.stdout, run.stdout + run.stderr
     assert run.returncode == 0, run.stdout
     assert "[ERROR]" not in run.stdout
+
+
+@pytest.mark.parametrize("docker_group", [True, False], ids=["bash", "sg"])
+def test_a_setup_without_snapshots_says_so_not_that_indexing_fails(
+    tmp_path, docker_group
+):
+    # setup-opensearch.sh exits 3 when OpenSearch runs but snapshots aren't set up
+    run = _install(tmp_path, setup_exit=3, docker_group=docker_group)
+    assert "SETUP-RAN" in run.stdout, run.stdout + run.stderr
+    assert run.returncode == 1, run.stdout
+    script = f"{tmp_path}/sift-mcp/../opensearch-mcp/scripts/setup-opensearch.sh"
+    warn = "[WARN] OpenSearch is running, but its snapshots aren't set up (see above)."
+    assert warn in run.stdout
+    summary = run.stdout[run.stdout.index("=== Installation Complete ===") :]
+    assert (
+        "[ERROR] OpenSearch snapshots aren't set up: 'vhir backup --include-opensearch'"
+        f" can't save indices. Re-run: bash {script}"
+    ) in summary, summary
+    assert "evidence indexing won't work" not in run.stdout
