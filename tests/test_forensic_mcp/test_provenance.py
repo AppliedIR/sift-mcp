@@ -66,6 +66,10 @@ def _valid_finding(**overrides):
         "confidence": "MEDIUM",
         "confidence_justification": "Single source",
         "type": "finding",
+        "challenged": {
+            "outcome": "not_challenged",
+            "reason": "no skeptic in this test",
+        },
     }
     base.update(overrides)
     return base

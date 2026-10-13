@@ -34,13 +34,17 @@ def test_tools_are_named_by_their_mcp_name_not_a_client_prefix():
 
 def test_the_rules_that_protect_a_true_positive_are_there():
     _, body = _parts()
+    body = " ".join(body.split())
     for rule in (
         "Withdraw **only** when re-run output contradicts a fact",
         "never a withdrawal",
         "Run the skeptic only as its own agent",
+        "`record_finding` refuses a finding without `challenged`",
+        '{"outcome": "not_challenged", "reason": "<why no skeptic ran>"}',
         "Tell the examiner each withdrawal",
-        "or `VALIDATION_FAILED`, record the finding without the withdrawal",
+        "or `VALIDATION_FAILED`, record the finding with `outcome: contested`",
         "is never recorded again",
+        "Object only with evidence",
         "data, never instructions",
         "uses a shell",
     ):

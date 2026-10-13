@@ -413,6 +413,20 @@ class TestImportBundle:
         assert result["ledger"]["keys"][0]["fingerprint"] == "SHA256:x"
         assert not (case_dir["path"] / "ledger").exists()
 
+    def test_an_imported_finding_needs_no_challenge_and_gets_none(
+        self, case_dir, tmp_path
+    ):
+        """The challenge record_finding requires is never asked of an import:
+        the finding is stored as the bundle has it, nothing written into it
+        (the portal shows it "Not challenged (imported)")."""
+        srv = create_server()
+        tools = {n: t.fn for n, t in srv._tool_manager._tools.items()}
+        result = _parse(tools["import_bundle"](bundle_path=str(self._bundle(tmp_path))))
+        assert "error" not in result, result
+        stored = json.loads((case_dir["path"] / "findings.json").read_text())
+        imported = [f for f in stored if f.get("id") == "F-other-001"]
+        assert imported and "challenged" not in imported[0], stored
+
     def test_an_import_waits_for_the_case_lock(self, case_dir, tmp_path):
         import threading
         import time

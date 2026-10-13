@@ -182,6 +182,7 @@ def _record(server) -> dict | None:
         "interpretation": "a test", "confidence": "LOW", "confidence_justification": "a test",
         "type": "finding", "event_timestamp": "2026-01-24T15:00:41Z", "audit_ids": [],
         "alternatives": [{"explanation": "an admin did it", "status": "open"}],
+        "challenged": {"outcome": "not_challenged", "reason": "no skeptic in this test"},
     }  # fmt: skip
     art = {"source": "x", "extraction": "cat x", "content": QUOTE, "audit_id": SIFT_ID}
     return server.call("record_finding", {"finding": finding, "artifacts": [art]})
@@ -305,6 +306,7 @@ def test_a_held_fifo_findings_file_is_refused_and_the_next_case_is_served(env):
         "title": "a finding", "observation": "an observation", "interpretation": "a test",
         "confidence": "LOW", "confidence_justification": "a test", "type": "finding",
         "event_timestamp": "2026-01-24T15:00:41Z", "audit_ids": [],
+        "challenged": {"outcome": "not_challenged", "reason": "no skeptic in this test"},
     }  # fmt: skip
     r = server.call(
         "record_finding", {"finding": finding, "supporting_commands": [cmd]}

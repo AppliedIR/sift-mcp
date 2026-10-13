@@ -32,6 +32,12 @@ EZ_SENTENCE = (
     " Created0x10) with index=."
 )
 
+# the required skeptic (grading Spec A4), as approved; added after a space
+SKEPTIC_SENTENCE = (
+    "A finding-skeptic challenge (isolated agent) is required; with none, send"
+    ' challenged {"outcome": "not_challenged", "reason": why}.'
+)
+
 
 def _strings():
     out = {}
@@ -54,10 +60,17 @@ def test_opensearch_says_ez_csv_indices_carry_no_event_time_once():
     assert _strings()["OPENSEARCH"].count(EZ_SENTENCE) == 1
 
 
+def test_forensic_mcp_says_a_challenge_is_required():
+    assert SKEPTIC_SENTENCE in _strings()["FORENSIC_MCP"]
+
+
 def test_the_backend_instructions_stay_within_their_budget():
     strings = _strings()
     assert len(strings) == 10
-    budget = BASE_TOTAL + len(SENTENCE) + len(EVTX_SENTENCE) + len(EZ_SENTENCE) + 2
+    budget = (
+        BASE_TOTAL + len(SENTENCE) + len(EVTX_SENTENCE) + len(EZ_SENTENCE)
+        + len(SKEPTIC_SENTENCE) + 3
+    )  # fmt: skip
     assert sum(len(v) for v in strings.values()) <= budget
 
 

@@ -174,9 +174,17 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
           tool output that rules it out is in evidence and its audit_ids are in
           audit_ids; without both it is stored as open.
 
-        challenged (dict, optional): after the skeptic's challenge, {"outcome":
-          "stands", "revised" or "withdrawn", "skeptic_audit_ids": [the
-          skeptic's own audit ids]}; withdrawn also takes "contradiction".
+        challenged (dict, REQUIRED): the finding-skeptic's challenge, run in an
+          isolated agent. {"outcome": "stands", "revised", "contested" or
+          "withdrawn", "checks": [{"name", "result": "consistent",
+          "contradicts", "nothing found" or "not run", "audit_ids": [the
+          skeptic's own audit ids], "reason": why not run}], "skeptic":
+          {"client", "model"}}; contested and withdrawn also take
+          "contradiction". With no skeptic: {"outcome": "not_challenged",
+          "reason": why}. A finding without it is REJECTED.
+
+        produced_by (dict, optional): {"client", "model"} that wrote the
+          finding, as your client reports them.
 
         iocs (list): indicators of compromise found in this evidence.
           Pass ALL suspicious IPs, hashes, domains, registry keys, file paths,

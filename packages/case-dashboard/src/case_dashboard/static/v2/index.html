@@ -1488,7 +1488,7 @@ function renderFinding(id) {
   }
   html += '</div>';
   html += '</div>';
-  html += renderChallengeLine(f.challenged);
+  html += renderChallengeLine(f.challenged, f);
   // Editable title in sticky bar (single location — no duplicate in Zone 1)
   html += '<div class="sticky-title">';
   if (editingField === 'title') {
@@ -1799,32 +1799,89 @@ function renderAlternatives(list) {
   return html;
 }
 
-function renderChallengeLine(c) {
-  if (!c || typeof c !== 'object') {
-    return '<div class="challenge-line not-challenged">Not challenged</div>';
+// A challenge value as text: a string as it is, anything else as JSON (the
+// marker is case data; never a throw)
+function challengeText(v) {
+  if (typeof v === 'string') return v;
+  if (v === null || v === undefined) return '';
+  return JSON.stringify(v) || '';
+}
+
+// Clean: upheld, with no contradiction, no check that contradicts or didn't
+// run, and no earlier challenge of what it ran. Only a clean one shows no detail.
+function challengeIsClean(c, prior) {
+  if (!c || c.outcome !== 'stands' || c.contradiction || prior.length) return false;
+  var checks = Array.isArray(c.checks) ? c.checks : [];
+  return !checks.some(function(k) {
+    return !k || typeof k !== 'object' || k.result === 'contradicts' || k.result === 'not run';
+  });
+}
+
+function renderChallengeDetail(c, prior) {
+  var rows = [];
+  (Array.isArray(c && c.checks) ? c.checks : []).forEach(function(k) {
+    if (!k || typeof k !== 'object') return;
+    var ids = Array.isArray(k.audit_ids) ? k.audit_ids : [];
+    var ran = k.ran && typeof k.ran === 'object' ? k.ran : {};
+    var cited = ids.map(function(a) {
+      var did = typeof a === 'string' && Object.prototype.hasOwnProperty.call(ran, a) ? ran[a] : '';
+      return challengeText(a) + (did ? ' (ran: ' + challengeText(did) + ')' : '');
+    }).join(', ');
+    var text = challengeText(k.name) + ': ' + challengeText(k.result) +
+      (k.reason ? ' — ' + challengeText(k.reason) : '') + (cited ? ' — ' + cited : '');
+    rows.push('<div class="challenge-check">' + escapeHtml(text) + '</div>');
+  });
+  if (c && c.contradiction) {
+    rows.push('<div class="challenge-line challenge-reason">Contradiction (client-reported): ' +
+      escapeHtml(challengeText(c.contradiction)) + '</div>');
   }
-  var ids = Array.isArray(c.skeptic_audit_ids) ? c.skeptic_audit_ids.join(', ') : '';
+  if (c && c.refused) {
+    rows.push('<div class="challenge-line challenge-reason">Server: ' +
+      escapeHtml(challengeText(c.refused)) + '</div>');
+  }
+  prior.forEach(function(p) {
+    if (!p || typeof p !== 'object') return;
+    var since = Array.isArray(p.new_since) && p.new_since.length
+      ? 'new since: ' + p.new_since.map(function(n) {
+          return challengeText(n && n.ran) + ' (' + challengeText(n && n.audit_id) + ')';
+        }).join(', ')
+      : 'no new evidence';
+    rows.push('<div class="challenge-line challenge-prior">' + escapeHtml(
+      'Previously ' + challengeText(p.kind) + ' (' + challengeText(p.ref) + '): ' +
+      challengeText(p.contradiction) + ' — ' + since) + '</div>');
+  });
+  return rows.join('');
+}
+
+function renderChallengeLine(c, f) {
+  f = f && typeof f === 'object' ? f : {};
+  var prior = Array.isArray(f.prior_challenge) ? f.prior_challenge : [];
+  if (!c || typeof c !== 'object') {
+    var none = f.imported_from ? 'Not challenged (imported)' : 'Not challenged';
+    return '<div class="challenge-line not-challenged">' + none + '</div>' +
+      (prior.length ? renderChallengeDetail(null, prior) : '');
+  }
+  var ids = Array.isArray(c.skeptic_audit_ids) ? c.skeptic_audit_ids.map(challengeText).join(', ') : '';
   var text;
   if (c.outcome === 'stands') {
-    text = 'Challenged (client-reported): stands \u2014 skeptic: ' + ids;
+    text = 'Challenged (client-reported): upheld — skeptic: ' + ids;
   } else if (c.outcome === 'revised') {
-    text = 'Challenged (client-reported): revised after challenge \u2014 skeptic: ' + ids;
+    text = 'Challenged (client-reported): revised after challenge — skeptic: ' + ids;
   } else if (c.outcome === 'withdrawn') {
-    text = 'Challenged (client-reported): withdrawn, not applied, staged for your decision \u2014 skeptic: ' + (ids || 'none');
+    text = 'Challenged (client-reported): withdrawn, not applied, staged for your decision — skeptic: ' + (ids || 'none');
+  } else if (c.outcome === 'contested') {
+    text = 'Challenged (client-reported): contested — skeptic: ' + (ids || 'none');
+  } else if (c.outcome === 'not_challenged') {
+    text = 'Not challenged: ' + challengeText(c.reason);
   } else {
-    text = 'Challenged (client-reported): ' + String(c.outcome || '');
+    text = 'Challenged (client-reported): ' + challengeText(c.outcome);
   }
-  var html = '<div class="challenge-line">' + escapeHtml(text) + '</div>';
-  // The skeptic's stated contradiction, and the server's reason for staging it
-  if (c.contradiction) {
-    html += '<div class="challenge-line challenge-reason">Contradiction (client-reported): ' +
-      escapeHtml(String(c.contradiction)) + '</div>';
-  }
-  if (c.refused) {
-    html += '<div class="challenge-line challenge-reason">Server: ' +
-      escapeHtml(String(c.refused)) + '</div>';
-  }
-  return html;
+  var cls = c.outcome === 'not_challenged' ? 'challenge-line not-challenged' : 'challenge-line';
+  var html = '<div class="' + cls + '">' + escapeHtml(text) + '</div>';
+  if (challengeIsClean(c, prior)) return html;
+  var detail = renderChallengeDetail(c, prior);
+  return detail ? html + '<details class="challenge-detail"><summary>Checks and doubts</summary>' +
+    detail + '</details>' : html;
 }
 
 function withdrawnText(n) {

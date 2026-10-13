@@ -8,6 +8,9 @@ You run in Codex with Valhuntir's profile (`codex -p valhuntir`).
   `spawn_agent` and `agent_type` `finding-skeptic`, and hand it only the
   draft, as the `finding-skeptic` skill says. It has no shell, but Codex gives
   it every MCP tool this session has: never ask it to record anything.
+  A challenge is required: `record_finding` refuses a finding without
+  `challenged`. If the skeptic can't run, send
+  `{"outcome": "not_challenged", "reason": "<why>"}`.
 - **Your shell** runs in Codex's sandbox. It can write in the folder Codex
   started in and in temporary folders, and has no network. Change case records
   (findings, timeline, approvals, audit) only through the MCP tools, never
