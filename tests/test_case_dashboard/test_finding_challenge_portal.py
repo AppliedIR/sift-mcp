@@ -174,9 +174,9 @@ def test_the_portal_shows_alternatives_the_challenge_and_withdrawals():
     page = (Path(D.__file__).parent / "static" / "v2" / "index.html").read_text()
     for marker in (
         "renderAlternatives(eff.alternatives)",
-        "renderChallengeLine(f.challenged)",
+        "renderChallengeLine(f.challenged, f)",
         "renderWithdrawnList(summary.withdrawn)",
-        ">Not challenged<",
+        "'Not challenged (imported)' : 'Not challenged'",
         "startEdit(\\'alternatives\\')",
     ):
         assert marker in page, marker
@@ -204,7 +204,7 @@ def test_the_challenge_line_shows_both_reasons_escaped():
         "this.innerHTML = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')"
         ".replace(/>/g, '&gt;').replace(/\"/g, '&quot;');}})};\n"
         + _js_function("escapeHtml")
-        + _js_function("renderChallengeLine")
+        + "".join(_js_function(n) for n in CHALLENGE_FNS)
         + f"process.stdout.write(renderChallengeLine({json.dumps(marker)}));"
     )
     out = subprocess.run(
@@ -213,3 +213,104 @@ def test_the_challenge_line_shows_both_reasons_escaped():
     assert "Contradiction (client-reported): the re-run shows &lt;img" in out
     assert "Server: Withdrawal refused: it needs the skeptic&#39;s tool output." in out
     assert not re.search(r"<img", out)
+
+
+# --- what the challenge line shows (A3) ------------------------------------------
+
+CHALLENGE_FNS = [
+    "challengeText",
+    "challengeIsClean",
+    "renderChallengeDetail",
+    "renderChallengeLine",
+]
+_DOM = (
+    "const document = {createElement: () => ({set textContent(s) {"
+    "this.innerHTML = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')"
+    ".replace(/>/g, '&gt;').replace(/\"/g, '&quot;');}})};\n"
+)
+RUN = "sift-tester-20261013-001"
+CHECK = {"name": "prefetch re-parsed", "result": "consistent", "audit_ids": [RUN],
+         "ran": {RUN: "PECmd -f EVIL.EXE-1.pf"}}  # fmt: skip
+UPHELD = {"outcome": "stands", "checks": [CHECK], "skeptic_audit_ids": [RUN]}
+
+
+def _line(marker, finding=None) -> str:
+    script = (
+        _DOM
+        + _js_function("escapeHtml")
+        + "".join(_js_function(n) for n in CHALLENGE_FNS)
+        + f"process.stdout.write(renderChallengeLine({json.dumps(marker)}, "
+        + f"{json.dumps(finding or {})}));"
+    )
+    return subprocess.run(
+        ["node", "-e", script], capture_output=True, text=True, check=True
+    ).stdout
+
+
+needs_node = pytest.mark.skipif(
+    not shutil.which("node"), reason="node is not installed"
+)
+
+
+@needs_node
+def test_a_clean_upheld_challenge_is_one_line_and_no_detail():
+    out = _line(UPHELD)
+    assert out == (
+        '<div class="challenge-line">Challenged (client-reported): upheld \u2014 '
+        f"skeptic: {RUN}</div>"
+    )
+
+
+@needs_node
+@pytest.mark.parametrize(
+    "marker, finding, shown",
+    [
+        ({**UPHELD, "contradiction": "Run count is 3, not 1."}, {},
+         "Contradiction (client-reported): Run count is 3, not 1."),
+        ({**UPHELD, "checks": [{**CHECK, "result": "contradicts"}]}, {},
+         "prefetch re-parsed: contradicts"),
+        ({**UPHELD, "checks": [CHECK, {"name": "event logs", "result": "not run",
+                                       "audit_ids": [], "reason": "no evtx"}]}, {},
+         "event logs: not run \u2014 no evtx"),
+        ({"outcome": "contested", "checks": [], "skeptic_audit_ids": [],
+          "contradiction": "Fits the admin's jump host."}, {},
+         "Fits the admin&#39;s jump host."),
+        (UPHELD, {"prior_challenge": [{"kind": "withdrawn", "ref": "a-1",
+                                       "contradiction": "installer path",
+                                       "new_since": [{"audit_id": "x-2", "ran": "date"}]}]},
+         "Previously withdrawn (a-1): installer path \u2014 new since: date (x-2)"),
+    ],
+    ids=["upheld with a contradiction", "a check that contradicts", "a skipped check",
+         "contested", "an earlier challenge"],
+)  # fmt: skip
+def test_a_challenge_that_needs_a_look_opens_to_its_checks(marker, finding, shown):
+    out = _line(marker, finding)
+    assert '<details class="challenge-detail">' in out and shown in out, out
+    assert f"{RUN} (ran: PECmd -f EVIL.EXE-1.pf)" in out or not marker.get("checks"), (
+        out
+    )
+
+
+@needs_node
+@pytest.mark.parametrize(
+    "marker, finding, first",
+    [
+        ({"outcome": "not_challenged", "reason": "no subagent", "checks": []}, {},
+         '<div class="challenge-line not-challenged">Not challenged: no subagent</div>'),
+        (None, {}, '<div class="challenge-line not-challenged">Not challenged</div>'),
+        (None, {"imported_from": {"case_id": "c"}},
+         '<div class="challenge-line not-challenged">Not challenged (imported)</div>'),
+    ],
+    ids=["not challenged, with its reason", "an old finding", "an imported finding"],
+)  # fmt: skip
+def test_a_finding_without_a_skeptic_says_so(marker, finding, first):
+    assert _line(marker, finding).startswith(first)
+
+
+@needs_node
+def test_each_check_shows_what_its_ids_ran():
+    """An author's own `date` run offered as the skeptic's is visible."""
+    marker = {"outcome": "stands", "skeptic_audit_ids": [RUN], "checks": [
+        {"name": "re-run", "result": "not run", "audit_ids": [RUN], "reason": "x",
+         "ran": {RUN: "date"}}]}  # fmt: skip
+    assert f"re-run: not run \u2014 x \u2014 {RUN} (ran: date)" in _line(marker)

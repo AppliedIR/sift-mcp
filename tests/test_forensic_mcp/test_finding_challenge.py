@@ -620,8 +620,17 @@ def test_a_withdrawal_lists_each_of_its_own_audit_ids_once_in_order(case):
 
 def test_the_tool_list_says_what_challenged_takes():
     tools = {t.name: t for t in asyncio.run(create_server().list_tools())}
+    described = " ".join(tools["record_finding"].description.split())
     assert (
-        'challenged (dict, optional): after the skeptic\'s challenge, {"outcome": '
-        '"stands", "revised" or "withdrawn", "skeptic_audit_ids": [the skeptic\'s own '
-        'audit ids]}; withdrawn also takes "contradiction".'
-    ) in " ".join(tools["record_finding"].description.split())
+        "challenged (dict, REQUIRED): the finding-skeptic's challenge, run in an isolated "
+        'agent. {"outcome": "stands", "revised", "contested" or "withdrawn", "checks": '
+        '[{"name", "result": "consistent", "contradicts", "nothing found" or "not run", '
+        '"audit_ids": [the skeptic\'s own audit ids], "reason": why not run}], "skeptic": '
+        '{"client", "model"}}; contested and withdrawn also take "contradiction". With no '
+        'skeptic: {"outcome": "not_challenged", "reason": why}. A finding without it is '
+        "REJECTED."
+    ) in described
+    assert (
+        'produced_by (dict, optional): {"client", "model"} that wrote the finding'
+        in (described)
+    )
