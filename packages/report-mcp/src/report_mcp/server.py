@@ -976,9 +976,14 @@ def create_server() -> FastMCP:
             # still depends on the content above it; the raw file and
             # `vhir review --findings --verify` are authoritative.
             view = approved_view(case_dir)
-            # every IOC of an approved finding is written defanged, the block too:
-            # it's a display copy, and nothing reads its text back
-            iocs = _report_iocs(case_dir, view)
+            # every IOC of the case is written defanged, the block too: it's a
+            # display copy, and nothing reads its text back. JSON stays live:
+            # it is input for tools
+            iocs = (
+                []
+                if sanitized.lower().endswith(".json")
+                else _report_iocs(case_dir, view)
+            )
             content = _defang_iocs(content, iocs)
             block = [
                 _defang_iocs(line, iocs)

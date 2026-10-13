@@ -32,7 +32,7 @@ def _f(fid, status="APPROVED", **extra):
             "confidence": "HIGH", "status": status, **extra}  # fmt: skip
 
 
-def _saved(case, findings, content, iocs=()):
+def _saved(case, findings, content, iocs=(), filename="r.md"):
     (case / "findings.json").write_text(json.dumps(findings))
     (case / "timeline.json").write_text("[]")
     (case / "iocs.json").write_text(json.dumps(list(iocs)))
@@ -42,9 +42,9 @@ def _saved(case, findings, content, iocs=()):
     tool = {t.name: t for t in create_server()._tool_manager.list_tools()}[
         "save_report"
     ]
-    got = tool.fn(filename="r.md", content=content, profile="full")
+    got = tool.fn(filename=filename, content=content, profile="full")
     assert got["status"] == "saved", got
-    return (case / "reports" / "r.md").read_text()
+    return (case / "reports" / filename).read_text()
 
 
 APPROVED = _f("F-tester-001", title="C2 at evil.com",
@@ -114,3 +114,13 @@ def test_a_name_an_approved_finding_only_mentions_stays_live(case):
     )
     assert "Fetched from download.vendor.com, beaconed to evil[.]com." in saved
     assert "download[.]vendor" not in saved
+
+
+def test_a_report_saved_as_json_keeps_its_iocs_live(case):
+    """JSON is input for tools: a .json save keeps the IOCs as stored, while
+    the same content saved as markdown has them defanged."""
+    content = json.dumps({"iocs": ["evil.com", "http://bad.example.com/x.php"]})
+    saved = _saved(case, [APPROVED], content, filename="r.json")
+    assert '"evil.com"' in saved and "http://bad.example.com/x.php" in saved
+    assert "[.]" not in saved
+    assert '"evil[.]com"' in _saved(case, [APPROVED], content)
