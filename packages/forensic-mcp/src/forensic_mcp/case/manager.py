@@ -466,13 +466,19 @@ def _normalize_challenge(
     "skeptic re-run" check. withdrawn and contested need a contradiction and
     are kept without a verified id: each says the skeptic doubted it."""
     if not isinstance(raw, dict):
-        kind = {str: "a string", list: "a list"}.get(type(raw), type(raw).__name__)
+        # the shape in words, as the examiner reads it
+        kind = {str: "a string", list: "a list", bool: "true or false", int: "a number",
+                float: "a number"}.get(type(raw), type(raw).__name__)  # fmt: skip
         marker = _not_challenged(f"malformed challenge: expected an object, not {kind}")
         return marker, [f"challenged: {marker['reason']}; stored as not challenged."]
     outcome = raw.get("outcome")
     if not isinstance(outcome, str) or outcome not in _CHALLENGE_OUTCOMES:
-        got = json.dumps(outcome, default=str)[:40]
-        marker = _not_challenged(f"malformed challenge: outcome {got}")
+        got = (
+            "(it has no outcome)"
+            if outcome is None
+            else "outcome " + json.dumps(outcome, default=str)[:40]
+        )
+        marker = _not_challenged(f"malformed challenge: {got}")
         return marker, [f"challenged: {marker['reason']}; stored as not challenged."]
     if outcome == "not_challenged":
         reason = _text(raw.get("reason"), _MAX_EXPLANATION).strip()
