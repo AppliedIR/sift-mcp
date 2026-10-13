@@ -55,6 +55,8 @@ from typing import Any
 
 import yaml
 
+from ._lists import items
+
 logger = logging.getLogger(__name__)
 
 
@@ -143,11 +145,7 @@ def _parse_lolbas_yml(yml_path: Path, category: str) -> dict[str, Any] | None:
         Dict with parsed LOLBin data, or None if invalid
     """
     with open(yml_path, encoding="utf-8") as f:
-        try:
-            data = yaml.safe_load(f)
-        except yaml.YAMLError as e:
-            logger.warning(f"YAML parse error in {yml_path}: {e}")
-            return None
+        data = yaml.safe_load(f)  # a parse failure is the caller's error, named
 
     if not data or not data.get("Name"):
         return None
@@ -159,7 +157,7 @@ def _parse_lolbas_yml(yml_path: Path, category: str) -> dict[str, Any] | None:
     functions = set()
     mitre_techniques = set()
 
-    for cmd in data.get("Commands", []):
+    for cmd in items(data, "Commands", dict):
         if cmd.get("Category"):
             functions.add(cmd["Category"])
         if cmd.get("MitreID"):
@@ -167,19 +165,19 @@ def _parse_lolbas_yml(yml_path: Path, category: str) -> dict[str, Any] | None:
 
     # Extract expected paths
     expected_paths = []
-    for path_entry in data.get("Full_Path", []):
+    for path_entry in items(data, "Full_Path", dict):
         if path_entry.get("Path"):
             expected_paths.append(path_entry["Path"].lower())
 
     # Extract detection info
     detection_items = []
-    for det in data.get("Detection", []):
+    for det in data.get("Detection") or []:
         if det.get("IOC"):
             detection_items.append(f"IOC: {det['IOC']}")
 
     # Handle aliases
     aliases = []
-    for alias_entry in data.get("Aliases", []):
+    for alias_entry in data.get("Aliases") or []:
         if alias_entry.get("Alias"):
             aliases.append(alias_entry["Alias"].lower())
 

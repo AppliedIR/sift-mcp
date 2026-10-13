@@ -1,0 +1,347 @@
+"""An upstream file the importers can't read never freezes a source.
+
+- HijackLibs reads an empty or null ExpectedLocations or VulnerableExecutables
+  as none and skips an item that isn't a mapping; a file it still can't read
+  is skipped by name and counted, and every other file is imported.
+- An update whose import had errors, or found nothing, isn't recorded as
+  synced (the next update tries again) and reports failure.
+- LOLBAS skips a null item in Commands or Full_Path, not the binary.
+- dlls_imported counts distinct DLLs.
+
+The importers run as update_sources and import_context call them; the update
+leg runs update_sources' own update_context_source with its clone served
+from a scratch tree. Values are synthetic, in the upstream YAML shapes.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import shutil
+import sqlite3
+from pathlib import Path
+
+import pytest
+from windows_triage.importers import import_hijacklibs, import_lolbas, import_loldrivers
+
+from .test_context_imports_keep_rows import HIJACKLIBS, _dbs, _tree
+
+SCRIPTS = Path(__file__).resolve().parents[2] / "packages/windows-triage/scripts"
+NEW = ("Name: new.dll\nVendor: N\nVulnerableExecutables:\n"
+       "- Path: '%PROGRAMFILES%\\N\\n.exe'\n  Type: Sideloading\n")  # fmt: skip
+EXE = "- Path: '%PROGRAMFILES%\\X\\x.exe'\n  Type: Sideloading\n"
+TOLERATED = {  # read as none: the file's other parts still count
+    "empty ExpectedLocations": f"Name: el.dll\nVendor: X\nExpectedLocations:\nVulnerableExecutables:\n{EXE}",
+    "empty VulnerableExecutables": "Name: ve.dll\nVendor: X\nVulnerableExecutables:\n",
+    "null item in VulnerableExecutables": f"Name: ni.dll\nVendor: X\nVulnerableExecutables:\n- \n{EXE}",
+}  # fmt: skip
+UNREADABLE = "Name: bad.dll\nVulnerableExecutables: [unclosed\n"  # a YAML error
+
+
+def _update_sources():
+    spec = importlib.util.spec_from_file_location(
+        "update_sources_under_test", SCRIPTS / "update_sources.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _rows(ctx, dll):
+    conn = sqlite3.connect(ctx)
+    try:
+        return conn.execute(
+            "SELECT COUNT(*) FROM hijackable_dlls WHERE dll_name_lower = ?", (dll,)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def _upstream(root, extra):
+    return _tree(root / "HijackLibs" / "yml", {**HIJACKLIBS, **extra}).parent
+
+
+@pytest.mark.parametrize("name", TOLERATED)
+def test_an_empty_or_null_list_reads_as_none(tmp_path, name):
+    ctx = _dbs(tmp_path)
+    stats = import_hijacklibs(
+        ctx, _upstream(tmp_path, {"x/odd.yml": TOLERATED[name], "n/new.yml": NEW})
+    )
+    assert stats["errors"] == 0 and _rows(ctx, "new.dll") == 1
+    expected = {"empty VulnerableExecutables": 0}.get(
+        name, 1
+    )  # no executables: no rows
+    assert _rows(ctx, TOLERATED[name].split("\n")[0].split(": ")[1]) == expected
+
+
+def test_a_file_that_cant_be_read_is_skipped_by_name_and_the_rest_imported(
+    tmp_path, caplog
+):
+    ctx = _dbs(tmp_path)
+    stats = import_hijacklibs(
+        ctx, _upstream(tmp_path, {"x/bad.yml": UNREADABLE, "n/new.yml": NEW})
+    )
+    assert (
+        stats["errors"] == 1
+        and _rows(ctx, "new.dll") == 1
+        and _rows(ctx, "sqlite.dll") == 2
+    )
+    assert "HijackLibs: 1 file(s) skipped, unreadable: x/bad.yml" in caplog.text
+
+
+def _update(tmp_path, upstream, commit="c0ffee1"):
+    ctx = _dbs(tmp_path)
+    us = _update_sources()
+    us.shallow_clone = lambda url, dest, depth=1: bool(shutil.copytree(upstream, dest))
+    us.SOURCES["hijacklibs"]["db"] = ctx.name
+    ok = us.update_context_source(
+        "hijacklibs", tmp_path, {"latest_commit": commit}, False, False
+    )
+    return ok, us.get_last_sync(ctx, "hijacklibs")
+
+
+@pytest.mark.parametrize(
+    "shape", ["a file it can't read", "no yml folder", "no entries"]
+)
+def test_an_update_with_errors_or_nothing_isnt_recorded_as_synced(tmp_path, shape):
+    if shape == "a file it can't read":
+        upstream = _upstream(tmp_path, {"x/bad.yml": UNREADABLE})
+    elif shape == "no yml folder":
+        upstream = tmp_path / "HijackLibs"
+        upstream.mkdir()
+    else:
+        upstream = _tree(
+            tmp_path / "HijackLibs" / "yml", {"x/none.yml": "Name: n.dll\n"}
+        ).parent
+    assert _update(tmp_path, upstream) == (False, None)
+
+
+def test_a_clean_update_is_recorded_as_synced(tmp_path):
+    assert _update(tmp_path, _upstream(tmp_path, {})) == (True, "c0ffee1")
+
+
+def test_dlls_imported_counts_distinct_dlls(tmp_path):
+    ctx = _dbs(tmp_path)
+    stats = import_hijacklibs(
+        ctx, _tree(tmp_path / "HijackLibs" / "yml", HIJACKLIBS).parent
+    )
+    assert stats["dlls_imported"] == 3  # sqlite.dll from two vendors' files is one DLL
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Commands:\n- \n- Command: a.exe x\n  Category: Execute\nFull_Path:\n- Path: C:\\a.exe\n",
+        "Commands:\n- Command: a.exe x\n  Category: Execute\nFull_Path:\n- \n- Path: C:\\a.exe\n",
+    ],
+    ids=["null command", "null path"],
+)
+def test_a_null_item_in_a_lolbas_list_is_skipped_not_the_binary(tmp_path, body):
+    ctx = _dbs(tmp_path)
+    lol = tmp_path / "LOLBAS" / "yml" / "OSBinaries"
+    lol.mkdir(parents=True)
+    (lol / "a.yml").write_text(f"Name: a.exe\nDescription: d\n{body}", encoding="utf-8")
+    stats = import_lolbas(ctx, tmp_path / "LOLBAS")
+    conn = sqlite3.connect(ctx)
+    assert conn.execute("SELECT name FROM lolbins").fetchall() == [("a.exe",)]
+    assert stats["errors"] == 0
+
+
+@pytest.mark.parametrize("hijacklibs", ["unreadable file", "clean"])
+def test_import_context_exits_non_zero_and_says_why_on_errors(
+    tmp_path, capsys, hijacklibs
+):
+    """import_context reads <its package>/data: run with its __file__ in a
+    scratch package, whose data/ holds the databases and sources."""
+    spec = importlib.util.spec_from_file_location(
+        "import_context_under_test", SCRIPTS / "import_context.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    data = tmp_path / "pkg" / "data"
+    data.mkdir(parents=True)
+    _dbs(data)
+    files = {
+        **HIJACKLIBS,
+        **({"x/bad.yml": UNREADABLE} if hijacklibs != "clean" else {}),
+    }
+    _tree(data / "sources" / "HijackLibs" / "yml", files)
+    mod.__file__ = str(tmp_path / "pkg" / "scripts" / "import_context.py")
+    if hijacklibs == "clean":
+        mod.main()
+        return
+    with pytest.raises(SystemExit) as e:
+        mod.main()
+    assert e.value.code not in (0, None)
+    assert (
+        "HijackLibs: 1 file(s) skipped, unreadable: x/bad.yml"
+        in capsys.readouterr().out
+    )
+
+
+# --- every context source: an update with errors isn't recorded, and retries ---
+
+STATS = {  # an importer's stats for a run with one unreadable file, and a clean one
+    "lolbas": ("import_lolbas", {"lolbins_imported": 5, "errors": 1, "skipped": 0},
+               {"lolbins_imported": 5, "errors": 0, "skipped": 0}),
+    "loldrivers": ("import_loldrivers",
+                   {"vulnerable_imported": 5, "malicious_imported": 0, "samples_imported": 9, "errors": 1, "skipped": 0},
+                   {"vulnerable_imported": 5, "malicious_imported": 0, "samples_imported": 9, "errors": 0, "skipped": 0}),
+    "hijacklibs": ("import_hijacklibs", {"dlls_imported": 3, "entries_imported": 6, "errors": 1},
+                   {"dlls_imported": 3, "entries_imported": 6, "errors": 0}),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("source", STATS)
+def test_an_update_with_errors_isnt_recorded_and_the_next_one_retries(
+    tmp_path, monkeypatch, source
+):
+    import windows_triage.importers as importers
+
+    func, failing, clean = STATS[source]
+    ctx = _dbs(tmp_path)
+    us = _update_sources()
+    us.shallow_clone = lambda url, dest, depth=1: dest.mkdir(parents=True) or True
+    us.SOURCES[source]["db"] = ctx.name
+    monkeypatch.setattr(importers, func, lambda **k: dict(failing))
+    assert (
+        us.update_context_source(
+            source, tmp_path, {"latest_commit": "c1"}, False, False
+        )
+        is False
+    )
+    assert us.get_last_sync(ctx, us.SOURCES[source]["db_source_key"]) is None
+    monkeypatch.setattr(
+        importers, func, lambda **k: dict(clean)
+    )  # upstream fixed: the next run
+    assert (
+        us.update_context_source(
+            source, tmp_path, {"latest_commit": "c2"}, False, False
+        )
+        is True
+    )
+    assert us.get_last_sync(ctx, us.SOURCES[source]["db_source_key"]) == "c2"
+
+
+# --- a malformed LOLBAS or LOLDrivers file is an error, named: never a skip ---
+
+GOOD = {  # source -> (folder in the clone, a good file, the count that names it)
+    "lolbas": ("yml/OSBinaries", "a.yml",
+               "Name: a.exe\nDescription: d\nCommands:\n- Command: a.exe x\n  Category: Execute\n",
+               "lolbins_imported"),
+    "loldrivers": ("yaml", "d.yaml",
+                   "Category: vulnerable driver\nKnownVulnerableSamples:\n"
+                   "- Filename: d.sys\n  SHA256: " + "ab" * 32 + "\n",
+                   "samples_imported"),
+}  # fmt: skip
+MALFORMED = "Name: bad\nCommands: [unclosed\n"  # a YAML error
+
+
+@pytest.mark.parametrize("source", GOOD)
+def test_a_malformed_file_is_an_error_named_and_the_update_isnt_recorded(
+    tmp_path, caplog, source
+):
+    folder, good_name, good, count = GOOD[source]
+    bad_name = "bad" + Path(good_name).suffix
+    ctx = _dbs(tmp_path)
+    us = _update_sources()
+
+    def clone(url, dest, depth=1):
+        (dest / folder).mkdir(parents=True)
+        (dest / folder / good_name).write_text(good, encoding="utf-8")
+        (dest / folder / bad_name).write_text(MALFORMED, encoding="utf-8")
+        return True
+
+    us.shallow_clone = clone
+    us.SOURCES[source]["db"] = ctx.name
+    with caplog.at_level("WARNING"):
+        ok = us.update_context_source(
+            source, tmp_path, {"latest_commit": "c1"}, False, False
+        )
+    assert ok is False
+    assert us.get_last_sync(ctx, us.SOURCES[source]["db_source_key"]) is None
+    errors = [r.getMessage() for r in caplog.records if bad_name in r.getMessage()]
+    assert any(m.startswith("Error processing ") for m in errors), errors
+    assert any("1 error(s), 1 imported; not recorded as synced" in r.getMessage()
+               for r in caplog.records), [r.getMessage() for r in caplog.records]  # fmt: skip
+    importer = {"lolbas": import_lolbas, "loldrivers": import_loldrivers}[source]
+    root = tmp_path / "direct"
+    clone("", root)
+    stats = importer(ctx, root)
+    assert (stats["errors"], stats["skipped"], stats[count]) == (1, 0, 1)
+
+
+def test_import_context_fails_on_a_process_expectations_error(tmp_path, capsys):
+    """A rule without process_name is an importer error: exit non-zero, named."""
+    spec = importlib.util.spec_from_file_location(
+        "import_context_pe_under_test", SCRIPTS / "import_context.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    data = tmp_path / "pkg" / "data"
+    data.mkdir(parents=True)
+    _dbs(data)
+    _tree(data / "sources" / "HijackLibs" / "yml", HIJACKLIBS)
+    rules = tmp_path / "rules.yaml"
+    rules.write_text("processes:\n- user_type: SYSTEM\n", encoding="utf-8")
+    real = mod.import_process_expectations
+    mod.import_process_expectations = lambda db_path: real(
+        db_path=db_path, yaml_path=rules
+    )
+    mod.__file__ = str(tmp_path / "pkg" / "scripts" / "import_context.py")
+    with pytest.raises(SystemExit) as e:
+        mod.main()
+    assert e.value.code not in (0, None)
+    assert "Process expectations: 1 error(s), 0 imported" in capsys.readouterr().out
+
+
+# --- a list key that isn't a list is a file error, not read as empty ---
+
+NOT_A_LIST = {  # (source, key, form) -> the odd file, beside the good ones
+    ("hijacklibs", "VulnerableExecutables", "mapping"):
+        "Name: odd.dll\nVendor: X\nVulnerableExecutables:\n  Path: 'C:\\x\\x.exe'\n  Type: Sideloading\n",
+    ("hijacklibs", "VulnerableExecutables", "string"):
+        "Name: odd.dll\nVendor: X\nVulnerableExecutables: 'C:\\x\\x.exe'\n",
+    ("hijacklibs", "ExpectedLocations", "mapping"):
+        f"Name: odd.dll\nVendor: X\nExpectedLocations:\n  a: '%SYSTEM32%'\nVulnerableExecutables:\n{EXE}",
+    ("hijacklibs", "ExpectedLocations", "string"):
+        f"Name: odd.dll\nVendor: X\nExpectedLocations: '%SYSTEM32%'\nVulnerableExecutables:\n{EXE}",
+    ("lolbas", "Commands", "mapping"):
+        "Name: b.exe\nCommands:\n  Command: b.exe x\n  Category: Execute\n",
+    ("lolbas", "Commands", "string"): "Name: b.exe\nCommands: b.exe x\n",
+    ("lolbas", "Full_Path", "mapping"): "Name: b.exe\nFull_Path:\n  Path: C:\\b.exe\n",
+    ("lolbas", "Full_Path", "string"): "Name: b.exe\nFull_Path: C:\\b.exe\n",
+    ("lolbas", "Full_Path", "item a string"): "Name: b.exe\nFull_Path:\n- C:\\b.exe\n",
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("case", NOT_A_LIST, ids=["-".join(c) for c in NOT_A_LIST])
+def test_a_list_key_that_isnt_a_list_is_a_file_error_and_not_recorded(
+    tmp_path, caplog, case
+):
+    source, key, _ = case
+    if source == "hijacklibs":
+        files = {f"yml/{k}": v for k, v in HIJACKLIBS.items()} | {
+            "yml/x/odd.yml": NOT_A_LIST[case]
+        }
+    else:
+        files = {
+            "yml/OSBinaries/a.yml": GOOD["lolbas"][2],
+            "yml/OSBinaries/b.yml": NOT_A_LIST[case],
+        }
+    ctx = _dbs(tmp_path)
+    us = _update_sources()
+    us.shallow_clone = lambda url, dest, depth=1: bool(_tree(dest, files))
+    us.SOURCES[source]["db"] = ctx.name
+    with caplog.at_level("WARNING"):
+        ok = us.update_context_source(
+            source, tmp_path, {"latest_commit": "c1"}, False, False
+        )
+    assert ok is False
+    assert us.get_last_sync(ctx, us.SOURCES[source]["db_source_key"]) is None
+    said = [r.getMessage() for r in caplog.records]
+    assert any(m.startswith("Error processing ") and key in m for m in said), said
+    importer = {"hijacklibs": import_hijacklibs, "lolbas": import_lolbas}[source]
+    stats = importer(ctx, _tree(tmp_path / "direct", files))
+    assert stats["errors"] == 1
+    if source == "hijacklibs":
+        assert stats["skipped_files"] == ["x/odd.yml"]

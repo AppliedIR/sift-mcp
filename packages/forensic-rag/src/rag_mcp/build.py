@@ -88,6 +88,7 @@ def build(
     data_dir: Path | None = None,
     knowledge_dir: Path | None = None,
     model_name: str | None = None,
+    strict_sources: bool = False,
 ) -> BuildResult:
     """
     Build complete ChromaDB index from scratch.
@@ -97,6 +98,8 @@ def build(
         skip_online: Only process user documents (offline mode)
         no_bundled: Skip bundled reference content (AppliedIR, SANS)
         dry_run: Report what would be built without building
+        strict_sources: A source that fails to sync fails the build before
+            indexing (a release build), rather than falling back to its cache
 
     Returns:
         BuildResult with summary
@@ -164,10 +167,19 @@ def build(
                 else:
                     fetch_result = sync_source(name, force=force_fetch)
                     if fetch_result.status != "success":
+                        if strict_sources:  # a release never ships an old cache
+                            result.status = "error"
+                            result.errors.append(f"{name}: {fetch_result.message}")
+                            return result
                         result.warnings.append(f"{name}: {fetch_result.message}")
                         # Try to use existing cache if available
                         if not cache_path.exists():
                             continue
+                    elif strict_sources and not fetch_result.records:
+                        # a sync that found nothing is no source for a release
+                        result.status = "error"
+                        result.errors.append(f"{name}: 0 records")
+                        return result
 
             # Load from cache
             if cache_path.exists():

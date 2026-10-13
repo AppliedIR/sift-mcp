@@ -34,7 +34,7 @@ def _build_index(data_dir: Path) -> int:
     from ..build import build
 
     os.environ["ANONYMIZED_TELEMETRY"] = "False"
-    result = build(force_fetch=True, data_dir=data_dir)
+    result = build(force_fetch=True, data_dir=data_dir, strict_sources=True)
 
     if result.status != "success":
         print(f"Build failed: {result.errors}")

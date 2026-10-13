@@ -457,6 +457,14 @@ def _update_registry_extractions_with_clone(
     return success
 
 
+# each context importer's count of what it stored
+_IMPORTED_KEY = {
+    "lolbas": "lolbins_imported",
+    "loldrivers": "samples_imported",
+    "hijacklibs": "entries_imported",
+}
+
+
 def update_context_source(
     source_key: str, data_dir: Path, status: dict, force: bool, dry_run: bool
 ) -> bool:
@@ -503,6 +511,16 @@ def update_context_source(
                 logger.info(
                     f"  Imported {stats['entries_imported']} hijackable DLL entries"
                 )
+
+            # An import with errors, or nothing imported, is never recorded as
+            # synced: the next update tries again, and says the same
+            imported = stats.get(_IMPORTED_KEY[source_key], 0)
+            if stats.get("errors") or not imported:
+                logger.error(
+                    f"  {source['name']}: {stats.get('errors', 0)} error(s), "
+                    f"{imported} imported; not recorded as synced"
+                )
+                return False
 
             set_last_sync(
                 db_path, source["db_source_key"], status["latest_commit"], source["url"]

@@ -159,6 +159,7 @@ SOURCES: dict[str, SourceConfig] = {
         description="Splunk Security Content",
         source_type="github_releases",
         repo="splunk/security_content",
+        branch="develop",  # the upstream default; main is frozen at 2022
         parser="parse_splunk",
         paths=["detections/"],
     ),
@@ -223,7 +224,7 @@ SOURCES: dict[str, SourceConfig] = {
         repo="mitre-atlas/atlas-data",
         branch="main",
         parser="parse_atlas",
-        paths=["data/"],
+        paths=["dist/ATLAS-latest.yaml"],
     ),
     "mitre_engage": SourceConfig(
         name="mitre_engage",
@@ -1266,12 +1267,10 @@ Known False Positives: {doc.get("known_false_positives", "None documented")}
 
 References: {chr(10).join(doc.get("references", []) or ["None"])}
 """
-            # Extract MITRE techniques from tags
-            techniques = []
-            tags = doc.get("tags", {})
-            if isinstance(tags, dict):
-                for tag in tags.get("mitre_attack_id", []) or []:
-                    techniques.append(tag)
+            # develop keeps the ids at the top level, as a list or one string
+            techniques = doc.get("mitre_attack_id") or []
+            if isinstance(techniques, str):
+                techniques = [techniques]
 
             records.append(
                 {
@@ -1295,9 +1294,15 @@ References: {chr(10).join(doc.get("references", []) or ["None"])}
 def parse_lolbas(repo_dir: Path, output_path: Path) -> int:
     """Parse LOLBAS entries."""
     records = []
-    yml_dir = repo_dir / "yml" / "OSBinaries"
+    # the four categories the triage importer reads
+    # (HonorableMentions is left out by design, as there)
+    yml_files = [
+        f
+        for category in ("OSBinaries", "OSLibraries", "OSScripts", "OtherMSBinaries")
+        for f in sorted((repo_dir / "yml" / category).glob("*.yml"))
+    ]
 
-    for yaml_file in yml_dir.rglob("*.yml"):
+    for yaml_file in yml_files:
         try:
             with open(yaml_file, encoding="utf-8") as f:
                 doc = yaml.safe_load(f)
@@ -1654,101 +1659,117 @@ Sources:
     return len(records)
 
 
+ATLAS_FILE = "dist/ATLAS-latest.yaml"
+ATLAS_FORMAT_MAJOR = "6"
+
+
 def parse_atlas(repo_dir: Path, output_path: Path) -> int:
-    """Parse MITRE ATLAS AI/ML attack techniques."""
+    """Parse MITRE ATLAS techniques and case studies.
+
+    Reads dist/ATLAS-latest.yaml, format 6.x: tactics, techniques, mitigations
+    and case-studies are dicts keyed by id; relationships[<source>][<kind>] is a
+    list of edges (achieves, specializes, employs, mitigates). Any other file
+    layout or format major raises, so the build reports the source as failed.
+    """
+    src = repo_dir / ATLAS_FILE
+    if not src.is_file():
+        raise ValueError(f"ATLAS: {ATLAS_FILE} not found; the upstream layout changed")
+    with open(src, encoding="utf-8") as f:
+        doc = yaml.safe_load(f) or {}
+    fmt = str(doc.get("format-version") or "")
+    if fmt.split(".")[0] != ATLAS_FORMAT_MAJOR:
+        raise ValueError(
+            f"ATLAS: {ATLAS_FILE} format-version {fmt or 'missing'}; "
+            f"this parser reads {ATLAS_FORMAT_MAJOR}.x"
+        )
+    tactics = doc.get("tactics") or {}
+    techniques = doc.get("techniques") or {}
+    mitigations = doc.get("mitigations") or {}
+    case_studies = doc.get("case-studies") or {}
+    rels = doc.get("relationships") or {}
+
+    def edges(source_id: str, kind: str) -> list:
+        found = (rels.get(source_id) or {}).get(kind) or []
+        if isinstance(found, dict):  # one edge given as a mapping, not a list
+            found = [found]
+        return [e for e in found if isinstance(e, dict) and e.get("target")]
+
+    procedures: dict[str, list[str]] = {}
+    mitigated_by: dict[str, list[str]] = {}
+    for source_id in rels:
+        for e in edges(source_id, "employs"):
+            if e.get("description"):
+                procedures.setdefault(e.get("target"), []).append(str(e["description"]))
+        for e in edges(source_id, "mitigates"):
+            name = (mitigations.get(source_id) or {}).get("name") or source_id
+            mitigated_by.setdefault(e.get("target"), []).append(str(name))
+
     records = []
-    data_dir = repo_dir / "data"
+    for key, t in techniques.items():
+        t = t or {}
+        tid = t.get("id") or key
+        tactics_str = ", ".join(
+            (tactics.get(e.get("target")) or {}).get("name") or str(e.get("target"))
+            for e in edges(tid, "achieves")
+        )
+        parent = next((str(e.get("target")) for e in edges(tid, "specializes")), "")
+        text = f"""MITRE ATLAS AI/ML Attack Technique: {t.get("name", "Unknown")}
 
-    # Parse techniques from YAML files
-    techniques_dir = data_dir / "techniques"
-    if techniques_dir.exists():
-        for yaml_file in techniques_dir.rglob("*.yaml"):
-            try:
-                with open(yaml_file, encoding="utf-8") as f:
-                    doc = yaml.safe_load(f)
-
-                if not doc:
-                    continue
-
-                technique_id = doc.get("id", "")
-                tactics = doc.get("tactics", [])
-                if isinstance(tactics, list):
-                    tactics_str = ", ".join(tactics)
-                else:
-                    tactics_str = str(tactics)
-
-                text = f"""MITRE ATLAS AI/ML Attack Technique: {doc.get("name", "Unknown")}
-
-ID: {technique_id}
+ID: {tid}
 Tactics: {tactics_str}
-
-Description: {doc.get("description", "No description")}
+{f"Sub-technique of: {parent}" + chr(10) if parent else ""}
+Description: {t.get("description", "No description")}
 
 Procedure Examples:
-{chr(10).join(f"- {p}" for p in (doc.get("procedure-examples", []) or [])[:5])}
+{chr(10).join(f"- {p}" for p in procedures.get(tid, [])[:5])}
 
 Mitigations:
-{chr(10).join(f"- {m}" for m in (doc.get("mitigations", []) or [])[:5])}
+{chr(10).join(f"- {m}" for m in mitigated_by.get(tid, [])[:5])}
 """
-                records.append(
-                    {
-                        "text": text,
-                        "metadata": {
-                            "source": "mitre_atlas",
-                            "title": doc.get("name", ""),
-                            "atlas_id": technique_id,
-                            "tactics": tactics_str,
-                        },
-                    }
-                )
-            except Exception as e:
-                logger.debug(f"Error parsing {yaml_file}: {e}")
-                continue
+        records.append(
+            {
+                "text": text,
+                "metadata": {
+                    "source": "mitre_atlas",
+                    "title": t.get("name", ""),
+                    "type": "technique",
+                    "atlas_id": tid,
+                    "tactics": tactics_str,
+                    "parent": parent,
+                },
+            }
+        )
 
-    # Parse case studies
-    case_studies_dir = data_dir / "case-studies"
-    if case_studies_dir.exists():
-        for yaml_file in case_studies_dir.rglob("*.yaml"):
-            try:
-                with open(yaml_file, encoding="utf-8") as f:
-                    doc = yaml.safe_load(f)
+    for key, cs in case_studies.items():
+        cs = cs or {}
+        csid = cs.get("id") or key
+        steps = sorted(edges(csid, "employs"), key=lambda e: str(e.get("step-id", "")))
+        techniques_str = ", ".join(str(e.get("target")) for e in steps)
+        text = f"""MITRE ATLAS Case Study: {cs.get("name", "Unknown")}
 
-                if not doc:
-                    continue
-
-                techniques = doc.get("techniques", [])
-                if isinstance(techniques, list):
-                    techniques_str = ", ".join(techniques)
-                else:
-                    techniques_str = str(techniques)
-
-                text = f"""MITRE ATLAS Case Study: {doc.get("name", "Unknown")}
-
-ID: {doc.get("id", "Unknown")}
-Summary: {doc.get("summary", "No summary")}
+ID: {csid}
+Summary: {cs.get("description", "No summary")}
 
 Techniques Used: {techniques_str}
 
-Incident Date: {doc.get("incident-date", "Unknown")}
-Reporter: {doc.get("reporter", "Unknown")}
+Incident Date: {cs.get("date", "Unknown")}
+Reporter: {cs.get("reporter") or cs.get("actor") or "Unknown"}
 
 References:
-{chr(10).join(f"- {r.get('title', 'N/A')}: {r.get('url', '')}" for r in (doc.get("references", []) or [])[:3])}
+{chr(10).join(f"- {r.get('title', 'N/A')}: {r.get('url', '')}" for r in (cs.get("references") or [])[:3] if isinstance(r, dict))}
 """
-                records.append(
-                    {
-                        "text": text,
-                        "metadata": {
-                            "source": "mitre_atlas",
-                            "title": doc.get("name", ""),
-                            "type": "case_study",
-                            "atlas_techniques": techniques_str,
-                        },
-                    }
-                )
-            except Exception as e:
-                logger.debug(f"Error parsing {yaml_file}: {e}")
-                continue
+        records.append(
+            {
+                "text": text,
+                "metadata": {
+                    "source": "mitre_atlas",
+                    "title": cs.get("name", ""),
+                    "type": "case_study",
+                    "atlas_id": csid,
+                    "atlas_techniques": techniques_str,
+                },
+            }
+        )
 
     _write_jsonl(records, output_path)
     return len(records)
