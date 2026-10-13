@@ -28,6 +28,12 @@ from vhir_cli.case_io import (
 from vhir_cli.case_io import (
     import_bundle as _import_bundle,
 )
+from vhir_cli.case_io import (
+    load_findings as _load_findings,
+)
+from vhir_cli.case_io import (
+    load_timeline as _load_timeline,
+)
 from vhir_cli.commands.audit_cmd import audit_summary_data
 from vhir_cli.commands.evidence import (
     list_evidence_data,
@@ -426,10 +432,16 @@ def create_server() -> FastMCP:
     def case_status(case_id: str = "") -> dict:
         """Get detailed status of a case including finding counts,
         timeline entries, and TODO progress. Defaults to the active
-        case if no case_id is provided."""
+        case if no case_id is provided. The counts are by status;
+        `warning` names any APPROVED finding or event whose approval
+        doesn't verify (treat it as not approved)."""
         try:
             case_dir = _resolve_case_dir(case_id)
             result = _case_status_data(case_dir)
+            warning = mark_approvals(case_dir, _load_findings(case_dir),
+                                     timeline=_load_timeline(case_dir))  # fmt: skip
+            if warning:
+                result["warning"] = warning
             # Layer 4: platform capabilities detection
             result.update(_build_platform_capabilities())
             return result

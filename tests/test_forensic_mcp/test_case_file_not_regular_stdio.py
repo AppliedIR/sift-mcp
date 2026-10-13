@@ -314,6 +314,7 @@ def test_a_held_fifo_findings_file_is_refused_and_the_next_case_is_served(env):
     error = f"Cannot read findings.json: {d / 'findings.json'} is not a regular file"
     assert r == {"error": error}
     assert not os.path.isfile(d / "findings.json")  # still the FIFO
-    assert _listed(server.call("get_findings", {})) == ([{"error": error}], 0)
+    listed = server.call("get_findings", {})  # an error, not a row
+    assert (_listed(listed), listed.get("error")) == (([], 0), error)
     case("next-case")
     assert _listed(server.call("get_findings", {})) == ([], 0)

@@ -390,7 +390,8 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         except Exception as e:
             logger.error("get_findings failed: %s", e)
             return {
-                "findings": [{"error": str(e)}],
+                "error": str(e),
+                "findings": [],
                 "total": 0,
                 "limit": limit,
                 "offset": offset,
@@ -459,7 +460,8 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         except Exception as e:
             logger.error("get_timeline failed: %s", e)
             return {
-                "events": [{"error": str(e)}],
+                "error": str(e),
+                "events": [],
                 "total": 0,
                 "limit": limit,
                 "offset": offset,

@@ -11,6 +11,12 @@ from pathlib import Path
 _VIEW_KEYS = {"finding": "findings", "timeline": "timeline"}
 
 
+def _an_id(value) -> bool:
+    """Whether `value` can be a record's id: a list or a dict id is checked by
+    nothing, so its item reads UNVERIFIED (and can't be a key)."""
+    return value is None or isinstance(value, (str, int))
+
+
 def mark_approvals(case_dir, items: list, kind: str = "finding", *, timeline=()) -> str:
     """Set `approval_verification` on each APPROVED item in `items` (of
     `kind`, finding or timeline) and in `timeline` (events), with one check
@@ -37,9 +43,11 @@ def mark_approvals(case_dir, items: list, kind: str = "finding", *, timeline=())
 
         view = approved_view(Path(case_dir))
         verdicts = {v.item_id: v for v in view["result"].items}
-        marks = {n["id"]: n["status"] for n in view["not_verified"]}
+        marks = {n["id"]: n["status"] for n in view["not_verified"] if _an_id(n["id"])}
         for k in {k for _, k in approved}:
             for record in view[_VIEW_KEYS[k]]:
+                if not _an_id(record["id"]):
+                    continue
                 v = verdicts[str(record["id"])]
                 marks[(k, record["id"])] = (record, v.content_sha256, v.view, shown(view["labels"].get(
                     record["id"])) if v.status == "APPROVED_UNDER_0_6" else "VALID")  # fmt: skip
@@ -47,8 +55,11 @@ def mark_approvals(case_dir, items: list, kind: str = "finding", *, timeline=())
         marks, why = {}, f" (couldn't verify: {e})"
     bad = []
     for item, item_kind in approved:
-        mark = marks.get(
-            (item_kind, item.get("id")), marks.get(item.get("id"), "UNVERIFIED")
+        iid = item.get("id")
+        mark = (
+            marks.get((item_kind, iid), marks.get(iid, "UNVERIFIED"))
+            if _an_id(iid)
+            else "UNVERIFIED"
         )
         ok = False
         if isinstance(mark, tuple):  # verified: only if this is that record

@@ -112,8 +112,8 @@ def test_get_findings_pages_from_offset(drafts, kw, ids):
     ids=["P5", "P6", "P7", "P8"],
 )
 def test_a_negative_offset_is_refused_whatever_the_limit(drafts, tool, key, kw):
-    out = _tool(tool)(**kw)
-    assert (out[key], out["total"]) == ([{"error": OFFSET}], 0)
+    out = _tool(tool)(**kw)  # an error, not a row
+    assert (out[key], out["total"], out["error"]) == ([], 0, OFFSET)
 
 
 # --- A, E: the timeline's approvals are verified --------------------------------
