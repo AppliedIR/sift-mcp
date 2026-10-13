@@ -82,6 +82,41 @@ def test_an_examiners_edit_of_the_alternatives_is_signed_and_applied(portal, act
     assert verify_case(portal.dir).exit_code == 0
 
 
+NEW_FIELDS = {
+    "challenged": {
+        "outcome": "contested", "contradiction": "Fits the admin's jump host.",
+        "checks": [{"name": "re-read", "result": "not run", "audit_ids": [],
+                    "reason": "unverified audit id: x-1"}],
+        "skeptic_audit_ids": [], "skeptic": {"client": "codex", "model": "m",
+                                             "self_reported": True}},
+    "prior_challenge": [{"kind": "withdrawn", "ref": "forensic-steve-20261013-001",
+                         "contradiction": "installer path", "new_since": []}],
+    "produced_by": {"client": "claude-code", "model": "m", "self_reported": True},
+}  # fmt: skip
+
+
+def test_a_finding_with_the_challenge_fields_is_served_as_stored_signed_and_verified(
+    portal,
+):
+    """The fields record_finding now writes are part of the signed content:
+    the portal serves them as stored (its checkPlan compares the payload), and
+    an approval through the portal signs them and verifies."""
+    enrol("steve")
+    original = dict(conftest_finding("F-steve-001"), **NEW_FIELDS)
+    portal.write("findings.json", [original])
+    portal.write("timeline.json", [])
+    served = portal.item("F-steve-001")
+    assert {k: served[k] for k in NEW_FIELDS} == NEW_FIELDS
+    entry = dict(reviewed(portal, "F-steve-001", "approve"), staged_by="steve")
+    portal.stage(entry)
+    r = portal.sign_all([entry])
+    assert r.status_code == 200, r.text
+    (line,) = portal.chain()
+    assert line["item_id"] == "F-steve-001"
+    assert verify_case(portal.dir).exit_code == 0
+    assert all(f in json.loads(line["content_snapshot"]) for f in NEW_FIELDS)
+
+
 def _withdrawal(audit_id, ts, title="t"):
     return {
         "ts": ts,
