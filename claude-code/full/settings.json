@@ -97,6 +97,9 @@
       "Edit(**/pending-reviews.json)",
       "Read(//var/lib/vhir/**)",
       "Edit(//var/lib/vhir/**)",
+      "Read(**/.vhir/gateway.yaml)",
+      "Read(~/.vhir/gateway.yaml)",
+      "Read(~/.claude.json)",
       "Bash(vhir approve*)",
       "Bash(*vhir approve*)",
       "Bash(vhir reject*)",
@@ -148,7 +151,9 @@
         "~/.codex"
       ],
       "denyRead": [
-        "/var/lib/vhir"
+        "/var/lib/vhir",
+        "~/.vhir/gateway.yaml",
+        "~/.claude.json"
       ]
     }
   }
