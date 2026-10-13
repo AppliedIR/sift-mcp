@@ -139,3 +139,43 @@ def test_a_typed_domain_with_its_root_dot_counts_without_it():
     assert _network_ioc("evil.com.", True) == "evil.com"
     got = _defang_iocs("evil.com. and https://evil.com./x", ["evil.com"])
     assert got == "evil[.]com. and https://evil[.]com./x"
+
+
+# Where a domain IOC names a host, whatever the separators before it (a browser
+# reads each of these as a host), and where it is only a path component. The
+# same table is in vhir-cli's and sift's tests.
+HOST_FORMS = [
+    "https://evil.com/x", "https:/evil.com/x", r"https:\evil.com/x", r"https:\\evil.com/x",
+    r"https:/\evil.com/x", r"https:\/evil.com/x", "https:///evil.com/x", "HTTPS://evil.com/x",
+    "//evil.com/x", r"\\evil.com\share", r"\\evil.com@SSL\DavWWWRoot\x.dll",
+]  # fmt: skip
+PATH_FORMS = [
+    ("https://vendor.example/download/evil.com/tool", "/download/evil.com/tool"),
+    (r"C:\Users\x\evil.com\a", r"\x\evil.com\a"),
+    ("https://evil.com/evil.com/payload", "/evil.com/payload"),
+]
+
+
+@pytest.mark.parametrize("text", HOST_FORMS)
+def test_a_domain_where_it_names_a_host_is_defanged_whatever_the_separators(text):
+    from report_mcp.server import _defang_iocs as defang_iocs
+
+    got = defang_iocs(text, ["evil.com"])
+    assert "evil[.]com" in got and "evil.com" not in got, got
+
+
+@pytest.mark.parametrize(("text", "kept"), PATH_FORMS)
+def test_a_domain_that_is_only_a_path_component_stays_as_written(text, kept):
+    from report_mcp.server import _defang_iocs as defang_iocs
+
+    assert defang_iocs(text, ["evil.com"]).endswith(kept)
+
+
+def test_vhir_reads_the_host_and_path_table_alike():
+    vhir = pytest.importorskip("vhir_cli.defang")
+    from report_mcp.server import _defang_iocs
+
+    for text in [*HOST_FORMS, *(p for p, _ in PATH_FORMS)]:
+        assert vhir.defang_iocs(text, ["evil.com"]) == _defang_iocs(
+            text, ["evil.com"]
+        ), text
