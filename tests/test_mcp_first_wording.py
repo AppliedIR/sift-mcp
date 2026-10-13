@@ -34,8 +34,7 @@ EZ_SENTENCE = (
 
 # the required skeptic (grading Spec A4), as approved; added after a space
 SKEPTIC_SENTENCE = (
-    "Challenge each finding first with the finding-skeptic skill, in an isolated agent:"
-    " record_finding refuses a finding without challenged; with no skeptic, send"
+    "A finding-skeptic challenge (isolated agent) is required; with none, send"
     ' challenged {"outcome": "not_challenged", "reason": why}.'
 )
 
