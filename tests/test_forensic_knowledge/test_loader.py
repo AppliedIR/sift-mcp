@@ -307,7 +307,7 @@ class TestFramework:
     def test_framework_self_check_has_how(self):
         fw = loader.get_investigation_framework()
         checks = fw["self_check"]
-        assert len(checks) == 11
+        assert len(checks) == 10
         for item in checks:
             assert isinstance(item, dict), f"self_check item should be dict: {item}"
             assert "question" in item
