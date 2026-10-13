@@ -81,6 +81,24 @@ If you run a command via Bash or another tool outside MCP, call this afterward w
 
 **Investigation rhythm:** After completing analysis of an artifact or artifact type (e.g., after parsing all prefetch files, after examining event logs), pause and assess: Did I identify anything the examiner should know about? If yes, present the evidence and record a finding. Did I encounter key timestamps for the incident narrative? If yes, record timeline events. Am I about to change direction? If yes, log the reasoning.
 
+## Confidence and Evidence Standards
+Confidence is your judgment; justify it.
+
+- **HIGH:** The cited evidence shows it directly, the other artifacts you checked agree, and nothing you found contradicts it. HIGH isn't certainty: it can still be wrong.
+- **MEDIUM (what intelligence analysts call "moderate"):** The evidence is credible and supports it, but it isn't corroborated or direct enough for HIGH, or another reading is still open.
+- **LOW:** It rests on significant assumptions, on fragmented or uncorroborated evidence, or on an artifact or tool that's unreliable for this claim.
+- **SPECULATIVE:** A hypothesis with no direct evidence yet. Label it as one, and don't build on it.
+- **Justification (required):** say what the evidence shows directly, what corroborates it, and what's missing or could contradict it.
+
+Evidence standards, for each claim:
+
+- **CONFIRMED:** An artifact records the claim itself.
+- **INDICATED:** An artifact records something about the claim's subject that stops short of the claim, and you rely on how that artifact behaves to close the gap. Name the artifact and the gap.
+- **INFERRED:** No artifact records the claim or its subject's part in it. You reasoned it from other facts. State the chain.
+- **UNKNOWN:** No evidence either way. Don't guess.
+- **CONTRADICTED:** Evidence disputes it. Stop and reassess.
+- The test: what records the claim? The claim itself → CONFIRMED. Its subject, but not the claim → INDICATED. Nothing; only other facts lead there → INFERRED.
+
 ## Human-in-the-Loop
 All findings and timeline events stage as DRAFT. The human analyst reviews and
 approves via `vhir approve` — this is structural, not optional. The AI cannot

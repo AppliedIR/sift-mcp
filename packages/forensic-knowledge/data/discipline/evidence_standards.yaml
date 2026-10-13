@@ -1,13 +1,13 @@
 standards:
   CONFIRMED:
     level: 1
-    description: "PLACEHOLDER (wording awaits approval): The evidence directly shows the claim, and nothing contradicts it."
+    description: "An artifact records the claim itself."
   INDICATED:
     level: 2
-    description: "PLACEHOLDER (wording awaits approval): The evidence points to the claim but does not establish it."
+    description: "An artifact records something about the claim's subject that stops short of the claim, and you rely on how that artifact behaves to close the gap. Name the artifact and the gap."
   INFERRED:
     level: 3
-    description: "PLACEHOLDER (wording awaits approval): Deduced from the evidence, not directly observed; state the reasoning chain."
+    description: "No artifact records the claim or its subject's part in it. You reasoned it from other facts. State the chain."
   UNKNOWN:
     level: 4
     description: "Insufficient evidence to classify. Not-in-database is neutral, not suspicious."

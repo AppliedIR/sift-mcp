@@ -86,7 +86,7 @@ self_check:
   - question: "Separated observation from interpretation?"
     how: "State what you observed first (facts), then what you think it means (interpretation), as distinct sections"
   - question: "Stated confidence with justification?"
-    how: "PLACEHOLDER (wording awaits approval): Choose SPECULATIVE/LOW/MEDIUM/HIGH and cite the specific evidence, its corroboration, contradictions and gaps that justify that level"
+    how: "Choose SPECULATIVE/LOW/MEDIUM/HIGH, and say what the evidence shows directly, what corroborates it, and what's missing or could contradict it."
   - question: "Considered alternatives?"
     how: "List at least one alternative explanation and state why the evidence favors your interpretation"
   - question: "Looked for contradicting evidence?"

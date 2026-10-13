@@ -1,9 +1,9 @@
 levels:
   HIGH:
-    criteria: "PLACEHOLDER (wording awaits approval): The evidence is direct and from reliable sources, it agrees where it was checked, nothing contradicts it, and no known gap would change the conclusion."
+    criteria: "The cited evidence shows it directly, the other artifacts you checked agree, and nothing you found contradicts it. HIGH isn't certainty: it can still be wrong."
   MEDIUM:
-    criteria: "PLACEHOLDER (wording awaits approval): The evidence supports the claim but is indirect or of one kind, or an alternative or a gap remains open."
+    criteria: "The evidence is credible and supports it, but it isn't corroborated or direct enough for HIGH, or another reading is still open."
   LOW:
-    criteria: "PLACEHOLDER (wording awaits approval): A reasonable inference from limited or indirect evidence; significant gaps or alternatives remain."
+    criteria: "It rests on significant assumptions, on fragmented or uncorroborated evidence, or on an artifact or tool that's unreliable for this claim."
   SPECULATIVE:
-    criteria: "PLACEHOLDER (wording awaits approval): A hypothesis with no direct evidence yet; label it as one."
+    criteria: "A hypothesis with no direct evidence yet. Label it as one, and don't build on it."

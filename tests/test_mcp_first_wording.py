@@ -31,6 +31,23 @@ EZ_SENTENCE = (
     " timeline or the case time range, so query them by their own date field (e.g."
     " Created0x10) with index=."
 )
+# forensic-mcp's confidence and evidence-standards lines, as approved: judged,
+# not counted. They replace 619 characters with 758, so the budget grows by
+# the 108 it lacked, and 10 to spare
+JUDGMENT_LINES = (
+    "CONFIDENCE LEVELS (your judgment; justify it): HIGH — the cited evidence shows"
+    " it directly, what you checked agrees, nothing contradicts it (not certainty)."
+    ' MEDIUM (intelligence "moderate") — credible support, but not corroborated or'
+    " direct enough for HIGH, or another reading is open. LOW — significant"
+    " assumptions, fragmented evidence or an unreliable source. SPECULATIVE — no"
+    " direct evidence yet; label it.",
+    "EVIDENCE STANDARDS: CONFIRMED — an artifact records the claim itself. INDICATED"
+    " — an artifact records the claim's subject but stops short of the claim; name"
+    " the gap. INFERRED — no artifact records it; reasoned from other facts (state"
+    " the chain). UNKNOWN — no evidence either way; do not guess. CONTRADICTED —"
+    " evidence disputes it; stop and reassess.",
+)
+JUDGMENT_GROWTH = 118
 
 
 def _strings():
@@ -58,9 +75,17 @@ def test_the_backend_instructions_stay_within_their_budget():
     strings = _strings()
     assert len(strings) == 10
     budget = BASE_TOTAL + len(SENTENCE) + len(EVTX_SENTENCE) + len(EZ_SENTENCE) + 2
+    budget += JUDGMENT_GROWTH
     assert sum(len(v) for v in strings.values()) <= budget
 
 
 def test_the_agents_core_says_mcp_first_by_advice_never_a_block():
     agents = (ROOT / "AGENTS.md").read_text()
     assert "MCP first, by advice" in agents and "never blocked" in agents
+
+
+def test_forensic_mcp_states_confidence_and_the_ladder_as_approved():
+    lines = _strings()["FORENSIC_MCP"].split("\n\n")
+    for line in JUDGMENT_LINES:
+        assert line in lines
+    assert sum(len(line) for line in JUDGMENT_LINES) == 758

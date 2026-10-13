@@ -85,6 +85,13 @@ def _build_finding_considerations(finding: dict) -> list[str]:
     return considerations
 
 
+# What a confidence justification says (FD-005)
+_JUSTIFY = (
+    "say what the evidence shows directly, what corroborates it, and what's "
+    "missing or could contradict it."
+)
+
+
 def _build_validation_guidance(errors: list[str]) -> list[str]:
     """Enrich validation errors with rule citations."""
     guidance: list[str] = []
@@ -94,9 +101,7 @@ def _build_validation_guidance(errors: list[str]) -> list[str]:
                 "FD-001: Every claim must reference at least one audit_id from an actual tool call"
             )
         if "confidence_justification" in err.lower():
-            guidance.append(
-                "FD-005: Confidence must be justified — cite specific evidence for your confidence level"
-            )
+            guidance.append("FD-005: Confidence must be justified: " + _JUSTIFY)
     return guidance
 
 
@@ -137,7 +142,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - observation (str): factual evidence — what was seen
         - interpretation (str): analytical meaning — what it implies
         - confidence: SPECULATIVE, LOW, MEDIUM, or HIGH
-        - confidence_justification (str): why this confidence level
+        - confidence_justification (str, required): say what the evidence shows directly, what corroborates it, and what's missing or could contradict it.
         - type: finding, conclusion, attribution, or exclusion
         - audit_ids (list[str]): IDs from MCP tool responses.
           Use [] if providing supporting_commands only.
@@ -600,7 +605,7 @@ def _register_discipline_resources(server: FastMCP) -> None:
             "confidence_levels": list(confidence_defs),
             "rules": [
                 "FD-001: Every claim must reference at least one audit_id from an actual tool call",
-                "FD-005: Confidence must be justified with specific evidence citations",
+                "FD-005: Confidence must be justified: " + _JUSTIFY,
             ],
         }
         return json.dumps(schema)

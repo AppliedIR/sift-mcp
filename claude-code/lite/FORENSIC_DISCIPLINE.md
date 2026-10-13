@@ -15,24 +15,26 @@ Mandatory rules for AI-assisted forensic analysis. **Evidence speaks first. Theo
 
 ## Evidence Classification
 
-> PLACEHOLDER (wording awaits approval): the two tables below. The labels are words for a claim, not counts; confidence is your judgment of the sources' quality and directness, corroboration, contradictions and gaps.
+| Label | Meaning |
+|-------|---------|
+| CONFIRMED | An artifact records the claim itself. |
+| INDICATED | An artifact records something about the claim's subject that stops short of the claim, and you rely on how that artifact behaves to close the gap. Name the artifact and the gap. |
+| INFERRED | No artifact records the claim or its subject's part in it. You reasoned it from other facts. State the chain. |
+| UNKNOWN | No evidence either way. Don't guess. |
+| CONTRADICTED | Evidence disputes it. Stop and reassess. |
 
-| Label | Meaning | Requirement |
-|-------|---------|-------------|
-| CONFIRMED | The evidence directly shows this | Nothing contradicts it |
-| INDICATED | The evidence points to this | It doesn't establish it |
-| INFERRED | Logical deduction without direct evidence | State the reasoning chain |
-| UNKNOWN | No evidence either way | Do not guess |
-| CONTRADICTED | Evidence disputes this | Stop and reassess |
+The test: what records the claim? The claim itself → CONFIRMED. Its subject, but not the claim → INDICATED. Nothing; only other facts lead there → INFERRED.
 
 ## Confidence Levels
 
 | Level | Criteria |
 |-------|----------|
-| HIGH | Direct evidence from reliable sources; nothing contradicts it; no known gap would change the conclusion |
-| MEDIUM | Supports the claim, but indirect or of one kind, or an alternative or a gap remains open |
-| LOW | A reasonable inference from limited or indirect evidence |
-| SPECULATIVE | No direct evidence, pure hypothesis (must label) |
+| HIGH | The cited evidence shows it directly, the other artifacts you checked agree, and nothing you found contradicts it. HIGH isn't certainty: it can still be wrong. |
+| MEDIUM (what intelligence analysts call "moderate") | The evidence is credible and supports it, but it isn't corroborated or direct enough for HIGH, or another reading is still open. |
+| LOW | It rests on significant assumptions, on fragmented or uncorroborated evidence, or on an artifact or tool that's unreliable for this claim. |
+| SPECULATIVE | A hypothesis with no direct evidence yet. Label it as one, and don't build on it. |
+
+Justification (required): say what the evidence shows directly, what corroborates it, and what's missing or could contradict it.
 
 ---
 

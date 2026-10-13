@@ -10,5 +10,5 @@ template:
   observation: "string — factual description of what the data shows (no interpretation)"
   interpretation: "string — what it might mean (labeled as interpretation)"
   confidence: "HIGH | MEDIUM | LOW | SPECULATIVE"
-  confidence_justification: "string — why this confidence level, citing specific evidence"
+  confidence_justification: "string — say what the evidence shows directly, what corroborates it, and what's missing or could contradict it."
   type: "finding | attribution | conclusion | exclusion"
