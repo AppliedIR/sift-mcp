@@ -586,6 +586,7 @@ body {
         </details>
       </div>
       <div class="withdrawn-line" id="withdrawnLine" style="display:none" onclick="switchTab('dashboard')"></div>
+      <div class="withdrawn-line" id="noTerminalLine" style="display:none"></div>
       <div class="sidebar-list" id="sidebarList" role="listbox" aria-label="Findings list"></div>
       <div class="sidebar-stats" id="sidebarStats"></div>
       <div class="save-status saved" id="saveStatus">All saved &#10003;</div>
@@ -967,6 +968,7 @@ async function loadAll() {
     if (VHIR_SIGN.isOpen()) return;
     if (sm) summaryData = sm;
     renderWithdrawnLine();
+    renderNoTerminalLine();
     if (loading) loading.style.display = 'none';
     hideErrorBanner();
     const newIds = new Set(f.map(x => x.id));
@@ -1837,6 +1839,19 @@ function renderWithdrawnLine() {
   var n = summaryData && summaryData.withdrawn ? summaryData.withdrawn.total || 0 : 0;
   el.style.display = n ? '' : 'none';
   el.textContent = n ? withdrawnText(n) + ' \u2014 open the list on the Overview' : '';
+}
+
+// Approve or reject attempts refused for want of a terminal (an AI's run, not
+// the examiner): nothing was saved; the examiner is told here, as the CLI does
+function renderNoTerminalLine() {
+  var el = document.getElementById('noTerminalLine');
+  if (!el) return;
+  var r = summaryData && summaryData.no_terminal ? summaryData.no_terminal : {};
+  var n = typeof r.total === 'number' ? r.total : 0;
+  el.style.display = n ? '' : 'none';
+  el.textContent = n ? n + ' approve/reject attempt(s) refused: no terminal (latest ' +
+    String(r.latest || '?') + ', ' + (Array.isArray(r.ids) ? r.ids.map(String).join(', ') : '') +
+    ') \u2014 not you? see `vhir audit`' : '';
 }
 
 function renderWithdrawnList(w) {
@@ -3573,6 +3588,7 @@ async function loadDashboard() {
     summaryData = await apiFetch('/api/summary');
     renderDashboard(summaryData);
     renderWithdrawnLine();
+    renderNoTerminalLine();
   } catch (e) {
     document.getElementById('dashGrid').innerHTML =
       '<div class="dash-card"><h3>Error</h3><p>' + escapeHtml(e.message) + '</p></div>';

@@ -462,6 +462,23 @@ def _machines(case_dir: Path) -> int:
     return len(host_identity.load(case_dir).machines)
 
 
+def _no_terminal(case_dir: Path) -> dict:
+    """The approve and reject attempts refused for want of a terminal, as
+    `vhir approve` counts them: {total, latest, ids} of the latest."""
+    from vhir_cli.case_io import load_no_terminal
+
+    try:
+        refused = load_no_terminal(case_dir)
+    except Exception:  # noqa: BLE001 - information; a bad line mustn't break the summary
+        return {"total": 0}
+    if not refused:
+        return {"total": 0}
+    params = refused[-1].get("params")
+    ids = params.get("ids") if isinstance(params, dict) else None
+    return {"total": len(refused), "latest": str(refused[-1].get("ts", "")),
+            "ids": [str(i) for i in ids] if isinstance(ids, list) else []}  # fmt: skip
+
+
 async def get_summary(request: Request) -> JSONResponse:
     case_dir = _resolve_case_dir()
     if not case_dir:
@@ -500,6 +517,7 @@ async def get_summary(request: Request) -> JSONResponse:
             "evidence": {"total": len(evidence)},
             "todos": {"total": len(todos), "open": open_todos},
             "withdrawn": withdrawn,
+            "no_terminal": _no_terminal(case_dir),
             # machines, as the Hosts tab counts them (host identity), not host texts
             "hosts": {"machines": await anyio.to_thread.run_sync(_machines, case_dir)},
         }
