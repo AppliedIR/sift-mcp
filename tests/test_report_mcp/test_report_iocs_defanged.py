@@ -116,11 +116,9 @@ def test_a_name_an_approved_finding_only_mentions_stays_live(case):
     assert "download[.]vendor" not in saved
 
 
-def test_a_report_saved_as_json_keeps_its_iocs_live(case):
-    """JSON is input for tools: a .json save keeps the IOCs as stored, while
-    the same content saved as markdown has them defanged."""
+def test_a_report_saved_with_a_json_name_is_defanged_too(case):
+    """save_report appends its block to any content, so no save is JSON a tool
+    reads: a .json name is defanged as any other."""
     content = json.dumps({"iocs": ["evil.com", "http://bad.example.com/x.php"]})
     saved = _saved(case, [APPROVED], content, filename="r.json")
-    assert '"evil.com"' in saved and "http://bad.example.com/x.php" in saved
-    assert "[.]" not in saved
-    assert '"evil[.]com"' in _saved(case, [APPROVED], content)
+    assert '"evil[.]com"' in saved and "hxxp://bad[.]example[.]com/x.php" in saved
