@@ -11,6 +11,9 @@ below as a tool the SIFT catalog doesn't carry.
 
 from __future__ import annotations
 
+import os
+import shutil
+
 import pytest
 from forensic_knowledge import loader
 from sift_mcp.catalog import get_tool_def, load_catalog
@@ -60,6 +63,27 @@ def test_no_alias_is_another_tools_name_binary_or_alias():
     assert clashes == {}
 
 
+def test_no_alias_is_another_program():
+    """An alias that's also a program's name would describe that program as
+    the tool: p7zip is 7-Zip's gzip-style wrapper, which compresses the files
+    it's given and deletes them, so it isn't 7z's alias. No alias may be a
+    program on this host's PATH other than the tool's own binary (a SIFT box
+    has them; CI may not, so p7zip is also checked by name)."""
+
+    def program(name):
+        found = shutil.which(name)
+        return os.path.realpath(found) if found else None
+
+    others = {
+        alias: path
+        for td in load_catalog().values()
+        for alias in td.aliases
+        if (path := program(alias)) and path != program(td.binary)
+    }
+    assert others == {}
+    assert get_tool_def("p7zip") is None
+
+
 def test_every_related_tool_is_found_or_listed_as_not_in_the_catalog():
     names = _related_tools()
     unfound = {n for n in names if get_tool_def(n) is None}
@@ -77,7 +101,6 @@ def test_every_related_tool_is_found_or_listed_as_not_in_the_catalog():
         ("Volatility3", "vol3"),
         ("volatility", "vol3"),
         ("7-Zip", "7z"),
-        ("p7zip", "7z"),
         ("Bulk Extractor", "bulk_extractor"),
         ("bulk-extractor", "bulk_extractor"),
     ],
