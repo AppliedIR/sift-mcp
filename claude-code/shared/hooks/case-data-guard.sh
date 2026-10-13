@@ -234,7 +234,8 @@ def check(seg):
 if payload.get("tool_name") == "apply_patch":  # by its headers' paths, never as shell
     try:
         for kind, path in re.findall(
-            r"(?m)^\*\*\* (Add File|Update File|Delete File|Move to): (.+?)[ \t\r]*$", cmd
+            r"(?m)^[ \t]*\*\*\* (Add File|Update File|Delete File|Move to):[ \t]*(.+?)[ \t\r]*$",
+            cmd,  # Codex reads a header indented by spaces or a tab, and trims the path
         ):
             if damage(path, new_ok=kind in ("Add File", "Move to")):
                 block(f"apply_patch {kind} {path}")
