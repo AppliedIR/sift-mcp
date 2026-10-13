@@ -186,11 +186,101 @@ def test_the_table_is_what_codex_applies(tmp_path):
 
 
 def test_python_white_space_covers_what_codex_trims():
-    """The guard's \\s matches every Unicode White_Space code point but LF."""
+    """The guard's [^\\S\\n] matches every Unicode White_Space code point but LF, and not LF."""
     import re
 
     white_space = [0x09, 0x0B, 0x0C, 0x0D, 0x20, 0x85, 0xA0, 0x1680, *range(0x2000, 0x200B),
                    0x2028, 0x2029, 0x202F, 0x205F, 0x3000]  # fmt: skip
-    assert len(white_space) == 24 and all(
-        re.fullmatch(r"\s", chr(c)) for c in white_space
+    assert len(white_space) == 24
+    assert all(re.fullmatch(r"[^\S\n]", chr(c)) for c in white_space)
+    assert not re.fullmatch(r"[^\S\n]", "\n")
+
+
+# --- a header's path never runs onto the next line ----------------------------
+# Codex splits a patch into lines at LF only (measured: U+2028, U+2029, U+0085, a
+# lone CR, VT and FF start no line), so an empty header, or a context line ending
+# like one, can't take the next line's header for its path: that header is checked.
+
+KEYWORDS = ("Add File", "Update File", "Delete File", "Move to")
+TAILS = {"nothing": "", "a space": " ", "a tab": "\t", "VT": "\x0b", "FF": "\x0c",
+         "NBSP": "\u00a0", "U+3000": "\u3000", "CR (a CRLF line)": "\r"}  # fmt: skip
+
+
+def codex_payload(target):
+    """codex review's payload: a context line ` *** Add File:` before a Delete."""
+    return ("*** Begin Patch\n*** Update File: notes.txt\n@@\n-before\n+after\n *** Add File:\n"
+            f"*** Delete File: {target}\n*** End Patch\n")  # fmt: skip
+
+
+def test_codex_reviews_payload_is_refused(box):  # noqa: F811
+    root, cases, case, out = box
+    r = patch(box, case, codex_payload(f"{case}/findings.json"))
+    assert r.returncode == 2, r.stderr
+    assert "Delete File" in r.stderr
+
+
+@pytest.mark.parametrize("keyword", KEYWORDS)
+def test_an_empty_header_doesnt_take_the_next_header(box, keyword):  # noqa: F811
+    root, cases, case, out = box
+    r = patch(
+        box, case, body(f"*** {keyword}:\n*** Delete File: {case}/findings.json\n")
     )
+    assert r.returncode == 2, r.stderr
+
+
+@pytest.mark.parametrize("tail", sorted(TAILS))
+@pytest.mark.parametrize("keyword", KEYWORDS)
+def test_a_context_line_like_a_header_doesnt_take_the_next_header(box, keyword, tail):  # noqa: F811
+    root, cases, case, out = box
+    context = f" *** {keyword}:{TAILS[tail]}\n"
+    r = patch(box, case, body(update("notes.txt", "before", "after") + context
+                              + f"*** Delete File: {case}/findings.json\n"))  # fmt: skip
+    assert r.returncode == 2, (keyword, tail, r.stderr)
+
+
+@pytest.mark.parametrize(
+    "between, header",
+    [
+        ("\n", "*** Delete File: {C}/findings.json\n"),  # a blank line between
+        ("  \n", "*** Delete File: {C}/findings.json\n"),  # a line of spaces between
+        ("", "*** Delete File: {C}/findings.json\r\n"),  # a CRLF Delete
+        ("", "*** Update File: {C}/timeline.json\n@@\n-x\n+y\n"),
+    ],
+    ids=["blank line", "spaces line", "CRLF Delete", "Update of a record"],
+)
+def test_the_header_after_an_empty_one_is_still_checked(box, between, header):  # noqa: F811
+    root, cases, case, out = box
+    text = update("notes.txt", "before", "after") + " *** Add File:\n" + between
+    r = patch(box, case, body(text + header.format(C=case)))
+    assert r.returncode == 2, r.stderr
+
+
+def test_an_ordinary_delete_after_an_empty_header_passes(box):  # noqa: F811
+    root, cases, case, out = box
+    r = patch(box, case, codex_payload(f"{out}/x"))
+    assert r.returncode == 0, r.stderr
+
+
+def test_codex_splits_a_patch_at_lf_only(tmp_path):
+    """Codex's own parser: codex review's payload deletes the file, and no other
+    break character starts the Delete's line (skipped without the binary)."""
+    import shutil
+
+    codex = shutil.which("codex")
+    if not codex:
+        pytest.skip("no codex binary here")
+    got = {}
+    for name, sep in [("LF", "\n"), ("U+2028", "\u2028"), ("U+2029", "\u2029"), ("U+0085", "\u0085"),
+                      ("lone CR", "\r"), ("VT", "\x0b"), ("FF", "\x0c")]:  # fmt: skip
+        d = tmp_path / f"{len(got)}"
+        d.mkdir()
+        (d / "notes.txt").write_text("before\n*** Add File:\n")
+        (d / "r.txt").write_text("x\n")
+        text = codex_payload("r.txt").replace(
+            " *** Add File:\n", " *** Add File:" + sep
+        )
+        subprocess.run([codex, "--codex-run-as-apply-patch", text], cwd=d, capture_output=True, text=True,
+                       timeout=60)  # fmt: skip
+        got[name] = not (d / "r.txt").exists()
+    assert got == {"LF": True, "U+2028": False, "U+2029": False, "U+0085": False, "lone CR": False,
+                   "VT": False, "FF": False}  # fmt: skip
