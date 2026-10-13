@@ -27,7 +27,7 @@ advisories:
   - "conn.log is the starting point — it contains a summary of every connection"
   - "dns.log records all DNS queries and responses; critical for domain-based threat hunting"
   - "http.log provides URL, user-agent, referrer, and response details for HTTP connections"
-  - "ssl.log shows TLS certificate details including subject, issuer, and JA3/JA3S hashes"
+  - "ssl.log shows TLS certificate details including subject and issuer; JA3/JA3S hashes only when a JA3 package is loaded"
   - "Use the UID field to correlate activity across log files (a single connection appears in multiple logs)"
   - "Zeek scripts can be loaded for additional analysis: '@load policy/protocols/ssl/validate-certs'"
   - "For JSON output, add '@load policy/tuning/json-logs' to the Zeek script or use -e flag"

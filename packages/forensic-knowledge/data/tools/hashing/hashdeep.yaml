@@ -25,7 +25,7 @@ advisories:
   - "Use -r flag for recursive directory hashing"
   - "Use -c flag to specify hash algorithms: -c md5,sha1,sha256"
   - "Audit mode (-a) compares computed hashes against a known hash set — use for NSRL filtering or integrity verification"
-  - "Negative matching (-m flag with -M mode) excludes known-good files, leaving only unknown files for analysis"
+  - "Negative matching (-x flag, or -X to show hashes) excludes known-good files, leaving only unknown files for analysis; -m/-M is positive matching"
   - "Always hash evidence at acquisition AND before analysis to verify integrity has been maintained"
   - "Output includes file size alongside hashes, which helps identify files that are identical in size but different in content"
   - "For NSRL (National Software Reference Library) filtering, download the RDS hash set and use audit mode"

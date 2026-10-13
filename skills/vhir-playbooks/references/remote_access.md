@@ -8,14 +8,14 @@ MITRE ATT&CK: T1021, T1570
 
 - RDP connection from unexpected source system
 - PsExec service installation (Event ID 7045 with PSEXESVC)
-- WMI remote execution events (Event IDs 5857-5861)
+- WMI activity events (WMI-Activity/Operational 5857-5861: provider loads, client failures, event subscriptions; 5861 = permanent subscription). Context, not remote-execution proof by themselves; a 5858 whose ClientMachine is another host points to a remote WMI client
 - WinRM connections from non-administrative workstations
 
 ## Phase 1: Identify Method
 
 1. Check for PsExec service install — Event ID 7045 with service name PSEXESVC using Hayabusa (via sift-mcp or wintools-mcp)
 2. Check for RDP logons — Event ID 4624 Type 10, Event ID 1149 in TerminalServices-RemoteConnectionManager
-3. Check for WMI events — Event IDs 5857-5861 using EvtxECmd (via sift-mcp or wintools-mcp)
+3. Check WMI-Activity events 5857-5861 using EvtxECmd (via sift-mcp or wintools-mcp); they show provider loads, failures and subscriptions, and a remote ClientMachine in 5858 is a lead for remote WMI
 4. Check for WinRM connections in Windows Remote Management event logs
 
 ## Phase 2: Source Analysis

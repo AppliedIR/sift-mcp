@@ -15,7 +15,7 @@ phases:
     steps:
       - "Parse Prefetch with PECmd (via wintools-mcp) — note run count, timestamps, and loaded files/directories"
       - "Check Amcache with AmcacheParser (via sift-mcp or wintools-mcp) for file presence records and SHA1 hashes"
-      - "Check Shimcache with AppCompatCacheParser (via sift-mcp or wintools-mcp) for additional execution evidence"
+      - "Check Shimcache with AppCompatCacheParser (via sift-mcp or wintools-mcp) for additional presence evidence"
   - phase: "Validate"
     steps:
       - "Check executable against Windows baseline (windows-triage: check_file)"

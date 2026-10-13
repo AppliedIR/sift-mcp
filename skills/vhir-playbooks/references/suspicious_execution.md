@@ -15,7 +15,7 @@ MITRE ATT&CK: T1204, T1059
 
 1. Parse Prefetch with PECmd (via wintools-mcp) — note run count, timestamps, and loaded files/directories
 2. Check Amcache with AmcacheParser (via sift-mcp or wintools-mcp) for file presence records and SHA1 hashes
-3. Check Shimcache with AppCompatCacheParser (via sift-mcp or wintools-mcp) for additional execution evidence
+3. Check Shimcache with AppCompatCacheParser (via sift-mcp or wintools-mcp) for additional presence evidence
 
 ## Phase 2: Validate
 

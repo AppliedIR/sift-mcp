@@ -26,7 +26,7 @@ MITRE ATT&CK: T1003, T1558
 ## Phase 3: Scope
 
 1. Check for Kerberoasting events — Event ID 4769 with RC4 encryption type (0x17)
-2. Check for pass-the-hash logon patterns — Event ID 4624 Type 9 or NTLM logons
+2. Check for pass-the-hash logon patterns — on targets, Event ID 4624 Type 3 with NTLM authentication; on a suspected source host, 4624 Type 9 (NewCredentials — also produced by legitimate runas /netonly)
 3. Check for DCSync indicators — Event ID 4662 with replication rights GUIDs
 
 ## Phase 4: Impact

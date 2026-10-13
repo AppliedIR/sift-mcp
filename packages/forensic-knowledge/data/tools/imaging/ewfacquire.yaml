@@ -24,7 +24,7 @@ exit_code_hints:
 advisories:
   - "Always use a hardware write blocker when imaging physical media"
   - "Use -t flag to specify the target filename (without extension)"
-  - "Use -C flag to set case number, -D for description, -E for examiner name, -N for evidence number"
+  - "Use -C flag to set case number, -D for description, -e for examiner name, -E for evidence number, -N for notes"
   - "Use -c flag to set compression level: 'none', 'fast', 'best' — 'fast' is a good balance"
   - "Use -d flag to compute hash during acquisition: 'sha256' recommended"
   - "Use ewfverify to verify image integrity after acquisition"
