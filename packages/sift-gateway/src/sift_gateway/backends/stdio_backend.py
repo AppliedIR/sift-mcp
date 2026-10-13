@@ -6,9 +6,11 @@ import os
 import sys
 from contextlib import AsyncExitStack
 
+import anyio
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from mcp.types import Tool
+from mcp.shared.exceptions import McpError
+from mcp.types import CONNECTION_CLOSED, Tool
 
 from sift_gateway.backends.base import MCPBackend, ToolResult, _version_of
 
@@ -17,9 +19,23 @@ if sys.version_info < (3, 11):
 
 logger = logging.getLogger(__name__)
 
+
+def _gone(exc: BaseException) -> bool:
+    """Whether `exc` says the child is gone: the transport closed or broke
+    under the session (a dead pipe, the session ending mid-call). A timeout
+    never does (on 3.12 TimeoutError is an OSError): a busy child is alive."""
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+        return False
+    if isinstance(exc, McpError):
+        return exc.error.code == CONNECTION_CLOSED
+    return isinstance(exc, (ConnectionError, OSError, anyio.ClosedResourceError,
+                            anyio.BrokenResourceError, anyio.EndOfStream))  # fmt: skip
+
+
 # Timeout (seconds) for backend operations
 _TOOL_LIST_TIMEOUT = 30
 _TOOL_CALL_TIMEOUT = 300
+_PING_TIMEOUT = 5  # health: no answer in time is busy, not gone
 _STOP_TIMEOUT = 15
 # Bound on session.initialize() so a hung backend doesn't block the
 # gateway's own startup loop indefinitely. Pre-fix, an unreachable
@@ -37,6 +53,14 @@ class StdioMCPBackend(MCPBackend):
         self._session: ClientSession | None = None
         self._exit_stack: AsyncExitStack | None = None
         self._tools_cache: list[Tool] | None = None
+        self._generation = 0  # bumped by each start: which session a call ran on
+
+    async def _reset_if_current(self, generation: int, *, context: str) -> None:
+        """Reset after the child of session `generation` is gone. A newer
+        session (another request restarted the backend meanwhile) is left
+        alone: this failure was the old child's."""
+        if generation == self._generation:
+            await self._safe_cleanup(context=context)
 
     async def _safe_cleanup(self, *, context: str) -> None:
         """Cleanup that handles None _exit_stack and downgrades cancel-scope noise.
@@ -59,13 +83,18 @@ class StdioMCPBackend(MCPBackend):
         into the log message so journalctl distinguishes start-cleanup
         from list_tools-cleanup from stop-cleanup.
         """
-        if self._exit_stack is None:
-            self._session = None
-            self._tools_cache = None
-            self._started = False
+        # Detach this session's state before awaiting its close: a second
+        # cleanup of the same session (two failed requests) finds nothing to
+        # close, and a request that restarts the backend meanwhile keeps its
+        # new session; a close finishing later never clears it.
+        stack, self._exit_stack = self._exit_stack, None
+        self._session = None
+        self._tools_cache = None
+        self._started = False
+        if stack is None:
             return
         try:
-            await self._exit_stack.aclose()
+            await stack.aclose()
         except BaseException as exc:
             level = logging.DEBUG if "cancel scope" in str(exc) else logging.WARNING
             logger.log(
@@ -76,15 +105,13 @@ class StdioMCPBackend(MCPBackend):
                 type(exc).__name__,
                 exc,
             )
-        finally:
-            self._exit_stack = None
-            self._session = None
-            self._tools_cache = None
-            self._started = False
 
     async def start(self) -> None:
         if self._started:
             return
+        # a new generation before anything of the new session is published: a
+        # call still in flight on the old one is already stale
+        self._generation += 1
 
         command = self.config.get("command", "python")
         args = self.config.get("args", [])
@@ -179,13 +206,17 @@ class StdioMCPBackend(MCPBackend):
             raise RuntimeError(f"Backend {self.name} is not started")
 
         if self._tools_cache is None:
+            generation = self._generation
             try:
                 result = await asyncio.wait_for(
                     self._session.list_tools(), timeout=_TOOL_LIST_TIMEOUT
                 )
                 self._tools_cache = result.tools
-            except (ConnectionError, OSError):
-                await self._safe_cleanup(context="list_tools cleanup after error")
+            except Exception as exc:
+                if _gone(exc):  # restarted lazily by the gateway's next call
+                    await self._reset_if_current(
+                        generation, context="list_tools cleanup after error"
+                    )
                 raise
         return self._tools_cache
 
@@ -193,26 +224,40 @@ class StdioMCPBackend(MCPBackend):
         if not self._started or not self._session:
             raise RuntimeError(f"Backend {self.name} is not started")
 
+        generation = self._generation
         try:
             result = await asyncio.wait_for(
                 self._session.call_tool(name, arguments), timeout=_TOOL_CALL_TIMEOUT
             )
             return ToolResult(result.content, is_error=bool(result.isError))
-        except (ConnectionError, OSError):
-            await self._safe_cleanup(context="call_tool cleanup after error")
+        except Exception as exc:
+            if _gone(exc):  # restarted lazily by the gateway's next call
+                await self._reset_if_current(
+                    generation, context="call_tool cleanup after error"
+                )
             raise
 
     async def health_check(self) -> dict:
         if not self._started or not self._session:
             return {"status": "stopped", "type": "stdio"}
+        generation = self._generation
         try:
             await self.list_tools()
+            # the cache answers without the child: ask the child itself
+            await asyncio.wait_for(self._session.send_ping(), timeout=_PING_TIMEOUT)
             return {
                 "status": "ok",
                 "type": "stdio",
                 "tools": len(self._tools_cache or []),
             }
+        except (asyncio.TimeoutError, TimeoutError):  # a call may be running: alive
+            return {"status": "busy", "type": "stdio",
+                    "error": f"no answer to a ping within {_PING_TIMEOUT} s"}  # fmt: skip
         except (Exception, asyncio.CancelledError, BaseExceptionGroup) as exc:
+            if _gone(exc):
+                await self._reset_if_current(
+                    generation, context="health check cleanup after error"
+                )
             logger.warning(
                 "Backend %s health check failed: %s: %s",
                 self.name,
