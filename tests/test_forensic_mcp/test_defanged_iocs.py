@@ -84,3 +84,57 @@ def test_vhir_writes_a_saved_reports_iocs_defanged_by_the_same_functions():
     for value, typed in [*((n, True) for n in NOTATIONS), *((n, False) for n in NOTATIONS),
                          ("a.exe", False), ("a.exe", True)]:  # fmt: skip
         assert vhir.network_ioc(value, typed) == rs._network_ioc(value, typed), value
+
+
+# --- a saved report's IOCs, written defanged: where a domain names a host ------
+
+IOCS = ["https://evil.com/payload", "evil.com"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "evil.com", "https://evil.com/x", "hxxp://evil.com", r"\\evil.com\share",
+        r"\\evil.com@SSL\DavWWWRoot\x.dll", "//evil.com/x", "mail@evil.com",
+        "https://web.archive.org/web/2026/https://evil.com/payload",
+    ],
+)  # fmt: skip
+def test_an_ioc_where_it_names_a_host_is_defanged(text):
+    from report_mcp.server import _defang_iocs
+
+    got = _defang_iocs(text, IOCS)
+    assert "evil[.]com" in got and "evil.com" not in got, got
+
+
+@pytest.mark.parametrize(
+    ("text", "kept"),
+    [
+        ("https://vendor.example/download/evil.com/tool", "/download/evil.com/tool"),
+        (r"C:\Users\x\evil.com\a", r"\x\evil.com\a"),
+        ("https://evil.com/evil.com/payload", "/evil.com/payload"),
+    ],
+)
+def test_a_domain_after_a_single_separator_is_a_path_and_stays(text, kept):
+    """After one / or \\ a domain is a path component; after // or \\\\ a host."""
+    from report_mcp.server import _defang_iocs
+
+    assert _defang_iocs(text, IOCS).endswith(kept)
+
+
+def test_a_range_counts_as_its_base_address():
+    from report_mcp.server import _defang_iocs, _network_ioc
+
+    assert _network_ioc("185.220.101.0/24", False) == "185.220.101.0"
+    assert _network_ioc("185.220.101.45/32", False) == "185.220.101.45"
+    got = _defang_iocs(
+        "185.220.101.0/24 via http://185.220.101.0/24", ["185.220.101.0"]
+    )
+    assert got == "185[.]220[.]101[.]0/24 via http://185[.]220[.]101[.]0/24"
+
+
+def test_a_typed_domain_with_its_root_dot_counts_without_it():
+    from report_mcp.server import _defang_iocs, _network_ioc
+
+    assert _network_ioc("evil.com.", True) == "evil.com"
+    got = _defang_iocs("evil.com. and https://evil.com./x", ["evil.com"])
+    assert got == "evil[.]com. and https://evil[.]com./x"
