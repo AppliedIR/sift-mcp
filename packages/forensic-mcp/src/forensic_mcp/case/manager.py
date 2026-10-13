@@ -293,15 +293,18 @@ def _decoded_lines(f, path: Path):
             logger.warning("Skipped line %d of %s: not UTF-8", n, path.name)
 
 
-def _tool_output_ids(case_dir: Path) -> set[str]:
-    """Audit ids in the evidence backends' own audit files (see above)."""
+def _tool_output_ids(case_dir: Path, every_file: bool = False) -> set[str]:
+    """Audit ids in the evidence backends' own audit files (see above), or in
+    every audit file of the case (`every_file`)."""
     ids: set[str] = set()
     audit_dir = case_dir / "audit"
     if not audit_dir.is_dir():
         return ids
     for jsonl_file in audit_dir.glob("*.jsonl"):
-        if jsonl_file.name not in _EVIDENCE_AUDIT_FILES and not (
-            jsonl_file.name.startswith(_EVIDENCE_AUDIT_PREFIXES)
+        if (
+            not every_file
+            and jsonl_file.name not in _EVIDENCE_AUDIT_FILES
+            and not (jsonl_file.name.startswith(_EVIDENCE_AUDIT_PREFIXES))
         ):
             continue
         try:
@@ -1455,32 +1458,38 @@ class CaseManager:
                 warnings.append(f"Timeline auto-creation failed: {exc}")
 
         # IOC auto-extraction (try/except — never blocks finding save)
-        iocs_extracted = 0
+        stored_iocs: list[str] = []
+        cut_iocs: list[str] = []
         try:
-            iocs_extracted = self._process_iocs(finding_record, case_dir)
+            stored_iocs, cut_iocs = self._process_iocs(finding_record, case_dir)
         except Exception as exc:
             logger.warning("IOC processing failed: %s", exc)
             warnings.append(f"IOC processing failed: {exc}")
+        iocs_extracted = len(set(stored_iocs))  # the IOCs stored, each once
 
         # IOC completeness check — warn if text mentions IOCs not in the list
         try:
             text = (
                 f"{finding.get('observation', '')} {finding.get('interpretation', '')}"
             )
-            submitted = {
-                str(i).lower().strip()
-                for i in (finding.get("iocs") or [])
-                if isinstance(i, str)
-            }
             mentioned_ips = set(
                 re.findall(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", text)
             )
             mentioned_hashes = set(re.findall(r"\b[a-fA-F0-9]{32,64}\b", text))
-            missing = (mentioned_ips | mentioned_hashes) - submitted
+            # each value as the store keys it, compared with what was stored
+            unstored = sorted(m for m in mentioned_ips | mentioned_hashes
+                              if _normalize_ioc(m) not in set(stored_iocs))  # fmt: skip
+            past = [m for m in unstored if _normalize_ioc(m) in set(cut_iocs)]
+            missing = [m for m in unstored if m not in past]
             if missing:
                 warnings.append(
                     f"IOC completeness: {len(missing)} value(s) in text but not in iocs list: "
-                    + ", ".join(sorted(missing)[:5])
+                    + ", ".join(missing[:5])
+                )
+            if past:
+                warnings.append(
+                    f"IOC completeness: {len(past)} value(s) in text not stored: "
+                    "past the 100-IOC limit: " + ", ".join(past[:5])
                 )
         except Exception:
             pass
@@ -1558,6 +1567,10 @@ class CaseManager:
             return None
         if not marker.get("contradiction", "").strip():
             return None
+        # its own ids that the case's trail holds; any other is named, not listed
+        trail = _tool_output_ids(case_dir, every_file=True)
+        unknown = [a for a in dict.fromkeys(own_ids) if a not in trail]
+        own_ids = [a for a in own_ids if a in trail]
         return {
             "status": "WITHDRAWN",
             "title": title,
@@ -1571,6 +1584,12 @@ class CaseManager:
                 "Not staged: withdrawn after challenge. It is counted for the "
                 "examiner at approval. Tell the examiner now, in one line: the "
                 "title and the contradiction."
+                + (
+                    " Audit ids not in this case's audit trail, so not listed: "
+                    + ", ".join(unknown[:5])
+                    if unknown
+                    else ""
+                )
             ),
         }
 
@@ -1957,11 +1976,14 @@ class CaseManager:
             case_dir / "iocs.json", json.dumps(iocs, indent=2, default=str)
         )
 
-    def _process_iocs(self, finding: dict, case_dir: Path) -> int:
-        """Extract IOCs from finding, create/update IOC records. Returns count."""
+    def _process_iocs(
+        self, finding: dict, case_dir: Path
+    ) -> tuple[list[str], list[str]]:
+        """Extract IOCs from finding, create/update IOC records. Returns the keys
+        (`_normalize_ioc`) of the values stored, and of those past the 100 limit."""
         raw_iocs = finding.get("iocs", [])
         if not raw_iocs:
-            return 0
+            return [], []
         # Flatten dict format: {"IPv4": ["10.0.1.5"]} → ["10.0.1.5"]
         if isinstance(raw_iocs, dict):
             raw_iocs = [
@@ -1970,7 +1992,7 @@ class CaseManager:
                 for v in (vals if isinstance(vals, list) else [vals])
             ]
         if not isinstance(raw_iocs, list):
-            return 0
+            return [], []
 
         host = finding.get("host", "")
         finding_id = finding.get("id", "")
@@ -1991,6 +2013,11 @@ class CaseManager:
             if "\\" in affected_account:
                 account_names.add(affected_account.split("\\", 1)[1].lower().strip())
 
+        stored: list[str] = []
+        cut = [  # past the limit: never stored, keyed as the text writes them
+            _normalize_ioc(re.sub(r":\d{1,5}$", "", _refang_ioc(str(r.get("value", "") if isinstance(r, dict) else r).strip())))
+            for r in raw_iocs[100:]
+        ]  # fmt: skip
         for raw in raw_iocs[:100]:
             # Support explicit type: {"value": "rsydow-a", "type": "user-account"}
             if isinstance(raw, dict) and "value" in raw:
@@ -2013,6 +2040,7 @@ class CaseManager:
             if ioc_type == "ipv4-addr" and re.search(r":\d{1,5}$", value):
                 value = re.sub(r":\d{1,5}$", "", value)
             dedup_key = _normalize_ioc(value)
+            stored.append(dedup_key)
 
             if dedup_key in ioc_by_value:
                 existing = ioc_by_value[dedup_key]
@@ -2054,7 +2082,7 @@ class CaseManager:
                 ioc_by_value[dedup_key] = new_ioc
 
         self._save_iocs(case_dir, iocs)
-        return len(raw_iocs)
+        return stored, cut
 
     def _load_todos(self, case_dir: Path) -> list[dict]:
         return self._load_json_file(case_dir / "todos.json", [])

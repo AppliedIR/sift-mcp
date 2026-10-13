@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import BeforeValidator
 from sift_common.approvals import mark_approvals
 from sift_common.instructions import FORENSIC_MCP as _INSTRUCTIONS
 
@@ -26,6 +28,16 @@ def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
             raise ValueError(f"{field} exceeds maximum length of {max_len} characters")
         if "\x00" in value:
             raise ValueError(f"{field} contains invalid null byte")
+
+
+def _not_bool(value):
+    """JSON true and false aren't an offset (they would read as 1 and 0)."""
+    if isinstance(value, bool):
+        raise ValueError("offset must be a whole number, not true or false")
+    return value
+
+
+Offset = Annotated[int, BeforeValidator(_not_bool)]
 
 
 def _page(items: list, limit: int, offset: int) -> tuple[list, bool]:
@@ -334,7 +346,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         return result
 
     @server.tool()
-    def get_findings(status: str = "", limit: int = 20, offset: int = 0):
+    def get_findings(status: str = "", limit: int = 20, offset: Offset = 0):
         """Return findings, optionally filtered by DRAFT/APPROVED/REJECTED.
 
         Args:
@@ -393,7 +405,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         end_date: str = "",
         event_type: str = "",
         limit: int = 50,
-        offset: int = 0,
+        offset: Offset = 0,
     ):
         """Return timeline events with optional filtering.
 
@@ -415,6 +427,9 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         Each APPROVED event carries approval_verification: VALID, or why its
         approval doesn't verify (e.g. ALTERED_AFTER_APPROVAL): then treat it
         as not approved; `warning` names each such event.
+
+        Pages aren't a snapshot: an event recorded between two calls can repeat
+        one on the next page, so page again from offset 0 if total changes.
         """
         try:
             case_dir = manager._require_active_case()  # one case for both reads
