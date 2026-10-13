@@ -155,9 +155,15 @@ async def test_a_relationships_failure_is_its_category_only(monkeypatch):
         return REPLIES["v7:lookup:revoked"]
 
     monkeypatch.setattr(opencti_provider, "_http_post", Transport(route))
-    reply = str(await lookup(server(), REVOKED))
-    assert "Relationships query failed (can't reach OpenCTI)" in reply, reply
-    assert not [s for s in SECRETS if s in reply], reply
+    # The reply's own time can hold a secret's digits (a run once saw 8443 in
+    # queried_at): the reason is what's checked, at such a time
+    monkeypatch.setattr(
+        opencti_provider, "now_utc", lambda: "2026-10-13T22:37:24.184439+00:00"
+    )
+    reply = await lookup(server(), REVOKED)
+    reason = reply["providers"]["opencti"]["relationships_unavailable"]
+    assert "Relationships query failed (can't reach OpenCTI)" in reason, reason
+    _clean(reason)
 
 
 async def test_a_misp_warninglist_failure_is_its_category_only(
