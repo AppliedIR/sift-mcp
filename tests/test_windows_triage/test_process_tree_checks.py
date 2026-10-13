@@ -161,7 +161,7 @@ ROWS_1 = [
     (PT, {'process_name': 'explorer.exe', 'parent_name': 'userinit.exe', 'user': 'WKS01\\Administrator'}, MATCHES_USER),
     (PT, {'process_name': 'explorer.exe', 'parent_name': 'userinit.exe', 'user': 'SYSTEM'}, UNEXPECTED_USER),
     (PT, {'process_name': 'explorer.exe', 'parent_name': 'userinit.exe'}, {'verdict': 'EXPECTED', 'confidence': 'high', 'reasons': ['Process relationship matches expectations'], 'finding_types': []}),
-    (PT, {'process_name': 'explorer.exe', 'parent_name': 'userinit.exe', 'user': 'CONTOSO\\WKS01$'}, dict(verdict='EXPECTED', confidence='high', finding_types=[])),
+    (PT, {'process_name': 'explorer.exe', 'parent_name': 'userinit.exe', 'user': 'CONTOSO\\WKS01$'}, UNEXPECTED_USER),  # was EXPECTED/high
 ]
 ROWS_2 = [
     (PT, {'process_name': 'dwm.exe', 'parent_name': 'winlogon.exe', 'user': 'Window Manager\\DWM-1'}, MATCHES_USER),  # was SUSPICIOUS/medium
@@ -183,7 +183,7 @@ ROWS_2 = [
     (PT, {'process_name': 'nissrv.exe', 'parent_name': 'services.exe', 'user': 'LOCAL SERVICE'}, MATCHES_USER),
     (PT, {'process_name': 'dwm.exe', 'parent_name': 'winlogon.exe', 'user': 'CONTOSO\\alice'}, UNEXPECTED_USER),
     (PT, {'process_name': 'lsass.exe', 'parent_name': 'wininit.exe', 'user': 'NT-AUTORITÄT\\SYSTEM'}, dict(verdict='SUSPICIOUS', confidence='medium', finding_types=['unexpected_user'])),
-    (PT, {'process_name': 'dwm.exe', 'parent_name': 'winlogon.exe', 'user': 'Window Manager\\DWM-4'}, dict(verdict='SUSPICIOUS', confidence='medium', finding_types=['unexpected_user'])),
+    (PT, {'process_name': 'dwm.exe', 'parent_name': 'winlogon.exe', 'user': 'Window Manager\\DWM-4'}, MATCHES_USER),  # was SUSPICIOUS/medium
     (PT, {'process_name': 'lsass.exe', 'parent_name': 'wininit.exe', 'user': 'NT AUTHORITY\\LOCAL SERVICE'}, UNEXPECTED_USER),
     (PT, {'process_name': 'lsass.exe', 'parent_name': 'wininit.exe', 'user': 'NT AUTHORITY\\NETWORK SERVICE'}, UNEXPECTED_USER),
     (PT, {'process_name': 'lsass.exe', 'parent_name': 'wininit.exe', 'user': 'S-1-5-19'}, UNEXPECTED_USER),
@@ -323,7 +323,64 @@ ROWS_5 = [
     (PT, {'process_name': 'svchost.exe', 'parent_name': 'services.exe', 'path': '\\\\?\\svchost.exe'}, WRONG_PATH),
     (CF, {'path': 'svchost.exe -k netsvcs'}, dict(verdict='UNKNOWN', confidence='low', finding_types=[])),
 ]
+NOT_JUDGED = ("Account not judged: a machine account (NAME$) can be SYSTEM or NETWORK SERVICE,"
+              " or a user account named with $; pass its SID (alone, e.g. S-1-5-18) as the user to check it")
+NOT_JUDGED_MATCH = dict(verdict='EXPECTED', confidence='medium', finding_types=[], user_valid=None,
+                        reasons=['Process relationship matches expectations', NOT_JUDGED])
+EX, LS = ('explorer.exe', 'userinit.exe'), ('lsass.exe', 'wininit.exe')
+ROWS_6 = [(PT, {'process_name': p, 'parent_name': q, 'user': u}, e) for (p, q), u, e in [
+    (EX, 'CONTOSO\\WKS01$', UNEXPECTED_USER), (EX, 'CONTOSO\\WKS01$ ', UNEXPECTED_USER),
+    (EX, 'IIS APPPOOL\\DefaultAppPool', UNEXPECTED_USER), (EX, 'NT SERVICE\\TrustedInstaller', UNEXPECTED_USER),
+    (EX, 'nt service\\trustedinstaller', UNEXPECTED_USER), (EX, 'NT AUTHORITY\\IUSR', UNEXPECTED_USER),
+    (EX, 'NT VIRTUAL MACHINE\\1A2B3C4D-0000-0000-0000-000000000000', UNEXPECTED_USER),
+    (EX, 'NT TASK\\NightlyBackup', UNEXPECTED_USER), (EX, 'Window Manager\\DWM-1', UNEXPECTED_USER),
+    (EX, 'Font Driver Host\\UMFD-0', UNEXPECTED_USER), (EX, 'S-1-5-90-0-1', UNEXPECTED_USER),
+    (EX, 'DWM-1', UNEXPECTED_USER), (EX, 'UMFD-0', UNEXPECTED_USER), (EX, 'IUSR', UNEXPECTED_USER),
+    (EX, 'ANONYMOUS LOGON', UNEXPECTED_USER), (EX, 'NT SERVICE\\evil (S-1-5-80-)', UNEXPECTED_USER),
+    (EX, 'S-1-5-21-1111111111-2222222222-3333333333-1001', MATCHES_USER),
+    (EX, 'S-1-12-1-1111111111-2222222222-3333333333-4444444444', MATCHES_USER),
+    (EX, 'CONTOSO\\alice$smith', MATCHES_USER), (EX, 'CONTOSO\\DWM', MATCHES_USER),
+    (EX, 'CONTOSO\\alice (S-1-5-21-1111111111-2222222222-3333333333-1001)', MATCHES_USER),
+    (LS, 'S-1-5-18', MATCHES_USER), (LS, 'NT AUTHORITY\\SYSTEM (S-1-5-20)', UNEXPECTED_USER),
+    (LS, 'CONTOSO\\alice (S-1-5-18)', UNEXPECTED_USER), (LS, 'NT SERVICE\\TrustedInstaller', UNEXPECTED_USER),
+    (LS, 'NT AUTHORITY\\LOCAL SERVICE (S-1-5-19)', UNEXPECTED_USER), (LS, 'CONTOSO\\WKS01$ (S-1-5-20)', UNEXPECTED_USER),
+    (LS, '$', UNEXPECTED_USER), (LS, 'NT SERVICE\\foo$', UNEXPECTED_USER), (LS, 'alice$smith', UNEXPECTED_USER),
+    (LS, 'CONTOSO\\WKS01$', NOT_JUDGED_MATCH),  # was SUSPICIOUS/medium
+    (('lsass.exe', 'cmd.exe'), 'CONTOSO\\WKS01$',
+     dict(verdict='SUSPICIOUS', confidence='high', user_valid=None, reasons=['Unexpected parent process', NOT_JUDGED])),
+    (('dwm.exe', 'winlogon.exe'), 'DWM-4', MATCHES_USER),  # was SUSPICIOUS/medium
+    (('dwm.exe', 'winlogon.exe'), 'Font Driver Host\\DWM-4', UNEXPECTED_USER),
+    (('dwm.exe', 'winlogon.exe'), 'CONTOSO\\DWM-4', UNEXPECTED_USER),
+    (('dwm.exe', 'winlogon.exe'), 'Window Manager\\DWM-\u0661', UNEXPECTED_USER),
+    (('svchost.exe', 'services.exe'), 'CONTOSO\\WKS01$', MATCHES_USER),
+    (('fontdrvhost.exe', 'wininit.exe'), 'Font Driver Host\\UMFD-0', MATCHES_USER),
+]] + [(PT, {'process_name': 'lsass.exe', 'parent_name': 'wininit.exe', 'user': 'WKS01\\hidden$',
+            'path': 'C:\\Users\\Public\\lsass.exe'},
+       dict(verdict='SUSPICIOUS', confidence='high', user_valid=None, reasons=['Unexpected executable path', NOT_JUDGED]))]
 # fmt: on
+
+
+@pytest.mark.parametrize("row", ROWS_6, ids=[label(r) for r in ROWS_6])
+def test_machine_and_built_in_accounts_are_not_a_person(srv, row):
+    check(srv, *row)
+
+
+YAML_ACCOUNTS = """\
+#   user_type: SYSTEM (SYSTEM, LOCAL SERVICE or NETWORK SERVICE, bare or under
+#              NT AUTHORITY, by name or SID; a machine account NAME$ is not
+#              judged), USER (any account but a service, machine (NAME$) or
+#              other built-in one), or EITHER (any account)
+#   valid_users: Accounts always accepted for this process, beside its user_type
+#                (a domain-less entry also matches under Window Manager, and a
+#                DWM-<n> entry stands for any session number). On a SYSTEM rule,
+#                SYSTEM (bare or under NT AUTHORITY) always passes; LOCAL SERVICE
+#                and NETWORK SERVICE pass only when listed here or when this is null
+#   min_instances:"""
+
+
+def test_the_yaml_says_how_accounts_are_read():
+    # the whole block, up to the next key: an added or missing sentence fails
+    assert YAML_ACCOUNTS in YAML.read_text()
 
 
 @pytest.mark.parametrize("row", ROWS_1, ids=[label(r) for r in ROWS_1])

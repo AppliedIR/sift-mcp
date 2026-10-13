@@ -115,37 +115,85 @@ _SERVICE_ACCOUNTS = {
 }
 
 
+# Accounts that are never a person's (Microsoft's well-known SIDs): built-in authorities and
+# the per-service, app-pool, VM, task, window-manager and font-driver identities, by domain,
+# name or SID. S-1-5-21-… is a user's (or a computer's) account.
+_NON_HUMAN_DOMAINS = {
+    "NT AUTHORITY",
+    "NT SERVICE",
+    "IIS APPPOOL",
+    "NT VIRTUAL MACHINE",
+    "NT TASK",
+    "WINDOW MANAGER",
+    "FONT DRIVER HOST",
+}
+_NON_HUMAN_NAME = re.compile(
+    r"(DWM|UMFD)-[0-9]+|IUSR|ANONYMOUS LOGON|S-1-5-(?!21-)[0-9]+(-[0-9]+)*"
+)
+_DWM_SESSION = re.compile(r"DWM-[0-9]+")
+MACHINE_ACCOUNT_NOT_JUDGED = (
+    "Account not judged: a machine account (NAME$) can be SYSTEM or NETWORK SERVICE,"
+    " or a user account named with $; pass its SID (alone, e.g. S-1-5-18) as the user to check it"
+)
+
+
 def _account(user: str) -> tuple[str, str]:
     domain, _, name = user.strip().upper().rpartition("\\")
     return domain, name
 
 
-def _user_valid(user: str, proc_info: dict) -> bool:
-    """Is this account expected for the process? valid_users first, then its user_type."""
+def _machine(domain: str, name: str) -> bool:
+    # CONTOSO\WKS01$, as 4688 writes SYSTEM; not a bare $ or a built-in domain's name
+    return len(name) > 1 and name.endswith("$") and domain not in _NON_HUMAN_DOMAINS
+
+
+def _non_human(domain: str, name: str) -> bool:
+    return (
+        name in _SERVICE_ACCOUNTS
+        or name.endswith("$")
+        or domain in _NON_HUMAN_DOMAINS
+        or _NON_HUMAN_NAME.fullmatch(name) is not None
+    )
+
+
+def _user_valid(user: str, proc_info: dict) -> tuple[bool | None, str]:
+    """Is this account expected for the process? valid_users first, then its user_type.
+
+    None, with the reason: not judged.
+    """
     domain, name = _account(user)
     listed = proc_info.get("valid_users") or ()
     for expected in listed:
         e_domain, e_name = _account(expected)
-        # DWM-1 is listed without its domain; Windows writes it as Window Manager\DWM-1
-        if e_name == name and (
+        # DWM-1 is listed without its domain; Windows writes it as Window Manager\DWM-1,
+        # and a listed DWM-<n> stands for any session number
+        same = e_name == name or bool(
+            _DWM_SESSION.fullmatch(e_name) and _DWM_SESSION.fullmatch(name)
+        )
+        if same and (
             e_domain == domain or (not e_domain and domain == "WINDOW MANAGER")
         ):
-            return True
+            return True, ""
     service = _SERVICE_ACCOUNTS.get(name)
     user_type = proc_info.get("user_type")
     if user_type == "SYSTEM":
+        if _machine(domain, name):
+            return (
+                None,
+                MACHINE_ACCOUNT_NOT_JUDGED,
+            )  # SYSTEM or NETWORK SERVICE: only its SID tells
         if service is None or domain not in ("", "NT AUTHORITY"):
-            return False
+            return False, ""
         # SYSTEM always; LOCAL/NETWORK SERVICE only where the rule lists no accounts, or lists that one
         return (
             service == "SYSTEM"
             or not listed
             or service in {_SERVICE_ACCOUNTS.get(_account(e)[1]) for e in listed}
-        )
+        ), ""
     if user_type == "USER":
-        # a service account under any spelling or domain (NT AUTHORITY\SYSTEM, S-1-5-18)
-        return service is None
-    return True
+        # a service, machine or other built-in account under any spelling or domain
+        return not _non_human(domain, name), ""
+    return True, ""
 
 
 def _validate_input_length(value: Any, max_length: int, field_name: str) -> None:
@@ -1131,10 +1179,10 @@ class WindowsTriageServer:
                     )
 
         # Validate user if provided
-        user_valid = None
+        user_valid, not_judged = None, ""
         if user:
             user_type = proc_info.get("user_type")
-            user_valid = _user_valid(user, proc_info)
+            user_valid, not_judged = _user_valid(user, proc_info)
 
             if user_valid is False:
                 findings.append(
@@ -1157,6 +1205,10 @@ class WindowsTriageServer:
             user_valid=user_valid,
             findings=findings,
         )
+        if not_judged:
+            verdict_result.reasons.append(not_judged)
+            if str(verdict_result.verdict) == "EXPECTED":
+                verdict_result.confidence = "medium"  # the account wasn't checked
 
         result = {
             "verdict": str(verdict_result.verdict),
