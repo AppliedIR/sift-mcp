@@ -580,6 +580,36 @@ class TestNoGradeInResponse:
         assert "provenance" not in stored and "provenance_detail" not in stored
 
     @pytest.mark.asyncio
+    async def test_a_staged_attributions_considerations_set_no_minimum(
+        self, tmp_path, monkeypatch
+    ):
+        """A single-source attribution stages, so nothing it's told names a
+        minimum count of sources, indicators or audit ids."""
+        import re
+
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
+        server = create_server()
+        _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
+        finding = {
+            "title": "APT29 attribution",
+            "audit_ids": ["ev-tester-20260225-001"],
+            "observation": "TTPs match APT29",
+            "interpretation": "Likely APT29",
+            "confidence": "LOW",
+            "confidence_justification": "One TTP match",
+            "type": "attribution",
+        }
+        result = await server.call_tool("record_finding", {"finding": finding})
+        data = json.loads(result[0].text)
+        assert data["status"] == "STAGED"
+        assert any("attribution" in c.lower() for c in data["considerations"])
+        minimum = re.compile(
+            r"\bat least (\d+|two|three|four|five)\b|\d+\+|\bevidence count\b", re.I
+        )
+        assert [c for c in data["considerations"] if minimum.search(c)] == []
+
+    @pytest.mark.asyncio
     async def test_validation_schema_has_no_counts(self, server):
         result = await server.read_resource("forensic-mcp://validation-schema")
         raw = result[0].content if hasattr(result[0], "content") else result[0].text
