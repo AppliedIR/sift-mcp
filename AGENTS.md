@@ -7,7 +7,7 @@ Query `forensic-mcp://investigation-framework` for the full methodology framewor
 including evidence standards, confidence levels, and checkpoint requirements.
 
 ## Available MCP Servers
-- **forensic-mcp** — Investigation records (findings, timeline, TODOs), grounding, discipline methodology
+- **forensic-mcp** — Investigation records (findings, timeline, TODOs), discipline methodology
 - **case-mcp** — Case lifecycle (init, activate, list, status), evidence management, export/import bundles, audit summary, action/reasoning logging
 - **report-mcp** — Report generation, case metadata, Zeltser IR Writing integration
 - **sift-mcp** — Linux forensic tool execution (SIFT workstation)
@@ -46,8 +46,6 @@ Do not batch findings at the end of the investigation. Present each finding when
 
 Do not record routine tool output as findings. "Ran AmcacheParser, got 42 entries" is not a finding — the audit trail already captured the tool execution. "AmcacheParser shows Mimikatz installation at 14:32 UTC, no corresponding Prefetch entry" is a finding.
 
-When `record_finding()` returns a grounding suggestion, consider running the suggested checks and updating the finding with additional evidence before moving on.
-
 **Challenge before staging (`finding-skeptic`):** a skeptic is required before recording: `record_finding` refuses a finding without `challenged`. Run the skeptic only as its own isolated agent (a subagent or a separate thread). Without one, or if the challenge can't complete, send `challenged` = `{"outcome": "not_challenged", "reason": "<why>"}`; the examiner sees it at approval. Record the outcome (`stands`, `revised`, `contested` or `withdrawn`) with the skeptic's checks. Withdraw a finding only when re-run output contradicts a fact in its observation, never because it "could be benign"; a disagreement about what the output means is `contested`. Tell the examiner each withdrawal in one line (title and contradiction) when it happens. If a withdrawal call returns an error, record the finding as `contested` with the same contradiction. Put an alternative explanation in `alternatives` only when it is meaningful: one still possible, or one ruled out by cited tool output.
 
 **Provenance requirements:**
@@ -82,6 +80,24 @@ If context compaction occurs, only recorded reasoning survives. An unrecorded hy
 If you run a command via Bash or another tool outside MCP, call this afterward with the command, output summary, and purpose. Without this, the execution has no audit entry and findings cannot reference it.
 
 **Investigation rhythm:** After completing analysis of an artifact or artifact type (e.g., after parsing all prefetch files, after examining event logs), pause and assess: Did I identify anything the examiner should know about? If yes, present the evidence and record a finding. Did I encounter key timestamps for the incident narrative? If yes, record timeline events. Am I about to change direction? If yes, log the reasoning.
+
+## Confidence and Evidence Standards
+Confidence is your judgment; justify it.
+
+- **HIGH:** The cited evidence shows it directly, the other artifacts you checked agree, and nothing you found contradicts it. HIGH isn't certainty: it can still be wrong.
+- **MEDIUM (what intelligence analysts call "moderate"):** The evidence is credible and supports it, but it isn't corroborated or direct enough for HIGH, or another reading is still open.
+- **LOW:** It rests on significant assumptions, on fragmented or uncorroborated evidence, or on an artifact or tool that's unreliable for this claim.
+- **SPECULATIVE:** A hypothesis with no direct evidence yet. Label it as one, and don't build on it.
+- **Justification (required):** say what the evidence shows directly, what corroborates it, and what's missing or could contradict it.
+
+Evidence standards, for each claim:
+
+- **CONFIRMED:** An artifact records the claim itself.
+- **INDICATED:** An artifact records something about the claim's subject that stops short of the claim, and you rely on how that artifact behaves to close the gap. Name the artifact and the gap.
+- **INFERRED:** No artifact records the claim or its subject's part in it. You reasoned it from other facts. State the chain.
+- **UNKNOWN:** No evidence either way. Don't guess.
+- **CONTRADICTED:** Evidence disputes it. Stop and reassess.
+- The test: what records the claim? The claim itself → CONFIRMED. Its subject, but not the claim → INDICATED. Nothing; only other facts lead there → INFERRED.
 
 ## Human-in-the-Loop
 All findings and timeline events stage as DRAFT. The human analyst reviews and

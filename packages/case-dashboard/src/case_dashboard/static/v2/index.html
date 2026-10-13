@@ -160,9 +160,6 @@ body {
 .conf-speculative { background: var(--bg-tertiary); color: var(--slate); }
 
 /* Provenance */
-.prov-mcp, .prov-hook { color: var(--green); }
-.prov-shell, .prov-mixed { color: var(--amber); }
-.prov-none { color: var(--red); }
 
 /* Verification */
 .verif-confirmed { color: var(--green); }
@@ -578,7 +575,6 @@ body {
           <div class="filter-dims">
             <select id="filterConf" title="Confidence"><option value="">Confidence</option><option value="HIGH">HIGH</option><option value="MEDIUM">MEDIUM</option><option value="LOW">LOW</option><option value="SPECULATIVE">SPECULATIVE</option></select>
             <select id="filterType" title="Type"><option value="">Type</option><option value="finding">Finding</option><option value="conclusion">Conclusion</option><option value="attribution">Attribution</option><option value="exclusion">Exclusion</option></select>
-            <select id="filterProv" title="Provenance"><option value="">Provenance</option><option value="MCP">MCP</option><option value="HOOK">HOOK</option><option value="SHELL">Shell</option><option value="MIXED">Mixed</option><option value="NONE">Ungrounded</option></select>
             <select id="filterExaminer" title="Examiner"><option value="">Examiner</option></select>
             <select id="filterHost" title="Host"><option value="">Host</option></select>
             <select id="filterAccount" title="Account"><option value="">Account</option></select>
@@ -889,7 +885,6 @@ let auditCache = {};
 let editingField = null;
 let filterConf = '';
 let filterType = '';
-let filterProv = '';
 let filterExaminer = '';
 let filterHost = '';
 let filterAccount = '';
@@ -1205,12 +1200,6 @@ function getFilteredFindings() {
   // Dimension filters
   if (filterConf) list = list.filter(f => (f.confidence || '').toUpperCase() === filterConf);
   if (filterType) list = list.filter(f => (f.type || 'finding') === filterType);
-  if (filterProv) {
-    list = list.filter(f => {
-      const p = typeof f.provenance === 'string' ? f.provenance : (f.provenance && f.provenance.summary ? f.provenance.summary : 'NONE');
-      return p === filterProv;
-    });
-  }
   if (filterExaminer) list = list.filter(f => (f.examiner || f.created_by || '') === filterExaminer);
   if (filterHost) list = list.filter(f => (f.host || '') === filterHost);
   if (filterAccount) list = list.filter(f => (f.affected_account || '') === filterAccount);
@@ -1418,9 +1407,6 @@ function renderFinding(id) {
   const conf = (eff.confidence || 'LOW').toUpperCase();
   const confClass = 'conf-' + conf.toLowerCase();
 
-  const prov = typeof f.provenance === 'string' ? f.provenance : (f.provenance && f.provenance.summary ? f.provenance.summary : 'NONE');
-  const provClass = 'prov-' + prov.toLowerCase();
-
   const examiner = f.examiner || f.created_by || 'unknown';
   const staged = f.staged ? formatTime(f.staged) : '';
 
@@ -1516,13 +1502,6 @@ function renderFinding(id) {
       }
       html += '</div>';
     });
-    html += '</div>';
-  }
-
-  // 2. Provenance warnings (after evidence, before narrative — CR feedback)
-  if (f.provenance_warnings && f.provenance_warnings.length) {
-    html += '<div style="background:var(--amber-bg);color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:6px 8px;margin:4px 0;font-size:11px">';
-    f.provenance_warnings.forEach(function(w) { html += '\u26A0 ' + escapeHtml(w) + '<br>'; });
     html += '</div>';
   }
 
@@ -1712,7 +1691,7 @@ function renderFinding(id) {
   html += '<div style="margin-top:4px">Verification: <span class="' + escapeHtml(verifClass) + '">' + escapeHtml(verifText(verif)) + '</span>';
   var verifNote = ((caseMeta.verification || {}).badge_notes || {})[f.id];
   if (verifNote) html += '<div>' + escapeHtml(verifNote) + '</div>';
-  html += ' | Provenance: <span class="' + escapeHtml(provClass) + '">' + escapeHtml(prov) + '</span></div>';
+  html += '</div>';
   if (f.content_hash) html += '<div style="font-family:monospace">Content hash: ' + escapeHtml(f.content_hash.slice(0, 16)) + '...</div>';
   if (f.modified_at) html += '<div style="font-family:monospace">Modified: ' + escapeHtml(f.modified_at) + '</div>';
   html += '</details>';
@@ -5125,13 +5104,12 @@ document.getElementById('searchBox').addEventListener('input', function() {
   showEmptyOrFirst();
 });
 
-['filterConf', 'filterType', 'filterProv', 'filterExaminer', 'filterHost', 'filterAccount'].forEach(id => {
+['filterConf', 'filterType', 'filterExaminer', 'filterHost', 'filterAccount'].forEach(id => {
   var el = document.getElementById(id);
   if (!el) return;
   el.addEventListener('change', function() {
     if (id === 'filterConf') filterConf = this.value;
     else if (id === 'filterType') filterType = this.value;
-    else if (id === 'filterProv') filterProv = this.value;
     else if (id === 'filterExaminer') filterExaminer = this.value;
     else if (id === 'filterHost') filterHost = this.value;
     else if (id === 'filterAccount') filterAccount = this.value;

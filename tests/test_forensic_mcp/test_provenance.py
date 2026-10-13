@@ -247,8 +247,20 @@ class TestRecordFindingProvenance:
         """All NONE + no supporting_commands -> REJECTED."""
         finding = _valid_finding(audit_ids=["unknown-tester-20260225-001"])
         result = manager.record_finding(finding)
-        assert result["status"] == "REJECTED"
-        assert "no evidence trail" in result["error"]
+        # the tier isn't stored any more, but it still gates: the reply is unchanged
+        assert result == {
+            "status": "REJECTED",
+            "error": (
+                "Finding rejected: no evidence trail. Every finding needs provenance. "
+                "Options: (1) Pass audit_ids from MCP tool responses. "
+                "(2) Pass supporting_commands as a SEPARATE PARAMETER (not inside the finding dict) "
+                "with command, purpose, and output_excerpt for each shell command used. "
+                "(3) For analytical findings without tool evidence, use "
+                "command='analytical reasoning' in supporting_commands."
+            ),
+        }
+        findings = json.loads((Path(active_case["path"]) / "findings.json").read_text())
+        assert findings == []
 
     def test_shell_only_stages_ok(self, manager, active_case, audit):
         """With supporting_commands but no MCP IDs -> STAGED."""
@@ -271,13 +283,18 @@ class TestRecordFindingProvenance:
         assert "content_hash" in findings[0]
         assert len(findings[0]["content_hash"]) == 64
 
-    def test_stores_provenance(self, manager, active_case, audit):
+    def test_does_not_store_the_tier(self, manager, active_case, audit):
+        """The tier gates the finding but isn't stored: provenance_grade is."""
         cmds = [{"command": "ls", "output_excerpt": "files", "purpose": "List files"}]
-        manager.record_finding(_valid_finding(), supporting_commands=cmds, audit=audit)
+        result = manager.record_finding(
+            _valid_finding(), supporting_commands=cmds, audit=audit
+        )
         case_dir = Path(active_case["path"])
         findings = json.loads((case_dir / "findings.json").read_text())
-        assert "provenance" in findings[0]
-        assert findings[0]["provenance"] in ("MCP", "HOOK", "SHELL", "MIXED", "NONE")
+        assert "provenance" not in findings[0]
+        assert "provenance_detail" not in findings[0]
+        assert "provenance_detail" not in result
+        assert findings[0]["provenance_grade"]
 
     def test_stores_supporting_commands(self, manager, active_case, audit):
         cmds = [
@@ -322,7 +339,7 @@ class TestRecordFindingProvenance:
         result = manager.record_finding(finding)
         assert result["status"] == "STAGED"
         findings = json.loads((case_dir / "findings.json").read_text())
-        assert findings[0]["provenance"] != "FAKE"
+        assert "provenance" not in findings[0]
         assert findings[0]["content_hash"] != "fake_hash"
 
     def test_supporting_commands_missing_fields_skipped(

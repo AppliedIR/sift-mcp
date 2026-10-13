@@ -602,7 +602,7 @@ def test_a_line_that_isn_t_utf8_doesn_t_block_recording(case):
     stored = _stored(case, result)
     assert stored["challenged"]["skeptic_audit_ids"] == [SKEPTIC]
     assert stored["alternatives"][0]["status"] == "ruled_out"
-    assert stored["provenance"] == "MCP"
+    assert result["status"] == "STAGED"  # the trail counted: no trail is rejected
 
 
 def test_a_withdrawal_lists_each_of_its_own_audit_ids_once_in_order(case):

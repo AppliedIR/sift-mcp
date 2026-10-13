@@ -400,8 +400,8 @@ class TestFieldAllowlist:
         assert result["status"] == "STAGED"
         case_dir = Path(os.environ["VHIR_CASE_DIR"])
         findings = json.loads((case_dir / "findings.json").read_text())
-        # Provenance is set by the system, not user input
-        assert findings[0]["provenance"] in ("MCP", "HOOK", "MIXED", "NONE", "SHELL")
+        # The tier is the system's gate; a client's value is never stored
+        assert "provenance" not in findings[0]
 
     def test_injected_examiner_stripped(self, manager):
         """Attacker tries to override examiner identity."""

@@ -2,7 +2,7 @@ anti_patterns:
   - name: "premature_attribution"
     description: "Attributing to a threat actor based on a single indicator (e.g., one matching hash). Attribution requires multiple TTPs, infrastructure, and temporal consistency."
     severity: "critical"
-    how_to_avoid: "Require at least 3 independent indicators from different categories before naming a threat actor. Check for false flag techniques. Present alternative attributions. Always stage as DRAFT with type=attribution for examiner review."
+    how_to_avoid: "Check for false flag techniques. Present alternative attributions. Always stage as DRAFT with type=attribution for examiner review."
   - name: "confirmation_bias"
     description: "Seeking evidence that confirms an early hypothesis while ignoring contradictory evidence. Actively look for evidence that disproves your theory."
     severity: "critical"

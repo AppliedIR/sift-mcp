@@ -310,7 +310,7 @@ class TestResourceContent:
         data = json.loads(
             result[0].content if hasattr(result[0], "content") else result[0].text
         )
-        assert data["min_audit_ids"] == 3
+        assert "min_audit_ids" not in data
         assert data["human_approval"] is True
 
 
@@ -390,7 +390,7 @@ class TestDisciplineTools:
         )
         text = result[0].text
         data = json.loads(text)
-        assert data["min_audit_ids"] == 3
+        assert "min_audit_ids" not in data
         assert data["human_approval"] is True
 
     @pytest.mark.asyncio
@@ -558,15 +558,17 @@ class TestEnhancedResponses:
         assert len(data["guidance"]) > 0
 
 
-class TestGroundingInResponse:
+class TestNoGradeInResponse:
     @pytest.mark.asyncio
-    async def test_record_finding_includes_grounding(self, tmp_path, monkeypatch):
-        """record_finding response includes grounding when backends deployed but unused."""
+    async def test_record_finding_reply_has_no_grounding_or_tier(
+        self, tmp_path, monkeypatch
+    ):
+        """No grounding score and no provenance tier, even with the grounding
+        backends deployed and unused (the shape that used to score WEAK)."""
         monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path / "cases"))
         monkeypatch.setenv("VHIR_EXAMINER", "tester")
         server = create_server()
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
-        # Simulate deployed grounding backends (empty audit files)
         audit_dir = server._manager._active_case_path / "audit"
         for mcp in ("forensic-rag-mcp", "windows-triage-mcp", "opencti-mcp"):
             (audit_dir / f"{mcp}.jsonl").write_text("")
@@ -575,7 +577,7 @@ class TestGroundingInResponse:
             "audit_ids": ["ev-tester-20260225-001", "ev-tester-20260225-002"],
             "observation": "Binary in temp",
             "interpretation": "Possible malware",
-            "confidence": "MEDIUM",
+            "confidence": "HIGH",
             "confidence_justification": "Two corroborating sources",
             "type": "finding",
             "challenged": {
@@ -584,12 +586,59 @@ class TestGroundingInResponse:
             },
         }
         result = await server.call_tool("record_finding", {"finding": finding})
-        text = result[0].text
-        data = json.loads(text)
+        data = json.loads(result[0].text)
         assert data["status"] == "STAGED"
-        assert "grounding" in data
-        assert data["grounding"]["level"] == "WEAK"
-        assert len(data["grounding"]["sources_missing"]) == 3
+        for key in (
+            "grounding",
+            "provenance",
+            "provenance_detail",
+            "provenance_guidance",
+        ):
+            assert key not in data, key
+        assert not any("corroborating sources" in c for c in data["considerations"])
+        stored = json.loads(
+            (server._manager._active_case_path / "findings.json").read_text()
+        )[0]
+        assert "provenance" not in stored and "provenance_detail" not in stored
+
+    @pytest.mark.asyncio
+    async def test_a_staged_attributions_considerations_set_no_minimum(
+        self, tmp_path, monkeypatch
+    ):
+        """A single-source attribution stages, so nothing it's told names a
+        minimum count of sources, indicators or audit ids."""
+        import re
+
+        monkeypatch.setenv("VHIR_CASES_DIR", str(tmp_path / "cases"))
+        monkeypatch.setenv("VHIR_EXAMINER", "tester")
+        server = create_server()
+        _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
+        finding = {
+            "title": "APT29 attribution",
+            "audit_ids": ["ev-tester-20260225-001"],
+            "observation": "TTPs match APT29",
+            "interpretation": "Likely APT29",
+            "confidence": "LOW",
+            "confidence_justification": "One TTP match",
+            "type": "attribution",
+        }
+        result = await server.call_tool("record_finding", {"finding": finding})
+        data = json.loads(result[0].text)
+        assert data["status"] == "STAGED"
+        assert any("attribution" in c.lower() for c in data["considerations"])
+        minimum = re.compile(
+            r"\bat least (\d+|two|three|four|five)\b|\d+\+|\bevidence count\b", re.I
+        )
+        assert [c for c in data["considerations"] if minimum.search(c)] == []
+
+    @pytest.mark.asyncio
+    async def test_validation_schema_has_no_counts(self, server):
+        result = await server.read_resource("forensic-mcp://validation-schema")
+        raw = result[0].content if hasattr(result[0], "content") else result[0].text
+        data = json.loads(raw)
+        assert data["confidence_levels"] == ["HIGH", "MEDIUM", "LOW", "SPECULATIVE"]
+        assert "min_audit_ids" not in raw
+        assert not any(r.startswith("FD-003") for r in data["rules"])
 
 
 class TestTodoTools:

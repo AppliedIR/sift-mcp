@@ -15,22 +15,26 @@ Mandatory rules for AI-assisted forensic analysis. **Evidence speaks first. Theo
 
 ## Evidence Classification
 
-| Label | Meaning | Requirement |
-|-------|---------|-------------|
-| CONFIRMED | Multiple independent artifacts prove this | 2+ unrelated evidence sources |
-| INDICATED | Evidence suggests this | 1 artifact or circumstantial |
-| INFERRED | Logical deduction without direct evidence | State the reasoning chain |
-| UNKNOWN | No evidence either way | Do not guess |
-| CONTRADICTED | Evidence disputes this | Stop and reassess |
+| Label | Meaning |
+|-------|---------|
+| CONFIRMED | An artifact records the claim itself. |
+| INDICATED | An artifact records something about the claim's subject that stops short of the claim, and you rely on how that artifact behaves to close the gap. Name the artifact and the gap. |
+| INFERRED | No artifact records the claim or its subject's part in it. You reasoned it from other facts. State the chain. |
+| UNKNOWN | No evidence either way. Don't guess. |
+| CONTRADICTED | Evidence disputes it. Stop and reassess. |
+
+The test: what records the claim? The claim itself → CONFIRMED. Its subject, but not the claim → INDICATED. Nothing; only other facts lead there → INFERRED.
 
 ## Confidence Levels
 
 | Level | Criteria |
 |-------|----------|
-| HIGH | Multiple independent artifacts, no contradictions |
-| MEDIUM | Single artifact or circumstantial pattern |
-| LOW | Inference, behavioral similarity, or incomplete data |
-| SPECULATIVE | No direct evidence, pure hypothesis (must label) |
+| HIGH | The cited evidence shows it directly, the other artifacts you checked agree, and nothing you found contradicts it. HIGH isn't certainty: it can still be wrong. |
+| MEDIUM (what intelligence analysts call "moderate") | The evidence is credible and supports it, but it isn't corroborated or direct enough for HIGH, or another reading is still open. |
+| LOW | It rests on significant assumptions, on fragmented or uncorroborated evidence, or on an artifact or tool that's unreliable for this claim. |
+| SPECULATIVE | A hypothesis with no direct evidence yet. Label it as one, and don't build on it. |
+
+Justification (required): say what the evidence shows directly, what corroborates it, and what's missing or could contradict it.
 
 ---
 

@@ -26,6 +26,11 @@ STRIPPED_FINDING_FIELDS = {
     "provenance_warnings",
     # The review step's record of the skeptic challenge, with its audit ids
     "challenged",
+    # How the finding was graded and produced: for review, not for the report
+    "confidence",
+    "confidence_justification",
+    "provenance_detail",
+    "produced_by",
 }
 
 PROFILES: dict[str, dict] = {

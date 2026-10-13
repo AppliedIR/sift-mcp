@@ -409,6 +409,58 @@ class TestGenerateReport:
         assert "Findings" in names
 
 
+class TestHowAFindingWasGraded:
+    """How a finding was graded and produced is for review, not the report."""
+
+    GRADING = (
+        "confidence",
+        "confidence_justification",
+        "provenance_detail",
+        "produced_by",
+    )
+
+    @staticmethod
+    def _keys(data) -> set:
+        if isinstance(data, dict):
+            return set(data).union(
+                *(TestHowAFindingWasGraded._keys(v) for v in data.values())
+            )
+        if isinstance(data, list):
+            return set().union(*(TestHowAFindingWasGraded._keys(v) for v in data))
+        return set()
+
+    @pytest.mark.parametrize(
+        "profile", ["full", "executive", "timeline", "ioc", "findings", "status"]
+    )
+    def test_report_data_carries_no_grading(self, case_dir, profile):
+        from report_mcp.server import create_server
+
+        path = case_dir / "findings.json"
+        findings = json.loads(path.read_text())
+        findings[0]["provenance_detail"] = {
+            "summary": "MCP",
+            "mcp": ["fm-tester-20260225-001"],
+        }
+        findings[0]["produced_by"] = {"client": "claude-code", "model": "a-model"}
+        path.chmod(0o644)
+        path.write_text(json.dumps(findings))
+        from vhir_signing import sign_approved
+
+        sign_approved(case_dir, "tester")  # re-signed as edited, so it's reported
+        rd = _call_tool(create_server(), "generate_report", profile=profile)[
+            "report_data"
+        ]
+        if "findings" in rd:
+            assert "F-tester-001" in [f["id"] for f in rd["findings"]]
+        assert not self._keys(rd) & set(self.GRADING)
+
+    def test_the_guidance_does_not_word_findings_by_confidence(self, case_dir):
+        from report_mcp.server import create_server
+
+        result = _call_tool(create_server(), "generate_report", profile="full")
+        assert "CONFIDENCE" not in result["writing_guidance"].upper()
+
+
 class TestSetCaseMetadata:
     """Tests for set_case_metadata tool."""
 

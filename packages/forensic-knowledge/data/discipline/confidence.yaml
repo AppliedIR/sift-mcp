@@ -1,13 +1,9 @@
 levels:
   HIGH:
-    criteria: "Multiple corroborating evidence sources. Observation is unambiguous."
-    min_audit_ids: 2
+    criteria: "The cited evidence shows it directly, the other artifacts you checked agree, and nothing you found contradicts it. HIGH isn't certainty: it can still be wrong."
   MEDIUM:
-    criteria: "At least one evidence source. Observation is clear but interpretation has alternatives."
-    min_audit_ids: 1
+    criteria: "The evidence is credible and supports it, but it isn't corroborated or direct enough for HIGH, or another reading is still open."
   LOW:
-    criteria: "Limited evidence. Reasonable inference but significant uncertainty."
-    min_audit_ids: 0
+    criteria: "It rests on significant assumptions, on fragmented or uncorroborated evidence, or on an artifact or tool that's unreliable for this claim."
   SPECULATIVE:
-    criteria: "Hypothesis based on experience or pattern recognition. No direct evidence."
-    min_audit_ids: 0
+    criteria: "A hypothesis with no direct evidence yet. Label it as one, and don't build on it."

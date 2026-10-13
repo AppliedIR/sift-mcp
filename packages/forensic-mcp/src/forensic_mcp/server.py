@@ -76,18 +76,6 @@ def _build_finding_considerations(finding: dict) -> list[str]:
                     msg += f" How to avoid: {how}"
                 considerations.append(msg)
 
-    # Confidence-level requirements
-    confidence = finding.get("confidence", "").upper()
-    confidence_defs = loader.get_confidence_definitions()
-    if confidence in confidence_defs:
-        cd = confidence_defs[confidence]
-        min_ev = cd.get("min_audit_ids", 0)
-        if min_ev >= 2:
-            considerations.append(
-                f"{confidence} confidence requires {min_ev}+ independent corroborating sources "
-                f"— are yours truly independent?"
-            )
-
     # Checkpoint requirements if finding type matches
     if finding_type in ("attribution", "exclusion", "conclusion"):
         checkpoint = loader.get_checkpoint(finding_type)
@@ -95,6 +83,13 @@ def _build_finding_considerations(finding: dict) -> list[str]:
             considerations.append(checkpoint["guidance"])
 
     return considerations
+
+
+# What a confidence justification says (FD-005)
+_JUSTIFY = (
+    "say what the evidence shows directly, what corroborates it, and what's "
+    "missing or could contradict it."
+)
 
 
 def _build_validation_guidance(errors: list[str]) -> list[str]:
@@ -106,13 +101,7 @@ def _build_validation_guidance(errors: list[str]) -> list[str]:
                 "FD-001: Every claim must reference at least one audit_id from an actual tool call"
             )
         if "confidence_justification" in err.lower():
-            guidance.append(
-                "FD-005: Confidence must be justified — cite specific evidence for your confidence level"
-            )
-        if "attribution" in err.lower() and "3" in err:
-            guidance.append(
-                "FD-003: Attribution requires multiple corroborating TTPs, not just a single IOC match"
-            )
+            guidance.append("FD-005: Confidence must be justified: " + _JUSTIFY)
     return guidance
 
 
@@ -153,8 +142,8 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - observation (str): factual evidence — what was seen
         - interpretation (str): analytical meaning — what it implies
         - confidence: SPECULATIVE, LOW, MEDIUM, or HIGH
-        - confidence_justification (str): why this confidence level
-        - type: finding, conclusion, attribution (requires 3+ audit_ids), or exclusion
+        - confidence_justification (str, required): say what the evidence shows directly, what corroborates it, and what's missing or could contradict it.
+        - type: finding, conclusion, attribution, or exclusion
         - audit_ids (list[str]): IDs from MCP tool responses.
           Use [] if providing supporting_commands only.
         - event_timestamp (str, ISO 8601): when the incident event occurred
@@ -303,18 +292,6 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
                 "DRAFT — requires human approval via vhir approve"
             )
             result["considerations"] = _build_finding_considerations(finding)
-            grounding = manager._score_grounding(finding)
-            if grounding:
-                result["grounding"] = grounding
-
-            # Add provenance classification to response
-            provenance = result.pop("provenance_detail", None)
-            if provenance:
-                result["provenance"] = provenance
-                if provenance["summary"] == "SHELL":
-                    result["provenance_guidance"] = (
-                        "For stronger provenance, re-run analysis through MCP tools."
-                    )
 
         # Enrich validation failures with rule citations
         if result.get("status") == "VALIDATION_FAILED":
@@ -616,7 +593,7 @@ def _register_discipline_resources(server: FastMCP) -> None:
 
     @server.resource("forensic-mcp://validation-schema")
     def validation_schema_resource() -> str:
-        """Finding validation rules: required fields, confidence levels, evidence count requirements."""
+        """Finding validation rules: required fields, valid types, confidence levels."""
         from forensic_knowledge import loader
 
         from forensic_mcp.discipline.validation import VALID_TYPES
@@ -633,14 +610,10 @@ def _register_discipline_resources(server: FastMCP) -> None:
                 "confidence_justification",
             ],
             "valid_types": sorted(VALID_TYPES),
-            "confidence_levels": {
-                level: {"min_audit_ids": defs.get("min_audit_ids", 1)}
-                for level, defs in confidence_defs.items()
-            },
+            "confidence_levels": list(confidence_defs),
             "rules": [
                 "FD-001: Every claim must reference at least one audit_id from an actual tool call",
-                "FD-003: Attribution requires at least 3 audit_ids from multiple corroborating TTPs",
-                "FD-005: Confidence must be justified with specific evidence citations",
+                "FD-005: Confidence must be justified: " + _JUSTIFY,
             ],
         }
         return json.dumps(schema)

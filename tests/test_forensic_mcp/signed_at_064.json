@@ -1,0 +1,216 @@
+{
+  "approvals": [
+    {
+      "action": "APPROVED",
+      "content_hash": "5b7503b1613258a3286c0d29d50df63cd881052514a40562cf4365a51a7b7b9e",
+      "item_id": "F-tester-001"
+    },
+    {
+      "action": "APPROVED",
+      "content_hash": "280e9be45be3a1c1cc8832a811da18d5a7194c71920b91d93790dcdaec64af24",
+      "item_id": "F-tester-002"
+    },
+    {
+      "action": "APPROVED",
+      "content_hash": "16e6e274db48b30472a3dec329e209df29982d15da586e8f7e03e05aae41b07c",
+      "item_id": "F-tester-003"
+    },
+    {
+      "action": "APPROVED",
+      "content_hash": "510c7daba2c7fb486062050a129229278e84f75356735c1cf61225d4f37382a6",
+      "item_id": "F-other-001"
+    }
+  ],
+  "findings": [
+    {
+      "approved_at": "2026-10-13T07:00:00+00:00",
+      "approved_by": "tester",
+      "audit_ids": [
+        "sift-tester-20261013-001",
+        "sift-tester-20261013-002"
+      ],
+      "confidence": "MEDIUM",
+      "confidence_justification": "Single artifact, read directly.",
+      "content_hash": "5b7503b1613258a3286c0d29d50df63cd881052514a40562cf4365a51a7b7b9e",
+      "created_by": "tester",
+      "event_timestamp": "2026-10-01T10:00:00Z",
+      "examiner": "tester",
+      "id": "F-tester-001",
+      "interpretation": "Interpretation for plain.",
+      "modified_at": "2026-10-13T07:00:00+00:00",
+      "observation": "Observation for plain.",
+      "provenance": "MCP",
+      "provenance_detail": {
+        "hook": [],
+        "mcp": [
+          "sift-tester-20261013-001",
+          "sift-tester-20261013-002"
+        ],
+        "none": [],
+        "shell": [],
+        "summary": "MCP"
+      },
+      "provenance_grade": "DECLARED",
+      "provenance_schema": 2,
+      "staged": "2026-10-13T05:57:32.480836+00:00",
+      "status": "APPROVED",
+      "timeline_event_id": "T-tester-001",
+      "title": "plain",
+      "type": "finding"
+    },
+    {
+      "approved_at": "2026-10-13T07:00:00+00:00",
+      "approved_by": "tester",
+      "audit_ids": [
+        "sift-tester-20261013-001",
+        "sift-tester-20261013-002"
+      ],
+      "challenged": {
+        "outcome": "stands",
+        "skeptic_audit_ids": [
+          "sift-tester-20261013-003"
+        ]
+      },
+      "confidence": "MEDIUM",
+      "confidence_justification": "Single artifact, read directly.",
+      "content_hash": "280e9be45be3a1c1cc8832a811da18d5a7194c71920b91d93790dcdaec64af24",
+      "created_by": "tester",
+      "event_timestamp": "2026-10-01T10:00:00Z",
+      "examiner": "tester",
+      "id": "F-tester-002",
+      "interpretation": "Interpretation for stands.",
+      "modified_at": "2026-10-13T07:00:00+00:00",
+      "observation": "Observation for stands.",
+      "provenance": "MCP",
+      "provenance_detail": {
+        "hook": [],
+        "mcp": [
+          "sift-tester-20261013-001",
+          "sift-tester-20261013-002"
+        ],
+        "none": [],
+        "shell": [],
+        "summary": "MCP"
+      },
+      "provenance_grade": "DECLARED",
+      "provenance_schema": 2,
+      "staged": "2026-10-13T05:57:32.503424+00:00",
+      "status": "APPROVED",
+      "timeline_event_id": "T-tester-002",
+      "title": "stands",
+      "type": "finding"
+    },
+    {
+      "approved_at": "2026-10-13T07:00:00+00:00",
+      "approved_by": "tester",
+      "audit_ids": [
+        "sift-tester-20261013-001",
+        "sift-tester-20261013-002"
+      ],
+      "confidence": "MEDIUM",
+      "confidence_justification": "Single artifact, read directly.",
+      "content_hash": "16e6e274db48b30472a3dec329e209df29982d15da586e8f7e03e05aae41b07c",
+      "created_by": "tester",
+      "event_timestamp": "2026-10-01T10:00:00Z",
+      "examiner": "tester",
+      "id": "F-tester-003",
+      "interpretation": "Interpretation for old-writer warnings.",
+      "modified_at": "2026-10-13T07:00:00+00:00",
+      "observation": "Observation for old-writer warnings.",
+      "provenance": "MCP",
+      "provenance_detail": {
+        "hook": [],
+        "mcp": [
+          "sift-tester-20261013-001",
+          "sift-tester-20261013-002"
+        ],
+        "none": [],
+        "shell": [],
+        "summary": "MCP"
+      },
+      "provenance_grade": "DECLARED",
+      "provenance_schema": 2,
+      "provenance_warnings": [
+        "Failed to resolve source evidence (filesystem error)"
+      ],
+      "staged": "2026-10-13T05:57:32.510569+00:00",
+      "status": "APPROVED",
+      "timeline_event_id": "T-tester-003",
+      "title": "old-writer warnings",
+      "type": "finding"
+    },
+    {
+      "approved_at": "2026-10-13T07:00:00+00:00",
+      "approved_by": "tester",
+      "audit_ids": [
+        "sift-tester-20261013-001",
+        "sift-tester-20261013-002"
+      ],
+      "confidence": "MEDIUM",
+      "confidence_justification": "Single artifact, read directly.",
+      "content_hash": "510c7daba2c7fb486062050a129229278e84f75356735c1cf61225d4f37382a6",
+      "event_timestamp": "2026-10-01T10:00:00Z",
+      "id": "F-other-001",
+      "imported_from": {
+        "case_id": "case-other",
+        "examiner": "other",
+        "exported_at": "2026-10-01T00:00:00Z",
+        "imported_at": "2026-10-13T05:57:32.515917+00:00",
+        "original": {
+          "created_by": "tester",
+          "examiner": "tester",
+          "modified_at": "2026-10-13T05:57:32.503424+00:00",
+          "provenance": "MCP",
+          "provenance_detail": {
+            "hook": [],
+            "mcp": [
+              "sift-tester-20261013-001",
+              "sift-tester-20261013-002"
+            ],
+            "none": [],
+            "shell": [],
+            "summary": "MCP"
+          },
+          "provenance_grade": "DECLARED",
+          "staged": "2026-10-13T05:57:32.503424+00:00"
+        }
+      },
+      "interpretation": "Interpretation for stands.",
+      "modified_at": "2026-10-13T07:00:00+00:00",
+      "observation": "Observation for stands.",
+      "provenance_grade": "IMPORTED",
+      "provenance_reason": "chain lives in case case-other (imported from other, exported 2026-10-01T00:00:00Z)",
+      "provenance_schema": 2,
+      "provenance_warnings": [
+        "w-from-bundle"
+      ],
+      "status": "APPROVED",
+      "timeline_event_id": "T-tester-002",
+      "title": "stands",
+      "type": "finding"
+    }
+  ],
+  "signed_by": "vhir 0.6.4",
+  "signed_views": {
+    "F-other-001": {
+      "0": "8a7ee8a155145baf59e3fdf4416acae80b376a9f7f5b22dfd48ae28eb799866a",
+      "1": "6d0eaf7a023d39d00e1647d783be883c88677739c3abab1398e7593852ded474",
+      "2": "6305be841736fddef0f2a2c5ad3099a701193566208d59be7b425e30999551aa"
+    },
+    "F-tester-001": {
+      "0": "5b7503b1613258a3286c0d29d50df63cd881052514a40562cf4365a51a7b7b9e",
+      "1": "6072544a305975672bdab63a2ca4114bb756b1e313622190a4b841d64530d0d5",
+      "2": "6d9f36fd1f28042df25ea45380c1db0988a47ba2f9fd1cf3633c7c192c5c3a4c"
+    },
+    "F-tester-002": {
+      "0": "280e9be45be3a1c1cc8832a811da18d5a7194c71920b91d93790dcdaec64af24",
+      "1": "b7a9cc6d7a06ec44f00df88f58b63e1f7915b0a3bea1020fdf77aadde8cadbce",
+      "2": "33dd66b00dfdf1f3a1c4f6d2ea0a63399fae45c39148e7305606fc96efd59ed7"
+    },
+    "F-tester-003": {
+      "0": "16e6e274db48b30472a3dec329e209df29982d15da586e8f7e03e05aae41b07c",
+      "1": "fb18a14f5ab0b7b6534d9db614e80f5ae224befc9470a20f7ec73061cc92a001",
+      "2": "d7a8e437c7579e91e903a4d5e80af2e7a627bb835a394cd08ad13b6c4458adcc"
+    }
+  }
+}
