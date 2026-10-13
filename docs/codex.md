@@ -37,6 +37,9 @@ controls as not in effect until it's merged.
 
 ## What the managed requirements hold
 
+Tested with Codex 0.158; the managed permission profile needs Codex 0.138 or
+later.
+
 - **The sandbox can't be turned off.** Only the `vhir` permissions profile
   (the default) and `:read-only` are allowed, so a request for full access,
   or a profile's `sandbox_mode`, runs under `vhir`: the workspace, with

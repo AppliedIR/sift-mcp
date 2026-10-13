@@ -107,11 +107,20 @@ CODEX_APPLIES = {  # variant -> the kinds Codex applies in that form
     "tab after colon": (),
     "space before colon": (),
     "no Begin Patch wrapper": (),
+    "U+3000 at both ends": KINDS,  # any White_Space code point; Move to: at its end only
+    "TAB inside the path": KINDS,  # Codex deletes TAB and CR anywhere in a header's path
+    "CR inside the path": KINDS,
 }
 
 
 def form(kind, v, update, add, delete, move_to):
     """`kind`'s patch in variant `v`, on these paths (Update and Move start from `update`)."""
+    if v in ("TAB inside the path", "CR inside the path"):  # findings.\tjson
+        c = "\t" if v.startswith("TAB") else "\r"
+        update, add, delete, move_to = (
+            p[: p.rindex(".") + 1] + c + p[p.rindex(".") + 1 :]
+            for p in (update, add, delete, move_to)
+        )
     word, path = {"update": ("Update File", update), "add": ("Add File", add),
                   "delete": ("Delete File", delete), "move": ("Update File", update)}[kind]  # fmt: skip
     hunk = {"update": "@@\n-x\n+y\n", "add": "+new\n", "delete": "",
@@ -122,7 +131,10 @@ def form(kind, v, update, add, delete, move_to):
         "lowercase": f"*** {word.lower()}: {path}", "no space after colon": f"*** {word}:{path}",
         "tab after colon": f"*** {word}:\t{path}", "space before colon": f"*** {word} : {path}",
         "header indented, Move to at column 0": f"  *** {word}: {path}",
+        "U+3000 at both ends": f"\u3000*** {word}: {path}\u3000",
     }.get(v, f"*** {word}: {path}")  # fmt: skip
+    if v == "U+3000 at both ends":
+        hunk = hunk.replace(f"{move_to}\n", f"{move_to}\u3000\n")
     if kind == "move" and v in (
         "leading spaces",
         "leading tab",
@@ -171,3 +183,14 @@ def test_the_table_is_what_codex_applies(tmp_path):
                            "add": (d / "n.txt").is_file(), "delete": not (d / "t.txt").exists(),
                            "move": (d / "m.txt").is_file() and not (d / "t.txt").exists()}[k]  # fmt: skip
     assert sorted(x for x, ok in got.items() if ok) == sorted(APPLIED)
+
+
+def test_python_white_space_covers_what_codex_trims():
+    """The guard's \\s matches every Unicode White_Space code point but LF."""
+    import re
+
+    white_space = [0x09, 0x0B, 0x0C, 0x0D, 0x20, 0x85, 0xA0, 0x1680, *range(0x2000, 0x200B),
+                   0x2028, 0x2029, 0x202F, 0x205F, 0x3000]  # fmt: skip
+    assert len(white_space) == 24 and all(
+        re.fullmatch(r"\s", chr(c)) for c in white_space
+    )
