@@ -113,6 +113,8 @@ def test_locking_never_makes_a_chain_file(manager, active_case):  # noqa: F811
         {"IPv4": ["10.0.0.2", "10.0.0.2"], "Domains": "bad.example"},
         [{"value": "jdoe-a", "type": "user-account"}, {"value": "10.0.0.3:80", "type": "ipv4-addr"}],
         ["1.2.3.4/24", "999.1.1.1:22", "  spaced.example  ", ""],
+        ["bad(dot)example.com", "evil{.}org", "185(.)220(.)101(.)46", "hxxps[://]x[.]com/p",
+         "mail[@]evil.com", "C:\\Tools\\hxxp\\a.exe", "hxxp://hxxp[.]example[.]com"],
     ],
 )  # fmt: skip
 def test_vhir_extracts_the_same_ioc_values(manager, active_case, iocs):  # noqa: F811
