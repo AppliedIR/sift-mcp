@@ -28,7 +28,7 @@ workflow:
   - step: "Corroborate"
     description: "Cross-reference across sources before drawing conclusions"
     when: "Before recording any finding, especially for HIGH confidence"
-    how: "Check the corroboration suggestions in tool responses."
+    how: "Use the corroboration field in tool responses, or call get_corroboration_suggestions with the finding type."
   - step: "Record"
     description: "record_finding() stages as DRAFT — human approves via vhir CLI"
     when: "When you have corroborated evidence supporting a conclusion"

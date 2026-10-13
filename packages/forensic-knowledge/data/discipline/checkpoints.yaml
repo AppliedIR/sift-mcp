@@ -3,7 +3,7 @@ checkpoints:
     description: "Attributing activity to a specific threat actor"
     required_types: ["finding"]
     human_approval: true
-    guidance: "Attribution requires multiple corroborating TTPs, infrastructure overlap, and temporal consistency. A single IOC match is insufficient."
+    guidance: "Attribution requires corroborating TTPs, infrastructure overlap, and temporal consistency."
   - action_type: "root_cause"
     description: "Declaring the root cause of an incident"
     required_types: ["finding"]
