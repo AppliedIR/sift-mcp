@@ -16,6 +16,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from sift_common.audit import AuditWriter
+from sift_common.defang import refang
 from sift_common.host_identity import HostLogError, update_case_meta
 from sift_common.instructions import REPORT_MCP as _INSTRUCTIONS
 from sift_common.oplog import setup_logging
@@ -336,6 +337,7 @@ def _extract_all_iocs(
 
         # Text extraction from observation + interpretation (findings use these, not description)
         text = f"{f.get('observation', '')} {f.get('interpretation', '')} {f.get('description', '')}"
+        text = refang(text)  # every pattern below matches the live form only
         ipv4_pattern = (
             r"\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}"
             r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b"

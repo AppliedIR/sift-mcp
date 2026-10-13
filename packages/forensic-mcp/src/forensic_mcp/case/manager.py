@@ -24,6 +24,7 @@ from typing import Any
 import yaml
 from sift_common import file_identity as fi
 from sift_common import provenance as pv
+from sift_common.defang import refang
 
 from forensic_mcp.audit import resolve_examiner
 from forensic_mcp.discipline.validation import (
@@ -466,10 +467,9 @@ def _conf_rank(conf: str) -> int:
 
 
 def _refang_ioc(value: str) -> str:
-    """Refang defanged IOC values."""
-    v = value.replace("[.]", ".").replace("hxxp", "http")
-    v = re.sub(r"\[(\W)\]", r"\1", v)
-    return v
+    """Refang a defanged IOC value: every notation refang() undoes, then any
+    other single bracketed symbol ([@], [/])."""
+    return re.sub(r"\[(\W)\]", r"\1", refang(value))
 
 
 def _normalize_ioc(value: str) -> str:
