@@ -46,7 +46,7 @@ hitl_checkpoints:
   - action: "Attributing to threat actor"
     why: "High consequence, often circumstantial"
     when: "When TTPs, infrastructure, or tooling match known threat actor profiles"
-    how: "PLACEHOLDER (wording awaits approval): Present the match with the independent indicators behind it, and what they do not show. Show alternative explanations. Attribution requires examiner approval (FD-003)."
+    how: "Present the match. Show alternative explanations. Attribution requires examiner approval (FD-003)."
   - action: "Ruling something OUT"
     why: "Premature exclusion hides answers"
     when: "When you are about to dismiss a hypothesis or declare an artifact benign"
