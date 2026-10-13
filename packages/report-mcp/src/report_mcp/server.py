@@ -380,22 +380,27 @@ _DOMAIN = re.compile(
 _NETWORK_TYPES = ("domain", "ipv4", "url")  # an IOC type naming one of these
 
 
-def _live(value) -> str:
-    return re.sub(r"\[(\W)\]", r"\1", refang(str(value).strip()))
+def _network_ioc(value, typed: bool) -> str | None:
+    """`value` live, if it is a URL, an IPv4 address, or (`typed`: its IOC type
+    names a domain) a domain name; else None. An untyped name like a.exe could
+    be a file."""
+    v = re.sub(r"\[(\W)\]", r"\1", refang(str(value).strip()))
+    if _URL.fullmatch(v) or _IPV4.fullmatch(v) or (typed and _DOMAIN.fullmatch(v)):
+        return v
+    return None
 
 
 def _report_iocs(case_dir: Path, view: dict) -> list[str]:
     """The domains, URLs and IPv4 addresses of the case's approved findings,
     live, longest first (a URL before the host it holds): from their text and
     IOC fields, and the case's IOCs typed so whose source is one of them.
-    Hashes, paths and the rest aren't. An untyped field value counts only as
-    a URL or an address: a name like a.exe could be a file."""
+    Hashes, paths and the rest aren't. vhir-cli's `report --save` gathers
+    them the same way, with the same functions (vhir_cli.defang)."""
     approved = {f.get("id") for f in view.get("findings") or []}
     kept: set[str] = set()
 
     def take(value, typed: bool) -> None:
-        v = _live(value)
-        if _URL.fullmatch(v) or _IPV4.fullmatch(v) or (typed and _DOMAIN.fullmatch(v)):
+        if (v := _network_ioc(value, typed)) is not None:
             kept.add(v)
 
     for kind, entries in _extract_all_iocs(view.get("findings") or []).items():

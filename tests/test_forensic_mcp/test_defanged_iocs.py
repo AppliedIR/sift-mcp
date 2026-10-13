@@ -76,3 +76,25 @@ def test_vhir_refangs_by_the_same_notation_list():
         == inspect.getsource(defang.refang).split('"""')[2]
     )
     assert [vhir.refang(n) for n in NOTATIONS] == [defang.refang(n) for n in NOTATIONS]
+
+
+def test_vhir_writes_a_saved_reports_iocs_defanged_by_the_same_functions():
+    """vhir report --save and report-mcp's save_report defang alike."""
+    vhir = pytest.importorskip("vhir_cli.defang")
+    from report_mcp import server as rs
+
+    for name in ("_IPV4", "_URL", "_DOMAIN"):
+        assert getattr(vhir, name).pattern == getattr(rs, name).pattern, name
+    for mine, theirs in ((vhir._defanged, rs._defanged), (vhir.defang_iocs, rs._defang_iocs),
+                         (vhir.network_ioc, rs._network_ioc)):  # fmt: skip
+        assert (
+            inspect.getsource(mine).split('"""')[2]
+            == inspect.getsource(theirs).split('"""')[2]
+        )
+    iocs = ["http://bad.example.com/x.php", "185.220.101.45", "evil.com"]
+    text = ("Beacon to evil.com, EVIL.COM, notevil.com, sub.evil.com, evil.com.au, "
+            "evil[.]com; 185.220.101.45 and 185.220.101.450; http://bad.example.com/x.php")  # fmt: skip
+    assert vhir.defang_iocs(text, iocs) == rs._defang_iocs(text, iocs)
+    for value, typed in [*((n, True) for n in NOTATIONS), *((n, False) for n in NOTATIONS),
+                         ("a.exe", False), ("a.exe", True)]:  # fmt: skip
+        assert vhir.network_ioc(value, typed) == rs._network_ioc(value, typed), value
