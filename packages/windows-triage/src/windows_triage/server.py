@@ -69,6 +69,7 @@ from .analysis import (
     parse_service_binary_path,
     validate_hash,
 )
+from .analysis.paths import path_origin
 from .analysis.verdicts import _MASQUERADE_TARGETS
 from .audit import AuditWriter, resolve_examiner
 from .config import Config, ConfigurationError, get_config
@@ -96,6 +97,94 @@ def _path_matches(path: str, expected: list[str]) -> bool:
     for p in expected:
         pattern = re.escape(normalize_path(p)).replace(r"\*", r"(?!\.\.?\\)[^\\]+")
         if re.fullmatch(pattern, normalized):
+            return True
+    return False
+
+
+def _origin_reason(path: str) -> str | None:
+    """A shadow-copy or local admin-share path isn't the live path: say so, by its outermost
+    prefix as given, and ask for the drive-letter path (never computed from the input)."""
+    origin = path_origin(path)
+    if origin is None:
+        return None
+    prefix, kind, inner = origin
+    wraps = (
+        f", and it wraps a {'shadow copy' if inner == 'shadow' else 'volume'} path"
+        if inner
+        else ""
+    )
+    if kind == "shadow":
+        return (
+            f"The path is inside a shadow copy ({prefix}), not a live system location{wraps};"
+            " to judge the file itself, pass its path on the volume's drive letter (e.g. C:\\…)"
+        )
+    return (
+        f"The path is given through the local admin share ({prefix}), not as a local drive path{wraps};"
+        " to judge the file itself, pass its drive-letter path"
+        + (" (ADMIN$ is %SystemRoot%)" if kind == "admin" else "")
+    )
+
+
+# An 8.3 short folder name (PROGRA~1, MICROS~1.NET, or the hashed form PR3B4F~1)
+_SHORT_NAME = re.compile(
+    r"(?=[^.]{3,8}(?:\.|$))([^\\.~ ]{1,6})~[0-9]{1,6}(?:\.([^\\. ]{1,3}))?", re.ASCII
+)
+SHORT_NAME_REASON = (
+    "An 8.3 short name can stand for several long paths; pass the long path to check it"
+)
+
+
+# Findings about where a file is; every other finding (parent, hash, name, account) is certain
+_PATH_FINDINGS = frozenset(
+    {"protected_process_wrong_path", "unexpected_path", "unexpected_parent_path"}
+)
+
+
+def _path_only(findings: list[dict]) -> bool:
+    """The verdict rests on path findings alone (or on none)."""
+    return all(f.get("type") in _PATH_FINDINGS for f in findings)
+
+
+def _short_caps(verdict_result, findings: list[dict], certain: bool = False) -> None:
+    """The verdict stands; an 8.3 path that could be the expected one caps confidence at MEDIUM,
+    only when the verdict rests on path findings alone."""
+    verdict_result.reasons.append(SHORT_NAME_REASON)
+    if verdict_result.confidence == "high" and not certain and _path_only(findings):
+        verdict_result.confidence = "medium"
+
+
+def _short_stands_for(short: re.Match, name: str) -> bool:
+    """Could this long folder name have this short name? Only a name that isn't already 8.3 has one;
+    it starts as the name does (spaces and dots dropped), or with its first two letters and a hash."""
+    if re.fullmatch(r"[^ .]{1,8}(?:\.[^ .]{1,3})?", name):
+        return False  # windows, system32: already short
+    stem, ext = short[1], short[2]
+    squeezed = name.rsplit(".", 1)[0] if ext else name
+    squeezed = squeezed.replace(" ", "").replace(".", "")
+    hashed = re.fullmatch(r"(..)[0-9a-f]{4}", stem)
+    if not squeezed.startswith(hashed[1] if hashed else stem):
+        return False
+    return not ext or ("." in name and name.rsplit(".", 1)[1].startswith(ext))
+
+
+def _short_could_be(path: str, expected: list[str]) -> bool:
+    """A path with an 8.3 short folder could be one of these paths: each short folder read as
+    a long name it can stand for, every other part as _path_matches reads it."""
+    parts = normalize_path(path).split("\\")
+    if not any(_SHORT_NAME.fullmatch(p) for p in parts[:-1]):
+        return False
+    for e in expected:
+        want = normalize_path(e).split("\\")
+        if len(want) == len(parts) and all(
+            (q == "*" and p not in ("", ".", ".."))
+            or p == q
+            or (
+                bool(short := _SHORT_NAME.fullmatch(p))
+                and q != "*"
+                and _short_stands_for(short, q)
+            )
+            for p, q in zip(parts, want, strict=True)  # lengths equal: checked above
+        ):
             return True
     return False
 
@@ -932,8 +1021,23 @@ class WindowsTriageServer:
         # For protected processes, check if path matches their specific valid_paths
         # (not just generic is_system_path)
         protected_path_valid = True  # Default to True for non-protected processes
+        proc_info = self.context_db.get_expected_process(filename)
+        # An 8.3 short folder that could be a default place (a protected name's valid_paths only,
+        # as check_process_tree reads it): the verdict stands, confidence is capped
+        short_name = (
+            not no_directory
+            and not path_in_baseline
+            and _short_could_be(
+                path,
+                ((proc_info or {}).get("valid_paths") or [])
+                + (
+                    []
+                    if is_protected
+                    else [m["path_normalized"] for m in filename_matches]
+                ),
+            )
+        )
         if is_protected and not no_directory:
-            proc_info = self.context_db.get_expected_process(filename)
             if proc_info and proc_info.get("valid_paths"):
                 valid_paths = proc_info["valid_paths"]
                 protected_path_valid = _path_matches(path, valid_paths)
@@ -1000,6 +1104,12 @@ class WindowsTriageServer:
             verdict_result.reasons.append(
                 "No hash supplied: path match only, content not checked"
             )
+        if short_name:
+            _short_caps(verdict_result, findings)
+        # A shadow copy or an admin share is not the live path: judged as given, and said so
+        origin = _origin_reason(path)
+        if origin:
+            verdict_result.reasons.append(origin)
         result = {
             "verdict": str(verdict_result.verdict),
             "reasons": verdict_result.reasons,
@@ -1079,9 +1189,14 @@ class WindowsTriageServer:
         # Check if PARENT is a process that should NEVER spawn children (injection detection)
         parent_info = self.context_db.get_expected_process(parent_name)
         parent_path_valid = None
+        # short_name: an 8.3 folder that could be the expected path;
+        # certain: a path finding about a path without one (the cap can't apply)
+        short_name = certain = False
         if _is_path(raw_parent) and parent_info and parent_info.get("valid_paths"):
             parent_path_valid = _path_matches(raw_parent, parent_info["valid_paths"])
             if not parent_path_valid:
+                short_name = _short_could_be(raw_parent, parent_info["valid_paths"])
+                certain = not short_name
                 findings.append(
                     {
                         "type": "unexpected_parent_path",
@@ -1115,6 +1230,8 @@ class WindowsTriageServer:
                 user_valid=None,
                 findings=findings,
             )
+            if short_name:
+                _short_caps(verdict_result, findings)
 
             return {
                 "verdict": str(verdict_result.verdict),
@@ -1168,6 +1285,8 @@ class WindowsTriageServer:
             if valid_paths:
                 path_valid = _path_matches(path, valid_paths)
                 if not path_valid:
+                    short = _short_could_be(path, valid_paths)
+                    short_name, certain = short_name or short, certain or not short
                     findings.append(
                         {
                             "type": "unexpected_path",
@@ -1209,6 +1328,10 @@ class WindowsTriageServer:
             verdict_result.reasons.append(not_judged)
             if str(verdict_result.verdict) == "EXPECTED":
                 verdict_result.confidence = "medium"  # the account wasn't checked
+        if short_name:
+            _short_caps(verdict_result, findings, certain)
+        if not_judged and short_name and not certain and _path_only(findings):
+            verdict_result.confidence = "low"  # nothing checked supports the verdict
 
         result = {
             "verdict": str(verdict_result.verdict),
