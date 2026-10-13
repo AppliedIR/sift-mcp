@@ -35,6 +35,25 @@ An administrator's own `/etc/codex/requirements.toml` is never changed by
 Valhuntir: setup prints the block to merge into it, and reports the Codex
 controls as not in effect until it's merged.
 
+## What the managed requirements hold
+
+- **The sandbox can't be turned off.** Only the `vhir` permissions profile
+  (the default) and `:read-only` are allowed, so a request for full access,
+  or a profile's `sandbox_mode`, runs under `vhir`: the workspace, with
+  `~/.vhir` read-only. The shell can't change the active case, the hooks, the
+  configuration or the venv, even started from `~`.
+- **The shell can't read** the signing and approval store, the gateway's
+  tokens or the Valhuntir profile. If one of those files is missing, Codex
+  can't set up its sandbox and every shell command fails (fails closed).
+- **Web search is off.** A hosted tool fires no hook, so nothing would audit
+  it.
+- **The case-data guard runs before a shell command and before an
+  apply_patch.** A patch is checked by the paths its headers name (`*** Add
+  File`, `Update File`, `Delete File`, `Move to`), never read as shell. A
+  refusal is recorded in the case's audit. Codex has no hook for a failed or
+  denied call, so an apply_patch that Codex itself rejects leaves no audit
+  entry.
+
 ## Sandbox
 
 Codex runs its shell commands in a sandbox built on unprivileged user

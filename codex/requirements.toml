@@ -5,9 +5,16 @@
 # root-owned copies of Valhuntir's hooks. To turn them off, see
 # sift-mcp/docs/codex.md#opt-out.
 
-# Codex's own sandbox stays on: no danger-full-access
-allowed_sandbox_modes = ["read-only", "workspace-write"]
+# Codex's own sandbox stays on: only these permission profiles, no
+# danger-full-access; the default keeps ~/.vhir read-only
+default_permissions = "vhir"
 allowed_approval_policies = ["untrusted", "on-request", "never"]
+# web search stays off: hosted tools fire no hooks, so nothing would audit it
+allowed_web_search_modes = []
+
+[allowed_permission_profiles]
+vhir = true
+":read-only" = true
 
 [features]
 hooks = true
@@ -15,13 +22,21 @@ browser_use = false
 computer_use = false
 in_app_browser = false
 
+# The workspace, with ~/.vhir read-only: the shell can't change the active
+# case, the hooks, the config or the venv
+[permissions.vhir]
+extends = ":workspace"
+
+[permissions.vhir.filesystem]
+"{home}/.vhir" = "read"
+
 # Codex's shell can't read the signing and approval store, the gateway's
 # tokens or the Valhuntir profile (which holds a gateway token)
 [permissions.filesystem]
 deny_read = ["/var/lib/vhir", "{home}/.vhir/gateway.yaml", "{home}/.codex/valhuntir.config.toml"]
 
 [[hooks.PreToolUse]]
-matcher = "^Bash$"
+matcher = "^(Bash|apply_patch)$"
 [[hooks.PreToolUse.hooks]]
 type = "command"
 command = "{hooks}/case-data-guard.sh"

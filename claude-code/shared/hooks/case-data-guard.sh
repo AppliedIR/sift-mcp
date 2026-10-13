@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 #
-# PreToolUse hook (Bash): refuse commands that would delete or overwrite case
-# records. A best-effort check of the commands listed below, not a security
-# boundary.
+# PreToolUse hook (Bash, and Codex's apply_patch): refuse commands that would
+# delete or overwrite case records. A best-effort check of the commands listed
+# below, not a security boundary. An apply_patch is checked by the paths its
+# headers name (*** Add File, Update File, Delete File, Move to), never read
+# as shell: a patch's lines are text, not commands.
 #
 # Protected, under ${VHIR_CASES_DIR:-~/cases}: the case records at a case root
 # (findings.json, timeline.json, approvals.jsonl, iocs.json, evidence.json,
 # evidence-verified.json, todos.json, CASE.yaml, actions.jsonl,
-# pending-reviews.json), everything in
+# pending-reviews.json, host-observations.jsonl, host-decisions.jsonl,
+# host-ops.json, host-dictionary.yaml), everything in
 # audit/, every existing file in evidence/ (and evidence/ while non-empty),
 # each non-empty case root and the cases root. Everything else is allowed:
 # other files, reports/, work/, .outputs/, extractions/, filing new files into
@@ -44,11 +47,12 @@
 #
 GUARD=$(
     cat <<'PY'
-import glob, itertools, json, os, shlex, sys
+import glob, itertools, json, os, re, shlex, sys
 
 RECORDS = {"findings.json", "timeline.json", "approvals.jsonl", "iocs.json", "evidence.json",
            "evidence-verified.json", "todos.json", "CASE.yaml", "actions.jsonl",
-           "pending-reviews.json"}
+           "pending-reviews.json", "host-observations.jsonl", "host-decisions.jsonl",
+           "host-ops.json", "host-dictionary.yaml"}
 # "(" opens a subshell or a find group: stripped like a keyword, so a find
 # expression stays in one segment; ")" is dropped.
 KEYWORDS = {"if", "then", "else", "elif", "do", "while", "until", "{", "}", "!", "fi", "done", "("}
@@ -226,6 +230,17 @@ def check(seg):
             if damage(r):
                 block(f"find -delete/-exec under {r}")
 
+
+if payload.get("tool_name") == "apply_patch":  # by its headers' paths, never as shell
+    try:
+        for kind, path in re.findall(
+            r"(?m)^\*\*\* (Add File|Update File|Delete File|Move to): (.+?)[ \t\r]*$", cmd
+        ):
+            if damage(path, new_ok=kind in ("Add File", "Move to")):
+                block(f"apply_patch {kind} {path}")
+    except Exception:  # a block exits through SystemExit, which this doesn't catch
+        unreadable()
+    sys.exit(0)
 
 # A backslash-newline joins lines; any other newline separates commands (in
 # quotes it stays part of the word). Spaced, so "&&;" or ";;" can't form.

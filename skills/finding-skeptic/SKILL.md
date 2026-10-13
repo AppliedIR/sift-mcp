@@ -19,6 +19,13 @@ the finding. Record it without `challenged`; the examiner sees "Not
 challenged". A challenge from the same context that wrote the finding is not
 a challenge.
 
+The skeptic's tools: in Claude Code its agent file allows only read and query
+tools. Codex's skeptic agent holds the same MCP tools as the session that
+starts it, no more; there, keeping to reads is its instructions. On Claude
+Code's fallback setup (one combined endpoint), the agent's tool list names no
+tool that endpoint offers, so the skeptic has none and can't run: it fails
+closed.
+
 ## The investigator's part
 
 1. **Draft the finding:** title, observation, interpretation, confidence, the
