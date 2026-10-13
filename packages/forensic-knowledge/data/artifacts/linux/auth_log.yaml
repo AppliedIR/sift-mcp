@@ -41,7 +41,7 @@ corroborate_with:
   for_presence: [wtmp_utmp]
   for_timeline: [wtmp_utmp, syslog, systemd_journal]
 
-related_tools: [EvtxECmd, grep, Hayabusa]
+related_tools: [grep, Plaso (log2timeline)]
 
 cross_mcp_checks:
   - mcp: "opencti"

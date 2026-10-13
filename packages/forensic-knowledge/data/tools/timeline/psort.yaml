@@ -39,7 +39,7 @@ investigation_sequence:
   - "Use -o dynamic for the flexible 8-column default format"
   - "Apply time-based slicing (--slice) to focus on periods of interest while retaining all data"
   - "Use --output-time-zone to convert timestamps to the timezone relevant to the investigation"
-  - "Do not use deduplication (default) unless you specifically need to preserve all duplicate entries (-a)"
+  - "psort removes duplicate events by default; use -a (--include_all) only if you need every duplicate entry"
   - "Review output across all event types — every parser contribution adds context to the timeline"
 
 field_meanings:

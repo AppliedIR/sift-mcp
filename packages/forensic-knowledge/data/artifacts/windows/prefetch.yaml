@@ -66,8 +66,9 @@ references:
 
 investigation_patterns:
   - name: "First-time execution during incident window"
-    query: "FirstRun:[time_from TO time_to]"
-    purpose: "Programs executed for the first time during the attack window"
+    query: "FileName.keyword:*.pf AND Created0x10:[time_from TO time_to]"
+    index: "case-*-mft-*"
+    purpose: "Prefetch files created during the attack window; a .pf file's creation time approximates the program's first execution"
     follow_up: "Cross-reference with MFT for file metadata and Zone.Identifier for download origin"
 
   - name: "32-bit payload detection via WOW64 redirection"

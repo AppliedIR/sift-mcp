@@ -22,6 +22,8 @@ timestamps:
 common_misinterpretations:
   - claim: "This program was executed based on Amcache"
     correction: "Amcache proves presence, not execution. Corroborate with Prefetch, UserAssist, or BAM."
+  - claim: "FileKeyLastWriteTimestamp shows when the file first appeared on the system"
+    correction: "The key time is when the Compatibility Appraiser last wrote the entry, so many entries share one time. It shows the file was present by then, not when it arrived. For arrival, use the $MFT Created times and the USN journal."
 
 corroborate_with:
   for_execution: [prefetch, userassist, bam]

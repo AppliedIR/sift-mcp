@@ -30,7 +30,7 @@ timestamps:
     common_misinterpretation: "Can be timestomped; does not distinguish between content types modified"
   - field: "$STANDARD_INFORMATION Accessed"
     meaning: "Last access time in $STANDARD_INFORMATION"
-    common_misinterpretation: "Disabled by default since Vista (NtfsDisableLastAccessUpdate); often shows creation time"
+    common_misinterpretation: "Controlled by NtfsDisableLastAccessUpdate (SYSTEM\\<ControlSet>\\Control\\FileSystem); check its value in the SYSTEM hive. Often shows creation time."
   - field: "$STANDARD_INFORMATION Entry Modified"
     meaning: "Last time the MFT entry metadata was changed"
     common_misinterpretation: "Can be timestomped; not the same as file content modification"
@@ -49,7 +49,7 @@ common_misinterpretations:
   - claim: "Deleted file MFT entries are immediately overwritten"
     correction: "MFT entries for deleted files are marked as free but may persist for extended periods until the entry is reallocated to a new file."
   - claim: "Last access time is always updated"
-    correction: "Since Windows Vista, NtfsDisableLastAccessUpdate is enabled by default. The last access timestamp is frequently stale."
+    correction: "Whether NTFS updates Last Access is controlled by NtfsDisableLastAccessUpdate (SYSTEM\\<ControlSet>\\Control\\FileSystem); check its value in the SYSTEM hive. Even when updates are on, NTFS can delay them by up to an hour. The last access timestamp can be stale."
 
 corroborate_with:
   for_execution: [prefetch, amcache, bam]
@@ -81,10 +81,10 @@ cross_artifact_correlation:
 
   - pattern: "Timestomping detection — $SI vs Shimcache"
     cross_ref: "Shimcache"
-    note: "Compare MFT $SI Modified time to shimcache LastModifiedTime for same executable. Mismatch = post-cache timestamp manipulation."
+    note: "Compare MFT $SI Modified time to shimcache LastModifiedTime for same executable. If $SI Modified is earlier than the cached value, the time was set backwards after caching. Consider this a lead for potential timestomping."
 
   - pattern: "Timestomping detection — $SI vs PE compile time"
-    note: "Use exiftool or PECmd to extract PE compile timestamp. Compile time AFTER $SI Modified is impossible without tampering."
+    note: "Use exiftool to extract the PE compile timestamp and compare it with $SI Modified."
 
   - pattern: "Deleted file + execution proof"
     fields: ["InUse"]

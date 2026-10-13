@@ -9,7 +9,7 @@ caveats:
   - "Memory acquisition modifies the running system (driver loading, memory allocation for the tool itself)"
   - "Requires loading a kernel driver — may be blocked by Secure Boot, Driver Signature Enforcement, or EDR"
   - "AV/EDR products may quarantine the driver or block acquisition"
-  - "Raw format output only — no compression or case metadata (unlike AVML for Linux)"
+  - "winpmem_mini writes raw images only; go-winpmem can compress (--compression snappy|gzip, default none). The older AFF4 imager is not the current release"
   - "Hash verification of the acquired image is essential"
   - "Memory content changes between acquisition start and end — not an atomic snapshot"
 
@@ -29,12 +29,11 @@ advisories:
   - "If driver loading fails, try alternative tools (DumpIt, Belkasoft RAM Capturer)"
   - "For Linux memory acquisition, use LiME instead"
 
-quick_start: "winpmem.exe -o memory.raw --format raw"
+quick_start: "winpmem_mini_x64.exe memory.raw"
 
 investigation_sequence:
   - "Acquire memory as early as possible — volatile data is lost on shutdown or reboot"
-  - "Use --format raw for broadest tool compatibility (Volatility, Rekall)"
-  - "Use -c snappy for faster compression than the default zlib"
+  - "Raw output works directly with Volatility 3; if go-winpmem compression was used, decompress before analysis"
   - "Document acquisition time, system state, and examiner identity"
   - "Verify the memory image size matches expected physical RAM"
   - "Analyze the acquired image with Volatility 3 for process, network, and malware analysis"

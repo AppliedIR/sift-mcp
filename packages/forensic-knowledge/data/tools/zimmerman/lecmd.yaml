@@ -22,7 +22,7 @@ exit_code_hints:
   1: "error or no data found"
 
 advisories:
-  - "LNK files are strong evidence of FILE ACCESS — they prove a user opened, saved, or interacted with the target"
+  - "LNK files in Recent / Office Recent are strong evidence of FILE ACCESS — they show a user opened, saved, or interacted with the target; LNKs elsewhere (Desktop, Start Menu) may be created by installers"
   - "Check Arguments field for malicious command-line parameters in weaponized LNK files"
   - "Embedded MAC addresses and volume serial numbers can link a LNK to a specific source machine or USB device"
   - "Use -d to process a directory of LNK files; use --all for maximum detail"

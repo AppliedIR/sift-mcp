@@ -37,7 +37,7 @@ investigation_sequence:
   - "Check for activities involving cloud-connected applications for scope assessment"
 
 field_meanings:
-  ActivityType: "Type of activity recorded (5=open, 6=copy/paste, 16=app in use)"
+  ActivityType: "Type of activity recorded (2=toast notification, 5=open, 6=app in focus, 10=cloud clipboard, 16=copy/paste)"
   StartTime: "When the activity began"
   EndTime: "When the activity ended"
   Duration: "Duration of the activity"

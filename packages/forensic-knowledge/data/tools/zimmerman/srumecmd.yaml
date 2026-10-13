@@ -42,7 +42,7 @@ investigation_sequence:
   - "Review energy usage data for application runtime duration evidence"
 
 field_meanings:
-  TimeStamp: "Timestamp of the SRUM record entry"
+  Timestamp: "Timestamp of the SRUM record entry"
   AppId: "Application identifier (full path or SID)"
   UserId: "User SID associated with the activity"
   BackgroundBytesRead: "Bytes read by the application in the background"

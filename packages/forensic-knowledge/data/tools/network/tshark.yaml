@@ -64,4 +64,4 @@ field_meanings:
   http.request.uri: "HTTP request URI path"
   dns.qry.name: "DNS query domain name"
   dns.a: "DNS A record response (IPv4 address)"
-  ssl.handshake.extensions_server_name: "TLS SNI (Server Name Indication) value"
+  tls.handshake.extensions_server_name: "TLS SNI (Server Name Indication) value (ssl.handshake.* is the pre-3.0 alias)"

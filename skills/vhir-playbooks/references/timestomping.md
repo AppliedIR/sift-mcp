@@ -7,7 +7,7 @@ MITRE ATT&CK: T1070.006
 ## Triggers
 
 - $STANDARD_INFORMATION timestamps earlier than $FILE_NAME timestamps in MFT
-- Nanosecond precision of zero in timestamps (indicates programmatic modification)
+- Zero millisecond component in $SI Created or Modified (MFTECmd uSecZeros). This results from a program setting the time: timestomping tools can do it, but so do archive extraction and some installers. Treat it as a lead for further comparison, not proof.
 - Timestamps predating the file system creation date
 - Timestamps inconsistent with other artifact evidence
 
@@ -15,7 +15,7 @@ MITRE ATT&CK: T1070.006
 
 1. Parse MFT with MFTECmd (via sift-mcp or wintools-mcp) comparing $STANDARD_INFORMATION vs $FILE_NAME timestamps
 2. Flag entries where $SI Created timestamp is earlier than $FN Created timestamp
-3. Check for nanosecond fields of zero which indicate programmatic timestamp modification
+3. Check for a zero millisecond component (MFTECmd uSecZeros); it can indicate a program set the time, including timestomping tools, and is a lead, not proof
 
 ## Phase 2: Verify
 
@@ -38,7 +38,7 @@ MITRE ATT&CK: T1070.006
 ## Phase 5: Record
 
 1. Record finding including both $SI and $FN timestamps for affected files
-2. Note the discrepancy as evidence of deliberate timestamp manipulation
+2. Note the discrepancy as possible deliberate timestamp manipulation, with the artifacts from the other phases that support or contradict it
 3. Include all evidence IDs from each analysis phase
 
 ## Sources
