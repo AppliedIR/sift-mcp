@@ -36,6 +36,7 @@ tools:
     interactive: false
     description: "Plaso super-timeline generator"
     fk_tool_name: "Plaso (log2timeline)"
+    aliases: ["Plaso (log2timeline)", plaso]
 
   - name: mactime
     binary: mactime

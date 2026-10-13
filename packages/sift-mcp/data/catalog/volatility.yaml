@@ -11,6 +11,7 @@ tools:
     interactive: false
     description: "Volatility 3 memory forensics framework"
     fk_tool_name: "Volatility 3"
+    aliases: ["Volatility 3", Volatility3, volatility, volatility3]
     common_flags:
       - flag: "-r"
         description: "Output renderer (json, csv, text)"

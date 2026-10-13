@@ -31,6 +31,7 @@ tools:
 
   - name: 7z
     binary: 7z
+    aliases: [7-Zip, 7zip, p7zip]
     input_style: positional
     output_format: text
     timeout_seconds: 3600
