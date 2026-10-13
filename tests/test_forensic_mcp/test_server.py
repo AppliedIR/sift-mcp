@@ -621,6 +621,10 @@ class TestNoGradeInResponse:
             "confidence": "LOW",
             "confidence_justification": "One TTP match",
             "type": "attribution",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
         result = await server.call_tool("record_finding", {"finding": finding})
         data = json.loads(result[0].text)

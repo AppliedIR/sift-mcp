@@ -264,6 +264,7 @@ UPHELD = {"outcome": "stands", "checks": [CHECK], "skeptic_audit_ids": [RUN]}
 def _line(marker, finding=None) -> str:
     script = (
         _DOM
+        + _js_function("safeStr")  # escapeHtml converts through it
         + _js_function("escapeHtml")
         + "".join(_js_function(n) for n in CHALLENGE_FNS)
         + f"process.stdout.write(renderChallengeLine({json.dumps(marker)}, "

@@ -21,6 +21,10 @@ def _missing(mgr, iocs):
         "confidence": "MEDIUM",
         "confidence_justification": "one source",
         "type": "finding",
+        "challenged": {
+            "outcome": "not_challenged",
+            "reason": "no skeptic in this test",
+        },
     }
     if iocs is not None:
         finding["iocs"] = iocs

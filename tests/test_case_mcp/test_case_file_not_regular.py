@@ -134,7 +134,7 @@ def test_a_fifo_registry_refuses_registration_and_is_kept(env):
     _fifo(d / "evidence.json")
     reg = d / "evidence.json"
     assert tool("evidence_register", path=str(d / "evidence" / "x.bin")) == {
-        "error": f"{reg} can't be read as JSON ({reg} is not a regular file); nothing was "
+        "error": f"{reg} can't be read as JSON ({reg} isn't a regular file (a named pipe, socket or device). Put the case's own file back, then try again.); nothing was "
         "registered. Fix or restore it, then register again."
     }
     assert _is_fifo(reg)
@@ -145,7 +145,9 @@ def test_a_held_fifo_registry_lists_and_verifies_nothing_from_the_pipe(env):
     d = case("held-fifo-registry")
     hold(d / "evidence.json", json.dumps({"files": [{"path": "/from/the/pipe",
                                                      "sha256": "ab" * 32}]}).encode())  # fmt: skip
-    error = {"error": f"{d / 'evidence.json'} is not a regular file"}
+    error = {
+        "error": f"{d / 'evidence.json'} isn't a regular file (a named pipe, socket or device). Put the case's own file back, then try again."
+    }
     assert tool("evidence_list") == error
     assert tool("evidence_verify") == error
     assert _is_fifo(d / "evidence.json")
@@ -157,7 +159,7 @@ def test_a_registry_linked_to_dev_zero_is_refused(env):
     (d / "evidence.json").unlink()
     (d / "evidence.json").symlink_to("/dev/zero")
     assert tool("evidence_list") == {
-        "error": f"{d / 'evidence.json'} is not a regular file"
+        "error": f"{d / 'evidence.json'} isn't a regular file (a named pipe, socket or device). Put the case's own file back, then try again."
     }
 
 
@@ -171,7 +173,7 @@ def test_a_findings_file_that_isnt_regular_gives_the_case_status_an_error(env, h
         (d / "findings.json").unlink()
         (d / "findings.json").symlink_to("/dev/zero")
     assert tool("case_status") == {
-        "error": f"{d / 'findings.json'} is not a regular file"
+        "error": f"{d / 'findings.json'} isn't a regular file (a named pipe, socket or device). Put the case's own file back, then try again."
     }
 
 
@@ -189,7 +191,7 @@ def test_an_audit_log_held_as_a_fifo_is_named_and_its_entry_isnt_taken(env):
         "path": str(d / "evidence" / "x.bin"),
         "sha256": X_SHA,
         "derivation_note": "derivation unchecked: audit/wintools-mcp.jsonl can't be read "
-        "(NotRegularFile)",
+        f"({d / 'audit' / 'wintools-mcp.jsonl'} isn't a regular file (a named pipe, socket or device). Put the case's own file back, then try again.)",
     }
     assert _is_fifo(d / "audit" / "wintools-mcp.jsonl")
 
@@ -210,7 +212,7 @@ def test_a_file_identity_log_held_as_a_fifo_doesnt_give_a_folder_its_hashes(env)
         "kind": "folder",
         "file_count": 2,
         "derivation_note": "derivation unchecked: audit/file-identity.jsonl can't be read "
-        "(NotRegularFile)",
+        f"({d / 'audit' / 'file-identity.jsonl'} isn't a regular file (a named pipe, socket or device). Put the case's own file back, then try again.)",
     }
     (manifest,) = (d / "evidence-manifests").glob("*.json")
     rows = {f["path"]: f["sha256"] for f in json.loads(manifest.read_text())["files"]}
