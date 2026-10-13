@@ -2886,16 +2886,16 @@ function renderResultSummary(summary) {
   var html = '';
   if (summary.exit_code !== undefined) {
     var cls = summary.exit_code === 0 ? 'conf-high' : 'conf-low';
-    html += '<div><span class="ev-label">Exit:</span> <span class="' + cls + '">' + escapeHtml(String(summary.exit_code)) + '</span></div>';
+    html += '<div><span class="ev-label">Exit:</span> <span class="' + cls + '">' + escapeHtml(safeStr(summary.exit_code)) + '</span></div>';
   }
   if (summary.output_file) {
     html += '<div><span class="ev-label">File:</span> <span class="mono">' + escapeHtml(summary.output_file) + '</span></div>';
   }
   if (summary.output_sha256) {
-    html += '<div><span class="ev-label">SHA-256:</span> <span class="mono">' + escapeHtml(summary.output_sha256.slice(0, 16)) + '...</span></div>';
+    html += '<div><span class="ev-label">SHA-256:</span> <span class="mono">' + escapeHtml(safeStr(summary.output_sha256).slice(0, 16)) + '...</span></div>';
   }
   if (summary.stdout_bytes) {
-    html += '<div><span class="ev-label">Size:</span> ' + escapeHtml(String(summary.stdout_bytes)) + ' bytes</div>';
+    html += '<div><span class="ev-label">Size:</span> ' + escapeHtml(safeStr(summary.stdout_bytes)) + ' bytes</div>';
   }
   if (summary.stdout_head) {
     html += '<div><span class="ev-label">Output:</span><pre>' + escapeHtml(summary.stdout_head) + '</pre></div>';
@@ -2937,7 +2937,7 @@ async function loadToolInvocations(finding) {
   // Attaching to the element (not a module global) isolates tooltips
   // per finding and prevents stale-DOM cross-resolution.
   var auditById = {};
-  auditData.forEach(function(e) { if (e.audit_id) auditById[e.audit_id] = e; });
+  auditData.forEach(function(e) { if (e.audit_id) auditById[safeStr(e.audit_id)] = e; });
   container._auditMap = auditById;
 
   var artifacts = finding.artifacts || [];
@@ -2966,12 +2966,12 @@ async function loadToolInvocations(finding) {
 
   // Render one chain step enriched from audit data
   function renderStep(step) {
-    var fullEntry = auditById[step.audit_id];
+    var fullEntry = auditById[safeStr(step.audit_id)];
     var tool = (fullEntry && fullEntry.tool) || step.tool || 'unknown';
-    var elapsed = (fullEntry && fullEntry.elapsed_ms) ? ' \u00B7 ' + (fullEntry.elapsed_ms / 1000).toFixed(1) + 's' : '';
+    var elapsed = (fullEntry && fullEntry.elapsed_ms) ? ' \u00B7 ' + (Number(safeStr(fullEntry.elapsed_ms)) / 1000).toFixed(1) + 's' : '';
     var cmd = '';
     if (fullEntry && fullEntry.params && fullEntry.params.command) {
-      cmd = Array.isArray(fullEntry.params.command) ? fullEntry.params.command.join(' ') : String(fullEntry.params.command);
+      cmd = safeStr(fullEntry.params.command, ' ');
     }
     var aid = step.audit_id || '';
     var h = '<div style="padding:1px 0 1px 12px;border-left:2px solid var(--border);margin-left:4px;cursor:pointer"';
@@ -3006,9 +3006,9 @@ async function loadToolInvocations(finding) {
     if (step.from || step.to) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">' + (src ? src + ' \u2192 ' : step.from ? pf(step.from) + ' \u2192 ' : '\u2192 ') + pf(step.to) + '</div>';
     if (cmd) h += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
     var outFile = fullEntry && (fullEntry.result_summary || {}).output_file;
-    if (outFile) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">\u2192 ' + escapeHtml(outFile.split('/').pop()) + '</div>';
+    if (outFile) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">\u2192 ' + escapeHtml(safeStr(outFile).split('/').pop()) + '</div>';
     h += '</div>';
-    if (step.audit_id) renderedAuditIds[step.audit_id] = true;
+    if (step.audit_id) renderedAuditIds[safeStr(step.audit_id)] = true;
     return h;
   }
 
@@ -3068,12 +3068,12 @@ async function loadToolInvocations(finding) {
   if (hasContent) html += '</div>';
 
   // Remaining audit entries not tied to any artifact
-  var remaining = auditData.filter(function(e) { return e.audit_id && !renderedAuditIds[e.audit_id]; });
+  var remaining = auditData.filter(function(e) { return e.audit_id && !renderedAuditIds[safeStr(e.audit_id)]; });
   if (remaining.length) {
     html += '<div style="margin-top:8px;font-size:11px">';
     html += '<div style="font-weight:600;margin-bottom:4px;color:var(--text-secondary)">Additional Tool Invocations</div>';
     remaining.forEach(function(entry) {
-      html += renderStep({audit_id: entry.audit_id, tool: entry.tool});
+      html += renderStep({audit_id: safeStr(entry.audit_id), tool: entry.tool});
     });
     html += '</div>';
   }
@@ -3107,7 +3107,7 @@ async function loadEvidencePanel(finding) {
   // Group audit entries by audit_id
   const byEid = {};
   auditData.forEach(entry => {
-    const eid = entry.audit_id || '';
+    const eid = safeStr(entry.audit_id || '');
     if (!byEid[eid]) byEid[eid] = [];
     byEid[eid].push(entry);
   });
@@ -3116,8 +3116,8 @@ async function loadEvidencePanel(finding) {
   eids.forEach((eid, idx) => {
     const entries = byEid[eid] || [];
     const entry = entries[0] || {};
-    const backend = entry._backend || 'unknown';
-    const isShell = backend.includes('exec') || (entry.source || '').includes('shell');
+    const backend = safeStr(entry._backend || 'unknown');
+    const isShell = backend.includes('exec') || safeStr(entry.source || '').includes('shell');
     const openClass = idx === 0 ? ' open' : '';
 
     html += '<div class="evidence-item" id="ev-' + escapeHtml(eid) + '">';
@@ -3151,7 +3151,7 @@ async function loadEvidencePanel(finding) {
         html += '<div class="ev-field"><span class="ev-label">Result:</span>' + renderResultSummary(entry.result_summary) + '</div>';
       }
       if (entry.elapsed_ms) {
-        html += '<div class="ev-field"><span class="ev-label">Elapsed:</span> ' + escapeHtml(String(entry.elapsed_ms)) + 'ms</div>';
+        html += '<div class="ev-field"><span class="ev-label">Elapsed:</span> ' + escapeHtml(safeStr(entry.elapsed_ms)) + 'ms</div>';
       }
     }
     html += '</div></div>';
@@ -3160,7 +3160,7 @@ async function loadEvidencePanel(finding) {
 
   // Sources — show backends that contributed to this finding
   const backends = new Set();
-  auditData.forEach(e => { if (e.mcp) backends.add(e.mcp.replace(/-mcp$/, '')); });
+  auditData.forEach(e => { if (e.mcp) backends.add(safeStr(e.mcp).replace(/-mcp$/, '')); });
   let sourcesHtml = '<strong>Sources:</strong> ';
   if (backends.size > 0) {
     sourcesHtml += [...backends].sort().map(escapeHtml).join(', ');
@@ -3433,9 +3433,20 @@ function switchTab(tabName) {
 }
 
 /* === Helpers === */
+// Text for any value case data holds; never throws. A list joins its items
+// (`sep`, default ","), as String() would; a value String() itself can't
+// convert (an object whose own toString is null) shows as [unprintable].
+function safeStr(v, sep) {
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) {
+    return v.map(function(x) { return x == null ? '' : safeStr(x); }).join(sep === undefined ? ',' : sep);
+  }
+  try { return String(v); } catch (_e) { return '[unprintable]'; }
+}
+
 function escapeHtml(s) {
   const d = document.createElement('div');
-  d.textContent = s;
+  d.textContent = s == null ? '' : safeStr(s);
   // Quotes too: the result also goes inside quoted attributes
   return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
@@ -4514,7 +4525,7 @@ function renderTimelineCompactRow(ev, de, isFocused) {
   if (desc.length > 90) desc = desc.slice(0, 87) + '...';
 
   // Compact row
-  var html = '<div class="tl-row status-' + status.toLowerCase() +
+  var html = '<div class="tl-row status-' + escapeHtml(status.toLowerCase()) +
     (isFocused ? ' focused' : '') +
     '" data-id="' + escapeHtml(ev.id) +
     '" onclick="focusTimelineEvent(\'' + escapeJsString(evId) + '\')">';
@@ -4544,7 +4555,7 @@ function renderTimelineCompactRow(ev, de, isFocused) {
       escapeHtml(formatTime(eff.timestamp || ev.staged || '')) + '</span>';
     html += '<span class="tl-type tl-type-' + escapeHtml(evType) + '">' +
       escapeHtml(evType) + '</span>';
-    html += '<span class="badge badge-' + status.toLowerCase() + '">' +
+    html += '<span class="badge badge-' + escapeHtml(status.toLowerCase()) + '">' +
       escapeHtml(status) + '</span>';
     html += '<span class="' + verifClassFor(verif) +
       '" style="font-size:10px">' + escapeHtml(verifText(verif)) + '</span>';
@@ -5179,7 +5190,7 @@ function _tipRow(label, value, mono) {
   return '<div><span style="color:var(--text-muted);display:inline-block;width:90px">'
     + escapeHtml(label) + ':</span> '
     + (mono ? '<span style="font-family:monospace">' : '<span>')
-    + escapeHtml(String(value)) + '</span></div>';
+    + escapeHtml(safeStr(value)) + '</span></div>';
 }
 function _buildTooltipHtml(entry, step) {
   var h = '';
@@ -5187,10 +5198,10 @@ function _buildTooltipHtml(entry, step) {
   h += '<div style="font-weight:700;margin-bottom:6px">' + escapeHtml(tool) + '</div>';
   if (entry.ts || entry.timestamp) h += _tipRow('Timestamp', entry.ts || entry.timestamp);
   if (entry.audit_id) h += _tipRow('Audit ID', entry.audit_id, true);
-  if (entry.elapsed_ms) h += _tipRow('Elapsed', (entry.elapsed_ms / 1000).toFixed(1) + 's');
+  if (entry.elapsed_ms) h += _tipRow('Elapsed', (Number(safeStr(entry.elapsed_ms)) / 1000).toFixed(1) + 's');
   var params = entry.params || {};
   if (params.command) {
-    var cmd = Array.isArray(params.command) ? params.command.join(' ') : String(params.command);
+    var cmd = safeStr(params.command, ' ');
     h += _tipRow('Command', '$ ' + cmd, true);
   }
   if (params.purpose) h += _tipRow('Purpose', params.purpose);
@@ -5200,24 +5211,24 @@ function _buildTooltipHtml(entry, step) {
     if (skipParams[k]) return;
     var v = params[k];
     if (v === null || v === undefined || v === '' || v === false || v === 0) return;
-    if (Array.isArray(v)) { if (!v.length) return; v = v.join(', '); }
+    if (Array.isArray(v)) { if (!v.length) return; v = safeStr(v, ', '); }
     else if (typeof v === 'object') v = JSON.stringify(v);
     h += _tipRow(k, v);
   });
-  var inputs = entry.input_files || [];
+  var inputs = [].concat(entry.input_files || []);  // a list, or one value given alone
   if (inputs.length) {
-    h += _tipRow('Input files', inputs.map(function(p) { return p.split('/').pop(); }).join(', '));
+    h += _tipRow('Input files', inputs.map(function(p) { return safeStr(p).split('/').pop(); }).join(', '));
   }
-  var sha256s = entry.input_sha256s || [];
+  var sha256s = [].concat(entry.input_sha256s || []);
   if (sha256s.length) {
-    h += _tipRow('Input SHA-256', sha256s.map(function(s) { return s.slice(0, 16) + '...'; }).join(', '), true);
+    h += _tipRow('Input SHA-256', sha256s.map(function(s) { return safeStr(s).slice(0, 16) + '...'; }).join(', '), true);
   }
   var rs = entry.result_summary || {};
   if (typeof rs === 'string') { h += _tipRow('Result', rs); }
   else {
-    if (rs.output_file) h += _tipRow('Output file', rs.output_file.split('/').pop(), true);
-    if (rs.output_sha256) h += _tipRow('SHA-256', rs.output_sha256.slice(0, 16) + '...', true);
-    if (rs.stdout_bytes) h += _tipRow('Size', Number(rs.stdout_bytes).toLocaleString() + ' bytes');
+    if (rs.output_file) h += _tipRow('Output file', safeStr(rs.output_file).split('/').pop(), true);
+    if (rs.output_sha256) h += _tipRow('SHA-256', safeStr(rs.output_sha256).slice(0, 16) + '...', true);
+    if (rs.stdout_bytes) h += _tipRow('Size', Number(safeStr(rs.stdout_bytes)).toLocaleString() + ' bytes');
   }
   var backend = entry._backend || entry.mcp || '';
   if (backend) h += _tipRow('Backend', backend);

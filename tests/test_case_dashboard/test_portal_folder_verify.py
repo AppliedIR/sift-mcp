@@ -101,6 +101,7 @@ def test_the_page_shows_a_folder_s_result_with_its_count():
             "var document = {getElementById: function() { return cell; },"
             " createElement: function() { return {set textContent(s) { this.innerHTML = String(s); }}; }};"
             f"async function apiFetch() {{ return {json.dumps(result)}; }}\n"
+            + fn("safeStr")  # escapeHtml converts through it
             + fn("escapeHtml")
             + fn("verifyEvidence")
             + "\nverifyEvidence(0).then(function() { process.stdout.write(cell.innerHTML); });"

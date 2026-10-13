@@ -17,17 +17,17 @@ _PUBLIC_PATHS = {
     "/health/",
     "/mcp",
     "/api/v1/setup/join",
-    # Examiner Portal + legacy dashboard HTML only — API endpoints require auth
+    # Examiner Portal HTML only — API endpoints require auth
     "/portal",
     "/portal/",
+    # The retired legacy dashboard: its paths only redirect to /portal/
     "/dashboard",
-    "/dashboard/",
     # The one static asset the portal pages load
     "/portal/valhuntir-icon.png",
 }
 
 # Paths matched by prefix (all sub-paths are public)
-_PUBLIC_PREFIXES: tuple[str, ...] = ()
+_PUBLIC_PREFIXES: tuple[str, ...] = ("/dashboard/",)  # each one only redirects
 
 # Maximum length for bearer tokens (DoS protection against megabyte-sized headers)
 _MAX_TOKEN_LENGTH = 1024

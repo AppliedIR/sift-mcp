@@ -20,7 +20,7 @@ import case_dashboard.routes as D
 import pytest
 
 STATIC = Path(D.__file__).parent / "static"
-PAGES = {"v2": STATIC / "v2" / "index.html", "v1": STATIC / "index.html"}
+PAGES = {"v2": STATIC / "v2" / "index.html"}  # the legacy page is retired
 PAYLOAD = '" onmouseover="alert(1)'
 # A browser's textContent -> innerHTML: & < > only, never quotes
 _DOCUMENT = (
@@ -51,6 +51,7 @@ def _escaped(page_name: str) -> str:
     page = PAGES[page_name].read_text()
     return _node(
         _DOCUMENT
+        + _js_function(page, "safeStr")  # escapeHtml converts through it
         + _js_function(page, "escapeHtml")
         + f"process.stdout.write(escapeHtml({json.dumps(PAYLOAD + chr(39))}));"
     )
@@ -105,6 +106,7 @@ def test_an_ioc_value_renders_inert_in_the_ioc_table():
         )
         + "function setBadge() {}\nfunction escapeJsString(s) { return String(s); }\n"
         + f"var iocsData = {json.dumps(iocs)};\n"
+        + _js_function(page, "safeStr")  # escapeHtml converts through it
         + _js_function(page, "escapeHtml")
         + _js_function(page, "verifText")  # the verification text people read
         + _js_function(page, "verifClassFor")  # the verification badge's class

@@ -1,9 +1,11 @@
-"""Only the portal's one static asset skips the API key check.
+"""Only the portal's one static asset skips the API key check, and the retired
+legacy dashboard's paths only redirect to the Portal.
 
-A portal or dashboard API path ending in an asset suffix (.js, .png, ...) used
-to skip authentication, so a request without a key could read a finding or
-drop a pending review. The real gateway app runs in-process; nothing binds a
-port and no backend starts.
+A portal API path ending in an asset suffix (.js, .png, ...) used to skip
+authentication, so a request without a key could read a finding or drop a
+pending review. Every /dashboard path, whatever the method and with or
+without the key, answers 303 to the fixed /portal/ and runs no handler. The
+real gateway app runs in-process; nothing binds a port and no backend starts.
 """
 
 from __future__ import annotations
@@ -20,6 +22,10 @@ AUTH = {"Authorization": f"Bearer {KEY}"}
 
 @pytest.fixture
 def portal(tmp_path, monkeypatch):
+    return _gateway(tmp_path, monkeypatch)
+
+
+def _gateway(tmp_path, monkeypatch):
     case = tmp_path / "cases" / "C-portal"
     case.mkdir(parents=True)
     (case / "CASE.yaml").write_text("case_id: C-portal\n")
@@ -55,7 +61,7 @@ def _pending_ids(case):
         (f"/portal/api/delta/X.{ext}", f"X.{ext}")
         for ext in ("png", "jpg", "svg", "ico", "css", "js")
     ]
-    + [("/dashboard/api/delta/Q.js", "Q.js"), ("/portal/api/delta/E%2Ejs", "E.js")],
+    + [("/portal/api/delta/E%2Ejs", "E.js")],
 )
 def test_dropping_a_pending_review_needs_the_key_whatever_its_name_ends_in(
     portal, path, item
@@ -94,16 +100,53 @@ def test_the_portal_icon_loads_without_the_key(portal, method):
     assert r.headers["content-type"] == "image/png"
 
 
-@pytest.mark.parametrize("path", ["/portal/", "/dashboard/"])
-def test_the_portal_pages_load_without_the_key(portal, path):
+def test_the_portal_page_loads_without_the_key(portal):
     _, client = portal
-    assert client.get(path).status_code == 200
+    assert client.get("/portal/").status_code == 200
 
 
-@pytest.mark.parametrize("path", ["/portal/nonexistent.js", "/dashboard/x.png"])
-def test_any_other_asset_name_needs_the_key(portal, path):
+def test_any_other_asset_name_needs_the_key(portal):
     _, client = portal
-    assert client.get(path).status_code == 401
+    assert client.get("/portal/nonexistent.js").status_code == 401
+
+
+RETIRED = ["/dashboard", "/dashboard/", "/dashboard/x.png", "/dashboard/api/findings",
+           "/dashboard/api/delta/Q.js", "/dashboard/api/commit?next=https://evil.example/",
+           "/dashboard//evil.example/", "/dashboard/%2e%2e/portal/api/findings"]  # fmt: skip
+
+
+@pytest.mark.parametrize("path", RETIRED)
+@pytest.mark.parametrize("method", ["GET", "HEAD", "POST", "DELETE"])
+@pytest.mark.parametrize("key", [False, True], ids=["no key", "key"])
+def test_every_retired_dashboard_path_redirects_to_the_fixed_portal_url(
+    portal, path, method, key
+):
+    _, client = portal
+    r = client.request(
+        method, path, headers=AUTH if key else {}, follow_redirects=False
+    )
+    assert (r.status_code, r.headers.get("location")) == (303, "/portal/"), r.text
+    assert "<html" not in r.text.lower()
+
+
+def test_a_write_to_a_retired_dashboard_api_path_runs_no_handler(tmp_path, monkeypatch):
+    from case_dashboard import routes, signing
+
+    ran = []
+    for name in ("post_commit_plan", "post_commit_key", "post_commit"):
+        monkeypatch.setattr(signing, name, lambda request, _n=name: ran.append(_n))
+    monkeypatch.setattr(
+        routes, "delete_delta_item", lambda request: ran.append("delete")
+    )
+    case, client = _gateway(tmp_path, monkeypatch)
+    _pending(case, "Q")
+    for method, path in [("POST", "/dashboard/api/commit"), ("POST", "/dashboard/api/commit/plan"),
+                         ("DELETE", "/dashboard/api/delta/Q")]:  # fmt: skip
+        r = client.request(
+            method, path, headers=AUTH, json={"x": 1}, follow_redirects=False
+        )
+        assert (r.status_code, r.headers.get("location")) == (303, "/portal/")
+    assert ran == [] and _pending_ids(case) == ["Q"]
 
 
 def test_the_api_works_with_the_key(portal):
