@@ -634,3 +634,35 @@ def test_the_tool_list_says_what_challenged_takes():
         'produced_by (dict, optional): {"client", "model"} that wrote the finding'
         in (described)
     )
+
+
+@pytest.mark.parametrize(
+    "check",
+    [{"name": "re-run", "result": "consistent", "audit_ids": [SKEPTIC]},
+     {"name": "re-run", "result": "contradicts", "audit_ids": [SKEPTIC, ELSEWHERE]},
+     {"name": "re-run", "result": "not run", "reason": "no evtx"}],
+    ids=["consistent", "contradicts, one id unverified", "not run"],
+)  # fmt: skip
+def test_a_withdrawal_needs_a_check_whose_ids_verify_its_contradiction(case, check):
+    """A skeptic id alone never withdraws a finding: only a check that
+    contradicts it, every id of it the skeptic's tool output. Otherwise the
+    finding is staged for the examiner."""
+    challenged = {
+        "outcome": "withdrawn",
+        "contradiction": "no such file",
+        "checks": [check],
+    }
+    result = _record({**FINDING, "challenged": challenged})
+    assert result["status"] == "STAGED", result
+    assert "Withdrawal refused" in result["warning"]
+    assert _stored(case, result)["challenged"]["outcome"] == "withdrawn"
+
+
+@pytest.mark.parametrize("result_value", [[], {}], ids=["a list", "an object"])
+def test_a_check_whose_result_is_not_text_is_stored_as_not_run(case, result_value):
+    challenged = {"outcome": "stands", "checks": [
+        {"name": "re-run", "result": result_value, "audit_ids": [SKEPTIC]}]}  # fmt: skip
+    result = _record({**FINDING, "challenged": challenged})
+    check = _stored(case, result)["challenged"]["checks"][0]
+    assert check["result"] == "not run"
+    assert check["reason"].startswith("malformed check: result")

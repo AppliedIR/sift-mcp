@@ -429,7 +429,7 @@ def _normalize_check(
         check["ran"] = {
             a: _what_ran(entries[a])[:_MAX_NAME] for a in ids if a in entries
         }
-    if result not in _CHECK_RESULTS:
+    if not isinstance(result, str) or result not in _CHECK_RESULTS:
         got = json.dumps(result, default=str)[:40]
         check.update(result="not run", reason=f"malformed check: result {got}")
     elif result == "not run":
@@ -1555,7 +1555,9 @@ class CaseManager:
         marker, _ = _normalize_challenge(
             finding.get("challenged"), _tool_output_ids(case_dir), own_ids
         )
-        if marker["outcome"] != "withdrawn" or not marker["skeptic_audit_ids"]:
+        # only a check whose own ids verified its contradiction withdraws it
+        contradicted = any(c["result"] == "contradicts" for c in marker["checks"])
+        if marker["outcome"] != "withdrawn" or not contradicted:
             return None
         if not marker.get("contradiction", "").strip():
             return None
