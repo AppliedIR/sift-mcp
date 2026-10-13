@@ -39,6 +39,7 @@ FINDING = {
     "confidence": "MEDIUM",
     "confidence_justification": "Single evidence source",
     "type": "finding",
+    "challenged": {"outcome": "not_challenged", "reason": "no skeptic in this test"},
 }
 
 

@@ -263,7 +263,13 @@ _MAX_ALTERNATIVE_IDS = 10
 _MAX_SKEPTIC_IDS = 20
 _MAX_EXPLANATION = 2000
 _MAX_EVIDENCE = 5000
-_CHALLENGE_OUTCOMES = {"stands", "revised", "withdrawn"}
+_CHALLENGE_OUTCOMES = {"stands", "revised", "withdrawn", "contested", "not_challenged"}
+_CHECK_RESULTS = {"consistent", "contradicts", "nothing found", "not run"}
+_MAX_CHECKS = 20
+_MAX_NAME = 200
+# The payload the examiner's client sends when no skeptic could run: the one
+# shape a record_finding without a challenge is pointed to.
+NOT_CHALLENGED_PAYLOAD = {"outcome": "not_challenged", "reason": "<why no skeptic ran>"}
 
 
 @contextlib.contextmanager
@@ -393,61 +399,196 @@ def _normalize_alternatives(raw: Any, tool_ids: set[str]) -> tuple[list, list[st
     return stored, warnings
 
 
-def _normalize_challenge(
-    raw: Any, tool_ids: set[str], own_ids: list[str]
-) -> tuple[dict | None, list[str]]:
-    """The challenge marker to store (None: store none), and warnings.
+def _text(value: Any, limit: int) -> str:
+    return value[:limit] if isinstance(value, str) else ""
 
-    The skeptic's ids must be tool output in the trail, other than the
-    finding's own evidence. A ``withdrawn`` marker is kept even without them:
-    it says a withdrawal was refused, which adds doubt.
-    """
-    not_challenged = "The finding will show as not challenged."
-    if raw is None:
-        return None, []
+
+def _normalize_check(
+    raw: Any, n: int, tool_ids: set[str], own_ids: list[str], entries: dict
+) -> dict:
+    """One check as stored: {name, result, audit_ids, reason, ran}. A result
+    its audit ids don't support (none, the finding's own, or not tool output
+    in the trail) is stored as "not run", with the reason. `ran`: what each
+    verified id ran, from the trail, so the examiner sees an author's own
+    `date` run offered as the skeptic's."""
     if not isinstance(raw, dict):
-        kind = {str: "a string", list: "a list"}.get(type(raw), type(raw).__name__)
-        return None, [
-            'challenged dropped: expected an object, {"outcome": "stands", '
-            '"revised" or "withdrawn", "skeptic_audit_ids": [the skeptic\'s '
-            f"audit ids]}}, not {kind}. " + not_challenged
-        ]
-    outcome = raw.get("outcome")
-    if not isinstance(outcome, str) or outcome not in _CHALLENGE_OUTCOMES:
-        got = json.dumps(outcome, default=str)[:40]
-        return None, [
-            'challenged dropped: its outcome must be "stands", "revised" or '
-            f'"withdrawn" (got {got}). ' + not_challenged
-        ]
-    raw_ids = raw.get("skeptic_audit_ids")
+        return {"name": f"check {n}", "result": "not run", "audit_ids": [],
+                "reason": "malformed check: not an object"}  # fmt: skip
+    check: dict = {"name": _text(raw.get("name"), _MAX_NAME) or f"check {n}"}
+    result = raw.get("result")
+    raw_ids = raw.get("audit_ids")
     if isinstance(raw_ids, str):
         raw_ids = [raw_ids]
-    if not isinstance(raw_ids, list):
-        raw_ids = []
-    warnings: list[str] = []
-    if any(a in own_ids for a in raw_ids):
-        warnings.append(
-            "challenged: the finding's own audit ids don't count as the "
-            "skeptic's re-run."
-        )
+    raw_ids = raw_ids if isinstance(raw_ids, list) else []
     ids, removed = _cited_ids(
         [a for a in raw_ids if a not in own_ids], _MAX_SKEPTIC_IDS, tool_ids
     )
-    if removed:
-        warnings.append(
-            f"challenged: skeptic audit id(s) {', '.join(map(str, removed))} removed, "
-            "not tool output in this case's audit trail."
-        )
-    marker: dict = {"outcome": raw["outcome"], "skeptic_audit_ids": ids}
-    contradiction = str(raw.get("contradiction") or "")
-    if contradiction:
-        marker["contradiction"] = contradiction[:_MAX_EVIDENCE]
-    if raw["outcome"] != "withdrawn" and not ids:
-        return None, warnings + [
-            "challenged dropped: no skeptic audit id is tool output in this "
-            "case's audit trail. " + not_challenged
-        ]
+    removed += [a for a in raw_ids if a in own_ids]
+    check["audit_ids"] = ids
+    if ids:
+        check["ran"] = {
+            a: _what_ran(entries[a])[:_MAX_NAME] for a in ids if a in entries
+        }
+    if result not in _CHECK_RESULTS:
+        got = json.dumps(result, default=str)[:40]
+        check.update(result="not run", reason=f"malformed check: result {got}")
+    elif result == "not run":
+        check.update(result="not run",
+                     reason=_text(raw.get("reason"), _MAX_EXPLANATION)
+                     or "malformed check: not run without a reason")  # fmt: skip
+    elif removed or not ids:
+        unverified = ", ".join(map(str, removed)) or "none given"
+        check.update(result="not run", reason=f"unverified audit id: {unverified}")
+    else:
+        check["result"] = result
+    return check
+
+
+def _not_challenged(reason: str) -> dict:
+    return {"outcome": "not_challenged", "reason": reason[:_MAX_EXPLANATION],
+            "checks": [], "skeptic_audit_ids": []}  # fmt: skip
+
+
+def _normalize_challenge(
+    raw: Any, tool_ids: set[str], own_ids: list[str], entries: dict | None = None
+) -> tuple[dict, list[str]]:
+    """The challenge marker to store, and warnings. Never None: a malformed
+    challenge is stored as not_challenged, with "malformed challenge: ..." as
+    its reason, so the examiner sees it.
+
+    The marker: outcome; checks [{name, result, audit_ids, reason}];
+    skeptic_audit_ids (every check's verified ids, for the readers of the
+    0.6.4 marker); contradiction; reason (not_challenged); skeptic {client,
+    model}, self-reported. A legacy {outcome, skeptic_audit_ids} is one
+    "skeptic re-run" check. withdrawn and contested need a contradiction and
+    are kept without a verified id: each says the skeptic doubted it."""
+    if not isinstance(raw, dict):
+        kind = {str: "a string", list: "a list"}.get(type(raw), type(raw).__name__)
+        marker = _not_challenged(f"malformed challenge: expected an object, not {kind}")
+        return marker, [f"challenged: {marker['reason']}; stored as not challenged."]
+    outcome = raw.get("outcome")
+    if not isinstance(outcome, str) or outcome not in _CHALLENGE_OUTCOMES:
+        got = json.dumps(outcome, default=str)[:40]
+        marker = _not_challenged(f"malformed challenge: outcome {got}")
+        return marker, [f"challenged: {marker['reason']}; stored as not challenged."]
+    if outcome == "not_challenged":
+        reason = _text(raw.get("reason"), _MAX_EXPLANATION).strip()
+        marker = _not_challenged(reason or "malformed challenge: no reason given")
+    else:
+        checks = raw.get("checks")
+        if checks is None and "skeptic_audit_ids" in raw:  # the 0.6.4 shape
+            checks = [{"name": "skeptic re-run",
+                       "result": "consistent" if outcome in ("stands", "revised")
+                       else "contradicts",
+                       "audit_ids": raw.get("skeptic_audit_ids")}]  # fmt: skip
+        contradiction = _text(raw.get("contradiction"), _MAX_EVIDENCE).strip()
+        if not isinstance(checks, list) or not checks:
+            marker = _not_challenged("malformed challenge: no checks")
+        elif outcome in ("withdrawn", "contested") and not contradiction:
+            marker = _not_challenged(
+                f"malformed challenge: {outcome} without a contradiction"
+            )
+        else:
+            stored = [_normalize_check(c, n, tool_ids, own_ids, entries or {})
+                      for n, c in enumerate(checks[:_MAX_CHECKS], 1)]  # fmt: skip
+            marker = {"outcome": outcome, "checks": stored,
+                      "skeptic_audit_ids": list(dict.fromkeys(
+                          a for c in stored for a in c["audit_ids"]))}  # fmt: skip
+            if contradiction:
+                marker["contradiction"] = contradiction
+    skeptic = raw.get("skeptic")
+    if isinstance(skeptic, dict):
+        marker["skeptic"] = {
+            k: _text(skeptic.get(k), _MAX_NAME) for k in ("client", "model")
+        }
+        marker["skeptic"]["self_reported"] = True
+    warnings = []
+    if marker["outcome"] == "not_challenged" and marker["reason"].startswith(
+        "malformed"
+    ):
+        warnings.append(f"challenged: {marker['reason']}; stored as not challenged.")
+    warnings += [f"challenged: {c['name']}: not run ({c['reason']})."
+                 for c in marker["checks"] if c["result"] == "not run"]  # fmt: skip
     return marker, warnings
+
+
+def _audit_entries(case_dir: Path) -> dict[str, dict]:
+    """Every audit entry in the case's trail, by audit id."""
+    out: dict[str, dict] = {}
+    audit_dir = case_dir / "audit"
+    for jsonl_file in sorted(audit_dir.glob("*.jsonl")) if audit_dir.is_dir() else []:
+        try:
+            with _audit_text(jsonl_file) as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(entry, dict) and entry.get("audit_id"):
+                        out.setdefault(str(entry["audit_id"]), entry)
+        except OSError:
+            continue
+    return out
+
+
+def _what_ran(entry: dict) -> str:
+    """What an audit entry ran: its command, whitespace-normalised, or its
+    tool and parameters. A re-run of the same thing has a new id, not a new
+    key."""
+    params = entry.get("params") if isinstance(entry.get("params"), dict) else {}
+    cmd = params.get("command")
+    if isinstance(cmd, list):
+        cmd = " ".join(map(str, cmd))
+    if isinstance(cmd, str) and cmd.strip():
+        return " ".join(cmd.split())
+    args = json.dumps(params, sort_keys=True, default=str)
+    return f"{entry.get('mcp', '')} {entry.get('tool', '')} {args}".strip()
+
+
+def _when(ts: Any) -> datetime | None:
+    try:
+        when = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+
+
+def _prior_challenges(findings: list, own_ids: list[str], entries: dict) -> list[dict]:
+    """The earlier contested drafts (findings.json) and withdrawals (the
+    forensic-mcp audit entries of record_finding) this draft matches by what
+    it ran. Each: {kind, ref, contradiction, new_since}. new_since names what
+    this draft ran after that challenge that neither it nor its skeptic ran;
+    empty is no new evidence. It never clears: the examiner judges."""
+    mine = {_what_ran(entries[a]): a for a in own_ids if a in entries}
+    if not mine:
+        return []
+    earlier = [("contested", f.get("id"), f.get("staged"), f["challenged"])
+               for f in findings if isinstance(f, dict)
+               and isinstance(f.get("challenged"), dict)
+               and f["challenged"].get("outcome") == "contested"]  # fmt: skip
+    for e in entries.values():
+        rs = e.get("result_summary")
+        if (e.get("tool") == "record_finding" and isinstance(rs, dict)
+                and rs.get("status") == "WITHDRAWN"):  # fmt: skip
+            earlier.append(("withdrawn", e["audit_id"], e.get("ts"), rs))
+    out = []
+    for kind, ref, at, record in earlier:
+        own = record.get("audit_ids") if kind == "withdrawn" else None
+        if kind == "contested":
+            own = next((f.get("audit_ids") for f in findings
+                        if isinstance(f, dict) and f.get("id") == ref), [])  # fmt: skip
+        theirs = {_what_ran(entries[a]) for a in own or [] if a in entries}
+        if not theirs & mine.keys():
+            continue
+        seen = theirs | {_what_ran(entries[a])
+                         for a in record.get("skeptic_audit_ids") or [] if a in entries}  # fmt: skip
+        since = _when(at)
+        new = [{"audit_id": a, "ran": ran[:_MAX_NAME]} for ran, a in mine.items()
+               if ran not in seen and since and (_when(entries[a].get("ts")) or since) > since]  # fmt: skip
+        out.append({"kind": kind, "ref": str(ref),
+                    "contradiction": str(record.get("contradiction") or "")[:_MAX_EVIDENCE],
+                    "new_since": new})  # fmt: skip
+    return out
 
 
 def _as_reason(note: str) -> str:
@@ -951,6 +1092,17 @@ class CaseManager:
         CaseLockError, with nothing written, when it can't be taken.
         """
         case_dir = self._require_active_case()
+        if not isinstance(finding, dict) or finding.get("challenged") is None:
+            return {
+                "status": "REJECTED",
+                "error": (
+                    "challenged is required: challenge the finding with the "
+                    "finding-skeptic skill first (an isolated subagent), and pass "
+                    "its result. If no skeptic can run, send challenged="
+                    + json.dumps(NOT_CHALLENGED_PAYLOAD)
+                    + " with the reason; the examiner sees it at approval."
+                ),
+            }
         with case_lock(self._case_id(case_dir)):
             return self._record_finding_locked(
                 case_dir,
@@ -1187,32 +1339,45 @@ class CaseManager:
 
         # Alternatives and the challenge marker: never merged into audit_ids
         doubt_warnings: list[str] = []
-        if "alternatives" in finding or "challenged" in finding:
-            tool_ids = _tool_output_ids(case_dir)
+        tool_ids = _tool_output_ids(case_dir)
+        if "alternatives" in finding:
             alternatives, notes = _normalize_alternatives(
                 finding.get("alternatives"), tool_ids
             )
             doubt_warnings.extend(notes)
             if alternatives:
                 sanitized["alternatives"] = alternatives
-            marker, notes = _normalize_challenge(
-                finding.get("challenged"), tool_ids, sanitized["audit_ids"]
+        # The challenge marker: always stored (record_finding requires one)
+        entries = _audit_entries(case_dir)
+        marker, notes = _normalize_challenge(
+            finding.get("challenged"), tool_ids, sanitized["audit_ids"], entries
+        )
+        sanitized["challenged"] = marker
+        prior = _prior_challenges(findings, sanitized["audit_ids"], entries)
+        if prior:  # never blocks, never clears: the examiner sees it at approval
+            sanitized["prior_challenge"] = prior
+            doubt_warnings.extend(
+                f"previously {p['kind']} ({p['ref']}): {p['contradiction'][:200]}"
+                for p in prior
             )
-            if marker:
-                sanitized["challenged"] = marker
-                if marker["outcome"] == "withdrawn":
-                    notes.append(
-                        "Withdrawal could not be logged; staged for the examiner."
-                        if withdrawal_unlogged
-                        else "Withdrawal refused: it needs the skeptic's tool output "
-                        "and the output that contradicts the observation. "
-                        "Staged for the examiner."
-                    )
-                    # The server's own reason, kept for the examiner at approval,
-                    # as product text: without the "challenged:" label the
-                    # warnings carry for the client
-                    marker["refused"] = " ".join(_as_reason(n) for n in notes)
-            doubt_warnings.extend(notes)
+        if marker["outcome"] == "withdrawn":
+            notes.append(
+                "Withdrawal could not be logged; staged for the examiner."
+                if withdrawal_unlogged
+                else "Withdrawal refused: it needs the skeptic's tool output "
+                "and the output that contradicts the observation. "
+                "Staged for the examiner."
+            )
+            # The server's own reason, kept for the examiner at approval,
+            # as product text: without the "challenged:" label the
+            # warnings carry for the client
+            marker["refused"] = " ".join(_as_reason(n) for n in notes)
+        doubt_warnings.extend(notes)
+        produced_by = finding.get("produced_by")
+        if isinstance(produced_by, dict):  # the author's client and model, as it says
+            sanitized["produced_by"] = {
+                k: _text(produced_by.get(k), _MAX_NAME) for k in ("client", "model")
+            } | {"self_reported": True}
 
         finding_record = {
             **sanitized,
@@ -1385,7 +1550,7 @@ class CaseManager:
         marker, _ = _normalize_challenge(
             finding.get("challenged"), _tool_output_ids(case_dir), own_ids
         )
-        if not marker or not marker["skeptic_audit_ids"]:
+        if marker["outcome"] != "withdrawn" or not marker["skeptic_audit_ids"]:
             return None
         if not marker.get("contradiction", "").strip():
             return None

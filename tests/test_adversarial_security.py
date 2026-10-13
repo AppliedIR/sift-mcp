@@ -191,6 +191,10 @@ class TestProvenanceGate:
             "confidence": "low",
             "confidence_justification": "Because of evidence",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
 
     def test_gate_rejects_no_evidence(self, manager):
@@ -354,6 +358,10 @@ class TestFieldAllowlist:
             "confidence": "low",
             "confidence_justification": "Evidence supports this",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
             "audit_ids": ["sift-tester-20260225-001"],
         }
 

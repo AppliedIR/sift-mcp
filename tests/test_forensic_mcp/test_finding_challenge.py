@@ -40,6 +40,7 @@ FINDING = {
     "audit_ids": [OWN],
     "event_timestamp": "2026-10-01T14:32:00Z",
     "iocs": ["10.0.0.99"],
+    "challenged": {"outcome": "not_challenged", "reason": "no skeptic in this test"},
 }
 
 
@@ -197,39 +198,179 @@ def test_alternatives_that_are_not_a_list_are_dropped_with_a_warning(case):
 @pytest.mark.parametrize(
     "extra", [{}, {"alternatives": []}, {"alternatives": None}], ids=str
 )
-def test_anchor_a_finding_without_them_stores_neither_key(case, extra):
+def test_anchor_a_finding_without_alternatives_stores_no_key_but_its_challenge(
+    case, extra
+):
     stored = _stored(case, _record({**FINDING, **extra}))
-    assert "alternatives" not in stored and "challenged" not in stored
+    assert "alternatives" not in stored
+    assert stored["challenged"] == NOT_RUN_BY_TEST
 
 
 # --- the challenge marker -------------------------------------------------
 
+NOT_RUN_BY_TEST = {"outcome": "not_challenged", "reason": "no skeptic in this test",
+                   "checks": [], "skeptic_audit_ids": []}  # fmt: skip
+
 
 @pytest.mark.parametrize("outcome", ["stands", "revised"])
-def test_a_challenge_citing_the_skeptics_tool_output_is_stored(case, outcome):
-    challenged = {"outcome": outcome, "skeptic_audit_ids": [SKEPTIC, ELSEWHERE]}
-    result = _record({**FINDING, "challenged": challenged})
-    stored = _stored(case, result)
-    assert stored["challenged"] == {"outcome": outcome, "skeptic_audit_ids": [SKEPTIC]}
+def test_a_legacy_challenge_citing_the_skeptics_tool_output_is_one_check(case, outcome):
+    """The 0.6.4 shape {outcome, skeptic_audit_ids}, as an un-updated skeptic sends it."""
+    challenged = {"outcome": outcome, "skeptic_audit_ids": [SKEPTIC]}
+    stored = _stored(case, _record({**FINDING, "challenged": challenged}))
+    check = {"name": "skeptic re-run", "result": "consistent", "audit_ids": [SKEPTIC],
+             "ran": {SKEPTIC: "run_command {}"}}  # fmt: skip
+    assert stored["challenged"] == {
+        "outcome": outcome, "checks": [check], "skeptic_audit_ids": [SKEPTIC]}  # fmt: skip
     assert SKEPTIC not in stored["audit_ids"]
-    assert "removed" in result["warning"]
 
 
 @pytest.mark.parametrize(
-    "challenged",
-    [
-        {"outcome": "stands", "skeptic_audit_ids": [ELSEWHERE]},
-        {"outcome": "stands", "skeptic_audit_ids": [OWN]},
-        {"outcome": "stands", "skeptic_audit_ids": [SHELL, VOLUNTARY, HOOK]},
-        {"outcome": "agreed", "skeptic_audit_ids": [SKEPTIC]},
-        "stands",
-    ],
-    ids=["not in trail", "own evidence", "self-reported", "unknown outcome", "text"],
-)
-def test_a_challenge_without_the_skeptics_tool_output_is_not_stored(case, challenged):
+    "ids, unverified, kept",
+    [([ELSEWHERE], ELSEWHERE, []), ([OWN], OWN, []),
+     ([SHELL, VOLUNTARY, HOOK], f"{SHELL}, {VOLUNTARY}, {HOOK}", []),
+     ([SKEPTIC, ELSEWHERE], ELSEWHERE, [SKEPTIC])],
+    ids=["not in trail", "own evidence", "self-reported", "one of two"],
+)  # fmt: skip
+def test_a_check_without_the_skeptics_tool_output_is_stored_as_not_run(
+    case, ids, unverified, kept
+):
+    """Stored, never dropped: the examiner sees the check that didn't run."""
+    result = _record(
+        {**FINDING, "challenged": {"outcome": "stands", "skeptic_audit_ids": ids}}
+    )
+    marker = _stored(case, result)["challenged"]
+    assert marker["outcome"] == "stands"
+    assert marker["checks"] == [{"name": "skeptic re-run", "result": "not run",
+                                 "audit_ids": kept,
+                                 **({"ran": {SKEPTIC: "run_command {}"}} if kept else {}),
+                                 "reason": f"unverified audit id: {unverified}"}]  # fmt: skip
+    assert marker["skeptic_audit_ids"] == kept
+    assert (
+        f"skeptic re-run: not run (unverified audit id: {unverified})"
+        in result["warning"]
+    )
+    assert "dropped" not in result["warning"]
+
+
+def test_a_challenge_with_checks_is_stored_as_given_where_its_ids_verify(case):
+    challenged = {
+        "outcome": "stands",
+        "skeptic": {"client": "claude-code", "model": "a-model"},
+        "checks": [
+            {
+                "name": "prefetch re-parsed",
+                "result": "consistent",
+                "audit_ids": [SKEPTIC],
+            },
+            {"name": "amcache", "result": "nothing found", "audit_ids": [SKEPTIC_2]},
+            {
+                "name": "event logs",
+                "result": "not run",
+                "reason": "no evtx in the case",
+            },
+            {"name": "a guess", "result": "probably fine", "audit_ids": [SKEPTIC]},
+            "not an object",
+        ],
+    }
+    stored = _stored(case, _record({**FINDING, "challenged": challenged}))["challenged"]
+    assert stored["skeptic"] == {"client": "claude-code", "model": "a-model",
+                                 "self_reported": True}  # fmt: skip
+    assert [(c["name"], c["result"], c.get("reason")) for c in stored["checks"]] == [
+        ("prefetch re-parsed", "consistent", None),
+        ("amcache", "nothing found", None),
+        ("event logs", "not run", "no evtx in the case"),
+        ("a guess", "not run", 'malformed check: result "probably fine"'),
+        ("check 5", "not run", "malformed check: not an object"),
+    ]
+    assert stored["skeptic_audit_ids"] == [SKEPTIC, SKEPTIC_2]
+
+
+def test_each_check_names_what_its_ids_ran(case):
+    """An author's own `date` run offered as the skeptic's shows as `date`."""
+    date = "sift-tester-20261007-777"
+    with open(case / "audit" / "sift-mcp.jsonl", "a") as f:
+        f.write(json.dumps({"audit_id": date, "tool": "run_command",
+                            "params": {"command": "date"}}) + "\n")  # fmt: skip
+    check = {"name": "re-run", "result": "consistent", "audit_ids": [date]}
+    stored = _stored(case, _record({**FINDING, "challenged": {"outcome": "stands",
+                                                              "checks": [check]}}))  # fmt: skip
+    assert stored["challenged"]["checks"][0]["ran"] == {date: "date"}
+
+
+def test_not_challenged_is_stored_with_its_reason_and_no_warning(case):
+    reason = "no subagent in this client"
+    result = _record(
+        {**FINDING, "challenged": {"outcome": "not_challenged", "reason": reason}}
+    )
+    assert _stored(case, result)["challenged"] == {
+        **NOT_RUN_BY_TEST, "reason": reason}  # fmt: skip
+    assert "warning" not in result or "challenged" not in result["warning"]
+
+
+@pytest.mark.parametrize(
+    "challenged, reason",
+    [("revised", "malformed challenge: expected an object, not a string"),
+     ({"outcome": "maybe", "skeptic_audit_ids": [SKEPTIC]}, 'malformed challenge: outcome "maybe"'),
+     ({"outcome": ["revised"]}, 'malformed challenge: outcome ["revised"]'),
+     ({"outcome": "stands"}, "malformed challenge: no checks"),
+     ({"outcome": "stands", "checks": []}, "malformed challenge: no checks"),
+     ({"outcome": "not_challenged"}, "malformed challenge: no reason given"),
+     ({"outcome": "contested", "skeptic_audit_ids": [SKEPTIC]},
+      "malformed challenge: contested without a contradiction")],
+    ids=["text", "unknown outcome", "outcome a list", "no checks", "empty checks",
+         "not_challenged without a reason", "contested without a contradiction"],
+)  # fmt: skip
+def test_a_malformed_challenge_is_stored_as_not_challenged_with_what_is_wrong(
+    case, challenged, reason
+):
+    result = _record(
+        {**FINDING, "challenged": challenged}
+    )  # staged, never an exception
+    assert _stored(case, result)["challenged"] == {**NOT_RUN_BY_TEST, "reason": reason}
+    assert f"challenged: {reason}; stored as not challenged." in result["warning"]
+
+
+@pytest.mark.parametrize("missing", [{}, {"challenged": None}], ids=["absent", "null"])
+def test_a_finding_without_a_challenge_is_rejected_with_the_payload_to_send(
+    case, missing
+):
+    finding = {k: v for k, v in FINDING.items() if k != "challenged"} | missing
+    result = _record(finding)
+    assert result["status"] == "REJECTED", result
+    assert result["error"] == (
+        "challenged is required: challenge the finding with the finding-skeptic "
+        "skill first (an isolated subagent), and pass its result. If no skeptic can "
+        'run, send challenged={"outcome": "not_challenged", "reason": "<why no skeptic '
+        'ran>"} with the reason; the examiner sees it at approval.'
+    )
+    assert not (case / "findings.json").exists()
+
+
+@pytest.mark.parametrize("cited", [[OWN], []], ids=["its own output", "no id"])
+def test_a_contested_challenge_is_kept_like_a_withdrawal(case, cited):
+    """An interpretive dispute: the skeptic cites only the finding's own output.
+    Kept, with its contradiction; its check shows as not run."""
+    challenged = {"outcome": "contested", "contradiction": "The run count says 3, not 1",
+                  "checks": [{"name": "re-read", "result": "contradicts", "audit_ids": cited}]}  # fmt: skip
     result = _record({**FINDING, "challenged": challenged})
-    assert "challenged" not in _stored(case, result)
-    assert "will show as not challenged" in result["warning"]
+    marker = _stored(case, result)["challenged"]
+    assert marker["outcome"] == "contested"
+    assert marker["contradiction"] == "The run count says 3, not 1"
+    assert marker["checks"][0]["result"] == "not run"
+
+
+def test_who_produced_the_finding_is_stored_as_self_reported(case):
+    finding = {
+        **FINDING,
+        "produced_by": {"client": "codex", "model": "m-1", "x": "dropped"},
+    }
+    stored = _stored(case, _record(finding))
+    assert stored["produced_by"] == {
+        "client": "codex",
+        "model": "m-1",
+        "self_reported": True,
+    }
+    assert "produced_by" not in _stored(case, _record(dict(FINDING)))
 
 
 # --- withdrawal ------------------------------------------------------------
@@ -278,8 +419,6 @@ def test_a_withdrawal_needs_only_a_title_and_observation(case):
 @pytest.mark.parametrize(
     "challenged, ids",
     [
-        ({**WITHDRAWN, "contradiction": ""}, [SKEPTIC, SKEPTIC_2]),
-        ({**WITHDRAWN, "contradiction": "  "}, [SKEPTIC, SKEPTIC_2]),
         ({**WITHDRAWN, "skeptic_audit_ids": [ELSEWHERE]}, []),
         ({**WITHDRAWN, "skeptic_audit_ids": [OWN]}, []),
         ({**WITHDRAWN, "skeptic_audit_ids": [SHELL]}, []),
@@ -287,8 +426,6 @@ def test_a_withdrawal_needs_only_a_title_and_observation(case):
         ({**WITHDRAWN, "skeptic_audit_ids": [HOOK]}, []),
     ],
     ids=[
-        "no contradiction",
-        "blank contradiction",
         "not in trail",
         "own evidence",
         "shell",
@@ -296,12 +433,25 @@ def test_a_withdrawal_needs_only_a_title_and_observation(case):
         "hook",
     ],
 )
-def test_an_incomplete_withdrawal_is_staged_with_its_marker(case, challenged, ids):
+def test_a_withdrawal_without_tool_output_is_staged_with_its_marker(
+    case, challenged, ids
+):
     result = _record({**FINDING, "challenged": challenged})
     marker = _stored(case, result)["challenged"]
     assert marker["outcome"] == "withdrawn"
     assert marker["skeptic_audit_ids"] == ids
     assert "Withdrawal refused" in result["warning"]
+
+
+@pytest.mark.parametrize("contradiction", ["", "  "], ids=["none", "blank"])
+def test_a_withdrawal_without_a_contradiction_is_stored_as_not_challenged(
+    case, contradiction
+):
+    result = _record(
+        {**FINDING, "challenged": {**WITHDRAWN, "contradiction": contradiction}}
+    )
+    assert _stored(case, result)["challenged"] == {
+        **NOT_RUN_BY_TEST, "reason": "malformed challenge: withdrawn without a contradiction"}  # fmt: skip
 
 
 def test_a_withdrawal_that_cant_be_logged_is_staged_for_the_examiner(case):
@@ -319,13 +469,12 @@ def test_a_withdrawal_that_cant_be_logged_is_staged_for_the_examiner(case):
 @pytest.mark.parametrize(
     "challenged, reason",
     [
-        ({**WITHDRAWN, "contradiction": ""}, "Withdrawal refused"),
         (
             {**WITHDRAWN, "skeptic_audit_ids": [ELSEWHERE]},
-            "not tool output in this case's audit trail",
-        ),
+            f"unverified audit id: {ELSEWHERE}",
+        )
     ],
-    ids=["no contradiction", "not in trail"],
+    ids=["not in trail"],
 )
 def test_a_refused_withdrawal_keeps_the_server_s_reason(case, challenged, reason):
     marker = _stored(case, _record({**FINDING, "challenged": challenged}))
@@ -341,12 +490,14 @@ def test_the_server_s_reason_reads_as_product_text(case):
     result = _record({**FINDING, "challenged": challenged})
     refused = _stored(case, result)["challenged"]["refused"]
     assert refused == (
-        "The finding's own audit ids don't count as the skeptic's re-run. "
-        f"Skeptic audit id(s) {ELSEWHERE}, {other} removed, not tool output in this "
-        "case's audit trail. Withdrawal refused: it needs the skeptic's tool output and "
-        "the output that contradicts the observation. Staged for the examiner."
+        f"Skeptic re-run: not run (unverified audit id: {ELSEWHERE}, {other}, {OWN}). "
+        "Withdrawal refused: it needs the skeptic's tool output and the output that "
+        "contradicts the observation. Staged for the examiner."
     )
-    assert f"skeptic audit id(s) {ELSEWHERE}, {other} removed" in result["warning"]
+    assert (
+        f"skeptic re-run: not run (unverified audit id: {ELSEWHERE}, {other}, {OWN})"
+        in (result["warning"])
+    )
 
 
 def test_a_withdrawal_that_cant_be_logged_keeps_that_reason(case):
@@ -452,40 +603,6 @@ def test_a_line_that_isn_t_utf8_doesn_t_block_recording(case):
     assert stored["challenged"]["skeptic_audit_ids"] == [SKEPTIC]
     assert stored["alternatives"][0]["status"] == "ruled_out"
     assert stored["provenance"] == "MCP"
-
-
-# --- what record_finding says about a marker it can't take --------------------
-
-NOT_AN_OBJECT = (
-    'challenged dropped: expected an object, {"outcome": "stands", "revised" or '
-    '"withdrawn", "skeptic_audit_ids": [the skeptic\'s audit ids]}, not a string. '
-    "The finding will show as not challenged."
-)
-
-
-def _bad_outcome(got: str) -> str:
-    return (
-        'challenged dropped: its outcome must be "stands", "revised" or "withdrawn" '
-        f"(got {got}). The finding will show as not challenged."
-    )
-
-
-@pytest.mark.parametrize(
-    "challenged, said",
-    [
-        ("revised", NOT_AN_OBJECT),
-        ({"outcome": "maybe", "skeptic_audit_ids": [SKEPTIC]}, _bad_outcome('"maybe"')),
-        (
-            {"outcome": ["revised"], "skeptic_audit_ids": [SKEPTIC]},
-            _bad_outcome('["revised"]'),
-        ),
-    ],
-    ids=["text", "unknown outcome", "outcome a list"],
-)
-def test_a_marker_it_cant_take_is_dropped_with_what_is_wrong(case, challenged, said):
-    result = _record({**FINDING, "challenged": challenged})
-    assert "challenged" not in _stored(case, result)  # staged, never an exception
-    assert said in result["warning"]
 
 
 def test_a_withdrawal_lists_each_of_its_own_audit_ids_once_in_order(case):

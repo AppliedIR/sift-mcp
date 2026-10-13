@@ -201,6 +201,10 @@ class TestRecords:
             "confidence": "MEDIUM",
             "confidence_justification": "Single evidence source",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
         result = manager.record_finding(finding)
         assert result["status"] == "STAGED"
@@ -215,6 +219,10 @@ class TestRecords:
             "confidence": "MEDIUM",
             "confidence_justification": "justified",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
         r1 = manager.record_finding(finding)
         r2 = manager.record_finding({**finding, "title": "Second"})
@@ -222,7 +230,15 @@ class TestRecords:
         assert r2["finding_id"] == "F-tester-002"
 
     def test_record_finding_invalid(self, manager, active_case):
-        result = manager.record_finding({"title": "Missing fields"})
+        result = manager.record_finding(
+            {
+                "title": "Missing fields",
+                "challenged": {
+                    "outcome": "not_challenged",
+                    "reason": "no skeptic in this test",
+                },
+            }
+        )
         assert result["status"] == "VALIDATION_FAILED"
         assert len(result["errors"]) > 0
 
@@ -236,6 +252,10 @@ class TestRecords:
                 "confidence": "MEDIUM",
                 "confidence_justification": "justified",
                 "type": "finding",
+                "challenged": {
+                    "outcome": "not_challenged",
+                    "reason": "no skeptic in this test",
+                },
             }
         )
         assert not (Path(active_case["path"]) / "FINDINGS.md").exists()
@@ -292,6 +312,10 @@ class TestRecords:
             "confidence": "MEDIUM",
             "confidence_justification": "justified",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
         manager.record_finding(finding)
         all_findings = manager.get_findings()
@@ -388,6 +412,10 @@ class TestMultiExaminer:
             "confidence": "MEDIUM",
             "confidence_justification": "justified",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
         manager.record_finding(finding)
         findings = manager.get_findings()
@@ -405,6 +433,10 @@ class TestMultiExaminer:
             "confidence": "MEDIUM",
             "confidence_justification": "justified",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
         manager.record_finding(finding)
         findings = manager.get_findings()
@@ -432,6 +464,10 @@ class TestMultiExaminer:
             "confidence": "MEDIUM",
             "confidence_justification": "justified",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
         # Tester records a finding
         manager.record_finding(finding)
@@ -461,6 +497,10 @@ class TestAtomicWrites:
             "confidence": "MEDIUM",
             "confidence_justification": "justified",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
         for i in range(20):
             manager.record_finding({**finding_template, "title": f"Finding {i}"})
@@ -482,6 +522,10 @@ class TestAtomicWrites:
             "confidence": "MEDIUM",
             "confidence_justification": "justified",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
         manager.record_finding(finding)
         # File should be non-empty and valid JSON
@@ -736,6 +780,10 @@ class TestProtectedFieldOverride:
             "confidence": "MEDIUM",
             "confidence_justification": "justified",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
             "status": "APPROVED",
             "id": "INJECTED",
             "examiner": "evil",
@@ -800,6 +848,10 @@ class TestExaminerOverride:
             "confidence": "MEDIUM",
             "confidence_justification": "justified",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
         result = manager.record_finding(finding, examiner_override="alice")
         assert result["status"] == "STAGED"
@@ -894,6 +946,7 @@ FINDING = {
     "confidence_justification": "Single evidence source",
     "type": "finding",
     "event_timestamp": "2026-02-19T10:00:00Z",
+    "challenged": {"outcome": "not_challenged", "reason": "no skeptic in this test"},
 }
 
 

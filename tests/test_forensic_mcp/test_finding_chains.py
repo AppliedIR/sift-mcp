@@ -107,6 +107,10 @@ class C:
             "confidence": "MEDIUM",
             "confidence_justification": "j",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
             "audit_ids": [a["audit_id"] for a in arts],
             **(finding_extra or {}),
         }
@@ -856,6 +860,10 @@ def test_a_finding_with_no_artifacts_is_declared_never_partial(c):
             "confidence": "LOW",
             "confidence_justification": "j",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         },
         supporting_commands=[
             {"command": "grep x y", "purpose": "p", "output_excerpt": "x"}

@@ -344,6 +344,10 @@ class TestDisciplineTools:
             "confidence": "MEDIUM",
             "confidence_justification": "justified",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
         result = await server.call_tool("validate_finding", {"finding_json": finding})
         text = result[0].text
@@ -484,6 +488,10 @@ class TestEnhancedResponses:
             "confidence": "HIGH",
             "confidence_justification": "Multiple corroborating sources",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
         result = await server.call_tool("record_finding", {"finding": finding})
         text = result[0].text
@@ -503,6 +511,10 @@ class TestEnhancedResponses:
         server = create_server()
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
         finding = {
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
             "title": "APT29 attribution",
             "audit_ids": [
                 "ev-tester-20260225-001",
@@ -531,7 +543,13 @@ class TestEnhancedResponses:
         monkeypatch.setenv("VHIR_EXAMINER", "tester")
         server = create_server()
         _setup_test_case(server._manager, tmp_path / "cases", monkeypatch)
-        finding = {"title": "Bad finding"}
+        finding = {
+            "title": "Bad finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
+        }
         result = await server.call_tool("record_finding", {"finding": finding})
         text = result[0].text
         data = json.loads(text)
@@ -560,6 +578,10 @@ class TestGroundingInResponse:
             "confidence": "MEDIUM",
             "confidence_justification": "Two corroborating sources",
             "type": "finding",
+            "challenged": {
+                "outcome": "not_challenged",
+                "reason": "no skeptic in this test",
+            },
         }
         result = await server.call_tool("record_finding", {"finding": finding})
         text = result[0].text
