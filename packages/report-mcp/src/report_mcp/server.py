@@ -23,6 +23,7 @@ from sift_common.oplog import setup_logging
 from vhir_cli.case_io import (
     load_case_meta,
     load_findings,
+    load_iocs,
     load_timeline,
     load_todos,
 )
@@ -367,6 +368,73 @@ def _extract_all_iocs(
         )
 
     return by_type
+
+
+_IPV4 = re.compile(
+    r"(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)"
+)
+_URL = re.compile(r"(?i)(https?)://([^/\s:?#]+)(\S*)")
+_DOMAIN = re.compile(
+    r"(?i)(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z][a-z0-9-]*[a-z0-9]"
+)
+_NETWORK_TYPES = ("domain", "ipv4", "url")  # an IOC type naming one of these
+
+
+def _live(value) -> str:
+    return re.sub(r"\[(\W)\]", r"\1", refang(str(value).strip()))
+
+
+def _report_iocs(case_dir: Path, view: dict) -> list[str]:
+    """The domains, URLs and IPv4 addresses of the case's approved findings,
+    live, longest first (a URL before the host it holds): from their text and
+    IOC fields, and the case's IOCs typed so whose source is one of them.
+    Hashes, paths and the rest aren't. An untyped field value counts only as
+    a URL or an address: a name like a.exe could be a file."""
+    approved = {f.get("id") for f in view.get("findings") or []}
+    kept: set[str] = set()
+
+    def take(value, typed: bool) -> None:
+        v = _live(value)
+        if _URL.fullmatch(v) or _IPV4.fullmatch(v) or (typed and _DOMAIN.fullmatch(v)):
+            kept.add(v)
+
+    for kind, entries in _extract_all_iocs(view.get("findings") or []).items():
+        typed = any(t in kind.lower() for t in _NETWORK_TYPES)
+        for e in entries:
+            take(e["value"], typed)
+    case_iocs = [  # the case's IOCs that one of the approved findings cites
+        i for i in load_iocs(case_dir)
+        if isinstance(i, dict) and isinstance(i.get("source_findings"), list)
+        and approved.intersection(map(str, i["source_findings"]))
+    ]  # fmt: skip
+    for ioc in [*(view.get("iocs") or []), *case_iocs]:  # approved, or so cited
+        if isinstance(ioc, dict) and any(
+            t in str(ioc.get("type", "")).lower() for t in _NETWORK_TYPES
+        ):
+            take(ioc.get("value", ""), True)
+    return sorted(kept, key=lambda v: (-len(v), v))
+
+
+def _defanged(text: str) -> str:
+    """One IOC occurrence written defanged: http(s) -> hxxp(s), keeping its
+    case, and every dot of the host -> [.]; a URL's path is left as it is."""
+    m = _URL.fullmatch(text)
+    if m:
+        scheme = m.group(1)
+        scheme = scheme[0] + ("XX" if scheme[1:3].isupper() else "xx") + scheme[3:]
+        return f"{scheme}://{m.group(2).replace('.', '[.]')}{m.group(3)}"
+    return text.replace(".", "[.]")
+
+
+def _defang_iocs(text: str, iocs: list[str]) -> str:
+    """`text` with every whole occurrence of each IOC defanged. A whole
+    occurrence is never part of a longer name or address: no name character
+    or dot before it, and no name character, or dot and label, after it. A
+    defanged form no longer holds the live value, so it isn't defanged twice."""
+    for v in iocs:
+        whole = re.compile(r"(?<![\w.-])" + re.escape(v) + r"(?![\w-]|\.[\w-])", re.I)
+        text = whole.sub(lambda m: _defanged(m.group(0)), text)
+    return text
 
 
 def _build_mitre_mapping(findings: list[dict]) -> dict[str, dict]:
@@ -879,7 +947,14 @@ def create_server() -> FastMCP:
             # still depends on the content above it; the raw file and
             # `vhir review --findings --verify` are authoritative.
             view = approved_view(case_dir)
-            block = verification_block(view) + [""] + provenance_block(view)
+            # every IOC of an approved finding is written defanged, the block too:
+            # it's a display copy, and nothing reads its text back
+            iocs = _report_iocs(case_dir, view)
+            content = _defang_iocs(content, iocs)
+            block = [
+                _defang_iocs(line, iocs)
+                for line in verification_block(view) + [""] + provenance_block(view)
+            ]
             runs = [len(r) for r in re.findall(r"`+", "\n".join(block))]
             fence = "`" * max(3, max(runs, default=0) + 1)
             saved = (
