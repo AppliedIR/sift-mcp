@@ -1848,6 +1848,11 @@ function renderNoTerminalLine() {
   if (!el) return;
   var r = summaryData && summaryData.no_terminal ? summaryData.no_terminal : {};
   var n = typeof r.total === 'number' ? r.total : 0;
+  if (r.unavailable) {  // the audit couldn't be read: say so, never "none"
+    el.style.display = '';
+    el.textContent = 'Refused approve/reject attempts not counted: an audit line couldn\'t be read \u2014 see `vhir audit`';
+    return;
+  }
   el.style.display = n ? '' : 'none';
   el.textContent = n ? n + ' approve/reject attempt(s) refused: no terminal (latest ' +
     String(r.latest || '?') + ', ' + (Array.isArray(r.ids) ? r.ids.map(String).join(', ') : '') +

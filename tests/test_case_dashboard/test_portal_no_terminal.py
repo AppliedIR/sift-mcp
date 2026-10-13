@@ -92,3 +92,27 @@ def test_the_line_sits_beside_the_withdrawn_line():
         in page
     )
     assert page.count("renderNoTerminalLine();") == 2
+
+
+def test_an_audit_the_count_cant_read_says_so_not_zero(case):
+    """One refusal, and a line in another audit file the loader can't take:
+    the count is unavailable, never a 0 that reads as "none"."""
+    _refused(case, "2026-10-13T09:00:00+00:00", "approve", ["F-steve-001"])
+    (case / "audit" / "other.jsonl").write_text("null\n")
+    got = _summary()["no_terminal"]
+    assert got["unavailable"] is True and got["total"] == 0, got
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node is not installed")
+def test_the_page_says_the_attempts_couldnt_be_counted():
+    script = (
+        "var el = {style: {display: 'none'}, textContent: ''};"
+        "var document = {getElementById: function() { return el; }};"
+        "var summaryData = {no_terminal: {total: 0, unavailable: true}};\n"
+        + _js_function("renderNoTerminalLine")
+        + "renderNoTerminalLine(); process.stdout.write(JSON.stringify(el));"
+    )
+    el = json.loads(subprocess.run(["node", "-e", script], capture_output=True, text=True,
+                                   check=True).stdout)  # fmt: skip
+    assert el["style"]["display"] == ""
+    assert el["textContent"].startswith("Refused approve/reject attempts not counted")

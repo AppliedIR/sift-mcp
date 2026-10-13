@@ -469,8 +469,8 @@ def _no_terminal(case_dir: Path) -> dict:
 
     try:
         refused = load_no_terminal(case_dir)
-    except Exception:  # noqa: BLE001 - information; a bad line mustn't break the summary
-        return {"total": 0}
+    except Exception as e:  # noqa: BLE001 - said, as the CLI says it; never a 0
+        return {"total": 0, "unavailable": True, "error": str(e)[:200]}
     if not refused:
         return {"total": 0}
     params = refused[-1].get("params")
