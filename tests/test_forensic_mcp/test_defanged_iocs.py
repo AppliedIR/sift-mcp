@@ -69,8 +69,10 @@ def test_vhir_writes_a_saved_reports_iocs_defanged_by_the_same_functions():
 
     for name in ("_IPV4", "_URL", "_DOMAIN"):
         assert getattr(vhir, name).pattern == getattr(rs, name).pattern, name
+    assert vhir._NETWORK_TYPES == rs._NETWORK_TYPES
     for mine, theirs in ((vhir._defanged, rs._defanged), (vhir.defang_iocs, rs._defang_iocs),
-                         (vhir.network_ioc, rs._network_ioc)):  # fmt: skip
+                         (vhir.network_ioc, rs._network_ioc),
+        (vhir.structured_iocs, rs._structured_iocs)):  # fmt: skip
         assert (
             inspect.getsource(mine).split('"""')[2]
             == inspect.getsource(theirs).split('"""')[2]

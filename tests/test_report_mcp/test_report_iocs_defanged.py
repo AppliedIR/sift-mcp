@@ -1,8 +1,10 @@
-"""A saved report writes every domain, URL and IPv4 address of the case's
-approved findings defanged (evil[.]com, hxxp://bad[.]example[.]com/x,
-185[.]220[.]101[.]45), in the text and in the server's block, so none is a live
-link wherever the report goes. Other URLs and names stay live, a name that is
-only part of a longer one isn't touched, and a defanged one isn't twice."""
+"""A saved report writes every IOC of the case that is a domain, URL or IPv4
+address (evil[.]com, hxxp://bad[.]example[.]com/x, 185[.]220[.]101[.]45) defanged,
+in the text and in the server's block, so none is a live link wherever the
+report goes. The case's IOCs are its approved findings' IOC fields and the IOC
+records they cite; a name a finding's text merely mentions isn't one. Other
+URLs and names stay live, a name that is only part of a longer one isn't
+touched, and a defanged one isn't twice."""
 
 from __future__ import annotations
 
@@ -45,8 +47,10 @@ def _saved(case, findings, content, iocs=()):
     return (case / "reports" / "r.md").read_text()
 
 
-APPROVED = _f("F-tester-001", title="C2 at evil.com", observation="Beacon to evil.com",
-              iocs=["185.220.101.45", "http://bad.example.com/x.php", "a.exe",
+APPROVED = _f("F-tester-001", title="C2 at evil.com",
+              observation="Beacon to evil.com; the tool came from download.vendor.com",
+              iocs=[{"type": "domain-name", "value": "evil.com"}, "185.220.101.45",
+                    "http://bad.example.com/x.php", "a.exe",
                     "d41d8cd98f00b204e9800998ecf8427e", "C:\\Tools\\drop.exe"])  # fmt: skip
 
 
@@ -101,3 +105,12 @@ def test_the_cases_typed_iocs_of_an_approved_finding_are_defanged(case):
               "status": "DRAFT", "source_findings": ["F-tester-001"]}  # fmt: skip
     saved = _saved(case, [finding], "Second stage at stage.example.net.", iocs=[record])
     assert "Second stage at stage[.]example[.]net." in saved
+
+
+def test_a_name_an_approved_finding_only_mentions_stays_live(case):
+    """download.vendor.com is in the finding's text, not among its IOCs."""
+    saved = _saved(
+        case, [APPROVED], "Fetched from download.vendor.com, beaconed to evil.com."
+    )
+    assert "Fetched from download.vendor.com, beaconed to evil[.]com." in saved
+    assert "download[.]vendor" not in saved

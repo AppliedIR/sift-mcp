@@ -390,10 +390,36 @@ def _network_ioc(value, typed: bool) -> str | None:
     return None
 
 
+def _structured_iocs(findings: list) -> list[tuple]:
+    """Each value in the findings' `iocs` fields, with whether its IOC type
+    names a domain, an IPv4 address or a URL (a plain value has no type)."""
+    out = []
+    for f in findings:
+        field = f.get("iocs") if isinstance(f, dict) else None
+        if isinstance(field, dict):
+            for kind, values in field.items():
+                typed = any(t in str(kind).lower() for t in _NETWORK_TYPES)
+                out += [
+                    (v, typed)
+                    for v in (values if isinstance(values, list) else [values])
+                ]
+        elif isinstance(field, list):
+            for ioc in field:
+                if isinstance(ioc, dict):
+                    kind = str(ioc.get("type", "")).lower()
+                    out.append(
+                        (ioc.get("value", ""), any(t in kind for t in _NETWORK_TYPES))
+                    )
+                else:
+                    out.append((ioc, False))
+    return out
+
+
 def _report_iocs(case_dir: Path, view: dict) -> list[str]:
-    """The domains, URLs and IPv4 addresses of the case's approved findings,
-    live, longest first (a URL before the host it holds): from their text and
-    IOC fields, and the case's IOCs typed so whose source is one of them.
+    """The IOCs of the case that are domains, URLs or IPv4 addresses, live,
+    longest first (a URL before the host it holds): the values in the approved
+    findings' `iocs` fields, and the case's IOC records approved or cited by
+    an approved finding. A name a finding's text merely mentions isn't one.
     Hashes, paths and the rest aren't. vhir-cli's `report --save` gathers
     them the same way, with the same functions (vhir_cli.defang)."""
     approved = {f.get("id") for f in view.get("findings") or []}
@@ -403,10 +429,8 @@ def _report_iocs(case_dir: Path, view: dict) -> list[str]:
         if (v := _network_ioc(value, typed)) is not None:
             kept.add(v)
 
-    for kind, entries in _extract_all_iocs(view.get("findings") or []).items():
-        typed = any(t in kind.lower() for t in _NETWORK_TYPES)
-        for e in entries:
-            take(e["value"], typed)
+    for value, typed in _structured_iocs(view.get("findings") or []):
+        take(value, typed)
     case_iocs = [  # the case's IOCs that one of the approved findings cites
         i for i in load_iocs(case_dir)
         if isinstance(i, dict) and isinstance(i.get("source_findings"), list)
