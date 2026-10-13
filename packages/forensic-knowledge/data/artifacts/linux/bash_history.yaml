@@ -15,7 +15,7 @@ locations:
 
 proves:
   - "Commands typed by the user in interactive shell sessions"
-  - "Chronological order of commands (most recent appended last)"
+  - "Order of commands within one shell session"
   - "Full command text including arguments and flags"
   - "Timestamps (if HISTTIMEFORMAT is set or using Zsh EXTENDED_HISTORY)"
 
@@ -25,6 +25,7 @@ does_not_prove:
   - "Commands from non-interactive sessions (scripts, cron, remote exec)"
   - "Commands if history was disabled (unset HISTFILE, HISTSIZE=0)"
   - "Exact execution time (unless HISTTIMEFORMAT is configured)"
+  - "Command order across sessions"
 
 timestamps:
   - field: "File modification time"
