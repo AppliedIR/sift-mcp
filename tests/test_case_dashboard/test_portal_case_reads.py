@@ -221,3 +221,42 @@ def test_a_route_held_by_a_slow_read_never_holds_the_loop(cases, monkeypatch, ro
 
 def _get_raw(fn):
     return _child(fn, secs=15)
+
+
+@pytest.mark.parametrize(
+    "audit_id",
+    ['id"q', "id\bb", "id\tt", "id\\b", "wintools-steve-20261012-007"],
+    ids=["quote", "backspace", "tab", "backslash", "plain"],
+)
+def test_an_audit_id_json_escapes_is_still_found(cases, monkeypatch, audit_id):
+    """The pre-filter looks for an id as written and as JSON escapes it."""
+    from case_dashboard import routes
+    from starlette.testclient import TestClient
+
+    d = cases["good"]
+    (d / "findings.json").write_text(
+        json.dumps([{"id": "F-x-001", "audit_ids": [audit_id]}])
+    )
+    lines = [
+        json.dumps({"audit_id": f"other-{i}", "tool": "run_command"}) for i in range(50)
+    ]
+    lines.insert(25, json.dumps({"audit_id": audit_id, "tool": "run_windows_command"}))
+    (d / "audit" / "wintools-mcp.jsonl").write_text("\n".join(lines) + "\n")
+    monkeypatch.setenv("VHIR_CASE_DIR", str(d))
+    with TestClient(routes.create_dashboard_app()) as c:
+        got = c.get("/api/audit/F-x-001").json()
+    assert [(e["audit_id"], e["tool"]) for e in got] == [
+        (audit_id, "run_windows_command")
+    ]
+
+
+def test_a_line_that_only_holds_a_windows_path_is_skipped_unparsed():
+    """The filter stays sharp: audit lines are full of escaped backslashes."""
+    from case_dashboard.routes import _may_hold
+
+    keep = _may_hold("wintools-steve-20261012-007", 'id"q')
+    path = json.dumps(
+        {"audit_id": "other", "params": {"path": "C:\\Windows\\System32"}}
+    )
+    assert not keep(path.encode())
+    assert keep(json.dumps({"audit_id": 'id"q'}).encode())

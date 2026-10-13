@@ -90,10 +90,10 @@ def _load_jsonl(path: Path, keep=None) -> list[dict]:
 
 def _may_hold(*words: str):
     """A cheap test on a raw line before it is parsed: whether it can hold one
-    of `words`. A line that escapes characters (\\u, or \\/ for a slash) or
-    isn't ASCII is always parsed, so an entry is never missed for the way it
-    is written."""
-    needles = [w.encode() for w in words]
+    of `words`, as written or as JSON escapes it (`\\"`, `\\\\`, `\\t`, ...). A
+    line with a long escape (\\u, or \\/ for a slash) or that isn't ASCII is
+    always parsed, so an entry is never missed for the way it is written."""
+    needles = {f.encode() for w in words for f in (w, json.dumps(w)[1:-1])}
     return lambda raw: (not raw.isascii() or b"\\u" in raw or b"\\/" in raw
                         or any(n in raw for n in needles))  # fmt: skip
 
