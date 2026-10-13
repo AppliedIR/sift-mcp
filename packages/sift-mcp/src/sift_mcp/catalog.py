@@ -60,6 +60,8 @@ class ToolDefinition:
     fk_tool_name: str = ""
     # Its outputs are acquired evidence (a disk or memory image)
     acquisition: bool = False
+    # Other names it goes by ("plaso", "Volatility 3"), matched as its name is
+    aliases: list[str] = field(default_factory=list)
 
     @property
     def knowledge_name(self) -> str:
@@ -122,6 +124,7 @@ def load_catalog() -> dict[str, ToolDefinition]:
                 common_flags=tool_entry.get("common_flags", []),
                 fk_tool_name=tool_entry.get("fk_tool_name", ""),
                 acquisition=tool_entry.get("acquisition", False) is True,
+                aliases=[str(a) for a in tool_entry.get("aliases", None) or []],
             )
             _catalog_cache[name.lower()] = td
 
@@ -129,15 +132,19 @@ def load_catalog() -> dict[str, ToolDefinition]:
 
 
 def get_tool_def(name: str) -> ToolDefinition | None:
-    """Look up a tool by name or binary name (case-insensitive)."""
+    """Look up a tool by name, binary name or alias (case-insensitive)."""
     catalog = load_catalog()
     result = catalog.get(name.lower())
     if result:
         return result
-    # Fallback: search by binary name (e.g., "rip.pl" → regripper)
+    # Fallback: search by binary name (e.g., "rip.pl" → regripper), then by
+    # another name it goes by (e.g., "plaso" → log2timeline)
     name_lower = name.lower()
     for td in catalog.values():
         if td.binary.lower() == name_lower:
+            return td
+    for td in catalog.values():
+        if name_lower in (a.lower() for a in td.aliases):
             return td
     return None
 

@@ -186,7 +186,9 @@ def suggest_tools(artifact_type: str, question: str = "") -> dict:
                 continue
             td = get_tool_def(tool_name)
             try:
-                fk = loader.get_tool(tool_name)
+                # a catalog name (log2timeline, vol3) has its entry under the
+                # catalog's knowledge name
+                fk = loader.get_tool(td.knowledge_name if td else tool_name)
             except Exception as e:
                 logger.debug("FK tool lookup failed for %s: %s", tool_name, e)
                 fk = None
