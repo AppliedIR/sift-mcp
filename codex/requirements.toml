@@ -42,6 +42,14 @@ type = "command"
 command = "{hooks}/case-data-guard.sh"
 timeout = 10
 
+# The finding-skeptic gets Claude's skeptic's read and query tools only
+[[hooks.PreToolUse]]
+matcher = ".*"
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "{hooks}/codex-skeptic-tools.sh"
+timeout = 10
+
 [[hooks.PostToolUse]]
 matcher = "^(Bash|apply_patch)$"
 [[hooks.PostToolUse.hooks]]
@@ -59,4 +67,11 @@ timeout = 30
 [[hooks.SessionStart.hooks]]
 type = "command"
 command = "{hooks}/case-dir-check.sh --client codex"
+timeout = 10
+
+# The same forensic-rules reminder Claude Code's hook prints, before each prompt
+[[hooks.UserPromptSubmit]]
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "cat << 'EOF'\n<forensic-rules>\nPLAN before 3+ steps | EVIDENCE for claims | APPROVAL before conclusions\nRECORD actions via forensic-mcp | NO DELETE without approval\n</forensic-rules>\nEOF"
 timeout = 10

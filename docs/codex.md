@@ -56,6 +56,11 @@ later.
   refusal is recorded in the case's audit. Codex has no hook for a failed or
   denied call, so an apply_patch that Codex itself rejects leaves no audit
   entry.
+- **The finding-skeptic reads and queries only.** Codex applies no tool list
+  from an agent file, so a hook checks each call the skeptic makes: an MCP
+  tool off Claude Code's skeptic list (`agents/finding-skeptic/claude.md`),
+  apply_patch, the shell, or spawning or messaging another agent is refused.
+- **Each prompt gets the forensic-rules reminder** Claude Code's hook prints.
 
 ## Sandbox
 

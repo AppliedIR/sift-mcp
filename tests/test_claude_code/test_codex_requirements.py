@@ -1,9 +1,10 @@
 """Codex's managed requirements template: Valhuntir's marker leads it, Codex's
 sandbox can't be turned off (only the vhir and read-only permission profiles,
 vhir the default, with ~/.vhir read-only), web search stays off, the shell
-can't read the store, the gateway's tokens or the profile, and the four hooks
+can't read the store, the gateway's tokens or the profile, and the five hooks
 run from the root-owned copies, the guard on shell calls and on apply_patch
-(by the paths a patch names)."""
+(by the paths a patch names), the skeptic's tool check on every call. Before
+each prompt Codex prints the forensic-rules reminder Claude Code's hook does."""
 
 from pathlib import Path
 
@@ -46,9 +47,37 @@ def test_the_shell_cant_read_the_store_the_tokens_or_the_profile():
 
 
 def test_the_hooks_run_from_the_root_owned_copies():
-    for hook in ("case-data-guard.sh", "forensic-audit.sh --client codex",
-                 "codex-stdin-capture.sh", "case-dir-check.sh --client codex"):  # fmt: skip
+    for hook in ("case-data-guard.sh", "forensic-audit.sh --client codex", "codex-stdin-capture.sh",
+                 "case-dir-check.sh --client codex", "codex-skeptic-tools.sh"):  # fmt: skip
         assert f'command = "{{hooks}}/{hook}"' in TEXT
         assert any((ROOT / "claude-code").rglob(hook.split()[0])), hook
     pre = TEXT[TEXT.index("[[hooks.PreToolUse]]") :].splitlines()[1]
     assert pre == 'matcher = "^(Bash|apply_patch)$"'
+    pre = _toml(TEXT)["hooks"]["PreToolUse"]
+    skeptic = [
+        x for x in pre if x["hooks"][0]["command"].endswith("/codex-skeptic-tools.sh")
+    ]
+    # every tool the skeptic might call
+    assert [x["matcher"] for x in skeptic] == [".*"]
+
+
+def test_each_prompt_gets_claude_s_forensic_rules_reminder():
+    import json
+    import subprocess
+
+    (hook,) = _toml(TEXT)["hooks"]["UserPromptSubmit"]
+    claude = json.loads((ROOT / "claude-code" / "full" / "settings.json").read_text())
+    assert (
+        hook["hooks"][0]["command"]
+        == claude["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+    )
+    r = subprocess.run(
+        ["bash", "-c", hook["hooks"][0]["command"]],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert r.returncode == 0 and r.stdout.startswith(
+        "<forensic-rules>\nPLAN before 3+ steps"
+    )
+    assert r.stdout.rstrip().endswith("</forensic-rules>")

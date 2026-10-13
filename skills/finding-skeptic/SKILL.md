@@ -19,9 +19,10 @@ the finding. Record it without `challenged`; the examiner sees "Not
 challenged". A challenge from the same context that wrote the finding is not
 a challenge.
 
-The skeptic's tools: where the client's agent file lists them, only read and
-query tools. Where the agent holds the same MCP tools as the session that
-starts it (no more), keeping to reads is its instructions. If its tool list
+The skeptic's tools: only read and query tools, where the client's agent file
+lists them or a managed hook refuses the skeptic any other. Where the agent
+holds the same MCP tools as the session that starts it (no more), keeping to
+reads is its instructions. If its tool list
 names no tool the session offers (a setup with one combined endpoint), the
 skeptic has none and can't run: it fails closed.
 
