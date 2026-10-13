@@ -349,3 +349,16 @@ def test_each_check_shows_what_its_ids_ran():
         {"name": "re-run", "result": "not run", "audit_ids": [RUN], "reason": "x",
          "ran": {RUN: "date"}}]}  # fmt: skip
     assert f"re-run: not run \u2014 x \u2014 {RUN} (ran: date)" in _line(marker)
+
+
+@needs_node
+@pytest.mark.parametrize(
+    "bad", [{"a": 1}, {"toString": None}, ["x"]], ids=["object", "no toString", "list"]
+)
+def test_a_check_id_of_any_shape_renders(bad):
+    """A marker is case data: an id that isn't text is shown as JSON, never a throw."""
+    marker = {"outcome": "stands", "skeptic_audit_ids": [], "checks": [
+        {"name": "re-run", "result": "not run", "audit_ids": [bad, RUN], "reason": "x",
+         "ran": {RUN: "date"}}]}  # fmt: skip
+    out = _line(marker)
+    assert f"{RUN} (ran: date)" in out and "re-run: not run" in out, out

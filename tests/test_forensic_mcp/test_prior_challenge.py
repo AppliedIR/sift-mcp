@@ -119,3 +119,40 @@ def test_the_flag_never_blocks_and_is_said_when_staged(challenged_case):
         "previously withdrawn" in result["warning"]
         and WITHDRAWN_BECAUSE in result["warning"]
     )
+
+
+SHAPES_OF_EARLIER_IDS = {
+    "a contested draft whose ids are lists": (
+        "findings", {"audit_ids": [["x"]], "challenged": {
+            "outcome": "contested", "contradiction": "c", "checks": []}}),
+    "a contested draft whose skeptic ids are lists": (
+        "findings", {"audit_ids": [MFT], "challenged": {
+            "outcome": "contested", "contradiction": "c", "skeptic_audit_ids": [["y"]]}}),
+    "a withdrawal whose ids are objects": (
+        "audit", {"status": "WITHDRAWN", "audit_ids": [{"a": 1}]}),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("shape", list(SHAPES_OF_EARLIER_IDS))
+def test_an_earlier_record_with_ids_of_any_shape_never_stops_a_recording(case, shape):  # noqa: F811
+    """Earlier records are case data the VM can write: an id that isn't text
+    is skipped, and the new draft is staged (the only refusal stays a missing
+    challenge)."""
+    where, record = SHAPES_OF_EARLIER_IDS[shape]
+    with open(case / "audit" / "sift-mcp.jsonl", "a") as f:
+        f.write(json.dumps({"audit_id": MFT, "tool": "run_command", "ts": BEFORE,
+                            "params": {"command": "MFTECmd -f C/$MFT"}}) + "\n")  # fmt: skip
+    if where == "findings":
+        planted = {
+            "id": "F-tester-090",
+            "status": "DRAFT",
+            "title": "t",
+            "staged": BEFORE,
+            **record,
+        }
+        (case / "findings.json").write_text(json.dumps([planted]))
+    else:
+        with open(case / "audit" / "forensic-mcp.jsonl", "a") as f:
+            f.write(json.dumps({"audit_id": "forensic-tester-x-001", "tool": "record_finding",
+                                "ts": BEFORE, "result_summary": record}) + "\n")  # fmt: skip
+    assert _record({**FINDING, "audit_ids": [MFT]})["status"] == "STAGED"

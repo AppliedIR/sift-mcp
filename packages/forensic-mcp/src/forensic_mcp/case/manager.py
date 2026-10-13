@@ -553,6 +553,11 @@ def _when(ts: Any) -> datetime | None:
     return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
 
 
+def _str_ids(value: Any) -> list[str]:
+    """The text ids in an earlier record's list: it is case data, any shape."""
+    return [a for a in value if isinstance(a, str)] if isinstance(value, list) else []
+
+
 def _prior_challenges(findings: list, own_ids: list[str], entries: dict) -> list[dict]:
     """The earlier contested drafts (findings.json) and withdrawals (the
     forensic-mcp audit entries of record_finding) this draft matches by what
@@ -577,11 +582,11 @@ def _prior_challenges(findings: list, own_ids: list[str], entries: dict) -> list
         if kind == "contested":
             own = next((f.get("audit_ids") for f in findings
                         if isinstance(f, dict) and f.get("id") == ref), [])  # fmt: skip
-        theirs = {_what_ran(entries[a]) for a in own or [] if a in entries}
+        theirs = {_what_ran(entries[a]) for a in _str_ids(own) if a in entries}
         if not theirs & mine.keys():
             continue
         seen = theirs | {_what_ran(entries[a])
-                         for a in record.get("skeptic_audit_ids") or [] if a in entries}  # fmt: skip
+                         for a in _str_ids(record.get("skeptic_audit_ids")) if a in entries}  # fmt: skip
         since = _when(at)
         new = [{"audit_id": a, "ran": ran[:_MAX_NAME]} for ran, a in mine.items()
                if ran not in seen and since and (_when(entries[a].get("ts")) or since) > since]  # fmt: skip

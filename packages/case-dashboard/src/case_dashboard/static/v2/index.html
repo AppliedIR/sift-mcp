@@ -1824,7 +1824,8 @@ function renderChallengeDetail(c, prior) {
     var ids = Array.isArray(k.audit_ids) ? k.audit_ids : [];
     var ran = k.ran && typeof k.ran === 'object' ? k.ran : {};
     var cited = ids.map(function(a) {
-      return challengeText(a) + (ran[a] ? ' (ran: ' + challengeText(ran[a]) + ')' : '');
+      var did = typeof a === 'string' && Object.prototype.hasOwnProperty.call(ran, a) ? ran[a] : '';
+      return challengeText(a) + (did ? ' (ran: ' + challengeText(did) + ')' : '');
     }).join(', ');
     var text = challengeText(k.name) + ': ' + challengeText(k.result) +
       (k.reason ? ' — ' + challengeText(k.reason) : '') + (cited ? ' — ' + cited : '');
