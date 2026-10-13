@@ -87,34 +87,27 @@ _WRITING_GUIDANCE = """Report Writing Guidance (forensic-specific):
    chain phase. Tell a coherent attack narrative, not a disconnected list.
    Cross-reference related findings by ID.
 
-3. CONFIDENCE COMMUNICATION:
-   - HIGH: State as established fact ("The attacker exfiltrated...")
-   - MEDIUM: Use evidential language ("Evidence suggests...",
-     "Analysis indicates...")
-   - LOW: Use preliminary framing ("Preliminary indicators suggest...",
-     "Initial analysis points to...")
-
-4. MITRE ATT&CK IN PROSE: Weave technique references into the narrative
+3. MITRE ATT&CK IN PROSE: Weave technique references into the narrative
    ("The attacker used credential dumping (T1003) to harvest..."). Do not
    just table-dump technique IDs.
 
-5. IOC PRESENTATION: For executive profile, summarize IOC categories and
+4. IOC PRESENTATION: For executive profile, summarize IOC categories and
    counts. For full/IOC profiles, present structured tables with
    cross-references to source findings.
 
-6. INTEGRITY: If an integrity_warning key is present in this response,
+5. INTEGRITY: If an integrity_warning key is present in this response,
    include a conspicuous integrity statement in the report. Do not bury it.
 
-7. AUDIENCE: Executive summary uses business impact language, no technical
+6. AUDIENCE: Executive summary uses business impact language, no technical
    jargon. Technical sections use forensic precision. Adjust vocabulary
    per section, not per report.
 
-8. CONTEXT FIELD: When a finding includes a 'context' field with examiner
+7. CONTEXT FIELD: When a finding includes a 'context' field with examiner
    notes, incorporate that context into the narrative. These are
    examiner-verified observations about data exposure, business impact,
    or third-party relevance. Cite them authoritatively.
 
-9. EVIDENCE: Reference evidence in general terms ("forensic analysis of
+8. EVIDENCE: Reference evidence in general terms ("forensic analysis of
    the Exchange server logs revealed..."). Do not fabricate specific
    evidence file names or paths not present in the data."""
 

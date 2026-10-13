@@ -1,13 +1,9 @@
 levels:
   HIGH:
-    criteria: "Multiple corroborating evidence sources. Observation is unambiguous."
-    min_audit_ids: 2
+    criteria: "PLACEHOLDER (wording awaits approval): The evidence is direct and from reliable sources, it agrees where it was checked, nothing contradicts it, and no known gap would change the conclusion."
   MEDIUM:
-    criteria: "At least one evidence source. Observation is clear but interpretation has alternatives."
-    min_audit_ids: 1
+    criteria: "PLACEHOLDER (wording awaits approval): The evidence supports the claim but is indirect or of one kind, or an alternative or a gap remains open."
   LOW:
-    criteria: "Limited evidence. Reasonable inference but significant uncertainty."
-    min_audit_ids: 0
+    criteria: "PLACEHOLDER (wording awaits approval): A reasonable inference from limited or indirect evidence; significant gaps or alternatives remain."
   SPECULATIVE:
-    criteria: "Hypothesis based on experience or pattern recognition. No direct evidence."
-    min_audit_ids: 0
+    criteria: "PLACEHOLDER (wording awaits approval): A hypothesis with no direct evidence yet; label it as one."

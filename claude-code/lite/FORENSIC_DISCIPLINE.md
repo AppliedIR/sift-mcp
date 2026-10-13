@@ -15,10 +15,12 @@ Mandatory rules for AI-assisted forensic analysis. **Evidence speaks first. Theo
 
 ## Evidence Classification
 
+> PLACEHOLDER (wording awaits approval): the two tables below. The labels are words for a claim, not counts; confidence is your judgment of the sources' quality and directness, corroboration, contradictions and gaps.
+
 | Label | Meaning | Requirement |
 |-------|---------|-------------|
-| CONFIRMED | Multiple independent artifacts prove this | 2+ unrelated evidence sources |
-| INDICATED | Evidence suggests this | 1 artifact or circumstantial |
+| CONFIRMED | The evidence directly shows this | Nothing contradicts it |
+| INDICATED | The evidence points to this | It doesn't establish it |
 | INFERRED | Logical deduction without direct evidence | State the reasoning chain |
 | UNKNOWN | No evidence either way | Do not guess |
 | CONTRADICTED | Evidence disputes this | Stop and reassess |
@@ -27,9 +29,9 @@ Mandatory rules for AI-assisted forensic analysis. **Evidence speaks first. Theo
 
 | Level | Criteria |
 |-------|----------|
-| HIGH | Multiple independent artifacts, no contradictions |
-| MEDIUM | Single artifact or circumstantial pattern |
-| LOW | Inference, behavioral similarity, or incomplete data |
+| HIGH | Direct evidence from reliable sources; nothing contradicts it; no known gap would change the conclusion |
+| MEDIUM | Supports the claim, but indirect or of one kind, or an alternative or a gap remains open |
+| LOW | A reasonable inference from limited or indirect evidence |
 | SPECULATIVE | No direct evidence, pure hypothesis (must label) |
 
 ---

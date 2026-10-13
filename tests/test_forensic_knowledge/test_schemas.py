@@ -137,9 +137,14 @@ class TestDisciplineSchemas:
         conf = loader.get_confidence_definitions()
         for level, defn in conf.items():
             assert "criteria" in defn, f"Confidence '{level}' missing 'criteria'"
-            assert "min_audit_ids" in defn, (
-                f"Confidence '{level}' missing 'min_audit_ids'"
-            )
+            # confidence is judgment, not a count of audit ids
+            assert "min_audit_ids" not in defn, level
+
+    def test_evidence_standards_are_words_not_counts(self):
+        stds = loader.get_evidence_standards()
+        for label, defn in stds.items():
+            assert defn.get("description"), label
+            assert "min_sources" not in defn, label
 
     def test_anti_patterns_have_required_fields(self):
         patterns = loader.get_anti_patterns()
@@ -155,7 +160,7 @@ class TestDisciplineSchemas:
         for cp_summary in cps:
             cp = loader.get_checkpoint(cp_summary["action_type"])
             assert cp is not None
-            assert "min_audit_ids" in cp
+            assert "min_audit_ids" not in cp
             assert "human_approval" in cp
             assert "guidance" in cp
 

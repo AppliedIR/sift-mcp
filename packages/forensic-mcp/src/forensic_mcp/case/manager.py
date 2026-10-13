@@ -1,4 +1,4 @@
-"""Case manager: investigation records, TODOs, evidence listing, grounding.
+"""Case manager: investigation records, TODOs, evidence listing.
 
 Local-first: each examiner owns a flat case directory. Case lifecycle
 (init, close, activate) is handled by case-mcp and the vhir CLI.
@@ -1222,8 +1222,6 @@ class CaseManager:
             "modified_at": now,
             "created_by": exam,
             "examiner": exam,
-            "provenance": provenance["summary"],
-            "provenance_detail": provenance,
             "provenance_grade": finding_prov_grade,
             "provenance_schema": 2,
         }
@@ -1320,7 +1318,6 @@ class CaseManager:
         result = {
             "status": "STAGED",
             "finding_id": finding_id,
-            "provenance_detail": provenance,
             "provenance_grade": finding_prov_grade,
             "source_evidence": sanitized.get("source_evidence", ""),
         }
@@ -1656,91 +1653,6 @@ class CaseManager:
     def list_evidence(self) -> list[dict]:
         case_dir = self._require_active_case()
         return self._load_evidence_registry(case_dir).get("files", [])
-
-    # --- Grounding Score ---
-
-    # MCP audit files that count as grounding sources
-    _GROUNDING_MCPS = ("forensic-rag-mcp", "windows-triage-mcp", "opencti-mcp")
-
-    def _score_grounding(self, finding: dict) -> dict:
-        """Score how well a finding is grounded by external reference MCPs.
-
-        Scans the case audit directory for evidence of forensic-rag-mcp,
-        windows-triage-mcp, and opencti-mcp usage. Returns WEAK/PARTIAL/STRONG
-        with suggestions for unconsulted sources.
-
-        Returns empty dict when STRONG (2+ sources consulted).
-        """
-        case_dir = self.active_case_dir
-        if case_dir is None or not case_dir.exists():
-            return {}
-
-        audit_dir = case_dir / "audit"
-        if not audit_dir.is_dir():
-            return self._grounding_result([], finding)
-
-        consulted = []
-        available = []
-        for mcp_name in self._GROUNDING_MCPS:
-            audit_file = audit_dir / f"{mcp_name}.jsonl"
-            if audit_file.exists():
-                available.append(mcp_name)
-                if audit_file.stat().st_size > 0:
-                    consulted.append(mcp_name)
-
-        return self._grounding_result(consulted, finding, available)
-
-    def _grounding_result(
-        self,
-        consulted: list[str],
-        finding: dict,
-        available: list[str] | None = None,
-    ) -> dict:
-        """Build grounding score result from consulted sources list."""
-        if len(consulted) >= 2:
-            return {}  # STRONG — don't clutter
-
-        # Only flag backends that are actually deployed (have audit files)
-        check_set = available if available is not None else list(self._GROUNDING_MCPS)
-        missing = [m for m in check_set if m not in consulted]
-        # No deployed grounding backends — nothing to flag
-        if not consulted and not missing:
-            return {}
-        # If finding has provenance chain to registered evidence, at least PARTIAL
-        has_provenance = bool(finding.get("source_evidence"))
-        level = "PARTIAL" if consulted or has_provenance else "WEAK"
-
-        # Load corroboration suggestions from FK for unconsulted sources
-        suggestions = []
-        finding_type = finding.get("type", "")
-        if finding_type:
-            try:
-                from forensic_knowledge import loader
-
-                checks = loader.get_corroboration(finding_type)
-                if checks:
-                    for check in checks:
-                        check_text = check.get("check", "")
-                        # Only suggest checks from missing MCPs
-                        for mcp in missing:
-                            short_name = mcp.replace("-mcp", "")
-                            if short_name in check_text.lower():
-                                reason = check.get("reason", "")
-                                suggestions.append(
-                                    f"{check_text} — {reason}" if reason else check_text
-                                )
-            except Exception:
-                pass  # FK not available — skip suggestions
-
-        result: dict[str, Any] = {
-            "level": level,
-            "sources_consulted": consulted,
-            "sources_missing": missing,
-        }
-        if suggestions:
-            result["suggestions"] = suggestions
-
-        return result
 
     # --- Provenance Classification ---
 

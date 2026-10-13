@@ -25,7 +25,8 @@ def test_missing_required_fields():
     )  # title, observation, interpretation, confidence, type + evidence + justification
 
 
-def test_high_confidence_needs_two_evidence():
+def test_high_confidence_with_one_audit_id_has_no_count_warning():
+    """Confidence is the analyst's judgment, not a count of audit ids."""
     finding = {
         "title": "Test",
         "audit_ids": ["wt-001"],
@@ -34,26 +35,39 @@ def test_high_confidence_needs_two_evidence():
         "confidence": "HIGH",
         "confidence_justification": "justified",
         "type": "finding",
+        "event_timestamp": "2026-01-24T15:00:41Z",
     }
-    result = validate(finding)
-    # HIGH confidence with single audit_id is now a warning, not an error
-    assert result["valid"] is True
-    assert any("2+" in w for w in result.get("warnings", []))
+    assert validate(finding) == {"valid": True}  # no count warning
 
 
-def test_attribution_needs_three_evidence():
+def test_attribution_with_one_audit_id_is_accepted():
     finding = {
         "title": "APT29 attribution",
-        "audit_ids": ["wt-001", "rag-002"],
+        "audit_ids": ["wt-001"],
         "observation": "obs",
         "interpretation": "interp",
         "confidence": "HIGH",
         "confidence_justification": "justified",
         "type": "attribution",
     }
+    assert validate(finding) == {"valid": True}  # no count warning
+
+
+def test_a_justification_is_still_required():
+    finding = {
+        "title": "Test",
+        "audit_ids": ["wt-001", "wt-002"],
+        "observation": "obs",
+        "interpretation": "interp",
+        "confidence": "HIGH",
+        "type": "finding",
+        "event_timestamp": "2026-01-24T15:00:41Z",
+    }
     result = validate(finding)
     assert result["valid"] is False
-    assert any("3 audit_ids" in e for e in result["errors"])
+    assert result["errors"] == [
+        "Missing confidence_justification (FD-005: confidence must be justified)"
+    ]
 
 
 def test_invalid_type():

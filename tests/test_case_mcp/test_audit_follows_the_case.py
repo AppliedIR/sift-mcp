@@ -122,7 +122,9 @@ def test_activating_a_case_then_working_in_it_audits_there(
     assert _tools(b, "forensic-mcp") == ["supporting_command", "record_finding"]
     assert (_tools(a, "case-mcp"), _tools(a, "forensic-mcp")) == ([], [])
     (finding,) = json.loads((b / "findings.json").read_text())
-    assert finding.get("provenance") == "MCP", finding.get("provenance")
+    # its trail resolves in case B's audit (the tier gates; it isn't stored)
+    tier = forensic_mcp()._manager._classify_provenance(finding["audit_ids"], b)
+    assert tier["summary"] == "MCP", tier
 
 
 def test_a_case_switched_with_the_cli_is_followed(tmp_path, home):

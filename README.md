@@ -435,7 +435,7 @@ Outgoing Internet connections are required for report generation (Zeltser IR Wri
 
 Valhuntir is designed so that AI interactions flow through MCP tools, enabling security controls and audit trails. Clients with direct shell access (like Claude Code) can also operate outside MCP, but `vhir setup client` deploys forensic controls for Claude Code: a kernel-level sandbox restricts Bash writes, deny rules block Edit/Write to case data files, a PreToolUse hook refuses Bash commands that would delete or overwrite case records or evidence (a best-effort check of listed commands), a PostToolUse hook records each Bash command to the audit trail while a case is active, provenance enforcement ensures findings are traceable to evidence, and every examiner decision is signed into the case's ledger, which `vhir review --verify` checks (what that does and doesn't show is in the security model's stated limits). Claude Code's deny rules and sandbox limit that client's own tools, not other programs running as the examiner's user. Valhuntir is not designed to defend against a malicious AI or to constrain the AI client that you deploy.
 
-## Audit Trail, Provenance, and Grounding
+## Audit Trail and Provenance
 
 Every MCP tool call is logged to a per-backend JSONL file in the case `audit/` directory with a unique evidence ID (`{backend}-{examiner}-{date}-{ulid}`). When Claude Code is the client, a PostToolUse hook additionally records each Bash command run while a case is active to `audit/claude-code.jsonl`.
 
@@ -454,19 +454,7 @@ When a finding is staged, `record_finding()` classifies its provenance by scanni
 | SHELL | Not in audit trail — provided via `supporting_commands` | Self-reported |
 | NONE | Not found anywhere | Rejected by hard gate |
 
-The finding is stamped with its provenance tier. Findings with NONE provenance and no supporting commands are rejected. Each evidence artifact is also traced to registered evidence through the links the case recorded (a registered path or folder manifest, a run's recorded inputs and outputs by path and hash, a recorded mount) and graded FULL, DECLARED (the AI said so), AMBIGUOUS (more than one recorded origin, each named), BROKEN (with where and why) or CITED-UNVERIFIED (the quote couldn't be verified against the cited operation's recorded output); the finding's grade is its worst artifact's, and an item merged from another case is IMPORTED. The **Evidence Provenance Chain** in the Examiner Portal, `vhir review` and the report show each chain from finding back to registered evidence.
-
-### Grounding
-
-Grounding measures whether the investigation consulted authoritative reference sources before making a claim — separate from provenance, which tracks where the evidence came from.
-
-| Level | Criteria | Meaning |
-|-------|----------|---------|
-| STRONG | 2+ reference sources consulted | Cross-referenced against authoritative knowledge |
-| PARTIAL | 1 source consulted, or finding traces to registered evidence | Some external validation |
-| WEAK | No reference sources, no evidence chain | Claim lacks external validation |
-
-Reference sources: forensic-rag (Sigma, MITRE ATT&CK, forensic artifacts), windows-triage (known-good baseline), opencti (threat intelligence). Grounding is advisory — it does not block a finding but tells the examiner how well-supported the claim is.
+The tier is a gate, not stored on the finding: findings with NONE provenance and no supporting commands are rejected. Each evidence artifact is also traced to registered evidence through the links the case recorded (a registered path or folder manifest, a run's recorded inputs and outputs by path and hash, a recorded mount) and graded FULL, DECLARED (the AI said so), AMBIGUOUS (more than one recorded origin, each named), BROKEN (with where and why) or CITED-UNVERIFIED (the quote couldn't be verified against the cited operation's recorded output); the finding's grade is its worst artifact's, and an item merged from another case is IMPORTED. The **Evidence Provenance Chain** in the Examiner Portal, `vhir review` and the report show each chain from finding back to registered evidence.
 
 ### Content Integrity
 

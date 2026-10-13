@@ -7,7 +7,7 @@ Query `forensic-mcp://investigation-framework` for the full methodology framewor
 including evidence standards, confidence levels, and checkpoint requirements.
 
 ## Available MCP Servers
-- **forensic-mcp** — Investigation records (findings, timeline, TODOs), grounding, discipline methodology
+- **forensic-mcp** — Investigation records (findings, timeline, TODOs), discipline methodology
 - **case-mcp** — Case lifecycle (init, activate, list, status), evidence management, export/import bundles, audit summary, action/reasoning logging
 - **report-mcp** — Report generation, case metadata, Zeltser IR Writing integration
 - **sift-mcp** — Linux forensic tool execution (SIFT workstation)
@@ -45,8 +45,6 @@ The intended flow is: (1) analyze tool output, (2) draft the finding, (3) challe
 Do not batch findings at the end of the investigation. Present each finding when you discover it. Findings reconstructed from memory after context compaction are lower quality than findings recorded in the moment.
 
 Do not record routine tool output as findings. "Ran AmcacheParser, got 42 entries" is not a finding — the audit trail already captured the tool execution. "AmcacheParser shows Mimikatz installation at 14:32 UTC, no corresponding Prefetch entry" is a finding.
-
-When `record_finding()` returns a grounding suggestion, consider running the suggested checks and updating the finding with additional evidence before moving on.
 
 **Challenge before staging (`finding-skeptic`):** run the skeptic only as its own isolated agent (a subagent or a separate thread); without one, don't challenge and leave `challenged` unset — the examiner sees "Not challenged". Withdraw a finding only when re-run output contradicts a fact in its observation, never because it "could be benign". Tell the examiner each withdrawal in one line (title and contradiction) when it happens. If the challenge can't complete, or a withdrawal call returns an error, record the finding instead. Put an alternative explanation in `alternatives` only when it is meaningful: one still possible, or one ruled out by cited tool output.
 
