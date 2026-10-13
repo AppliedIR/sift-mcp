@@ -15,14 +15,14 @@ caveats:
 
 output_notes:
   format: csv
-  key_fields: [EntryNumber, SequenceNumber, ParentPath, FileName, Created0x10, Modified0x10, Created0x30, Modified0x30, InUse, IsDirectory, FileSize]
+  key_fields: [EntryNumber, SequenceNumber, ParentPath, FileName, Created0x10, LastModified0x10, Created0x30, LastModified0x30, InUse, IsDirectory, FileSize]
 
 exit_code_hints:
   0: "success"
   1: "error or no data found"
 
 advisories:
-  - "Compare $STANDARD_INFORMATION (0x10) and $FILE_NAME (0x30) timestamps — large discrepancies suggest TIMESTOMPING"
+  - "Compare $STANDARD_INFORMATION (0x10) and $FILE_NAME (0x30) timestamps. MFTECmd sets SI<FN when $SI Created is earlier than $FN Created. This has legitimate causes and is common on Windows system files, but it can also indicate timestomping. Treat it as a lead for further comparison, not proof either way."
   - "The USN Journal provides a sequential record of file system changes — invaluable for timeline analysis"
   - "Use --body to output bodyfile format for mactime timeline generation"
   - "Use --csv for MFT analysis and --csvf for USN Journal output"
@@ -53,7 +53,7 @@ field_meanings:
   LastModified0x10: "$STANDARD_INFORMATION last modification timestamp (user-modifiable)"
   LastRecordChange0x10: "$STANDARD_INFORMATION last MFT record change timestamp"
   LastAccess0x10: "$STANDARD_INFORMATION last access timestamp (user-modifiable)"
-  Created0x30: "$FILE_NAME creation timestamp (reliable, not user-modifiable)"
-  LastModified0x30: "$FILE_NAME last modification timestamp (reliable)"
+  Created0x30: "$FILE_NAME creation timestamp"
+  LastModified0x30: "$FILE_NAME last modification timestamp"
   InUse: "Whether the MFT entry is currently allocated (active file)"
   ReferenceCount: "Number of hard links to this file"

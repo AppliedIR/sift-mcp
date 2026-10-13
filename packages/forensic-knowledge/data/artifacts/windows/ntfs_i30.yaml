@@ -11,7 +11,6 @@ proves:
   - "A file or subdirectory existed within a specific directory"
   - "File name, size, and timestamps at the time of index entry creation or update"
   - "Deleted files previously present in a directory (via index slack space)"
-  - "Evidence of timestomping when $I30 timestamps differ from $STANDARD_INFORMATION timestamps"
 
 does_not_prove:
   - "File content"
@@ -22,16 +21,14 @@ does_not_prove:
 timestamps:
   - field: "$I30 Created"
     meaning: "File creation time as recorded in the directory index entry"
-    common_misinterpretation: "These timestamps come from the $FILE_NAME attribute and are not easily modified by user-mode APIs — useful for detecting timestomping"
   - field: "$I30 Modified"
     meaning: "File modification time in the directory index entry"
-    common_misinterpretation: "Updated on rename/move operations, not on every content modification"
 
 common_misinterpretations:
   - claim: "Directory index entries are deleted when files are removed"
     correction: "$I30 entries are removed from the B-tree index but may persist in slack space within the index allocation. This slack space is a valuable source for recovering evidence of deleted files."
   - claim: "$I30 timestamps always match MFT timestamps"
-    correction: "$I30 entries contain $FILE_NAME timestamps which are updated differently from $STANDARD_INFORMATION timestamps. Discrepancies between $I30 and $SI timestamps can reveal timestomping."
+    correction: "$I30 entries hold a copy of the file's $STANDARD_INFORMATION timestamps, not its $FILE_NAME attribute's. NTFS refreshes the copy when the last handle to the file closes, so it can lag $SI."
   - claim: "Small directories don't have useful $I30 data"
     correction: "Even small directories with only $INDEX_ROOT (resident) can contain residual entries in unused space after file deletion."
   - claim: "$I30 analysis requires specialized commercial tools"

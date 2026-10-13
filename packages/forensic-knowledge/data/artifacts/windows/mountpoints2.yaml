@@ -11,7 +11,7 @@ proves:
   - "Devices and volumes mounted by the user"
   - "Network shares accessed by the user (UNC paths)"
   - "USB device volume GUIDs"
-  - "First and last connection times (from key last-write timestamps)"
+  - "Last connection time (from key last-write timestamp)"
 
 does_not_prove:
   - "What files were accessed on the mounted volume"

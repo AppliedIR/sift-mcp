@@ -68,9 +68,9 @@ investigation_patterns:
     purpose: "Services executing scripting engines — fileless persistence"
 
   - name: "Recently modified service keys"
-    query: "LastWriteTime:[time_from TO time_to]"
+    query: "LastWriteTimestamp:[time_from TO time_to]"
     purpose: "Service registry keys modified during incident window"
-    note: "LastWriteTime updates on ANY key modification, not just creation"
+    note: "LastWriteTimestamp updates on ANY key modification, not just creation"
 
 references:
   - "SANS FOR500 - Windows Forensic Analysis"

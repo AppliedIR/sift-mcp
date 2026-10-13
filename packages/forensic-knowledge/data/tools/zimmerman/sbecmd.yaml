@@ -10,7 +10,7 @@ caveats:
   - "ShellBag entries persist even after folders are deleted — they are a historical record"
   - "Both NTUSER.DAT (Desktop/Explorer settings) and UsrClass.dat (BagMRU/Bags) contain ShellBag data"
   - "Timestamps in ShellBags reflect the folder's MAC times as seen at browse time, not the browse time itself"
-  - "Registry key last write time is the closest approximation to when the folder was browsed"
+  - "Registry key last write time is shared by sibling entries under the same BagMRU key"
   - "Network and removable device paths in ShellBags reveal access to external resources"
   - "ZIP file contents browsed in Explorer also generate ShellBag entries"
 
@@ -42,7 +42,7 @@ investigation_sequence:
 field_meanings:
   AbsolutePath: "Full folder path as recorded in ShellBags"
   ShellType: "Type of shell item (directory, drive, network, zip, etc.)"
-  LastRegistryWriteTimestamp: "Last time the ShellBag registry key was modified"
+  LastWriteTime: "Last time the ShellBag registry key was modified"
   Value: "Raw ShellBag value data"
-  SlotModifiedDate: "Last modification timestamp from the ShellBag slot"
+  ModifiedOn: "Last modification timestamp from the ShellBag slot"
   BagPath: "Registry path to the ShellBag entry"

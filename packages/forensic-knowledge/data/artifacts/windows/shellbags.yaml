@@ -30,7 +30,7 @@ does_not_prove:
 
 timestamps:
   - field: "Registry Key LastWriteTime"
-    meaning: "Last time the ShellBag registry key was modified (folder was accessed or view settings changed)"
+    meaning: "Last write time of the BagMRU key holding this entry; sibling entries share it"
     common_misinterpretation: "This updates when view settings change (resize window, change sort order), not only on folder access"
   - field: "Embedded timestamps in shell item ID lists"
     meaning: "Creation, modification, and access times of the folder as recorded in the shell item data"

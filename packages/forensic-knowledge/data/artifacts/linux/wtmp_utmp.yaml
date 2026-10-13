@@ -31,7 +31,7 @@ does_not_prove:
 timestamps:
   - field: "Login/logout time"
     meaning: "When the user session started or ended"
-    common_misinterpretation: "Timestamps are in local system time, not UTC (unless system is configured for UTC)"
+    common_misinterpretation: "Stored as seconds since the Unix epoch (UTC); last displays them in the analysis host's time zone (use TZ=UTC)"
 
 common_misinterpretations:
   - claim: "wtmp is a text file"
