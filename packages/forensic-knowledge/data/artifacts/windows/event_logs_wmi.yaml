@@ -10,8 +10,7 @@ locations:
 proves:
   - "WMI provider loading and execution (Event ID 5857)"
   - "WMI query failures and errors (Event ID 5858)"
-  - "WMI subscription creation and modification (Event IDs 5860-5861)"
-  - "WMI process creation events"
+  - "WMI event subscription registration: temporary subscriptions (Event ID 5860) and permanent filter-to-consumer bindings (Event ID 5861)"
 
 does_not_prove:
   - "All WMI activity — only what the operational log captures"

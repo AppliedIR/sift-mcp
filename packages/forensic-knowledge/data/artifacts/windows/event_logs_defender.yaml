@@ -27,7 +27,7 @@ timestamps:
 
 common_misinterpretations:
   - claim: "No Defender alerts means the system is clean"
-    correction: "Attackers routinely bypass, disable, or tamper with Defender. Check for Event IDs 5001 (real-time protection disabled), 5010/5012 (scanning disabled), and 5100 (exclusion added)."
+    correction: "Attackers routinely bypass, disable, or tamper with Defender. Check for Event IDs 5001 (real-time protection disabled), 5010/5012 (scanning disabled), and 5007 (configuration changed — exclusions show as ...\\Windows Defender\\Exclusions\\... in the value)."
   - claim: "Defender quarantine means the threat is neutralized"
     correction: "Quarantine only isolates the specific file detected. The attacker may have deployed additional payloads, established persistence, or moved laterally before detection."
   - claim: "Defender detection names are always accurate"
