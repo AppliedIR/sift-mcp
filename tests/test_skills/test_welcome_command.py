@@ -22,3 +22,18 @@ def test_the_codex_check_starts_at_the_case_folder():
     skill = (ROOT / "skills/vhir-welcome/SKILL.md").read_text()
     assert "work/" not in skill
     assert "cd <case folder> && codex -p valhuntir" in skill
+
+
+def test_the_skill_tells_no_read_the_full_settings_deny():
+    """A read the settings deny would stop the welcome ("Stop on failure")."""
+    import json
+    import re
+
+    settings = json.loads((ROOT / "claude-code/full/settings.json").read_text())
+    denied = [
+        r[5:-1] for r in settings["permissions"]["deny"] if r.startswith("Read(~/")
+    ]
+    skill = (ROOT / "skills/vhir-welcome/SKILL.md").read_text()
+    assert denied
+    for path in denied:
+        assert not re.search(r"\bRead\s+`?" + re.escape(path), skill), path
