@@ -242,9 +242,7 @@ def test_one_signing_block_and_submit_inside_it():
     assert page.count("// END vhir-commit-sign") == 1
     assert "function submitCommit()" in block()
     assert page.count("function submitCommit(") == 1
-    v1 = (STATIC / "index.html").read_text()
-    assert "vhir-commit-sign" not in v1 and "/api/commit" not in v1
-    assert 'href="/portal/"' in v1
+    assert not (STATIC / "index.html").exists()  # the legacy page is retired
 
 
 def test_the_passphrase_field_is_for_the_current_password():

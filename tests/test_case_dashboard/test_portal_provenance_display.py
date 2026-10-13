@@ -356,7 +356,9 @@ def test_a_folder_row_shows_its_file_count():
     page = PAGE.read_text()
     start = page.index("function renderEvidence(")
     fn = page[start : page.index("\n}\n", start) + 3]
-    esc = page.index("function escapeHtml(")
+    esc = page.index(
+        "function safeStr("
+    )  # escapeHtml, and the safeStr it converts through
     script = (
         "var out = {innerHTML: ''}; var evidenceSortCol = 'path', evidenceSortAsc = true;"
         "var document = {getElementById: function() { return out; },"
@@ -376,7 +378,7 @@ def test_a_folder_row_shows_its_file_count():
             ]
         )
         + ";\n"  # fmt: skip
-        + page[esc : page.index("\n}\n", esc) + 3]
+        + page[esc : page.index("\n}\n", page.index("function escapeHtml(")) + 3]
         + fn
         + "\nrenderEvidence(); process.stdout.write(out.innerHTML);"
     )

@@ -47,7 +47,7 @@ When you select a finding, the detail panel shows:
 
 ### Challenge, Alternatives and Withdrawals
 
-Under the badges, each finding shows its challenge line: "Challenged (client-reported): …" with the skeptic's audit ids, or **Not challenged**. The **Alternatives** section lists other explanations, each marked `[open]` or `[ruled out]` with its evidence; edit them with the pencil as a JSON list. When candidates were withdrawn after challenge, a line above the findings list gives the count, and the Overview lists each one with its contradiction and the skeptic's audit ids. The legacy `/dashboard` doesn't show any of these, and says so.
+Under the badges, each finding shows its challenge line: "Challenged (client-reported): …" with the skeptic's audit ids, or **Not challenged**. The **Alternatives** section lists other explanations, each marked `[open]` or `[ruled out]` with its evidence; edit them with the pencil as a JSON list. When candidates were withdrawn after challenge, a line above the findings list gives the count, and the Overview lists each one with its contradiction and the skeptic's audit ids.
 
 ### Editing Fields
 
@@ -160,4 +160,4 @@ From a remote machine (after `vhir join`):
 http://<sift-ip>:4508/portal/
 ```
 
-The legacy v1 dashboard is available at `/dashboard/` but is deprecated in favor of the portal.
+The legacy v1 dashboard is retired: `/dashboard/` (any path under it) redirects to the portal, and `vhir dashboard` opens the portal.

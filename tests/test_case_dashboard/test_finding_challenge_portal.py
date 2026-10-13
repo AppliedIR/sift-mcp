@@ -159,15 +159,6 @@ def test_reports_keep_the_alternatives_but_not_the_challenge():
     assert "alternatives" not in STRIPPED_FINDING_FIELDS
 
 
-def test_the_legacy_dashboard_says_what_it_does_not_show():
-    from pathlib import Path
-
-    legacy = Path(D.__file__).parent / "static" / "index.html"
-    assert "does not show finding alternatives, challenge status or withdrawn" in (
-        legacy.read_text()
-    )
-
-
 def test_the_portal_shows_alternatives_the_challenge_and_withdrawals():
     from pathlib import Path
 
@@ -203,6 +194,7 @@ def test_the_challenge_line_shows_both_reasons_escaped():
         "const document = {createElement: () => ({set textContent(s) {"
         "this.innerHTML = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')"
         ".replace(/>/g, '&gt;').replace(/\"/g, '&quot;');}})};\n"
+        + _js_function("safeStr")  # escapeHtml converts through it
         + _js_function("escapeHtml")
         + _js_function("renderChallengeLine")
         + f"process.stdout.write(renderChallengeLine({json.dumps(marker)}));"

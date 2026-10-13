@@ -1,7 +1,7 @@
 # escapeHtml Audit — Dashboard v2 (Post Sprint A/B)
 
 **Date:** 2026-03-16
-**Files:** `static/v2/index.html` (3209 lines at this audit; 4300 with the Hosts tab), `static/index.html` (v1, unchanged)
+**Files:** `static/v2/index.html` (3209 lines at this audit; 4300 with the Hosts tab), `static/index.html` (v1, since retired and deleted: `/dashboard` redirects to the portal)
 **Result:** PASS — all innerHTML assignments use escapeHtml on user-controllable strings
 
 ## Counts (v2)

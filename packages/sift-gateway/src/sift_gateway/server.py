@@ -861,15 +861,16 @@ class Gateway:
         routes.extend(health_routes())
         routes.extend(rest_routes())
 
-        # Examiner Portal + legacy dashboard (optional — installed separately)
+        # Examiner Portal (optional — installed separately); the retired legacy
+        # dashboard's paths redirect to it
         try:
             from case_dashboard.routes import (
-                create_dashboard_app,
                 create_dashboard_v2_app,
+                retired_dashboard_routes,
             )
 
             routes.append(Mount("/portal", app=create_dashboard_v2_app()))
-            routes.append(Mount("/dashboard", app=create_dashboard_app()))
+            routes.extend(retired_dashboard_routes())
         except ImportError:
             pass
 

@@ -11,7 +11,7 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse, Response
+from starlette.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 from vhir_cli.provenance_view import roots_of
 
@@ -754,16 +754,6 @@ async def verify_evidence(request: Request) -> JSONResponse:
     )
 
 
-async def serve_index(request: Request) -> Response:
-    index_path = _STATIC_DIR / "index.html"
-    if not index_path.exists():
-        return JSONResponse(
-            {"error": "Dashboard not built yet"},
-            status_code=404,
-        )
-    return FileResponse(index_path, media_type="text/html")
-
-
 _V2_STATIC_DIR = _STATIC_DIR / "v2"
 
 
@@ -794,7 +784,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 def _dashboard_api_routes() -> list[Route]:
-    """API routes shared by v1 and v2 dashboard apps."""
+    """The Portal's API routes."""
     return [
         Route("/api/findings", get_findings, methods=["GET"]),
         Route("/api/findings/{id}", get_finding_by_id, methods=["GET"]),
@@ -821,11 +811,22 @@ def _dashboard_api_routes() -> list[Route]:
     ]
 
 
-def create_dashboard_app() -> Starlette:
-    """Create the v1 dashboard sub-app for mounting on the gateway."""
-    routes = _dashboard_api_routes()
-    routes.append(Route("/", serve_index, methods=["GET"]))
-    return Starlette(routes=routes, middleware=[Middleware(SecurityHeadersMiddleware)])
+# The legacy dashboard is retired: its every path, whatever the method, is sent
+# to the Portal. The target is fixed (never the request's path or query), and a
+# 303 makes a stray POST a plain GET, so no body is replayed.
+_ALL_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+
+
+async def dashboard_retired(request: Request) -> Response:
+    return RedirectResponse("/portal/", status_code=303)
+
+
+def retired_dashboard_routes() -> list[Route]:
+    """/dashboard and everything under it: a redirect to the Portal, and nothing else."""
+    return [
+        Route("/dashboard", dashboard_retired, methods=_ALL_METHODS),
+        Route("/dashboard/{rest:path}", dashboard_retired, methods=_ALL_METHODS),
+    ]
 
 
 async def serve_v2_static(request: Request) -> Response:

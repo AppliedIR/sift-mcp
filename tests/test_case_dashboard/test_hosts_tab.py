@@ -365,7 +365,7 @@ def _js_function(name: str) -> str:
 
 
 def _render(call: str, data) -> str:
-    names = ["escapeHtml", "escapeAttr", "hostNamesHtml", "hostsHeaderHtml", "hostRunsHtml",
+    names = ["safeStr", "escapeHtml", "escapeAttr", "hostNamesHtml", "hostsHeaderHtml", "hostRunsHtml",
              "hostProposedHtml", "hostPivotsHtml", "hostRowsHtml", "hostDetailHtml",
              "hostCorrectionsHtml", "hostOpsHtml"]  # fmt: skip
     script = (
