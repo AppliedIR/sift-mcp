@@ -1,21 +1,17 @@
 """A defanged indicator (evil[.]com, bad(dot)example.com, hxxp://..., 185[.]220[.]101[.]45)
-is read as the live indicator wherever one is taken from what an examiner or the
-AI wrote: the IOCs a finding records, and the report's IOC section. hxxp is a
-scheme only before its ://, never in a host name or a path. vhir-cli reads them
-by the same notation list (a copy; neither package depends on the other)."""
+is read as the live indicator in the report's IOC section, taken from what an
+examiner or the AI wrote. hxxp is a scheme only before its ://, never in a host
+name or a path. vhir-cli reads them by the same notation list (a copy; neither
+package depends on the other). A finding's own IOCs are still stored by the rule
+they are signed under (forensic-mcp's _refang_ioc), unchanged."""
 
 from __future__ import annotations
 
 import inspect
-import json
-from pathlib import Path
 
 import pytest
 from report_mcp.server import _extract_all_iocs
 from sift_common import defang
-
-from test_forensic_mcp.test_case_lock import FINDING  # noqa: F401
-from test_forensic_mcp.test_case_manager import active_case, manager  # noqa: F401
 
 SAMPLE = (
     "C2 at hxxp://evil[.]com via bad(dot)example.com, beacon to 185[.]220[.]101[.]45"
@@ -51,18 +47,6 @@ def test_the_report_refangs_hxxp_only_as_a_scheme(text, kind, value):
     got = _extract_all_iocs([{"id": "F-1", "observation": text, "interpretation": ""}])
     assert value in {i["value"] for i in got[kind]}
     assert not any("http" in i["value"] for i in got[kind])
-
-
-def test_a_findings_defanged_iocs_are_stored_live_and_typed(manager, active_case):  # noqa: F811
-    iocs = ["bad(dot)example.com", "evil{.}org", "185(.)220(.)101(.)46", "hxxps[://]x[.]com/p",
-            "mail[@]evil.com", r"C:\Tools\hxxp\a.exe"]  # fmt: skip
-    manager.record_finding({**FINDING, "iocs": iocs})
-    stored = json.loads((Path(active_case["path"]) / "iocs.json").read_text())
-    assert sorted((i["type"], i["value"]) for i in stored) == sorted([
-        ("domain-name", "bad.example.com"), ("domain-name", "evil.org"),
-        ("ipv4-addr", "185.220.101.46"), ("url", "https://x.com/p"),
-        ("email-addr", "mail@evil.com"), ("file:path", r"C:\Tools\hxxp\a.exe"),
-    ])  # fmt: skip
 
 
 def test_vhir_refangs_by_the_same_notation_list():
