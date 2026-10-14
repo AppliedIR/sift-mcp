@@ -333,7 +333,7 @@ def create_server() -> FastMCP:
                 "Survey evidence: ls evidence/",
                 "If OpenSearch tools available: offer to ingest evidence",
                 "Run idx_case_summary for scope overview",
-                "Check list_playbooks for investigation procedures",
+                "Procedures: the vhir skills, else get_procedure (forensic-mcp)",
             ]
             return result
         except (ValueError, OSError, HostLogError) as e:

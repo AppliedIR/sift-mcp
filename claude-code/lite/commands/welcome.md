@@ -20,7 +20,7 @@ any failure.
 ## Step 1: Verify MCP Health
 
 **forensic-rag:**
-- Use the `forensic-rag` MCP tool `get_stats` (do NOT use subprocess
+- Use the `forensic-rag` MCP tool `get_knowledge_stats` (do NOT use subprocess
   or Bash — use the MCP tool directly)
 - Report: document count, source count, index status
 - If the MCP tool is not available or errors, report: "forensic-rag

@@ -8,6 +8,7 @@ import stat
 
 from mcp.server.fastmcp import FastMCP
 from sift_common.instructions import SIFT_MCP as _INSTRUCTIONS
+from sift_common.oplog import log_lookup
 
 from sift_mcp.audit import AuditWriter
 from sift_mcp.exceptions import ExecutionTimeoutError, SiftError
@@ -110,6 +111,8 @@ def create_server() -> FastMCP:
         """List forensic tools available on this SIFT workstation, with availability status."""
         from sift_mcp.tools.discovery import list_available_tools as _list
 
+        log_lookup("sift-mcp", "list_available_tools", {"category": category})
+
         tools = _list(category=category or None)
         return {"tools": tools, "count": len(tools)}
 
@@ -157,6 +160,9 @@ def create_server() -> FastMCP:
     def check_tools(tool_names: list[str] | None = None) -> dict:
         """Check which tools are installed and available on this system."""
         from sift_mcp.tools.discovery import check_tools as _check
+
+        # a list isn't a scalar argument: logged with none
+        log_lookup("sift-mcp", "check_tools", {"tool_names": tool_names})
 
         return _check(tool_names=tool_names)
 

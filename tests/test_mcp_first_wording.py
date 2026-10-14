@@ -115,3 +115,15 @@ def test_forensic_mcp_states_confidence_and_the_ladder_as_approved():
 
 def test_sift_mcp_says_how_to_find_a_tools_syntax():
     assert TOOL_SYNTAX in _strings()["SIFT_MCP"].split("\n\n")
+
+
+# A client may keep only the start of a server's instructions: Claude Code
+# 2.1.299 shows the first 4,095 characters of forensic-mcp's and cuts the rest.
+CLIENT_CUT = 4095
+POINTERS = ("suggest_tools", "list_playbooks", "get_procedure")
+
+
+def test_forensic_mcp_names_where_tools_and_procedures_are_before_the_cut():
+    text = _strings()["FORENSIC_MCP"]
+    late = [n for n in POINTERS if n not in text[:CLIENT_CUT]]
+    assert late == []

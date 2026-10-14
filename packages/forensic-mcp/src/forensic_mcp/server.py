@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import BeforeValidator
 from sift_common.approvals import mark_approvals
 from sift_common.instructions import FORENSIC_MCP as _INSTRUCTIONS
+from sift_common.oplog import log_lookup
 
+from forensic_mcp import procedures
 from forensic_mcp.audit import AuditWriter
 from forensic_mcp.case.manager import CaseManager
 
@@ -117,6 +120,21 @@ def _build_validation_guidance(errors: list[str]) -> list[str]:
     return guidance
 
 
+def _procedure_description(root=None) -> str:
+    """get_procedure's description, naming the installed procedures."""
+    found = procedures.names(root)
+    listed = ", ".join(found) if found else procedures.NOT_INSTALLED
+    return (
+        "The investigation procedures, for a client that can't load skills. "
+        "No name: each procedure's name and description. A name: its "
+        "SKILL.md and its other files. A name and a file: that file. "
+        f"Procedures: {listed}."
+    )
+
+
+PROCEDURE_DESCRIPTION = _procedure_description()  # at load
+
+
 def create_server(reference_mode: str = "resources") -> FastMCP:
     """Create and configure the forensic MCP server.
 
@@ -134,6 +152,18 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     # Expose for testing and CLI integration
     server._manager = manager
     server._audit = audit
+
+    def _lookup(name: str, args: dict | None = None) -> None:
+        """A lookup with no case audit entry, in ~/.vhir/logs/lookups.jsonl,
+        naming the case this server's audit would go to."""
+        log_lookup("forensic-mcp", name, args, manager.audit_case_dir)
+
+    # --- Procedures, for a client without skills ---
+
+    @server.tool(description=PROCEDURE_DESCRIPTION)
+    def get_procedure(name: str = "", file: str = "") -> dict:
+        _lookup("get_procedure", {"name": name, "file": file})
+        return procedures.get(name, file)
 
     # --- Investigation Records ---
 
@@ -571,7 +601,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     if reference_mode == "resources":
         _register_discipline_resources(server)
     elif reference_mode == "tools":
-        _register_discipline_tools(server, audit)
+        _register_discipline_tools(server, audit, _lookup)
     else:
         raise ValueError(
             f"Invalid reference_mode: {reference_mode!r} (expected 'resources' or 'tools')"
@@ -706,7 +736,9 @@ def _register_discipline_resources(server: FastMCP) -> None:
         return json.dumps(get_checklist(artifact_type))
 
 
-def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
+def _register_discipline_tools(
+    server: FastMCP, audit: AuditWriter, _lookup: Callable[..., None]
+) -> None:
     """Register discipline reference data as MCP tools.
 
     Used when the client doesn't support MCP resources. All 14 functions
@@ -737,6 +769,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def get_rules():
         """Return all forensic discipline rules as structured data."""
+        _lookup("get_rules")
         try:
             from forensic_mcp.discipline.rules import get_all_rules
 
@@ -748,6 +781,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def get_checkpoint_requirements(action_type: str) -> dict:
         """What's required before a specific action (attribution, root cause, exclusion, etc.)."""
+        _lookup("get_checkpoint_requirements", {"action_type": action_type})
         try:
             from forensic_mcp.discipline.rules import get_checkpoint
 
@@ -759,6 +793,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def validate_finding(finding_json: dict) -> dict:
         """Check a proposed finding against format and methodology standards."""
+        _lookup("validate_finding", {})
         try:
             from forensic_mcp.discipline.validation import validate
 
@@ -770,6 +805,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def get_evidence_standards() -> dict:
         """Evidence classification levels with definitions."""
+        _lookup("get_evidence_standards")
         try:
             from forensic_mcp.discipline.rules import get_evidence_standards_data
 
@@ -781,6 +817,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def get_confidence_definitions() -> dict:
         """Confidence levels (HIGH/MEDIUM/LOW/SPECULATIVE) with criteria."""
+        _lookup("get_confidence_definitions")
         try:
             from forensic_mcp.discipline.rules import get_confidence_definitions_data
 
@@ -792,6 +829,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def get_anti_patterns():
         """Common forensic mistakes to avoid."""
+        _lookup("get_anti_patterns")
         try:
             from forensic_mcp.discipline.rules import get_anti_patterns_data
 
@@ -803,6 +841,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def get_evidence_template() -> dict:
         """Required evidence presentation format."""
+        _lookup("get_evidence_template")
         try:
             from forensic_mcp.discipline.rules import get_evidence_template_data
 
@@ -814,6 +853,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def get_tool_guidance(tool_name: str) -> dict:
         """How to interpret results from a specific forensic tool."""
+        _lookup("get_tool_guidance", {"tool_name": tool_name})
         try:
             from forensic_mcp.discipline.guidance import get_guidance
 
@@ -825,6 +865,10 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def get_false_positive_context(tool_name: str, finding_type: str) -> dict:
         """Common false positives for a tool/finding combination."""
+        _lookup(
+            "get_false_positive_context",
+            {"tool_name": tool_name, "finding_type": finding_type},
+        )
         try:
             from forensic_mcp.discipline.guidance import get_false_positives
 
@@ -836,6 +880,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def get_corroboration_suggestions(finding_type: str):
         """Cross-reference suggestions based on finding type."""
+        _lookup("get_corroboration_suggestions", {"finding_type": finding_type})
         try:
             from forensic_mcp.discipline.guidance import get_corroboration
 
@@ -847,6 +892,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def list_playbooks():
         """Available investigation playbooks."""
+        _lookup("list_playbooks")
         try:
             from forensic_mcp.discipline.playbooks import list_all
 
@@ -858,6 +904,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def get_playbook(name: str) -> dict:
         """Step-by-step procedure for a specific investigation type."""
+        _lookup("get_playbook", {"name": name})
         try:
             from forensic_mcp.discipline.playbooks import get_by_name
 
@@ -869,6 +916,7 @@ def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def get_collection_checklist(artifact_type: str) -> dict:
         """Evidence collection checklist per artifact type."""
+        _lookup("get_collection_checklist", {"artifact_type": artifact_type})
         try:
             from forensic_mcp.discipline.playbooks import get_checklist
 

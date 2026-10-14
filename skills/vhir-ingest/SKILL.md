@@ -1,8 +1,6 @@
 ---
 name: vhir-ingest
 description: 'How to start an investigation once the evidence is surveyed: which tools to run first, ingesting evidence into OpenSearch (triage packages, memory, delimited files) and querying it. Use after the evidence survey, before analysis, or when ingesting or querying indexed evidence.'
-metadata:
-  source: 'claude-code/full/CLAUDE.md (Investigation Methodology; MCP Backends: opensearch-mcp)'
 ---
 
 ## Investigation Methodology
@@ -18,7 +16,7 @@ AFTER EVIDENCE SURVEY, BEFORE INVESTIGATION:
 6. Use wintools-mcp for offline evidence analysis on forensic workstation (autorunsc, sigcheck, PECmd)
 
 After ingesting evidence, do NOT default to OpenSearch queries only.
-The platform has 97+ tools across 9 backends. Use this sequence:
+Use this sequence:
 
 1. **Scope** — idx_case_summary, idx_aggregate, idx_list_detections
 2. **Triage** — idx_enrich_triage (baseline), idx_enrich_intel (threat intel)
