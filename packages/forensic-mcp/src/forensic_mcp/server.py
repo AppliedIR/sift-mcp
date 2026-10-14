@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
@@ -151,6 +152,11 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     # Expose for testing and CLI integration
     server._manager = manager
     server._audit = audit
+
+    def _lookup(name: str, args: dict | None = None) -> None:
+        """A lookup with no case audit entry, in ~/.vhir/logs/lookups.jsonl,
+        naming the case this server's audit would go to."""
+        log_lookup("forensic-mcp", name, args, manager.audit_case_dir)
 
     # --- Procedures, for a client without skills ---
 
@@ -595,7 +601,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     if reference_mode == "resources":
         _register_discipline_resources(server)
     elif reference_mode == "tools":
-        _register_discipline_tools(server, audit)
+        _register_discipline_tools(server, audit, _lookup)
     else:
         raise ValueError(
             f"Invalid reference_mode: {reference_mode!r} (expected 'resources' or 'tools')"
@@ -730,12 +736,9 @@ def _register_discipline_resources(server: FastMCP) -> None:
         return json.dumps(get_checklist(artifact_type))
 
 
-def _lookup(name: str, args: dict | None = None) -> None:
-    """A lookup with no case audit entry, in ~/.vhir/logs/lookups.jsonl."""
-    log_lookup("forensic-mcp", name, args)
-
-
-def _register_discipline_tools(server: FastMCP, audit: AuditWriter) -> None:
+def _register_discipline_tools(
+    server: FastMCP, audit: AuditWriter, _lookup: Callable[..., None]
+) -> None:
     """Register discipline reference data as MCP tools.
 
     Used when the client doesn't support MCP resources. All 14 functions

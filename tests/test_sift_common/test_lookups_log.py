@@ -213,3 +213,19 @@ def test_an_export_and_a_report_hold_nothing_from_the_lookups_log(
     for text in (json.dumps(exported, default=str), json.dumps(report, default=str)):
         assert "lookup-marker" not in text
         assert "lookups.jsonl" not in text
+
+
+def test_a_lookup_names_the_case_the_pointer_switched_to(home, case, monkeypatch):
+    import forensic_mcp.case.manager as fm
+    from forensic_mcp.server import create_server
+
+    current = home / "cases" / "case-two"
+    current.mkdir(parents=True)
+    (current / "CASE.yaml").write_text("case_id: case-two\nstatus: open\n")
+    pointer = home / ".vhir" / "active_case"
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    pointer.write_text(str(current))
+    monkeypatch.setattr(fm, "_ACTIVE_CASE_FILE", pointer)
+    # VHIR_CASE_DIR still names case-one, as at the server's start
+    _call(create_server(reference_mode="tools"), "get_rules", {})
+    assert [line["case"] for line in _lines(home)] == ["case-two"]
