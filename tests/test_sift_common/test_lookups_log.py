@@ -161,6 +161,10 @@ def test_an_unwritable_log_leaves_the_tool_s_reply_unchanged(home):
 
 @pytest.fixture
 def case(home, monkeypatch):
+    import forensic_mcp.case.manager as fm
+
+    # its pointer path is fixed at import, so an earlier test's case could win
+    monkeypatch.setattr(fm, "_ACTIVE_CASE_FILE", home / "no_active_case")
     case = home / "cases" / "case-one"
     for sub in ("audit", "reports", "evidence", "extractions"):
         (case / sub).mkdir(parents=True)
