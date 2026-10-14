@@ -7,7 +7,7 @@ MITRE ATT&CK: T1070.006
 ## Triggers
 
 - $STANDARD_INFORMATION timestamps earlier than $FILE_NAME timestamps in MFT
-- Zero millisecond component in $SI Created or Modified (MFTECmd uSecZeros). This results from a program setting the time: timestomping tools can do it, but so do archive extraction and some installers. Treat it as a lead for further comparison, not proof.
+- Zero sub-second component in $SI Created or Modified (MFTECmd uSecZeros). Timestomping tools can cause it. It often legitimately occurs after a file is extracted from a zip archive or copied from FAT-formatted media. Some installers may also cause it. Treat it as a lead for further comparison, not proof.
 - Timestamps predating the file system creation date
 - Timestamps inconsistent with other artifact evidence
 
