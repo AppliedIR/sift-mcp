@@ -425,13 +425,14 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
         # Per-backend audit for HTTP backends (this path bypasses
         # Gateway.call_tool, so centralized audit doesn't cover it)
         from sift_gateway.audit_helpers import (
+            POLL_TOOLS,
             _extract_audit_id,
             _summarize_result,
             _truncate_params,
         )
         from sift_gateway.backends.http_backend import HttpMCPBackend
 
-        if isinstance(backend, HttpMCPBackend):
+        if isinstance(backend, HttpMCPBackend) and name not in POLL_TOOLS:
             elapsed_ms = (time.monotonic() - _start) * 1000
             try:
                 await asyncio.to_thread(

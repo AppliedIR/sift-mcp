@@ -42,6 +42,7 @@ class _NormalizeMCPPath:
 
 
 from sift_gateway.audit_helpers import (
+    POLL_TOOLS,
     _extract_audit_id,
     _summarize_result,
     _truncate_params,
@@ -815,7 +816,7 @@ class Gateway:
             raise RuntimeError(f"Tool call {actual_name} timed out after 300s") from exc
 
         # Centralized audit for HTTP backends (stdio backends audit themselves)
-        if isinstance(backend, HttpMCPBackend):
+        if isinstance(backend, HttpMCPBackend) and actual_name not in POLL_TOOLS:
             elapsed_ms = (time.monotonic() - _start) * 1000
             try:
                 await asyncio.to_thread(
@@ -833,6 +834,7 @@ class Gateway:
                 )
             except Exception as exc:
                 logger.warning("Gateway audit failed for %s: %s", actual_name, exc)
+        if isinstance(backend, HttpMCPBackend):  # a poll's final reply has them too
             await self.record_pending_hashes(backend_name, result, case_at_start)
 
         if not getattr(result, "is_error", False):

@@ -18,6 +18,11 @@ def _extract_audit_id(result: list) -> str | None:
     return None
 
 
+# Status lookups on a run wintools already audits once: each poll gets no
+# gateway_proxy entry of its own
+POLL_TOOLS = frozenset({"get_windows_run"})
+
+
 def _truncate_params(params: dict, max_len: int = 1000) -> dict:
     """Truncate large param values for audit storage."""
     truncated = {}

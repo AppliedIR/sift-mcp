@@ -451,6 +451,44 @@ def test_an_unknown_tool_is_still_not_found_when_no_token_was_refused(link):
     link.untouched(gw)
 
 
+@pytest.mark.parametrize("route", [per_backend, aggregate], ids=["direct", "aggregate"])
+def test_polls_of_a_run_get_no_gateway_audit_entry_and_other_calls_do(
+    link, monkeypatch, route
+):
+    """wintools audits a run once; get_windows_run polls are status lookups."""
+    from sift_common.audit import AuditWriter
+
+    entries = []
+    log = AuditWriter.log
+
+    def recording(self, **kw):
+        entries.append(kw)
+        return log(self, **kw)
+
+    monkeypatch.setattr(AuditWriter, "log", recording)
+    a = link.remote("A", tools=[*WINTOOLS_TOOLS, "get_windows_run"])
+    gw = link.boot(wintools_mcp=backend_entry(a, a.token, a.cert[0]))
+    session = until(
+        lambda: (
+            (c := route(gw)).call("get_windows_run")["text"] == "get_windows_run:A"
+            and c
+        ),
+        "the poll tool never answered",
+    )
+    entries.clear()
+    for _ in range(5):
+        r = session.call("get_windows_run", arguments={"run_id": "r1"})
+        assert (r["is_error"], r["text"]) == (False, "get_windows_run:A"), r
+    proxied = [e for e in entries if e.get("source") == "gateway_proxy"]
+    assert proxied == [], proxied
+
+    r = session.call("get_share_info")
+    assert r["text"] == "get_share_info:A", r
+    proxied = [e["tool"] for e in entries if e.get("source") == "gateway_proxy"]
+    assert proxied == ["get_share_info"], entries
+    link.untouched(gw)
+
+
 def _gave_up(link) -> bool:
     return bool(link.logs.lines("Could not load wintools-mcp"))
 
