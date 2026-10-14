@@ -358,6 +358,47 @@ def test_a_session_the_remote_ended_heals_with_no_tool_call(link, monkeypatch):
     link.untouched(gw)
 
 
+@pytest.mark.parametrize("route", [per_backend, aggregate], ids=["direct", "aggregate"])
+def test_a_lone_surrogate_argument_is_refused_by_name_within_1s(
+    link, monkeypatch, route
+):
+    """It used to wait out the 300 s call timeout: the transport couldn't
+    encode it and failed in its writer task. The refusal is audited, and the
+    same session goes on working."""
+    from sift_common.audit import AuditWriter
+
+    entries = []
+    log = AuditWriter.log
+
+    def recording(self, **kw):
+        entries.append(kw)
+        return log(self, **kw)
+
+    monkeypatch.setattr(AuditWriter, "log", recording)
+    a = link.remote("A")
+    gw = link.boot(wintools_mcp=backend_entry(a, a.token, a.cert[0]))
+    answers(gw, "A")
+    session = route(gw)
+    entries.clear()
+    r = session.call("get_share_info", timeout=10, arguments={"x": "\ud800"})
+    assert (r["http"], r["is_error"]) == (200, True), r
+    assert r["secs"] <= 1, r
+    assert (
+        "get_share_info wasn't sent: its argument 'x' holds a lone surrogate"
+        in r["text"]
+    ), r
+    refused = [e for e in entries if e.get("source") == "gateway_proxy"]
+    assert len(refused) == 1, entries
+    assert refused[0]["tool"] == "get_share_info"
+    assert refused[0]["result_summary"].startswith("refused, not sent: "), refused
+    assert refused[0]["extra"]["backend"] == "wintools-mcp"
+
+    # a pair (an emoji) is sendable text, on the same session
+    r = session.call("get_share_info", arguments={"x": "é 😀"})
+    assert (r["http"], r["is_error"], r["text"]) == (200, False, "get_share_info:A"), r
+    link.untouched(gw)
+
+
 def _gave_up(link) -> bool:
     return bool(link.logs.lines("Could not load wintools-mcp"))
 

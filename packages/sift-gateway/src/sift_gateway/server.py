@@ -58,6 +58,7 @@ from sift_gateway.mcp_endpoint import (
     create_session_manager,
 )
 from sift_gateway.rest import rest_routes, save_joined_backend
+from sift_gateway.unsendable import UnsendableArguments, check_sendable
 
 logger = logging.getLogger(__name__)
 
@@ -343,6 +344,28 @@ class Gateway:
                             )
             if reaped:
                 await self._build_tool_map()
+
+    async def audit_refusal(
+        self,
+        backend_name: str,
+        tool: str,
+        arguments: dict,
+        exc: Exception,
+        examiner=None,
+    ) -> None:
+        """An audit entry for a call the gateway refused before sending it."""
+        try:
+            await asyncio.to_thread(
+                self._audit.log,
+                tool=tool,
+                params=_truncate_params(arguments or {}),
+                result_summary=f"refused, not sent: {exc}",
+                source="gateway_proxy",
+                elapsed_ms=0.0,
+                extra={"backend": backend_name, "examiner": examiner},
+            )
+        except Exception as audit_exc:
+            logger.warning("Gateway audit failed for %s: %s", tool, audit_exc)
 
     async def _late_start_checker(self) -> None:
         """Periodically retry failed backends and re-sync case on started ones."""
@@ -710,6 +733,11 @@ class Gateway:
 
         backend_name = self._tool_map[name]
         backend = self.backends[backend_name]
+        try:  # before any backend sees it, whatever its transport
+            check_sendable(backend_name, name, arguments)
+        except UnsendableArguments as exc:
+            await self.audit_refusal(backend_name, name, arguments, exc, examiner)
+            raise
 
         # Lazy recovery — restart backend if it crashed
         if not backend.started:

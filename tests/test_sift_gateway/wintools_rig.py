@@ -381,8 +381,10 @@ class McpClient:
         self._id = 0
 
     def _post(self, body: dict, timeout: float = 30.0) -> httpx.Response:
+        # sent as ASCII JSON (httpx's json= encodes UTF-8 and can't carry a lone surrogate)
+        headers = {**self.headers, "Content-Type": "application/json"}
         with self.gw.http(timeout) as c:
-            r = c.post(self.path, json=body, headers=self.headers)
+            r = c.post(self.path, content=json.dumps(body), headers=headers)
         self.statuses.append(r.status_code)
         return r
 
@@ -422,7 +424,7 @@ class McpClient:
             return f"error: {d['error'].get('message')}"
         return sorted(t["name"] for t in d["result"]["tools"])
 
-    def call(self, tool: str, timeout: float = 30.0) -> dict:
+    def call(self, tool: str, timeout: float = 30.0, arguments=None) -> dict:
         """``{"http", "is_error", "text", "secs"}`` of one tools/call."""
         self._id += 1
         t0 = time.monotonic()
@@ -430,7 +432,7 @@ class McpClient:
             "jsonrpc": "2.0",
             "id": self._id,
             "method": "tools/call",
-            "params": {"name": tool, "arguments": {"x": "1"}},
+            "params": {"name": tool, "arguments": arguments or {"x": "1"}},
         }
         # A total deadline: an open event stream keeps each read alive
         done: list = []

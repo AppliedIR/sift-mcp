@@ -369,6 +369,16 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
         except LookupError:
             pass
 
+        # Refused before any backend sees it, whatever its transport: this
+        # route doesn't pass Gateway.call_tool, which checks the others
+        from sift_gateway.unsendable import UnsendableArguments, check_sendable
+
+        try:
+            check_sendable(backend_name, name, arguments)
+        except UnsendableArguments as e:
+            await gateway.audit_refusal(backend_name, name, arguments, e, examiner)
+            return _error(f"Error: {e}")
+
         # Inject examiner identity for analyst tools
         if examiner and name in ANALYST_TOOLS:
             arguments = {**arguments, "analyst_override": examiner}
