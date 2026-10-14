@@ -399,6 +399,45 @@ def test_a_lone_surrogate_argument_is_refused_by_name_within_1s(
     link.untouched(gw)
 
 
+def test_a_refused_token_is_named_with_its_fix_in_health_and_on_every_route(link):
+    """It showed as "unreachable: HTTPStatusError: Client error '401
+    Unauthorized'" with a developer.mozilla.org link on /health, and as
+    "Tool not found" on a call (dev3's C5)."""
+    a = link.remote("A")
+    gw = link.boot(wintools_mcp=backend_entry(a, "tok-wrong", a.cert[0]))
+    named = "wintools-mcp rejected the gateway's token (401 Unauthorized)"
+    fix = "`vhir setup join-code` on this box"
+
+    def refused():
+        wt = gw.health()["backends"].get("wintools-mcp", {})
+        return named in wt.get("error", "") and wt
+
+    wt = until(refused, "health never named the refused token", 20)
+    assert wt["status"] == "error" and fix in wt["error"], wt
+    assert "unreachable" not in wt["error"] and "mozilla" not in wt["error"], wt
+
+    r = gw.post("/api/v1/tools/get_share_info", json={"arguments": {}})
+    assert r.status_code == 404, r.text
+    assert r.json()["error"].startswith(f"get_share_info isn't served: {named}"), r.text
+    assert fix in r.json()["error"], r.text
+    for route in (aggregate, per_backend):
+        c = route(gw).call("get_share_info", timeout=20)
+        assert c["is_error"] is True and named in c["text"], c
+        assert fix in c["text"] and "unknown tool" not in c["text"], c
+    link.untouched(gw)
+
+
+def test_an_unknown_tool_is_still_not_found_when_no_token_was_refused(link):
+    a = link.remote("A")
+    gw = link.boot(wintools_mcp=backend_entry(a, a.token, a.cert[0]))
+    answers(gw, "A")
+    r = gw.post("/api/v1/tools/no_such_tool", json={"arguments": {}})
+    assert (r.status_code, r.json()) == (404, {"error": "Tool not found: no_such_tool"})
+    c = aggregate(gw).call("no_such_tool")
+    assert c["text"] == "Error: unknown tool no_such_tool", c
+    link.untouched(gw)
+
+
 def _gave_up(link) -> bool:
     return bool(link.logs.lines("Could not load wintools-mcp"))
 

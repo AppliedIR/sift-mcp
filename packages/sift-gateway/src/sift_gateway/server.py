@@ -48,7 +48,7 @@ from sift_gateway.audit_helpers import (
 )
 from sift_gateway.backends import MCPBackend, create_backend
 from sift_gateway.backends.base import in_own_task
-from sift_gateway.backends.http_backend import HttpMCPBackend
+from sift_gateway.backends.http_backend import TOKEN_REFUSED, HttpMCPBackend
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import (
     ANALYST_TOOLS,
@@ -637,6 +637,20 @@ class Gateway:
             )
         except Exception as exc:  # noqa: BLE001 - the call's answer stands
             logger.error("Pending %s hashes not recorded: %s", backend_name, exc)
+
+    def unserved_text(self, tool: str) -> str | None:
+        """Why ``tool`` isn't served when a backend's tools are missing
+        because it refused the gateway's token, else None ("not found")."""
+        whys = [
+            getattr(b, "last_error", None)
+            for b in self.backends.values()
+            if not b.started
+        ]
+        whys += [self._load_errors.get(name) for name in self._unloaded]
+        for why in whys:
+            if why and TOKEN_REFUSED in why:
+                return f"{tool} isn't served: {why}"
+        return None
 
     def not_loaded_text(self, name: str) -> str:
         """Why ``name`` isn't served: joined but not loaded, or never joined."""

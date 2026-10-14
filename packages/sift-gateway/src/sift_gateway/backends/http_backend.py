@@ -31,22 +31,30 @@ _CONNECT_TIMEOUT = 5.0
 _PING_TIMEOUT = 3.0
 
 
-def describe(exc: BaseException) -> str:
-    """The real error behind ``exc``: anyio reports a failed connection as
-    a ``CancelledError`` or an exception group, with the TLS or connect
-    error inside it, or in its cause or context."""
+def _chain(exc: BaseException):
+    """``exc``, then each exception inside it (a group's) or behind it (its
+    cause or context), once each."""
     seen: set[int] = set()
     queue: list[BaseException] = [exc]
-    found: list[BaseException] = []
     while queue:
         e = queue.pop(0)
         if id(e) in seen:
             continue
         seen.add(id(e))
-        if not isinstance(e, (asyncio.CancelledError, BaseExceptionGroup)):
-            found.append(e)
+        yield e
         queue.extend(getattr(e, "exceptions", None) or ())
         queue.extend(x for x in (e.__cause__, e.__context__) if x is not None)
+
+
+def describe(exc: BaseException) -> str:
+    """The real error behind ``exc``: anyio reports a failed connection as
+    a ``CancelledError`` or an exception group, with the TLS or connect
+    error inside it, or in its cause or context."""
+    found = [
+        e
+        for e in _chain(exc)
+        if not isinstance(e, (asyncio.CancelledError, BaseExceptionGroup))
+    ]
     named = [
         e
         for e in found
@@ -54,6 +62,29 @@ def describe(exc: BaseException) -> str:
     ]
     best = (named or found or [exc])[0]
     return f"{type(best).__name__}: {best}" if str(best) else type(best).__name__
+
+
+TOKEN_REFUSED = "rejected the gateway's token"
+
+
+def refused_status(exc: BaseException) -> int | None:
+    """401 or 403 when the remote answered the gateway's token with one,
+    anywhere in ``exc``, else None."""
+    for e in _chain(exc):
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if status in (401, 403):
+            return status
+    return None
+
+
+def token_refused_text(name: str, status: int) -> str:
+    """What a refused token means, and its fix, in the backend's words."""
+    reason = "Unauthorized" if status == 401 else "Forbidden"
+    return (
+        f"{name} {TOKEN_REFUSED} ({status} {reason}): the bearer token in "
+        "gateway.yaml isn't one it accepts. To fix, join it again: a code from "
+        f"`vhir setup join-code` on this box, then the join on {name}'s host"
+    )
 
 
 def _make_pinned_tls_factory(cert_path: str, pem: str | None = None):
@@ -200,6 +231,8 @@ class HttpMCPBackend(MCPBackend):
             logger.error(
                 "Backend %s failed to start (http -> %s): %s", self.name, url, exc
             )
+            if TOKEN_REFUSED in str(exc):  # it answered: not "unreachable"
+                raise RuntimeError(str(exc)) from None
             raise RuntimeError(f"{self.name} unreachable at {url}: {exc}") from None
 
     async def _run(
@@ -244,9 +277,9 @@ class HttpMCPBackend(MCPBackend):
                 await stop.wait()
         except BaseException as exc:  # noqa: BLE001 - handed to start() or logged
             if not ready.done():
-                ready.set_exception(_StartFailed(describe(exc)))
+                ready.set_exception(_StartFailed(self._why(exc)))
             elif not isinstance(exc, asyncio.CancelledError) and not stop.is_set():
-                self.last_error = describe(exc)
+                self.last_error = self._why(exc)
                 logger.warning(
                     "Backend %s connection ended: %s", self.name, self.last_error
                 )
@@ -317,6 +350,13 @@ class HttpMCPBackend(MCPBackend):
             ) from None
         self._tool_map_stale = True
 
+    def _why(self, exc: BaseException) -> str:
+        """describe(exc), or by name when the remote refused our token."""
+        status = refused_status(exc)
+        return (
+            describe(exc) if status is None else token_refused_text(self.name, status)
+        )
+
     async def _alive(self) -> str | None:
         """None when the remote answers a ping in time, else why it doesn't."""
         session = self._session
@@ -328,7 +368,7 @@ class HttpMCPBackend(MCPBackend):
         except asyncio.TimeoutError:
             return f"no answer to a ping in {_PING_TIMEOUT:.0f}s"
         except Exception as exc:  # noqa: BLE001 - the reason is the answer
-            return describe(exc)
+            return self._why(exc)
 
     async def heal(self) -> None:
         """Reconnect when the remote doesn't answer a ping: it ended the
@@ -431,7 +471,9 @@ class HttpMCPBackend(MCPBackend):
             }
         if not self._started and self.last_error is None:
             return {"status": "stopped", "type": "http"}
-        return {"status": "error", "type": "http", "error": f"unreachable: {why}"}
+        if TOKEN_REFUSED not in why:
+            why = f"unreachable: {why}"
+        return {"status": "error", "type": "http", "error": why}
 
 
 class _StartFailed(Exception):

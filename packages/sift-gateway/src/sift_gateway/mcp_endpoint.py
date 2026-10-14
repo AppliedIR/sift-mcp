@@ -270,7 +270,9 @@ def create_mcp_server(gateway: Any) -> Server:
             result = await gateway.call_tool(name, arguments, examiner=examiner)
         except KeyError as e:
             logger.warning("MCP call_tool unknown tool: %s", e)
-            return _error(f"Error: unknown tool {name}")
+            return _error(
+                f"Error: {gateway.unserved_text(name) or f'unknown tool {name}'}"
+            )
         except (RuntimeError, ConnectionError, OSError) as e:
             logger.error("MCP call_tool backend error for %s: %s", name, e)
             return _error(f"Error: {name} failed: {e}")

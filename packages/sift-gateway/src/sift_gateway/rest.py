@@ -127,7 +127,10 @@ async def call_tool(request: Request) -> JSONResponse:
 
     if tool_name not in gateway._tool_map:
         return JSONResponse(
-            {"error": f"Tool not found: {tool_name}"},
+            {
+                "error": gateway.unserved_text(tool_name)
+                or f"Tool not found: {tool_name}"
+            },
             status_code=404,
         )
 
