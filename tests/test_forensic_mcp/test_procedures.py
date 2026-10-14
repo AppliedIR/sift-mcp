@@ -153,6 +153,17 @@ async def test_the_server_says_so_when_procedures_aren_t_installed(
     assert json.loads(content[0].text) == {"error": procedures.NOT_INSTALLED}
 
 
+async def test_a_manifest_that_isn_t_utf8_reads_as_not_installed(tmp_path, monkeypatch):
+    root = _tree(tmp_path, "")
+    (root / "MANIFEST").write_bytes(b"one/SKILL.md\n\xff\xfe\n")
+    assert procedures.get(root=root) == {"error": procedures.NOT_INSTALLED}
+    assert procedures.NOT_INSTALLED in _procedure_description(root)  # it starts
+    monkeypatch.setattr(procedures, "SKILLS", root)
+    result = await create_server().call_tool("get_procedure", {})
+    content = result[0] if isinstance(result, tuple) else result
+    assert json.loads(content[0].text) == {"error": procedures.NOT_INSTALLED}
+
+
 @pytest.mark.parametrize(
     "args,want",
     [

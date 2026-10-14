@@ -22,7 +22,7 @@ def _listed(root: Path) -> list[str] | None:
     """The MANIFEST's paths, or None without one."""
     try:
         text = (root / "MANIFEST").read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
     lines = (line.strip() for line in text.splitlines())
     return [line for line in lines if line and not line.startswith("#")]

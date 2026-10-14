@@ -133,7 +133,7 @@ def log_lookup(source: str, lookup: str, args: dict | None = None) -> None:
             if isinstance(v, (str, int, bool))
         }
         line = {
-            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "source": source,
             "lookup": lookup,
             "case": case,

@@ -35,8 +35,7 @@ def test_a_line_has_exactly_the_five_keys_and_no_case_when_none_is_active(home):
     log_lookup("forensic-mcp", "get_playbook", {"name": "ransomware"})
     [line] = _lines(home)
     assert set(line) == KEYS
-    assert line["ts"].endswith("Z")
-    datetime.strptime(line["ts"], "%Y-%m-%dT%H:%M:%S.%fZ")
+    datetime.strptime(line["ts"], "%Y-%m-%dT%H:%M:%SZ")  # as the skill hook writes
     assert line["source"] == "forensic-mcp"
     assert line["lookup"] == "get_playbook"
     assert line["case"] is None

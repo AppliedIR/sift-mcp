@@ -83,11 +83,27 @@ def _allowed(rel: str, line: str) -> bool:
     return any(f == rel and line.startswith(start) for f, start in ALLOWED)
 
 
+# wintools-mcp runs on the Windows host, so its tools are named here
+WINTOOLS = {
+    "batch_scan",
+    "check_windows_tools",
+    "get_share_info",
+    "get_windows_tool_help",
+    "list_kape_targets",
+    "list_missing_windows_tools",
+    "list_windows_tools",
+    "run_windows_command",
+    "scan_tools",
+    "suggest_windows_tools",
+}
+
+
 def _tools() -> dict[str, set[str]]:
     tools = {name: _served(ROOT / path) for name, path in SOURCES.items()}
     other = test_schemas.TestCrossMcpChecks.VALID_TOOLS
     tools["remnux-mcp"] = other["remnux"]
     tools["opensearch-mcp"] = other["opensearch-mcp"]
+    tools["wintools-mcp"] = WINTOOLS
     return tools
 
 

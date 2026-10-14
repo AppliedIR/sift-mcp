@@ -35,7 +35,7 @@ available by calling each MCP's health tool:
 | windows-triage | Yes | — | MCP tool `get_health` |
 | threatintel-mcp | No | `--opencti` flag | MCP tool `get_health` |
 | remnux-mcp | No | User-provided | MCP tool `check_tools` |
-| wintools-mcp | No | User-provided | MCP tool `check_tools` |
+| wintools-mcp | No | User-provided | MCP tool `check_windows_tools` |
 
 If a backend is unavailable, skip its steps in workflows below and
 note the gap. Do not fail the investigation — degrade gracefully.
