@@ -144,3 +144,69 @@ def test_an_audited_lookup_stays_audited_and_writes_no_line(home):
 
     _call(create_server(reference_mode="tools"), "get_investigation_framework", {})
     assert _lines(home) == []
+
+
+def test_an_unwritable_log_leaves_the_tool_s_reply_unchanged(home):
+    from forensic_mcp.server import create_server
+
+    server = create_server(reference_mode="tools")
+    args = {"tool_name": "fls"}
+    written = _call(server, "get_tool_guidance", args)
+    assert len(_lines(home)) == 1
+    (home / ".vhir" / "logs" / "lookups.jsonl").unlink()
+    (home / ".vhir" / "logs").rmdir()
+    (home / ".vhir" / "logs").write_text("a file where the folder goes")
+    assert _call(server, "get_tool_guidance", args) == written
+
+
+@pytest.fixture
+def case(home, monkeypatch):
+    case = home / "cases" / "case-one"
+    for sub in ("audit", "reports", "evidence", "extractions"):
+        (case / sub).mkdir(parents=True)
+    (case / "CASE.yaml").write_text(
+        "case_id: case-one\nname: Case One\nstatus: open\nexaminer: tester\n"
+    )
+    for name, text in [
+        ("findings.json", "[]"),
+        ("timeline.json", "[]"),
+        ("todos.json", "[]"),
+        ("evidence.json", '{"files": []}'),
+        ("actions.jsonl", ""),
+    ]:
+        (case / name).write_text(text)
+    monkeypatch.setenv("VHIR_CASE_DIR", str(case))
+    monkeypatch.setenv("VHIR_EXAMINER", "tester")
+    monkeypatch.delenv("VHIR_AUDIT_DIR", raising=False)
+    return case
+
+
+def test_an_audited_lookup_keeps_its_audit_entry(home, case):
+    from forensic_mcp.server import create_server
+
+    _call(create_server(reference_mode="tools"), "get_investigation_framework", {})
+    audit = (case / "audit" / "forensic-mcp.jsonl").read_text().splitlines()
+    assert [json.loads(ln)["tool"] for ln in audit] == ["get_investigation_framework"]
+    assert _lines(home) == []
+
+
+def test_an_export_and_a_report_hold_nothing_from_the_lookups_log(
+    home, case, monkeypatch
+):
+    import case_mcp.server as cs
+    import report_mcp.server as rs
+
+    monkeypatch.setattr(cs, "_ACTIVE_CASE_FILE", home / "no_active_case")
+    monkeypatch.setattr(rs, "_ACTIVE_CASE_FILE", home / "no_active_case")
+    log_lookup("forensic-mcp", "get_playbook", {"name": "lookup-marker"})
+    assert _lines(home)[0]["case"] == "case-one"
+
+    def tool(server, name):
+        return server._tool_manager._tools[name].fn
+
+    exported = tool(cs.create_server(), "export_bundle")()
+    report = tool(rs.create_server(), "generate_report")(profile="full")
+    assert "error" not in exported and "error" not in report
+    for text in (json.dumps(exported, default=str), json.dumps(report, default=str)):
+        assert "lookup-marker" not in text
+        assert "lookups.jsonl" not in text

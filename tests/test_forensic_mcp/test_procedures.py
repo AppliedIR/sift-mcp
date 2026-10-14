@@ -151,3 +151,27 @@ async def test_the_server_says_so_when_procedures_aren_t_installed(
     result = await create_server().call_tool("get_procedure", {"name": "x"})
     content = result[0] if isinstance(result, tuple) else result
     assert json.loads(content[0].text) == {"error": procedures.NOT_INSTALLED}
+
+
+@pytest.mark.parametrize(
+    "args,want",
+    [
+        ({}, lambda r: [p["name"] for p in r["procedures"]] == _names()),
+        (
+            {"name": "vhir-playbooks", "file": "references/timestomping.md"},
+            lambda r: (
+                r["content"]
+                == (SKILLS / "vhir-playbooks/references/timestomping.md").read_text()
+            ),
+        ),
+        (
+            {"name": "vhir-playbooks", "file": "../../setup-sift.sh"},
+            lambda r: "error" in r and "content" not in r,
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_the_handler_lists_serves_and_refuses(args, want):
+    result = await create_server().call_tool("get_procedure", args)
+    content = result[0] if isinstance(result, tuple) else result
+    assert want(json.loads(content[0].text))
