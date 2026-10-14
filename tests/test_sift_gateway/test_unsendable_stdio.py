@@ -1,5 +1,5 @@
-"""A lone surrogate sent to a stdio backend (CR-f8's p5 probe, here through
-the gateway's own handlers) is refused by name and audited on both routes:
+"""A lone surrogate sent to a stdio backend (here through the gateway's
+own handlers) is refused by name and audited on both routes:
 the aggregate route (Gateway.call_tool) and the per-backend route, which
 doesn't pass Gateway.call_tool. The backend keeps working. Before, the call
 failed with CancelledError and every later call to that backend failed the

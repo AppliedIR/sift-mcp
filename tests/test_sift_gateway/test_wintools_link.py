@@ -402,7 +402,7 @@ def test_a_lone_surrogate_argument_is_refused_by_name_within_1s(
 def test_a_refused_token_is_named_with_its_fix_in_health_and_on_every_route(link):
     """It showed as "unreachable: HTTPStatusError: Client error '401
     Unauthorized'" with a developer.mozilla.org link on /health, and as
-    "Tool not found" on a call (dev3's C5)."""
+    "Tool not found" on a call."""
     a = link.remote("A")
     gw = link.boot(wintools_mcp=backend_entry(a, "tok-wrong", a.cert[0]))
     named = "wintools-mcp rejected the gateway's token (401 Unauthorized)"

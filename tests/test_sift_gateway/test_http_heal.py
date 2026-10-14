@@ -163,7 +163,7 @@ async def _first(*aws):
 
 @pytest.mark.asyncio
 async def test_a_call_s_reconnect_during_a_heal_s_ping_is_the_only_one(monkeypatch):
-    """codex on 001: a call already sending gets "Session terminated" while
+    """A call already sending gets "Session terminated" while
     the checker's heal waits on a ping of the same old session. The heal's
     ping then fails. One reconnect, and the call's retry answers on the
     fresh session, which no second reconnect closes."""

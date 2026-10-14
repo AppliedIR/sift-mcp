@@ -2,7 +2,7 @@
 is refused by name, and audited, where it enters the gateway, before any
 backend sees it. Such text can't be sent as UTF-8. An HTTP backend's call
 waited out the 300 s call timeout. A stdio backend's session broke for every
-later call while its health still read ok (CR-f8's p5 probe), so hostile
+later call while its health still read ok, so hostile
 evidence text copied into record_finding's arguments could leave
 forensic-mcp unusable until a gateway restart.
 
