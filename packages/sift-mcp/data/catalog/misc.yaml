@@ -35,6 +35,7 @@ tools:
 
   - name: hashdeep
     binary: hashdeep
+    help_argv: ["-h"]  # its --help prints only "invalid option"
     recipes:
       - task: Hash every file under a folder
         versions: ">=4.0,<5"

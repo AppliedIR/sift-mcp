@@ -10,11 +10,17 @@ from __future__ import annotations
 
 import re
 import subprocess
+import threading
+import time
 
 from sift_mcp.environment import find_binary
+from sift_mcp.executor import _read_pipe
 
 PROBE_TIMEOUT = 10  # seconds, for each version or help run
 HELP_INLINE = 8192  # bytes of help shown in a reply
+READ_CAP = 1 << 16  # bytes read from a version or help run, both streams together
+# stdout, then this line, then stderr: as the help fixtures are written
+STDERR_LABEL = "# --- stderr ---"
 # A version as tools print it, tried in this order: dotted, optionally after a
 # "v" (v3.9.0, ver 4.11.1, 16.02); a date stamp (libyal's 20140816, plaso's
 # "version 20240308"); a dashed date (xxd 2021-10-22)
@@ -51,62 +57,100 @@ def _interpreter(path: str) -> list[str] | None:
 
 
 SUBCOMMAND = re.compile(r"^[a-z][a-z0-9-]{0,40}$")
-# What a tool says when it refuses the argv rather than giving help: clap's
-# "error: unrecognized subcommand" (Hayabusa 3.9.0 has no dfir-timeline),
-# getopt's "invalid option", Perl's "Unknown option"
-_REFUSAL = re.compile(
-    r"^error\b|unrecognized (subcommand|option|argument)|unexpected argument"
-    r"|invalid option|unknown option",
-    re.IGNORECASE,
-)
 
 
-def _refused(rc: int | None, text: str) -> bool:
-    """The tool answered this argv with an error, not help: it failed and its
-    first line says so."""
-    return rc != 0 and bool(_REFUSAL.search(_first_line(text)))
+def subcommand_error(td, subcommand: str) -> str | None:
+    """Why a subcommand's help can't be asked for, before anything runs."""
+    if not SUBCOMMAND.match(subcommand):
+        return (
+            f"subcommand {subcommand!r} isn't a subcommand name "
+            "(lowercase letters, digits and hyphens, starting with a letter)"
+        )
+    if not td.subcommand_help:
+        return (
+            f"{td.name} has no subcommands in the catalog: ask for its help without one"
+        )
+    return None
 
 
-def launch(binary: str) -> tuple[list[str], str] | None:
-    """(the argv prefix that runs `binary`, the path that runs) or None when
-    it isn't installed. An EZ tool whose .dll is installed runs as `dotnet
-    X.dll`, as run_command runs it: the .dll is what runs."""
+def as_shown(out: str, err: str) -> str:
+    """Both streams, stdout first, stderr under its label."""
+    return f"{out}\n{STDERR_LABEL}\n{err}\n"
+
+
+def launch(tool) -> tuple[list[str], str] | None:
+    """(the argv prefix that runs it, the path that runs) or None when it
+    isn't installed. `tool` is the binary a run names, or a catalog entry:
+    its binary, then the names other versions install under (plaso
+    20260720's log2timeline for 20240308's log2timeline.py). An EZ tool
+    whose .dll is installed runs as `dotnet X.dll`, as run_command runs it:
+    the .dll is what runs."""
     from sift_mcp.tools.generic import _ez_launcher
 
-    resolved = find_binary(binary)
-    if not resolved:
-        return None
-    prefix = _ez_launcher(binary, resolved)
-    path = prefix[-1] if len(prefix) > 1 else resolved
-    return prefix, path
+    names = [tool] if isinstance(tool, str) else tool.binaries
+    for binary in names:
+        resolved = find_binary(binary)
+        if resolved:
+            prefix = _ez_launcher(binary, resolved)
+            return prefix, prefix[-1] if len(prefix) > 1 else resolved
+    return None
 
 
-def _run(argv: list[str]) -> tuple[int | None, str, str]:
+def _run(argv: list[str], cap: int = READ_CAP) -> tuple[int | None, str, str, bool]:
+    """(exit code, stdout, stderr, cut): at most `cap` bytes are read, both
+    streams together, and a child still writing then is stopped, as is one
+    with no answer within PROBE_TIMEOUT."""
     try:
-        r = subprocess.run(
+        proc = subprocess.Popen(
             argv,
-            capture_output=True,
             stdin=subprocess.DEVNULL,
-            timeout=PROBE_TIMEOUT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-    except subprocess.TimeoutExpired:
-        return None, "", f"no answer within {PROBE_TIMEOUT}s"
     except OSError as e:
-        return None, "", str(e)
-    out = r.stdout.decode("utf-8", "replace")
-    err = r.stderr.decode("utf-8", "replace")
-    return r.returncode, out, err
+        return None, "", str(e), False
+    out: list[bytes] = []
+    err: list[bytes] = []
+    total = [0]
+    readers = [
+        threading.Thread(
+            target=_read_pipe, args=(pipe, chunks, cap, total), daemon=True
+        )
+        for pipe, chunks in ((proc.stdout, out), (proc.stderr, err))
+    ]
+    for reader in readers:
+        reader.start()
+    deadline = time.monotonic() + PROBE_TIMEOUT
+    late = False
+    while proc.poll() is None:
+        late = time.monotonic() >= deadline
+        if late or total[0] >= cap:
+            proc.kill()
+            break
+        time.sleep(0.01)
+    proc.wait()
+    for reader in readers:  # a grandchild holding a pipe isn't waited for
+        reader.join(timeout=1)
+    cut = total[0] >= cap
+    if late and not cut:
+        return None, "", f"no answer within {PROBE_TIMEOUT}s", False
+    text = (
+        b"".join(out).decode("utf-8", "replace"),
+        b"".join(err).decode("utf-8", "replace"),
+    )
+    return proc.returncode, *text, cut
 
 
 def _first_line(text: str) -> str:
     return next((ln.strip() for ln in text.splitlines() if ln.strip()), "")[:200]
 
 
-def probe(td) -> dict:
+def probe(td, binary: str = "") -> dict:
     """{installed_version, resolved_path} for a catalog tool, and
     `version_output` (what it printed) when no version could be read. {} when
-    the tool isn't installed. Never raises."""
-    found = launch(td.binary)
+    the tool isn't installed. `binary`: the one a run names, which is what
+    runs. Never raises."""
+    found = launch(binary or td)
     if not found:
         return {}
     prefix, path = found
@@ -122,7 +166,7 @@ def probe(td) -> dict:
             command = interp + argv[1:]
         else:
             command = prefix + argv
-        _, out, err = _run(command)
+        _, out, err, _ = _run(command)
         version = _version(out) or _version(err)
         if version:
             return {"installed_version": version, "resolved_path": path}
@@ -135,45 +179,36 @@ def probe(td) -> dict:
 
 
 def help_text(td, subcommand: str = "") -> dict:
-    """{help, help_cut, help_note} from the installed tool; {help_error} when
-    every way of asking was refused; or {error}. Usage printed on stderr with
-    a non-zero exit is still help (TSK's -h); an error for that argv isn't,
-    and the next way is tried."""
-    if subcommand and not SUBCOMMAND.match(subcommand):
-        return {
-            "error": f"subcommand {subcommand!r} isn't a subcommand name "
-            "(lowercase letters, digits and hyphens, starting with a letter)"
-        }
-    found = launch(td.binary)
+    """{help, help_exit_code, help_cut, help_note} from the installed tool, or
+    {error}. The help is what the tool printed, stdout then stderr under
+    STDERR_LABEL, with its exit code: nothing here judges whether it is help
+    (TSK's usage comes after "invalid option", exit 1; Hayabusa 3.9.0 answers
+    dfir-timeline with "unrecognized subcommand", exit 2). The next way of
+    asking is tried only when the tool printed nothing at all."""
+    if subcommand and (why := subcommand_error(td, subcommand)):
+        return {"error": why}
+    found = launch(td)
     if not found:
         return {"error": f"{td.binary} isn't installed"}
     prefix, _ = found
     if subcommand:
-        shape = td.subcommand_help or ["{subcommand}", "--help"]
-        tries = [[a.replace("{subcommand}", subcommand) for a in shape]]
+        tries = [[a.replace("{subcommand}", subcommand) for a in td.subcommand_help]]
     else:
         tries = [td.help_argv] if td.help_argv else [["--help"], ["-h"]]
-    text = refusal = ""
     for argv in tries:
-        rc, out, err = _run(prefix + argv)
-        said = out if out.strip() else err
-        if _refused(rc, err if err.strip() else out):
-            refusal = refusal or (err if err.strip() else out).strip()
-            continue
-        if said.strip():
-            text = said
+        code, out, err, cut = _run(prefix + argv, max(READ_CAP, HELP_INLINE + 1))
+        if out.strip() or err.strip():
             break
-    if not text and refusal:
-        return {"help_error": refusal[:1000]}
+    text = as_shown(out, err)
     data = text.encode("utf-8")
-    if len(data) <= HELP_INLINE:
-        return {"help": text}
-    cut = data[:HELP_INLINE].decode("utf-8", "ignore")
-    cut = cut[: cut.rfind("\n") + 1] or cut  # at a line's end
+    if len(data) <= HELP_INLINE and not cut:
+        return {"help": text, "help_exit_code": code}
+    shown = data[:HELP_INLINE].decode("utf-8", "ignore")
+    shown = shown[: shown.rfind("\n") + 1] or shown  # at a line's end
     return {
-        "help": cut,
+        "help": shown,
+        "help_exit_code": code,
         "help_cut": True,
-        "help_note": f"The help is {len(data)} bytes; the first {len(cut.encode())} "
-        "are shown. Run the tool's help through run_command (save_output) for "
-        "the rest.",
+        "help_note": f"The first {len(shown.encode())} bytes of the help are shown. "
+        "Run the tool's help through run_command (save_output) for the rest.",
     }

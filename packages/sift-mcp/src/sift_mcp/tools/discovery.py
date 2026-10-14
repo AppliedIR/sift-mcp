@@ -67,6 +67,12 @@ def _wintools_available() -> bool:
         return False
 
 
+def _installed_path(td) -> str | None:
+    """Where the tool is installed: its binary, or a name another version
+    installs it under."""
+    return next((p for b in td.binaries if (p := find_binary(b))), None)
+
+
 def list_available_tools(category: str | None = None) -> list[dict]:
     """List cataloged tools with availability and FK enrichment status.
 
@@ -77,10 +83,10 @@ def list_available_tools(category: str | None = None) -> list[dict]:
     results = []
     for t in tools:
         td = get_tool_def(t["name"])
-        available = find_binary(td.binary) is not None if td else False
-        entry = {**t, "available": available, "enriched": True}
-        if td and available:
-            entry["binary_path"] = find_binary(td.binary)
+        path = _installed_path(td) if td else None
+        entry = {**t, "available": path is not None, "enriched": True}
+        if path:
+            entry["binary_path"] = path
         results.append(entry)
     return results
 
@@ -136,8 +142,8 @@ def get_tool_help(tool_name: str, subcommand: str = "") -> dict:
     td = get_tool_def(tool_name)
     if not td:
         return {"error": f"Tool '{tool_name}' not in catalog"}
-    if subcommand and not tool_version.SUBCOMMAND.match(subcommand):
-        return tool_version.help_text(td, subcommand)  # the refusal, run nothing
+    if subcommand and (why := tool_version.subcommand_error(td, subcommand)):
+        return {"error": why}  # nothing is run
 
     result = {
         "name": td.name,
@@ -155,6 +161,17 @@ def get_tool_help(tool_name: str, subcommand: str = "") -> dict:
         result.update(found)
         result.update(tool_version.help_text(td, subcommand))
         result.update(_recipes(td, found["installed_version"]))
+        # Each other copy installed under another version's name (both
+        # plaso's log2timeline.py and pip's log2timeline): a run of that name
+        # runs it, so its version and recipes are shown too
+        others = []
+        for b in td.binaries:
+            other = tool_version.probe(td, b) if find_binary(b) else {}
+            if other and other["resolved_path"] != found["resolved_path"]:
+                v = other["installed_version"]
+                others.append({"binary": b, **other, **_recipes(td, v)})
+        if others:
+            result["other_installs"] = others
     elif td.recipes:
         result["other_recipes"] = _recipes(td, "")["other_recipes"]
 
@@ -180,7 +197,8 @@ def get_tool_help(tool_name: str, subcommand: str = "") -> dict:
 
 def check_tools(tool_names: list[str] | None = None) -> dict:
     """Check availability of tools on the system, with each installed catalog
-    tool's version and the path that runs."""
+    tool's version and the path that runs, and `outside_tested_ranges` (with
+    the ranges) for a tool whose recipes were all tested on other versions."""
     from concurrent.futures import ThreadPoolExecutor
 
     from sift_mcp import tool_version
@@ -189,7 +207,13 @@ def check_tools(tool_names: list[str] | None = None) -> dict:
         found = tool_version.probe(td)
         if not found:
             return {"available": False, "binary_path": None}
-        return {"available": True, "binary_path": find_binary(td.binary), **found}
+        out = {"available": True, "binary_path": _installed_path(td), **found}
+        # A tool with recipes, none of them for this version: said here, so a
+        # client (vhir setup test) warns without holding any range logic
+        if td.recipes and not _recipes(td, found["installed_version"])["recipes"]:
+            out["outside_tested_ranges"] = True
+            out["tested_ranges"] = sorted({r.get("versions", "?") for r in td.recipes})
+        return out
 
     if tool_names:
         results = {}
@@ -254,7 +278,7 @@ def suggest_tools(artifact_type: str, question: str = "") -> dict:
             entry = {
                 "tool": tool_name,
                 "artifact": art_name,
-                "available": find_binary(td.binary) is not None if td else False,
+                "available": _installed_path(td) is not None if td else False,
                 "description": fk.get("description", "") if fk else "",
                 "what_it_reveals": artifact.get("proves", []),
                 "what_it_does_not_reveal": artifact.get("does_not_prove", []),

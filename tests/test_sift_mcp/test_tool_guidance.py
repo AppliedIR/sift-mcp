@@ -7,7 +7,12 @@
   update shows on the next call.
 - get_tool_help returns the installed tool's own help (capped inline), the
   catalog's recipes for that version, and says which recipes were tested on
-  other versions only.
+  other versions only. Help is judged on what the tool printed, never on its
+  exit code: usage after an error about the way of asking is help (TSK's
+  --help, exit 1); an error naming the subcommand asked for is not.
+- A tool is found under its binary or a name another version installs it
+  under (plaso's log2timeline.py, or log2timeline from pip), and a run's
+  version is asked of the binary the command names.
 - A run reports what it did: the raw exit code, and `stopped` only when the
   server stopped it (a timeout or the output limit). `success` means the run
   completed; a non-zero exit doesn't make it false, and no exit code is
@@ -23,6 +28,7 @@ import asyncio
 import json
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -68,7 +74,7 @@ def tools(tmp_path, monkeypatch):
         "fls",
         f"""case "$1" in
   -V) echo "The Sleuth Kit ver $(cat {ver}/fls)";;
-  --version|-h) printf '%s' '{TSK_HELP}' >&2; exit 1;;
+  --version|--help) printf '%s' '{TSK_HELP}' >&2; exit 1;;
   *) echo "r/r 5-128-1: a.txt"; exit "${{FLS_RC:-0}}";;
 esac""",
     )
@@ -159,6 +165,17 @@ def test_a_large_output_reply_keeps_the_version(case, tools, monkeypatch):
     r = _call("run_command", command=["fls", str(case / "evidence")], purpose="t")
     assert r["output_format"].startswith("parsed")
     assert r["tool_version"] == "4.11.1"
+
+
+def test_check_tools_flags_a_version_outside_every_recipes_range(case, tools):
+    """hayabusa 9.0 has no recipe (3.x and 4.x do); fls 4.11.1 has one; vol3
+    2.26.0 is in its recipes' range."""
+    (tools["versions"] / "hayabusa").write_text("9.0.0")
+    r = _call("check_tools", tool_names=["hayabusa", "fls", "vol3"])
+    assert r["hayabusa"]["outside_tested_ranges"] is True
+    assert r["hayabusa"]["tested_ranges"] == [">=3.0,<4", ">=4.0,<5"]
+    assert "outside_tested_ranges" not in r["fls"]
+    assert "outside_tested_ranges" not in r["vol3"]
 
 
 def test_an_update_shows_on_the_next_call(case, tools):
@@ -347,45 +364,203 @@ def test_the_pinned_hayabusa_installer_is_gone():
     assert importlib.util.find_spec("sift_mcp.installer") is None
 
 
-# --- an error for an argv isn't help (the real tools' text) ----------------------
+# --- help as the real tools reply: both streams and the exit code, unjudged ---
 
-REFUSALS = Path(__file__).resolve().parents[1] / "fixtures" / "tool_refusals"
+REPLIES = Path(__file__).resolve().parents[1] / "fixtures" / "tool_replies"
 
 
-def test_a_subcommand_this_version_lacks_is_an_error_not_help(case, tools):
-    """Hayabusa 3.9.0, asked for dfir-timeline's help (a 4.x subcommand), says
-    so on stderr and exits 2: as captured on SIFT."""
-    said = REFUSALS / "hayabusa-3.9.0-dfir-timeline-help.stderr"
-    _tool(
+def _replaying(bin_: Path, name: str, version: str, answers: dict[str, str]) -> None:
+    """A stand-in `name` answering each argv in `answers` with a captured
+    reply (its stdout, stderr and exit code), and anything else with
+    `version`."""
+    cases = "".join(
+        f"""  "{argv}") cat '{REPLIES}/{stem}.stdout' 2>/dev/null
+    cat '{REPLIES}/{stem}.stderr' >&2 2>/dev/null
+    exit {_exit(stem)};;
+"""
+        for argv, stem in answers.items()
+    )
+    _tool(bin_, name, f'case "$*" in\n{cases}  *) echo "{version}";;\nesac')
+
+
+def _exit(stem: str) -> int:
+    return int((REPLIES / f"{stem}.exit").read_text())
+
+
+def _shown(stem: str) -> str:
+    """The reply as get_tool_help shows it: stdout, then stderr under its label."""
+    out = (REPLIES / f"{stem}.stdout").read_text()
+    err = (REPLIES / f"{stem}.stderr").read_text()
+    return f"{out}\n# --- stderr ---\n{err}\n"
+
+
+@pytest.mark.parametrize(
+    "tool, version, argv, stem",
+    [
+        ("fls", "The Sleuth Kit ver 4.11.1", "--help", "fls-4.11.1-help"),
+        ("fls", "The Sleuth Kit ver 4.15.0", "--help", "fls-4.15.0-help"),
+        ("mactime", "The Sleuth Kit ver 4.11.1", "--help", "mactime-4.11.1-help"),
+        ("bulk_extractor", "bulk_extractor 1.6.1", "-h", "bulk_extractor-1.6.1-h"),
+        ("bulk_extractor", "bulk_extractor 2.2.0", "-h", "bulk_extractor-2.2.0-h"),
+        ("ewfmount", "ewfmount 20140816", "--help", "ewfmount-20140816-help"),
+        ("dc3dd", "dc3dd 7.2.646", "--help", "dc3dd-7.2.646-help"),
+    ],
+)
+def test_help_is_both_streams_as_printed_with_the_exit_code(
+    case, tools, tool, version, argv, stem
+):
+    """As captured: TSK answers --help with "invalid option" or "Unknown
+    option" and its usage on stderr, exit 1; bulk_extractor 2.2.0's -h exits
+    1 where 1.6.1's exits 0; ewfmount puts an error on stderr and its usage
+    on stdout; dc3dd prints one line on stdout and its usage on stderr."""
+    _replaying(tools["bin"], tool, version, {argv: stem})
+    shown = _shown(stem)
+    r = _call("get_tool_help", tool_name=tool)
+    if len(shown.encode()) > 8192:  # bulk_extractor 2.2.0's: cut inline
+        assert r["help_cut"] is True and shown.startswith(r["help"])
+    else:
+        assert r["help"] == shown
+    assert r["help_exit_code"] == _exit(stem)
+
+
+@pytest.mark.parametrize(
+    "tool, version, stem",
+    [
+        ("ssdeep", "ssdeep version 2.14.1", "ssdeep-2.14.1"),
+        ("hashdeep", "hashdeep version 4.4", "hashdeep-4.4"),
+    ],
+)
+def test_a_tool_whose_help_flag_is_only_an_error_is_asked_its_own_way(
+    case, tools, tool, version, stem
+):
+    """ssdeep and hashdeep answer --help with "invalid option -- '-'" and
+    "Try ... -h"; the catalog asks them with -h, which prints their help."""
+    _replaying(
+        tools["bin"],
+        tool,
+        version,
+        {"--help": f"{stem}-help", "-h": f"{stem}-h"},
+    )
+    r = _call("get_tool_help", tool_name=tool)
+    assert r["help"] == _shown(f"{stem}-h")
+    assert "invalid option" not in r["help"] and r["help_exit_code"] == 0
+
+
+@pytest.mark.parametrize(
+    "version, subcommand, stem",
+    [
+        ("3.9.0", "dfir-timeline", "hayabusa-3.9.0-dfir-timeline-help"),
+        ("4.2.0", "json-timeline", "hayabusa-4.2.0-json-timeline-help"),
+        ("4.2.0", "csv-timeline", "hayabusa-4.2.0-csv-timeline-help"),
+    ],
+)
+def test_a_subcommand_this_version_lacks_shows_the_tools_own_error(
+    case, tools, version, subcommand, stem
+):
+    """Hayabusa 3.9.0 has no dfir-timeline; 4.2.0 removed json-timeline and
+    csv-timeline. Asked for their help, each says so on stderr and exits 2,
+    and that is what the AI is shown."""
+    _replaying(
         tools["bin"],
         "hayabusa",
-        f"""case "$1 $2" in
-  "help "*) echo "Hayabusa v3.9.0 - Showa Day Release";;
-  *) cat '{said}' >&2; exit 2;;
-esac""",
+        f"Hayabusa v{version} - Release",
+        {f"{subcommand} --help": stem},
     )
-    r = _call("get_tool_help", tool_name="hayabusa", subcommand="dfir-timeline")
-    assert "help" not in r
-    assert "unrecognized subcommand 'dfir-timeline'" in r["help_error"]
-    assert r["installed_version"] == "3.9.0"
+    r = _call("get_tool_help", tool_name="hayabusa", subcommand=subcommand)
+    assert r["help"] == _shown(stem) and r["help_exit_code"] == 2
+    stderr = r["help"].split("# --- stderr ---\n", 1)[1]
+    assert f"unrecognized subcommand '{subcommand}'" in stderr
+    assert r["installed_version"] == version
 
 
-def test_a_refused_way_of_asking_falls_through_to_the_next(case, tools):
-    """ewfmount 20140816 answers --help with "invalid option" (exit 1) and -h
-    with its usage, as captured on SIFT: the help is the -h answer."""
-    f = REFUSALS
+def test_a_subcommand_for_a_tool_without_subcommands_is_refused_unrun(case, tools):
+    """Only a tool the catalog gives a subcommand_help takes a subcommand;
+    fls would otherwise print its own help as the help of "nosuch"."""
+    ran = tools["bin"].parent / "ran"
+    _tool(tools["bin"], "fls", f'echo "$*" >> {ran}; echo "The Sleuth Kit ver 4.11.1"')
+    r = _call("get_tool_help", tool_name="fls", subcommand="nosuch")
+    assert "help" not in r and "has no subcommands" in r["error"]
+    assert not ran.exists()
+
+
+def test_a_huge_help_is_read_only_up_to_a_cap(case, tools):
+    """A help run that prints 10 MB and keeps running: a capped read, the
+    child stopped, the reply cut, all well inside the run's time limit."""
+    import time
+
     _tool(
         tools["bin"],
-        "ewfmount",
+        "fls",
         f"""case "$1" in
-  -V) echo "ewfmount 20140816";;
-  --help) cat '{f}/ewfmount-20140816-help.stdout'; cat '{f}/ewfmount-20140816-help.stderr' >&2; exit 1;;
-  -h) cat '{f}/ewfmount-20140816-h.stdout';;
+  -V) echo "The Sleuth Kit ver 4.11.1";;
+  *) exec {sys.executable} -c "import sys, time
+sys.stdout.write('  -x: an option line' * 500000)
+sys.stdout.flush()
+time.sleep(30)";;
 esac""",
     )
-    r = _call("get_tool_help", tool_name="ewfmount")
-    assert r["help"] == (f / "ewfmount-20140816-h.stdout").read_text()
-    assert "invalid option" not in r["help"]
+    start = time.monotonic()
+    r = _call("get_tool_help", tool_name="fls")
+    assert time.monotonic() - start < 5
+    assert r["help_cut"] is True and len(r["help"].encode()) <= 8192
+
+
+# --- a tool found under another version's name, and a run's own binary -------
+
+
+def test_a_tool_installed_under_another_versions_name_is_found(
+    case, tools, monkeypatch
+):
+    """pip installs plaso 20260720 as log2timeline, without .py."""
+    import shutil
+
+    import sift_mcp.tool_version as tv
+    import sift_mcp.tools.discovery as discovery
+
+    def only_stand_ins(name, extra_paths=None):
+        return shutil.which(name, path=str(tools["bin"]))
+
+    monkeypatch.setattr(tv, "find_binary", only_stand_ins)
+    monkeypatch.setattr(discovery, "find_binary", only_stand_ins)
+    _tool(tools["bin"], "log2timeline", 'echo "plaso - log2timeline version 20260720"')
+    r = _call("get_tool_help", tool_name="log2timeline")
+    assert r["installed_version"] == "20260720"
+    assert r["resolved_path"] == str(tools["bin"] / "log2timeline")
+    assert [x["argv"][0] for x in r["recipes"]] == ["log2timeline"]
+    c = _call("check_tools", tool_names=["log2timeline"])["log2timeline"]
+    assert c["binary_path"] == str(tools["bin"] / "log2timeline")
+    listed = _call("list_available_tools", category="timeline")
+    listed = listed.get("tools", listed) if isinstance(listed, dict) else listed
+    (entry,) = [t for t in listed if t["name"] == "log2timeline"]
+    assert entry["available"] is True
+
+
+def test_a_runs_version_is_asked_of_the_binary_it_names(case, tools):
+    """Both plaso installs on PATH: the run names log2timeline, so its
+    version is that one's, not log2timeline.py's; the help shows both."""
+    _tool(
+        tools["bin"], "log2timeline.py", 'echo "plaso - log2timeline version 20240308"'
+    )
+    _tool(
+        tools["bin"],
+        "log2timeline",
+        'case "$1" in --version) echo "plaso - log2timeline version 20260720";; '
+        "*) echo ok;; esac",
+    )
+    r = _call(
+        "run_command", command=["log2timeline", "--status_view", "none"], purpose="t"
+    )
+    assert r["tool_version"] == "20260720"
+    assert r["resolved_path"] == str(tools["bin"] / "log2timeline")
+    h = _call("get_tool_help", tool_name="log2timeline")
+    assert (h["installed_version"], h["recipes"][0]["argv"][0]) == (
+        "20240308",
+        "log2timeline.py",
+    )
+    (other,) = h["other_installs"]
+    assert (other["binary"], other["installed_version"]) == ("log2timeline", "20260720")
+    assert other["resolved_path"] == str(tools["bin"] / "log2timeline")
+    assert [x["argv"][0] for x in other["recipes"]] == ["log2timeline"]
 
 
 def test_a_blank_recipe_range_matches_no_version():
@@ -396,3 +571,22 @@ def test_a_blank_recipe_range_matches_no_version():
     td = SimpleNamespace(recipes=[{"task": "t", "versions": " ", "argv": ["x"]}])
     out = _recipes(td, "1.0")
     assert out["recipes"] == [] and "no recipe for 1.0" in out["recipe_note"]
+
+
+def test_one_command_records_a_versions_help(case, tools, tmp_path):
+    """scripts/capture_tool_help.py: the fixtures the recipe test reads."""
+    import importlib.util
+
+    script = Path(__file__).resolve().parents[2] / "scripts" / "capture_tool_help.py"
+    spec = importlib.util.spec_from_file_location("capture_tool_help", script)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    out = tmp_path / "tool_help"
+    written = mod.capture("hayabusa", ["csv-timeline"], out)
+    assert [(p.relative_to(out).as_posix(), code) for p, code in written] == [
+        ("hayabusa/3.9.0/hayabusa-3.9.0-help.txt", 0),
+        ("hayabusa/3.9.0/hayabusa-3.9.0-csv-timeline-help.txt", 0),
+    ]
+    # both streams, as the fixtures are written
+    assert written[1][0].read_text().endswith("\n# --- stderr ---\n\n")
+    assert "--no-wizard" in written[1][0].read_text()

@@ -134,6 +134,7 @@ def create_server() -> FastMCP:
                 "installed_version",
                 "resolved_path",
                 "version_output",
+                "help_exit_code",
                 "help_cut",
                 "error",
             )  # fmt: skip
@@ -313,11 +314,12 @@ def create_server() -> FastMCP:
         acquired = tool_name if (t := get_tool_def(tool_name)) and t.acquisition else ""
         unmounting = mounts.umount_record(command, op_dir)
 
-        # The catalog tool's version and the path that runs, asked of it now
-        # (never cached: an update shows on the next run)
+        # The catalog tool's version and the path that runs, asked now of the
+        # binary the command names, which is what runs (never cached: an
+        # update shows on the next run)
         from sift_mcp import tool_version
 
-        probed = tool_version.probe(td) if td else {}
+        probed = tool_version.probe(td, binary) if td else {}
         version_keys = {
             "tool_version": probed.get("installed_version"),
             "resolved_path": probed.get("resolved_path"),

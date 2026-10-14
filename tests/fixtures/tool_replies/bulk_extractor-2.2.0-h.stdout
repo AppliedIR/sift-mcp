@@ -1,0 +1,158 @@
+bulk_extractor version 2.2.0: A high-performance flexible digital forensics program.
+Usage:
+  bulk_extractor [OPTION...] image_name
+
+  -A, --offset_add arg          Offset added (in bytes) to feature locations 
+                                (default: 0)
+  -b, --banner_file arg         Path of file whose contents are prepended to 
+                                top of all feature files
+  -C, --context_window arg      Size of context window reported in bytes 
+                                (default: 16)
+  -d, --debug                   enable debug-level diagnostic logging
+  -E, --enable_exclusive arg    disable all scanners except the one specified. 
+                                Same as -x all -E scanner.
+  -e, --enable arg              enable a scanner (can be repeated)
+  -x, --disable arg             disable a scanner (can be repeated)
+  -f, --find arg                search for a pattern (can be repeated)
+  -F, --find_file arg           read patterns to search from a file (can be 
+                                repeated)
+      --find-case-sensitive     make -f and -F patterns case-sensitive
+  -G, --pagesize arg            page size in bytes (default: 16777216)
+  -g, --marginsize arg          margin size in bytes (default: 4194304)
+  -j, --threads arg             number of threads (default: 16)
+  -J, --no_threads              read and process data in the primary thread
+  -M, --max_depth arg           max recursion depth (default: 12)
+      --max_bad_alloc_errors arg
+                                max bad allocation errors (default: 3)
+      --max_minute_wait arg     maximum number of minutes to wait until all 
+                                data are read (default: 60)
+      --log-level arg           diagnostic log level: trace, debug, info, 
+                                warning, error, critical, or off
+      --log-file arg            diagnostic log file (default: 
+                                <outdir>/bulk_extractor.log)
+      --notify_main_thread      Display notifications in the main thread after 
+                                phase1 completes. Useful for running with 
+                                ThreadSanitizer
+      --notify_async            Display notifications asynchronously (default)
+      --dedupe-mode arg         duplicate processing mode: 0=none, 1=ZIP 
+                                recursion, 2=legacy (default) (default: 2)
+  -o, --outdir arg              output directory [REQUIRED]
+  -P, --scanner_dir arg         directories for scanner shared libraries (can 
+                                be repeated). Default directories include 
+                                /usr/local/lib/bulk_extractor, 
+                                /usr/lib/bulk_extractor and any directories 
+                                specified in the BE_PATH environment variable.
+  -p, --path arg                print the value of <path>[:length][/h][/r] with 
+                                optional length, hex output, or raw output.
+  -q, --quit                    no status or performance output
+  -r, --alert_list arg          file to read alert list from
+  -R, --recurse                 treat image file as a directory to recursively 
+                                explore
+  -S, --set arg                 set a name=value option (can be repeated)
+  -s, --sampling arg            random sampling parameter frac[:passes]
+  -V, --version                 Display PACKAGE_VERSION (currently) 2.2.0
+  -w, --stop_list arg           file to read stop list from
+  -Y, --scan arg                specify <start>[-end] of area on disk to scan
+  -z, --page_start arg          specify a starting page number
+  -Z, --zap                     wipe the output directory (recursively) before 
+                                starting
+  -0, --no_notify               disable real-time notification
+  -1, --version1                version 1.0 notification (console-output)
+  -H, --info_scanners           report information about each scanner
+  -h, --help                    print help screen
+
+Global config options: 
+   -S notify_rate=1    seconds between notification updates (notify_rate)
+   -S debug_histogram_malloc_fail_frequency=0    Set >0 to make histogram maker fail with memory allocations (debug_histogram_malloc_fail_frequency)
+   -S hash_alg=sha1    Specifies hash algorithm to be used for all hash calculations (hash_alg)
+   -S report_read_errors=1    Report read errors (report_read_errors)
+
+These scanners enabled; disable with -x:
+   -x accts - disable scanner accts
+     -S ssn_mode=0    0=Normal; 1=No `SSN' required; 2=No dashes required
+     -S min_phone_digits=7    Min. digits required in a phone
+   -x aes - disable scanner aes
+     -S scan_aes_128=1    Scan for 128-bit AES keys; 0=No, 1=Yes
+     -S scan_aes_192=0    Scan for 192-bit AES keys; 0=No, 1=Yes
+     -S scan_aes_256=1    Scan for 256-bit AES keys; 0=No, 1=Yes
+   -x base64 - disable scanner base64
+   -x elf - disable scanner elf
+   -x email - disable scanner email
+   -x evtx - disable scanner evtx
+   -x exif - disable scanner exif
+     -S jpeg_min_carve_size=200    Minimum JPEG size to carve
+     -S jpeg_max_carve_size=16777216    Maximum JPEG size to carve
+     -S exif_debug=0    debug exif decoder
+   -x facebook - disable scanner facebook
+   -x find - disable scanner find
+   -x gps - disable scanner gps
+   -x gzip - disable scanner gzip
+     -S gzip_max_uncompr_size=268435456    maximum size for decompressing GZIP objects
+   -x httplogs - disable scanner httplogs
+   -x json - disable scanner json
+   -x kml_carved - disable scanner kml_carved
+   -x msxml - disable scanner msxml
+   -x net - disable scanner net
+     -S carve_net_memory=0    Carve network  memory structures
+     -S min_carve_packet_bytes=40    Smallest network packet to carve
+   -x ntfsindx - disable scanner ntfsindx
+   -x ntfslogfile - disable scanner ntfslogfile
+   -x ntfsmft - disable scanner ntfsmft
+   -x ntfsusn - disable scanner ntfsusn
+   -x pdf - disable scanner pdf
+     -S pdf_dump_hex=0    Dump the contents of PDF buffers as hex
+     -S pdf_dump_text=0    Dump the contents of PDF buffers showing extracted text
+   -x rar - disable scanner rar
+     -S rar_find_components=1    Search for RAR components
+     -S rar_find_volumes=1    Search for RAR volumes
+   -x rtti - disable scanner rtti
+   -x sqlite - disable scanner sqlite
+   -x utmp - disable scanner utmp
+   -x vcard_carved - disable scanner vcard_carved
+   -x vin - disable scanner vin
+     -S vin_debug=0    Enable VIN scanner debugging
+   -x windirs - disable scanner windirs
+     -S opt_weird_file_size=157286400    Threshold for FAT32 scanner
+     -S opt_weird_file_size2=536870912    Threshold for FAT32 scanner
+     -S opt_weird_cluster_count=67108864    Threshold for FAT32 scanner
+     -S opt_weird_cluster_count2=268435456    Threshold for FAT32 scanner
+     -S opt_max_bits_in_attrib=3    Ignore FAT32 entries with more attributes set than this
+     -S opt_max_weird_count=2    Number of 'weird' counts to ignore a FAT32 entry
+     -S opt_last_year=2031    Ignore FAT32 entries with a later year than this
+   -x winlnk - disable scanner winlnk
+   -x winpe - disable scanner winpe
+   -x winprefetch - disable scanner winprefetch
+   -x zip - disable scanner zip
+     -S zip_min_uncompr_size=6    Minimum size of a ZIP uncompressed object
+     -S zip_max_uncompr_size=268435456    Maximum size of a ZIP uncompressed object
+     -S zip_name_len_max=1024    Maximum name of a ZIP component filename
+     -S max_zip_depth=4    Maximum nested ZIP recursion depth
+These scanners disabled; enable with -e:
+   -e base16 - enable scanner base16
+   -e hiberfile - enable scanner hiberfile
+   -e outlook - enable scanner outlook
+   -e wordlist - enable scanner wordlist
+     -S word_min=6    Minimum word size
+     -S word_max=16    Maximum word size
+     -S max_output_file_size=100000000    Maximum size of the words output file
+     -S strings=0    Scan for strings instead of words
+   -e xor - enable scanner xor
+     -S xor_mask=255    XOR mask value, in decimal
+
+Options for setting carve mode in feature recorders that support carving:
+   -S evtx_carved_carve_mode=n  where n=[0,1,2]
+   -S jpeg_carve_mode=n  where n=[0,1,2]
+   -S kml_carved_carve_mode=n  where n=[0,1,2]
+   -S ntfsindx_carved_carve_mode=n  where n=[0,1,2]
+   -S ntfslogfile_carved_carve_mode=n  where n=[0,1,2]
+   -S ntfsmft_carved_carve_mode=n  where n=[0,1,2]
+   -S ntfsusn_carved_carve_mode=n  where n=[0,1,2]
+   -S rar_carve_mode=n  where n=[0,1,2]
+   -S rtti_carve_mode=n  where n=[0,1,2]
+   -S sqlite_carved_carve_mode=n  where n=[0,1,2]
+   -S unrar_carved_carve_mode=n  where n=[0,1,2]
+   -S utmp_carved_carve_mode=n  where n=[0,1,2]
+   -S vcard_carve_mode=n  where n=[0,1,2]
+   -S winpe_carved_carve_mode=n  where n=[0,1,2]
+   -S zip_carved_carve_mode=n  where n=[0,1,2]
+Carve mode 0: do not carve; mode 1: carve encoded data; mode 2: carve everything.

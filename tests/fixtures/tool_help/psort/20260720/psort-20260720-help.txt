@@ -1,0 +1,134 @@
+usage: psort [-h] [--troubles] [-V] [--analysis PLUGIN_LIST] [--process_memory_limit SIZE]
+             [--temporary_directory DIRECTORY] [--worker_memory_limit SIZE] [--worker_timeout MINUTES]
+             [--logfile FILENAME] [-d] [-q] [-u] [--use_markdown] [--status_view TYPE] [--status_view_file PATH]
+             [--status_view_interval SECONDS] [--slice DATE_TIME] [--slice_size SLICE_SIZE] [--slicer] [--data PATH]
+             [-a] [--language LANGUAGE_TAG] [--additional_fields ADDITIONAL_FIELDS] [--custom_fields CUSTOM_FIELDS]
+             [--custom_formatter_definitions PATH] [--dynamic_time] [--output_fallback_hostname]
+             [--output_fallback_path] [--output_time_zone TIME_ZONE] [-o FORMAT] [-w OUTPUT_FILE] [--fields FIELDS]
+             [--profilers PROFILERS_LIST] [--profiling_directory DIRECTORY] [--profiling_sample_rate SAMPLE_RATE]
+             [PATH] [FILTER]
+
+Application to read, filter and process output from a Plaso storage file.
+
+positional arguments:
+  PATH                  Path to a storage file.
+
+options:
+  -h, --help            Show this help message and exit.
+  --troubles            Show troubleshooting information.
+  -V, --version         Show the version information.
+
+Analysis Arguments:
+  --analysis PLUGIN_LIST
+                        A comma separated list of analysis plugin names to be loaded or "--analysis list" to see a
+                        list of available plugins.
+
+Processing:
+  --process_memory_limit SIZE, --process-memory-limit SIZE
+                        Maximum amount of memory (data segment) a process is allowed to allocate in bytes, where 0
+                        represents no limit. The default limit is 4294967296 (4 GiB). This applies to both the main
+                        (foreman) process and the worker processes. This limit is enforced by the operating system and
+                        will supersede the worker memory limit (--worker_memory_limit).
+  --temporary_directory DIRECTORY, --temporary-directory DIRECTORY
+                        Path to the directory that should be used to store temporary files created during processing.
+  --worker_memory_limit SIZE, --worker-memory-limit SIZE
+                        Maximum amount of memory (data segment and shared memory) a worker process is allowed to
+                        consume in bytes, where 0 represents no limit. The default limit is 2147483648 (2 GiB). If a
+                        worker process exceeds this limit it is killed by the main (foreman) process.
+  --worker_timeout MINUTES, --worker-timeout MINUTES
+                        Number of minutes before a worker process that is not providing status updates is considered
+                        inactive. The default timeout is 15.0 minutes. If a worker process exceeds this timeout it is
+                        killed by the main (foreman) process.
+
+Informational Arguments:
+  --logfile FILENAME, --log_file FILENAME, --log-file FILENAME
+                        Path of the file in which to store log messages, by default this file will be named: "psort-
+                        YYYYMMDDThhmmss.log.gz". Note that the file will be gzip compressed if the extension is ".gz".
+  -d, --debug           Enable debug output.
+  -q, --quiet           Disable informational output.
+  -u, --unattended      Enable unattended mode and do not ask the user for additional input when needed, but terminate
+                        with an error instead.
+  --use_markdown, --use-markdown
+                        Output lists in Markdown format use in combination with "--output-format list"
+  --status_view TYPE, --status-view TYPE
+                        The processing status view mode: "file", "linear", "none" or "window".
+  --status_view_file PATH, --status-view-file PATH
+                        The name of the status view file.
+  --status_view_interval SECONDS, --status-view-interval SECONDS
+                        Number of seconds to update the status view.
+
+Filter Arguments:
+  --slice DATE_TIME     Date and time to create a time slice around. This parameter, if defined, will display all
+                        events that happened X minutes before and after the defined date, where X is controlled by the
+                        --slice_size option, which is 5 minutes by default. The date and time must be specified in ISO
+                        8601 format including time zone offset, for example: 20200619T20:09:23+02:00.
+  --slice_size SLICE_SIZE, --slice-size SLICE_SIZE
+                        Defines the slice size. In the case of a regular time slice it defines the number of minutes
+                        the slice size should be. In the case of the --slicer it determines the number of events
+                        before and after a filter match has been made that will be included in the result set. The
+                        default value is 5. See --slice or --slicer for more details about this option.
+  --slicer              Create a time slice around every filter match. This parameter, if defined will save all X
+                        events before and after a filter match has been made. X is defined by the --slice_size
+                        parameter.
+  FILTER                A filter that can be used to filter the dataset before it is written into storage. More
+                        information about the filters and how to use them can be found here:
+                        https://plaso.readthedocs.io/en/latest/sources/user/Event-filters.html
+
+Input Arguments:
+  --data PATH           Path to a directory containing the data files.
+
+Output Arguments:
+  -a, --include_all, --include-all
+                        By default the psort removes duplicate entries from the output. This parameter changes that
+                        behavior so all events are included.
+  --language LANGUAGE_TAG
+                        The preferred language, which is used for extracting and formatting Windows EventLog message
+                        strings. Use "--language list" to see a list of supported language tags. The en-US (LCID
+                        0x0409) language is used as fallback if preprocessing could not determine the system language
+                        or no language information is available in the winevt-rc.db database.
+  --additional_fields ADDITIONAL_FIELDS, --additional-fields ADDITIONAL_FIELDS
+                        Defines additional fields to be included in the output besides the default fields. Multiple
+                        additional field names can be defined as a list of comma separated values. Output formats that
+                        support additional fields are: dynamic, opensearch and xlsx.
+  --custom_fields CUSTOM_FIELDS, --custom-fields CUSTOM_FIELDS
+                        Defines custom fields to be included in the output besides the default fields. A custom field
+                        is defined as "name:value". Multiple custom field names can be defined as list of comma
+                        separated values. Note that regular fields will are favoured above custom fields with same
+                        name. Output formats that support this are: dynamic, opensearch and xlsx.
+  --custom_formatter_definitions PATH, --custom-formatter-definitions PATH
+                        Path to a file containing custom event formatter definitions, which is a .yaml file. Custom
+                        event formatter definitions can be used to customize event messages and override the built-in
+                        event formatter definitions.
+  --dynamic_time, --dynamic-time
+                        Indicate that the output should use dynamic time. Output formats that support dynamic time
+                        are: dynamic
+  --output_fallback_hostname, --output-fallback-hostname
+                        Indicate that the output should use the hostname value derived by pre-processing as fallback
+                        for the hostname output field
+  --output_fallback_path, --output-fallback-path
+                        Indicate that the output should use the event data stream path specification value as fallback
+                        for the filename and inode output fields
+  --output_time_zone TIME_ZONE, --output-time-zone TIME_ZONE
+                        time zone of date and time values written to the output, if supported by the output format.
+                        Use "list" to see a list of available time zones. Output formats that support an output time
+                        zone are: dynamic and l2t_csv.
+
+Output Format Arguments:
+  -o FORMAT, --output_format FORMAT, --output-format FORMAT
+                        The output format. Use "-o list" to see a list of available output formats.
+  -w OUTPUT_FILE, --write OUTPUT_FILE
+                        Output filename.
+  --fields FIELDS       Defines which fields should be included in the output.
+
+profiling arguments:
+  --profilers PROFILERS_LIST
+                        List of profilers to use by the tool. This is a comma separated list where each entry is the
+                        name of a profiler. Use "--profilers list" to list the available profilers.
+  --profiling_directory DIRECTORY, --profiling-directory DIRECTORY
+                        Path to the directory that should be used to store the profiling sample files. By default the
+                        sample files are stored in the current working directory.
+  --profiling_sample_rate SAMPLE_RATE, --profiling-sample-rate SAMPLE_RATE
+                        Profiling sample rate (defaults to a sample every 1000 files).
+
+# --- stderr ---
+

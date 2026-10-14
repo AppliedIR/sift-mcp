@@ -7,11 +7,11 @@ tools:
     recipes:
       - task: Show the memory image's operating system details
         versions: ">=2.0,<3"
-        checked_on: "2.28.0"
+        checked_on: "2.28.0, 2.28.2"
         argv: [vol, -f, <memory image>, windows.info]
       - task: The same, rendered as JSON
         versions: ">=2.0,<3"
-        checked_on: "2.28.0"
+        checked_on: "2.28.0, 2.28.2"
         argv: [vol, -r, json, -f, <memory image>, windows.info]
     # its package's version, from vol's own interpreter (vol prints none)
     version_argv: ["{interpreter}", "-c", "from volatility3.framework import constants; print(constants.PACKAGE_VERSION)"]

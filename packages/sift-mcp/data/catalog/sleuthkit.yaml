@@ -6,9 +6,8 @@ tools:
     recipes:
       - task: List files and folders recursively, with full paths
         versions: ">=4.0,<5"
-        checked_on: "4.11.1"
+        checked_on: "4.11.1, 4.15.0"
         argv: [fls, -r, -p, <image>]
-    help_argv: ["-h"]
     input_style: positional
     output_format: text
     timeout_seconds: 600
@@ -21,10 +20,9 @@ tools:
     recipes:
       - task: Extract one file by its inode
         versions: ">=4.0,<5"
-        checked_on: "4.11.1"
+        checked_on: "4.11.1, 4.15.0"
         argv: [icat, <image>, <inode>]
         notes: 'Pass save_output: true to keep it.'
-    help_argv: ["-h"]
     input_style: positional
     output_format: text
     timeout_seconds: 600
@@ -37,9 +35,8 @@ tools:
     recipes:
       - task: Show the partition table
         versions: ">=4.0,<5"
-        checked_on: "4.11.1"
+        checked_on: "4.11.1, 4.15.0"
         argv: [mmls, <image>]
-    help_argv: ["-h"]
     input_style: positional
     output_format: text
     timeout_seconds: 300
@@ -52,10 +49,9 @@ tools:
     recipes:
       - task: Extract a file system's unallocated blocks
         versions: ">=4.0,<5"
-        checked_on: "4.11.1"
+        checked_on: "4.11.1, 4.15.0"
         argv: [blkls, <image>]
         notes: 'Pass save_output: true to keep them.'
-    help_argv: ["-h"]
     input_style: positional
     output_format: text
     timeout_seconds: 3600
