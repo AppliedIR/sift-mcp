@@ -1,0 +1,8 @@
+The Sleuth Kit mactime Timeline
+Input Source: STDIN
+
+
+
+# --- stderr ---
+Use of uninitialized value $ENV{"TZ"} in string eq at /usr/bin/mactime line 504.
+

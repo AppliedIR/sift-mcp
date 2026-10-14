@@ -1,0 +1,44 @@
+Description:
+  JLECmd version 2026.5.0
+  
+  Author: Eric Zimmerman (saericzimmerman@gmail.com)
+  https://github.com/EricZimmerman/JLECmd
+  
+  Examples: JLECmd.exe -f "C:\Temp\f01b4d95cf55d32a.customDestinations-ms" --mp
+  	  JLECmd.exe -f "C:\Temp\f01b4d95cf55d32a.automaticDestinations-ms" --json "D:\jsonOutput" --pretty
+  	  JLECmd.exe -d "C:\CustomDestinations" --csv "c:\temp" --html "c:\temp" -q
+  	  JLECmd.exe -d "C:\Users\e\AppData\Roaming\Microsoft\Windows\Recent" --dt "ddd yyyy MM dd HH:mm:ss.fff" 
+  	
+  	  Short options (single letter) are prefixed with a single dash. Long commands are prefixed with two dashes
+  
+
+Usage:
+  JLECmd [options]
+
+Options:
+  -f <f>             File to process. Either this or -d is required
+  -d <d>             Directory to recursively process. Either this or -f is required
+  --all              Process all files in directory vs. only files matching *.automaticDestinations-ms or *.customDestinations-ms
+  --csv <csv>        Directory to save CSV formatted results to. Be sure to include the full path in double quotes
+  --csvf <csvf>      File name to save CSV formatted results to. When present, overrides default name
+  --json <json>      Directory to save JSON formatted results to. Be sure to include the full path in double quotes. Use --pretty for a more human readable layout
+  --jsonf <jsonf>    File name to save JSON formatted results to. When present, overrides default name
+  --html <html>      Directory to save xhtml formatted results to. Be sure to include the full path in double quotes
+  --pretty           When exporting to json, use a more human readable layout
+  -q                 Do not dump full details about each file processed. Speeds up processing when using --json or --csv
+  --ld               Include more information about lnk files
+  --fd               Include full information about lnk files (Alternatively, dump lnk files using --dumpTo and process with LECmd)
+  --appIds <appIds>  Path to file containing AppIDs and descriptions (appid|description format). New appIds are added to the built-in list, existing appIds will have their descriptions updated
+  --dumpTo <dumpTo>  Directory to save exported lnk files
+  --dt <dt>          The custom date/time format to use when displaying time stamps. See https://goo.gl/CNVq0k for options [default: yyyy-MM-dd HH:mm:ss]
+  --mp               When true, display higher precision for timestamps
+  --withDir          When true, show contents of Directory not accounted for in DestList entries
+  --cp <cp>          Code page to parse strings [default: 1252]
+  --debug            Show debug information during processing
+  --trace            Show trace information during processing
+  -?, -h, --help     Show help and usage information
+  --version          Show version information
+
+
+# --- stderr ---
+

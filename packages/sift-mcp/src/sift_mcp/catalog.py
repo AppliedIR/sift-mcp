@@ -55,7 +55,16 @@ class ToolDefinition:
     timeout_seconds: int = 600
     interactive: bool = False
     description: str = ""
-    common_flags: list[dict] = field(default_factory=list)
+    # Tested command lines: {task, versions (a range, e.g. ">=3.0,<4"), argv,
+    # notes, checked_on}. get_tool_help gives those for the installed version
+    recipes: list[dict] = field(default_factory=list)
+    # How to ask the tool its version, tried before --version and -V ([]: run
+    # it bare; "{interpreter}" first: its script's interpreter), and its
+    # help (default: --help, then -h); `subcommand_help` is a subcommand's,
+    # with {subcommand} in it
+    version_argv: list[str] | None = None
+    help_argv: list[str] = field(default_factory=list)
+    subcommand_help: list[str] = field(default_factory=list)
     # FK tool name for knowledge lookup (defaults to binary name)
     fk_tool_name: str = ""
     # Its outputs are acquired evidence (a disk or memory image)
@@ -121,7 +130,16 @@ def load_catalog() -> dict[str, ToolDefinition]:
                 timeout_seconds=tool_entry.get("timeout_seconds", 600),
                 interactive=tool_entry.get("interactive", False),
                 description=tool_entry.get("description", ""),
-                common_flags=tool_entry.get("common_flags", []),
+                recipes=[dict(r) for r in tool_entry.get("recipes", None) or []],
+                version_argv=(
+                    None
+                    if tool_entry.get("version_argv") is None
+                    else [str(a) for a in tool_entry["version_argv"]]
+                ),
+                help_argv=[str(a) for a in tool_entry.get("help_argv") or []],
+                subcommand_help=[
+                    str(a) for a in tool_entry.get("subcommand_help") or []
+                ],
                 fk_tool_name=tool_entry.get("fk_tool_name", ""),
                 acquisition=tool_entry.get("acquisition", False) is True,
                 aliases=[str(a) for a in tool_entry.get("aliases", None) or []],

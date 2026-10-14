@@ -48,6 +48,14 @@ JUDGMENT_LINES = (
     " evidence disputes it; stop and reassess.",
 )
 JUDGMENT_GROWTH = 118
+# sift-mcp's paragraph on tool syntax, as approved: before a command line,
+# the tool's help; exit codes judged from the run (added with its "\n\n")
+TOOL_SYNTAX = (
+    "TOOL SYNTAX: Before building a tool's command line, call get_tool_help"
+    " (get_windows_tool_help on Windows) and use a recipe for the installed version,"
+    " or the tool's own help. Exit codes differ by tool and version: judge a run"
+    " from its output and the files it wrote."
+)
 
 # the required skeptic (grading Spec A4), as approved; added after a space
 SKEPTIC_SENTENCE = (
@@ -89,6 +97,7 @@ def test_the_backend_instructions_stay_within_their_budget():
         + len(SKEPTIC_SENTENCE) + 3
     )  # fmt: skip
     budget += JUDGMENT_GROWTH
+    budget += len(TOOL_SYNTAX) + 2
     assert sum(len(v) for v in strings.values()) <= budget
 
 
@@ -102,3 +111,7 @@ def test_forensic_mcp_states_confidence_and_the_ladder_as_approved():
     for line in JUDGMENT_LINES:
         assert line in lines
     assert sum(len(line) for line in JUDGMENT_LINES) == 758
+
+
+def test_sift_mcp_says_how_to_find_a_tools_syntax():
+    assert TOOL_SYNTAX in _strings()["SIFT_MCP"].split("\n\n")

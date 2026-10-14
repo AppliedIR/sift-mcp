@@ -1,0 +1,31 @@
+Description:
+  RBCmd version 2026.5.0
+  
+  Author: Eric Zimmerman (saericzimmerman@gmail.com)
+  https://github.com/EricZimmerman/RBCmd
+  
+  Examples: RBCmd.exe -f "C:\Temp\INFO2"
+  	    RBCmd.exe -f "C:\Temp\$I3VPA17" --csv "D:\csvOutput" 
+  	    RBCmd.exe -d "C:\Temp" --csv "c:\temp" 
+  	 
+  	    Short options (single letter) are prefixed with a single dash. Long commands are prefixed with two dashes
+  
+
+Usage:
+  RBCmd [options]
+
+Options:
+  -d <d>          Directory to recursively process. Either this or -f is required
+  -f <f>          File to recursively process. Either this or -d is required
+  -q              Only show the filename being processed vs all output. Useful to speed up exporting to JSON and/or CSV
+  --csv <csv>     Directory to save CSV formatted results to. Be sure to include the full path in double quotes
+  --csvf <csvf>   File name to save CSV formatted results to. When present, overrides default name
+  --dt <dt>       The custom date/time format to use when displaying time stamps. See https://goo.gl/CNVq0k for options. Default is: yyyy-MM-dd HH:mm:ss [default: yyyy-MM-dd HH:mm:ss]
+  --debug         Show debug information during processing
+  --trace         Show trace information during processing
+  -?, -h, --help  Show help and usage information
+  --version       Show version information
+
+
+# --- stderr ---
+

@@ -1,0 +1,41 @@
+Description:
+
+Usage:
+  RECmd [options]
+
+Options:
+  -f <f>               Hive to search. -f or -d is required
+  -d <d>               Directory to look for hives (recursively). -f or -d is required
+  --kn <kn>            Display details for key name. Includes subkeys and values
+  --vn <vn>            Value name. Only this value will be dumped
+  --bn <bn>            Use settings from supplied file to find keys/values. See included sample file for examples
+  --csv <csv>          Directory to save CSV formatted results to. Be sure to include the full path in double quotes
+  --csvf <csvf>        File name to save CSV formatted results to. When present, overrides default name
+  --saveTo <saveTo>    Saves --vn value data in binary form to file. Expects path to a FILE
+  --json <json>        Directory to save JSON formatted results to. Be sure to include the full path in double quotes
+  --jsonf <jsonf>      File name to save JSON formatted results to. When present, overrides default name
+  --details            Show more details when displaying results
+  --base64 <base64>    Find Base64 encoded values with size >= Base64 (specified in bytes)
+  --minSize <minSize>  Find values with data size >= MinSize (specified in bytes)
+  --sa <sa>            Search for <string> in keys, values, data, and slack
+  --sk <sk>            Search for <string> in value record's key names
+  --sv <sv>            Search for <string> in value record's value names
+  --sd <sd>            Search for <string> in value record's value data
+  --ss <ss>            Search for <string> in value record's value slack
+  --literal            If true, --sd and --ss search value will not be interpreted as ASCII or Unicode byte strings
+  --nd                 If true, do not show data when using --sd or --ss
+  --regex              If present, treat <string> in --sk, --sv, --sd, and --ss as a regular expression
+  --dt <dt>            The custom date/time format to use when displaying time stamps. See https://goo.gl/CNVq0k for options [default: yyyy-MM-dd HH:mm:ss.fffffff]
+  --nl                 When true, allow transaction log files to not exist for dirty hives
+  --recover            If true, recover deleted keys/values. Default is true
+  --vss                Process all Volume Shadow Copies that exist on drive specified by -f or -d
+  --dedupe             Deduplicate -f or -d & VSCs based on SHA-1. First file found wins
+  --sync               If true, the latest batch files from https://github.com/EricZimmerman/RECmd/tree/master/BatchExamples are downloaded and local files updated
+  --debug              Show debug information during processing
+  --trace              Show trace information during processing
+  -?, -h, --help       Show help and usage information
+  --version            Show version information
+
+
+# --- stderr ---
+

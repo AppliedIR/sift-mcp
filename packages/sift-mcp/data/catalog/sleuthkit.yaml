@@ -3,6 +3,12 @@ category: sleuthkit
 tools:
   - name: fls
     binary: fls
+    recipes:
+      - task: List files and folders recursively, with full paths
+        versions: ">=4.0,<5"
+        checked_on: "4.11.1"
+        argv: [fls, -r, -p, <image>]
+    help_argv: ["-h"]
     input_style: positional
     output_format: text
     timeout_seconds: 600
@@ -12,6 +18,13 @@ tools:
 
   - name: icat
     binary: icat
+    recipes:
+      - task: Extract one file by its inode
+        versions: ">=4.0,<5"
+        checked_on: "4.11.1"
+        argv: [icat, <image>, <inode>]
+        notes: 'Pass save_output: true to keep it.'
+    help_argv: ["-h"]
     input_style: positional
     output_format: text
     timeout_seconds: 600
@@ -21,6 +34,12 @@ tools:
 
   - name: mmls
     binary: mmls
+    recipes:
+      - task: Show the partition table
+        versions: ">=4.0,<5"
+        checked_on: "4.11.1"
+        argv: [mmls, <image>]
+    help_argv: ["-h"]
     input_style: positional
     output_format: text
     timeout_seconds: 300
@@ -30,6 +49,13 @@ tools:
 
   - name: blkls
     binary: blkls
+    recipes:
+      - task: Extract a file system's unallocated blocks
+        versions: ">=4.0,<5"
+        checked_on: "4.11.1"
+        argv: [blkls, <image>]
+        notes: 'Pass save_output: true to keep them.'
+    help_argv: ["-h"]
     input_style: positional
     output_format: text
     timeout_seconds: 3600

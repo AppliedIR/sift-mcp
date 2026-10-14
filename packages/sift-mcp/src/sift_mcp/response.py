@@ -109,6 +109,9 @@ def build_response(
     extractions: list | None = None,
     skip_enrichment: bool = False,
     artifact_context: str | None = None,
+    tool_version: str | None = None,
+    resolved_path: str | None = None,
+    stopped: str | None = None,
 ) -> dict:
     """Build enriched response envelope with forensic-knowledge context.
 
@@ -123,6 +126,9 @@ def build_response(
         command: Command that was executed
         error: Error message if failed
         fk_tool_name: FK tool name override (e.g., "AmcacheParser")
+        tool_version, resolved_path: the version of the tool that ran, and its
+            path, as top-level keys in every reply shape
+        stopped: why the server stopped the run ("timeout", "output limit")
     """
     call_num = next(_call_counter)
 
@@ -138,12 +144,18 @@ def build_response(
 
     if error:
         response["error"] = error
+    if stopped:
+        response["stopped"] = stopped
+    if tool_version:
+        response["tool_version"] = tool_version
+    if resolved_path:
+        response["resolved_path"] = resolved_path
     if output_files:
         response["output_files"] = output_files
     if extractions:
         response["extractions"] = extractions
 
-    # Resolve FK tool name (used for enrichment and exit code hints)
+    # Resolve FK tool name (used for enrichment)
     fk_name = fk_tool_name or tool_name
 
     # Load forensic-knowledge context (skip on repeat calls to same tool)
@@ -205,15 +217,9 @@ def build_response(
     if elapsed_seconds is not None:
         metadata["elapsed_seconds"] = round(elapsed_seconds, 2)
     if exit_code is not None:
+        # the raw code: what it means differs by tool and version, so it isn't
+        # translated; the AI judges the run from its output and files
         metadata["exit_code"] = exit_code
-        # Look up exit code meaning from FK
-        try:
-            tool_info = loader.get_tool(fk_name)
-            exit_hints = tool_info.get("exit_code_hints") or {} if tool_info else {}
-            if exit_code in exit_hints:
-                metadata["exit_code_meaning"] = exit_hints[exit_code]
-        except Exception as e:
-            logger.debug("FK exit_code_hints lookup failed for %s: %s", fk_name, e)
     if metadata:
         response["metadata"] = metadata
 

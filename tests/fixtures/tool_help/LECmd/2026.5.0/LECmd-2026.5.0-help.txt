@@ -1,0 +1,43 @@
+Description:
+  LECmd version 2026.5.0
+  
+  Author: Eric Zimmerman (saericzimmerman@gmail.com)
+  https://github.com/EricZimmerman/LECmd
+  
+  Examples: LECmd.exe -f "C:\Temp\foobar.lnk"
+  	    LECmd.exe -f "C:\Temp\somelink.lnk" --json "D:\jsonOutput" --pretty
+  	    LECmd.exe -d "C:\Temp" --csv "c:\temp" --html c:\temp --xml c:\temp\xml -q
+  	    LECmd.exe -f "C:\Temp\some other link.lnk" --nid --neb 
+  	    LECmd.exe -d "C:\Temp" --all
+  	
+  	    Short options (single letter) are prefixed with a single dash. Long commands are prefixed with two dashes
+  
+
+Usage:
+  LECmd [options]
+
+Options:
+  -f <f>          File to process. Either this or -d is required
+  -d <d>          Directory to recursively process. Either this or -f is required
+  -r              Only process lnk files pointing to removable drives
+  --all           Process all files in directory vs. only files matching *.lnk
+  --csv <csv>     Directory to save CSV formatted results to. Be sure to include the full path in double quotes
+  --csvf <csvf>   File name to save CSV formatted results to. When present, overrides default name
+  --json <json>   Directory to save JSON formatted results to. Be sure to include the full path in double quotes. Use --pretty for a more human readable layout
+  --xml <xml>     Directory to save XML formatted results to. Be sure to include the full path in double quotes
+  --html <html>   Directory to save xhtml formatted results to. Be sure to include the full path in double quotes
+  --pretty        When exporting to json, use a more human readable layout
+  -q              Do not dump full details about each file processed. Speeds up processing when using --json or --csv
+  --nid           Suppress Target ID list details from being displayed
+  --neb           Suppress Extra blocks information from being displayed
+  --dt <dt>       The custom date/time format to use when displaying time stamps. See https://goo.gl/CNVq0k for options [default: yyyy-MM-dd HH:mm:ss]
+  --mp            When true, display higher precision for timestamps
+  --cp <cp>       Code page to parse strings [default: 1252]
+  --debug         Show debug information during processing
+  --trace         Show trace information during processing
+  -?, -h, --help  Show help and usage information
+  --version       Show version information
+
+
+# --- stderr ---
+

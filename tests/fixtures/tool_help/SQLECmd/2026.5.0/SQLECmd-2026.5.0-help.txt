@@ -1,0 +1,34 @@
+Description:
+  SQLECmd version 2026.5.0
+  
+  Author: Eric Zimmerman (saericzimmerman@gmail.com)
+  https://github.com/EricZimmerman/SQLECmd
+  
+  Examples: SQLECmd.exe -f "C:\Temp\someFile.db" --csv "c:\temp\out" 
+  	    SQLECmd.exe -d "C:\Temp\" --csv "c:\temp\out"
+  	    SQLECmd.exe -d "C:\Temp\" --hunt --csv "c:\temp\out"
+  	 
+  	    Short options (single letter) are prefixed with a single dash. Long commands are prefixed with two dashes
+
+Usage:
+  SQLECmd [options]
+
+Options:
+  -f <f>               File to process. Either this or -d is required
+  -d <d>               Directory to recursively process. Either this or -f is required
+  --csv <csv>          Directory to save CSV formatted results to. Be sure to include the full path in double quotes
+  --json <json>        Directory to save JSON formatted results to. Be sure to include the full path in double quotes
+  --blobdir <blobdir>  Directory to save blob data to. Be sure to include the full path in double quotes
+  --noblob             If true, disables blob extraction from query results
+  --dedupe             Deduplicate -f or -d files based on SHA-1. First file found wins
+  --hunt               When true, all files are looked at regardless of name and file header is used to identify SQLite files, else filename in map is used to find databases
+  --maps <maps>        The path where SQL maps are located. Defaults to 'Maps' folder where program was executed [default: /opt/zimmermantools/SQLECmd/Maps]
+  --sync               If true, the latest maps from https://github.com/EricZimmerman/SQLECmd/tree/master/SQLMap/Maps are downloaded and local maps updated
+  --debug              Show debug information during processing
+  --trace              Show trace information during processing
+  -?, -h, --help       Show help and usage information
+  --version            Show version information
+
+
+# --- stderr ---
+

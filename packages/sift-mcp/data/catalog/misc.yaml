@@ -3,6 +3,12 @@ category: misc
 tools:
   - name: exiftool
     binary: exiftool
+    recipes:
+      - task: Show a file's metadata
+        versions: ">=13.0,<14"
+        checked_on: "13.58"
+        argv: [exiftool, <file>]
+    version_argv: ["-ver"]
     input_style: positional
     output_format: json
     timeout_seconds: 300
@@ -12,6 +18,13 @@ tools:
 
   - name: regripper
     binary: rip.pl
+    recipes:
+      - task: Run every plugin for the hive's type
+        versions: ">=3.0,<4"
+        checked_on: "3.0"
+        argv: [rip.pl, -r, <hive>, -a]
+    version_argv: ["-h"]  # its banner leads its help
+    help_argv: ["-h"]
     input_style: flag
     input_flag: "-r"
     output_format: text
@@ -22,6 +35,12 @@ tools:
 
   - name: hashdeep
     binary: hashdeep
+    recipes:
+      - task: Hash every file under a folder
+        versions: ">=4.0,<5"
+        checked_on: "4.4"
+        argv: [hashdeep, -r, <folder>]
+        notes: 'Pass save_output: true to keep the list.'
     input_style: positional
     output_format: text
     timeout_seconds: 1200
@@ -31,6 +50,12 @@ tools:
 
   - name: 7z
     binary: 7z
+    recipes:
+      - task: List an archive's contents
+        versions: ">=16.0,<17"
+        checked_on: "16.02"
+        argv: [7z, l, <archive>]
+    version_argv: []  # its banner, when run bare
     aliases: [7-Zip, 7zip]
     input_style: positional
     output_format: text
@@ -41,6 +66,11 @@ tools:
 
   - name: dc3dd
     binary: dc3dd
+    recipes:
+      - task: Image a device, hashing the source and the image
+        versions: ">=7.0,<8"
+        checked_on: "7.2.646"
+        argv: [dc3dd, if=<source device>, hof=<image file>, hash=sha256, log=<log file>]
     input_style: flag
     output_format: text
     timeout_seconds: 7200
@@ -51,6 +81,11 @@ tools:
 
   - name: ewfacquire
     binary: ewfacquire
+    recipes:
+      - task: Image a device to E01
+        versions: ">=20140101,<20150101"
+        checked_on: "20140816"
+        argv: [ewfacquire, -t, <output name>, <source device>]
     input_style: positional
     output_format: text
     timeout_seconds: 7200
@@ -61,6 +96,11 @@ tools:
 
   - name: ewfmount
     binary: ewfmount
+    recipes:
+      - task: Expose an E01 image as a raw image
+        versions: ">=20140101,<20150101"
+        checked_on: "20140816"
+        argv: [ewfmount, <image.E01>, <mount point>]
     input_style: positional
     output_format: text
     timeout_seconds: 300
@@ -70,6 +110,11 @@ tools:
 
   - name: vshadowinfo
     binary: vshadowinfo
+    recipes:
+      - task: List a volume's shadow copies
+        versions: ">=20240101,<20250101"
+        checked_on: "20240229"
+        argv: [vshadowinfo, <volume or image>]
     input_style: positional
     output_format: text
     timeout_seconds: 300
@@ -79,6 +124,11 @@ tools:
 
   - name: vshadowmount
     binary: vshadowmount
+    recipes:
+      - task: Expose each shadow copy as a raw image
+        versions: ">=20240101,<20250101"
+        checked_on: "20240229"
+        argv: [vshadowmount, <volume or image>, <mount point>]
     input_style: positional
     output_format: text
     timeout_seconds: 300

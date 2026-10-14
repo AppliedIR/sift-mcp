@@ -1,0 +1,398 @@
+"""Tool guidance comes from the installed tool.
+
+- Every call to a catalog tool's help, check or run probes the tool that
+  actually runs and reports its version and path (`installed_version` /
+  `tool_version`, `resolved_path`). A probe that fails says "unknown" and
+  what the tool printed; it is never an error. Nothing is cached, so an
+  update shows on the next call.
+- get_tool_help returns the installed tool's own help (capped inline), the
+  catalog's recipes for that version, and says which recipes were tested on
+  other versions only.
+- A run reports what it did: the raw exit code, and `stopped` only when the
+  server stopped it (a timeout or the output limit). `success` means the run
+  completed; a non-zero exit doesn't make it false, and no exit code is
+  translated into a meaning.
+
+The tools are stand-ins on PATH, shaped like the real ones' version and help
+behaviour; the server runs in-process on a scratch case under a scratch HOME.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import stat
+from pathlib import Path
+
+import pytest
+from sift_mcp.server import create_server
+
+TSK_HELP = (
+    "usage: fls [-adDFlhpruvV] [-f fstype] [-i imgtype] [-b dev_sector_size] "
+    "[-m dir/] [-o imgoffset] [-z ZONE] [-s seconds] image [images] [inode]\n"
+    "\t-r: Recurse on directory entries\n\t-p: Display full path for each file\n"
+)
+HAYABUSA_TOP = "Hayabusa v3.9.0 - SecTwo Release\nUsage:\n  hayabusa.exe <COMMAND>\n"
+HAYABUSA_CSV_HELP = (
+    "Usage: csv-timeline <INPUT> [OPTIONS]\n"
+    "  -d, --directory <DIR>  Directory of multiple .evtx files\n"
+    "  -o, --output <FILE>    Save the timeline in CSV format\n"
+    "  -w, --no-wizard        Do not ask questions\n"
+)
+
+
+def _tool(folder: Path, name: str, body: str) -> Path:
+    """A stand-in executable `name` running the shell `body` ($@ its args)."""
+    p = folder / name
+    p.write_text("#!/bin/sh\n" + body + "\n")
+    p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    return p
+
+
+@pytest.fixture
+def tools(tmp_path, monkeypatch):
+    """Stand-ins first on PATH. fls answers -V only (its --version is an
+    error), as TSK does; hayabusa names its version in `help`; vol in
+    --version. Each one's version is read from a file, so a test can update
+    the tool between two calls."""
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    ver = tmp_path / "versions"
+    ver.mkdir()
+    (ver / "fls").write_text("4.11.1")
+    (ver / "hayabusa").write_text("3.9.0")
+    (ver / "vol").write_text("2.26.0")
+    _tool(
+        bin_,
+        "fls",
+        f"""case "$1" in
+  -V) echo "The Sleuth Kit ver $(cat {ver}/fls)";;
+  --version|-h) printf '%s' '{TSK_HELP}' >&2; exit 1;;
+  *) echo "r/r 5-128-1: a.txt"; exit "${{FLS_RC:-0}}";;
+esac""",
+    )
+    _tool(
+        bin_,
+        "hayabusa",
+        f"""case "$1 $2" in
+  "help "*) echo "Hayabusa v$(cat {ver}/hayabusa) - SecTwo Release"; printf '%s' 'Usage:
+  hayabusa.exe <COMMAND>
+';;
+  "csv-timeline --help") printf '%s' '{HAYABUSA_CSV_HELP}';;
+  *) echo "unknown"; exit 2;;
+esac""",
+    )
+    _tool(
+        bin_,
+        "vol",
+        f"""case "$1" in
+  --version) echo "Volatility 3 Framework $(cat {ver}/vol)";;
+  *) echo "ok";;
+esac""",
+    )
+    monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ.get('PATH', '')}")
+    return {"bin": bin_, "versions": ver}
+
+
+@pytest.fixture
+def case(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    (home / ".vhir").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("VHIR_EXAMINER", "examiner1")
+    for var in ("VHIR_CASE_DIR", "VHIR_AUDIT_DIR", "VHIR_ACTIVE_CASE"):
+        monkeypatch.delenv(var, raising=False)
+    d = tmp_path / "cases" / "case-a"
+    (d / "evidence").mkdir(parents=True)
+    (d / "extractions").mkdir()
+    (d / "CASE.yaml").write_text("case_id: case-a\nstatus: open\n")
+    (home / ".vhir" / "active_case").write_text(str(d))
+    return d
+
+
+def _call(tool: str, **args) -> dict:
+    r = asyncio.run(create_server().call_tool(tool, args))
+    r = r[0] if isinstance(r, tuple) else r
+    return json.loads(r[0].text)
+
+
+def _entries(case: Path, tool: str) -> list[dict]:
+    log = case / "audit" / "sift-mcp.jsonl"
+    lines = log.read_text().splitlines() if log.exists() else []
+    return [e for e in (json.loads(x) for x in lines if x.strip()) if e["tool"] == tool]
+
+
+# --- the installed version, from what actually runs ------------------
+
+
+def test_help_names_the_installed_version_and_path(case, tools):
+    r = _call("get_tool_help", tool_name="fls")
+    assert r["installed_version"] == "4.11.1"  # from -V, after --version failed
+    assert r["resolved_path"] == str(tools["bin"] / "fls")
+
+
+def test_a_tools_own_probe_is_used(case, tools):
+    assert _call("get_tool_help", tool_name="hayabusa")["installed_version"] == "3.9.0"
+    assert _call("get_tool_help", tool_name="vol3")["installed_version"] == "2.26.0"
+
+
+def test_check_tools_names_each_version_and_path(case, tools):
+    r = _call("check_tools", tool_names=["fls", "vol3"])
+    assert r["fls"]["installed_version"] == "4.11.1"
+    assert r["fls"]["resolved_path"] == str(tools["bin"] / "fls")
+    assert r["vol3"]["installed_version"] == "2.26.0"
+
+
+def test_a_run_records_the_version_and_path_in_its_reply_and_entry(case, tools):
+    r = _call("run_command", command=["fls", str(case / "evidence")], purpose="t")
+    assert r["tool_version"] == "4.11.1"
+    assert r["resolved_path"] == str(tools["bin"] / "fls")
+    (e,) = _entries(case, "run_command")
+    assert e["result_summary"]["tool_version"] == "4.11.1"
+    assert e["result_summary"]["resolved_path"] == str(tools["bin"] / "fls")
+
+
+def test_a_large_output_reply_keeps_the_version(case, tools, monkeypatch):
+    """The parsed-preview shape replaces the raw result: the keys stay."""
+    monkeypatch.setenv("SIFT_RESPONSE_BUDGET", "10")
+    r = _call("run_command", command=["fls", str(case / "evidence")], purpose="t")
+    assert r["output_format"].startswith("parsed")
+    assert r["tool_version"] == "4.11.1"
+
+
+def test_an_update_shows_on_the_next_call(case, tools):
+    assert _call("get_tool_help", tool_name="fls")["installed_version"] == "4.11.1"
+    (tools["versions"] / "fls").write_text("4.12.0")
+    assert _call("get_tool_help", tool_name="fls")["installed_version"] == "4.12.0"
+
+
+def test_a_probe_that_fails_says_unknown_and_what_it_printed(case, tools):
+    _tool(tools["bin"], "vol", 'echo "vol: cannot import framework" >&2; exit 3')
+    r = _call("get_tool_help", tool_name="vol3")
+    assert r["installed_version"] == "unknown"
+    assert r["version_output"] == "vol: cannot import framework"
+    assert "error" not in r
+
+
+def test_the_version_is_the_first_one_printed_not_a_usage_number(case, tools):
+    """As ewfacquire answers --version: an error, its name and date-stamped
+    version, then a usage text holding other numbers (1.4 GiB)."""
+    _tool(
+        tools["bin"],
+        "ewfacquire",
+        """printf '%s\\n' "ewfacquire: invalid option -- '-'" \\
+  "ewfacquire 20140816" "" "Use ewfacquire to acquire data." \\
+  "	-S: segment file size in bytes (default is 1.4 GiB)" >&2; exit 1""",
+    )
+    assert (
+        _call("get_tool_help", tool_name="ewfacquire")["installed_version"]
+        == "20140816"
+    )
+
+
+def test_a_command_not_in_the_catalog_has_no_version(case, tools):
+    r = _call("run_command", command=["true"], purpose="t")
+    assert "tool_version" not in r
+
+
+def test_probes_write_nothing_to_the_case(case, tools):
+    _call("get_tool_help", tool_name="fls")
+    _call("check_tools", tool_names=["fls"])
+    assert list((case / "extractions").iterdir()) == []
+    assert {e["tool"] for e in _entries(case, "get_tool_help")} == {"get_tool_help"}
+    log = (case / "audit" / "sift-mcp.jsonl").read_text()
+    assert len([x for x in log.splitlines() if x.strip()]) == 1  # help only
+
+
+# --- the tool's own help -----------------------------------------------
+
+
+def test_help_is_the_installed_tools_own(case, tools):
+    r = _call("get_tool_help", tool_name="fls")
+    assert "-r: Recurse on directory entries" in r["help"]  # stderr, rc 1: still help
+    assert "common_flags" not in r
+
+
+def test_long_help_is_cut_and_says_so(case, tools):
+    _tool(
+        tools["bin"],
+        "fls",
+        """case "$1" in
+  -V) echo "The Sleuth Kit ver 4.11.1";;
+  *) i=0; while [ $i -lt 2000 ]; do echo "  -x$i: an option line"; i=$((i+1)); done;;
+esac""",
+    )
+    r = _call("get_tool_help", tool_name="fls")
+    assert len(r["help"].encode()) <= 8192
+    assert r["help_cut"] is True and "help" in r["help_note"]
+
+
+def test_the_audit_keeps_no_help_text(case, tools):
+    _call("get_tool_help", tool_name="fls")
+    (e,) = _entries(case, "get_tool_help")
+    text = json.dumps(e)
+    assert "Recurse on directory entries" not in text
+    assert e["result_summary"]["installed_version"] == "4.11.1"
+
+
+def test_a_subcommands_help(case, tools):
+    r = _call("get_tool_help", tool_name="hayabusa", subcommand="csv-timeline")
+    assert "--no-wizard" in r["help"]
+
+
+@pytest.mark.parametrize("bad", ["--output=/x", "-o", "csv timeline", "../x"])
+def test_a_subcommand_that_isnt_a_name_is_refused(case, tools, bad):
+    r = _call("get_tool_help", tool_name="hayabusa", subcommand=bad)
+    assert "error" in r and "subcommand" in r["error"]
+    assert "help" not in r
+
+
+# --- recipes for the installed version ------------------------------
+
+
+def test_the_catalog_has_recipes_not_switch_lists():
+    from sift_mcp.catalog import load_catalog
+
+    cat = load_catalog()
+    assert not any(getattr(td, "common_flags", None) for td in cat.values())
+    from packaging.specifiers import SpecifierSet
+
+    for td in cat.values():
+        for recipe in td.recipes:
+            assert recipe["task"] and isinstance(recipe["argv"], list)
+            assert recipe["versions"].strip()  # blank is invalid, not "any"
+            SpecifierSet(recipe["versions"])  # a valid range
+
+
+def test_help_gives_the_recipes_for_the_installed_version(case, tools):
+    from packaging.specifiers import SpecifierSet
+
+    r = _call("get_tool_help", tool_name="hayabusa")
+    assert r["recipes"], r
+    assert all("3.9.0" in SpecifierSet(x["versions"]) for x in r["recipes"])
+    others = r.get("other_recipes", [])
+    assert all("tested on" in x["note"] for x in others)
+
+
+def test_a_version_with_no_recipe_says_so(case, tools):
+    (tools["versions"] / "hayabusa").write_text("9.0.0")
+    r = _call("get_tool_help", tool_name="hayabusa")
+    assert r["recipes"] == []
+    assert "no recipe for 9.0.0" in r["recipe_note"] and "tested on" in r["recipe_note"]
+
+
+# --- what a run did, not what its exit code means ----------------
+
+
+def test_a_non_zero_exit_is_a_completed_run_with_no_meaning(case, tools, monkeypatch):
+    monkeypatch.setenv("FLS_RC", "1")
+    r = _call("run_command", command=["fls", str(case / "evidence")], purpose="t")
+    assert r["success"] is True
+    assert r["metadata"]["exit_code"] == 1
+    assert "exit_code_meaning" not in json.dumps(r)
+    assert "stopped" not in r
+
+
+def test_the_output_limit_stop_is_named(case, tools, monkeypatch):
+    monkeypatch.setenv("SIFT_MAX_OUTPUT", "200000")
+    _tool(tools["bin"], "yes_forever", "while :; do echo xxxxxxxxxxxxxxxx; done")
+    r = _call("run_command", command=["yes_forever"], purpose="t")
+    assert r["success"] is False
+    assert r["stopped"] == "output limit"
+    assert "stopped by sift-mcp at its output limit (200000 bytes)" in r["error"]
+    (e,) = _entries(case, "run_command")
+    assert e["result_summary"]["stopped"] == "output limit"
+
+
+def test_a_run_that_ended_on_its_own_with_its_output_cut_completed(
+    case, tools, monkeypatch
+):
+    monkeypatch.setenv("SIFT_MAX_OUTPUT", "200000")
+    _tool(tools["bin"], "burst", "head -c 230000 /dev/zero | tr '\\\\0' x")
+    r = _call("run_command", command=["burst"], purpose="t")
+    assert r["success"] is True and "stopped" not in r
+    assert r["metadata"]["exit_code"] == 0
+
+
+def test_the_timeout_stop_is_named(case, tools):
+    _tool(tools["bin"], "slow", "sleep 30")
+    r = _call("run_command", command=["slow"], purpose="t", timeout=1)
+    assert r["success"] is False and r["stopped"] == "timeout"
+    (e,) = _entries(case, "run_command")
+    assert e["result_summary"]["stopped"] == "timeout"
+
+
+def test_a_mount_record_still_needs_exit_0(case, tools, monkeypatch):
+    """An internal consumer keeps its own check: no mount record for a mount
+    tool that failed, though the run completed."""
+    _tool(tools["bin"], "ewfmount", "exit 1")
+    img = case / "evidence" / "a.E01"
+    img.write_bytes(b"EVF")
+    mnt = case / "mnt"
+    mnt.mkdir()
+    r = _call("run_command", command=["ewfmount", str(img), str(mnt)], purpose="t")
+    assert r["success"] is True
+    (e,) = _entries(case, "run_command")
+    assert "mount" not in e
+
+
+# --- the dead installer goes -----------------------------
+
+
+def test_the_pinned_hayabusa_installer_is_gone():
+    """It downloaded Hayabusa 2.18.0 and nothing called it."""
+    import importlib.util
+
+    assert importlib.util.find_spec("sift_mcp.installer") is None
+
+
+# --- an error for an argv isn't help (the real tools' text) ----------------------
+
+REFUSALS = Path(__file__).resolve().parents[1] / "fixtures" / "tool_refusals"
+
+
+def test_a_subcommand_this_version_lacks_is_an_error_not_help(case, tools):
+    """Hayabusa 3.9.0, asked for dfir-timeline's help (a 4.x subcommand), says
+    so on stderr and exits 2: as captured on SIFT."""
+    said = REFUSALS / "hayabusa-3.9.0-dfir-timeline-help.stderr"
+    _tool(
+        tools["bin"],
+        "hayabusa",
+        f"""case "$1 $2" in
+  "help "*) echo "Hayabusa v3.9.0 - Showa Day Release";;
+  *) cat '{said}' >&2; exit 2;;
+esac""",
+    )
+    r = _call("get_tool_help", tool_name="hayabusa", subcommand="dfir-timeline")
+    assert "help" not in r
+    assert "unrecognized subcommand 'dfir-timeline'" in r["help_error"]
+    assert r["installed_version"] == "3.9.0"
+
+
+def test_a_refused_way_of_asking_falls_through_to_the_next(case, tools):
+    """ewfmount 20140816 answers --help with "invalid option" (exit 1) and -h
+    with its usage, as captured on SIFT: the help is the -h answer."""
+    f = REFUSALS
+    _tool(
+        tools["bin"],
+        "ewfmount",
+        f"""case "$1" in
+  -V) echo "ewfmount 20140816";;
+  --help) cat '{f}/ewfmount-20140816-help.stdout'; cat '{f}/ewfmount-20140816-help.stderr' >&2; exit 1;;
+  -h) cat '{f}/ewfmount-20140816-h.stdout';;
+esac""",
+    )
+    r = _call("get_tool_help", tool_name="ewfmount")
+    assert r["help"] == (f / "ewfmount-20140816-h.stdout").read_text()
+    assert "invalid option" not in r["help"]
+
+
+def test_a_blank_recipe_range_matches_no_version():
+    from types import SimpleNamespace
+
+    from sift_mcp.tools.discovery import _recipes
+
+    td = SimpleNamespace(recipes=[{"task": "t", "versions": " ", "argv": ["x"]}])
+    out = _recipes(td, "1.0")
+    assert out["recipes"] == [] and "no recipe for 1.0" in out["recipe_note"]
