@@ -134,8 +134,8 @@ def test_a_fifo_registry_refuses_registration_and_is_kept(env):
     _fifo(d / "evidence.json")
     reg = d / "evidence.json"
     assert tool("evidence_register", path=str(d / "evidence" / "x.bin")) == {
-        "error": f"{reg} can't be read as JSON ({reg} isn't a regular file (a named pipe, socket or device). Put the case's own file back, then try again.); nothing was "
-        "registered. Fix or restore it, then register again."
+        "error": f"{reg} isn't a regular file (a named pipe, socket or device). Put the "
+        "case's own file back, then try again. Nothing was registered."
     }
     assert _is_fifo(reg)
 
