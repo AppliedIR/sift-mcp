@@ -53,19 +53,6 @@ ALLOWED = {
         "tools/memory/winpmem.yaml",
         "winpmem_mini writes raw images only",
     ): "pending text",
-    **{
-        ("tools/persistence/autorunsc.yaml", start): "pending text"
-        for start in (
-            "Use -a * for comprehensive",
-            "Use -c for CSV output suitable",
-            "Use -h to show file hashes",
-            "Use -s to verify digital signatures — unsigned",
-            "Use -m to hide Microsoft-signed",
-            "Use -c for CSV output and -h",
-            "Use -s to verify digital signatures for trust",
-            "Use -m to hide Microsoft entries only",
-        )
-    },
 }
 # macOS artifacts carry live-response commands, many of them warnings about
 # what not to run against evidence; kept, and swept as a 0.6.5 follow-on

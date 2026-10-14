@@ -39,3 +39,26 @@ def test_an_injection_check_is_run_on_the_memory_image_in_the_case():
         c.startswith("Volatility 3 windows.malfind and windows.hollowprocesses")
         for c in checks
     )
+
+
+AUTORUNSC_ADVICE = [
+    "Scan all auto-start location types, not a subset.",
+    "Ask for CSV output. It is easier to sort, filter and compare than the default text output.",
+    "Include file hashes in the output, so entries can be checked against threat intelligence.",
+    "Include signature checks in the output. An unsigned entry is a lead to examine. It is not "
+    "proof of malicious persistence.",
+    "Hiding Microsoft-signed entries narrows the output to third-party and unsigned items. A "
+    "legitimate binary can be hijacked, so review the hidden entries too.",
+]
+AUTORUNSC_STEPS = [
+    "Ask for CSV output with file hashes, for structured analysis. get_windows_tool_help shows "
+    "these options for the installed version.",
+    "Include signature checks, to see which entries are signed.",
+    "Hide Microsoft-signed entries only for a first triage pass. Then review the full results.",
+]
+
+
+def test_autorunsc_advice_is_in_words_for_offline_runs():
+    tool = loader.get_tool("autorunsc")
+    assert tool["advisories"][:5] == AUTORUNSC_ADVICE
+    assert all(step in tool["investigation_sequence"] for step in AUTORUNSC_STEPS)
