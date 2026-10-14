@@ -11,7 +11,8 @@ The skill runs its skeptic as a separate agent. A client deploys one with:
 
 - **Isolated context:** its own context window (a Claude Code subagent), or a
   separate thread (a Codex custom agent, which inherits the parent's sandbox
-  and permissions).
+  and permissions; Codex's managed hook `codex-skeptic-tools.sh` holds it to
+  the tools below).
 - **Tools:** read and query tools on every backend, plus `run_command` on
   sift-mcp and the Windows tool runner on wintools-mcp. **Not**
   `record_finding`, `record_timeline_event`, or any ingest, case, evidence,

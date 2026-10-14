@@ -21,6 +21,13 @@ If your client gives you no isolated agent, or the challenge can't complete,
 send `challenged` = `{"outcome": "not_challenged", "reason": "<why no skeptic
 ran>"}`. The examiner sees "Not challenged" and the reason at approval.
 
+The skeptic's tools: only read and query tools, where the client's agent file
+lists them or a managed hook refuses the skeptic any other. Where the agent
+holds the same MCP tools as the session that starts it (no more), keeping to
+reads is its instructions. If its tool list
+names no tool the session offers (a setup with one combined endpoint), the
+skeptic has none and can't run: it fails closed.
+
 ## The investigator's part
 
 1. **Draft the finding:** title, observation, interpretation, confidence, the

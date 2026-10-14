@@ -164,8 +164,9 @@ case is created. This is informational, not a failure.
 
 #### Step 10: Config Conflicts
 
-Read `~/.claude.json` (if it exists). Check for `mcpServers` entries
-that duplicate gateway backends. If found, warn about double-loading.
+Don't read `~/.claude.json`: the settings deny it by design. `vhir setup
+client` removes `mcpServers` entries there that duplicate gateway backends
+and lists them ("removed (duplicates)"); if tools load twice, suggest it.
 
 ### Codex
 

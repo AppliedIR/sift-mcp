@@ -8,7 +8,8 @@ named below as left off, so a new tool can't reach the skeptic unreviewed.
 `agents/finding-skeptic/codex.toml` is a Codex custom agent. Codex 0.158
 honours its `[features] shell_tool = false`, but not `mcp_servers` keys in an
 agent file (the agent keeps the parent's MCP tools), and a server entry
-without its transport makes Codex drop the whole file. So it has none.
+without its transport makes Codex drop the whole file. So it has none: the
+managed hook `codex-skeptic-tools.sh` holds the skeptic to claude.md's list.
 
 Both carry the skeptic's part of `skills/finding-skeptic/SKILL.md` as it is.
 """

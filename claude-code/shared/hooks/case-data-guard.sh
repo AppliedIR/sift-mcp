@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 #
-# PreToolUse hook (Bash): refuse commands that would delete or overwrite case
-# records. A best-effort check of the commands listed below, not a security
-# boundary.
+# PreToolUse hook (Bash, and Codex's apply_patch): refuse commands that would
+# delete or overwrite case records. A best-effort check of the commands listed
+# below, not a security boundary. An apply_patch is checked by the paths its
+# headers name (*** Add File, Update File, Delete File, Move to), never read
+# as shell: a patch's lines are text, not commands.
 #
 # Protected, under ${VHIR_CASES_DIR:-~/cases}: the case records at a case root
 # (findings.json, timeline.json, approvals.jsonl, iocs.json, evidence.json,
 # evidence-verified.json, todos.json, CASE.yaml, actions.jsonl,
-# pending-reviews.json), everything in
+# pending-reviews.json, host-observations.jsonl, host-decisions.jsonl,
+# host-ops.json, host-dictionary.yaml), everything in
 # audit/, every existing file in evidence/ (and evidence/ while non-empty),
 # each non-empty case root and the cases root. Everything else is allowed:
 # other files, reports/, work/, .outputs/, extractions/, filing new files into
@@ -20,7 +23,9 @@
 # at a case or the cases root) with -delete or -exec. Seen through: sudo, env,
 # VAR=val, nice, nohup, time, timeout, stdbuf, exec, command, if/then/do/{/!,
 # ; && || | & and newlines, $(...), cd, quoting, .., absolute command paths,
-# mv -t, find -H/-L/-P/-O/-D.
+# mv -t, find -H/-L/-P/-O/-D. apply_patch, applypatch or codex
+# --codex-run-as-apply-patch run through the shell is blocked on any path: Codex applies it natively, and only its apply_patch
+# tool is checked by the paths it names.
 # Not seen: bash -c/sh -c, xargs, scripts, tee, in-place editors (sed -i,
 # perl -i), git clean, rsync --delete,
 # tar --remove-files, dd of=, >& redirections, brace expansion, variables,
@@ -40,15 +45,20 @@
 # audit file (Claude Code records no other trace of it); anything else exits
 # 0. A payload it can't read, or an error of its own, is blocked too (fail
 # closed): a check that can't reach a verdict mustn't look like one that
-# passed.
+# passed. So is a check still running after 5 s: Codex runs a call whose
+# hook times out.
 #
 GUARD=$(
     cat <<'PY'
-import glob, itertools, json, os, shlex, sys
+import glob, itertools, json, os, re, shlex, signal, sys
+
+signal.alarm(5)  # well inside the hook's timeout: Codex runs a call whose hook times out, so past
+# 5 s SIGALRM ends this, and the wrapper below blocks (fails closed) on its rc
 
 RECORDS = {"findings.json", "timeline.json", "approvals.jsonl", "iocs.json", "evidence.json",
            "evidence-verified.json", "todos.json", "CASE.yaml", "actions.jsonl",
-           "pending-reviews.json"}
+           "pending-reviews.json", "host-observations.jsonl", "host-decisions.jsonl",
+           "host-ops.json", "host-dictionary.yaml"}
 # "(" opens a subshell or a find group: stripped like a keyword, so a find
 # expression stays in one segment; ")" is dropped.
 KEYWORDS = {"if", "then", "else", "elif", "do", "while", "until", "{", "}", "!", "fi", "done", "("}
@@ -177,6 +187,8 @@ def check(seg):
         if t in REDIRS and any(damage(x, new_ok=True) for x in expand(seg[i + 1])):
             block(f"redirection onto {seg[i + 1]}")
     seg = [t for i, t in enumerate(seg) if t not in REDIRS and (i == 0 or seg[i - 1] not in REDIRS)]
+    while len(seg) > 1 and seg[0] in ("<", "<<", "<<-", "<<<"):  # an input redirection before the command
+        seg = seg[2:]
     while seg and (seg[0] in WRAP or seg[0] in KEYWORDS or ("=" in seg[0] and not seg[0].startswith("-"))):
         w = seg.pop(0)
         while seg and (seg[0].startswith("-") or "=" in seg[0] or (w == "timeout" and seg[0][:1].isdigit())):
@@ -189,6 +201,10 @@ def check(seg):
     if name == "cd":
         base = os.path.join(base, os.path.expanduser(seg[1] if len(seg) > 1 else "~"))
         return
+    if name in ("apply_patch", "applypatch") or (  # Codex applies it natively, past the apply_patch hook
+        name == "codex" and "--codex-run-as-apply-patch" in seg
+    ):
+        block("apply_patch run through the shell can't be checked; use the apply_patch tool")
     args, dd, tdir, it, no_t = [], False, None, iter(seg[1:]), False
     for a in it:
         if a == "--" and not dd:
@@ -226,6 +242,19 @@ def check(seg):
             if damage(r):
                 block(f"find -delete/-exec under {r}")
 
+
+if payload.get("tool_name") == "apply_patch":  # by its headers' paths, never as shell
+    try:
+        for kind, path in re.findall(
+            r"(?m)^[^\S\n]*\*\*\* (Add File|Update File|Delete File|Move to):[^\S\n]*(.+?)[^\S\n]*$",
+            cmd,  # Codex splits lines at LF only, and trims any other white space around a header and path
+        ):
+            path = path.replace("\t", "").replace("\r", "")  # and drops TAB and CR inside it
+            if damage(path, new_ok=kind in ("Add File", "Move to")):
+                block(f"apply_patch {kind} {path}")
+    except Exception:  # a block exits through SystemExit, which this doesn't catch
+        unreadable()
+    sys.exit(0)
 
 # A backslash-newline joins lines; any other newline separates commands (in
 # quotes it stays part of the word). Spaced, so "&&;" or ";;" can't form.
