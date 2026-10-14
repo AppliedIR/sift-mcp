@@ -5,7 +5,9 @@ in the case's audit), by the paths its headers name. The patch's lines are
 never read as shell, so a context line like ` rm audit/x` refuses nothing."""
 
 import json
+import os
 import subprocess
+import threading
 import time
 
 import pytest
@@ -208,15 +210,15 @@ TAILS = {"nothing": "", "a space": " ", "a tab": "\t", "VT": "\x0b", "FF": "\x0c
          "NBSP": "\u00a0", "U+3000": "\u3000", "CR (a CRLF line)": "\r"}  # fmt: skip
 
 
-def codex_payload(target):
-    """codex review's payload: a context line ` *** Add File:` before a Delete."""
+def context_line_payload(target):
+    """A context line ` *** Add File:` before a Delete."""
     return ("*** Begin Patch\n*** Update File: notes.txt\n@@\n-before\n+after\n *** Add File:\n"
             f"*** Delete File: {target}\n*** End Patch\n")  # fmt: skip
 
 
-def test_codex_reviews_payload_is_refused(box):  # noqa: F811
+def test_a_context_line_like_a_header_before_a_delete_is_refused(box):  # noqa: F811
     root, cases, case, out = box
-    r = patch(box, case, codex_payload(f"{case}/findings.json"))
+    r = patch(box, case, context_line_payload(f"{case}/findings.json"))
     assert r.returncode == 2, r.stderr
     assert "Delete File" in r.stderr
 
@@ -259,12 +261,12 @@ def test_the_header_after_an_empty_one_is_still_checked(box, between, header):  
 
 def test_an_ordinary_delete_after_an_empty_header_passes(box):  # noqa: F811
     root, cases, case, out = box
-    r = patch(box, case, codex_payload(f"{out}/x"))
+    r = patch(box, case, context_line_payload(f"{out}/x"))
     assert r.returncode == 0, r.stderr
 
 
 def test_codex_splits_a_patch_at_lf_only(tmp_path):
-    """Codex's own parser: codex review's payload deletes the file, and no other
+    """Codex's own parser: the context-line payload deletes the file, and no other
     break character starts the Delete's line (skipped without the binary)."""
     import shutil
 
@@ -278,7 +280,7 @@ def test_codex_splits_a_patch_at_lf_only(tmp_path):
         d.mkdir()
         (d / "notes.txt").write_text("before\n*** Add File:\n")
         (d / "r.txt").write_text("x\n")
-        text = codex_payload("r.txt").replace(
+        text = context_line_payload("r.txt").replace(
             " *** Add File:\n", " *** Add File:" + sep
         )
         subprocess.run([codex, "--codex-run-as-apply-patch", text], cwd=d, capture_output=True, text=True,
@@ -351,11 +353,60 @@ def _timed(fn):
     return r, time.monotonic() - t0
 
 
-def test_a_header_too_slow_to_read_is_refused_in_time(box):  # noqa: F811
+def test_a_header_too_slow_to_read_is_refused_in_time_and_recorded_once(box):  # noqa: F811
     root, cases, case, out = box
+    log = case / "audit" / "claude-code.jsonl"
+    before = log.read_text().splitlines() if log.exists() else []
     r, took = _timed(lambda: patch(box, case, WIDE))
     assert r.returncode == 2 and took < 9.5, (r.stderr, took)
-    assert "couldn't run" in r.stderr, r.stderr
+    after = log.read_text().splitlines() if log.exists() else []
+    lines = [json.loads(x) for x in after[len(before) :]]
+    assert [(x["event"], x["reason"]) for x in lines] == [
+        ("refused", "parse timed out: the guard's check ran past 5 s")
+    ], lines
+    assert "couldn't check this command within 5 s" in r.stderr, r.stderr
+
+
+STALLED = [
+    ("block: rm", "Bash", {"command": "rm findings.json"}),
+    ("block: apply_patch Delete", "apply_patch", {"command": body("*** Delete File: findings.json\n")}),
+    ("unreadable", "Bash", {}),
+    ("timed out", "apply_patch", {"command": WIDE}),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "tool,tool_input", [r[1:] for r in STALLED], ids=[r[0] for r in STALLED]
+)
+def test_a_refusal_with_a_stalled_audit_file_is_still_refused_in_time(  # noqa: F811
+    box, tool, tool_input
+):
+    """Every refusal's audit write (a block, an unreadable
+    call, a timed-out check), to a FIFO no one reads, mustn't outlive the
+    hook's timeout, which the client lets pass."""
+    root, cases, case, out = box
+    log = case / "audit" / "claude-code.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    if log.exists():
+        log.unlink()
+    os.mkfifo(log)
+    payload = {"session_id": "s", "cwd": str(case), "hook_event_name": "PreToolUse",
+               "tool_name": tool, "tool_input": tool_input, "tool_use_id": "t"}  # fmt: skip
+    # past the deadline, a reader frees a stuck writer, so a guard without
+    # the fix fails on time here rather than hanging the test
+    release = threading.Timer(
+        12, lambda: os.close(os.open(log, os.O_RDONLY | os.O_NONBLOCK))
+    )
+    release.start()
+    try:
+        r, took = _timed(lambda: subprocess.run(
+            ["bash", str(HOOK)], input=json.dumps(payload), capture_output=True, text=True, cwd=case,
+            env={"HOME": str(root), "PATH": "/usr/bin:/bin", "VHIR_CASES_DIR": str(cases), "VHIR_CASE_DIR": str(case)}, timeout=30,
+        ))  # fmt: skip
+    finally:
+        release.cancel()
+    assert r.returncode == 2 and took < 9.5, (r.stderr, took)
+    assert "BLOCKED" in r.stderr, r.stderr
 
 
 def test_a_megabyte_token_is_answered_in_time(box):  # noqa: F811

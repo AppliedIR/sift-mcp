@@ -52,8 +52,10 @@ GUARD=$(
     cat <<'PY'
 import glob, itertools, json, os, re, shlex, signal, sys
 
+signal.signal(signal.SIGALRM, signal.SIG_DFL)  # an inherited "ignore" would void the alarm
 signal.alarm(5)  # well inside the hook's timeout: Codex runs a call whose hook times out, so past
-# 5 s SIGALRM ends this, and the wrapper below blocks (fails closed) on its rc
+# 5 s timed_out() below blocks, with its audit line (before it's set, the default action ends
+# this and the wrapper blocks)
 
 RECORDS = {"findings.json", "timeline.json", "approvals.jsonl", "iocs.json", "evidence.json",
            "evidence-verified.json", "todos.json", "CASE.yaml", "actions.jsonl",
@@ -102,7 +104,17 @@ def refused(why, payload=None):
         pass
 
 
+def last_words():
+    # a deadline for the audit write too: a stalled destination ends in the
+    # default action (rc 142), which the wrapper blocks on, inside the hook's
+    # timeout, which the client would let pass. The default action, not
+    # timed_out(), so a refusal never writes a second line
+    signal.signal(signal.SIGALRM, signal.SIG_DFL)
+    signal.alarm(2)
+
+
 def block(why):
+    last_words()
     refused(why, globals().get("payload"))
     print(f"BLOCKED: {why}. Case records, audit/ and evidence files are protected; "
           "move other files to the case's DELETE/ directory instead.", file=sys.stderr)
@@ -110,11 +122,23 @@ def block(why):
 
 
 def unreadable():
+    last_words()
     refused("the guard couldn't read the command", globals().get("payload"))
     print("BLOCKED: the case-data guard couldn't read this command, so it was blocked "
           "to be safe. If every command is blocked, the hook's input may have changed; "
           "tell the examiner.", file=sys.stderr)
     sys.exit(2)
+
+
+def timed_out(signum, frame):
+    last_words()
+    refused("parse timed out: the guard's check ran past 5 s", globals().get("payload"))
+    print("BLOCKED: the case-data guard couldn't check this command within 5 s, so it was "
+          "blocked to be safe.", file=sys.stderr, flush=True)
+    os._exit(2)  # not SystemExit, which the code it interrupts could catch
+
+
+signal.signal(signal.SIGALRM, timed_out)
 
 
 try:
