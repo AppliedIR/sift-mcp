@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+_ARG_CHARS = 120  # each string argument in lookups.jsonl
+
 
 class _StructuredFormatter(logging.Formatter):
     """JSON log formatter for structured logging."""
@@ -114,3 +116,38 @@ def setup_logging(
             )
 
     pkg_logger.propagate = False
+
+
+def log_lookup(source: str, lookup: str, args: dict | None = None) -> None:
+    """One line in ~/.vhir/logs/lookups.jsonl for a reference lookup that
+    has no case audit entry: the time, the writer, the tool, the active case's
+    name and the scalar arguments (each string cut). Outside every case, so
+    never exported. Never raises: a failure is an oplog warning."""
+    try:
+        from sift_common import resolve_case_dir
+
+        case = Path(resolve_case_dir()).name or None
+        kept = {
+            k: v[:_ARG_CHARS] if isinstance(v, str) else v
+            for k, v in (args or {}).items()
+            if isinstance(v, (str, int, bool))
+        }
+        line = {
+            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            "source": source,
+            "lookup": lookup,
+            "case": case,
+            "args": kept,
+        }
+        path = Path.home() / ".vhir" / "logs" / "lookups.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            os.write(fd, (json.dumps(line) + "\n").encode("utf-8"))
+        finally:
+            os.close(fd)
+    except Exception as e:
+        # the writer's own oplog (setup_logging's logger for the service)
+        logging.getLogger(source.replace("-", "_")).warning(
+            "lookups log not written: %s: %s", type(e).__name__, e
+        )

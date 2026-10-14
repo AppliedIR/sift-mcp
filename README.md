@@ -439,6 +439,8 @@ Valhuntir is designed so that AI interactions flow through MCP tools, enabling s
 
 Every MCP tool call is logged to a per-backend JSONL file in the case `audit/` directory with a unique evidence ID (`{backend}-{examiner}-{date}-{ulid}`). When Claude Code is the client, a PostToolUse hook additionally records each Bash command run while a case is active to `audit/claude-code.jsonl`.
 
+Reference lookups that have no audit entry (forensic-mcp's discipline and playbook lookups, `get_procedure`, and sift-mcp's `list_available_tools` and `check_tools`) are logged one line each to `~/.vhir/logs/lookups.jsonl`: the time, the server, the tool, the active case's name and the tool's short arguments. It never holds tool output or evidence. It's outside every case, so it's never part of an export, a bundle or a report. A skill loaded by Codex isn't logged there, because Codex has no skill hook.
+
 ### Evidence Artifacts
 
 Findings should include an `artifacts` list showing the actual evidence — source file, tool command, and raw output. The `audit_id` from the tool response ties each artifact to a specific audit trail entry, and the `source` file must be registered in the evidence registry. Findings without artifacts (analytical conclusions, exclusions) can use `supporting_commands` instead.
