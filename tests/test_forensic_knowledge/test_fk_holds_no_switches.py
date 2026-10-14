@@ -18,6 +18,45 @@ from . import test_schemas
 
 DATA = Path(__file__).resolve().parents[2] / "packages" / "forensic-knowledge" / "data"
 FLAG = re.compile(r"(?<![\w\-/\\.:=<>'\"*])(--?[A-Za-z][A-Za-z0-9_\-]*)")
+# a Windows switch ("dir /r"); a path's first part has the same shape, so a
+# filesystem root's name is read as a path
+SLASH = re.compile(r"(?<![\w\-/\\.:=<>'\"*\]])/([A-Za-z?][A-Za-z0-9?:]*)(?![\w/.\-])")
+PATH_ROOTS = frozenset(
+    [
+        "bin",
+        "boot",
+        "dev",
+        "etc",
+        "home",
+        "lib",
+        "lib64",
+        "media",
+        "mnt",
+        "opt",
+        "private",
+        "proc",
+        "root",
+        "run",
+        "sbin",
+        "srv",
+        "sys",
+        "tmp",
+        "usr",
+        "var",
+        "Applications",
+        "Library",
+        "System",
+        "Users",
+        "Volumes",
+    ]
+)
+
+
+def switches(text: str) -> list[str]:
+    """The command-line switches in a text, dash and slash forms."""
+    slash = [f"/{s}" for s in SLASH.findall(text) if s not in PATH_ROOTS]
+    return FLAG.findall(text) + slash
+
 
 # (file, text the scalar starts with): why it keeps a switch
 ALLOWED = {
@@ -42,6 +81,18 @@ ALLOWED = {
         "discipline/playbooks/powershell_anomaly.yaml",
         "If encoded command detected (-enc)",
     ): "evidence",
+    (
+        "artifacts/windows/volume_shadow_copies.yaml",
+        "VSS has limited allocated storage.",
+    ): "evidence",
+    (
+        "discipline/playbooks/credential_access.yaml",
+        "Check for pass-the-hash logon patterns",
+    ): "evidence",
+    (
+        "artifacts/windows/registry_run_keys.yaml",
+        "ValueData:(*powershell* OR",
+    ): "evidence",
     # commands outside the approved before/after: a 0.6.5 follow-on sweep
     ("artifacts/linux/wtmp_utmp.yaml", "wtmp is a BINARY file."): "follow-on",
     (
@@ -52,6 +103,10 @@ ALLOWED = {
     (
         "tools/memory/winpmem.yaml",
         "winpmem_mini writes raw images only",
+    ): "pending text",
+    (
+        "artifacts/windows/alternate_data_streams.yaml",
+        "Standard dir commands and Windows Explorer",
     ): "pending text",
 }
 # macOS artifacts carry live-response commands, many of them warnings about
@@ -103,12 +158,21 @@ def _allowed(rel: str, text: str) -> str | None:
 
 def test_no_knowledge_text_carries_a_command_line_switch():
     found = [
-        f"{p.relative_to(DATA)}:{line} {FLAG.findall(text)} {text[:80]}"
+        f"{p.relative_to(DATA)}:{line} {switches(text)} {text[:80]}"
         for p in _files()
         for line, _kp, text in _scalars(p)
-        if FLAG.search(text) and not _allowed(p.relative_to(DATA).as_posix(), text)
+        if switches(text) and not _allowed(p.relative_to(DATA).as_posix(), text)
     ]
     assert found == []
+
+
+def test_switches_reads_slash_switches_and_not_paths():
+    text = (
+        "Use 'dir /r' or `vssadmin delete shadows /all /quiet` (runas /netonly)."
+        " Copy to /tmp or /Users/x, scan /proc/[pid]/mem, read C:/Windows, and/or"
+        " a 1/2 split; a URL https://x.org/a"
+    )
+    assert switches(text) == ["/r", "/all", "/quiet", "/netonly"]
 
 
 def test_every_allowed_switch_line_still_exists():

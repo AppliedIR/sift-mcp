@@ -96,10 +96,13 @@ def launch(tool) -> tuple[list[str], str] | None:
     return None
 
 
-def _run(argv: list[str], cap: int = READ_CAP) -> tuple[int | None, str, str, bool]:
-    """(exit code, stdout, stderr, cut): at most `cap` bytes are read, both
-    streams together, and a child still writing then is stopped, as is one
-    with no answer within PROBE_TIMEOUT."""
+def _run(
+    argv: list[str], cap: int = READ_CAP
+) -> tuple[int | None, str, str, bool, bool]:
+    """(exit code, stdout, stderr, cut, late): at most `cap` bytes are read,
+    both streams together, and a child still writing then is stopped (cut).
+    One with no answer within PROBE_TIMEOUT is stopped too (late, exit code
+    None), and what it printed by then is kept."""
     try:
         proc = subprocess.Popen(
             argv,
@@ -108,7 +111,7 @@ def _run(argv: list[str], cap: int = READ_CAP) -> tuple[int | None, str, str, bo
             stderr=subprocess.PIPE,
         )
     except OSError as e:
-        return None, "", str(e), False
+        return None, "", str(e), False, False
     out: list[bytes] = []
     err: list[bytes] = []
     total = [0]
@@ -132,13 +135,12 @@ def _run(argv: list[str], cap: int = READ_CAP) -> tuple[int | None, str, str, bo
     for reader in readers:  # a grandchild holding a pipe isn't waited for
         reader.join(timeout=1)
     cut = total[0] >= cap
-    if late and not cut:
-        return None, "", f"no answer within {PROBE_TIMEOUT}s", False
+    late = late and not cut
     text = (
         b"".join(out).decode("utf-8", "replace"),
         b"".join(err).decode("utf-8", "replace"),
     )
-    return proc.returncode, *text, cut
+    return None if late else proc.returncode, *text, cut, late
 
 
 def _first_line(text: str) -> str:
@@ -166,7 +168,7 @@ def probe(td, binary: str = "") -> dict:
             command = interp + argv[1:]
         else:
             command = prefix + argv
-        _, out, err, _ = _run(command)
+        _, out, err, _, _ = _run(command)
         version = _version(out) or _version(err)
         if version:
             return {"installed_version": version, "resolved_path": path}
@@ -196,19 +198,30 @@ def help_text(td, subcommand: str = "") -> dict:
     else:
         tries = [td.help_argv] if td.help_argv else [["--help"], ["-h"]]
     for argv in tries:
-        code, out, err, cut = _run(prefix + argv, max(READ_CAP, HELP_INLINE + 1))
+        code, out, err, cut, late = _run(prefix + argv, max(READ_CAP, HELP_INLINE + 1))
         if out.strip() or err.strip():
             break
+    else:
+        if late:
+            return {"error": f"{td.binary} gave no answer within {PROBE_TIMEOUT}s"}
+    notes = []
+    if late:
+        notes.append(
+            f"{td.binary} gave no answer within {PROBE_TIMEOUT}s and was stopped. "
+            "This is what it printed by then."
+        )
     text = as_shown(out, err)
     data = text.encode("utf-8")
     if len(data) <= HELP_INLINE and not cut:
-        return {"help": text, "help_exit_code": code}
-    shown = data[:HELP_INLINE].decode("utf-8", "ignore")
-    shown = shown[: shown.rfind("\n") + 1] or shown  # at a line's end
-    return {
-        "help": shown,
-        "help_exit_code": code,
-        "help_cut": True,
-        "help_note": f"The first {len(shown.encode())} bytes of the help are shown. "
-        "Run the tool's help through run_command (save_output) for the rest.",
-    }
+        reply = {"help": text, "help_exit_code": code}
+    else:
+        shown = data[:HELP_INLINE].decode("utf-8", "ignore")
+        shown = shown[: shown.rfind("\n") + 1] or shown  # at a line's end
+        reply = {"help": shown, "help_exit_code": code, "help_cut": True}
+        notes.append(
+            f"The first {len(shown.encode())} bytes of the help are shown. "
+            "Run the tool's help through run_command (save_output) for the rest."
+        )
+    if notes:
+        reply["help_note"] = " ".join(notes)
+    return reply

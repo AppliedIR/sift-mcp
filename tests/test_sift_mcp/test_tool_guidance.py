@@ -32,6 +32,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from sift_mcp import tool_version as tv
 from sift_mcp.server import create_server
 
 TSK_HELP = (
@@ -503,6 +504,38 @@ esac""",
     r = _call("get_tool_help", tool_name="fls")
     assert time.monotonic() - start < 5
     assert r["help_cut"] is True and len(r["help"].encode()) <= 8192
+
+
+def _fls_help(bin_: Path, body: str) -> None:
+    _tool(
+        bin_,
+        "fls",
+        f'case "$1" in\n  -V) echo "The Sleuth Kit ver 4.11.1";;\n  *) {body};;\nesac',
+    )
+
+
+def test_help_is_kept_while_a_grandchild_holds_the_pipe(case, tools):
+    _fls_help(tools["bin"], 'echo "Usage: fls [-r] image"; sleep 4 &')
+    r = _call("get_tool_help", tool_name="fls")
+    assert r["help"].startswith("Usage: fls [-r] image\n") and r["help_exit_code"] == 0
+
+
+def test_a_help_run_with_no_answer_keeps_what_it_printed(case, tools, monkeypatch):
+    monkeypatch.setattr(tv, "PROBE_TIMEOUT", 1)
+    _fls_help(tools["bin"], 'echo "Usage: fls [-r] image"; exec sleep 30')
+    r = _call("get_tool_help", tool_name="fls")
+    assert r["help"] == tv.as_shown("Usage: fls [-r] image\n", "")
+    assert r["help_exit_code"] is None
+    assert r["help_note"] == (
+        "fls gave no answer within 1s and was stopped. This is what it printed by then."
+    )
+
+
+def test_a_help_run_that_prints_nothing_and_hangs_is_an_error(case, tools, monkeypatch):
+    monkeypatch.setattr(tv, "PROBE_TIMEOUT", 1)
+    _fls_help(tools["bin"], "exec sleep 30")
+    r = _call("get_tool_help", tool_name="fls")
+    assert "help" not in r and "fls gave no answer within 1s" in r["error"]
 
 
 # --- a tool found under another version's name, and a run's own binary -------

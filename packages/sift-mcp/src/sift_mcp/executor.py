@@ -23,12 +23,14 @@ logger = logging.getLogger(__name__)
 
 
 def _read_pipe(pipe, chunks: list[bytes], limit: int, total: list[int]) -> None:
-    """Read from a pipe incrementally, respecting byte limit."""
+    """Read from a pipe incrementally, respecting byte limit. read1 hands
+    over what has arrived: read(n) waits for n bytes or EOF, so a grandchild
+    still holding the pipe would keep the output from ever being kept."""
     while True:
         remaining = limit - total[0]
         if remaining <= 0:
             break
-        data = pipe.read(min(65536, remaining))
+        data = pipe.read1(min(65536, remaining))
         if not data:
             break
         chunks.append(data)
