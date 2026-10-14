@@ -191,7 +191,7 @@ def test_an_audit_log_held_as_a_fifo_is_named_and_its_entry_isnt_taken(env):
         "path": str(d / "evidence" / "x.bin"),
         "sha256": X_SHA,
         "derivation_note": "derivation unchecked: audit/wintools-mcp.jsonl can't be read "
-        f"({d / 'audit' / 'wintools-mcp.jsonl'} isn't a regular file (a named pipe, socket or device). Put the case's own file back, then try again.)",
+        "(not a regular file)",
     }
     assert _is_fifo(d / "audit" / "wintools-mcp.jsonl")
 
@@ -212,7 +212,7 @@ def test_a_file_identity_log_held_as_a_fifo_doesnt_give_a_folder_its_hashes(env)
         "kind": "folder",
         "file_count": 2,
         "derivation_note": "derivation unchecked: audit/file-identity.jsonl can't be read "
-        f"({d / 'audit' / 'file-identity.jsonl'} isn't a regular file (a named pipe, socket or device). Put the case's own file back, then try again.)",
+        "(not a regular file)",
     }
     (manifest,) = (d / "evidence-manifests").glob("*.json")
     rows = {f["path"]: f["sha256"] for f in json.loads(manifest.read_text())["files"]}
