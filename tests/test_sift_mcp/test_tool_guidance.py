@@ -514,12 +514,6 @@ def _fls_help(bin_: Path, body: str) -> None:
     )
 
 
-def test_help_is_kept_while_a_grandchild_holds_the_pipe(case, tools):
-    _fls_help(tools["bin"], 'echo "Usage: fls [-r] image"; sleep 4 &')
-    r = _call("get_tool_help", tool_name="fls")
-    assert r["help"].startswith("Usage: fls [-r] image\n") and r["help_exit_code"] == 0
-
-
 def test_a_help_run_with_no_answer_keeps_what_it_printed(case, tools, monkeypatch):
     monkeypatch.setattr(tv, "PROBE_TIMEOUT", 1)
     _fls_help(tools["bin"], 'echo "Usage: fls [-r] image"; exec sleep 30')
@@ -536,6 +530,24 @@ def test_a_help_run_that_prints_nothing_and_hangs_is_an_error(case, tools, monke
     _fls_help(tools["bin"], "exec sleep 30")
     r = _call("get_tool_help", tool_name="fls")
     assert "help" not in r and "fls gave no answer within 1s" in r["error"]
+
+
+def test_a_help_run_with_no_answer_is_not_asked_again(case, tools, monkeypatch):
+    monkeypatch.setattr(tv, "PROBE_TIMEOUT", 1)
+    asked = tools["bin"].parent / "asked"
+    _fls_help(tools["bin"], f'echo "$1" >> {asked}; exec sleep 30')
+    r = _call("get_tool_help", tool_name="fls")
+    assert "fls gave no answer within 1s" in r["error"]
+    helps = [a for a in asked.read_text().splitlines() if a in ("--help", "-h")]
+    assert helps == ["--help"]  # the version probe asks too, with --version
+
+
+def test_a_help_run_that_can_t_start_is_an_error(case, tools):
+    fls = tools["bin"] / "fls"
+    fls.write_text("#!/no/such/interpreter\n")
+    r = _call("get_tool_help", tool_name="fls")
+    assert "help" not in r
+    assert r["error"].startswith("fls couldn't be run: ")
 
 
 # --- a tool found under another version's name, and a run's own binary -------

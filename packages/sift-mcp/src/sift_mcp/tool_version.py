@@ -186,7 +186,8 @@ def help_text(td, subcommand: str = "") -> dict:
     STDERR_LABEL, with its exit code: nothing here judges whether it is help
     (TSK's usage comes after "invalid option", exit 1; Hayabusa 3.9.0 answers
     dfir-timeline with "unrecognized subcommand", exit 2). The next way of
-    asking is tried only when the tool printed nothing at all."""
+    asking is tried only when the tool printed nothing at all and answered
+    in time."""
     if subcommand and (why := subcommand_error(td, subcommand)):
         return {"error": why}
     found = launch(td)
@@ -199,9 +200,10 @@ def help_text(td, subcommand: str = "") -> dict:
         tries = [td.help_argv] if td.help_argv else [["--help"], ["-h"]]
     for argv in tries:
         code, out, err, cut, late = _run(prefix + argv, max(READ_CAP, HELP_INLINE + 1))
+        if code is None and not late:  # it didn't run at all
+            return {"error": f"{td.binary} couldn't be run: {err}"}
         if out.strip() or err.strip():
             break
-    else:
         if late:
             return {"error": f"{td.binary} gave no answer within {PROBE_TIMEOUT}s"}
     notes = []
