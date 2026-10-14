@@ -2,9 +2,10 @@ tools:
   check_file:
     tool: "windows-triage-mcp: check_file"
     score_interpretation:
-      EXPECTED: "File matches known Windows baseline. Normal."
-      UNKNOWN: "File NOT in baseline database. This is NEUTRAL — it means not-in-database, not suspicious. Custom software, user files, and enterprise tools will all be UNKNOWN."
-      RENAMED: "Filename matches a known system file but path or hash differs. Investigate further."
+      EXPECTED: "The path, or a known directory for this filename, matches the Windows baseline. Without a hash this is a name-and-path match only; pass the hash to compare it with the baseline builds of that path. Default does not mean benign."
+      EXPECTED_LOLBIN: "As EXPECTED, and the file is a known LOLBin that can be abused. Check how it was used."
+      SUSPICIOUS: "A specific anomaly: a critical filename trick (Unicode or double extension), a known attack-tool name, a system binary's name in an unexpected directory (masquerading), a hash that matches no baseline build of that path, or another high-severity filename issue. The reply's reasons say which. Investigate further."
+      UNKNOWN: "File NOT in baseline database. This is NEUTRAL — it means not-in-database, not suspicious. Custom software, user files, and enterprise tools will all be UNKNOWN. A filename without a folder is not checked: pass the full path."
     common_false_positives:
       - "Enterprise software agents (AV, management tools) flagged as UNKNOWN"
       - "Windows updates changing file hashes before baseline is updated"
@@ -16,8 +17,9 @@ tools:
   check_process_tree:
     tool: "windows-triage-mcp: check_process_tree"
     score_interpretation:
-      EXPECTED: "Parent-child relationship matches known baseline."
-      UNEXPECTED: "Unusual parent-child relationship. May indicate process injection, living-off-the-land, or unusual execution."
+      EXPECTED: "Parent, path and user match the expectations for this process."
+      SUSPICIOUS: "Unexpected parent, executable path or user context for a known process, or a filename anomaly; the reasons say which. May indicate process injection, living-off-the-land, or unusual execution."
+      UNKNOWN: "Process not in the expectations database. Neutral."
     common_false_positives:
       - "Software installers spawning unusual child processes"
       - "Task scheduler creating atypical process trees"
