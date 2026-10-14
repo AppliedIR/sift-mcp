@@ -44,6 +44,7 @@ LEFT_OFF = {
     "forensic-mcp": {
         "record_finding", "record_timeline_event",
         "add_todo", "update_todo", "complete_todo",
+        "get_procedure",  # the skeptic's client loads skills
     },
     "case-mcp": {
         "case_init", "case_activate", "case_list", "case_status",

@@ -23,8 +23,8 @@ Before building a tool's command line, call get_tool_help (get_windows_tool_help
 
 ## Skills
 
-Procedures load on demand as Agent Skills (a client without skills reads
-them from `skills/` in the sift-mcp repository):
+Procedures load on demand as Agent Skills (a client without skills gets
+them from forensic-mcp's get_procedure):
 
 - `vhir-ingest`: the first steps after the evidence survey, and ingesting and querying evidence in OpenSearch
 - `vhir-tool-reference`: which tool to use, and the multi-step workflows

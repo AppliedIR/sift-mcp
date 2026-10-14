@@ -73,13 +73,13 @@ def _seed_audit(audit_dir):
 
 @pytest.fixture
 def server():
-    """Server in default (resources) mode — 9 active tools."""
+    """Server in default (resources) mode — 10 active tools."""
     return create_server()
 
 
 @pytest.fixture
 def tools_server():
-    """Server in tools mode — 23 tools (9 active + 14 discipline)."""
+    """Server in tools mode — 24 tools (10 active + 14 discipline)."""
     return create_server(reference_mode="tools")
 
 
@@ -90,12 +90,12 @@ class TestServerSetup:
     @pytest.mark.asyncio
     async def test_tool_count_resources_mode(self, server):
         tools = await server.list_tools()
-        assert len(tools) == 9  # C1: removed get_case_status, list_cases, list_evidence
+        assert len(tools) == 10
 
     @pytest.mark.asyncio
     async def test_tool_count_tools_mode(self, tools_server):
         tools = await tools_server.list_tools()
-        assert len(tools) == 23  # C1: 26 - 3 removed duplicates
+        assert len(tools) == 24
 
     @pytest.mark.asyncio
     async def test_expected_tools_present(self, server):
@@ -111,6 +111,7 @@ class TestServerSetup:
             "list_todos",
             "update_todo",
             "complete_todo",
+            "get_procedure",
         }
         assert names == expected
 

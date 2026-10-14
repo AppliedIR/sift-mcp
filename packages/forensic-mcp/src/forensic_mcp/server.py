@@ -11,6 +11,7 @@ from pydantic import BeforeValidator
 from sift_common.approvals import mark_approvals
 from sift_common.instructions import FORENSIC_MCP as _INSTRUCTIONS
 
+from forensic_mcp import procedures
 from forensic_mcp.audit import AuditWriter
 from forensic_mcp.case.manager import CaseManager
 
@@ -117,6 +118,21 @@ def _build_validation_guidance(errors: list[str]) -> list[str]:
     return guidance
 
 
+def _procedure_description(root=procedures.SKILLS) -> str:
+    """get_procedure's description, naming the installed procedures."""
+    found = procedures.names(root)
+    listed = ", ".join(found) if found else procedures.NOT_INSTALLED
+    return (
+        "The investigation procedures, for a client that can't load skills. "
+        "No name: each procedure's name and description. A name: its "
+        "SKILL.md and its other files. A name and a file: that file. "
+        f"Procedures: {listed}."
+    )
+
+
+PROCEDURE_DESCRIPTION = _procedure_description()  # at load
+
+
 def create_server(reference_mode: str = "resources") -> FastMCP:
     """Create and configure the forensic MCP server.
 
@@ -134,6 +150,12 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     # Expose for testing and CLI integration
     server._manager = manager
     server._audit = audit
+
+    # --- Procedures, for a client without skills ---
+
+    @server.tool(description=PROCEDURE_DESCRIPTION)
+    def get_procedure(name: str = "", file: str = "") -> dict:
+        return procedures.get(name, file)
 
     # --- Investigation Records ---
 
