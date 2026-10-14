@@ -46,27 +46,34 @@ def _reply(*files: dict) -> CallToolResult:
     return CallToolResult(content=[TextContent(type="text", text=json.dumps(body))])
 
 
-def _gateway(reply: CallToolResult, name: str = "wintools-mcp") -> Gateway:
+def _gateway(
+    reply: CallToolResult, name: str = "wintools-mcp", tool: str = "run_windows_command"
+) -> Gateway:
     backend = HttpMCPBackend(name, {"url": "http://127.0.0.1:9/mcp"})
     backend._started = True
-    backend._tools_cache = [Tool(name="run_windows_command", inputSchema={})]
+    backend._tools_cache = [Tool(name=tool, inputSchema={})]
     backend._session = MagicMock()
     backend._session.send_ping = AsyncMock()
     backend._session.call_tool = AsyncMock(return_value=reply)
     gw = Gateway({"gateway": {}, "api_keys": {}, "backends": {}})
     gw.backends = {name: backend}
-    gw._tool_map = {"run_windows_command": name}
+    gw._tool_map = {tool: name}
     return gw
 
 
-async def _call(gw: Gateway, endpoint: str, name: str = "wintools-mcp"):
+async def _call(
+    gw: Gateway,
+    endpoint: str,
+    name: str = "wintools-mcp",
+    tool: str = "run_windows_command",
+):
     if endpoint == "per-backend":
         server = create_backend_mcp_server(gw, name)
     else:
         server = create_mcp_server(gw)
     request = types.CallToolRequest(
         method="tools/call",
-        params=types.CallToolRequestParams(name="run_windows_command", arguments={}),
+        params=types.CallToolRequestParams(name=tool, arguments={}),
     )
     return (await server.request_handlers[types.CallToolRequest](request)).root
 
@@ -243,4 +250,37 @@ async def test_a_case_that_cant_be_read_never_fails_the_call(case, endpoint):
     result = await _call(gw, endpoint)
     assert result.isError is False  # the call answers; nothing is recorded
     assert json.loads(result.content[0].text)["audit_id"] == AUDIT_ID
+    assert _entries(case, "wintools_pending_hashes") == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["per-backend", "aggregate"])
+async def test_a_polls_final_reply_records_its_pending_files_with_no_proxy_entry(
+    case, endpoint
+):
+    disk = case / "evidence" / "disk.E01"
+    disk.write_bytes(b"PRETEND-OVER-1GB")
+    reply = _reply(_pending("evidence/disk.E01"))
+    gw = _gateway(reply, tool="get_windows_run")
+    result = await _call(gw, endpoint, tool="get_windows_run")
+    assert result.isError is False
+    (entry,) = _entries(case, "wintools_pending_hashes")
+    assert entry["params"]["backend_audit_id"] == AUDIT_ID
+    assert _entries(case, "get_windows_run") == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["per-backend", "aggregate"])
+async def test_a_later_delivery_of_a_polled_result_records_its_hashes_no_more(
+    case, endpoint
+):
+    """wintools marks a result's files "pending" at its first delivery only."""
+    (case / "evidence" / "disk.E01").write_bytes(b"PRETEND-OVER-1GB")
+    again = dict(
+        _pending("evidence/disk.E01"),
+        hash_state="pending, recorded at this result's first delivery",
+    )
+    gw = _gateway(_reply(again), tool="get_windows_run")
+    result = await _call(gw, endpoint, tool="get_windows_run")
+    assert result.isError is False
     assert _entries(case, "wintools_pending_hashes") == []

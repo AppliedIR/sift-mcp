@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from anyio import BrokenResourceError, ClosedResourceError
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
+from mcp.shared.exceptions import McpError
 from mcp.types import Tool
 
 from sift_gateway.backends.base import MCPBackend, ToolResult, _version_of
@@ -30,22 +31,30 @@ _CONNECT_TIMEOUT = 5.0
 _PING_TIMEOUT = 3.0
 
 
-def describe(exc: BaseException) -> str:
-    """The real error behind ``exc``: anyio reports a failed connection as
-    a ``CancelledError`` or an exception group, with the TLS or connect
-    error inside it, or in its cause or context."""
+def _chain(exc: BaseException):
+    """``exc``, then each exception inside it (a group's) or behind it (its
+    cause or context), once each."""
     seen: set[int] = set()
     queue: list[BaseException] = [exc]
-    found: list[BaseException] = []
     while queue:
         e = queue.pop(0)
         if id(e) in seen:
             continue
         seen.add(id(e))
-        if not isinstance(e, (asyncio.CancelledError, BaseExceptionGroup)):
-            found.append(e)
+        yield e
         queue.extend(getattr(e, "exceptions", None) or ())
         queue.extend(x for x in (e.__cause__, e.__context__) if x is not None)
+
+
+def describe(exc: BaseException) -> str:
+    """The real error behind ``exc``: anyio reports a failed connection as
+    a ``CancelledError`` or an exception group, with the TLS or connect
+    error inside it, or in its cause or context."""
+    found = [
+        e
+        for e in _chain(exc)
+        if not isinstance(e, (asyncio.CancelledError, BaseExceptionGroup))
+    ]
     named = [
         e
         for e in found
@@ -53,6 +62,29 @@ def describe(exc: BaseException) -> str:
     ]
     best = (named or found or [exc])[0]
     return f"{type(best).__name__}: {best}" if str(best) else type(best).__name__
+
+
+TOKEN_REFUSED = "rejected the gateway's token"
+
+
+def refused_status(exc: BaseException) -> int | None:
+    """401 or 403 when the remote answered the gateway's token with one,
+    anywhere in ``exc``, else None."""
+    for e in _chain(exc):
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if status in (401, 403):
+            return status
+    return None
+
+
+def token_refused_text(name: str, status: int) -> str:
+    """What a refused token means, and its fix, in the backend's words."""
+    reason = "Unauthorized" if status == 401 else "Forbidden"
+    return (
+        f"{name} {TOKEN_REFUSED} ({status} {reason}): the bearer token in "
+        "gateway.yaml isn't one it accepts. To fix, join it again: a code from "
+        f"`vhir setup join-code` on this box, then the join on {name}'s host"
+    )
 
 
 def _make_pinned_tls_factory(cert_path: str, pem: str | None = None):
@@ -84,6 +116,20 @@ def _make_pinned_tls_factory(cert_path: str, pem: str | None = None):
     return factory
 
 
+def _session_refused(exc: BaseException) -> bool:
+    """The MCP client's own answer when the remote gives a request on a
+    session it doesn't know a 404, before running it (mcp's streamable HTTP
+    _send_session_terminated_error). That exact type and code only, never
+    message text: a tool's output can carry any text, and an error raised
+    after it ran (a result that fails validation) can quote it."""
+    error = getattr(exc, "error", None)
+    return (
+        isinstance(exc, McpError)
+        and getattr(error, "code", None) == 32600
+        and getattr(error, "message", None) == "Session terminated"
+    )
+
+
 class HttpMCPBackend(MCPBackend):
     """Backend that connects to a remote MCP server via Streamable HTTP."""
 
@@ -97,6 +143,11 @@ class HttpMCPBackend(MCPBackend):
         self._runner: asyncio.Task | None = None
         self._stop_event: asyncio.Event | None = None
         self._liveness_lock: asyncio.Lock | None = None
+        # Calls sent and not yet answered
+        self._in_flight = 0
+        # Bumped by each reconnect: a reconnect decided on an older session
+        # than the current one is not made
+        self._generation = 0
         # Why the last start or connection failed; None once connected
         self.last_error: str | None = None
         # The pinned cert as it is when the backend is made (a join's comes
@@ -180,6 +231,8 @@ class HttpMCPBackend(MCPBackend):
             logger.error(
                 "Backend %s failed to start (http -> %s): %s", self.name, url, exc
             )
+            if TOKEN_REFUSED in str(exc):  # it answered: not "unreachable"
+                raise RuntimeError(str(exc)) from None
             raise RuntimeError(f"{self.name} unreachable at {url}: {exc}") from None
 
     async def _run(
@@ -224,9 +277,9 @@ class HttpMCPBackend(MCPBackend):
                 await stop.wait()
         except BaseException as exc:  # noqa: BLE001 - handed to start() or logged
             if not ready.done():
-                ready.set_exception(_StartFailed(describe(exc)))
+                ready.set_exception(_StartFailed(self._why(exc)))
             elif not isinstance(exc, asyncio.CancelledError) and not stop.is_set():
-                self.last_error = describe(exc)
+                self.last_error = self._why(exc)
                 logger.warning(
                     "Backend %s connection ended: %s", self.name, self.last_error
                 )
@@ -285,6 +338,7 @@ class HttpMCPBackend(MCPBackend):
         logger.warning(
             "Backend %s connection lost, reconnecting: %s", self.name, reason
         )
+        self._generation += 1
         await self._teardown()
         try:
             await asyncio.wait_for(self.start(), timeout=_CONNECT_TIMEOUT)
@@ -295,6 +349,13 @@ class HttpMCPBackend(MCPBackend):
                 f"no answer in {_CONNECT_TIMEOUT:.0f}s"
             ) from None
         self._tool_map_stale = True
+
+    def _why(self, exc: BaseException) -> str:
+        """describe(exc), or by name when the remote refused our token."""
+        status = refused_status(exc)
+        return (
+            describe(exc) if status is None else token_refused_text(self.name, status)
+        )
 
     async def _alive(self) -> str | None:
         """None when the remote answers a ping in time, else why it doesn't."""
@@ -307,43 +368,82 @@ class HttpMCPBackend(MCPBackend):
         except asyncio.TimeoutError:
             return f"no answer to a ping in {_PING_TIMEOUT:.0f}s"
         except Exception as exc:  # noqa: BLE001 - the reason is the answer
-            return describe(exc)
+            return self._why(exc)
 
-    async def call_tool(self, name: str, arguments: dict) -> list:
-        if self._liveness_lock is None:
-            self._liveness_lock = asyncio.Lock()
-        async with self._liveness_lock:  # one reconnect for concurrent calls
+    async def heal(self) -> None:
+        """Reconnect when the remote doesn't answer a ping: it ended the
+        session (a restart, a guest revert) or the connection is gone. A ping
+        that times out while a call is running is left alone: a busy remote
+        can be slow to answer, and a reconnect would end the running call's
+        session. Each call heals first; the gateway's 30 s checker heals an
+        idle backend."""
+        async with self._lock():  # one reconnect for concurrent calls
+            generation = self._generation
             why = await self._alive()
-            if why is not None:
+            if why is None or (
+                self._in_flight and why.startswith("no answer to a ping")
+            ):
+                return
+            if self._generation == generation:  # not reconnected meanwhile
                 await self._reconnect(why)
 
+    def _lock(self) -> asyncio.Lock:
+        if self._liveness_lock is None:
+            self._liveness_lock = asyncio.Lock()
+        return self._liveness_lock
+
+    async def _reconnect_since(self, generation: int, why: str) -> None:
+        """A call's reconnect, under the same lock as heal(): made only if no
+        reconnect came since the call read `generation` (or the one that
+        came failed), so it never closes a fresh session a retry is on."""
+        async with self._lock():
+            if self._generation == generation or self._session is None:
+                await self._reconnect(why)
+
+    async def call_tool(self, name: str, arguments: dict) -> list:
+        await self.heal()
+        self._in_flight += 1
+        try:
+            return await self._send(name, arguments)
+        finally:
+            self._in_flight -= 1
+
+    async def _send(self, name: str, arguments: dict) -> list:
         for attempt in range(2):
+            generation = self._generation
             try:
                 if self._session is None:
-                    await self._reconnect("not connected")
+                    await self._reconnect_since(generation, "not connected")
                 result = await asyncio.wait_for(
                     self._session.call_tool(name, arguments),
                     timeout=_TOOL_CALL_TIMEOUT,
                 )
                 return ToolResult(result.content, is_error=bool(result.isError))
-            except (
-                ConnectionError,
-                OSError,
-                ClosedResourceError,
-                BrokenResourceError,
-            ) as exc:
-                if attempt > 0:
-                    await self._teardown()
-                    raise
-                await self._reconnect(describe(exc))
-                continue
+            except asyncio.TimeoutError:
+                # before OSError, which a TimeoutError is from Python 3.11: the
+                # call may still be running on the remote, so it's never sent again
+                raise asyncio.TimeoutError(
+                    f"Backend {self.name}: {name} gave no answer in "
+                    f"{_TOOL_CALL_TIMEOUT}s; it wasn't sent again, as it may still be running"
+                ) from None
             except Exception as exc:
-                exc_str = str(exc).lower()
-                if attempt == 0 and any(
-                    phrase in exc_str
+                text = str(exc).lower()
+                # Sent again only when the remote refused the session before
+                # running anything; any other loss may come after it ran
+                if attempt == 0 and _session_refused(exc):
+                    await self._reconnect_since(generation, describe(exc))
+                    continue
+                if isinstance(
+                    exc,
+                    (
+                        ConnectionError,
+                        OSError,
+                        ClosedResourceError,
+                        BrokenResourceError,
+                    ),
+                ) or any(
+                    phrase in text
                     for phrase in (
-                        "session terminated",
-                        "session not found",
                         "connection closed",
                         "stream ended",
                         "closed resource",
@@ -352,8 +452,10 @@ class HttpMCPBackend(MCPBackend):
                         "forcibly closed",
                     )
                 ):
-                    await self._reconnect(describe(exc))
-                    continue
+                    raise RuntimeError(
+                        f"Backend {self.name}: the connection was lost during {name} ({describe(exc)}); "
+                        "it wasn't sent again: the call may have run on the guest; check before re-running"
+                    ) from exc
                 raise
         raise RuntimeError(f"Backend {self.name}: call_tool failed after reconnect")
 
@@ -369,7 +471,9 @@ class HttpMCPBackend(MCPBackend):
             }
         if not self._started and self.last_error is None:
             return {"status": "stopped", "type": "http"}
-        return {"status": "error", "type": "http", "error": f"unreachable: {why}"}
+        if TOKEN_REFUSED not in why:
+            why = f"unreachable: {why}"
+        return {"status": "error", "type": "http", "error": why}
 
 
 class _StartFailed(Exception):

@@ -336,6 +336,159 @@ def test_a_joined_backend_reconnects_at_most_once_after_its_remote_restarts(link
     _three_calls_after_a_restart(link, gw, a, answers(gw, "A"))
 
 
+def test_a_session_the_remote_ended_heals_with_no_tool_call(link, monkeypatch):
+    """A wintools restart (or a guest revert) ends the session: the checker
+    reconnects it, so /health reads ok again with no tool call."""
+    monkeypatch.setattr(server_mod, "_LATE_START_SECONDS", 1, raising=False)
+    a = link.remote("A")
+    gw = link.boot(wintools_mcp=backend_entry(a, a.token, a.cert[0]))
+    answers(gw, "A")
+    a.restart()
+    until(
+        lambda: (
+            link.logs.lines("reconnecting")
+            and gw.health()["backends"]["wintools-mcp"]["status"] == "ok"
+        ),
+        "health never recovered with no tool call",
+    )
+    for _ in range(3):
+        assert gw.health()["backends"]["wintools-mcp"]["status"] == "ok"
+    assert len(link.logs.lines("reconnecting")) == 1, link.logs.lines("reconnecting")
+    assert link.logs.lines("Tool map rebuilt after wintools-mcp reconnected")
+    link.untouched(gw)
+
+
+@pytest.mark.parametrize("route", [per_backend, aggregate], ids=["direct", "aggregate"])
+def test_a_lone_surrogate_argument_is_refused_by_name_within_1s(
+    link, monkeypatch, route
+):
+    """It used to wait out the 300 s call timeout: the transport couldn't
+    encode it and failed in its writer task. The refusal is audited, and the
+    same session goes on working."""
+    from sift_common.audit import AuditWriter
+
+    entries = []
+    log = AuditWriter.log
+
+    def recording(self, **kw):
+        entries.append(kw)
+        return log(self, **kw)
+
+    monkeypatch.setattr(AuditWriter, "log", recording)
+    a = link.remote("A")
+    gw = link.boot(wintools_mcp=backend_entry(a, a.token, a.cert[0]))
+    answers(gw, "A")
+    session = route(gw)
+    entries.clear()
+    r = session.call("get_share_info", timeout=10, arguments={"x": "\ud800"})
+    assert (r["http"], r["is_error"]) == (200, True), r
+    assert r["secs"] <= 1, r
+    assert (
+        "get_share_info wasn't sent: its argument 'x' holds a lone surrogate"
+        in r["text"]
+    ), r
+    refused = [e for e in entries if e.get("source") == "gateway_proxy"]
+    assert len(refused) == 1, entries
+    assert refused[0]["tool"] == "get_share_info"
+    assert refused[0]["result_summary"].startswith("refused, not sent: "), refused
+    assert refused[0]["extra"]["backend"] == "wintools-mcp"
+
+    # a pair (an emoji) is sendable text, on the same session
+    r = session.call("get_share_info", arguments={"x": "é 😀"})
+    assert (r["http"], r["is_error"], r["text"]) == (200, False, "get_share_info:A"), r
+    link.untouched(gw)
+
+
+def test_a_refused_token_is_named_with_its_fix_in_health_and_on_every_route(link):
+    """It showed as "unreachable: HTTPStatusError: Client error '401
+    Unauthorized'" with a developer.mozilla.org link on /health, and as
+    "Tool not found" on a call."""
+    a = link.remote("A")
+    gw = link.boot(wintools_mcp=backend_entry(a, "tok-wrong", a.cert[0]))
+    named = "wintools-mcp rejected the gateway's token (401 Unauthorized)"
+    fix = "`vhir setup join-code` on this box"
+
+    def refused():
+        wt = gw.health()["backends"].get("wintools-mcp", {})
+        return named in wt.get("error", "") and wt
+
+    wt = until(refused, "health never named the refused token", 20)
+    assert wt["status"] == "error" and fix in wt["error"], wt
+    assert "unreachable" not in wt["error"] and "mozilla" not in wt["error"], wt
+
+    # a wintools tool, or a typo: both facts, so the reply is true either way
+    for tool in ("get_share_info", "no_such_tool"):
+        both = f"Tool {tool} was not found. {named}"
+        listed = "Until that's fixed, wintools-mcp's tools can't be listed."
+        r = gw.post(f"/api/v1/tools/{tool}", json={"arguments": {}})
+        assert r.status_code == 404, r.text
+        err = r.json()["error"]
+        assert err.startswith(both) and fix in err and err.endswith(listed), err
+        c = aggregate(gw).call(tool, timeout=20)
+        assert c["is_error"] is True and c["text"].startswith(f"Error: {both}"), c
+        assert c["text"].endswith(listed), c
+    c = per_backend(gw).call("get_share_info", timeout=20)
+    assert c["is_error"] is True and named in c["text"] and fix in c["text"], c
+
+    # fixed (a join with the right token): plain "not found" again
+    assert gw.join(a, a.token, a.pem).status_code == 200
+    answers(gw, "A")
+    r = gw.post("/api/v1/tools/no_such_tool", json={"arguments": {}})
+    assert (r.status_code, r.json()) == (404, {"error": "Tool not found: no_such_tool"})
+    c = aggregate(gw).call("no_such_tool")
+    assert c["text"] == "Error: unknown tool no_such_tool", c
+    link.untouched(gw)
+
+
+def test_an_unknown_tool_is_still_not_found_when_no_token_was_refused(link):
+    a = link.remote("A")
+    gw = link.boot(wintools_mcp=backend_entry(a, a.token, a.cert[0]))
+    answers(gw, "A")
+    r = gw.post("/api/v1/tools/no_such_tool", json={"arguments": {}})
+    assert (r.status_code, r.json()) == (404, {"error": "Tool not found: no_such_tool"})
+    c = aggregate(gw).call("no_such_tool")
+    assert c["text"] == "Error: unknown tool no_such_tool", c
+    link.untouched(gw)
+
+
+@pytest.mark.parametrize("route", [per_backend, aggregate], ids=["direct", "aggregate"])
+def test_polls_of_a_run_get_no_gateway_audit_entry_and_other_calls_do(
+    link, monkeypatch, route
+):
+    """wintools audits a run once; get_windows_run polls are status lookups."""
+    from sift_common.audit import AuditWriter
+
+    entries = []
+    log = AuditWriter.log
+
+    def recording(self, **kw):
+        entries.append(kw)
+        return log(self, **kw)
+
+    monkeypatch.setattr(AuditWriter, "log", recording)
+    a = link.remote("A", tools=[*WINTOOLS_TOOLS, "get_windows_run"])
+    gw = link.boot(wintools_mcp=backend_entry(a, a.token, a.cert[0]))
+    session = until(
+        lambda: (
+            (c := route(gw)).call("get_windows_run")["text"] == "get_windows_run:A"
+            and c
+        ),
+        "the poll tool never answered",
+    )
+    entries.clear()
+    for _ in range(5):
+        r = session.call("get_windows_run", arguments={"run_id": "r1"})
+        assert (r["is_error"], r["text"]) == (False, "get_windows_run:A"), r
+    proxied = [e for e in entries if e.get("source") == "gateway_proxy"]
+    assert proxied == [], proxied
+
+    r = session.call("get_share_info")
+    assert r["text"] == "get_share_info:A", r
+    proxied = [e["tool"] for e in entries if e.get("source") == "gateway_proxy"]
+    assert proxied == ["get_share_info"], entries
+    link.untouched(gw)
+
+
 def _gave_up(link) -> bool:
     return bool(link.logs.lines("Could not load wintools-mcp"))
 

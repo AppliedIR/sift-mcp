@@ -270,7 +270,9 @@ def create_mcp_server(gateway: Any) -> Server:
             result = await gateway.call_tool(name, arguments, examiner=examiner)
         except KeyError as e:
             logger.warning("MCP call_tool unknown tool: %s", e)
-            return _error(f"Error: unknown tool {name}")
+            return _error(
+                f"Error: {gateway.unserved_text(name) or f'unknown tool {name}'}"
+            )
         except (RuntimeError, ConnectionError, OSError) as e:
             logger.error("MCP call_tool backend error for %s: %s", name, e)
             return _error(f"Error: {name} failed: {e}")
@@ -369,6 +371,16 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
         except LookupError:
             pass
 
+        # Refused before any backend sees it, whatever its transport: this
+        # route doesn't pass Gateway.call_tool, which checks the others
+        from sift_gateway.unsendable import UnsendableArguments, check_sendable
+
+        try:
+            check_sendable(backend_name, name, arguments)
+        except UnsendableArguments as e:
+            await gateway.audit_refusal(backend_name, name, arguments, e, examiner)
+            return _error(f"Error: {e}")
+
         # Inject examiner identity for analyst tools
         if examiner and name in ANALYST_TOOLS:
             arguments = {**arguments, "analyst_override": examiner}
@@ -413,13 +425,14 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
         # Per-backend audit for HTTP backends (this path bypasses
         # Gateway.call_tool, so centralized audit doesn't cover it)
         from sift_gateway.audit_helpers import (
+            POLL_TOOLS,
             _extract_audit_id,
             _summarize_result,
             _truncate_params,
         )
         from sift_gateway.backends.http_backend import HttpMCPBackend
 
-        if isinstance(backend, HttpMCPBackend):
+        if isinstance(backend, HttpMCPBackend) and name not in POLL_TOOLS:
             elapsed_ms = (time.monotonic() - _start) * 1000
             try:
                 await asyncio.to_thread(

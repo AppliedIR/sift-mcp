@@ -42,13 +42,14 @@ class _NormalizeMCPPath:
 
 
 from sift_gateway.audit_helpers import (
+    POLL_TOOLS,
     _extract_audit_id,
     _summarize_result,
     _truncate_params,
 )
 from sift_gateway.backends import MCPBackend, create_backend
 from sift_gateway.backends.base import in_own_task
-from sift_gateway.backends.http_backend import HttpMCPBackend
+from sift_gateway.backends.http_backend import TOKEN_REFUSED, HttpMCPBackend
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import (
     ANALYST_TOOLS,
@@ -58,6 +59,7 @@ from sift_gateway.mcp_endpoint import (
     create_session_manager,
 )
 from sift_gateway.rest import rest_routes, save_joined_backend
+from sift_gateway.unsendable import UnsendableArguments, check_sendable
 
 logger = logging.getLogger(__name__)
 
@@ -344,6 +346,28 @@ class Gateway:
             if reaped:
                 await self._build_tool_map()
 
+    async def audit_refusal(
+        self,
+        backend_name: str,
+        tool: str,
+        arguments: dict,
+        exc: Exception,
+        examiner=None,
+    ) -> None:
+        """An audit entry for a call the gateway refused before sending it."""
+        try:
+            await asyncio.to_thread(
+                self._audit.log,
+                tool=tool,
+                params=_truncate_params(arguments or {}),
+                result_summary=f"refused, not sent: {exc}",
+                source="gateway_proxy",
+                elapsed_ms=0.0,
+                extra={"backend": backend_name, "examiner": examiner},
+            )
+        except Exception as audit_exc:
+            logger.warning("Gateway audit failed for %s: %s", tool, audit_exc)
+
     async def _late_start_checker(self) -> None:
         """Periodically retry failed backends and re-sync case on started ones."""
         while True:
@@ -374,6 +398,14 @@ class Gateway:
                             BaseExceptionGroup,
                         ) as exc:
                             logger.warning("Late-start failed for %s: %s", name, exc)
+                            continue
+                    # A session the remote ended (a restart, a guest revert)
+                    # is reconnected here, with no tool call needed
+                    if isinstance(backend, HttpMCPBackend):
+                        try:
+                            await backend.heal()
+                        except (Exception, BaseExceptionGroup) as exc:
+                            logger.warning("Reconnect failed for %s: %s", name, exc)
                             continue
                     # Rebuild tool map if backend reconnected with new code
                     if getattr(backend, "_tool_map_stale", False):
@@ -607,6 +639,24 @@ class Gateway:
         except Exception as exc:  # noqa: BLE001 - the call's answer stands
             logger.error("Pending %s hashes not recorded: %s", backend_name, exc)
 
+    def unserved_text(self, tool: str) -> str | None:
+        """For a tool that isn't in the map while a backend's token is
+        refused: both facts, as the name may be a typo. Else None (the
+        plain "not found")."""
+        whys = [
+            (name, getattr(b, "last_error", None))
+            for name, b in self.backends.items()
+            if not b.started
+        ]
+        whys += [(name, self._load_errors.get(name)) for name in self._unloaded]
+        for name, why in whys:
+            if why and TOKEN_REFUSED in why:
+                return (
+                    f"Tool {tool} was not found. {why}. Until that's fixed, "
+                    f"{name}'s tools can't be listed."
+                )
+        return None
+
     def not_loaded_text(self, name: str) -> str:
         """Why ``name`` isn't served: joined but not loaded, or never joined."""
         if name in self._unloaded:
@@ -702,6 +752,11 @@ class Gateway:
 
         backend_name = self._tool_map[name]
         backend = self.backends[backend_name]
+        try:  # before any backend sees it, whatever its transport
+            check_sendable(backend_name, name, arguments)
+        except UnsendableArguments as exc:
+            await self.audit_refusal(backend_name, name, arguments, exc, examiner)
+            raise
 
         # Lazy recovery — restart backend if it crashed
         if not backend.started:
@@ -761,7 +816,7 @@ class Gateway:
             raise RuntimeError(f"Tool call {actual_name} timed out after 300s") from exc
 
         # Centralized audit for HTTP backends (stdio backends audit themselves)
-        if isinstance(backend, HttpMCPBackend):
+        if isinstance(backend, HttpMCPBackend) and actual_name not in POLL_TOOLS:
             elapsed_ms = (time.monotonic() - _start) * 1000
             try:
                 await asyncio.to_thread(
@@ -779,6 +834,7 @@ class Gateway:
                 )
             except Exception as exc:
                 logger.warning("Gateway audit failed for %s: %s", actual_name, exc)
+        if isinstance(backend, HttpMCPBackend):  # a poll's final reply has them too
             await self.record_pending_hashes(backend_name, result, case_at_start)
 
         if not getattr(result, "is_error", False):
