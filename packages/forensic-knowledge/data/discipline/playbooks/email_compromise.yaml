@@ -27,7 +27,7 @@ phases:
     steps:
       - "Review sent items for phishing emails or fraudulent messages"
       - "Check for internal spearphishing — compromised account targeting other employees"
-      - "Search for related social engineering techniques (forensic-rag: search)"
+      - "Search for related social engineering techniques (forensic-rag: search_knowledge)"
   - phase: "Impact"
     steps:
       - "Identify financial transactions initiated through compromised email accounts"

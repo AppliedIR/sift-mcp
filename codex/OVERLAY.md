@@ -11,6 +11,7 @@ You run in Codex with Valhuntir's profile (`codex -p valhuntir`).
   A challenge is required: `record_finding` refuses a finding without
   `challenged`. If the skeptic can't run, send
   `{"outcome": "not_challenged", "reason": "<why>"}`.
+- **Tool syntax:** Before building a tool's command line, call get_tool_help (get_windows_tool_help on Windows) and use a recipe for the installed version, or the tool's own help. Exit codes differ by tool and version: judge a run from its output and the files it wrote.
 - **Your shell** runs in Codex's sandbox. It can write in the folder Codex
   started in and in temporary folders, and has no network. Change case records
   (findings, timeline, approvals, audit) only through the MCP tools, never

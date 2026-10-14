@@ -10,7 +10,7 @@ from mcp.server.fastmcp import FastMCP
 from sift_common.instructions import SIFT_MCP as _INSTRUCTIONS
 
 from sift_mcp.audit import AuditWriter
-from sift_mcp.exceptions import SiftError
+from sift_mcp.exceptions import ExecutionTimeoutError, SiftError
 from sift_mcp.response import build_response
 
 logger = logging.getLogger(__name__)
@@ -114,13 +114,40 @@ def create_server() -> FastMCP:
         return {"tools": tools, "count": len(tools)}
 
     @server.tool()
-    def get_tool_help(tool_name: str) -> dict:
-        """Get usage information, flags, and caveats for a specific forensic tool."""
+    def get_tool_help(tool_name: str, subcommand: str = "") -> dict:
+        """The installed tool's version, its own help, and the tested recipes
+        for that version, with caveats. Call it before building the tool's
+        command line.
+
+        Args:
+            tool_name: The catalog tool (e.g., "hayabusa", "fls", "plaso").
+            subcommand: A subcommand whose help to show (e.g., "csv-timeline").
+        """
         from sift_mcp.tools.discovery import get_tool_help as _help
 
-        result = _help(tool_name)
+        result = _help(tool_name, subcommand)
+        # what was asked and what was found; the help text itself isn't logged
+        summary = {
+            k: result[k]
+            for k in (
+                "name",
+                "installed_version",
+                "resolved_path",
+                "version_output",
+                "help_exit_code",
+                "help_cut",
+                "error",
+            )  # fmt: skip
+            if k in result
+        }
+        if "help" in result:
+            summary["help_bytes"] = len(result["help"].encode())
+        params = {
+            "tool_name": tool_name,
+            **({"subcommand": subcommand} if subcommand else {}),
+        }
         logged_id = audit.log(
-            tool="get_tool_help", params={"tool_name": tool_name}, result_summary=result
+            tool="get_tool_help", params=params, result_summary=summary
         )
         if logged_id is None:
             result["warning"] = "Audit write failed — action not recorded"
@@ -287,6 +314,18 @@ def create_server() -> FastMCP:
         acquired = tool_name if (t := get_tool_def(tool_name)) and t.acquisition else ""
         unmounting = mounts.umount_record(command, op_dir)
 
+        # The catalog tool's version and the path that runs, asked now of the
+        # binary the command names, which is what runs (never cached: an
+        # update shows on the next run)
+        from sift_mcp import tool_version
+
+        probed = tool_version.probe(td, binary) if td else {}
+        version_keys = {
+            "tool_version": probed.get("installed_version"),
+            "resolved_path": probed.get("resolved_path"),
+        }
+        version_summary = {k: v for k, v in version_keys.items() if v}
+
         try:
             exec_result = _run(
                 command,
@@ -336,7 +375,18 @@ def create_server() -> FastMCP:
                 if before.get(p) != key and p not in made
             ]
             outputs = file_place.output_records(case_dir, made, "run_command")
+            # a mount is recorded only when the mount tool succeeded (exit 0)
             ok = exec_result["exit_code"] == 0
+            # the run completed unless this server stopped it; its exit code is
+            # reported, not judged
+            stopped = exec_result.get("stopped")
+            stop_error = (
+                f"{binary} was stopped by sift-mcp at its output limit "
+                f"({exec_result.get('output_limit')} bytes): the exit code is the "
+                "stop's, not the tool's"
+                if stopped == "output limit"
+                else None
+            )
             mount = None
             if pre_mounts is not None and ok:
                 mount = mounts.mount_record(
@@ -358,6 +408,8 @@ def create_server() -> FastMCP:
                     "stdout_bytes": exec_result.get("stdout_total_bytes", 0),
                     "stdout_head": (exec_result.get("stdout") or "")[:500],
                     **({"truncated": True} if exec_result.get("truncated") else {}),
+                    **({"stopped": stopped} if stopped else {}),
+                    **version_summary,
                 },
                 elapsed_ms=elapsed * 1000,
                 input_files=listed_files or None,
@@ -379,7 +431,7 @@ def create_server() -> FastMCP:
             )
             response = build_response(
                 tool_name="run_command",
-                success=exec_result["exit_code"] == 0,
+                success=not stopped,
                 data=resp_data,
                 audit_id=logged_id,
                 output_format=resp_format,
@@ -393,6 +445,9 @@ def create_server() -> FastMCP:
                 extractions=exec_result.get("extractions"),
                 skip_enrichment=skip_enrichment,
                 artifact_context=artifact_hint,
+                error=stop_error,
+                stopped=stopped,
+                **version_keys,
             )
 
             response["output_sha256"] = exec_result.get("output_sha256", "")
@@ -443,10 +498,16 @@ def create_server() -> FastMCP:
 
         except SiftError as e:
             elapsed = time.monotonic() - start
+            # a timeout: this server stopped the run at its deadline
+            stopped = "timeout" if isinstance(e, ExecutionTimeoutError) else None
             logged_id = audit.log(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
-                result_summary={"error": str(e)},
+                result_summary={
+                    "error": str(e),
+                    **({"stopped": stopped} if stopped else {}),
+                    **version_summary,
+                },
                 elapsed_ms=elapsed * 1000,
                 audit_id=op_id,
                 case_dir=case_dir,
@@ -457,6 +518,8 @@ def create_server() -> FastMCP:
                 data=None,
                 audit_id=logged_id,
                 error=str(e),
+                stopped=stopped,
+                **version_keys,
             )
             if logged_id is None:
                 response["warning"] = "Audit write failed — action not recorded"

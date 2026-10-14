@@ -29,7 +29,7 @@ phases:
     steps:
       - "Determine what the timestomped files are — executables, documents, scripts"
       - "Check files against Windows baseline (windows-triage: check_file)"
-      - "Check file hashes against threat intelligence (opencti: lookup_hash)"
+      - "Check file hashes against threat intelligence (opencti: lookup_ioc)"
   - phase: "Record"
     steps:
       - "Record finding including both $SI and $FN timestamps for affected files"

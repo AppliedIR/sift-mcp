@@ -8,42 +8,42 @@ does_not_prove:
 
 investigation_patterns:
   - name: "Process tree anomalies"
-    command: "vol -f <dump> windows.pstree"
+    command: "Volatility 3 plugin windows.pstree. See get_tool_help for this version's syntax."
     purpose: "Identify unexpected parent-child relationships — orphaned processes, unusual spawning chains"
     follow_up: "windows-triage check_process_tree for baseline validation"
 
   - name: "Code injection detection"
-    command: "vol -f <dump> windows.malfind"
+    command: "Volatility 3 plugin windows.malfind. See get_tool_help for this version's syntax."
     purpose: "Find injected code, hollowed processes, and suspicious memory regions with execute permissions"
     follow_up: "Extract suspicious regions, submit to remnux-mcp analyze_file"
 
   - name: "Hidden process detection"
-    command: "vol -f <dump> windows.psscan"
+    command: "Volatility 3 plugin windows.psscan. See get_tool_help for this version's syntax."
     purpose: "Scan for EPROCESS structures — finds hidden and terminated processes not in active list"
     note: "Compare psscan output with pslist — processes in psscan but not pslist may be hidden by rootkit"
 
   - name: "Network connections"
-    command: "vol -f <dump> windows.netscan"
+    command: "Volatility 3 plugin windows.netscan. See get_tool_help for this version's syntax."
     purpose: "Active and recently closed network connections — C2 detection"
     follow_up: "opencti lookup_ioc for destination IPs/domains"
 
   - name: "Named pipe C2 detection"
-    command: "vol -f <dump> windows.handles --pid <pid>"
+    command: "Volatility 3 plugin windows.handles. See get_tool_help for this version's syntax. Limit it to the process of interest."
     filter: "grep for \\Device\\NamedPipe in output"
     note: "windows.handles lists ALL handle types. Filter for \\Device\\NamedPipe to isolate pipe handles."
     follow_up: "windows-triage check_pipe for known C2 patterns"
 
   - name: "Command line arguments"
-    command: "vol -f <dump> windows.cmdline"
+    command: "Volatility 3 plugin windows.cmdline. See get_tool_help for this version's syntax."
     purpose: "Process command lines — reveals encoded commands, suspicious arguments, attacker tools"
 
   - name: "DLL injection detection"
-    command: "vol -f <dump> windows.ldrmodules"
+    command: "Volatility 3 plugin windows.ldrmodules. See get_tool_help for this version's syntax."
     purpose: "Compare loaded modules against PEB — unlinked DLLs indicate injection"
     note: "Modules in InInit but not InLoad or InMem are suspicious"
 
   - name: "Service enumeration"
-    command: "vol -f <dump> windows.svcscan"
+    command: "Volatility 3 plugin windows.svcscan. See get_tool_help for this version's syntax."
     purpose: "Enumerate services from memory — includes services hidden from registry"
 
 cross_mcp_checks:

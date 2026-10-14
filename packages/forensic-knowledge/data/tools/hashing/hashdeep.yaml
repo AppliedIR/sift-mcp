@@ -17,31 +17,24 @@ output_notes:
   format: csv
   key_fields: [file_size, md5, sha1, sha256, filename]
 
-exit_code_hints:
-  0: "success or all files matched"
-  1: "error or audit mismatch found"
-
 advisories:
-  - "Use -r flag for recursive directory hashing"
-  - "Use -c flag to specify hash algorithms: -c md5,sha1,sha256"
-  - "Audit mode (-a) compares computed hashes against a known hash set — use for NSRL filtering or integrity verification"
-  - "Negative matching (-x flag, or -X to show hashes) excludes known-good files, leaving only unknown files for analysis; -m/-M is positive matching"
+  - "Audit mode compares computed hashes against a known hash set. Use it for NSRL filtering or integrity verification."
+  - "Negative matching excludes known-good files. It leaves only unknown files for analysis. Positive matching does the reverse: it keeps only the files that match a hash set."
   - "Always hash evidence at acquisition AND before analysis to verify integrity has been maintained"
   - "Output includes file size alongside hashes, which helps identify files that are identical in size but different in content"
   - "For NSRL (National Software Reference Library) filtering, download the RDS hash set and use audit mode"
   - "The md5deep, sha1deep, and sha256deep variants compute single hash types for simpler workflows"
 
-quick_start: "hashdeep -r /evidence/mount > hashes.txt"
 
 investigation_sequence:
   - "Recursively hash all files in the evidence mount to establish a baseline"
-  - "Use -c to select hash algorithms (md5, sha1, sha256) appropriate for the investigation"
-  - "Use -k to load known-good hash sets for audit comparison"
-  - "Use -a (audit mode) to verify evidence against a previously computed baseline"
-  - "Use -x (negative matching) to identify files NOT in a known-good set"
+  - "Select the hash algorithms (MD5, SHA-1, SHA-256) appropriate for the investigation"
+  - "Load known-good hash sets for audit comparison"
+  - "Use audit mode to verify evidence against a previously computed baseline"
+  - "Use negative matching to identify files that are not in a known-good set"
   - "Cross-reference file hashes with threat intelligence sources for known-bad indicators"
   - "Document hash values as part of evidence integrity verification"
-  - "Use piecewise hashing (-p) for large files when sector-level comparison is needed"
+  - "Use piecewise hashing for large files when sector-level comparison is needed"
 
 field_meanings:
   size: "File size in bytes"

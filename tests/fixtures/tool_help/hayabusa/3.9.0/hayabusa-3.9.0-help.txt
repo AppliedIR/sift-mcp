@@ -1,0 +1,28 @@
+Hayabusa v3.9.0 - Showa Day Release
+Yamato Security (https://github.com/Yamato-Security/hayabusa - @SecurityYamato)
+
+Usage:
+  hayabusa.exe <COMMAND> [OPTIONS]
+  hayabusa.exe help <COMMAND> or hayabusa.exe <COMMAND> -h
+
+Commands:
+  computer-metrics         Output the total number of events according to computer names
+  config-critical-systems  Find critical systems like domain controllers and file servers
+  csv-timeline             Create a DFIR timeline and save it in CSV format
+  eid-metrics              Output event ID metrics
+  expand-list              Extract expand placeholders from the rules folder
+  extract-base64           Extract and decode base64 strings from events
+  json-timeline            Create a DFIR timeline and save it in JSON/JSONL format
+  level-tuning             Tune alert levels for the DFIR timeline
+  list-contributors        Print the list of contributors
+  list-profiles            List the output profiles for the DFIR timeline
+  log-metrics              Output evtx file metadata
+  logon-summary            Output a summary of successful and failed logons
+  pivot-keywords-list      Create a list of pivot keywords
+  search                   Search all events by keyword(s) or regular expression
+  set-default-profile      Set default output profile for the DFIR timeline
+  update-rules             Update to the latest rules in the hayabusa-rules github repository
+  help                     Print this message or the help of the given subcommand(s)
+
+# --- stderr ---
+

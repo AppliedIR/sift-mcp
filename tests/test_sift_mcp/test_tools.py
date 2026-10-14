@@ -115,33 +115,6 @@ class TestNetworkTools:
         assert "zeek" in names
 
 
-class TestInstallerGracefulFailure:
-    def test_hayabusa_installer_no_network(self, monkeypatch):
-        """Installer should return None gracefully without network."""
-        monkeypatch.setenv("SIFT_HAYABUSA_DIR", "/tmp/test-hayabusa-nonexistent")
-        from sift_mcp.installer import install_hayabusa
-
-        # Should gracefully fail (no curl or no network)
-        result = install_hayabusa()
-        # Either None (no network) or a path (somehow installed)
-        assert result is None or isinstance(result, str)
-
-    def test_hayabusa_installer_network_failure(self, monkeypatch):
-        """Mock urllib to simulate network failure. Should return None."""
-        monkeypatch.setenv("SIFT_HAYABUSA_DIR", "/tmp/test-hayabusa-mock")
-        import urllib.error
-        from unittest.mock import patch
-
-        with patch(
-            "urllib.request.urlopen",
-            side_effect=urllib.error.URLError("mock network failure"),
-        ):
-            from sift_mcp.installer import install_hayabusa
-
-            result = install_hayabusa()
-            assert result is None or isinstance(result, str)
-
-
 class TestFileAnalysisTools:
     def test_file_analysis_tools_in_catalog(self):
         from sift_mcp.catalog import list_tools_in_catalog

@@ -17,10 +17,6 @@ output_notes:
   format: virtual_filesystem
   key_fields: [process_list, modules, handles, network, registry]
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
   - "Navigate the virtual filesystem as you would a regular file system — processes appear as directories"
   - "Process memory can be read directly as files — useful for strings extraction and YARA scanning"
@@ -29,7 +25,6 @@ advisories:
   - "Use alongside Volatility for cross-validation of findings"
   - "Network connections, handles, and registry data accessible through dedicated virtual directories"
 
-quick_start: "memprocfs -device memory.raw"
 
 investigation_sequence:
   - "Mount the memory image as a virtual file system for intuitive browsing"

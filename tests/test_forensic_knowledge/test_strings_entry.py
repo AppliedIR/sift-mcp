@@ -1,8 +1,9 @@
 """The strings entry is read on SIFT (GNU strings) and on Windows
 (Sysinternals strings), whose flags differ: `-a` is "all sections" in one and
-"ASCII only" in the other. Its quick start runs on both, every line naming a
-flag or a default length says it's GNU strings on SIFT, and no line names a
-Sysinternals flag (the wintools catalog carries those)."""
+"ASCII only" in the other. It has no quick start (get_tool_help gives the
+installed version's syntax), every line naming a flag or a default length says
+it's GNU strings on SIFT, and no line names a Sysinternals flag (the wintools
+catalog carries those)."""
 
 import re
 
@@ -21,7 +22,6 @@ def entry():
 
 def _lines(e: dict) -> list[str]:
     return [
-        e["quick_start"],
         e["platform_notes"],
         *e["investigation_sequence"],
         *e["advisories"],
@@ -29,8 +29,8 @@ def _lines(e: dict) -> list[str]:
     ]
 
 
-def test_the_quick_start_passes_no_flag(entry):
-    assert entry["quick_start"] == "strings target_file"
+def test_there_is_no_quick_start(entry):
+    assert "quick_start" not in entry
 
 
 def test_every_line_naming_a_flag_or_default_length_says_gnu_strings_on_sift(entry):
@@ -44,4 +44,6 @@ def test_no_line_names_a_sysinternals_flag(entry):
 
 
 def test_the_utf16le_pass_on_sift_stays(entry):
-    assert any("-e l" in x and "GNU" in x for x in _lines(entry))
+    assert any(
+        "UTF-16LE" in x and "second pass" in x and "GNU" in x for x in _lines(entry)
+    )

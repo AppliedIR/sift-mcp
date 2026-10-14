@@ -6,33 +6,25 @@ platform_notes: "C++ tool. Pre-installed on SIFT (Linux). Windows builds availab
 artifacts_parsed: []
 
 caveats:
-  - "Output directory must be specified with -o and must not already exist"
-  - "Default scanners may produce very large output — use -e/-x flags to enable/disable specific scanners"
+  - "The output directory must not already exist."
+  - "The default scanners can produce very large output. Individual scanners can be turned on or off to limit it."
   - "Does not require a mounted file system — works directly on raw data, E01 images, and unallocated space"
   - "Carving results include both allocated and unallocated data — fragments may be incomplete"
-  - "Processing large disk images can take hours — use -Y for offset ranges to limit scope"
+  - "Processing a large disk image can take hours. Scanning only a range of offsets limits the scope."
   - "Feature files contain one finding per line with byte offset — offsets may not map to specific files"
 
 output_notes:
   format: text
   key_fields: [feature_file, offset, feature_value, context]
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
-  - "Output directory (-o) is required and must be a new directory — bulk_extractor refuses to overwrite"
   - "Key output files: email.txt, url.txt, domain.txt, telephone.txt, ccn.txt, exif.txt, winpe.txt"
-  - "Use -e scanner_name to enable additional scanners (e.g., -e ntfsusn for USN journal carving)"
-  - "Use -x scanner_name to disable scanners (e.g., -x accts to skip credit card scanning)"
+  - "The ntfsusn scanner carves USN journal records. In bulk_extractor 1.6.1 it is on by default."
   - "Combine with blkls for targeted carving of only unallocated space"
   - "The histogram files (*_histogram.txt) provide frequency analysis of findings"
-  - "Use -Y offset to start scanning at a specific byte offset for targeted analysis"
   - "Results can be loaded into bulk_extractor Viewer (BEViewer) for interactive analysis"
   - "Particularly valuable for recovering email addresses, URLs, and network indicators from wiped systems"
 
-quick_start: "bulk_extractor -o output_dir image.dd"
 
 investigation_sequence:
   - "Run bulk_extractor against the disk image to carve forensic records from all areas including unallocated space"

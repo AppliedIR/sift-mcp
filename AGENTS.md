@@ -19,6 +19,8 @@ including evidence standards, confidence levels, and checkpoint requirements.
 
 Call `list_available_tools()` on sift-mcp or `list_windows_tools()` on wintools-mcp to see current forensic tool inventory.
 
+Before building a tool's command line, call get_tool_help (get_windows_tool_help on Windows) and use a recipe for the installed version, or the tool's own help. Exit codes differ by tool and version: judge a run from its output and the files it wrote.
+
 ## Skills
 
 Procedures load on demand as Agent Skills (a client without skills reads

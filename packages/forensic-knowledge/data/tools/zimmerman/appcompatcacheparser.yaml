@@ -9,7 +9,7 @@ caveats:
   - "ShimCache only proves a file WAS PRESENT on disk, not that it was executed (Win8+)"
   - "On Windows 7 and earlier, an InsertFlag may indicate execution, but is not definitive"
   - "Cache entries are written to the registry at shutdown; a crash loses unwritten entries"
-  - "On SIFT/Linux requires the SYSTEM hive file (-f); on Windows, omitting -f parses the live registry"
+  - "Give it a SYSTEM hive file from the case. On Windows, a run without a hive file parses the live registry of the machine it runs on. Through wintools-mcp, that machine is the wintools host, not the evidence, so wintools-mcp refuses a run without a hive file. On SIFT/Linux a hive file is always required."
   - "Entry order reflects the order of interaction, not chronological execution time"
   - "Maximum of 1024 entries on Win8+; older entries are evicted"
 
@@ -17,17 +17,12 @@ output_notes:
   format: csv
   key_fields: [Path, LastModifiedTimeUTC, CacheEntryPosition, Executed]
 
-exit_code_hints:
-  0: "success"
-  1: "error or no data found"
-
 advisories:
   - "ShimCache proves FILE PRESENCE, not execution on Win8+ — do NOT claim execution based solely on ShimCache"
   - "CacheEntryPosition is significant: lower numbers indicate more recent interaction"
   - "Correlate with Prefetch and Amcache for stronger evidence of execution"
   - "The LastModifiedTime is the file's $STANDARD_INFORMATION modification time, not when ShimCache recorded it"
 
-quick_start: "AppCompatCacheParser.exe -f SYSTEM --csv output/"
 
 investigation_sequence:
   - "Parse the SYSTEM hive to extract ShimCache entries (via sift-mcp or wintools-mcp)"
@@ -37,11 +32,11 @@ investigation_sequence:
   - "Look for entries from unusual paths (temp directories, user profiles, removable media)"
   - "Correlate timestamps with other artifacts for timeline construction"
   - "Cross-MCP: Check file paths against Windows baseline (windows-triage: check_file)"
-  - "Cross-MCP: Search for shimcache interpretation context (forensic-rag: search)"
+  - "Cross-MCP: Search for shimcache interpretation context (forensic-rag: search_knowledge)"
 
 field_meanings:
   LastModifiedTimeUTC: "File last modification timestamp from the file system at cache time"
   Path: "Full file path recorded in the ShimCache"
   CacheEntryPosition: "Position in cache — lower numbers are more recently cached"
   ControlSet: "Registry control set the entry was extracted from"
-  Executed: "DO NOT TRUST THIS FIELD. The 'Executed' column is the InsertFlag from the ShimCache entry. It is unreliable on all Windows versions — do not use it to prove or disprove execution. This field has caused more forensic misinterpretations than any other. To prove execution: use Prefetch, UserAssist, BAM (rip.pl -r SYSTEM -p bam), or event logs (4688, Sysmon 1)."
+  Executed: "DO NOT TRUST THIS FIELD. The 'Executed' column is the InsertFlag from the ShimCache entry. It is unreliable on all Windows versions — do not use it to prove or disprove execution. This field has caused more forensic misinterpretations than any other. To prove execution: use Prefetch, UserAssist, BAM (RegRipper's bam plugin on the SYSTEM hive), or event logs (4688, Sysmon 1)."

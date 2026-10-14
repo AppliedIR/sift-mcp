@@ -24,6 +24,7 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=1.26,<2",
+    "packaging>=21",
     "pyyaml>=6.0",
     "forensic-knowledge",
     "sift-common",

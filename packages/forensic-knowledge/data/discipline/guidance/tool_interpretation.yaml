@@ -27,8 +27,8 @@ tools:
     caveats:
       - "Process tree at time of collection, not runtime"
       - "Parent PID reuse can create misleading relationships"
-  search:
-    tool: "forensic-rag-mcp: search"
+  search_knowledge:
+    tool: "forensic-rag-mcp: search_knowledge"
     score_interpretation:
       "0.85+": "Excellent match — high confidence the result is directly relevant"
       "0.75-0.84": "Good match — relevant but review context carefully"

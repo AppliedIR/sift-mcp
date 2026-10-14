@@ -13,7 +13,7 @@ MITRE ATT&CK: T1071.004, T1568.002
 
 ## Phase 1: Identify
 
-1. Analyze DNS logs or PCAP using tshark with DNS filter (via sift-mcp) — tshark -Y dns
+1. Analyze DNS logs or PCAP using tshark with a DNS display filter (via sift-mcp)
 2. Parse Zeek dns.log for query patterns (via sift-mcp)
 3. Filter for unusual query patterns — long names, high frequency, non-standard types
 
@@ -26,7 +26,7 @@ MITRE ATT&CK: T1071.004, T1568.002
 ## Phase 3: Threat Intel
 
 1. Check suspicious domains against threat intelligence (opencti: lookup_ioc)
-2. Search for DNS exfiltration and tunneling techniques (forensic-rag: search)
+2. Search for DNS exfiltration and tunneling techniques (forensic-rag: search_knowledge)
 
 ## Phase 4: Source
 

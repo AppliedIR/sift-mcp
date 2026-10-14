@@ -18,7 +18,7 @@ def get_guidance(tool_name: str) -> dict:
         for name in (
             "check_file",
             "check_process_tree",
-            "search",
+            "search_knowledge",
             "search_threat_intel",
         ):
             if loader.get_tool_interpretation(name) is not None:

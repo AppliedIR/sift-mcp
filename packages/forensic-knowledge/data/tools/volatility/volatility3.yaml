@@ -46,20 +46,14 @@ output_notes:
   format: json
   key_fields: [PID, PPID, ImageFileName, Offset, CreateTime, ExitTime]
 
-exit_code_hints:
-  0: "success"
-  1: "error, unsatisfied requirement, or no results"
-
 advisories:
   - "Always run pslist AND psscan — comparing results reveals HIDDEN PROCESSES (present in scan but absent from list)"
   - "malfind detects injected code by checking VAD permissions (RWX) and PE headers — high false positive rate on some systems"
   - "netscan can recover terminated connections that no longer appear in netstat"
   - "Process tree analysis (pstree) is critical: unexpected parent-child relationships indicate injection or masquerading"
-  - "Use -o for offset if the memory image contains multiple operating system instances"
-  - "Output to JSON (-r json) for structured analysis; default is text table"
+  - "JSON output suits structured analysis. The default output is a text table."
   - "For Windows analysis, download ISF symbols from https://github.com/volatilityfoundation/volatility3#symbol-tables"
 
-quick_start: "vol -f memory_dump.raw windows.info"
 
 investigation_sequence:
   - "Start with windows.info to identify the OS version and profile (via sift-mcp)"

@@ -3,6 +3,16 @@ category: file_analysis
 tools:
   - name: bulk_extractor
     binary: bulk_extractor
+    recipes:
+      - task: Scan a disk image for features (emails, URLs, card numbers, ...)
+        versions: ">=1.0,<2"
+        checked_on: "1.6.1"
+        argv: [bulk_extractor, -o, <new output folder>, <image>]
+      - task: Scan a disk image for features (emails, URLs, card numbers, ...)
+        versions: ">=2.0,<3"
+        checked_on: "2.2.0"
+        argv: [bulk_extractor, -o, <new output folder>, <image>]
+    help_argv: ["-h"]
     aliases: [bulk-extractor, "Bulk Extractor"]
     input_style: positional
     output_format: text

@@ -23,8 +23,8 @@ phases:
       - "Check if the executable is a known Living-off-the-Land binary (windows-triage: check_lolbin)"
   - phase: "Threat Intel"
     steps:
-      - "Check executable hash against threat intelligence (opencti: lookup_hash)"
-      - "Search for technique context and detection rules (forensic-rag: search)"
+      - "Check executable hash against threat intelligence (opencti: lookup_ioc)"
+      - "Search for technique context and detection rules (forensic-rag: search_knowledge)"
   - phase: "Analysis"
     steps:
       - "If suspicious, submit to REMnux for static analysis (remnux: analyze_file)"

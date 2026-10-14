@@ -17,18 +17,13 @@ output_notes:
   format: csv
   key_fields: [SourceFile, TargetCreated, TargetModified, TargetAccessed, TargetPath, Arguments, WorkingDirectory, VolumeSerialNumber, DriveType, MachineName]
 
-exit_code_hints:
-  0: "success"
-  1: "error or no data found"
-
 advisories:
   - "LNK files in Recent / Office Recent are strong evidence of FILE ACCESS — they show a user opened, saved, or interacted with the target; LNKs elsewhere (Desktop, Start Menu) may be created by installers"
   - "Check Arguments field for malicious command-line parameters in weaponized LNK files"
   - "Embedded MAC addresses and volume serial numbers can link a LNK to a specific source machine or USB device"
-  - "Use -d to process a directory of LNK files; use --all for maximum detail"
+  - "LECmd can process a whole directory of LNK files"
   - "LNK files on the Desktop, Start Menu, or Recent folder each have different forensic significance"
 
-quick_start: "LECmd.exe -d \"C:/Users/*/AppData/Roaming/Microsoft/Windows/Recent\" --csv output/"
 
 investigation_sequence:
   - "Parse LNK shortcut files to identify file and folder access evidence"

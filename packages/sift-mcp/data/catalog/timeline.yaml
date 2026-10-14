@@ -4,6 +4,30 @@ common_binary_dir: /usr/local/bin
 tools:
   - name: hayabusa
     binary: hayabusa
+    recipes:
+      - task: Timeline of Windows event logs as JSON lines
+        versions: ">=3.0,<4"
+        checked_on: "3.9.0"
+        argv: [hayabusa, json-timeline, -d, <evtx folder>, -o, <output .jsonl>, -w, --min-level, <informational|low|medium|high|critical>]
+        notes: '-w: no questions (a run has no terminal).'
+      - task: Timeline of Windows event logs as CSV
+        versions: ">=3.0,<4"
+        checked_on: "3.9.0"
+        argv: [hayabusa, csv-timeline, -d, <evtx folder>, -o, <output .csv>, -w]
+        notes: '-w: no questions (a run has no terminal).'
+      - task: Timeline of Windows event logs as JSON lines
+        versions: ">=4.0,<5"
+        checked_on: "4.2.0"
+        argv: [hayabusa, dfir-timeline, -d, <evtx folder>, -t, jsonl, -o, <output .jsonl>, -w, --min-level, <informational|low|medium|high|critical>]
+        notes: '4.x replaced json-timeline and csv-timeline with dfir-timeline; -t picks the format. -w: no questions (a run has no terminal).'
+      - task: Timeline of Windows event logs as CSV
+        versions: ">=4.0,<5"
+        checked_on: "4.2.0"
+        argv: [hayabusa, dfir-timeline, -d, <evtx folder>, -o, <output .csv>, -w]
+        notes: 'CSV is dfir-timeline''s default. -w: no questions (a run has no terminal).'
+    version_argv: ["help"]  # "Hayabusa vX.Y.Z" on its first line
+    help_argv: ["help"]
+    subcommand_help: ["{subcommand}", "--help"]
     input_style: flag
     input_flag: "-d"
     output_format: json
@@ -11,25 +35,23 @@ tools:
     interactive: false
     description: >-
       Sigma-based Windows event log analyzer. Starts with a subcommand:
-      `hayabusa json-timeline -d <evtx dir> -o <file> -w` (or csv-timeline;
-      dfir-timeline in hayabusa 4.x). SIFT installs 3.9.0.
+      `hayabusa json-timeline -d <evtx dir> -o <file> -w` (or csv-timeline)
+      in 3.x; `hayabusa dfir-timeline` in 4.x, which removed those two.
+      SIFT installs 3.9.0.
     fk_tool_name: Hayabusa
-    common_flags:
-      - flag: "json-timeline"
-        description: "Subcommand: a JSONL timeline of detections (csv-timeline for CSV; dfir-timeline in 4.x)"
-        required: true
-      - flag: "-o"
-        description: "Output file path"
-        required: false
-      - flag: "-w"
-        description: "No wizard (--no-wizard): run without the interactive rule-selection prompts"
-        required: true
-      - flag: "--min-level"
-        description: "Minimum alert level (informational, low, medium, high, critical)"
-        required: false
-
   - name: log2timeline
     binary: log2timeline.py
+    recipes:
+      - task: Extract events into a Plaso store
+        versions: ">=20240101,<20250101"
+        checked_on: "20240308"
+        argv: [log2timeline.py, --storage-file, <timeline.plaso>, <evidence>]
+      - task: Extract events into a Plaso store
+        versions: ">=20260101,<20270101"
+        checked_on: "20260720"
+        argv: [log2timeline, --storage-file, <timeline.plaso>, <evidence>]
+        notes: 'pip installs plaso as log2timeline, without .py.'
+    other_binaries: [log2timeline]  # plaso installed with pip
     input_style: positional
     output_format: text
     timeout_seconds: 7200
@@ -40,6 +62,12 @@ tools:
 
   - name: mactime
     binary: mactime
+    recipes:
+      - task: Turn a bodyfile into a timeline
+        versions: ">=4.0,<5"
+        checked_on: "4.11.1, 4.15.0"
+        argv: [mactime, -b, <bodyfile>]
+        notes: 'Pass save_output: true to keep it.'
     input_style: flag
     input_flag: "-b"
     output_format: text
@@ -50,6 +78,17 @@ tools:
 
   - name: psort
     binary: psort.py
+    recipes:
+      - task: Export a Plaso store to CSV
+        versions: ">=20240101,<20250101"
+        checked_on: "20240308"
+        argv: [psort.py, -w, <output .csv>, <timeline.plaso>]
+      - task: Export a Plaso store to CSV
+        versions: ">=20260101,<20270101"
+        checked_on: "20260720"
+        argv: [psort, -w, <output .csv>, <timeline.plaso>]
+        notes: 'pip installs plaso as psort, without .py.'
+    other_binaries: [psort]  # plaso installed with pip
     input_style: positional
     output_format: text
     timeout_seconds: 3600

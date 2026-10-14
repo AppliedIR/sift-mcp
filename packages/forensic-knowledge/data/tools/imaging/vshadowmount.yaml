@@ -10,27 +10,21 @@ caveats:
   - "Must be run against a raw volume — use partition offset or ewfmount first for E01 images"
   - "Each VSS snapshot appears as a separate device file (vss1, vss2, etc.) in the mount point"
   - "Mounted snapshots are read-only — evidence integrity is preserved"
-  - "Must unmount with fusermount -u when finished"
+  - "Unmount the FUSE mount when finished"
   - "VSS snapshots can be very large (full volume size) — they are differencing copies but appear as complete volumes"
 
 output_notes:
   format: text
   key_fields: [mount_point, snapshot_devices]
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
   - "Run vshadowinfo first to identify available snapshot numbers and timestamps"
-  - "Typical workflow: vshadowmount /dev/volume /mnt/vss → mount -o ro,loop /mnt/vss/vss1 /mnt/snap1"
+  - "Typical workflow: mount the volume's shadow copies with vshadowmount. Then mount each vssN device read-only as a file system."
   - "Mount each snapshot read-only and compare file contents against the live volume to identify changes"
   - "VSS snapshots often contain pre-encryption versions of files in ransomware cases"
   - "Use diff or timeline tools to compare snapshot contents against the active volume"
-  - "Unmount with: fusermount -u /mnt/vss"
-  - "Use -o offset flag when working with a full disk image instead of a raw volume"
+  - "On a full disk image rather than a raw volume, give the volume's offset"
 
-quick_start: "vshadowmount /dev/sdX /mnt/vss"
 
 investigation_sequence:
   - "Mount all Volume Shadow Copy snapshots as virtual device files"
@@ -39,4 +33,4 @@ investigation_sequence:
   - "Compare file contents across snapshots to identify changes over time"
   - "Look for files present in shadow copies but deleted from the current volume"
   - "Cross-reference shadow copy content with MFT and USN Journal analysis"
-  - "Unmount with fusermount -u when analysis is complete"
+  - "Unmount the snapshots when analysis is complete"

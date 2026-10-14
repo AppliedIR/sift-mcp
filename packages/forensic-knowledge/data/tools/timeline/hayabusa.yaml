@@ -8,7 +8,8 @@ artifacts_parsed: [event_logs_security, event_logs_system, event_logs_powershell
 caveats:
   - "Detection is rule-based (Sigma + Hayabusa rules) — only known attack patterns are detected"
   - "False positives are common, especially at informational and low severity levels"
-  - "Rule updates are frequent; always update rules before analysis with 'hayabusa update-rules'"
+  - "Rule updates are frequent. An older rule set can miss detections added since it was installed."
+  - "Through wintools-mcp, the rule-update command is refused, because it downloads rules from the internet. Ask the examiner whether the installed rules are current."
   - "Does not parse non-EVTX log sources; combine with other tools for complete timeline"
   - "Large EVTX collections (10GB+) may require significant processing time"
   - "Rule severity levels: critical, high, medium, low, informational — triage from the top down"
@@ -16,38 +17,33 @@ caveats:
 
 output_notes:
   format: csv_or_json
-  key_fields: [Timestamp, RuleTitle, Level, Computer, Channel, EventID, RecordID, Details, MitreTactics, MitreTechniques]
-
-exit_code_hints:
-  0: "success"
-  1: "error"
+  key_fields: [Timestamp, RuleTitle, Level, Computer, Channel, EventID, RecordID, Details, MitreTactics, MitreTags]
 
 advisories:
   - "Hayabusa is a DETECTION tool, not a parser — it highlights suspicious events, not all events"
-  - "Start with 'csv-timeline' or 'json-timeline' commands for investigation output"
+  - "Start with the DFIR timeline command for investigation output. Hayabusa 4.0 and later name it dfir-timeline. Earlier versions name it csv-timeline for CSV output or json-timeline for JSON output. Call get_tool_help to see which version is installed."
   - "Use 'logon-summary' and 'pivot-keywords-list' for rapid triage"
-  - "The --min-level flag filters output by severity — use 'high' or 'critical' for initial triage"
+  - "Hayabusa can load only the rules at or above a minimum severity level. Use high or critical for an initial triage pass."
   - "MITRE ATT&CK mapping in output enables direct technique-based investigation"
   - "Combine Hayabusa detection results with EvtxECmd full parsing for complete event context"
-  - "The 'metrics' command provides event ID statistics useful for identifying log gaps or anomalies"
+  - "The 'eid-metrics' command provides event ID statistics useful for identifying log gaps or anomalies"
 
-quick_start: "hayabusa csv-timeline -d evtx_directory/ -o output.csv"
 
 investigation_sequence:
-  - "Run csv-timeline to generate a detection-based timeline of all EVTX files (via sift-mcp or wintools-mcp)"
+  - "Run the DFIR timeline command (dfir-timeline from 4.0, csv-timeline before) to generate a detection-based timeline of all EVTX files (via sift-mcp or wintools-mcp)"
   - "Review critical and high severity detections first for rapid triage"
   - "Do not discard lower severity results — informational and low events frequently contain valuable context and supporting evidence for the investigation"
   - "Use logon-summary for rapid authentication analysis"
   - "Use pivot-keywords-list to identify accounts, IPs, and hostnames for lateral movement analysis"
   - "Cross-reference detections with EvtxECmd full parsing for complete event context"
   - "Map detected techniques to MITRE ATT&CK for structured threat analysis"
-  - "Cross-MCP: Search forensic-rag for detection context on flagged rules (forensic-rag: search)"
+  - "Cross-MCP: Search forensic-rag for detection context on flagged rules (forensic-rag: search_knowledge)"
   - "Cross-MCP: Check IOCs from alerts against threat intelligence (opencti: lookup_ioc)"
 
 field_meanings:
   Timestamp: "Event creation time (YYYY-MM-DD HH:mm:ss.sss +hh:mm)"
   RuleTitle: "Detection rule descriptive name from the Sigma/Hayabusa rule"
-  Level: "Alert severity: critical, high, medium, low, or informational"
+  Level: "Alert severity. Timeline output abbreviates it by default: crit, high, med, low, info, plus emer (emergency) from v3.1 on configured critical systems. Full words appear only when abbreviations are disabled, on v3.4 or later. get_tool_help shows that option for the installed version. Query for both forms."
   Computer: "Source system hostname from the event record"
   Channel: "Windows Event Log channel name (Security, System, etc.)"
   EventID: "Windows Event ID number identifying the event type"

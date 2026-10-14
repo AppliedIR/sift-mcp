@@ -25,8 +25,8 @@ MITRE ATT&CK: T1204, T1059
 
 ## Phase 3: Threat Intel
 
-1. Check executable hash against threat intelligence (opencti: lookup_hash)
-2. Search for technique context and detection rules (forensic-rag: search)
+1. Check executable hash against threat intelligence (opencti: lookup_ioc)
+2. Search for technique context and detection rules (forensic-rag: search_knowledge)
 
 ## Phase 4: Analysis
 

@@ -1,0 +1,7 @@
+error: unrecognized subcommand 'csv-timeline'
+
+  tip: a similar subcommand exists: 'dfir-timeline'
+
+Usage: hayabusa-4.2.0-lin-x64-musl [COMMAND]
+
+For more information, try 'help'.

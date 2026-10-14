@@ -71,6 +71,7 @@ def execute(
 
     start = time.monotonic()
     truncated = False
+    killed = False  # stopped here at the output limit, not ended on its own
     try:
         proc = subprocess.Popen(
             cmd_list,
@@ -106,6 +107,7 @@ def execute(
                 raise subprocess.TimeoutExpired(cmd_list, timeout)
             if total[0] >= max_bytes:
                 truncated = True
+                killed = True
                 proc.kill()
                 proc.wait(timeout=5)
                 break
@@ -144,7 +146,10 @@ def execute(
             "output_sha256_scope": "prefix" if truncated else "full",
         }
         if truncated:
-            response["truncated"] = True
+            response["truncated"] = True  # the capture was cut
+        if killed:  # the process didn't end on its own: this server stopped it
+            response["stopped"] = "output limit"
+            response["output_limit"] = max_bytes
 
         # In a case every output is kept, whatever its size or save_output:
         # those are the bytes a finding cites. Without a case, when asked.

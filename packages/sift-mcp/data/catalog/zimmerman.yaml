@@ -4,6 +4,11 @@ common_binary_dir: /usr/local/bin
 tools:
   - name: AmcacheParser
     binary: AmcacheParser
+    recipes:
+      - task: Parse Amcache.hve to CSV
+        versions: ">=2026.0,<2027"
+        checked_on: "2026.5.0"
+        argv: [AmcacheParser, -f, <Amcache.hve>, --csv, <output folder>]
     input_style: flag
     input_flag: "-f"
     output_format: csv
@@ -11,11 +16,6 @@ tools:
     interactive: false
     description: "Parse Amcache.hve registry hive"
     fk_tool_name: AmcacheParser
-    common_flags:
-      - flag: "--csv"
-        description: "Output directory for CSV"
-        required: true
-
   - name: PECmd
     binary: PECmd
     input_style: flag
@@ -25,13 +25,13 @@ tools:
     interactive: false
     description: "Parse Windows Prefetch files"
     fk_tool_name: PECmd
-    common_flags:
-      - flag: "--csv"
-        description: "Output directory for CSV"
-        required: true
-
   - name: AppCompatCacheParser
     binary: AppCompatCacheParser
+    recipes:
+      - task: Parse the ShimCache in a SYSTEM hive to CSV
+        versions: ">=2026.0,<2027"
+        checked_on: "2026.5.0"
+        argv: [AppCompatCacheParser, -f, <SYSTEM hive>, --csv, <output folder>]
     input_style: flag
     input_flag: "-f"
     output_format: csv
@@ -39,13 +39,13 @@ tools:
     interactive: false
     description: "Parse ShimCache (AppCompatCache) from SYSTEM hive"
     fk_tool_name: AppCompatCacheParser
-    common_flags:
-      - flag: "--csv"
-        description: "Output directory for CSV"
-        required: true
-
   - name: RECmd
     binary: RECmd
+    recipes:
+      - task: Run a batch file of registry queries over a hive, to CSV
+        versions: ">=2026.0,<2027"
+        checked_on: "2026.5.0"
+        argv: [RECmd, -f, <hive>, --bn, <batch .reb file>, --csv, <output folder>]
     input_style: flag
     input_flag: "-f"
     output_format: csv
@@ -53,16 +53,13 @@ tools:
     interactive: false
     description: "Registry Explorer command line — batch processing with --bn"
     fk_tool_name: RECmd
-    common_flags:
-      - flag: "--bn"
-        description: "Batch file for targeted registry extraction"
-        required: false
-      - flag: "--csv"
-        description: "Output directory for CSV"
-        required: true
-
   - name: MFTECmd
     binary: MFTECmd
+    recipes:
+      - task: Parse an $MFT to CSV
+        versions: ">=2026.0,<2027"
+        checked_on: "2026.5.0"
+        argv: [MFTECmd, -f, <$MFT>, --csv, <output folder>]
     input_style: flag
     input_flag: "-f"
     output_format: csv
@@ -70,13 +67,17 @@ tools:
     interactive: false
     description: "Parse $MFT and $UsnJrnl"
     fk_tool_name: MFTECmd
-    common_flags:
-      - flag: "--csv"
-        description: "Output directory for CSV"
-        required: true
-
   - name: EvtxECmd
     binary: EvtxECmd
+    recipes:
+      - task: Parse a folder of .evtx files to CSV
+        versions: ">=2026.0,<2027"
+        checked_on: "2026.5.0"
+        argv: [EvtxECmd, -d, <evtx folder>, --csv, <output folder>]
+      - task: The same, with a maps folder other than the tool's own
+        versions: ">=2026.0,<2027"
+        checked_on: "2026.5.0"
+        argv: [EvtxECmd, -d, <evtx folder>, --csv, <output folder>, --maps, <maps folder>]
     input_style: flag
     input_flag: "-f"
     output_format: csv
@@ -84,16 +85,13 @@ tools:
     interactive: false
     description: "Parse Windows Event Log (.evtx) files"
     fk_tool_name: EvtxECmd
-    common_flags:
-      - flag: "--csv"
-        description: "Output directory for CSV"
-        required: true
-      - flag: "--maps"
-        description: "Path to EvtxECmd Maps directory"
-        required: false
-
   - name: JLECmd
     binary: JLECmd
+    recipes:
+      - task: Parse a folder of jump lists to CSV
+        versions: ">=2026.0,<2027"
+        checked_on: "2026.5.0"
+        argv: [JLECmd, -d, <AutomaticDestinations folder>, --csv, <output folder>]
     input_style: flag
     input_flag: "-f"
     output_format: csv
@@ -101,13 +99,13 @@ tools:
     interactive: false
     description: "Parse Jump List files"
     fk_tool_name: JLECmd
-    common_flags:
-      - flag: "--csv"
-        description: "Output directory for CSV"
-        required: true
-
   - name: LECmd
     binary: LECmd
+    recipes:
+      - task: Parse a folder of .lnk files to CSV
+        versions: ">=2026.0,<2027"
+        checked_on: "2026.5.0"
+        argv: [LECmd, -d, <folder of .lnk files>, --csv, <output folder>]
     input_style: flag
     input_flag: "-f"
     output_format: csv
@@ -115,13 +113,13 @@ tools:
     interactive: false
     description: "Parse Windows LNK (shortcut) files"
     fk_tool_name: LECmd
-    common_flags:
-      - flag: "--csv"
-        description: "Output directory for CSV"
-        required: true
-
   - name: SBECmd
     binary: SBECmd
+    recipes:
+      - task: Parse the ShellBags in a folder of user hives to CSV
+        versions: ">=2026.0,<2027"
+        checked_on: "2026.5.0"
+        argv: [SBECmd, -d, <folder of user hives>, --csv, <output folder>]
     input_style: flag
     input_flag: "-d"
     output_format: csv
@@ -129,13 +127,13 @@ tools:
     interactive: false
     description: "Parse ShellBags from registry hives"
     fk_tool_name: SBECmd
-    common_flags:
-      - flag: "--csv"
-        description: "Output directory for CSV"
-        required: true
-
   - name: RBCmd
     binary: RBCmd
+    recipes:
+      - task: Parse a Recycle Bin folder to CSV
+        versions: ">=2026.0,<2027"
+        checked_on: "2026.5.0"
+        argv: [RBCmd, -d, <$Recycle.Bin folder>, --csv, <output folder>]
     input_style: flag
     input_flag: "-f"
     output_format: csv
@@ -143,11 +141,6 @@ tools:
     interactive: false
     description: "Parse Recycle Bin $I files"
     fk_tool_name: RBCmd
-    common_flags:
-      - flag: "--csv"
-        description: "Output directory for CSV"
-        required: true
-
   - name: SrumECmd
     binary: SrumECmd
     input_style: flag
@@ -157,13 +150,13 @@ tools:
     interactive: false
     description: "Parse SRUM database"
     fk_tool_name: SrumECmd
-    common_flags:
-      - flag: "--csv"
-        description: "Output directory for CSV"
-        required: true
-
   - name: SQLECmd
     binary: SQLECmd
+    recipes:
+      - task: Parse a folder of SQLite databases to CSV
+        versions: ">=2026.0,<2027"
+        checked_on: "2026.5.0"
+        argv: [SQLECmd, -d, <folder of databases>, --csv, <output folder>]
     input_style: flag
     input_flag: "-f"
     output_format: csv
@@ -171,13 +164,13 @@ tools:
     interactive: false
     description: "Parse SQLite databases (browser history, etc.)"
     fk_tool_name: SQLECmd
-    common_flags:
-      - flag: "--csv"
-        description: "Output directory for CSV"
-        required: true
-
   - name: bstrings
     binary: bstrings
+    recipes:
+      - task: Extract strings from a file
+        versions: ">=2026.0,<2027"
+        checked_on: "2026.5"
+        argv: [bstrings, -f, <file>, -o, <output file>]
     input_style: flag
     input_flag: "-f"
     output_format: text

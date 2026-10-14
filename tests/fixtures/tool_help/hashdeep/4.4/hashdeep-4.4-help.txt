@@ -1,0 +1,25 @@
+hashdeep version 4.4 by Jesse Kornblum and Simson Garfinkel.
+$ hashdeep [OPTION]... [FILES]...
+-c <alg1,[alg2]> - Compute hashes only. Defaults are MD5 and SHA-256
+                   legal values: md5,sha1,sha256,tiger,whirlpool,
+-p <size> - piecewise mode. Files are broken into blocks for hashing
+-r        - recursive mode. All subdirectories are traversed
+-d        - output in DFXML (Digital Forensics XML)
+-k <file> - add a file of known hashes
+-a        - audit mode. Validates FILES against known hashes. Requires -k
+-m        - matching mode. Requires -k
+-x        - negative matching mode. Requires -k
+-w        - in -m mode, displays which known file was matched
+-M and -X act like -m and -x, but display hashes of matching files
+-e        - compute estimated time remaining for each file
+-s        - silent mode. Suppress all error messages
+-b        - prints only the bare name of files; all path information is omitted
+-l        - print relative paths for filenames
+-i/-I     - only process files smaller than the given threshold
+-o        - only process certain types of files. See README/manpage
+-v        - verbose mode. Use again to be more verbose
+-d        - output in DFXML; -W FILE - write to FILE.
+-j <num>  - use num threads (default 16)
+
+# --- stderr ---
+

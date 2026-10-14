@@ -17,19 +17,14 @@ output_notes:
   format: csv
   key_fields: [URL, Title, VisitTime, VisitCount, DownloadPath, SourceDatabase, MapName]
 
-exit_code_hints:
-  0: "success"
-  1: "error or no data found"
-
 advisories:
   - "Browser history proves a USER visited specific URLs at specific times from a specific browser profile"
   - "Download records can show file acquisition even if the downloaded file was later deleted"
   - "Update maps from https://github.com/EricZimmerman/SQLECmd for latest application support"
-  - "Use -d to specify the directory containing SQLite databases and --csv for output"
+  - "SQLECmd can process a directory of SQLite databases and write CSV output"
   - "Always collect WAL and SHM files alongside the main SQLite database for complete data"
   - "Incognito/private browsing sessions are NOT recorded in the main history database"
 
-quick_start: "SQLECmd.exe -d evidence_directory/ --csv output/"
 
 investigation_sequence:
   - "Parse SQLite databases using appropriate maps for structured extraction"

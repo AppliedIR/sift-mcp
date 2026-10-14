@@ -19,19 +19,13 @@ output_notes:
   format: csv
   key_fields: [Timestamp, AppId, ExePath, UserId, BytesSent, BytesReceived, ForegroundCycleTime, BackgroundCycleTime, NetworkAdapter]
 
-exit_code_hints:
-  0: "success"
-  1: "error or no data found"
-
 advisories:
   - "SRUM provides EXECUTION EVIDENCE with network usage data — a powerful combination for data exfiltration investigations"
   - "Network usage per application can quantify data exfiltration volume"
   - "SRUM persists after application uninstall, making it valuable for anti-forensics cases"
   - "Application names require the SOFTWARE hive for resolution; without it, only SID-based AppIds are available"
-  - "Use --csv to specify the output directory"
   - "Available on Windows 8+ (introduced with SRUM in Windows 8); most useful on Windows 10/11 where data is richer"
 
-quick_start: "SrumECmd.exe -f SRUDB.dat --csv output/"
 
 investigation_sequence:
   - "Parse SRUM database to extract application resource usage data"

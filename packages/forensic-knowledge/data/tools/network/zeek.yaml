@@ -18,21 +18,16 @@ output_notes:
   format: tsv_or_json
   key_fields: [ts, uid, id.orig_h, id.orig_p, id.resp_h, id.resp_p, proto, service, duration, orig_bytes, resp_bytes]
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
-  - "Use 'zeek -r capture.pcap' to process a PCAP file; output logs appear in the current directory"
+  - "Zeek writes its logs to the current working directory when it processes a PCAP file"
   - "conn.log is the starting point — it contains a summary of every connection"
   - "dns.log records all DNS queries and responses; critical for domain-based threat hunting"
   - "http.log provides URL, user-agent, referrer, and response details for HTTP connections"
   - "ssl.log shows TLS certificate details including subject and issuer; JA3/JA3S hashes only when a JA3 package is loaded"
   - "Use the UID field to correlate activity across log files (a single connection appears in multiple logs)"
   - "Zeek scripts can be loaded for additional analysis: '@load policy/protocols/ssl/validate-certs'"
-  - "For JSON output, add '@load policy/tuning/json-logs' to the Zeek script or use -e flag"
+  - "For JSON output, load the policy/tuning/json-logs script"
 
-quick_start: "zeek -r capture.pcap"
 
 investigation_sequence:
   - "Process the PCAP file with Zeek to generate protocol-level log files (via sift-mcp)"
@@ -45,7 +40,7 @@ investigation_sequence:
   - "Cross-reference Zeek logs with tshark packet-level analysis for detailed inspection"
   - "Correlate connection timestamps and IPs with host-based activity evidence"
   - "Cross-MCP: Check connection destinations against threat intelligence (opencti: lookup_ioc)"
-  - "Cross-MCP: Search for network-based attack patterns (forensic-rag: search)"
+  - "Cross-MCP: Search for network-based attack patterns (forensic-rag: search_knowledge)"
 
 field_meanings:
   ts: "Connection start timestamp"

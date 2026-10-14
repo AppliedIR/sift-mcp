@@ -33,7 +33,7 @@ MITRE ATT&CK: T1070.006
 
 1. Determine what the timestomped files are — executables, documents, scripts
 2. Check files against Windows baseline (windows-triage: check_file)
-3. Check file hashes against threat intelligence (opencti: lookup_hash)
+3. Check file hashes against threat intelligence (opencti: lookup_ioc)
 
 ## Phase 5: Record
 

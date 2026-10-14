@@ -17,26 +17,19 @@ output_notes:
   format: text
   key_fields: [plugin_name, key_path, value_name, value_data, last_write_time]
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
-  - "Use -a flag to run all plugins for a given hive type; use -p for a specific plugin"
-  - "The -r flag specifies the registry hive file to process"
+  - "RegRipper can run all plugins for a hive type, or one specific plugin"
   - "Key plugins: autorun (Run keys), services, userassist, appcompatcache, bam, networklist"
   - "For comprehensive registry analysis, consider RECmd (Zimmerman) as an alternative with better structured output"
-  - "Always specify the correct hive with -a: 'rip -r SYSTEM -a' processes all SYSTEM plugins"
   - "RegRipper plugins can be customized or extended for specific investigation needs"
   - "Compare results with RECmd output for validation; discrepancies indicate plugin parsing differences"
 
-quick_start: "rip.exe -r hive_file -a"
 
 investigation_sequence:
-  - "Run RegRipper with -a to execute all applicable plugins against the hive"
+  - "Run all applicable RegRipper plugins against the hive"
   - "Use appropriate hive-specific plugins for targeted analysis"
   - "Review all plugin output — registry data spans system configuration, user activity, and application settings"
-  - "For timeline analysis, use -aT to run all TLN (timeline) plugins"
+  - "For timeline analysis, run all TLN (timeline) plugins"
   - "Merge hive transaction logs before parsing (use yarp or rla.exe) for complete data"
   - "Cross-reference NTUSER.DAT findings with SYSTEM and SOFTWARE hive analysis"
   - "Correlate registry timestamps with other artifact timelines for investigation context"

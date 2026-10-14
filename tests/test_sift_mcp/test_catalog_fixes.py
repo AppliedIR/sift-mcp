@@ -138,8 +138,8 @@ def test_an_acquisition_or_mount_tool_takes_a_dev_source(command):
 
 def test_the_hayabusa_entry_names_its_subcommand_and_no_wizard():
     td = get_tool_def("hayabusa")
-    flags = [f["flag"] for f in td.common_flags]
-    assert "json-timeline" in flags and "-w" in flags
+    (recipe,) = [r for r in td.recipes if "json-timeline" in r["argv"]]
+    assert "-w" in recipe["argv"]
     assert "json-timeline -d" in td.description
 
 

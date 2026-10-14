@@ -33,7 +33,7 @@ MITRE ATT&CK: T1052.001, T1091
 
 1. Determine if USB activity is routine for this user or anomalous
 2. Check if same USB device was connected to other systems in the environment
-3. Search for relevant threat context (forensic-rag: search)
+3. Search for relevant threat context (forensic-rag: search_knowledge)
 
 ## Phase 5: Record
 

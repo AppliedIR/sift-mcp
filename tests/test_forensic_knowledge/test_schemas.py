@@ -430,11 +430,10 @@ class TestToolCrossMcp:
         "autorunsc",
         "tshark",
         "zeek",
-        "HollowsHunter",
     ]
 
     def test_tools_have_cross_mcp_steps(self):
-        """15 tools should have Cross-MCP investigation steps."""
+        """14 tools should have Cross-MCP investigation steps."""
         for tool_name in self.TOOLS_WITH_CROSS_MCP:
             tool = loader.get_tool(tool_name)
             assert tool is not None, f"Tool '{tool_name}' not found"

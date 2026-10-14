@@ -18,27 +18,18 @@ output_notes:
   format: text_or_json
   key_fields: [FileName, FileSize, FileType, CreateDate, ModifyDate, Author, Creator, Producer, Software]
 
-exit_code_hints:
-  0: "success"
-  1: "error or unrecognized file"
-
 advisories:
-  - "Use -j flag for JSON output suitable for automated processing"
-  - "Use -r flag for recursive directory processing"
   - "For PE files, compare OriginalFilename with the actual filename to detect renamed binaries"
   - "For documents, Author and LastSavedBy fields can identify the user who created or last edited the file"
-  - "For images, GPS metadata (-gps:all) can provide geolocation evidence"
+  - "For images, GPS metadata can provide geolocation evidence"
   - "Timezone-aware fields are marked; always document which timestamps are UTC vs local"
-  - "Use -D flag to show tag ID numbers for precise identification of metadata fields"
   - "ExifTool can identify file type by content regardless of extension — useful for renamed/disguised files"
 
-quick_start: "exiftool target_file"
 
 investigation_sequence:
   - "Extract metadata from files to identify creation context, authorship, and modification history"
-  - "Use -G to show metadata group names for understanding where each tag originates"
-  - "Use -s for exact internal tag names needed for scripting and automation"
-  - "Use -csv or -json for structured output suitable for bulk analysis"
+  - "Show the metadata group names to see where each tag originates"
+  - "Use CSV or JSON output for bulk analysis"
   - "Check GPS coordinates in images for location intelligence"
   - "Review document metadata for author names, software versions, and creation dates"
   - "Compare file system timestamps with embedded metadata timestamps for anomaly detection"

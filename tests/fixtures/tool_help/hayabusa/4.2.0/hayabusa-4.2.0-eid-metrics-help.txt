@@ -1,0 +1,47 @@
+Hayabusa v4.2.0 - Autumn Release
+Yamato Security (https://github.com/Yamato-Security/hayabusa - @SecurityYamato)
+
+Usage:
+  hayabusa.exe eid-metrics <INPUT> [OPTIONS]
+
+Input:
+  -d, --directory <DIR>  Directory of multiple .evtx files
+  -f, --file <FILE>      File path to one .evtx file
+  -l, --live-analysis    Analyze the local C:\Windows\System32\winevt\Logs folder
+
+General Options:
+  -C, --clobber                        Overwrite files when saving
+  -h, --help                           Show the help menu
+  -J, --json-input                     Scan JSON formatted logs instead of .evtx (.json or .jsonl)
+  -Q, --quiet-errors                   Quiet errors mode: do not save error logs
+  -x, --recover-records                Carve evtx records from slack space (default: disabled)
+  -c, --rules-config <DIR>             Specify custom rule config directory (default: ./rules/config)
+      --target-file-ext <FILE-EXT...>  Specify additional evtx file extensions (ex: evtx_data)
+      --threads <NUMBER>               Number of threads (default: optimal number for performance)
+  -V, --validate-checksums             Enable checksum validation
+
+Filtering:
+      --exclude-computer <COMPUTER...>  Do not scan specified computer names (ex: ComputerA) (ex: ComputerA,ComputerB)
+      --include-computer <COMPUTER...>  Scan only specified computer names (ex: ComputerA) (ex: ComputerA,ComputerB)
+      --time-offset <OFFSET>            Scan recent events based on an offset (ex: 1y, 3M, 30d, 24h, 30m)
+
+Output:
+  -X, --remove-duplicate-records  Remove duplicate event records (default: disabled)
+  -o, --output <FILE>             Save the Metrics in CSV format (ex: metrics.csv)
+
+Display Settings:
+  -K, --no-color  Disable color output
+  -q, --quiet     Quiet mode: do not display the launch banner
+  -v, --verbose   Output verbose information
+
+Time Format:
+      --european-time     Output timestamp in European time format (ex: 22-02-2022 22:00:00.123 +02:00)
+  -O, --iso-8601          Output timestamp in original ISO-8601 format (ex: 2022-02-22T10:10:10.1234567Z) (Always UTC)
+      --rfc-2822          Output timestamp in RFC 2822 format (ex: Fri, 22 Feb 2022 22:00:00 -0600)
+      --rfc-3339          Output timestamp in RFC 3339 format (ex: 2022-02-22 22:00:00.123456-06:00)
+  -U, --utc               Output time in UTC format (default: local time)
+      --us-military-time  Output timestamp in US military time format (ex: 02-22-2022 22:00:00.123 -06:00)
+      --us-time           Output timestamp in US time format (ex: 02-22-2022 10:00:00.123 PM -06:00)
+
+# --- stderr ---
+

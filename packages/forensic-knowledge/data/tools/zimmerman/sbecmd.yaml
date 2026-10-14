@@ -18,18 +18,13 @@ output_notes:
   format: csv
   key_fields: [AbsolutePath, CreatedOn, ModifiedOn, AccessedOn, LastWriteTime, MFTEntry, ShellType, Value]
 
-exit_code_hints:
-  0: "success"
-  1: "error or no data found"
-
 advisories:
   - "ShellBags prove a USER BROWSED a folder in Explorer — this is intentional navigation, not automated access"
   - "Deleted folder paths in ShellBags can reveal directory structures the user tried to remove"
   - "USB device and network share paths prove the user navigated those locations interactively"
-  - "Use -d to specify the directory containing the hive files"
+  - "SBECmd can process a directory that contains the user's hive files"
   - "RECmd with ShellBag batch files provides an alternative parsing approach; results should be consistent"
 
-quick_start: "SBECmd.exe -d \"C:/Users/username\" --csv output/"
 
 investigation_sequence:
   - "Parse ShellBags to identify folder access and browsing history"

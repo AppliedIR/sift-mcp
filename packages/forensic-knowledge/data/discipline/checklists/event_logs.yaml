@@ -8,4 +8,4 @@ files:
   - "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-TaskScheduler%4Operational.evtx"
   - "C:\\Windows\\System32\\winevt\\Logs\\Microsoft-Windows-TerminalServices-RemoteConnectionManager%4Operational.evtx"
 tools: ["KAPE", "wevtutil.exe (live)", "FTK Imager"]
-notes: "Collect ALL .evtx files if possible. Some detections require obscure log channels."
+notes: "Collect ALL .evtx files if possible. Some detections require obscure log channels. The examiner collects these from the subject host. wintools-mcp does not collect them. Analyse the copies once they are in the case."

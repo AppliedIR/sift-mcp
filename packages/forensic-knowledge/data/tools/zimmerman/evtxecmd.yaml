@@ -17,19 +17,14 @@ output_notes:
   format: csv_or_json
   key_fields: [TimeCreated, EventId, Channel, Computer, UserId, MapDescription, PayloadData1-6, ExecutableInfo, SourceFile]
 
-exit_code_hints:
-  0: "success"
-  1: "error or no data found"
-
 advisories:
   - "Update maps regularly from https://github.com/EricZimmerman/evtx — new Event IDs are mapped frequently"
-  - "Use --inc and --exc flags to filter by Event ID for targeted analysis"
-  - "The --sd and --ed flags filter by date range to reduce output volume"
-  - "JSON output (--json) preserves full event structure; CSV is better for timeline integration"
+  - "EvtxECmd can include or exclude Event IDs for targeted analysis"
+  - "EvtxECmd can filter by date range to reduce output volume"
+  - "JSON output preserves the full event structure. CSV is better for timeline integration."
   - "For Sysmon logs, ensure Sysmon maps are present — they parse process creation, network, and file events"
-  - "Use -d to process an entire directory of EVTX files at once"
+  - "EvtxECmd can process a whole directory of EVTX files at once"
 
-quick_start: "EvtxECmd.exe -d evtx_directory/ --csv output/"
 
 investigation_sequence:
   - "Parse all available EVTX log files, not just Security.evtx (via sift-mcp or wintools-mcp)"
@@ -38,7 +33,7 @@ investigation_sequence:
   - "Correlate event timestamps across multiple log channels for timeline construction"
   - "Cross-reference with Hayabusa for detection-based analysis of the same logs"
   - "Check for log gaps that may indicate evidence destruction"
-  - "Cross-MCP: Search for event ID context and detection rules (forensic-rag: search)"
+  - "Cross-MCP: Search for event ID context and detection rules (forensic-rag: search_knowledge)"
   - "Cross-MCP: Check IOCs found in events against threat intelligence (opencti: lookup_ioc)"
 
 field_meanings:

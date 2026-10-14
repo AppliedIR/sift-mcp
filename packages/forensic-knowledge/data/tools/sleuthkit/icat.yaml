@@ -7,7 +7,7 @@ artifacts_parsed: []
 
 caveats:
   - "Requires the inode/MFT entry number — use fls or other tools to identify the target entry"
-  - "Partition offset must be specified with -o if the image contains a partition table"
+  - "Give the partition offset if the image contains a partition table"
   - "Deleted files may be partially or fully overwritten; extracted content may be corrupt"
   - "Output is raw binary to stdout — redirect to a file for analysis"
   - "For NTFS, alternate data streams can be specified with the inode-type-id format"
@@ -17,24 +17,18 @@ output_notes:
   format: raw_binary
   key_fields: []
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
   - "Always hash extracted files immediately after extraction for chain of custody documentation"
   - "Use the format inode-type-id to access NTFS alternate data streams (e.g., 1234-128-3)"
-  - "Redirect output to a file: icat -o [offset] image.dd [inode] > output_file"
-  - "For recovering deleted files, identify the inode via fls -d first"
+  - "For recovering deleted files, first find the inode in an fls listing of deleted entries"
   - "Combine with file command or exiftool to identify the type of extracted data"
 
-quick_start: "icat image.dd 12345 > recovered_file.bin"
 
 investigation_sequence:
   - "Use fls to identify files and their inode numbers in the disk image"
   - "Extract files by inode number using icat for analysis"
-  - "Use -r flag to attempt recovery of deleted files"
-  - "Use -s flag to include slack space in the extraction for additional evidence"
+  - "icat can attempt recovery of deleted files"
+  - "icat can include slack space in the extraction for additional evidence"
   - "Verify extracted file integrity by computing hashes"
   - "Submit recovered files to malware analysis tools if suspicious"
   - "Document the extraction with source image, inode number, and output hash"

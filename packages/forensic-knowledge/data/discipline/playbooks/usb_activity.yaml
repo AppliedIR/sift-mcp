@@ -30,7 +30,7 @@ phases:
     steps:
       - "Determine if USB activity is routine for this user or anomalous"
       - "Check if same USB device was connected to other systems in the environment"
-      - "Search for relevant threat context (forensic-rag: search)"
+      - "Search for relevant threat context (forensic-rag: search_knowledge)"
   - phase: "Record"
     steps:
       - "Record finding including device serial, connection times, and files accessed"

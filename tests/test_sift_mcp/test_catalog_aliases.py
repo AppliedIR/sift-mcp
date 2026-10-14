@@ -107,6 +107,12 @@ def test_every_related_tool_is_found_or_listed_as_not_in_the_catalog():
 )
 def test_help_and_checks_take_the_names_a_tool_goes_by(monkeypatch, typed, tool):
     assert discovery.get_tool_help(typed)["name"] == tool
+    # installed: the check finds it where the probe resolves it
+    from sift_mcp import tool_version
+
+    monkeypatch.setattr(
+        tool_version, "find_binary", lambda binary: f"/usr/bin/{binary}"
+    )
     monkeypatch.setattr(discovery, "find_binary", lambda binary: f"/usr/bin/{binary}")
     assert discovery.check_tools([typed])[typed]["available"] is True
 

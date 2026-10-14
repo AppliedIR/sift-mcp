@@ -16,10 +16,6 @@ output_notes:
   format: csv
   key_fields: [ActivityType, AppId, DisplayText, StartTime, EndTime, LastModifiedTime, ExpirationTime, Payload]
 
-exit_code_hints:
-  0: "success"
-  1: "error or no data found"
-
 advisories:
   - "Focuses on user interaction timeline — valuable for understanding what the user was working on and when"
   - "Activity types include application usage, file access, and clipboard operations"
@@ -27,7 +23,6 @@ advisories:
   - "Corroborate with Jump Lists, LNK files, and Shellbags for comprehensive user activity timeline"
   - "Cloud-synced activities may exist even if the local database has been cleared"
 
-quick_start: "WxTCmd.exe -f ActivitiesCache.db --csv output/"
 
 investigation_sequence:
   - "Parse ActivitiesCache.db to extract Windows Timeline data"

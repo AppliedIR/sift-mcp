@@ -25,7 +25,7 @@ MITRE ATT&CK: T1059.001
 
 ## Phase 3: Analyze
 
-1. Search for known techniques matching the command pattern (forensic-rag: search)
+1. Search for known techniques matching the command pattern (forensic-rag: search_knowledge)
 2. Check any download URLs found in the command (opencti: lookup_ioc)
 3. Check the spawning process to understand execution context (windows-triage: check_process_tree)
 

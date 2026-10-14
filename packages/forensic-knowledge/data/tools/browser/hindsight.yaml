@@ -17,23 +17,16 @@ output_notes:
   format: xlsx_or_sqlite
   key_fields: [url, title, visit_time, visit_type, from_url, download_path, cookie_name, cache_entry]
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
-  - "Use -i to specify input directory containing the browser profile"
-  - "Use -o to specify output file (XLSX or SQLite)"
   - "Analyzes: history, downloads, cookies, autofill, bookmarks, local storage, preferences, cache"
   - "Browser profile locations vary by OS — check both user profile and AppData directories"
   - "For Edge analysis, use the Chromium profile path (not legacy Edge)"
   - "Combine with SQLECmd for additional SQLite database parsing"
 
-quick_start: "hindsight.py -i '/path/to/Chrome/User Data/Default' -o case_output"
 
 investigation_sequence:
   - "Point Hindsight at the Chrome/Brave profile Default directory"
-  - "Use -f xlsx for Excel output or -f jsonl for structured processing"
+  - "Hindsight can write XLSX, SQLite or JSONL output. Use JSONL for structured processing."
   - "Review all artifact categories — browsing history, downloads, cache, bookmarks, autofill, cookies"
   - "Cross-reference browsing history timestamps with other user activity artifacts"
   - "Check download history for suspicious file acquisitions"

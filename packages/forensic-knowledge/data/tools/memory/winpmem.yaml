@@ -17,10 +17,6 @@ output_notes:
   format: raw_memory
   key_fields: [image_file, image_size_bytes, acquisition_time]
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
   - "Acquire memory BEFORE any other volatile data collection to minimize changes"
   - "Verify the tool's hash before deployment to ensure it hasn't been tampered with"
@@ -29,7 +25,6 @@ advisories:
   - "If driver loading fails, try alternative tools (DumpIt, Belkasoft RAM Capturer)"
   - "For Linux memory acquisition, use LiME instead"
 
-quick_start: "winpmem_mini_x64.exe memory.raw"
 
 investigation_sequence:
   - "Acquire memory as early as possible — volatile data is lost on shutdown or reboot"

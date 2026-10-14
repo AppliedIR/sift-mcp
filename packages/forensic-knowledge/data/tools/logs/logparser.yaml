@@ -7,7 +7,7 @@ artifacts_parsed: []
 
 caveats:
   - "SQL syntax differs from standard SQL in some areas (function names, data types)"
-  - "Log format auto-detection can fail — specify input format explicitly with -i flag"
+  - "Log format auto-detection can fail. Specify the input format explicitly."
   - "Performance degrades significantly on very large files (10GB+)"
   - "EVTX parsing is basic compared to dedicated tools like EvtxECmd"
   - "Unicode handling can be problematic with some log formats"
@@ -17,25 +17,18 @@ output_notes:
   format: variable
   key_fields: [query_dependent]
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
-  - "Use -i:EVT for event log input, -i:CSV for CSV, -i:W3C for IIS logs"
-  - "Use -o:CSV for CSV output suitable for further processing"
   - "Particularly useful for IIS log analysis and custom log format querying"
   - "GROUP BY and ORDER BY work as in standard SQL for aggregation and sorting"
   - "Use EXTRACT_TOKEN() for parsing delimited fields within log entries"
   - "For EVTX analysis, prefer EvtxECmd or Hayabusa — they provide better parsing and enrichment"
 
-quick_start: "logparser.exe \"SELECT * FROM Security.evtx\" -i:EVT"
 
 investigation_sequence:
   - "Use SQL-like queries to extract and filter log data from various sources"
-  - "Select the appropriate input format (-i:EVT for event logs, -i:CSV for CSV, -i:IISW3C for IIS)"
+  - "Select the input format that matches the source: event logs, CSV or IIS W3C logs"
   - "Use WHERE clauses to filter events by time range, event ID, or other criteria"
   - "Use GROUP BY and COUNT for statistical analysis of event patterns"
-  - "Export results to CSV (-o:CSV) for further analysis in spreadsheet tools"
+  - "Export results to CSV for further analysis in spreadsheet tools"
   - "Review all event types within the scope — do not over-filter and miss contextual events"
   - "Cross-reference log analysis results with other artifact timelines"
