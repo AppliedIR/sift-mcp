@@ -22,7 +22,7 @@ from types import SimpleNamespace
 import pytest
 from anyio import BrokenResourceError, ClosedResourceError
 from mcp.shared.exceptions import McpError
-from mcp.types import ErrorData
+from mcp.types import CONNECTION_CLOSED, ErrorData
 from sift_gateway.backends import http_backend
 from sift_gateway.backends.http_backend import HttpMCPBackend
 
@@ -80,6 +80,10 @@ LOST = {  # a connection lost after the call went out
     "closed resource": ClosedResourceError(),
     "broken resource": BrokenResourceError(),
     "stream ended, by its text": RuntimeError("stream ended unexpectedly"),
+    # what mcp's session hands each waiting call when its stream closes
+    "mcp's connection closed": McpError(
+        ErrorData(code=CONNECTION_CLOSED, message="Connection closed")
+    ),
 }
 
 
