@@ -6,10 +6,12 @@ never read as shell, so a context line like ` rm audit/x` refuses nothing."""
 
 import json
 import subprocess
+import time
 
 import pytest
 
 from .test_case_data_guard import HOOK, box  # noqa: F401
+from .test_case_data_guard import run as shell
 
 
 def patch(box, cwd, body):  # noqa: F811
@@ -284,3 +286,106 @@ def test_codex_splits_a_patch_at_lf_only(tmp_path):
         got[name] = not (d / "r.txt").exists()
     assert got == {"LF": True, "U+2028": False, "U+2029": False, "U+0085": False, "lone CR": False,
                    "VT": False, "FF": False}  # fmt: skip
+
+
+# --- apply_patch through the shell --------------------------------------------
+# Codex intercepts `apply_patch` (or `applypatch`) run in the shell and applies
+# the patch natively; its hook sees only "Bash" with the shell text. The guard
+# refuses that command word on any path: only the apply_patch tool is checked
+# by the paths it names. Other shell text that merely names a header passes.
+
+HEREDOC = "apply_patch <<'EOF'\n*** Begin Patch\n{headers}*** End Patch\nEOF\n"
+DELETE = "*** Delete File: {path}\n"
+SHELL_BLOCKED = {  # label -> (cwd, command)
+    "heredoc, relative": ("case", HEREDOC.format(headers=DELETE.format(path="findings.json"))),
+    "heredoc, absolute": ("out", HEREDOC.format(headers=DELETE.format(path="{C}/findings.json"))),
+    "cd to the case first": ("out", "cd {C} && " + HEREDOC.format(headers=DELETE.format(path="timeline.json"))),
+    "cd to the case, double-quoted": ("out", 'cd "{C}" && ' + HEREDOC.format(headers=DELETE.format(path="timeline.json"))),
+    "cd to the case, single-quoted": ("out", "cd '{C}' && " + HEREDOC.format(headers=DELETE.format(path="timeline.json"))),
+    "applypatch": ("case", HEREDOC.replace("apply_patch", "applypatch").format(headers=DELETE.format(path="findings.json"))),
+    "a Move to into audit": ("case", HEREDOC.format(headers="*** Update File: notes.txt\n*** Move to: audit/x\n@@\n-x\n+y\n")),
+    "through env": ("case", "env A=1 " + HEREDOC.format(headers=DELETE.format(path="findings.json"))),
+    "by its path": ("case", "/usr/local/bin/" + HEREDOC.format(headers=DELETE.format(path="findings.json"))),
+    "piped into": ("case", "cat p.patch | apply_patch"),
+    "from a file": ("case", "apply_patch < p.patch"),
+    "an ANSI-C quoted argument": ("case", "apply_patch $'*** Begin Patch\\n*** Delete File: findings.json\\n*** End Patch'"),
+    "a quoted argument": ("case", "apply_patch '*** Begin Patch\n*** Delete File: findings.json\n*** End Patch'"),
+    "codex's own patch runner": ("case", "codex --codex-run-as-apply-patch '*** Begin Patch\n*** Delete File: CASE.yaml\n*** End Patch\n'"),
+    "the heredoc before the command": ("case", "<<'EOF' apply_patch\n*** Begin Patch\n*** Delete File: findings.json\n*** End Patch\nEOF\n"),
+}  # fmt: skip
+SHELL_ALLOWED = {
+    "echo of a header": "echo '*** Delete File: findings.json'",
+    "grep for the name": "grep apply_patch reports/draft.md",
+    "which": "which apply_patch",
+    "codex otherwise": "codex --version",
+    "a heredoc body quoting a header": "cat <<'EOF' > work/notes.txt\n*** Delete File: findings.json\nEOF\n",
+}
+
+
+@pytest.mark.parametrize("label", sorted(SHELL_BLOCKED))
+def test_apply_patch_through_the_shell_is_refused(box, label):  # noqa: F811
+    root, cases, case, out = box
+    where, text = SHELL_BLOCKED[label]
+    r = shell(box, case if where == "case" else out, text.replace("{C}", str(case)))
+    assert r.returncode == 2, (label, r.stderr)
+    assert "apply_patch run through the shell" in r.stderr, r.stderr
+
+
+@pytest.mark.parametrize("label", sorted(SHELL_ALLOWED))
+def test_shell_text_that_only_names_a_header_passes(box, label):  # noqa: F811
+    root, cases, case, out = box
+    r = shell(box, case, SHELL_ALLOWED[label])
+    assert r.returncode == 0, (label, r.stderr)
+
+
+# --- the guard answers well inside its hook timeout ---------------------------
+# Codex runs a call whose PreToolUse hook times out (10 s in requirements.toml).
+# The guard ends itself at 5 s, and its wrapper then blocks: slow is refused.
+
+WIDE = "*** Begin Patch\n*** Add File: a" + " " * 64_000 + "b\n+x\n*** End Patch\n"
+
+
+def _timed(fn):
+    t0 = time.monotonic()
+    r = fn()
+    return r, time.monotonic() - t0
+
+
+def test_a_header_too_slow_to_read_is_refused_in_time(box):  # noqa: F811
+    root, cases, case, out = box
+    r, took = _timed(lambda: patch(box, case, WIDE))
+    assert r.returncode == 2 and took < 9.5, (r.stderr, took)
+    assert "couldn't run" in r.stderr, r.stderr
+
+
+def test_a_megabyte_token_is_answered_in_time(box):  # noqa: F811
+    root, cases, case, out = box
+    r, took = _timed(
+        lambda: shell(box, case, "echo '" + "a" * 1_000_000 + "'", timeout=60)
+    )
+    assert r.returncode == 2 and took < 9.5, (r.stderr, took)
+
+
+def test_a_plain_command_is_answered_at_once(box):  # noqa: F811
+    root, cases, case, out = box
+    r, took = _timed(lambda: shell(box, case, "echo hi"))
+    assert r.returncode == 0 and took < 1, (r.stderr, took)
+
+
+def test_a_deep_glob_gets_an_answer(box):  # noqa: F811
+    """Not timed: a verdict either way, never a hang."""
+    root, cases, case, out = box
+    r = shell(box, case, "rm /*/*/*/*/*/zzz", timeout=60)
+    assert r.returncode in (0, 2), r.stderr
+
+
+def test_the_guard_ends_itself_before_its_hook_times_out():
+    import re
+
+    from .test_codex_requirements import _toml
+
+    seconds = int(re.search(r"signal\.alarm\((\d+)\)", HOOK.read_text()).group(1))
+    req = _toml((HOOK.parents[3] / "codex" / "requirements.toml").read_text())
+    (guard,) = [h for x in req["hooks"]["PreToolUse"] for h in x["hooks"]
+                if h["command"].endswith("/case-data-guard.sh")]  # fmt: skip
+    assert seconds < guard["timeout"]
