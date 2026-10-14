@@ -13,9 +13,8 @@ from forensic_knowledge import loader
 
 REPO = Path(__file__).resolve().parents[2]
 USN = (
-    'The USN journal can help: a timestomp writes a "Basic info change" record at '
-    "the real time of the change. Many ordinary operations write the same record, "
-    "so a match supports a timestomp but does not prove one."
+    "The USN journal can help. Its records of when the file was created and when "
+    "its content changed can be compared with the $SI times."
 )
 FN_CREATED = (
     "No documented user-mode API sets it, but NTFS rewrites it on ordinary "
