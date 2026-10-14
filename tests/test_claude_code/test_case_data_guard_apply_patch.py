@@ -210,15 +210,15 @@ TAILS = {"nothing": "", "a space": " ", "a tab": "\t", "VT": "\x0b", "FF": "\x0c
          "NBSP": "\u00a0", "U+3000": "\u3000", "CR (a CRLF line)": "\r"}  # fmt: skip
 
 
-def codex_payload(target):
-    """codex review's payload: a context line ` *** Add File:` before a Delete."""
+def context_line_payload(target):
+    """A context line ` *** Add File:` before a Delete."""
     return ("*** Begin Patch\n*** Update File: notes.txt\n@@\n-before\n+after\n *** Add File:\n"
             f"*** Delete File: {target}\n*** End Patch\n")  # fmt: skip
 
 
-def test_codex_reviews_payload_is_refused(box):  # noqa: F811
+def test_a_context_line_like_a_header_before_a_delete_is_refused(box):  # noqa: F811
     root, cases, case, out = box
-    r = patch(box, case, codex_payload(f"{case}/findings.json"))
+    r = patch(box, case, context_line_payload(f"{case}/findings.json"))
     assert r.returncode == 2, r.stderr
     assert "Delete File" in r.stderr
 
@@ -261,12 +261,12 @@ def test_the_header_after_an_empty_one_is_still_checked(box, between, header):  
 
 def test_an_ordinary_delete_after_an_empty_header_passes(box):  # noqa: F811
     root, cases, case, out = box
-    r = patch(box, case, codex_payload(f"{out}/x"))
+    r = patch(box, case, context_line_payload(f"{out}/x"))
     assert r.returncode == 0, r.stderr
 
 
 def test_codex_splits_a_patch_at_lf_only(tmp_path):
-    """Codex's own parser: codex review's payload deletes the file, and no other
+    """Codex's own parser: the context-line payload deletes the file, and no other
     break character starts the Delete's line (skipped without the binary)."""
     import shutil
 
@@ -280,7 +280,7 @@ def test_codex_splits_a_patch_at_lf_only(tmp_path):
         d.mkdir()
         (d / "notes.txt").write_text("before\n*** Add File:\n")
         (d / "r.txt").write_text("x\n")
-        text = codex_payload("r.txt").replace(
+        text = context_line_payload("r.txt").replace(
             " *** Add File:\n", " *** Add File:" + sep
         )
         subprocess.run([codex, "--codex-run-as-apply-patch", text], cwd=d, capture_output=True, text=True,
