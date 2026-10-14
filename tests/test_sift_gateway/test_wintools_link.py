@@ -416,14 +416,27 @@ def test_a_refused_token_is_named_with_its_fix_in_health_and_on_every_route(link
     assert wt["status"] == "error" and fix in wt["error"], wt
     assert "unreachable" not in wt["error"] and "mozilla" not in wt["error"], wt
 
-    r = gw.post("/api/v1/tools/get_share_info", json={"arguments": {}})
-    assert r.status_code == 404, r.text
-    assert r.json()["error"].startswith(f"get_share_info isn't served: {named}"), r.text
-    assert fix in r.json()["error"], r.text
-    for route in (aggregate, per_backend):
-        c = route(gw).call("get_share_info", timeout=20)
-        assert c["is_error"] is True and named in c["text"], c
-        assert fix in c["text"] and "unknown tool" not in c["text"], c
+    # a wintools tool, or a typo: both facts, so the reply is true either way
+    for tool in ("get_share_info", "no_such_tool"):
+        both = f"Tool {tool} was not found. {named}"
+        listed = "Until that's fixed, wintools-mcp's tools can't be listed."
+        r = gw.post(f"/api/v1/tools/{tool}", json={"arguments": {}})
+        assert r.status_code == 404, r.text
+        err = r.json()["error"]
+        assert err.startswith(both) and fix in err and err.endswith(listed), err
+        c = aggregate(gw).call(tool, timeout=20)
+        assert c["is_error"] is True and c["text"].startswith(f"Error: {both}"), c
+        assert c["text"].endswith(listed), c
+    c = per_backend(gw).call("get_share_info", timeout=20)
+    assert c["is_error"] is True and named in c["text"] and fix in c["text"], c
+
+    # fixed (a join with the right token): plain "not found" again
+    assert gw.join(a, a.token, a.pem).status_code == 200
+    answers(gw, "A")
+    r = gw.post("/api/v1/tools/no_such_tool", json={"arguments": {}})
+    assert (r.status_code, r.json()) == (404, {"error": "Tool not found: no_such_tool"})
+    c = aggregate(gw).call("no_such_tool")
+    assert c["text"] == "Error: unknown tool no_such_tool", c
     link.untouched(gw)
 
 

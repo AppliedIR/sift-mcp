@@ -639,17 +639,21 @@ class Gateway:
             logger.error("Pending %s hashes not recorded: %s", backend_name, exc)
 
     def unserved_text(self, tool: str) -> str | None:
-        """Why ``tool`` isn't served when a backend's tools are missing
-        because it refused the gateway's token, else None ("not found")."""
+        """For a tool that isn't in the map while a backend's token is
+        refused: both facts, as the name may be a typo. Else None (the
+        plain "not found")."""
         whys = [
-            getattr(b, "last_error", None)
-            for b in self.backends.values()
+            (name, getattr(b, "last_error", None))
+            for name, b in self.backends.items()
             if not b.started
         ]
-        whys += [self._load_errors.get(name) for name in self._unloaded]
-        for why in whys:
+        whys += [(name, self._load_errors.get(name)) for name in self._unloaded]
+        for name, why in whys:
             if why and TOKEN_REFUSED in why:
-                return f"{tool} isn't served: {why}"
+                return (
+                    f"Tool {tool} was not found. {why}. Until that's fixed, "
+                    f"{name}'s tools can't be listed."
+                )
         return None
 
     def not_loaded_text(self, name: str) -> str:
