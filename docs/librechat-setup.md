@@ -302,7 +302,7 @@ loading is the biggest performance lever for LibreChat.
    - `get_findings` (forensic-mcp)
    - `record_timeline_event` (forensic-mcp)
    - `log_reasoning` (case-mcp)
-   - `get_case_status` (forensic-mcp)
+   - `case_status` (case-mcp)
 
 5. Advanced Settings:
    - Max context tokens: 200000
@@ -351,7 +351,7 @@ Surface findings as you discover them — do not batch at the end.
 - record_finding: after presenting evidence and getting approval
 - record_timeline_event: for timestamps in the incident narrative
 - log_reasoning: at decision points (choosing direction, forming hypotheses, ruling things out) — unrecorded reasoning is lost when context is truncated
-- get_case_status: check investigation progress before and during work
+- case_status: check investigation progress before and during work
 
 CONTEXT MANAGEMENT
 For investigations longer than 25-30 turns, start a new conversation for the next phase (e.g., Triage → Deep Analysis → Reporting). At the start of each phase, call get_findings and get_timeline to reload investigation state. Use Memory to persist key facts (hostname, OS version, initial IOCs, attacker TTPs) across conversations.
@@ -372,7 +372,7 @@ sub-agent with fewer backends eliminates Tool Search overhead entirely.
 
 | Agent | Backends | Core tools (keep loaded) |
 |-------|----------|--------------------------|
-| Investigation | All 7 | run_command, record_finding, get_findings, record_timeline_event, log_reasoning, get_case_status |
+| Investigation | All 7 | run_command, record_finding, get_findings, record_timeline_event, log_reasoning, case_status |
 | Triage | sift-mcp, windows-triage-mcp | run_command, check_file, check_process_tree, analyze_filename |
 | Reporting | case-mcp, report-mcp, forensic-mcp, forensic-rag-mcp | generate_report, save_report, get_findings, get_timeline |
 

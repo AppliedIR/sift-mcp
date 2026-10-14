@@ -1,8 +1,6 @@
 ---
 name: vhir-report-writing
 description: 'Writing the investigation report with report-mcp: the report profiles, case metadata, the writing guidance to follow and saving the report. Use once findings are approved and a report is wanted.'
-metadata:
-  source: 'AGENTS.md (Report Generation); claude-code/full/CLAUDE.md (MCP Backends: report-mcp)'
 ---
 
 ## Report Generation (report-mcp)

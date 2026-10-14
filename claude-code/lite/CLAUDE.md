@@ -17,7 +17,7 @@ Before executing ANY multi-step task (3+ actions), you MUST:
 **RIGHT (compliant):**
 > ACTIONS: Post-install verification
 > =======================================
-> [ ] 1. Call get_stats on forensic-rag MCP
+> [ ] 1. Call get_knowledge_stats on forensic-rag MCP
 > [ ] 2. Call get_health on windows-triage MCP
 > [ ] 3. Run echo test to verify audit hook
 > [ ] 4. Check ~/.claude.json for config conflicts

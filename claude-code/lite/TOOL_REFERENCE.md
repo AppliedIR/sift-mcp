@@ -31,7 +31,7 @@ available by calling each MCP's health tool:
 
 | Backend | Default | Optional | How to check |
 |---------|---------|----------|--------------|
-| forensic-rag | Yes | — | MCP tool `get_stats` |
+| forensic-rag | Yes | — | MCP tool `get_knowledge_stats` |
 | windows-triage | Yes | — | MCP tool `get_health` |
 | threatintel-mcp | No | `--opencti` flag | MCP tool `get_health` |
 | remnux-mcp | No | User-provided | MCP tool `check_tools` |
@@ -83,24 +83,24 @@ User Question
 | User Intent | Primary Tool | Fallback |
 |-------------|--------------|----------|
 | IOC Lookup (IP, hash, domain) | threatintel-mcp `lookup_ioc` | windows-triage `check_hash` |
-| Threat Actor Intel | threatintel-mcp `search_threat_intel` | forensic-rag `search` (mitre_attack) |
-| Malware Info | threatintel-mcp `search_entity` (type=malware) | forensic-rag `search` (sigma, mbc) |
-| CVE Details | threatintel-mcp `search_entity` (type=vulnerability) | forensic-rag `search` (cisa_kev) |
-| Mitigations | threatintel-mcp `search_entity` (type=course_of_action) | forensic-rag `search` (mitre_d3fend) |
-| Detection Rules | forensic-rag `search` (sigma, elastic, chainsaw) | — |
-| MITRE Technique | forensic-rag `search` (mitre_attack) | threatintel-mcp `search_entity` (type=attack_pattern) |
-| Forensic Artifacts | forensic-rag `search` (velociraptor, forensic_artifacts, kape) | — |
+| Threat Actor Intel | threatintel-mcp `search_threat_intel` | forensic-rag `search_knowledge` (mitre_attack) |
+| Malware Info | threatintel-mcp `search_entity` (type=malware) | forensic-rag `search_knowledge` (sigma, mbc) |
+| CVE Details | threatintel-mcp `search_entity` (type=vulnerability) | forensic-rag `search_knowledge` (cisa_kev) |
+| Mitigations | threatintel-mcp `search_entity` (type=course_of_action) | forensic-rag `search_knowledge` (mitre_d3fend) |
+| Detection Rules | forensic-rag `search_knowledge` (sigma, elastic, chainsaw) | — |
+| MITRE Technique | forensic-rag `search_knowledge` (mitre_attack) | threatintel-mcp `search_entity` (type=attack_pattern) |
+| Forensic Artifacts | forensic-rag `search_knowledge` (velociraptor, forensic_artifacts, kape) | — |
 | File Validation | windows-triage `check_file` | — |
 | Process Validation | windows-triage `check_process_tree` | — |
-| LOLBin Check | windows-triage `check_lolbin` | forensic-rag `search` (lolbas) |
-| Vulnerable Drivers | windows-triage `check_hash` | forensic-rag `search` (loldrivers) |
-| Malware File Analysis | remnux-mcp `analyze_file` | forensic-rag `search` (sigma, mbc) |
+| LOLBin Check | windows-triage `check_lolbin` | forensic-rag `search_knowledge` (lolbas) |
+| Vulnerable Drivers | windows-triage `check_hash` | forensic-rag `search_knowledge` (loldrivers) |
+| Malware File Analysis | remnux-mcp `analyze_file` | forensic-rag `search_knowledge` (sigma, mbc) |
 | Document Macro Analysis | remnux-mcp `analyze_file` | — |
 | IOC Extraction from File | remnux-mcp `extract_iocs` | `bulk_extractor` |
 | Specific REMnux Tool | remnux-mcp `run_tool` | — |
 | Run Windows forensic tool | wintools-mcp `run_windows_command` | Bash (see FORENSIC_TOOLS.md) |
 | Run forensic tool | Bash (see FORENSIC_TOOLS.md) | — |
-| Tool recommendations | forensic-rag `search` | FORENSIC_TOOLS.md |
+| Tool recommendations | forensic-rag `search_knowledge` | FORENSIC_TOOLS.md |
 | EVTX Analysis | `EvtxECmd` | — |
 | Memory Analysis | `vol` (Volatility 3) | — |
 | Disk Forensics | `fls`, `mmls`, `icat` | — |
@@ -143,7 +143,7 @@ User Question
 ### wintools-mcp (if available)
 - Zimmerman tool names: AmcacheParser, EvtxECmd, MFTECmd, PECmd, RECmd, etc.
 - "run on Windows", "parse on the Windows box", "execute on Windows"
-- Hayabusa, autorunsc, sigcheck, winpmem, dumpit
+- Hayabusa, autorunsc, sigcheck, and winpmem to decompress a memory image already in the case
 - Windows artifacts that need native Windows tools to parse
 
 ---
@@ -154,21 +154,21 @@ User Question
 ```
 1. windows-triage check_file or check_process_tree   -+
 2. threatintel-mcp lookup_ioc (if hash available)           +- PARALLEL
-3. forensic-rag search (sigma/lolbas context)         -+
+3. forensic-rag search_knowledge (sigma/lolbas context)         -+
 ```
 
 ### IOC Investigation
 ```
 1. threatintel-mcp lookup_ioc                 -+
 2. windows-triage check_hash               +- PARALLEL
-3. forensic-rag search (detection rules)  -+
+3. forensic-rag search_knowledge (detection rules)  -+
 ```
 
 ### Threat Actor Research
 ```
 1. threatintel-mcp search_threat_intel                    -+
 2. threatintel-mcp search_entity (type=malware)            +- PARALLEL
-3. forensic-rag search (TTPs from mitre_attack, sigma)-+
+3. forensic-rag search_knowledge (TTPs from mitre_attack, sigma)-+
 ```
 
 ---
@@ -178,24 +178,24 @@ User Question
 ### Workflow 1: IOC Investigation
 1. `threatintel-mcp lookup_ioc(ioc="...")` - What each platform holds on it
 2. If not found: `windows-triage check_hash` (for drivers)
-3. `forensic-rag search(query="IOC type detection", source_ids=["sigma"])`
+3. `forensic-rag search_knowledge(query="IOC type detection", source_ids=["sigma"])`
 4. Synthesize with evidence per FORENSIC_DISCIPLINE.md
 
 ### Workflow 2: Threat Actor Research
 1. `threatintel-mcp search_threat_intel(query="...")`
 2. `threatintel-mcp search_entity(type="malware", query="...")`
-3. `forensic-rag search(query="...", source_ids=["mitre_attack"])`
-4. `forensic-rag search(query="... detection", source_ids=["sigma"])`
+3. `forensic-rag search_knowledge(query="...", source_ids=["mitre_attack"])`
+4. `forensic-rag search_knowledge(query="... detection", source_ids=["sigma"])`
 
 ### Workflow 3: Detection Engineering
-1. `forensic-rag search(query="X", source_ids=["sigma", "elastic", "chainsaw"])`
-2. `forensic-rag search(query="X", source_ids=["mitre_attack"])`
-3. `forensic-rag search(query="X", source_ids=["atomic"])` (validation)
+1. `forensic-rag search_knowledge(query="X", source_ids=["sigma", "elastic", "chainsaw"])`
+2. `forensic-rag search_knowledge(query="X", source_ids=["mitre_attack"])`
+3. `forensic-rag search_knowledge(query="X", source_ids=["atomic"])` (validation)
 
 ### Workflow 4: Forensic Artifact Collection
-1. `forensic-rag search(query="artifact", source_ids=["velociraptor"])`
-2. `forensic-rag search(query="artifact", source_ids=["forensic_artifacts", "kape"])`
-3. `forensic-rag search(query="artifact", source_ids=["sigma"])`
+1. `forensic-rag search_knowledge(query="artifact", source_ids=["velociraptor"])`
+2. `forensic-rag search_knowledge(query="artifact", source_ids=["forensic_artifacts", "kape"])`
+3. `forensic-rag search_knowledge(query="artifact", source_ids=["sigma"])`
 
 ### Workflow 5: Suspicious File Analysis (REMnux)
 ```
@@ -208,7 +208,7 @@ User Question
 5. PARALLEL per extracted IOC:
    a. threatintel-mcp lookup_ioc(ioc="<IP/domain/hash>")
    b. windows-triage check_hash(hash="<file hash>")
-6. forensic-rag search(query="<capabilities from capa>", source_ids=["sigma","mitre_attack"])
+6. forensic-rag search_knowledge(query="<capabilities from capa>", source_ids=["sigma","mitre_attack"])
 7. Synthesize with evidence chain per FORENSIC_DISCIPLINE.md
 ```
 Use `depth="quick"` for batch triage, `depth="deep"` for known-malicious or evasive samples.
@@ -217,65 +217,39 @@ Use `depth="quick"` for batch triage, `depth="deep"` for known-malicious or evas
 ```
 1. remnux-mcp upload_from_host(file_path="/path/to/document.xlsm")
 2. remnux-mcp analyze_file(file_path="samples/document.xlsm") -> oletools auto-selected
-3. If macros: remnux-mcp run_tool(tool="olevba", args=["--deobf","samples/document.xlsm"])
+3. If macros: remnux-mcp run_tool(tool="olevba") with its deobfuscation option (remnux-mcp `get_tool_help` for this version's syntax)
 4. remnux-mcp extract_iocs -> embedded IOCs
 5. Per IOC: threatintel-mcp lookup_ioc
-6. forensic-rag search -> macro sigma rules
+6. forensic-rag search_knowledge -> macro sigma rules
 ```
 
 ### Workflow 7: Disk Image Analysis
-```bash
-# Run via Bash:
-mmls disk.dd                              # Partitions
-fls -r -o OFFSET disk.dd                  # List files recursively
-fls -r -m "/" -o OFFSET disk.dd > body    # Create bodyfile
-mactime -b body -d > timeline.csv         # Timeline from bodyfile
-icat -o OFFSET disk.dd INODE > file       # Extract specific file
-```
+Run via Bash: `mmls` (partitions), `fls` (list files, or write a bodyfile), `mactime` (a timeline from a bodyfile), `icat` (extract a file by inode).
+Run the tool with its own help option for this version's syntax.
 
 ### Workflow 8: Windows Artifact Analysis
-```bash
-# Run via Bash:
-AmcacheParser -f Amcache.hve --csv /out/  # Amcache
-MFTECmd -f '$MFT' --csv /out/             # MFT parsing
-EvtxECmd -d /evtx/ --csv /out/            # EVTX parsing
-PECmd -d /prefetch/ --csv /out/           # Prefetch
-regripper -r SYSTEM -a                    # Registry
-```
+Run via Bash: `AmcacheParser` (Amcache), `MFTECmd` ($MFT), `EvtxECmd` (event logs), `PECmd` (Prefetch), `regripper` (registry hives).
+Run the tool with its own help option for this version's syntax.
 
 ### Workflow 9: Supertimeline
-```bash
-# Run via Bash:
-log2timeline.py timeline.plaso /evidence/
-psort.py -o l2tcsv timeline.plaso -w timeline.csv
-psort.py -o l2tcsv timeline.plaso "date > '2024-01-01'" -w filtered.csv
-```
+Run via Bash: `log2timeline.py` (a Plaso storage file from the evidence), then `psort.py` (that file as CSV, optionally filtered by date).
+Run the tool with its own help option for this version's syntax.
 
 ### Workflow 10: Network Traffic
-```bash
-# Run via Bash:
-tshark -r capture.pcap -T fields ...      # Extract fields
-bulk_extractor -o /out/ capture.pcap      # Extract artifacts
-```
+Run via Bash: `tshark` (fields from a capture), `bulk_extractor` (artifacts from a capture).
+Run the tool with its own help option for this version's syntax.
 Then check IOCs with `threatintel-mcp lookup_ioc`
 
 ### Workflow 11: Memory Analysis
-```bash
-# Run via Bash:
-vol -f memory.dmp windows.info
-vol -f memory.dmp windows.pstree
-vol -f memory.dmp windows.cmdline
-vol -f memory.dmp windows.netscan
-vol -f memory.dmp windows.malfind
-vol -f memory.dmp windows.svcscan
-```
+Run via Bash: `vol` (Volatility 3), with the plugins windows.info, windows.pstree, windows.cmdline, windows.netscan, windows.malfind and windows.svcscan.
+Run the tool with its own help option for this version's syntax.
 
 ### Workflow 12: File/Process Validation
 1. `windows-triage check_file(path="...", hash="...")`
 2. `windows-triage check_process_tree(process="...", parent="...")`
 3. `windows-triage check_lolbin(filename="...")`
 4. `threatintel-mcp lookup_ioc(ioc="<hash>")`
-5. `forensic-rag search(query="filename", source_ids=["sigma", "lolbas"])`
+5. `forensic-rag search_knowledge(query="filename", source_ids=["sigma", "lolbas"])`
 
 ---
 

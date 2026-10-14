@@ -1,8 +1,6 @@
 ---
 name: vhir-welcome
 description: 'Post-install verification and onboarding for Valhuntir: checks the gateway, backends, tools, knowledge base, report profiles and this client''s controls, then explains how to work and how to start a case. Use right after installing, or when asked to verify the installation.'
-metadata:
-  source: claude-code/full/commands/welcome.md
 ---
 
 # Post-Install Verification and Onboarding
@@ -46,7 +44,7 @@ prefetch or SRUM parsing, mention WinTools MCP as the solution.
 
 ### Step 3: Knowledge and Baselines
 
-Call `get_stats` on forensic-rag and `get_health` on windows-triage:
+Call `get_knowledge_stats` on forensic-rag and `get_health` on windows-triage:
 ```
 Knowledge base:   N records across M sources
 Triage baselines: known_good.db (X entries), context.db (Y entries)
