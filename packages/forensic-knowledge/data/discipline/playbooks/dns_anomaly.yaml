@@ -13,7 +13,7 @@ triggers:
 phases:
   - phase: "Identify"
     steps:
-      - "Analyze DNS logs or PCAP using tshark with DNS filter (via sift-mcp) — tshark -Y dns"
+      - "Analyze DNS logs or PCAP using tshark with a DNS display filter (via sift-mcp)"
       - "Parse Zeek dns.log for query patterns (via sift-mcp)"
       - "Filter for unusual query patterns — long names, high frequency, non-standard types"
   - phase: "Classify"
@@ -24,7 +24,7 @@ phases:
   - phase: "Threat Intel"
     steps:
       - "Check suspicious domains against threat intelligence (opencti: lookup_ioc)"
-      - "Search for DNS exfiltration and tunneling techniques (forensic-rag: search)"
+      - "Search for DNS exfiltration and tunneling techniques (forensic-rag: search_knowledge)"
   - phase: "Source"
     steps:
       - "Identify which systems and processes are generating the anomalous queries"

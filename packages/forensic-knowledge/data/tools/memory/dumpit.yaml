@@ -17,10 +17,6 @@ output_notes:
   format: raw_or_dmp
   key_fields: [image_file, image_size_bytes]
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
   - "Simplest memory acquisition tool — good for deployment to non-technical responders"
   - "Verify output format compatibility with your analysis tool (Volatility, MemProcFS)"
@@ -28,7 +24,6 @@ advisories:
   - "Document acquisition time and system state before running"
   - "Pair with WinPmem or Belkasoft RAM Capturer as backup acquisition methods"
 
-quick_start: "DumpIt.exe /Q"
 
 investigation_sequence:
   - "Run DumpIt as Administrator for complete memory acquisition"

@@ -20,7 +20,7 @@ phases:
   - phase: "Threat Intel"
     steps:
       - "Check destination IPs and domains against threat intelligence (opencti: lookup_ioc)"
-      - "Search for C2 communication patterns and known malware profiles (forensic-rag: search)"
+      - "Search for C2 communication patterns and known malware profiles (forensic-rag: search_knowledge)"
   - phase: "Process Mapping"
     steps:
       - "If process data available, identify which process made the connection using Volatility3 netscan (via sift-mcp)"
@@ -28,7 +28,7 @@ phases:
       - "Verify processes against baseline (windows-triage: check_process_tree)"
   - phase: "Payload"
     steps:
-      - "Extract HTTP objects from PCAP using tshark --export-objects (via sift-mcp)"
+      - "Extract HTTP objects from PCAP using tshark's HTTP object export (via sift-mcp)"
       - "Check DNS queries for tunneling indicators — long labels, high query volume, TXT records"
       - "Analyze extracted payloads for malicious content (remnux: analyze_file)"
   - phase: "Record"

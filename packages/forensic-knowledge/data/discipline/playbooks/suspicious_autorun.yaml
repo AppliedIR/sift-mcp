@@ -27,7 +27,7 @@ phases:
     steps:
       - "Check binary digital signatures using sigcheck (via wintools-mcp)"
       - "Check binary entropy using densityscout (via wintools-mcp)"
-      - "Check binary hash against threat intelligence (opencti: lookup_hash)"
+      - "Check binary hash against threat intelligence (opencti: lookup_ioc)"
       - "Submit suspicious binaries for static analysis (remnux: analyze_file)"
   - phase: "Timeline"
     steps:

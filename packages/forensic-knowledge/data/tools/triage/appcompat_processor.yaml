@@ -16,10 +16,6 @@ output_notes:
   format: csv
   key_fields: [hostname, filename, filepath, last_modified, executed_flag, correlation_score]
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
   - "Feed AppCompatCacheParser and AmcacheParser CSV output as input"
   - "Use for lateral movement detection across multiple collected systems"
@@ -27,7 +23,6 @@ advisories:
   - "Filter out known-good Windows binaries to reduce noise"
   - "Combine with network flow data and logon events for comprehensive lateral movement timeline"
 
-quick_start: "AppCompatProcessor.exe -f shimcache_output.csv --csv output/"
 
 investigation_sequence:
   - "Process ShimCache data across multiple systems for enterprise-wide analysis"

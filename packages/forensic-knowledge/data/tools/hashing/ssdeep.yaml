@@ -17,25 +17,18 @@ output_notes:
   format: text
   key_fields: [fuzzy_hash, filename, match_score]
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
-  - "Use -r for recursive directory hashing and -m for matching against a hash database"
-  - "Use -p for pretty matching output showing percentage similarity"
   - "Ideal for identifying malware variants, repackaged tools, and related document versions"
   - "Combine with YARA and cryptographic hashes for multi-layered file identification"
   - "Build a fuzzy hash database of known malware for ongoing comparison"
   - "Particularly useful for identifying slightly modified malware that evades exact hash matching"
 
-quick_start: "ssdeep -r /evidence/mount > fuzzy_hashes.txt"
 
 investigation_sequence:
   - "Compute fuzzy hashes for files across the evidence to enable similarity comparison"
-  - "Use -d (directory mode) to compare all files against each other for similarity clustering"
-  - "Use -m to match files against a set of known fuzzy hashes"
-  - "Set a similarity threshold with -t to control match sensitivity (0-100, higher is stricter)"
+  - "Compare all files against each other to cluster similar files"
+  - "Match files against a set of known fuzzy hashes"
+  - "Set a similarity threshold (0 to 100) to control match sensitivity. A higher threshold is stricter."
   - "Review all matches — even moderate similarity scores may indicate related malware variants"
   - "Cross-reference similar files with traditional hash lookups and YARA scanning"
   - "Use fuzzy hash similarity to identify polymorphic or slightly modified malware copies"

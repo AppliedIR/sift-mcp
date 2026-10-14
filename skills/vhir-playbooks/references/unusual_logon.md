@@ -39,7 +39,7 @@ MITRE ATT&CK: T1078, T1021
 ## Phase 5: Corroborate
 
 1. Check source IP reputation and threat intelligence (opencti: lookup_ioc)
-2. Search for related techniques and detection context (forensic-rag: search)
+2. Search for related techniques and detection context (forensic-rag: search_knowledge)
 3. Verify process execution trees around logon time (windows-triage: check_process_tree)
 
 ## Phase 6: Record

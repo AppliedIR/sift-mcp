@@ -17,18 +17,13 @@ output_notes:
   format: csv
   key_fields: [SourceName, FileSize, DeletedOn, OriginalPath]
 
-exit_code_hints:
-  0: "success"
-  1: "error or no data found"
-
 advisories:
   - "Recycle Bin analysis reveals what a user DELETED and when — useful for anti-forensics detection"
   - "The SID in the Recycle Bin path maps to a specific user account"
   - "If $R files exist, the deleted file contents can be recovered"
-  - "Use -d to process an entire Recycle Bin directory"
+  - "RBCmd can process a whole Recycle Bin directory"
   - "Absence of Recycle Bin entries for a user who was active may indicate deliberate cleanup"
 
-quick_start: "RBCmd.exe -d 'C:/$Recycle.Bin' --csv output/"
 
 investigation_sequence:
   - "Parse Recycle Bin $I files to identify deleted file evidence"

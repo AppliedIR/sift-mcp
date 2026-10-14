@@ -23,7 +23,7 @@ phases:
       - "De-obfuscate command if string concatenation, character codes, or variable substitution used"
   - phase: "Analyze"
     steps:
-      - "Search for known techniques matching the command pattern (forensic-rag: search)"
+      - "Search for known techniques matching the command pattern (forensic-rag: search_knowledge)"
       - "Check any download URLs found in the command (opencti: lookup_ioc)"
       - "Check the spawning process to understand execution context (windows-triage: check_process_tree)"
   - phase: "Impact"

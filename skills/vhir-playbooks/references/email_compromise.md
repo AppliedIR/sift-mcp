@@ -28,7 +28,7 @@ MITRE ATT&CK: T1114, T1534
 
 1. Review sent items for phishing emails or fraudulent messages
 2. Check for internal spearphishing — compromised account targeting other employees
-3. Search for related social engineering techniques (forensic-rag: search)
+3. Search for related social engineering techniques (forensic-rag: search_knowledge)
 
 ## Phase 4: Impact
 

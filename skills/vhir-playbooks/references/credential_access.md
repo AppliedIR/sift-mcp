@@ -19,7 +19,7 @@ MITRE ATT&CK: T1003, T1558
 
 ## Phase 2: Tool Identification
 
-1. Check file hashes of suspected credential tools (opencti: lookup_hash)
+1. Check file hashes of suspected credential tools (opencti: lookup_ioc)
 2. Verify files against Windows baseline (windows-triage: check_file)
 3. Submit unknown executables for static analysis (remnux: analyze_file)
 

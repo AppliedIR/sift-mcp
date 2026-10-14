@@ -18,13 +18,8 @@ output_notes:
   format: mixed
   key_fields: [collected_files, processed_output, execution_log]
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
   - "Use --tsource for target source and --tdest for target destination"
-  - "Use --msource to specify module source and --mdest for module output"
   - "Review the target and module documentation before running — understand what will be collected"
   - "Combine Targets (collection) with Modules (processing) for automated triage"
   - "Common targets: !BasicCollection, !SANS_Triage, KapeTriage"
@@ -32,7 +27,6 @@ advisories:
   - "Always verify collection completeness by checking the log output"
   - "For incident response, collect first, process later — prioritize getting artifacts off the system"
 
-quick_start: "kape.exe --tsource C: --tdest output/ --target !SANS_Triage"
 
 investigation_sequence:
   - "Select appropriate target configuration for the investigation scope"

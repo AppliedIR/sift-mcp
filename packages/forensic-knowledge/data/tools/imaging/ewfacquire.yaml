@@ -17,28 +17,22 @@ output_notes:
   format: ewf_image
   key_fields: [case_number, examiner_name, evidence_number, acquisition_hash, compression_method, segment_size]
 
-exit_code_hints:
-  0: "success with verification"
-  1: "error"
-
 advisories:
   - "Always use a hardware write blocker when imaging physical media"
-  - "Use -t flag to specify the target filename (without extension)"
-  - "Use -C flag to set case number, -D for description, -e for examiner name, -E for evidence number, -N for notes"
-  - "Use -c flag to set compression level: 'none', 'fast', 'best' — 'fast' is a good balance"
-  - "Use -d flag to compute hash during acquisition: 'sha256' recommended"
+  - "ewfacquire records case metadata in the image header: case number, description, examiner name, evidence number and notes."
+  - "Choose a compression level. The fast level is a good balance of speed and size."
+  - "Compute a hash during acquisition. SHA-256 is recommended."
   - "Use ewfverify to verify image integrity after acquisition"
   - "Use ewfmount to mount E01 images as raw devices for analysis with other tools"
   - "E01 format is widely supported by commercial forensic tools (EnCase, FTK, X-Ways, Autopsy)"
   - "Document the full acquisition process including hash values, timestamps, and any errors"
 
-quick_start: "ewfacquire -t output_name /dev/sdX"
 
 investigation_sequence:
   - "Ensure source media is connected through a hardware write blocker"
-  - "Use -f encase6 format for broad tool compatibility"
-  - "Set case metadata with -C (case number), -D (description), -e (examiner), -E (evidence number)"
-  - "Use -S to set segment file size for manageable output (e.g., -S 4G)"
-  - "Use -d to specify hash digest type for verification"
+  - "Use the EnCase 6 format for broad tool compatibility"
+  - "Set the case metadata: case number, description, examiner and evidence number"
+  - "Set the segment file size to keep the output manageable"
+  - "Choose the hash digest type used for verification"
   - "Verify the image after acquisition using ewfverify"
   - "Document all metadata fields and hash values for chain of custody"

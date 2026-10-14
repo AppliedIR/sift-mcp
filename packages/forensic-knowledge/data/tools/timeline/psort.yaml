@@ -17,29 +17,19 @@ output_notes:
   format: csv
   key_fields: [datetime, timestamp_desc, source, sourcetype, type, user, host, filename, message]
 
-exit_code_hints:
-  0: "success"
-  1: "error"
-
 advisories:
-  - "Use -o l2tcsv for log2timeline CSV format compatible with Timeline Explorer and other analysis tools"
-  - "Use -o dynamic for human-readable output with configurable fields"
-  - "Use --slice to extract events around a specific time: --slice '2024-01-15T10:00:00'"
-  - "Use --slice_size to control the time window around the slice (default: 5 minutes)"
-  - "Use -w to specify output file path"
-  - "Apply time range filters to limit output: --slice '2024-01-15' --slice_size 1440 (full day)"
-  - "Workflow: log2timeline.py storage.plaso image → psort.py -o l2tcsv -w timeline.csv storage.plaso"
+  - "A time slice shows the events within a set number of minutes before and after the slice time. The default is 5 minutes on each side. The slice time must be an ISO 8601 date and time that includes a time-zone offset."
+  - "Workflow: log2timeline.py writes a Plaso storage file from the evidence. psort.py then exports that storage file as a timeline."
   - "Use filter expressions to focus on specific data sources or event types"
 
-quick_start: "psort.py -w timeline.csv timeline.plaso"
 
 investigation_sequence:
   - "Export the Plaso storage file to a readable format for analysis"
-  - "Use -o l2tcsv for the legacy 17-column format compatible with most timeline tools"
-  - "Use -o dynamic for the flexible 8-column default format"
-  - "Apply time-based slicing (--slice) to focus on periods of interest while retaining all data"
-  - "Use --output-time-zone to convert timestamps to the timezone relevant to the investigation"
-  - "psort removes duplicate events by default; use -a (--include_all) only if you need every duplicate entry"
+  - "Use the l2tcsv output format for the legacy 17-column layout that most timeline tools accept"
+  - "The dynamic output format is the flexible 8-column default"
+  - "Apply time-based slicing to focus on periods of interest while keeping all data"
+  - "Convert timestamps to the time zone relevant to the investigation"
+  - "psort removes duplicate events by default. Include every duplicate only if you need them."
   - "Review output across all event types — every parser contribution adds context to the timeline"
 
 field_meanings:

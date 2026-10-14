@@ -28,7 +28,7 @@ MITRE ATT&CK: T1547, T1053, T1543
 
 1. Check binary digital signatures using sigcheck (via wintools-mcp)
 2. Check binary entropy using densityscout (via wintools-mcp)
-3. Check binary hash against threat intelligence (opencti: lookup_hash)
+3. Check binary hash against threat intelligence (opencti: lookup_ioc)
 4. Submit suspicious binaries for static analysis (remnux: analyze_file)
 
 ## Phase 4: Timeline

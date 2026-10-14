@@ -75,4 +75,4 @@ investigation_patterns:
     query: "Path.keyword:(*\\Temp\\* OR *\\AppData\\* OR *\\ProgramData\\* OR *\\Users\\Public\\*)"
     purpose: "Binaries in non-standard locations — potential attacker tools or malware"
     caveat: "ShimCache proves file was PRESENT in this path, not that it executed"
-    follow_up: "Check Prefetch, BAM (rip.pl -r SYSTEM -p bam), or process creation events for execution proof"
+    follow_up: "Check Prefetch, BAM (RegRipper's bam plugin on the SYSTEM hive), or process creation events for execution proof"

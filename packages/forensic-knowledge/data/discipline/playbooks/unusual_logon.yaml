@@ -35,7 +35,7 @@ phases:
   - phase: "Corroborate"
     steps:
       - "Check source IP reputation and threat intelligence (opencti: lookup_ioc)"
-      - "Search for related techniques and detection context (forensic-rag: search)"
+      - "Search for related techniques and detection context (forensic-rag: search_knowledge)"
       - "Verify process execution trees around logon time (windows-triage: check_process_tree)"
   - phase: "Record"
     steps:

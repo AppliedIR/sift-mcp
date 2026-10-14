@@ -21,7 +21,7 @@ MITRE ATT&CK: T1071, T1573
 ## Phase 2: Threat Intel
 
 1. Check destination IPs and domains against threat intelligence (opencti: lookup_ioc)
-2. Search for C2 communication patterns and known malware profiles (forensic-rag: search)
+2. Search for C2 communication patterns and known malware profiles (forensic-rag: search_knowledge)
 
 ## Phase 3: Process Mapping
 
@@ -31,7 +31,7 @@ MITRE ATT&CK: T1071, T1573
 
 ## Phase 4: Payload
 
-1. Extract HTTP objects from PCAP using tshark --export-objects (via sift-mcp)
+1. Extract HTTP objects from PCAP using tshark's HTTP object export (via sift-mcp)
 2. Check DNS queries for tunneling indicators — long labels, high query volume, TXT records
 3. Analyze extracted payloads for malicious content (remnux: analyze_file)
 

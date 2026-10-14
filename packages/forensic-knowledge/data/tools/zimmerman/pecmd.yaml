@@ -17,18 +17,13 @@ output_notes:
   format: csv
   key_fields: [ExecutableName, RunCount, LastRun, PreviousRun0-6, SourceFilename, Volume, FilesLoaded]
 
-exit_code_hints:
-  0: "success"
-  1: "error or no data found"
-
 advisories:
   - "Prefetch proves EXECUTION occurred — the run count and timestamps are strong evidence"
   - "Files referenced in the Prefetch file were loaded during the first 10 seconds of execution only"
   - "A Prefetch file named with a hash means the same executable was run from a different path if multiple hashes exist"
-  - "The -d flag processes an entire directory; the -f flag processes a single file"
-  - "Use --csv for timeline-friendly output and --json for detailed analysis"
+  - "PECmd can process a single Prefetch file or a whole directory"
+  - "CSV output is timeline-friendly. JSON output suits detailed analysis."
 
-quick_start: "PECmd.exe -d \"C:/Windows/Prefetch\" --csv output/"
 
 investigation_sequence:
   - "Parse all Prefetch files to identify program execution history (via wintools-mcp)"
@@ -37,7 +32,7 @@ investigation_sequence:
   - "Review files loaded by each program — these appear in the file references"
   - "Cross-reference with Amcache for file presence and ShimCache for additional context"
   - "Look for Prefetch entries from unusual programs or paths"
-  - "Cross-MCP: Check executable hashes against threat intelligence (opencti: lookup_hash)"
+  - "Cross-MCP: Check executable hashes against threat intelligence (opencti: lookup_ioc)"
   - "Cross-MCP: Verify executables against Windows baseline (windows-triage: check_file)"
   - "Cross-MCP: Submit suspicious executables for static analysis (remnux: analyze_file)"
 

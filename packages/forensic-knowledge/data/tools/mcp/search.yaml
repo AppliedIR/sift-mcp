@@ -1,4 +1,4 @@
-name: search
+name: search_knowledge
 category: mcp
 description: "Semantic search across forensic knowledge base including Sigma rules, MITRE ATT&CK, Atomic Red Team, and analysis guidance"
 platform: [any]

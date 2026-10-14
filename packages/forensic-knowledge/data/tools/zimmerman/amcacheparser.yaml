@@ -13,14 +13,9 @@ output_notes:
   format: csv
   key_fields: [FileName, FullPath, SHA1, FileKeyLastWriteTimestamp]
 
-exit_code_hints:
-  0: "success"
-  1: "error or no data found"
-
 advisories:
   - "Results show file PRESENCE — see Amcache artifact knowledge for what this does and does not prove"
 
-quick_start: "AmcacheParser.exe -f Amcache.hve --csv output/"
 
 investigation_sequence:
   - "Parse Amcache.hve to extract all file presence records (via sift-mcp or wintools-mcp)"
@@ -29,7 +24,7 @@ investigation_sequence:
   - "Cross-reference with Prefetch (PECmd) and UserAssist to confirm execution"
   - "Check SHA1 hashes against known-bad indicators via threat intelligence sources"
   - "Correlate FileKeyLastWriteTimestamp with other timeline events"
-  - "Cross-MCP: Check SHA1 hashes from Amcache against threat intelligence (opencti: lookup_hash)"
+  - "Cross-MCP: Check SHA1 hashes from Amcache against threat intelligence (opencti: lookup_ioc)"
   - "Cross-MCP: Verify file paths against Windows baseline (windows-triage: check_file)"
 
 field_meanings:
