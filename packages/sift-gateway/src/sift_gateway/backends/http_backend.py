@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from anyio import BrokenResourceError, ClosedResourceError
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
+from mcp.shared.exceptions import McpError
 from mcp.types import Tool
 
 from sift_gateway.backends.base import MCPBackend, ToolResult, _version_of
@@ -82,6 +83,20 @@ def _make_pinned_tls_factory(cert_path: str, pem: str | None = None):
         return httpx.AsyncClient(**kwargs)
 
     return factory
+
+
+def _session_refused(exc: BaseException) -> bool:
+    """The MCP client's own answer when the remote gives a request on a
+    session it doesn't know a 404, before running it (mcp's streamable HTTP
+    _send_session_terminated_error). That exact type and code only, never
+    message text: a tool's output can carry any text, and an error raised
+    after it ran (a result that fails validation) can quote it."""
+    error = getattr(exc, "error", None)
+    return (
+        isinstance(exc, McpError)
+        and getattr(error, "code", None) == 32600
+        and getattr(error, "message", None) == "Session terminated"
+    )
 
 
 class HttpMCPBackend(MCPBackend):
@@ -333,24 +348,24 @@ class HttpMCPBackend(MCPBackend):
                     f"Backend {self.name}: {name} gave no answer in "
                     f"{_TOOL_CALL_TIMEOUT}s; it wasn't sent again, as it may still be running"
                 ) from None
-            except (
-                ConnectionError,
-                OSError,
-                ClosedResourceError,
-                BrokenResourceError,
-            ) as exc:
-                if attempt > 0:
-                    await self._teardown()
-                    raise
-                await self._reconnect(describe(exc))
-                continue
             except Exception as exc:
-                exc_str = str(exc).lower()
-                if attempt == 0 and any(
-                    phrase in exc_str
+                text = str(exc).lower()
+                # Sent again only when the remote refused the session before
+                # running anything; any other loss may come after it ran
+                if attempt == 0 and _session_refused(exc):
+                    await self._reconnect(describe(exc))
+                    continue
+                if isinstance(
+                    exc,
+                    (
+                        ConnectionError,
+                        OSError,
+                        ClosedResourceError,
+                        BrokenResourceError,
+                    ),
+                ) or any(
+                    phrase in text
                     for phrase in (
-                        "session terminated",
-                        "session not found",
                         "connection closed",
                         "stream ended",
                         "closed resource",
@@ -359,8 +374,10 @@ class HttpMCPBackend(MCPBackend):
                         "forcibly closed",
                     )
                 ):
-                    await self._reconnect(describe(exc))
-                    continue
+                    raise RuntimeError(
+                        f"Backend {self.name}: the connection was lost during {name} ({describe(exc)}); "
+                        "it wasn't sent again: the call may have run on the guest; check before re-running"
+                    ) from exc
                 raise
         raise RuntimeError(f"Backend {self.name}: call_tool failed after reconnect")
 
