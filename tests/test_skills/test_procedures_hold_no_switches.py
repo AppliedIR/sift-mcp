@@ -88,6 +88,7 @@ WINTOOLS = {
     "batch_scan",
     "check_windows_tools",
     "get_share_info",
+    "get_windows_run",
     "get_windows_tool_help",
     "list_kape_targets",
     "list_missing_windows_tools",
