@@ -17,9 +17,9 @@ tools:
   check_process_tree:
     tool: "windows-triage-mcp: check_process_tree"
     score_interpretation:
-      EXPECTED: "Parent, path and user match the expectations for this process."
+      EXPECTED: "The process is known, and the checks that ran match its expectations. The parent is always checked. The path and user are checked only when they were given. The reasons do not list which checks ran. A user that could not be judged gets its own reason."
       SUSPICIOUS: "Unexpected parent, executable path or user context for a known process, or a filename anomaly; the reasons say which. May indicate process injection, living-off-the-land, or unusual execution."
-      UNKNOWN: "Process not in the expectations database. Neutral."
+      UNKNOWN: "Not enough data to judge. Either the process is not in the expectations database, or it has no list of expected parents. This is neutral. The reasons say which."
     common_false_positives:
       - "Software installers spawning unusual child processes"
       - "Task scheduler creating atypical process trees"
