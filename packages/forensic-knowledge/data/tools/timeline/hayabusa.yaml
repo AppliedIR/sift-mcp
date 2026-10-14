@@ -43,7 +43,7 @@ investigation_sequence:
 field_meanings:
   Timestamp: "Event creation time (YYYY-MM-DD HH:mm:ss.sss +hh:mm)"
   RuleTitle: "Detection rule descriptive name from the Sigma/Hayabusa rule"
-  Level: "Alert severity: critical, high, medium, low, or informational"
+  Level: "Alert severity. Timeline output abbreviates it by default: crit, high, med, low, info, plus emer (emergency) from v3.1 on configured critical systems. Full words appear only when abbreviations are disabled, on v3.4 or later. get_tool_help shows that option for the installed version. Query for both forms."
   Computer: "Source system hostname from the event record"
   Channel: "Windows Event Log channel name (Security, System, etc.)"
   EventID: "Windows Event ID number identifying the event type"

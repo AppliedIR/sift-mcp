@@ -17,7 +17,7 @@ alert_levels:
 
 investigation_patterns:
   - name: "Critical and high alerts"
-    query: "Level:(critical OR high)"
+    query: "Level:(emer OR emergency OR crit OR critical OR high)"
     purpose: "Highest-confidence detections — low false-positive rate, investigate first"
     follow_up: "Group by RuleTitle for pattern identification, then examine source events"
 
@@ -33,7 +33,7 @@ investigation_patterns:
     follow_up: "idx_aggregate on host.name to see affected scope"
 
   - name: "Account-based pivoting"
-    query: "Level:(critical OR high) AND user.name.keyword:<username>"
+    query: "Level:(emer OR emergency OR crit OR critical OR high) AND user.name.keyword:<username>"
     purpose: "All high-confidence alerts for a specific account — track attacker movement"
 
   - name: "Named pipe detection"
