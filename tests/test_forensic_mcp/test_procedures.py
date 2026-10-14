@@ -3,6 +3,7 @@ what skills/MANIFEST lists, and never a file outside the procedure's folder."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -140,3 +141,13 @@ async def test_the_server_serves_get_procedure():
 def test_the_instructions_name_get_procedure(where):
     text = FORENSIC_MCP if where == "FORENSIC_MCP" else (ROOT / "AGENTS.md").read_text()
     assert "get_procedure" in text
+
+
+@pytest.mark.asyncio
+async def test_the_server_says_so_when_procedures_aren_t_installed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(procedures, "SKILLS", tmp_path / "absent")
+    result = await create_server().call_tool("get_procedure", {"name": "x"})
+    content = result[0] if isinstance(result, tuple) else result
+    assert json.loads(content[0].text) == {"error": procedures.NOT_INSTALLED}

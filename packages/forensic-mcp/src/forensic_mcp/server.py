@@ -119,7 +119,7 @@ def _build_validation_guidance(errors: list[str]) -> list[str]:
     return guidance
 
 
-def _procedure_description(root=procedures.SKILLS) -> str:
+def _procedure_description(root=None) -> str:
     """get_procedure's description, naming the installed procedures."""
     found = procedures.names(root)
     listed = ", ".join(found) if found else procedures.NOT_INSTALLED

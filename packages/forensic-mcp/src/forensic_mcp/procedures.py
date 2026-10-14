@@ -63,14 +63,15 @@ def _description(text: str) -> str:
     return str(meta.get("description", "")) if isinstance(meta, dict) else ""
 
 
-def names(root: Path = SKILLS) -> list[str]:
-    return sorted(_procedures(root) or {})
+def names(root: Path | None = None) -> list[str]:
+    return sorted(_procedures(root or SKILLS) or {})
 
 
-def get(name: str = "", file: str = "", root: Path = SKILLS) -> dict:
+def get(name: str = "", file: str = "", root: Path | None = None) -> dict:
     """With no name, each procedure's name and description. With a name, its
     SKILL.md and its other files' names. With a file, that file. Never
     raises."""
+    root = root or SKILLS
     procedures = _procedures(root)
     if procedures is None:
         return {"error": NOT_INSTALLED}
