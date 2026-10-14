@@ -456,10 +456,15 @@ def test_lines_shown_together_follow_the_record_that_shows_them(q):
     assert _grade_aid(c, aid, '"user": {\n"name": "carol"') == FULL + (["d3"],)
 
 
-def test_a_long_quote_is_checked_quickly(q):
+def test_a_long_quote_is_checked_about_as_fast_as_a_short_one(q, monkeypatch):
     """One object of 300 fields quoted as shown, from its opener to its close,
-    in a reply of 30 such records."""
+    in a reply of 30 such records, against its first three lines. The records
+    are flattened and rendered as often for either quote, and the long one
+    takes under 5 times as long (the best of 5 runs each, side by side, so a
+    busy machine slows both). Checking each line against every record afresh
+    made the long quote about 30 times slower than the short one."""
     import time
+    from collections import Counter
 
     from sift_common import provenance as pv
 
@@ -477,10 +482,39 @@ def test_a_long_quote_is_checked_quickly(q):
     lines = _shown(docs[7]).splitlines()
     quote = "\n".join(lines[lines.index('  "data": {') : -1])
     assert len(quote) >= 5000, len(quote)
+    quotes = {"long": quote, "short": "\n".join(quote.splitlines()[:3])}
     case = pv.load_case(c.d)
-    start = time.perf_counter()
-    t = pv.trace_artifact(case, aid, quote)
-    assert time.perf_counter() - start < 0.1 and t.grade == "FULL", t
+    pv.trace_artifact(case, aid, quote)  # the case's indexes are built once
+
+    calls = Counter()
+
+    def counted(name):
+        real = getattr(pv, name)
+
+        def call(*a, **k):
+            calls[name] += 1
+            return real(*a, **k)
+
+        return call
+
+    work = {}
+    with monkeypatch.context() as m:
+        for name in ("_flat", "_rendered"):
+            m.setattr(pv, name, counted(name))
+        for which, text in quotes.items():
+            calls.clear()
+            t = pv.trace_artifact(case, aid, text)
+            assert t.grade == "FULL", (which, t)
+            work[which] = dict(calls)
+    assert work["long"] == work["short"] and work["long"], work
+
+    best = dict.fromkeys(quotes, float("inf"))
+    for _ in range(5):
+        for which, text in quotes.items():
+            start = time.perf_counter()
+            pv.trace_artifact(case, aid, text)
+            best[which] = min(best[which], time.perf_counter() - start)
+    assert best["long"] < 5 * best["short"], best
 
 
 def test_an_opener_needs_its_quoted_child(q):
