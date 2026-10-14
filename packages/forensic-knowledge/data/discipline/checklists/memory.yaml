@@ -2,4 +2,4 @@ artifact_type: "Memory Image"
 files:
   - "Full physical memory dump"
 tools: ["WinPmem", "DumpIt", "Magnet RAM Capture", "AVML (Linux)"]
-notes: "Capture memory BEFORE shutting down. Memory is volatile — power off destroys it."
+notes: "Capture memory BEFORE shutting down. Memory is volatile — power off destroys it. The examiner captures memory on the subject host, outside Valhuntir. Analyse the image with Volatility 3 through sift-mcp once it is in the case."

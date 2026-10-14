@@ -1,38 +1,30 @@
 name: KAPE
 category: triage
-description: "Kroll Artifact Parser and Extractor — automated forensic artifact collection and processing tool"
+description: "Kroll Artifact Parser and Extractor. KAPE collects artifacts with targets and processes them with modules. Through wintools-mcp, only module runs on files already in the case are allowed. Target runs are refused."
 platform: [windows]
 platform_notes: "Windows only. Targets are Windows-specific. Modules can invoke other tools. No Linux equivalent (use tar/find for Linux collection)."
 artifacts_parsed: []
 
 caveats:
-  - "Collection scope depends on target selection — verify targets include all needed artifacts"
-  - "Running on a live system modifies the system (at minimum, file access timestamps and prefetch)"
-  - "Requires administrator privileges for most targets"
-  - "KAPE modules can execute arbitrary commands — review module configs before running"
-  - "Target definitions may not cover custom or unusual artifact locations"
-  - "Large collection targets (full disk triage) can take significant time and disk space"
+  - "A KAPE collection holds only what its targets selected. Before concluding that an artifact is absent, check whether the collection's targets covered it."
+  - "KAPE modules can execute arbitrary commands. Review a module's configuration before running it."
+  - "Some modules gather live data from the machine they run on instead of parsing collected files. Through wintools-mcp, that machine is the wintools host, not the evidence. Run only modules that parse files already in the case. wintools-mcp does not block live-data modules, so this choice is yours to get right."
+  - "Target definitions may not cover custom or unusual artifact locations. An artifact missing from a collection may still exist on the host."
   - "KAPE is licensed software requiring agreement to Kroll's terms"
 
 output_notes:
   format: mixed
-  key_fields: [collected_files, processed_output, execution_log]
+  key_fields: [processed_output, execution_log]
 
 advisories:
-  - "Use --tsource for target source and --tdest for target destination"
-  - "Review the target and module documentation before running — understand what will be collected"
-  - "Combine Targets (collection) with Modules (processing) for automated triage"
-  - "Common targets: !BasicCollection, !SANS_Triage, KapeTriage"
+  - "Read a module's documentation before running it. Know which files it reads and what it writes."
+  - "Through wintools-mcp, KAPE runs modules only. Target runs collect from a drive, so wintools-mcp refuses them. A KAPE collection made earlier by the examiner can be processed with modules once it is in the case."
   - "KAPE modules can run Zimmerman tools, RegRipper, and other parsers automatically"
-  - "Always verify collection completeness by checking the log output"
-  - "For incident response, collect first, process later — prioritize getting artifacts off the system"
+  - "Check KAPE's log output after a module run. Confirm that each module ran and wrote output before relying on the results."
 
 
 investigation_sequence:
-  - "Select appropriate target configuration for the investigation scope"
-  - "Use --tsource to specify the evidence source drive or directory"
-  - "Use --tdest to specify the output directory for collected artifacts"
-  - "Use --target to select predefined collection profiles (e.g., !SANS_Triage)"
+  - "Find the collected files in the case that the module needs as input"
   - "Process collected artifacts with module configurations for automated parsing"
-  - "Review all collected artifacts — KAPE targets are comprehensive but not exhaustive"
-  - "Document collection parameters and target selections for the investigation record"
+  - "Review all module output. A module parses only the files present in its input folder. An artifact missing from a collection may still exist on the host."
+  - "Record which modules ran and which input folder they read, for the investigation record"

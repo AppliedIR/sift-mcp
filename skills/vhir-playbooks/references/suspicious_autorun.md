@@ -16,7 +16,7 @@ MITRE ATT&CK: T1547, T1053, T1543
 
 1. Parse registry for Run keys, services, and WMI subscriptions using RECmd (via sift-mcp or wintools-mcp)
 2. Check scheduled tasks output using EvtxECmd (via sift-mcp or wintools-mcp) for task creation events
-3. Run autorunsc (via wintools-mcp) for comprehensive persistence enumeration if available
+3. If a Windows image of the host is in the case, run autorunsc (via wintools-mcp) in offline mode against it to list its auto-start entries
 
 ## Phase 2: Validate
 
@@ -26,8 +26,8 @@ MITRE ATT&CK: T1547, T1053, T1543
 
 ## Phase 3: Analyze Binary
 
-1. Check binary digital signatures using sigcheck (via wintools-mcp)
-2. Check binary entropy using densityscout (via wintools-mcp)
+1. Check binary digital signatures using sigcheck (via wintools-mcp) on the binary's copy in the case. A path in a persistence entry names a file on the subject host. The same path on the wintools host is a different file.
+2. Check binary entropy using densityscout (via wintools-mcp) on the binary's copy in the case, not on the same path on the wintools host
 3. Check binary hash against threat intelligence (opencti: lookup_ioc)
 4. Submit suspicious binaries for static analysis (remnux: analyze_file)
 

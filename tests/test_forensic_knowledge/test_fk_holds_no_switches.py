@@ -66,37 +66,6 @@ ALLOWED = {
             "Use -m to hide Microsoft entries only",
         )
     },
-    # the wintools-scope edits (the next change)
-    **{
-        (f, start): "wintools-scope"
-        for f, start in (
-            ("tools/persistence/autorunsc.yaml", "Offline scanning (-z flag)"),
-            ("tools/persistence/autorunsc.yaml", "Live system analysis covers"),
-            ("tools/persistence/autorunsc.yaml", "Use -v to check VirusTotal"),
-            ("tools/persistence/autorunsc.yaml", "Run autorunsc with -a *"),
-            ("tools/persistence/autorunsc.yaml", "Use -z for offline analysis"),
-            (
-                "tools/persistence/autorunsc.yaml",
-                "Windows forensic workstation available",
-            ),
-            ("tools/malware/sigcheck.yaml", "Certificate chain validation"),
-            ("tools/malware/sigcheck.yaml", "Offline VT workflow (-o)"),
-            ("tools/malware/sigcheck.yaml", "Use -vt to check"),
-            ("tools/malware/sigcheck.yaml", "Use -v/-vt to check"),
-            ("tools/triage/kape.yaml", "Use --tsource for target source"),
-            ("tools/triage/kape.yaml", "Use --tsource to specify"),
-            ("tools/triage/kape.yaml", "Use --tdest to specify"),
-            ("tools/triage/kape.yaml", "Use --target to select"),
-            ("tools/zimmerman/appcompatcacheparser.yaml", "On SIFT/Linux requires"),
-            ("tools/malware/hollows_hunter.yaml", "The -dir flag"),
-            ("tools/malware/hollows_hunter.yaml", "Use -json for JSON"),
-            ("tools/malware/moneta.yaml", "Use -p <PID>"),
-            ("tools/malware/moneta.yaml", "Use -m ioc mode"),
-            ("tools/malware/moneta.yaml", "Use -m region"),
-            ("tools/malware/moneta.yaml", "Use -d flag"),
-            ("tools/malware/moneta.yaml", "Use --filter options"),
-        )
-    },
 }
 # macOS artifacts carry live-response commands, many of them warnings about
 # what not to run against evidence; kept, and swept as a 0.6.5 follow-on

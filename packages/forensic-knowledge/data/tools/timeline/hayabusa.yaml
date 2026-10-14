@@ -8,7 +8,8 @@ artifacts_parsed: [event_logs_security, event_logs_system, event_logs_powershell
 caveats:
   - "Detection is rule-based (Sigma + Hayabusa rules) — only known attack patterns are detected"
   - "False positives are common, especially at informational and low severity levels"
-  - "Rule updates are frequent; always update rules before analysis with 'hayabusa update-rules'"
+  - "Rule updates are frequent. An older rule set can miss detections added since it was installed."
+  - "Through wintools-mcp, the rule-update command is refused, because it downloads rules from the internet. Ask the examiner whether the installed rules are current."
   - "Does not parse non-EVTX log sources; combine with other tools for complete timeline"
   - "Large EVTX collections (10GB+) may require significant processing time"
   - "Rule severity levels: critical, high, medium, low, informational — triage from the top down"

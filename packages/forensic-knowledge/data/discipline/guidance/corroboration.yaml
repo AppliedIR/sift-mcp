@@ -58,8 +58,8 @@ corroboration:
     - check: "forensic-rag: search_knowledge for document-based attack techniques"
       reason: "Match against known document exploit patterns"
   process_injection:
-    - check: "hollows_hunter or moneta for injection detection"
-      reason: "Identify hollowed processes, injected threads, suspicious memory regions"
+    - check: "Volatility 3 windows.malfind and windows.hollowprocesses on a memory image in the case (sift-mcp)"
+      reason: "Find injected code and hollowed processes in the captured memory. malfind has a high false-positive rate on some systems, so treat a hit as a lead."
     - check: "remnux: analyze_file on dumped memory regions"
       reason: "Analyze extracted shellcode or injected PE for capabilities"
     - check: "windows-triage: check_process_tree"

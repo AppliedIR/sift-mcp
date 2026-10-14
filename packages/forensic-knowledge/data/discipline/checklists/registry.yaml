@@ -8,4 +8,4 @@ files:
   - "C:\\Users\\<user>\\NTUSER.DAT"
   - "C:\\Users\\<user>\\AppData\\Local\\Microsoft\\Windows\\UsrClass.dat"
 tools: ["KAPE", "FTK Imager", "reg.exe (live)"]
-notes: "Registry transaction logs (.LOG1, .LOG2) should also be collected for dirty hive recovery."
+notes: "Registry transaction logs (.LOG1, .LOG2) should also be collected for dirty hive recovery. The examiner collects these from the subject host. wintools-mcp does not collect them. Analyse the copies once they are in the case."

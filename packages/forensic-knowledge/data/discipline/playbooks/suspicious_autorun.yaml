@@ -17,7 +17,7 @@ phases:
     steps:
       - "Parse registry for Run keys, services, and WMI subscriptions using RECmd (via sift-mcp or wintools-mcp)"
       - "Check scheduled tasks output using EvtxECmd (via sift-mcp or wintools-mcp) for task creation events"
-      - "Run autorunsc (via wintools-mcp) for comprehensive persistence enumeration if available"
+      - "If a Windows image of the host is in the case, run autorunsc (via wintools-mcp) in offline mode against it to list its auto-start entries"
   - phase: "Validate"
     steps:
       - "Check each persistence entry against baseline (windows-triage: check_autorun, check_service, check_scheduled_task)"
@@ -25,8 +25,8 @@ phases:
       - "Flag entries pointing to unusual paths (Temp, AppData, Recycle Bin, ProgramData)"
   - phase: "Analyze Binary"
     steps:
-      - "Check binary digital signatures using sigcheck (via wintools-mcp)"
-      - "Check binary entropy using densityscout (via wintools-mcp)"
+      - "Check binary digital signatures using sigcheck (via wintools-mcp) on the binary's copy in the case. A path in a persistence entry names a file on the subject host. The same path on the wintools host is a different file."
+      - "Check binary entropy using densityscout (via wintools-mcp) on the binary's copy in the case, not on the same path on the wintools host"
       - "Check binary hash against threat intelligence (opencti: lookup_ioc)"
       - "Submit suspicious binaries for static analysis (remnux: analyze_file)"
   - phase: "Timeline"

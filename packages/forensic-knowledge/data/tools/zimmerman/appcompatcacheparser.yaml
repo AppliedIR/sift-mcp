@@ -9,7 +9,7 @@ caveats:
   - "ShimCache only proves a file WAS PRESENT on disk, not that it was executed (Win8+)"
   - "On Windows 7 and earlier, an InsertFlag may indicate execution, but is not definitive"
   - "Cache entries are written to the registry at shutdown; a crash loses unwritten entries"
-  - "On SIFT/Linux requires the SYSTEM hive file (-f); on Windows, omitting -f parses the live registry"
+  - "Give it a SYSTEM hive file from the case. On Windows, a run without a hive file parses the live registry of the machine it runs on. Through wintools-mcp, that machine is the wintools host, not the evidence, so wintools-mcp refuses a run without a hive file. On SIFT/Linux a hive file is always required."
   - "Entry order reflects the order of interaction, not chronological execution time"
   - "Maximum of 1024 entries on Win8+; older entries are evicted"
 

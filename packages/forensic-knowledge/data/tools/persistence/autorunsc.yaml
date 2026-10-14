@@ -6,38 +6,36 @@ platform_notes: "Windows only (Sysinternals). For offline registry persistence a
 artifacts_parsed: [registry_run_keys, scheduled_tasks, registry_services, wmi_persistence]
 
 caveats:
-  - "Offline scanning (-z flag) is limited to registry-based ASEPs only. Does NOT detect WMI persistence or scheduled tasks offline — those require live system access or separate artifact analysis"
-  - "Live system analysis covers all ASEPs; offline (-z) covers only registry-based ones"
+  - "Offline scanning is limited to registry-based ASEPs. It does NOT detect WMI persistence or scheduled tasks. Find those with separate artifact analysis."
   - "Requires elevated privileges for complete enumeration"
   - "Not all persistence mechanisms are covered (e.g., DLL search order hijacking, COM object hijacking)"
-  - "VirusTotal integration requires accepting the EULA and sends file hashes"
-  - "Results reflect the current system state — previously cleared persistence is not visible"
+  - "Through wintools-mcp, the VirusTotal options are refused. They would send file hashes to VirusTotal over the internet. Check a hash with threat intelligence instead (opencti: lookup_ioc)."
+  - "Results reflect the image's state at the time it was collected. Persistence removed before collection is not visible in the results."
   - "Compare with offline registry analysis to detect persistence that was removed or tampered with"
 
 output_notes:
   format: csv
-  key_fields: [Entry_Location, Entry, Enabled, Category, Profile, Description, Publisher, Image_Path, Launch_String, MD5, SHA1, SHA256, VirusTotal_Detection]
+  key_fields: [Entry_Location, Entry, Enabled, Category, Profile, Description, Publisher, Image_Path, Launch_String, MD5, SHA1, SHA256]
 
 advisories:
   - "Use -a * for comprehensive enumeration of all auto-start locations"
   - "Use -c for CSV output suitable for analysis and comparison"
   - "Use -h to show file hashes for all auto-start entries"
   - "Use -s to verify digital signatures — unsigned entries warrant investigation"
-  - "Use -v to check VirusTotal detection ratios"
   - "Use -m to hide Microsoft-signed entries to focus on third-party and unsigned items"
-  - "Save baseline output and diff against current state to detect new persistence"
+  - "Compare the output with output from a known-good image, or from an earlier image of the same host, to find new persistence. Entries that differ are leads. They are not proof of malicious persistence."
   - "Combine with offline RECmd analysis for tamper detection"
 
 
 investigation_sequence:
-  - "Run autorunsc with -a * to scan all Auto-Start Extensibility Points (ASEPs) (via wintools-mcp)"
+  - "Run autorunsc (via wintools-mcp) in offline mode against a Windows image in the case, to list its Auto-Start Extensibility Points (ASEPs). wintools-mcp refuses a run that would scan the wintools host itself."
   - "Use -c for CSV output and -h for file hashes for structured analysis"
   - "Use -s to verify digital signatures for trust assessment"
   - "Review ALL entries including Microsoft-signed items — legitimate binaries can be hijacked"
   - "Use -m to hide Microsoft entries only for initial triage focus, then review full results"
   - "Cross-reference unsigned or suspicious entries with sigcheck for deeper analysis"
   - "Check file hashes against threat intelligence sources"
-  - "Use -z for offline analysis of mounted evidence images"
+  - "Through wintools-mcp, offline mode is required. Give it the image's Windows folder and a user profile folder, both inside the case."
   - "Correlate persistence mechanisms with other execution evidence (Prefetch, Amcache)"
   - "Cross-MCP: Verify entries against Windows autorun baseline (windows-triage: check_autorun)"
   - "Cross-MCP: Check unsigned entry hashes against threat intelligence (opencti: lookup_ioc)"
@@ -49,7 +47,7 @@ cross_mcp_checks:
     when: "Autorun entry found — verify against Windows baseline"
   - mcp: "wintools-mcp"
     tool: "run_windows_command"
-    when: "Windows forensic workstation available — run autorunsc -z on offline evidence for full ASEP enumeration"
+    when: "Windows forensic workstation available — run autorunsc in offline mode on a Windows image in the case to list its ASEPs. get_windows_tool_help shows the offline-mode arguments for the installed version."
   - mcp: "opencti"
     tool: "lookup_ioc"
     when: "Unsigned autorun entry — check file hash against threat intelligence"
