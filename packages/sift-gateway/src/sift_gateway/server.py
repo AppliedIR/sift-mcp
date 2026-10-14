@@ -375,6 +375,14 @@ class Gateway:
                         ) as exc:
                             logger.warning("Late-start failed for %s: %s", name, exc)
                             continue
+                    # A session the remote ended (a restart, a guest revert)
+                    # is reconnected here, with no tool call needed
+                    if isinstance(backend, HttpMCPBackend):
+                        try:
+                            await backend.heal()
+                        except (Exception, BaseExceptionGroup) as exc:
+                            logger.warning("Reconnect failed for %s: %s", name, exc)
+                            continue
                     # Rebuild tool map if backend reconnected with new code
                     if getattr(backend, "_tool_map_stale", False):
                         backend._tool_map_stale = False

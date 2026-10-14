@@ -336,6 +336,28 @@ def test_a_joined_backend_reconnects_at_most_once_after_its_remote_restarts(link
     _three_calls_after_a_restart(link, gw, a, answers(gw, "A"))
 
 
+def test_a_session_the_remote_ended_heals_with_no_tool_call(link, monkeypatch):
+    """A wintools restart (or a guest revert) ends the session: the checker
+    reconnects it, so /health reads ok again with no tool call."""
+    monkeypatch.setattr(server_mod, "_LATE_START_SECONDS", 1, raising=False)
+    a = link.remote("A")
+    gw = link.boot(wintools_mcp=backend_entry(a, a.token, a.cert[0]))
+    answers(gw, "A")
+    a.restart()
+    until(
+        lambda: (
+            link.logs.lines("reconnecting")
+            and gw.health()["backends"]["wintools-mcp"]["status"] == "ok"
+        ),
+        "health never recovered with no tool call",
+    )
+    for _ in range(3):
+        assert gw.health()["backends"]["wintools-mcp"]["status"] == "ok"
+    assert len(link.logs.lines("reconnecting")) == 1, link.logs.lines("reconnecting")
+    assert link.logs.lines("Tool map rebuilt after wintools-mcp reconnected")
+    link.untouched(gw)
+
+
 def _gave_up(link) -> bool:
     return bool(link.logs.lines("Could not load wintools-mcp"))
 

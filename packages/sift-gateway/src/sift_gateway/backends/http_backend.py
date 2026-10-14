@@ -112,6 +112,11 @@ class HttpMCPBackend(MCPBackend):
         self._runner: asyncio.Task | None = None
         self._stop_event: asyncio.Event | None = None
         self._liveness_lock: asyncio.Lock | None = None
+        # Calls sent and not yet answered
+        self._in_flight = 0
+        # Bumped by each reconnect: a reconnect decided on an older session
+        # than the current one is not made
+        self._generation = 0
         # Why the last start or connection failed; None once connected
         self.last_error: str | None = None
         # The pinned cert as it is when the backend is made (a join's comes
@@ -300,6 +305,7 @@ class HttpMCPBackend(MCPBackend):
         logger.warning(
             "Backend %s connection lost, reconnecting: %s", self.name, reason
         )
+        self._generation += 1
         await self._teardown()
         try:
             await asyncio.wait_for(self.start(), timeout=_CONNECT_TIMEOUT)
@@ -324,18 +330,50 @@ class HttpMCPBackend(MCPBackend):
         except Exception as exc:  # noqa: BLE001 - the reason is the answer
             return describe(exc)
 
-    async def call_tool(self, name: str, arguments: dict) -> list:
-        if self._liveness_lock is None:
-            self._liveness_lock = asyncio.Lock()
-        async with self._liveness_lock:  # one reconnect for concurrent calls
+    async def heal(self) -> None:
+        """Reconnect when the remote doesn't answer a ping: it ended the
+        session (a restart, a guest revert) or the connection is gone. A ping
+        that times out while a call is running is left alone: a busy remote
+        can be slow to answer, and a reconnect would end the running call's
+        session. Each call heals first; the gateway's 30 s checker heals an
+        idle backend."""
+        async with self._lock():  # one reconnect for concurrent calls
+            generation = self._generation
             why = await self._alive()
-            if why is not None:
+            if why is None or (
+                self._in_flight and why.startswith("no answer to a ping")
+            ):
+                return
+            if self._generation == generation:  # not reconnected meanwhile
                 await self._reconnect(why)
 
+    def _lock(self) -> asyncio.Lock:
+        if self._liveness_lock is None:
+            self._liveness_lock = asyncio.Lock()
+        return self._liveness_lock
+
+    async def _reconnect_since(self, generation: int, why: str) -> None:
+        """A call's reconnect, under the same lock as heal(): made only if no
+        reconnect came since the call read `generation` (or the one that
+        came failed), so it never closes a fresh session a retry is on."""
+        async with self._lock():
+            if self._generation == generation or self._session is None:
+                await self._reconnect(why)
+
+    async def call_tool(self, name: str, arguments: dict) -> list:
+        await self.heal()
+        self._in_flight += 1
+        try:
+            return await self._send(name, arguments)
+        finally:
+            self._in_flight -= 1
+
+    async def _send(self, name: str, arguments: dict) -> list:
         for attempt in range(2):
+            generation = self._generation
             try:
                 if self._session is None:
-                    await self._reconnect("not connected")
+                    await self._reconnect_since(generation, "not connected")
                 result = await asyncio.wait_for(
                     self._session.call_tool(name, arguments),
                     timeout=_TOOL_CALL_TIMEOUT,
@@ -353,7 +391,7 @@ class HttpMCPBackend(MCPBackend):
                 # Sent again only when the remote refused the session before
                 # running anything; any other loss may come after it ran
                 if attempt == 0 and _session_refused(exc):
-                    await self._reconnect(describe(exc))
+                    await self._reconnect_since(generation, describe(exc))
                     continue
                 if isinstance(
                     exc,
