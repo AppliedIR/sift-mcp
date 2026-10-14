@@ -267,3 +267,20 @@ async def test_a_polls_final_reply_records_its_pending_files_with_no_proxy_entry
     (entry,) = _entries(case, "wintools_pending_hashes")
     assert entry["params"]["backend_audit_id"] == AUDIT_ID
     assert _entries(case, "get_windows_run") == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["per-backend", "aggregate"])
+async def test_a_later_delivery_of_a_polled_result_records_its_hashes_no_more(
+    case, endpoint
+):
+    """wintools marks a result's files "pending" at its first delivery only."""
+    (case / "evidence" / "disk.E01").write_bytes(b"PRETEND-OVER-1GB")
+    again = dict(
+        _pending("evidence/disk.E01"),
+        hash_state="pending, recorded at this result's first delivery",
+    )
+    gw = _gateway(_reply(again), tool="get_windows_run")
+    result = await _call(gw, endpoint, tool="get_windows_run")
+    assert result.isError is False
+    assert _entries(case, "wintools_pending_hashes") == []
