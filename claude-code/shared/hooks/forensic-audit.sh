@@ -7,10 +7,51 @@
 # "event" ("shell" or "apply_patch") and "outside_case" when the session runs
 # outside the active case, and each run also records Codex's write_stdin text
 # (codex-stdin-capture.sh), which no hook sees.
+# A skill load (matcher "Skill") is not audited: it appends one line to the
+# internal lookups log, ~/.vhir/logs/lookups.jsonl, with or without a case.
 # Receives JSON on stdin from Claude Code. Never exits 2 (would block).
 set -e
 CLIENT=claude-code
 if [ "$1" = "--client" ] && [ -n "$2" ]; then CLIENT=$2; fi
+INPUT=$(cat)
+
+# 0. A skill load: its lookup line, then done (before any case check)
+SKILL_LINE='
+import datetime, json, os, sys
+d = json.load(sys.stdin)
+if not isinstance(d, dict) or d.get("tool_name") != "Skill":
+    sys.exit(3)  # not a skill load
+ti = d.get("tool_input") if isinstance(d.get("tool_input"), dict) else {}
+case = None
+try:
+    p = os.environ.get("VHIR_CASE_DIR", "")
+    if not (p and os.path.isdir(p)):
+        with open(os.path.expanduser("~/.vhir/active_case")) as f:
+            p = f.read().strip()
+    if p.startswith("/") and os.path.isdir(p):
+        case = os.path.basename(p.rstrip("/"))
+except OSError:
+    pass
+line = {
+    "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "source": "claude-code",
+    "lookup": "Skill",
+    "case": case,
+    "args": {"skill": str(ti.get("skill", ""))[:120]},
+}
+logs = os.path.expanduser("~/.vhir/logs")
+os.makedirs(logs, exist_ok=True)
+fd = os.open(os.path.join(logs, "lookups.jsonl"), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+try:
+    os.write(fd, (json.dumps(line) + "\n").encode())
+finally:
+    os.close(fd)
+'
+# 0 = a skill load, logged: done. Anything else (3 = not a skill) goes on
+# as before, so a failure here never costs a command its audit entry.
+if printf '%s' "$INPUT" | python3 -I -c "$SKILL_LINE" 2>/dev/null; then
+    exit 0
+fi
 
 # 1. Read active case directory
 # Priority: VHIR_CASE_DIR env var > ~/.vhir/active_case file
@@ -38,8 +79,7 @@ fi
 # 2. Examiner identity
 EXAMINER="${VHIR_EXAMINER:-$(whoami)}"
 
-# 3. Read stdin and parse via Python one-liner
-INPUT=$(cat)
+# 3. Parse stdin (read above) via Python one-liner
 PARSED=$(printf '%s' "$INPUT" | python3 -I -c "
 import sys, json
 try:

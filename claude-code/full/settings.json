@@ -42,6 +42,15 @@
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/forensic-audit.sh"
           }
         ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/forensic-audit.sh"
+          }
+        ]
       }
     ],
     "PostToolUseFailure": [
