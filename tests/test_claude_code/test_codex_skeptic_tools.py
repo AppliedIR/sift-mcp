@@ -48,12 +48,18 @@ REFUSED = [
     "multi_agent_v1send_input",
     "collaborationsend_message",
     "collaborationfollowup_task",
+    "mcp__other__run_command",  # another server's tool of an allowed name
+    "mcp__forensic_mcp__run_command",  # an allowed name on the wrong server
+    "mcp__sift_mcp__record_finding",
 ]
 PASSED = [
     "mcp__forensic-mcp__get_findings",
     "mcp__sift-mcp__run_command",
     "mcp__opensearch-mcp__idx_search",
     "mcp__wintools-mcp__run_windows_command",
+    "mcp__forensic_mcp__get_findings",  # as Codex names it: the server's "-" made "_"
+    "mcp__sift_mcp__run_command",
+    "mcp__windows_triage_mcp__check_file",
     "collaborationwait_agent",
     "read_mcp_resource",
     "view_image",
@@ -95,12 +101,17 @@ def test_without_python_every_call_is_refused(tmp_path):
 
 
 def test_the_allowlist_is_claude_s_skeptic_s():
-    """The hook's names are the bare names of claude.md's `tools:` line."""
+    """The hook's server and tool pairs are claude.md's `tools:` line."""
+    import ast
+
     head = (
         (ROOT / "agents" / "finding-skeptic" / "claude.md")
         .read_text()
         .split("---\n")[1]
     )
-    claude = {t.rsplit("__", 1)[1] for t in yaml.safe_load(head)["tools"].split(", ")}
-    block = re.search(r"ALLOWED = \{(.*?)\n\}", HOOK.read_text(), re.S).group(1)
-    assert set(re.findall(r'"([a-z_]+)"', block)) == claude
+    claude = {
+        tuple(t.split("__")[1:]) for t in yaml.safe_load(head)["tools"].split(", ")
+    }
+    block = re.search(r"^ALLOWED = (\{.*?\n\})", HOOK.read_text(), re.S | re.M).group(1)
+    hook = {(s, n) for s, names in ast.literal_eval(block).items() for n in names}
+    assert hook == claude
