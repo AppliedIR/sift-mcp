@@ -2218,11 +2218,27 @@ if $REMOTE_MODE; then
     # Detect host IP for join instructions
     HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'THIS_IP')
 
-    # Wait for gateway to be ready before generating join codes
+    # Wait for gateway to be ready before generating join codes. A gateway just
+    # started by systemd may not answer /health on the first check, so poll it
+    # for up to ~60s (bounded by elapsed time, not a count, since each --max-time
+    # curl can take 2s). Stop at the first answer; fall through unchanged if none.
     JOIN_READY=false
-    if curl -sf ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
-        JOIN_READY=true
-    fi
+    join_wait_start=$SECONDS
+    join_waited=false
+    while true; do
+        if curl -sf --max-time 2 ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
+            JOIN_READY=true
+            break
+        fi
+        if (( SECONDS - join_wait_start >= 60 )); then
+            break
+        fi
+        if ! $join_waited; then
+            info "Waiting up to 60s for the gateway to respond before generating join codes..."
+            join_waited=true
+        fi
+        sleep 1
+    done
 
     if $JOIN_READY; then
         # Generate join code for the remote LLM client machine
