@@ -80,6 +80,24 @@ def test_a_unit_whose_names_are_all_confirmed_does_not_wait(case):
     assert pending(case, u) == []
 
 
+def test_one_confirm_of_a_name_two_waiting_files_share_releases_both(case):
+    # files held together: their shared host column name is one proposed group
+    u, v = (
+        unit(
+            case,
+            f"kansa/{f}.tsv",
+            [("WKSTN05", f"kansa/{f}.tsv host column", "artifact")],
+        )
+        for f in ("arp", "dnscache")
+    )
+    hg.record_wait(case, "run-1", [u])
+    hg.record_wait(case, "run-2", [v])
+    (g,) = hp.propose(hi.load(case))
+    assert sorted(g.pairs) == sorted([(u, "WKSTN05"), (v, "WKSTN05")])
+    confirm(case, hi.new_machine_key(), "WKSTN05", g.pairs)
+    assert pending(case, u, v) == []
+
+
 def test_a_name_bound_while_ingesting_as_new_still_waits(case):
     u = folder(case, "WKS01", "WKS01")
     hi.get_or_mint(case, u, "WKS01", origin="folder")  # a machine in state new
