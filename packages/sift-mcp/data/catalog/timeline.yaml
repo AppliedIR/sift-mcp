@@ -4,15 +4,17 @@ common_binary_dir: /usr/local/bin
 tools:
   - name: hayabusa
     binary: hayabusa
+    # 3.8.1: the 3.x recipes and `help` measured on the release binary
+    # (capture: hb381-recipes.txt)
     recipes:
       - task: Timeline of Windows event logs as JSON lines
         versions: ">=3.0,<4"
-        checked_on: "3.9.0"
+        checked_on: "3.8.1, 3.9.0"
         argv: [hayabusa, json-timeline, -d, <evtx folder>, -o, <output .jsonl>, -w, --min-level, <informational|low|medium|high|critical>]
         notes: '-w: no questions (a run has no terminal).'
       - task: Timeline of Windows event logs as CSV
         versions: ">=3.0,<4"
-        checked_on: "3.9.0"
+        checked_on: "3.8.1, 3.9.0"
         argv: [hayabusa, csv-timeline, -d, <evtx folder>, -o, <output .csv>, -w]
         notes: '-w: no questions (a run has no terminal).'
       - task: Timeline of Windows event logs as JSON lines
@@ -37,7 +39,7 @@ tools:
       Sigma-based Windows event log analyzer. Starts with a subcommand:
       `hayabusa json-timeline -d <evtx dir> -o <file> -w` (or csv-timeline)
       in 3.x; `hayabusa dfir-timeline` in 4.x, which removed those two.
-      SIFT installs 3.9.0.
+      `sudo cast install teamdfir/sift` installs 3.8.1.
     fk_tool_name: Hayabusa
   - name: log2timeline
     binary: log2timeline.py
