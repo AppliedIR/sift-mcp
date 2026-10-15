@@ -142,6 +142,46 @@ def test_a_folder_outside_every_registered_folder_still_breaks(c):
         (c.d / "audit" / "sift-mcp.jsonl").unlink()
 
 
+def _on_a_mount_in_the_folder(c, register_image):
+    """An image mounted at rd01/mnt after rd01 was registered, and EvtxECmd -d
+    run on a folder on that mount and on a plain sub-folder of rd01."""
+    c.file("evidence/working/rd01/triage/Security.evtx", "security evtx")
+    c.register_folder(str(c.d / "evidence/working/rd01"))
+    a = c.file("evidence/imgA.raw", "image A")
+    if register_image:
+        c.register(a)
+    mp = str(c.d / "evidence/working/rd01/mnt")
+    logs = str(c.d / "evidence/working/rd01/mnt/Windows/System32/winevt/Logs")
+    c.file("evidence/working/rd01/mnt/Windows/System32/winevt/Logs/S.evtx", "in A")
+    c.mount("sift-tester-20261009-001", a, mp, 2049, ts="2026-10-09T01:00:00Z")
+    c.run("sift-tester-20261009-002", ["EvtxECmd", "-d", logs], [logs], "4624\n",
+          input_realpaths=[logs], input_st_devs=[2049],
+          ts="2026-10-09T02:00:00Z")  # fmt: skip
+    sub = str(c.d / "evidence/working/rd01/triage")
+    c.run("sift-tester-20261009-003", ["EvtxECmd", "-d", sub], [sub], "4624\n",
+          ts="2026-10-09T02:00:00Z")  # fmt: skip
+    case = pv.load_case(c.d)
+    return a, (pv.trace_op(case, "sift-tester-20261009-002"),
+               pv.trace_op(case, "sift-tester-20261009-003"))  # fmt: skip
+
+
+def test_a_folder_on_an_unregistered_image_mounted_in_a_registered_folder_breaks(c):
+    """The folder's manifest covers nothing on the mount: the mount decides."""
+    _, (on_mount, plain) = _on_a_mount_in_the_folder(c, register_image=False)
+    assert on_mount.grade == "BROKEN", on_mount
+    assert "in-folder" not in [link["method"] for link in on_mount.links]
+    assert plain.grade == "FULL" and plain.root["path"].endswith("rd01"), plain
+
+
+def test_a_folder_on_a_registered_image_mounted_in_a_registered_folder_traces_to_it(c):
+    a, (on_mount, plain) = _on_a_mount_in_the_folder(c, register_image=True)
+    assert on_mount.grade == "FULL" and on_mount.root["path"] == a, on_mount
+    methods = [link["method"] for link in on_mount.links]
+    assert "recorded-mount" in methods and "in-folder" not in methods
+    assert plain.grade == "FULL" and plain.root["path"].endswith("rd01"), plain
+    assert "in-folder" in [link["method"] for link in plain.links]
+
+
 def test_vol_on_sample_two_traces_through_the_7z_extraction_to_the_7z(c):
     z = c.file("evidence/mem.7z", "7z bytes")
     c.register(z)
