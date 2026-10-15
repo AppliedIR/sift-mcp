@@ -7,7 +7,6 @@ The portal's signed commit and get_summary run on a scratch case.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import re
 import shutil
@@ -135,7 +134,7 @@ def _withdrawal(audit_id, ts, title="t"):
 
 
 def _summary():
-    return json.loads(asyncio.run(D.get_summary(None)).body)
+    return json.loads(D.get_summary(None).body)  # a plain def: Starlette threads it
 
 
 def test_the_summary_lists_each_withdrawal_once(case):

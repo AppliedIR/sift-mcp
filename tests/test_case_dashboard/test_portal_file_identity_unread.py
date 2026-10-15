@@ -9,7 +9,6 @@ now. It never holds a record_finding entry, so the withdrawals are unchanged.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import shutil
 import subprocess
@@ -69,16 +68,16 @@ def opened(monkeypatch):
     names: list[str] = []
     read = D._read_jsonl
 
-    def spy(path):
+    def spy(path, keep=None):
         names.append(path.name)
-        return read(path)
+        return read(path, keep)
 
     monkeypatch.setattr(D, "_read_jsonl", spy)
     return names
 
 
 def _summary():
-    return json.loads(asyncio.run(D.get_summary(None)).body)["withdrawn"]
+    return json.loads(D.get_summary(None).body)["withdrawn"]
 
 
 def _audit_body(case, audit_ids, artifacts=(), fid="F-steve-001"):
@@ -87,7 +86,7 @@ def _audit_body(case, audit_ids, artifacts=(), fid="F-steve-001"):
         json.dumps([{**finding, "artifacts": list(artifacts)}])
     )
     request = SimpleNamespace(path_params={"finding_id": fid})
-    return json.loads(asyncio.run(D.get_audit_for_finding(request)).body)
+    return json.loads(D.get_audit_for_finding(request).body)
 
 
 def _audit(case, audit_ids):

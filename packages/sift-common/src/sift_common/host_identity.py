@@ -169,10 +169,11 @@ def ensure_host_files(case_dir: str | os.PathLike) -> None:
 
 
 def _open_checked(path: Path, flags: int) -> int:
-    """Open without following a link; refuse anything but a regular file
-    with exactly one link."""
+    """Open without following a link, and without waiting (a FIFO never
+    blocks the open); refuse anything but a regular file with exactly one
+    link."""
     try:
-        fd = os.open(path, flags | os.O_NOFOLLOW)
+        fd = os.open(path, flags | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError as e:
         raise HostLogError(f"{path.name}: refused to open ({e.strerror or e})") from e
     st = os.fstat(fd)
@@ -897,24 +898,22 @@ _cache_lock = threading.Lock()
 
 
 def _read(path: Path) -> tuple[tuple, bytes]:
+    """A host log's bytes: opened non-blocking and checked on the descriptor
+    (a FIFO or device is refused unread), each line capped."""
+    from sift_common import file_identity as fi
+
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        f = os.fdopen(fi._case_fd(path, follow=False), "rb")
+        # f closes once _capped's lines are read, or on a raise
+        st = os.fstat(f.fileno())
+        data = b"".join(fi._capped(f, path))
     except FileNotFoundError:
         return (None, 0), b""
     except OSError as e:
         raise HostLogError(f"{path.name}: unreadable ({e.strerror or e})") from e
-    try:
-        st = os.fstat(fd)
-        chunks = []
-        while True:
-            chunk = os.read(fd, 1 << 20)
-            if not chunk:
-                break
-            chunks.append(chunk)
-        data = b"".join(chunks)
-        return (st.st_ino, len(data)), data
-    finally:
-        os.close(fd)
+    except (fi.NotRegularFile, fi.CaseFileTooBig) as e:
+        raise HostLogError(f"{path.name}: unreadable: {e}") from e
+    return (st.st_ino, len(data)), data
 
 
 def load(case_dir: str | os.PathLike) -> HostState:
@@ -1320,20 +1319,17 @@ def case_lock(case_dir: str | os.PathLike, *, shared: bool, blocking: bool = Fal
 def read_ops(case_dir: str | os.PathLike) -> dict:
     """The host-operation journal: ``{"ops": {op_id: {...}}}``. Empty when
     no operation ever ran."""
+    from sift_common import file_identity as fi
+
     path = Path(case_dir) / OPS
-    try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:  # non-blocking, checked on the descriptor, size-capped
+        data = fi.read_document(path, follow=False)
     except FileNotFoundError:
         return {"ops": {}}
-    try:
-        data = b""
-        while True:
-            chunk = os.read(fd, 1 << 16)
-            if not chunk:
-                break
-            data += chunk
-    finally:
-        os.close(fd)
+    except OSError as e:  # a link (O_NOFOLLOW), no permission: named
+        raise HostLogError(f"{OPS}: unreadable ({e.strerror or e})") from e
+    except (fi.NotRegularFile, fi.CaseFileTooBig) as e:
+        raise HostLogError(f"{OPS}: unreadable: {e}") from e
     if not data.strip():
         return {"ops": {}}
     try:

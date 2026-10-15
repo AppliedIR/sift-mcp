@@ -7,6 +7,8 @@ from pathlib import Path
 
 import anyio
 import yaml
+from sift_common import file_identity as fi
+from sift_common import host_identity as hi
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -54,11 +56,13 @@ def _no_case_response() -> JSONResponse:
 
 
 def _load_json(path: Path) -> list | dict | None:
-    """Load a JSON file, return None on missing/corrupt."""
+    """Load a JSON file, return None on missing/corrupt. One that isn't a
+    regular file or is over the size cap is refused unread (NotRegularFile,
+    CaseFileTooBig: not OSErrors, so they reach the app's 409)."""
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(fi.read_document(path).decode("utf-8"))
     except json.JSONDecodeError:
         logger.warning("Corrupt JSON file: %s", path)
         return None
@@ -71,40 +75,51 @@ def _load_yaml(path: Path) -> dict | None:
     """Load a YAML file. Returns None if missing. Raises ValueError on corrupt/unreadable."""
     if not path.exists():
         return None
-    try:
-        with open(path, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+    try:  # non-blocking and checked on the descriptor, size-capped
+        return yaml.safe_load(fi.read_document(path).decode("utf-8")) or {}
     except yaml.YAMLError as e:
         raise ValueError(f"Corrupt YAML: {path}: {e}") from e
     except OSError as e:
         raise ValueError(f"Cannot read YAML: {path}: {e}") from e
 
 
-def _load_jsonl(path: Path) -> list[dict]:
+def _load_jsonl(path: Path, keep=None) -> list[dict]:
     """Load a JSONL file, skipping corrupt lines."""
-    return _read_jsonl(path)[0]
+    return _read_jsonl(path, keep)[0]
 
 
-def _read_jsonl(path: Path) -> tuple[list[dict], int]:
+def _may_hold(*words: str):
+    """A cheap test on a raw line before it is parsed: whether it can hold one
+    of `words`, as written or as JSON escapes it (`\\"`, `\\\\`, `\\t`, ...). A
+    line with a long escape (\\u, or \\/ for a slash) or that isn't ASCII is
+    always parsed, so an entry is never missed for the way it is written."""
+    needles = {f.encode() for w in words for f in (w, json.dumps(w)[1:-1])}
+    return lambda raw: (not raw.isascii() or b"\\u" in raw or b"\\/" in raw
+                        or any(n in raw for n in needles))  # fmt: skip
+
+
+def _read_jsonl(path: Path, keep=None) -> tuple[list[dict], int]:
     """A JSONL file's entries, skipping corrupt lines, and how many lines
-    weren't UTF-8 (skipped too)."""
+    weren't UTF-8 (skipped too). A FIFO, device or over-cap line raises
+    (NotRegularFile, CaseFileTooBig: the app's 409), never skipped."""
     entries: list[dict] = []
     not_utf8 = 0
     try:
-        with open(path, "rb") as f:
-            for raw in f:
-                try:
-                    line = raw.decode("utf-8").strip()
-                except UnicodeDecodeError:
-                    not_utf8 += 1
-                    continue
-                if not line:
-                    continue
-                try:
-                    entries.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-    except OSError:
+        for raw in fi.capped_lines(path):
+            if keep is not None and not keep(raw):  # can't hold what's wanted
+                continue
+            try:
+                line = raw.decode("utf-8").strip()
+            except UnicodeDecodeError:
+                not_utf8 += 1
+                continue
+            if not line:
+                continue
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    except OSError:  # gone, or unreadable: as before
         pass
     return entries, not_utf8
 
@@ -135,7 +150,7 @@ def _withdrawals(case_dir: Path) -> tuple[list[dict], int]:
     withdrawals = []
     not_utf8 = 0
     for audit_file in _scanned_logs(audit_dir):
-        entries, skipped = _read_jsonl(audit_file)
+        entries, skipped = _read_jsonl(audit_file, _may_hold("WITHDRAWN"))
         not_utf8 += skipped
         for entry in entries:
             if not isinstance(entry, dict) or entry.get("tool") != "record_finding":
@@ -343,7 +358,10 @@ async def get_timeline(request: Request) -> JSONResponse:
     return JSONResponse(await _served(case_dir, "timeline"))
 
 
-async def get_evidence(request: Request) -> JSONResponse:
+# A plain-def endpoint: Starlette runs it in a worker thread (anyio.to_thread),
+# so a slow case read never holds the gateway's event loop. So do the others
+# below that read case files.
+def get_evidence(request: Request) -> JSONResponse:
     case_dir = _resolve_case_dir()
     if not case_dir:
         return _no_case_response()
@@ -378,7 +396,7 @@ async def get_evidence(request: Request) -> JSONResponse:
     return JSONResponse(evidence)
 
 
-async def get_audit_for_finding(request: Request) -> JSONResponse:
+def get_audit_for_finding(request: Request) -> JSONResponse:
     case_dir = _resolve_case_dir()
     if not case_dir:
         return _no_case_response()
@@ -406,9 +424,10 @@ async def get_audit_for_finding(request: Request) -> JSONResponse:
         return JSONResponse([])
 
     matches = []
+    wanted = _may_hold(*map(str, audit_ids))
     for audit_file in _scanned_logs(audit_dir):
         backend = audit_file.stem
-        for entry in _load_jsonl(audit_file):
+        for entry in _load_jsonl(audit_file, wanted):
             entry_eid = entry.get("audit_id", "")
             if entry_eid in audit_ids:
                 entry["_backend"] = backend
@@ -417,7 +436,7 @@ async def get_audit_for_finding(request: Request) -> JSONResponse:
     return JSONResponse(matches)
 
 
-async def get_delta(request: Request) -> JSONResponse:
+def get_delta(request: Request) -> JSONResponse:
     case_dir = _resolve_case_dir()
     if not case_dir:
         return _no_case_response()
@@ -427,12 +446,14 @@ async def get_delta(request: Request) -> JSONResponse:
     return JSONResponse(delta)
 
 
-async def get_case(request: Request) -> JSONResponse:
+def get_case(request: Request) -> JSONResponse:
     case_dir = _resolve_case_dir()
     if not case_dir:
         return _no_case_response()
     try:
         meta = _load_yaml(case_dir / "CASE.yaml")
+    except (fi.NotRegularFile, fi.CaseFileTooBig):
+        raise  # the app's 409, by name
     except ValueError as e:
         logger.error("Corrupt CASE.yaml: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -447,13 +468,11 @@ async def get_case(request: Request) -> JSONResponse:
         getattr(request.state, "examiner", None), case_dir
     )
     out["you"] = _resolve_examiner(request)  # whose staged entries this page edits
-    out["verification"] = (await anyio.to_thread.run_sync(_verdicts, case_dir))[
-        "summary"
-    ]
+    out["verification"] = _verdicts(case_dir)["summary"]  # this thread
     return JSONResponse(out)
 
 
-async def get_todos(request: Request) -> JSONResponse:
+def get_todos(request: Request) -> JSONResponse:
     case_dir = _resolve_case_dir()
     if not case_dir:
         return _no_case_response()
@@ -491,7 +510,7 @@ def _no_terminal(case_dir: Path) -> dict:
             "ids": [str(i) for i in ids] if isinstance(ids, list) else []}  # fmt: skip
 
 
-async def get_summary(request: Request) -> JSONResponse:
+def get_summary(request: Request) -> JSONResponse:
     case_dir = _resolve_case_dir()
     if not case_dir:
         return _no_case_response()
@@ -531,7 +550,7 @@ async def get_summary(request: Request) -> JSONResponse:
             "withdrawn": withdrawn,
             "no_terminal": _no_terminal(case_dir),
             # machines, as the Hosts tab counts them (host identity), not host texts
-            "hosts": {"machines": await anyio.to_thread.run_sync(_machines, case_dir)},
+            "hosts": {"machines": _machines(case_dir)},  # this thread
         }
     )
 
@@ -859,6 +878,18 @@ def retired_dashboard_routes() -> list[Route]:
     ]
 
 
+async def _refused(request: Request, exc: Exception) -> JSONResponse:
+    """A case file refused unread (not a regular file, over a cap, a host log
+    that can't be read) a route didn't answer itself: 409, by name."""
+    logger.warning("Refused: %s", exc)
+    return JSONResponse({"error": str(exc)}, status_code=409)
+
+
+_REFUSALS = {
+    c: _refused for c in (fi.NotRegularFile, fi.CaseFileTooBig, hi.HostLogError)
+}
+
+
 async def serve_v2_static(request: Request) -> Response:
     """Serve static files from the v2 directory (images, icons, etc.)."""
     filename = request.path_params.get("filename", "")
@@ -891,4 +922,5 @@ def create_dashboard_v2_app() -> Starlette:
     routes = _dashboard_api_routes()
     routes.append(Route("/{filename}", serve_v2_static, methods=["GET"]))
     routes.append(Route("/", serve_v2_index, methods=["GET"]))
-    return Starlette(routes=routes, middleware=[Middleware(SecurityHeadersMiddleware)])
+    return Starlette(routes=routes, middleware=[Middleware(SecurityHeadersMiddleware)],
+                     exception_handlers=_REFUSALS)  # fmt: skip

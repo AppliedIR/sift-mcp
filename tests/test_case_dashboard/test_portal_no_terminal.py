@@ -8,7 +8,6 @@ line beside the withdrawn line, as text.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import shutil
 import subprocess
@@ -38,7 +37,7 @@ def _refused(case, ts, action, ids):
 
 
 def _summary():
-    return json.loads(asyncio.run(D.get_summary(None)).body)
+    return json.loads(D.get_summary(None).body)
 
 
 def test_the_summary_counts_the_refused_attempts(case):
