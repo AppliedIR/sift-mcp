@@ -2513,6 +2513,7 @@ esac
 echo ""
 echo "  To connect a Windows forensic workstation:"
 echo "    Run setup-windows.ps1 on the Windows machine and follow the prompts."
+echo "    Windows 10/11 refuses to run scripts by default: first run Set-ExecutionPolicy -Scope Process Bypass -Force, which allows them for that PowerShell window only."
 
 if $REMOTE_MODE; then
     echo ""

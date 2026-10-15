@@ -18,7 +18,8 @@ PROLOGUE = (
     'HOST_IP=192.0.2.5; GATEWAY_PORT=4508; VENV_DIR="$STUB"\n'
 )
 WINDOWS_LINE = (
-    "  cd $env:TEMP; Invoke-WebRequest "
+    "  Set-ExecutionPolicy -Scope Process Bypass -Force; cd $env:TEMP; "
+    "Invoke-WebRequest "
     "https://github.com/AppliedIR/wintools-mcp/archive/refs/heads/main.zip "
     "-OutFile wintools.zip; if ($?) { Expand-Archive wintools.zip "
     "-DestinationPath . -Force; if ($?) { "
