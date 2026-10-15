@@ -113,6 +113,35 @@ def test_an_input_that_is_the_registered_folder_itself_traces_to_the_folder(c):
     assert [link["method"] for link in t.links] == ["registered-path"]
 
 
+def test_a_run_on_a_folder_inside_a_registered_folder_traces_to_that_folder(c):
+    """EvtxECmd -d on a sub-folder of the registered folder."""
+    c.file("evidence/working/rd01/triage/Security.evtx", "security evtx")
+    folder = c.register_folder(str(c.d / "evidence/working/rd01"))
+    sub = str(c.d / "evidence/working/rd01/triage")
+    c.run("sift-tester-20261009-001", ["EvtxECmd", "-d", sub], [sub], "4624\n")
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
+    assert t.grade == "FULL", t
+    assert t.root == {"path": folder["path"], "sha256": folder["manifest_sha256"],
+                      "label": "examiner-registered"}  # fmt: skip
+    assert "in-folder" in [link["method"] for link in t.links]
+    assert pv.trace_file(pv.load_case(c.d), sub).grade == "FULL"
+
+
+def test_a_folder_outside_every_registered_folder_still_breaks(c):
+    c.file("evidence/working/rd01/triage/Security.evtx", "security evtx")
+    c.file("evidence/working/rd02/triage/Security.evtx", "another evtx")
+    c.register_folder(str(c.d / "evidence/working/rd01"))
+    other = str(c.d / "evidence/working/rd02/triage")
+    rd01x = c.d / "evidence/working/rd01x"  # its name starts with the root's
+    rd01x.mkdir()
+    for p in (other, str(rd01x), str(c.d / "evidence/working")):
+        c.run("sift-tester-20261009-001", ["EvtxECmd", "-d", p], [p], "4624\n")
+        t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
+        assert t.grade == "BROKEN", (p, t)
+        assert pv.trace_file(pv.load_case(c.d), p).grade == "BROKEN", p
+        (c.d / "audit" / "sift-mcp.jsonl").unlink()
+
+
 def test_vol_on_sample_two_traces_through_the_7z_extraction_to_the_7z(c):
     z = c.file("evidence/mem.7z", "7z bytes")
     c.register(z)

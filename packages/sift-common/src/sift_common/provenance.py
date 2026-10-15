@@ -232,8 +232,9 @@ def _label(root: dict) -> str:
 
 def _registered(case: Case, real: str, sha256: str) -> Trace | None:
     """FULL when the path is a registered root (a file, with the registry's
-    hash, unread; or a folder, with its manifest's hash), or a file listed in a
-    registered folder's manifest."""
+    hash, unread; or a folder, with its manifest's hash), a file listed in a
+    registered folder's manifest, or a folder inside a registered folder (to
+    that folder's root, with its manifest's hash)."""
     frm = {"path": real, "sha256": sha256}
     for r in case.roots:
         if r["path"] == real:  # a file, or a folder root's own path
@@ -263,6 +264,11 @@ def _registered(case: Case, real: str, sha256: str) -> Trace | None:
                 }
                 to = {"path": real, "sha256": root["sha256"]}
                 return Trace("FULL", root, [root], [_link("manifest", frm, to)])
+            if os.path.isdir(real):  # a folder in it: the registered folder's root
+                sha = r.get("manifest_sha256", "")
+                root = {"path": r["path"], "sha256": sha, "label": _label(r)}
+                to = {"path": r["path"], "sha256": sha}
+                return Trace("FULL", root, [root], [_link("in-folder", frm, to)])
     return None
 
 
