@@ -8,9 +8,11 @@ page was built from, and is written to the case's dashboard audit log.
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 
+from sift_common import file_identity as fi
 from sift_common import host_gate as hg
 from sift_common import host_identity as hi
 from sift_common import host_proposal as hp
@@ -113,7 +115,9 @@ def _matches(m: hi.Machine, q: str) -> bool:
     return any(wanted in hi.spelling(t) for t in texts)
 
 
-async def get_hosts(request: Request) -> JSONResponse:
+# The GET routes are plain defs: Starlette runs them in a worker thread, so a
+# slow host-log read never holds the gateway's event loop.
+def get_hosts(request: Request) -> JSONResponse:
     case_dir, error = _case_or_error()
     if error:
         return error
@@ -191,7 +195,7 @@ async def get_hosts(request: Request) -> JSONResponse:
     )
 
 
-async def get_runs(request: Request) -> JSONResponse:
+def get_runs(request: Request) -> JSONResponse:
     """Ingest runs waiting for their hosts, each with what holds it."""
     case_dir, error = _case_or_error()
     if error:
@@ -207,7 +211,7 @@ async def get_runs(request: Request) -> JSONResponse:
     return JSONResponse({"obs_offset": state.obs_offset, "runs": runs})
 
 
-async def get_host(request: Request) -> JSONResponse:
+def get_host(request: Request) -> JSONResponse:
     """One machine, with the decisions that name it."""
     case_dir, error = _case_or_error()
     if error:
@@ -219,9 +223,10 @@ async def get_host(request: Request) -> JSONResponse:
         return JSONResponse({"error": "no such machine"}, status_code=404)
     keys = set(m.keys) | {m.id}
     history = []
-    try:
-        with open(Path(case_dir) / hi.DECISIONS, encoding="utf-8") as fh:
-            for line in fh:
+    try:  # non-blocking, the descriptor checked, each line capped (a refusal: 409)
+        for raw in fi.capped_lines(Path(case_dir) / hi.DECISIONS, follow=False):
+            text = raw.decode("utf-8")  # split as text mode split: a lone CR too
+            for line in io.StringIO(text, newline=None) if "\r" in text else (text,):
                 try:
                     rec = json.loads(line)
                 except ValueError:
@@ -639,7 +644,7 @@ def _total(before) -> int:
     )
 
 
-async def get_ops(request: Request) -> JSONResponse:
+def get_ops(request: Request) -> JSONResponse:
     case_dir, error = _case_or_error()
     if error:
         return error
