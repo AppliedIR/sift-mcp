@@ -38,9 +38,9 @@ common_misinterpretations:
     correction: "Signatures can be verified on any Windows system with sigcheck (Sysinternals) or on Linux with osslsigncode. The certificate chain can be validated against known root CAs."
 
 corroborate_with:
-  for_execution: [amcache, prefetch]
+  for_execution: [prefetch]
   for_presence: [mft, usn_journal]
-  for_timeline: [amcache, event_logs_sysmon]
+  for_timeline: [event_logs_sysmon]
 
 related_tools: [sigcheck, osslsigncode, exiftool]
 

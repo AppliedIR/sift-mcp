@@ -86,6 +86,7 @@ tools:
         versions: ">=20240101,<20250101"
         checked_on: "20240308"
         argv: [psort.py, -w, <output .csv>, <timeline.plaso>]
+        notes: 'Without --dynamic_time, fractions under 0.1 seconds can print wrong. Add --dynamic_time, or use -o json_line, when order or sub-second times matter.'
       - task: Export a Plaso store to CSV
         versions: ">=20260101,<20270101"
         checked_on: "20260720"

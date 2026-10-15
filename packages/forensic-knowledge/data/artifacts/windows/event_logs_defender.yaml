@@ -36,7 +36,7 @@ common_misinterpretations:
     correction: "The events recording that Defender was disabled (5001, 5004, 5007) are themselves valuable indicators — attackers frequently disable Defender as an early action."
 
 corroborate_with:
-  for_execution: [prefetch, amcache, event_logs_sysmon]
+  for_execution: [prefetch, event_logs_sysmon]
   for_presence: [mft, usn_journal, defender_quarantine]
   for_timeline: [event_logs_security, event_logs_powershell]
 

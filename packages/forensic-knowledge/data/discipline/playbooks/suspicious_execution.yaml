@@ -36,5 +36,5 @@ phases:
       - "Check for lateral delivery mechanism — was the file copied via SMB, RDP, PsExec?"
   - phase: "Record"
     steps:
-      - "Record finding — be precise about evidence type: Prefetch proves execution, Amcache proves presence, Shimcache proves presence"
+      - "Record finding — be precise about evidence type. A Prefetch file shows the program ran, but a missing one does not show it did not. Amcache shows presence only. A ShimCache entry shows presence. Its Executed Yes indicates the program ran, and No means unknown."
       - "Include all evidence IDs and note artifact interpretation boundaries"

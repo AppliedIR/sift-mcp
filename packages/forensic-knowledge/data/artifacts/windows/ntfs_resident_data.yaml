@@ -33,7 +33,7 @@ common_misinterpretations:
     correction: "MFTECmd, icat (Sleuth Kit), and other open-source tools can extract resident data from MFT entries."
 
 corroborate_with:
-  for_execution: [prefetch, amcache]
+  for_execution: [prefetch]
   for_presence: [ntfs_i30, usn_journal, ntfs_logfile]
   for_timeline: [mft, usn_journal]
 

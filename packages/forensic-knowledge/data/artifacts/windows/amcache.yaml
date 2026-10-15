@@ -1,18 +1,20 @@
 name: Amcache
-description: "Windows application compatibility cache in Amcache.hve"
+description: "Program and file inventory hive (Amcache.hve), written by Windows compatibility and inventory tasks."
 platform: windows
 
 locations:
   - path: "C:\\Windows\\AppCompat\\Programs\\Amcache.hve"
-    os_versions: ["Windows 8+", "Windows 10", "Windows 11"]
+    os_versions: ["Windows 7 and Server 2008 R2 and later", "Windows 10", "Windows 11", "Server 2025"]
+    notes: "Collect Amcache.hve.LOG1 and Amcache.hve.LOG2 from the same folder."
 
 proves:
   - "File was present on the system"
-  - "SHA1 hash of the file at time of metadata recording"
+  - "A SHA-1 hash recorded for the file. For files over 31,457,280 bytes (30 MiB), the hash covers only the first 31,457,280 bytes."
 
 does_not_prove:
-  - "File was executed"
+  - "File was executed. Windows adds entries for files that never ran. In testing, never-run files in Program Files, on the Desktop and behind Start Menu shortcuts got entries."
   - "File was executed at the recorded timestamp"
+  - "File was absent. In testing, never-run files in Downloads, the profile folder, C:\\Tools, LocalAppData\\Programs and ProgramData had no entry. A hive copied without its transaction logs can also lack recent entries."
 
 timestamps:
   - field: "FileKeyLastWriteTimestamp"
@@ -21,9 +23,9 @@ timestamps:
 
 common_misinterpretations:
   - claim: "This program was executed based on Amcache"
-    correction: "Amcache proves presence, not execution. Corroborate with Prefetch, UserAssist, or BAM."
+    correction: "Amcache shows a file was present. It does not show the file ran. Windows inventory tasks can add entries for files that were never started. Confirm execution with Prefetch, UserAssist, BAM or a process creation event."
   - claim: "FileKeyLastWriteTimestamp shows when the file first appeared on the system"
-    correction: "The key time is when the Compatibility Appraiser last wrote the entry, so many entries share one time. It shows the file was present by then, not when it arrived. For arrival, use the $MFT Created times and the USN journal."
+    correction: "The key time is the last time a Windows inventory task wrote the entry. Many entries often share one time. On older builds the documented writer is the Microsoft Compatibility Appraiser task. In testing on Windows 11 26H2 and Server 2025, the writes fell during a run of the MareBackup task. The time shows the file was present by then. It does not show when the file arrived or ran. For arrival, use the $MFT Created times and the USN journal."
 
 corroborate_with:
   for_execution: [prefetch, userassist, bam]

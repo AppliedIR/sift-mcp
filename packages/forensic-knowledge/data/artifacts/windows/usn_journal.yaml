@@ -35,7 +35,7 @@ common_misinterpretations:
     correction: "The USN Journal records the deletion event, but file content may still be recoverable from unallocated space or the MFT entry."
 
 corroborate_with:
-  for_execution: [prefetch, amcache]
+  for_execution: [prefetch]
   for_presence: [mft, shimcache]
   for_timeline: [mft, event_logs_security, event_logs_sysmon]
 

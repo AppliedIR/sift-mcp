@@ -42,7 +42,7 @@ common_misinterpretations:
     correction: "The $I and $R files share the same generated identifier. $I contains metadata (original path, deletion time, size); $R contains the actual file data with the original filename as extension context."
 
 corroborate_with:
-  for_execution: [prefetch, amcache]
+  for_execution: [prefetch]
   for_presence: [mft, usn_journal]
   for_timeline: [usn_journal, mft, event_logs_sysmon]
 

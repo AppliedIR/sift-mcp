@@ -41,7 +41,7 @@ MITRE ATT&CK: T1204, T1059
 
 ## Phase 6: Record
 
-1. Record finding — be precise about evidence type: Prefetch proves execution, Amcache proves presence, Shimcache proves presence
+1. Record finding — be precise about evidence type. A Prefetch file shows the program ran, but a missing one does not show it did not. Amcache shows presence only. A ShimCache entry shows presence. Its Executed Yes indicates the program ran, and No means unknown.
 2. Include all evidence IDs and note artifact interpretation boundaries
 
 ## Sources

@@ -1,6 +1,6 @@
 name: AppCompatProcessor
 category: triage
-description: "Cross-system ShimCache/AmCache correlation tool for identifying lateral movement and execution patterns"
+description: "Cross-system ShimCache and Amcache correlation tool. It shows where the same files were present across hosts."
 platform: [windows, linux, macos]
 platform_notes: "Python-based. Works on all platforms. Processes pre-parsed Amcache/ShimCache CSV files."
 artifacts_parsed: [shimcache, amcache]
@@ -11,6 +11,7 @@ caveats:
   - "Cross-system time correlation requires synchronized timestamps across source systems"
   - "Large datasets from many systems can be resource-intensive to process"
   - "False positives in correlation from common system binaries present on all systems"
+  - "The executed_flag column carries AppCompatCacheParser's Executed value. Yes indicates the program ran. No means unknown. See AppCompatCacheParser's field_meanings."
 
 output_notes:
   format: csv

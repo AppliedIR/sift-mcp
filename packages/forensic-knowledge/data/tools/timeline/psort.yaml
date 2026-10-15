@@ -12,6 +12,8 @@ caveats:
   - "Time slice filters use ISO 8601 format and can significantly reduce output volume"
   - "The default output includes all parsed events which can be millions of rows"
   - "Filter expressions use the Plaso filter syntax, not SQL"
+  - "In the default dynamic output, a time whose fraction is under 0.1 seconds can print wrong. For example .0073088 prints as .730880. Rows can then appear out of order. The stored times are right."
+  - "l2tcsv output has no sub-second times. Two events in the same second can appear in either order."
 
 output_notes:
   format: csv
@@ -26,14 +28,14 @@ advisories:
 investigation_sequence:
   - "Export the Plaso storage file to a readable format for analysis"
   - "Use the l2tcsv output format for the legacy 17-column layout that most timeline tools accept"
-  - "The dynamic output format is the flexible 8-column default"
+  - "The dynamic output format is the 8-column default."
   - "Apply time-based slicing to focus on periods of interest while keeping all data"
   - "Convert timestamps to the time zone relevant to the investigation"
   - "psort removes duplicate events by default. Include every duplicate only if you need them."
   - "Review output across all event types — every parser contribution adds context to the timeline"
 
 field_meanings:
-  datetime: "ISO 8601 timestamp in dynamic output format"
+  datetime: "ISO 8601 timestamp in dynamic output format."
   timestamp_desc: "Description of what the timestamp represents"
   source: "Short source category"
   source_long: "Detailed source description"

@@ -35,7 +35,7 @@ common_misinterpretations:
     correction: "DAM (Desktop Activity Moderator) is a separate driver, introduced in Windows 8 for connected-standby systems, that exists alongside BAM. Check both SYSTEM\\CurrentControlSet\\Services\\bam and dam paths."
 
 corroborate_with:
-  for_execution: [prefetch, userassist, amcache]
+  for_execution: [prefetch, userassist]
   for_presence: [mft, shimcache]
   for_timeline: [prefetch, event_logs_security, srum]
 

@@ -5,7 +5,7 @@ platform: windows
 locations:
   - path: "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\AppCompatCache"
     os_versions: ["Windows XP+", "Windows 10", "Windows 11"]
-    notes: "Data is written to registry on shutdown; live system data resides in kernel memory"
+    notes: "Windows keeps the cache in memory and writes it to the registry at shutdown. In testing, the registry value did not change while programs ran. It changed at the next clean restart."
 
 proves:
   - "File existed on the system at the recorded path"
@@ -13,27 +13,29 @@ proves:
   - "Order of insertion into the cache (positional, most recent first)"
 
 does_not_prove:
-  - "File was executed (Windows 8+ removed the execution flag)"
+  - "File was executed. An entry shows the file was present. Windows also adds entries for files that never ran."
   - "File was executed at any specific time"
   - "File still exists on the system"
 
 timestamps:
   - field: "LastModifiedTime"
-    meaning: "Last modification time of the file ($STANDARD_INFORMATION) when it was cached"
+    meaning: "The file's $STANDARD_INFORMATION last-modified time when the entry was written. In testing it matched $SI M to 100 ns. It is not the time the program ran."
     common_misinterpretation: "Often mistaken for execution time or cache insertion time"
 
 common_misinterpretations:
   - claim: "ShimCache entry means the program was executed"
-    correction: "On Windows 8+, ShimCache proves file existence only. The InsertFlag/ExecuteFlag was removed in Windows 8. Even on Windows 7 and earlier, the execute flag simply means the OS noted it — not necessarily full execution."
+    correction: "An entry shows the file was present at that path. Windows can add an entry for a file that never ran. In testing, Explorer showing a never-run file in a folder window was enough to add one. The Executed value that AppCompatCacheParser reports is a separate field, described under that tool."
+  - claim: "Windows 8 and later removed the execution flag"
+    correction: "AppCompatCacheParser still reports an Executed value on Windows 10, Windows 11 and Server 2025. Executed Yes indicates the program ran. In testing it never appeared for a program that had not run. Confirm it with a second artifact such as Prefetch, BAM or a process creation event. Executed No means unknown. It is common for programs that ran."
   - claim: "The timestamp is when the program ran"
     correction: "The timestamp reflects the file's last modification time from $STANDARD_INFORMATION, not when it was cached or executed."
   - claim: "ShimCache data is always up to date on a live system"
     correction: "ShimCache writes to the registry only on clean shutdown. Live system cache resides in memory and must be extracted with specialized tools."
   - claim: "Absence from ShimCache means the file never existed"
-    correction: "ShimCache has a limited size (typically 1024 entries on Win10). Older entries are evicted. Absence proves nothing."
+    correction: "The cache holds a limited number of entries, often 1,024 on Windows 10 and later. Older entries are evicted. In testing on Windows 11 26H2 and Server 2025, entries for programs that ran were missing after a restart while the cache held far fewer than 1,024 entries. A file only copied to disk got no entry. So a missing entry says nothing about whether a file existed or ran."
 
 corroborate_with:
-  for_execution: [prefetch, userassist, bam, amcache]
+  for_execution: [prefetch, userassist, bam]
   for_presence: [mft, amcache, usn_journal]
   for_timeline: [prefetch, event_logs_security]
 
@@ -61,18 +63,18 @@ investigation_patterns:
   - name: "Unknown executables in system directories"
     query: "Path.keyword:*\\Windows\\System32\\* OR Path.keyword:*\\Windows\\SysWOW64\\*"
     purpose: "Find executables cached in system paths — cross-reference with windows-triage check_file"
-    caveat: "ShimCache proves PRESENCE only, never execution"
+    caveat: "An entry shows the file was present. It does not show the file ran."
     follow_up: "windows-triage check_file for baseline validation, opencti lookup_ioc for hash"
 
   - name: "Cross-host binary presence"
     query: "Path.keyword:*<filename>*"
     index: "case-*-shimcache-*"
     purpose: "Same binary cached on multiple hosts indicates lateral movement"
-    caveat: "Presence on multiple hosts does not prove execution on any host"
+    caveat: "An entry shows the file was present. It does not show the file ran."
     follow_up: "Check Prefetch on each host for execution evidence"
 
   - name: "Executables in unusual paths"
     query: "Path.keyword:(*\\Temp\\* OR *\\AppData\\* OR *\\ProgramData\\* OR *\\Users\\Public\\*)"
     purpose: "Binaries in non-standard locations — potential attacker tools or malware"
-    caveat: "ShimCache proves file was PRESENT in this path, not that it executed"
+    caveat: "An entry shows the file was present. It does not show the file ran."
     follow_up: "Check Prefetch, BAM (RegRipper's bam plugin on the SYSTEM hive), or process creation events for execution proof"

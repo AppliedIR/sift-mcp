@@ -17,30 +17,33 @@ does_not_prove:
   - "Who executed the program (no user attribution)"
   - "What the program did after loading"
   - "That the program completed successfully"
+  - "That a program did not run. In testing on Windows 10 and 11, programs started by scheduled tasks at priority 7 to 10 got no Prefetch file. 7 is the default. A child process of a task at priority 7 got none either."
 
 timestamps:
   - field: "PF file creation time (filesystem)"
-    meaning: "First time the application was executed (approximately)"
-    common_misinterpretation: "Sometimes confused with last execution time"
+    meaning: "The first run recorded in this .pf file. Windows writes the file shortly after that run starts. In testing it came about 10 seconds after the start, or at exit if that came first. In real-world data it came up to about 21 seconds after the first stored run. It does not show the program never ran before. An earlier run may have been recorded in a .pf file that was later deleted or rotated out."
+    common_misinterpretation: "Read as the exact start time, or as the program's first run ever. Use the embedded last-run times for the start."
   - field: "PF file modification time (filesystem)"
     meaning: "Last time the application was executed"
     common_misinterpretation: "Rarely misinterpreted but may reflect OS prefetch service update timing"
   - field: "Last run timestamps (embedded, up to 8)"
-    meaning: "Up to 8 most recent execution timestamps (Windows 8+ only)"
+    meaning: "Start times of up to the 8 most recent runs (Windows 8 and later). In testing each matched the process start to within a fraction of a second. The run count can be higher than the number of stored times."
     common_misinterpretation: "Only the most recent is stored in pre-Win8 systems; analysts sometimes miss the additional 7"
 
 common_misinterpretations:
   - claim: "Prefetch is always enabled on Windows 10/11"
-    correction: "Prefetch may be disabled on SSD-only systems or via group policy. Always verify EnablePrefetcher registry value."
+    correction: "Prefetch is off by default on Windows Server. In testing on Server 2025 it was off: EnablePrefetcher was absent and there were no .pf files. Check the EnablePrefetcher value and whether C:\\Windows\\Prefetch holds files."
   - claim: "The prefetch file name hash uniquely identifies the executable"
     correction: "The hash incorporates the executable path and command-line hosting information. The same binary run from different paths generates different .pf files."
   - claim: "Prefetch proves the user who ran the program"
     correction: "Prefetch has no user attribution. Corroborate with UserAssist, BAM, or Security event logs for user context."
   - claim: "128 prefetch file limit means old data is always lost"
     correction: "Windows 8+ raised the limit to 1024 .pf files. Windows 7 and earlier had a 128 file limit."
+  - claim: "No Prefetch file means the program never ran"
+    correction: "Prefetch skips some launches. In testing, scheduled tasks at priority 7 to 10 left no .pf file. 7 is the default. A child of a task at priority 7 left none either. Check the task's Priority in its XML. Use Task Scheduler events (200, 201), 4688 or Sysmon 1 for task-launched programs."
 
 corroborate_with:
-  for_execution: [amcache, userassist, bam]
+  for_execution: [userassist, bam]
   for_presence: [mft, shimcache]
   for_timeline: [usn_journal, event_logs_security, srum]
 
@@ -68,7 +71,7 @@ investigation_patterns:
   - name: "First-time execution during incident window"
     query: "FileName.keyword:*.pf AND Created0x10:[time_from TO time_to]"
     index: "case-*-mft-*"
-    purpose: "Prefetch files created during the attack window; a .pf file's creation time approximates the program's first execution"
+    purpose: "Prefetch files created during the attack window. A .pf's creation time marks the first run recorded in that file, often about 10 seconds after it started and up to about 21 seconds after. Earlier runs may have been recorded in a .pf that was deleted or rotated out."
     follow_up: "Cross-reference with MFT for file metadata and Zone.Identifier for download origin"
 
   - name: "32-bit payload detection via WOW64 redirection"
@@ -83,7 +86,7 @@ investigation_patterns:
   - name: "Anti-forensics detection via MFT cross-reference"
     note: "Cross-reference executable names with MFT InUse field"
     query: "InUse.keyword:False AND FileName:<exe_from_prefetch>"
-    purpose: "File deleted after execution — attacker cleanup"
+    purpose: "The program's file no longer exists at the path its .pf records. It was deleted, moved or renamed after it ran. The USN journal can show when, if it still covers that time."
 
   - name: "Scripting engine frequency anomaly"
     query: "ExecutableName:(POWERSHELL.EXE OR CSCRIPT.EXE OR WSCRIPT.EXE OR MSHTA.EXE)"

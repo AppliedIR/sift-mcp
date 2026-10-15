@@ -22,7 +22,7 @@ class TestArtifacts:
         assert art["name"] == "Amcache"
         assert art["platform"] == "windows"
         assert "File was present on the system" in art["proves"]
-        assert "File was executed" in art["does_not_prove"]
+        assert any(s.startswith("File was executed.") for s in art["does_not_prove"])
 
     def test_get_artifact_missing(self):
         assert loader.get_artifact("nonexistent_artifact_xyz") is None

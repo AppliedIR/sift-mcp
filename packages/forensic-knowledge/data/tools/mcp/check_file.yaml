@@ -30,5 +30,5 @@ investigation_sequence:
   - "Remember that UNKNOWN results are neutral — not-in-database does not mean malicious"
   - "Follow up baseline checks with hash lookups (check_hash) for stronger validation"
   - "Check file digital signatures with sigcheck for authenticity verification"
-  - "Cross-reference file presence with Amcache and Prefetch for execution context"
+  - "Cross-reference with Amcache for presence and hashes, and with Prefetch for execution."
   - "Compare file paths across multiple analysis sources for consistency"

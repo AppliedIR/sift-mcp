@@ -26,6 +26,7 @@ advisories:
   - "Filter psort output by time to manage output volume"
   - "Plaso excels at bringing together artifacts from many sources into a single chronological view"
   - "Consider using Timesketch for interactive exploration of large Plaso timelines"
+  - "The prefetch parser reads Windows 10 compressed .pf files. It gives the eight stored run times and the run count. The loaded files appear only in json_line output, under mapped_files."
 
 
 investigation_sequence:
