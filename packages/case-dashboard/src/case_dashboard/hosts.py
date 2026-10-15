@@ -381,7 +381,10 @@ def _confirm_all(
     page = _state_at(case_dir, state, seen, args.get("seen_decisions"))
     confirmed, skipped, items = [], [], []
     for g in hp.cached_propose(case_dir, page):
-        if all(p in page.bindings for p in g.pairs):
+        if all(
+            p in page.bindings or hi.FLAG_NOT_A_HOST in page.pair_flags.get(p, ())
+            for p in g.pairs
+        ):
             continue  # nothing waiting in it on the page
         name = page.machines[g.machine].canonical if g.machine else g.canonical
         reason = ""

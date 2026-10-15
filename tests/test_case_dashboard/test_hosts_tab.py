@@ -215,6 +215,19 @@ class TestDecisions:
         assert (u, "WORKGROUP") not in state.bindings
         assert [m.canonical for m in state.machines.values()] == ["WKS02"]
 
+    def test_confirm_all_does_not_report_a_name_marked_not_a_host(self, case, client):
+        u = folder(case, "WORKGROUP")
+        folder(case, "WKS02")
+        page = client.get("/api/hosts").json()
+        _decide(client, page, "not_a_host", {"pairs": [[u, "WORKGROUP"]]})
+        page = client.get("/api/hosts").json()
+        body = _decide(
+            client, page, "confirm_all", {"seen_decisions": page["dec_offset"]}
+        ).json()
+        assert body["confirmed"] == ["WKS02"]
+        assert body["skipped"] == []
+        assert body["summary"] == "1 confirmed"
+
     def test_a_host_list_confirms_what_it_matches(self, case, client):
         folder(case, "WKS01")
         folder(case, "WKS02")
