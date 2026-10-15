@@ -81,11 +81,12 @@ def _summary():
     return json.loads(asyncio.run(D.get_summary(None)).body)["withdrawn"]
 
 
-def _audit_body(case, audit_ids):
+def _audit_body(case, audit_ids, artifacts=(), fid="F-steve-001"):
+    finding = {"id": fid, "status": "DRAFT", "audit_ids": audit_ids}
     (case / "findings.json").write_text(
-        json.dumps([{"id": "F-steve-001", "status": "DRAFT", "audit_ids": audit_ids}])
+        json.dumps([{**finding, "artifacts": list(artifacts)}])
     )
-    request = SimpleNamespace(path_params={"finding_id": "F-steve-001"})
+    request = SimpleNamespace(path_params={"finding_id": fid})
     return json.loads(asyncio.run(D.get_audit_for_finding(request)).body)
 
 
@@ -164,3 +165,99 @@ def test_at_approval_a_cited_file_identity_id_reads_not_checked_real_or_not(case
         assert "Not checked: the file-identity log isn't read here." in item
         assert "(unknown)" not in item
     assert real.replace(FI, "ID") == fake.replace(made_up, "ID")
+
+
+# the same page script rendering each finding's provenance chain, then the
+# tooltip each listed id shows on hover
+CHAIN = (
+    DRIVER.split("vm.runInContext(")[0]
+    + r"""
+ctx.__T = I.tips;
+vm.runInContext(src + `
+;(async function(){
+  var out = [];
+  for (var i = 0; i < __F.length; i++) {
+    var f = __F[i]; auditCache[f.id] = __A[i];
+    await loadToolInvocations(f);
+    var list = document.getElementById('toolInvocationsList'), tips = {};
+    __T.forEach(function(aid) {
+      showChainTooltip({_auditMap: list._auditMap,
+        getAttribute: function(k) { return k === 'data-audit-id' ? aid : ''; },
+        getBoundingClientRect: function() { return {top: 0, left: 0, right: 0, bottom: 0}; }});
+      tips[aid] = document.getElementById('chainTooltip').innerHTML;
+    });
+    out.push({panel: list.innerHTML, tips: tips});
+  }
+  globalThis.__OUT = out;
+})().catch(function(e){ globalThis.__ERR = String(e && e.stack || e); });`, ctx);
+setTimeout(() => {
+  if (ctx.__ERR) { process.stderr.write(ctx.__ERR); process.exit(3); }
+  process.stdout.write(JSON.stringify(ctx.__OUT));
+}, 200);
+"""
+)
+
+
+def _hash_step(aid):
+    """A background hash job's link in a chain, as the trace records it."""
+    path = "/c/evidence/a.evtx"
+    return {"method": "recorded-id", "audit_id": aid,
+            "from": {"path": path, "sha256": "pending:hash-1"},
+            "to": {"path": path, "sha256": "0" * 64}}  # fmt: skip
+
+
+def test_a_file_identity_id_in_a_provenance_chain_reads_not_checked(case):
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node isn't installed")
+    made_up = "fileidentity-steve-20261007-099"
+    missing = "sift-steve-20261007-404"  # not a file-identity id: unchanged
+    query = {"method": "recorded-id", "audit_id": RUN, "role": "query"}
+    shapes = [
+        # a run cited, its chain through the hash job (the usual shape)
+        ([RUN], [_hash_step(FI), _hash_step(made_up), query]),
+        # only file-identity ids, cited and in the chain: the route finds none
+        ([FI], [_hash_step(FI)]),
+        # only an id no log holds: still no chain
+        ([missing], [_hash_step(missing)]),
+    ]
+    findings, audit = [], []
+    for n, (ids, chain) in enumerate(shapes, 1):
+        art = {"audit_id": ids[0], "provenance_grade": "FULL", "source": "a.evtx",
+               "provenance_chain": chain}  # fmt: skip
+        fid = f"F-steve-00{n}"
+        findings.append({"id": fid, "status": "DRAFT", "audit_ids": ids,
+                         "artifacts": [art]})  # fmt: skip
+        audit.append(_audit_body(case, ids, [art], fid))
+    assert [len(a) for a in audit] == [1, 0, 0]
+    r = subprocess.run(
+        [node, "-e", CHAIN],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        input=json.dumps(
+            {
+                "page": str(PAGE),
+                "findings": findings,
+                "audit": audit,
+                "tips": [FI, made_up, RUN, missing],
+            }  # fmt: skip
+        ),
+    )
+    assert r.returncode == 0, r.stderr[-2000:]
+    usual, only_fi, none = json.loads(r.stdout)
+    steps = usual["panel"].split('data-audit-id="')[1:]
+    real, fake, run = steps
+    for step in (real, fake):
+        assert "not checked (the file-identity log isn't read here)" in step
+        assert "<strong>unknown</strong>" not in step
+    assert real.replace(FI, "ID") == fake.replace(made_up, "ID")
+    assert "<strong>run_command</strong>" in run and "not checked" not in run
+    note = "Not checked: the file-identity log isn't read here."
+    assert usual["tips"][FI] == usual["tips"][made_up]
+    assert note in usual["tips"][FI] and "run_command" in usual["tips"][RUN]
+    assert "Audit entry not available" in usual["tips"][missing]
+    assert "No provenance chain recorded." not in only_fi["panel"]
+    assert "not checked (the file-identity log isn't read here)" in only_fi["panel"]
+    assert note in only_fi["tips"][FI]
+    assert "No provenance chain recorded." in none["panel"]
