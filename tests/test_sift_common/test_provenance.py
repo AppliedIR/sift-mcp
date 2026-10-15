@@ -63,6 +63,97 @@ def test_an_entry_line_hash_is_the_sha256_of_its_bytes():
     assert pv.entry_sha256(b'{"a": 1}') == hashlib.sha256(b'{"a": 1}').hexdigest()
 
 
+def test_a_kept_entry_hash_equals_a_fresh_one_and_only_2_are_kept():
+    lines = [b'{"n": %d}' % i for i in range(20)] + [b"x" * (3 << 20)]
+    pv._entry_sha256.cache_clear()
+    cold = [pv.entry_sha256(line) for line in lines]
+    warm = [pv.entry_sha256(line) for line in lines]
+    assert cold == warm == [hashlib.sha256(line).hexdigest() for line in lines]
+    for line in lines[:3]:  # other buffer types hash as their bytes
+        want = hashlib.sha256(line).hexdigest()
+        assert pv.entry_sha256(bytearray(line)) == want
+        assert pv.entry_sha256(memoryview(line)) == want
+    info = pv._entry_sha256.cache_info()
+    assert info.maxsize == 2 and info.currsize <= 2, info
+    # evicted by now, and hashed again
+    assert pv.entry_sha256(lines[0]) == hashlib.sha256(lines[0]).hexdigest()
+
+
+def test_a_line_over_64_mib_hashes_right_and_is_never_kept():
+    pv._entry_sha256.cache_clear()
+    pv.entry_sha256(b'{"n": 1}')
+    over = b"y" * ((64 << 20) + 1)
+    assert pv.entry_sha256(over) == hashlib.sha256(over).hexdigest()
+    assert pv.entry_sha256(bytearray(over)) == hashlib.sha256(over).hexdigest()
+    del over
+    assert pv._entry_sha256.cache_info().currsize == 1
+    at = b"w" * (64 << 20)  # at the bound: kept
+    assert pv.entry_sha256(at) == hashlib.sha256(at).hexdigest()
+    assert pv._entry_sha256.cache_info().currsize == 2
+
+
+def _rss() -> int:
+    with open("/proc/self/status") as f:
+        return next(int(x.split()[1]) << 10 for x in f if x.startswith("VmRSS:"))
+
+
+@pytest.mark.skipif(not os.path.exists("/proc/self/status"), reason="reads VmRSS")
+@pytest.mark.parametrize("size", [60 << 20, 70 << 20])
+def test_lines_hashed_and_released_leave_at_most_128_mib(size):
+    """3 lines hashed one by one, then released: at most the last 2 under
+    64 MiB stay in memory, and none over it."""
+    pv._entry_sha256.cache_clear()
+    before = _rss()
+    for n in range(3):
+        line = bytes([0x61 + n]) * size
+        pv.entry_sha256(line)
+        del line
+    kept = _rss() - before
+    if size <= 64 << 20:
+        assert kept <= (128 + 16) << 20, kept >> 20  # 16 MiB slack for the heap
+    else:
+        assert kept <= 16 << 20, kept >> 20
+    pv._entry_sha256.cache_clear()
+
+
+def test_a_big_folder_of_logged_outputs_hashes_each_entry_line_once(c, monkeypatch):
+    """One extraction recorded 3,000 outputs pending and one hash entry closed
+    the job: both lines are big, and each is hashed once, not once a file."""
+    import time
+
+    n = 3000
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    outs = [c.file(f"extractions/big/f{i:05d}.raw", f"file {i}") for i in range(n)]
+    c.op("sift-mcp", "sift-tester-20261009-001", tool="run_command",
+         params={"command": ["7z", "x", z], "purpose": "p"}, input_files=[z],
+         input_sha256s=[""], input_detection_method="parsed",
+         result_summary={"exit_code": 0, "output_files": outs,
+                         "output_sha256s": ["pending:hash-0123456789abcdef"] * n},
+         ts="2026-10-09T00:00:01Z")  # fmt: skip
+    c.op("file-identity", "fileidentity-tester-20261009-001", tool="hash_complete",
+         job_id="hash-0123456789abcdef", files=[{"path": o, "sha256": sha(o)} for o in outs],
+         ts="2026-10-09T00:00:02Z")  # fmt: skip
+    case = pv.load_case(c.d)
+    big = []  # each SHA-256 of a line over 64 KiB
+
+    class _Counted:
+        def sha256(self, data=b""):
+            if len(data) > 65536:
+                big.append(len(data))
+            return hashlib.sha256(data)
+
+    monkeypatch.setattr(pv, "hashlib", _Counted())
+    pv._entry_sha256.cache_clear()
+    t0 = time.perf_counter()
+    for o in outs:
+        t = pv.trace_file(case, o, sha(o))
+        assert t.grade == "FULL" and t.root["sha256"] == sha(z), t.as_dict()
+    took = time.perf_counter() - t0
+    assert len(big) <= 4, len(big)  # without the cache: 3 a file, 9,000
+    assert took < 60, took  # a loose ceiling for slow runners
+
+
 def test_a_registered_file_links_by_its_path_with_the_registry_hash(c, tmp_path):
     z = c.file("evidence/mem.7z", "7z bytes")
     root = c.register(z)
