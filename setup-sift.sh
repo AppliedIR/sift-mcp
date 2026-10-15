@@ -2218,7 +2218,7 @@ if $REMOTE_MODE; then
     if $JOIN_READY; then
         # Generate join code for the remote LLM client machine
         JOIN_OUTPUT=$("$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
-        JOIN_CODE=$(echo "$JOIN_OUTPUT" | grep "Join code:" | awk '{print $3}')
+        JOIN_CODE=$(echo "$JOIN_OUTPUT" | grep "Join code:" | awk '{print $3}') || true  # no code: grep fails, and set -e would stop the install
 
         if [[ -n "$JOIN_CODE" ]]; then
             GW_URL="https://$HOST_IP:$GATEWAY_PORT"
@@ -2244,18 +2244,17 @@ if $REMOTE_MODE; then
             # Offer to generate a second join code for Windows wintools
             if prompt_yn "Will you connect a Windows forensic workstation?" "n"; then
                 WIN_OUTPUT=$("$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
-                WIN_CODE=$(echo "$WIN_OUTPUT" | grep "Join code:" | awk '{print $3}')
+                WIN_CODE=$(echo "$WIN_OUTPUT" | grep "Join code:" | awk '{print $3}') || true  # no code: grep fails, and set -e would stop the install
                 if [[ -n "$WIN_CODE" ]]; then
                     echo ""
                     echo -e "${BOLD}Windows Workstation${NC}"
-                    echo "  The Windows installer will prompt for:"
-                    echo "    Join code:  $WIN_CODE"
-                    echo "    SIFT IP:    $HOST_IP"
-                    echo "    Port:       $GATEWAY_PORT"
+                    # join-code's own lines: the one that fetches the current installer
+                    printf '%s\n' "$WIN_OUTPUT" | sed -n '/^Join code:/,$p'
                     echo ""
-                    echo "  If the installer is not already running:"
-                    echo "    .\\setup-windows.ps1"
-                    echo ""
+                else
+                    if [[ -n "$WIN_OUTPUT" ]]; then printf '%s\n' "$WIN_OUTPUT" | sed 's/^/    /'; fi
+                    warn "Could not generate the Windows join code. Generate one later with:"
+                    echo "    vhir setup join-code"
                 fi
             fi
 
@@ -2263,6 +2262,8 @@ if $REMOTE_MODE; then
             echo "  Join codes expire in 2 hours. Generate new codes with:"
             echo "    vhir setup join-code"
         else
+            # join-code says why it stopped and what to fix: show it
+            if [[ -n "$JOIN_OUTPUT" ]]; then printf '%s\n' "$JOIN_OUTPUT" | sed 's/^/    /'; fi
             warn "Could not generate join code. Generate one later with:"
             echo "    vhir setup join-code"
         fi
