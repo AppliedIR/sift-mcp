@@ -42,6 +42,7 @@ Parse, index, and query forensic evidence at scale via OpenSearch. **Use these M
 
 - **Ingest:** `idx_ingest` (triage packages), `idx_ingest_memory` (memory dumps), `idx_ingest_json`, `idx_ingest_delimited`, `idx_ingest_accesslog`
 - **`idx_ingest` artifact choice:** `include` adds tier-2 and tier-3 tools (such as `mft`, `usn`, `timeline`) to the tier-1 tools, which still run (registry, shimcache, amcache, shellbags and the rest); the other artifacts (prefetch, srum, plaso, transcripts, defender and the like) are limited to the ones named. `full: true` runs every tool tier; `include` still limits those other artifacts. `exclude` removes types in either case.
+- **Kansa:** Kansa output is ingested as one folder in one call, not file by file, because each per-file run needs its own host confirm.
 - **Query:** `idx_search`, `idx_count`, `idx_aggregate`, `idx_timeline`, `idx_field_values`, `idx_get_event`
 - **Overview:** `idx_case_summary`, `idx_status`, `idx_ingest_status`
 - **Enrich:** `idx_enrich_triage` (baseline), `idx_enrich_intel` (threat intel)

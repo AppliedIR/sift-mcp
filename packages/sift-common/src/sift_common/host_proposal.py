@@ -33,6 +33,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
+from sift_common import host_gate
 from sift_common import host_identity as hi
 
 CERTAIN = "certain"
@@ -530,10 +531,17 @@ def propose(state: hi.HostState) -> list[Group]:
                     clone_roots.update({uf.find(a), uf.find(b)})
                 uf.union(a, b, certain=False)
 
-    # Groups, and what each already is.
+    # Groups, and what each already is. A group of names that no longer hold
+    # their units (`host_gate.released`) and that nothing binds waits for no one.
     groups: dict = {}
     for p in sorted(pairs):
         groups.setdefault(uf.find(p), []).append(p)
+    free = host_gate.released(state)
+    groups = {
+        r: ps
+        for r, ps in groups.items()
+        if not set(ps) <= free or any(p in state.bindings for p in ps)
+    }
     clone_roots = {uf.find(r) for r in clone_roots}
     entries = _list_entries(state)
     result: list[Group] = []

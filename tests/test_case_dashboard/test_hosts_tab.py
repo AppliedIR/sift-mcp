@@ -608,6 +608,36 @@ class TestStartNowAndProposals:
         assert len(second["proposed"]) == 10
 
 
+def test_a_released_file_name_form_leaves_the_proposals_once_its_unit_confirms(
+    case, client
+):
+    # Kansa's module name: no longer waiting, so not proposed nor counted
+    loc = "kansa/WKSTN05-Arp.tsv"
+    u = hi.unit_key(loc)
+    hi.append_observations(
+        case,
+        [
+            {"kind": "unit", "unit": u, "locator": loc},
+            {"kind": "name", "unit": u, "raw": "WKSTN05",
+             "evidence": f"{loc} host column", "origin": "artifact"},
+            {"kind": "name", "unit": u, "raw": "Arp",
+             "evidence": "WKSTN05-Arp.tsv file name", "origin": "file-name"},
+        ],
+    )  # fmt: skip
+    page = client.get("/api/hosts").json()
+    assert (page["proposed_total"], page["counts"]["proposed"]) == (2, 2)
+    hi.append_decision(
+        case,
+        {"action": "confirm", "examiner": "ex1",
+         "args": {"machines": [{"key": hi.new_machine_key(), "canonical": "WKSTN05",
+                                "pairs": [[u, "WKSTN05"]]}]}},
+        hi.load(case).obs_offset,
+    )  # fmt: skip
+    page = client.get("/api/hosts").json()
+    assert (page["proposed_total"], page["counts"]["proposed"]) == (0, 0)
+    assert hg.unresolved(hi.load(case), [u]) == []
+
+
 def _confirm_all(client, page):
     return _decide(client, page, "confirm_all", {"seen_decisions": page["dec_offset"]})
 

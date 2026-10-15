@@ -441,7 +441,7 @@ def _normalize_check(
     ids, removed = _cited_ids(
         [a for a in raw_ids if a not in own_ids], _MAX_SKEPTIC_IDS, tool_ids
     )
-    removed += [a for a in raw_ids if a in own_ids]
+    own = list(dict.fromkeys(a for a in raw_ids if a in own_ids))
     check["audit_ids"] = ids
     if ids:
         check["ran"] = {
@@ -454,9 +454,21 @@ def _normalize_check(
         check.update(result="not run",
                      reason=_text(raw.get("reason"), _MAX_EXPLANATION)
                      or "malformed check: not run without a reason")  # fmt: skip
-    elif removed or not ids:
-        unverified = ", ".join(map(str, removed)) or "none given"
-        check.update(result="not run", reason=f"unverified audit id: {unverified}")
+    elif removed or own or not ids:
+        # an id the finding cites is the finding's evidence, not a re-run
+        why = []
+        if own:
+            why.append(
+                f"audit id {own[0]} is one of the finding's own audit_ids"
+                if len(own) == 1
+                else f"audit ids {', '.join(own)} are among the finding's own audit_ids"
+            )
+            why[-1] += "; list the skeptic's ids only in `challenged`"
+        if removed or not own:
+            why.append(
+                f"unverified audit id: {', '.join(map(str, removed)) or 'none given'}"
+            )
+        check.update(result="not run", reason="; ".join(why))
     else:
         check["result"] = result
     return check
@@ -1571,7 +1583,7 @@ class CaseManager:
         warnings.extend(validation_warnings)
         warnings.extend(doubt_warnings)
         if warnings:
-            result["warning"] = " ".join(warnings)
+            result["warning"] = " | ".join(w.strip() for w in warnings)
         return result
 
     def _withdrawal(

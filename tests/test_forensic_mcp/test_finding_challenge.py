@@ -224,15 +224,21 @@ def test_a_legacy_challenge_citing_the_skeptics_tool_output_is_one_check(case, o
     assert SKEPTIC not in stored["audit_ids"]
 
 
+OWN_REASON = (
+    f"audit id {OWN} is one of the finding's own audit_ids; "
+    "list the skeptic's ids only in `challenged`"
+)
+
+
 @pytest.mark.parametrize(
-    "ids, unverified, kept",
-    [([ELSEWHERE], ELSEWHERE, []), ([OWN], OWN, []),
-     ([SHELL, VOLUNTARY, HOOK], f"{SHELL}, {VOLUNTARY}, {HOOK}", []),
-     ([SKEPTIC, ELSEWHERE], ELSEWHERE, [SKEPTIC])],
+    "ids, reason, kept",
+    [([ELSEWHERE], f"unverified audit id: {ELSEWHERE}", []), ([OWN], OWN_REASON, []),
+     ([SHELL, VOLUNTARY, HOOK], f"unverified audit id: {SHELL}, {VOLUNTARY}, {HOOK}", []),
+     ([SKEPTIC, ELSEWHERE], f"unverified audit id: {ELSEWHERE}", [SKEPTIC])],
     ids=["not in trail", "own evidence", "self-reported", "one of two"],
 )  # fmt: skip
 def test_a_check_without_the_skeptics_tool_output_is_stored_as_not_run(
-    case, ids, unverified, kept
+    case, ids, reason, kept
 ):
     """Stored, never dropped: the examiner sees the check that didn't run."""
     result = _record(
@@ -243,13 +249,37 @@ def test_a_check_without_the_skeptics_tool_output_is_stored_as_not_run(
     assert marker["checks"] == [{"name": "skeptic re-run", "result": "not run",
                                  "audit_ids": kept,
                                  **({"ran": {SKEPTIC: "run_command {}"}} if kept else {}),
-                                 "reason": f"unverified audit id: {unverified}"}]  # fmt: skip
+                                 "reason": reason}]  # fmt: skip
     assert marker["skeptic_audit_ids"] == kept
-    assert (
-        f"skeptic re-run: not run (unverified audit id: {unverified})"
-        in result["warning"]
-    )
+    assert f"skeptic re-run: not run ({reason})" in result["warning"]
     assert "dropped" not in result["warning"]
+
+
+def test_skeptic_ids_also_listed_as_the_finding_s_own_are_named_as_such(case):
+    """The skeptic's re-runs listed in both `challenged` and the finding's
+    `audit_ids`: the check says they are the finding's own, never that they
+    aren't tool output, and the joined warnings stay apart."""
+    sha1 = "407E7C91FBFA9B8E83CF377BB78AC63E6258BC60"
+    result = _record({
+        **FINDING,
+        "observation": f"{FINDING['observation']}; SHA-1 {sha1}",
+        "audit_ids": [OWN, SKEPTIC, SKEPTIC_2],
+        "challenged": {"outcome": "revised", "skeptic_audit_ids": [SKEPTIC, SKEPTIC_2]},
+    })  # fmt: skip
+    reason = (
+        f"audit ids {SKEPTIC}, {SKEPTIC_2} are among the finding's own audit_ids; "
+        "list the skeptic's ids only in `challenged`"
+    )
+    marker = _stored(case, result)["challenged"]
+    assert marker["outcome"] == "revised"
+    assert marker["checks"][0]["reason"] == reason
+    parts = result["warning"].split(" | ")
+    assert any(sha1 in p for p in parts)
+    assert [p for p in parts if p.startswith("challenged:")] == [
+        f"challenged: skeptic re-run: not run ({reason})."
+    ]
+    assert "unverified" not in result["warning"]
+    assert "tool output" not in result["warning"]
 
 
 def test_a_challenge_with_checks_is_stored_as_given_where_its_ids_verify(case):
@@ -490,12 +520,12 @@ def test_the_server_s_reason_reads_as_product_text(case):
     result = _record({**FINDING, "challenged": challenged})
     refused = _stored(case, result)["challenged"]["refused"]
     assert refused == (
-        f"Skeptic re-run: not run (unverified audit id: {ELSEWHERE}, {other}, {OWN}). "
-        "Withdrawal refused: it needs the skeptic's tool output and the output that "
-        "contradicts the observation. Staged for the examiner."
+        f"Skeptic re-run: not run ({OWN_REASON}; unverified audit id: {ELSEWHERE}, "
+        f"{other}). Withdrawal refused: it needs the skeptic's tool output and the "
+        "output that contradicts the observation. Staged for the examiner."
     )
     assert (
-        f"skeptic re-run: not run (unverified audit id: {ELSEWHERE}, {other}, {OWN})"
+        f"skeptic re-run: not run ({OWN_REASON}; unverified audit id: {ELSEWHERE}, {other})"
         in (result["warning"])
     )
 

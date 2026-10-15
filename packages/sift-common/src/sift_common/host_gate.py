@@ -37,7 +37,8 @@ REASON_NO_NAME = "no host name found"
 REASON_NEEDS_NAME = "needs a name: its only name is not a host"
 
 _RESOLVED = (hi.CONFIRMED, hi.STARTED_NOW)
-_AI = hi.AI_ORIGINS | {"file-name"}
+_FILE_NAME = "file-name"
+_AI = hi.AI_ORIGINS | {_FILE_NAME}
 
 
 class RunCancelled(RuntimeError):
@@ -60,7 +61,9 @@ def host_list_hint(case_dir: str | os.PathLike) -> str:
 
 def unresolved(state: hi.HostState, units) -> list[dict]:
     """What keeps ``units`` from writing: one entry per host name not bound to
-    a confirmed or started-now machine, and one per unit with no name."""
+    a confirmed or started-now machine, and one per unit with no name. A name
+    only the file name gave stops holding once a name read from the unit's
+    evidence is on a confirmed or started-now machine."""
     out: list[dict] = []
     for unit in dict.fromkeys(units):
         locator = str((state.units.get(unit) or {}).get("locator") or unit)
@@ -85,11 +88,11 @@ def unresolved(state: hi.HostState, units) -> list[dict]:
                 }
             )
             continue
+        free = _released(state, rest)
         for p in rest:
-            m = state.machine_of_pair(*p)
-            if m is not None and m.state in _RESOLVED:
+            if _resolved(state, p) or p in free:
                 continue
-            origins = set((state.names.get(p) or {}).get("origins") or ())
+            origins = _origins(state, p)
             reason = REASON_AI if origins and origins <= _AI else REASON_UNCONFIRMED
             out.append(
                 {"unit": unit, "locator": locator, "raw": p[1], "reason": reason}
@@ -97,8 +100,44 @@ def unresolved(state: hi.HostState, units) -> list[dict]:
     return out
 
 
+def released(state: hi.HostState) -> set:
+    """Every unit's host names that no longer hold it (`_released`)."""
+    by_unit: dict[str, list] = {}
+    for p in dict.fromkeys((*state.names, *state.bindings)):
+        if p in state.bindings or not _not_a_host(state, p):
+            by_unit.setdefault(p[0], []).append(p)
+    return {p for ps in by_unit.values() for p in _released(state, ps)}
+
+
+def _released(state: hi.HostState, pairs) -> set:
+    """Of one unit's names, those only the file name gave (Kansa's module)
+    once a name read from the unit's evidence is on a confirmed or
+    started-now machine: that name says what the file name guessed."""
+    named = any(
+        hi.ARTIFACT in _origins(state, p) and not _not_a_host(state, p)
+        and _resolved(state, p)
+        for p in pairs
+    )  # fmt: skip
+    if not named:
+        return set()
+    return {
+        p
+        for p in pairs
+        if _origins(state, p) == {_FILE_NAME} and not _resolved(state, p)
+    }
+
+
 def _not_a_host(state: hi.HostState, p) -> bool:
     return hi.FLAG_NOT_A_HOST in state.pair_flags.get(p, [])
+
+
+def _resolved(state: hi.HostState, p) -> bool:
+    m = state.machine_of_pair(*p)
+    return m is not None and m.state in _RESOLVED
+
+
+def _origins(state: hi.HostState, p) -> set:
+    return set((state.names.get(p) or {}).get("origins") or ())
 
 
 def placeholder_name(locator: str) -> str:
