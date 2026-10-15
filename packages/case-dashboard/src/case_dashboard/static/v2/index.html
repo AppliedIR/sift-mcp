@@ -1363,6 +1363,14 @@ function provRoots(a) {
   var roots = a && Array.isArray(a.provenance_roots) && a.provenance_roots.length ? a.provenance_roots : [a && a.provenance_root];
   return roots.filter(function(r) { return r && typeof r === 'object' && r.path; });
 }
+// The portal doesn't read the file-identity log (a hash job's line can run to
+// hundreds of MB): an id from it that has no entry here is named as not
+// checked, real or not, wherever it's cited
+var FILE_IDENTITY_UNREAD = 'not checked (the file-identity log isn\'t read here)';
+var FILE_IDENTITY_UNREAD_NOTE = 'Not checked: the file-identity log isn\'t read here.';
+function fileIdentityUnread(aid, found) {
+  return !found && safeStr(aid).indexOf('fileidentity-') === 0;
+}
 // The start of a SHA-256; a hash still being computed names its job
 function provHash(sha) {
   sha = String(sha || '');
@@ -2984,7 +2992,15 @@ async function loadToolInvocations(finding) {
       return;
     }
   }
-  if (!Array.isArray(auditData) || auditData.length === 0) {
+  if (!Array.isArray(auditData)) auditData = [];
+  // a chain whose steps are file-identity ids only gets no entries back, and
+  // still renders: those steps read as not checked
+  var unreadSteps = (finding.artifacts || []).some(function(art) {
+    return (art.provenance_chain || []).some(function(step) {
+      return fileIdentityUnread((step || {}).audit_id);
+    });
+  });
+  if (auditData.length === 0 && !unreadSteps) {
     container.innerHTML = '<span style="color:var(--text-muted)">No provenance chain recorded.</span>';
     return;
   }
@@ -3023,7 +3039,8 @@ async function loadToolInvocations(finding) {
   // Render one chain step enriched from audit data
   function renderStep(step) {
     var fullEntry = auditById[safeStr(step.audit_id)];
-    var tool = (fullEntry && fullEntry.tool) || step.tool || 'unknown';
+    var unread = fileIdentityUnread(step.audit_id, fullEntry);
+    var tool = (fullEntry && fullEntry.tool) || step.tool || (unread ? '' : 'unknown');
     var elapsed = (fullEntry && fullEntry.elapsed_ms) ? ' \u00B7 ' + (Number(safeStr(fullEntry.elapsed_ms)) / 1000).toFixed(1) + 's' : '';
     var cmd = '';
     if (fullEntry && fullEntry.params && fullEntry.params.command) {
@@ -3038,7 +3055,8 @@ async function loadToolInvocations(finding) {
       h += ' onmouseenter="showChainTooltip(this)" onmouseleave="hideChainTooltip()" onclick="pinChainTooltip(this)"';
     }
     h += '>';
-    h += '\u2193 <strong>' + escapeHtml(tool) + '</strong>';
+    h += '\u2193 ' + (tool ? '<strong>' + escapeHtml(tool) + '</strong>' : '');
+    if (unread) h += ' <span style="color:var(--text-muted)">' + FILE_IDENTITY_UNREAD + '</span>';
     if (step.artifact_type) h += ' (' + escapeHtml(step.artifact_type);
     if (step.artifact_type && step.hostname) h += ' \u00B7 ' + escapeHtml(step.hostname);
     else if (step.hostname) h += ' \u00B7 ' + escapeHtml(step.hostname);
@@ -3172,6 +3190,7 @@ async function loadEvidencePanel(finding) {
   eids.forEach((eid, idx) => {
     const entries = byEid[eid] || [];
     const entry = entries[0] || {};
+    const notChecked = fileIdentityUnread(eid, entries.length);
     const backend = safeStr(entry._backend || 'unknown');
     const isShell = backend.includes('exec') || safeStr(entry.source || '').includes('shell');
     const openClass = idx === 0 ? ' open' : '';
@@ -3180,11 +3199,15 @@ async function loadEvidencePanel(finding) {
     html += '<div class="evidence-item-header" onclick="toggleEvidence(this)">';
     html += '<span class="chevron' + openClass + '">&#9654;</span> ';
     html += '<strong>' + escapeHtml(eid) + '</strong>';
-    html += ' <span style="color:var(--text-muted)">(' + escapeHtml(backend) + ')</span>';
+    html += ' <span style="color:var(--text-muted)">' + (notChecked
+      ? FILE_IDENTITY_UNREAD
+      : '(' + escapeHtml(backend) + ')') + '</span>';
     html += '</div>';
     html += '<div class="evidence-item-body' + openClass + '">';
 
-    if (isShell) {
+    if (notChecked) {
+      html += '<div class="ev-field" style="color:var(--text-muted)">' + FILE_IDENTITY_UNREAD_NOTE + '</div>';
+    } else if (isShell) {
       // Shell evidence
       if (entry.params && entry.params.command) {
         html += '<div class="ev-field"><span class="ev-label">Command:</span><pre>' + escapeHtml(entry.params.command) + '</pre></div>';
@@ -5314,7 +5337,8 @@ function showChainTooltip(el) {
     role: el.getAttribute('data-role') || '',
   };
   tip.innerHTML = entry ? _buildTooltipHtml(entry, stepFields)
-    : '<span style="color:var(--text-muted)">Audit entry not available</span>';
+    : '<span style="color:var(--text-muted)">' + (fileIdentityUnread(aid, entry)
+      ? FILE_IDENTITY_UNREAD_NOTE : 'Audit entry not available') + '</span>';
   tip.style.display = '';
   tip.style.pointerEvents = 'none';
   var rect = el.getBoundingClientRect();

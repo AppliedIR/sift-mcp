@@ -109,6 +109,18 @@ def _read_jsonl(path: Path) -> tuple[list[dict], int]:
     return entries, not_utf8
 
 
+# The file-identity log holds the hash jobs' results: one job can be one line
+# of hundreds of MB, and parsing it costs several times that. It never holds
+# a record_finding entry. The audit scans below don't read it, as
+# record_finding's own scans don't.
+_FILE_IDENTITY_LOG = "file-identity.jsonl"
+
+
+def _scanned_logs(audit_dir: Path) -> list[Path]:
+    """The case's audit logs the portal scans: all but the file-identity log."""
+    return sorted(p for p in audit_dir.glob("*.jsonl") if p.name != _FILE_IDENTITY_LOG)
+
+
 def _withdrawals(case_dir: Path) -> tuple[list[dict], int]:
     """Candidate findings withdrawn after challenge, oldest first.
 
@@ -122,7 +134,7 @@ def _withdrawals(case_dir: Path) -> tuple[list[dict], int]:
     seen: set[tuple] = set()
     withdrawals = []
     not_utf8 = 0
-    for audit_file in sorted(audit_dir.glob("*.jsonl")):
+    for audit_file in _scanned_logs(audit_dir):
         entries, skipped = _read_jsonl(audit_file)
         not_utf8 += skipped
         for entry in entries:
@@ -394,7 +406,7 @@ async def get_audit_for_finding(request: Request) -> JSONResponse:
         return JSONResponse([])
 
     matches = []
-    for audit_file in sorted(audit_dir.glob("*.jsonl")):
+    for audit_file in _scanned_logs(audit_dir):
         backend = audit_file.stem
         for entry in _load_jsonl(audit_file):
             entry_eid = entry.get("audit_id", "")

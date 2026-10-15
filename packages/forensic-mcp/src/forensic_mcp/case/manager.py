@@ -258,6 +258,21 @@ _EVIDENCE_AUDIT_FILES = {
 }
 _EVIDENCE_AUDIT_PREFIXES = ("opensearch-",)  # opensearch-mcp, -ingest-<pid>, ...
 
+# The file-identity log holds the hash jobs' results: one job can be one line
+# of hundreds of MB, and parsing it costs several times that. The scanners
+# below don't read it. Its ids are checked only where a finding's artifacts
+# load the case's provenance, which reads it; elsewhere they are named as not
+# checked, never as not found.
+_FILE_IDENTITY_LOG = "file-identity.jsonl"
+_FILE_IDENTITY_PREFIX = "fileidentity-"
+_NOT_CHECKED = "the file-identity log isn't read here"
+
+
+def _scanned_logs(audit_dir: Path) -> list[Path]:
+    """The case's audit logs the scanners read: all but the file-identity log."""
+    return [p for p in audit_dir.glob("*.jsonl") if p.name != _FILE_IDENTITY_LOG]
+
+
 _MAX_ALTERNATIVES = 10
 _MAX_ALTERNATIVE_IDS = 10
 _MAX_SKEPTIC_IDS = 20
@@ -295,12 +310,12 @@ def _decoded_lines(f, path: Path):
 
 def _tool_output_ids(case_dir: Path, every_file: bool = False) -> set[str]:
     """Audit ids in the evidence backends' own audit files (see above), or in
-    every audit file of the case (`every_file`)."""
+    every audit file of the case but the file-identity log (`every_file`)."""
     ids: set[str] = set()
     audit_dir = case_dir / "audit"
     if not audit_dir.is_dir():
         return ids
-    for jsonl_file in audit_dir.glob("*.jsonl"):
+    for jsonl_file in _scanned_logs(audit_dir):
         if (
             not every_file
             and jsonl_file.name not in _EVIDENCE_AUDIT_FILES
@@ -522,10 +537,11 @@ def _normalize_challenge(
 
 
 def _audit_entries(case_dir: Path) -> dict[str, dict]:
-    """Every audit entry in the case's trail, by audit id."""
+    """Every audit entry in the case's trail but the file-identity log's, by
+    audit id."""
     out: dict[str, dict] = {}
     audit_dir = case_dir / "audit"
-    for jsonl_file in sorted(audit_dir.glob("*.jsonl")) if audit_dir.is_dir() else []:
+    for jsonl_file in sorted(_scanned_logs(audit_dir)) if audit_dir.is_dir() else []:
         try:
             with _audit_text(jsonl_file) as f:
                 for line in f:
@@ -1278,6 +1294,8 @@ class CaseManager:
         # more for an entry still being flushed), and its content is checked
         # against what that operation produced before its chain is traced.
         artifact_traces: list = []
+        loaded_ids: dict = {}  # every id the case's provenance load read
+        identity_read = False  # and that load read the file-identity log
         if validated_artifacts:
             case = pv.load_case(case_dir)
             for art in validated_artifacts:
@@ -1302,6 +1320,10 @@ class CaseManager:
                             "Pass the audit_id from the tool response."
                         ),
                     }
+            loaded_ids = case.by_id
+            identity_read = not any(
+                s.startswith(f"audit/{_FILE_IDENTITY_LOG} ") for s in case.skipped
+            )
             for art in validated_artifacts:
                 t = pv.trace_artifact(case, art["audit_id"], art["content"])
                 artifact_traces.append(t)
@@ -1335,7 +1357,18 @@ class CaseManager:
                 break
 
         # Classify provenance
-        provenance = self._classify_provenance(sanitized["audit_ids"], case_dir)
+        provenance = self._classify_provenance(
+            sanitized["audit_ids"], case_dir, loaded_ids
+        )
+        unchecked = provenance["unchecked"]
+        not_checked = (
+            ""
+            if not unchecked
+            else "Audit ids not found in the file-identity log: "
+            + f"{', '.join(unchecked[:5])}."
+            if identity_read
+            else f"Audit ids not checked ({_NOT_CHECKED}): {', '.join(unchecked[:5])}."
+        )
 
         # Hard gate: reject if all NONE and no supporting_commands
         if provenance["summary"] == "NONE" and not validated_commands:
@@ -1343,13 +1376,17 @@ class CaseManager:
                 "status": "REJECTED",
                 "error": (
                     "Finding rejected: no evidence trail. Every finding needs provenance. "
-                    "Options: (1) Pass audit_ids from MCP tool responses. "
+                    + (not_checked + " " if not_checked else "")
+                    + "Options: (1) Pass audit_ids from MCP tool responses. "
                     "(2) Pass supporting_commands as a SEPARATE PARAMETER (not inside the finding dict) "
                     "with command, purpose, and output_excerpt for each shell command used. "
                     "(3) For analytical findings without tool evidence, use "
                     "command='analytical reasoning' in supporting_commands."
                 ),
             }
+
+        if not_checked:
+            audit_warnings.append(not_checked)
 
         # Alternatives and the challenge marker: never merged into audit_ids
         doubt_warnings: list[str] = []
@@ -1575,7 +1612,13 @@ class CaseManager:
             return None
         # its own ids that the case's trail holds; any other is named, not listed
         trail = _tool_output_ids(case_dir, every_file=True)
-        unknown = [a for a in dict.fromkeys(own_ids) if a not in trail]
+        missing = [a for a in dict.fromkeys(own_ids) if a not in trail]
+        unchecked = [
+            a
+            for a in missing
+            if a.startswith(_FILE_IDENTITY_PREFIX) and _AUDIT_ID_PATTERN.match(a)
+        ]
+        unknown = [a for a in missing if a not in unchecked]
         own_ids = [a for a in own_ids if a in trail]
         return {
             "status": "WITHDRAWN",
@@ -1596,6 +1639,12 @@ class CaseManager:
                     if unknown
                     else ""
                 )
+                + (
+                    f" Audit ids not checked ({_NOT_CHECKED}), so not listed: "
+                    + ", ".join(unchecked[:5])
+                    if unchecked
+                    else ""
+                )
             ),
         }
 
@@ -1605,7 +1654,7 @@ class CaseManager:
         prefix = f"shell-{examiner}-{today}-"
         max_num = 0
         if audit_dir.is_dir():
-            for jsonl_file in audit_dir.glob("*.jsonl"):
+            for jsonl_file in _scanned_logs(audit_dir):  # no shell ids there
                 try:
                     with _audit_text(jsonl_file) as f:
                         for line in f:
@@ -1856,25 +1905,34 @@ class CaseManager:
     # Provenance tier priority: MCP > HOOK > SHELL
     _PROVENANCE_TIERS = ("MCP", "HOOK", "SHELL")
 
-    def _classify_provenance(self, audit_ids: list[str], case_dir: Path) -> dict:
+    def _classify_provenance(
+        self, audit_ids: list[str], case_dir: Path, loaded_ids: Any = ()
+    ) -> dict:
         """Classify audit IDs by provenance tier.
 
-        Scans audit/*.jsonl to determine where each audit_id came from:
-        - MCP: found in any audit file except claude-code.jsonl
+        Scans audit/*.jsonl but the file-identity log to determine where each
+        audit_id came from:
+        - MCP: found in any audit file except claude-code.jsonl, or a
+          file-identity id in `loaded_ids` (what the case's provenance load read)
         - HOOK: found in claude-code.jsonl
+        - UNCHECKED: a file-identity id not in `loaded_ids`, and no evidence
+          trail on its own. The caller knows whether that load read the
+          file-identity log (then the id isn't in it) or not (then it's
+          neither found nor not found).
         - NONE: not found in any audit file or malformed ID
 
         Evidence IDs must match the format: prefix-examiner-YYYYMMDD-NNN.
         Malformed IDs (path traversal, unicode, injection) are classified as NONE.
 
-        Returns {"summary": tier, "mcp": [...], "hook": [...], "shell": [...], "none": [...]}.
+        Returns {"summary": tier, "mcp": [...], "hook": [...], "shell": [...],
+        "none": [...], "unchecked": [...]}.
         """
         audit_dir = case_dir / "audit"
 
         # Build audit_id -> source lookup from audit files
         eid_source: dict[str, str] = {}
         if audit_dir.is_dir():
-            for jsonl_file in audit_dir.glob("*.jsonl"):
+            for jsonl_file in _scanned_logs(audit_dir):
                 source = "HOOK" if jsonl_file.name == "claude-code.jsonl" else "MCP"
                 try:
                     with _audit_text(jsonl_file) as f:
@@ -1904,6 +1962,7 @@ class CaseManager:
             "hook": [],
             "shell": [],
             "none": [],
+            "unchecked": [],
         }
         for eid in audit_ids:
             # Reject malformed audit IDs (path traversal, homoglyphs, injection)
@@ -1913,6 +1972,8 @@ class CaseManager:
             source = eid_source.get(eid)
             if source:
                 result[source.lower()].append(eid)
+            elif eid.startswith(_FILE_IDENTITY_PREFIX):
+                result["mcp" if eid in loaded_ids else "unchecked"].append(eid)
             else:
                 result["none"].append(eid)
 
@@ -1924,7 +1985,7 @@ class CaseManager:
             tiers_present.add("HOOK")
         if result["shell"]:
             tiers_present.add("SHELL")
-        has_none = bool(result["none"])
+        has_none = bool(result["none"] or result["unchecked"])
 
         if not tiers_present:
             summary = "NONE"
