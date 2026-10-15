@@ -65,7 +65,7 @@ def _get(cases, monkeypatch, route, method="GET", body=None):
     from starlette.testclient import TestClient
 
     def run():
-        with TestClient(routes.create_dashboard_app()) as c:
+        with TestClient(routes.create_dashboard_v2_app()) as c:
             monkeypatch.setenv("VHIR_CASE_DIR", str(cases["bad"]))
             r1 = (
                 c.request(method, route, json=body)
@@ -193,7 +193,7 @@ def test_a_route_held_by_a_slow_read_never_holds_the_loop(cases, monkeypatch, ro
         monkeypatch.setattr(routes, "_resolve_case_dir", slow)
         monkeypatch.setenv("VHIR_CASE_DIR", str(cases["good"]))
         got = {}
-        with TestClient(routes.create_dashboard_app()) as c:
+        with TestClient(routes.create_dashboard_v2_app()) as c:
             target = threading.Thread(
                 target=lambda: got.setdefault("target", c.get(route))
             )
@@ -243,7 +243,7 @@ def test_an_audit_id_json_escapes_is_still_found(cases, monkeypatch, audit_id):
     lines.insert(25, json.dumps({"audit_id": audit_id, "tool": "run_windows_command"}))
     (d / "audit" / "wintools-mcp.jsonl").write_text("\n".join(lines) + "\n")
     monkeypatch.setenv("VHIR_CASE_DIR", str(d))
-    with TestClient(routes.create_dashboard_app()) as c:
+    with TestClient(routes.create_dashboard_v2_app()) as c:
         got = c.get("/api/audit/F-x-001").json()
     assert [(e["audit_id"], e["tool"]) for e in got] == [
         (audit_id, "run_windows_command")
