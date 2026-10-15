@@ -871,6 +871,12 @@ let currentFilter = 'pending';
 let currentSort = 'conf-desc';
 let searchQuery = '';
 let saveTimer = null;
+// A refresh takes the server's delta only while nothing here is unsaved
+let deltaSeq = 0;          // bumped by each local change to the delta
+let saveOut = false;       // one save POST at a time
+let saveAgain = false;     // a save was asked for while one was out
+let lastSaveFailed = false;
+function deltaSaved() { return !saveTimer && !saveOut && !lastSaveFailed; }
 
 function setFilter(value) {
   currentFilter = value;
@@ -946,6 +952,7 @@ async function loadAll() {
   if (isLoading) return;
   isLoading = true;
   try {
+    const seq = deltaSeq, savedAtStart = deltaSaved();
     var loading = document.getElementById('loadingState');
     if (loading && !findings.length) {
       loading.innerHTML = '<div style="width:300px"><div class="skeleton skeleton-line"></div>' +
@@ -975,7 +982,9 @@ async function loadAll() {
     findings = f;
     timelineEvents = tl || [];
     iocsData = io || [];
-    delta = d && d.items ? d : { version: 1, case_id: '', items: [] };
+    if (savedAtStart && seq === deltaSeq && deltaSaved()) {
+      delta = d && d.items ? d : { version: 1, case_id: '', items: [] };
+    }
     caseMeta = c || {};
     renderSigningHeader();
     if (caseMeta.case_id) {
@@ -1118,6 +1127,7 @@ function removeDeltaEntry(id) {
 }
 
 function scheduleSave() {
+  deltaSeq++;
   setSaveStatus('saving');
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(saveDelta, 1000);
@@ -1155,13 +1165,23 @@ function deltaForSave() {
 }
 
 async function saveDelta() {
+  saveTimer = null;
+  if (saveOut) { saveAgain = true; return; }
+  saveOut = true;
+  const seq = deltaSeq;
   try {
     await apiFetch('/api/delta', { method: 'POST', body: JSON.stringify(deltaForSave()) });
-    setSaveStatus('saved');
+    lastSaveFailed = false;
   } catch (e) {
+    lastSaveFailed = true;
     setSaveStatus('error', e.message);
     console.error('Save failed:', e);
   }
+  saveOut = false;
+  const again = saveAgain || seq !== deltaSeq;
+  saveAgain = false;
+  if (again) { if (!saveTimer) saveDelta(); }
+  else if (deltaSaved()) setSaveStatus('saved');
 }
 
 function setSaveStatus(state, detail) {
@@ -2039,9 +2059,10 @@ async function doSkip() {
     await apiFetch('/api/delta/' + encodeURIComponent(selectedId), { method: 'DELETE' });
     delta.items = delta.items.filter(i => !(i.id === selectedId && isOwn(i) && i.action !== 'todo'));
     delta.modified_at = new Date().toISOString();
-    setSaveStatus('saved');
+    scheduleSave();
   } catch (e) {
     console.warn('DELETE delta item failed:', e);
+    scheduleSave();
     return;
   }
   updateCommitButton();
@@ -5001,9 +5022,10 @@ async function doTimelineSkip(id) {
     await apiFetch('/api/delta/' + encodeURIComponent(id), { method: 'DELETE' });
     delta.items = delta.items.filter(function(i) { return !(i.id === id && isOwn(i) && i.action !== 'todo'); });
     delta.modified_at = new Date().toISOString();
-    setSaveStatus('saved');
+    scheduleSave();
   } catch (e) {
     console.warn('DELETE delta item failed:', e);
+    scheduleSave();
     return;
   }
   updateCommitButton();
