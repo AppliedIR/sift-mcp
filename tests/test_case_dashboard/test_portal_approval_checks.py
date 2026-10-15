@@ -189,6 +189,46 @@ def test_a_reason_planned_then_a_check_passing_at_commit_refuses_it(case):
     assert c.status_code == 409 and case.chain() == []
 
 
+def _second_chained(case) -> None:
+    """F-steve-003: F-steve-001's chain, cited through a second audit line."""
+    import copy
+
+    line = json.dumps({"audit_id": "sift-steve-002", "tool": "run_command",
+                       "params": {"command": "vol windows.pslist"}})  # fmt: skip
+    with open(case.dir / "audit" / "sift-mcp.jsonl", "a") as f:
+        f.write(line + "\n")
+    f = copy.deepcopy(case.item("F-steve-001"))
+    f["id"] = "F-steve-003"
+    link = f["artifacts"][0]["provenance_chain"][0]
+    link["audit_id"], link["entry_sha256"] = "sift-steve-002", sha(line)
+    f["content_hash"] = compute_content_hash(f)
+    case.write("findings.json", [case.item("F-steve-001"), f])
+
+
+def test_a_plan_and_its_commit_each_read_the_audit_trail_once(case, monkeypatch):
+    from vhir_cli import approval_checks
+
+    _second_chained(case)
+    read, made = approval_checks.audit_lines, []
+
+    def counted(case_dir, wanted=None):
+        made.append(set(wanted))
+        return read(case_dir, wanted)
+
+    monkeypatch.setattr(approval_checks, "audit_lines", counted)
+    r = plan(case, [reviewed(case, "F-steve-001"), reviewed(case, "F-steve-003")])
+    assert r.status_code == 200, r.text
+    assert [b["checks"]["result"] for b in bodies(r)] == ["ok", "ok"]
+    p = r.json()
+    k = case.login(p)
+    c = case.commit(p, case.sign(p, k.json()))
+    assert c.status_code == 200, c.text
+    assert made == [{"sift-steve-001", "sift-steve-002"}] * 2
+    assert {case.item(i)["status"] for i in ("F-steve-001", "F-steve-003")} == {
+        "APPROVED"
+    }
+
+
 @pytest.mark.parametrize("reasons,says", [
     (["F-steve-001"], "must be a map"),
     ({"F-steve-009": {"reason": REASON, "failed_sha256": "0" * 64}}, "isn't an entry"),
@@ -502,9 +542,13 @@ _NON_ROOT = pytest.mark.skipif(
 
 
 def _unreadable(why: str) -> str:
+    """The refusal for one path the checks were denied (`why` ends in the
+    error): the log is kept, and the next step is its permissions."""
+    path = why.rsplit(" (", 1)[0]
     return (
         f"The approval checks couldn't read {why}: an entry there could change their "
-        "result. Nothing was signed. Make each log a readable regular file, then "
+        "result. Nothing was signed, and nothing in audit/ was changed: audit logs "
+        f"are evidence and stay as they are. Check the permissions of {path}, then "
         "approve again."
     )
 

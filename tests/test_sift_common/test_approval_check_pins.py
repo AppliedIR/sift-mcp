@@ -34,15 +34,16 @@ def case(tmp_path):
 def test_the_trail_is_read_as_the_chain_library_reads_it(case):
     ours = approval_checks.audit_lines(case)
     theirs = {
-        k: [line for _, line in v] for k, v in provenance.load_case(case).by_id.items()
+        k: [provenance.entry_sha256(line) for _, line in v]
+        for k, v in provenance.load_case(case).by_id.items()
     }
     assert ours == theirs
     assert len(ours["sift-a-001"]) == 2
 
 
 def test_an_entry_hash_is_the_chain_library_s(case):
-    for lines in approval_checks.audit_lines(case).values():
-        for line in lines:
+    for items in provenance.load_case(case).by_id.values():
+        for _, line in items:
             assert approval_checks.entry_sha256(line) == provenance.entry_sha256(line)
 
 
