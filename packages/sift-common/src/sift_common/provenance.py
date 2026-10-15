@@ -14,6 +14,7 @@ named) or BROKEN (with the kind of break, what's missing and how to fix it).
 from __future__ import annotations
 
 import codecs
+import functools
 import hashlib
 import json
 import os
@@ -36,6 +37,13 @@ _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 
 def entry_sha256(line: bytes) -> str:
     """The SHA-256 of an audit entry's line, as written (without its newline)."""
+    return _entry_sha256(bytes(line))
+
+
+# A gate over a folder names the same producing entry once per file, and its
+# line can be MBs: the last few are kept, so a big folder hashes it once.
+@functools.lru_cache(maxsize=8)
+def _entry_sha256(line: bytes) -> str:
     return hashlib.sha256(line).hexdigest()
 
 
