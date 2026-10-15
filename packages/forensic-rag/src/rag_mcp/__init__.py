@@ -40,7 +40,7 @@ Usage:
     python -m rag_mcp.status
 """
 
-__version__ = "0.6.4"
+__version__ = "0.6.4.1"
 
 from .config import Config, get_config
 from .index import RAGIndex
