@@ -580,31 +580,6 @@ def test_a_tool_installed_under_another_versions_name_is_found(
     assert entry["available"] is True
 
 
-def test_volatility_installed_as_vol3_is_found(case, tools, monkeypatch):
-    """Some installs name Volatility 3's launcher vol3, with no vol."""
-    import shutil
-
-    import sift_mcp.tool_version as tv
-    import sift_mcp.tools.discovery as discovery
-
-    def only_stand_ins(name, extra_paths=None):
-        return shutil.which(name, path=str(tools["bin"]))
-
-    monkeypatch.setattr(tv, "find_binary", only_stand_ins)
-    monkeypatch.setattr(discovery, "find_binary", only_stand_ins)
-    (tools["bin"] / "vol").rename(tools["bin"] / "vol3")
-    r = _call("get_tool_help", tool_name="vol3")
-    assert r["available"] is True
-    assert r["installed_version"] == "2.26.0"
-    assert r["resolved_path"] == str(tools["bin"] / "vol3")
-    c = _call("check_tools", tool_names=["vol3"])["vol3"]
-    assert c["binary_path"] == str(tools["bin"] / "vol3")
-    listed = _call("list_available_tools", category="volatility")
-    listed = listed.get("tools", listed) if isinstance(listed, dict) else listed
-    (entry,) = [t for t in listed if t["name"] == "vol3"]
-    assert entry["available"] is True
-
-
 def test_hayabusa_3_8_1_gets_the_3x_recipes(case, tools):
     """SIFT's cast installs Hayabusa 3.8.1."""
     (tools["versions"] / "hayabusa").write_text("3.8.1")

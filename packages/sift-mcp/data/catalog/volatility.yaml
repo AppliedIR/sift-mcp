@@ -22,5 +22,4 @@ tools:
     interactive: false
     description: "Volatility 3 memory forensics framework"
     fk_tool_name: "Volatility 3"
-    other_binaries: [vol3]  # the name some installs use; the ingest tries it too
     aliases: ["Volatility 3", Volatility3, volatility, volatility3]
