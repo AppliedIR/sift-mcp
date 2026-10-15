@@ -61,6 +61,9 @@ skeptic has none and can't run: it fails closed.
    The server stores a check whose ids aren't the skeptic's tool output as
    `not run` ("unverified audit id"), and a malformed challenge as
    `not_challenged`, with what is wrong. The examiner sees both.
+   List the skeptic's ids only in `challenged`, never also in the finding's
+   `audit_ids`: an id in both is the finding's own, and its check is stored
+   as `not run`.
 6. **Set `produced_by`** in the finding: `{"client", "model"}` that wrote it.
 7. **Present the reviewed version to the examiner,** get conversational
    approval, then call `record_finding` on forensic-mcp.
