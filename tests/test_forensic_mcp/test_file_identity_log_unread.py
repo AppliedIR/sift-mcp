@@ -14,6 +14,7 @@ HOME.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import forensic_mcp.case.manager as fmanager
@@ -137,3 +138,31 @@ def test_artifacts_loading_the_case_check_a_file_identity_id(fi_case):
     result = _record({**FINDING, "audit_ids": [OWN, FI]}, artifacts=[artifact])
     assert result["status"] == "STAGED", result
     assert "not checked" not in str(result.get("warning"))
+
+
+ARTIFACT = {"source": "evidence/a.evtx", "extraction": "EvtxECmd -f a.evtx",
+            "content": "4624", "content_type": "log_entry", "audit_id": OWN}  # fmt: skip
+
+
+def test_a_lone_file_identity_id_is_checked_where_artifacts_load_the_case(fi_case):
+    result = _record({**FINDING, "audit_ids": [FI]}, artifacts=[ARTIFACT])
+    assert result["status"] == "STAGED", result
+    assert "file-identity log" not in str(result.get("warning"))
+
+
+def test_a_made_up_file_identity_id_is_not_found_where_the_log_was_read(fi_case):
+    made_up = "fileidentity-tester-20261007-099"
+    result = _record({**FINDING, "audit_ids": [OWN, made_up]}, artifacts=[ARTIFACT])
+    assert result["status"] == "STAGED", result
+    assert (
+        f"Audit ids not found in the file-identity log: {made_up}." in result["warning"]
+    )
+    assert "not checked" not in result["warning"]
+
+
+def test_a_file_identity_log_the_load_couldn_t_read_leaves_the_id_not_checked(case):  # noqa: F811
+    os.mkfifo(case / "audit" / "file-identity.jsonl")
+    result = _record({**FINDING, "audit_ids": [OWN, FI]}, artifacts=[ARTIFACT])
+    assert result["status"] == "STAGED", result
+    assert NOT_CHECKED in result["warning"]
+    assert "not found in the file-identity log" not in result["warning"]

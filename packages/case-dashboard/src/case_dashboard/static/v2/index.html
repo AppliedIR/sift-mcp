@@ -3172,6 +3172,9 @@ async function loadEvidencePanel(finding) {
   eids.forEach((eid, idx) => {
     const entries = byEid[eid] || [];
     const entry = entries[0] || {};
+    // the portal doesn't read the file-identity log (a hash job's line can run
+    // to hundreds of MB): an id from it is named as not checked, real or not
+    const notChecked = !entries.length && safeStr(eid).indexOf('fileidentity-') === 0;
     const backend = safeStr(entry._backend || 'unknown');
     const isShell = backend.includes('exec') || safeStr(entry.source || '').includes('shell');
     const openClass = idx === 0 ? ' open' : '';
@@ -3180,11 +3183,15 @@ async function loadEvidencePanel(finding) {
     html += '<div class="evidence-item-header" onclick="toggleEvidence(this)">';
     html += '<span class="chevron' + openClass + '">&#9654;</span> ';
     html += '<strong>' + escapeHtml(eid) + '</strong>';
-    html += ' <span style="color:var(--text-muted)">(' + escapeHtml(backend) + ')</span>';
+    html += ' <span style="color:var(--text-muted)">' + (notChecked
+      ? 'not checked (the file-identity log isn\'t read here)'
+      : '(' + escapeHtml(backend) + ')') + '</span>';
     html += '</div>';
     html += '<div class="evidence-item-body' + openClass + '">';
 
-    if (isShell) {
+    if (notChecked) {
+      html += '<div class="ev-field" style="color:var(--text-muted)">Not checked: the file-identity log isn\'t read here.</div>';
+    } else if (isShell) {
       // Shell evidence
       if (entry.params && entry.params.command) {
         html += '<div class="ev-field"><span class="ev-label">Command:</span><pre>' + escapeHtml(entry.params.command) + '</pre></div>';

@@ -1295,6 +1295,7 @@ class CaseManager:
         # against what that operation produced before its chain is traced.
         artifact_traces: list = []
         loaded_ids: dict = {}  # every id the case's provenance load read
+        identity_read = False  # and that load read the file-identity log
         if validated_artifacts:
             case = pv.load_case(case_dir)
             for art in validated_artifacts:
@@ -1320,6 +1321,9 @@ class CaseManager:
                         ),
                     }
             loaded_ids = case.by_id
+            identity_read = not any(
+                s.startswith(f"audit/{_FILE_IDENTITY_LOG} ") for s in case.skipped
+            )
             for art in validated_artifacts:
                 t = pv.trace_artifact(case, art["audit_id"], art["content"])
                 artifact_traces.append(t)
@@ -1358,9 +1362,12 @@ class CaseManager:
         )
         unchecked = provenance["unchecked"]
         not_checked = (
-            f"Audit ids not checked ({_NOT_CHECKED}): {', '.join(unchecked[:5])}."
-            if unchecked
-            else ""
+            ""
+            if not unchecked
+            else "Audit ids not found in the file-identity log: "
+            + f"{', '.join(unchecked[:5])}."
+            if identity_read
+            else f"Audit ids not checked ({_NOT_CHECKED}): {', '.join(unchecked[:5])}."
         )
 
         # Hard gate: reject if all NONE and no supporting_commands
@@ -1908,8 +1915,10 @@ class CaseManager:
         - MCP: found in any audit file except claude-code.jsonl, or a
           file-identity id in `loaded_ids` (what the case's provenance load read)
         - HOOK: found in claude-code.jsonl
-        - UNCHECKED: a file-identity id not in `loaded_ids`: neither found
-          nor not found, and no evidence trail on its own
+        - UNCHECKED: a file-identity id not in `loaded_ids`, and no evidence
+          trail on its own. The caller knows whether that load read the
+          file-identity log (then the id isn't in it) or not (then it's
+          neither found nor not found).
         - NONE: not found in any audit file or malformed ID
 
         Evidence IDs must match the format: prefix-examiner-YYYYMMDD-NNN.
