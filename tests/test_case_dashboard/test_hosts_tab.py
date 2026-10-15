@@ -190,6 +190,31 @@ class TestDecisions:
         assert resp.status_code == 200
         assert hi.FLAG_NOT_A_HOST in hi.load(case).pair_flags[(u, "WORKGROUP")]
 
+    def test_a_name_marked_not_a_host_leaves_the_proposals(self, case, client):
+        u = unit(case, "evidence/disk1", "WORKGROUP")
+        unit(case, "evidence/disk2", "WKS02")
+        page = client.get("/api/hosts").json()
+        assert page["counts"]["proposed"] == 2
+        resp = _decide(client, page, "not_a_host", {"pairs": [[u, "WORKGROUP"]]})
+        assert resp.status_code == 200
+        after = client.get("/api/hosts").json()
+        assert after["counts"]["proposed"] == after["proposed_total"] == 1
+        assert [n["raw"] for g in after["proposed"] for n in g["names"]] == ["WKS02"]
+
+    def test_confirm_all_leaves_a_name_marked_not_a_host(self, case, client):
+        u = folder(case, "WORKGROUP")
+        folder(case, "WKS02")
+        page = client.get("/api/hosts").json()
+        _decide(client, page, "not_a_host", {"pairs": [[u, "WORKGROUP"]]})
+        page = client.get("/api/hosts").json()
+        resp = _decide(
+            client, page, "confirm_all", {"seen_decisions": page["dec_offset"]}
+        )
+        assert resp.status_code == 200, resp.text
+        state = hi.load(case)
+        assert (u, "WORKGROUP") not in state.bindings
+        assert [m.canonical for m in state.machines.values()] == ["WKS02"]
+
     def test_a_host_list_confirms_what_it_matches(self, case, client):
         folder(case, "WKS01")
         folder(case, "WKS02")
