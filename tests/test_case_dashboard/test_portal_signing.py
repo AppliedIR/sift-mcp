@@ -422,6 +422,28 @@ def test_editing_an_approved_finding_signs_no_linked_event(portal):
     assert verify_case(portal.dir).exit_code == 0
 
 
+def test_a_finding_edited_in_an_earlier_signing_signs_no_linked_event(portal):
+    # the edit was signed on its own; the later approval has no edit of its own
+    enrol("steve")
+    portal.write(
+        "findings.json", [finding("F-steve-001", timeline_event_id="T-steve-001")]
+    )
+    portal.write("timeline.json", [event("T-steve-001", "F-steve-001")])
+    e = reviewed(portal, "F-steve-001", "edit", modifications={
+        "interpretation": {"original": "interp", "modified": "to SRV01"}})  # fmt: skip
+    assert portal.sign_all([e]).status_code == 200
+    assert portal.item("F-steve-001")["status"] == "DRAFT"
+    plan = portal.plan([reviewed(portal, "F-steve-001")]).json()
+    assert [b["item_id"] for b in plan["bodies"]] == ["F-steve-001"]
+    assert plan["needs_decision"] == _HELD
+    k = portal.login(plan).json()
+    r = portal.commit(plan, portal.sign(plan, k))
+    assert r.status_code == 200, r.text
+    assert portal.item("F-steve-001")["status"] == "APPROVED"
+    assert portal.item("T-steve-001")["status"] == "DRAFT"
+    assert verify_case(portal.dir).exit_code == 0
+
+
 def test_an_unedited_approval_still_cascades_with_nothing_held(portal):
     enrol("steve")
     portal.write(
@@ -459,8 +481,8 @@ def test_the_sign_dialog_names_each_event_left_for_its_own_decision():
     r = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr[-500:]
     assert (
-        "T-steve-009 is linked to F-steve-010, which you edited in this review. "
-        "It was not signed. Decide it on its own in the Timeline tab."
+        "T-steve-009 is linked to F-steve-010, which was edited after the event was made "
+        "from it. It was not signed. Decide it on its own in the Timeline tab."
     ) in r.stdout
     assert "<b>" not in r.stdout and "T-&lt;b&gt;x" in r.stdout
 
