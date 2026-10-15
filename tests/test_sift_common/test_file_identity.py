@@ -369,3 +369,73 @@ def test_completed_hashes_read_the_log_once_for_many_files(case, monkeypatch):
     assert len(reads) == 1 and len(got) == 50
     assert got[str(files[7])]["sha256"] == hashlib.sha256(b"x" * 107).hexdigest()
     assert fi.completed_hash(case, files[7]) == got[str(files[7])]["sha256"]
+
+
+def _job_entries(case, job_id, rows, timeout=30.0):
+    """Every entry closing `job_id`, once they hold all its `rows` files."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        log = case / "audit" / "file-identity.jsonl"
+        found = [e for e in (_entries(case) if log.exists() else [])
+                 if e.get("job_id") == job_id]  # fmt: skip
+        if sum(len(e.get("files") or [e]) for e in found) >= rows:
+            return found
+        time.sleep(0.05)
+    raise AssertionError(f"{job_id} never closed all {rows} files")
+
+
+def test_a_large_folder_jobs_rows_go_in_bounded_entries_under_its_id(case, monkeypatch):
+    """A folder of 300,000 files made one 254 MB audit line, its rows written
+    twice: in `result_summary` and at the top level."""
+    monkeypatch.setattr(fi, "ROWS_PER_ENTRY", 3)
+    files = []
+    for n in range(7):
+        files.append(case / f"f{n}.bin")
+        files[-1].write_bytes(b"x" * (100 + n))
+    b = fi.hash_files_for_call(files, case_dir=case, requested_by="t", inline_limit=10)
+    got = _job_entries(case, b.job_id, 7)
+    assert [len(e["files"]) for e in got] == [3, 3, 1]
+    assert {e["tool"] for e in got} == {"hash_complete"}
+    assert all(e["result_summary"] == {"files": 7} for e in got)  # a count, not rows
+    assert len({e["audit_id"] for e in got}) == 3
+    assert [f["path"] for e in got for f in e["files"]] == [str(f) for f in files]
+    done = fi.completed_hashes(case, files)
+    assert {p: r["sha256"] for p, r in done.items()} == {
+        str(f): hashlib.sha256(b"x" * (100 + n)).hexdigest()
+        for n, f in enumerate(files)
+    }
+
+
+def test_the_default_entry_holds_at_most_5000_rows():
+    assert fi.ROWS_PER_ENTRY == 5_000
+
+
+def test_an_entry_of_only_failures_still_closes_a_job_that_hashed_some(
+    case, monkeypatch
+):
+    monkeypatch.setattr(fi, "ROWS_PER_ENTRY", 2)
+    files = [case / f"{n}.bin" for n in ("a", "b", "c")]
+    for f in files:
+        f.write_bytes(b"z" * 400)
+    real = fi.hash_file
+
+    def some(path):
+        if not str(path).endswith("c.bin"):
+            raise OSError("unreadable")
+        return real(path)
+
+    monkeypatch.setattr(fi, "hash_file", some)
+    b = fi.hash_files_for_call(files, case_dir=case, requested_by="t", inline_limit=10)
+    first, second = _job_entries(case, b.job_id, 3)
+    assert all("error" in f for f in first["files"])  # this entry: failures only
+    assert (first["tool"], second["tool"]) == ("hash_complete", "hash_complete")
+    assert fi.completed_hash(case, files[2]) == hashlib.sha256(b"z" * 400).hexdigest()
+
+
+def test_a_one_file_jobs_row_stays_at_the_top_level_with_a_count_summary(case):
+    f = case / "sample2.raw"
+    f.write_bytes(b"m" * 400)
+    p = fi.hash_for_call(f, case_dir=case, requested_by="t", inline_limit=10)
+    (e,) = _job_entries(case, p.job_id, 1)
+    assert e["result_summary"] == {"files": 1} and "files" not in e
+    assert (e["path"], e["sha256"]) == (str(f), hashlib.sha256(b"m" * 400).hexdigest())
