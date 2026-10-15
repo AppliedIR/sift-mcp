@@ -34,7 +34,7 @@ common_misinterpretations:
     correction: "The program may have been run via command line, script, or other non-GUI method. UserAssist only tracks Explorer-based launches."
 
 corroborate_with:
-  for_execution: [prefetch, bam, amcache]
+  for_execution: [prefetch, bam]
   for_presence: [mft, shimcache]
   for_timeline: [prefetch, event_logs_security, srum]
 

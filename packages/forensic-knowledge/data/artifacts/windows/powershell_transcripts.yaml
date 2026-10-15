@@ -20,7 +20,8 @@ does_not_prove:
   - "Commands from non-PowerShell tools (cmd.exe, bash, etc.)"
   - "PowerShell activity when transcription was not enabled"
   - "That the output was not tampered with (transcript files are plain text)"
-  - "Activity via unmanaged PowerShell runspaces (P/Invoke, C# hosted PowerShell)"
+  - "PowerShell activity in a version whose own transcription policy is off."
+  - "The output of a PowerShell ISE profile script. Event 4104 may still show that the profile ran."
 
 timestamps:
   - field: "Transcript Start Time"
@@ -32,7 +33,7 @@ timestamps:
 
 common_misinterpretations:
   - claim: "Transcripts capture all PowerShell activity on a system"
-    correction: "Transcripts only capture sessions where Start-Transcript was active or where group policy transcription was enabled. Background jobs, remoting sessions, and constrained runspaces may not generate transcripts."
+    correction: "With the policy on, testing found transcripts for the console, profiles, ConstrainedLanguage sessions, Start-Job jobs, PowerShell 7 & jobs, the ISE console, remoting targets and programs that host PowerShell. In testing, a Start-ThreadJob job wrote no transcript of its own. For Invoke-Command, the local transcript held the remote output."
   - claim: "Transcript logs are the same as Event Log script block logging"
     correction: "Transcripts capture input AND output as text files. Script block logging (Event ID 4104) captures code blocks in the event log without output. They are complementary mechanisms."
   - claim: "Transcript files cannot be tampered with"

@@ -1,12 +1,13 @@
 name: PECmd
 category: zimmerman
 description: "Parse Windows Prefetch files (.pf) to determine program execution history"
-platform: [windows, linux, macos]
-platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+platform: [windows]
+platform_notes: "Runs on Windows only. On Linux and macOS it stops before reading any input, with the message 'Non-Windows platforms not supported'. Use it through wintools-mcp."
 artifacts_parsed: [prefetch]
 
 caveats:
   - "Requires Windows-specific decompression libraries. Fails on Linux/SIFT with 'Non-Windows platforms not supported' error. Use on Windows forensic workstation only."
+  - "On Linux, PECmd exits with code 0 when it refuses to run. A run on SIFT can look successful and produce no output. No output from PECmd on SIFT does not mean there were no prefetch files."
   - "Prefetch is disabled by default on SSDs in some Windows versions and on Windows Server"
   - "Prefetch files are limited to 1024 entries on Win8+; oldest entries are overwritten"
   - "Last run timestamps include up to 8 run times on Win8+, only 1 on WinXP/Vista/7"
@@ -18,7 +19,7 @@ output_notes:
   key_fields: [ExecutableName, RunCount, LastRun, PreviousRun0-6, SourceFilename, Volume, FilesLoaded]
 
 advisories:
-  - "Prefetch proves EXECUTION occurred — the run count and timestamps are strong evidence"
+  - "A Prefetch file shows the program ran. A missing file does not show it did not run. In testing, scheduled tasks at the default priority left none."
   - "Files referenced in the Prefetch file were loaded during the first 10 seconds of execution only"
   - "A Prefetch file named with a hash means the same executable was run from a different path if multiple hashes exist"
   - "PECmd can process a single Prefetch file or a whole directory"
@@ -39,9 +40,9 @@ investigation_sequence:
 field_meanings:
   ExecutableName: "Name of the executable from the Prefetch filename"
   RunCount: "Number of times the program has been executed"
-  LastRun: "Most recent execution timestamp"
-  PreviousRun0: "Second most recent execution timestamp (Win8+)"
-  PreviousRun1: "Third most recent execution timestamp (Win8+)"
+  LastRun: "Start time of the most recent run"
+  PreviousRun0: "Start time of the second most recent run (Windows 8 and later)"
+  PreviousRun1: "Start time of the third most recent run (Windows 8 and later)"
   SourceFilename: "Name of the Prefetch file parsed"
   Volume0Name: "Name of the primary volume accessed during execution"
   Volume0Serial: "Serial number of the primary volume"

@@ -36,7 +36,7 @@ common_misinterpretations:
     correction: "Open-source tools can parse the quarantine format and extract the original files for analysis on any platform."
 
 corroborate_with:
-  for_execution: [event_logs_defender, prefetch, amcache]
+  for_execution: [event_logs_defender, prefetch]
   for_presence: [mft, usn_journal]
   for_timeline: [event_logs_defender, event_logs_sysmon]
 

@@ -35,7 +35,7 @@ common_misinterpretations:
     correction: "$LogFile records the MFT entry modifications that occur during timestomping, potentially revealing the original and modified timestamps in the transaction records."
 
 corroborate_with:
-  for_execution: [prefetch, amcache]
+  for_execution: [prefetch]
   for_presence: [mft, usn_journal, ntfs_i30]
   for_timeline: [usn_journal, mft]
 

@@ -36,7 +36,7 @@ common_misinterpretations:
     correction: "Minidumps may contain strings, URLs, encryption keys, or other forensic artifacts from process memory."
 
 corroborate_with:
-  for_execution: [prefetch, amcache, event_logs_security]
+  for_execution: [prefetch, event_logs_security]
   for_presence: [mft]
   for_timeline: [event_logs_system]
 

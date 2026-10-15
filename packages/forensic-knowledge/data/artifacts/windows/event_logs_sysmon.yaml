@@ -41,7 +41,7 @@ common_misinterpretations:
     correction: "Sysmon Event ID 1 provides more detail by default (hashes, parent command line, current directory, LogonGuid) but 4688 ties into the Windows audit framework. They are complementary, not identical."
 
 corroborate_with:
-  for_execution: [prefetch, event_logs_security, amcache]
+  for_execution: [prefetch, event_logs_security]
   for_presence: [mft, usn_journal]
   for_timeline: [event_logs_security, event_logs_powershell, event_logs_system]
 

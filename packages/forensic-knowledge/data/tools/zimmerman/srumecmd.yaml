@@ -31,7 +31,7 @@ investigation_sequence:
   - "Parse SRUM database to extract application resource usage data"
   - "Review all entries across network usage, application timeline, and push notifications"
   - "Note that SRUM retains data for up to 30-60 days of system activity"
-  - "Cross-reference application execution evidence with Prefetch and Amcache"
+  - "Cross-reference application activity with Prefetch for execution, and with Amcache for presence and hashes."
   - "Correlate network bytes sent/received with connection timestamps for data exfiltration analysis"
   - "Review energy usage data for application runtime duration evidence"
 

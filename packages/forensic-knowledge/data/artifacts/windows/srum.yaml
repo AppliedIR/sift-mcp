@@ -36,7 +36,7 @@ common_misinterpretations:
     correction: "SRUM persists data to SRUDB.dat (ESE database). In-memory data is flushed to disk periodically and on clean shutdown."
 
 corroborate_with:
-  for_execution: [prefetch, bam, amcache]
+  for_execution: [prefetch, bam]
   for_presence: [mft, shimcache]
   for_timeline: [prefetch, event_logs_security, event_logs_sysmon]
 

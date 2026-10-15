@@ -43,7 +43,7 @@ timestamps:
 
 common_misinterpretations:
   - claim: "File timestamps in the MFT are always reliable"
-    correction: "$STANDARD_INFORMATION timestamps can be trivially modified via SetFileTime (timestomping). Compare with $FILE_NAME timestamps to detect tampering."
+    correction: "Programs can set $STANDARD_INFORMATION times with ordinary Windows calls. Comparing them with $FILE_NAME times finds some timestomps but not all."
   - claim: "$FILE_NAME timestamps always match $STANDARD_INFORMATION timestamps"
     correction: "FN timestamps are set at file creation and updated only on rename/move. Legitimate divergence is normal. SI timestamps earlier than FN timestamps are common on an ordinary Windows system volume, especially in WinSxS, System32 and WindowsApps, and after robocopy copies or shell zip extraction; they can also indicate timestomping. Judge a hit by the file's location and its dates against the other evidence; treat it as a lead, not proof."
   - claim: "Deleted file MFT entries are immediately overwritten"
@@ -52,7 +52,7 @@ common_misinterpretations:
     correction: "Whether NTFS updates Last Access is controlled by NtfsDisableLastAccessUpdate (SYSTEM\\<ControlSet>\\Control\\FileSystem); check its value in the SYSTEM hive. Even when updates are on, NTFS can delay them by up to an hour. The last access timestamp can be stale."
 
 corroborate_with:
-  for_execution: [prefetch, amcache, bam]
+  for_execution: [prefetch, bam]
   for_presence: [shimcache, amcache, usn_journal]
   for_timeline: [usn_journal, event_logs_security, prefetch]
 
@@ -85,7 +85,7 @@ cross_artifact_correlation:
 
   - pattern: "Timestomping detection — $SI vs Shimcache"
     cross_ref: "Shimcache"
-    note: "Compare MFT $SI Modified time to shimcache LastModifiedTime for same executable. If $SI Modified is earlier than the cached value, the time was set backwards after caching. Consider this a lead for potential timestomping."
+    note: "Compare the MFT $SI Modified time with the ShimCache LastModifiedTime for the same executable. If $SI Modified is earlier than the cached value, the time may have been set backwards after caching. Consider this a lead for potential timestomping. A match does not rule it out. In testing, when the file ran again after its time was set back, the next restart cached the new time."
 
   - pattern: "Timestomping detection — $SI vs PE compile time"
     note: "Use exiftool to extract the PE compile timestamp and compare it with $SI Modified."

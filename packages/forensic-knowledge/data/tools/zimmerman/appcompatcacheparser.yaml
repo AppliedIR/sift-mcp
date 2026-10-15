@@ -6,28 +6,28 @@ platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, ru
 artifacts_parsed: [shimcache]
 
 caveats:
-  - "ShimCache only proves a file WAS PRESENT on disk, not that it was executed (Win8+)"
-  - "On Windows 7 and earlier, an InsertFlag may indicate execution, but is not definitive"
-  - "Cache entries are written to the registry at shutdown; a crash loses unwritten entries"
+  - "A ShimCache entry shows a file was present. Windows can add an entry for a file that never ran, for example when Explorer shows it in a folder window."
+  - "The Executed column is not an execution record by itself. See field_meanings."
+  - "Windows writes the cache to the registry at shutdown. In testing, a hard reset lost the programs run since the last clean restart. A hive copied from a running system can also lack them."
   - "Give it a SYSTEM hive file from the case. On Windows, a run without a hive file parses the live registry of the machine it runs on. Through wintools-mcp, that machine is the wintools host, not the evidence, so wintools-mcp refuses a run without a hive file. On SIFT/Linux a hive file is always required."
   - "Entry order reflects the order of interaction, not chronological execution time"
-  - "Maximum of 1024 entries on Win8+; older entries are evicted"
+  - "The cache often holds at most 1,024 entries on Windows 10 and later, and older entries are evicted. Entries can also be missing well below that limit."
 
 output_notes:
   format: csv
   key_fields: [Path, LastModifiedTimeUTC, CacheEntryPosition, Executed]
 
 advisories:
-  - "ShimCache proves FILE PRESENCE, not execution on Win8+ — do NOT claim execution based solely on ShimCache"
+  - "Do not claim execution from a ShimCache entry alone. Executed Yes indicates the program ran. It still needs a second artifact."
   - "CacheEntryPosition is significant: lower numbers indicate more recent interaction"
-  - "Correlate with Prefetch and Amcache for stronger evidence of execution"
-  - "The LastModifiedTime is the file's $STANDARD_INFORMATION modification time, not when ShimCache recorded it"
+  - "Look for Prefetch, BAM or a process creation event to confirm execution. Amcache adds presence and a SHA-1 hash."
+  - "The LastModifiedTime is the file's $STANDARD_INFORMATION modification time, not when ShimCache recorded it. It is not the time the program ran."
 
 
 investigation_sequence:
   - "Parse the SYSTEM hive to extract ShimCache entries (via sift-mcp or wintools-mcp)"
   - "Review all entries including cache position — lower positions are more recent"
-  - "On Windows 10+, ShimCache entries indicate file PRESENCE, not execution"
+  - "Read every entry as evidence the file was present. Read Executed Yes as an indication the program ran. Read Executed No as unknown."
   - "Cross-reference with Amcache and Prefetch for corroboration"
   - "Look for entries from unusual paths (temp directories, user profiles, removable media)"
   - "Correlate timestamps with other artifacts for timeline construction"
@@ -35,8 +35,8 @@ investigation_sequence:
   - "Cross-MCP: Search for shimcache interpretation context (forensic-rag: search_knowledge)"
 
 field_meanings:
-  LastModifiedTimeUTC: "File last modification timestamp from the file system at cache time"
+  LastModifiedTimeUTC: "File last modification timestamp from the file system at cache time. It is not the time the program ran."
   Path: "Full file path recorded in the ShimCache"
   CacheEntryPosition: "Position in cache — lower numbers are more recently cached"
   ControlSet: "Registry control set the entry was extracted from"
-  Executed: "DO NOT TRUST THIS FIELD. The 'Executed' column is the InsertFlag from the ShimCache entry. It is unreliable on all Windows versions — do not use it to prove or disprove execution. This field has caused more forensic misinterpretations than any other. To prove execution: use Prefetch, UserAssist, BAM (RegRipper's bam plugin on the SYSTEM hive), or event logs (4688, Sysmon 1)."
+  Executed: "On Windows 10 and 11, AppCompatCacheParser reports Yes when the last 4 bytes of an entry's data equal 1. Yes indicates the program ran. In testing on Windows 10 22H2, Windows 11 23H2 and 26H2, and Server 2025, Yes never appeared for a program that had not run. Confirm execution with Prefetch, BAM, UserAssist or process creation events (4688, Sysmon 1). No means unknown. It is common for programs that ran. In testing, every Windows binary run from its own folder read No. So did WinSCP, python.exe and 7-Zip."

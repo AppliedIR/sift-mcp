@@ -39,7 +39,7 @@ common_misinterpretations:
     correction: "Cloud-synced copies may persist in Microsoft accounts, and database recovery may retrieve deleted records."
 
 corroborate_with:
-  for_execution: [prefetch, amcache, userassist]
+  for_execution: [prefetch, userassist]
   for_presence: [jump_lists, lnk_files, shellbags]
   for_timeline: [event_logs_security, bam, srum]
 
