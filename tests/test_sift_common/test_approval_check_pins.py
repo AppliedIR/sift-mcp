@@ -1,7 +1,8 @@
 """vhir's approval checks read the trail and hash a root on their own (vhir
 doesn't depend on the sift stack). These pin them to the library the chain
-was resolved with: the same audit lines by id, the same entry hash, the same
-file hash and limit, and the same refusal of a file that isn't regular."""
+was resolved with: per audit id, the same first line's hash and the same count
+of lines, the same entry hash, the same file hash and limit, and the same
+refusal of a file that isn't regular."""
 
 from __future__ import annotations
 
@@ -34,15 +35,16 @@ def case(tmp_path):
 def test_the_trail_is_read_as_the_chain_library_reads_it(case):
     ours = approval_checks.audit_lines(case)
     theirs = {
-        k: [line for _, line in v] for k, v in provenance.load_case(case).by_id.items()
+        k: (provenance.entry_sha256(v[0][1]), len(v))
+        for k, v in provenance.load_case(case).by_id.items()
     }
     assert ours == theirs
-    assert len(ours["sift-a-001"]) == 2
+    assert ours["sift-a-001"][1] == 2
 
 
 def test_an_entry_hash_is_the_chain_library_s(case):
-    for lines in approval_checks.audit_lines(case).values():
-        for line in lines:
+    for items in provenance.load_case(case).by_id.values():
+        for _, line in items:
             assert approval_checks.entry_sha256(line) == provenance.entry_sha256(line)
 
 

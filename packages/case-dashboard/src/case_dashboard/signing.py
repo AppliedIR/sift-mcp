@@ -411,12 +411,16 @@ def make_plan(case_dir, case_id, entries, lists, examiner, public, now, head,
     if refused:
         return Plan(refused=refused)
     reasons = approval_override_reasons or {}
-    for d in direct:
-        if d.decision != "approve" or d.type not in ("finding", "timeline"):
-            continue
+    checked = [
+        d for d in direct
+        if d.decision == "approve" and d.type in ("finding", "timeline")
+    ]  # fmt: skip
+    # the audit trail is read once for every item in the plan
+    trail = approval_checks.PlanTrail(case_dir, [(d.item, d.type) for d in checked])
+    for d in checked:
         try:
             d.checks = approval_checks.check_item(
-                case_dir, d.item, d.type, background=True
+                case_dir, d.item, d.type, background=True, trail=trail
             )
         except (
             approval_checks.AuditUnreadable
