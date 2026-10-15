@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 INLINE_LIMIT = 1_000_000_000  # bytes a tool call may hash before it answers
 _CHUNK = 1 << 20
+# A list job's rows per closing entry, so one audit line stays a few MB however
+# many files the job hashed (a folder of 300,000 files made one 254 MB line)
+ROWS_PER_ENTRY = 5_000
 # (the case, a file's key: real path, st_dev, st_ino, size, mtime_ns, ctime_ns;
 # or a list's: the tuple of its files' keys) -> the id of the job hashing it,
 # while that job runs. Per case: a job's closing entry goes to the case that asked.
@@ -267,38 +270,40 @@ def _called(key: tuple, paths) -> list[tuple]:
 
 
 def _job(key, job_id: str, paths, case_dir: str, requested_by: str) -> None:
-    """Hash the job's files and close its pending hashes, either way: one
-    `hash_complete` entry (a one-file job's fields at the top level, a list
-    job's in `files[]`), or `hash_failed` when nothing could be read."""
+    """Hash the job's files and close its pending hashes, either way:
+    `hash_complete`, or `hash_failed` when nothing could be read. A one-file
+    job's fields are at the top level of one entry; a list job's rows are in
+    `files[]`, at most `ROWS_PER_ENTRY` an entry, each entry with the job's id.
+    `result_summary` is the job's file count, never its rows."""
     from sift_common.audit import AuditWriter
 
     started = _now()
     try:
         called = _called(key, paths)
         if isinstance(paths, str):
-            result = _one(paths, called[0])
-            files = [result]
+            files = [_one(paths, called[0])]
+            parts = files
         else:
             files = [_one(p, c) for p, c in zip(paths, called, strict=True)]
-            result = {"files": files}
+            parts = [{"files": files[i : i + ROWS_PER_ENTRY]}
+                     for i in range(0, max(len(files), 1), ROWS_PER_ENTRY)]  # fmt: skip
     finally:
         with _jobs_lock:
             _jobs.pop(key, None)
+    # decided for the job: an entry holding only failures still says the job hashed some
     tool = "hash_complete" if any("sha256" in f for f in files) else "hash_failed"
-    logged = AuditWriter("file-identity", audit_dir=str(Path(case_dir) / "audit")).log(
-        tool=tool,
-        params={"path": paths} if isinstance(paths, str) else {"files": len(paths)},
-        result_summary=result,
-        extra={
-            "job_id": job_id,
-            "requested_by": requested_by,
-            "started": started,
-            "finished": _now(),
-            **result,
-        },
-    )
-    if logged is None:
-        logger.warning("%s (%s) was not recorded", tool, job_id)
+    writer = AuditWriter("file-identity", audit_dir=str(Path(case_dir) / "audit"))
+    job = {"job_id": job_id, "requested_by": requested_by, "started": started,
+           "finished": _now()}  # fmt: skip
+    for part in parts:
+        logged = writer.log(
+            tool=tool,
+            params={"path": paths} if isinstance(paths, str) else {"files": len(paths)},
+            result_summary={"files": len(files)},
+            extra={**job, **part},
+        )
+        if logged is None:
+            logger.warning("%s (%s) was not recorded", tool, job_id)
 
 
 def _completed_rows(case_dir) -> dict[str, dict]:

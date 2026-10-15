@@ -846,3 +846,41 @@ def test_an_ambiguous_job_after_a_pending_one_still_makes_the_trace_ambiguous(c)
              job_id="hash-disagree", path=s2, sha256=h)  # fmt: skip
     t = pv.trace_file(pv.load_case(c.d), s2, sha(s2))
     assert t.grade == "AMBIGUOUS", t.as_dict()
+
+
+def test_a_job_closed_in_several_entries_links_each_of_its_files(
+    c, monkeypatch, tmp_path
+):
+    """The writer splits a large job's rows over entries under one job id: the
+    jobs index takes a file's row from whichever entry holds it."""
+    import json
+    import time
+
+    from sift_common import file_identity as fi
+
+    for var in ("VHIR_CASE_DIR", "VHIR_AUDIT_DIR", "VHIR_ACTIVE_CASE"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(fi, "ROWS_PER_ENTRY", 2)
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    files = [c.file(f"extractions/x1/s{n}.raw", f"sample number {n}") for n in range(5)]
+    job = fi.hash_files_for_call(files, case_dir=c.d, requested_by="t",
+                                 inline_limit=10).job_id  # fmt: skip
+    c.op("sift-mcp", "sift-tester-20261009-001", tool="run_command",
+         params={"command": ["7z", "x", z], "purpose": "p"},
+         input_files=[z], input_sha256s=[""], input_detection_method="parsed",
+         result_summary={"exit_code": 0, "output_files": files,
+                         "output_sha256s": [f"pending:{job}"] * len(files)})  # fmt: skip
+    log, deadline = c.d / "audit" / "file-identity.jsonl", time.monotonic() + 30
+    while time.monotonic() < deadline:
+        closing = [e for e in map(json.loads, log.read_text().splitlines())
+                   if e.get("job_id") == job] if log.exists() else []  # fmt: skip
+        if sum(len(e["files"]) for e in closing) == len(files):
+            break
+        time.sleep(0.05)
+    assert len(closing) == 3
+    case = pv.load_case(c.d)
+    for f in files:
+        t = pv.trace_file(case, f, sha(f))
+        assert t.grade == "FULL", t.as_dict()
