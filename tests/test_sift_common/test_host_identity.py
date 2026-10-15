@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import faulthandler
 import json
 import multiprocessing
 import os
 import time
+from pathlib import Path
 
 import pytest
 from sift_common import host_identity as hi
@@ -369,33 +371,98 @@ def test_v1_import_seeds_canonicals_from_the_stamped_host_id_and_flags_merges(ca
 
 
 def _append_worker(case_dir, tag, n, decide):
-    for i in range(n):
-        if decide:
-            hi.append_decision(
-                case_dir, {"action": "note", "args": {"i": i, "tag": tag}}, 0
+    # Diagnostics for the concurrency test: if this child is stuck at the 240s
+    # mark, faulthandler leaves its stack in diag/stack-<tag>.txt so the parent
+    # can tell a lock hang (blocked in flock) from plain slowness (in load()).
+    # On any exit, write how far we got and how long it took.
+    diag = Path(case_dir).parent / "diag"
+    stack_path = diag / f"stack-{tag}.txt"
+    sf = open(stack_path, "w")
+    faulthandler.dump_traceback_later(240, file=sf, exit=False)
+    t0 = time.monotonic()
+    done = 0
+    try:
+        for i in range(n):
+            if decide:
+                hi.append_decision(
+                    case_dir, {"action": "note", "args": {"i": i, "tag": tag}}, 0
+                )
+            else:
+                hi.append_observations(
+                    case_dir, [{"kind": "name", "unit": tag, "raw": f"H{i}"}]
+                )
+            done += 1
+    finally:
+        faulthandler.cancel_dump_traceback_later()
+        sf.close()
+        if stack_path.exists() and stack_path.stat().st_size == 0:
+            stack_path.unlink()
+        (diag / f"status-{tag}.json").write_text(
+            json.dumps(
+                {
+                    "tag": tag,
+                    "pid": os.getpid(),
+                    "done": done,
+                    "n": n,
+                    "elapsed": round(time.monotonic() - t0, 2),
+                }
             )
-        else:
-            hi.append_observations(
-                case_dir, [{"kind": "name", "unit": tag, "raw": f"H{i}"}]
-            )
+        )
 
 
 def test_concurrent_appends_lose_nothing(case):
+    diag = case.parent / "diag"
+    diag.mkdir(exist_ok=True)
+    tags = ("ingest-a", "ingest-b", "decide")
     ctx = multiprocessing.get_context("fork")
     procs = [
-        ctx.Process(target=_append_worker, args=(str(case), "ingest-a", 200, False)),
-        ctx.Process(target=_append_worker, args=(str(case), "ingest-b", 200, False)),
-        ctx.Process(target=_append_worker, args=(str(case), "decide", 200, True)),
+        ctx.Process(
+            target=_append_worker,
+            args=(str(case), "ingest-a", 200, False),
+            name="ingest-a",
+        ),
+        ctx.Process(
+            target=_append_worker,
+            args=(str(case), "ingest-b", 200, False),
+            name="ingest-b",
+        ),
+        ctx.Process(
+            target=_append_worker, args=(str(case), "decide", 200, True), name="decide"
+        ),
     ]
+
+    def _progress():
+        # Per-child append count + elapsed from each worker's status file, plus
+        # any stack left by a stuck child. Shown in every assert message.
+        parts = []
+        for tag in tags:
+            sp = diag / f"status-{tag}.json"
+            if sp.exists():
+                d = json.loads(sp.read_text())
+                parts.append(f"{tag}={d['done']}/{d['n']} in {d['elapsed']}s")
+            else:
+                parts.append(f"{tag}=no status (did not finish)")
+        stacks = sorted(str(s) for s in diag.glob("stack-*.txt"))
+        tail = f" | stacks: {stacks}" if stacks else ""
+        return "; ".join(parts) + tail
+
     for p in procs:
         p.start()
+    # Bounded join (not unbounded: a real deadlock must fail the test, not hang
+    # the suite). 300s is well above the loaded append time measured for this
+    # workload (~0.1s uncontended for 200; see BUGS.md 2026-10-15 re-fold entry).
     for p in procs:
-        p.join(60)
-        assert not p.is_alive(), f"{p.name} still running after 60s join"
-        assert p.exitcode == 0, f"{p.name} exited with {p.exitcode}"
+        p.join(300)
+    for p in procs:
+        assert not p.is_alive(), (
+            f"{p.name} still running after 300s join [{_progress()}]"
+        )
+        assert p.exitcode == 0, f"{p.name} exited with {p.exitcode} [{_progress()}]"
     obs = _lines(case / hi.OBSERVATIONS)
     dec = _lines(case / hi.DECISIONS)
-    assert len(obs) == 400 and len(dec) == 200
+    assert len(obs) == 400 and len(dec) == 200, (
+        f"obs={len(obs)} dec={len(dec)} [{_progress()}]"
+    )
     state = hi.load(case)
     assert len(state.names) == 400
 
