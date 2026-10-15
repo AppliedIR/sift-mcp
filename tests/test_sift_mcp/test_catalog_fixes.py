@@ -140,7 +140,17 @@ def test_the_hayabusa_entry_names_its_subcommand_and_no_wizard():
     td = get_tool_def("hayabusa")
     (recipe,) = [r for r in td.recipes if "json-timeline" in r["argv"]]
     assert "-w" in recipe["argv"]
-    assert "json-timeline -d" in td.description
+    assert "json-timeline -L -d" in td.description
+
+
+def test_the_hayabusa_3x_json_recipe_asks_for_one_record_per_line():
+    """Without -L, json-timeline writes multi-line JSON that no line-by-line
+    reader parses."""
+    td = get_tool_def("hayabusa")
+    (recipe,) = [r for r in td.recipes if "json-timeline" in r["argv"]]
+    argv = recipe["argv"]
+    assert argv[:3] == ["hayabusa", "json-timeline", "-L"]
+    assert argv[argv.index("-o") + 1] == "<output .jsonl>"
 
 
 # -- EZ tools: dotnet <Tool>.dll, each argument whole

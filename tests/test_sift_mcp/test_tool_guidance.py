@@ -580,6 +580,17 @@ def test_a_tool_installed_under_another_versions_name_is_found(
     assert entry["available"] is True
 
 
+def test_hayabusa_3_8_1_gets_the_3x_recipes(case, tools):
+    """SIFT's cast installs Hayabusa 3.8.1."""
+    (tools["versions"] / "hayabusa").write_text("3.8.1")
+    r = _call("get_tool_help", tool_name="hayabusa")
+    assert r["installed_version"] == "3.8.1"
+    assert [x["argv"][1] for x in r["recipes"]] == ["json-timeline", "csv-timeline"]
+    assert all("3.8.1" in x["checked_on"] for x in r["recipes"])
+    c = _call("check_tools", tool_names=["hayabusa"])["hayabusa"]
+    assert "outside_tested_ranges" not in c
+
+
 def test_a_runs_version_is_asked_of_the_binary_it_names(case, tools):
     """Both plaso installs on PATH: the run names log2timeline, so its
     version is that one's, not log2timeline.py's; the help shows both."""
