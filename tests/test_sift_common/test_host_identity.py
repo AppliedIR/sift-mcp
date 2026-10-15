@@ -6,6 +6,7 @@ import faulthandler
 import json
 import multiprocessing
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -413,8 +414,18 @@ def _append_worker(case_dir, tag, n, decide):
 def test_concurrent_appends_lose_nothing(case):
     diag = case.parent / "diag"
     diag.mkdir(exist_ok=True)
+    # Record the live threads at test start. A fork() worker inherits any lock
+    # these hold; if one is held at the fork, the child blocks forever. This
+    # dump identifies such a thread when the full suite leaves one live.
+    (diag / "threads-at-start.txt").write_text(
+        "\n".join(f"{t.name} daemon={t.daemon}" for t in threading.enumerate()) + "\n"
+    )
     tags = ("ingest-a", "ingest-b", "decide")
-    ctx = multiprocessing.get_context("fork")
+    # spawn, not fork: a spawned worker is a fresh interpreter with no inherited
+    # locks, matching production (host-decision writers are separate OS
+    # processes, never forks of a threaded parent). fork here could inherit a
+    # held lock from an earlier full-suite test and deadlock the child.
+    ctx = multiprocessing.get_context("spawn")
     procs = [
         ctx.Process(
             target=_append_worker,
