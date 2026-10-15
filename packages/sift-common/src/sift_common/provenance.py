@@ -279,24 +279,6 @@ def _registered(case: Case, real: str, sha256: str) -> Trace | None:
     return None
 
 
-def _in_folder(case: Case, real: str, sha256: str) -> Trace | None:
-    """FULL when the path is a folder inside a registered folder: to that
-    folder's root, with its manifest's hash. Tried after the recorded mounts, so
-    a folder on a mount inside a registered folder traces by that mount. Only
-    for an input recorded with no SHA-256, as a folder is: one recorded as a
-    file is traced as that file, whatever is at its path now."""
-    if sha256 or not os.path.isdir(real):
-        return None
-    for r in case.roots:
-        if r.get("kind") == "folder" and real.startswith(r["path"] + os.sep):
-            sha = r.get("manifest_sha256", "")
-            root = {"path": r["path"], "sha256": sha, "label": _label(r)}
-            to = {"path": r["path"], "sha256": sha}
-            frm = {"path": real, "sha256": sha256}
-            return Trace("FULL", root, [root], [_link("in-folder", frm, to)])
-    return None
-
-
 def _where(case: Case, record: dict, e=None):
     """A record's path on this box: wintools records its SIFT path relative to
     the case ('/' separators), never compared by its Windows path."""
@@ -425,8 +407,6 @@ def trace_file(
     """The registered evidence a file came from: the file is a registered root,
     or in a registered folder's manifest; or it was read through a recorded
     mount of a registered image (its st_dev matching, inside the mount's life);
-    or, under no recorded mount point, it's a folder inside a registered folder
-    (an input recorded with no SHA-256, as a folder is);
     or it's an earlier operation's recorded output at this path with this
     SHA-256, traced on through that operation's inputs ("earlier": before the
     reading entry, in time, then in the trail's order). A hash at another path
@@ -436,10 +416,8 @@ def trace_file(
     the trace's `break_["fix"]`, or its `reason` when it has no break."""
     real = realpath or os.path.realpath(path)
     sha = sha256 or ""
-    found = (
-        _registered(case, real, sha)
-        or _mount_link(case, real, sha, st_dev, mnt_id, _at, _seen)
-        or _in_folder(case, real, sha)
+    found = _registered(case, real, sha) or _mount_link(
+        case, real, sha, st_dev, mnt_id, _at, _seen
     )
     if found:
         return found

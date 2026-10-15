@@ -253,18 +253,34 @@ def test_an_input_that_is_the_registered_folder_itself_traces_to_the_folder(c):
     assert [link["method"] for link in t.links] == ["registered-path"]
 
 
-def test_a_run_on_a_folder_inside_a_registered_folder_traces_to_that_folder(c):
-    """EvtxECmd -d on a sub-folder of the registered folder."""
+def test_a_run_on_a_folder_inside_a_registered_folder_breaks_with_no_recorded_origin(c):
+    """EvtxECmd -d on a sub-folder of the registered folder. A folder input is
+    recorded with no SHA-256; without in-folder tracing it has no recorded
+    origin, as in 0.6.4.1."""
     c.file("evidence/working/rd01/triage/Security.evtx", "security evtx")
-    folder = c.register_folder(str(c.d / "evidence/working/rd01"))
+    c.register_folder(str(c.d / "evidence/working/rd01"))
     sub = str(c.d / "evidence/working/rd01/triage")
     c.run("sift-tester-20261009-001", ["EvtxECmd", "-d", sub], [sub], "4624\n")
     t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
-    assert t.grade == "FULL", t
-    assert t.root == {"path": folder["path"], "sha256": folder["manifest_sha256"],
-                      "label": "examiner-registered"}  # fmt: skip
-    assert "in-folder" in [link["method"] for link in t.links]
-    assert pv.trace_file(pv.load_case(c.d), sub).grade == "FULL"
+    assert t.grade == "BROKEN" and t.break_["kind"] == "no-recorded-origin", t
+    assert t.reason == "no recorded origin: made outside recorded tools"
+    assert "in-folder" not in [link["method"] for link in t.links]
+    assert pv.trace_file(pv.load_case(c.d), sub).grade == "BROKEN"
+
+
+def test_a_sub_folder_run_after_a_file_in_it_was_rewritten_is_not_full(c):
+    """The silent false FULL this revert removes: a registered folder, then a
+    file inside a sub-folder rewritten after registration, then a run on that
+    sub-folder. In-folder graded it FULL to the folder's manifest though the
+    read no longer matches; without in-folder the run is NOT FULL (0.6.4.1)."""
+    f = c.file("evidence/working/rd01/triage/Security.evtx", "security evtx")
+    c.register_folder(str(c.d / "evidence/working/rd01"))
+    with open(f, "w") as fh:
+        fh.write("rewritten after registration")
+    sub = str(c.d / "evidence/working/rd01/triage")
+    c.run("sift-tester-20261009-001", ["EvtxECmd", "-d", sub], [sub], "4624\n")
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
+    assert t.grade != "FULL", t
 
 
 def test_a_folder_outside_every_registered_folder_still_breaks(c):
@@ -333,7 +349,9 @@ def test_a_folder_on_an_unregistered_image_mounted_in_a_registered_folder_breaks
     _, (on_mount, plain) = _on_a_mount_in_the_folder(c, register_image=False)
     assert on_mount.grade == "BROKEN", on_mount
     assert "in-folder" not in [link["method"] for link in on_mount.links]
-    assert plain.grade == "FULL" and plain.root["path"].endswith("rd01"), plain
+    assert plain.grade == "BROKEN" and plain.break_["kind"] == "no-recorded-origin", (
+        plain
+    )
 
 
 def test_a_folder_on_a_registered_image_mounted_in_a_registered_folder_traces_to_it(c):
@@ -341,8 +359,9 @@ def test_a_folder_on_a_registered_image_mounted_in_a_registered_folder_traces_to
     assert on_mount.grade == "FULL" and on_mount.root["path"] == a, on_mount
     methods = [link["method"] for link in on_mount.links]
     assert "recorded-mount" in methods and "in-folder" not in methods
-    assert plain.grade == "FULL" and plain.root["path"].endswith("rd01"), plain
-    assert "in-folder" in [link["method"] for link in plain.links]
+    assert plain.grade == "BROKEN" and plain.break_["kind"] == "no-recorded-origin", (
+        plain
+    )
 
 
 def test_a_folder_under_a_mount_in_a_registered_folder_read_after_its_unmount_breaks(
@@ -357,7 +376,9 @@ def test_a_folder_under_a_mount_in_a_registered_folder_read_after_its_unmount_br
     assert on_mount.grade == "BROKEN", on_mount
     assert on_mount.break_["kind"] == "mount-mismatch", on_mount
     assert "in-folder" not in [link["method"] for link in on_mount.links]
-    assert plain.grade == "FULL" and plain.root["path"].endswith("rd01"), plain
+    assert plain.grade == "BROKEN" and plain.break_["kind"] == "no-recorded-origin", (
+        plain
+    )
 
 
 def test_vol_on_sample_two_traces_through_the_7z_extraction_to_the_7z(c):
