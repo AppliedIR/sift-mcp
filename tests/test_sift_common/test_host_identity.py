@@ -391,6 +391,8 @@ def test_concurrent_appends_lose_nothing(case):
         p.start()
     for p in procs:
         p.join(60)
+        assert not p.is_alive(), f"{p.name} still running after 60s join"
+        assert p.exitcode == 0, f"{p.name} exited with {p.exitcode}"
     obs = _lines(case / hi.OBSERVATIONS)
     dec = _lines(case / hi.DECISIONS)
     assert len(obs) == 400 and len(dec) == 200
