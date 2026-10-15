@@ -37,12 +37,19 @@ _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 
 def entry_sha256(line: bytes) -> str:
     """The SHA-256 of an audit entry's line, as written (without its newline)."""
-    return _entry_sha256(bytes(line))
+    line = bytes(line)
+    if len(line) > _CACHED_LINE_MAX:  # never kept: a few would pin GBs
+        return hashlib.sha256(line).hexdigest()
+    return _entry_sha256(line)
 
 
 # A gate over a folder names the same producing entry once per file, and its
-# line can be MBs: the last few are kept, so a big folder hashes it once.
-@functools.lru_cache(maxsize=8)
+# line can be MBs (about 400 bytes a file): the last 2 up to 64 MiB are kept,
+# so a big folder hashes it once. At most 2 x 64 MiB stays in memory.
+_CACHED_LINE_MAX = 64 << 20
+
+
+@functools.lru_cache(maxsize=2)
 def _entry_sha256(line: bytes) -> str:
     return hashlib.sha256(line).hexdigest()
 

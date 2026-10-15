@@ -63,7 +63,7 @@ def test_an_entry_line_hash_is_the_sha256_of_its_bytes():
     assert pv.entry_sha256(b'{"a": 1}') == hashlib.sha256(b'{"a": 1}').hexdigest()
 
 
-def test_a_kept_entry_hash_equals_a_fresh_one_and_only_8_are_kept():
+def test_a_kept_entry_hash_equals_a_fresh_one_and_only_2_are_kept():
     lines = [b'{"n": %d}' % i for i in range(20)] + [b"x" * (3 << 20)]
     pv._entry_sha256.cache_clear()
     cold = [pv.entry_sha256(line) for line in lines]
@@ -74,9 +74,46 @@ def test_a_kept_entry_hash_equals_a_fresh_one_and_only_8_are_kept():
         assert pv.entry_sha256(bytearray(line)) == want
         assert pv.entry_sha256(memoryview(line)) == want
     info = pv._entry_sha256.cache_info()
-    assert info.maxsize == 8 and info.currsize <= 8, info
+    assert info.maxsize == 2 and info.currsize <= 2, info
     # evicted by now, and hashed again
     assert pv.entry_sha256(lines[0]) == hashlib.sha256(lines[0]).hexdigest()
+
+
+def test_a_line_over_64_mib_hashes_right_and_is_never_kept():
+    pv._entry_sha256.cache_clear()
+    pv.entry_sha256(b'{"n": 1}')
+    over = b"y" * ((64 << 20) + 1)
+    assert pv.entry_sha256(over) == hashlib.sha256(over).hexdigest()
+    assert pv.entry_sha256(bytearray(over)) == hashlib.sha256(over).hexdigest()
+    del over
+    assert pv._entry_sha256.cache_info().currsize == 1
+    at = b"w" * (64 << 20)  # at the bound: kept
+    assert pv.entry_sha256(at) == hashlib.sha256(at).hexdigest()
+    assert pv._entry_sha256.cache_info().currsize == 2
+
+
+def _rss() -> int:
+    with open("/proc/self/status") as f:
+        return next(int(x.split()[1]) << 10 for x in f if x.startswith("VmRSS:"))
+
+
+@pytest.mark.skipif(not os.path.exists("/proc/self/status"), reason="reads VmRSS")
+@pytest.mark.parametrize("size", [60 << 20, 70 << 20])
+def test_lines_hashed_and_released_leave_at_most_128_mib(size):
+    """3 lines hashed one by one, then released: at most the last 2 under
+    64 MiB stay in memory, and none over it."""
+    pv._entry_sha256.cache_clear()
+    before = _rss()
+    for n in range(3):
+        line = bytes([0x61 + n]) * size
+        pv.entry_sha256(line)
+        del line
+    kept = _rss() - before
+    if size <= 64 << 20:
+        assert kept <= (128 + 16) << 20, kept >> 20  # 16 MiB slack for the heap
+    else:
+        assert kept <= 16 << 20, kept >> 20
+    pv._entry_sha256.cache_clear()
 
 
 def test_a_big_folder_of_logged_outputs_hashes_each_entry_line_once(c, monkeypatch):
