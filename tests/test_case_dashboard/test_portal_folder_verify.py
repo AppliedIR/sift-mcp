@@ -291,3 +291,27 @@ def test_a_large_file_is_pending_then_verified_from_its_recorded_hash(
     with open(f, "ab") as fh:
         fh.write(b"tampered")
     assert verify(portal, entry["path"]).json()["status"] == "failed"  # inline again
+
+
+def test_a_job_closed_in_several_entries_is_taken_whole(
+    portal, kape, large, monkeypatch
+):
+    """The writer splits a job's rows over entries under one job id: a verify
+    after the last one takes every member from them, reading none again."""
+    import time
+
+    monkeypatch.setattr(large, "ROWS_PER_ENTRY", 1)
+    first = verify(portal, kape["path"]).json()
+    (job,) = {r["job_id"] for r in first["not_ok"]}
+    log, deadline = portal.dir / "audit" / "file-identity.jsonl", time.monotonic() + 30
+    while time.monotonic() < deadline:
+        closing = [e for e in map(json.loads, log.read_text().splitlines())
+                   if e.get("job_id") == job] if log.exists() else []  # fmt: skip
+        if len(closing) == 2:
+            break
+        time.sleep(0.05)
+    assert [len(e["files"]) for e in closing] == [1, 1]
+    monkeypatch.setattr(
+        large, "hash_file", None
+    )  # taken from the job, never read again
+    assert verify(portal, kape["path"]).json()["status"] == "verified"
