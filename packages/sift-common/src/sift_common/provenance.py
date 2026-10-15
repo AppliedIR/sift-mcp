@@ -14,7 +14,6 @@ named) or BROKEN (with the kind of break, what's missing and how to fix it).
 from __future__ import annotations
 
 import codecs
-import functools
 import hashlib
 import json
 import os
@@ -37,21 +36,20 @@ _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 
 def entry_sha256(line: bytes) -> str:
     """The SHA-256 of an audit entry's line, as written (without its newline)."""
-    line = bytes(line)
-    if len(line) > _CACHED_LINE_MAX:  # never kept: a few would pin GBs
-        return hashlib.sha256(line).hexdigest()
-    return _entry_sha256(line)
+    return hashlib.sha256(bytes(line)).hexdigest()
 
 
-# A gate over a folder names the same producing entry once per file, and its
-# line can be MBs (about 400 bytes a file): the last 2 up to 64 MiB are kept,
-# so a big folder hashes it once. At most 2 x 64 MiB stays in memory.
-_CACHED_LINE_MAX = 64 << 20
-
-
-@functools.lru_cache(maxsize=2)
-def _entry_sha256(line: bytes) -> str:
-    return hashlib.sha256(line).hexdigest()
+def _line_sha256(case: Case | None, line: bytes) -> str:
+    """entry_sha256, once per line per case: a gate over a folder names the
+    same producing entries once per file, and their lines can be MBs. The case
+    already holds each line, so only the hashes are added, and they go with it."""
+    if case is None:
+        return entry_sha256(line)
+    seen = case.cache.setdefault("line_sha256", {})
+    got = seen.get(id(line))
+    if got is None or got[0] is not line:  # an id is reused only once its line is gone
+        got = seen[id(line)] = (line, entry_sha256(line))
+    return got[1]
 
 
 @dataclass
@@ -201,9 +199,9 @@ def _broken(kind: str, detail: str, fix: str = "", reason: str = "", links=()) -
                  break_={"kind": kind, "detail": detail, "fix": fix})  # fmt: skip
 
 
-def _link(method: str, frm: dict, to: dict, entry=None, line=b"") -> dict:
+def _link(method: str, frm: dict, to: dict, entry=None, line=b"", case=None) -> dict:
     return {"method": method, "audit_id": (entry or {}).get("audit_id", ""),
-            "entry_sha256": entry_sha256(line) if line else "", "from": frm, "to": to}  # fmt: skip
+            "entry_sha256": _line_sha256(case, line) if line else "", "from": frm, "to": to}  # fmt: skip
 
 
 def _manifest_rows(case: Case, folder: dict) -> list[dict]:
@@ -351,7 +349,7 @@ def _job(case: Case, real: str, job_id: str) -> tuple[str, Trace | dict]:
         return "", _broken("hash-pending", f"hash pending (job {job_id}): {real}",
                            "wait for the job to finish, then trace again")  # fmt: skip
     if len({(r.get("sha256"), r.get("error")) for _e, _l, r in closes}) > 1:
-        named = [{"audit_id": e.get("audit_id", ""), "entry_sha256": entry_sha256(line),
+        named = [{"audit_id": e.get("audit_id", ""), "entry_sha256": _line_sha256(case, line),
                   "path": real, "sha256": r.get("sha256", "")} for e, line, r in closes]  # fmt: skip
         return "", Trace("AMBIGUOUS", candidates=named, reason=f"job {job_id} was closed "
                          f"{len(named)} times for {real}, with different results")  # fmt: skip
@@ -361,7 +359,7 @@ def _job(case: Case, real: str, job_id: str) -> tuple[str, Trace | dict]:
     if row.get("sha256"):
         frm = {"path": real, "sha256": f"pending:{job_id}"}
         to = {"path": real, "sha256": row["sha256"]}
-        return row["sha256"], _link("recorded-id", frm, to, e, line)
+        return row["sha256"], _link("recorded-id", frm, to, e, line, case)
     why = f"hash of {real} failed (job {job_id}): {row.get('error', '')}"
     return "", _broken("hash-failed", why, "run the step again so the file is hashed")
 
@@ -400,7 +398,7 @@ def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
     if (
         len(matches) > 1
     ):  # more than one mount could have served the read: never the first
-        named = [{"audit_id": e.get("audit_id", ""), "entry_sha256": entry_sha256(line),
+        named = [{"audit_id": e.get("audit_id", ""), "entry_sha256": _line_sha256(case, line),
                   "path": p["realpath"], "image": e["mount"].get("image", "")}
                  for e, line, p in matches]  # fmt: skip
         return Trace("AMBIGUOUS", candidates=named, reason=f"{real} could have been read "
@@ -411,7 +409,7 @@ def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
         to = {"path": p["realpath"], "sha256": ""}
         trace = _trace_entry(case, e, line, seen, to)
         return _extend(trace, _link("recorded-mount", {"path": real, "sha256": sha}, to,
-                                    e, line))  # fmt: skip
+                                    e, line, case))  # fmt: skip
     why = (" (no read time recorded, so only a mount still live counts)"
            if at is None else "")  # fmt: skip
     return _broken("mount-mismatch", f"{real} is under a recorded mount point, but not "
@@ -472,7 +470,7 @@ def trace_file(
     if waiting is not None and waiting.grade == "AMBIGUOUS":
         return waiting  # an origin that can't be named isn't passed over for another
     if len(producers) > 1:  # never the last writer: each is named
-        named = [{"audit_id": e["audit_id"], "entry_sha256": entry_sha256(line),
+        named = [{"audit_id": e["audit_id"], "entry_sha256": _line_sha256(case, line),
                   "path": real, "sha256": h} for e, line, h, _j in producers]  # fmt: skip
         return Trace("AMBIGUOUS", candidates=named, reason=f"{real} is a recorded "
                      f"output of {len(named)} operations: " + ", ".join(
@@ -483,7 +481,7 @@ def trace_file(
         t = _trace_entry(case, e, line, _seen, to)
         for link in ([job_link] if job_link else []) + via:  # the jobs' hashes
             t = _extend(t, link)
-        return _extend(t, _link("hash+place", frm, to, e, line))
+        return _extend(t, _link("hash+place", frm, to, e, line, case))
     if waiting is not None:
         return waiting
     return _broken("no-recorded-origin", f"{real} (SHA-256 {sha or 'not recorded'}) "
@@ -504,7 +502,7 @@ def _one_entry(case: Case, audit_id: str) -> Trace | None:
     items = case.by_id.get(audit_id) or []
     if len(items) < 2:
         return None
-    named = [{"audit_id": audit_id, "entry_sha256": entry_sha256(line),
+    named = [{"audit_id": audit_id, "entry_sha256": _line_sha256(case, line),
               "tool": e.get("tool", "")} for e, line in items]  # fmt: skip
     return Trace("AMBIGUOUS", candidates=named,
                  reason=f"{audit_id} is on {len(items)} audit entries")  # fmt: skip
@@ -579,7 +577,7 @@ def _trace_entry(
                 "path": i["realpath"] or os.path.realpath(i["path"]),
                 "sha256": i["sha256"],
             }
-            t = Trace("DECLARED", t.root, t.roots, t.links + [_link("declared", f, f, e, line)],
+            t = Trace("DECLARED", t.root, t.roots, t.links + [_link("declared", f, f, e, line, case)],
                       reason=f"declared by the AI: {f['path']}, an input of {aid}")  # fmt: skip
         traces.append(t)
     rs = e.get("result_summary") if isinstance(e.get("result_summary"), dict) else {}
@@ -593,7 +591,9 @@ def _trace_entry(
     # an entry the AI declared (log_external_action) links as declared
     declared = e.get("declared") is True or e.get("tool") == "log_external_action"
     links = [link for t in traces for link in t.links]
-    links.append(_link("declared" if declared else "recorded-id", frm, to, e, line))
+    links.append(
+        _link("declared" if declared else "recorded-id", frm, to, e, line, case)
+    )
     worst = min(traces, key=lambda t: _WORST.index(t.grade))
     roots = list({r["path"]: r for t in traces for r in t.roots}.values())
     if worst.grade in ("BROKEN", "AMBIGUOUS"):
@@ -785,12 +785,12 @@ def _flat(record, prefix: str = "") -> list[tuple[str, str]]:
     return [(prefix.rstrip("."), _norm(text))]
 
 
-def _reference_link(e: dict, line: bytes) -> dict:
+def _reference_link(case: Case, e: dict, line: bytes) -> dict:
     """The link to the operation that looked reference data up."""
     ref = e.get("reference") if isinstance(e.get("reference"), dict) else {}
     resp = ref.get("response") if isinstance(ref.get("response"), dict) else {}
     link = _link("reference", {"path": "", "sha256": ""},
-                 {"path": resp.get("path", ""), "sha256": resp.get("sha256", "")}, e, line)  # fmt: skip
+                 {"path": resp.get("path", ""), "sha256": resp.get("sha256", "")}, e, line, case)  # fmt: skip
     link["reference"] = {"source": ref.get("source", ""),
                          "source_version": ref.get("source_version", "")}  # fmt: skip
     return link
@@ -799,7 +799,7 @@ def _reference_link(e: dict, line: bytes) -> dict:
 def _reference(case: Case, e: dict, line: bytes) -> Trace:
     """Reference data (threat intel, a triage baseline) links to the operation
     that looked it up; it never stands in for evidence."""
-    link = _reference_link(e, line)
+    link = _reference_link(case, e, line)
     ref = e.get("reference") if isinstance(e.get("reference"), dict) else {}
     why = f"reference data from {ref.get('source') or e.get('tool', '')}, not evidence"
     return Trace("BROKEN", links=[link], reason=why,
@@ -1108,7 +1108,7 @@ def _match_back(
                         return t
                     return Trace("AMBIGUOUS", t.root, t.roots, t.links,
                                  t.candidates + twice.candidates, None, twice.reason)  # fmt: skip
-                link = _reference_link(*found[0])
+                link = _reference_link(case, *found[0])
                 t.links.append(link)
                 ref = link["reference"]
                 notes.append(f"reference: {ref['source'] or found[0][0].get('tool', '')}, "
@@ -1168,6 +1168,7 @@ def _follow(case: Case, e: dict, line: bytes, follow: list) -> Trace:
             {"path": "", "sha256": ""},
             e,
             line,
+            case,
         )
         if doc is not None:
             link["document"] = {"_index": doc.get("_index", ""), "_id": doc.get("_id", ""),
