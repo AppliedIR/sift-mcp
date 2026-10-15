@@ -45,4 +45,4 @@ Parse, index, and query forensic evidence at scale via OpenSearch. **Use these M
 - **Query:** `idx_search`, `idx_count`, `idx_aggregate`, `idx_timeline`, `idx_field_values`, `idx_get_event`
 - **Overview:** `idx_case_summary`, `idx_status`, `idx_ingest_status`
 - **Enrich:** `idx_enrich_triage` (baseline), `idx_enrich_intel` (threat intel)
-- **Detect:** `idx_list_detections` (Hayabusa/Sigma alerts)
+- **Detect:** `idx_list_detections` (Hayabusa detection alerts: count and query)
