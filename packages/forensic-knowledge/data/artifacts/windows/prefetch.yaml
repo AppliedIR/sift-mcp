@@ -34,7 +34,7 @@ common_misinterpretations:
   - claim: "Prefetch is always enabled on Windows 10/11"
     correction: "Prefetch is off by default on Windows Server. In testing on Server 2025 it was off: EnablePrefetcher was absent and there were no .pf files. Check the EnablePrefetcher value and whether C:\\Windows\\Prefetch holds files."
   - claim: "The prefetch file name hash uniquely identifies the executable"
-    correction: "A .pf file is tied to the program's file name and full path, not to its contents. A different binary with the same name at the same path updates the same .pf. In testing, replacing a program with a different binary of the same name at the same path, then running it, updated the existing .pf and raised its run count to 2. So a .pf does not show that the binary was unchanged between runs. The same program run from two different paths gets two .pf files."
+    correction: "The hash incorporates the executable path and command-line hosting information. The same binary run from different paths generates different .pf files."
   - claim: "Prefetch proves the user who ran the program"
     correction: "Prefetch has no user attribution. Corroborate with UserAssist, BAM, or Security event logs for user context."
   - claim: "128 prefetch file limit means old data is always lost"

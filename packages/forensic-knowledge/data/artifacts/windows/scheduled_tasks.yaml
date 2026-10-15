@@ -48,9 +48,6 @@ corroborate_with:
   for_presence: [mft, usn_journal, registry_services]
   for_timeline: [event_logs_task_scheduler, event_logs_security]
 
-caveats:
-  - "Prefetch can have no file for programs a task started. In testing, tasks at the default priority 7 left no .pf. In testing, only tasks at priority 0 to 6 left a .pf."
-
 related_tools: [EvtxECmd, Hayabusa, RECmd]
 
 cross_mcp_checks:
