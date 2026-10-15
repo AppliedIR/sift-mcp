@@ -2410,6 +2410,13 @@ if [ -n "$OPENSEARCH_SNAPSHOTS_FAILED" ]; then
     INSTALL_ERRORS=$((INSTALL_ERRORS + 1))
 fi
 
+# SIFT tools too old for Valhuntir (Volatility 3, Hayabusa): a warning, not an install error.
+SIFT_TOOLS_WARNING=$(timeout 60 "$VENV_PYTHON" -m vhir_cli.sift_tools 2>/dev/null) || SIFT_TOOLS_WARNING=""
+if [[ -n "$SIFT_TOOLS_WARNING" ]]; then
+    echo ""
+    warn "$SIFT_TOOLS_WARNING"
+fi
+
 # =============================================================================
 # Data Maintenance
 # =============================================================================
