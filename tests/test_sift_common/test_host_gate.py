@@ -180,6 +180,33 @@ def test_a_unit_whose_only_artifact_name_is_not_a_host_still_waits_on_its_file_n
     assert held(case, u) == [("Arp", hg.REASON_AI)]
 
 
+def test_a_name_the_file_name_and_an_argument_both_gave_still_holds(case):
+    # only a name the file name alone gave is released
+    loc = "kansa/WKSTN05-Arp.tsv"
+    u = unit(
+        case,
+        loc,
+        [
+            ("WKSTN05", f"{loc} host column", "artifact"),
+            ("Arp", "WKSTN05-Arp.tsv file name", "file-name"),
+            ("Arp", "hostname argument", "argument"),
+        ],
+    )
+    confirm(case, hi.new_machine_key(), "WKSTN05", [(u, "WKSTN05")])
+    assert held(case, u) == [("Arp", hg.REASON_AI)]
+
+
+def test_a_confirmed_artifact_name_of_another_unit_does_not_release_this_one(case):
+    other = unit(case, "evidence/WKSTN05", [("WKSTN05", "SYSTEM", "artifact")])
+    u = unit(
+        case,
+        "kansa/WKSTN05-Arp.tsv",
+        [("Arp", "WKSTN05-Arp.tsv file name", "file-name")],
+    )
+    confirm(case, hi.new_machine_key(), "WKSTN05", [(other, "WKSTN05")])
+    assert held(case, u) == [("Arp", hg.REASON_AI)]
+
+
 def test_a_file_name_form_the_examiner_confirmed_resolves_as_today(case):
     u = unit(case, "kansa/WKSTN05-Arp.tsv", [("Arp", "file name", "file-name")])
     confirm(case, hi.new_machine_key(), "WKSTN05", [(u, "Arp")])

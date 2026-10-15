@@ -88,24 +88,43 @@ def unresolved(state: hi.HostState, units) -> list[dict]:
                 }
             )
             continue
-        # a name read from the unit's evidence, on a confirmed or started-now
-        # machine, says what the file name's host form (Kansa's module) guessed
-        named = any(
-            hi.ARTIFACT in _origins(state, p) and not _not_a_host(state, p)
-            and _resolved(state, p)
-            for p in rest
-        )  # fmt: skip
+        free = _released(state, rest)
         for p in rest:
-            if _resolved(state, p):
+            if _resolved(state, p) or p in free:
                 continue
             origins = _origins(state, p)
-            if named and origins == {_FILE_NAME}:
-                continue
             reason = REASON_AI if origins and origins <= _AI else REASON_UNCONFIRMED
             out.append(
                 {"unit": unit, "locator": locator, "raw": p[1], "reason": reason}
             )
     return out
+
+
+def released(state: hi.HostState) -> set:
+    """Every unit's host names that no longer hold it (`_released`)."""
+    by_unit: dict[str, list] = {}
+    for p in dict.fromkeys((*state.names, *state.bindings)):
+        if p in state.bindings or not _not_a_host(state, p):
+            by_unit.setdefault(p[0], []).append(p)
+    return {p for ps in by_unit.values() for p in _released(state, ps)}
+
+
+def _released(state: hi.HostState, pairs) -> set:
+    """Of one unit's names, those only the file name gave (Kansa's module)
+    once a name read from the unit's evidence is on a confirmed or
+    started-now machine: that name says what the file name guessed."""
+    named = any(
+        hi.ARTIFACT in _origins(state, p) and not _not_a_host(state, p)
+        and _resolved(state, p)
+        for p in pairs
+    )  # fmt: skip
+    if not named:
+        return set()
+    return {
+        p
+        for p in pairs
+        if _origins(state, p) == {_FILE_NAME} and not _resolved(state, p)
+    }
 
 
 def _not_a_host(state: hi.HostState, p) -> bool:
