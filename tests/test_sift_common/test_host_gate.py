@@ -110,6 +110,88 @@ def test_a_name_only_the_ai_gave_waits_and_says_so(case):
     assert entry["reason"] == "named only by the AI or an unregistered file"
 
 
+# -- a file name's host form (Tool-HOST): Kansa's module lands in it
+
+
+def kansa(case, module, host_origin="artifact"):
+    loc = f"kansa/WKSTN05-{module}.tsv"
+    return unit(
+        case,
+        loc,
+        [
+            ("WKSTN05", f"{loc} host column", host_origin),
+            (module, f"WKSTN05-{module}.tsv file name", "file-name"),
+        ],
+    )
+
+
+def held(case, *units):
+    return [(e["raw"], e["reason"]) for e in pending(case, *units)]
+
+
+def test_a_file_name_form_stops_holding_once_an_artifact_name_is_confirmed(case):
+    u = kansa(case, "Arp")
+    confirm(case, hi.new_machine_key(), "WKSTN05", [(u, "WKSTN05")])
+    assert held(case, u) == []
+
+
+def test_start_now_releases_a_unit_with_a_file_name_form_as_today(case):
+    # Start now binds every held name, the file name's form too
+    u = kansa(case, "Arp")
+    hg.record_wait(case, "run-1", [u])
+    hg.start_now(case, "run-1", "ex1")
+    assert held(case, u) == []
+
+
+def test_a_unit_named_only_by_its_file_name_still_waits(case):
+    u = unit(case, "kansa/WKSTN05-Arp.tsv", [("Arp", "file name", "file-name")])
+    assert held(case, u) == [("Arp", hg.REASON_AI)]
+
+
+def test_an_unconfirmed_artifact_name_holds_the_unit_on_both_names(case):
+    u = kansa(case, "Arp")
+    assert held(case, u) == [
+        ("WKSTN05", hg.REASON_UNCONFIRMED),
+        ("Arp", hg.REASON_AI),
+    ]
+
+
+@pytest.mark.parametrize("origin", ["argument", "ai", "unregistered"])
+def test_a_confirmed_name_the_ai_gave_does_not_release_the_file_name_form(case, origin):
+    u = kansa(case, "Arp", host_origin=origin)
+    confirm(case, hi.new_machine_key(), "WKSTN05", [(u, "WKSTN05")])
+    assert held(case, u) == [("Arp", hg.REASON_AI)]
+
+
+@pytest.mark.parametrize("with_key", [False, True])
+def test_a_unit_whose_only_artifact_name_is_not_a_host_still_waits_on_its_file_name(
+    case, with_key
+):
+    # with a key, the not-a-host name is bound to a confirmed machine of its own
+    u = kansa(case, "Arp")
+    args = {"pairs": [[u, "WKSTN05"]]}
+    if with_key:
+        args["key"] = hi.new_machine_key()
+    hi.append_decision(
+        case,
+        {"action": "not_a_host", "examiner": "ex1", "args": args},
+        hi.load(case).obs_offset,
+    )
+    assert held(case, u) == [("Arp", hg.REASON_AI)]
+
+
+def test_a_file_name_form_the_examiner_confirmed_resolves_as_today(case):
+    u = unit(case, "kansa/WKSTN05-Arp.tsv", [("Arp", "file name", "file-name")])
+    confirm(case, hi.new_machine_key(), "WKSTN05", [(u, "Arp")])
+    assert held(case, u) == []
+
+
+def test_a_file_name_form_marked_not_a_host_never_holds_as_today(case):
+    u = kansa(case, "Arp")
+    not_a_host(case, u, "Arp")
+    assert held(case, u) == [("WKSTN05", hg.REASON_UNCONFIRMED)]
+
+
 def test_a_unit_with_no_name_waits_and_says_so(case):
     u = hi.unit_key("evidence/x.csv")
     hi.append_observations(
