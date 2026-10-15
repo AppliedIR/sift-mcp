@@ -57,6 +57,7 @@ PASSED = [
     "mcp__sift-mcp__run_command",
     "mcp__opensearch-mcp__idx_search",
     "mcp__wintools-mcp__run_windows_command",
+    "mcp__wintools_mcp__get_windows_run",  # a long run's result, fetched by its id
     "mcp__forensic_mcp__get_findings",  # as Codex names it: the server's "-" made "_"
     "mcp__sift_mcp__run_command",
     "mcp__windows_triage_mcp__check_file",

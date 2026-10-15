@@ -2582,6 +2582,10 @@ var VHIR_SIGN = (function() {
       }
       html += '</div>';
     });
+    (plan.needs_decision || []).forEach(function(h) {
+      html += '<div class="commit-item">' + escapeHtml(h.id) + ' is linked to ' + escapeHtml(h.coupled_from) +
+        ', which was edited after the event was made from it. It was not signed. Decide it on its own in the Timeline tab.</div>';
+    });
     el('commitList').innerHTML = html;
     el('commitSummary').textContent = 'You are about to sign ' + plan.bodies.length +
       ' decision' + (plan.bodies.length === 1 ? '' : 's') + ' as ' + state.frozen.examiner + '. ' +

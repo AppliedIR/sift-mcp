@@ -4,8 +4,11 @@ browser, commit under the case lock. Nothing is written on any refusal."""
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import threading
 import time
+from pathlib import Path
 
 import pytest
 from case_dashboard import signing
@@ -13,6 +16,10 @@ from vhir_cli import credentials, keys, ledger
 from vhir_cli.ledger_verify import verify_case
 
 from .conftest import PASSWORD, enrol, entry, event, finding, reviewed
+
+PAGE = (
+    Path(__import__("case_dashboard").__file__).parent / "static" / "v2" / "index.html"
+)
 
 
 @pytest.fixture
@@ -365,6 +372,119 @@ def test_an_approval_cascades_to_its_auto_created_event(portal):
         {"id": "T-steve-001", "decision": "approve", "coupled_from": "F-steve-001"}]  # fmt: skip
     assert portal.item("T-steve-001")["status"] == "APPROVED"
     assert verify_case(portal.dir).exit_code == 0
+
+
+_HELD = [{"id": "T-steve-001", "coupled_from": "F-steve-001"}]
+
+
+def test_an_edited_finding_s_linked_event_is_left_for_its_own_decision(portal):
+    # the event was made from the finding's text: signed now, it would carry
+    # the text the edit replaced
+    enrol("steve")
+    portal.write(
+        "findings.json", [finding("F-steve-001", timeline_event_id="T-steve-001")]
+    )
+    portal.write("timeline.json", [event("T-steve-001", "F-steve-001")])
+    e = reviewed(portal, "F-steve-001", modifications={
+        "interpretation": {"original": "interp", "modified": "to SRV01"}})  # fmt: skip
+    plan = portal.plan([e]).json()
+    assert [b["item_id"] for b in plan["bodies"]] == ["F-steve-001"]
+    assert plan["needs_decision"] == _HELD
+    k = portal.login(plan).json()
+    r = portal.commit(plan, portal.sign(plan, k))
+    assert r.status_code == 200, r.text
+    assert r.json()["cascades"] == [] and r.json()["needs_decision"] == _HELD
+    assert [ln["item_id"] for ln in portal.chain()] == ["F-steve-001"]
+    assert portal.item("F-steve-001")["status"] == "APPROVED"
+    assert portal.item("T-steve-001")["status"] == "DRAFT"
+    assert verify_case(portal.dir).exit_code == 0
+
+
+def test_editing_an_approved_finding_signs_no_linked_event(portal):
+    enrol("steve")
+    portal.write(
+        "findings.json", [finding("F-steve-001", timeline_event_id="T-steve-001")]
+    )
+    portal.write("timeline.json", [])
+    assert portal.sign_all([reviewed(portal, "F-steve-001")]).status_code == 200
+    portal.write("timeline.json", [event("T-steve-001", "F-steve-001")])
+    e = reviewed(portal, "F-steve-001", "edit", modifications={
+        "interpretation": {"original": "interp", "modified": "to SRV01"}})  # fmt: skip
+    plan = portal.plan([e]).json()
+    assert [(b["item_id"], json.loads(b["body"])["decision"]) for b in plan["bodies"]] == [
+        ("F-steve-001", "edit")]  # fmt: skip
+    assert plan["needs_decision"] == _HELD
+    k = portal.login(plan).json()
+    r = portal.commit(plan, portal.sign(plan, k))
+    assert r.status_code == 200, r.text
+    assert portal.item("T-steve-001")["status"] == "DRAFT"
+    assert portal.item("F-steve-001")["interpretation"] == "to SRV01"
+    assert verify_case(portal.dir).exit_code == 0
+
+
+def test_a_finding_edited_in_an_earlier_signing_signs_no_linked_event(portal):
+    # the edit was signed on its own; the later approval has no edit of its own
+    enrol("steve")
+    portal.write(
+        "findings.json", [finding("F-steve-001", timeline_event_id="T-steve-001")]
+    )
+    portal.write("timeline.json", [event("T-steve-001", "F-steve-001")])
+    e = reviewed(portal, "F-steve-001", "edit", modifications={
+        "interpretation": {"original": "interp", "modified": "to SRV01"}})  # fmt: skip
+    assert portal.sign_all([e]).status_code == 200
+    assert portal.item("F-steve-001")["status"] == "DRAFT"
+    plan = portal.plan([reviewed(portal, "F-steve-001")]).json()
+    assert [b["item_id"] for b in plan["bodies"]] == ["F-steve-001"]
+    assert plan["needs_decision"] == _HELD
+    k = portal.login(plan).json()
+    r = portal.commit(plan, portal.sign(plan, k))
+    assert r.status_code == 200, r.text
+    assert portal.item("F-steve-001")["status"] == "APPROVED"
+    assert portal.item("T-steve-001")["status"] == "DRAFT"
+    assert verify_case(portal.dir).exit_code == 0
+
+
+def test_an_unedited_approval_still_cascades_with_nothing_held(portal):
+    enrol("steve")
+    portal.write(
+        "findings.json", [finding("F-steve-001", timeline_event_id="T-steve-001")]
+    )
+    portal.write("timeline.json", [event("T-steve-001", "F-steve-001")])
+    e = reviewed(portal, "F-steve-001", note="checked")
+    plan = portal.plan([e]).json()
+    assert [b["item_id"] for b in plan["bodies"]] == ["F-steve-001", "T-steve-001"]
+    assert plan["needs_decision"] == []
+
+
+def test_the_sign_dialog_names_each_event_left_for_its_own_decision():
+    node = shutil.which("node") or pytest.skip("node isn't installed")
+    page = PAGE.read_text()
+    start = page.index("  function render(plan) {")
+    fn = page[start : page.index("\n  }\n", start) + 5]
+    esc = page.index("function safeStr(")
+    held = [{"id": "T-steve-009", "coupled_from": "F-steve-010"},
+            {"id": "T-<b>x</b>", "coupled_from": "F-steve-011"}]  # fmt: skip
+    script = (
+        "var els = {}; function el(id) { return els[id] || (els[id] = "
+        "{checked: false, innerHTML: '', textContent: ''}); }"
+        "var document = {createElement: function() { return {set textContent(s) {"
+        " this.innerHTML = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')"
+        ".replace(/>/g, '&gt;'); }}; }};"  # as the browser's text node escapes
+        "var state = {frozen: {examiner: 'steve'}};\n"
+        + page[esc : page.index("\n}\n", page.index("function escapeHtml(")) + 3]
+        + fn
+        + "\nrender("
+        + json.dumps({"bodies": [], "needs_decision": held})
+        + ");"
+        + " process.stdout.write(el('commitList').innerHTML);"
+    )
+    r = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr[-500:]
+    assert (
+        "T-steve-009 is linked to F-steve-010, which was edited after the event was made "
+        "from it. It was not signed. Decide it on its own in the Timeline tab."
+    ) in r.stdout
+    assert "<b>" not in r.stdout and "T-&lt;b&gt;x" in r.stdout
 
 
 def test_one_id_selected_twice_is_refused(case):

@@ -49,9 +49,9 @@ ALLOWED = {  # Claude's skeptic's tools (agents/finding-skeptic/claude.md), by s
         "idx_timeline",
     },
     "wintools-mcp": {
-        "check_windows_tools", "get_share_info", "get_windows_tool_help", "list_kape_targets",
-        "list_missing_windows_tools", "list_windows_tools", "run_windows_command", "scan_tools",
-        "suggest_windows_tools",
+        "check_windows_tools", "get_share_info", "get_windows_run", "get_windows_tool_help",
+        "list_kape_targets", "list_missing_windows_tools", "list_windows_tools", "run_windows_command",
+        "scan_tools", "suggest_windows_tools",
     },
     "remnux-mcp": {
         "check_tools", "get_file_info", "get_tool_help", "list_files", "suggest_tools",
