@@ -113,6 +113,113 @@ def test_an_input_that_is_the_registered_folder_itself_traces_to_the_folder(c):
     assert [link["method"] for link in t.links] == ["registered-path"]
 
 
+def test_a_run_on_a_folder_inside_a_registered_folder_traces_to_that_folder(c):
+    """EvtxECmd -d on a sub-folder of the registered folder."""
+    c.file("evidence/working/rd01/triage/Security.evtx", "security evtx")
+    folder = c.register_folder(str(c.d / "evidence/working/rd01"))
+    sub = str(c.d / "evidence/working/rd01/triage")
+    c.run("sift-tester-20261009-001", ["EvtxECmd", "-d", sub], [sub], "4624\n")
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
+    assert t.grade == "FULL", t
+    assert t.root == {"path": folder["path"], "sha256": folder["manifest_sha256"],
+                      "label": "examiner-registered"}  # fmt: skip
+    assert "in-folder" in [link["method"] for link in t.links]
+    assert pv.trace_file(pv.load_case(c.d), sub).grade == "FULL"
+
+
+def test_a_folder_outside_every_registered_folder_still_breaks(c):
+    c.file("evidence/working/rd01/triage/Security.evtx", "security evtx")
+    c.file("evidence/working/rd02/triage/Security.evtx", "another evtx")
+    c.register_folder(str(c.d / "evidence/working/rd01"))
+    other = str(c.d / "evidence/working/rd02/triage")
+    rd01x = c.d / "evidence/working/rd01x"  # its name starts with the root's
+    rd01x.mkdir()
+    for p in (other, str(rd01x), str(c.d / "evidence/working")):
+        c.run("sift-tester-20261009-001", ["EvtxECmd", "-d", p], [p], "4624\n")
+        t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
+        assert t.grade == "BROKEN", (p, t)
+        assert pv.trace_file(pv.load_case(c.d), p).grade == "BROKEN", p
+        (c.d / "audit" / "sift-mcp.jsonl").unlink()
+
+
+def test_a_file_input_later_replaced_by_a_folder_still_breaks(c):
+    """A file read with its hash recorded, outside the folder's manifest (made
+    after the folder was registered), then removed and a folder made at its
+    path: the run is traced by the file it recorded, never as a folder."""
+    c.file("evidence/working/rd01/triage/Security.evtx", "security evtx")
+    c.register_folder(str(c.d / "evidence/working/rd01"))
+    late = c.file("evidence/working/rd01/late.evtx", "added after registration")
+    c.run("sift-tester-20261009-001", ["EvtxECmd", "-f", late], [late], "4624\n")
+    recorded = sha(late)
+    for state in ("a file", "a folder"):
+        if state == "a folder":
+            os.unlink(late)
+            os.mkdir(late)
+        case = pv.load_case(c.d)
+        t = pv.trace_op(case, "sift-tester-20261009-001")
+        assert t.grade == "BROKEN", (state, t)
+        assert "in-folder" not in [link["method"] for link in t.links], state
+        assert pv.trace_file(case, late, recorded).grade == "BROKEN", state
+
+
+def _on_a_mount_in_the_folder(c, register_image, unmounted=False):
+    """An image mounted at rd01/mnt after rd01 was registered (and unmounted
+    before the runs, if asked), and EvtxECmd -d run on a folder on that mount
+    and on a plain sub-folder of rd01."""
+    c.file("evidence/working/rd01/triage/Security.evtx", "security evtx")
+    c.register_folder(str(c.d / "evidence/working/rd01"))
+    a = c.file("evidence/imgA.raw", "image A")
+    if register_image:
+        c.register(a)
+    mp = str(c.d / "evidence/working/rd01/mnt")
+    logs = str(c.d / "evidence/working/rd01/mnt/Windows/System32/winevt/Logs")
+    c.file("evidence/working/rd01/mnt/Windows/System32/winevt/Logs/S.evtx", "in A")
+    c.mount("sift-tester-20261009-001", a, mp, 2049, ts="2026-10-09T01:00:00Z")
+    if unmounted:
+        c.umount("sift-tester-20261009-009", mp, 2049, ts="2026-10-09T01:30:00Z")
+    c.run("sift-tester-20261009-002", ["EvtxECmd", "-d", logs], [logs], "4624\n",
+          input_realpaths=[logs], input_st_devs=[2049],
+          ts="2026-10-09T02:00:00Z")  # fmt: skip
+    sub = str(c.d / "evidence/working/rd01/triage")
+    c.run("sift-tester-20261009-003", ["EvtxECmd", "-d", sub], [sub], "4624\n",
+          ts="2026-10-09T02:00:00Z")  # fmt: skip
+    case = pv.load_case(c.d)
+    return a, (pv.trace_op(case, "sift-tester-20261009-002"),
+               pv.trace_op(case, "sift-tester-20261009-003"))  # fmt: skip
+
+
+def test_a_folder_on_an_unregistered_image_mounted_in_a_registered_folder_breaks(c):
+    """The folder's manifest covers nothing on the mount: the mount decides."""
+    _, (on_mount, plain) = _on_a_mount_in_the_folder(c, register_image=False)
+    assert on_mount.grade == "BROKEN", on_mount
+    assert "in-folder" not in [link["method"] for link in on_mount.links]
+    assert plain.grade == "FULL" and plain.root["path"].endswith("rd01"), plain
+
+
+def test_a_folder_on_a_registered_image_mounted_in_a_registered_folder_traces_to_it(c):
+    a, (on_mount, plain) = _on_a_mount_in_the_folder(c, register_image=True)
+    assert on_mount.grade == "FULL" and on_mount.root["path"] == a, on_mount
+    methods = [link["method"] for link in on_mount.links]
+    assert "recorded-mount" in methods and "in-folder" not in methods
+    assert plain.grade == "FULL" and plain.root["path"].endswith("rd01"), plain
+    assert "in-folder" in [link["method"] for link in plain.links]
+
+
+def test_a_folder_under_a_mount_in_a_registered_folder_read_after_its_unmount_breaks(
+    c,
+):
+    """The image is registered, so only the unmount stands between this read and
+    a trace to it: the read is no longer on a live mount, and the folder's
+    manifest doesn't cover it either."""
+    _, (on_mount, plain) = _on_a_mount_in_the_folder(
+        c, register_image=True, unmounted=True
+    )
+    assert on_mount.grade == "BROKEN", on_mount
+    assert on_mount.break_["kind"] == "mount-mismatch", on_mount
+    assert "in-folder" not in [link["method"] for link in on_mount.links]
+    assert plain.grade == "FULL" and plain.root["path"].endswith("rd01"), plain
+
+
 def test_vol_on_sample_two_traces_through_the_7z_extraction_to_the_7z(c):
     z = c.file("evidence/mem.7z", "7z bytes")
     c.register(z)
