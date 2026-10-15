@@ -118,6 +118,8 @@ def test_the_claude_allowlist_names_only_mcp_tools_and_no_case_state_tool():
     assert [t for t in tools if FORBIDDEN.search(t.split("__")[2])] == []
     assert "mcp__sift-mcp__run_command" in tools
     assert "mcp__wintools-mcp__run_windows_command" in tools
+    # a long Windows run is fetched by its id
+    assert "mcp__wintools-mcp__get_windows_run" in tools
 
 
 @pytest.mark.parametrize("server", sorted(SOURCES))
