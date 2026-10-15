@@ -333,6 +333,7 @@ class Plan:
     bodies: list[dict] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     refused: list[dict] = field(default_factory=list)
+    held: list[dict] = field(default_factory=list)
 
     def texts(self) -> list[str]:
         return [ledger.canonical(b).decode("ascii") for b in self.bodies]
@@ -436,7 +437,9 @@ def make_plan(case_dir, case_id, entries, lists, examiner, public, now, head,
         for i, x in enumerate(lst):
             if isinstance(x, dict) and x.get("id") == d.id:
                 lst[i] = decide._spliced(x, d)
-    planned = decide.cascades(direct, lists["finding"], lists["timeline"], lists["ioc"])
+    planned, held = decide.split_cascades(
+        direct, lists["finding"], lists["timeline"], lists["ioc"]
+    )
     every = direct + planned
     items = [decide._find(lists, d.type, d.id) for d in every]
     decisions = [
@@ -454,7 +457,8 @@ def make_plan(case_dir, case_id, entries, lists, examiner, public, now, head,
         retired=credentials.retired_fingerprints(examiner), prior_chains=refs or None,
         case_uuid=load_case_meta(case_dir).get("case_uuid"),
     )  # fmt: skip
-    return Plan(every=every, items=items, bodies=bodies, notes=notes)
+    held = [{"id": e, "coupled_from": f} for e, f in held]
+    return Plan(every=every, items=items, bodies=bodies, notes=notes, held=held)
 
 
 def _selection(entries, include_others, stored, examiner):
@@ -676,6 +680,7 @@ async def post_commit_plan(request: Request) -> JSONResponse:
                 for b, text in zip(plan.bodies, ch["texts"], strict=True)
             ],  # fmt: skip
             "notes": plan.notes,
+            "needs_decision": plan.held,
         }
     )
 
@@ -950,6 +955,7 @@ async def post_commit(request: Request) -> JSONResponse:
         "head_line": f"{ledger.format_head(ch['case_id'], head)} | {examiner} {fp}",
         "fingerprint": fp,
         "notes": plan.notes,
+        "needs_decision": plan.held,
     }  # fmt: skip
     refs = (plan.bodies[0].get("prior_chains") or []) if plan.bodies else []
     result["references"] = [
