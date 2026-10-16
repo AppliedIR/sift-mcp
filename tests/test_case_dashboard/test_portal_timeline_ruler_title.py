@@ -16,7 +16,7 @@ PAGE = (
 )
 
 DESC = (
-    'svchost.exe started "x" & <y> by tdungan 日本,'
+    'svchost.exe started "x" & <y> by jdoe 日本,'
     " a description longer than sixty characters in total"
 )
 
