@@ -334,6 +334,16 @@ def test_a_template_name_confirmed_by_hand_as_an_alias_is_not_joined_late(case):
     assert _late(case, e, "EC2AMAZ-AAAA111") == ("EC2AMAZ-AAAA111", hi.NEW)
 
 
+def test_a_hand_alias_its_own_unit_spells_another_way_gets_a_machine(case):
+    # the same change from base, on purpose: the unit whose alias the examiner
+    # confirmed by hand reads it late spelled another way; it gets a new machine
+    a = disk(case, "evidence/dev01.E01@0", "DEV01", "EC2AMAZ-AAAA111")
+    _confirm(case, a, "DEV01", "DEV01", "EC2AMAZ-AAAA111")
+    assert on(case, a, "EC2AMAZ-AAAA111") == "DEV01"
+    assert _late(case, a, "ec2amaz-aaaa111") == ("ec2amaz-aaaa111", hi.NEW)
+    assert on(case, a, "EC2AMAZ-AAAA111") == "DEV01"
+
+
 def test_a_template_name_only_another_hosts_records_carry_stays_unbound(case):
     u = disk(case, "evidence/srv1.E01@0", "SRV1")
     hi.append_observations(case, [{"kind": "name", "unit": u, "raw": "WIN-OTHER99",
