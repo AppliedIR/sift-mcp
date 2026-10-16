@@ -108,3 +108,16 @@ def test_the_windows_code_comes_with_join_codes_one_liner_not_the_old_prompt(tmp
     assert WINDOWS_LINE in lines[i:]
     assert "The Windows installer will prompt for:" not in out
     assert "If the installer is not already running:" not in out
+
+
+def test_the_client_lines_start_with_copying_the_ca_to_the_client(tmp_path):
+    rc, out = _run(tmp_path, [OK])
+    assert rc == 0
+    lines = out.splitlines()
+    unix = [s for s in lines if ":.vhir/tls/ca-cert.pem ~/.vhir/tls/" in s]
+    assert len(unix) == 1 and "mkdir -p ~/.vhir/tls && scp " in unix[0], out
+    assert "@192.0.2.5:" in unix[0]
+    win = [s for s in lines if s.strip().startswith("Windows:") and "scp " in s]
+    assert len(win) == 1 and win[0].endswith(":.vhir/tls/ca-cert.pem ."), out
+    # before any installer line, which needs it
+    assert lines.index(unix[0]) < lines.index("  Linux (full support):")

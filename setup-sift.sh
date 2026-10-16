@@ -2250,6 +2250,12 @@ if $REMOTE_MODE; then
             echo ""
             echo -e "${BOLD}Remote client setup${NC} (run on the machine where your LLM client runs):"
             echo ""
+            # Codex and Claude Code trust the gateway's self-signed CA only from a copy on the client
+            echo "  First copy this SIFT's CA certificate there, so your LLM client trusts the gateway:"
+            echo "    Linux, macOS: mkdir -p ~/.vhir/tls && scp $(whoami)@$HOST_IP:.vhir/tls/ca-cert.pem ~/.vhir/tls/"
+            echo "    Windows:      scp $(whoami)@$HOST_IP:.vhir/tls/ca-cert.pem ."
+            echo "                  (the installer then says how your LLM client uses it)"
+            echo ""
             echo "  Linux (full support):"
             echo "    curl -fsSL https://raw.githubusercontent.com/AppliedIR/Valhuntir/main/setup-client-linux.sh \\"
             echo "      | bash -s -- --sift=$GW_URL --code=$JOIN_CODE"
