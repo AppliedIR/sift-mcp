@@ -10,7 +10,7 @@ from __future__ import annotations
 import inspect
 
 import pytest
-from report_mcp.server import _extract_all_iocs
+from report_mcp.server import _TEXT_ONLY, _extract_all_iocs
 from sift_common import defang
 
 SAMPLE = (
@@ -32,21 +32,25 @@ def test_the_report_reads_a_defanged_sample_as_its_live_indicators():
     got = _extract_all_iocs(
         [{"id": "F-1", "observation": SAMPLE, "interpretation": ""}]
     )
-    assert {i["value"] for i in got["Domain"]} == {"evil.com", "bad.example.com"}
-    assert {i["value"] for i in got["IPv4"]} == {"185.220.101.45"}
+    # named only in the text, so listed in the text-only group
+    assert list(got) == [_TEXT_ONLY]
+    assert [i["value"] for i in got[_TEXT_ONLY]] == [
+        "185.220.101.45",
+        "bad.example.com",
+        "evil.com",
+    ]
 
 
 @pytest.mark.parametrize(
-    ("text", "kind", "value"),
+    ("text", "value"),
     [
-        ("C2 at hxxp://hxxp[.]example[.]com", "Domain", "hxxp.example.com"),
-        (r"dropped C:\Tools\hxxp\payload.exe", "File", r"C:\Tools\hxxp\payload.exe"),
+        ("C2 at hxxp://hxxp[.]example[.]com", "hxxp.example.com"),
+        (r"dropped C:\Tools\hxxp\payload.exe", r"C:\Tools\hxxp\payload.exe"),
     ],
 )
-def test_the_report_refangs_hxxp_only_as_a_scheme(text, kind, value):
+def test_the_report_refangs_hxxp_only_as_a_scheme(text, value):
     got = _extract_all_iocs([{"id": "F-1", "observation": text, "interpretation": ""}])
-    assert value in {i["value"] for i in got[kind]}
-    assert not any("http" in i["value"] for i in got[kind])
+    assert [i["value"] for i in got[_TEXT_ONLY]] == [value]
 
 
 def test_vhir_refangs_by_the_same_notation_list():
