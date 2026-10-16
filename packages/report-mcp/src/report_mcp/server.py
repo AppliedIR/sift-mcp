@@ -21,11 +21,14 @@ from sift_common.host_identity import HostLogError, update_case_meta
 from sift_common.instructions import REPORT_MCP as _INSTRUCTIONS
 from sift_common.oplog import setup_logging
 from vhir_cli.case_io import (
+    _is_ipv4,
+    _refang_ioc,
     load_case_meta,
     load_findings,
     load_iocs,
     load_timeline,
     load_todos,
+    normalize_ioc,
 )
 from vhir_cli.commands.evidence import list_evidence_data
 from vhir_cli.ledger_verify import approved_view, verification_block, verification_json
@@ -296,71 +299,204 @@ def _strip_finding(finding: dict) -> dict:
     return {k: v for k, v in finding.items() if k not in STRIPPED_FINDING_FIELDS}
 
 
+# How a stored IOC type is labelled; any other type is shown as stored. The
+# same table, patterns and rules as vhir-cli's ioc_groups (`vhir review
+# --iocs`, `vhir report`): every view lists a case's IOCs alike.
+_IOC_LABELS = {
+    "ipv4-addr": "IPv4",
+    "ipv4": "IPv4",
+    "ip": "IPv4",
+    "ipv6-addr": "IPv6",
+    "ipv6": "IPv6",
+    "domain-name": "Domain",
+    "domain": "Domain",
+    "url": "URL",
+    "email-addr": "Email",
+    "email": "Email",
+    "file:path": "File",
+    "file-path": "File",
+    "file": "File",
+    "file:hash:sha256": "SHA256",
+    "sha256": "SHA256",
+    "file:hash:sha1": "SHA1",
+    "sha1": "SHA1",
+    "file:hash:md5": "MD5",
+    "md5": "MD5",
+    "unknown": "Unknown",
+}
+# The values the findings name that no IOC record of the case holds
+_TEXT_ONLY = "Found in text, not recorded"
+_TEXT_IPV4 = r"\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b"
+# The patterns a finding's text is searched with, in this order
+_IOC_PATTERNS = (
+    ("IPv4", _TEXT_IPV4),
+    ("SHA256", r"\b[a-fA-F0-9]{64}\b"),
+    ("SHA1", r"(?<![a-fA-F0-9])[a-fA-F0-9]{40}(?![a-fA-F0-9])"),
+    ("MD5", r"(?<![a-fA-F0-9])[a-fA-F0-9]{32}(?![a-fA-F0-9])"),
+    ("File", r"[A-Z]:\\(?:[^\s,;]+)"),
+    (
+        "Domain",
+        r"\b(?:[a-zA-Z0-9-]+\.)+(?:com|net|org|io|ru|cn|info|biz|xyz|top|cc|tk)\b",
+    ),
+)
+
+
+def _ioc_key(value: str, type_=None) -> str:
+    """The text two values are compared by: the key forensic-mcp records an
+    IOC under. The value is refanged, an IPv4 address loses its :port (typed
+    "ipv4-addr", or untyped and read as IPv4), then normalised."""
+    v = _refang_ioc(value.strip())
+    if type_ == "ipv4-addr" if type_ else _is_ipv4(v):
+        v = re.sub(r":\d{1,5}$", "", v)
+    return normalize_ioc(v)
+
+
+def _sentence_end(value: str) -> str:
+    """The value without the punctuation the sentence around it ends with: a
+    trailing . , ; : " or ', and a ) with no ( to close."""
+    while value and (
+        value[-1] in ".,;:\"'"
+        or (value[-1] == ")" and value.count(")") > value.count("("))
+    ):
+        value = value[:-1]
+    return value
+
+
+def _text_iocs(text: str) -> list[tuple[str, str]]:
+    """(label, value) for each IOC the text names, by the patterns in order.
+    Defanged indicators are read live; a hash or domain is lowercased, a path
+    loses the punctuation that ends its sentence, and a 0., 127. or 255.
+    address is left out."""
+    text = refang(text)  # every pattern matches the live form only
+    found = []
+    for label, pattern in _IOC_PATTERNS:
+        for v in re.findall(pattern, text):
+            if label == "IPv4":
+                if not v.startswith(("0.", "127.", "255.")):
+                    found.append((label, v))
+            elif label == "File":
+                found.append((label, _sentence_end(v)))
+            else:
+                found.append((label, v.lower()))
+    return found
+
+
+def _no_type(t) -> bool:
+    return t is None or (isinstance(t, str) and not t.strip())
+
+
+def _ioc_label(t) -> str:
+    if isinstance(t, str):
+        return _IOC_LABELS.get(t.strip().lower(), t)
+    return str(t)
+
+
+def _ioc_items(iocs):
+    """(type, value) for each value a finding's iocs field holds: a list of
+    strings and {"value", "type"} dicts, or a {type: values} dict. A value
+    under a {type: values} key has no type: forensic-mcp flattens that form
+    to plain values before it keys them."""
+    if isinstance(iocs, dict):
+        for values in iocs.values():
+            for v in values if isinstance(values, list) else [values]:
+                yield None, v
+    elif isinstance(iocs, list):
+        for i in iocs:
+            if isinstance(i, str):
+                yield None, i
+            elif isinstance(i, dict):
+                yield i.get("type"), i.get("value")
+
+
+def _ioc_value(v) -> str | None:
+    """A stored value as text; None when there is none to list."""
+    if v is None:
+        return None
+    v = v if isinstance(v, str) else str(v)
+    return v if v.strip() else None
+
+
+def _record_key(record) -> str | None:
+    """The key of an IOC record's value; None when it has no value."""
+    if not isinstance(record, dict):
+        return None
+    if (value := _ioc_value(record.get("value"))) is None:
+        return None
+    t = record.get("type")
+    return _ioc_key(value, None if _no_type(t) else t)
+
+
+def _ioc_records(case_dir: Path) -> list:
+    """Every IOC record of the case (iocs.json), whatever its status: none
+    when the file can't be read as a list."""
+    try:
+        records = load_iocs(case_dir)
+    except (OSError, ValueError) as e:
+        logger.warning("IOC records not read: %s", e)
+        return []
+    return records if isinstance(records, list) else []
+
+
 def _extract_all_iocs(
-    findings: list[dict],
+    findings: list[dict], records: list | None = None, all_records: list | None = None
 ) -> dict[str, list[dict]]:
-    """Extract IOCs from findings with cross-references to source finding IDs.
+    """The IOCs of the report, under one label each, with the findings that
+    name them: {label: [{value, source_findings: [ids]}]}.
 
-    Returns {type: [{value, source_findings: [ids]}]}.
-    """
-    # Collect: (type, value) -> set of finding IDs
-    collected: dict[tuple[str, str], set[str]] = {}
-
+    The listing is the IOC records given (`records`: the approved ones), each
+    under its type's label. A record with no type (empty or null) is labelled
+    by the text pattern that matches all of its value, else "Unknown"; a type
+    that isn't a string is shown as str(type). Then one group of its own,
+    last: the values the findings name, in their `iocs` or their text, that no
+    IOC record of the case holds (`all_records`, whatever their status;
+    `records` when not given), each once, as first written. Two values are the
+    same IOC when they key alike, as forensic-mcp keys an IOC. A value's source
+    findings are the findings that name it. Labels and values are sorted."""
+    findings = [f for f in findings or [] if isinstance(f, dict)]
+    named: list[tuple[str, str, str]] = []  # (key, as written, finding id)
     for f in findings:
-        fid = f.get("id", "")
+        for t, value in _ioc_items(f.get("iocs")):
+            if (value := _ioc_value(value)) is not None:
+                key = _ioc_key(value, None if _no_type(t) else t)
+                named.append((key, value, str(f.get("id", ""))))
+    for f in findings:
+        text = f"{f.get('observation', '')} {f.get('interpretation', '')}"
+        for _, value in _text_iocs(text):
+            named.append((_ioc_key(value), value, str(f.get("id", ""))))
+    sources: dict[str, set[str]] = {}
+    for key, _, fid in named:
+        sources.setdefault(key, set()).add(fid)
 
-        # Structured IOC field
-        iocs_field = f.get("iocs")
-        if isinstance(iocs_field, dict):
-            for ioc_type, values in iocs_field.items():
-                if isinstance(values, list):
-                    for v in values:
-                        key = (ioc_type, str(v))
-                        collected.setdefault(key, set()).add(fid)
-                else:
-                    key = (ioc_type, str(values))
-                    collected.setdefault(key, set()).add(fid)
-        elif isinstance(iocs_field, list):
-            for ioc in iocs_field:
-                if isinstance(ioc, dict):
-                    ioc_type = ioc.get("type", "Unknown")
-                    ioc_value = str(ioc.get("value", ""))
-                    collected.setdefault((ioc_type, ioc_value), set()).add(fid)
-                elif isinstance(ioc, str) and ioc.strip():
-                    collected.setdefault(("Unknown", ioc.strip()), set()).add(fid)
+    def entry(key: str, value: str) -> dict:
+        return {
+            "value": value,
+            "source_findings": sorted(sources.get(key, set()) - {""}),
+        }
 
-        # Text extraction from observation + interpretation (findings use these, not description)
-        text = f"{f.get('observation', '')} {f.get('interpretation', '')} {f.get('description', '')}"
-        text = refang(text)  # every pattern below matches the live form only
-        ipv4_pattern = (
-            r"\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}"
-            r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b"
-        )
-        for ip in re.findall(ipv4_pattern, text):
-            if not ip.startswith(("0.", "127.", "255.")):
-                collected.setdefault(("IPv4", ip), set()).add(fid)
-        for h in re.findall(r"\b[a-fA-F0-9]{64}\b", text):
-            collected.setdefault(("SHA256", h.lower()), set()).add(fid)
-        for h in re.findall(r"(?<![a-fA-F0-9])[a-fA-F0-9]{40}(?![a-fA-F0-9])", text):
-            collected.setdefault(("SHA1", h.lower()), set()).add(fid)
-        for h in re.findall(r"(?<![a-fA-F0-9])[a-fA-F0-9]{32}(?![a-fA-F0-9])", text):
-            collected.setdefault(("MD5", h.lower()), set()).add(fid)
-        for fp in re.findall(r"[A-Z]:\\(?:[^\s,;]+)", text):
-            collected.setdefault(("File", fp), set()).add(fid)
-        for d in re.findall(
-            r"\b(?:[a-zA-Z0-9-]+\.)+(?:com|net|org|io|ru|cn|info|biz|xyz|top|cc|tk)\b",
-            text,
-        ):
-            collected.setdefault(("Domain", d.lower()), set()).add(fid)
+    groups: dict[str, list[dict]] = {}
+    for r in records or []:
+        if (key := _record_key(r)) is None:
+            continue
+        value, t = _ioc_value(r["value"]), r.get("type")
+        if _no_type(t):
+            v = value.strip()
+            t = next((lb for lb, p in _IOC_PATTERNS if re.fullmatch(p, v)), "Unknown")
+        groups.setdefault(_ioc_label(t), []).append(entry(key, value))
 
-    # Group by type
-    by_type: dict[str, list[dict]] = {}
-    for (ioc_type, value), fids in sorted(collected.items()):
-        by_type.setdefault(ioc_type, []).append(
-            {"value": value, "source_findings": sorted(fids)}
-        )
-
-    return by_type
+    recorded = {
+        _record_key(r) for r in (records if all_records is None else all_records) or []
+    }
+    not_recorded: dict[str, str] = {}
+    for key, value, _ in named:
+        if key and key not in recorded:
+            not_recorded.setdefault(key, value)
+    found_in_text = groups.pop(_TEXT_ONLY, [])
+    found_in_text += [entry(k, v) for k, v in not_recorded.items()]
+    by_value = lambda e: e["value"]  # noqa: E731
+    out = {label: sorted(groups[label], key=by_value) for label in sorted(groups)}
+    if found_in_text:
+        out[_TEXT_ONLY] = sorted(found_in_text, key=by_value)
+    return out
 
 
 _IPV4 = re.compile(
@@ -478,7 +614,9 @@ def _defang_iocs(text: str, iocs: list[str]) -> str:
 def _build_mitre_mapping(findings: list[dict]) -> dict[str, dict]:
     """Build MITRE ATT&CK mapping from findings.
 
-    Returns {technique_id: {name, findings: [ids]}}.
+    Returns {technique_id: {name, findings: [ids]}}. A technique stored as its
+    ID alone (forensic-mcp's mitre_ids) has no name: "name" is left out until
+    a finding gives one, never shown empty.
     """
     mapping: dict[str, dict] = {}
 
@@ -499,11 +637,11 @@ def _build_mitre_mapping(findings: list[dict]) -> dict[str, dict]:
                     continue
                 if tid:
                     if tid not in mapping:
-                        mapping[tid] = {"name": name, "findings": []}
+                        mapping[tid] = {"findings": []}
                     if fid and fid not in mapping[tid]["findings"]:
                         mapping[tid]["findings"].append(fid)
-                    if name and not mapping[tid]["name"]:
-                        mapping[tid]["name"] = name
+                    if name and not mapping[tid].get("name"):
+                        mapping[tid] = {"name": name, **mapping[tid]}
 
     return mapping
 
@@ -658,7 +796,7 @@ def _generate(
         stripped_findings.append(out)
 
     # IOC aggregation
-    iocs = _extract_all_iocs(approved_findings)
+    iocs = _extract_all_iocs(approved_findings, view["iocs"], _ioc_records(case_dir))
 
     # MITRE mapping
     mitre = _build_mitre_mapping(approved_findings)
