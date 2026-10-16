@@ -1980,7 +1980,7 @@ function showToast(msg, type) {
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(function() { t.classList.add('show'); }, 10);
-  setTimeout(function() { t.remove(); }, 2500);
+  setTimeout(function() { t.remove(); }, type === 'error' ? 10000 : 2500);
 }
 
 /* === Error banner === */

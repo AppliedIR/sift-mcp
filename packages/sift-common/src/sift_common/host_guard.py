@@ -122,7 +122,11 @@ def unit_flag(state: hi.HostState, unit: str) -> str:
     from sift_common import host_proposal as hp
 
     ps, own, _ = hp._sides(state, unit)
-    if any(hp.name_flags(p[1]) for p in own if not ps[p].ai_only):
+    if any(
+        hp.name_flags(p[1]) and not hp.generic_only(p[1])
+        for p in own
+        if not ps[p].ai_only
+    ):
         return "an unusual or non-host name"
     hinted = {(h.get("unit"), h.get("raw")) for h in state.hints}
     if any(p in hinted for p in own):

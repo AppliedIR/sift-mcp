@@ -399,6 +399,15 @@ def _confirm_items(state: hi.HostState, args: dict) -> tuple[list[dict], bool]:
             owner = state.canonical_owner(canonical)
             if owner is not None:
                 in_use[owner.id] = owner
+        elif not in_use:  # a typed name one confirmed machine has: it joins
+            same = [
+                m
+                for m in state.machines.values()
+                if m.state == hi.CONFIRMED
+                and hi.spelling(m.canonical) == hi.spelling(canonical)
+            ]
+            if len(same) == 1:
+                in_use[same[0].id] = same[0]
         if not pairs and not in_use:
             raise _Refused(400, "nothing to confirm")
         # One confirmation is all or nothing: a name or machine in two groups
