@@ -6,7 +6,9 @@
 # audit entry per write_stdin call it hasn't recorded yet, to the active
 # case's claude-code.jsonl: "client": "codex", "event": "write_stdin", the
 # text as "command" (its first 2000 characters, with its length and sha256
-# when longer), and its transcript line. The next run starts after the
+# when longer), and its transcript line. In code mode (Codex 0.163+) the
+# call is a script run by the exec tool: the whole script is the command,
+# marked "raw_input": true. The next run starts after the
 # highest line recorded for that session in any case: a per-session cursor in
 # ~/.vhir/codex-stdin/, so input already recorded in one case is never
 # recorded again in the case made active after it. With no active case it
@@ -61,13 +63,19 @@ try:
     out = []
     with open(transcript) as f:
         for n, ln in enumerate(f, 1):
-            if n <= done or '"write_stdin"' not in ln:
+            if n <= done or "write_stdin" not in ln:
                 continue
             try:
                 p = json.loads(ln).get("payload") or {}
-                if p.get("type") != "function_call" or p.get("name") != "write_stdin":
+                # code mode (Codex 0.163+): a script that calls tools.write_stdin,
+                # recorded as sent since the text it types is built by the script
+                raw = p.get("type") == "custom_tool_call"
+                if raw and "write_stdin" in str(p.get("input", "")):
+                    chars = str(p.get("input", ""))
+                elif p.get("type") == "function_call" and p.get("name") == "write_stdin":
+                    chars = str(json.loads(p.get("arguments") or "{}").get("chars", ""))
+                else:
                     continue
-                chars = str(json.loads(p.get("arguments") or "{}").get("chars", ""))
             except (ValueError, AttributeError):
                 continue
             hooks += 1
@@ -88,6 +96,8 @@ try:
                 entry["command_truncated"] = True
                 entry["command_length"] = len(chars)
                 entry["command_sha256"] = hashlib.sha256(chars.encode()).hexdigest()
+            if raw:
+                entry["raw_input"] = True
             if outside:
                 entry["outside_case"] = True
             out.append(json.dumps(entry))

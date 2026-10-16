@@ -176,14 +176,20 @@ def _folder_hashes(case_dir, paths: list[str]) -> tuple[dict[str, str], str, dic
     return hashes, batch.job_id, errors
 
 
-def _validate_str_length(value: str | None, field: str, max_len: int) -> None:
-    """Reject strings exceeding max_len, containing null bytes, or path traversal."""
+def _validate_str_length(
+    value: str | None, field: str, max_len: int, *, free_text: bool = False
+) -> None:
+    """Reject strings exceeding max_len, containing null bytes, or path traversal.
+
+    free_text: the field is prose or a command line that is stored, never
+    used as a path, so ".." in it ("then prefetch...", "cd ..") is kept.
+    """
     if value is not None and isinstance(value, str):
         if len(value) > max_len:
             raise ValueError(f"{field} exceeds maximum length of {max_len} characters")
         if "\x00" in value:
             raise ValueError(f"{field} contains invalid null byte")
-        if ".." in value:
+        if ".." in value and not free_text:
             raise ValueError(f"{field} contains invalid path traversal")
 
 
@@ -274,7 +280,7 @@ def create_server() -> FastMCP:
         """
         try:
             _validate_str_length(name, "name", _MAX_NAME)
-            _validate_str_length(description, "description", _MAX_TEXT)
+            _validate_str_length(description, "description", _MAX_TEXT, free_text=True)
             _validate_str_length(cases_dir, "cases_dir", _MAX_NAME)
             if case_id:
                 _validate_str_length(case_id, "case_id", 64)
@@ -466,7 +472,7 @@ def create_server() -> FastMCP:
         operation's output) are refused: register the original they came from.
         """
         try:
-            _validate_str_length(description, "description", _MAX_TEXT)
+            _validate_str_length(description, "description", _MAX_TEXT, free_text=True)
             case_dir = _resolve_case_dir()
             examiner = resolve_examiner()
             result = register_evidence_data(
@@ -632,9 +638,9 @@ def create_server() -> FastMCP:
         Auto-committed, no approval needed. Note: MCP tool calls are
         already captured by the automatic audit trail."""
         try:
-            _validate_str_length(description, "description", _MAX_TEXT)
+            _validate_str_length(description, "description", _MAX_TEXT, free_text=True)
             _validate_str_length(tool, "tool", _MAX_SHORT)
-            _validate_str_length(command, "command", _MAX_TEXT)
+            _validate_str_length(command, "command", _MAX_TEXT, free_text=True)
             _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
             case_dir = _resolve_case_dir()
             examiner = analyst_override or resolve_examiner()
@@ -681,7 +687,7 @@ def create_server() -> FastMCP:
         needed). Call when choosing what to examine next, forming a
         hypothesis, revising an interpretation, or ruling something out.
         Unrecorded reasoning is lost during context compaction."""
-        _validate_str_length(text, "text", _MAX_TEXT)
+        _validate_str_length(text, "text", _MAX_TEXT, free_text=True)
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
         result = {"status": "logged"}
         logged_id = audit.log(
@@ -732,9 +738,11 @@ def create_server() -> FastMCP:
             input_files: Files the command read (for provenance chain).
             output_files: Files the command produced.
         """
-        _validate_str_length(command, "command", _MAX_TEXT)
-        _validate_str_length(output_summary, "output_summary", _MAX_TEXT)
-        _validate_str_length(purpose, "purpose", _MAX_TEXT)
+        _validate_str_length(command, "command", _MAX_TEXT, free_text=True)
+        _validate_str_length(
+            output_summary, "output_summary", _MAX_TEXT, free_text=True
+        )
+        _validate_str_length(purpose, "purpose", _MAX_TEXT, free_text=True)
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
 
         provenance_warning = ""
@@ -838,7 +846,7 @@ def create_server() -> FastMCP:
 
         try:
             _validate_str_length(destination, "destination", _MAX_NAME)
-            _validate_str_length(purpose, "purpose", _MAX_TEXT)
+            _validate_str_length(purpose, "purpose", _MAX_TEXT, free_text=True)
             case_dir = _resolve_case_dir()
             examiner = resolve_examiner()
 
