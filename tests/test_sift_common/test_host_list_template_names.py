@@ -204,7 +204,8 @@ def test_another_hosts_late_template_name_never_joins_a_machine_through_it(
     [(None, "DEV01", "EC2AMAZ-AAAA111"),
      ("g2", "DEV01", "EC2AMAZ-AAAA111"),
      (None, "DEV01.example.com", "EC2AMAZ-AAAA111"),
-     (None, "DEV01", "WIN-BBBB2222")],
+     (None, "DEV01", "WIN-BBBB2222"),
+     (None, "DEV01", "ec2amaz-aaaa111")],
 )  # fmt: skip
 def test_a_host_name_read_late_first_never_carries_a_template_name_after_it(
     case, e_guid, first, raw
@@ -255,12 +256,24 @@ def test_another_hosts_late_template_name_with_a_domain_never_joins_through_it(c
     assert _late(case, e, fqdn) == (fqdn, hi.NEW)
 
 
-def test_a_late_template_name_spelled_another_way_gets_a_machine(case):
-    # as on base: the same unit spells its template name another way in a
-    # later artifact; it isn't the machine's name, so it gets a new machine
+@pytest.mark.parametrize("raw", ["ec2amaz-aaaa111", "EC2AMAZ-AAAA111."])
+def test_a_late_template_name_spelled_another_way_joins_its_units_machine(case, raw):
+    # the list put the unit's template name on DEV01; the same unit spells it
+    # another way in a later artifact, so it joins the machine it already holds
     a = disk(case, "evidence/dev01.E01@0", "DEV01", "EC2AMAZ-AAAA111")
     hp.upload_host_list(case, "DEV01\n", "ex1")
-    assert _late(case, a, "ec2amaz-aaaa111") == ("ec2amaz-aaaa111", hi.NEW)
+    assert on(case, a, "EC2AMAZ-AAAA111") == "DEV01"
+    assert _late(case, a, raw) == ("DEV01", hi.CONFIRMED)
+    assert len(hi.load(case).machines) == 1
+
+
+def test_a_template_name_no_machine_confirmed_gets_a_machine_per_spelling(case):
+    # as on base: nothing confirmed the unit's template name, so each spelling
+    # read late gets a machine of its own
+    a = disk(case, "evidence/dev01.E01@0", "DEV01", "EC2AMAZ-AAAA111")
+    assert _late(case, a, "EC2AMAZ-AAAA111") == ("EC2AMAZ-AAAA111", hi.NEW)
+    assert _late(case, a, "ec2amaz-aaaa111") == ("ec2amaz-aaaa111 (2)", hi.NEW)
+    assert len(hi.load(case).machines) == 2
 
 
 def test_a_listed_triage_unit_gets_a_machine_for_a_late_template_name(case):
@@ -323,25 +336,91 @@ def test_a_renamed_hosts_former_generic_name_is_joined_when_read_late(case):
     assert _late(case, e, GENERIC_HOST) == ("WS01", hi.CONFIRMED)
 
 
-def test_a_template_name_confirmed_by_hand_as_an_alias_is_not_joined_late(case):
+@pytest.mark.parametrize(
+    ("first", "renames", "raw", "joined"),
+    [(GENERIC_HOST, ["WS01", "WS02"], GENERIC_HOST, "WS02"),
+     (GENERIC_HOST, ["WIN-ZZZZ999"], GENERIC_HOST, "WIN-ZZZZ999"),
+     (GENERIC_HOST + ".corp.example.com", [],
+      GENERIC_HOST.lower() + ".corp.example.com.",
+      GENERIC_HOST + ".corp.example.com")],
+)  # fmt: skip
+def test_a_generic_name_a_machine_has_had_is_joined_when_read_late(
+    case, first, renames, raw, joined
+):
+    domain = first.partition(".")[2]
+    srv = "SRV9" + (f".{domain}" if domain else "")
+    w = disk(case, "evidence/ws.E01@0", first)
+    e = disk(case, "evidence/srv9.E01@0", srv)
+    key = _confirm(case, w, first, first)
+    _confirm(case, e, srv, srv)
+    for new in renames:
+        hi.append_decision(case, {"action": "rename", "examiner": "ex1",
+                                  "args": {"machine": key, "canonical": new}},
+                           hi.load(case).obs_offset, door="R")  # fmt: skip
+    assert _late(case, e, raw) == (joined, hi.CONFIRMED)
+    assert len(hi.load(case).machines) == 2
+
+
+@pytest.mark.parametrize("listed", [None, "DEV01\nSRV9\n"])
+@pytest.mark.parametrize("raw", ["EC2AMAZ-AAAA111", "ec2amaz-aaaa111"])
+def test_a_template_name_confirmed_by_hand_as_an_alias_is_not_joined_late(
+    case, listed, raw
+):
     # a change from base, on purpose: a template name the examiner put on DEV01
     # by hand, read late by another unit, gets a new machine, never DEV01
     a = disk(case, "evidence/dev01.E01@0", "DEV01", "EC2AMAZ-AAAA111")
     e = disk(case, "evidence/srv9.E01@0", "SRV9")
     _confirm(case, a, "DEV01", "DEV01", "EC2AMAZ-AAAA111")
     _confirm(case, e, "SRV9", "SRV9")
+    if listed:
+        hp.upload_host_list(case, listed, "ex1")
     assert on(case, a, "EC2AMAZ-AAAA111") == "DEV01"
-    assert _late(case, e, "EC2AMAZ-AAAA111") == ("EC2AMAZ-AAAA111", hi.NEW)
+    assert _late(case, e, raw) == (raw, hi.NEW)
+    assert len(hi.load(case).machines) == 3
 
 
-def test_a_hand_alias_its_own_unit_spells_another_way_gets_a_machine(case):
-    # the same change from base, on purpose: the unit whose alias the examiner
-    # confirmed by hand reads it late spelled another way; it gets a new machine
+def test_a_hand_alias_its_own_unit_spells_another_way_joins_its_machine(case):
+    # the unit whose alias the examiner confirmed by hand reads it late spelled
+    # another way: it joins the machine it already holds the alias on
     a = disk(case, "evidence/dev01.E01@0", "DEV01", "EC2AMAZ-AAAA111")
     _confirm(case, a, "DEV01", "DEV01", "EC2AMAZ-AAAA111")
     assert on(case, a, "EC2AMAZ-AAAA111") == "DEV01"
+    assert _late(case, a, "ec2amaz-aaaa111") == ("DEV01", hi.CONFIRMED)
+    assert len(hi.load(case).machines) == 1
+
+
+def test_a_template_name_marked_not_a_host_on_its_unit_is_not_joined_late(case):
+    # the unit's own pair is marked not a host, so it can't carry the join,
+    # though the machine holds the name from another unit
+    a = disk(case, "evidence/dev01.E01@0", "DEV01", "EC2AMAZ-AAAA111")
+    b = disk(case, "evidence/dev01b.E01@0", "", "EC2AMAZ-AAAA111")
+    key = hi.new_machine_key()
+    hi.append_decision(case, {"action": "confirm", "examiner": "ex1", "args": {"machines": [
+        {"key": key, "canonical": "DEV01", "pairs": [
+            [a, "DEV01"], [a, "EC2AMAZ-AAAA111"], [b, "EC2AMAZ-AAAA111"]]}]}},
+        hi.load(case).obs_offset)  # fmt: skip
+    hi.append_decision(case, {"action": "not_a_host", "examiner": "ex1", "args": {
+        "pairs": [[a, "EC2AMAZ-AAAA111"]], "key": key}}, hi.load(case).obs_offset)  # fmt: skip
+    st = hi.load(case)
+    assert hi.FLAG_NOT_A_HOST in st.pair_flags.get((a, "EC2AMAZ-AAAA111"), [])
+    assert on(case, b, "EC2AMAZ-AAAA111") == "DEV01"
     assert _late(case, a, "ec2amaz-aaaa111") == ("ec2amaz-aaaa111", hi.NEW)
-    assert on(case, a, "EC2AMAZ-AAAA111") == "DEV01"
+
+
+def test_a_template_name_its_unit_joined_late_carries_no_other_spelling(case):
+    # a pair a late read joined (matched during ingest) is not the examiner's:
+    # the unit's next spelling of the name gets a machine of its own
+    a = disk(case, "evidence/dev01.E01@0", "DEV01", "EC2AMAZ-AAAA111")
+    e = disk(case, "evidence/srv9.E01@0", "SRV9")
+    key = _confirm(case, a, "DEV01", "DEV01", "EC2AMAZ-AAAA111")
+    _confirm(case, e, "SRV9", "SRV9")
+    hi.append_observations(case, [
+        {"kind": "name", "unit": e, "raw": "EC2AMAZ-AAAA111",
+         "evidence": "Security.evtx Computer", "origin": "artifact"},
+        {"kind": "bind", "unit": e, "raw": "EC2AMAZ-AAAA111", "key": key,
+         "flags": [hi.FLAG_MATCHED_DURING_INGEST]}])  # fmt: skip
+    assert on(case, e, "EC2AMAZ-AAAA111") == "DEV01"
+    assert _late(case, e, "ec2amaz-aaaa111") == ("ec2amaz-aaaa111", hi.NEW)
 
 
 def test_a_template_name_only_another_hosts_records_carry_stays_unbound(case):

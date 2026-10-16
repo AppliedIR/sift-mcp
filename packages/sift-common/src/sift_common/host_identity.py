@@ -1115,10 +1115,21 @@ def get_or_mint(
             if match is not None:
                 from sift_common.host_proposal import generic_only
 
-                if generic_only(raw) and spelling(raw) not in {
-                    spelling(n) for n in (match.canonical, *match.former)
-                }:
-                    match = None  # a template name joins only the machine it names
+                # a template name joins only the machine it names, or the one
+                # this unit already holds it on, confirmed and not read late
+                if (
+                    generic_only(raw)
+                    and spelling(raw)
+                    not in {spelling(n) for n in (match.canonical, *match.former)}
+                    and not any(
+                        p[0] == unit
+                        and spelling(p[1]) == spelling(raw)
+                        and not {FLAG_NOT_A_HOST, FLAG_MATCHED_DURING_INGEST}
+                        & set(state.pair_flags.get(p, []))
+                        for p in match.pairs
+                    )
+                ):
+                    match = None
             listed = (
                 _late_list_binding(state, unit, raw) if late and match is None else None
             )
