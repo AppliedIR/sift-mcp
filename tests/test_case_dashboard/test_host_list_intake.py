@@ -7,6 +7,7 @@ synthetic (RFC 2606 domains)."""
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -287,6 +288,16 @@ def test_with_a_list_loaded_the_hosts_tab_shows_no_hint(
     assert _decide(client, "list", {"text": "WKS01\n"}).status_code == 200
     page = client.get("/api/hosts").json()
     assert page["host_list"] and page["host_list_hint"] == ""
+
+
+def test_the_upload_panel_says_what_a_list_does_in_both_modes():
+    panel = PORTAL[PORTAL.index('<details id="hostListPanel"') :]
+    text = " ".join(re.search(r"<p[^>]*>(.*?)</p>", panel, re.S).group(1).split())
+    assert (
+        "Hosts it matches are confirmed automatically, or proposed for you to "
+        "confirm when automatic confirmation is off." in text
+    )
+    assert "header row" in text and "draft" in text
 
 
 def test_the_ingest_skill_tells_the_examiner_about_the_list():
