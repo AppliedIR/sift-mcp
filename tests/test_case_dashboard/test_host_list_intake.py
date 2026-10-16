@@ -257,6 +257,38 @@ def test_the_hint_names_the_formats_and_the_ai_prepared_draft():
         assert "Tell the examiner" in hint and "never say a list was" in hint
 
 
+# What the examiner reads in the Hosts tab: the Portal's own wording, never
+# the AI's instruction
+
+
+@pytest.mark.parametrize("auto", [True, False])
+def test_the_hosts_tab_hint_speaks_to_the_examiner(case, client, monkeypatch, auto):
+    monkeypatch.setattr(hp, "LIST_AUTO_CONFIRM", auto)
+    hint = client.get("/api/hosts").json()["host_list_hint"]
+    assert "Tell the examiner" not in hint and "never say" not in hint
+    assert "prepare_host_list" not in hint
+    assert "header row" in hint and "prepare a draft" in hint
+    assert ("confirms matching hosts automatically" in hint) is auto
+    assert ("proposes matching hosts" in hint) is not auto
+    # the panel the hint points to is on the tab, below the header
+    assert PORTAL.index('id="hostsHeader"') < PORTAL.index(
+        "<summary>Upload a host list</summary>"
+    )
+    assert '"Upload a host list" below' in hint
+    portal = "PORTAL_HOST_LIST_HINT" if auto else "PORTAL_HOST_LIST_HINT_PROPOSED"
+    assert hint == getattr(hg, portal)
+
+
+@pytest.mark.parametrize("auto", [True, False])
+def test_with_a_list_loaded_the_hosts_tab_shows_no_hint(
+    case, client, monkeypatch, auto
+):
+    monkeypatch.setattr(hp, "LIST_AUTO_CONFIRM", auto)
+    assert _decide(client, "list", {"text": "WKS01\n"}).status_code == 200
+    page = client.get("/api/hosts").json()
+    assert page["host_list"] and page["host_list_hint"] == ""
+
+
 def test_the_ingest_skill_tells_the_examiner_about_the_list():
     skill = " ".join((ROOT / "skills/vhir-ingest/SKILL.md").read_text().split())
     assert "## Host list" in skill and "prepare_host_list" in skill

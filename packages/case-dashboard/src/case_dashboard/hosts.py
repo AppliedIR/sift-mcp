@@ -197,7 +197,13 @@ def get_hosts(request: Request) -> JSONResponse:
                 if listed
                 else None
             ),
-            "host_list_hint": "" if listed else hg.HOST_LIST_HINT,
+            "host_list_hint": ""
+            if listed
+            else (
+                hg.PORTAL_HOST_LIST_HINT
+                if hp.LIST_AUTO_CONFIRM
+                else hg.PORTAL_HOST_LIST_HINT_PROPOSED
+            ),
             "draft": hp.read_host_list_draft(case_dir),
             "listed_without_data": (
                 hp.listed_without_data(state, all_groups) if listed else []

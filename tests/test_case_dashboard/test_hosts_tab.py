@@ -383,7 +383,8 @@ class TestPendingRuns:
         assert _decisions(case) == [] and _audit(case) == []
 
     def test_a_case_without_a_host_list_is_encouraged_to_load_one(self, case, client):
-        assert client.get("/api/hosts").json()["host_list_hint"] == hg.HOST_LIST_HINT
+        hint = client.get("/api/hosts").json()["host_list_hint"]
+        assert hint == hg.PORTAL_HOST_LIST_HINT
 
 
 # The tab's rendering, run under node. textContent in, innerHTML out, as a
