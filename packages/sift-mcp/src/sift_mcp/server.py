@@ -338,7 +338,7 @@ def create_server() -> FastMCP:
                 purpose=purpose,
                 timeout=timeout or None,
                 save_output=save_output,
-                preview_lines=min(preview_lines, 200) if preview_lines else 0,
+                preview_lines=min(max(preview_lines, 0), 200),
                 op_id=(lambda: op_id) if op_id else None,
                 case_dir=case_dir,
                 cwd=op_dir,
