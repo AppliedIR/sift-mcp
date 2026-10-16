@@ -1588,6 +1588,10 @@ class CaseManager:
         except Exception as exc:
             logger.warning("IOC processing failed: %s", exc)
             warnings.append(f"IOC processing failed: {exc}")
+        if cut_iocs:  # one per item past the limit, named in the text or not
+            warnings.append(
+                f"{len(cut_iocs)} IOCs past the 100-IOC limit were not stored"
+            )
         iocs_extracted = len(set(stored_iocs))  # the IOCs stored, each once
 
         # IOC completeness check — warn if text mentions IOCs not in the list

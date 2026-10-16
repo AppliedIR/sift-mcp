@@ -90,6 +90,22 @@ def test_an_ioc_past_the_100_limit_is_counted_out_and_named(case):  # noqa: F811
     )
 
 
+@pytest.mark.parametrize("count,said", [(105, 5), (101, 1), (100, None), (99, None)])
+def test_the_iocs_past_the_100_limit_are_counted(case, count, said):  # noqa: F811
+    iocs = [f"10.4.{n // 256}.{n % 256}" for n in range(count)]
+    result = _record({**FINDING, "iocs": iocs})
+    assert result["iocs_extracted"] == min(count, 100)
+    lines = str(result.get("warning", "")).split(" | ")
+    want = [f"{said} IOCs past the 100-IOC limit were not stored"] if said else []
+    assert [w for w in lines if "were not stored" in w] == want, result.get("warning")
+
+
+def test_iocs_past_the_limit_as_a_dict_of_lists_are_counted(case):  # noqa: F811
+    iocs = {"ipv4": [f"10.5.0.{n}" for n in range(103)]}
+    result = _record({**FINDING, "iocs": iocs})
+    assert "3 IOCs past the 100-IOC limit were not stored" in result["warning"]
+
+
 # --- paging ---------------------------------------------------------------------
 
 
