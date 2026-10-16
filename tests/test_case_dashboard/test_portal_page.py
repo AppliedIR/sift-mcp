@@ -369,8 +369,10 @@ def test_a_retry_that_adds_a_cascade_signs_nothing(portal, live):
     assert "<strong>IOC-steve-001</strong>" not in out["shown"]["list"]
     assert (
         "IOC-steve-001 stays DRAFT: cited by F-steve-001 (APPROVED) and "
-        "F-steve-002 (DRAFT). Decide it on its own in the IOCs tab."
+        "F-steve-002 (DRAFT). It is approved only when every finding that cites it "
+        "is approved. To reject it now: vhir reject IOC-steve-001"
     ) in out["shown"]["list"]
+    assert "IOCs tab" not in out["shown"]["list"]
     assert (
         "What would be signed changed after you reviewed it: IOC-steve-001"
         in out["s"]["error"]

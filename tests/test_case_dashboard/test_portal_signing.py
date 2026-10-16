@@ -559,13 +559,17 @@ def test_the_sign_dialog_names_each_finding_citing_a_held_ioc(show_all):
     ], show_all)  # fmt: skip
     assert (
         "IOC-steve-001 stays DRAFT: cited by F-steve-001 (APPROVED) and F-steve-002 "
-        "(REJECTED). Decide it on its own in the IOCs tab."
+        "(REJECTED). It is approved only when every finding that cites it is approved. "
+        "To reject it now: vhir reject IOC-steve-001"
     ) in out
     assert (
         "IOC-steve-002 stays DRAFT: cited by F-steve-001 (APPROVED), F-steve-002 "
-        "(DRAFT) and F-steve-003 (REJECTED). Decide it on its own in the IOCs tab."
+        "(DRAFT) and F-steve-003 (REJECTED). It is approved only when every finding "
+        "that cites it is approved. To reject it now: vhir reject IOC-steve-002"
     ) in out
-    assert "Timeline tab" not in out
+    # neither `vhir approve IOC-x` nor the IOCs tab can decide an IOC
+    assert "Timeline tab" not in out and "IOCs tab" not in out
+    assert "vhir approve" not in out
 
 
 def test_a_held_ioc_s_names_are_escaped():
@@ -577,12 +581,13 @@ def test_a_held_ioc_s_names_are_escaped():
         "IOC-&lt;b&gt;1&lt;/b&gt; stays DRAFT: cited by F-&lt;b&gt;2&lt;/b&gt; "
         "(&lt;b&gt;S&lt;/b&gt;) and F-steve-003 (DRAFT)."
     ) in out
+    assert "To reject it now: vhir reject IOC-&lt;b&gt;1&lt;/b&gt;</div>" in out
 
 
 def test_a_held_ioc_with_one_citing_finding_names_it_alone():
     out = _render_list([{"id": "IOC-steve-001", "coupled_from": "F-steve-001",
                          "citing": _cite(("F-steve-001", "APPROVED"))}])  # fmt: skip
-    assert "IOC-steve-001 stays DRAFT: cited by F-steve-001 (APPROVED). Decide" in out
+    assert "IOC-steve-001 stays DRAFT: cited by F-steve-001 (APPROVED). It is" in out
     assert " and " not in out
 
 

@@ -2640,7 +2640,8 @@ var VHIR_SIGN = (function() {
         });
         var names = named.length > 1 ? named.slice(0, -1).join(', ') + ' and ' + named[named.length - 1] : named[0];
         html += '<div class="commit-item">' + escapeHtml(h.id) + ' stays DRAFT: cited by ' + names +
-          '. Decide it on its own in the IOCs tab.</div>';
+          '. It is approved only when every finding that cites it is approved. To reject it now: vhir reject ' +
+          escapeHtml(h.id) + '</div>';
         return;
       }
       html += '<div class="commit-item">' + escapeHtml(h.id) + ' is linked to ' + escapeHtml(h.coupled_from) +
