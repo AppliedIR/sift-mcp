@@ -4,7 +4,7 @@
 [![CI](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/AppliedIR/sift-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/AppliedIR/sift-mcp/blob/main/LICENSE)
 
-Monorepo for all SIFT-side Valhuntir components. 11 packages: forensic-mcp (23 tools), case-mcp (16 tools), report-mcp (6 tools), sift-mcp (5 tools), sift-gateway, forensic-knowledge, forensic-rag (3 tools), windows-triage (13 tools), opencti (8 tools; the threatintel-mcp backend), sift-common, and case-dashboard. With optional [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp) (21 tools) for evidence indexing and querying at scale. Part of the [Valhuntir](https://github.com/AppliedIR/Valhuntir) platform.
+Monorepo for all SIFT-side Valhuntir components. 11 packages: forensic-mcp, case-mcp, report-mcp, sift-mcp, sift-gateway, forensic-knowledge, forensic-rag, windows-triage, opencti (the threatintel-mcp backend), sift-common, and case-dashboard. With optional [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp) for evidence indexing and querying at scale. Part of the [Valhuntir](https://github.com/AppliedIR/Valhuntir) platform.
 
 **[Documentation](https://appliedir.github.io/Valhuntir/)** ·
 [Getting Started](https://appliedir.github.io/Valhuntir/getting-started/) ·
@@ -23,13 +23,13 @@ Valhuntir is a forensic investigation platform that connects AI to structured MC
 
 The platform is **LLM client agnostic** — connect any locally installed MCP-compatible client through the gateway. Supported clients include Claude Code and Codex (agents with a shell, set up with Valhuntir's controls), self-hosted LibreChat and Open WebUI (MCP-only, with a locked configuration), and any client that supports Streamable HTTP transport with Bearer token authentication. The client must run on your machine or local network — cloud-hosted services cannot reach internal gateway addresses. Forensic discipline is provided structurally at the gateway and MCP layer, not through client-specific prompt engineering, so the same rigor applies regardless of which AI model or client drives the investigation.
 
-With [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp), evidence is parsed programmatically and indexed into OpenSearch, giving the LLM 21 purpose-built query tools instead of consuming billions of tokens reading raw artifacts. A 30-host triage collection with 50 million records becomes instantly searchable. Triage baseline and threat intelligence enrichment run programmatically — zero LLM tokens consumed. OpenSearch integration is optional but recommended for investigations at scale.
+With [opensearch-mcp](https://github.com/AppliedIR/opensearch-mcp), evidence is parsed programmatically and indexed into OpenSearch, giving the LLM purpose-built query tools instead of consuming billions of tokens reading raw artifacts. A 30-host triage collection with 50 million records becomes instantly searchable. Triage baseline and threat intelligence enrichment run programmatically — zero LLM tokens consumed. OpenSearch integration is optional but recommended for investigations at scale.
 
 > Looking for a simpler setup without the gateway or OpenSearch? See [Valhuntir Lite](#valhuntir-lite).
 
 ### What You Get
 
-- **Gateway** with auth + lifecycle management (up to 94 tools across 8 backends)
+- **Gateway** with auth + lifecycle management (every SIFT backend behind one endpoint; [MCP Tools](#mcp-tools) lists sift-mcp's tools)
 - **Evidence indexing** — 15 parsers (evtx, EZ tools, Volatility, JSON, CSV, W3C, and more) with deterministic dedup and full provenance (via opensearch-mcp)
 - **Structured querying** — case summary, search, aggregation, timeline, field enumeration, detection listing (via opensearch-mcp)
 - **Programmatic enrichment** — triage baseline validation and threat intelligence stamping at index scale, zero LLM tokens (via opensearch-mcp)
@@ -88,14 +88,14 @@ Each MCP backend runs as a stdio subprocess of the sift-gateway, aggregated behi
 graph LR
     GW["sift-gateway :4508"]
 
-    FM["forensic-mcp<br/>23 tools · findings, timeline,<br/>evidence, discipline"]
-    CM["case-mcp<br/>16 tools · case management,<br/>audit queries, backup"]
-    RM["report-mcp<br/>6 tools · report generation,<br/>IOC aggregation"]
-    SM["sift-mcp<br/>5 tools · Linux forensic<br/>tool execution"]
-    RAG["forensic-rag<br/>3 tools · semantic search<br/>22K records"]
-    WT["windows-triage<br/>13 tools · offline baseline<br/>validation"]
-    OC["threatintel-mcp<br/>8 tools · threat<br/>intelligence"]
-    OS["opensearch-mcp<br/>21 tools · evidence indexing,<br/>query, enrichment"]
+    FM["forensic-mcp<br/>findings, timeline,<br/>evidence, discipline"]
+    CM["case-mcp<br/>case management,<br/>audit queries, backup"]
+    RM["report-mcp<br/>report generation,<br/>IOC aggregation"]
+    SM["sift-mcp<br/>Linux forensic<br/>tool execution"]
+    RAG["forensic-rag<br/>semantic search<br/>22K records"]
+    WT["windows-triage<br/>offline baseline<br/>validation"]
+    OC["threatintel-mcp<br/>threat<br/>intelligence"]
+    OS["opensearch-mcp<br/>evidence indexing,<br/>query, enrichment"]
     CD["Examiner Portal<br/>browser review + commit"]
     FK["forensic-knowledge<br/>shared YAML data"]
     CASE["Case Directory"]
@@ -141,8 +141,8 @@ All configurations run on a SIFT Workstation (Ubuntu-based) with Python 3.10+.
 
 | Configuration | What runs on SIFT | RAM (min) | RAM (recommended) | Best for |
 |---|---|---|---|---|
-| **Valhuntir** | Gateway + 8 backends + OpenSearch (Docker) | 24 GB | 32 GB | Solo analyst, lab environments |
-| **Valhuntir (remote OpenSearch)** | Gateway + 8 backends; OpenSearch on separate host | 16 GB SIFT, 8 GB OS host | 16 GB SIFT, 16 GB OS host | Larger cases, persistent clusters |
+| **Valhuntir** | Gateway + backends + OpenSearch (Docker) | 24 GB | 32 GB | Solo analyst, lab environments |
+| **Valhuntir (remote OpenSearch)** | Gateway + backends; OpenSearch on separate host | 16 GB SIFT, 8 GB OS host | 16 GB SIFT, 16 GB OS host | Larger cases, persistent clusters |
 | **Valhuntir + Windows** | Above + wintools-mcp on Windows VM | +8 GB Windows | +8 GB Windows | Full artifact coverage |
 | **Valhuntir + REMnux** | Above + remnux-mcp on REMnux VM | +4 GB REMnux | +8 GB REMnux | Malware analysis |
 | **[Valhuntir Lite](#valhuntir-lite)** | No gateway, no OpenSearch — stdio MCPs only | 8 GB | 16 GB | Quick setup, smaller investigations |
@@ -150,7 +150,7 @@ All configurations run on a SIFT Workstation (Ubuntu-based) with Python 3.10+.
 **Where the RAM goes (all-in-one Valhuntir):**
 
 - OpenSearch Docker: 4-12 GB heap (default 4 GB, increase for larger cases)
-- Gateway + 8 MCP backends: ~2-3 GB (Python processes)
+- Gateway + MCP backends: ~2-3 GB (Python processes)
 - RAG embedding model: ~2 GB (when forensic-rag is loaded)
 - Evidence parsing during ingest: 1-4 GB (spikes during large ingests)
 - OS + Docker overhead: ~2 GB
@@ -274,7 +274,7 @@ graph LR
 
 ## MCP Tools
 
-5 core tools on sift-mcp: 4 discovery + 1 generic execution.
+sift-mcp's core tools: discovery tools plus one generic execution tool.
 
 ### Discovery
 
@@ -464,7 +464,7 @@ Content hashes (SHA-256) are computed at staging and checked at review, so a dec
 
 ## Report Generation
 
-Report generation uses the report-mcp package (6 tools) with data-driven profiles:
+Report generation uses the report-mcp package with data-driven profiles:
 
 | Profile | Purpose |
 |---------|---------|

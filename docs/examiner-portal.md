@@ -2,7 +2,7 @@
 
 The Examiner Portal is a browser-based interface for reviewing AI-generated forensic findings. It runs on the SIFT gateway and requires no installation on the examiner's machine.
 
-**Open the portal:** `vhir portal` or navigate to `http://<gateway>:4508/portal/`
+**Open the portal:** `vhir portal`, or navigate to `http://127.0.0.1:4508/portal/` on SIFT (`https://<sift-ip>:4508/portal/` in remote mode)
 
 ## Tabs
 
@@ -143,7 +143,7 @@ Press `?` to show the full shortcut list:
 
 ## Security
 
-- The portal serves over the gateway's HTTP endpoint (port 4508)
+- The portal serves over the gateway's endpoint on port 4508: HTTP locally, HTTPS in remote mode
 - Static assets (images, icons) are served without authentication
 - All API endpoints require a Bearer token (from `gateway.yaml`)
 - Signing happens in the browser with the examiner's own Ed25519 key, unlocked by their passphrase; the passphrase is never transmitted. The gateway serves the encrypted key only after a verified sign-in, and checks every signature before writing. What a verified result does and doesn't show is in the security model's stated limits
@@ -161,7 +161,7 @@ vhir portal
 From a remote machine (after `vhir join`):
 
 ```
-http://<sift-ip>:4508/portal/
+https://<sift-ip>:4508/portal/
 ```
 
 The legacy v1 dashboard is retired: `/dashboard/` (any path under it) redirects to the portal, and `vhir dashboard` opens the portal.

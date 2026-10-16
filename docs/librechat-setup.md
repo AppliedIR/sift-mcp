@@ -41,7 +41,7 @@ Use Agents mode for investigations. Standard mode works as a quick fallback.
 Generate a starting config:
 
 ```
-vhir setup client --client=librechat --sift-url=http://localhost:4508
+vhir setup client --client=librechat --sift=http://localhost:4508
 ```
 
 This creates `librechat_mcp.yaml` with per-backend MCP entries, timeouts,
@@ -276,8 +276,8 @@ This matters because LibreChat supports MCP tools only — not resources.
 Without `--deferred-tools`, the LLM cannot access methodology, validation
 schemas, or playbooks.
 
-Verify with `vhir service status` — forensic-mcp should show 23 tools
-(9 base + 14 deferred).
+Verify with `vhir service status` — forensic-mcp should show its core tools
+plus the discipline tools (deferred).
 
 ## Creating a Valhuntir Agent (Step-by-Step)
 
@@ -311,7 +311,7 @@ loading is the biggest performance lever for LibreChat.
 **Why this matters:** Without deferred loading, every backend's tool
 definitions load into every request, and they take a large share of the
 context window (see the [tool counts per backend](../README.md)). With
-deferred loading, only the 6 core tools load and the rest are discovered on
+deferred loading, only the core tools load and the rest are discovered on
 demand via Tool Search. With `promptCache`, all system content is cached at
 a 90% discount after turn 1.
 
@@ -493,13 +493,13 @@ can't be found, toggle its "Defer Loading" off to keep it always loaded.
 ### "Tool not found" errors
 
 Verify forensic-mcp is running with `--deferred-tools`. Without it, the
-14 discipline tools (get_investigation_framework, etc.) are registered as
+discipline tools (get_investigation_framework, etc.) are registered as
 MCP resources which LibreChat cannot see.
 
 ## Auto-Generation
 
 ```
-vhir setup client --client=librechat --sift-url=http://localhost:4508
+vhir setup client --client=librechat --sift=http://localhost:4508
 ```
 
 Generates `librechat_mcp.yaml` with:
