@@ -39,8 +39,13 @@ VALUE_DICT = finding("F-steve-005", iocs=[{"value": {"v4": "192.0.2.10"}}])
 # A value String() can't convert. Rendered in its own run: a throw would end
 # the shared run, and every card with it.
 NO_TO_STRING = finding("F-steve-006", iocs=[{"value": {"toString": None}}])
+# A plain value that isn't a string renders as it is; an empty one stays empty.
+VALUE_NUMBER = finding("F-steve-007", iocs=[{"value": 5}])
+VALUE_EMPTY = finding("F-steve-008", iocs=[{"value": ""}])
+# A null entry renders empty. Its own run too: reading a field of it throws.
+NULL_ENTRY = finding("F-steve-009", iocs=[None])
 
-FINDINGS = [STRUCT, LEGACY, STALE, NO_VALUE, VALUE_DICT]
+FINDINGS = [STRUCT, LEGACY, STALE, NO_VALUE, VALUE_DICT, VALUE_NUMBER, VALUE_EMPTY]
 CASE_META = {"signing": {"examiner": "steve"}}
 DELTA = {
     "version": 1,
@@ -110,6 +115,9 @@ process.stdout.write(JSON.stringify(ctx.__OUT));
 """
 
 
+IOCS_FIELD = '>IOCs</div><div class="field-value">'
+
+
 def _render(findings: list) -> subprocess.CompletedProcess:
     node = shutil.which("node")
     if not node:
@@ -139,6 +147,7 @@ def test_a_legacy_plain_string_ioc_passes_through(cards):
     card = cards["F-steve-002"]
     assert ">IOCs<" in card
     assert "198.51.100.9" in card and "bad.example.org" in card
+    assert IOCS_FIELD + "198.51.100.9, bad.example.org</div>" in card
     assert "[object Object]" not in card
 
 
@@ -170,3 +179,18 @@ def test_a_value_string_cant_convert_still_renders_the_card():
     assert r.returncode == 0, r.stderr[-2000:]
     (card,) = json.loads(r.stdout).values()
     assert "{&quot;value&quot;:{&quot;toString&quot;:null}}" in card
+
+
+def test_a_plain_value_that_is_not_a_string_renders_as_it_is(cards):
+    assert IOCS_FIELD + "5</div>" in cards["F-steve-007"]
+
+
+def test_an_empty_plain_value_renders_empty(cards):
+    assert IOCS_FIELD + "</div>" in cards["F-steve-008"]
+
+
+def test_a_null_entry_renders_empty():
+    r = _render([NULL_ENTRY])
+    assert r.returncode == 0, r.stderr[-2000:]
+    (card,) = json.loads(r.stdout).values()
+    assert IOCS_FIELD + "</div>" in card
