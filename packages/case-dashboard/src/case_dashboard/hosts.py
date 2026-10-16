@@ -123,8 +123,17 @@ def get_hosts(request: Request) -> JSONResponse:
         return error
     state = hi.load(case_dir)
     all_groups = hp.cached_propose(case_dir, state)  # once per state of the logs
-    # Every group waiting for the examiner, including one that joins a machine
-    groups = [g for g in all_groups if any(p not in state.bindings for p in g.pairs)]
+    # Every group waiting for the examiner, including one that joins a machine.
+    # A name marked not a host is decided, though it stays unbound.
+    groups = [
+        g
+        for g in all_groups
+        if any(
+            p not in state.bindings
+            and hi.FLAG_NOT_A_HOST not in state.pair_flags.get(p, ())
+            for p in g.pairs
+        )
+    ]
     counts = {s: 0 for s in _STATES}
     for m in state.machines.values():
         counts[m.state] = counts.get(m.state, 0) + 1
@@ -372,7 +381,10 @@ def _confirm_all(
     page = _state_at(case_dir, state, seen, args.get("seen_decisions"))
     confirmed, skipped, items = [], [], []
     for g in hp.cached_propose(case_dir, page):
-        if all(p in page.bindings for p in g.pairs):
+        if all(
+            p in page.bindings or hi.FLAG_NOT_A_HOST in page.pair_flags.get(p, ())
+            for p in g.pairs
+        ):
             continue  # nothing waiting in it on the page
         name = page.machines[g.machine].canonical if g.machine else g.canonical
         reason = ""
