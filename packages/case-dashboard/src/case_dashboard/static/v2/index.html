@@ -1344,8 +1344,16 @@ function updateProgress() {
 }
 
 function selectFinding(id) {
-  selectedId = id;
-  renderFinding(id);
+  // renderFinding sets selectedId once the card is written. If it throws
+  // before that, the selection stays on the record the card shows, so a
+  // keyboard action never decides a record the examiner can't see.
+  try {
+    renderFinding(id);
+  } catch (e) {
+    if (selectedId === id) throw e;
+    showToast(safeStr(id) + " can't be shown: " + safeStr(e && e.message !== undefined ? e.message : e), 'error');
+    return;
+  }
   renderSidebar();
   var content = document.getElementById('findingContent');
   if (content) content.scrollTop = 0;
@@ -1780,6 +1788,7 @@ function renderFinding(id) {
   }
 
   card.innerHTML = html;
+  selectedId = id;
 
   // Load evidence + timeline + tool invocations async
   if (f.audit_ids && f.audit_ids.length > 0) loadEvidencePanel(f);
