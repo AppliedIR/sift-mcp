@@ -63,11 +63,20 @@ def _its_own_machine(had, unit: str) -> bool:
 def placeholder_of(state, unit: str) -> set[str]:
     """The names a unit's own placeholder machine may carry: the unit's
     placeholder, exactly (named from its locator, or from the unit when it
-    has none, as the doors name it), and the examiner's `unattributed:<unit>`."""
+    has none, as the doors name it), the examiner's `unattributed:<unit>`, and
+    the name of the machine the examiner named the unit on (a pair of the unit
+    no evidence gave)."""
     from sift_common import host_gate
 
     locator = str((state.units.get(unit) or {}).get("locator") or unit)
-    return {f"unattributed:{unit}", host_gate.placeholder_name(locator)}
+    own = {f"unattributed:{unit}", host_gate.placeholder_name(locator)}
+    s = getattr(state, "s", state)  # (a request's overlay: the state under it)
+    for p, key in s.bindings.items():
+        if p[0] == unit and p not in s.names:
+            m = s.machine_of_key(key)
+            if m is not None:
+                own.add(m.canonical)
+    return own
 
 
 def _placeholder(state, unit: str, canonical: str) -> bool:

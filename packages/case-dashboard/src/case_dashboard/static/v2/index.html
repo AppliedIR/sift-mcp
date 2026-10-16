@@ -3174,8 +3174,23 @@ async function loadToolInvocations(finding) {
       } else { pending.push(step); }
     });
     if (pending.length) groups.push({ chain: pending, records: [] });  // a chain with no records renders in order
+    // One text per step, whatever its key order: a fan-in step stores one
+    // link once per input it read, and each shows once in its group's chain
+    function stepKey(v) {
+      if (Array.isArray(v)) return '[' + v.map(stepKey).join(',') + ']';
+      if (v && typeof v === 'object') {
+        return '{' + Object.keys(v).sort().map(function(k) {
+          return JSON.stringify(k) + ':' + stepKey(v[k]);
+        }).join(',') + '}';
+      }
+      return JSON.stringify(v === undefined ? null : v);
+    }
     groups.forEach(function(grp) {
-      grp.chain.forEach(function(s) { steps.push(s); });
+      var shown = {};
+      grp.chain.forEach(function(s) {
+        var k = stepKey(s);
+        if (!shown[k]) { shown[k] = true; steps.push(s); }
+      });
       grp.records.forEach(function(s) { steps.push(s); });
     });
     var h = '<div style="padding:2px 0 2px 8px;margin:2px 0">';
@@ -4233,8 +4248,14 @@ function hostRunsHtml(runs) {
       + (r.unresolved || []).length + ' waiting '
       + '<button class="btn" data-host-act="start_now" data-i="' + i + '">Start now with the proposed names</button> '
       + '<button class="btn" data-host-act="cancel_run" data-i="' + i + '">Cancel the run</button><ul>';
-    (r.unresolved || []).forEach(function(w) {
-      html += '<li>' + escapeHtml(w.locator || w.unit) + ': ' + escapeHtml(w.raw || '(no name)') + ' &mdash; ' + escapeHtml(w.reason) + '</li>';
+    (r.unresolved || []).forEach(function(w, j) {
+      // a unit no name of its own can name: the examiner types its name
+      var ij = i + '-' + j;
+      var name = w.raw === ''
+        ? ' <input data-host-name="' + escapeAttr(ij) + '" aria-label="Host name">'
+          + ' <button class="btn" data-host-act="name_unit" data-i="' + escapeAttr(ij) + '">Name it</button>'
+        : '';
+      html += '<li>' + escapeHtml(w.locator || w.unit) + ': ' + escapeHtml(w.raw || '(no name)') + ' &mdash; ' + escapeHtml(w.reason) + name + '</li>';
     });
     html += '</ul></div>';
   });
@@ -4364,7 +4385,7 @@ function hostOpsHtml(v) {
 
 /* Host decisions (the list upload, confirmations, runs) wait while a host
    operation is unfinished: the server refuses them then. */
-var HOST_DECISION_ACTS = ['list', 'start_now', 'cancel_run', 'confirm_all', 'confirm', 'not_a_host', 'confirm_machine'];
+var HOST_DECISION_ACTS = ['list', 'start_now', 'cancel_run', 'confirm_all', 'confirm', 'not_a_host', 'confirm_machine', 'name_unit'];
 function hostOpUnfinished() {
   return !!(hostsView.ops && hostsView.ops.unfinished);
 }
@@ -4499,6 +4520,14 @@ async function hostDecide(action, args) {
   renderHosts();
 }
 
+function hostNameArgs(ij) {
+  var at = ij.split('-');
+  var w = hostsView.runs[+at[0]].unresolved[+at[1]];
+  var input = document.querySelector('[data-host-name="' + ij + '"]');
+  var name = input ? input.value.trim() : '';
+  return { groups: [{ canonical: name, pairs: [[w.unit, name]] }] };
+}
+
 function hostGroupArgs(i) {
   var g = hostsView.data.proposed[i];
   var input = document.querySelector('[data-host-canonical="' + i + '"]');
@@ -4524,6 +4553,7 @@ document.addEventListener('click', async function(ev) {
   else if (act === 'confirm_all') { hostDecide('confirm_all', { seen_decisions: d.dec_offset }); }
   else if (act === 'not_a_host') { hostDecide('not_a_host', { pairs: d.proposed[i].pairs }); }
   else if (act === 'confirm_machine') { var m = d.machines[i]; hostDecide('confirm', { groups: [{ machine: m.id, canonical: m.canonical }] }); }
+  else if (act === 'name_unit') { hostDecide('confirm', hostNameArgs(el.getAttribute('data-i'))); }
   else if (act === 'start_now' || act === 'cancel_run') { hostDecide(act, { run_id: hostsView.runs[i].run_id }); }
   else if (act === 'op_resume') { hostOp({ resume: el.getAttribute('data-op') }); }
   else if (act === 'op_rename' || act === 'op_merge' || act === 'op_split') { hostOp(hostOpFrom(el, act)); }
