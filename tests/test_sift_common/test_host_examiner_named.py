@@ -2,9 +2,9 @@
 evidence names it too: an address of the unit met later goes on that machine.
 
 The unit is a memory image whose only name, its file name, is marked not a
-host; the examiner names it RD01. A later run reads RD01 from the evidence
+host; the examiner names it WKS01. A later run reads WKS01 from the evidence
 (the envars, or the hostname given to the run). An address met after that
-went on a new placeholder machine instead of RD01."""
+went on a new placeholder machine instead of WKS01."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from sift_common import host_gate
 from sift_common import host_guard as hgd
 from sift_common import host_identity as hi
 
-MEMORY = "/srv/data/memory/rd01-memory.img"
-FILE_NAME = "rd01-memory"
+MEMORY = "/srv/data/memory/wks01-memory.img"
+FILE_NAME = "wks01-memory"
 
 
 @pytest.fixture
@@ -52,9 +52,9 @@ def _memory_unit(case, *names):
 
 
 def _name(case, u, *pairs):
-    """The examiner's confirm of RD01 for the unit, as the Portal writes it."""
+    """The examiner's confirm of WKS01 for the unit, as the Portal writes it."""
     key = hi.new_machine_key()
-    item = {"key": key, "canonical": "RD01", "pairs": [[u, r] for r in pairs]}
+    item = {"key": key, "canonical": "WKS01", "pairs": [[u, r] for r in pairs]}
     _decide(case, "confirm", {"machines": [item]})
     return key
 
@@ -65,40 +65,40 @@ def _address(case, u, raw):
 
 def test_an_address_met_after_the_evidence_names_the_unit_goes_on_its_machine(case):
     u = _memory_unit(case)
-    key = _name(case, u, "RD01", FILE_NAME)
-    _observe(case, u, "RD01")  # a later run reads the name the examiner gave
-    assert "RD01" in hgd.placeholder_of(hi.load(case), u)
-    assert _address(case, u, "10.9.9.9") == (key, "RD01")
+    key = _name(case, u, "WKS01", FILE_NAME)
+    _observe(case, u, "WKS01")  # a later run reads the name the examiner gave
+    assert "WKS01" in hgd.placeholder_of(hi.load(case), u)
+    assert _address(case, u, "10.9.9.9") == (key, "WKS01")
     state = hi.load(case)
     assert len(state.machines) == 1
-    assert state.machine_of_pair(u, "10.9.9.9").canonical == "RD01"
+    assert state.machine_of_pair(u, "10.9.9.9").canonical == "WKS01"
 
 
 def test_an_address_met_before_the_evidence_names_the_unit_goes_on_its_machine(case):
-    """The twin: no observation of RD01."""
+    """The twin: no observation of WKS01."""
     u = _memory_unit(case)
-    key = _name(case, u, "RD01", FILE_NAME)
-    assert _address(case, u, "10.9.9.9") == (key, "RD01")
+    key = _name(case, u, "WKS01", FILE_NAME)
+    assert _address(case, u, "10.9.9.9") == (key, "WKS01")
     assert len(hi.load(case).machines) == 1
 
 
 def test_an_address_bound_before_the_evidence_names_the_unit_stays(case):
     u = _memory_unit(case)
-    key = _name(case, u, "RD01", FILE_NAME)
-    assert _address(case, u, "10.1.2.3") == (key, "RD01")
-    _observe(case, u, "RD01")
-    assert _address(case, u, "10.1.2.3") == (key, "RD01")
+    key = _name(case, u, "WKS01", FILE_NAME)
+    assert _address(case, u, "10.1.2.3") == (key, "WKS01")
+    _observe(case, u, "WKS01")
+    assert _address(case, u, "10.1.2.3") == (key, "WKS01")
     assert len(hi.load(case).machines) == 1
 
 
 def test_a_name_the_evidence_gave_first_is_not_the_units_placeholder(case):
-    """The evidence names RD01 before the examiner confirms it: RD01 is the
+    """The evidence names WKS01 before the examiner confirms it: WKS01 is the
     unit's own machine, and its addresses share the unit's placeholder."""
-    u = _memory_unit(case, "RD01")
-    _name(case, u, "RD01")
-    assert "RD01" not in hgd.placeholder_of(hi.load(case), u)
+    u = _memory_unit(case, "WKS01")
+    _name(case, u, "WKS01")
+    assert "WKS01" not in hgd.placeholder_of(hi.load(case), u)
     k1, c1 = _address(case, u, "10.1.2.3")
-    _observe(case, u, "RD01", "the hostname given to the run", "argument")
+    _observe(case, u, "WKS01", "the hostname given to the run", "argument")
     k2, c2 = _address(case, u, "10.9.9.9")
     assert c1 == c2 == host_gate.placeholder_name(MEMORY)
     state = hi.load(case)
