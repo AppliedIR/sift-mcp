@@ -159,6 +159,60 @@ def test_a_template_name_two_machines_share_never_merges_them(case):
     assert len(hi.load(case).machines) == 2
 
 
+def _late(case, u, raw):
+    """A name first met while ingesting the unit's records: (machine, state)."""
+    _, canonical = hi.get_or_mint(case, u, raw, origin=hi.ARTIFACT,
+                                  evidence="Security.evtx Computer")  # fmt: skip
+    return canonical, hi.load(case).machine_of_pair(u, raw).state
+
+
+@pytest.mark.parametrize(
+    ("listed", "a_guid", "e_guid", "raw"),
+    [("DEV01\nSRV9\n", None, None, "EC2AMAZ-AAAA111"),
+     ("DEV01\n", None, None, "EC2AMAZ-AAAA111"),
+     ("DEV01\nSRV9\n", None, "g2", "EC2AMAZ-AAAA111"),
+     ("DEV01\nSRV9\n", "g1", None, "EC2AMAZ-AAAA111"),
+     ("DEV01\nSRV9\n", None, None, "WIN-BBBB2222"),
+     ("DEV01\nSRV9\n", "g1", "g2", "EC2AMAZ-AAAA111")],
+)  # fmt: skip
+def test_another_hosts_late_template_name_never_joins_a_machine_through_it(
+    case, listed, a_guid, e_guid, raw
+):
+    a = disk(case, "evidence/dev01.E01@0", "DEV01", "EC2AMAZ-AAAA111", "WIN-BBBB2222",
+             **({"machine_guid": a_guid} if a_guid else {}))  # fmt: skip
+    e = disk(case, "evidence/srv9.E01@0", "SRV9",
+             **({"machine_guid": e_guid} if e_guid else {}))  # fmt: skip
+    hp.upload_host_list(case, listed, "ex1")
+    assert on(case, a, raw) == "DEV01"
+    # the other host's records name it later: its own machine, never DEV01
+    assert _late(case, e, raw) == (raw, hi.NEW)
+    st = hi.load(case)
+    assert st.machine_of_pair(a, "DEV01").id != st.machine_of_pair(e, raw).id
+
+
+def test_another_hosts_late_template_name_with_a_domain_never_joins_through_it(case):
+    fqdn = "EC2AMAZ-AAAA111.corp.example.com"
+    a = disk(case, "evidence/dev01.E01@0", "DEV01.corp.example.com", fqdn)
+    e = disk(case, "evidence/srv9.E01@0", "SRV9.corp.example.com")
+    hp.upload_host_list(case, "DEV01.corp.example.com\nSRV9.corp.example.com\n", "ex1")
+    assert on(case, a, fqdn) == "DEV01.corp.example.com"
+    assert _late(case, e, fqdn) == (fqdn, hi.NEW)
+
+
+def test_a_late_template_name_still_joins_its_own_units_machine(case):
+    a = disk(case, "evidence/dev01.E01@0", "DEV01", "EC2AMAZ-AAAA111")
+    e = disk(case, "evidence/srv9.E01@0", "SRV9")
+    hp.upload_host_list(case, "DEV01\nSRV9\n", "ex1")
+    # the same unit spells it another way in a later artifact: its own machine
+    assert _late(case, a, "ec2amaz-aaaa111") == ("DEV01", hi.CONFIRMED)
+    # another unit of the same host (its triage collection) reads it late
+    b = disk(case, "evidence/dev01-triage.vhdx@0", "DEV01")
+    assert hp.apply_host_list(case, [b])["confirmed"]
+    assert _late(case, b, "EC2AMAZ-AAAA111") == ("DEV01", hi.CONFIRMED)
+    # a host name, not a template one, still joins across units as before
+    assert _late(case, e, "DEV01") == ("DEV01", hi.CONFIRMED)
+
+
 def test_a_template_name_only_another_hosts_records_carry_stays_unbound(case):
     u = disk(case, "evidence/srv1.E01@0", "SRV1")
     hi.append_observations(case, [{"kind": "name", "unit": u, "raw": "WIN-OTHER99",
