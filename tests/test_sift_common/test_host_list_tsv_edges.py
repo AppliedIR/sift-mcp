@@ -4,6 +4,8 @@ are synthetic (RFC 2606 domains)."""
 
 from __future__ import annotations
 
+import sys
+
 from sift_common import host_proposal as hp
 
 NO_NAME = hp.SKIP_NO_NAME
@@ -66,3 +68,9 @@ def test_a_unicode_space_or_a_csv_rows_leading_tab_before_a_quote_reads_as_befor
         "csv tab before quote": ([("WKS01", "")], []),
         "tsv nbsp before quote": ([("WKS01", "")], []),
     }
+
+
+def test_a_tsv_rows_trim_set_is_every_space_but_the_tab():
+    spaces = {chr(c) for c in range(sys.maxunicode + 1) if chr(c).isspace()}
+    assert set(hp._SPACE_NOT_TAB) == spaces - {"\t"}
+    assert len(hp._SPACE_NOT_TAB) == len(spaces) - 1
