@@ -67,9 +67,10 @@ try:
                 continue
             try:
                 p = json.loads(ln).get("payload") or {}
-                # code mode (Codex 0.163+): a script that calls tools.write_stdin,
-                # recorded as sent since the text it types is built by the script
-                raw = p.get("type") == "custom_tool_call"
+                # code mode (Codex 0.163+): a script run by the exec tool that
+                # calls tools.write_stdin, recorded as sent since the text it
+                # types is built by the script. Other tools (apply_patch) aren't.
+                raw = p.get("type") == "custom_tool_call" and p.get("name") == "exec"
                 if raw and "write_stdin" in str(p.get("input", "")):
                     chars = str(p.get("input", ""))
                 elif p.get("type") == "function_call" and p.get("name") == "write_stdin":
