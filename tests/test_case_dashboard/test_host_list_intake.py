@@ -429,3 +429,68 @@ def test_a_planted_file_name_is_not_bound_into_a_real_host(case, client):
     _confirm_all(client)
     _decide(client, "list", {"text": "dc01.corp.example\n"})
     assert _bound(case, dc, "DC01") and not _bound(case, u, "DC01")
+
+
+# A hostname argument judged by its unit's own evidence
+
+
+def _named(case, loc, names):
+    u = hi.unit_key(loc)
+    return _observe(case, u, [{"kind": "unit", "unit": u, "locator": loc}] + [
+        {"kind": "name", "unit": u, "raw": r, "evidence": e, "origin": o}
+        for r, e, o in names
+    ])  # fmt: skip
+
+
+def _real_dc01(case):
+    return _named(case, "evidence/dc01-image", [
+        ("DC01.corp.example", "SYSTEM", "artifact"),
+        ("DC01.corp.example", "Security.evtx Computer", "artifact"),
+    ])  # fmt: skip
+
+
+_ARG_DC01 = ("DC01", "hostname argument", "argument")
+_FORWARDED_DC01 = ("DC01.corp.example", "ForwardedEvents.evtx Computer", "artifact")
+_WKS05 = [
+    ("WKS05", "SYSTEM", "artifact"),
+    ("WKS05", "Security.evtx Computer", "artifact"),
+]
+OTHER_MACHINES_NAMES = {
+    # a workstation whose hive and log name it, holding DC01's forwarded events
+    "forwarded events on a workstation": [*_WKS05, _FORWARDED_DC01, _ARG_DC01],
+    # a collector's folder: only DC01's forwarded events
+    "a collector's folder": [_FORWARDED_DC01, _ARG_DC01],
+    # a row's host column names DC01 in full; the hive names the unit WKS05
+    "a host column the hive disagrees with": [
+        *_WKS05, ("DC01.corp.example", "logons.csv host column", "artifact"), _ARG_DC01
+    ],
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("shape", OTHER_MACHINES_NAMES)
+def test_confirm_all_never_takes_another_machines_name_as_the_arguments_evidence(
+    case, client, shape
+):
+    _real_dc01(case)
+    x = _named(case, "evidence/x", OTHER_MACHINES_NAMES[shape])
+    _confirm_all(client)
+    assert not _bound(case, x, "DC01")
+
+
+@pytest.mark.parametrize("shape", OTHER_MACHINES_NAMES)
+def test_a_list_never_takes_another_machines_name_as_the_arguments_evidence(
+    case, client, shape
+):
+    dc = _real_dc01(case)
+    x = _named(case, "evidence/x", OTHER_MACHINES_NAMES[shape])
+    _decide(client, "list", {"text": "DC01.corp.example\nWKS05\n"})
+    assert _bound(case, dc, "DC01.corp.example") and not _bound(case, x, "DC01")
+
+
+def test_a_short_argument_agrees_with_the_full_name_in_a_host_column(case, client):
+    x = _named(case, "evidence/by-host/rd01", [
+        ("rd01", "hostname argument", "argument"),
+        ("rd01.corp.example", "rd01-Arp.csv host column", "artifact"),
+    ])  # fmt: skip
+    assert _confirm_all(client)["confirmed"] == ["rd01.corp.example"]
+    assert _bound(case, x, "rd01")

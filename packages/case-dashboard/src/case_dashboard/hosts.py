@@ -379,11 +379,10 @@ def _origins(page: hi.HostState, p) -> list:
 
 def _from_evidence(page: hi.HostState, pairs, p) -> bool:
     """Read from evidence, or only the run's hostname argument agreeing with
-    an artifact name of its unit in the same group."""
+    an artifact name of its unit in the same group (as the list judges it)."""
     if hi.ARTIFACT in _origins(page, p):
         return True
-    arts = [q[1] for q in pairs if q[0] == p[0] and hi.ARTIFACT in _origins(page, q)]
-    return hp.argument_agrees(_origins(page, p), p[1], arts)
+    return hp.argument_vouched(page, p, pairs)
 
 
 def _confirm_all(

@@ -268,6 +268,13 @@ class _Pair:
     def folder(self) -> bool:
         return hi.FOLDER in self.origins
 
+    @property
+    def forwarded(self) -> bool:
+        """Only from forwarded logs: another machine's events."""
+        return bool(self.evidence) and all(
+            e.lower().startswith("forwardedevents") for e in self.evidence
+        )
+
     def foreign_by_evidence(self) -> bool:
         """Only from rows or forwarded logs: another machine's name."""
         return bool(self.evidence) and all(
@@ -988,6 +995,24 @@ def argument_agrees(origins, raw: str, artifact_names) -> bool:
     )
 
 
+def argument_vouched(state: hi.HostState, p, pairs, ps=None) -> bool:
+    """`argument_agrees` for the pair `p`, judged by its unit's evidence. It
+    may agree with the unit's artifact names among `pairs`, never a
+    forwarded log's (another machine's events). And when the unit's own
+    evidence names it (a hive, its own logs), one of those names must agree
+    too, so the argument never outvotes them."""
+    origins = (state.names.get(p) or {}).get("origins") or []
+    if set(origins) != {ARGUMENT}:
+        return False
+    if ps is None:
+        ps = _sides(state, p[0])[0]
+    own = [q[1] for q, x in ps.items() if x.artifact and not x.foreign_by_evidence()]
+    if own and not argument_agrees(origins, p[1], own):
+        return False
+    arts = [q[1] for q in pairs if q in ps and ps[q].artifact and not ps[q].forwarded]
+    return argument_agrees(origins, p[1], arts)
+
+
 def _sides(state: hi.HostState, unit: str):
     """A unit's own pairs and the names it holds for other machines (row
     columns, forwarded logs), as `propose` tells them apart."""
@@ -1112,10 +1137,9 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
         why = _unit_held(state, unit, ps, own, entries, by_entry_units)
         if why is None:
             listed = [p for p in own if not ps[p].ai_only and not name_flags(p[1])]
-            arts = [p[1] for p in listed if ps[p].artifact]
             listed += [
                 p for p in own
-                if argument_agrees(ps[p].origins, p[1], arts) and not name_flags(p[1])
+                if argument_vouched(state, p, listed, ps) and not name_flags(p[1])
             ]  # fmt: skip
             matched = {entry_id(e): e for p in own if _eligible(ps[p], state)
                        for e in list_matches(p[1], entries)}  # fmt: skip
