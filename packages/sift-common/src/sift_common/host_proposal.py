@@ -1006,7 +1006,10 @@ def argument_vouched(state: hi.HostState, p, pairs, ps=None) -> bool:
         return False
     if ps is None:
         ps = _sides(state, p[0])[0]
-    own = [q[1] for q, x in ps.items() if x.artifact and not x.foreign_by_evidence()]
+    own = [
+        q[1] for q, x in ps.items()
+        if x.artifact and not x.foreign_by_evidence() and not _not_a_host(state, q)
+    ]  # fmt: skip
     if own and not argument_agrees(origins, p[1], own):
         return False
     arts = [q[1] for q in pairs if q in ps and ps[q].artifact and not ps[q].forwarded]

@@ -494,3 +494,15 @@ def test_a_short_argument_agrees_with_the_full_name_in_a_host_column(case, clien
     ])  # fmt: skip
     assert _confirm_all(client)["confirmed"] == ["rd01.corp.example"]
     assert _bound(case, x, "rd01")
+
+
+@pytest.mark.parametrize("build", ["Application.evtx Computer", "SYSTEM"])
+def test_a_name_marked_not_a_host_never_outvotes_the_argument(case, client, build):
+    x = _named(case, "evidence/by-host/rd01", [
+        ("rd01", "hostname argument", "argument"),
+        ("rd01.corp.example", "rd01-Arp.csv host column", "artifact"),
+        ("BUILD", build, "artifact"),
+    ])  # fmt: skip
+    assert _decide(client, "not_a_host", {"pairs": [[x, "BUILD"]]}).status_code == 200
+    assert _confirm_all(client)["confirmed"] == ["rd01.corp.example"]
+    assert _bound(case, x, "rd01")
