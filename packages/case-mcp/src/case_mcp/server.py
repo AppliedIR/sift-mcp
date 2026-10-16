@@ -78,16 +78,22 @@ def _wintools_configured() -> bool:
 
 
 def _build_platform_capabilities() -> dict:
-    """Detect available backends for Layer 4 platform capabilities."""
+    """Layer 4 platform capabilities: what was checked, never whether the
+    backend answers. "installed" means its package imports here, "configured"
+    means gateway.yaml (or ~/.claude.json for REMnux) names it, and False
+    means neither. Nothing is contacted, so a listed backend may be down."""
     import importlib.util
 
+    def installed(module: str):
+        return "installed" if importlib.util.find_spec(module) is not None else False
+
     capabilities = {
-        "opensearch": importlib.util.find_spec("opensearch_mcp") is not None,
+        "opensearch": installed("opensearch_mcp"),
         "remnux": False,
         "wintools": False,
-        "forensic_rag": importlib.util.find_spec("rag_mcp") is not None,
-        "opencti": importlib.util.find_spec("opencti_mcp") is not None,
-        "sift_tools": True,
+        "forensic_rag": installed("rag_mcp"),
+        "opencti": installed("opencti_mcp"),
+        "sift_tools": installed("sift_mcp"),
     }
     try:
         import yaml
@@ -96,8 +102,8 @@ def _build_platform_capabilities() -> dict:
         if gw_path.exists():
             gw_config = yaml.safe_load(gw_path.read_text()) or {}
             backends = gw_config.get("backends", {})
-            capabilities["remnux"] = "remnux-mcp" in backends
-            capabilities["wintools"] = "wintools-mcp" in backends
+            capabilities["remnux"] = "remnux-mcp" in backends and "configured"
+            capabilities["wintools"] = "wintools-mcp" in backends and "configured"
     except Exception:
         pass
     # REMnux connects directly to client (not via gateway) — check .claude.json
@@ -109,31 +115,40 @@ def _build_platform_capabilities() -> dict:
             if claude_json.exists():
                 cj = json.loads(claude_json.read_text())
                 mcp_servers = cj.get("mcpServers", {})
-                capabilities["remnux"] = "remnux-mcp" in mcp_servers
+                capabilities["remnux"] = "remnux-mcp" in mcp_servers and "configured"
         except Exception:
             pass
 
-    guidance = ["Available investigation capabilities:"]
-    guidance.append("- SIFT forensic tools via run_command (65+ tools)")
+    guidance = [
+        "Investigation capabilities installed or configured here"
+        " (none was contacted, so one may be down):"
+    ]
+    if capabilities["sift_tools"]:
+        guidance.append(
+            "- If connected: SIFT forensic tools via run_command (65+ tools)"
+        )
     if capabilities["opensearch"]:
         guidance.append(
-            "- Evidence indexing: idx_ingest for structured querying at scale"
+            "- If connected: evidence indexing: idx_ingest for structured querying at scale"
         )
     if capabilities["remnux"]:
         guidance.append(
-            "- Malware analysis on REMnux, each step logged with log_external_action"
-            " (recorded as declared): upload_from_host + analyze_file"
+            "- If connected: malware analysis on REMnux, each step logged with"
+            " log_external_action (recorded as declared): upload_from_host + analyze_file"
         )
     if capabilities["wintools"]:
         guidance.append(
-            "- Windows offline analysis: run_windows_command on forensic workstation"
+            "- If connected: Windows offline analysis: run_windows_command on forensic"
+            " workstation"
         )
     if capabilities["forensic_rag"]:
         guidance.append(
-            "- Knowledge search: search_knowledge (Sigma, MITRE ATT&CK, KAPE)"
+            "- If connected: knowledge search: search_knowledge (Sigma, MITRE ATT&CK, KAPE)"
         )
     if capabilities["opencti"]:
-        guidance.append("- Threat intel: lookup_ioc, search_threat_intel on OpenCTI")
+        guidance.append(
+            "- If connected: threat intel: lookup_ioc, search_threat_intel on OpenCTI"
+        )
     guidance.append("")
     guidance.append(
         "Do not rely solely on OpenSearch queries. "
