@@ -4,8 +4,8 @@ forensic-mcp's reads answer an error as an error.
 - case_status keeps its counts (by status, as documented) and adds `warning`,
   the same text get_findings and get_timeline give, naming every APPROVED
   finding and event that doesn't verify. Before, it said nothing.
-- get_findings and get_timeline answer `{"error": …, findings or events: [],
-  "total": 0}`. Before, the error was a row in the list.
+- get_findings and get_timeline answer `{"error": …, findings or events: []}`,
+  with no count. Before, the error was a row in the list.
 
 The real servers run in-process on scratch cases (test_timeline_reads' rig).
 """
@@ -175,7 +175,7 @@ def test_no_active_case_is_an_error_with_an_empty_list(
     monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
     monkeypatch.setattr(fmm, "_ACTIVE_CASE_FILE", tmp_path / "no-active-case")
     out = _tool(tool)()
-    assert out[key] == [] and out["total"] == 0, out
+    assert out[key] == [] and "total" not in out, out
     assert out["error"].startswith("No active case"), out
 
 
@@ -187,5 +187,5 @@ def test_a_corrupt_file_is_an_error_with_an_empty_list(
     d = _make_case(tmp_path, "INC-C", [], [], monkeypatch)
     (d / name).write_text("{not json")
     out = _tool(tool)()
-    assert out[key] == [] and out["total"] == 0, out
+    assert out[key] == [] and "total" not in out, out
     assert "corrupt" in out["error"], out

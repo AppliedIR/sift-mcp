@@ -51,8 +51,8 @@ skeptic has none and can't run: it fails closed.
    If the skeptic found nothing and you agree, leave `alternatives` out.
 5. **Set `challenged`** in the finding:
    - `outcome`: `stands`, `revised`, `contested` or `withdrawn`;
-   - `checks`: the skeptic's checks, each `{"name", "result", "audit_ids",
-     "reason"}`. `result` is one of `consistent`, `contradicts`,
+   - `checks`: the skeptic's checks as it reported them, at most 20, each
+     `{"name", "result", "audit_ids", "reason"}`. `result` is one of `consistent`, `contradicts`,
      `nothing found` or `not run`; `audit_ids` are the skeptic's own tool
      calls, never the finding's; `reason` says why a check was `not run`;
    - `contradiction`: required for `contested` and `withdrawn`;
@@ -136,12 +136,19 @@ call and quotes the output. An artifact's meaning depends on its context
 assumes. A disagreement that is a judgment, not contradicting output, is
 reported as such: the investigator records it as `contested`.
 
-**Report each check** as `name`, `result` and the audit ids of your own
-calls:
-- `consistent`: your output agrees with the finding;
-- `contradicts`: your output contradicts a fact in the observation (quote it);
-- `nothing found`: you looked and found nothing either way;
-- `not run`: you couldn't run it, and why.
+**Report each check** as one object, the shape `record_finding` takes in
+`challenged.checks`, at most 20:
+`{"name": "<what you checked>", "result": "<one below>", "audit_ids":
+["<your call's audit id>"], "reason": "<why not run>"}`.
+- `name`: what you checked, in a few words;
+- `result`: one of
+  - `consistent`: your output agrees with the finding;
+  - `contradicts`: your output contradicts a fact in the observation (quote
+    it);
+  - `nothing found`: you looked and found nothing either way;
+  - `not run`: you couldn't run it;
+- `audit_ids`: the audit ids of your own calls, never the finding's;
+- `reason`: only for `not run`: why.
 
 **The skeptic never:**
 - calls `record_finding`, `record_timeline_event`, or any ingest, case,

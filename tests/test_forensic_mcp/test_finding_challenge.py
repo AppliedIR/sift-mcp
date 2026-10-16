@@ -666,6 +666,43 @@ def test_the_tool_list_says_what_challenged_takes():
     )
 
 
+def _described_challenge() -> dict:
+    """The example `challenged` in record_finding's description, as written."""
+    tools = {t.name: t for t in asyncio.run(create_server().list_tools())}
+    described = " ".join(tools["record_finding"].description.split())
+    example = described.split("Checks past 20 are dropped. Example: ", 1)[1]
+    return json.loads(example[: example.index("}}") + 2])
+
+
+@pytest.mark.parametrize(
+    "ids, result",
+    [([SKEPTIC], "consistent"), ([OWN], "not run"), ([ELSEWHERE], "not run")],
+    ids=["the skeptic's own id", "the finding's own id", "an id not in the trail"],
+)
+def test_the_described_challenge_is_stored_as_written(case, ids, result):
+    """The description's example, with the skeptic's audit id put in, is
+    stored as it says: its check consistent, its skeptic kept. The finding's
+    own id, or one not in the trail, stores that check as not run."""
+    challenged = _described_challenge()
+    assert challenged["checks"][0]["audit_ids"] == ["<the skeptic's audit id>"]
+    challenged["checks"][0]["audit_ids"] = ids
+    res = _record({**FINDING, "challenged": challenged})
+    assert res["status"] == "STAGED", res
+    stored = _stored(case, res)["challenged"]
+    assert stored["outcome"] == "stands"
+    assert [c["result"] for c in stored["checks"]] == [result]
+    assert stored["skeptic"] == {"client": "<client>", "model": "<model>",
+                                 "self_reported": True}  # fmt: skip
+    assert ("not run" in res.get("warning", "")) == (result == "not run")
+
+
+def test_checks_past_twenty_are_dropped(case):
+    check = {"name": "re-run", "result": "consistent", "audit_ids": [SKEPTIC]}
+    res = _record({**FINDING, "challenged": {"outcome": "stands",
+                                             "checks": [check] * 21}})  # fmt: skip
+    assert len(_stored(case, res)["challenged"]["checks"]) == 20
+
+
 @pytest.mark.parametrize(
     "check",
     [{"name": "re-run", "result": "consistent", "audit_ids": [SKEPTIC]},

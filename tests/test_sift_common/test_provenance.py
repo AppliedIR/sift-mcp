@@ -865,6 +865,89 @@ def test_a_registered_input_recorded_with_another_hash_breaks(c):
     assert pv.trace_file(pv.load_case(c.d), z, "").grade == "FULL"  # none recorded
 
 
+def _close_job(c, path, sha256, aid="fileidentity-tester-20261009-001"):
+    c.op("file-identity", aid, tool="hash_complete", job_id="hash-0123456789abcdef",
+         files=[{"path": path, "sha256": sha256}], ts="2026-10-09T00:00:02Z")  # fmt: skip
+
+
+_PENDING = "pending:hash-0123456789abcdef"
+
+
+def test_a_registered_file_read_while_its_hash_was_pending_takes_the_jobs_hash(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    root = c.register(z)
+    _close_job(c, z, sha(z))
+    t = pv.trace_file(pv.load_case(c.d), z, _PENDING)
+    assert t.grade == "FULL" and t.root["sha256"] == root["sha256"], t.as_dict()
+    (first,) = t.links
+    assert first["method"] == "registered-path"
+    assert first["from"] == {"path": root["path"], "sha256": sha(z)}
+    assert "pending" not in str(t.as_dict())
+
+
+def test_a_registered_file_whose_job_hashed_other_bytes_breaks(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    _close_job(c, z, "ab" * 32)
+    t = pv.trace_file(pv.load_case(c.d), z, _PENDING)
+    assert (t.grade, t.break_["kind"]) == ("BROKEN", "hash-mismatch"), t.as_dict()
+    assert "ab" * 32 in t.break_["detail"] and sha(z) in t.break_["detail"]
+
+
+@pytest.mark.parametrize("close", ["none", "failed", "twice"])
+def test_a_registered_file_whose_job_gave_no_hash_still_says_pending(c, close):
+    """While the job is open, failed, or closed twice with different hashes,
+    the read's hash is unknown: the link keeps what was recorded."""
+    z = c.file("evidence/mem.7z", "7z bytes")
+    root = c.register(z)
+    if close == "failed":
+        c.op("file-identity", "fileidentity-tester-20261009-001", tool="hash_failed",
+             job_id="hash-0123456789abcdef", files=[{"path": z, "error": "EIO"}])  # fmt: skip
+    if close == "twice":
+        _close_job(c, z, sha(z))
+        _close_job(c, z, "ab" * 32, aid="fileidentity-tester-20261009-002")
+    t = pv.trace_file(pv.load_case(c.d), z, _PENDING)
+    assert t.grade == "FULL" and t.root["sha256"] == root["sha256"], t.as_dict()
+    assert t.links[0]["from"] == {"path": root["path"], "sha256": _PENDING}
+
+
+def test_a_registered_file_hashed_at_the_read_is_unchanged_by_a_job(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    _close_job(c, z, "ab" * 32)  # another job's record for this path
+    t = pv.trace_file(pv.load_case(c.d), z, sha(z))
+    assert t.grade == "FULL" and t.links[0]["from"]["sha256"] == sha(z), t.as_dict()
+
+
+def test_a_folder_file_read_while_its_hash_was_pending_takes_the_jobs_hash(c):
+    f1 = c.file("evidence/kape/C/System.evtx", "system evtx")
+    c.register_folder(str(c.d / "evidence/kape"))
+    _close_job(c, f1, sha(f1))
+    t = pv.trace_file(pv.load_case(c.d), f1, _PENDING)
+    assert t.grade == "FULL" and t.root["sha256"] == sha(f1), t.as_dict()
+    assert [link["method"] for link in t.links] == ["manifest"]
+    assert t.links[0]["from"] == {"path": f1, "sha256": sha(f1)}
+    (c.d / "audit" / "file-identity.jsonl").unlink()
+    _close_job(c, f1, "ab" * 32)
+    t = pv.trace_file(pv.load_case(c.d), f1, _PENDING)
+    assert (t.grade, t.break_["kind"]) == ("BROKEN", "hash-mismatch"), t.as_dict()
+
+
+def test_a_run_that_read_a_registered_file_pending_shows_the_jobs_hash(c):
+    """The recorded shape: run_command records the input's hash pending, and
+    the file-identity log closes the job later."""
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    c.op("sift-mcp", "sift-tester-20261009-001", tool="run_command",
+         params={"command": ["7z", "l", z], "purpose": "p"}, input_files=[z],
+         input_sha256s=[_PENDING], input_detection_method="parsed",
+         result_summary={"exit_code": 0}, ts="2026-10-09T00:00:01Z")  # fmt: skip
+    _close_job(c, z, sha(z))
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
+    assert t.grade == "FULL", t.as_dict()
+    assert "pending" not in str(t.as_dict())
+
+
 def test_a_producer_in_another_log_at_the_same_time_is_still_the_origin(c):
     """Logs have no order between them: a tie in time is "later" only within
     one log, where the trail says which came first."""
@@ -1045,3 +1128,17 @@ def test_a_job_closed_in_several_entries_links_each_of_its_files(
     for f in files:
         t = pv.trace_file(case, f, sha(f))
         assert t.grade == "FULL", t.as_dict()
+
+
+def test_an_input_the_ai_declared_while_its_hash_was_pending_shows_the_jobs_hash(c):
+    z = c.file("evidence/mem.7z", "7z bytes")
+    c.register(z)
+    c.op("sift-mcp", "sift-tester-20261009-001", tool="run_command",
+         params={"command": ["sh", "-c", "list"], "purpose": "p"}, input_files=[z],
+         input_sha256s=[_PENDING], input_detection_method="llm",
+         result_summary={"exit_code": 0}, ts="2026-10-09T00:00:01Z")  # fmt: skip
+    _close_job(c, z, sha(z))
+    t = pv.trace_op(pv.load_case(c.d), "sift-tester-20261009-001")
+    assert t.grade == "DECLARED", t.as_dict()
+    assert "declared" in [link["method"] for link in t.links]
+    assert "pending" not in str(t.as_dict())
