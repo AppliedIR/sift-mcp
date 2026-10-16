@@ -3112,7 +3112,8 @@ async function loadToolInvocations(finding) {
   function renderStep(step) {
     var fullEntry = auditById[safeStr(step.audit_id)];
     var unread = fileIdentityUnread(step.audit_id, fullEntry);
-    var tool = (fullEntry && fullEntry.tool) || step.tool || (unread ? '' : 'unknown');
+    // a step with no audit entry (registered-path, manifest) names no tool
+    var tool = (fullEntry && fullEntry.tool) || step.tool || (unread || !step.audit_id ? '' : 'unknown');
     var elapsed = (fullEntry && fullEntry.elapsed_ms) ? ' \u00B7 ' + (Number(safeStr(fullEntry.elapsed_ms)) / 1000).toFixed(1) + 's' : '';
     var cmd = '';
     if (fullEntry && fullEntry.params && fullEntry.params.command) {
@@ -5438,6 +5439,10 @@ function _tipRow(label, value, mono) {
     + (mono ? '<span style="font-family:monospace">' : '<span>')
     + escapeHtml(safeStr(value)) + '</span></div>';
 }
+// A plain object String() can convert (its toString is callable).
+function _isRecord(x) {
+  return x !== null && typeof x === 'object' && !Array.isArray(x) && typeof x.toString === 'function';
+}
 function _buildTooltipHtml(entry, step) {
   var h = '';
   var tool = entry.tool || entry.mcp || 'unknown';
@@ -5457,7 +5462,8 @@ function _buildTooltipHtml(entry, step) {
     if (skipParams[k]) return;
     var v = params[k];
     if (v === null || v === undefined || v === '' || v === false || v === 0) return;
-    if (Array.isArray(v)) { if (!v.length) return; v = safeStr(v, ', '); }
+    // a list of records (result_docs) shows as a count: its JSON runs off the screen
+    if (Array.isArray(v)) { if (!v.length) return; v = v.every(_isRecord) ? v.length + ' items' : safeStr(v, ', '); }
     else if (typeof v === 'object') v = JSON.stringify(v);
     h += _tipRow(k, v);
   });
