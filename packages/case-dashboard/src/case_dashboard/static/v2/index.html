@@ -4958,7 +4958,7 @@ function renderTimelineRuler() {
     var w = c.events.length > 1 ? Math.max(6, c.events.length * 2) : 4;
     var titleText = c.events.length > 1
       ? c.events.length + ' events'
-      : (c.events[0].description || c.events[0].id || '').slice(0, 60);
+      : safeStr(c.events[0].description || c.events[0].id || '').slice(0, 60);
     var titleAttr = escapeHtml(titleText).replace(/"/g, '&quot;');
     var evId = c.events[0].id;
     mrkHtml += '<span style="position:absolute;left:' + c.pct.toFixed(1) + '%;width:' + w + 'px;height:10px;background:' + color + ';border-radius:2px;top:2px;cursor:pointer;transform:translateX(-50%)" title="' + titleAttr + '" onclick="focusTimelineEvent(\'' + escapeJsString(evId) + '\')"></span>';
