@@ -500,8 +500,8 @@ def test_a_cut_list_says_how_many_wait_and_where_all_are_shown(case):
     assert s["message"] == (
         hg.WAIT_MESSAGE
         + ". Only 50 of the 60 waiting entries are listed: one for each "
-        "host name in each image, folder or archive, and one for each with no host "
-        "name. The Portal's Hosts tab lists every one"
+        "host name in each file, folder, image or archive, and one for each of "
+        "those with no host name. The Portal's Hosts tab lists every one"
     )
 
 

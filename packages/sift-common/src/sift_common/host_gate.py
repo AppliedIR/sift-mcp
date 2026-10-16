@@ -208,8 +208,8 @@ def summary(pending: list[dict]) -> dict:
     if len(pending) > _LISTED:
         message += (
             f". Only {_LISTED} of the {len(pending)} waiting entries are listed: one "
-            "for each host name in each image, folder or archive, and one for each "
-            "with no host name. The Portal's Hosts tab lists every one"
+            "for each host name in each file, folder, image or archive, and one for "
+            "each of those with no host name. The Portal's Hosts tab lists every one"
         )
     return {
         "status": AWAITING,
