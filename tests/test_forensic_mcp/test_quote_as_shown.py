@@ -212,6 +212,40 @@ def test_the_reason_says_the_lines_dont_appear_together(q):
         )
 
 
+def _described_quote() -> str:
+    """The example quote in record_finding's description, line by line."""
+    import asyncio
+
+    from forensic_mcp.server import create_server
+
+    tools = {t.name: t for t in asyncio.run(create_server().list_tools())}
+    text = tools["record_finding"].description
+    after = text.split("Example, two adjacent lines of one returned record:\n", 1)[1]
+    return after.split("\n\n", 1)[0]
+
+
+def test_the_described_quote_and_rule_grade_as_the_description_says(q):
+    """The description's example quote, copied from a reply holding those two
+    lines, grades FULL on the first try; each clause of its rule holds."""
+    quote = _described_quote()
+    lines = [x.strip() for x in quote.splitlines()]
+    assert lines == ['"event.code": "4624",', '"user.name": "bob",']
+    exe = _line(q, "two", '"process.executable"')
+    rows = {
+        "the example": (quote, FULL + (["d1"],)),
+        "its lines out of order": ("\n".join(reversed(lines)), UNV),
+        "a line skipped between them": (f"{lines[0]}\n{exe}", UNV),
+        "... over the skipped line": (f"{lines[0]}\n...\n{exe}", UNV),
+        "a bare value beside a field line": (f"{lines[0]}\nbob", UNV),
+        "an opener without the line under it": ('"user": {', UNV),
+        "bare values from anywhere in one record": ("bob\n4624", FULL + (["d1"],)),
+    }
+    for k, (content, want) in rows.items():
+        name = "nested" if content.startswith('"user": {') else "two"
+        got = _grade(q, name, content)
+        assert got[: len(want)] == want, (k, got)
+
+
 # --- controls: as before ----------------------------------------------------------
 
 

@@ -213,6 +213,13 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
           {"client", "model"}}; contested and withdrawn also take
           "contradiction". With no skeptic: {"outcome": "not_challenged",
           "reason": why}. A finding without it is REJECTED.
+          A check's audit_ids are the skeptic's own calls: one the finding
+          also cites, or one not in the audit trail, stores that check as
+          "not run". Checks past 20 are dropped. Example:
+            {"outcome": "stands", "checks": [{"name": "re-ran the 4624
+            search", "result": "consistent", "audit_ids": ["<the skeptic's
+            audit id>"]}], "skeptic": {"client": "<client>", "model":
+            "<model>"}}
 
         produced_by (dict, optional): {"client", "model"} that wrote the
           finding, as your client reports them.
@@ -235,6 +242,15 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
           included; it's checked against that tool's saved output (or the
           query's returned records; for log_external_action with no
           output_files, its output_summary).
+          From a query's reply, copy whole lines as shown. Lines with a field
+          name ("field": value) or a brace count only together and in order,
+          as one returned record showed them: no line skipped between them
+          ("..." doesn't bridge one), every other line of that quote a whole
+          line too, and an opener ("user": {) only with the line under it.
+          Bare values, with no field name, may come from anywhere in one
+          record. Example, two adjacent lines of one returned record:
+            "event.code": "4624",
+            "user.name": "bob",
 
         Each artifact gets a provenance grade, with a reason for any but FULL:
           FULL: every link recorded, from the cited output to registered evidence.
