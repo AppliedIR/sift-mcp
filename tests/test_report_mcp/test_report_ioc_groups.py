@@ -21,8 +21,8 @@ from vhir_signing import sign_approved
 
 FIXTURE = Path(__file__).parent.parent / "fixtures"
 TEXT_ONLY = _TEXT_ONLY
-UNC = "\\\\172.16.6.12\\c$\\Users"  # as stored: two leading backslashes
-SID = "S-1-5-21-2838623409-1327563992-2591358621-1136"
+UNC = "\\\\192.0.2.62\\c$\\Users"  # as stored: two leading backslashes
+SID = "S-1-5-21-1111111111-2222222222-3333333333-1001"
 SHA = "AB" * 32
 NOTE = "Seen on the host."
 
@@ -46,15 +46,15 @@ DRY_RUN = json.loads((FIXTURE / "ioc_lists_dry_run_case.json").read_text())
 DRY_RUN_LIST = {
     "Domain": ["evil.com", "evil2.com"],
     "File": [UNC],
-    "IPv4": ["172.16.30.23", "172.16.5.21", "172.16.6.12", "172.16.6.14",
-             "172.16.6.18", "172.16.7.15", "203.0.113.7"],
+    "IPv4": ["192.0.2.30", "192.0.2.51", "192.0.2.62", "192.0.2.64",
+             "192.0.2.68", "192.0.2.75", "203.0.113.7"],
     "Unknown": [SID],
-    "user-account": ["tdungan"],
-    TEXT_ONLY: ["172.16.6.11", "C:\\Windows\\system32\\cmd.exe"],
+    "user-account": ["jdoe"],
+    TEXT_ONLY: ["192.0.2.61", "C:\\Windows\\system32\\cmd.exe"],
 }  # fmt: skip
 
-F1 = _f(1, ["172.16.6.12", UNC, {"value": "tdungan", "type": "user-account"}, SID],
-        observation="Logon from 172.16.6.12 mapped \\\\172.16.6.12\\c$\\Users as tdungan.",
+F1 = _f(1, ["192.0.2.62", UNC, {"value": "jdoe", "type": "user-account"}, SID],
+        observation="Logon from 192.0.2.62 mapped \\\\192.0.2.62\\c$\\Users as jdoe.",
         interpretation="Admin share access.")  # fmt: skip
 F3 = _f(3, [{"value": "203.0.113.7", "type": "ipv4-addr"}],
         observation="Beacon to 203.0.113.7 every 60 s.", interpretation="C2.")  # fmt: skip
@@ -65,11 +65,11 @@ SHAPES = {
     "dry-run-case": (DRY_RUN["findings"], DRY_RUN["records"], DRY_RUN_LIST),
     "no-records": (
         [F1, F3], [],
-        {TEXT_ONLY: ["172.16.6.12", "203.0.113.7", SID, UNC, "tdungan"]},
+        {TEXT_ONLY: ["192.0.2.62", "203.0.113.7", SID, UNC, "jdoe"]},
     ),
     "some-records": (
         [F1, F3], [_r(1, UNC, "file:path"), _r(2, "203.0.113.7", "ipv4-addr")],
-        {"File": [UNC], "IPv4": ["203.0.113.7"], TEXT_ONLY: ["172.16.6.12", SID, "tdungan"]},
+        {"File": [UNC], "IPv4": ["203.0.113.7"], TEXT_ONLY: ["192.0.2.62", SID, "jdoe"]},
     ),
     # a record's type
     "type-null": ([], [_r(1, "10.1.2.3", None)], {"IPv4": ["10.1.2.3"]}),
@@ -165,13 +165,13 @@ SHAPES = {
         [], {TEXT_ONLY: ["10.9.8.7"]},
     ),
     "text-path-sentence-punctuation": (
-        [_f(1, ["C:\\Windows\\System32\\SRLUpdate.exe", "C:\\Windows\\System32\\STUN.exe"],
-            observation="Removed C:\\Windows\\System32\\SRLUpdate.exe. The task ran "
-                        '"C:\\Windows\\System32\\STUN.exe", then (C:\\Temp\\a.exe) and '
+        [_f(1, ["C:\\Windows\\System32\\AppUpdate.exe", "C:\\Windows\\System32\\Helper.exe"],
+            observation="Removed C:\\Windows\\System32\\AppUpdate.exe. The task ran "
+                        '"C:\\Windows\\System32\\Helper.exe", then (C:\\Temp\\a.exe) and '
                         "'C:\\Temp\\b.exe'; C:\\Temp\\c.exe: done")],
-        [_r(1, "C:\\Windows\\System32\\SRLUpdate.exe", "file:path"),
-         _r(2, "C:\\Windows\\System32\\STUN.exe", "file:path")],
-        {"File": ["C:\\Windows\\System32\\SRLUpdate.exe", "C:\\Windows\\System32\\STUN.exe"],
+        [_r(1, "C:\\Windows\\System32\\AppUpdate.exe", "file:path"),
+         _r(2, "C:\\Windows\\System32\\Helper.exe", "file:path")],
+        {"File": ["C:\\Windows\\System32\\AppUpdate.exe", "C:\\Windows\\System32\\Helper.exe"],
          TEXT_ONLY: ["C:\\Temp\\a.exe", "C:\\Temp\\b.exe", "C:\\Temp\\c.exe"]},
     ),
     "path-really-ending-in-a-dot": (
@@ -288,7 +288,7 @@ def test_records_and_values_key_as_vhir_keys_them(shape):
 @pytest.mark.parametrize(
     "value, key",
     [(SHA, SHA.lower()), (" " + "C" * 40 + " ", "c" * 40), ("Evil.COM.", "evil.com"),
-     ("10.1.2.3", "10.1.2.3"), (UNC.upper(), UNC.lower()), ("Tdungan", "Tdungan"),
+     ("10.1.2.3", "10.1.2.3"), (UNC.upper(), UNC.lower()), ("Jdoe", "Jdoe"),
      ("evil[.]com", "evil.com"), ("hxxp://Evil[.]com/a", "http://evil.com/a"),
      ("user[@]evil.com", "user@evil.com"), (" 203.0.113.7:8443 ", "203.0.113.7"),
      ("203[.]0[.]113[.]7:8443", "203.0.113.7"), ("10.0.0.1/24", "10.0.0.1/24"),
