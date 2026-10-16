@@ -112,6 +112,9 @@ def _run(steps) -> list:
          [[A], [], ["failed"]]),
         ([REFUSED_A, RUNNING, ["end", {"state": "done"}]], [[A], [], []]),
         ([RUNNING, ["end", None]], [[], []]),
+        # a refusal that gives no reason says its state, or "refused"
+        ([["op", {"status": 409, "body": {"state": "busy"}}]], [["busy"]]),
+        ([["op", {"status": 500, "body": {}}]], [["refused"]]),
     ],
 )  # fmt: skip
 def test_the_banner_shows_the_last_requests_refusal_only(steps, banners):
