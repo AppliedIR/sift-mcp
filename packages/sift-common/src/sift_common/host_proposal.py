@@ -793,10 +793,11 @@ def read_host_list(text: str) -> tuple[list[dict], list[dict]]:
     an IP address never names a machine."""
     entries: list[dict] = []
     skipped: list[dict] = []
-    rows = [(n, line.strip()) for n, line in enumerate(text.splitlines(), 1)]
-    rows = [(n, line) for n, line in rows if line and not line.startswith("#")]
+    # A row keeps its tabs, so a TSV row's empty first or last cell stays a cell
+    rows = [(n, line.strip(" ")) for n, line in enumerate(text.splitlines(), 1)]
+    rows = [(n, line) for n, line in rows if line.strip()[:1] not in ("", "#")]
     host_col = fqdn_col = None
-    delimiter = "\t" if rows and "\t" in rows[0][1] else ","
+    delimiter = "\t" if rows and "\t" in rows[0][1].strip() else ","
     if rows:
         try:
             keys = [
