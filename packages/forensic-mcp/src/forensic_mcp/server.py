@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
-from pydantic import BeforeValidator
+from pydantic import BeforeValidator, Field
 from sift_common.approvals import mark_approvals
 from sift_common.instructions import FORENSIC_MCP as _INSTRUCTIONS
 from sift_common.oplog import log_lookup
@@ -40,7 +40,7 @@ def _not_bool(value):
     return value
 
 
-Offset = Annotated[int, BeforeValidator(_not_bool)]
+Offset = Annotated[int, Field(ge=0), BeforeValidator(_not_bool)]
 
 
 def _page(items: list, limit: int, offset: int) -> tuple[list, bool]:
@@ -422,7 +422,6 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
             return {
                 "error": str(e),
                 "findings": [],
-                "total": 0,
                 "limit": limit,
                 "offset": offset,
             }
@@ -492,7 +491,6 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
             return {
                 "error": str(e),
                 "events": [],
-                "total": 0,
                 "limit": limit,
                 "offset": offset,
             }

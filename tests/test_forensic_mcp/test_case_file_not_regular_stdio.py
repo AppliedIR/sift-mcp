@@ -315,6 +315,6 @@ def test_a_held_fifo_findings_file_is_refused_and_the_next_case_is_served(env):
     assert r == {"error": error}
     assert not os.path.isfile(d / "findings.json")  # still the FIFO
     listed = server.call("get_findings", {})  # an error, not a row
-    assert (_listed(listed), listed.get("error")) == (([], 0), error)
+    assert (_listed(listed), listed.get("error")) == (([], None), error)  # no count
     case("next-case")
     assert _listed(server.call("get_findings", {})) == ([], 0)

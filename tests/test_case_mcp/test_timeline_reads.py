@@ -22,6 +22,7 @@ import case_mcp.server as cms
 import forensic_mcp.case.manager as fmm
 import pytest
 from forensic_mcp.server import create_server
+from mcp.types import CallToolRequest, CallToolRequestParams
 from vhir_signing import sign_approved
 
 OFFSET = "offset must be 0 or more"
@@ -112,8 +113,28 @@ def test_get_findings_pages_from_offset(drafts, kw, ids):
     ids=["P5", "P6", "P7", "P8"],
 )
 def test_a_negative_offset_is_refused_whatever_the_limit(drafts, tool, key, kw):
-    out = _tool(tool)(**kw)  # an error, not a row
-    assert (out[key], out["total"], out["error"]) == ([], 0, OFFSET)
+    out = _tool(tool)(**kw)  # an error, not a row, and no count
+    assert (out[key], out["error"]) == ([], OFFSET) and "total" not in out, out
+
+
+def _wire(tool: str, **args):
+    """A tools/call request as the MCP route sends it: (isError, text)."""
+    handler = create_server()._mcp_server.request_handlers[CallToolRequest]
+    request = CallToolRequest(method="tools/call",
+                              params=CallToolRequestParams(name=tool, arguments=args))  # fmt: skip
+    result = asyncio.run(handler(request)).root
+    return result.isError, result.content[0].text
+
+
+@pytest.mark.parametrize("tool", ["get_findings", "get_timeline"])
+def test_a_negative_offset_is_refused_by_the_schema(drafts, tool):
+    tools = {t.name: t for t in asyncio.run(create_server().list_tools())}
+    assert tools[tool].inputSchema["properties"]["offset"]["minimum"] == 0
+    is_error, text = _wire(tool, offset=-1)
+    assert is_error and "greater than or equal to 0" in text, text
+    assert '"total"' not in text
+    is_error, text = _wire(tool, offset=1)  # twin: the real count
+    assert not is_error and json.loads(text)["total"] == 3, text
 
 
 # --- A, E: the timeline's approvals are verified --------------------------------
