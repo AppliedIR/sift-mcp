@@ -456,14 +456,74 @@ def test_an_unedited_approval_still_cascades_with_nothing_held(portal):
     assert plan["needs_decision"] == []
 
 
-def test_the_sign_dialog_names_each_event_left_for_its_own_decision():
+def _split_ioc(portal, other):
+    """F-steve-001 (DRAFT) and F-steve-002 cite one IOC; F-steve-002 is
+    signed to `other` first, or left DRAFT."""
+    enrol("steve")
+    portal.write("findings.json", [finding("F-steve-001", iocs=["198.51.100.7"]),
+                                   finding("F-steve-002", iocs=["198.51.100.7"])])  # fmt: skip
+    portal.write("timeline.json", [])
+    portal.write("iocs.json", [{"id": "IOC-steve-001", "value": "198.51.100.7",
+                                "type": "ipv4-addr", "status": "DRAFT",
+                                "source_findings": ["F-steve-001", "F-steve-002"]}])  # fmt: skip
+    if other != "DRAFT":
+        action = {"APPROVED": "approve", "REJECTED": "reject"}[other]
+        e = reviewed(portal, "F-steve-002", action)
+        assert portal.sign_all([e]).status_code == 200
+        assert portal.item("F-steve-002")["status"] == other
+
+
+@pytest.mark.parametrize("other", ["REJECTED", "DRAFT"])
+def test_an_ioc_its_findings_leave_apart_is_named_with_each_citing_one(portal, other):
+    _split_ioc(portal, other)
+    held = [{"id": "IOC-steve-001", "coupled_from": "F-steve-001",
+             "citing": [{"id": "F-steve-001", "status_after": "APPROVED"},
+                        {"id": "F-steve-002", "status_after": other}]}]  # fmt: skip
+    plan = portal.plan([reviewed(portal, "F-steve-001")]).json()
+    assert [b["item_id"] for b in plan["bodies"]] == ["F-steve-001"]
+    assert plan["needs_decision"] == held
+    k = portal.login(plan).json()
+    r = portal.commit(plan, portal.sign(plan, k))
+    assert r.status_code == 200, r.text
+    assert r.json()["cascades"] == [] and r.json()["needs_decision"] == held
+    assert portal.item("IOC-steve-001")["status"] == "DRAFT"
+    assert [ln["item_id"] for ln in portal.chain()][-1:] == ["F-steve-001"]
+    assert "IOC-steve-001" not in [ln["item_id"] for ln in portal.chain()]
+    assert verify_case(portal.dir).exit_code == 0
+
+
+def test_an_ioc_both_citing_findings_approve_is_signed_and_not_named(portal):
+    # twin: the other citing finding is already APPROVED, so the IOC cascades
+    _split_ioc(portal, "APPROVED")
+    plan = portal.plan([reviewed(portal, "F-steve-001")]).json()
+    assert [(b["item_id"], b["coupled_from"]) for b in plan["bodies"]] == [
+        ("F-steve-001", None), ("IOC-steve-001", "F-steve-001")]  # fmt: skip
+    assert plan["needs_decision"] == []
+
+
+def test_a_held_ioc_from_an_older_vhir_is_named_as_before(portal, monkeypatch):
+    # vhir before the citing list yields plain (id, finding) pairs: the plan
+    # carries just those two, as it did
+    real = signing.decide.split_cascades
+
+    def pairs(*a):
+        planned, held = real(*a)
+        return planned, [(h[0], h[1]) for h in held]
+
+    monkeypatch.setattr(signing.decide, "split_cascades", pairs)
+    _split_ioc(portal, "DRAFT")
+    plan = portal.plan([reviewed(portal, "F-steve-001")]).json()
+    assert plan["needs_decision"] == [
+        {"id": "IOC-steve-001", "coupled_from": "F-steve-001"}]  # fmt: skip
+
+
+def _render_list(held, show_all=False):
+    """The sign dialog's list, rendered by the page's own render()."""
     node = shutil.which("node") or pytest.skip("node isn't installed")
     page = PAGE.read_text()
     start = page.index("  function render(plan) {")
     fn = page[start : page.index("\n  }\n", start) + 5]
     esc = page.index("function safeStr(")
-    held = [{"id": "T-steve-009", "coupled_from": "F-steve-010"},
-            {"id": "T-<b>x</b>", "coupled_from": "F-steve-011"}]  # fmt: skip
     script = (
         "var els = {}; function el(id) { return els[id] || (els[id] = "
         "{checked: false, innerHTML: '', textContent: ''}); }"
@@ -471,6 +531,7 @@ def test_the_sign_dialog_names_each_event_left_for_its_own_decision():
         " this.innerHTML = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')"
         ".replace(/>/g, '&gt;'); }}; }};"  # as the browser's text node escapes
         "var state = {frozen: {examiner: 'steve'}};\n"
+        + ("els.commitShowAll = {checked: true};\n" if show_all else "")
         + page[esc : page.index("\n}\n", page.index("function escapeHtml(")) + 3]
         + fn
         + "\nrender("
@@ -480,11 +541,86 @@ def test_the_sign_dialog_names_each_event_left_for_its_own_decision():
     )
     r = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr[-500:]
+    return r.stdout
+
+
+def _cite(*pairs):
+    return [{"id": f, "status_after": s} for f, s in pairs]
+
+
+@pytest.mark.parametrize("show_all", [False, True])
+def test_the_sign_dialog_names_each_finding_citing_a_held_ioc(show_all):
+    out = _render_list([
+        {"id": "IOC-steve-001", "coupled_from": "F-steve-001",
+         "citing": _cite(("F-steve-001", "APPROVED"), ("F-steve-002", "REJECTED"))},
+        {"id": "IOC-steve-002", "coupled_from": "F-steve-001",
+         "citing": _cite(("F-steve-001", "APPROVED"), ("F-steve-002", "DRAFT"),
+                         ("F-steve-003", "REJECTED"))},
+    ], show_all)  # fmt: skip
+    assert (
+        "IOC-steve-001 stays DRAFT: cited by F-steve-001 (APPROVED) and F-steve-002 "
+        "(REJECTED). It is approved only when every finding that cites it is approved. "
+        "To reject it now: vhir reject IOC-steve-001"
+    ) in out
+    assert (
+        "IOC-steve-002 stays DRAFT: cited by F-steve-001 (APPROVED), F-steve-002 "
+        "(DRAFT) and F-steve-003 (REJECTED). It is approved only when every finding "
+        "that cites it is approved. To reject it now: vhir reject IOC-steve-002"
+    ) in out
+    # neither `vhir approve IOC-x` nor the IOCs tab can decide an IOC
+    assert "Timeline tab" not in out and "IOCs tab" not in out
+    assert "vhir approve" not in out
+
+
+def test_a_held_ioc_s_names_are_escaped():
+    out = _render_list([{"id": "IOC-<b>1</b>", "coupled_from": "F-steve-001",
+                         "citing": _cite(("F-<b>2</b>", "<b>S</b>"),
+                                         ("F-steve-003", "DRAFT"))}])  # fmt: skip
+    assert "<b>" not in out
+    assert (
+        "IOC-&lt;b&gt;1&lt;/b&gt; stays DRAFT: cited by F-&lt;b&gt;2&lt;/b&gt; "
+        "(&lt;b&gt;S&lt;/b&gt;) and F-steve-003 (DRAFT)."
+    ) in out
+    assert "To reject it now: vhir reject IOC-&lt;b&gt;1&lt;/b&gt;</div>" in out
+
+
+def test_a_held_ioc_with_one_citing_finding_names_it_alone():
+    out = _render_list([{"id": "IOC-steve-001", "coupled_from": "F-steve-001",
+                         "citing": _cite(("F-steve-001", "APPROVED"))}])  # fmt: skip
+    assert "IOC-steve-001 stays DRAFT: cited by F-steve-001 (APPROVED). It is" in out
+    assert " and " not in out
+
+
+def test_a_malformed_citing_entry_is_named_as_text_never_a_crash():
+    citing = [
+        None,
+        "F-steve-002",
+        {"id": {"toString": None}, "status_after": ["A", "B"]},
+    ]
+    out = _render_list([{"id": "IOC-steve-001", "coupled_from": "F-steve-001",
+                         "citing": citing}])  # fmt: skip
+    assert (
+        "IOC-steve-001 stays DRAFT: cited by  (),  () and [unprintable] (A,B)." in out
+    )
+
+
+@pytest.mark.parametrize("citing", [None, [], "F-steve-002", {"id": "F-steve-002"}])
+def test_a_held_item_without_a_citing_list_is_named_as_an_event(citing):
+    h = {"id": "T-steve-009", "coupled_from": "F-steve-010"}
+    out = _render_list([h if citing is None else dict(h, citing=citing)])
+    assert "stays DRAFT" not in out
+    assert "T-steve-009 is linked to F-steve-010, which was edited" in out
+
+
+def test_the_sign_dialog_names_each_event_left_for_its_own_decision():
+    held = [{"id": "T-steve-009", "coupled_from": "F-steve-010"},
+            {"id": "T-<b>x</b>", "coupled_from": "F-steve-011"}]  # fmt: skip
+    out = _render_list(held)
     assert (
         "T-steve-009 is linked to F-steve-010, which was edited after the event was made "
         "from it. It was not signed. Decide it on its own in the Timeline tab."
-    ) in r.stdout
-    assert "<b>" not in r.stdout and "T-&lt;b&gt;x" in r.stdout
+    ) in out
+    assert "<b>" not in out and "T-&lt;b&gt;x" in out
 
 
 def test_one_id_selected_twice_is_refused(case):
