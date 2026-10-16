@@ -3079,9 +3079,17 @@ async function loadToolInvocations(finding) {
     }
     var pf = function(d) {
       d = d || {};
+      if (!d.path && !d.sha256) return '(no file)';
       return escapeHtml(String(d.path || '?').split(/[\\/]/).pop()) + ' <span style="font-family:monospace">' + escapeHtml(provHash(d.sha256)) + '</span>';
     };
-    if (step.from || step.to) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">' + (src ? src + ' \u2192 ' : step.from ? pf(step.from) + ' \u2192 ' : '\u2192 ') + pf(step.to) + '</div>';
+    var doc = step.document;
+    if (doc && typeof doc === 'object' && !(step.to && step.to.path)) {
+      // a returned record: the query's link names it, not a file; a record
+      // with no content hash (recorded before 0.6.4) reads "(no hash)"
+      var ch = doc.content_hash;
+      var hs = ch ? 'sha256=' + escapeHtml(provHash(ch)) : '(no hash)';
+      h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">record ' + escapeHtml(String(doc._id || '?')) + ' in ' + escapeHtml(String(doc._index || '?')) + ' <span style="font-family:monospace">' + hs + '</span></div>';
+    } else if (step.from || step.to) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">' + (src ? src + ' \u2192 ' : step.from ? pf(step.from) + ' \u2192 ' : '\u2192 ') + pf(step.to) + '</div>';
     if (cmd) h += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
     var outFile = fullEntry && (fullEntry.result_summary || {}).output_file;
     if (outFile) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">\u2192 ' + escapeHtml(safeStr(outFile).split('/').pop()) + '</div>';
@@ -3096,7 +3104,29 @@ async function loadToolInvocations(finding) {
     // Server now guarantees the terminal "query" step is present in
     // the chain (manager.py appends art.audit_id with role='query' if
     // missing). Portal just renders what the server provides.
-    var steps = chain;  // stored root first, and rendered so
+    // Records from one ingest store that ingest's chain once per returned
+    // record; group each distinct chain once, then the records that resolved
+    // through it, so a record stays under its own ingest when two ingests
+    // interleave. Order follows each chain's first appearance.
+    function isRecord(step) {
+      return step.document && typeof step.document === 'object' && !(step.to && step.to.path);
+    }
+    var steps = [], groups = [], byChain = {}, pending = [];
+    chain.forEach(function(step) {
+      if (isRecord(step)) {
+        var key = JSON.stringify(pending);
+        var grp = byChain[key];
+        if (!grp) { grp = { chain: pending.slice(), records: [], seen: {} }; byChain[key] = grp; groups.push(grp); }
+        var rkey = JSON.stringify(step);
+        if (!grp.seen[rkey]) { grp.seen[rkey] = true; grp.records.push(step); }  // an identical record shows once
+        pending = [];
+      } else { pending.push(step); }
+    });
+    if (pending.length) groups.push({ chain: pending, records: [] });  // a chain with no records renders in order
+    groups.forEach(function(grp) {
+      grp.chain.forEach(function(s) { steps.push(s); });
+      grp.records.forEach(function(s) { steps.push(s); });
+    });
     var h = '<div style="padding:2px 0 2px 8px;margin:2px 0">';
     steps.forEach(function(step) { h += renderStep(step); });
     (art.provenance_candidates || []).forEach(function(c) {  // what made it AMBIGUOUS
