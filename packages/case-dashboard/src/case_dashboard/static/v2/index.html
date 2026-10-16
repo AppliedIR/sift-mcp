@@ -1050,10 +1050,7 @@ function showEmptyOrFirst() {
     document.getElementById('emptyState').style.display = '';
     document.getElementById('findingCard').style.display = 'none';
   } else if (filtered.length === 0) {
-    const allReviewed = findings.length > 0 && findings.every(f => {
-      var de = getDeltaEntry(f.id);
-      return de && de.action !== 'edit';
-    });
+    const allReviewed = findings.length > 0 && !findings.some(isPendingReview);
     if (allReviewed && currentFilter === 'pending') {
       document.getElementById('emptyState').innerHTML =
         '<h2>No pending findings remaining</h2><p>Run <code>vhir approve --review</code> in your terminal to commit.</p>';
@@ -1111,6 +1108,13 @@ function isOwn(e) {
 
 function getDeltaEntry(id) {
   return delta.items.find(function(i) { return i.id === id && isOwn(i) && i.action !== 'todo'; }) || null;
+}
+
+// Still to review: no decision staged here and none stored (as the Pending filters read it)
+function isPendingReview(x) {
+  var de = getDeltaEntry(x.id);
+  if (de && de.action !== 'edit') return false;
+  return (x.status || 'DRAFT') === 'DRAFT';
 }
 
 function setDeltaEntry(entry) {
@@ -1208,11 +1212,7 @@ function getFilteredFindings() {
 
   // Filter
   if (currentFilter === 'pending') {
-    list = list.filter(f => {
-      var de = getDeltaEntry(f.id);
-      if (de && de.action !== 'edit') return false;
-      return (f.status || 'DRAFT') === 'DRAFT';
-    });
+    list = list.filter(isPendingReview);
   } else if (currentFilter === 'approved') {
     list = list.filter(f => {
       var de = getDeltaEntry(f.id);
@@ -1311,11 +1311,7 @@ function renderSidebar() {
 
 function updateSidebarStats() {
   var total = findings.length;
-  var findingIds = new Set(findings.map(function(f) { return f.id; }));
-  var decided = delta.items.filter(function(d) {
-    return findingIds.has(d.id) && d.action !== 'edit';
-  }).length;
-  var pending = total - decided;
+  var pending = findings.filter(isPendingReview).length;
 
   document.getElementById('sidebarStats').innerHTML =
     '<div>' + total + ' total \u00B7 ' + pending + ' pending</div>';
@@ -1333,10 +1329,7 @@ function updateProgress() {
     label = 'findings';
   }
   var total = items.length;
-  var itemIds = new Set(items.map(function(i) { return i.id; }));
-  var reviewed = delta.items.filter(function(d) {
-    return itemIds.has(d.id) && d.action !== 'edit';
-  }).length;
+  var reviewed = total - items.filter(isPendingReview).length;
   var pct = total > 0 ? Math.round((reviewed / total) * 100) : 0;
   document.getElementById('progressText').textContent =
     reviewed + ' of ' + total + ' ' + label + ' reviewed';
@@ -3524,18 +3517,10 @@ function updateRefreshBadge() {
 /* === Tab badges === */
 function updateTabBadges() {
   // Count pending (unreviewed) findings
-  var findingIds = new Set(findings.map(function(f) { return f.id; }));
-  var reviewedFindings = delta.items.filter(function(d) {
-    return findingIds.has(d.id) && d.action !== 'edit';
-  }).length;
-  var pendingFindings = findings.length - reviewedFindings;
+  var pendingFindings = findings.filter(isPendingReview).length;
 
   // Count pending timeline events
-  var eventIds = new Set(timelineEvents.map(function(e) { return e.id; }));
-  var reviewedEvents = delta.items.filter(function(d) {
-    return eventIds.has(d.id) && d.action !== 'edit';
-  }).length;
-  var pendingEvents = timelineEvents.length - reviewedEvents;
+  var pendingEvents = timelineEvents.filter(isPendingReview).length;
 
   // Count evidence items
   var evidenceCount = evidenceData.length;
@@ -4663,11 +4648,7 @@ function renderAccounts() {
 function getFilteredTimelineEvents() {
   var events = timelineEvents.slice();
   if (timelineFilter === 'pending') {
-    events = events.filter(function(ev) {
-      var de = getDeltaEntry(ev.id);
-      if (de && de.action !== 'edit') return false;
-      return (ev.status || 'DRAFT') === 'DRAFT';
-    });
+    events = events.filter(isPendingReview);
   } else if (timelineFilter === 'approved') {
     events = events.filter(function(ev) {
       var de = getDeltaEntry(ev.id);
@@ -5040,10 +5021,7 @@ function updateTimelineSummary() {
     return (a.timestamp || a.staged || '').localeCompare(b.timestamp || b.staged || '');
   });
   var total = timelineEvents.length;
-  var eventIds = new Set(timelineEvents.map(function(e) { return e.id; }));
-  var reviewed = delta.items.filter(function(d) {
-    return eventIds.has(d.id) && d.action !== 'edit';
-  }).length;
+  var reviewed = total - timelineEvents.filter(isPendingReview).length;
 
   var first = sorted[0].timestamp || sorted[0].staged || '';
   var last = sorted[sorted.length - 1].timestamp || sorted[sorted.length - 1].staged || '';
