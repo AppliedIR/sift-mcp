@@ -222,3 +222,7 @@ def test_no_card_prints_none_or_object_object(sections):
     for fid, s in sections.items():
         assert ">None<" not in s, fid
         assert "[object Object]" not in s, fid
+        text = _text(s)
+        assert text.strip(), fid  # never an empty section
+        for word in ("undefined", "NaN", "null"):
+            assert not re.search(rf"\b{word}\b", text), (fid, word)
