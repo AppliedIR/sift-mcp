@@ -579,6 +579,26 @@ def test_a_held_ioc_s_names_are_escaped():
     ) in out
 
 
+def test_a_held_ioc_with_one_citing_finding_names_it_alone():
+    out = _render_list([{"id": "IOC-steve-001", "coupled_from": "F-steve-001",
+                         "citing": _cite(("F-steve-001", "APPROVED"))}])  # fmt: skip
+    assert "IOC-steve-001 stays DRAFT: cited by F-steve-001 (APPROVED). Decide" in out
+    assert " and " not in out
+
+
+def test_a_malformed_citing_entry_is_named_as_text_never_a_crash():
+    citing = [
+        None,
+        "F-steve-002",
+        {"id": {"toString": None}, "status_after": ["A", "B"]},
+    ]
+    out = _render_list([{"id": "IOC-steve-001", "coupled_from": "F-steve-001",
+                         "citing": citing}])  # fmt: skip
+    assert (
+        "IOC-steve-001 stays DRAFT: cited by  (),  () and [unprintable] (A,B)." in out
+    )
+
+
 @pytest.mark.parametrize("citing", [None, [], "F-steve-002", {"id": "F-steve-002"}])
 def test_a_held_item_without_a_citing_list_is_named_as_an_event(citing):
     h = {"id": "T-steve-009", "coupled_from": "F-steve-010"}
