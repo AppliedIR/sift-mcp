@@ -1112,11 +1112,13 @@ def get_or_mint(
                 - {"", domain}
             ):
                 match = None  # a machine holding a name in another domain: not this one
-            if match is not None and not any(p[0] == unit for p in match.pairs):
+            if match is not None:
                 from sift_common.host_proposal import generic_only
 
-                if generic_only(raw):
-                    match = None  # a template name joins only its own unit's machine
+                if generic_only(raw) and spelling(raw) not in {
+                    spelling(n) for n in (match.canonical, *match.former)
+                }:
+                    match = None  # a template name joins only the machine it names
             listed = (
                 _late_list_binding(state, unit, raw) if late and match is None else None
             )
