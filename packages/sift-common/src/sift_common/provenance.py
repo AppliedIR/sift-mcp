@@ -246,10 +246,12 @@ def _label(root: dict) -> str:
 def _registered(case: Case, real: str, sha256: str) -> Trace | None:
     """FULL when the path is a registered root (a file, with the registry's
     hash, unread; or a folder, with its manifest's hash), or a file listed in a
-    registered folder's manifest."""
-    frm = {"path": real, "sha256": sha256}
+    registered folder's manifest. A read recorded "pending:<job>" is compared
+    and linked with the hash its job closed with."""
     for r in case.roots:
         if r["path"] == real:  # a file, or a folder root's own path
+            sha256 = _settled(case, real, sha256)
+            frm = {"path": real, "sha256": sha256}
             sha = r.get(
                 "manifest_sha256" if r.get("kind") == "folder" else "sha256", ""
             )
@@ -265,6 +267,9 @@ def _registered(case: Case, real: str, sha256: str) -> Trace | None:
             if key not in case.cache:
                 case.cache[key] = {x.get("path"): x for x in _manifest_rows(case, r)}
             row = case.cache[key].get(rel)
+            if row:
+                sha256 = _settled(case, real, sha256)
+                frm = {"path": real, "sha256": sha256}
             if row and (bad := _other_hash(real, sha256, row.get("sha256", ""))):
                 return bad
             if row:
@@ -344,6 +349,14 @@ def _job(case: Case, real: str, job_id: str) -> tuple[str, Trace | dict]:
         return row["sha256"], _link("recorded-id", frm, to, e, line, case)
     why = f"hash of {real} failed (job {job_id}): {row.get('error', '')}"
     return "", _broken("hash-failed", why, "run the step again so the file is hashed")
+
+
+def _settled(case: Case, real: str, sha256: str) -> str:
+    """A hash recorded "pending:<job>", as the job closed it for the file; as
+    recorded while the job gives none (still open, failed, or closed twice)."""
+    if isinstance(sha256, str) and sha256.startswith("pending:"):
+        return _job(case, real, sha256.split(":", 1)[1])[0] or sha256
+    return sha256
 
 
 def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
@@ -551,17 +564,15 @@ def _trace_entry(
                        st_dev=i["st_dev"], mnt_id=i["mnt_id"], _at=_when(case, e),
                        _seen=seen | {aid})  # fmt: skip
         if i["declared"] and t.grade == "FULL":  # an input only the AI named
-            f = {
-                "path": i["realpath"] or os.path.realpath(i["path"]),
-                "sha256": i["sha256"],
-            }
+            real = i["realpath"] or os.path.realpath(i["path"])
+            f = {"path": real, "sha256": _settled(case, real, i["sha256"])}
             t = Trace("DECLARED", t.root, t.roots, t.links + [_link("declared", f, f, e, line, case)],
                       reason=f"declared by the AI: {f['path']}, an input of {aid}")  # fmt: skip
         traces.append(t)
     rs = e.get("result_summary") if isinstance(e.get("result_summary"), dict) else {}
     first = inputs[0]
-    frm = {"path": first["realpath"] or os.path.realpath(first["path"]),
-           "sha256": first["sha256"]}  # fmt: skip
+    real = first["realpath"] or os.path.realpath(first["path"])
+    frm = {"path": real, "sha256": _settled(case, real, first["sha256"])}
     to = output or {
         "path": rs.get("output_file", ""),
         "sha256": rs.get("output_sha256", ""),
