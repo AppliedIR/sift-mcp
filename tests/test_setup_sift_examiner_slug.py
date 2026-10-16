@@ -170,6 +170,15 @@ def test_yes_with_a_latin_os_user_keeps_it(tmp_path, monkeypatch, loc):
     assert _identity(tmp_path, monkeypatch) == ("osuser", "config")
 
 
+@pytest.mark.parametrize("loc", LOCALES)
+def test_yes_with_no_os_user_name_asks_for_one(tmp_path, monkeypatch, loc):
+    rc, out = _run(tmp_path, loc, yes=True, who="", answers="yamada\ny\n")
+    assert rc == 0, out
+    assert REFUSAL not in out
+    assert _printed(out) == "yamada"
+    assert _identity(tmp_path, monkeypatch) == ("yamada", "config")
+
+
 @pytest.mark.parametrize("read_from", ["/dev/stdin", "/nonexistent/tty"])
 @pytest.mark.parametrize("loc", LOCALES)
 def test_no_answer_with_an_os_user_that_has_no_latin_letter_exits(
