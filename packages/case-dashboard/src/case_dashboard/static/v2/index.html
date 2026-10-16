@@ -1692,10 +1692,12 @@ function renderFinding(id) {
     html += '</div>';
   }
 
-  // IOCs
-  if ((f.iocs && f.iocs.length > 0) || editingField === 'iocs') {
+  // IOCs — display only. IOCs are structured {value, type} extracted from the
+  // finding; they are not inline-editable (edit the finding's iocs via its tool
+  // run, not the portal chips). renderFieldWithDelta renders each value.
+  if (f.iocs && f.iocs.length > 0) {
     html += '<div class="field-section"><div class="field-label">IOCs</div>';
-    html += renderEditableField('iocs', eff.iocs || [], f, de);
+    html += renderFieldWithDelta('iocs', eff.iocs || [], de);
     html += '</div>';
   }
 
@@ -1783,7 +1785,26 @@ function renderFinding(id) {
   renderTimelineContext(f);
 }
 
+// An IOC is stored as {value, type}; older findings may carry plain strings.
+// Render the value only — never the object, which would stringify to the
+// literal "[object Object]".
+function iocLabel(t) {
+  return (t && typeof t === 'object') ? String(t.value == null ? '' : t.value)
+                                      : String(t == null ? '' : t);
+}
+
 function renderFieldWithDelta(field, value, de) {
+  if (field === 'iocs') {
+    var fmtIocs = function (v) {
+      return Array.isArray(v) ? v.map(iocLabel).join(', ') : String(v == null ? '' : v);
+    };
+    if (de && de.modifications && de.modifications[field]) {
+      var imod = de.modifications[field];
+      return '<div class="modified-original">' + escapeHtml(fmtIocs(imod.original)) + '</div>' +
+             '<div class="modified-new">' + escapeHtml(fmtIocs(imod.modified)) + '</div>';
+    }
+    return '<div class="field-value">' + escapeHtml(fmtIocs(value)) + '</div>';
+  }
   if (de && de.modifications && de.modifications[field]) {
     const mod = de.modifications[field];
     return '<div class="modified-original">' + escapeHtml(String(mod.original || '')) + '</div>' +
@@ -2114,8 +2135,10 @@ var VHIR_SIGN = (function() {
     'rejection_reason', 'status', 'verification'];
   var VIEWS = { 1: VIEW1_EXCLUDES, 2: VIEW2_EXCLUDES };
   var IOC_DERIVED = ['confidence', 'mitre_techniques', 'sightings', 'source_findings'];
+  // 'iocs' excluded: structured {value, type}, displayed read-only (not inline-editable).
+  // Kept in lockstep with vhir_cli.decide.DELTA_EDITABLE_FIELDS (tested in test_portal_sign_block).
   var EDITABLE = ['alternatives', 'confidence', 'confidence_justification', 'context',
-    'description', 'interpretation', 'iocs', 'mitre_ids', 'observation', 'source', 'tags',
+    'description', 'interpretation', 'mitre_ids', 'observation', 'source', 'tags',
     'timestamp', 'title'];
   var IOC_EDITABLE = ['description', 'tags'];
   var STATUS_AFTER = { approve: 'APPROVED', reject: 'REJECTED' };
@@ -2870,7 +2893,7 @@ function saveEdit(field) {
     var confEl = document.getElementById('editInput-confidence');
     if (!confEl) return;
     newValue = confEl.value;
-  } else if (field === 'mitre_ids' || field === 'iocs') {
+  } else if (field === 'mitre_ids') {
     newValue = getTagInputValues(field);
   } else if (field === 'alternatives') {
     var altEl = document.getElementById('editInput-alternatives');
@@ -2923,7 +2946,7 @@ function renderEditableField(field, value, f, de) {
       opts.forEach(o => html += '<option value="' + o + '"' + (o === value ? ' selected' : '') + '>' + o + '</option>');
       html += '</select><div class="edit-actions"><button class="btn-primary" onclick="saveEdit(\'' + ef + '\')">Save</button><button class="btn-cancel" onclick="cancelEdit()">Cancel</button></div></div>';
       return html;
-    } else if (field === 'mitre_ids' || field === 'iocs') {
+    } else if (field === 'mitre_ids') {
       const items = Array.isArray(value) ? value : [];
       let html = '<div class="inline-edit"><div class="tag-input" id="tagInput-' + escapeHtml(field) + '">';
       items.forEach(t => html += '<span class="tag"><span class="tag-value">' + escapeHtml(t) + '</span><span class="tag-remove" onclick="removeTag(\'' + ef + '\', this)">&times;</span></span>');
