@@ -24,7 +24,7 @@ HELPERS = "\n".join(re.findall(r"^(?:info|ok|warn|err)\(\).*$", SCRIPT, re.M))
 PROMPTS = SCRIPT[SCRIPT.index("prompt() {") : SCRIPT.index("prompt_yn_strict() {")]
 PRELUDE = (
     "set -euo pipefail\n"
-    'BOLD=""; NC=""; RED=""; GREEN=""; YELLOW=""; BLUE=""; READ_FROM=/dev/stdin\n'
+    'BOLD=""; NC=""; RED=""; GREEN=""; YELLOW=""; BLUE=""\n'
     'header() { :; }\nwhoami() { echo "$WHO"; }\n'
     f"{HELPERS}\n{PROMPTS}\n"
 )
@@ -45,7 +45,16 @@ def _locale(loc: str) -> str:
     return loc
 
 
-def _run(home: Path, loc: str, name="", answers="", yes=False, who="osuser"):
+def _run(
+    home: Path,
+    loc: str,
+    name="",
+    answers: str | None = "",
+    yes=False,
+    who="osuser",
+    read_from="/dev/stdin",
+    timeout=60,
+):
     r = subprocess.run(
         ["/bin/bash", "-c", PRELUDE + f"AUTO_YES={str(yes).lower()}\n" + BLOCK],
         env={
@@ -54,10 +63,12 @@ def _run(home: Path, loc: str, name="", answers="", yes=False, who="osuser"):
             "LC_ALL": _locale(loc),
             "EXAMINER_NAME": name,
             "WHO": who,
+            "READ_FROM": read_from,
         },
-        input=answers.encode(),
+        input=None if answers is None else answers.encode(),
+        stdin=subprocess.DEVNULL if answers is None else None,
         capture_output=True,
-        timeout=60,
+        timeout=timeout,
     )
     return r.returncode, r.stdout.decode("utf-8", "backslashreplace")
 
@@ -76,6 +87,7 @@ def _printed(out: str) -> str:
     return re.findall(r"^\[OK\] Examiner: (.*)$", out, re.M)[-1]
 
 
+@pytest.mark.parametrize("typed", [False, True], ids=["flag", "prompt"])
 @pytest.mark.parametrize(
     "name",
     [
@@ -86,11 +98,16 @@ def _printed(out: str) -> str:
         "Ana Lucía Hernández Ruiz",
     ],
 )
-def test_one_slug_in_every_locale_and_vhir_records_it(tmp_path, monkeypatch, name):
+def test_one_slug_in_every_locale_and_vhir_records_it(
+    tmp_path, monkeypatch, name, typed
+):
     slugs = set()
     for loc in LOCALES:
         home = tmp_path / loc
-        rc, out = _run(home, loc, name=name)
+        if typed:
+            rc, out = _run(home, loc, answers=f"{name}\ny\n")
+        else:
+            rc, out = _run(home, loc, name=name)
         assert rc == 0, out
         cfg = home / ".vhir" / "config.yaml"
         written = re.fullmatch(r'examiner: "(.*)"\n', cfg.read_bytes().decode("utf-8"))
@@ -148,6 +165,27 @@ def test_yes_with_an_os_user_that_has_no_latin_letter_exits(tmp_path, loc):
 @pytest.mark.parametrize("loc", LOCALES)
 def test_yes_with_a_latin_os_user_keeps_it(tmp_path, monkeypatch, loc):
     rc, out = _run(tmp_path, loc, yes=True)
+    assert rc == 0, out
+    assert _printed(out) == "osuser"
+    assert _identity(tmp_path, monkeypatch) == ("osuser", "config")
+
+
+@pytest.mark.parametrize("read_from", ["/dev/stdin", "/nonexistent/tty"])
+@pytest.mark.parametrize("loc", LOCALES)
+def test_no_answer_with_an_os_user_that_has_no_latin_letter_exits(
+    tmp_path, loc, read_from
+):
+    rc, out = _run(
+        tmp_path, loc, answers=None, who="山田", read_from=read_from, timeout=10
+    )
+    assert rc == 1, out
+    assert out.count(REFUSAL) == 1, out
+    assert not (tmp_path / ".vhir" / "config.yaml").exists()
+
+
+@pytest.mark.parametrize("loc", LOCALES)
+def test_no_answer_with_a_latin_os_user_keeps_it(tmp_path, monkeypatch, loc):
+    rc, out = _run(tmp_path, loc, answers=None, timeout=10)
     assert rc == 0, out
     assert _printed(out) == "osuser"
     assert _identity(tmp_path, monkeypatch) == ("osuser", "config")
