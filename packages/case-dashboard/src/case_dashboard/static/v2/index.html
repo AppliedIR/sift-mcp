@@ -840,7 +840,7 @@ body {
     <label style="font-size:12px;color:var(--text-secondary)"><input type="checkbox"
       id="commitShowAll" onchange="VHIR_SIGN.toggleAll()"> Show all signed fields</label>
     <div id="commitList" style="font-size:12px;margin:8px 0;max-height:45vh;overflow:auto"></div>
-    <div id="commitPasswordRow">
+    <div id="commitPasswordRow" style="display:none">
       <label for="commitPassword" style="font-size:12px;color:var(--text-secondary)">
         Your passphrase signs exactly the decisions listed above:</label>
       <input type="password" id="commitPassword" autocomplete="current-password" disabled
@@ -855,7 +855,8 @@ body {
     </div>
     <div class="dialog-actions" style="margin-top:12px">
       <button class="btn-cancel" onclick="closeCommitDialog()">Cancel</button>
-      <button class="btn-primary" id="commitSubmitBtn" onclick="submitCommit()" disabled>Sign 0 decisions</button>
+      <button class="btn-primary" id="commitSubmitBtn" onclick="submitCommit()" disabled
+        style="display:none">Sign 0 decisions</button>
     </div>
   </div>
 </div>
@@ -2399,7 +2400,11 @@ var VHIR_SIGN = (function() {
   function othersFixed(on) {
     el('commitOthers').querySelectorAll('input[data-other]').forEach(function(box) { box.disabled = on; });
   }
+  // The passphrase box and the Sign button are offered only for a plan with
+  // decisions in it: never beside a failed check, nor with nothing to sign
   function canSign(on, n) {
+    el('commitPasswordRow').style.display = n ? '' : 'none';
+    el('commitSubmitBtn').style.display = n ? '' : 'none';
     el('commitPassword').disabled = !on;
     el('commitSubmitBtn').disabled = !on;
     el('commitSubmitBtn').textContent = 'Sign ' + (n || 0) + ' decision' + (n === 1 ? '' : 's');

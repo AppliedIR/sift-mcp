@@ -41,6 +41,12 @@ function makeEl(id) {
           const box = makeEl('other-' + m[1]); box.dataset.other = m[1]; others[m[1]] = box; return box;
         });
       }
+      if (sel === 'textarea[data-reason]') {  // each failed item's reason, as typed
+        return [...this.innerHTML.matchAll(/data-reason="([^"]+)"/g)].map(m => {
+          const box = makeEl('reason'); box.dataset.reason = m[1];
+          box.value = globalThis.typedReason || ''; return box;
+        });
+      }
       return [];
     },
   };
@@ -107,6 +113,7 @@ async function test() {
       globalThis.beforeCommit = async () => { if (n++ < s.times) await _fetch(ORIGIN + '/test/' + s.what, { method: 'POST' }); };
     }
     if (s.do === 'reload') { await loadAll(); await ready(); }
+    if (s.do === 'replan') { globalThis.typedReason = s.reason; await el('commitReplan').onclick(); }
     if (s.do === 'sign') { el('commitPassword').value = process.env.PASSWORD; await VHIR_SIGN.submit(); }
     if (s.do === 'move_and_reopen_before_commit') {
       // the ledger moves, and the examiner closes and reopens, while the commit is in flight
@@ -138,6 +145,9 @@ async function test() {
     if (s.do === 'snap') out[s.as] = { findings: findings.map(f => [f.id, f.observation, f.status]),
       list: el('commitList').innerHTML, error: el('commitError').textContent,
       signButton: el('commitSubmitBtn').textContent, signDisabled: el('commitSubmitBtn').disabled,
+      signShown: el('commitSubmitBtn').style.display !== 'none',
+      boxShown: el('commitPasswordRow').style.display !== 'none',
+      summary: el('commitSummary').textContent,
       open: VHIR_SIGN.isOpen(), delta: delta.items.map(e => [e.id, e.staged_by || null]) };
   }
 }
