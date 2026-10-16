@@ -164,14 +164,17 @@ def _i3(state: hi.HostState, pairs, before=()) -> str:
     return ""
 
 
-def _join_reason(state: hi.HostState, mid, canonical: str, had, added) -> str:
+def _join_reason(
+    state: hi.HostState, mid, canonical: str, had, added, planned=frozenset()
+) -> str:
     """Why an automatic join of the names `added` into the existing machine
     `mid` (holding `had`) is refused, or "": a name with a domain never
     joins a machine holding a name in another domain (through its bare names
     too), and a bare name only one no other machine or unit in the case also
     holds. A name with a domain the machine doesn't hold exactly joins
-    through its short name, under the same rule. A unit's names on its own
-    machine aren't judged here."""
+    through its short name, under the same rule, where the pairs `planned`
+    for the machine by the same request count as on it. A unit's names on
+    its own machine aren't judged here."""
     from sift_common.host_proposal import LIST_UNIT, is_address
 
     if not had:  # a machine made now: when it links units, its bare names too
@@ -200,7 +203,9 @@ def _join_reason(state: hi.HostState, mid, canonical: str, had, added) -> str:
         # matched through its short name (it has none, or the machine holds it
         # bare only): only when no other machine or unit in the case holds it
         exact = hi.spelling(p[1]) in {hi.spelling(n) for n in names}
-        if (not domain or not exact) and _other_holders(state, p, mid, set(had)):
+        if (not domain or not exact) and _other_holders(
+            state, p, mid, set(had) | planned
+        ):
             return (
                 f"{p[1]!r} would join through a short name another machine or unit"
                 " in the case also holds"
@@ -399,7 +404,30 @@ def check_decision(state: hi.HostState, record: dict, door: str) -> list[tuple]:
 def check_binds(state: hi.HostState, records: list[dict], door: str) -> list[tuple]:
     """[(record index, reason)] for the bind records that may not be
     appended; each is judged with the earlier records (names and binds) in
-    place."""
+    place. A unit holding a short name counts as on a machine when this
+    request binds its names there and none of those binds is refused,
+    whatever the record order: the pairs planned for each machine start as
+    every bind's and lose the refused ones until no more are refused."""
+    planned: dict = {}  # record index -> (machine id, pair)
+    for i, rec in enumerate(records):
+        p = hi._pair((rec.get("unit"), rec.get("raw")))
+        key = rec.get("key")
+        if rec.get("kind") == "bind" and p is not None and isinstance(key, str):
+            planned[i] = (state.key_machine.get(key) or key, p)
+    while True:
+        on: dict = {}
+        for mid, p in planned.values():
+            on.setdefault(mid, set()).add(p)
+        refused = _check_binds(state, records, door, on)
+        gone = [i for i, _ in refused if i in planned]
+        if not gone:
+            return refused
+        for i in gone:
+            del planned[i]
+
+
+def _check_binds(state: hi.HostState, records: list[dict], door: str, on: dict) -> list:
+    """check_binds with the pairs `on` each machine by the request."""
     from sift_common.host_proposal import LIST_UNIT, is_address
 
     automatic = door in AUTOMATIC_DOORS
@@ -480,7 +508,8 @@ def check_binds(state: hi.HostState, records: list[dict], door: str) -> list[tup
             _i2(v, pairs, canonical, [p])
             or _only_through_not_a_host(state, canonical, had, [p])
             or (
-                _i3(v, pairs, had) or _join_reason(state, mid, canonical, had, [p])
+                _i3(v, pairs, had)
+                or _join_reason(state, mid, canonical, had, [p], on.get(mid, set()))
                 if automatic
                 else ""
             )
