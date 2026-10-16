@@ -716,7 +716,7 @@ body {
     <div class="tab-table-wrap">
       <h3 style="margin-bottom:12px;font-size:15px;">Indicators of Compromise</h3>
       <div class="tab-table-controls" style="margin-bottom:8px">
-        <select id="iocFilterCategory"><option value="">All categories</option><option value="network">Network</option><option value="host">Host</option><option value="system">System</option><option value="identity">Identity</option><option value="unknown">Unknown</option></select>
+        <select id="iocFilterCategory"><option value="">All categories</option><option value="network">Network</option><option value="host">Host</option><option value="system">System</option><option value="identity">Identity</option><option value="unknown">Other</option></select>
         <select id="iocFilterStatus"><option value="">All statuses</option><option value="DRAFT">Draft</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option></select>
         <input type="text" id="iocSearch" placeholder="Search IOCs..." style="flex:1;padding:5px 8px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);border-radius:4px;font-size:12px">
       </div>
@@ -1817,20 +1817,22 @@ function renderFieldWithDelta(field, value, de) {
 
 // Each line is evidence- and model-derived text: escaped, never markup.
 function renderAlternatives(list) {
-  if (!Array.isArray(list) || !list.length) {
-    return '<div class="field-value" style="color:var(--text-muted)">None</div>';
+  if (list === null || list === undefined || list === '' || (Array.isArray(list) && !list.length)) {
+    return '<div class="field-value" style="color:var(--text-muted)">No alternatives recorded.</div>';
   }
+  if (!Array.isArray(list)) list = [list];  // a value stored outside a list is still shown
   var html = '';
   list.forEach(function(a) {
     if (!a || typeof a !== 'object' || Array.isArray(a)) {
       html += '<div class="alternative">' + escapeHtml(typeof a === 'string' ? a : JSON.stringify(a)) + '</div>';
       return;
     }
-    var label = a.status === 'ruled_out' ? '[ruled out]' : a.status === 'open' ? '[open]' : '[' + String(a.status || 'open') + ']';
-    html += '<div class="alternative"><span class="alt-status">' + escapeHtml(label) + '</span>' + escapeHtml(String(a.explanation || ''));
-    if (a.evidence) html += '<div style="font-size:12px;color:var(--text-secondary)">' + escapeHtml(String(a.evidence)) + '</div>';
+    // Each field as text: a string as it is, anything else as JSON (challengeText)
+    var label = a.status === 'ruled_out' ? '[ruled out]' : a.status === 'open' ? '[open]' : '[' + challengeText(a.status || 'open') + ']';
+    html += '<div class="alternative"><span class="alt-status">' + escapeHtml(label) + '</span>' + escapeHtml(challengeText(a.explanation || ''));
+    if (a.evidence) html += '<div style="font-size:12px;color:var(--text-secondary)">' + escapeHtml(challengeText(a.evidence)) + '</div>';
     if (Array.isArray(a.audit_ids) && a.audit_ids.length) {
-      html += '<div style="font-size:11px;color:var(--text-muted)">audit: ' + escapeHtml(a.audit_ids.join(', ')) + '</div>';
+      html += '<div style="font-size:11px;color:var(--text-muted)">audit: ' + escapeHtml(a.audit_ids.map(challengeText).join(', ')) + '</div>';
     }
     html += '</div>';
   });

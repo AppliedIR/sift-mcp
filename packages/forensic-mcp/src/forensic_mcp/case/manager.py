@@ -755,6 +755,10 @@ def _detect_ioc_type(value: str) -> tuple[str, str]:
     if v.startswith("\\Microsoft\\") or v.startswith("\\Windows\\"):
         return "scheduled-task", "system"
 
+    # Windows security identifier (S-1-5-21-…-1001, S-1-5-32-544)
+    if re.match(r"^S-1-\d+(-\d+)+$", v, re.IGNORECASE):
+        return "windows-sid", "identity"
+
     # User account (domain\user or UPN)
     if re.match(r"^[a-zA-Z0-9._-]+\\[a-zA-Z0-9._-]+$", v):
         return "user-account", "identity"
@@ -2183,7 +2187,11 @@ class CaseManager:
             # Strip port from IPv4 before dedup (10.0.0.1:8443 → 10.0.0.1)
             if explicit_type:
                 ioc_type = explicit_type
-                category = "identity" if "account" in explicit_type else "host"
+                category = (
+                    "identity"
+                    if "account" in explicit_type or explicit_type == "windows-sid"
+                    else "host"
+                )
             else:
                 ioc_type, category = _detect_ioc_type(value)
                 # Override unknown → user-account if value matches affected_account
