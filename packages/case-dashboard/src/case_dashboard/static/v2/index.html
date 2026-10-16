@@ -2634,6 +2634,15 @@ var VHIR_SIGN = (function() {
       html += '</div>';
     });
     (plan.needs_decision || []).forEach(function(h) {
+      if (Array.isArray(h.citing) && h.citing.length) {  // an IOC its findings leave at different statuses
+        var named = h.citing.map(function(c) {
+          return escapeHtml(c && c.id) + ' (' + escapeHtml(c && c.status_after) + ')';
+        });
+        var names = named.length > 1 ? named.slice(0, -1).join(', ') + ' and ' + named[named.length - 1] : named[0];
+        html += '<div class="commit-item">' + escapeHtml(h.id) + ' stays DRAFT: cited by ' + names +
+          '. Decide it on its own in the IOCs tab.</div>';
+        return;
+      }
       html += '<div class="commit-item">' + escapeHtml(h.id) + ' is linked to ' + escapeHtml(h.coupled_from) +
         ', which was edited after the event was made from it. It was not signed. Decide it on its own in the Timeline tab.</div>';
     });
