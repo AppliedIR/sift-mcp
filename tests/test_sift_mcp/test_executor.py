@@ -198,8 +198,16 @@ class TestByteLimit:
         assert result["truncated"] is True
         assert result["stdout_total_bytes"] <= 2000
 
+    @pytest.mark.parametrize(
+        "end,exit_code",
+        [
+            ("sys.exit(7)", 7),
+            ("sys.stdout.flush(); os.kill(os.getpid(), signal.SIGTERM)", -15),
+        ],
+        ids=["exit", "own-sigterm"],
+    )
     def test_a_run_that_exited_as_its_output_reached_the_limit_is_not_stopped(
-        self, monkeypatch
+        self, monkeypatch, end, exit_code
     ):
         """The child exits on its own before the loop sees the limit.
 
@@ -235,10 +243,10 @@ class TestByteLimit:
 
         monkeypatch.setattr(executor, "_read_pipe", gated)
         monkeypatch.setattr(executor.subprocess, "Popen", FirstWaitAfterExit)
-        code = "import sys; sys.stdout.write('x' * 20100); sys.exit(7)"
+        code = f"import os, signal, sys; sys.stdout.write('x' * 20100); {end}"
         result = execute([sys.executable, "-c", code], timeout=30)
         assert "stopped" not in result
-        assert result["exit_code"] == 7
+        assert result["exit_code"] == exit_code
         assert result["truncated"] is True
 
     def test_timeout_still_works(self, monkeypatch):
