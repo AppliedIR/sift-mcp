@@ -40,7 +40,8 @@ tools:
       Sigma-based Windows event log analyzer. Starts with a subcommand:
       `hayabusa json-timeline -L -d <evtx dir> -o <file> -w` (or csv-timeline,
       without -L) in 3.x; `hayabusa dfir-timeline` in 4.x, which removed those two.
-      `sudo cast install teamdfir/sift` installs 3.8.1.
+      Install it with `vhir setup hayabusa`. The current SIFT release doesn't
+      include Hayabusa.
     fk_tool_name: Hayabusa
   - name: log2timeline
     binary: log2timeline.py

@@ -581,7 +581,7 @@ def test_a_tool_installed_under_another_versions_name_is_found(
 
 
 def test_hayabusa_3_8_1_gets_the_3x_recipes(case, tools):
-    """SIFT's cast installs Hayabusa 3.8.1."""
+    """Some cast-updated SIFT boxes hold Hayabusa 3.8.1."""
     (tools["versions"] / "hayabusa").write_text("3.8.1")
     r = _call("get_tool_help", tool_name="hayabusa")
     assert r["installed_version"] == "3.8.1"
