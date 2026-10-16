@@ -3087,8 +3087,8 @@ async function loadToolInvocations(finding) {
       // a returned record: the query's link names it, not a file; a record
       // with no content hash (recorded before 0.6.4) reads "(no hash)"
       var ch = doc.content_hash;
-      var hs = ch ? 'sha256=' + escapeHtml(provHash(ch)) : '(no hash)';
-      h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">record ' + escapeHtml(String(doc._id || '?')) + ' in ' + escapeHtml(String(doc._index || '?')) + ' <span style="font-family:monospace">' + hs + '</span></div>';
+      var hs = ch ? 'sha256=' + escapeHtml(provHash(safeStr(ch))) : '(no hash)';
+      h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">record ' + escapeHtml(safeStr(doc._id || '?')) + ' in ' + escapeHtml(safeStr(doc._index || '?')) + ' <span style="font-family:monospace">' + hs + '</span></div>';
     } else if (step.from || step.to) h += '<div style="font-size:10px;color:var(--text-muted);margin-left:12px">' + (src ? src + ' \u2192 ' : step.from ? pf(step.from) + ' \u2192 ' : '\u2192 ') + pf(step.to) + '</div>';
     if (cmd) h += '<div style="font-size:11px;color:var(--text-secondary);margin-left:12px">$ ' + escapeHtml(cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd) + '</div>';
     var outFile = fullEntry && (fullEntry.result_summary || {}).output_file;
