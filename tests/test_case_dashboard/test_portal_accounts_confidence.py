@@ -48,9 +48,12 @@ def test_highest_confidence_shows_high():
         {"id": "F-3", "affected_account": "bob", "confidence": "HIGH"},
         {"id": "F-4", "affected_account": "carol", "confidence": "LOW"},
         {"id": "F-5", "affected_account": "carol", "confidence": "MEDIUM"},
+        {"id": "F-6", "affected_account": "dave", "confidence": "HIGH"},
+        {"id": "F-7", "affected_account": "dave", "confidence": "LOW"},
     ]
     assert _badges(findings) == {
         "alice": "conf-high",
         "bob": "conf-high",
         "carol": "conf-medium",
+        "dave": "conf-high",
     }
