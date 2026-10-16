@@ -1538,12 +1538,12 @@ mkdir -p "$HOME/.vhir"
 if [[ -f "$VHIR_CONFIG" ]]; then
     # Update examiner in existing config
     if grep -q "^examiner:" "$VHIR_CONFIG" 2>/dev/null; then
-        sed -i "s/^examiner:.*/examiner: $EXAMINER_NAME/" "$VHIR_CONFIG"
+        sed -i "s/^examiner:.*/examiner: \"$EXAMINER_NAME\"/" "$VHIR_CONFIG"
     else
-        echo "examiner: $EXAMINER_NAME" >> "$VHIR_CONFIG"
+        echo "examiner: \"$EXAMINER_NAME\"" >> "$VHIR_CONFIG"
     fi
 else
-    echo "examiner: $EXAMINER_NAME" > "$VHIR_CONFIG"
+    echo "examiner: \"$EXAMINER_NAME\"" > "$VHIR_CONFIG"
     chmod 600 "$VHIR_CONFIG"
 fi
 
