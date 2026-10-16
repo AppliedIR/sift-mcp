@@ -23,6 +23,7 @@ from sift_common.oplog import setup_logging
 from vhir_cli.case_io import (
     _is_ipv4,
     _refang_ioc,
+    display_instant,
     load_case_meta,
     load_findings,
     load_iocs,
@@ -785,6 +786,12 @@ def _generate(
             for t in report_timeline
             if _within(t.get("timestamp", ""), end_date, False)
         ]
+
+    # In time order, matching the CLI to the printed second. A stable sort,
+    # so events within one printed second keep their stored order.
+    report_timeline = sorted(
+        report_timeline, key=lambda t: display_instant(t.get("timestamp"))
+    )
 
     # Strip internal fields from findings; an approval from before signing
     # keeps its label ("approved under 0.6 (before signing)")
