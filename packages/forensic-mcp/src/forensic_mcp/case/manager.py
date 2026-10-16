@@ -286,9 +286,12 @@ def _stored_content(content: str) -> str:
 
 
 def _distinct_links(links: list) -> list:
-    """A chain's links with exact repeats dropped (equal with keys sorted),
-    each kept where it first appears. A fan-in step reaches one link once
-    per input it read."""
+    """A chain's links with exact repeats dropped (equal with keys sorted)
+    within each record's segment: the steps up to and including a record
+    link (one with a document and no output file). Each is kept where it
+    first appears in its segment. A fan-in step reaches one link once per
+    input it read; a step two records' chains share stays in both, as the
+    Portal groups each record under the steps just before it."""
     seen: set[str] = set()
     out = []
     for link in links:
@@ -296,7 +299,27 @@ def _distinct_links(links: list) -> list:
         if key not in seen:
             seen.add(key)
             out.append(link)
+        if _is_record_link(link):
+            seen = set()
     return out
+
+
+def _js_truthy(v) -> bool:
+    if isinstance(v, (dict, list)):
+        return True  # an empty object or array is truthy in the Portal
+    return bool(v) and not (isinstance(v, float) and v != v)
+
+
+def _is_record_link(link) -> bool:
+    """The Portal's test for a record link: an object document and no output
+    file (index.html isRecord)."""
+    if not isinstance(link, dict):
+        return False
+    doc, to = link.get("document"), link.get("to")
+    to_path = to.get("path") if isinstance(to, dict) else None
+    return isinstance(doc, (dict, list)) and not (
+        _js_truthy(to) and _js_truthy(to_path)
+    )
 
 
 _MAX_ALTERNATIVES = 10

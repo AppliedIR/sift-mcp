@@ -22,6 +22,7 @@ from sift_common import host_identity as hi
 
 from .test_hosts_tab import (  # noqa: F401
     _DOCUMENT,
+    PORTAL,
     _audit,
     _decide,
     _decisions,
@@ -452,3 +453,61 @@ def test_the_name_box_escapes_a_hostile_locator(case):
         {"unit": evil, "locator": evil, "raw": "", "reason": hg.REASON_NO_NAME}]}]  # fmt: skip
     html = _runs_html(runs)
     assert "<img" not in html
+
+
+def test_a_run_with_no_waiting_list_has_no_name_box(case):
+    html = _runs_html([{"run_id": "run-2", "units": 1}])
+    assert "0 waiting" in html
+    assert "data-host-name=" not in html
+
+
+def test_an_entry_with_no_locator_shows_its_unit_and_no_name(case):
+    runs = [{"run_id": "run-3", "units": 1, "unresolved": [
+        {"unit": "u9", "raw": "", "reason": hg.REASON_NO_NAME}]}]  # fmt: skip
+    assert "<li>u9: (no name) &mdash; " in _runs_html(runs)
+
+
+def test_with_no_name_box_the_name_sent_is_empty(case):
+    script = (
+        "var hostsView = {runs: " + json.dumps(RUNS) + "};\n"
+        "var document = {querySelector: function(s) { return null; }};\n"
+        + _js_function("hostNameArgs")
+        + "process.stdout.write(JSON.stringify(hostNameArgs('0-0')));"
+    )
+    assert json.loads(_node(script)) == {
+        "groups": [{"canonical": "", "pairs": [["u1", ""]]}]
+    }
+
+
+def _click_handler() -> str:
+    start = PORTAL.index("document.addEventListener('click', async function(ev) {\n"
+                         "  var el = ev.target.closest && ev.target.closest('[data-host-act]');")  # fmt: skip
+    return PORTAL[start : PORTAL.index("\n});\n", start) + 5]
+
+
+def test_clicking_name_it_confirms_the_typed_name(case):
+    acts = re.search(r"^var HOST_DECISION_ACTS = .*$", PORTAL, re.M)[0]
+    script = (
+        "var listeners = {}, sent = [];\n"
+        "var document = {addEventListener: function(t, f) { listeners[t] = f; },"
+        " querySelector: function(s) {"
+        " return s === '[data-host-name=\"0-0\"]' ? {value: '  RD01 '} : null; }};\n"
+        + acts
+        + "\n"
+        + "var hostsView = {runs: "
+        + json.dumps(RUNS)
+        + ", data: {}};\n"
+        "function hostDecide(a, args) { sent.push([a, args]); }\n"
+        "function hostOpUnfinished() { return false; }\n"
+        "function showToast() {}\n"
+        + _js_function("hostNameArgs")
+        + _click_handler()
+        + "var el = {getAttribute: function(k) {"
+        " return {'data-host-act': 'name_unit', 'data-i': '0-0'}[k]; }};\n"
+        "listeners.click({target: {closest: function() { return el; }},"
+        " preventDefault: function() {}}).then(function() {"
+        " process.stdout.write(JSON.stringify(sent)); });"
+    )
+    assert json.loads(_node(script)) == [
+        ["confirm", {"groups": [{"canonical": "RD01", "pairs": [["u1", "RD01"]]}]}]
+    ]

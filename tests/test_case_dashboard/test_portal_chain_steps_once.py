@@ -42,6 +42,12 @@ def reordered(step: dict) -> dict:
     return out
 
 
+def reordered_list(step: dict) -> dict:
+    """The same step with the objects in its lists in reverse key order."""
+    return {k: [{kk: o[kk] for kk in reversed(list(o))} for o in v] if isinstance(v, list) else v
+            for k, v in step.items()}  # fmt: skip
+
+
 def art(chain, label):
     return {"source": "s", "extraction": label, "content": "4624", "audit_id": "x-1",
             "provenance_grade": "FULL", "provenance_reason": "", "provenance_root": None,
@@ -51,6 +57,7 @@ def art(chain, label):
 A = link("sift-steve-101", "/e/disk.E01", "/x/1/Security.evtx", "registered-path")
 B = link("sift-steve-102", "/x/1/Security.evtx", "/x/2/a.csv")
 C = link("sift-steve-103", "/x/1/Security.evtx", "/x/3/b.csv")
+LISTED = {**A, "inputs": [{"path": "/x/1/Security.evtx", "sha256": H}]}
 MARK = "\n[cut: 5000 of 9000 chars stored]"
 # stored text as record_finding keeps it: its first 5000 chars, then the marker
 CUT = {end: "<td>" + "A" * 4995 + end + MARK for end in ("A", "\t", "\r", "\x1b")}
@@ -71,6 +78,10 @@ def _findings() -> list:
         finding(
             "F-steve-023",
             artifacts=[art([A, reordered(A), B, reordered(B)], "key order")],
+        ),
+        # a step whose list holds an object, stored again in another key order
+        finding(
+            "F-steve-025", artifacts=[art([LISTED, reordered_list(LISTED)], "list")]
         ),
         # the same audit id and ends, a different method: two steps
         finding(
@@ -131,6 +142,11 @@ def test_repeats_within_a_group_show_once_first_kept(shown):
 def test_a_step_stored_in_another_key_order_shows_once(shown):
     p = chain_panel(shown, "F-steve-023")
     assert ids(p) == ["sift-steve-101", "sift-steve-102"]
+
+
+def test_a_step_with_a_list_stored_in_another_key_order_shows_once(shown):
+    p = chain_panel(shown, "F-steve-025")
+    assert ids(p) == ["sift-steve-101"]
 
 
 def test_steps_that_differ_in_one_field_both_show(shown):
