@@ -206,9 +206,12 @@ def run_command(
         exec_result["_parsed"] = parsed
         exec_result["_output_format"] = "parsed_csv"
     elif output_format == "json":
-        parsed = json_parser.parse_json(stdout, byte_budget=budget)
+        json_kwargs = {"byte_budget": budget}
+        if preview_lines:
+            json_kwargs["max_entries"] = ml
+        parsed = json_parser.parse_json(stdout, **json_kwargs)
         if parsed.get("parse_error"):
-            parsed = json_parser.parse_jsonl(stdout, byte_budget=budget)
+            parsed = json_parser.parse_jsonl(stdout, **json_kwargs)
         exec_result["_parsed"] = parsed
         exec_result["_output_format"] = "parsed_json"
     else:

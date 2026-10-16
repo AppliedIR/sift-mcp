@@ -549,6 +549,80 @@ class TestSetCaseMetadata:
         assert "array" in result["error"].lower() or "list" in result["error"].lower()
 
 
+_ISO_ACCEPT = [
+    "2026-10-16T08:00:00Z",
+    "2026-10-16T08:00:00.123Z",
+    "2026-10-16T08:00:00.123456789Z",
+    "2026-10-16T08:00:00+0000",
+    "2026-10-16T08:00:00+00:00",
+    "2026-10-16",
+]
+_ISO_REJECT = [
+    "yesterday",
+    "2026-13-01T00:00:00Z",
+    "",
+    "2026-10-16T08:00:00ZZ",
+    "2026-10-16T08:00:00Z+00:00",
+    "2026-10-16T08:00:00+00:00Z",
+    " 2026-10-16",
+    "2026-10-16\n",
+    "2026-10-16T24:00:00Z",
+    "2026-02-30",
+]
+# Forms datetime.fromisoformat took (T12 on 3.10; compact and week on 3.11+).
+# Case metadata times are full ISO timestamps, so these are refused.
+_ISO_NARROWED = ["2026-10-16T12", "20261016T080000Z", "2026-W42-5"]
+_ISO_ERROR = "Field 'detected_at' requires an ISO 8601 datetime string."
+
+
+class TestSetCaseMetadataIso8601:
+    """set_case_metadata's date check on the running Python (CI: 3.10-3.12)."""
+
+    @pytest.mark.parametrize("value", _ISO_ACCEPT)
+    def test_accepts_and_stores_as_given(self, case_dir, value):
+        from report_mcp.server import create_server
+
+        result = _call_tool(
+            create_server(), "set_case_metadata", field="detected_at", value=value
+        )
+        assert result["status"] == "set"
+        assert result["value"] == value
+        meta = yaml.safe_load((case_dir / "CASE.yaml").read_text())
+        assert str(meta["detected_at"]) == value
+
+    @pytest.mark.parametrize("value", _ISO_REJECT + _ISO_NARROWED)
+    def test_refuses_with_message(self, case_dir, value):
+        from report_mcp.server import create_server
+
+        result = _call_tool(
+            create_server(), "set_case_metadata", field="detected_at", value=value
+        )
+        assert result == {"error": _ISO_ERROR}
+        meta = yaml.safe_load((case_dir / "CASE.yaml").read_text()) or {}
+        assert "detected_at" not in meta
+
+    @pytest.mark.parametrize("value", [None, 20261016, ["2026-10-16"]])
+    def test_refuses_non_string(self, case_dir, value):
+        from report_mcp.server import create_server
+
+        result = _call_tool(
+            create_server(), "set_case_metadata", field="detected_at", value=value
+        )
+        assert result == {"error": _ISO_ERROR}
+
+    @pytest.mark.parametrize("value", _ISO_ACCEPT)
+    def test_validator_accepts(self, value):
+        from report_mcp.server import _validate_iso8601
+
+        assert _validate_iso8601(value) is True
+
+    @pytest.mark.parametrize("value", _ISO_REJECT + _ISO_NARROWED + [None, 5])
+    def test_validator_refuses(self, value):
+        from report_mcp.server import _validate_iso8601
+
+        assert _validate_iso8601(value) is False
+
+
 class TestGetCaseMetadata:
     """Tests for get_case_metadata tool."""
 

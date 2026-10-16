@@ -231,3 +231,132 @@ class TestOutputParsing:
             out = run_command(["sometool", "--flag"])
         assert out["stdout"] is None
         assert out["_parsed"] is not None
+
+
+class TestPreviewLinesCapsJson:
+    """preview_lines caps the entries of a JSON/JSONL reply above the byte
+    budget, as it caps CSV rows and text lines."""
+
+    _ROWS = [
+        {
+            "PID": 1000 + i,
+            "PPID": 4,
+            "ImageFileName": f"svchost{i}.exe",
+            "CreateTime": "2018-09-06T17:00:00+00:00",
+            "ExitTime": None,
+            "__children": [],
+        }
+        for i in range(400)
+    ]
+
+    def _run(self, stdout, preview_lines=0, budget=None, monkeypatch=None):
+        from sift_mcp.catalog import ToolDefinition
+
+        if budget is None:
+            monkeypatch.delenv("SIFT_RESPONSE_BUDGET", raising=False)
+        else:
+            monkeypatch.setenv("SIFT_RESPONSE_BUDGET", str(budget))
+        result = {
+            "exit_code": 0,
+            "stdout": stdout,
+            "stderr": "",
+            "stdout_total_bytes": len(stdout.encode("utf-8")),
+        }
+        td = ToolDefinition(
+            name="jsontool", binary="jsontool", category="test", output_format="json"
+        )
+        with (
+            patch(
+                "sift_mcp.tools.generic.find_binary", return_value="/usr/bin/jsontool"
+            ),
+            patch("sift_mcp.tools.generic.execute", return_value=result),
+            patch("sift_mcp.tools.generic.get_tool_def", return_value=td),
+        ):
+            return run_command(["jsontool"], preview_lines=preview_lines)
+
+    @pytest.mark.parametrize("n", [1, 5, 20])
+    def test_json_array_capped_at_n(self, n, monkeypatch):
+        import json as json_mod
+
+        out = self._run(
+            json_mod.dumps(self._ROWS, indent=2), n, monkeypatch=monkeypatch
+        )
+        assert out["_output_format"] == "parsed_json"
+        assert out["_parsed"]["data"] == self._ROWS[:n]
+        assert out["_parsed"]["preview_entries"] == n
+        assert out["_parsed"]["total_entries"] == 400
+        assert out["_parsed"]["truncated"] is True
+
+    @pytest.mark.parametrize("n", [1, 5, 20])
+    def test_jsonl_capped_at_n(self, n, monkeypatch):
+        import json as json_mod
+
+        text = "\n".join(json_mod.dumps(r) for r in self._ROWS)
+        out = self._run(text, n, monkeypatch=monkeypatch)
+        assert out["_output_format"] == "parsed_json"
+        assert out["_parsed"]["data"] == self._ROWS[:n]
+        assert out["_parsed"]["total_entries"] == 400
+
+    def test_budget_still_binds_below_n(self, monkeypatch):
+        """N larger than the budget holds: the budget stops first."""
+        import json as json_mod
+
+        wide = [dict(r, CommandLine="x" * 600) for r in self._ROWS]
+        out = self._run(json_mod.dumps(wide), 100, monkeypatch=monkeypatch)
+        # budget = max(10240, 100 * 200) = 20000 bytes: about 27 rows of ~740 B
+        assert out["_parsed"]["data"] == wide[: len(out["_parsed"]["data"])]
+        assert 1 <= len(out["_parsed"]["data"]) < 100
+        assert out["_parsed"]["preview_bytes"] <= 20000
+
+    def test_preview_lines_zero_keeps_budget_fill(self, monkeypatch):
+        """Twin: no preview_lines gives the base budget fill, not a cap."""
+        import json as json_mod
+
+        from sift_common.parsers.json_parser import parse_json
+
+        text = json_mod.dumps(self._ROWS, indent=2)
+        out = self._run(text, 0, monkeypatch=monkeypatch)
+        assert out["_parsed"] == parse_json(text, byte_budget=10_240)
+        assert len(out["_parsed"]["data"]) > 20
+
+    @pytest.mark.parametrize("n", [0, 5])
+    def test_under_budget_returned_whole(self, n, monkeypatch):
+        """Twin: output under the budget is returned whole, preview_lines or not."""
+        import json as json_mod
+
+        text = json_mod.dumps(self._ROWS[:30])
+        out = self._run(text, n, budget=len(text) + 1, monkeypatch=monkeypatch)
+        assert out["stdout"] == text
+        assert "_parsed" not in out
+        assert out["_output_format"] == "json"
+
+    def test_seed_shapes_kept_verbatim_and_counted(self, monkeypatch):
+        """Seed shapes as entries: the first N come back as they were, N at most."""
+        import json as json_mod
+
+        shapes = [
+            {"value": "10.0.0.1", "type": "ip"},
+            {"value": "x"},
+            ["a", "b"],
+            "plain",
+            42,
+            None,
+            "",
+            "tab\there",
+            "cr\rhere",
+            "esc\x1b[31mred",
+            "nul\x00here",
+            "c1\x85\x9bhere",
+            "non-ascii é 日本",
+            "<script>alert(1)</script>&amp;",
+            {"host": ["dc01", "dev01"]},
+            "L" * (70 * 1024),
+        ] * 3
+        text = json_mod.dumps(shapes)
+        for n in (5, 16):
+            out = self._run(text, n, monkeypatch=monkeypatch)
+            data = out["_parsed"]["data"]
+            assert len(data) <= n
+            assert data == shapes[: len(data)]
+        out = self._run(text, 16, budget=200_000, monkeypatch=monkeypatch)
+        assert out["_parsed"]["data"] == shapes[:16]
