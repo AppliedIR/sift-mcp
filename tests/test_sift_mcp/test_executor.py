@@ -1,6 +1,12 @@
 """Tests for sift_mcp.executor — subprocess execution."""
 
+import os
+import subprocess
+import sys
+import threading
+
 import pytest
+from sift_mcp import executor
 from sift_mcp.exceptions import ExecutionError, ExecutionTimeoutError
 from sift_mcp.executor import _truncate, execute
 
@@ -191,6 +197,49 @@ class TestByteLimit:
         )
         assert result["truncated"] is True
         assert result["stdout_total_bytes"] <= 2000
+
+    def test_a_run_that_exited_as_its_output_reached_the_limit_is_not_stopped(
+        self, monkeypatch
+    ):
+        """The child exits on its own before the loop sees the limit.
+
+        The pipe readers wait until the first timed wait, which then waits for
+        the child to exit (without reaping it) and for both readers to finish,
+        and reports the run as still going. The loop's next pass finds the
+        limit reached with a child that has already exited by itself.
+        """
+        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
+        monkeypatch.setenv("SIFT_MAX_OUTPUT", "20000")
+        go, done = threading.Event(), threading.Semaphore(0)
+        read_pipe = executor._read_pipe
+
+        def gated(*a):
+            go.wait(10)
+            try:
+                read_pipe(*a)
+            finally:
+                done.release()
+
+        class FirstWaitAfterExit(subprocess.Popen):
+            first = True
+
+            def wait(self, timeout=None):
+                if FirstWaitAfterExit.first and timeout is not None:
+                    FirstWaitAfterExit.first = False
+                    go.set()
+                    os.waitid(os.P_PID, self.pid, os.WEXITED | os.WNOWAIT)
+                    done.acquire(timeout=10)
+                    done.acquire(timeout=10)
+                    raise subprocess.TimeoutExpired(self.args, timeout)
+                return super().wait(timeout)
+
+        monkeypatch.setattr(executor, "_read_pipe", gated)
+        monkeypatch.setattr(executor.subprocess, "Popen", FirstWaitAfterExit)
+        code = "import sys; sys.stdout.write('x' * 20100); sys.exit(7)"
+        result = execute([sys.executable, "-c", code], timeout=30)
+        assert "stopped" not in result
+        assert result["exit_code"] == 7
+        assert result["truncated"] is True
 
     def test_timeout_still_works(self, monkeypatch):
         monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
