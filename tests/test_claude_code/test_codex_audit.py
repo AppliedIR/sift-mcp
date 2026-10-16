@@ -4,12 +4,16 @@ apply_patch), and as outside the case when the session runs elsewhere; with
 no active case nothing is written. The text Codex types into a running shell
 (write_stdin) reaches no hook: it's read from the session's transcript at
 Stop and after each hooked call, each piece once. Transcript lines have the
-shape Codex 0.158 writes; values are synthetic."""
+shape Codex 0.158 writes; values are synthetic. In code mode (Codex 0.163) the
+call is a script the exec tool runs: the whole script is recorded, marked
+raw_input; the record taken from a real 0.163 session is kept as written."""
 
 import json
 import os
 import subprocess
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).parent.parent.parent
 HOOKS = ROOT / "claude-code" / "shared" / "hooks"
@@ -200,3 +204,95 @@ def test_input_recorded_before_the_cursor_was_kept_isnt_recorded_again(tmp_path)
     (tmp_path / ".vhir" / "active_case").write_text(str(b))
     _run("codex-stdin-capture.sh", dict(stop, cwd=str(b)), tmp_path)
     assert _lines(b) == [] and len(_lines(a)) == 1
+
+
+# A real Codex 0.163 code-mode record (line 19 of its session's transcript),
+# with only the typed text changed
+CODE_MODE = json.loads(
+    '{"timestamp":"2026-10-16T14:00:46.498Z","ordinal":18,"type":"response_item","payload":{"type":"custom_tool_call","id":"ctc_0d852770ea7e2846016ad22e0de3f48191b6b64562660f4bf6","status":"completed","call_id":"call_a6c33c03aaf4413fb09543738e8aed21","name":"exec","input":"text(await tools.write_stdin({session_id:18929,chars:\\"echo stdin-marker\\\\n\\",yield_time_ms:1000,max_output_tokens:1000}));\\n","internal_chat_message_metadata_passthrough":{"turn_id":"01a14503-c8b2-7601-9183-3444bef27700","create_time":1792159245.898374}}}'
+)
+
+
+def _code_mode_line(n, script, kind="custom_tool_call", name="exec"):
+    payload = {**CODE_MODE["payload"], "type": kind, "call_id": f"call_{n}",
+               "name": name, "input": script}  # fmt: skip
+    return json.dumps({**CODE_MODE, "ordinal": n, "payload": payload})
+
+
+def _stop(case, *lines):
+    t = case.parent.parent / "rollout.jsonl"
+    other = json.dumps({"type": "response_item", "payload": {"type": "message"}})
+    t.write_text("\n".join([other] * 18 + list(lines)) + "\n")
+    return {"hook_event_name": "Stop", "session_id": "s1", "cwd": str(case),
+            "transcript_path": str(t)}  # fmt: skip
+
+
+def test_code_mode_typed_input_is_recorded_once_as_the_script(tmp_path):
+    case = _case(tmp_path)
+    stop = _stop(case, json.dumps(CODE_MODE))
+    _run("codex-stdin-capture.sh", stop, tmp_path)
+    _run("codex-stdin-capture.sh", stop, tmp_path)  # nothing new
+    (e,) = _lines(case)
+    assert e["event"] == "write_stdin" and e["client"] == "codex"
+    assert "stdin-marker" in e["command"]
+    assert e["command"] == CODE_MODE["payload"]["input"] and e["raw_input"] is True
+    assert e["tool_use_id"] == CODE_MODE["payload"]["call_id"]
+    assert e["transcript_line"] == 19 and "command_truncated" not in e
+
+
+def test_a_code_mode_script_without_write_stdin_records_nothing(tmp_path):
+    case = _case(tmp_path)
+    script = 'text(await tools.exec_command({cmd:"ls -la",yield_time_ms:1000}));\n'
+    _run("codex-stdin-capture.sh", _stop(case, _code_mode_line(1, script)), tmp_path)
+    assert _lines(case) == []
+
+
+def test_write_stdin_named_outside_a_call_records_nothing(tmp_path):
+    """Its output, or text that names it, is not a call."""
+    case = _case(tmp_path)
+    said = json.dumps({"type": "response_item", "payload": {
+        "type": "message", "content": "I will use tools.write_stdin next"}})  # fmt: skip
+    out = _code_mode_line(
+        2, "text(await tools.write_stdin({}))", "custom_tool_call_output"
+    )
+    _run("codex-stdin-capture.sh", _stop(case, said, out), tmp_path)
+    assert _lines(case) == []
+
+
+@pytest.mark.parametrize("name", ["apply_patch", "web_search", "", None])
+def test_another_tool_whose_input_names_write_stdin_records_nothing(tmp_path, name):
+    case = _case(tmp_path)
+    patch = (
+        "*** Begin Patch\n*** Update File: notes.txt\n"
+        '+call tools.write_stdin({chars:"exit\\n"}) next\n*** End Patch\n'
+    )
+    line = _code_mode_line(1, patch, name=name)
+    exec_twin = _code_mode_line(2, patch)
+    _run("codex-stdin-capture.sh", _stop(case, line, exec_twin), tmp_path)
+    (e,) = _lines(case)  # only the exec call
+    assert e["tool_use_id"] == "call_2" and e["transcript_line"] == 20
+
+
+def test_a_long_code_mode_script_is_marked_cut_with_its_length_and_hash(tmp_path):
+    import hashlib
+
+    case = _case(tmp_path)
+    script = (
+        "// " + "x" * 2000 + '\ntext(await tools.write_stdin({chars:"rm f\\n"}));\n'
+    )
+    _run("codex-stdin-capture.sh", _stop(case, _code_mode_line(1, script)), tmp_path)
+    (e,) = _lines(case)
+    assert e["command"] == script[:2000] and e["command_truncated"] is True
+    assert e["command_length"] == len(script) and e["raw_input"] is True
+    assert e["command_sha256"] == hashlib.sha256(script.encode()).hexdigest()
+
+
+def test_both_shapes_in_one_session_are_each_recorded_once(tmp_path):
+    case = _case(tmp_path)
+    stop = _stop(case, _stdin_line(1, "exit\n"), json.dumps(CODE_MODE))
+    _run("codex-stdin-capture.sh", stop, tmp_path)
+    _run("codex-stdin-capture.sh", stop, tmp_path)
+    old, new = _lines(case)
+    assert old["command"] == "exit\n" and "raw_input" not in old
+    assert old["tool_use_id"] == "call_1" and old["transcript_line"] == 19
+    assert new["raw_input"] is True and new["transcript_line"] == 20
