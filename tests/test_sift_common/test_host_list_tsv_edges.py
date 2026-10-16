@@ -53,3 +53,16 @@ def test_other_rows_blank_lines_and_spaces_read_as_before():
         "csv quoted indented": ([("WKS01", "")], []),
         "csv header trailing tab": ([("WKS01", "")], []),
     }
+
+
+def test_a_unicode_space_or_a_csv_rows_leading_tab_before_a_quote_reads_as_before():
+    got = {
+        "csv nbsp before quote": _read('Hostname,OS\n\u00a0"WKS01","Win"\n'),
+        "csv tab before quote": _read('Hostname,OS\n\t"WKS01","Win"\n'),
+        "tsv nbsp before quote": _read('Hostname\tOS\n\u00a0"WKS01"\tWin\n'),
+    }
+    assert got == {
+        "csv nbsp before quote": ([("WKS01", "")], []),
+        "csv tab before quote": ([("WKS01", "")], []),
+        "tsv nbsp before quote": ([("WKS01", "")], []),
+    }
