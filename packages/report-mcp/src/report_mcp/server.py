@@ -877,13 +877,20 @@ def _generate(
     return result
 
 
+_ISO_SHAPE = re.compile(
+    r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?"
+)
+
+
 def _validate_iso8601(value: str) -> bool:
-    """Check if value looks like an ISO 8601 datetime."""
-    try:
-        datetime.fromisoformat(value)
-        return True
-    except (ValueError, TypeError):
-        return False
+    """A full ISO 8601 date or datetime that _utc reads, on any Python.
+    Takes Z, +0000 and long fractions on 3.10; refuses T12, compact and week
+    forms, which datetime.fromisoformat takes on some versions."""
+    return (
+        isinstance(value, str)
+        and _ISO_SHAPE.fullmatch(value) is not None
+        and _utc(value) is not None
+    )
 
 
 def create_server() -> FastMCP:
