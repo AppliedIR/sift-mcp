@@ -6,6 +6,7 @@ import json
 
 import pytest
 import yaml
+from report_mcp.server import _TEXT_ONLY as TEXT_ONLY
 
 
 @pytest.fixture()
@@ -327,11 +328,12 @@ class TestGenerateReport:
         s = create_server()
         result = _call_tool(s, "generate_report", profile="full")
 
+        # The case holds no IOC records: every value is one no record holds
         iocs = result["report_data"]["iocs"]
-        assert "IPv4" in iocs
-        assert any(e["value"] == "10.0.1.5" for e in iocs["IPv4"])
+        assert list(iocs) == [TEXT_ONLY]
+        assert [e["value"] for e in iocs[TEXT_ONLY]].count("10.0.1.5") == 1
         # Cross-reference check
-        ip_entry = next(e for e in iocs["IPv4"] if e["value"] == "10.0.1.5")
+        ip_entry = next(e for e in iocs[TEXT_ONLY] if e["value"] == "10.0.1.5")
         assert "F-tester-001" in ip_entry["source_findings"]
 
     def test_mitre_mapping(self, case_dir):

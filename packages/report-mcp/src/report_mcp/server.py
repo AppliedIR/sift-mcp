@@ -324,7 +324,7 @@ _IOC_LABELS = {
     "md5": "MD5",
     "unknown": "Unknown",
 }
-# The group of values found in a finding's text that no finding's iocs holds
+# The values the findings name that no IOC record of the case holds
 _TEXT_ONLY = "Found in text, not recorded"
 _TEXT_IPV4 = r"\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b"
 # The patterns a finding's text is searched with, in this order
@@ -393,11 +393,13 @@ def _ioc_label(t) -> str:
 
 def _ioc_items(iocs):
     """(type, value) for each value a finding's iocs field holds: a list of
-    strings and {"value", "type"} dicts, or a {type: values} dict."""
+    strings and {"value", "type"} dicts, or a {type: values} dict. A value
+    under a {type: values} key has no type: forensic-mcp flattens that form
+    to plain values before it keys them."""
     if isinstance(iocs, dict):
-        for t, values in iocs.items():
+        for values in iocs.values():
             for v in values if isinstance(values, list) else [values]:
-                yield t, v
+                yield None, v
     elif isinstance(iocs, list):
         for i in iocs:
             if isinstance(i, str):
@@ -406,79 +408,90 @@ def _ioc_items(iocs):
                 yield i.get("type"), i.get("value")
 
 
+def _ioc_value(v) -> str | None:
+    """A stored value as text; None when there is none to list."""
+    if v is None:
+        return None
+    v = v if isinstance(v, str) else str(v)
+    return v if v.strip() else None
+
+
+def _record_key(record) -> str | None:
+    """The key of an IOC record's value; None when it has no value."""
+    if not isinstance(record, dict):
+        return None
+    if (value := _ioc_value(record.get("value"))) is None:
+        return None
+    t = record.get("type")
+    return _ioc_key(value, None if _no_type(t) else t)
+
+
 def _ioc_records(case_dir: Path) -> list:
-    """The case's IOC records (iocs.json), which only lend a plain value its
-    type: none when the file can't be read as a list."""
+    """Every IOC record of the case (iocs.json), whatever its status: none
+    when the file can't be read as a list."""
     try:
         records = load_iocs(case_dir)
     except (OSError, ValueError) as e:
-        logger.warning("IOC records not read, values typed by pattern: %s", e)
+        logger.warning("IOC records not read: %s", e)
         return []
     return records if isinstance(records, list) else []
 
 
 def _extract_all_iocs(
-    findings: list[dict], records: list | None = None
+    findings: list[dict], records: list | None = None, all_records: list | None = None
 ) -> dict[str, list[dict]]:
-    """The IOCs the findings name, each once, under one label, with the
-    findings that name it: {label: [{value, source_findings: [ids]}]}.
+    """The IOCs of the report, under one label each, with the findings that
+    name them: {label: [{value, source_findings: [ids]}]}.
 
-    Every value in a finding's `iocs` is listed under its type's label. A value
-    with no type (a plain string, or a type that is empty or null) takes the
-    type of the case's IOC record with the same value (`records`, iocs.json);
-    with no such record it is labelled by the text pattern that matches all of
-    it, else "Unknown". A type that isn't a string is shown as str(type). Two
-    values are the same IOC when they key alike; the first label a value gets
-    is kept, and it is shown as first written. A finding whose text names a
-    listed value is one of its source findings too. Values the findings' text
-    names but no finding's `iocs` holds are listed last, in one group of their
-    own. Labels and values are sorted."""
-    record_type: dict[str, object] = {}
-    for r in records or []:
-        typed = isinstance(r, dict) and not _no_type(r.get("type"))
-        if typed and r.get("value") is not None:
-            record_type.setdefault(_ioc_key(str(r["value"]), r["type"]), r["type"])
+    The listing is the IOC records given (`records`: the approved ones), each
+    under its type's label. A record with no type (empty or null) is labelled
+    by the text pattern that matches all of its value, else "Unknown"; a type
+    that isn't a string is shown as str(type). Then one group of its own,
+    last: the values the findings name, in their `iocs` or their text, that no
+    IOC record of the case holds (`all_records`, whatever their status;
+    `records` when not given), each once, as first written. Two values are the
+    same IOC when they key alike, as forensic-mcp keys an IOC. A value's source
+    findings are the findings that name it. Labels and values are sorted."""
     findings = [f for f in findings or [] if isinstance(f, dict)]
-
-    listed: dict[str, tuple[str, str]] = {}  # key -> (label, as first written)
-    sources: dict[str, set[str]] = {}  # key -> the ids of the findings naming it
+    named: list[tuple[str, str, str]] = []  # (key, as written, finding id)
     for f in findings:
         for t, value in _ioc_items(f.get("iocs")):
-            if value is None:
-                continue
-            value = value if isinstance(value, str) else str(value)
-            key = _ioc_key(value, t)
-            if not key:
-                continue
-            sources.setdefault(key, set()).add(str(f.get("id", "")))
-            if key in listed:
-                continue
-            if _no_type(t):
-                t = record_type.get(key)
-            if _no_type(t):
-                v = value.strip()
-                t = next(
-                    (lb for lb, p in _IOC_PATTERNS if re.fullmatch(p, v)), "Unknown"
-                )
-            listed[key] = (_ioc_label(t), value)
-
-    text_only: dict[str, str] = {}
+            if (value := _ioc_value(value)) is not None:
+                key = _ioc_key(value, None if _no_type(t) else t)
+                named.append((key, value, str(f.get("id", ""))))
     for f in findings:
         text = f"{f.get('observation', '')} {f.get('interpretation', '')}"
         for _, value in _text_iocs(text):
-            key = _ioc_key(value)
-            sources.setdefault(key, set()).add(str(f.get("id", "")))
-            if key not in listed:
-                text_only.setdefault(key, value)
+            named.append((_ioc_key(value), value, str(f.get("id", ""))))
+    sources: dict[str, set[str]] = {}
+    for key, _, fid in named:
+        sources.setdefault(key, set()).add(fid)
 
     def entry(key: str, value: str) -> dict:
-        return {"value": value, "source_findings": sorted(sources[key] - {""})}
+        return {
+            "value": value,
+            "source_findings": sorted(sources.get(key, set()) - {""}),
+        }
 
     groups: dict[str, list[dict]] = {}
-    for key, (label, value) in listed.items():
-        groups.setdefault(label, []).append(entry(key, value))
+    for r in records or []:
+        if (key := _record_key(r)) is None:
+            continue
+        value, t = _ioc_value(r["value"]), r.get("type")
+        if _no_type(t):
+            v = value.strip()
+            t = next((lb for lb, p in _IOC_PATTERNS if re.fullmatch(p, v)), "Unknown")
+        groups.setdefault(_ioc_label(t), []).append(entry(key, value))
+
+    recorded = {
+        _record_key(r) for r in (records if all_records is None else all_records) or []
+    }
+    not_recorded: dict[str, str] = {}
+    for key, value, _ in named:
+        if key and key not in recorded:
+            not_recorded.setdefault(key, value)
     found_in_text = groups.pop(_TEXT_ONLY, [])
-    found_in_text += [entry(k, v) for k, v in text_only.items()]
+    found_in_text += [entry(k, v) for k, v in not_recorded.items()]
     by_value = lambda e: e["value"]  # noqa: E731
     out = {label: sorted(groups[label], key=by_value) for label in sorted(groups)}
     if found_in_text:
@@ -781,7 +794,7 @@ def _generate(
         stripped_findings.append(out)
 
     # IOC aggregation
-    iocs = _extract_all_iocs(approved_findings, _ioc_records(case_dir))
+    iocs = _extract_all_iocs(approved_findings, view["iocs"], _ioc_records(case_dir))
 
     # MITRE mapping
     mitre = _build_mitre_mapping(approved_findings)
