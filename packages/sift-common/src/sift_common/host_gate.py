@@ -41,6 +41,21 @@ HOST_LIST_HINT_PROPOSED = (
     "No host list yet. A list of the machines in scope, uploaded before "
     "ingesting, proposes matching hosts for the examiner to confirm." + _HOST_LIST_HOW
 )
+# the Portal's Hosts tab shows the examiner its own wording, never the AI's
+_PORTAL_HOW = (
+    ' Paste or upload one under "Upload a host list" below: one name per line '
+    "with an optional FQDN, or a CSV or TSV export with a header row. Or ask the "
+    "AI to prepare a draft from any inventory (a PDF, spreadsheet or email), then "
+    "review and upload it there."
+)
+PORTAL_HOST_LIST_HINT = (
+    "No host list yet. A list of the machines in scope, uploaded before "
+    "ingesting, confirms matching hosts automatically." + _PORTAL_HOW
+)
+PORTAL_HOST_LIST_HINT_PROPOSED = (
+    "No host list yet. A list of the machines in scope, uploaded before "
+    "ingesting, proposes matching hosts for the examiner to confirm." + _PORTAL_HOW
+)
 REASON_UNCONFIRMED = "not confirmed"
 # what gave a held name, for its reason: "named only by its file name"
 _NAMED_BY = {
