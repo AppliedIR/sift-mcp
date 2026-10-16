@@ -498,8 +498,10 @@ def test_a_cut_list_says_how_many_wait_and_where_all_are_shown(case):
     s = hg.summary(pending(case, *by_host(case, hosts(60))))
     assert s["unresolved"] == 60 and len(s["hosts"]) == 50
     assert s["message"] == (
-        hg.WAIT_MESSAGE + ". Only 50 of the 60 waiting entries (one per host name in "
-        "each unit) are listed. The Portal's Hosts tab lists every one"
+        hg.WAIT_MESSAGE
+        + ". Only 50 of the 60 waiting entries are listed: one for each "
+        "host name in each image, folder or archive, and one for each with no host "
+        "name. The Portal's Hosts tab lists every one"
     )
 
 
