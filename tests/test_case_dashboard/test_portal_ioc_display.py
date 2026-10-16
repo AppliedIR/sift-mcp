@@ -33,8 +33,14 @@ LEGACY = finding("F-steve-002", iocs=["198.51.100.9", "bad.example.org"])
 # A finding whose own iocs are structured; a stale pending delta would replace
 # them. Display must show both sides' values, never "[object Object]".
 STALE = finding("F-steve-003", iocs=[{"value": "203.0.113.7", "type": "ipv4"}])
+# Entries with no plain value render as their JSON text, escaped.
+NO_VALUE = finding("F-steve-004", iocs=[{"ip": "<img src=x onerror=alert(1)>"}])
+VALUE_DICT = finding("F-steve-005", iocs=[{"value": {"v4": "192.0.2.10"}}])
+# A value String() can't convert. Rendered in its own run: a throw would end
+# the shared run, and every card with it.
+NO_TO_STRING = finding("F-steve-006", iocs=[{"value": {"toString": None}}])
 
-FINDINGS = [STRUCT, LEGACY, STALE]
+FINDINGS = [STRUCT, LEGACY, STALE, NO_VALUE, VALUE_DICT]
 CASE_META = {"signing": {"examiner": "steve"}}
 DELTA = {
     "version": 1,
@@ -104,16 +110,20 @@ process.stdout.write(JSON.stringify(ctx.__OUT));
 """
 
 
-@pytest.fixture(scope="module")
-def cards() -> dict:
+def _render(findings: list) -> subprocess.CompletedProcess:
     node = shutil.which("node")
     if not node:
         pytest.skip("node isn't installed")
-    r = subprocess.run(
+    return subprocess.run(
         [node, "-e", DRIVER], capture_output=True, text=True, timeout=120,
-        input=json.dumps({"page": str(PAGE), "findings": FINDINGS,
+        input=json.dumps({"page": str(PAGE), "findings": findings,
                           "caseMeta": CASE_META, "delta": DELTA}),
     )  # fmt: skip
+
+
+@pytest.fixture(scope="module")
+def cards() -> dict:
+    r = _render(FINDINGS)
     assert r.returncode == 0, r.stderr[-2000:]
     return json.loads(r.stdout)
 
@@ -141,3 +151,22 @@ def test_a_stale_iocs_delta_shows_both_sides_values_not_object_object(cards):
 
 def test_no_card_ever_prints_object_object(cards):
     assert "[object Object]" not in "".join(cards.values())
+
+
+def test_an_entry_with_no_value_renders_as_its_escaped_json(cards):
+    card = cards["F-steve-004"]
+    assert "{&quot;ip&quot;:&quot;&lt;img src=x onerror=alert(1)&gt;&quot;}" in card
+    assert "<img" not in card
+
+
+def test_a_value_that_is_an_object_renders_as_the_entry_json(cards):
+    card = cards["F-steve-005"]
+    assert "{&quot;value&quot;:{&quot;v4&quot;:&quot;192.0.2.10&quot;}}" in card
+    assert "[object Object]" not in card
+
+
+def test_a_value_string_cant_convert_still_renders_the_card():
+    r = _render([NO_TO_STRING])
+    assert r.returncode == 0, r.stderr[-2000:]
+    (card,) = json.loads(r.stdout).values()
+    assert "{&quot;value&quot;:{&quot;toString&quot;:null}}" in card

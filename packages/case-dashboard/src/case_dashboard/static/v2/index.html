@@ -1788,11 +1788,13 @@ function renderFinding(id) {
 }
 
 // An IOC is stored as {value, type}; older findings may carry plain strings.
-// Render the value only — never the object, which would stringify to the
-// literal "[object Object]".
+// A plain value renders as it is. An entry with no plain value (no `value`,
+// or one that is an object) renders as its JSON text, never as the object,
+// which would stringify to "[object Object]". The caller escapes the label.
 function iocLabel(t) {
-  return (t && typeof t === 'object') ? String(t.value == null ? '' : t.value)
-                                      : String(t == null ? '' : t);
+  if (!t || typeof t !== 'object') return String(t == null ? '' : t);
+  if (t.value != null && typeof t.value !== 'object') return String(t.value);
+  return JSON.stringify(t);
 }
 
 function renderFieldWithDelta(field, value, de) {
