@@ -465,6 +465,67 @@ def test_with_the_lists_confirmation_off_the_hint_says_matches_are_proposed(
     assert hg.host_list_hint(case) == hg.HOST_LIST_HINT_PROPOSED
 
 
+# -- what the wait reports
+
+CUT = "The Portal's Hosts tab lists every one"
+
+
+def hosts(n):
+    return [f"wkstn{i:02d}.example.com" for i in range(1, n + 1)]
+
+
+def by_module(case, names, modules=24):
+    """Kansa's own layout: one file per module, each naming every host."""
+    return [
+        unit(case, f"kansa/Mod{m:02d}.tsv", [(h, "host column", "artifact") for h in names])
+        for m in range(1, modules + 1)
+    ]  # fmt: skip
+
+
+def by_host(case, names):
+    return [unit(case, f"evidence/{h}", [(h, "folder name", "folder")]) for h in names]
+
+
+def test_29_hosts_across_24_modules_count_as_29(case):
+    waiting = pending(case, *by_module(case, hosts(29)))
+    assert len(waiting) == 696
+    s = hg.summary(waiting)
+    assert s["unresolved"] == 29 and len(s["hosts"]) == 50
+    assert "Only 50 of the 696 waiting entries" in s["message"] and CUT in s["message"]
+
+
+def test_a_cut_list_says_how_many_wait_and_where_all_are_shown(case):
+    s = hg.summary(pending(case, *by_host(case, hosts(60))))
+    assert s["unresolved"] == 60 and len(s["hosts"]) == 50
+    assert s["message"] == (
+        hg.WAIT_MESSAGE + ". Only 50 of the 60 waiting entries (one per host name in "
+        "each unit) are listed. The Portal's Hosts tab lists every one"
+    )
+
+
+@pytest.mark.parametrize("n, cut", [(3, False), (50, False), (51, True)])
+def test_a_list_that_fits_says_nothing_more(case, n, cut):
+    s = hg.summary(pending(case, *by_host(case, hosts(n))))
+    assert s["unresolved"] == n and len(s["hosts"]) == min(n, 50)
+    assert (s["message"] != hg.WAIT_MESSAGE) is cut and (CUT in s["message"]) is cut
+
+
+def test_units_with_no_name_count_one_each_and_a_shared_name_once(case):
+    nameless = []
+    for loc in ("evidence/a.csv", "evidence/b.csv"):
+        nameless.append(hi.unit_key(loc))
+        hi.append_observations(
+            case, [{"kind": "unit", "unit": nameless[-1], "locator": loc}]
+        )
+    shared = [
+        folder(case, "WKS01"),
+        unit(case, "evidence/more/WKS01", [("WKS01", "x", "folder")]),
+    ]
+    waiting = pending(case, *nameless, *shared)
+    assert len(waiting) == 4
+    assert hg.summary(waiting)["unresolved"] == 3
+
+
 # -- the wait
 
 
