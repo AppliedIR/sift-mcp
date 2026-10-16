@@ -1113,12 +1113,12 @@ def get_or_mint(
             ):
                 match = None  # a machine holding a name in another domain: not this one
             if match is not None:
-                from sift_common.host_proposal import generic_only
+                from sift_common.host_proposal import FLAG_GENERIC, name_flags
 
                 # a template name joins only the machine it names, or the one
                 # this unit already holds it on, confirmed and not read late
                 if (
-                    generic_only(raw)
+                    FLAG_GENERIC in name_flags(raw)
                     and spelling(raw)
                     not in {spelling(n) for n in (match.canonical, *match.former)}
                     and not any(

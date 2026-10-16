@@ -256,6 +256,34 @@ def test_another_hosts_late_template_name_with_a_domain_never_joins_through_it(c
     assert _late(case, e, fqdn) == (fqdn, hi.NEW)
 
 
+# a template name with a line ending kept (a CRLF list, a CR-padded log field)
+# or a compatibility letter (U+212A KELVIN SIGN for K) is still a template name
+PADDED = ["EC2AMAZ-AAAA111\n", "EC2AMAZ-AAAA111\r\n", "WIN-KBBB2222"]
+
+
+@pytest.mark.parametrize("raw", PADDED)
+def test_another_hosts_late_padded_template_name_never_joins_a_machine_through_it(
+    case, raw
+):
+    a = disk(case, "evidence/dev01.E01@0", "DEV01", "EC2AMAZ-AAAA111", "WIN-KBBB2222")
+    e = disk(case, "evidence/srv9.E01@0", "SRV9")
+    hp.upload_host_list(case, "DEV01\nSRV9\n", "ex1")
+    assert on(case, a, hi.spelling(raw).upper()) == "DEV01"
+    machine, state = _late(case, e, raw)
+    assert (machine != "DEV01", state) == (True, hi.NEW)
+    st = hi.load(case)
+    assert st.machine_of_pair(a, "DEV01").id != st.machine_of_pair(e, raw).id
+
+
+@pytest.mark.parametrize("raw", PADDED)
+def test_a_late_padded_template_name_of_its_own_unit_joins_its_machine(case, raw):
+    a = disk(case, "evidence/dev01.E01@0", "DEV01", "EC2AMAZ-AAAA111", "WIN-KBBB2222")
+    disk(case, "evidence/srv9.E01@0", "SRV9")
+    hp.upload_host_list(case, "DEV01\nSRV9\n", "ex1")
+    assert _late(case, a, raw) == ("DEV01", hi.CONFIRMED)
+    assert len(hi.load(case).machines) == 2
+
+
 @pytest.mark.parametrize("raw", ["ec2amaz-aaaa111", "EC2AMAZ-AAAA111."])
 def test_a_late_template_name_spelled_another_way_joins_its_units_machine(case, raw):
     # the list put the unit's template name on DEV01; the same unit spells it
@@ -376,6 +404,16 @@ def test_a_template_name_confirmed_by_hand_as_an_alias_is_not_joined_late(
         hp.upload_host_list(case, listed, "ex1")
     assert on(case, a, "EC2AMAZ-AAAA111") == "DEV01"
     assert _late(case, e, raw) == (raw, hi.NEW)
+    assert len(hi.load(case).machines) == 3
+
+
+def test_a_hand_alias_another_unit_reads_with_a_carriage_return_is_not_joined(case):
+    a = disk(case, "evidence/dev01.E01@0", "DEV01", "EC2AMAZ-AAAA111")
+    e = disk(case, "evidence/srv9.E01@0", "SRV9")
+    _confirm(case, a, "DEV01", "DEV01", "EC2AMAZ-AAAA111")
+    _confirm(case, e, "SRV9", "SRV9")
+    machine, state = _late(case, e, "EC2AMAZ-AAAA111\r")
+    assert (machine != "DEV01", state) == (True, hi.NEW)
     assert len(hi.load(case).machines) == 3
 
 
