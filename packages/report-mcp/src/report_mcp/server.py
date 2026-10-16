@@ -614,7 +614,9 @@ def _defang_iocs(text: str, iocs: list[str]) -> str:
 def _build_mitre_mapping(findings: list[dict]) -> dict[str, dict]:
     """Build MITRE ATT&CK mapping from findings.
 
-    Returns {technique_id: {name, findings: [ids]}}.
+    Returns {technique_id: {name, findings: [ids]}}. A technique stored as its
+    ID alone (forensic-mcp's mitre_ids) has no name: "name" is left out until
+    a finding gives one, never shown empty.
     """
     mapping: dict[str, dict] = {}
 
@@ -635,11 +637,11 @@ def _build_mitre_mapping(findings: list[dict]) -> dict[str, dict]:
                     continue
                 if tid:
                     if tid not in mapping:
-                        mapping[tid] = {"name": name, "findings": []}
+                        mapping[tid] = {"findings": []}
                     if fid and fid not in mapping[tid]["findings"]:
                         mapping[tid]["findings"].append(fid)
-                    if name and not mapping[tid]["name"]:
-                        mapping[tid]["name"] = name
+                    if name and not mapping[tid].get("name"):
+                        mapping[tid] = {"name": name, **mapping[tid]}
 
     return mapping
 
