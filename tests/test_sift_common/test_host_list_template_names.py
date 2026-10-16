@@ -180,3 +180,22 @@ def test_machines_already_made_for_template_names_change_only_by_merge(case):
     assert st.machine_of_pair(u, DEV_T[0]).id == key
     assert {k: v for k, v in ((m.id, m.canonical) for m in st.machines.values())
             if k in before} == before  # fmt: skip
+
+
+def test_after_the_list_no_record_sits_under_a_template_machine(case):
+    # an ingest stamps each record with get_or_mint's machine for the name it
+    # carries: every template name lands on the host's real machine, for the
+    # units the list confirmed and for a later unit of the same host
+    units = _two_hosts(case)
+    hp.upload_host_list(case, "DEV01\nDC01\n", "ex1")
+    units["dev01 later"] = later = disk(case, "evidence/dev01-later", "DEV01", *DEV_T)
+    assert hp.apply_host_list(case, [later])["confirmed"]
+    for label, u in units.items():
+        host = label.split()[0].upper()
+        for raw in [p[1] for p in hi.load(case).names if p[0] == u]:
+            _, canonical = hi.get_or_mint(case, u, raw, origin=hi.ARTIFACT)
+            assert canonical == host, (label, raw)
+    assert sorted(m.canonical for m in hi.load(case).machines.values()) == [
+        "DC01",
+        "DEV01",
+    ]

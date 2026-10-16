@@ -4209,7 +4209,7 @@ function renderIocs() {
 // Machines and the host names awaiting the examiner, from /api/hosts. Every
 // string from the case is escaped; buttons carry an action and an index into
 // the page's data, never case text.
-var hostsView = { page: 1, ppage: 1, state: '', q: '', data: null, runs: [], ops: null, opsTimer: null };
+var hostsView = { page: 1, ppage: 1, state: '', q: '', data: null, runs: [], ops: null, opsTimer: null, failed: '', launched: false };
 
 function escapeAttr(s) {
   return escapeHtml(s).replace(/"/g, '&quot;');
@@ -4355,7 +4355,9 @@ function hostCorrectionsHtml(m) {
   return html + '</div>';
 }
 
-function hostOpsHtml(v) {
+/* `failed`: why the last host request from this page failed, until the next
+   one answers (a success clears it, a refusal replaces it). */
+function hostOpsHtml(v, failed) {
   if (!v) return '';
   var u = v.unfinished, html = '';
   // every journal field is case text (host-ops.json can be written by others): escaped
@@ -4377,9 +4379,7 @@ function hostOpsHtml(v) {
     html += '<div style="color:var(--text-muted)">Last host operation: ' + what(v.last) + ' (' + escapeHtml(String(v.last.id)) + '), done'
       + (v.last.relabelled != null ? ', ' + escapeHtml(String(v.last.relabelled)) + ' records relabelled' : '') + '.</div>';
   }
-  if (v.launch && (v.launch.state === 'refused' || v.launch.state === 'failed') && v.launch.result) {
-    html += '<div class="notice">The last request was ' + escapeHtml(String(v.launch.state)) + ': ' + escapeHtml(String(v.launch.result.reason || '')) + '</div>';
-  }
+  if (failed) html += '<div class="notice">The last request failed: ' + escapeHtml(failed) + '</div>';
   return html;
 }
 
@@ -4410,12 +4410,18 @@ async function renderHostOps() {
     document.getElementById('hostsOps').innerHTML = '<div class="notice">' + escapeHtml('Host operations could not be read: ' + e.message) + '</div>';
     return;
   }
-  document.getElementById('hostsOps').innerHTML = hostOpsHtml(hostsView.ops);
+  var v = hostsView.ops;
+  var running = !!((v.unfinished && v.unfinished.state === 'running') || (v.launch && v.launch.state === 'running'));
+  if (!running && hostsView.launched) {
+    // the operation this page launched answered: its refusal is the banner's
+    var r = v.launch && v.launch.result;
+    hostsView.failed = r && (r.state === 'refused' || r.state === 'failed') ? safeStr(r.reason || r.state) : '';
+    hostsView.launched = false;
+  }
+  document.getElementById('hostsOps').innerHTML = hostOpsHtml(v, hostsView.failed);
   hostDecisionsFixed();
   clearTimeout(hostsView.opsTimer);
   // running: in the journal, or launched from here and not yet answered
-  var v = hostsView.ops;
-  var running = !!((v.unfinished && v.unfinished.state === 'running') || (v.launch && v.launch.state === 'running'));
   if (running) {
     hostsView.opsTimer = setTimeout(renderHostOps, 2000);  // its progress, until it ends
   } else if (hostsView.wasRunning) {
@@ -4438,12 +4444,18 @@ async function hostOp(body) {
     var r = await res.json().catch(function() { return {}; });
     if (res.status === 202) {
       hostsView.wasRunning = true;  // the poll closes the detail when it ends, however soon
+      hostsView.launched = true;
+      hostsView.failed = '';
       showToast('The host operation is running', 'info');
     }
-    else if (res.ok && r.state === 'done') showToast('Host operation done', 'success');
-    else showToast((r.state ? r.state + ': ' : '') + (r.reason || r.error || 'refused'), 'error');
+    else if (res.ok && r.state === 'done') { hostsView.failed = ''; showToast('Host operation done', 'success'); }
+    else {
+      hostsView.failed = r.reason || r.error || r.state || 'refused';
+      showToast((r.state ? r.state + ': ' : '') + (r.reason || r.error || 'refused'), 'error');
+    }
     if (res.status !== 202 && res.status !== 400) hostOpEnded();  // it ran, or the machine changed
   } catch (e) {
+    hostsView.failed = e.message;
     showToast(e.message, 'error');
   }
   renderHostOps();
@@ -4511,9 +4523,11 @@ async function hostDecide(action, args) {
       body: JSON.stringify({ action: action, args: args, seen_offset: hostsView.data.obs_offset })
     });
     var skipped = (r.skipped || []).map(function(x) { return x.canonical + ': ' + x.reason; });
+    hostsView.failed = '';
     showToast((r.summary || 'Saved') + (skipped.length ? ' \u2014 skipped ' + skipped.join('; ') : ''),
       skipped.length || r.warning ? 'warning' : 'success');
   } catch (e) {
+    hostsView.failed = e.message;
     showToast(e.message, 'error');
   }
   document.activeElement && document.activeElement.blur && document.activeElement.blur();
