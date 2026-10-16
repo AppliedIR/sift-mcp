@@ -132,6 +132,7 @@ _HOLDS = {  # what a case file holds, for the text that refuses it (vhir's case_
     "pending-reviews.json": "staged reviews", "CASE.yaml": "case details",
     "actions.jsonl": "action records", "host-ops.json": "host-operation records",
     "host-observations.jsonl": "host observations", "host-decisions.jsonl": "host decisions",
+    "host-list-draft.json": "a draft host list",
 }  # fmt: skip
 
 

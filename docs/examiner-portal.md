@@ -13,11 +13,15 @@ The portal has 8 tabs:
 | **Overview** | Case summary: finding counts by status, timeline span, evidence count, case metadata |
 | **Findings** | Review, edit, approve, and reject findings — the primary workflow |
 | **Timeline** | Chronological view of incident events with visual ruler and filtering |
-| **Hosts** | Findings grouped by host (from the `host` field on each finding) |
+| **Hosts** | The case's machines: the host list, ingest runs waiting for their hosts, proposed machines to confirm, and each machine's names |
 | **Accounts** | Findings grouped by affected account |
 | **Evidence** | Registered evidence files with SHA-256 hashes and integrity verification |
 | **IOCs** | Indicators of compromise auto-extracted from findings, with cascading status |
 | **TODOs** | Investigation tasks with status tracking |
+
+## Host Confirmation
+
+An ingest writes nothing until each host name its evidence gives belongs to a machine you confirmed. Upload a host list in the Hosts tab before ingesting (one name per line with an optional FQDN, or a CSV or TSV export with a header row): the hosts it names confirm as the evidence arrives. Otherwise Confirm each proposed machine, or choose Start now on a waiting run to let it write with its hosts as proposed. A list the AI prepared waits in the tab as a draft until you Upload it.
 
 ## Finding Review Workflow
 

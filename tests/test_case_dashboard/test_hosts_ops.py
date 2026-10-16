@@ -583,7 +583,7 @@ class TestHostDecisionsWaitWhileAnOperationIsUnfinished:
         acts = set(json.loads(listed.replace("'", '"')))
         drawn = set(re.findall(r'data-host-act="(\w+)"', PORTAL))
         corrections = {"page", "ppage", "detail", "op_resume", "op_rename", "op_merge",
-                       "op_split"}  # fmt: skip
+                       "op_split", "draft_dismiss"}  # fmt: skip
         assert drawn - corrections == acts  # every decision control the tab draws
 
 

@@ -1349,8 +1349,6 @@ def record_op(
     reader sees it before or after, never in part. ``check(state)``, when
     given, runs on the logs as they are under the same lock, first; it raises
     to refuse, and nothing is written."""
-    import secrets
-
     root = Path(case_dir)
     with _log_lock(root):
         if check is not None:
@@ -1359,24 +1357,29 @@ def record_op(
         entry = doc["ops"].setdefault(op_id, {})
         entry.update(fields)
         entry["updated"] = _now()
-        data = json.dumps(doc, sort_keys=True, ensure_ascii=False, indent=1).encode(
-            "utf-8"
-        )
-        tmp = root / f".{OPS}.{os.getpid()}.{secrets.token_hex(4)}.tmp"
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
-        try:
-            try:
-                if os.write(fd, data) != len(data):
-                    raise HostLogError(f"{OPS}: short write")
-                os.fsync(fd)
-            finally:
-                os.close(fd)
-            os.replace(tmp, root / OPS)
-        except BaseException:
-            with contextlib.suppress(OSError):
-                os.remove(tmp)
-            raise
+        replace_document(root, OPS, doc)
     return dict(entry)
+
+
+def replace_document(root: Path, name: str, doc) -> None:
+    """Write the case document `name` whole and replace it at once, so a
+    reader sees it before or after, never in part. The caller holds the log
+    lock."""
+    data = json.dumps(doc, sort_keys=True, ensure_ascii=False, indent=1).encode("utf-8")
+    tmp = root / f".{name}.{os.getpid()}.{secrets.token_hex(4)}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    try:
+        try:
+            if os.write(fd, data) != len(data):
+                raise HostLogError(f"{name}: short write")
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, root / name)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        raise
 
 
 def decided_op(case_dir: str | os.PathLike, op_id: str) -> bool:

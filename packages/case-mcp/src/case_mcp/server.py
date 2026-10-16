@@ -1,6 +1,6 @@
 """Valhuntir case management MCP server.
 
-Exposes 15 tools wrapping vhir CLI _data() functions for LLM-callable
+Exposes 16 tools wrapping vhir CLI _data() functions for LLM-callable
 case management. No new logic — thin wrappers around tested code.
 """
 
@@ -14,6 +14,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from sift_common import file_identity as fi
+from sift_common import host_proposal as hp
 from sift_common.approvals import mark_approvals
 from sift_common.audit import AuditWriter, resolve_examiner
 from sift_common.host_identity import HostLogError, ensure_case_uuid
@@ -945,6 +946,47 @@ def create_server() -> FastMCP:
         # The browser already received it via webbrowser.open().
         display_url = url.split("#")[0] if "#" in url else url
         result = {"url": display_url, "status": status}
+        if logged_id is None:
+            result["warning"] = "Audit write failed — action not recorded"
+        return result
+
+    # ------------------------------------------------------------------
+    # Tool 17: prepare_host_list (SAFE — a draft; only the examiner applies a list)
+    # ------------------------------------------------------------------
+    @server.tool()
+    def prepare_host_list(text: str, source: str = "") -> dict:
+        """Prepare a host list for the examiner from any inventory they give
+        you (a PDF, spreadsheet, email, text or screenshot). Write it as one
+        name per line with an optional FQDN, or keep a CSV or TSV export's
+        header row. `source` names where it came from.
+
+        It is a draft: it confirms nothing and changes no host. The examiner
+        reviews it in the Portal's Hosts tab and uploads it there; a new draft
+        replaces the last. Never say a list was uploaded or applied.
+        """
+        try:
+            _validate_str_length(source, "source", _MAX_SHORT)
+            out = hp.stage_host_list_draft(_resolve_case_dir(), text, source)
+        except (ValueError, OSError, HostLogError) as e:
+            return {"error": str(e)}
+        skipped = out["skipped"]
+        summary = f"draft: {len(out['entries'])} entries, {len(skipped)} skipped"
+        result = {
+            "entries": out["entries"],
+            "skipped": skipped[: hp.SKIPPED_SHOWN],
+            "summary": summary,
+            "next_step": (
+                "Show the examiner these entries and the skipped rows, and point "
+                "them to the Hosts tab: the draft waits under Upload a host list "
+                "to review, edit and Upload. It confirms nothing until they "
+                "upload it."
+            ),
+        }
+        logged_id = audit.log(
+            tool="prepare_host_list",
+            params={"source": source, "bytes": len(text.encode())},
+            result_summary=summary,
+        )
         if logged_id is None:
             result["warning"] = "Audit write failed — action not recorded"
         return result

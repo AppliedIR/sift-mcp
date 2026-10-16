@@ -668,10 +668,10 @@ class TestSecurity:
 
 
 class TestCreateServer:
-    def test_server_has_15_tools(self, case_dir):
+    def test_server_has_16_tools(self, case_dir):
         srv = create_server()
         tool_names = list(srv._tool_manager._tools.keys())
-        assert len(tool_names) == 15
+        assert len(tool_names) == 16
 
     def test_expected_tool_names(self, case_dir):
         srv = create_server()
@@ -692,6 +692,7 @@ class TestCreateServer:
             "log_external_action",
             "backup_case",
             "open_case_dashboard",
+            "prepare_host_list",
         }
         assert tool_names == expected
 

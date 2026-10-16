@@ -28,7 +28,9 @@ list, with no flag, confirms automatically (`apply_host_list`).
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import json
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -41,6 +43,7 @@ PROPOSED = "proposed"
 FLAGGED = "flagged"
 
 AI_ORIGINS = hi.AI_ORIGINS | {"file-name"}
+ARGUMENT = "argument"  # the run's hostname argument (a folder named for its host)
 
 _GENERIC = {
     "localhost",
@@ -739,25 +742,102 @@ def listed_without_data(state: hi.HostState, groups: list[Group]) -> list[str]:
 # The host list
 
 
+# A header row's cells, casefolded with spaces, `_` and `-` dropped, best first
+_HOST_HEADERS = ("hostname", "computername", "devicename", "machinename", "host",
+                 "computer", "device", "machine", "name")  # fmt: skip
+_FQDN_HEADERS = ("fqdn", "dnshostname", "dnsname")
+LIST_MAX = 1_000_000  # bytes of a host list's text
+SKIPPED_SHOWN = 20  # skipped rows a reply names (it counts them all)
+SKIP_IP = "an IP address, not a host name"
+SKIP_NO_NAME = "no name in the host column"
+SKIP_UNREADABLE = "not a row the CSV reader can read"
+
+
+def _header_key(cell: str) -> str:
+    return re.sub(r"[\s_-]+", "", cell.casefold())
+
+
+def _column(keys: list[str], ranked: tuple) -> int | None:
+    found = [(ranked.index(k), i) for i, k in enumerate(keys) if k in ranked]
+    return min(found)[1] if found else None
+
+
 def parse_host_list(text: str) -> list[dict]:
-    """One machine per line: a name, and optionally its FQDN after a comma or
-    whitespace. Blank lines and lines starting with # are skipped; a CSV
-    header (name,fqdn) is too."""
-    entries = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
+    """The machines a host list names (see `read_host_list`)."""
+    return read_host_list(text)[0]
+
+
+def read_host_list(text: str) -> tuple[list[dict], list[dict]]:
+    """A host list's entries, and the rows skipped with why.
+
+    A first row with a host-name or FQDN column header (Hostname, Host Name,
+    ComputerName, Device, FQDN, DNSHostName ...) is a header: each later row,
+    read as CSV (TSV when the first row has a tab), gives its host column's
+    name and its FQDN column's FQDN, wherever they sit (a row with no
+    delimiter reads as a plain line). Without one, a line
+    is one machine: a name, and optionally its FQDN (a word with a dot) after
+    a comma or whitespace. Blank lines and lines starting with # are skipped;
+    an IP address never names a machine."""
+    entries: list[dict] = []
+    skipped: list[dict] = []
+    rows = [(n, line.strip()) for n, line in enumerate(text.splitlines(), 1)]
+    rows = [(n, line) for n, line in rows if line and not line.startswith("#")]
+    host_col = fqdn_col = None
+    delimiter = "\t" if rows and "\t" in rows[0][1] else ","
+    if rows:
+        try:
+            keys = [
+                _header_key(c)
+                for c in next(csv.reader([rows[0][1]], delimiter=delimiter))
+            ]
+        except csv.Error:
+            keys = []
+        if len(keys) > 1:  # a lone header word is a plain list's (read below)
+            host_col, fqdn_col = (
+                _column(keys, _HOST_HEADERS),
+                _column(keys, _FQDN_HEADERS),
+            )
+        if host_col is not None or fqdn_col is not None:
+            rows = rows[1:]
+    for n, line in rows:
+        if host_col is None and fqdn_col is None:
+            parts = [x.strip() for x in re.split(r"[,\t ]+", line) if x.strip()]
+            if not parts or parts[0].lower() in ("name", "host", "hostname"):
+                continue
+            name = parts[0]
+            # an inventory's second column is an FQDN only with a dot (not its IP)
+            fqdn = parts[1] if len(parts) > 1 and "." in parts[1] else ""
+        else:
+            try:
+                cells = [
+                    c.strip() for c in next(csv.reader([line], delimiter=delimiter))
+                ]
+            except csv.Error:
+                skipped.append({"line": n, "value": "", "reason": SKIP_UNREADABLE})
+                continue
+            if len(cells) == 1:  # a row with no delimiter is a plain list's line
+                parts = cells[0].split()
+                name = parts[0] if parts else ""
+                fqdn = parts[1] if len(parts) > 1 and "." in parts[1] else ""
+            else:
+                fqdn = (
+                    cells[fqdn_col]
+                    if fqdn_col is not None and fqdn_col < len(cells)
+                    else ""
+                )
+                col = fqdn_col if host_col is None else host_col
+                name = cells[col] if col < len(cells) else ""
+            if not name:
+                skipped.append({"line": n, "value": "", "reason": SKIP_NO_NAME})
+                continue
+        if _is_ip(name):
+            skipped.append({"line": n, "value": name[:200], "reason": SKIP_IP})
             continue
-        parts = [x.strip() for x in re.split(r"[,\t ]+", line) if x.strip()]
-        if not parts or parts[0].lower() in ("name", "host", "hostname"):
-            continue
-        if _is_ip(parts[0]):
-            continue  # an address is never a host name
-        entry = {"name": unicodedata.normalize("NFC", parts[0])}
-        if len(parts) > 1 and not _is_ip(parts[1]):  # an inventory's IP column
-            entry["fqdn"] = unicodedata.normalize("NFC", parts[1])
+        entry = {"name": unicodedata.normalize("NFC", name)}
+        if fqdn and not _is_ip(fqdn):
+            entry["fqdn"] = unicodedata.normalize("NFC", fqdn)
         entries.append(entry)
-    return entries
+    return entries, skipped
 
 
 def upload_host_list(case_dir, text: str, examiner: str) -> dict:
@@ -766,13 +846,83 @@ def upload_host_list(case_dir, text: str, examiner: str) -> dict:
         raise hi.HostLogError("a host list needs the examiner who uploads it")
     if hi.unfinished_op(case_dir):  # nothing is recorded while R runs
         raise hi.HostOpRunning("a host rename/merge is running; try again when it ends")
-    entries = parse_host_list(text)
+    entries, skipped = read_host_list(text)
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     hi.append_observations(
         case_dir,
         [{"kind": "list", "entries": entries, "sha256": digest, "examiner": examiner}],
     )
-    return {"entries": len(entries), "sha256": digest, **apply_host_list(case_dir)}
+    return {
+        "entries": len(entries),
+        "sha256": digest,
+        "skipped": skipped,
+        **apply_host_list(case_dir),
+    }
+
+
+# The AI-prepared host list: kept for the examiner to review and upload in the
+# Hosts tab. It records nothing in the host logs and confirms nothing.
+DRAFT = "host-list-draft.json"
+
+
+def stage_host_list_draft(case_dir, text: str, source: str = "") -> dict:
+    """Keep `text` (a host list in the upload's format) as the case's draft,
+    replacing any earlier one, and return its parse."""
+    from pathlib import Path
+
+    if len(text.encode("utf-8")) > LIST_MAX:
+        raise ValueError(f"the host list is larger than {LIST_MAX} bytes")
+    entries, skipped = read_host_list(text)
+    doc = {"text": text, "source": source, "entries": len(entries), "t": hi._now()}
+    root = Path(case_dir)
+    with hi._log_lock(root):
+        hi.replace_document(root, DRAFT, doc)
+    return {"entries": entries, "skipped": skipped}
+
+
+def read_host_list_draft(case_dir) -> dict | None:
+    """The case's draft host list ({text, source, entries, t}), or None."""
+    from pathlib import Path
+
+    from sift_common import file_identity as fi
+
+    path = Path(case_dir) / DRAFT
+    try:  # non-blocking, checked on the descriptor, size-capped
+        data = fi.read_document(path, follow=False)
+    except FileNotFoundError:
+        return None
+    except OSError as e:  # a link (O_NOFOLLOW), no permission: named
+        raise hi.HostLogError(f"{DRAFT}: unreadable ({e.strerror or e})") from e
+    except (fi.NotRegularFile, fi.CaseFileTooBig) as e:
+        raise hi.HostLogError(f"{DRAFT}: unreadable: {e}") from e
+    try:
+        doc = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as e:
+        raise hi.HostLogError(f"{DRAFT}: unreadable ({e})") from e
+    if not (isinstance(doc, dict) and isinstance(doc.get("text"), str)
+            and isinstance(doc.get("source"), str)
+            and isinstance(doc.get("entries"), int)):  # fmt: skip
+        raise hi.HostLogError(f"{DRAFT}: not a draft host list")
+    return {k: doc[k] for k in ("text", "source", "entries")} | {
+        "t": str(doc.get("t", ""))
+    }
+
+
+def clear_host_list_draft(case_dir) -> bool:
+    """Drop the case's draft host list; whether there was one."""
+    from pathlib import Path
+
+    root = Path(case_dir)
+    with hi._log_lock(root):
+        try:
+            (root / DRAFT).unlink()
+        except FileNotFoundError:
+            return False
+        except OSError as e:  # a folder, no permission: named
+            raise hi.HostLogError(
+                f"{DRAFT}: can't be removed ({e.strerror or e})"
+            ) from e
+    return True
 
 
 def apply_host_list(case_dir, units=None) -> dict:
@@ -822,6 +972,20 @@ def _client(state: hi.HostState, unit: str) -> str:
 
 def _not_a_host(state: hi.HostState, p) -> bool:
     return hi.FLAG_NOT_A_HOST in state.pair_flags.get(p, [])
+
+
+def argument_agrees(origins, raw: str, artifact_names) -> bool:
+    """A name only the run's hostname argument gave (a folder named for its
+    host) that agrees with the evidence: its spelling is one of the artifact
+    names given, or such a name's short name. One way: a full name never
+    agrees with a short artifact name. It adds nothing the artifact names
+    don't already say."""
+    if set(origins or ()) != {ARGUMENT}:
+        return False
+    s = hi.spelling(raw)
+    return bool(s) and any(
+        s == hi.spelling(a) or s == hi.split_name(a)[0] for a in artifact_names
+    )
 
 
 def _sides(state: hi.HostState, unit: str):
@@ -947,6 +1111,12 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
         ps, own, foreign = sides[unit]
         why = _unit_held(state, unit, ps, own, entries, by_entry_units)
         if why is None:
+            listed = [p for p in own if not ps[p].ai_only and not name_flags(p[1])]
+            arts = [p[1] for p in listed if ps[p].artifact]
+            listed += [
+                p for p in own
+                if argument_agrees(ps[p].origins, p[1], arts) and not name_flags(p[1])
+            ]  # fmt: skip
             matched = {entry_id(e): e for p in own if _eligible(ps[p], state)
                        for e in list_matches(p[1], entries)}  # fmt: skip
             (entry,) = matched.values()
@@ -967,13 +1137,11 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
                 else:  # the entry's machine already: the list confirms it
                     ours = len(named) == 1 and named[0].id == m.id
                 if ours:
-                    bind([p for p in own if not ps[p].ai_only and not name_flags(p[1])],
-                         m.keys[0], m.canonical, entry["name"])  # fmt: skip
+                    bind(listed, m.keys[0], m.canonical, entry["name"])
             else:
                 hit = target(entry, unit, domains)
                 if hit is not None:
-                    bind([p for p in own if not ps[p].ai_only and not name_flags(p[1])],
-                         hit[0], hit[1], entry["name"])  # fmt: skip
+                    bind(listed, hit[0], hit[1], entry["name"])
         for p in foreign:  # another machine's name, judged alone
             x = ps[p]
             if p in state.bindings or _not_a_host(state, p) or not _eligible(x, state):

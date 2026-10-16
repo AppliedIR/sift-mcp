@@ -680,11 +680,12 @@ body {
       </table>
       <div id="hostsPager" style="margin:8px 0"></div>
       <div id="hostDetail"></div>
-      <details style="margin-top:16px">
+      <details id="hostListPanel" style="margin-top:16px">
         <summary>Upload a host list</summary>
-        <p style="color:var(--text-muted)">One machine per line, with an optional FQDN. Hosts it matches are confirmed.</p>
+        <p style="color:var(--text-muted)">One machine per line with an optional FQDN, or a CSV or TSV export with a header row. Or give the AI any inventory to prepare as a draft here. Hosts it matches are confirmed.</p>
+        <div id="hostListDraft"></div>
         <textarea id="hostListText" rows="6" style="width:100%"></textarea>
-        <input type="file" id="hostListFile" accept=".txt,.csv">
+        <input type="file" id="hostListFile" accept=".txt,.csv,.tsv">
         <button class="btn" data-host-act="list">Upload</button>
       </details>
     </div>
@@ -4442,6 +4443,13 @@ function hostOpFrom(el, act) {
   return { op: { kind: 'split', machine: machine, keys: keys, canonical: field('split_canonical') }, seen: seen };
 }
 
+function hostDraftHtml(draft) {
+  if (!draft) return '';
+  return '<div class="notice">' + escapeHtml('AI-prepared list from ' + (draft.source || 'the AI') + ', '
+    + draft.entries + ' entries: review, edit, then Upload')
+    + ' <button class="btn" data-host-act="draft_dismiss">Dismiss</button></div>';
+}
+
 async function renderHosts() {
   var panel = document.getElementById('hostsPanel');
   if (!panel) return;
@@ -4462,6 +4470,14 @@ async function renderHosts() {
   document.getElementById('hostsProposed').innerHTML = hostProposedHtml(d.proposed, d);
   document.getElementById('hostsBody').innerHTML = hostRowsHtml(d.machines);
   document.getElementById('hostsPager').innerHTML = hostPagerHtml(d);
+  document.getElementById('hostListDraft').innerHTML = hostDraftHtml(d.draft);
+  // A new draft fills the text box once; the examiner's edits stay
+  var draftKey = d.draft ? d.draft.t + '|' + d.draft.source : '';
+  if (d.draft && draftKey !== hostsView.draftKey) {
+    document.getElementById('hostListText').value = d.draft.text;
+    document.getElementById('hostListPanel').open = true;
+  }
+  hostsView.draftKey = draftKey;
   setBadge('tab-hosts', (d.proposed_total || 0) + hostsView.runs.length);
   hostDecisionsFixed();  // as last known, until the operations are read again
   renderHostOps();
@@ -4475,7 +4491,7 @@ async function hostDecide(action, args) {
     });
     var skipped = (r.skipped || []).map(function(x) { return x.canonical + ': ' + x.reason; });
     showToast((r.summary || 'Saved') + (skipped.length ? ' \u2014 skipped ' + skipped.join('; ') : ''),
-      skipped.length ? 'warning' : 'success');
+      skipped.length || r.warning ? 'warning' : 'success');
   } catch (e) {
     showToast(e.message, 'error');
   }
@@ -4516,6 +4532,11 @@ document.addEventListener('click', async function(ev) {
       var m = await apiFetch('/api/hosts/' + encodeURIComponent(d.machines[i].id));
       document.getElementById('hostDetail').innerHTML = hostDetailHtml(m);
     } catch (e) { showToast(e.message, 'error'); }
+  }
+  else if (act === 'draft_dismiss') {
+    var box = document.getElementById('hostListText');
+    if (d.draft && box.value === d.draft.text) box.value = '';
+    hostDecide('draft_dismiss', {});
   }
   else if (act === 'list') {
     var file = document.getElementById('hostListFile').files[0];

@@ -52,7 +52,7 @@ LEFT_OFF = {
         "evidence_register", "evidence_list", "evidence_verify",
         "export_bundle", "import_bundle", "backup_case", "audit_summary",
         "record_action", "log_reasoning", "log_external_action",
-        "open_case_dashboard",
+        "open_case_dashboard", "prepare_host_list",
     },
     "report-mcp": {"generate_report", "set_case_metadata", "save_report"},
 }  # fmt: skip

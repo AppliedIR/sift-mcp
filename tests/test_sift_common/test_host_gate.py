@@ -107,7 +107,26 @@ def test_a_name_bound_while_ingesting_as_new_still_waits(case):
 def test_a_name_only_the_ai_gave_waits_and_says_so(case):
     u = unit(case, "evidence/m.raw", [("DC01", "hostname argument", "argument")])
     (entry,) = pending(case, u)
-    assert entry["reason"] == "named only by the AI or an unregistered file"
+    assert entry["reason"] == "named only by the hostname given to the run"
+
+
+BY_FILE_NAME = "named only by its file name"
+
+
+def test_a_registered_image_named_by_its_file_name_says_so_not_the_ai(case):
+    # an examiner's ingest of a registered memory image, no hostname given
+    u = unit(
+        case, "evidence/rd01-memory.img", [("rd01-memory", "file name", "file-name")]
+    )
+    (entry,) = pending(case, u)
+    assert entry["reason"] == BY_FILE_NAME
+    assert "AI" not in entry["reason"] and "unregistered" not in entry["reason"]
+
+
+def test_a_name_from_more_than_one_ai_origin_names_each():
+    assert hg.reason_named_by({"unregistered", "argument"}) == (
+        "named only by the hostname given to the run or an unregistered file"
+    )
 
 
 # -- a file name's host form (Tool-HOST): Kansa's module lands in it
@@ -145,14 +164,14 @@ def test_start_now_releases_a_unit_with_a_file_name_form_as_today(case):
 
 def test_a_unit_named_only_by_its_file_name_still_waits(case):
     u = unit(case, "kansa/WKSTN05-Arp.tsv", [("Arp", "file name", "file-name")])
-    assert held(case, u) == [("Arp", hg.REASON_AI)]
+    assert held(case, u) == [("Arp", BY_FILE_NAME)]
 
 
 def test_an_unconfirmed_artifact_name_holds_the_unit_on_both_names(case):
     u = kansa(case, "Arp")
     assert held(case, u) == [
         ("WKSTN05", hg.REASON_UNCONFIRMED),
-        ("Arp", hg.REASON_AI),
+        ("Arp", BY_FILE_NAME),
     ]
 
 
@@ -160,7 +179,7 @@ def test_an_unconfirmed_artifact_name_holds_the_unit_on_both_names(case):
 def test_a_confirmed_name_the_ai_gave_does_not_release_the_file_name_form(case, origin):
     u = kansa(case, "Arp", host_origin=origin)
     confirm(case, hi.new_machine_key(), "WKSTN05", [(u, "WKSTN05")])
-    assert held(case, u) == [("Arp", hg.REASON_AI)]
+    assert held(case, u) == [("Arp", BY_FILE_NAME)]
 
 
 @pytest.mark.parametrize("with_key", [False, True])
@@ -177,7 +196,7 @@ def test_a_unit_whose_only_artifact_name_is_not_a_host_still_waits_on_its_file_n
         {"action": "not_a_host", "examiner": "ex1", "args": args},
         hi.load(case).obs_offset,
     )
-    assert held(case, u) == [("Arp", hg.REASON_AI)]
+    assert held(case, u) == [("Arp", BY_FILE_NAME)]
 
 
 def test_a_name_the_file_name_and_an_argument_both_gave_still_holds(case):
@@ -193,7 +212,9 @@ def test_a_name_the_file_name_and_an_argument_both_gave_still_holds(case):
         ],
     )
     confirm(case, hi.new_machine_key(), "WKSTN05", [(u, "WKSTN05")])
-    assert held(case, u) == [("Arp", hg.REASON_AI)]
+    assert held(case, u) == [
+        ("Arp", "named only by the hostname given to the run or its file name")
+    ]
 
 
 def test_a_confirmed_artifact_name_of_another_unit_does_not_release_this_one(case):
@@ -204,7 +225,7 @@ def test_a_confirmed_artifact_name_of_another_unit_does_not_release_this_one(cas
         [("Arp", "WKSTN05-Arp.tsv file name", "file-name")],
     )
     confirm(case, hi.new_machine_key(), "WKSTN05", [(other, "WKSTN05")])
-    assert held(case, u) == [("Arp", hg.REASON_AI)]
+    assert held(case, u) == [("Arp", BY_FILE_NAME)]
 
 
 def test_a_file_name_form_the_examiner_confirmed_resolves_as_today(case):

@@ -8,6 +8,7 @@ page was built from, and is written to the case's dashboard audit log.
 
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 from pathlib import Path
@@ -21,7 +22,7 @@ from starlette.responses import JSONResponse
 
 _PAGE_DEFAULT = 50
 _PAGE_MAX = 200
-_LIST_MAX = 1_000_000  # bytes of an uploaded host list
+_LIST_MAX = hp.LIST_MAX  # bytes of an uploaded host list
 _STATES = (hi.CONFIRMED, hi.STARTED_NOW, hi.NEW)
 
 
@@ -197,6 +198,7 @@ def get_hosts(request: Request) -> JSONResponse:
                 else None
             ),
             "host_list_hint": "" if listed else hg.HOST_LIST_HINT,
+            "draft": hp.read_host_list_draft(case_dir),
             "listed_without_data": (
                 hp.listed_without_data(state, all_groups) if listed else []
             ),
@@ -371,6 +373,19 @@ def _state_at(case_dir: Path, state: hi.HostState, obs_at, dec_at) -> hi.HostSta
     return hi.fold(obs[:obs_at], dec[:dec_at])
 
 
+def _origins(page: hi.HostState, p) -> list:
+    return (page.names.get(p) or {}).get("origins") or []
+
+
+def _from_evidence(page: hi.HostState, pairs, p) -> bool:
+    """Read from evidence, or only the run's hostname argument agreeing with
+    an artifact name of its unit in the same group."""
+    if hi.ARTIFACT in _origins(page, p):
+        return True
+    arts = [q[1] for q in pairs if q[0] == p[0] and hi.ARTIFACT in _origins(page, q)]
+    return hp.argument_agrees(_origins(page, p), p[1], arts)
+
+
 def _confirm_all(
     case_dir: Path, state: hi.HostState, examiner: str, args: dict, seen
 ) -> dict:
@@ -390,9 +405,7 @@ def _confirm_all(
         reason = ""
         if g.flags or g.conflicts:
             reason = "needs the examiner: " + "; ".join([*g.flags, *g.conflicts])
-        elif not all(
-            hi.ARTIFACT in (page.names.get(p) or {}).get("origins", ()) for p in g.pairs
-        ):
+        elif not all(_from_evidence(page, g.pairs, p) for p in g.pairs):
             reason = "not every name was read from evidence"
         elif any(state.bindings.get(p) != page.bindings.get(p) for p in g.pairs) or (
             g.machine
@@ -475,7 +488,22 @@ async def post_host_decision(request: Request) -> JSONResponse:
                     {"error": "the host list is empty"}, status_code=400
                 )
             result = hp.upload_host_list(case_dir, text, examiner)
-            summary = f"{result.get('entries', 0)} listed, {len(result.get('confirmed', []))} confirmed"
+            listed, skipped = result["entries"], result.pop("skipped")
+            confirmed = len(result.get("confirmed", []))
+            summary = f"{listed} listed, {confirmed} confirmed" + (
+                f", {len(skipped)} skipped" if skipped else ""
+            )
+            if not listed:
+                summary += ": no host names found in the list"
+                result["warning"] = True
+            elif not confirmed:  # a list given before ingest confirms as hosts arrive
+                summary += ": the list confirms hosts as evidence names them"
+            result["skipped"] = [
+                {"canonical": s["value"] or f"line {s['line']}", "reason": s["reason"]}
+                for s in skipped[: hp.SKIPPED_SHOWN]
+            ]
+            with contextlib.suppress(hi.HostLogError):  # left showing, to dismiss
+                hp.clear_host_list_draft(case_dir)
             _audit(
                 case_dir,
                 examiner,
@@ -483,7 +511,15 @@ async def post_host_decision(request: Request) -> JSONResponse:
                 {"sha256": result.get("sha256", "")},
                 summary,
             )
-            return JSONResponse({"ok": True, **result})
+            return JSONResponse({"ok": True, "summary": summary, **result})
+        if action == "draft_dismiss":
+            summary = (
+                "draft host list dismissed"
+                if hp.clear_host_list_draft(case_dir)
+                else "no draft host list"
+            )
+            _audit(case_dir, examiner, action, {}, summary)
+            return JSONResponse({"ok": True, "summary": summary})
         if action in ("start_now", "cancel_run"):
             run_id = str(args.get("run_id") or "")
             if action == "start_now":

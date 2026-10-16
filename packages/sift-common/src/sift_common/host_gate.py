@@ -20,19 +20,35 @@ from sift_common import host_identity as hi
 AWAITING = "awaiting host confirmation"
 CANCELLED = "cancelled"
 WAIT_MESSAGE = (
-    "ask the examiner to confirm the hosts in the Hosts tab, or to choose Start now"
+    "the examiner confirms the hosts in the Examiner Portal's Hosts tab (vhir "
+    "portal opens it), or chooses Start now there. Confirming a host accepts the "
+    "machine its names were matched to, and the run then writes its records "
+    "under that host"
+)
+_HOST_LIST_HOW = (
+    " Paste or upload one in the Hosts tab: one name per line with an optional "
+    "FQDN, or a CSV or TSV export with a header row. Or give the AI any inventory "
+    "(a PDF, spreadsheet or email) to prepare as a draft with prepare_host_list, "
+    "then review and upload it there. Tell the examiner this; never say a list "
+    "was uploaded or applied."
 )
 HOST_LIST_HINT = (
-    "If you have an inventory of the machines in scope, upload it in the Hosts tab "
-    "before ingesting; matching hosts then confirm automatically."
+    "No host list yet. A list of the machines in scope, uploaded before "
+    "ingesting, confirms matching hosts automatically." + _HOST_LIST_HOW
 )
 # with the list's own confirmation off (host_proposal.LIST_AUTO_CONFIRM)
 HOST_LIST_HINT_PROPOSED = (
-    "If you have an inventory of the machines in scope, upload it in the Hosts tab "
-    "before ingesting; matching hosts are then proposed for you to confirm."
+    "No host list yet. A list of the machines in scope, uploaded before "
+    "ingesting, proposes matching hosts for the examiner to confirm." + _HOST_LIST_HOW
 )
 REASON_UNCONFIRMED = "not confirmed"
-REASON_AI = "named only by the AI or an unregistered file"
+# what gave a held name, for its reason: "named only by its file name"
+_NAMED_BY = {
+    "argument": "the hostname given to the run",
+    "file-name": "its file name",
+    "unregistered": "an unregistered file",
+    "ai": "a file the AI can write",
+}
 REASON_NO_NAME = "no host name found"
 REASON_NEEDS_NAME = "needs a name: its only name is not a host"
 
@@ -93,11 +109,23 @@ def unresolved(state: hi.HostState, units) -> list[dict]:
             if _resolved(state, p) or p in free:
                 continue
             origins = _origins(state, p)
-            reason = REASON_AI if origins and origins <= _AI else REASON_UNCONFIRMED
+            reason = (
+                reason_named_by(origins)
+                if origins and origins <= _AI
+                else REASON_UNCONFIRMED
+            )
             out.append(
                 {"unit": unit, "locator": locator, "raw": p[1], "reason": reason}
             )
     return out
+
+
+def reason_named_by(origins) -> str:
+    """Why a name only the run's argument, the file's name, an unregistered
+    file or a file the AI can write gave is held: names each that gave it."""
+    return "named only by " + " or ".join(
+        _NAMED_BY[o] for o in _NAMED_BY if o in origins
+    )
 
 
 def released(state: hi.HostState) -> set:
