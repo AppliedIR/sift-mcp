@@ -100,7 +100,7 @@ FLAGGED = {
     "thin evidence": [("WKS7", "SYSTEM ComputerName")],
     "two domains": [("WKS7.corp.example.test", "SYSTEM ComputerName"),
                     ("WKS7.acq.example.test", "Security.evtx Computer")],
-    "non-host name": [("WKS7", "SYSTEM ComputerName"), ("localhost", "Security.evtx Computer")],
+    "non-host name": [("WKS7", "SYSTEM ComputerName"), ("unknown", "Security.evtx Computer")],
     "folder name contradicted": [("WKS7", "SYSTEM ComputerName"), ("WKS7", "Security.evtx Computer"),
                                  ("FILESRV", "folder name", "folder")],
 }  # fmt: skip

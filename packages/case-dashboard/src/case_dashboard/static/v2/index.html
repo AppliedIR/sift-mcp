@@ -1980,7 +1980,7 @@ function showToast(msg, type) {
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(function() { t.classList.add('show'); }, 10);
-  setTimeout(function() { t.remove(); }, 2500);
+  setTimeout(function() { t.remove(); }, type === 'error' ? 10000 : 2500);
 }
 
 /* === Error banner === */
@@ -3174,8 +3174,23 @@ async function loadToolInvocations(finding) {
       } else { pending.push(step); }
     });
     if (pending.length) groups.push({ chain: pending, records: [] });  // a chain with no records renders in order
+    // One text per step, whatever its key order: a fan-in step stores one
+    // link once per input it read, and each shows once in its group's chain
+    function stepKey(v) {
+      if (Array.isArray(v)) return '[' + v.map(stepKey).join(',') + ']';
+      if (v && typeof v === 'object') {
+        return '{' + Object.keys(v).sort().map(function(k) {
+          return JSON.stringify(k) + ':' + stepKey(v[k]);
+        }).join(',') + '}';
+      }
+      return JSON.stringify(v === undefined ? null : v);
+    }
     groups.forEach(function(grp) {
-      grp.chain.forEach(function(s) { steps.push(s); });
+      var shown = {};
+      grp.chain.forEach(function(s) {
+        var k = stepKey(s);
+        if (!shown[k]) { shown[k] = true; steps.push(s); }
+      });
       grp.records.forEach(function(s) { steps.push(s); });
     });
     var h = '<div style="padding:2px 0 2px 8px;margin:2px 0">';
@@ -4194,7 +4209,7 @@ function renderIocs() {
 // Machines and the host names awaiting the examiner, from /api/hosts. Every
 // string from the case is escaped; buttons carry an action and an index into
 // the page's data, never case text.
-var hostsView = { page: 1, ppage: 1, state: '', q: '', data: null, runs: [], ops: null, opsTimer: null };
+var hostsView = { page: 1, ppage: 1, state: '', q: '', data: null, runs: [], ops: null, opsTimer: null, failed: '', launched: false };
 
 function escapeAttr(s) {
   return escapeHtml(s).replace(/"/g, '&quot;');
@@ -4233,8 +4248,14 @@ function hostRunsHtml(runs) {
       + (r.unresolved || []).length + ' waiting '
       + '<button class="btn" data-host-act="start_now" data-i="' + i + '">Start now with the proposed names</button> '
       + '<button class="btn" data-host-act="cancel_run" data-i="' + i + '">Cancel the run</button><ul>';
-    (r.unresolved || []).forEach(function(w) {
-      html += '<li>' + escapeHtml(w.locator || w.unit) + ': ' + escapeHtml(w.raw || '(no name)') + ' &mdash; ' + escapeHtml(w.reason) + '</li>';
+    (r.unresolved || []).forEach(function(w, j) {
+      // a unit no name of its own can name: the examiner types its name
+      var ij = i + '-' + j;
+      var name = w.raw === ''
+        ? ' <input data-host-name="' + escapeAttr(ij) + '" aria-label="Host name">'
+          + ' <button class="btn" data-host-act="name_unit" data-i="' + escapeAttr(ij) + '">Name it</button>'
+        : '';
+      html += '<li>' + escapeHtml(w.locator || w.unit) + ': ' + escapeHtml(w.raw || '(no name)') + ' &mdash; ' + escapeHtml(w.reason) + name + '</li>';
     });
     html += '</ul></div>';
   });
@@ -4334,7 +4355,9 @@ function hostCorrectionsHtml(m) {
   return html + '</div>';
 }
 
-function hostOpsHtml(v) {
+/* `failed`: why the last host request from this page failed, until the next
+   one answers (a success clears it, a refusal replaces it). */
+function hostOpsHtml(v, failed) {
   if (!v) return '';
   var u = v.unfinished, html = '';
   // every journal field is case text (host-ops.json can be written by others): escaped
@@ -4356,15 +4379,13 @@ function hostOpsHtml(v) {
     html += '<div style="color:var(--text-muted)">Last host operation: ' + what(v.last) + ' (' + escapeHtml(String(v.last.id)) + '), done'
       + (v.last.relabelled != null ? ', ' + escapeHtml(String(v.last.relabelled)) + ' records relabelled' : '') + '.</div>';
   }
-  if (v.launch && (v.launch.state === 'refused' || v.launch.state === 'failed') && v.launch.result) {
-    html += '<div class="notice">The last request was ' + escapeHtml(String(v.launch.state)) + ': ' + escapeHtml(String(v.launch.result.reason || '')) + '</div>';
-  }
+  if (failed) html += '<div class="notice">The last request failed: ' + escapeHtml(failed) + '</div>';
   return html;
 }
 
 /* Host decisions (the list upload, confirmations, runs) wait while a host
    operation is unfinished: the server refuses them then. */
-var HOST_DECISION_ACTS = ['list', 'start_now', 'cancel_run', 'confirm_all', 'confirm', 'not_a_host', 'confirm_machine'];
+var HOST_DECISION_ACTS = ['list', 'start_now', 'cancel_run', 'confirm_all', 'confirm', 'not_a_host', 'confirm_machine', 'name_unit'];
 function hostOpUnfinished() {
   return !!(hostsView.ops && hostsView.ops.unfinished);
 }
@@ -4389,12 +4410,18 @@ async function renderHostOps() {
     document.getElementById('hostsOps').innerHTML = '<div class="notice">' + escapeHtml('Host operations could not be read: ' + e.message) + '</div>';
     return;
   }
-  document.getElementById('hostsOps').innerHTML = hostOpsHtml(hostsView.ops);
+  var v = hostsView.ops;
+  var running = !!((v.unfinished && v.unfinished.state === 'running') || (v.launch && v.launch.state === 'running'));
+  if (!running && hostsView.launched) {
+    // the operation this page launched answered: its refusal is the banner's
+    var r = v.launch && v.launch.result;
+    hostsView.failed = r && (r.state === 'refused' || r.state === 'failed') ? safeStr(r.reason || r.state) : '';
+    hostsView.launched = false;
+  }
+  document.getElementById('hostsOps').innerHTML = hostOpsHtml(v, hostsView.failed);
   hostDecisionsFixed();
   clearTimeout(hostsView.opsTimer);
   // running: in the journal, or launched from here and not yet answered
-  var v = hostsView.ops;
-  var running = !!((v.unfinished && v.unfinished.state === 'running') || (v.launch && v.launch.state === 'running'));
   if (running) {
     hostsView.opsTimer = setTimeout(renderHostOps, 2000);  // its progress, until it ends
   } else if (hostsView.wasRunning) {
@@ -4417,12 +4444,18 @@ async function hostOp(body) {
     var r = await res.json().catch(function() { return {}; });
     if (res.status === 202) {
       hostsView.wasRunning = true;  // the poll closes the detail when it ends, however soon
+      hostsView.launched = true;
+      hostsView.failed = '';
       showToast('The host operation is running', 'info');
     }
-    else if (res.ok && r.state === 'done') showToast('Host operation done', 'success');
-    else showToast((r.state ? r.state + ': ' : '') + (r.reason || r.error || 'refused'), 'error');
+    else if (res.ok && r.state === 'done') { hostsView.failed = ''; showToast('Host operation done', 'success'); }
+    else {
+      hostsView.failed = r.reason || r.error || r.state || 'refused';
+      showToast((r.state ? r.state + ': ' : '') + (r.reason || r.error || 'refused'), 'error');
+    }
     if (res.status !== 202 && res.status !== 400) hostOpEnded();  // it ran, or the machine changed
   } catch (e) {
+    hostsView.failed = e.message;
     showToast(e.message, 'error');
   }
   renderHostOps();
@@ -4490,13 +4523,23 @@ async function hostDecide(action, args) {
       body: JSON.stringify({ action: action, args: args, seen_offset: hostsView.data.obs_offset })
     });
     var skipped = (r.skipped || []).map(function(x) { return x.canonical + ': ' + x.reason; });
+    hostsView.failed = '';
     showToast((r.summary || 'Saved') + (skipped.length ? ' \u2014 skipped ' + skipped.join('; ') : ''),
       skipped.length || r.warning ? 'warning' : 'success');
   } catch (e) {
+    hostsView.failed = e.message;
     showToast(e.message, 'error');
   }
   document.activeElement && document.activeElement.blur && document.activeElement.blur();
   renderHosts();
+}
+
+function hostNameArgs(ij) {
+  var at = ij.split('-');
+  var w = hostsView.runs[+at[0]].unresolved[+at[1]];
+  var input = document.querySelector('[data-host-name="' + ij + '"]');
+  var name = input ? input.value.trim() : '';
+  return { groups: [{ canonical: name, pairs: [[w.unit, name]] }] };
 }
 
 function hostGroupArgs(i) {
@@ -4524,6 +4567,7 @@ document.addEventListener('click', async function(ev) {
   else if (act === 'confirm_all') { hostDecide('confirm_all', { seen_decisions: d.dec_offset }); }
   else if (act === 'not_a_host') { hostDecide('not_a_host', { pairs: d.proposed[i].pairs }); }
   else if (act === 'confirm_machine') { var m = d.machines[i]; hostDecide('confirm', { groups: [{ machine: m.id, canonical: m.canonical }] }); }
+  else if (act === 'name_unit') { hostDecide('confirm', hostNameArgs(el.getAttribute('data-i'))); }
   else if (act === 'start_now' || act === 'cancel_run') { hostDecide(act, { run_id: hostsView.runs[i].run_id }); }
   else if (act === 'op_resume') { hostOp({ resume: el.getAttribute('data-op') }); }
   else if (act === 'op_rename' || act === 'op_merge' || act === 'op_split') { hostOp(hostOpFrom(el, act)); }

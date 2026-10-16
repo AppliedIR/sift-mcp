@@ -63,11 +63,20 @@ def _its_own_machine(had, unit: str) -> bool:
 def placeholder_of(state, unit: str) -> set[str]:
     """The names a unit's own placeholder machine may carry: the unit's
     placeholder, exactly (named from its locator, or from the unit when it
-    has none, as the doors name it), and the examiner's `unattributed:<unit>`."""
+    has none, as the doors name it), the examiner's `unattributed:<unit>`, and
+    the name of the machine the examiner named the unit on (a pair of the unit
+    no evidence gave)."""
     from sift_common import host_gate
 
     locator = str((state.units.get(unit) or {}).get("locator") or unit)
-    return {f"unattributed:{unit}", host_gate.placeholder_name(locator)}
+    own = {f"unattributed:{unit}", host_gate.placeholder_name(locator)}
+    s = getattr(state, "s", state)  # (a request's overlay: the state under it)
+    for p, key in s.bindings.items():
+        if p[0] == unit and p not in s.names:
+            m = s.machine_of_key(key)
+            if m is not None:
+                own.add(m.canonical)
+    return own
 
 
 def _placeholder(state, unit: str, canonical: str) -> bool:
@@ -113,7 +122,11 @@ def unit_flag(state: hi.HostState, unit: str) -> str:
     from sift_common import host_proposal as hp
 
     ps, own, _ = hp._sides(state, unit)
-    if any(hp.name_flags(p[1]) for p in own if not ps[p].ai_only):
+    if any(
+        hp.name_flags(p[1]) and not hp.generic_only(p[1])
+        for p in own
+        if not ps[p].ai_only
+    ):
         return "an unusual or non-host name"
     hinted = {(h.get("unit"), h.get("raw")) for h in state.hints}
     if any(p in hinted for p in own):

@@ -137,6 +137,12 @@ def name_flags(raw: str) -> list[str]:
     return flags
 
 
+def generic_only(raw: str) -> bool:
+    """A template name with nothing else wrong with it: it names its own
+    unit's machine, never one across units."""
+    return name_flags(raw) == [FLAG_GENERIC]
+
+
 def core(raw: str) -> str:
     """A name with what isn't the machine set aside: its DNS suffix,
     collection and date tokens, and a Velociraptor collection wrapper."""
@@ -1139,10 +1145,14 @@ def list_bindings(state: hi.HostState, units=None) -> list[dict]:
         ps, own, foreign = sides[unit]
         why = _unit_held(state, unit, ps, own, entries, by_entry_units)
         if why is None:
-            listed = [p for p in own if not ps[p].ai_only and not name_flags(p[1])]
+            listed = [
+                p
+                for p in own
+                if not ps[p].ai_only and (not name_flags(p[1]) or generic_only(p[1]))
+            ]
             listed += [
                 p for p in own
-                if argument_vouched(state, p, listed, ps) and not name_flags(p[1])
+                if argument_vouched(state, p, listed, ps) and (not name_flags(p[1]) or generic_only(p[1]))
             ]  # fmt: skip
             matched = {entry_id(e): e for p in own if _eligible(ps[p], state)
                        for e in list_matches(p[1], entries)}  # fmt: skip
@@ -1261,7 +1271,9 @@ def _unit_held(state, unit, ps, own, entries, by_entry_units) -> str | None:
         if s in short and d and ed and d != ed:
             return "a name in another domain"
     # flags on the unit
-    if any(name_flags(p[1]) for p in own if not ps[p].ai_only):
+    if any(
+        name_flags(p[1]) and not generic_only(p[1]) for p in own if not ps[p].ai_only
+    ):
         return "an unusual or non-host name"
     hinted = {(h.get("unit"), h.get("raw")) for h in state.hints}
     if any(p in hinted for p in own):

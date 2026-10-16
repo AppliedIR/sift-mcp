@@ -610,8 +610,8 @@ class TestEveryJournalFieldIsText:
         self._clean(out)
 
     def test_the_last_op_and_launch(self):
-        out = _render("hostOpsHtml(data)", {"unfinished": None, "last": self._op("done"),
-                      "launch": {"state": "refused", "result": {"reason": self.EVIL}}})  # fmt: skip
+        out = _render("hostOpsHtml(data, data.failed)", {"unfinished": None,
+                      "last": self._op("done"), "launch": None, "failed": self.EVIL})  # fmt: skip
         self._clean(out)
         assert (
             out.count("&lt;img") >= 4

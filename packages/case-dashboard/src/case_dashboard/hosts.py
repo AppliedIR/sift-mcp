@@ -24,6 +24,7 @@ _PAGE_DEFAULT = 50
 _PAGE_MAX = 200
 _LIST_MAX = hp.LIST_MAX  # bytes of an uploaded host list
 _STATES = (hi.CONFIRMED, hi.STARTED_NOW, hi.NEW)
+_NAME_MAX = 253  # characters of a typed host name (a DNS name's limit)
 
 
 def _routes():
@@ -298,32 +299,115 @@ class _Refused(Exception):
         self.status = status
 
 
-def _confirm_items(state: hi.HostState, args: dict) -> list[dict]:
-    """`confirm` decision items for the groups the page sent. A group names
-    new pairs, a machine in use (`machine`), or both (pairs that join it).
+def _needs_a_name(state: hi.HostState) -> dict[str, list[list[str]]]:
+    """The units a waiting run holds that no name of theirs can name (they
+    have none, or only names marked not a host), each with those names."""
+    needs: dict[str, list[list[str]]] = {}
+    for run_id, units in state.waits.items():
+        if run_id not in state.cancelled:
+            for e in hg.unresolved(state, units):
+                if e["raw"] == "":
+                    needs[e["unit"]] = []
+    for p in state.names:
+        if p[0] in needs and p not in state.bindings:
+            needs[p[0]].append(list(p))
+    return needs
+
+
+def _typed_pairs(state: hi.HostState, needs: dict, raw_pairs) -> tuple[list, list]:
+    """The pairs no evidence gave, each for a unit that needs a name (the name
+    the examiner typed for it), and the other pairs as sent."""
+    if not needs or not isinstance(raw_pairs, list):
+        return [], raw_pairs
+    typed, rest = [], []
+    for p in raw_pairs:
+        if (
+            isinstance(p, (list, tuple))
+            and len(p) == 2
+            and all(isinstance(x, str) for x in p)
+            and p[0] in needs
+            and (p[0], p[1]) not in state.names
+        ):
+            typed.append((p[0], p[1]))
+        else:
+            rest.append(p)
+    return typed, rest
+
+
+def _confirm_items(state: hi.HostState, args: dict) -> tuple[list[dict], bool]:
+    """`confirm` decision items for the groups the page sent, and whether one
+    names a unit. A group names new pairs, a machine in use (`machine`), or
+    both (pairs that join it).
 
     One check for every form: a group that touches a machine in use (named,
     or through a pair already bound to it) is confirmed under that machine's
     own name only; renaming it is done with rename, and joining two machines
-    is a merge."""
+    is a merge.
+
+    A unit a waiting run holds that no name of its own can name is named by
+    the name the examiner types: the group carries [unit, typed name], or one
+    of the unit's names, and the item gets [unit, typed name] and all the
+    unit's names. A typed name a machine has already joins that machine."""
+    needs = _needs_a_name(state)
     items = []
     named: set[tuple[str, str]] = set()
     machines: set[str] = set()
+    naming: set[str] = set()  # the units named in this request
+    spellings: list[str] = []
     for g in args.get("groups") or ():
         if not isinstance(g, dict):
             raise _Refused(400, "each group must be an object")
         canonical = str(g.get("canonical") or "").strip()
         if not hi.spelling(canonical):
             raise _Refused(400, "a host name can't be empty")
-        pairs = _known_pairs(state, g.get("pairs")) if g.get("pairs") else []
+        typed, raw_pairs = _typed_pairs(state, needs, g.get("pairs"))
+        pairs = _known_pairs(state, raw_pairs) if raw_pairs else []
         if pairs is None:
             raise _Refused(400, "every pair must be a host name the case has seen")
+        units = list(
+            dict.fromkeys(
+                [*(u for u, _ in typed), *(p[0] for p in pairs if p[0] in needs)]
+            )
+        )
+        if units:
+            if not isinstance(g.get("canonical"), str):
+                raise _Refused(400, "a host name must be text")
+            if hp.is_address(canonical):
+                raise _Refused(400, "an address never names a machine")
+            if len(canonical) > _NAME_MAX:
+                raise _Refused(400, f"a host name is at most {_NAME_MAX} characters")
+            if any(hi.spelling(raw) != hi.spelling(canonical) for _, raw in typed):
+                raise _Refused(400, "a name given for a unit must be the name typed")
+            if len(typed) != len({u for u, _ in typed}):
+                raise _Refused(400, "a unit is given one name")
+            if naming & set(units):
+                raise _Refused(400, "a unit is named in more than one group")
+            naming |= set(units)
+            given = {tuple(p) for p in pairs}
+            pairs = [
+                *([u, canonical] for u in units),
+                *(p for p in pairs),
+                *(p for u in units for p in needs[u] if tuple(p) not in given),
+            ]
         in_use = {m.id: m for m in (state.machine_of_pair(*p) for p in pairs) if m}
         if g.get("machine"):
             m = state.machines.get(str(g["machine"]))
             if m is None:
                 raise _Refused(400, "no such machine")
             in_use[m.id] = m
+        if units and not in_use:  # a typed name a machine has: that machine
+            owner = state.canonical_owner(canonical)
+            if owner is not None:
+                in_use[owner.id] = owner
+        elif not in_use:  # a typed name one confirmed machine has: it joins
+            same = [
+                m
+                for m in state.machines.values()
+                if m.state == hi.CONFIRMED
+                and hi.spelling(m.canonical) == hi.spelling(canonical)
+            ]
+            if len(same) == 1:
+                in_use[same[0].id] = same[0]
         if not pairs and not in_use:
             raise _Refused(400, "nothing to confirm")
         # One confirmation is all or nothing: a name or machine in two groups
@@ -351,9 +435,12 @@ def _confirm_items(state: hi.HostState, args: dict) -> list[dict]:
             items.append(
                 {"key": hi.new_machine_key(), "canonical": canonical, "pairs": pairs}
             )
+        spellings.append(hi.spelling(items[-1]["canonical"]))
     if not items:
         raise _Refused(400, "nothing to confirm")
-    return items
+    if naming and len(set(spellings)) != len(spellings):
+        raise _Refused(400, "one host name is typed in more than one group")
+    return items, bool(naming)
 
 
 def _state_at(case_dir: Path, state: hi.HostState, obs_at, dec_at) -> hi.HostState:
@@ -554,10 +641,13 @@ async def post_host_decision(request: Request) -> JSONResponse:
                 result["summary"],
             )
             return JSONResponse({"ok": True, **result})
+        audited: dict = {}
         if action == "confirm":
-            items = _confirm_items(state, args)
+            items, naming = _confirm_items(state, args)
             record_args = {"machines": items}
             summary = f"{len(items)} confirmed"
+            if naming:  # the names the examiner typed, and those the server added
+                audited = {"machines": items}
         elif action == "not_a_host":
             pairs = _known_pairs(state, args.get("pairs"))
             if pairs is None:
@@ -588,7 +678,13 @@ async def post_host_decision(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=409)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
-    _audit(case_dir, examiner, action, {"count": summary.split()[0]}, summary)
+    _audit(
+        case_dir,
+        examiner,
+        action,
+        {"count": summary.split()[0], **audited},
+        summary,
+    )
     return JSONResponse({"ok": True, "decisions_offset": at, "summary": summary})
 
 

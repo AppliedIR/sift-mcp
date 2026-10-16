@@ -273,6 +273,55 @@ def _scanned_logs(audit_dir: Path) -> list[Path]:
     return [p for p in audit_dir.glob("*.jsonl") if p.name != _FILE_IDENTITY_LOG]
 
 
+_MAX_CONTENT = 5000  # an artifact's content stored; the whole quote is checked
+_MAX_QUOTE = 64 << 10  # chars of a quote checked; a longer one is refused
+
+
+def _stored_content(content: str) -> str:
+    """An artifact's content as stored: whole, or its first `_MAX_CONTENT`
+    chars with a marker saying how much of how much is kept."""
+    if len(content) <= _MAX_CONTENT:
+        return content
+    return f"{content[:_MAX_CONTENT]}\n[cut: {_MAX_CONTENT} of {len(content)} chars stored]"
+
+
+def _distinct_links(links: list) -> list:
+    """A chain's links with exact repeats dropped (equal with keys sorted)
+    within each record's segment: the steps up to and including a record
+    link (one with a document and no output file). Each is kept where it
+    first appears in its segment. A fan-in step reaches one link once per
+    input it read; a step two records' chains share stays in both, as the
+    Portal groups each record under the steps just before it."""
+    seen: set[str] = set()
+    out = []
+    for link in links:
+        key = json.dumps(link, sort_keys=True, default=str)
+        if key not in seen:
+            seen.add(key)
+            out.append(link)
+        if _is_record_link(link):
+            seen = set()
+    return out
+
+
+def _js_truthy(v) -> bool:
+    if isinstance(v, (dict, list)):
+        return True  # an empty object or array is truthy in the Portal
+    return bool(v) and not (isinstance(v, float) and v != v)
+
+
+def _is_record_link(link) -> bool:
+    """The Portal's test for a record link: an object document and no output
+    file (index.html isRecord)."""
+    if not isinstance(link, dict):
+        return False
+    doc, to = link.get("document"), link.get("to")
+    to_path = to.get("path") if isinstance(to, dict) else None
+    return isinstance(doc, (dict, list)) and not (
+        _js_truthy(to) and _js_truthy(to_path)
+    )
+
+
 _MAX_ALTERNATIVES = 10
 _MAX_ALTERNATIVE_IDS = 10
 _MAX_SKEPTIC_IDS = 20
@@ -1261,8 +1310,10 @@ class CaseManager:
                 raw_artifacts = json.loads(raw_artifacts)
             except (json.JSONDecodeError, TypeError):
                 raw_artifacts = []
+        quotes: list[str] = []  # each validated artifact's whole content
+        cut_warnings: list[str] = []
         if isinstance(raw_artifacts, list):
-            for art in raw_artifacts[:10]:
+            for place, art in enumerate(raw_artifacts[:10], 1):
                 if not isinstance(art, dict):
                     continue
                 source = art.get("source", "").strip()
@@ -1281,11 +1332,28 @@ class CaseManager:
                     }
                 if not source or not extraction or not content:
                     continue
+                if len(content) > _MAX_QUOTE:
+                    return {
+                        "status": "REJECTED",
+                        "error": (
+                            f"Artifact {place}'s content is {len(content)} chars. A "
+                            f"quote is checked against its source up to {_MAX_QUOTE} "
+                            "chars. Quote the lines that show what the finding says, "
+                            "not the whole output."
+                        ),
+                    }
+                if len(content) > _MAX_CONTENT:
+                    cut_warnings.append(
+                        f"Artifact {place}'s content is {len(content)} chars: its "
+                        f"first {_MAX_CONTENT} are stored, marked as cut. The whole "
+                        "quote was checked against its source."
+                    )
+                quotes.append(content)
                 validated_artifacts.append(
                     {
                         "source": source[:500],
                         "extraction": extraction[:2000],
-                        "content": content[:5000],
+                        "content": _stored_content(content),
                         "content_type": str(art.get("content_type", ""))[:50],
                         "purpose": str(art.get("purpose", ""))[:500],
                         "audit_id": str(art.get("audit_id", ""))[:100],
@@ -1336,13 +1404,13 @@ class CaseManager:
             identity_read = not any(
                 s.startswith(f"audit/{_FILE_IDENTITY_LOG} ") for s in case.skipped
             )
-            for art in validated_artifacts:
-                t = pv.trace_artifact(case, art["audit_id"], art["content"])
+            for art, quote in zip(validated_artifacts, quotes, strict=True):
+                t = pv.trace_artifact(case, art["audit_id"], quote)
                 artifact_traces.append(t)
                 art.update(
                     provenance_grade=t.grade,
                     provenance_reason=t.reason,
-                    provenance_chain=t.links,
+                    provenance_chain=_distinct_links(t.links),
                     provenance_root=t.root,
                     provenance_roots=t.roots,
                     provenance_candidates=t.candidates,
@@ -1579,6 +1647,7 @@ class CaseManager:
             warnings.append(
                 f"{dropped_cmd_count} supporting_command(s) dropped (missing command or purpose)"
             )
+        warnings.extend(cut_warnings)
         warnings.extend(audit_warnings)
         warnings.extend(validation_warnings)
         warnings.extend(doubt_warnings)

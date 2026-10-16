@@ -1112,6 +1112,24 @@ def get_or_mint(
                 - {"", domain}
             ):
                 match = None  # a machine holding a name in another domain: not this one
+            if match is not None:
+                from sift_common.host_proposal import FLAG_GENERIC, name_flags
+
+                # a template name joins only the machine it names, or the one
+                # this unit already holds it on, confirmed and not read late
+                if (
+                    FLAG_GENERIC in name_flags(raw)
+                    and spelling(raw)
+                    not in {spelling(n) for n in (match.canonical, *match.former)}
+                    and not any(
+                        p[0] == unit
+                        and spelling(p[1]) == spelling(raw)
+                        and not {FLAG_NOT_A_HOST, FLAG_MATCHED_DURING_INGEST}
+                        & set(state.pair_flags.get(p, []))
+                        for p in match.pairs
+                    )
+                ):
+                    match = None
             listed = (
                 _late_list_binding(state, unit, raw) if late and match is None else None
             )
