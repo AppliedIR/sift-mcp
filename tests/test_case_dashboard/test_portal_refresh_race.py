@@ -3,8 +3,9 @@
 The 15 s refresh (`loadAll`) fetches the staged delta. It takes the server's
 copy only when nothing here is unsaved: no local change since it started, no
 save waiting or out, and the last save didn't fail. Saves go one at a time, and
-the status reads saved only in that state. The page's own functions run in
-node, with the fetches and the save timer driven by the test.
+the status reads saved only in that state; closing the page in any other
+state sends the delta. The page's own functions run in node, with the
+fetches and the save timer driven by the test.
 """
 
 from __future__ import annotations
@@ -25,10 +26,16 @@ def _fn(name: str) -> str:
     return PAGE[PAGE.rindex("\n", 0, start) + 1 : PAGE.index("\n}\n", start) + 3]
 
 
+def _unload() -> str:
+    """The page's beforeunload handler, as the page adds it."""
+    start = PAGE.index("window.addEventListener('beforeunload'")
+    return PAGE[start : PAGE.index("\n});\n", start) + 5]
+
+
 def _state() -> str:
     """The page's own state declarations, from `let token` to its first function."""
     start = PAGE.index("let token = null;")
-    return PAGE[start : PAGE.index("\nfunction ", start)]
+    return PAGE[start : PAGE.index("\nfunction ", start) + 1]
 
 
 # The page's functions under test run in a context where every other name is
@@ -41,6 +48,8 @@ const timers = [];    // [fn]
 const posts = [];
 const statuses = [];
 let maxPostsOut = 0;   // POSTs out at once
+const unloadHandlers = [];
+const unloads = [];    // what closing the page sent
 const base = {
   console, JSON, Math, Date, Promise, Set, Object, Array, String, Error,
   isLoading: false, batchSelected: new Set(), batchTimelineSelected: new Set(),
@@ -48,6 +57,10 @@ const base = {
   document: { getElementById: () => ({ style: {}, classList: { add: noop, remove: noop } }),
               querySelectorAll: () => [] },
   setSaveStatus: (s) => { statuses.push(s); },
+  window: { addEventListener: (ev, fn) => { if (ev === 'beforeunload') unloadHandlers.push(fn); } },
+  API_BASE: '', apiHeaders: () => ({}),
+  fetch: (url, opts) => { unloads.push({ url, method: opts.method, keepalive: opts.keepalive,
+                                         items: JSON.parse(opts.body).items }); },
   setTimeout: (fn) => { timers.push(fn); return timers.length; },
   clearTimeout: (n) => { if (n) timers[n - 1] = null; },
   apiFetch: (url, opts) => new Promise((resolve, reject) => {
@@ -80,6 +93,7 @@ async function settle() { for (let i = 0; i < 20; i++) await Promise.resolve(); 
 async function answerAll() {
   while (pending.length) { const [u, , r] = pending.shift(); r(answer(u)); await settle(); }
 }
+function unload() { for (const f of unloadHandlers) f(); }   // the page closes
 async function fire() {
   const fns = timers.splice(0).filter(Boolean);
   for (const f of fns) { f(); await settle(); }
@@ -93,12 +107,12 @@ def _run(steps: str) -> dict:
         _fn(n) for n in ("me", "isOwn", "getDeltaEntry", "setDeltaEntry", "loadAll",
                          "scheduleSave", "deltaForSave", "saveDelta", "doSkip",
                          "doTimelineSkip", "doTimelineApprove", "noteRemoved",
-                         "deltaSaved") if f"function {n}(" in PAGE
-    )  # fmt: skip
+                         "isClean") if f"function {n}(" in PAGE
+    ) + _unload()  # fmt: skip
     script = (
         f"const SOURCE = {json.dumps(source)};\n" + HARNESS
         + "(async () => {\n" + steps
-        + "\nprocess.stdout.write(JSON.stringify({posts, delta: T.delta.items, statuses, maxPostsOut}));\n})();"
+        + "\nprocess.stdout.write(JSON.stringify({posts, delta: T.delta.items, statuses, maxPostsOut, unloads}));\n})();"
     )  # fmt: skip
     out = subprocess.run(
         [node, "-e", script], capture_output=True, text=True, timeout=60
@@ -423,3 +437,61 @@ T.loadAll(); await settle(); await answerAll();
     assert out["statuses"] == ["saving", "saving", "error", "saved"]
     assert out["posts"][-1]["items"] == []
     assert out["delta"] == [{"id": "F-2", "action": "approve", "staged_by": "ann"}]
+
+
+# -- Closing the page sends the delta unless nothing here is unsaved
+
+
+def test_closing_the_page_with_a_save_waiting_sends_it():
+    out = _run(START + "T.setDeltaEntry({ id: 'F-1', action: 'approve' }); unload();")
+    assert [(u["url"], u["method"], u["keepalive"]) for u in out["unloads"]] == [
+        ("/api/delta", "POST", True)
+    ]
+    assert _ids(out["unloads"][0]["items"]) == ["F-1"]
+
+
+def test_closing_the_page_while_a_save_is_out_and_another_is_asked_sends_both():
+    out = _run(
+        START
+        + """
+T.setDeltaEntry({ id: 'F-1', action: 'approve' });
+await fire();                                        // save A out, unanswered
+T.setDeltaEntry({ id: 'F-2', action: 'reject' });
+await fire();                                        // B's timer: asked again
+unload();
+"""
+    )
+    assert [_ids(u["items"]) for u in out["unloads"]] == [["F-1", "F-2"]]
+
+
+def test_closing_the_page_while_its_only_save_is_out_sends_it():
+    out = _run(
+        START
+        + "T.setDeltaEntry({ id: 'F-1', action: 'approve' }); await fire(); unload();"
+    )
+    assert [_ids(u["items"]) for u in out["unloads"]] == [["F-1"]]
+
+
+def test_closing_the_page_after_a_failed_save_sends_it_again():
+    out = _run(
+        START
+        + """
+T.setDeltaEntry({ id: 'F-1', action: 'approve' });
+await fire(); pending.shift()[3](new Error('save failed')); await settle();
+unload();
+"""
+    )
+    assert out["statuses"][-1] == "error"
+    assert [_ids(u["items"]) for u in out["unloads"]] == [["F-1"]]
+
+
+def test_closing_the_page_with_everything_saved_sends_nothing():
+    out = _run(
+        START
+        + """
+T.setDeltaEntry({ id: 'F-1', action: 'approve' });
+await fire(); await answerAll();                     // the server took it
+unload();
+"""
+    )
+    assert out["statuses"][-1] == "saved" and out["unloads"] == []

@@ -876,7 +876,12 @@ let deltaSeq = 0;          // bumped by each local change to the delta
 let saveOut = false;       // one save POST at a time
 let saveAgain = false;     // a save was asked for while one was out
 let lastSaveFailed = false;
-function deltaSaved() { return !saveTimer && !saveOut && !lastSaveFailed; }
+let savedSeq = 0;          // deltaSeq as of the last save the server took
+// Nothing here unsaved: no save waiting, out or asked for again, the last
+// save didn't fail, and no change since the last one the server took
+function isClean() {
+  return !saveTimer && !saveOut && !saveAgain && !lastSaveFailed && savedSeq === deltaSeq;
+}
 
 function setFilter(value) {
   currentFilter = value;
@@ -952,7 +957,7 @@ async function loadAll() {
   if (isLoading) return;
   isLoading = true;
   try {
-    const seq = deltaSeq, savedAtStart = deltaSaved();
+    const seq = deltaSeq, savedAtStart = isClean();
     var loading = document.getElementById('loadingState');
     if (loading && !findings.length) {
       loading.innerHTML = '<div style="width:300px"><div class="skeleton skeleton-line"></div>' +
@@ -982,7 +987,7 @@ async function loadAll() {
     findings = f;
     timelineEvents = tl || [];
     iocsData = io || [];
-    if (savedAtStart && seq === deltaSeq && deltaSaved()) {
+    if (savedAtStart && seq === deltaSeq && isClean()) {
       delta = d && d.items ? d : { version: 1, case_id: '', items: [] };
     }
     caseMeta = c || {};
@@ -1135,8 +1140,8 @@ function scheduleSave() {
 
 window.addEventListener('beforeunload', function() {
   try {
-    if (saveTimer) {
-      clearTimeout(saveTimer);
+    if (!isClean()) {
+      if (saveTimer) clearTimeout(saveTimer);
       var headers = apiHeaders();
       headers['Content-Type'] = 'application/json';
       fetch(API_BASE + '/api/delta', {
@@ -1172,6 +1177,7 @@ async function saveDelta() {
   try {
     await apiFetch('/api/delta', { method: 'POST', body: JSON.stringify(deltaForSave()) });
     lastSaveFailed = false;
+    savedSeq = seq;
   } catch (e) {
     lastSaveFailed = true;
     setSaveStatus('error', e.message);
@@ -1181,7 +1187,7 @@ async function saveDelta() {
   const again = saveAgain || seq !== deltaSeq;
   saveAgain = false;
   if (again) { if (!saveTimer) saveDelta(); }
-  else if (deltaSaved()) setSaveStatus('saved');
+  else if (isClean()) setSaveStatus('saved');
 }
 
 function setSaveStatus(state, detail) {
