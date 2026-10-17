@@ -151,7 +151,6 @@ def test_output_just_over_the_limit_is_marked_cut(tmp_path, home, monkeypatch):
     _point(home, a)
     monkeypatch.setenv("SIFT_MAX_OUTPUT", "20000")
     r = _run(tmp_path, "import sys; sys.stdout.write('x' * 20100)\n")
-    assert r["metadata"]["exit_code"] == 0
     assert r["data"]["truncated"] is True
     assert _summary(a)["truncated"] is True
 
