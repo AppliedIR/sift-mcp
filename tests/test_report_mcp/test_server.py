@@ -264,6 +264,57 @@ class TestGenerateReport:
         assert timeline[0]["id"] == "T-tester-002"
         assert timeline[1]["id"] == "T-tester-003"
 
+    @staticmethod
+    def _timeline_ids(case_dir, monkeypatch, stamps, profile):
+        """A case whose only items are approved events with these stamps, stored
+        in this order: the ids generate_report lists, in its order."""
+        from report_mcp.server import create_server
+        from vhir_signing import sign_approved
+
+        case = case_dir.parent / "TEST-REPORT-ORDER"
+        case.mkdir()
+        (case / "CASE.yaml").write_text(
+            yaml.dump({"case_id": case.name, "status": "open", "examiner": "tester"})
+        )
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case))
+        (case / "timeline.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "id": f"T-tester-{n:03d}",
+                        "timestamp": ts,
+                        "description": f"event {n}",
+                        "status": "APPROVED",
+                    }
+                    for n, ts in enumerate(stamps, 1)
+                ]
+            )
+        )
+        sign_approved(case, "tester")
+        rd = _call_tool(create_server(), "generate_report", profile=profile)[
+            "report_data"
+        ]
+        return [t["id"] for t in rd["timeline"]]
+
+    @pytest.mark.parametrize("profile", ["timeline", "full"])
+    def test_timeline_is_in_time_order_not_stored_order(
+        self, case_dir, monkeypatch, profile
+    ):
+        # 23:02:11+09:00 is 14:02:11Z, before 20:00:00Z, though stored after it
+        stamps = ["2026-03-31T20:00:00Z", "2026-03-31T23:02:11+09:00"]
+        ids = self._timeline_ids(case_dir, monkeypatch, stamps, profile)
+        assert ids == ["T-tester-002", "T-tester-001"]
+
+    def test_timeline_already_in_order_is_unchanged(self, case_dir, monkeypatch):
+        # 10:00:00.5Z prints as 10:00:00Z, so it keeps its place after 10:00:00Z
+        stamps = [
+            "2026-03-31T10:00:00Z",
+            "2026-03-31T10:00:00.5Z",
+            "2026-03-31T10:00:01Z",
+        ]
+        ids = self._timeline_ids(case_dir, monkeypatch, stamps, "timeline")
+        assert ids == ["T-tester-001", "T-tester-002", "T-tester-003"]
+
     def test_findings_profile_filter_ids(self, case_dir):
         from report_mcp.server import create_server
 
