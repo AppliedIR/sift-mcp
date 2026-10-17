@@ -1661,7 +1661,7 @@ if $REMOTE_MODE; then
     # _ensure_static_ip() is interactive (prompts + reads stdin) and prints
     # status to stdout. We run it directly (not captured) so the user sees
     # prompts, then read the result from ~/.vhir/network.yaml afterward.
-    "$VENV_PYTHON" -c "
+    VHIR_ASSUME_DEFAULTS=$AUTO_YES "$VENV_PYTHON" -c "
 from vhir_cli.commands.join import _ensure_static_ip
 _ensure_static_ip()
 " || true
@@ -2209,6 +2209,9 @@ SERVICE
     fi
 else
     ok "Manual start: $GATEWAY_START"
+    if systemctl --user is-enabled vhir-gateway.service &>/dev/null; then
+        warn "Auto-start is still on from an earlier install: the gateway starts at boot. To turn it off: systemctl --user disable vhir-gateway"
+    fi
     if [[ -n "${GATEWAY_PID:-}" ]]; then
         info "Gateway is running now (PID $GATEWAY_PID). Will stop on logout."
     fi
@@ -2247,8 +2250,9 @@ if $REMOTE_MODE; then
     done
 
     if $JOIN_READY; then
-        # Generate join code for the remote LLM client machine
-        JOIN_OUTPUT=$("$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
+        # Generate join code for the remote LLM client machine. Network
+        # Configuration already asked about the static IP: join-code doesn't ask again.
+        JOIN_OUTPUT=$(VHIR_ASSUME_DEFAULTS=$AUTO_YES VHIR_STATIC_IP_SETTLED=1 "$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
         JOIN_CODE=$(echo "$JOIN_OUTPUT" | grep "Join code:" | awk '{print $3}') || true  # no code: grep fails, and set -e would stop the install
 
         if [[ -n "$JOIN_CODE" ]]; then
@@ -2280,7 +2284,7 @@ if $REMOTE_MODE; then
 
             # Offer to generate a second join code for Windows wintools
             if prompt_yn "Will you connect a Windows forensic workstation?" "n"; then
-                WIN_OUTPUT=$("$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
+                WIN_OUTPUT=$(VHIR_STATIC_IP_SETTLED=1 "$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
                 WIN_CODE=$(echo "$WIN_OUTPUT" | grep "Join code:" | awk '{print $3}') || true  # no code: grep fails, and set -e would stop the install
                 if [[ -n "$WIN_CODE" ]]; then
                     echo ""
