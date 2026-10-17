@@ -72,6 +72,9 @@ def test_an_enabled_unit_is_named_with_how_to_turn_it_off(tmp_path, health):
         if s.startswith("[WARN] ") and "systemctl --user disable vhir-gateway" in s
     ]
     assert len(said) == 1 and "auto-start" in said[0].lower(), out
+    # the user unit, by its name, asked quietly
+    assert calls == ["--user is-enabled vhir-gateway.service"], calls
+    assert "enabled" not in out.splitlines(), out
     # warn only: nothing turned off, stopped or started
     assert [c for c in calls if "is-enabled" not in c] == [], calls
 
