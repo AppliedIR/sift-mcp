@@ -4632,7 +4632,7 @@ function renderAccounts() {
     var st = (f.status || 'DRAFT').toUpperCase();
     entry.statuses[st] = (entry.statuses[st] || 0) + 1;
     var conf = (f.confidence || 'SPECULATIVE').toUpperCase();
-    if ((CONF_ORDER[conf] || 9) < (CONF_ORDER[entry.bestConf] || 9)) entry.bestConf = conf;
+    if ((CONF_ORDER[conf] ?? 9) < (CONF_ORDER[entry.bestConf] ?? 9)) entry.bestConf = conf;
     var ts = f.event_timestamp || '';
     if (ts) {
       if (!entry.earliest || ts < entry.earliest) entry.earliest = ts;
