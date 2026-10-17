@@ -98,6 +98,16 @@ def _may_hold(*words: str):
                         or any(n in raw for n in needles))  # fmt: skip
 
 
+class AuditUnreadable(Exception):
+    """An audit log that couldn't be read: named (the app's 409 where its
+    entries are listed, a note where they are counted), never fewer entries
+    without a word."""
+
+    def __init__(self, path: Path, e: OSError):
+        self.log = f"audit/{path.name} ({e.strerror or type(e).__name__})"
+        super().__init__(f"Couldn't read {self.log}: its entries aren't shown.")
+
+
 def _read_jsonl(path: Path, keep=None) -> tuple[list[dict], int]:
     """A JSONL file's entries, skipping corrupt lines, and how many lines
     weren't UTF-8 (skipped too). A FIFO, device or over-cap line raises
@@ -119,8 +129,10 @@ def _read_jsonl(path: Path, keep=None) -> tuple[list[dict], int]:
                 entries.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
-    except OSError:  # gone, or unreadable: as before
+    except FileNotFoundError:  # gone: as before
         pass
+    except OSError as e:  # unreadable: by name
+        raise AuditUnreadable(path, e) from e
     return entries, not_utf8
 
 
@@ -136,7 +148,7 @@ def _scanned_logs(audit_dir: Path) -> list[Path]:
     return sorted(p for p in audit_dir.glob("*.jsonl") if p.name != _FILE_IDENTITY_LOG)
 
 
-def _withdrawals(case_dir: Path) -> tuple[list[dict], int]:
+def _withdrawals(case_dir: Path) -> tuple[list[dict], int, list[str]]:
     """Candidate findings withdrawn after challenge, oldest first.
 
     Each is a record_finding audit entry whose result is WITHDRAWN. An entry
@@ -145,12 +157,17 @@ def _withdrawals(case_dir: Path) -> tuple[list[dict], int]:
     """
     audit_dir = case_dir / "audit"
     if not audit_dir.is_dir():
-        return [], 0
+        return [], 0, []
     seen: set[tuple] = set()
     withdrawals = []
     not_utf8 = 0
+    unread: list[str] = []
     for audit_file in _scanned_logs(audit_dir):
-        entries, skipped = _read_jsonl(audit_file, _may_hold("WITHDRAWN"))
+        try:
+            entries, skipped = _read_jsonl(audit_file, _may_hold("WITHDRAWN"))
+        except AuditUnreadable as e:
+            unread.append(e.log)
+            continue
         not_utf8 += skipped
         for entry in entries:
             if not isinstance(entry, dict) or entry.get("tool") != "record_finding":
@@ -173,7 +190,7 @@ def _withdrawals(case_dir: Path) -> tuple[list[dict], int]:
                     "skeptic_audit_ids": result.get("skeptic_audit_ids", []),
                 }
             )
-    return sorted(withdrawals, key=lambda w: str(w["ts"])), not_utf8
+    return sorted(withdrawals, key=lambda w: str(w["ts"])), not_utf8, unread
 
 
 def _resolve_examiner(request: Request) -> str | None:
@@ -301,7 +318,10 @@ def _judged(case_dir: Path) -> dict:
     summary = verification_json(view)
     summary["notices"] = list(result.notices)
     summary["badge_notes"] = notes
-    return {"records": records, "summary": summary}
+    # a case file verify_case couldn't read: refused by name, never an empty list
+    unread = {key: msg for code, msg in result.failures if code == "CASE_FILE_UNREADABLE"
+              for key, name in _ITEM_FILES if msg.startswith(f"{name} ")}  # fmt: skip
+    return {"records": records, "summary": summary, "unread": unread}
 
 
 def _verdicts(case_dir: Path) -> dict:
@@ -326,8 +346,15 @@ def _verdicts(case_dir: Path) -> dict:
     return value
 
 
+class CaseFileUnreadable(Exception):
+    """A case file verify_case couldn't read: its items aren't served (the app's 409)."""
+
+
 async def _served(case_dir: Path, file_key: str) -> list[dict]:
-    return (await anyio.to_thread.run_sync(_verdicts, case_dir))["records"][file_key]
+    value = await anyio.to_thread.run_sync(_verdicts, case_dir)
+    if file_key in value.get("unread", {}):
+        raise CaseFileUnreadable(value["unread"][file_key])
+    return value["records"][file_key]
 
 
 # --- Endpoints ---
@@ -493,15 +520,19 @@ def _machines(case_dir: Path) -> int:
     return len(host_identity.load(case_dir).machines)
 
 
-def _no_terminal(case_dir: Path) -> dict:
+def _no_terminal(case_dir: Path, unread: list[str]) -> dict:
     """The approve and reject attempts refused for want of a terminal, as
-    `vhir approve` counts them: {total, latest, ids} of the latest."""
+    `vhir approve` counts them: {total, latest, ids} of the latest. `unread`
+    names the audit logs that couldn't be read (they may hold more)."""
     from vhir_cli.case_io import load_no_terminal
 
     try:
         refused = load_no_terminal(case_dir)
     except Exception as e:  # noqa: BLE001 - said, as the CLI says it; never a 0
         return {"total": 0, "unavailable": True, "error": str(e)[:200]}
+    if unread:  # one in a log that wasn't read isn't counted: never a 0
+        return {"total": len(refused), "unavailable": True,
+                "error": f"Couldn't read {', '.join(unread)}"[:200]}  # fmt: skip
     if not refused:
         return {"total": 0}
     params = refused[-1].get("params")
@@ -532,7 +563,7 @@ def get_summary(request: Request) -> JSONResponse:
         timeline_counts[s] = timeline_counts.get(s, 0) + 1
 
     open_todos = sum(1 for t in todos if t.get("status", "open") == "open")
-    withdrawals, not_utf8 = _withdrawals(case_dir)
+    withdrawals, not_utf8, unread = _withdrawals(case_dir)
     withdrawn: dict = {"total": len(withdrawals), "items": withdrawals}
     if not_utf8:
         withdrawn["unreadable_lines"] = not_utf8
@@ -540,6 +571,11 @@ def get_summary(request: Request) -> JSONResponse:
             f"Audit lines skipped because they aren't UTF-8: {not_utf8}. "
             "A withdrawal recorded on them isn't listed."
         )
+    if unread:
+        withdrawn["unread_logs"] = unread
+        withdrawn["note"] = " ".join(
+            [f"Couldn't read {', '.join(unread)}: a withdrawal recorded there isn't listed.",
+             withdrawn.get("note", "")]).strip()  # fmt: skip
 
     return JSONResponse(
         {
@@ -548,7 +584,7 @@ def get_summary(request: Request) -> JSONResponse:
             "evidence": {"total": len(evidence)},
             "todos": {"total": len(todos), "open": open_todos},
             "withdrawn": withdrawn,
-            "no_terminal": _no_terminal(case_dir),
+            "no_terminal": _no_terminal(case_dir, unread),
             # machines, as the Hosts tab counts them (host identity), not host texts
             "hosts": {"machines": _machines(case_dir)},  # this thread
         }
@@ -886,7 +922,14 @@ async def _refused(request: Request, exc: Exception) -> JSONResponse:
 
 
 _REFUSALS = {
-    c: _refused for c in (fi.NotRegularFile, fi.CaseFileTooBig, hi.HostLogError)
+    c: _refused
+    for c in (
+        fi.NotRegularFile,
+        fi.CaseFileTooBig,
+        hi.HostLogError,
+        AuditUnreadable,
+        CaseFileUnreadable,
+    )
 }
 
 
