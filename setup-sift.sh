@@ -2241,8 +2241,9 @@ if $REMOTE_MODE; then
     done
 
     if $JOIN_READY; then
-        # Generate join code for the remote LLM client machine
-        JOIN_OUTPUT=$("$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
+        # Generate join code for the remote LLM client machine. Network
+        # Configuration already asked about the static IP: join-code doesn't ask again.
+        JOIN_OUTPUT=$(VHIR_STATIC_IP_SETTLED=1 "$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
         JOIN_CODE=$(echo "$JOIN_OUTPUT" | grep "Join code:" | awk '{print $3}') || true  # no code: grep fails, and set -e would stop the install
 
         if [[ -n "$JOIN_CODE" ]]; then
@@ -2274,7 +2275,7 @@ if $REMOTE_MODE; then
 
             # Offer to generate a second join code for Windows wintools
             if prompt_yn "Will you connect a Windows forensic workstation?" "n"; then
-                WIN_OUTPUT=$("$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
+                WIN_OUTPUT=$(VHIR_STATIC_IP_SETTLED=1 "$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
                 WIN_CODE=$(echo "$WIN_OUTPUT" | grep "Join code:" | awk '{print $3}') || true  # no code: grep fails, and set -e would stop the install
                 if [[ -n "$WIN_CODE" ]]; then
                     echo ""
