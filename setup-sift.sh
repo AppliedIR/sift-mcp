@@ -2203,6 +2203,9 @@ SERVICE
     fi
 else
     ok "Manual start: $GATEWAY_START"
+    if systemctl --user is-enabled vhir-gateway.service &>/dev/null; then
+        warn "Auto-start is still on from an earlier install: the gateway starts at boot. To turn it off: systemctl --user disable vhir-gateway"
+    fi
     if [[ -n "${GATEWAY_PID:-}" ]]; then
         info "Gateway is running now (PID $GATEWAY_PID). Will stop on logout."
     fi
