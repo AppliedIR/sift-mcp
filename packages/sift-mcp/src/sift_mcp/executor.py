@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import signal
 import subprocess
 import threading
 import time
@@ -107,9 +108,11 @@ def execute(
                 raise subprocess.TimeoutExpired(cmd_list, timeout)
             if total[0] >= max_bytes:
                 truncated = True
-                killed = True
                 proc.kill()
                 proc.wait(timeout=5)
+                # Stopped here only if the kill ended it: a child that had
+                # already exited keeps its own exit code.
+                killed = proc.returncode == -signal.SIGKILL
                 break
             try:
                 proc.wait(timeout=min(0.1, remaining))

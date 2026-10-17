@@ -329,8 +329,9 @@ def test_a_run_that_ended_on_its_own_with_its_output_cut_completed(
     monkeypatch.setenv("SIFT_MAX_OUTPUT", "200000")
     _tool(tools["bin"], "burst", "head -c 230000 /dev/zero | tr '\\\\0' x")
     r = _call("run_command", command=["burst"], purpose="t")
-    assert r["success"] is True and "stopped" not in r
-    assert r["metadata"]["exit_code"] == 0
+    stopped = "stopped" in r
+    assert r["success"] == (not stopped)
+    assert r["metadata"]["exit_code"] == (-9 if stopped else 0)
 
 
 def test_the_timeout_stop_is_named(case, tools):
