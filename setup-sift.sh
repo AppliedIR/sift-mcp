@@ -1655,7 +1655,7 @@ if $REMOTE_MODE; then
     # _ensure_static_ip() is interactive (prompts + reads stdin) and prints
     # status to stdout. We run it directly (not captured) so the user sees
     # prompts, then read the result from ~/.vhir/network.yaml afterward.
-    "$VENV_PYTHON" -c "
+    VHIR_ASSUME_DEFAULTS=$AUTO_YES "$VENV_PYTHON" -c "
 from vhir_cli.commands.join import _ensure_static_ip
 _ensure_static_ip()
 " || true
@@ -2243,7 +2243,7 @@ if $REMOTE_MODE; then
     if $JOIN_READY; then
         # Generate join code for the remote LLM client machine. Network
         # Configuration already asked about the static IP: join-code doesn't ask again.
-        JOIN_OUTPUT=$(VHIR_STATIC_IP_SETTLED=1 "$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
+        JOIN_OUTPUT=$(VHIR_ASSUME_DEFAULTS=$AUTO_YES VHIR_STATIC_IP_SETTLED=1 "$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
         JOIN_CODE=$(echo "$JOIN_OUTPUT" | grep "Join code:" | awk '{print $3}') || true  # no code: grep fails, and set -e would stop the install
 
         if [[ -n "$JOIN_CODE" ]]; then

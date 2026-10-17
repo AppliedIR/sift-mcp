@@ -44,7 +44,7 @@ STOPPED = (
 )
 
 
-def _run(tmp_path, outputs, windows="n"):
+def _run(tmp_path, outputs, windows="n", auto_yes="false"):
     """Run the block; the stub vhir's Nth call prints outputs[N] (rc 1 if no code)."""
     stub = tmp_path / "venv"
     (stub / "bin").mkdir(parents=True)
@@ -55,11 +55,17 @@ def _run(tmp_path, outputs, windows="n"):
         "#!/bin/bash\n"
         f'n=$(cat "{tmp_path}/n" 2>/dev/null || echo 0); echo $((n + 1)) > "{tmp_path}/n"\n'
         f'echo "${{VHIR_STATIC_IP_SETTLED-unset}}" >> "{tmp_path}/settled"\n'
+        f'echo "${{VHIR_ASSUME_DEFAULTS-unset}}" >> "{tmp_path}/assume"\n'
         f'cat "{tmp_path}/out$n"; grep -q "Join code:" "{tmp_path}/out$n"\n'
     )
     vhir.chmod(0o755)
     script = tmp_path / "block.sh"
-    script.write_text(PROLOGUE + TEXT[TEXT.index(START) : TEXT.index(END)])
+    script.write_text(
+        f"AUTO_YES={auto_yes}\n"
+        + PROLOGUE
+        + TEXT[TEXT.index(START) : TEXT.index(END)]
+        + f'echo "${{VHIR_ASSUME_DEFAULTS-unset}}" > "{tmp_path}/after"\n'
+    )
     p = subprocess.run(
         ["/bin/bash", str(script)],
         env={"PATH": "/usr/bin:/bin", "STUB": str(stub), "WINDOWS": windows},
@@ -129,3 +135,13 @@ def test_both_join_code_calls_are_told_the_static_ip_is_settled(tmp_path):
     assert rc == 0 and "Windows Workstation" in out, out
     # Network Configuration asked already: neither call asks again
     assert (tmp_path / "settled").read_text().splitlines() == ["1", "1"]
+
+
+@pytest.mark.parametrize("auto_yes", ["true", "false"])
+def test_the_first_join_code_call_is_told_whether_y_was_given(tmp_path, auto_yes):
+    rc, out = _run(tmp_path, [OK, OK], windows="y", auto_yes=auto_yes)
+    assert rc == 0 and "Windows Workstation" in out, out
+    # the Windows workstation's call is unchanged: -y answers its question n
+    assert (tmp_path / "assume").read_text().splitlines() == [auto_yes, "unset"]
+    # for that call only: the gateway started later must not inherit it
+    assert (tmp_path / "after").read_text() == "unset\n"

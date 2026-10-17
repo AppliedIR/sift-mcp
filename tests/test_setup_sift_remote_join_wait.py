@@ -25,7 +25,7 @@ PROLOGUE = (
     'info() { echo "[INFO] $*"; }\n'
     'warn() { echo "[WARN] $*"; }\n'
     "prompt_yn() { return 1; }\n"  # always "no" -> skip the Windows sub-block
-    'HOST_IP=192.0.2.5; GATEWAY_PORT=4508; VENV_DIR="$STUB"\n'
+    'HOST_IP=192.0.2.5; GATEWAY_PORT=4508; VENV_DIR="$STUB"; AUTO_YES=false\n'
     'GATEWAY_START="systemctl --user start vhir-gateway"\n'
     'HEALTH_URL="https://127.0.0.1:4508/health"\n'
     'CURL_EXTRA="-k"\n'
