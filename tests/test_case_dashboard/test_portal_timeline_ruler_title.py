@@ -23,6 +23,8 @@ DESC = (
 
 def _fn(page, name):
     m = re.search(r"\n(async )?function " + name + r"\(", page)
+    if not m:
+        return ""
     return page[m.start() + 1 : page.index("\n}\n", m.start()) + 3]
 
 
@@ -32,7 +34,14 @@ def _title(description):
     page = PAGE.read_text()
     fns = "".join(
         _fn(page, n)
-        for n in ("safeStr", "escapeHtml", "escapeJsString", "renderTimelineRuler")
+        for n in (
+            "safeStr",
+            "escapeHtml",
+            "escapeJsString",
+            "timelineOrder",  # the ruler's sort, when the page has it
+            "timelineKey",
+            "renderTimelineRuler",
+        )
     )
     events = [
         {"id": "T-1", "timestamp": "2026-03-31T14:00:00Z", "description": description},
