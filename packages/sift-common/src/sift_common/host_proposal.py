@@ -759,6 +759,12 @@ def listed_without_data(state: hi.HostState, groups: list[Group]) -> list[str]:
 _HOST_HEADERS = ("hostname", "computername", "devicename", "machinename", "host",
                  "computer", "device", "machine", "name")  # fmt: skip
 _FQDN_HEADERS = ("fqdn", "dnshostname", "dnsname")
+# Every character str.isspace() is true for except the tab: a TSV row's trim
+_SPACE_NOT_TAB = (
+    "\n\x0b\x0c\r\x1c\x1d\x1e\x1f \x85\xa0\u1680"
+    "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a"
+    "\u2028\u2029\u202f\u205f\u3000"
+)
 LIST_MAX = 1_000_000  # bytes of a host list's text
 SKIPPED_SHOWN = 20  # skipped rows a reply names (it counts them all)
 SKIP_IP = "an IP address, not a host name"
@@ -797,6 +803,9 @@ def read_host_list(text: str) -> tuple[list[dict], list[dict]]:
     rows = [(n, line) for n, line in rows if line and not line.startswith("#")]
     host_col = fqdn_col = None
     delimiter = "\t" if rows and "\t" in rows[0][1] else ","
+    if delimiter == "\t":  # a TSV row keeps its tabs: an empty edge cell stays a cell
+        lines = text.splitlines()
+        rows = [(n, lines[n - 1].strip(_SPACE_NOT_TAB)) for n, _ in rows]
     if rows:
         try:
             keys = [

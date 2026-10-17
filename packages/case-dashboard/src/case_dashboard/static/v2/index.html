@@ -4526,6 +4526,7 @@ async function renderHosts() {
   var draftKey = d.draft ? d.draft.t + '|' + d.draft.source : '';
   if (d.draft && draftKey !== hostsView.draftKey) {
     document.getElementById('hostListText').value = d.draft.text;
+    document.getElementById('hostListFile').value = '';  // Upload sends the draft, not an older file choice
     document.getElementById('hostListPanel').open = true;
   }
   hostsView.draftKey = draftKey;
