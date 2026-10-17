@@ -1519,17 +1519,23 @@ header "Examiner Identity"
 if [[ -z "$EXAMINER_NAME" ]]; then
     DEFAULT_EXAMINER=$(whoami | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | head -c 20)
     while true; do
-        EXAMINER_NAME=$(prompt "Examiner identity (name slug)" "$DEFAULT_EXAMINER")
-        EXAMINER_NAME=$(echo "$EXAMINER_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | head -c 20)
-        [[ -z "$EXAMINER_NAME" ]] && EXAMINER_NAME="$DEFAULT_EXAMINER"
+        # No answer (end of input, no tty) must not ask again forever.
+        NO_ANSWER=false
+        if $AUTO_YES && [[ -n "$DEFAULT_EXAMINER" ]]; then
+            EXAMINER_NAME="$DEFAULT_EXAMINER"
+        elif ! read -rp "$(echo -e "${BOLD}Examiner identity (name slug)${NC} [$DEFAULT_EXAMINER]: ")" EXAMINER_NAME < "$READ_FROM"; then
+            NO_ANSWER=true
+        fi
+        EXAMINER_NAME=$(echo "${EXAMINER_NAME:-$DEFAULT_EXAMINER}" | LC_ALL=C.UTF-8 tr '[:upper:]' '[:lower:]' | LC_ALL=C.UTF-8 sed 's/[^a-z0-9-]/-/g; s/^-*//' | head -c 20 | sed 's/-*$//')
+        [[ -z "$EXAMINER_NAME" ]] && { err "the examiner name needs a Latin letter or digit, e.g. --examiner=yamada"; { $AUTO_YES || $NO_ANSWER; } && exit 1; continue; }
         echo ""
         echo "  Examiner: $EXAMINER_NAME"
         if prompt_yn "Correct?" "y"; then break; fi
     done
 else
-    EXAMINER_NAME=$(echo "$EXAMINER_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | head -c 20)
+    EXAMINER_NAME=$(echo "$EXAMINER_NAME" | LC_ALL=C.UTF-8 tr '[:upper:]' '[:lower:]' | LC_ALL=C.UTF-8 sed 's/[^a-z0-9-]/-/g; s/^-*//' | head -c 20 | sed 's/-*$//')
 fi
-[[ -z "$EXAMINER_NAME" ]] && EXAMINER_NAME="examiner"
+[[ -z "$EXAMINER_NAME" ]] && { err "the examiner name needs a Latin letter or digit, e.g. --examiner=yamada"; exit 1; }
 ok "Examiner: $EXAMINER_NAME"
 
 # Write to config.yaml
