@@ -80,7 +80,7 @@ def portal(tmp_path, monkeypatch, box):
     monkeypatch.setenv("VHIR_CASE_DIR", str(d))
     yield Portal(d)
     for p in [d / "findings.json", *(d / "audit").iterdir()]:
-        if not p.is_fifo():
+        if not (p.is_fifo() or p.is_symlink()):
             p.chmod(0o644)
 
 
@@ -140,7 +140,42 @@ def test_an_unreadable_log_is_noted_where_its_entries_are_counted(portal):
         "Couldn't read audit/sift-mcp.jsonl (Permission denied): "
     )
     assert no_terminal["unavailable"] is True
+    assert no_terminal["total"] == 1  # the one in cli-approve, still counted
     assert "audit/sift-mcp.jsonl" in no_terminal["error"]
+
+
+@_NON_ROOT
+def test_an_unreadable_log_keeps_the_note_on_lines_that_arent_utf8(portal):
+    with (portal.dir / "audit" / "sift-mcp.jsonl").open("ab") as f:
+        f.write(b'{"tool": "record_finding", "x": "\xff"}\n')
+    (portal.dir / "audit" / "forensic-mcp.jsonl").chmod(0)
+    note = portal.get("/api/summary").json()["withdrawn"]["note"]
+    assert note.startswith(
+        "Couldn't read audit/forensic-mcp.jsonl (Permission denied): "
+    )
+    assert note.endswith(
+        "Audit lines skipped because they aren't UTF-8: 1. "
+        "A withdrawal recorded on them isn't listed."
+    )
+
+
+def test_a_log_link_to_nothing_is_skipped_as_before(portal):
+    (portal.dir / "audit" / "gone.jsonl").symlink_to(portal.dir / "no-such.jsonl")
+    r = portal.get("/api/audit/F-steve-001")
+    assert r.status_code == 200, r.text
+    assert sorted(e["audit_id"] for e in r.json()) == [
+        "forensic-steve-001",
+        "sift-steve-001",
+    ]
+    withdrawn = portal.get("/api/summary").json()["withdrawn"]
+    assert set(withdrawn) == {"total", "items"} and withdrawn["total"] == 1
+
+
+def test_a_findings_file_that_isnt_json_is_refused_by_name(portal):
+    (portal.dir / "findings.json").write_text("{not json\n")
+    r = portal.get("/api/findings")
+    assert r.status_code == 409, (r.status_code, r.text)
+    assert r.json()["error"].startswith("findings.json couldn't be read (")
 
 
 def _eio_on(monkeypatch, module, attr, name):
