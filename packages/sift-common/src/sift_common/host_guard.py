@@ -65,14 +65,15 @@ def placeholder_of(state, unit: str) -> set[str]:
     placeholder, exactly (named from its locator, or from the unit when it
     has none, as the doors name it), the examiner's `unattributed:<unit>`, and
     the name of the machine the examiner named the unit on (a pair of the unit
-    no evidence gave)."""
+    the examiner bound before any evidence gave it, even once evidence gives
+    it too)."""
     from sift_common import host_gate
 
     locator = str((state.units.get(unit) or {}).get("locator") or unit)
     own = {f"unattributed:{unit}", host_gate.placeholder_name(locator)}
     s = getattr(state, "s", state)  # (a request's overlay: the state under it)
     for p, key in s.bindings.items():
-        if p[0] == unit and p not in s.names:
+        if p[0] == unit and p in s.examiner_named:
             m = s.machine_of_key(key)
             if m is not None:
                 own.add(m.canonical)

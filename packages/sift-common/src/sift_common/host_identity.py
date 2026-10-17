@@ -542,6 +542,8 @@ class HostState:
     canon: dict[str, str] = field(default_factory=dict)  # compare form -> machine id
     waits: dict[str, list[str]] = field(default_factory=dict)  # run id -> its units
     cancelled: set[str] = field(default_factory=set)  # runs the examiner cancelled
+    # pairs a confirm or Start now bound before any evidence named them
+    examiner_named: set[tuple[str, str]] = field(default_factory=set)
 
     def machine_of_key(self, key: str) -> Machine | None:
         mid = self.key_machine.get(key)
@@ -790,6 +792,9 @@ class _Folder:
                         self._absorb(m, bound)
                     elif bound is None:
                         self._bind(p, key)
+                        # no evidence names it: the examiner's, whatever comes later
+                        if p not in s.names:
+                            s.examiner_named.add(p)
                 # after absorbing: the name it gives is free of the machines it took in
                 self._set_canonical(m, canonical)
         elif action == "cancel_run":
