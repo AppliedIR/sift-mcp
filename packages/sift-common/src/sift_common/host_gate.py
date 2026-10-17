@@ -68,6 +68,7 @@ REASON_NO_NAME = "no host name found"
 REASON_NEEDS_NAME = "needs a name: its only name is not a host"
 
 _RESOLVED = (hi.CONFIRMED, hi.STARTED_NOW)
+_LISTED = 50  # waiting entries a status lists; the Hosts tab shows them all
 _FILE_NAME = "file-name"
 _AI = hi.AI_ORIGINS | {_FILE_NAME}
 
@@ -198,14 +199,25 @@ def placeholder_name(locator: str) -> str:
 
 
 def summary(pending: list[dict]) -> dict:
-    """The waiting state as a status or an MCP result carries it."""
+    """The waiting state as a status or an MCP result carries it. It counts
+    host names, not entries: a name many units wait on counts once, and a unit
+    with no name counts by its locator. It lists the first 50 entries, and past
+    that its message says how many there are and where all of them are shown."""
+    names = {e["raw"] or f"(no name) {e['locator']}" for e in pending}
+    message = WAIT_MESSAGE
+    if len(pending) > _LISTED:
+        message += (
+            f". Only {_LISTED} of the {len(pending)} waiting entries are listed: one "
+            "for each host name in each file, folder, image or archive, and one for "
+            "each of those with no host name. The Portal's Hosts tab lists every one"
+        )
     return {
         "status": AWAITING,
-        "unresolved": len(pending),
+        "unresolved": len(names),
         "hosts": [
-            {k: e[k] for k in ("locator", "raw", "reason")} for e in pending[:50]
+            {k: e[k] for k in ("locator", "raw", "reason")} for e in pending[:_LISTED]
         ],
-        "message": WAIT_MESSAGE,
+        "message": message,
     }
 
 
