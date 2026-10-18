@@ -57,7 +57,7 @@ def parse_csv(
             row_dict = dict(row)
             if byte_budget:
                 row_bytes = (
-                    sum(len(v.encode("utf-8")) for v in row_dict.values())
+                    sum(len(str(v).encode("utf-8")) for v in row_dict.values())
                     + len(row_dict) * 4
                 )
                 if used_bytes + row_bytes > byte_budget and rows:

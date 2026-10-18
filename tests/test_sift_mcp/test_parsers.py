@@ -62,6 +62,14 @@ class TestCsvParser:
             assert "Name" in row
             assert "Value" in row
 
+    def test_byte_budget_counts_rows_with_extra_or_missing_fields(self):
+        from sift_mcp.parsers.csv_parser import parse_csv
+
+        # an extra field reads as a list and a missing one as None
+        text = "Name,Value,Count\nalpha,100,1\nbeta,200,2,spare\ngamma,300\n"
+        result = parse_csv(text, byte_budget=10240)
+        assert result["preview_rows"] == 3
+
     def test_wide_csv_fewer_rows(self):
         from sift_mcp.parsers.csv_parser import parse_csv
 
