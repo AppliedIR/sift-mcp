@@ -242,7 +242,8 @@ def create_server() -> FastMCP:
         # registered file links to the registry by its path and isn't read; any
         # other is hashed in the call up to the inline limit, else in the
         # background (`pending:<job>` until its hash_complete entry); a folder
-        # isn't hashed. Provenance must never block forensic work
+        # isn't, but an eligible one records its digest (file_place.folder_record).
+        # Provenance must never block forensic work
         from sift_common import file_place, resolve_case_dir
 
         # One case per call, resolved as it starts: the audit id is minted for
@@ -275,7 +276,7 @@ def create_server() -> FastMCP:
         inputs: list[dict] = []
         registered: list[dict] = []
         for fpath in parsed:
-            rec, reg = file_place.input_record(case_dir, fpath, "run_command")
+            rec, reg = file_place.input_record(case_dir, fpath, "run_command", True)
             inputs.append(rec)
             if reg:
                 registered.append(reg)  # {path, sha256}: the registry's
@@ -289,7 +290,7 @@ def create_server() -> FastMCP:
             if os.path.realpath(path) in named:
                 continue
             named.add(os.path.realpath(path))
-            rec, _ = file_place.input_record(case_dir, path, "run_command")
+            rec, _ = file_place.input_record(case_dir, path, "run_command", True)
             if "st_dev" not in rec:
                 missing.append(f)
             inputs.append({**rec, "found": "declared"})

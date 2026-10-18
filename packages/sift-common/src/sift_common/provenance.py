@@ -13,6 +13,7 @@ named) or BROKEN (with the kind of break, what's missing and how to fix it).
 
 from __future__ import annotations
 
+import bisect
 import codecs
 import hashlib
 import json
@@ -22,6 +23,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from sift_common import file_identity
 from sift_common.file_identity import NotRegularFile, open_regular, read_regular
 
 NO_ORIGIN = "no recorded origin: made outside recorded tools"
@@ -413,9 +415,85 @@ def _mount_link(case, real, sha, st_dev, mnt_id, at, seen) -> Trace | None:
                    "read from")  # fmt: skip
 
 
+def _folder_trace(case: Case, real: str, folder: dict, at, seen) -> Trace:
+    """A folder input recorded with its digest: FULL only when exactly one
+    registered folder's manifest rows, or one earlier run's recorded outputs,
+    under it give that digest (the shared ``folder_digest``). A pending hash
+    is taken through its job; while one is open, that's the named break."""
+    base, cands, waiting = str(case.dir.resolve()), [], None
+    for r in case.roots:  # a registered folder root holding it
+        root = os.path.realpath(r["path"])
+        if r.get("kind") == "folder" and real.startswith(root + os.sep):
+            rows = [(os.path.normpath(os.path.join(base, str(x.get("path", "")))),
+                     x.get("sha256", "")) for x in _manifest_rows(case, r)]  # fmt: skip
+            pairs = [
+                (q[len(real) + 1 :], h) for q, h in rows if q.startswith(real + os.sep)
+            ]
+            cands.append((pairs, {**r, "path": root}, None, []))
+    outputs = _index(case, "outputs", lambda e, line: [
+        (os.path.realpath(out), (e, line, h)) for out, h in _outputs(case, e)])  # fmt: skip
+    if "output_keys" not in case.cache:  # sorted once per case: a prefix is a range
+        case.cache["output_keys"] = sorted(outputs)
+    keys, runs = case.cache["output_keys"], {}
+    for key in keys[bisect.bisect_left(keys, real + os.sep) :]:
+        if not key.startswith(real + os.sep):
+            break
+        for e, line, h in outputs[key]:
+            if at is not None and _not_before(case, e, at):
+                continue  # only an earlier operation can be its origin
+            run = runs.setdefault(id(e), ({}, e, line, {}))
+            if h.startswith("pending:"):
+                h, got = _job(case, key, h.split(":", 1)[1])
+                if not h:
+                    waiting = (
+                        got if waiting is None or got.grade == "AMBIGUOUS" else waiting
+                    )
+                    run[0][key[len(real) + 1 :]] = None  # its digest can't be known
+                    continue
+                run[3].setdefault(got["audit_id"], got)
+            run[0][key[len(real) + 1 :]] = h
+    cands += [(list(m.items()), e, line, list(jobs.values()))
+              for m, e, line, jobs in runs.values() if None not in m.values()]  # fmt: skip
+    digest = folder["sha256"]
+    matches = [
+        c
+        for c in cands
+        if any(h != _EMPTY_SHA256 for _, h in c[0])
+        and file_identity.folder_digest(c[0]) == digest
+    ]  # an all-empty folder never links
+    if len(matches) > 1:
+        named = [{"audit_id": (e or {}).get("audit_id", ""), "path": real, "sha256": digest,
+                  "entry_sha256": _line_sha256(case, line) if line else ""}
+                 for _p, e, line, _j in matches]  # fmt: skip
+        return Trace("AMBIGUOUS", candidates=named, reason=f"{real} holds exactly what "
+                     f"{len(named)} recorded origins hold")  # fmt: skip
+    if waiting is not None:
+        return waiting
+    here = {"path": real, "sha256": digest}
+    if matches and matches[0][2] is None:  # the registered folder's rows
+        r = matches[0][1]
+        root = {
+            "path": r["path"],
+            "sha256": r.get("manifest_sha256", ""),
+            "label": _label(r),
+        }
+        to = {"path": r["path"], "sha256": root["sha256"]}
+        return Trace("FULL", root, [root], [_link("folder-digest", here, to)])
+    if matches:
+        _p, e, line, jobs = matches[0]
+        t = _trace_entry(case, e, line, seen, here)
+        for link in jobs:  # one per job that gave a member its hash
+            t = _extend(t, link)
+        return _extend(t, _link("folder-digest", here, here, e, line, case))
+    why = (f"{real} is a folder of {folder.get('files')} files: no registered folder or "
+           "single earlier recorded run holds exactly those files")  # fmt: skip
+    return _broken("no-recorded-origin", why, "give the tool the files themselves, or a "
+                   "folder holding exactly what one recorded run wrote")  # fmt: skip
+
+
 def trace_file(
     case: Case, path, sha256: str | None = None, *, realpath=None, st_dev=None, mnt_id=None,
-    _at=None, _seen=frozenset(),
+    folder=None, _at=None, _seen=frozenset(),
 ) -> Trace:  # fmt: skip
     """The registered evidence a file came from: the file is a registered root,
     or in a registered folder's manifest; or it was read through a recorded
@@ -434,6 +512,8 @@ def trace_file(
     )
     if found:
         return found
+    if not sha and isinstance(folder, dict) and isinstance(folder.get("sha256"), str):
+        return _folder_trace(case, real, folder, _at, _seen)
     via = []  # the job link, when the file's own hash was recorded pending
     if sha.startswith("pending:"):
         sha, got = _job(case, real, sha.split(":", 1)[1])
@@ -524,7 +604,7 @@ def _inputs(case: Case, e: dict) -> list[dict]:
                  "sha256": i.get("sha256") or reg.get(r or "")
                  or reg.get(_where(case, i, e)) or "",
                  "realpath": r, "st_dev": i.get("st_dev"),
-                 "mnt_id": i.get("mnt_id"),
+                 "mnt_id": i.get("mnt_id"), "folder": i.get("folder"),
                  "declared": i.get("found") == "declared" or i.get("declared") is True}
                 for i in e["inputs"] if isinstance(i, dict) and isinstance(_where(case, i, e), str)
                 for r in [relocated(case, e, i.get("realpath"))]]  # fmt: skip
@@ -540,7 +620,7 @@ def _inputs(case: Case, e: dict) -> list[dict]:
     return [{"path": relocated(case, e, f), "sha256": shas[n] if n < len(shas) else "",
              "realpath": relocated(case, e, reals[n]) if n < len(reals) else None,
              "st_dev": devs[n] if n < len(devs) else None,
-             "mnt_id": mnts[n] if n < len(mnts) else None,
+             "mnt_id": mnts[n] if n < len(mnts) else None, "folder": None,
              "declared": llm and f not in said and os.path.realpath(f) not in said}
             for n, f in enumerate(files) if isinstance(f, str)]  # fmt: skip
 
@@ -561,7 +641,8 @@ def _trace_entry(
     traces = []
     for i in inputs:
         t = trace_file(case, i["path"], i["sha256"], realpath=i["realpath"],
-                       st_dev=i["st_dev"], mnt_id=i["mnt_id"], _at=_when(case, e),
+                       st_dev=i["st_dev"], mnt_id=i["mnt_id"], folder=i["folder"],
+                       _at=_when(case, e),
                        _seen=seen | {aid})  # fmt: skip
         if i["declared"] and t.grade == "FULL":  # an input only the AI named
             real = i["realpath"] or os.path.realpath(i["path"])

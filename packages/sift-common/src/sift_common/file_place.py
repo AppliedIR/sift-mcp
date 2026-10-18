@@ -4,7 +4,9 @@ audit entry.
 The records follow the field contract the audit's readers share:
 - ``inputs[]``: each read as ``{path, realpath, st_dev, mnt_id}``, with its
   ``sha256`` when it isn't registered evidence (``pending:<job_id>`` while a
-  large file is hashed in the background; none for a folder);
+  large file is hashed in the background; none for a folder, which a
+  run_command records with its ``folder: {files, bytes, sha256}`` digest when
+  it's eligible, see ``folder_record``);
 - ``input_registered[]``: a registered evidence file, by its registered path
   and the registry's SHA-256, never read again;
 - ``outputs[]``: each written file as ``{path, realpath, st_dev, mnt_id,
@@ -14,7 +16,9 @@ The records follow the field contract the audit's readers share:
 
 from __future__ import annotations
 
+import json
 import os
+import stat
 from pathlib import Path
 
 from sift_common import file_identity as fi
@@ -97,10 +101,68 @@ def _hash(path: str, case_dir, requested_by: str):
     return f"pending:{r.job_id}" if isinstance(r, fi.Pending) else r
 
 
-def input_record(case_dir, path, requested_by: str = "") -> tuple[dict, dict | None]:
+def _folder_roots(case_dir) -> list[str]:
+    """The registered folder roots' realpaths."""
+    try:
+        registry = json.loads(
+            fi.read_regular(Path(case_dir) / "evidence.json").decode()
+        )
+    except (OSError, ValueError):
+        return []
+    files = registry.get("files") if isinstance(registry, dict) else registry
+    return [os.path.realpath(e["path"]) for e in files if isinstance(e, dict)
+            and e.get("kind") == "folder" and isinstance(e.get("path"), str)
+            ] if isinstance(files, list) else []  # fmt: skip
+
+
+def folder_record(case_dir, rec: dict) -> dict | None:
+    """``{files, bytes, sha256}``: each member hashed now for its content (never
+    from the registry), and their folder digest. None unless it isn't a folder
+    root, is in the case on its mount or in a folder root, crosses no mount,
+    holds 1 to FOLDER_FILES files of FOLDER_BYTES or less, and holds no symlink
+    (a directory's too: the tool follows it) or special file, with no walk
+    error and no member changed while hashed."""
+    real, roots = rec["realpath"], _folder_roots(case_dir)
+    case_real = os.path.realpath(case_dir)
+    in_case = real.startswith(case_real + os.sep) and rec.get("mnt_id") == mnt_id(
+        case_real
+    )
+    if real in roots or not (
+        in_case or any(real.startswith(r + os.sep) for r in roots)
+    ):
+        return None
+    members, size, errors = [], 0, []
+    try:
+        for top, dirs, names in os.walk(real, onerror=errors.append):
+            for d in dirs:
+                st = os.lstat(os.path.join(top, d))
+                if not stat.S_ISDIR(st.st_mode) or st.st_dev != rec["st_dev"]:
+                    return None  # a directory symlink, or another filesystem
+            for n in names:
+                st = os.lstat(os.path.join(top, n))
+                if not stat.S_ISREG(st.st_mode):
+                    return None  # a symlink or a special file
+                members.append(os.path.join(top, n))
+                size += st.st_size
+        if errors or not 0 < len(members) <= fi.FOLDER_FILES or size > fi.FOLDER_BYTES:
+            return None
+        hashed = [fi.hash_file(p) for p in members]  # FileChanged is an OSError
+    except (OSError, fi.NotRegularFile):
+        return None
+    pairs = [
+        (p[len(real) + 1 :], h.sha256) for p, h in zip(members, hashed, strict=True)
+    ]
+    return {"files": len(pairs), "bytes": sum(h.size for h in hashed),
+            "sha256": fi.folder_digest(pairs)}  # fmt: skip
+
+
+def input_record(
+    case_dir, path, requested_by: str = "", folder: bool = False
+) -> tuple[dict, dict | None]:
     """``(input, registered)`` for a file or folder a call reads: registered
     evidence links by its path to the registry's hash and isn't read; a
-    folder isn't hashed; any other file is hashed for the call."""
+    folder isn't hashed, but with ``folder`` an eligible one gets its digest
+    (``folder_record``); any other file is hashed for the call."""
     rec = place(path)
     real = rec.get("realpath")
     if "st_dev" not in rec:
@@ -112,6 +174,8 @@ def input_record(case_dir, path, requested_by: str = "") -> tuple[dict, dict | N
         h = _hash(real, case_dir, requested_by)
         if h is not None:
             rec["sha256"] = h if isinstance(h, str) else h.sha256
+    elif folder and case_dir and (digest := folder_record(case_dir, rec)):
+        rec["folder"] = digest
     return rec, None
 
 

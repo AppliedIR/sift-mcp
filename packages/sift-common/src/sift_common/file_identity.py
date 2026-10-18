@@ -20,7 +20,20 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 INLINE_LIMIT = 1_000_000_000  # bytes a tool call may hash before it answers
+# a folder input's members, hashed in the call before the tool runs
+FOLDER_BYTES = 2_000_000_000
+FOLDER_FILES = 10_000
 _CHUNK = 1 << 20
+
+
+def folder_digest(pairs) -> str:
+    """One SHA-256 over a folder's (path relative to it, member SHA-256) pairs:
+    compact JSON of the sorted pairs, so no two lists give the same bytes. The
+    default ensure_ascii keeps a surrogate-escaped (non-UTF-8) name encodable."""
+    data = json.dumps(sorted(map(list, pairs)), separators=(",", ":"))
+    return hashlib.sha256(data.encode()).hexdigest()
+
+
 # A list job's rows per closing entry, so one audit line stays a few MB however
 # many files the job hashed (a folder of 300,000 files made one 254 MB line)
 ROWS_PER_ENTRY = 5_000
