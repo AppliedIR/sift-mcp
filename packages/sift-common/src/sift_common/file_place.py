@@ -115,23 +115,25 @@ def _folder_roots(case_dir) -> list[str]:
             ] if isinstance(files, list) else []  # fmt: skip
 
 
-def folder_record(case_dir, rec: dict) -> dict | None:
+def folder_record(case_dir, rec: dict, known=None) -> dict | None:
     """``{files, bytes, sha256}``: each member hashed now for its content (never
     from the registry), and their folder digest. None unless it isn't a folder
     root, is in the case on its mount or in a folder root, crosses no mount,
     holds 1 to FOLDER_FILES files of FOLDER_BYTES or less, and holds no symlink
     (a directory's too: the tool follows it) or special file, with no walk
-    error and no member changed while hashed."""
+    error and no member changed while hashed. ``known`` (realpath -> SHA-256:
+    files the caller itself wrote and hashed in this run, never the registry)
+    gives every member's hash when it holds them all: nothing is hashed, so
+    neither the place nor the size bounds apply."""
     real, roots = rec["realpath"], _folder_roots(case_dir)
     case_real = os.path.realpath(case_dir)
     in_case = real.startswith(case_real + os.sep) and rec.get("mnt_id") == mnt_id(
         case_real
     )
-    if real in roots or not (
-        in_case or any(real.startswith(r + os.sep) for r in roots)
-    ):
+    placed = in_case or any(real.startswith(r + os.sep) for r in roots)
+    if real in roots or not (placed or known):
         return None
-    members, size, errors = [], 0, []
+    members, size, errors, all_known = [], 0, [], bool(known)
     try:
         for top, dirs, names in os.walk(real, onerror=errors.append):
             for d in dirs:
@@ -144,7 +146,20 @@ def folder_record(case_dir, rec: dict) -> dict | None:
                     return None  # a symlink or a special file
                 members.append(os.path.join(top, n))
                 size += st.st_size
-        if errors or not 0 < len(members) <= fi.FOLDER_FILES or size > fi.FOLDER_BYTES:
+                if all_known and members[-1] not in known:
+                    if not placed:
+                        return None  # not known, and not where a walk may hash
+                    all_known = False
+        if errors or not members:
+            return None
+        if all_known:
+            pairs = [(p[len(real) + 1 :], known[p]) for p in members]
+            return {
+                "files": len(pairs),
+                "bytes": size,
+                "sha256": fi.folder_digest(pairs),
+            }
+        if len(members) > fi.FOLDER_FILES or size > fi.FOLDER_BYTES:
             return None
         hashed = [fi.hash_file(p) for p in members]  # FileChanged is an OSError
     except (OSError, fi.NotRegularFile):
@@ -157,12 +172,12 @@ def folder_record(case_dir, rec: dict) -> dict | None:
 
 
 def input_record(
-    case_dir, path, requested_by: str = "", folder: bool = False
+    case_dir, path, requested_by: str = "", folder: bool = False, known=None
 ) -> tuple[dict, dict | None]:
     """``(input, registered)`` for a file or folder a call reads: registered
     evidence links by its path to the registry's hash and isn't read; a
     folder isn't hashed, but with ``folder`` an eligible one gets its digest
-    (``folder_record``); any other file is hashed for the call."""
+    (``folder_record``, with ``known``); any other file is hashed for the call."""
     rec = place(path)
     real = rec.get("realpath")
     if "st_dev" not in rec:
@@ -174,7 +189,7 @@ def input_record(
         h = _hash(real, case_dir, requested_by)
         if h is not None:
             rec["sha256"] = h if isinstance(h, str) else h.sha256
-    elif folder and case_dir and (digest := folder_record(case_dir, rec)):
+    elif folder and case_dir and (digest := folder_record(case_dir, rec, known)):
         rec["folder"] = digest
     return rec, None
 
