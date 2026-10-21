@@ -218,7 +218,7 @@ report "deny_read: NOT in effect".
 ### Step 11: REMnux Integration
 
 Check if remnux-mcp is configured in the gateway backends.
-- If configured: call `get_health`, report status
+- If configured: call `check_tools` on remnux-mcp, report status
 - If not: explain that REMnux (200+ malware analysis tools) can be
   added during `vhir setup client` by providing host and port.
 

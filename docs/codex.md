@@ -64,14 +64,36 @@ later.
 
 ## Sandbox
 
-Codex runs its shell commands in a sandbox built on unprivileged user
-namespaces. On a kernel that restricts them
-(`kernel.apparmor_restrict_unprivileged_userns=1`, the default on Ubuntu
-24.04 and later) the sandbox can't start, and **every shell command fails**:
-Codex fails closed rather than run unconfined. SIFT's Ubuntu 22.04 isn't
-affected. Setup prints a notice when it finds the restriction.
+Codex runs its shell commands in a sandbox built with bubblewrap (`bwrap`)
+and unprivileged user namespaces. On a kernel that restricts those
+namespaces (`kernel.apparmor_restrict_unprivileged_userns=1`, the default
+on Ubuntu 24.04 and later), Codex's sandbox needs two things:
 
-Valhuntir doesn't change it. An administrator can allow Codex's sandbox
-helper (`codex-linux-sandbox`) an AppArmor profile, or turn the restriction
-off machine-wide (`sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0`,
-which lowers that protection for every program).
+- `/usr/bin/bwrap` (the `bubblewrap` package)
+- an AppArmor profile that lets `/usr/bin/bwrap` create user namespaces
+
+Codex uses `/usr/bin/bwrap` when it exists. Otherwise it uses its own
+bundled copy, which the profile doesn't cover. Without both, **every shell
+command fails**: Codex fails closed rather than run unconfined.
+
+SIFT's installer installs `bubblewrap`, and when it finds the restriction
+it adds the profile at `/etc/apparmor.d/bwrap` and loads it. Setup prints a
+notice when the restriction is on and either is missing.
+
+On another client, an administrator adds the same profile. This is the
+profile setup-sift.sh writes, without its comment lines:
+
+```
+abi <abi/4.0>,
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+  include if exists <local/bwrap>
+}
+```
+
+Save it as `/etc/apparmor.d/bwrap`, then load it with
+`sudo apparmor_parser -r /etc/apparmor.d/bwrap`. Other programs keep the
+restriction, but any program that runs `/usr/bin/bwrap` gets user
+namespaces through it.
