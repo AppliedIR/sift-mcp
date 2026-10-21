@@ -33,6 +33,7 @@ import hashlib
 import json
 import re
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass, field
 
 from sift_common import host_gate
@@ -735,20 +736,30 @@ def own_best_name(state: hi.HostState, ps) -> str:
     return (hive_fqdn or fqdns or hive_name or folder or names)[0]
 
 
-def listed_without_data(state: hi.HostState, groups: list[Group]) -> list[str]:
-    """Host-list entries no evidence matches yet ("no data yet")."""
-    named = {g.list_entry_id for g in groups if g.list_entry}
-    for m in state.machines.values():  # and machines the list already confirmed
-        for e in _list_entries(state):
-            if any(
-                list_matches(n, [e])
-                for n in (
-                    m.canonical,
-                    *(p[1] for p in m.pairs if not _not_a_host(state, p)),
-                )
-            ):
-                named.add(entry_id(e))
-    return [e["name"] for e in _list_entries(state) if entry_id(e) not in named]
+def list_rows(state: hi.HostState, waiting: list[Group]) -> list[dict]:
+    """Each host-list entry, in the list's order, with what evidence it has:
+    {name, fqdn, machines [{canonical, state}], proposed}. A machine is the
+    entry's when its canonical name or one of its evidence names matches the
+    entry; `proposed` when a waiting group names the entry. A group that
+    matches two entries names neither (it waits as a conflict)."""
+    entries = _list_entries(state)
+    at = {id(e): i for i, e in enumerate(entries)}
+    found: list[list] = [[] for _ in entries]
+    for m in sorted(state.machines.values(), key=lambda m: hi.spelling(m.canonical)):
+        names = {m.canonical, *(p[1] for p in m.pairs if not _not_a_host(state, p))}
+        hits = {at[id(e)] for n in names for e in list_matches(n, entries)}
+        for i in sorted(hits):
+            found[i].append({"canonical": m.canonical, "state": m.state})
+    named = {g.list_entry_id for g in waiting if g.list_entry}
+    return [
+        {
+            "name": e["name"],
+            "fqdn": e.get("fqdn", ""),
+            "machines": found[i],
+            "proposed": entry_id(e) in named,
+        }
+        for i, e in enumerate(entries)
+    ]
 
 
 # --------------------------------------------------------------------------
@@ -869,6 +880,16 @@ def upload_host_list(case_dir, text: str, examiner: str) -> dict:
     if hi.unfinished_op(case_dir):  # nothing is recorded while R runs
         raise hi.HostOpRunning("a host rename/merge is running; try again when it ends")
     entries, skipped = read_host_list(text)
+    if not entries:  # never replaces the examiner's list with an empty one
+        why = Counter(s["reason"] for s in skipped)
+        raise ValueError(
+            "the host list names no hosts, so the current list is kept"
+            + (
+                ": " + ", ".join(f"{n} skipped ({r})" for r, n in sorted(why.items()))
+                if why
+                else ""
+            )
+        )
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     hi.append_observations(
         case_dir,

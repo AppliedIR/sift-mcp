@@ -143,16 +143,26 @@ def test_a_list_that_matches_nothing_says_0_confirmed_and_why(case, client):
     assert "Saved" not in text
 
 
-def test_a_list_with_no_host_names_is_a_warning(case, client):
-    reply = _decide(client, "list", {"text": "# hosts to come\n"}).json()
-    assert reply["entries"] == 0 and reply["warning"] is True
-    assert reply["skipped"] == []
-    [(text, level)] = _toast(reply)
-    assert text.startswith("0 listed") and level == "warning"
+@pytest.mark.parametrize(
+    "text, reason",
+    [("# hosts to come\n", ""),
+     ("10.0.0.1\n10.0.0.2\n", ": 2 skipped (an IP address, not a host name)")],
+)  # fmt: skip
+def test_a_list_with_no_host_names_is_refused_and_the_list_kept(
+    case, client, text, reason
+):
+    assert _decide(client, "list", {"text": "WKS01\nDC01\n"}).status_code == 200
+    resp = _decide(client, "list", {"text": text})
+    assert resp.status_code == 400
+    assert resp.json()["error"] == (
+        "the host list names no hosts, so the current list is kept" + reason
+    )
+    page = client.get("/api/hosts").json()
+    assert page["host_list"]["entries"] == 2 and page["listed_total"] == 2
 
 
 def test_a_skipped_row_list_is_capped_in_the_reply(case, client):
-    text = "IP,Hostname\n" + "".join(
+    text = "IP,Hostname\n10.1.0.1,WKS01\n" + "".join(
         f"10.0.{i // 256}.{i % 256},\n" for i in range(500)
     )
     body = _decide(client, "list", {"text": text}).json()

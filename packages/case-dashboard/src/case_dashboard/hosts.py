@@ -117,6 +117,18 @@ def _matches(m: hi.Machine, q: str) -> bool:
     return any(wanted in hi.spelling(t) for t in texts)
 
 
+def _row_matches(row: dict, q: str, by_name: dict[str, hi.Machine]) -> bool:
+    """`_matches` for a host-list row: its name, its FQDN, or a machine it shows."""
+    wanted = hi.spelling(q)
+    if any(wanted in hi.spelling(t) for t in (row["name"], row["fqdn"]) if t):
+        return True
+    return any(
+        _matches(by_name[m["canonical"]], q)
+        for m in row["machines"]
+        if m["canonical"] in by_name
+    )
+
+
 # The GET routes are plain defs: Starlette runs them in a worker thread, so a
 # slow host-log read never holds the gateway's event loop.
 def get_hosts(request: Request) -> JSONResponse:
@@ -169,6 +181,14 @@ def get_hosts(request: Request) -> JSONResponse:
     proposed_shown = groups[(ppage - 1) * per_page : ppage * per_page]
     pivots = _pivots(case_dir, state) if shown else {}
     listed = state.host_list or None
+    try:
+        lpage = max(1, int(request.query_params.get("listed_page", 1)))
+    except ValueError:
+        return JSONResponse({"error": "listed_page must be a number"}, status_code=400)
+    rows = hp.list_rows(state, groups) if listed else []
+    if q:
+        by_name = {m.canonical: m for m in state.machines.values()}
+        rows = [r for r in rows if _row_matches(r, q, by_name)]
     return JSONResponse(
         {
             "obs_offset": state.obs_offset,
@@ -206,9 +226,9 @@ def get_hosts(request: Request) -> JSONResponse:
                 else hg.PORTAL_HOST_LIST_HINT_PROPOSED
             ),
             "draft": hp.read_host_list_draft(case_dir),
-            "listed_without_data": (
-                hp.listed_without_data(state, all_groups) if listed else []
-            ),
+            "listed": rows[(lpage - 1) * per_page : lpage * per_page],
+            "listed_total": len(rows),
+            "listed_page": lpage,
         }
     )
 
@@ -585,10 +605,7 @@ async def post_host_decision(request: Request) -> JSONResponse:
             summary = f"{listed} listed, {confirmed} confirmed" + (
                 f", {len(skipped)} skipped" if skipped else ""
             )
-            if not listed:
-                summary += ": no host names found in the list"
-                result["warning"] = True
-            elif not confirmed:  # a list given before ingest confirms as hosts arrive
+            if not confirmed:  # a list given before ingest confirms as hosts arrive
                 summary += ": the list confirms hosts as evidence names them"
             result["skipped"] = [
                 {"canonical": s["value"] or f"line {s['line']}", "reason": s["reason"]}

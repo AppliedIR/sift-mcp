@@ -90,7 +90,8 @@ def test_two_groups_on_the_two_entries_are_no_conflict_and_both_have_data(case):
     assert not any(
         "is matched by evidence with" in c for g in groups for c in g.conflicts
     )
-    assert hp.listed_without_data(hi.load(case), groups) == []
+    rows = hp.list_rows(hi.load(case), groups)
+    assert len(rows) == 2 and all(r["proposed"] for r in rows)
 
 
 # -- a flagged unit, whatever the list's own rule says

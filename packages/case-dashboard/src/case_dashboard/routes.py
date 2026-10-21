@@ -514,10 +514,13 @@ async def get_iocs(request: Request) -> JSONResponse:
     return JSONResponse(await _served(case_dir, "iocs"))
 
 
-def _machines(case_dir: Path) -> int:
+def _hosts(case_dir: Path) -> dict:
+    """The case's machines and its host list's entries, as the Hosts tab counts them."""
     from sift_common import host_identity
 
-    return len(host_identity.load(case_dir).machines)
+    state = host_identity.load(case_dir)
+    entries = (state.host_list or {}).get("entries") or []
+    return {"machines": len(state.machines), "listed": len(entries)}
 
 
 def _no_terminal(case_dir: Path, unread: list[str]) -> dict:
@@ -585,8 +588,8 @@ def get_summary(request: Request) -> JSONResponse:
             "todos": {"total": len(todos), "open": open_todos},
             "withdrawn": withdrawn,
             "no_terminal": _no_terminal(case_dir, unread),
-            # machines, as the Hosts tab counts them (host identity), not host texts
-            "hosts": {"machines": _machines(case_dir)},  # this thread
+            # machines and listed hosts, as the Hosts tab counts them (host identity)
+            "hosts": _hosts(case_dir),  # this thread
         }
     )
 
@@ -849,7 +852,10 @@ async def serve_v2_index(request: Request) -> Response:
             {"error": "Dashboard v2 not built yet"},
             status_code=404,
         )
-    return FileResponse(index_path, media_type="text/html")
+    # revalidated on every load, so a browser shows the page an update installed
+    return FileResponse(
+        index_path, media_type="text/html", headers={"Cache-Control": "no-cache"}
+    )
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):

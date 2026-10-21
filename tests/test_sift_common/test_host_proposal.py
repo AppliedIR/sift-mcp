@@ -354,7 +354,13 @@ def test_a_listed_unit_confirms_and_unlisted_and_missing_names_are_shown(case):
     assert m.state == hi.CONFIRMED
     gs = hp.propose(state)
     assert hp.FLAG_NOT_LISTED in group_of(gs, "SRV09").flags
-    assert hp.listed_without_data(state, gs) == ["DC01"]  # "no data yet"
+    waiting = [g for g in gs if any(p not in state.bindings for p in g.pairs)]
+    assert hp.list_rows(state, waiting) == [
+        {"name": "WKS01", "fqdn": "", "proposed": False,
+         "machines": [{"canonical": "WKS01", "state": hi.CONFIRMED}]},
+        {"name": "DC01", "fqdn": "dc01.corp-a.example.test", "proposed": False,
+         "machines": []},  # "no data yet"
+    ]  # fmt: skip
     assert state.host_list["examiner"] == "ex1" and len(state.host_list["sha256"]) == 64
 
 
@@ -625,7 +631,8 @@ def test_a_machine_the_examiner_confirmed_under_a_list_name_has_data(case):
         (case / hi.OBSERVATIONS).stat().st_size)  # fmt: skip
     hp.upload_host_list(case, "SRV33\n", "ex1")
     state = hi.load(case)
-    assert hp.listed_without_data(state, hp.propose(state)) == []
+    (row,) = hp.list_rows(state, [])
+    assert row["machines"] == [{"canonical": "SRV33", "state": hi.CONFIRMED}]
 
 
 def test_a_list_name_spelled_unlike_the_machine_is_kept_as_its_name(case):

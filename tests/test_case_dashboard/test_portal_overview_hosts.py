@@ -43,13 +43,13 @@ def one_machine(portal):
 
 
 def test_the_summary_counts_the_case_s_machines(portal, one_machine):
-    assert portal.get("/api/summary").json()["hosts"] == {"machines": 1}
+    assert portal.get("/api/summary").json()["hosts"] == {"machines": 1, "listed": 0}
 
 
 def test_a_case_with_no_host_files_has_no_machines(portal):
     portal.write("findings.json", [{"id": "F-1", "status": "DRAFT", "host": "X"}])
     portal.write("timeline.json", [])
-    assert portal.get("/api/summary").json()["hosts"] == {"machines": 0}
+    assert portal.get("/api/summary").json()["hosts"] == {"machines": 0, "listed": 0}
 
 
 def test_the_hosts_tile_shows_machines_not_host_texts(portal, one_machine):
