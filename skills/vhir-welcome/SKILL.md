@@ -13,6 +13,24 @@ Follow these phases in order. Report results as you go. Stop on failure.
 
 ### Step 1: Backend Inventory
 
+When this session is Codex, skip the rest of this step and do this
+instead. Don't run `vhir setup test`: Codex's shell has no network,
+and a remote Codex client has no vhir CLI. Make one MCP call for each
+backend this session has:
+- case-mcp `case_status`
+- forensic-mcp `get_investigation_framework`
+- opensearch-mcp `idx_status`
+- sift-mcp, forensic-rag, windows-triage and report-mcp: the calls in
+  Steps 2-4
+- threatintel-mcp `get_health` and remnux-mcp `check_tools`, only when
+  this session has their tools
+
+M is the number of backends this session has; a backend that isn't
+configured has no tools here and doesn't count. N is how many
+answered. Name each backend whose call fails, and go on with the
+others. Stop with "Gateway not reachable" only when every call fails.
+The summary says "Backends: N of M answered".
+
 Run `vhir setup test` via Bash. If `vhir` is not in PATH (common on
 fresh installs before shell restart), use `~/.vhir/venv/bin/vhir`
 instead. Do NOT warn about PATH — the installer already told the user
@@ -23,19 +41,6 @@ with tool counts. Report the results.
 
 If the gateway is not responding, stop immediately:
 "Gateway not reachable. Check: `vhir service status`"
-
-Under Codex, don't run `vhir setup test`: Codex's shell has no network,
-and a remote Codex client has no vhir CLI. Check each backend with one
-MCP call instead:
-- case-mcp `case_status`
-- forensic-mcp `get_investigation_framework`
-- opensearch-mcp `idx_status`
-- sift-mcp, forensic-rag, windows-triage and report-mcp: the calls in
-  Steps 2-4
-
-Name each backend whose call fails, and go on with the others. Stop
-with "Gateway not reachable" only when every call fails. The summary
-says "Backends: N of M answered".
 
 ### Step 2: Forensic Capabilities
 
