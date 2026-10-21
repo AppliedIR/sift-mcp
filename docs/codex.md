@@ -76,9 +76,12 @@ Codex uses `/usr/bin/bwrap` when it exists. Otherwise it uses its own
 bundled copy, which the profile doesn't cover. Without both, **every shell
 command fails**: Codex fails closed rather than run unconfined.
 
-SIFT's installer installs `bubblewrap`, and when it finds the restriction
-it adds the profile at `/etc/apparmor.d/bwrap` and loads it. Setup prints a
-notice when the restriction is on and either is missing.
+SIFT's installer installs `bubblewrap` when it's missing. When the
+restriction is on and its own bwrap test fails, it offers to add the profile
+at `/etc/apparmor.d/bwrap` and load it (the default answer is yes). If that
+was declined, or writing or loading the profile failed, add the profile as
+described below. Setup prints a notice when the restriction is on and
+either is missing.
 
 On another client, an administrator adds the same profile. This is the
 profile setup-sift.sh writes, without its comment lines:
