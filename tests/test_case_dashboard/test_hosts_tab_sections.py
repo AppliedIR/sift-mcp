@@ -246,3 +246,51 @@ def test_the_page_draws_impacted_hosts_with_the_accounts_on_every_load():
     start = PAGE.index("async function loadAll()")
     load = PAGE[start : PAGE.index("\n}\n", start)]
     assert "renderImpactedHosts();\n    renderAccounts();" in load
+
+
+@pytest.mark.parametrize(
+    "page, want",
+    [({"listed": [], "listed_total": 0}, "The host list has no entries"),
+     ({"listed": [], "listed_total": 120, "listed_page": 5},
+      "No entries on this page; the list has 120"),
+     ({"listed": [], "listed_total": 0, "q": "zz"}, "No list entry matches the filter")],
+)  # fmt: skip
+def test_an_empty_host_list_page_says_why(page, want):
+    q = page.pop("q", "")
+    got = _run(
+        f"hostsView.q = {json.dumps(q)}; await renderHosts();"
+        " process.stdout.write(JSON.stringify(els.hostsListBody.innerHTML));",
+        {**LISTED, **page},
+    )
+    assert want in got
+    others = {
+        "The host list has no entries",
+        "No entries on this page",
+        "No list entry matches the filter",
+    } - {want.split(";")[0]}
+    assert not any(o in got for o in others)
+
+
+ODD = [
+    {"id": "F-1", "host": "rd01", "confidence": 3, "status": ["APPROVED"],
+     "event_timestamp": {"toString": None}},
+    {"id": "F-2", "host": "rd01", "confidence": {"toString": None}, "status": True,
+     "event_timestamp": {"toString": None, "valueOf": None}},
+    {"id": "F-3", "host": "rd01", "confidence": "high", "status": "draft"},
+]  # fmt: skip
+
+
+def test_odd_finding_fields_never_stop_the_impacted_hosts():
+    got = _run(
+        "renderImpactedHosts(); var h = hostsView.impacted[0];"
+        " process.stdout.write(JSON.stringify([hostsView.impacted.length, h.findings,"
+        " h.bestConf, h.statuses, els.impactedHostsBody.innerHTML]));",
+        findings=ODD,
+    )
+    assert got[:4] == [
+        1,
+        ["F-1", "F-2", "F-3"],
+        "HIGH",
+        {"APPROVED": 1, "TRUE": 1, "DRAFT": 1},
+    ]
+    assert got[4].count('data-host-act="impacted"') == 1

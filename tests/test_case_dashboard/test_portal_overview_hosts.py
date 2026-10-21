@@ -71,7 +71,7 @@ def test_the_tile_counts_impacted_hosts_with_listed_and_machines(
         summary["hosts"] = hosts
     page = PAGE.read_text()
     fn = ""
-    for name in ("renderDashboard", "impactedHosts"):
+    for name in ("renderDashboard", "impactedHosts", "safeStr"):
         start = page.index(f"function {name}(")
         fn += page[start : page.index("\n}\n", start) + 3]
     script = (

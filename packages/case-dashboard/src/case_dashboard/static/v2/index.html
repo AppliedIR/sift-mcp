@@ -4289,10 +4289,12 @@ function hostListSubText(d) {
   return l ? l.entries + ' entries, sha256 ' + String(l.sha256 || '').slice(0, 12) + ', uploaded by ' + l.examiner : '';
 }
 
-// Each host-list entry and what the evidence holds for it
-function hostListRowsHtml(rows) {
+// Each host-list entry and what the evidence holds for it; with none, why
+function hostListRowsHtml(rows, filtered, total) {
   if (!rows || !rows.length) {
-    return '<tr><td colspan="3" style="color:var(--text-muted);text-align:center;padding:24px">No list entry matches the filter</td></tr>';
+    var why = filtered ? 'No list entry matches the filter'
+      : total ? 'No entries on this page; the list has ' + total : 'The host list has no entries';
+    return '<tr><td colspan="3" style="color:var(--text-muted);text-align:center;padding:24px">' + escapeHtml(why) + '</td></tr>';
   }
   return rows.map(function(r) {
     var seen = (r.machines || []).map(function(m) {
@@ -4325,11 +4327,12 @@ function impactedHosts() {
     var entry = byHost.get(h);
     entry.findings.push(f.id);
     if (f.affected_account) entry.accounts.add(f.affected_account);
-    var st = (f.status || 'DRAFT').toUpperCase();
+    // safeStr: a hand-edited or imported finding can hold any JSON here
+    var st = safeStr(f.status || 'DRAFT').toUpperCase();
     entry.statuses[st] = (entry.statuses[st] || 0) + 1;
-    var conf = (f.confidence || 'SPECULATIVE').toUpperCase();
+    var conf = safeStr(f.confidence || 'SPECULATIVE').toUpperCase();
     if ((CONF_ORDER[conf] ?? 9) < (CONF_ORDER[entry.bestConf] ?? 9)) entry.bestConf = conf;
-    var ts = f.event_timestamp || '';
+    var ts = f.event_timestamp ? safeStr(f.event_timestamp) : '';
     if (ts) {
       if (!entry.earliest || ts < entry.earliest) entry.earliest = ts;
       if (!entry.latest || ts > entry.latest) entry.latest = ts;
@@ -4630,7 +4633,7 @@ async function renderHosts() {
   document.getElementById('hostsProposed').innerHTML = hostProposedHtml(d.proposed, d);
   document.getElementById('hostsListSub').textContent = hostListSubText(d);
   document.getElementById('hostsListTable').hidden = !d.host_list;
-  document.getElementById('hostsListBody').innerHTML = d.host_list ? hostListRowsHtml(d.listed) : '';
+  document.getElementById('hostsListBody').innerHTML = d.host_list ? hostListRowsHtml(d.listed, hostsView.q, d.listed_total) : '';
   document.getElementById('hostsListPager').innerHTML = d.host_list ? hostListPagerHtml(d) : '';
   document.getElementById('hostsBody').innerHTML = hostRowsHtml(d.machines, hostsView.q || hostsView.state);
   document.getElementById('hostsPager').innerHTML = hostPagerHtml(d);
