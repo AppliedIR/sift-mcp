@@ -582,8 +582,8 @@ class TestHostDecisionsWaitWhileAnOperationIsUnfinished:
         listed = re.search(r"var HOST_DECISION_ACTS = (\[[^\]]*\]);", PORTAL).group(1)
         acts = set(json.loads(listed.replace("'", '"')))
         drawn = set(re.findall(r'data-host-act="(\w+)"', PORTAL))
-        corrections = {"page", "ppage", "detail", "op_resume", "op_rename", "op_merge",
-                       "op_split", "draft_dismiss"}  # fmt: skip
+        corrections = {"page", "ppage", "lpage", "detail", "impacted", "op_resume",
+                       "op_rename", "op_merge", "op_split", "draft_dismiss"}  # fmt: skip
         assert drawn - corrections == acts  # every decision control the tab draws
 
 

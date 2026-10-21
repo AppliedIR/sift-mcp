@@ -406,10 +406,11 @@ def _js_function(name: str) -> str:
 def _render(call: str, data) -> str:
     names = ["safeStr", "escapeHtml", "escapeAttr", "hostNamesHtml", "hostsHeaderHtml", "hostRunsHtml",
              "hostProposedHtml", "hostPivotsHtml", "hostRowsHtml", "hostDetailHtml",
-             "hostCorrectionsHtml", "hostOpsHtml"]  # fmt: skip
+             "hostCorrectionsHtml", "hostOpsHtml", "hostListRowsHtml", "hostListPagerHtml",
+             "formatTimeShort", "impactedHosts", "impactedHostsHtml"]  # fmt: skip
     script = (
         _DOCUMENT
-        + "var hostsView = {data: {machines: []}, ops: null};\n"
+        + "var hostsView = {data: {machines: []}, ops: null}; var findings = [];\n"
         + "".join(_js_function(n) for n in names)
         + f"const data = {json.dumps(data)};\n"
         + f"process.stdout.write({call});"
@@ -461,9 +462,9 @@ class TestTheTabRendersCaseTextAsText:
             }
         ]
         self._clean(_render("hostRunsHtml(data)", runs))
-        header = {"counts": {}, "host_list": {"entries": 1, "sha256": _EVIL, "examiner": _EVIL},
-                  "listed_without_data": [_EVIL]}  # fmt: skip
-        self._clean(_render("hostsHeaderHtml(data)", header))
+        self._clean(
+            _render("hostsHeaderHtml(data)", {"counts": {}, "host_list_hint": _EVIL})
+        )
         detail = {
             "canonical": _EVIL,
             "history": [
@@ -471,6 +472,20 @@ class TestTheTabRendersCaseTextAsText:
             ],
         }
         self._clean(_render("hostDetailHtml(data)", detail))
+
+    def test_host_list_rows(self):
+        rows = [{"name": _EVIL, "fqdn": _EVIL, "proposed": True,
+                 "machines": [{"canonical": _EVIL, "state": _EVIL}]}]  # fmt: skip
+        out = _render("hostListRowsHtml(data)", rows)
+        self._clean(out)
+        assert "proposed" in out
+
+    def test_impacted_hosts(self):
+        found = [{"id": _EVIL, "host": _EVIL, "affected_account": _EVIL, "status": _EVIL,
+                  "confidence": _EVIL, "event_timestamp": _EVIL}]  # fmt: skip
+        self._clean(
+            _render("(findings = data, impactedHostsHtml(impactedHosts()))", found)
+        )
 
     def test_the_ambiguity_marker_is_shown(self):
         machine = {"canonical": "DC01", "query": 'host.id:"DC01"',

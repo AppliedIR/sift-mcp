@@ -121,7 +121,7 @@ def _toast(reply) -> list:
     fn = PORTAL[start : PORTAL.index("\n}\n", start) + 3]
     script = (
         "var toasts = [];\n"
-        "var document = {activeElement: null};\n"
+        "var document = {activeElement: null, getElementById: function() { return {}; }};\n"
         "var hostsView = {data: {obs_offset: 0}};\n"
         f"async function apiFetch() {{ return {json.dumps(reply)}; }}\n"
         "function showToast(m, t) { toasts.push([m, t]); }\n"
