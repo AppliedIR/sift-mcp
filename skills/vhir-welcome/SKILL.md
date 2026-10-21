@@ -24,6 +24,19 @@ with tool counts. Report the results.
 If the gateway is not responding, stop immediately:
 "Gateway not reachable. Check: `vhir service status`"
 
+Under Codex, don't run `vhir setup test`: Codex's shell has no network,
+and a remote Codex client has no vhir CLI. Check each backend with one
+MCP call instead:
+- case-mcp `case_status`
+- forensic-mcp `get_investigation_framework`
+- opensearch-mcp `idx_status`
+- sift-mcp, forensic-rag, windows-triage and report-mcp: the calls in
+  Steps 2-4
+
+Name each backend whose call fails, and go on with the others. Stop
+with "Gateway not reachable" only when every call fails. The summary
+says "Backends: N of M answered".
+
 ### Step 2: Forensic Capabilities
 
 Call `list_available_tools` on sift-mcp. Do NOT display the raw tool list.
@@ -184,9 +197,10 @@ above, and show them in place of its control lines in the summary.
 - `/etc/codex/requirements.toml` exists and its first line is
   `# managed-by: valhuntir`, and `/etc/codex/vhir-hooks/` holds the hooks.
   Report "Codex controls: OK".
-- If `vhir setup test` prints CODEX CONTROLS OFF, report exactly that.
+- If `/etc/codex/requirements.toml` is missing and
+  `/etc/codex/requirements.toml.off` exists, report "CODEX CONTROLS OFF".
   The examiner chose it; do not suggest turning them back on.
-- If the file is missing or doesn't carry that line, report "Codex
+- Otherwise, if the file is missing or doesn't carry that line, report "Codex
   controls: NOT in effect" and the command `vhir setup client
   --client=codex`.
 
@@ -232,6 +246,16 @@ Controls:
 To start: ask Claude to create a case, then exit, cd into the
 case directory, and restart Claude Code.
 ```
+
+Under Codex, the Gateway lines are "Backends: N of M answered", then
+each backend with OK or the failure its call returned. The Controls
+lines are Step 9c's and Step 10c's results:
+```
+Controls:
+  Codex controls: [OK/CODEX CONTROLS OFF/NOT in effect]
+  Sandbox:        deny_read [OK/NOT in effect]
+```
+Codex has no Step 8, so its summary never says "needs reboot".
 
 The summary block above is the COMPLETE output for Phase 4. Do NOT
 add Action Items, PATH instructions, sandbox fix commands, or any

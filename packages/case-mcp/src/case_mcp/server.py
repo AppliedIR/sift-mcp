@@ -456,7 +456,12 @@ def create_server() -> FastMCP:
         timeline entries, and TODO progress. Defaults to the active
         case if no case_id is provided. The counts are by status;
         `warning` names any APPROVED finding or event whose approval
-        doesn't verify (treat it as not approved)."""
+        doesn't verify (treat it as not approved). It reports the host
+        list: `host_list` {count, examiner, t} when the case has one,
+        `host_list_hint` when it has none, or `host_list_error` when it
+        can't be read."""
+        from sift_common.host_gate import host_list_status
+
         try:
             case_dir = _resolve_case_dir(case_id)
             result = _case_status_data(case_dir)
@@ -464,6 +469,7 @@ def create_server() -> FastMCP:
                                      timeline=_load_timeline(case_dir))  # fmt: skip
             if warning:
                 result["warning"] = warning
+            result.update(host_list_status(case_dir))
             # Layer 4: platform capabilities detection
             result.update(_build_platform_capabilities())
             return result

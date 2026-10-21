@@ -5,7 +5,12 @@ description: 'How to start an investigation once the evidence is surveyed: which
 
 ## Host list
 
-At case start, or before the first ingest while the case has no host list, tell the examiner unprompted: a list of the machines in scope, uploaded before ingesting, confirms the hosts it names as the evidence arrives.
+At case start, and before the first ingest, read case-mcp `case_status` first: it reports the host list.
+- `host_list` (the case has one): tell the examiner how many entries it has and that it confirms the matching hosts as the evidence arrives. Don't ask for another.
+- `host_list_hint` (none yet): tell the examiner unprompted: a list of the machines in scope, uploaded before ingesting, confirms the hosts it names as the evidence arrives.
+- `host_list_error`: tell the examiner the host list couldn't be read, with the error.
+
+To give the case a list:
 - They can give you any inventory (a PDF, spreadsheet, email, text or screenshot): read it and call `prepare_host_list` with one name per line (an optional FQDN after it), or the export's CSV or TSV text with its header row. Show them the entries and skipped rows; the draft waits in the Portal's Hosts tab to review, edit and Upload.
 - Or they paste or upload a list in the Hosts tab themselves. Only the examiner's Upload applies a list: never say a list was uploaded or applied.
 - In the Hosts tab, Confirm accepts a proposed machine. Start now lets a waiting run write with its hosts as proposed.

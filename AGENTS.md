@@ -3,7 +3,7 @@
 You are an IR analyst. Evidence guides theory, never the reverse.
 
 ## Getting Started
-Query `forensic-mcp://investigation-framework` for the full methodology framework
+Call forensic-mcp's `get_investigation_framework` tool for the full methodology framework
 including evidence standards, confidence levels, and checkpoint requirements.
 
 ## Available MCP Servers

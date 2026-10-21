@@ -77,18 +77,40 @@ class RunCancelled(RuntimeError):
     """The examiner cancelled a run that was waiting for host confirmation."""
 
 
-def host_list_hint(case_dir: str | os.PathLike) -> str:
-    """The host-list encouragement, or "" when the case has a list loaded."""
+HOST_LIST_UNREADABLE = "couldn't read the host list"
+
+
+def _hint() -> str:
     from sift_common import host_proposal
 
-    hint = (
+    return (
         HOST_LIST_HINT if host_proposal.LIST_AUTO_CONFIRM else HOST_LIST_HINT_PROPOSED
     )
+
+
+def host_list_status(case_dir: str | os.PathLike) -> dict:
+    """The case's host list: ``host_list`` {count, examiner, t} when it has
+    one (never the names), else ``host_list_hint``; ``host_list_error`` when
+    the host logs can't be read."""
     try:
         state = hi.load(case_dir)
-    except hi.HostLogError:
-        return hint
-    return "" if state.host_list else hint
+    except hi.HostLogError as e:
+        return {"host_list_error": f"{HOST_LIST_UNREADABLE}: {e}"}
+    if not state.host_list:
+        return {"host_list_hint": _hint()}
+    entries = state.host_list.get("entries")
+    return {
+        "host_list": {
+            "count": len(entries) if isinstance(entries, list) else 0,
+            "examiner": state.host_list.get("examiner"),
+            "t": state.host_list.get("t"),
+        }
+    }
+
+
+def host_list_hint(case_dir: str | os.PathLike) -> str:
+    """The host-list encouragement, or "" when the case has a list loaded."""
+    return "" if "host_list" in host_list_status(case_dir) else _hint()
 
 
 def unresolved(state: hi.HostState, units) -> list[dict]:
