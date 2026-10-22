@@ -350,6 +350,8 @@ body {
 /* Evidence panel */
 .evidence-panel { margin-top: 16px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .evidence-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.host-sec { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.host-sec::before { content: '\25BE  '; } .host-sec[aria-expanded="false"]::before { content: '\25B8  '; }
 .evidence-panel-header button { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 11px; }
 .evidence-item { border-bottom: 1px solid var(--border); }
 .evidence-item:last-child { border-bottom: none; }
@@ -659,7 +661,8 @@ body {
       <div id="hostsOps" style="margin-bottom:12px"></div>
       <div id="hostsRuns"></div>
       <div id="hostsProposed"></div>
-      <h4>Host list</h4>
+      <h4><button type="button" class="host-sec" data-host-act="section" aria-expanded="true" aria-controls="hostsSecList">Host list</button></h4>
+      <div id="hostsSecList">
       <div id="hostsListSub" style="color:var(--text-muted)"></div>
       <table class="data-table" id="hostsListTable" hidden>
         <thead>
@@ -681,7 +684,9 @@ body {
         <input type="file" id="hostListFile" accept=".txt,.csv,.tsv">
         <button class="btn" data-host-act="list">Upload</button>
       </details>
-      <h4>Impacted hosts</h4>
+      </div>
+      <h4><button type="button" class="host-sec" data-host-act="section" aria-expanded="true" aria-controls="hostsSecImpacted">Impacted hosts</button></h4>
+      <div id="hostsSecImpacted">
       <table class="data-table" id="impactedHostsTable">
         <thead>
           <tr>
@@ -695,8 +700,9 @@ body {
         </thead>
         <tbody id="impactedHostsBody"></tbody>
       </table>
+      </div>
       <div style="display:flex;gap:8px;align-items:center;margin:16px 0 8px">
-        <h4 style="margin:0">Machines in evidence</h4>
+        <h4 style="margin:0"><button type="button" class="host-sec" data-host-act="section" aria-expanded="true" aria-controls="hostsSecMachines">Machines in evidence</button></h4>
         <select id="hostsStateFilter" aria-label="State">
           <option value="">All states</option>
           <option value="confirmed">Confirmed</option>
@@ -704,6 +710,7 @@ body {
           <option value="new">New</option>
         </select>
       </div>
+      <div id="hostsSecMachines">
       <table class="data-table" id="hostsTable">
         <thead>
           <tr>
@@ -719,6 +726,7 @@ body {
       </table>
       <div id="hostsPager" style="margin:8px 0"></div>
       <div id="hostDetail"></div>
+      </div>
     </div>
   </div>
 
@@ -4692,6 +4700,13 @@ function hostGroupArgs(i) {
   return { pairs: g.pairs, canonical: input ? input.value : g.canonical };
 }
 
+// a section header's button shows or hides its section; nothing is kept across reloads
+function toggleHostSection(btn) {
+  var open = btn.getAttribute('aria-expanded') !== 'true';
+  btn.setAttribute('aria-expanded', String(open));
+  document.getElementById(btn.getAttribute('aria-controls')).hidden = !open;
+}
+
 document.addEventListener('click', async function(ev) {
   var el = ev.target.closest && ev.target.closest('[data-host-act]');
   if (!el) return;
@@ -4706,6 +4721,7 @@ document.addEventListener('click', async function(ev) {
   if (act === 'page') { hostsView.page = i; renderHosts(); }
   else if (act === 'ppage') { hostsView.ppage = i; renderHosts(); }
   else if (act === 'lpage') { hostsView.lpage = i; renderHosts(); }
+  else if (act === 'section') { toggleHostSection(el); }
   else if (act === 'impacted') {
     var h = hostsView.impacted[i];
     if (!h) return;
