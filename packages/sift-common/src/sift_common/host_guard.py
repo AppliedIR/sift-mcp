@@ -165,9 +165,7 @@ def _i3(state: hi.HostState, pairs, before=()) -> str:
     return ""
 
 
-def _join_reason(
-    state: hi.HostState, mid, canonical: str, had, added, planned=frozenset()
-) -> str:
+def _join_reason(state: hi.HostState, mid, canonical: str, had, added, planned) -> str:
     """Why an automatic join of the names `added` into the existing machine
     `mid` (holding `had`) is refused, or "": a name with a domain never
     joins a machine holding a name in another domain (through its bare names
@@ -346,8 +344,10 @@ def _item_reason(
                 return f"the unit is flagged now ({flag}); the examiner decides"
     if automatic:
         added = [p for p in pairs if p not in had]
+        name = v.canonical(target) if target else canonical
+        planned = set(added)  # the item's own pairs, for the machine, count as on it
         return _i3(v, result, had) or _join_reason(
-            v.s, target, v.canonical(target) if target else canonical, had, added
+            v.s, target, name, had, added, planned
         )
     return ""
 
