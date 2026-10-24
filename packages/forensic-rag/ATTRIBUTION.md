@@ -12,7 +12,7 @@ respective licenses.
 | Atomic Red Team | [redcanaryco/atomic-red-team](https://github.com/redcanaryco/atomic-red-team) | [MIT](https://opensource.org/licenses/MIT) | 1,770 |
 | CAPEC | [mitre/cti](https://github.com/mitre/cti) | [CAPEC Terms of Use](https://capec.mitre.org/about/termsofuse.html) | 1,492 |
 | Chainsaw Rules | [WithSecureLabs/chainsaw](https://github.com/WithSecureLabs/chainsaw) | [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) | 112 |
-| CISA KEV | [cisa.gov](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | U.S. Government Public Data | 1,529 |
+| CISA KEV | [cisa.gov](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 1,529 |
 | Elastic Detection Rules | [elastic/detection-rules](https://github.com/elastic/detection-rules) | [Elastic License v2](https://www.elastic.co/licensing/elastic-license) | 1,645 |
 | Forensic Artifacts | [ForensicArtifacts/artifacts](https://github.com/ForensicArtifacts/artifacts) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 731 |
 | GTFOBins | [GTFOBins/GTFOBins.github.io](https://github.com/GTFOBins/GTFOBins.github.io) | [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) | 477 |
