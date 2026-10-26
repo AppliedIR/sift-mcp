@@ -106,7 +106,6 @@ def _run(
     try:
         proc = subprocess.Popen(
             argv,
-            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
