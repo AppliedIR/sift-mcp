@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import os
 import stat
@@ -105,15 +106,14 @@ def create_server() -> FastMCP:
     """Create and configure the sift MCP server with core tools."""
     server = FastMCP("sift-mcp", instructions=_INSTRUCTIONS)
     audit = AuditWriter(mcp_name="sift-mcp")
-    # runs, and the version probes check_tools starts, one at a time
-    one_at_a_time = asyncio.Lock()
-
-    def tool(limiter: asyncio.Lock | None = None):  # each in a worker thread
-        return lambda fn: server.tool()(offload(fn, limiter))
+    # each tool runs in a worker thread; runs, and the version probes
+    # check_tools starts, one at a time
+    one_at_a_time = functools.partial(offload, limiter=asyncio.Lock())
 
     # --- Discovery ---
 
-    @tool()
+    @server.tool()
+    @offload
     def list_available_tools(category: str = "") -> dict:
         """List forensic tools available on this SIFT workstation, with availability status."""
         from sift_mcp.tools.discovery import list_available_tools as _list
@@ -123,7 +123,8 @@ def create_server() -> FastMCP:
         tools = _list(category=category or None)
         return {"tools": tools, "count": len(tools)}
 
-    @tool()
+    @server.tool()
+    @offload
     def get_tool_help(tool_name: str, subcommand: str = "") -> dict:
         """The installed tool's version, its own help, and the tested recipes
         for that version, with caveats. Call it before building the tool's
@@ -163,7 +164,8 @@ def create_server() -> FastMCP:
             result["warning"] = "Audit write failed — action not recorded"
         return result
 
-    @tool(one_at_a_time)
+    @server.tool()
+    @one_at_a_time
     def check_tools(tool_names: list[str] | None = None) -> dict:
         """Check which tools are installed and available on this system."""
         from sift_mcp.tools.discovery import check_tools as _check
@@ -173,7 +175,8 @@ def create_server() -> FastMCP:
 
         return _check(tool_names=tool_names)
 
-    @tool()
+    @server.tool()
+    @offload
     def suggest_tools(artifact_type: str, question: str = "") -> dict:
         """Suggest tools for analyzing a specific artifact type. Uses forensic-knowledge."""
         from sift_mcp.tools.discovery import suggest_tools as _suggest
@@ -190,7 +193,8 @@ def create_server() -> FastMCP:
 
     # --- Generic Execution ---
 
-    @tool(one_at_a_time)
+    @server.tool()
+    @one_at_a_time
     def run_command(
         command: list[str],
         purpose: str,
