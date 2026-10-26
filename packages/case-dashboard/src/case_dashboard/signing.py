@@ -461,10 +461,13 @@ def make_plan(case_dir, case_id, entries, lists, examiner, public, now, head,
         retired=credentials.retired_fingerprints(examiner), prior_chains=refs or None,
         case_uuid=load_case_meta(case_dir).get("case_uuid"),
     )  # fmt: skip
-    # an event held back: id and finding; an IOC left DRAFT: also its citing findings
+    # an event held back: id and finding; an IOC held: also its citing findings,
+    # its status now and the rule's
     held = [
         {"id": h[0], "coupled_from": h[1],
-         **({"citing": [{"id": f, "status_after": a} for f, a in h.citing]}
+         **({"citing": [{"id": f, "status_after": a} for f, a in h.citing],
+             "status": getattr(h, "status", "") or "DRAFT",
+             "target": getattr(h, "target", "") or "DRAFT"}
             if getattr(h, "citing", ()) else {})}
         for h in held
     ]  # fmt: skip
