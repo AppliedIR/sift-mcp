@@ -141,8 +141,11 @@ def test_an_accepted_iocs_shape_stores_one_record_per_ioc(case, iocs, stored):  
 
 # --- a file name whose extension is no top-level domain ----------------------
 
+FILE_EXTS = ["bak", "bin", "cfg", "cpl", "dat", "db", "dmp", "doc", "docx", "drv", "evtx",
+             "gz", "hta", "img", "inf", "ini", "iso", "jar", "jse", "json", "lnk", "log",
+             "ocx", "pdf", "rar", "tar", "tmp", "txt", "vbe", "wsf", "xls", "xlsx", "xml"]  # fmt: skip
 FILE_NAMES = ["GadgetToJScript.bin", "GadgetToJScript.BIN", "GadgetToJScript[.]bin",
-              "payload.tar.gz", "a.b.bin", "x.dat", "x.tmp", "x.log", "x.lnk"]  # fmt: skip
+              "payload.tar.gz", "a.b.bin"] + [f"x.{e}" for e in FILE_EXTS]  # fmt: skip
 KEPT = {  # each keeps its type: a path, a TLD extension, an executable
     "C:\\Temp\\x.bin": "file:path", "/tmp/x.bin": "file:path",
     "evil.zip": "domain-name", "example.com": "domain-name", "x.sh": "domain-name",
