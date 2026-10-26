@@ -555,20 +555,28 @@ def _report_iocs(case_dir: Path, view: dict) -> list[str]:
     longest first (a URL before the host it holds): the values in the approved
     findings' `iocs` fields, and the case's IOC records approved or cited by
     an approved finding. A name a finding's text merely mentions isn't one.
-    Hashes, paths and the rest aren't. vhir-cli's `report --save` gathers
-    them the same way, with the same functions (vhir_cli.defang)."""
+    Hashes, paths and the rest aren't, nor is a value the examiner rejected
+    (an IOC record REJECTED and manually reviewed), whatever cites it.
+    vhir-cli's `report --save` gathers them the same way, with the same
+    functions (vhir_cli.defang)."""
     approved = {f.get("id") for f in view.get("findings") or []}
     kept: set[str] = set()
+    records = [i for i in load_iocs(case_dir) if isinstance(i, dict)]
+    rejected = {  # compared as gathered: normalised, then case-folded
+        v.casefold() for i in records
+        if i.get("status") == "REJECTED" and i.get("manually_reviewed") is True
+        and (v := _network_ioc(i.get("value", ""), True)) is not None
+    }  # fmt: skip
 
     def take(value, typed: bool) -> None:
-        if (v := _network_ioc(value, typed)) is not None:
+        v = _network_ioc(value, typed)
+        if v is not None and v.casefold() not in rejected:
             kept.add(v)
 
     for value, typed in _structured_iocs(view.get("findings") or []):
         take(value, typed)
     case_iocs = [  # the case's IOCs that one of the approved findings cites
-        i for i in load_iocs(case_dir)
-        if isinstance(i, dict) and isinstance(i.get("source_findings"), list)
+        i for i in records if isinstance(i.get("source_findings"), list)
         and approved.intersection(map(str, i["source_findings"]))
     ]  # fmt: skip
     for ioc in [*(view.get("iocs") or []), *case_iocs]:  # approved, or so cited

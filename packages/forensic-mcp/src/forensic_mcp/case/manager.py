@@ -778,6 +778,17 @@ def _detect_ioc_type(value: str) -> tuple[str, str]:
     )
     if "." in v and v.lower().endswith(_EXE_EXTS) and "/" not in v and "\\" not in v:
         return "file:name", "host"
+    # File name whose extension is no top-level domain (x.bin, payload.tar.gz).
+    # An extension that is also a TLD (.zip, .sh, .com) stays a domain below.
+    _FILE_EXTS = {
+        "bak", "bin", "cfg", "cpl", "dat", "db", "dmp", "doc", "docx", "drv",
+        "evtx", "gz", "hta", "img", "inf", "ini", "iso", "jar", "jse", "json",
+        "lnk", "log", "ocx", "pdf", "rar", "tar", "tmp", "txt", "vbe", "wsf",
+        "xls", "xlsx", "xml",
+    }  # fmt: skip
+    ext = v.rpartition(".")[2].casefold()
+    if "." in v and ext in _FILE_EXTS and "/" not in v and "\\" not in v:
+        return "file:name", "host"
 
     # Domain name
     if re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9-]*\.)+[a-zA-Z]{2,}$", v):
@@ -2145,6 +2156,7 @@ class CaseManager:
             raw_iocs = [
                 v
                 for vals in raw_iocs.values()
+                if vals is not None
                 for v in (vals if isinstance(vals, list) else [vals])
             ]
         if not isinstance(raw_iocs, list):
