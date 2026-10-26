@@ -3,6 +3,11 @@
 import argparse
 import logging
 
+from sift_common import isolate_stdio_transport
+
+if __name__ == "__main__":
+    isolate_stdio_transport()  # before any of this server's own imports
+
 from forensic_mcp.oplog import setup_logging
 from forensic_mcp.server import create_server
 

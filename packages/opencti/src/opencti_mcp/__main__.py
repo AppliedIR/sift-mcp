@@ -30,6 +30,11 @@ import asyncio
 import logging
 import sys
 
+from sift_common import isolate_stdio_transport
+
+if __name__ == "__main__":
+    isolate_stdio_transport()  # before any of this server's own imports
+
 from .client import OpenCTIClient
 from .config import Config
 from .errors import ConfigurationError

@@ -3,11 +3,44 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 # The system's folders and Valhuntir's own keys: never read as evidence, even
 # through a registered link (sift-mcp blocks them for every tool's input too)
 SYSTEM_DIRS = ("/etc", "/proc", "/sys", "/dev", "/boot", "/var/lib/vhir")
+
+_transport_isolated = False
+
+
+def isolate_stdio_transport() -> None:
+    """Keep a stdio server's MCP channel away from its child processes.
+
+    The channel arrives on fd 0 and fd 1, which every child inherits unless
+    its spawn site says otherwise; a child that reads stdin would read the
+    client's requests. This moves the channel onto new descriptors that are
+    closed on exec, rebinds sys.stdin and sys.stdout to them (the MCP stdio
+    transport reads and writes those), and leaves /dev/null on fd 0 and
+    stderr on fd 1. Call it first in the server's entry point. A second call
+    changes nothing.
+    """
+    global _transport_isolated
+    if _transport_isolated:
+        return
+    sys.stdout.flush()
+    # os.dup makes descriptors that are not inherited (closed on exec).
+    transport_in = os.dup(0)
+    transport_out = os.dup(1)
+    devnull = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(devnull, 0)
+    os.close(devnull)
+    os.dup2(2, 1)
+    old_in, old_out = sys.stdin, sys.stdout
+    sys.stdin = open(transport_in, encoding=old_in.encoding, errors=old_in.errors)
+    sys.stdout = open(
+        transport_out, "w", encoding=old_out.encoding, errors=old_out.errors
+    )
+    _transport_isolated = True
 
 
 def resolve_case_dir() -> str:
