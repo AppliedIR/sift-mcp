@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import functools
+import inspect
 import os
 from pathlib import Path
 
@@ -51,3 +54,30 @@ def resolve_share_path(relative_path: str) -> Path | None:
     if not share_root:
         return None
     return Path(share_root) / relative_path
+
+
+def offload(fn, limiter: asyncio.Lock | None = None):
+    """A sync tool runs in a worker thread, so the server's event loop keeps
+    answering pings and other calls while it runs. Under ``limiter`` its calls
+    run one at a time, and the limiter is held until the thread ends: a
+    cancelled caller returns at once, but a later call never overlaps the
+    thread it left running. An async tool is returned as it is."""
+    if inspect.iscoroutinefunction(fn):
+        return fn
+
+    def release(worker):
+        if not worker.cancelled():
+            worker.exception()  # retrieved here: its caller may be gone
+        limiter.release()
+
+    @functools.wraps(fn)
+    async def run(*args, **kwargs):
+        call = functools.partial(fn, *args, **kwargs)
+        if limiter is None:
+            return await asyncio.to_thread(call)
+        await limiter.acquire()
+        worker = asyncio.ensure_future(asyncio.to_thread(call))
+        worker.add_done_callback(release)  # when the thread ends, not the caller
+        return await asyncio.shield(worker)
+
+    return run

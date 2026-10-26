@@ -12,7 +12,12 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.shared.exceptions import McpError
 from mcp.types import CONNECTION_CLOSED, Tool
 
-from sift_gateway.backends.base import MCPBackend, ToolResult, _version_of
+from sift_gateway.backends.base import (
+    MCPBackend,
+    ToolResult,
+    _version_of,
+    call_timeout,
+)
 
 if sys.version_info < (3, 11):
     from exceptiongroup import BaseExceptionGroup
@@ -230,6 +235,8 @@ class StdioMCPBackend(MCPBackend):
                 self._session.call_tool(name, arguments), timeout=_TOOL_CALL_TIMEOUT
             )
             return ToolResult(result.content, is_error=bool(result.isError))
+        except asyncio.TimeoutError:  # the child may still be running it: alive
+            raise call_timeout(self.name, name, _TOOL_CALL_TIMEOUT) from None
         except Exception as exc:
             if _gone(exc):  # restarted lazily by the gateway's next call
                 await self._reset_if_current(

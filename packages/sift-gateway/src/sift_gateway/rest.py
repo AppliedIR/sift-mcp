@@ -18,7 +18,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from sift_gateway.auth import resolve_examiner
-from sift_gateway.backends.base import in_own_task
+from sift_gateway.backends.base import CallTimeout, in_own_task
 from sift_gateway.backends.http_backend import HttpMCPBackend
 from sift_gateway.join import (
     _join_code_lock,
@@ -154,6 +154,11 @@ async def call_tool(request: Request) -> JSONResponse:
                 "backend": gateway._tool_map[tool_name],
                 "result": serialized,
             }
+        )
+    except CallTimeout as exc:
+        return JSONResponse(
+            {"error": str(exc), "tool": tool_name, "error_type": "CallTimeout"},
+            status_code=504,
         )
     except KeyError as exc:
         logger.error("Tool call failed — tool not in map: %s — %s", tool_name, exc)

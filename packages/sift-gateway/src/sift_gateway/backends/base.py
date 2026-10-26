@@ -1,9 +1,12 @@
 """Abstract base class for MCP backends."""
 
 import asyncio
+import logging
 from abc import ABC, abstractmethod
 
 from mcp.types import Tool
+
+logger = logging.getLogger(__name__)
 
 
 class ToolResult(list):
@@ -12,6 +15,24 @@ class ToolResult(list):
     def __init__(self, content=(), is_error: bool = False):
         super().__init__(content)
         self.is_error = is_error
+
+
+class CallTimeout(asyncio.TimeoutError):
+    """A tool call with no answer by its backend's deadline. A timeout, never a
+    lost connection: the call may still be running, so the backend is neither
+    reset nor sent it again."""
+
+
+def call_timeout(backend: str, tool: str, seconds: float) -> CallTimeout:
+    """The text every route gives the client when a call passes its backend's
+    deadline, logged once here."""
+    text = (
+        f"Backend {backend}: {tool} gave no answer in {seconds}s; it wasn't sent "
+        "again, as it may still be running or waiting to start. Check the case "
+        "audit before running it again."
+    )
+    logger.error("Tool call deadline passed: %s", text)
+    return CallTimeout(text)
 
 
 async def in_own_task(coro):

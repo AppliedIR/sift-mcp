@@ -35,6 +35,7 @@ from sift_common.instructions import GATEWAY as _GATEWAY_INSTRUCTIONS
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from sift_gateway.backends.base import CallTimeout
 from sift_gateway.rate_limit import check_rate_limit
 
 if sys.version_info < (3, 11):
@@ -273,6 +274,8 @@ def create_mcp_server(gateway: Any) -> Server:
             return _error(
                 f"Error: {gateway.unserved_text(name) or f'unknown tool {name}'}"
             )
+        except CallTimeout as e:  # before OSError, which it is from Python 3.11
+            return _error(str(e))
         except (RuntimeError, ConnectionError, OSError) as e:
             logger.error("MCP call_tool backend error for %s: %s", name, e)
             return _error(f"Error: {name} failed: {e}")
@@ -392,6 +395,8 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
         _start = time.monotonic()
         try:
             result = await backend.call_tool(name, arguments)
+        except CallTimeout as e:  # before OSError, which it is from Python 3.11
+            return _error(str(e))
         except (RuntimeError, ConnectionError, OSError) as e:
             logger.error(
                 "Per-backend call_tool error for %s/%s: %s", backend_name, name, e
