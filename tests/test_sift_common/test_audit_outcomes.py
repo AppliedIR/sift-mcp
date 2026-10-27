@@ -12,7 +12,9 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import threading
+from pathlib import Path
 
 import pytest
 import sift_common
@@ -85,6 +87,36 @@ def test_a_resolution_taken_earlier_decides_the_outcome(home, tmp_path):
     )
 
 
+def test_an_audit_folder_from_the_environment_keeps_the_case(
+    home, tmp_path, monkeypatch
+):
+    case = _case(tmp_path)
+    _point(home, case)
+    folder = tmp_path / "elsewhere" / "audit"
+    monkeypatch.setenv("VHIR_AUDIT_DIR", str(folder))
+    writer = AuditWriter("test-mcp")
+    res = writer.resolve()
+    assert (res.outcome, res.path, res.audit_dir) == ("case", str(case), str(folder))
+    out = _record(writer, case_dir=res)
+    assert out.kind == "recorded" and _entries(case / "audit") == []
+    assert [e["case_id"] for e in _entries(folder)] == ["case-a"]
+
+
+def test_an_unwritable_audit_folder_from_the_environment_is_write_failed(
+    home, tmp_path, monkeypatch
+):
+    parent = tmp_path / "locked"
+    parent.mkdir()
+    parent.chmod(0o500)
+    monkeypatch.setenv("VHIR_AUDIT_DIR", str(parent / "a" / "audit"))
+    try:
+        out = _record(AuditWriter("test-mcp"))
+    finally:
+        parent.chmod(0o700)
+    assert out.kind == "write_failed" and out.detail.startswith("[Errno 13]"), out
+    assert list(parent.iterdir()) == []
+
+
 def test_an_empty_case_dir_is_no_case(home, tmp_path):
     _point(home, _case(tmp_path))
     assert _record(AuditWriter("test-mcp"), case_dir="").kind == "no_case"
@@ -119,6 +151,38 @@ def test_a_resolver_with_nothing_falls_through_to_env_then_pointer(
     assert _record(writer).kind == "recorded" and _entries(env_case / "audit")
     monkeypatch.setenv("VHIR_CASE_DIR", str(tmp_path / "nowhere"))
     assert _record(writer).kind == "recorded" and _entries(pointed / "audit")
+
+
+@pytest.mark.parametrize("via", ["case_dir", "pointer", "env"])
+def test_a_fifo_case_yaml_is_case_gone_and_never_read(via, home, tmp_path, monkeypatch):
+    case = _case(tmp_path)
+    (case / "CASE.yaml").unlink()
+    os.mkfifo(case / "CASE.yaml")  # no writer: a read would wait forever
+    kw = {"case_dir": str(case)} if via == "case_dir" else {}
+    _point(home, case)
+    if via == "env":
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case))
+    got: dict = {}
+    t = threading.Thread(target=lambda: got.update(out=_record(AuditWriter("test-mcp"), **kw)),
+                         daemon=True)  # fmt: skip
+    t.start()
+    t.join(5)
+    if t.is_alive():
+        os.close(os.open(case / "CASE.yaml", os.O_WRONLY | os.O_NONBLOCK))  # its EOF
+        pytest.fail("the CASE.yaml FIFO was read")
+    assert (got["out"].kind, got["out"].detail) == ("case_gone", str(case))
+    assert _entries(case / "audit") == []
+
+
+def test_a_case_yaml_removed_after_the_start_creates_nothing(home, tmp_path):
+    case = _case(tmp_path, audit=False)
+    _point(home, case)
+    writer = AuditWriter("test-mcp")
+    res = writer.resolve()
+    (case / "CASE.yaml").unlink()  # the folder stays
+    out = _record(writer, case_dir=res)
+    assert (out.kind, out.detail) == ("case_gone", str(case))
+    assert list(case.iterdir()) == []
 
 
 @pytest.mark.parametrize("pointer", [None, "", "   \n"])
@@ -281,3 +345,9 @@ def test_a_new_case_records_from_its_first_call(home, tmp_path, monkeypatch):
     assert {"case_init", "log_reasoning"} <= set(tools)
     tools = [e["tool"] for e in _entries(bare / "audit", "case-mcp")]
     assert {"case_activate", "log_reasoning"} <= set(tools)
+
+
+def test_its_version_is_past_the_last_one_without_the_outcomes():
+    pyproject = Path(__file__).parents[2] / "packages/sift-common/pyproject.toml"
+    version = re.search(r'^version = "([\d.]+)"', pyproject.read_text(), re.M)
+    assert tuple(int(p) for p in version.group(1).split(".")) > (0, 6, 5, 1)

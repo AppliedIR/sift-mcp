@@ -14,7 +14,7 @@ import re
 import stat
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -68,12 +68,15 @@ _UNRECORDED = {
 
 @dataclass(frozen=True)
 class CaseResolution:
-    """Where a call's entries go, taken once: "case" or "audit_dir" (with its
-    path), "no_case", "case_gone" (the path) or "write_failed" (the reason)."""
+    """A call's case, taken once: "case" (its path), "no_case", "case_gone"
+    (the path) or "write_failed" (the reason). `audit_dir`, when set, is the
+    folder its entries go to instead of the case's own; the case still names
+    the call's other folders and its id."""
 
     outcome: str
     path: str = ""
     reason: str = ""
+    audit_dir: str = ""
 
 
 @dataclass(frozen=True)
@@ -100,7 +103,7 @@ class AuditOutcome:
 
 
 def is_case(path: str | Path) -> bool:
-    return (Path(path) / "CASE.yaml").exists()
+    return (Path(path) / "CASE.yaml").is_file()  # a FIFO there would block a read
 
 
 def _as_case(path: str) -> CaseResolution:
@@ -163,39 +166,43 @@ class AuditWriter:
     def resolve(
         self, case_dir: str | Path | CaseResolution | None = None
     ) -> CaseResolution:
-        """Where this call's entries go, taken once (a caller may take it at
-        the start and pass it back): explicit audit_dir > VHIR_AUDIT_DIR >
-        `case_dir` ("" for none) > the server's own case resolver >
-        VHIR_CASE_DIR > the active case pointer."""
-        if folder := self._explicit_audit_dir or os.environ.get("VHIR_AUDIT_DIR"):
-            return CaseResolution("audit_dir", folder)
+        """This call's case, taken once (a caller may take it at the start and
+        pass it back): `case_dir` ("" for none) > the server's own case
+        resolver > VHIR_CASE_DIR > the active case pointer. An explicit
+        audit_dir, else VHIR_AUDIT_DIR, is where its entries go instead."""
         if isinstance(case_dir, CaseResolution):
             return case_dir
         if case_dir is None and self._case_dir_resolver:
             case_dir = self._case_dir_resolver() or None
         if case_dir is None:
-            return resolve_active_case()
-        return _as_case(str(case_dir)) if case_dir else CaseResolution("no_case")
+            res = resolve_active_case()
+        else:
+            res = _as_case(str(case_dir)) if case_dir else CaseResolution("no_case")
+        folder = self._explicit_audit_dir or os.environ.get("VHIR_AUDIT_DIR")
+        return replace(res, audit_dir=folder) if folder else res
 
     def _make_audit_dir(self, res: CaseResolution) -> Path | AuditOutcome:
         """The resolution's audit folder, created now only inside a case that
         is one at this moment (or under an explicit audit folder's parent)."""
-        if res.outcome not in ("case", "audit_dir"):
+        if res.audit_dir:
+            path = Path(res.audit_dir)
+            root, name = path.parent, path.name
+        elif res.outcome == "case":
+            root, name = Path(res.path), "audit"
+            path = root / name
+        else:
             return AuditOutcome(res.outcome, detail=res.path or res.reason)
-        path = Path(res.path)
-        root, name = (
-            (path, "audit") if res.outcome == "case" else (path.parent, path.name)
-        )
+        env = res.audit_dir and not self._explicit_audit_dir  # VHIR_AUDIT_DIR
         try:
-            if res.outcome == "audit_dir" and not self._explicit_audit_dir:
-                path.mkdir(parents=True, exist_ok=True)  # VHIR_AUDIT_DIR: not a case
+            if env:  # not a case: made as needed
+                path.mkdir(parents=True, exist_ok=True)
                 return path
-            if res.outcome == "case" and not is_case(path):
+            if not res.audit_dir and not is_case(root):
                 return AuditOutcome("case_gone", detail=res.path)
             return mkdir_in_case(root, name)
-        except FileNotFoundError:
-            return AuditOutcome("case_gone", detail=str(root))
         except OSError as e:
+            if isinstance(e, FileNotFoundError) and not env:
+                return AuditOutcome("case_gone", detail=str(root))
             logger.warning("Cannot create audit directory %s: %s", path, e)
             return AuditOutcome("write_failed", detail=str(e))
 
@@ -287,7 +294,7 @@ class AuditWriter:
 
         if (error := self._append(entry, audit_dir)) is None:
             return AuditOutcome(audit_id=audit_id)
-        if res.outcome == "case" and not is_case(res.path):
+        if not res.audit_dir and res.outcome == "case" and not is_case(res.path):
             return AuditOutcome("case_gone", detail=res.path)
         return AuditOutcome("write_failed", detail=str(error))
 

@@ -227,8 +227,6 @@ SITES = [
     ("run_command SiftError", "run_command", None),
     ("run_command OSError", "run_command", None),
     ("run_command other error", "run_command", None),
-    ("forensic-rag", "search", _wrapped("rag_mcp.server", "RAGServer", "forensic-rag-mcp",
-                                        {"results": []})),
     ("opencti", "search", _wrapped("opencti_mcp.server", "OpenCTIMCPServer", "opencti-mcp",
                                    {"results": []})),
     ("windows-triage", "search", _wrapped("windows_triage.server", "WindowsTriageServer",
@@ -276,9 +274,9 @@ def test_each_site_answers_each_outcome_from_the_table(site, kind, case, monkeyp
 
 def test_an_earlier_warning_is_kept_and_the_note_follows_it(case, monkeypatch):
     _fix(monkeypatch, "write_failed", {"search"})
-    rag = _wrapped("rag_mcp.server", "RAGServer", "forensic-rag-mcp",
+    cti = _wrapped("opencti_mcp.server", "OpenCTIMCPServer", "opencti-mcp",
                    {"results": [], "warning": "index is stale"})(case)  # fmt: skip
-    assert rag["warning"] == f"index is stale | {FAILED}"
+    assert cti["warning"] == f"index is stale | {FAILED}"
     _fix(monkeypatch, "write_failed", {"record_finding"})
     finding = {**FINDING, "challenged": {"outcome": "stands"}}  # malformed: warned
     reply = _forensic("record_finding", finding=finding)(case)
@@ -319,12 +317,28 @@ def test_a_rejected_finding_carries_no_audit_note(kind, case, monkeypatch):
 # --- the census: the texts live in one place ------------------------------
 
 SRC = Path(__file__).resolve().parents[2] / "packages"
-OLD = ("action not recorded", "reasoning not recorded", "for shell evidence")
-NEW = (
-    "Audit write failed",
-    "not recorded: no case",
-    "is no longer a case (no CASE.yaml)",
-)
+NEEDLES = ("not recorded", "_NOT_RECORDED", "Audit write failed",
+           "is no longer a case (no CASE.yaml)")  # fmt: skip
+# Lines that say "not recorded" of something other than a call's entry
+ALLOWED = {
+    'report-mcp/src/report_mcp/server.py: _TEXT_ONLY = "Found in text, not recorded"',
+    "sift-common/src/sift_common/file_identity.py:"
+    ' logger.warning("%s (%s) was not recorded", tool, job_id)',
+    "sift-common/src/sift_common/host_gate.py: if not recorded:",
+    'sift-common/src/sift_common/provenance.py: and not recorded.startswith("pending:")',
+    'sift-common/src/sift_common/provenance.py: return _broken("no-recorded-origin",'
+    " f\"{real} (SHA-256 {sha or 'not recorded'}) \"",
+    "sift-common/src/sift_common/provenance.py:"
+    " f\"{ref['source_version'] or 'version not recorded'}, op {op}\")  # fmt: skip",
+    "sift-gateway/src/sift_gateway/reference.py: except Exception as e:"
+    "  # noqa: BLE001 -- an unreadable case: answered, not recorded",
+    "sift-gateway/src/sift_gateway/reference.py:"
+    ' logger.warning("reference call %s not recorded: %s", tool, e)',
+    "sift-gateway/src/sift_gateway/server.py:"
+    ' "%d pending %s hashes not recorded: no active case",',
+    "sift-gateway/src/sift_gateway/server.py:"
+    ' logger.error("Pending %s hashes not recorded: %s", backend_name, exc)',
+}
 
 
 def _census() -> list[str]:
@@ -332,12 +346,10 @@ def _census() -> list[str]:
     for path in sorted(SRC.glob("*/src/**/*.py")):
         if path.name == "audit.py" and path.parent.name == "sift_common":
             continue  # the table's own module
-        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if "logger." in line or "logging." in line:
-                continue
-            if any(t in line for t in OLD + NEW):
-                hits.append(f"{path.relative_to(SRC)}:{n}: {line.strip()}")
-    return hits
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if any(t in line for t in NEEDLES):
+                hits.append(f"{path.relative_to(SRC)}: {line.strip()}")
+    return [h for h in hits if h not in ALLOWED]
 
 
 def test_no_site_writes_an_audit_outcome_text_of_its_own():

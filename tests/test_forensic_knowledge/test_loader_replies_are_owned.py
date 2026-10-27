@@ -64,9 +64,13 @@ def _mutate(obj) -> int:
     return n
 
 
+@pytest.mark.parametrize("warm", [False, True], ids=["first read", "cached"])
 @pytest.mark.parametrize("name", GETTERS)
-def test_changing_a_reply_never_changes_a_later_one(name):
+def test_changing_a_reply_never_changes_a_later_one(name, warm):
     getter, args = getattr(loader, name), ARGS.get(name, ())
+    loader.clear_cache()
+    if warm:
+        getter(*args)  # the reply below comes from the cache
     reply = getter(*args)
     assert reply, f"{name}{args} answered nothing to change"
     if not isinstance(reply, (dict, list)):

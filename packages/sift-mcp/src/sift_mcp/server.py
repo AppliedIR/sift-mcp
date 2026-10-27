@@ -250,7 +250,7 @@ def create_server() -> FastMCP:
         # active when the command ends
         res = audit.resolve()
         case_dir = res.path if res.outcome == "case" else ""
-        op_id = audit._next_audit_id() if res.outcome in ("case", "audit_dir") else None
+        op_id = audit._next_audit_id() if case_dir or res.audit_dir else None
         # In a case the run works in its own folder, named by its audit id and
         # created empty first: what it writes there is its output, not the
         # gateway's. Without a case, or with it gone, it keeps the process's folder

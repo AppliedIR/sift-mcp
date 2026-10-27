@@ -17,6 +17,7 @@ import pathlib
 import select
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -185,9 +186,8 @@ def test_no_case_in_process_says_so_and_warns_nothing(home, tmp_path):
     _no_case(_call(rms.create_server(), "generate_report", case_id="case-x"))
     _no_case(_wrapped("windows_triage.server", "WindowsTriageServer",
                       "windows-triage-mcp", {"verdict": "UNKNOWN"}))  # fmt: skip
-    _no_case(
-        _wrapped("rag_mcp.server", "RAGServer", "forensic-rag-mcp", {"results": []})
-    )
+    _no_case(_wrapped("opencti_mcp.server", "OpenCTIMCPServer", "opencti-mcp",
+                      {"results": []}))  # fmt: skip
 
 
 def test_a_case_activated_later_records_without_a_note(home, tmp_path, stdio):
@@ -311,6 +311,67 @@ def test_a_run_whose_case_moved_before_it_started_says_case_gone(home, tmp_path)
     reply = _call(_sift(), "run_command", **_py("print('ran')"))
     assert reply["success"] is True, reply
     assert reply.get("warning") == _gone(moved) and "audit" not in reply, reply
+
+
+@pytest.mark.parametrize("via", ["pointer", "VHIR_CASE_DIR"])
+def test_a_run_whose_case_yaml_is_a_fifo_says_case_gone_at_once(
+    via, home, tmp_path, monkeypatch
+):
+    case = _case(tmp_path)
+    (case / "CASE.yaml").unlink()
+    os.mkfifo(case / "CASE.yaml")  # no writer: a read would wait forever
+    _point(home, case)
+    if via == "VHIR_CASE_DIR":
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case))
+    server = _sift()
+    for _ in range(2):
+        got: dict = {}
+        t = threading.Thread(daemon=True, target=lambda got=got: got.update(
+            reply=_call(server, "run_command", command=["/bin/echo", "hi"], purpose="t")))  # fmt: skip
+        t.start()
+        t.join(5)
+        if t.is_alive():
+            os.close(
+                os.open(case / "CASE.yaml", os.O_WRONLY | os.O_NONBLOCK)
+            )  # its EOF
+            pytest.fail("the CASE.yaml FIFO was read")
+        reply = got["reply"]
+        assert reply["success"] is True and reply["data"]["stdout"] == "hi\n", reply
+        assert reply.get("warning") == _gone(case) and "audit" not in reply, reply
+
+
+@pytest.mark.parametrize("via", ["pointer", "VHIR_CASE_DIR"])
+def test_an_audit_folder_from_the_environment_moves_only_the_entry(
+    via, home, tmp_path, monkeypatch
+):
+    """The run's folder, its output, the registry link and the case id are
+    the case's; only the entry goes to VHIR_AUDIT_DIR."""
+    case = _case(tmp_path)
+    evidence = tmp_path / "evidence.bin"
+    evidence.write_bytes(b"x")
+    registered = {"files": [{"path": str(evidence), "sha256": "ab" * 32}]}
+    (case / "evidence.json").write_text(json.dumps(registered))
+    folder = tmp_path / "elsewhere" / "audit"
+    monkeypatch.setenv("VHIR_AUDIT_DIR", str(folder))
+    monkeypatch.chdir(tmp_path)  # a run without its case writes here, not in the tree
+    if via == "pointer":
+        _point(home, case)
+    else:
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case))
+    code = "__import__('shutil').copy(__import__('sys').argv[1], 'out.bin')"
+    reply = _call(_sift(), "run_command", command=[sys.executable, "-c", code,
+                  str(evidence)], purpose="test")  # fmt: skip
+    assert reply["success"] is True and "warning" not in reply, reply
+    assert "audit" not in reply, reply
+    op = case / "extractions" / reply["audit_id"]
+    assert (op / "out.bin").read_bytes() == b"x"
+    (entry,) = [
+        json.loads(x) for x in (folder / "sift-mcp.jsonl").read_text().splitlines()
+    ]
+    assert (entry["audit_id"], entry["case_id"]) == (reply["audit_id"], "case-a")
+    assert entry["input_sha256s"] == ["ab" * 32], entry
+    assert [o["path"] for o in entry["outputs"]] == [str(op / "out.bin")], entry
+    assert not (case / "audit" / "sift-mcp.jsonl").exists()
 
 
 # --- a pointer that isn't text -----------------------------------------------
