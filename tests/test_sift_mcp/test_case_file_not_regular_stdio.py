@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 TIMEOUT = 8.0
-WARNING = "Audit write failed — action not recorded"
+WARNING = "Audit write failed — not recorded: "
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="FIFOs are POSIX")
 
@@ -160,7 +160,7 @@ def test_a_fifo_audit_log_gets_no_entry_and_the_server_goes_on(env):
     os.mkfifo(c1 / "audit" / "sift-mcp.jsonl")
     r = server.call("run_command", _hostname())
     assert _answered(r), r
-    assert r["audit_id"] is None and r["warning"] == WARNING
+    assert r["audit_id"] is None and r["warning"].startswith(WARNING)
     assert _is_fifo(c1 / "audit" / "sift-mcp.jsonl")
     c2 = case("next-case")
     r2 = server.call("run_command", _ls(c2))
@@ -185,7 +185,7 @@ def test_a_fifo_audit_log_a_reader_holds_gets_nothing(env):
     finally:
         os.close(rfd)
     assert _answered(r), r
-    assert r["audit_id"] is None and r["warning"] == WARNING
+    assert r["audit_id"] is None and r["warning"].startswith(WARNING)
     assert got == b"" and _is_fifo(log)
 
 
@@ -195,4 +195,4 @@ def test_an_audit_log_linked_to_a_device_gets_no_entry(env):
     (c1 / "audit" / "sift-mcp.jsonl").symlink_to("/dev/null")
     r = server.call("run_command", _hostname())
     assert _answered(r), r
-    assert r["audit_id"] is None and r["warning"] == WARNING
+    assert r["audit_id"] is None and r["warning"].startswith(WARNING)

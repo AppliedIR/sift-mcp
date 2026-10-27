@@ -17,23 +17,10 @@ def resolve_case_dir() -> str:
     VHIR_CASE_DIR must be a directory containing CASE.yaml to be valid.
     If set but invalid, falls through to active_case.
     """
-    case_dir = os.environ.get("VHIR_CASE_DIR", "").strip()
-    if case_dir:
-        p = Path(case_dir)
-        if p.is_dir() and (p / "CASE.yaml").exists():
-            return case_dir
-        # Set but invalid — fall through to active_case
-    active_file = Path.home() / ".vhir" / "active_case"
-    if active_file.is_file():
-        try:
-            content = active_file.read_text().strip()
-        except OSError:
-            return ""
-        if content:
-            p = Path(content)
-            if p.is_dir() and (p / "CASE.yaml").exists():
-                return content
-    return ""
+    from sift_common.audit import resolve_active_case
+
+    res = resolve_active_case()
+    return res.path if res.outcome == "case" else ""
 
 
 def resolve_share_path(relative_path: str) -> Path | None:

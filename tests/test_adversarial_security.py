@@ -235,7 +235,7 @@ class TestProvenanceGate:
             }
         ]
         audit = MagicMock()
-        audit.log = MagicMock(return_value="shell-tester-20260225-001")
+        audit.record = MagicMock()
         result = manager.record_finding(finding, supporting_commands=cmds, audit=audit)
         assert result["status"] == "STAGED"
 
@@ -275,10 +275,10 @@ class TestProvenanceGate:
             for i in range(10)
         ]
         audit = MagicMock()
-        audit.log = MagicMock(return_value="shell-tester-20260225-001")
+        audit.record = MagicMock()
         result = manager.record_finding(finding, supporting_commands=cmds, audit=audit)
         assert result["status"] == "STAGED"
-        assert audit.log.call_count == 5
+        assert audit.record.call_count == 5
 
     def test_output_excerpt_truncated(self, manager):
         """Output excerpts longer than 2000 chars must be truncated."""
@@ -292,7 +292,7 @@ class TestProvenanceGate:
             }
         ]
         audit = MagicMock()
-        audit.log = MagicMock(return_value="shell-tester-20260225-001")
+        audit.record = MagicMock()
         result = manager.record_finding(finding, supporting_commands=cmds, audit=audit)
         assert result["status"] == "STAGED"
         # Verify the stored command has truncated output

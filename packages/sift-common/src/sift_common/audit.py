@@ -14,6 +14,7 @@ import re
 import stat
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,87 @@ def resolve_examiner() -> str:
     return _sanitize_slug(examiner)
 
 
+# Why a call's entry was not recorded, as its reply says it (one copy)
+_UNRECORDED = {
+    "no_case": "not recorded: no case was active for this call",
+    "case_gone": "not recorded: {} is no longer a case (no CASE.yaml). "
+    "The call itself ran; calling it again repeats it.",
+    "write_failed": "Audit write failed — not recorded: {}. "
+    "The call itself ran; calling it again repeats it.",
+}
+
+
+@dataclass(frozen=True)
+class CaseResolution:
+    """Where a call's entries go, taken once: "case" or "audit_dir" (with its
+    path), "no_case", "case_gone" (the path) or "write_failed" (the reason)."""
+
+    outcome: str
+    path: str = ""
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class AuditOutcome:
+    """What became of one entry: "recorded" (its id), "no_case", "case_gone"
+    or "write_failed" (detail: the path or the reason)."""
+
+    kind: str = "recorded"
+    audit_id: str | None = None
+    detail: str = ""
+
+    def note(self, reply: dict) -> dict:
+        """Say in `reply` why its call was not recorded: no case under
+        `audit`, otherwise after any `warning` it has, joined by " | "."""
+        if self.kind == "recorded":
+            return reply
+        text = _UNRECORDED[self.kind].format(self.detail)
+        warning = reply.get("warning") or ""
+        if self.kind == "no_case":
+            reply["audit"] = text
+        elif text not in warning:
+            reply["warning"] = f"{warning} | {text}" if warning else text
+        return reply
+
+
+def is_case(path: str | Path) -> bool:
+    return (Path(path) / "CASE.yaml").exists()
+
+
+def _as_case(path: str) -> CaseResolution:
+    return CaseResolution("case" if is_case(path) else "case_gone", path)
+
+
+def resolve_active_case() -> CaseResolution:
+    """The active case: VHIR_CASE_DIR when it names a case, else the pointer.
+    An unreadable or undecodable pointer is a failed write, never an error."""
+    case_dir = os.environ.get("VHIR_CASE_DIR", "").strip()
+    if case_dir and is_case(case_dir):
+        return CaseResolution("case", case_dir)
+    pointer = Path.home() / ".vhir" / "active_case"
+    try:
+        if pointer.is_fifo() or pointer.is_char_device():  # its read could block
+            raise OSError(f"{pointer} is not a regular file")
+        case_dir = pointer.read_text().strip()
+    except FileNotFoundError:
+        return CaseResolution("no_case")
+    except (OSError, UnicodeDecodeError) as e:
+        return CaseResolution("write_failed", reason=str(e))
+    if case_dir and not is_case(case_dir):
+        logger.warning("%s is not a case directory, skipping audit", case_dir)
+    return _as_case(case_dir) if case_dir else CaseResolution("no_case")
+
+
+def mkdir_in_case(root: str | Path, *parts: str) -> Path:
+    """Create `parts` below a case root one level at a time, never the root:
+    a case moved away is not recreated (FileNotFoundError)."""
+    path = Path(root)
+    for part in parts:
+        path = path / part
+        path.mkdir(exist_ok=True)
+    return path
+
+
 class AuditWriter:
     """Writes audit entries to a per-MCP JSONL file.
 
@@ -78,58 +160,49 @@ class AuditWriter:
     def examiner(self) -> str:
         return resolve_examiner()
 
-    def _get_audit_dir(self, case_dir: str | Path | None = None) -> Path | None:
-        """Get the audit directory.
+    def resolve(
+        self, case_dir: str | Path | CaseResolution | None = None
+    ) -> CaseResolution:
+        """Where this call's entries go, taken once (a caller may take it at
+        the start and pass it back): explicit audit_dir > VHIR_AUDIT_DIR >
+        `case_dir` ("" for none) > the server's own case resolver >
+        VHIR_CASE_DIR > the active case pointer."""
+        if folder := self._explicit_audit_dir or os.environ.get("VHIR_AUDIT_DIR"):
+            return CaseResolution("audit_dir", folder)
+        if isinstance(case_dir, CaseResolution):
+            return case_dir
+        if case_dir is None and self._case_dir_resolver:
+            case_dir = self._case_dir_resolver() or None
+        if case_dir is None:
+            return resolve_active_case()
+        return _as_case(str(case_dir)) if case_dir else CaseResolution("no_case")
 
-        Priority: explicit audit_dir > VHIR_AUDIT_DIR > `case_dir` (a case the
-        caller resolved already; "" for none; nothing when it's no longer a
-        case) > the server's own case
-        resolver > VHIR_CASE_DIR/audit/ > the active case pointer.
-        """
-        if self._explicit_audit_dir:
-            audit_dir = Path(self._explicit_audit_dir)
-        elif os.environ.get("VHIR_AUDIT_DIR"):
-            audit_dir = Path(os.environ["VHIR_AUDIT_DIR"])
-        elif case_dir is not None:
-            # none, or moved away since it was resolved: never recreated
-            if not case_dir or not (Path(case_dir) / "CASE.yaml").is_file():
-                return None
-            audit_dir = Path(case_dir) / "audit"
-        elif self._case_dir_resolver and (resolved := self._case_dir_resolver()):
-            audit_dir = Path(resolved) / "audit"
-        else:
-            case_dir = os.environ.get("VHIR_CASE_DIR", "").strip()
-            # Validate: must be a directory with CASE.yaml
-            if case_dir:
-                path = Path(case_dir)
-                if path.is_dir() and (path / "CASE.yaml").exists():
-                    audit_dir = path / "audit"
-                else:
-                    case_dir = ""  # set-but-wrong, try active_case
-            if not case_dir:
-                # Fallback: read active case pointer file
-                try:
-                    case_dir = (
-                        (Path.home() / ".vhir" / "active_case").read_text().strip()
-                    )
-                except OSError:
-                    return None
-                if not case_dir:
-                    return None
-                path = Path(case_dir)
-                if not path.is_dir() or not (path / "CASE.yaml").exists():
-                    logger.warning(
-                        "VHIR_CASE_DIR=%s is not a case directory, skipping audit",
-                        case_dir,
-                    )
-                    return None
-                audit_dir = path / "audit"
+    def _make_audit_dir(self, res: CaseResolution) -> Path | AuditOutcome:
+        """The resolution's audit folder, created now only inside a case that
+        is one at this moment (or under an explicit audit folder's parent)."""
+        if res.outcome not in ("case", "audit_dir"):
+            return AuditOutcome(res.outcome, detail=res.path or res.reason)
+        path = Path(res.path)
+        root, name = (
+            (path, "audit") if res.outcome == "case" else (path.parent, path.name)
+        )
         try:
-            audit_dir.mkdir(parents=True, exist_ok=True)
+            if res.outcome == "audit_dir" and not self._explicit_audit_dir:
+                path.mkdir(parents=True, exist_ok=True)  # VHIR_AUDIT_DIR: not a case
+                return path
+            if res.outcome == "case" and not is_case(path):
+                return AuditOutcome("case_gone", detail=res.path)
+            return mkdir_in_case(root, name)
+        except FileNotFoundError:
+            return AuditOutcome("case_gone", detail=str(root))
         except OSError as e:
-            logger.warning("Cannot create audit directory %s: %s", audit_dir, e)
-            return None
-        return audit_dir
+            logger.warning("Cannot create audit directory %s: %s", path, e)
+            return AuditOutcome("write_failed", detail=str(e))
+
+    def _get_audit_dir(self, case_dir: str | Path | None = None) -> Path | None:
+        """The audit directory (see `resolve`), or None when nothing is recorded."""
+        audit_dir = self._make_audit_dir(self.resolve(case_dir))
+        return None if isinstance(audit_dir, AuditOutcome) else audit_dir
 
     def _next_audit_id(self, audit_dir: Path | None = None) -> str:
         """Generate the next audit ID: {prefix}-{examiner}-{date}-{ulid}.
@@ -152,11 +225,11 @@ class AuditWriter:
             raw = (Path.home() / ".vhir" / "active_case").read_text().strip()
             if raw:
                 return Path(raw).name
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             pass
         return ""
 
-    def log(
+    def record(
         self,
         tool: str,
         params: dict[str, Any],
@@ -170,21 +243,20 @@ class AuditWriter:
         input_detection_method: str = "",
         source_evidence: str = "",
         extra: dict[str, Any] | None = None,
-        case_dir: str | Path | None = None,
-    ) -> str | None:
-        """Write an audit entry. Returns the audit_id, or None when no case is active.
-
-        The directory is resolved once: the id is minted for it (when not
-        given) and the entry is written to it, so a case switch can't put one
-        case's id into another. `case_dir` is the case the caller resolved
-        when its operation started ("" for none): the entry goes there, with
-        that case's id.
+        case_dir: str | Path | CaseResolution | None = None,
+    ) -> AuditOutcome:
+        """Write an audit entry and say what became of it: recorded (its id),
+        no case, case gone or write failed. The folder is resolved once: the id
+        is minted for it (when not given) and the entry is written to it.
+        `case_dir` is the case the caller resolved when its operation started
+        ("" for none): the entry goes there, with that case's id.
         """
-        audit_dir = self._get_audit_dir(case_dir)
-        if not audit_dir:
-            return None
-        if not case_id and case_dir:
-            case_id = _case_id_of(case_dir)
+        res = self.resolve(case_dir)
+        audit_dir = self._make_audit_dir(res)
+        if isinstance(audit_dir, AuditOutcome):
+            return audit_dir
+        if not case_id and case_dir and res.outcome == "case":
+            case_id = _case_id_of(res.path)
         if audit_id is None:
             audit_id = self._next_audit_id(audit_dir)
 
@@ -213,13 +285,32 @@ class AuditWriter:
         if extra:
             entry.update(extra)
 
-        if not self._write_entry(entry, audit_dir):
-            logger.warning(
-                "Audit write failed for audit_id=%s — returning None",
-                audit_id,
-            )
-            return None
-        return audit_id
+        if (error := self._append(entry, audit_dir)) is None:
+            return AuditOutcome(audit_id=audit_id)
+        if res.outcome == "case" and not is_case(res.path):
+            return AuditOutcome("case_gone", detail=res.path)
+        return AuditOutcome("write_failed", detail=str(error))
+
+    def log(
+        self,
+        tool: str,
+        params: dict[str, Any],
+        result_summary: Any,
+        source: str = "mcp_server",
+        audit_id: str | None = None,
+        case_id: str | None = None,
+        elapsed_ms: float | None = None,
+        input_files: list[str] | None = None,
+        input_sha256s: list[str] | None = None,
+        input_detection_method: str = "",
+        source_evidence: str = "",
+        extra: dict[str, Any] | None = None,
+        case_dir: str | Path | CaseResolution | None = None,
+    ) -> str | None:
+        """Write an audit entry (as `record`). Returns the audit_id, or None
+        when it was not recorded."""
+        args = {k: v for k, v in locals().items() if k != "self"}
+        return self.record(**args).audit_id
 
     def _write_entry(self, entry: dict, audit_dir: Path | None = None) -> bool:
         """Write a single audit entry to the JSONL file with fsync.
@@ -236,6 +327,10 @@ class AuditWriter:
                 entry.get("tool"),
             )
             return True
+        return self._append(entry, audit_dir) is None
+
+    def _append(self, entry: dict, audit_dir: Path) -> OSError | None:
+        """Append one entry, fsynced; the error when it was not written."""
         try:
             log_file = audit_dir / f"{self.mcp_name}.jsonl"
             # Non-blocking, and only into a regular file: a FIFO there would
@@ -254,7 +349,7 @@ class AuditWriter:
                 f.write(json.dumps(entry, default=str) + "\n")
                 f.flush()
                 os.fsync(f.fileno())
-            return True
+            return None
         except OSError as e:
             logger.warning(
                 "Failed to write audit entry for audit_id=%s tool=%s: %s "
@@ -263,7 +358,7 @@ class AuditWriter:
                 entry.get("tool"),
                 e,
             )
-            return False
+            return e
 
     def get_entries(
         self, since: str | None = None, case_id: str | None = None

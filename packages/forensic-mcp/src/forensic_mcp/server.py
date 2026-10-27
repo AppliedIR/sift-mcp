@@ -313,10 +313,10 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         except Exception as e:
             logger.error("record_finding failed: %s", e)
             return {"error": str(e)}
-        logged_id = audit.log(
+        outcome = audit.record(
             tool="record_finding", params={"finding": finding}, result_summary=result
         )
-        if result.get("status") == "WITHDRAWN" and logged_id is None:
+        if result.get("status") == "WITHDRAWN" and outcome.audit_id is None:
             # The audit entry is the only record of a withdrawal: without it,
             # the finding goes to the examiner instead.
             try:
@@ -331,18 +331,13 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
             except Exception as e:
                 logger.error("record_finding failed: %s", e)
                 return {"error": str(e)}
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="record_finding",
                 params={"finding": finding},
                 result_summary=result,
             )
-        if logged_id is None:
-            result["warning"] = " ".join(
-                filter(
-                    None,
-                    [result.get("warning"), "Audit write failed — action not recorded"],
-                )
-            )
+        if result.get("status") == "STAGED":  # only a saved finding says it ran
+            outcome.note(result)
 
         # Enrich with considerations when staging succeeds
         if result.get("status") == "STAGED":
@@ -384,11 +379,10 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         except Exception as e:
             logger.error("record_timeline_event failed: %s", e)
             return {"error": str(e)}
-        logged_id = audit.log(
+        outcome = audit.record(
             tool="record_timeline_event", params={"event": event}, result_summary=result
         )
-        if logged_id is None:
-            result["warning"] = "Audit write failed — action not recorded"
+        outcome.note(result)
         return result
 
     @server.tool()
@@ -545,13 +539,12 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         except Exception as e:
             logger.error("add_todo failed: %s", e)
             return {"error": str(e)}
-        logged_id = audit.log(
+        outcome = audit.record(
             tool="add_todo",
             params={"description": description, "assignee": assignee},
             result_summary=result,
         )
-        if logged_id is None:
-            result["warning"] = "Audit write failed — action not recorded"
+        outcome.note(result)
         return result
 
     @server.tool()
@@ -588,11 +581,10 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         except Exception as e:
             logger.error("update_todo failed: %s", e)
             return {"error": str(e)}
-        logged_id = audit.log(
+        outcome = audit.record(
             tool="update_todo", params={"todo_id": todo_id}, result_summary=result
         )
-        if logged_id is None:
-            result["warning"] = "Audit write failed — action not recorded"
+        outcome.note(result)
         return result
 
     @server.tool()
@@ -603,11 +595,10 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         except Exception as e:
             logger.error("complete_todo failed: %s", e)
             return {"error": str(e)}
-        logged_id = audit.log(
+        outcome = audit.record(
             tool="complete_todo", params={"todo_id": todo_id}, result_summary=result
         )
-        if logged_id is None:
-            result["warning"] = "Audit write failed — action not recorded"
+        outcome.note(result)
         return result
 
     # --- Discipline Reference Data ---
@@ -768,13 +759,12 @@ def _register_discipline_tools(
             )
 
             result = _get_fw()
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="get_investigation_framework",
                 params={},
                 result_summary={"keys": list(result.keys())},
             )
-            if logged_id is None:
-                result["warning"] = "Audit write failed — action not recorded"
+            outcome.note(result)
             return result
         except Exception as e:
             logger.error("get_investigation_framework failed: %s", e)

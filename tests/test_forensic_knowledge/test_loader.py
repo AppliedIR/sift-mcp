@@ -322,7 +322,7 @@ class TestCaching:
     def test_cache_works(self):
         art1 = loader.get_artifact("amcache")
         art2 = loader.get_artifact("amcache")
-        assert art1 is art2  # Same object — from cache
+        assert art1 == art2 and art1 is not art2  # the cached copy, each its own
 
     def test_clear_cache(self):
         art1 = loader.get_artifact("amcache")

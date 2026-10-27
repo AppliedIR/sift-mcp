@@ -7,6 +7,7 @@ with a fallback to the source tree for development.
 
 from __future__ import annotations
 
+import copy
 import importlib.resources
 import os
 from pathlib import Path
@@ -64,10 +65,12 @@ def _find_data_dir() -> Path:
 _cache: dict[str, Any] = {}
 
 
+# Each reply is a copy the caller owns: a caller's change never reaches the
+# cache, so never a later reply
 def _load_yaml(rel_path: str) -> Any:
     """Load a YAML file relative to the data directory, with caching."""
     if rel_path in _cache:
-        return _cache[rel_path]
+        return copy.deepcopy(_cache[rel_path])
 
     full_path = _find_data_dir() / rel_path
     if not full_path.exists():
@@ -77,14 +80,14 @@ def _load_yaml(rel_path: str) -> Any:
         data = yaml.safe_load(f)
 
     _cache[rel_path] = data
-    return data
+    return copy.deepcopy(data)
 
 
 def _load_all_in_dir(rel_dir: str) -> list[Any]:
     """Load all YAML files in a directory."""
     cache_key = f"__dir__{rel_dir}"
     if cache_key in _cache:
-        return _cache[cache_key]
+        return copy.deepcopy(_cache[cache_key])
 
     data_dir = _find_data_dir() / rel_dir
     if not data_dir.is_dir():
@@ -98,7 +101,7 @@ def _load_all_in_dir(rel_dir: str) -> list[Any]:
             results.append(doc)
 
     _cache[cache_key] = results
-    return results
+    return copy.deepcopy(results)
 
 
 def clear_cache() -> None:
