@@ -81,8 +81,9 @@ CLAUSES = {
     ),
     "not-failures": (
         "Not failures: a refusal naming what to change in your call, any other "
-        "result (empty or partial too), a result saying a program isn't installed, "
-        'a threat-intel platform\'s error, "busy, wait", a result saying a run '
+        "result (empty or partial too), a result saying a program isn't installed "
+        "(run another through run_command), a threat-intel platform's error, "
+        '"busy, wait", a result saying a run '
         "waits for the examiner's confirmation, and a result saying your command "
         "was stopped at its time limit (narrow it and run it again in that same "
         "tool)."
