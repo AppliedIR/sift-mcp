@@ -234,5 +234,5 @@ Wait for the examiner to acknowledge the risk or fix the issue.
 - **MCP config changes require restart:** After `vhir setup client` or
   config edits, exit and relaunch Claude Code. There is no hot-reload.
 - **Context compaction drops MCP connections:** Long sessions may trigger
-  context compaction that disconnects MCP backends. Save work and restart
-  if tools stop responding.
+  context compaction that disconnects MCP backends. A tool that stops
+  responding is a failure: see "When a tool or the harness fails" in AGENTS.md.

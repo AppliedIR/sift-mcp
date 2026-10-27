@@ -37,8 +37,8 @@ available by calling each MCP's health tool:
 | remnux-mcp | No | User-provided | MCP tool `check_tools` |
 | wintools-mcp | No | User-provided | MCP tool `check_windows_tools` |
 
-If a backend is unavailable, skip its steps in workflows below and
-note the gap. Do not fail the investigation — degrade gracefully.
+If a backend is not configured on this install, its steps in the
+workflows below don't apply: note the gap.
 
 ---
 
@@ -80,8 +80,8 @@ User Question
 
 ## Tool Selection Matrix
 
-| User Intent | Primary Tool | Fallback |
-|-------------|--------------|----------|
+| User Intent | Primary Tool | If not configured |
+|-------------|--------------|-------------------|
 | IOC Lookup (IP, hash, domain) | threatintel-mcp `lookup_ioc` | windows-triage `check_hash` |
 | Threat Actor Intel | threatintel-mcp `search_threat_intel` | forensic-rag `search_knowledge` (mitre_attack) |
 | Malware Info | threatintel-mcp `search_entity` (type=malware) | forensic-rag `search_knowledge` (sigma, mbc) |
@@ -320,11 +320,8 @@ event's `published` and `threat_level_id`, `decay_score` and
 ### MCP Failures
 | Error | Action |
 |-------|--------|
-| Tool not found | Check MCP server is running, restart Claude Code |
-| Connection refused | Restart Claude Code to reconnect MCP servers |
-| Timeout | Retry with simpler query or smaller scope |
+| Any tool, backend or gateway failure | Stop and report: see "When a tool or the harness fails" |
 | Empty results | Try broader query, different source |
-| Backend unavailable | Note gap, use fallback from matrix above |
 
 ### Low-Quality Results
 | Symptom | Action |
@@ -334,8 +331,5 @@ event's `published` and `threat_level_id`, `decay_score` and
 | OpenCTI no results | Note as "not in threat intel" |
 | OpenCTI low confidence | Corroborate with other sources |
 
-### Graceful Degradation
-1. Note the failure in findings (via `record_action`)
-2. Try fallback if available (see tool selection matrix)
-3. Proceed with available data
-4. Flag as gap for human review
+### A Backend Not Configured
+Note the gap in findings and flag it for human review.
