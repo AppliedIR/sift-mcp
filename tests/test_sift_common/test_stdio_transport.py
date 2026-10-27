@@ -8,6 +8,12 @@ are found by the socket's inode, so a backend can't pass by moving it to
 another socket or a pipe. One read-only call per backend shows it still
 answers over the moved channel. A backend the gateway starts again after it
 died is held to the same lines.
+
+A spawner can also leave inheritable copies of the channel at higher
+descriptors (uvloop's does). Rows that plant such copies, next to descriptors
+that are not the channel, check that only the channel's copies change, and
+only by being closed on exec: each stays open, as it shares the channel's
+open file.
 """
 
 from __future__ import annotations
@@ -43,6 +49,68 @@ LAUNCH = (
     "signal.signal(signal.SIGUSR1, _report)\n"
     "runpy.run_module(module, run_name='__main__', alter_sys=True)\n"
 )
+# LAUNCH, after leaving inheritable descriptors behind as a spawner can: a
+# copy of each end of the channel, one of them at the highest number the soft
+# limit allows, and four that are not the channel, at random numbers outside
+# those a gateway's spawner uses. What each holds, and its flags, is recorded
+# before the backend starts. SIGUSR1 also isolates a second time, and reports
+# every descriptor before and after it.
+PLANTED = """\
+import json, os, random, resource, runpy, signal, socket, sys
+report, plants, module = [sys.argv.pop(1) for _ in range(3)]
+
+def flags(fd):
+    with open(f"/proc/self/fdinfo/{fd}") as f:
+        return next(int(ln.split()[1], 8) for ln in f if ln.startswith("flags:"))
+
+def held():
+    out = {}
+    for name in os.listdir("/proc/self/fd"):
+        try:
+            st = os.stat(f"/proc/self/fd/{name}")
+            out[name] = [st.st_dev, st.st_ino, flags(int(name))]
+        except OSError:
+            pass
+    return out
+
+soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+taken = {int(n) for n in os.listdir("/proc/self/fd")}
+taken |= {12, *range(16, 33), soft - 1}
+
+def free():
+    while True:
+        fd = random.randrange(3, soft - 1)
+        if fd not in taken:
+            taken.add(fd)
+            return fd
+
+sock, peer = socket.socketpair()
+pipe_r, pipe_w = os.pipe()
+null = os.open(os.devnull, os.O_RDONLY)
+top = random.choice(("channel in", "channel out"))
+sources = {"channel in": 0, "channel out": 1, "/dev/null": null, "stderr": 2,
+           "socket": sock.fileno(), "pipe": pipe_r}
+record = {}
+for name, source in sources.items():
+    fd = os.dup2(source, soft - 1 if name == top else free())
+    st = os.fstat(fd)
+    record[name] = {"fd": fd, "object": [st.st_dev, st.st_ino], "flags": flags(fd)}
+os.close(null)
+with open(plants, "w") as f:
+    json.dump({"soft": soft, "plants": record}, f)
+
+def _report(*_):
+    from sift_common import isolate_stdio_transport
+    before = held()
+    isolate_stdio_transport()
+    after = held()
+    with open(report, "w") as f:
+        json.dump({"stdin": sys.stdin.fileno(), "stdout": sys.stdout.fileno(),
+                   "before": before, "after": after}, f)
+
+signal.signal(signal.SIGUSR1, _report)
+runpy.run_module(module, run_name="__main__", alter_sys=True)
+"""
 
 pytestmark = pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="reads /proc/<pid>/fd"
@@ -60,10 +128,14 @@ def _fds(pid: int) -> dict[int, str]:
     return out
 
 
-def _cloexec(pid: int, fd: int) -> bool:
+def _flags(pid: int, fd: int) -> int:
     with open(f"/proc/{pid}/fdinfo/{fd}") as f:
         flags = next(ln for ln in f if ln.startswith("flags:"))
-    return bool(int(flags.split()[1], 8) & O_CLOEXEC)
+    return int(flags.split()[1], 8)
+
+
+def _cloexec(pid: int, fd: int) -> bool:
+    return bool(_flags(pid, fd) & O_CLOEXEC)
 
 
 def _streams(pid: int, report: Path) -> dict | None:
@@ -106,8 +178,21 @@ BACKENDS = [
 ]
 
 
+def _object(fd: int) -> tuple[int, int]:
+    st = os.fstat(fd)
+    return st.st_dev, st.st_ino
+
+
 class _Backend:
-    def __init__(self, module: str, args: list[str], tmp: Path, setup):
+    def __init__(
+        self,
+        module: str,
+        args: list[str],
+        tmp: Path,
+        setup,
+        channel: str = "sockets",
+        planted: bool = False,
+    ):
         home = tmp / "home"
         (home / ".vhir").mkdir(parents=True)
         env = {
@@ -119,33 +204,49 @@ class _Backend:
         if setup:
             setup(tmp, env)
         self.report = tmp / "fds.json"
+        self.plants = tmp / "plants.json"
         self.stderr_path = tmp / "stderr.log"
-        # The channel: one socket pair for each direction, as a gateway's
-        # transport is a socket. The child's ends are known by inode.
-        self.req, child_in = socket.socketpair()
-        self.resp, child_out = socket.socketpair()
-        self.inodes = {
-            "stdin": os.fstat(child_in.fileno()).st_ino,
-            "stdout": os.fstat(child_out.fileno()).st_ino,
+        # The channel: a socket pair for each direction, as a gateway's
+        # transport is a socket; or a pipe for each; or one socket for both.
+        # The child's ends are known by what they refer to.
+        if channel == "pipes":
+            child_in, self.to_child = os.pipe()
+            self.from_child, child_out = os.pipe()
+        else:
+            a, b = socket.socketpair()
+            self.to_child, child_in = a.detach(), b.detach()
+            if channel == "one socket":
+                self.from_child, child_out = self.to_child, child_in
+            else:
+                a, b = socket.socketpair()
+                self.from_child, child_out = a.detach(), b.detach()
+        self.objects = {
+            "stdin": _object(child_in),
+            "stdout": _object(child_out),
         }
+        launch = [LAUNCH, str(self.report)]
+        if planted:
+            launch = [PLANTED, str(self.report), str(self.plants)]
         with open(self.stderr_path, "wb") as err:
             self.p = subprocess.Popen(
-                [sys.executable, "-c", LAUNCH, str(self.report), module, *args],
-                stdin=child_in.fileno(),
-                stdout=child_out.fileno(),
+                [sys.executable, "-c", *launch, module, *args],
+                stdin=child_in,
+                stdout=child_out,
                 stderr=err,
                 cwd=tmp,
                 env=env,
             )
-        child_in.close()
-        child_out.close()
+        for fd in {child_in, child_out}:
+            os.close(fd)
         self.buf, self.n = b"", 0
 
     def stderr(self) -> str:
         return self.stderr_path.read_text(errors="replace")[-4000:]
 
     def _send(self, obj):
-        self.req.sendall((json.dumps(obj) + "\n").encode())
+        data = (json.dumps(obj) + "\n").encode()
+        while data:
+            data = data[os.write(self.to_child, data) :]
 
     def rpc(self, method, params, timeout=TIMEOUT):
         self.n += 1
@@ -161,9 +262,9 @@ class _Backend:
                 if msg.get("id") == self.n:
                     return msg
             left = deadline - time.monotonic()
-            if left <= 0 or not select.select([self.resp], [], [], left)[0]:
+            if left <= 0 or not select.select([self.from_child], [], [], left)[0]:
                 return None
-            chunk = self.resp.recv(65536)
+            chunk = os.read(self.from_child, 65536)
             if not chunk:
                 return None
             self.buf += chunk
@@ -186,8 +287,8 @@ class _Backend:
     def close(self):
         self.p.kill()
         self.p.wait()
-        self.req.close()
-        self.resp.close()
+        for fd in {self.to_child, self.from_child}:
+            os.close(fd)
 
 
 @pytest.mark.parametrize(
@@ -209,11 +310,10 @@ def test_a_backend_serves_on_a_channel_its_children_cannot_reach(
         assert fds[0] == "/dev/null"
         assert fds[1] == fds[2]
         assert fds[2] == str(b.stderr_path)
+        held = _objects(b.p.pid)
         channel = {
-            side: sorted(
-                fd for fd, target in fds.items() if target == f"socket:[{ino}]"
-            )
-            for side, ino in b.inodes.items()
+            side: sorted(fd for fd, held_obj in held.items() if held_obj == obj)
+            for side, obj in b.objects.items()
         }
         for side, held in channel.items():
             assert held, f"no descriptor holds the {side} socket: {fds}"
@@ -256,6 +356,65 @@ def _running(module: str) -> list[int]:
         if int(ppid) == os.getpid() and state != "Z" and module.encode() in argv:
             found.append(int(name))
     return found
+
+
+@pytest.mark.parametrize("channel", ["sockets", "pipes", "one socket"])
+@pytest.mark.parametrize(
+    "module,args,tool,setup", BACKENDS, ids=[b[0] for b in BACKENDS]
+)
+def test_copies_of_the_channel_a_spawner_left_are_closed_on_exec(
+    tmp_path, module, args, tool, setup, channel
+):
+    pytest.importorskip(module)
+    b = _Backend(module, args, tmp_path, setup, channel, planted=True)
+    try:
+        b.start()
+        r = b.rpc("tools/call", {"name": tool, "arguments": {}})
+        assert r and "result" in r, f"{tool} got no reply: {r}\n{b.stderr()}"
+        assert r["result"].get("isError") is False, r
+        assert b.p.poll() is None
+
+        record = json.loads(b.plants.read_text())
+        plants = record["plants"]
+        for name, plant in plants.items():
+            assert not plant["flags"] & O_CLOEXEC, f"{name} planted closed on exec"
+        assert record["soft"] - 1 in (
+            plants["channel in"]["fd"],
+            plants["channel out"]["fd"],
+        ), record
+        assert tuple(plants["channel in"]["object"]) == b.objects["stdin"]
+        assert tuple(plants["channel out"]["object"]) == b.objects["stdout"]
+
+        held = _objects(b.p.pid)
+        for name, plant in plants.items():
+            fd, before = plant["fd"], plant["flags"]
+            assert held.get(fd) == tuple(plant["object"]), f"{name} on fd {fd} gone"
+            after = _flags(b.p.pid, fd)
+            if name.startswith("channel"):
+                expected = before | O_CLOEXEC
+                assert after == expected, (
+                    f"{name} on fd {fd}: {after:o}, not {expected:o}"
+                )
+            else:
+                assert after == before, f"{name} on fd {fd}: {after:o}, was {before:o}"
+
+        fds = _fds(b.p.pid)
+        assert fds[0] == "/dev/null"
+        assert fds[1] == fds[2]
+        on_channel = sorted(fd for fd, obj in held.items() if obj in b.objects.values())
+        # the backend's own two copies, and the two planted
+        assert len(on_channel) >= 4, on_channel
+        for fd in on_channel:
+            assert fd not in (0, 1), fd
+            assert _cloexec(b.p.pid, fd), f"channel on fd {fd} is inherited"
+
+        # a second isolation, inside the backend, changes no descriptor
+        streams = b.streams()
+        assert streams["stdin"] in on_channel, (streams["stdin"], on_channel)
+        assert streams["stdout"] in on_channel, (streams["stdout"], on_channel)
+        assert streams["before"] == streams["after"]
+    finally:
+        b.close()
 
 
 async def test_a_backend_the_gateway_starts_again_keeps_its_channel_away(
@@ -372,3 +531,27 @@ def test_a_second_isolation_changes_nothing():
     assert first == second
     assert first["fds"]["0"] == "/dev/null"
     assert first["stdout"] not in (0, 1)
+
+
+# /dev/null on fd 0 and a file on fd 1 are not a channel: copies of them keep
+# being inherited.
+NOT_A_CHANNEL = (
+    "import json, os, sys\n"
+    "from sift_common import isolate_stdio_transport\n"
+    "copies = [os.dup2(0, 40), os.dup2(1, 41)]\n"
+    "isolate_stdio_transport()\n"
+    "sys.stderr.write(json.dumps([os.get_inheritable(fd) for fd in copies]))\n"
+)
+
+
+def test_copies_of_dev_null_or_a_file_are_left_inherited(tmp_path):
+    with open(tmp_path / "out", "w") as out:
+        p = subprocess.run(
+            [sys.executable, "-c", NOT_A_CHANNEL],
+            stdin=subprocess.DEVNULL,
+            stdout=out,
+            stderr=subprocess.PIPE,
+            timeout=TIMEOUT,
+        )
+    assert p.returncode == 0, p.stderr
+    assert json.loads(p.stderr) == [True, True]

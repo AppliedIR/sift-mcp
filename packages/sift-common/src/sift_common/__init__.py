@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 import sys
 from pathlib import Path
 
@@ -21,12 +22,21 @@ def isolate_stdio_transport() -> None:
     client's requests. This moves the channel onto new descriptors that are
     closed on exec, rebinds sys.stdin and sys.stdout to them (the MCP stdio
     transport reads and writes those), and leaves /dev/null on fd 0 and
-    stderr on fd 1. Call it first in the server's entry point. A second call
+    stderr on fd 1. A spawner can also leave inheritable copies of the channel
+    at higher descriptors (uvloop's does); those are marked closed on exec and
+    left open. Call it first in the server's entry point. A second call
     changes nothing.
     """
     global _transport_isolated
     if _transport_isolated:
         return
+    # The channel is the pipe or socket on fd 0 and fd 1, known only now:
+    # afterwards they hold /dev/null and stderr.
+    channel = set()
+    for fd in (0, 1):
+        st = os.fstat(fd)
+        if stat.S_ISSOCK(st.st_mode) or stat.S_ISFIFO(st.st_mode):
+            channel.add((st.st_dev, st.st_ino))
     sys.stdout.flush()
     # os.dup makes descriptors that are not inherited (closed on exec).
     transport_in = os.dup(0)
@@ -40,7 +50,33 @@ def isolate_stdio_transport() -> None:
     sys.stdout = open(
         transport_out, "w", encoding=old_out.encoding, errors=old_out.errors
     )
+    # The copies share the channel's open file: closing one, or changing
+    # anything but its close-on-exec flag, would change the channel itself.
+    for fd in _open_descriptors() if channel else ():
+        if fd < 3 or fd in (transport_in, transport_out):
+            continue
+        try:
+            st = os.fstat(fd)
+        except OSError:
+            continue
+        if (st.st_dev, st.st_ino) in channel:
+            os.set_inheritable(fd, False)
     _transport_isolated = True
+
+
+def _open_descriptors():
+    """The descriptors this process has open; failing a listing, every number
+    below the soft limit on open files."""
+    listing = "/proc/self/fd" if sys.platform.startswith("linux") else "/dev/fd"
+    try:
+        return [int(name) for name in os.listdir(listing)]
+    except OSError:
+        import resource
+
+        soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        if soft == resource.RLIM_INFINITY:
+            soft = os.sysconf("SC_OPEN_MAX")
+        return range(soft)
 
 
 def resolve_case_dir() -> str:
