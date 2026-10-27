@@ -174,6 +174,20 @@ def test_a_fifo_case_yaml_is_case_gone_and_never_read(via, home, tmp_path, monke
     assert _entries(case / "audit") == []
 
 
+@pytest.mark.parametrize("via", ["pointer", "env"])
+def test_a_fifo_case_yaml_is_still_the_case_its_readers_resolve(
+    via, home, tmp_path, monkeypatch
+):
+    """Their own reads name it (the portal's 409); resolving never opens it."""
+    case = _case(tmp_path)
+    (case / "CASE.yaml").unlink()
+    os.mkfifo(case / "CASE.yaml")
+    _point(home, case if via == "pointer" else _case(tmp_path, "other"))
+    if via == "env":
+        monkeypatch.setenv("VHIR_CASE_DIR", str(case))
+    assert sift_common.resolve_case_dir() == str(case)
+
+
 def test_a_case_yaml_removed_after_the_start_creates_nothing(home, tmp_path):
     case = _case(tmp_path, audit=False)
     _point(home, case)

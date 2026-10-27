@@ -110,11 +110,12 @@ def _as_case(path: str) -> CaseResolution:
     return CaseResolution("case" if is_case(path) else "case_gone", path)
 
 
-def resolve_active_case() -> CaseResolution:
-    """The active case: VHIR_CASE_DIR when it names a case, else the pointer.
-    An unreadable or undecodable pointer is a failed write, never an error."""
+def resolve_active_case(test: Callable[[str], bool] = is_case) -> CaseResolution:
+    """The active case: VHIR_CASE_DIR when `test` finds it a case, else the
+    pointer. An unreadable or undecodable pointer is a failed write, never an
+    error."""
     case_dir = os.environ.get("VHIR_CASE_DIR", "").strip()
-    if case_dir and is_case(case_dir):
+    if case_dir and test(case_dir):
         return CaseResolution("case", case_dir)
     pointer = Path.home() / ".vhir" / "active_case"
     try:
@@ -125,9 +126,12 @@ def resolve_active_case() -> CaseResolution:
         return CaseResolution("no_case")
     except (OSError, UnicodeDecodeError) as e:
         return CaseResolution("write_failed", reason=str(e))
-    if case_dir and not is_case(case_dir):
+    if not case_dir:
+        return CaseResolution("no_case")
+    if not test(case_dir):
         logger.warning("%s is not a case directory, skipping audit", case_dir)
-    return _as_case(case_dir) if case_dir else CaseResolution("no_case")
+        return CaseResolution("case_gone", case_dir)
+    return CaseResolution("case", case_dir)
 
 
 def mkdir_in_case(root: str | Path, *parts: str) -> Path:

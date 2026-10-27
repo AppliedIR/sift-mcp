@@ -19,7 +19,9 @@ def resolve_case_dir() -> str:
     """
     from sift_common.audit import resolve_active_case
 
-    res = resolve_active_case()
+    # Any CASE.yaml makes a case here, as before: its own reader says when it
+    # isn't a regular file (the audit, which reads it unasked, wants one)
+    res = resolve_active_case(lambda d: (Path(d) / "CASE.yaml").exists())
     return res.path if res.outcome == "case" else ""
 
 
