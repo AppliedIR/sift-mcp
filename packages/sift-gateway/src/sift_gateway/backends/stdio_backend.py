@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import math
 import os
 import sys
 import weakref
@@ -68,6 +69,17 @@ def _cause(failure: BaseException | None) -> Exception | None:
     if not isinstance(failure, Exception) or "cancel scope" in str(failure):
         return None
     return failure
+
+
+def _cancelled_within(guard: anyio.CancelScope) -> bool:
+    """Whether a scope the current task entered inside `guard` is cancelled: a
+    cancellation from there is the start's own, not its caller's. Shielding
+    `guard` for the look hides every scope outside it."""
+    guard.shield = True
+    try:
+        return anyio.current_effective_deadline() == -math.inf
+    finally:
+        guard.shield = False
 
 
 def _before_text(backend: str, tool: str) -> str:
@@ -213,6 +225,9 @@ class StdioMCPBackend(MCPBackend):
         )
 
         self._exit_stack = AsyncExitStack()
+        # the transport's and the session's scopes open inside this one, so a
+        # failure of theirs is told from the caller's cancellation
+        guard = self._exit_stack.enter_context(anyio.CancelScope())
         try:
             transport = await self._exit_stack.enter_async_context(
                 stdio_client(server_params)
@@ -243,12 +258,14 @@ class StdioMCPBackend(MCPBackend):
             await self._safe_cleanup(context="cleanup after initialize timeout")
             raise
         except BaseException as exc:
+            # asked before the cleanup closes the scopes it looks at
+            own = isinstance(exc, asyncio.CancelledError) and _cancelled_within(guard)
             failure = await self._safe_cleanup(context="cleanup after failed start")
             if isinstance(exc, asyncio.CancelledError):
                 # The start's own task group failing cancels this await; its
-                # cleanup raises that failure. A cancellation alone is the
-                # caller's, and goes on as one.
-                cause = _cause(failure)
+                # cleanup raises that failure. Any other cancellation is the
+                # caller's, and goes on as one, whatever the cleanup raised.
+                cause = _cause(failure) if own else None
                 if cause is None:
                     logger.debug("Backend %s start cancelled", self.name)
                     raise
