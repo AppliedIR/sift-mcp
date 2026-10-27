@@ -715,12 +715,14 @@ def _mixed() -> BaseException:
     )
 
 
-async def _under_scope(start):
+async def _under_scope(start, *, own_task: bool = True):
     """The caller is an anyio scope cancelled from outside, as the SDK cancels a
-    request's handler; the scope takes its own cancellation."""
+    request's handler; the scope takes its own cancellation. With `own_task`
+    False the scope is in start's own task, as the loader's task group is
+    (server.py:893-896)."""
     with anyio.CancelScope() as scope:
         asyncio.get_running_loop().call_later(0.3, scope.cancel)
-        await in_own_task(start)
+        await (in_own_task(start) if own_task else start)
     caught = scope.cancelled_caught
     return "the caller's scope caught its cancellation" if caught else ""
 
@@ -730,6 +732,7 @@ START_ROUTES = {
     "B": lambda b: in_own_task(b.start()),
     "C": lambda b: asyncio.wait_for(in_own_task(b.start()), 60),
     "scope": lambda b: _under_scope(b.start()),
+    "loader scope": lambda b: _under_scope(b.start(), own_task=False),
 }
 
 
@@ -787,6 +790,29 @@ async def test_r5c_regression_a_callers_cancel_is_kept_when_the_close_raises(
     row.done()
 
 
+async def test_r5c_a_loader_scope_cancel_is_kept_when_the_close_raises(
+    monkeypatch, caplog
+):
+    """Regression row (CR-48 Rev 7.2 LOW-1): the gateway's shutdown cancels the
+    loader's task-group scope in the task that awaits start (server.py:494, 542,
+    893-896), and the transport's close raises a real error. That scope is
+    outside the guard, so the start's look must not see it: the scope takes its
+    cancellation, with no ERROR and no BrokenPipeError."""
+    row = _Row()
+    fake = _fake_stdio(_broken_pipe, group=True)
+    monkeypatch.setattr(stdio_backend, "stdio_client", fake)
+    got, failed, unretrieved = await _start_outcome("loader scope", False, caplog)
+    want = "returned: the caller's scope caught its cancellation"
+    row.check("what reaches the caller", got == want, got)
+    row.check("no ERROR failed to start", not failed, failed)
+    row.check("0 never retrieved", not unretrieved, unretrieved)
+    row.done()
+
+
+# No row for a caller's cancel that lands just before the start's own task
+# group fails: on 3.10 one up to ~1 ms ahead is lost (BrokenPipeError and an
+# ERROR line), and 3.12 keeps it, so a row at that edge would be flaky
+# (CR-48 Rev 7.2 NOTE-1).
 R5G_LEGS = {  # leg: (fail the group, cancel by the caller, route, what reaches it)
     "own failure": (True, False, "A", "BrokenPipeError: [Errno 32] r5g close"),
     "caller A": (False, True, "A", "CancelledError"),
