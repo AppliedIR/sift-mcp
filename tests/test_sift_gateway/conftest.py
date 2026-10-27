@@ -21,6 +21,9 @@ class MockBackend(MCPBackend):
     async def stop(self) -> None:
         self._started = False
 
+    async def close(self) -> None:  # a stdio backend's close, as the loader calls it
+        self._started = False
+
     async def list_tools(self) -> list[Tool]:
         return self._mock_tools
 

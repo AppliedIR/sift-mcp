@@ -61,7 +61,9 @@ class TestStdioNotStarted:
 
     async def test_call_tool_raises_if_not_started(self):
         backend = StdioMCPBackend("test", {"type": "stdio"})
-        with pytest.raises(RuntimeError, match="not started"):
+        with pytest.raises(
+            RuntimeError, match="before foo was sent, so foo didn't run"
+        ):
             await backend.call_tool("foo", {})
 
     async def test_health_check_when_stopped(self):
@@ -382,8 +384,10 @@ class TestThreeSiteCleanupUsesSafeCleanup:
 
     @pytest.mark.asyncio
     async def test_call_tool_error_path_calls_safe_cleanup(self):
-        """ConnectionError in call_tool → _safe_cleanup runs."""
+        """ConnectionError in call_tool → the during-call text, _safe_cleanup runs."""
         from unittest.mock import AsyncMock, MagicMock
+
+        import anyio
 
         backend = StdioMCPBackend("test", {"command": "true"})
         backend._started = True
@@ -391,12 +395,22 @@ class TestThreeSiteCleanupUsesSafeCleanup:
         backend._session.call_tool = AsyncMock(
             side_effect=ConnectionError("backend hung")
         )
+        send, receive = anyio.create_memory_object_stream(1)
+        backend._stream = receive  # the session's stream, its writer still open
         backend._exit_stack = AsyncMock()
         backend._exit_stack.aclose = AsyncMock()
 
-        with pytest.raises(ConnectionError):
-            await backend.call_tool("x", {})
+        try:
+            with pytest.raises(RuntimeError) as failed:
+                await backend.call_tool("x", {})
+        finally:
+            send.close()
+            receive.close()
 
+        assert str(failed.value).startswith(
+            "The gateway lost its connection to backend test's process while x "
+            "was running."
+        )
         assert backend._exit_stack is None
         assert backend._session is None
         assert backend._started is False
