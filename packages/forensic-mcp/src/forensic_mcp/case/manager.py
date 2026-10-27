@@ -1254,7 +1254,23 @@ class CaseManager:
         withdrawal_unlogged: bool = False,
     ) -> dict:
 
-        challenge = finding.get("challenged") if isinstance(finding, dict) else None
+        # Every call, a withdrawal too: one carrier (the parameter, or a list
+        # here) and at most _MAX_ARTIFACTS
+        if "artifacts" in finding:
+            if artifacts is not None or not isinstance(finding["artifacts"], list):
+                got = type(finding["artifacts"]).__name__
+                return {"status": "REJECTED", "error": "artifacts were sent " + (
+                    "both as the parameter and in the finding" if artifacts is not None
+                    else f"in the finding as {got}, not a list") + ". Send one list, as "
+                    "the artifacts parameter. The finding wasn't recorded."}  # fmt: skip
+            artifacts = finding["artifacts"]  # popped once it isn't withdrawn
+        if artifacts and len(artifacts) > _MAX_ARTIFACTS:
+            return {"status": "REJECTED", "error": (
+                f"{len(artifacts)} artifacts were sent; a finding takes at most "
+                f"{_MAX_ARTIFACTS}. Send the ones that show what the finding says, or "
+                "split it into findings. The finding wasn't recorded.")}  # fmt: skip
+
+        challenge = finding.get("challenged")
         if (
             isinstance(challenge, dict)
             and challenge.get("outcome") == "withdrawn"
@@ -1281,19 +1297,7 @@ class CaseManager:
             finding.get("supporting_commands"), list
         ):
             supporting_commands = finding.pop("supporting_commands")
-        if "artifacts" in finding:  # one carrier: the parameter, or a list here
-            if artifacts is not None or not isinstance(finding["artifacts"], list):
-                got = type(finding["artifacts"]).__name__
-                return {"status": "REJECTED", "error": "artifacts were sent " + (
-                    "both as the parameter and in the finding" if artifacts is not None
-                    else f"in the finding as {got}, not a list") + ". Send one list, as "
-                    "the artifacts parameter. The finding wasn't recorded."}  # fmt: skip
-            artifacts = finding.pop("artifacts")
-        if artifacts and len(artifacts) > _MAX_ARTIFACTS:
-            return {"status": "REJECTED", "error": (
-                f"{len(artifacts)} artifacts were sent; a finding takes at most "
-                f"{_MAX_ARTIFACTS}. Send the ones that show what the finding says, or "
-                "split it into findings. The finding wasn't recorded.")}  # fmt: skip
+        finding.pop("artifacts", None)
 
         findings = self._load_findings(case_dir)
         seq = _next_seq(findings, "id", "F", exam)
@@ -1684,20 +1688,12 @@ class CaseManager:
         observation = str(finding.get("observation") or "").strip()
         if not title or not observation:
             return None
-        if isinstance(artifacts, str):
-            try:
-                artifacts = json.loads(artifacts)
-            except (json.JSONDecodeError, TypeError):
-                artifacts = None
-        if artifacts is None:
-            artifacts = finding.get("artifacts")
         own_ids = [a for a in finding.get("audit_ids") or [] if isinstance(a, str)]
-        if isinstance(artifacts, list):
-            own_ids += [
-                str(a["audit_id"])
-                for a in artifacts
-                if isinstance(a, dict) and a.get("audit_id")
-            ]
+        own_ids += [
+            str(a["audit_id"])
+            for a in artifacts or []
+            if isinstance(a, dict) and a.get("audit_id")
+        ]
         marker, _ = _normalize_challenge(
             finding.get("challenged"), _tool_output_ids(case_dir), own_ids
         )

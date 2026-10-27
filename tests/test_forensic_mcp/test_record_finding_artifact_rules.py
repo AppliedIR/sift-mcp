@@ -36,6 +36,7 @@ LIMIT = 65536
 RUN_ID = "sift-rig-20261027-001"  # cat of a registered file
 DECLARED_ID = "sift-rig-20261027-002"  # the same cat, declared by the AI
 SKEPTIC_ID = "sift-rig-20261027-003"  # the skeptic's own grep
+NO_INPUTS_ID = "sift-rig-20261027-004"  # a cat that recorded no inputs
 REF_ID = "sift-gateway-rig-20261027-001"  # a baseline lookup
 LINES = [f"rd09 line {i:02d}: event {i} on RD09" for i in range(1, 13)]
 LAUNCH = (
@@ -79,6 +80,10 @@ async def rig(tmp_path):
 
     entries = [run(RUN_ID, ["cat"]), run(DECLARED_ID, ["cat"], declared=True),
                run(SKEPTIC_ID, ["grep", "RD09"])]  # fmt: skip
+    entries.append(
+        {**entries[0], "audit_id": NO_INPUTS_ID, "params": {"command": ["cat"]}}
+    )
+    del entries[-1]["input_files"], entries[-1]["input_sha256s"]
     (d / "audit" / "sift-mcp.jsonl").write_text(
         "".join(json.dumps(e) + "\n" for e in entries)
     )
@@ -150,10 +155,10 @@ def _stored(d: Path, title: str) -> list[dict]:
     ]
 
 
-async def _refused(rig, title, artifacts, *, carrier="parameter", **fields) -> str:
+async def _refused(rig, title, sent, *, carrier="parameter", **fields) -> str:
     d, record = rig
     before = _documents(d)
-    res = await record(title, artifacts, carrier, **fields)
+    res = await record(title, sent, carrier, **fields)
     assert res["status"] == "REJECTED", res
     assert _documents(d) == before  # no case document changed
     return res["error"]
@@ -242,6 +247,30 @@ async def test_artifacts_come_as_one_list_by_one_carrier(rig, sent):
     assert "Send one list, as the artifacts parameter." in res["error"], res
 
 
+WITHDRAWN = {"outcome": "withdrawn", "contradiction": LINES[0],
+             "checks": [{"name": "re-ran grep", "result": "contradicts",
+                         "audit_ids": [SKEPTIC_ID], "reason": "the re-run disagrees"}]}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("arts", "carrier", "inline"),
+    [([art()] * 11, "parameter", None), ([art()] * 11, "finding", None),
+     ([art()], "parameter", [art()]), ("x", "finding", None)],
+    ids=["eleven as the parameter", "eleven in the finding", "both carriers", "not a list"],
+)  # fmt: skip
+async def test_a_withdrawal_is_refused_by_the_same_artifact_rules(
+    rig, arts, carrier, inline
+):
+    d, record = rig
+    fields = {"challenged": WITHDRAWN} | ({"artifacts": inline} if inline else {})
+    error = await _refused(rig, "withdrawn", arts, carrier=carrier, **fields)
+    assert error.startswith(("11 artifacts were sent", "artifacts were sent ")), error
+    trail = "".join(p.read_text() for p in (d / "audit").iterdir())
+    assert "WITHDRAWN" not in trail
+    res = await record("withdrawn", [art()], challenged=WITHDRAWN)
+    assert res["status"] == "WITHDRAWN" and res["audit_ids"] == [RUN_ID], res
+
+
 @pytest.mark.parametrize("carrier", ["parameter", "finding"])
 async def test_content_and_extraction_up_to_the_limit_are_stored_whole(rig, carrier):
     d, record = rig
@@ -315,6 +344,14 @@ async def test_the_reply_names_the_artifact_that_set_the_findings_grade(rig):
                                        "reason": stored[0]["provenance_reason"]}], res  # fmt: skip
     assert res["provenance_grade"] == "FULL", res
     assert res["message"] == "Finding staged as FULL: Artifact 2.", res
+    res = await record("reference first, the rest broken",
+                       [art('"path": "rigtool.exe"', REF_ID), art(audit_id=NO_INPUTS_ID)])  # fmt: skip
+    stored = _stored(d, "reference first, the rest broken")[0]["artifacts"]
+    assert [a["provenance_grade"] for a in stored] == ["BROKEN", "BROKEN"], stored
+    assert "recorded no inputs" in stored[1]["provenance_reason"], stored
+    assert res["message"] == (
+        f"Finding staged as BROKEN: Artifact 2: {stored[1]['provenance_reason']}"
+    ), res
     res = await record("all full", [art(), art(LINES[1])])
     assert "artifact_grades" not in res and "message" not in res, res
     res = await record("no artifacts", audit_ids=[RUN_ID])
