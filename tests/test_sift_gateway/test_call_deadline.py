@@ -13,10 +13,10 @@ HTTP on loopback) whose `slow` tool outlasts the deadline.
 
 from __future__ import annotations
 
-import ast
-import inspect
+import asyncio
 import logging
 import os
+import selectors
 import subprocess
 import sys
 import textwrap
@@ -166,23 +166,60 @@ async def test_a_call_past_the_deadline_gives_the_named_text_and_leaves_the_call
     assert await _pid(backend) == pid
 
 
-def _timers(node) -> list[str]:
-    """A timer of call_tool's own: a wait_for, or a catch of the timeout."""
-    if isinstance(node, ast.Call):
-        func = node.func
-        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
-        if name in ("wait_for", "timeout", "timeout_at"):
-            return [ast.unparse(node)]
-    if isinstance(node, ast.ExceptHandler) and node.type is not None:
-        types_ = node.type.elts if isinstance(node.type, ast.Tuple) else [node.type]
-        return [
-            f"except {ast.unparse(t)}"
-            for t in types_
-            if ast.unparse(t) in ("asyncio.TimeoutError", "TimeoutError")
-        ]
-    return []
+class _Clock(selectors.DefaultSelector):
+    """Loop time that skips ahead whenever the loop would wait for a timer, so
+    an hour passes at once and every timer on the loop fires in its turn."""
+
+    now = 0.0
+
+    def select(self, timeout=None):
+        events = super().select(0)
+        if events or timeout == 0:
+            return events
+        if timeout is None:  # no timer to skip to: wait for real
+            return super().select(None)
+        self.now += timeout
+        return []
 
 
-def test_the_gateway_keeps_no_timer_of_its_own_on_a_tool_call():
-    tree = ast.parse(textwrap.dedent(inspect.getsource(Gateway.call_tool)))
-    assert [t for node in ast.walk(tree) for t in _timers(node)] == []
+class _Loop(asyncio.SelectorEventLoop):
+    def __init__(self):
+        self._clock = _Clock()
+        super().__init__(self._clock)
+
+    def time(self) -> float:
+        return self._clock.now
+
+
+class _Held:
+    """A backend session whose call never answers."""
+
+    async def call_tool(self, name, arguments):
+        await asyncio.Event().wait()
+
+
+@pytest.mark.parametrize("route", sorted(ROUTES))
+def test_a_call_held_past_an_hour_is_ended_only_by_the_backends_deadline(
+    route, monkeypatch
+):
+    """The gateway adds no timer of its own to a backend call, under any name:
+    with the loop's clock skipping to each timer, a call held for an hour is
+    ended by its backend's deadline and by nothing before it."""
+    deadline = 3601
+    monkeypatch.setattr(stdio_backend, "_TOOL_CALL_TIMEOUT", deadline)
+    config = {"type": "stdio", "command": sys.executable, "args": []}
+    gw = Gateway({"backends": {"standin": config}})
+    gw._tool_map["slow"] = "standin"
+    backend = gw.backends["standin"]
+    backend._session, backend._started = _Held(), True
+    backend._tools_cache = [types.Tool(name="slow", inputSchema={"type": "object"})]
+
+    loop = _Loop()
+    try:
+        text = loop.run_until_complete(ROUTES[route](gw, {"seconds": 3600}))
+        ended = loop.time()
+    finally:
+        loop.close()
+
+    assert text == TEXT.replace("0.5s", f"{deadline}s")
+    assert ended >= deadline
