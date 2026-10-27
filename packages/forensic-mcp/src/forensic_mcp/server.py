@@ -209,13 +209,15 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
           isolated agent. {"outcome": "stands", "revised", "contested" or
           "withdrawn", "checks": [{"name", "result": "consistent",
           "contradicts", "nothing found" or "not run", "audit_ids": [the
-          skeptic's own audit ids], "reason": why not run}], "skeptic":
+          skeptic's own audit ids], "reason": why}], "skeptic":
           {"client", "model"}}; contested and withdrawn also take
           "contradiction". With no skeptic: {"outcome": "not_challenged",
           "reason": why}. A finding without it is REJECTED.
           A check's audit_ids are the skeptic's own calls: one the finding
           also cites, or one not in the audit trail, stores that check as
-          "not run". Checks past 20 are dropped. Example:
+          "not run", with the server's reason. A check's reason is up to 2,000
+          chars of text; past that, or not text, refuses the call. Checks past
+          20 are dropped. Example:
             {"outcome": "stands", "checks": [{"name": "re-ran the 4624
             search", "result": "consistent", "audit_ids": ["<the skeptic's
             audit id>"]}], "skeptic": {"client": "<client>", "model":
@@ -238,9 +240,13 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         supporting_commands (separate parameter, list of dicts): for shell-based
         evidence only. Each dict: {command, purpose, output_excerpt}.
 
-        artifacts (separate parameter, list of dicts): raw evidence reviewed.
+        artifacts (separate parameter, list of dicts): raw evidence reviewed,
+        at most 10. Send them here or as finding["artifacts"], not both.
         Each dict:
           Required: source, extraction, content, audit_id
+          content and extraction are stored whole, up to 65,536 chars each.
+          An artifact past a limit, or missing a required field, refuses the
+          whole call, naming the artifact and the field; nothing is recorded.
           Optional: content_type, purpose, output_ref
           audit_id: REQUIRED — copy from the tool response envelope.
           content: quote it as the cited tool returned it, JSON lines
@@ -369,6 +375,9 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         - related_findings: list of finding IDs this event supports (e.g. ["F-001", "F-003"])
         - event_type: process, network, file, registry, auth, persistence, lateral, execution, or other
         - artifact_ref: deduplication hint (e.g. "prefetch:EVIL.EXE-{hash}", "evtx:Security:4624:12345")
+
+        Example: record_timeline_event(event={"timestamp": "2026-03-01T14:32:00Z",
+        "description": "EVIL.EXE first ran", "source": "Prefetch"})
         """
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
         if isinstance(event, dict):

@@ -291,7 +291,7 @@ def test_a_quote_at_the_check_limit_is_checked_and_stored_whole(c):
     assert "cut" not in res.get("warning", "")
 
 
-def test_a_quote_over_the_check_limit_is_refused_by_its_place(c):
+def test_a_quote_over_the_limit_is_refused_by_its_place(c):
     d, aid = _searched(c)
     q = "A" * (QUOTE_CAP + 1)
     res, st = c.find(
@@ -301,9 +301,9 @@ def test_a_quote_over_the_check_limit_is_refused_by_its_place(c):
     assert res == {
         "status": "REJECTED",
         "error": (
-            f"Artifact 2's content is {QUOTE_CAP + 1} chars. A quote is checked against "
-            f"its source up to {QUOTE_CAP} chars. Quote the lines that show what the "
-            "finding says, not the whole output."
+            f"Artifact 2: content is {QUOTE_CAP + 1:,} chars, over the {QUOTE_CAP:,} "
+            f"limit. Send at most {QUOTE_CAP:,} chars: the output lines the cited "
+            "operation produced, as returned. The finding wasn't recorded."
         ),
     }
     assert (c.d / "findings.json").read_text() == "[]"
