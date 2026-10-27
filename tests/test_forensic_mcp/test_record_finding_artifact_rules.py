@@ -323,35 +323,33 @@ async def test_a_finding_that_would_take_findings_json_past_16_mib_is_refused(ri
 async def test_the_reply_names_the_artifact_that_set_the_findings_grade(rig):
     d, record = rig
     unverified = art("rd09 line 99: not in the output")
-    for title, first in (("full first", art()), ("reference first", art(
-            '"path": "rigtool.exe"', REF_ID)), ("declared first", art(audit_id=DECLARED_ID))):  # fmt: skip
-        res = await record(title, [first, unverified])
-        stored = _stored(d, title)[0]["artifacts"]
+    ref = art('"path": "rigtool.exe"', REF_ID)  # graded BROKEN, not counted
+    # (title, artifacts, finding's grade, the artifact named, what its reason says)
+    for title, arts, grade, named, says in (
+        ("full first", [art(), unverified], "CITED-UNVERIFIED", 2, ""),
+        ("reference first", [ref, unverified], "CITED-UNVERIFIED", 2, ""),
+        ("declared first", [art(audit_id=DECLARED_ID), unverified], "CITED-UNVERIFIED", 2, ""),
+        ("reference first, the rest full", [ref, art()], "FULL", 2, ""),
+        ("reference first, the rest broken", [ref, art(audit_id=NO_INPUTS_ID)], "BROKEN", 2,
+         "recorded no inputs"),
+        ("every artifact reference data", [ref, art('"path": "other.exe"', REF_ID)], "BROKEN",
+         1, "reference data"),
+    ):  # fmt: skip
+        res = await record(title, arts)
+        (stored,) = _stored(d, title)
         grades = [{"artifact": n, "grade": a["provenance_grade"],
                    "reason": a["provenance_reason"]}
-                  for n, a in enumerate(stored, 1) if a["provenance_grade"] != "FULL"]  # fmt: skip
-        assert res["artifact_grades"] == grades, res
-        assert res["provenance_grade"] == "CITED-UNVERIFIED", res
-        assert res["message"] == (
-            f"Finding staged as CITED-UNVERIFIED: Artifact 2: {stored[1]['provenance_reason']}"
+                  for n, a in enumerate(stored["artifacts"], 1)]  # fmt: skip
+        # the reply says what findings.json holds
+        assert res["provenance_grade"] == stored["provenance_grade"] == grade, res
+        assert res["artifact_grades"] == [g for g in grades if g["grade"] != "FULL"], (
+            res
         )
-    res = await record(
-        "reference first, the rest full", [art('"path": "rigtool.exe"', REF_ID), art()]
-    )
-    stored = _stored(d, "reference first, the rest full")[0]["artifacts"]
-    assert [a["provenance_grade"] for a in stored] == ["BROKEN", "FULL"], stored
-    assert res["artifact_grades"] == [{"artifact": 1, "grade": "BROKEN",
-                                       "reason": stored[0]["provenance_reason"]}], res  # fmt: skip
-    assert res["provenance_grade"] == "FULL", res
-    assert res["message"] == "Finding staged as FULL: Artifact 2.", res
-    res = await record("reference first, the rest broken",
-                       [art('"path": "rigtool.exe"', REF_ID), art(audit_id=NO_INPUTS_ID)])  # fmt: skip
-    stored = _stored(d, "reference first, the rest broken")[0]["artifacts"]
-    assert [a["provenance_grade"] for a in stored] == ["BROKEN", "BROKEN"], stored
-    assert "recorded no inputs" in stored[1]["provenance_reason"], stored
-    assert res["message"] == (
-        f"Finding staged as BROKEN: Artifact 2: {stored[1]['provenance_reason']}"
-    ), res
+        reason = grades[named - 1]["reason"]
+        assert says in reason, grades
+        assert res["message"] == f"Finding staged as {grade}: Artifact {named}" + (
+            f": {reason}" if reason else "."
+        ), res
     res = await record("all full", [art(), art(LINES[1])])
     assert "artifact_grades" not in res and "message" not in res, res
     res = await record("no artifacts", audit_ids=[RUN_ID])
