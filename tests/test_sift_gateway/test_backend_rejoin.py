@@ -418,9 +418,7 @@ async def test_the_retry_task_leaves_a_backend_that_is_reloading_alone(monkeypat
     gw._pending_backends["wt"] = {}
     checker = asyncio.ensure_future(gw._late_start_checker())
     await asyncio.sleep(0.05)
-    checker.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await checker
+    await gw.stop_late_start_checker(checker)
     assert reloading.starts == []
 
 

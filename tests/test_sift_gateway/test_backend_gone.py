@@ -878,7 +878,7 @@ async def test_r7_health_reports_a_dead_child_and_doesnt_reset_it(
         monkeypatch.setattr(server_mod, "_LATE_START_SECONDS", 0.5)
         checker = asyncio.ensure_future(gw._late_start_checker())
         await asyncio.sleep(2)
-        checker.cancel()
+        await gw.stop_late_start_checker(checker)
         row.check("no new child", _kids(str(standin)) == [], _kids(str(standin)))
         _, text, _ = await _call(client, "ping")
         row.check("call 1", text == _failed("ping", _before("ping")), text)
