@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import gc
+import logging
 import os
 import signal
 import sys
@@ -37,6 +39,7 @@ from mcp.shared.memory import create_connected_server_and_client_session
 from mcp.types import CONNECTION_CLOSED, ErrorData
 from sift_gateway import server as server_mod
 from sift_gateway.backends import stdio_backend
+from sift_gateway.backends.base import in_own_task
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import create_backend_mcp_server, create_mcp_server
 from sift_gateway.rest import rest_routes
@@ -44,7 +47,7 @@ from sift_gateway.server import Gateway
 from starlette.applications import Starlette
 
 if sys.version_info < (3, 11):
-    from exceptiongroup import ExceptionGroup
+    from exceptiongroup import BaseExceptionGroup, ExceptionGroup
 
 pytestmark = pytest.mark.timeout(300)
 
@@ -634,6 +637,7 @@ async def test_r5_a_failed_start_gets_the_start_failure_text(
         conf = _conf(raw, leg)
     else:
         conf = _conf(standin)
+    mine = conf["args"][1] if conf["args"] else conf["command"]  # this row's child
     if leg == "closestdin":
         monkeypatch.setattr(stdio_backend, "_INITIALIZE_TIMEOUT", 1)
     gw = await gws(conf, start=False)
@@ -658,8 +662,8 @@ async def test_r5_a_failed_start_gets_the_start_failure_text(
             row.check(f"rep {rep} not in the gateway", "in the gateway" not in text)
             row.check(f"rep {rep} ping", await _answers_ping(client))
             row.check(f"rep {rep} started false", backend.started is False)
-            left = await _settles(lambda: not _kids(), 5)
-            row.check(f"rep {rep} no child left", left, _kids())
+            left = await _settles(lambda: not _kids(mine), 5)
+            row.check(f"rep {rep} no child left", left, _kids(mine))
     cancelled = [
         r.getMessage()
         for r in caplog.records
@@ -667,6 +671,167 @@ async def test_r5_a_failed_start_gets_the_start_failure_text(
     ]
     row.check("no ERROR line names a CancelledError", not cancelled, cancelled)
     row.done()
+
+
+# R5c, R5g: a start cancelled by its caller, or by its own task group, whose
+# close raises a real error
+
+
+async def _fail_soon():
+    await asyncio.sleep(0.1)
+    raise OSError(5, "r5g probe: the transport failed")
+
+
+def _fake_stdio(close, *, group: bool = False, fail: bool = False):
+    """stdio_client's stand-in: nobody answers initialize. Its close raises
+    close(). `group` holds the streams in a task group, as stdio_client does,
+    and `fail` fails that group soon, as a dead child does."""
+
+    @contextlib.asynccontextmanager
+    async def stdio_client(_params):
+        _s2c_w, s2c_r = anyio.create_memory_object_stream(10)
+        c2s_w, _c2s_r = anyio.create_memory_object_stream(10)
+        try:
+            if not group:
+                yield s2c_r, c2s_w
+                return
+            async with anyio.create_task_group() as tg:
+                if fail:
+                    tg.start_soon(_fail_soon)
+                yield s2c_r, c2s_w
+        finally:
+            raise close()
+
+    return stdio_client
+
+
+def _broken_pipe() -> BaseException:
+    return OSError(32, "Broken pipe (the child's stdin, on close)")
+
+
+def _mixed() -> BaseException:
+    return BaseExceptionGroup(
+        "r5g probe", [asyncio.CancelledError(), OSError(32, "r5g close")]
+    )
+
+
+async def _under_scope(start):
+    """The caller is an anyio scope cancelled from outside, as the SDK cancels a
+    request's handler; the scope takes its own cancellation."""
+    with anyio.CancelScope() as scope:
+        asyncio.get_running_loop().call_later(0.3, scope.cancel)
+        await in_own_task(start)
+    caught = scope.cancelled_caught
+    return "the caller's scope caught its cancellation" if caught else ""
+
+
+START_ROUTES = {
+    "A": lambda b: b.start(),
+    "B": lambda b: in_own_task(b.start()),
+    "C": lambda b: asyncio.wait_for(in_own_task(b.start()), 60),
+    "scope": lambda b: _under_scope(b.start()),
+}
+
+
+async def _start_outcome(route: str, cancel: bool, caplog) -> tuple[str, list, list]:
+    """(what reached the caller, its ERROR "failed to start" lines, the "never
+    retrieved" reports) for one start of a backend on `route`."""
+    unretrieved = []
+    loop = asyncio.get_running_loop()
+    before = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _loop, ctx: unretrieved.append(ctx["message"]))
+    try:
+        backend = stdio_backend.StdioMCPBackend("standin", {"command": "x", "args": []})
+        outer = asyncio.ensure_future(START_ROUTES[route](backend))
+        if cancel:
+            await asyncio.sleep(0.3)
+            outer.cancel()
+        await asyncio.wait({outer}, timeout=CAP)
+        if not outer.done():
+            outer.cancel()
+            got = "no answer"
+        elif outer.cancelled():
+            got = "CancelledError"
+        elif outer.exception() is not None:
+            got = f"{type(outer.exception()).__name__}: {outer.exception()}"
+        else:
+            got = f"returned: {outer.result()}"
+        del outer
+        for _ in range(3):
+            gc.collect()
+            await asyncio.sleep(0.05)
+    finally:
+        loop.set_exception_handler(before)
+    failed = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno >= logging.ERROR and "failed to start" in r.getMessage()
+    ]
+    return got, failed, [m for m in unretrieved if "never retrieved" in m]
+
+
+@pytest.mark.parametrize("route", ["A", "B", "C"])
+async def test_r5c_regression_a_callers_cancel_is_kept_when_the_close_raises(
+    route, monkeypatch, caplog
+):
+    """Regression row (CR-48 LOW-1): the caller cancels a start at 0.3 s, and the
+    transport's close raises a real error. What reaches the caller and the count of
+    unretrieved exceptions are GREEN at f75011a7 and RED at 7e14d6c6. The ERROR
+    line column is the Rev 6.2 contract (spec :374-377), which f75011a7 predates."""
+    row = _Row()
+    monkeypatch.setattr(stdio_backend, "stdio_client", _fake_stdio(_broken_pipe))
+    got, failed, unretrieved = await _start_outcome(route, True, caplog)
+    row.check("the caller gets CancelledError", got == "CancelledError", got)
+    row.check("no ERROR failed to start", not failed, failed)
+    row.check("0 never retrieved", not unretrieved, unretrieved)
+    row.done()
+
+
+R5G_LEGS = {  # leg: (fail the group, cancel by the caller, route, what reaches it)
+    "own failure": (True, False, "A", "BrokenPipeError: [Errno 32] r5g close"),
+    "caller A": (False, True, "A", "CancelledError"),
+    "caller C": (False, True, "C", "CancelledError"),
+    "caller scope": (
+        False,
+        False,
+        "scope",
+        "returned: the caller's scope caught its cancellation",
+    ),
+}
+
+
+@pytest.mark.parametrize("leg", sorted(R5G_LEGS))
+async def test_r5g_a_close_mixing_a_cancellation_and_an_error(leg, monkeypatch, caplog):
+    """The start's close raises a group of a CancelledError and an OSError. A
+    start whose own task group failed raises the OSError and logs it as the
+    failed start; one its caller cancelled stays a cancellation, with no ERROR."""
+    row = _Row()
+    fail, cancel, route, want = R5G_LEGS[leg]
+    fake = _fake_stdio(_mixed, group=True, fail=fail)
+    monkeypatch.setattr(stdio_backend, "stdio_client", fake)
+    got, failed, unretrieved = await _start_outcome(route, cancel, caplog)
+    row.check("what reaches the caller", got == want, got)
+    if fail:
+        line = "Backend standin failed to start: " + want
+        row.check("the ERROR line names the OSError", failed == [line], failed)
+    else:
+        row.check("no ERROR failed to start", not failed, failed)
+    row.check("0 never retrieved", not unretrieved, unretrieved)
+    row.done()
+
+
+async def test_r7u_health_leaves_the_session_when_tools_list_fails():
+    """health_check's list_tools never resets: a session whose tools/list fails
+    with a gone error is reported, and left for the next call to judge."""
+    backend = stdio_backend.StdioMCPBackend("standin", {"command": "x", "args": []})
+    error = AsyncMock(side_effect=anyio.BrokenResourceError())
+    session = types.SimpleNamespace(list_tools=error)
+    backend._session, backend._started = session, True
+    health = await backend.health_check()
+    want = {"status": "error", "type": "stdio", "error": "BrokenResourceError"}
+    assert health == want, health
+    assert backend._session is session, backend._session
+    assert backend.started is True
 
 
 @pytest.mark.parametrize("route", ROUTES)
