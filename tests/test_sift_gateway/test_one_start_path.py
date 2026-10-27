@@ -1046,6 +1046,105 @@ async def test_iii_a_cancelled_start_while_running_is_a_failed_start(rig):
     row.done()
 
 
+# --- a stop point whose await ends otherwise than with the cancel ------------
+
+
+class CaseSyncEnds(CaseSync):
+    """A case sync that blocks, and on a cancel returns (``raises`` None) or
+    raises ``raises`` in its place."""
+
+    def __init__(self, raises=None):
+        super().__init__()
+        self.blocks = True
+        self.raises = raises
+
+    async def __call__(self, backend) -> None:
+        try:
+            await super().__call__(backend)
+        except asyncio.CancelledError:
+            if self.raises is not None:
+                raise self.raises from None
+
+
+async def connected_and_after(rig: Rig):
+    """wintools-mcp connected before the pass, and a backend after it whose
+    start blocks; the gateway and both backends."""
+    link = Link()
+    after = Gated("after", ["block"])
+    gw = rig.gateway(link, after)
+    await link.start()
+    link.entered.clear()
+    return gw, link, after
+
+
+async def shut_at(rig: Rig, gw: Gateway, link: Link, after: Gated, reached) -> None:
+    """Run a pass until ``reached`` is set, begin shutdown, and check the row."""
+    row = _Row()
+    task = rig.checker(gw)
+    await rig.waiting()
+    rig.passes.go()
+    row.check("reached the point", await settles(reached.is_set), None)
+    done, at, stopper = await shut(rig, gw, task, lambda: At(rig, gw, link, after))
+    row.check("the checker done within 1 s", done, outcome(task))
+    row.check("the stop method returned", stopper is None, stopper)
+    star_columns(row, rig, gw, link, after, at)
+    row.done()
+
+
+async def test_shutdown_after_a_heal_that_returns_on_the_cancel(rig):
+    """server.py:442: the stop check after heal holds when heal swallows the
+    cancel and returns, as 3.10's wait_for in ``_alive`` can drop it."""
+    gw, link, after = await connected_and_after(rig)
+    healing = asyncio.Event()
+
+    async def heal() -> None:
+        link.heals += 1
+        healing.set()
+        with contextlib.suppress(asyncio.CancelledError):
+            await link.go_on.wait()
+
+    link.heal = heal
+    await shut_at(rig, gw, link, after, healing)
+
+
+@pytest.mark.parametrize(
+    "raises", [None, RuntimeError("post failed")], ids=["returns", "raises"]
+)
+async def test_shutdown_after_a_case_sync_that_ends_otherwise(rig, raises):
+    """server.py:454 and :457: the stop checks after the case sync, and in the
+    outer except, hold when the sync returns on the cancel or raises an
+    error that isn't the cancel."""
+    gw, link, after = await connected_and_after(rig)
+    sync = CaseSyncEnds(raises)
+    gw._notify_backend_case = sync
+    rig.syncs.append(sync)
+    await shut_at(rig, gw, link, after, sync.entered)
+
+
+async def test_the_stop_method_keeps_a_cancel_of_its_caller(rig):
+    """server.py:392: a cancel of the stop method's caller, while the
+    checker's cleanup runs, reaches the caller."""
+    row = _Row()
+    gw = Gateway({"backends": {}})
+
+    async def checker() -> None:
+        try:
+            await asyncio.get_running_loop().create_future()
+        except asyncio.CancelledError:
+            await asyncio.sleep(SHORT)  # its cleanup
+            raise
+
+    task = rig.spawn("checker", checker)
+    await asyncio.sleep(0)
+    caller = rig.spawn("test", gw.stop_late_start_checker, task)
+    await asyncio.sleep(0.05)
+    caller.cancel()
+    await asyncio.wait({caller, task}, timeout=2 * SOON)
+    row.check("the caller's cancel reached it", caller.cancelled(), outcome(caller))
+    row.check("the checker ended", task.done(), outcome(task))
+    row.done()
+
+
 class FakeSessionManager:
     def __init__(self, n: int, order: list[str]):
         self.n = n
