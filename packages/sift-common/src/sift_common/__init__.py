@@ -65,18 +65,20 @@ def isolate_stdio_transport() -> None:
 
 
 def _open_descriptors():
-    """The descriptors this process has open; failing a listing, every number
-    below the soft limit on open files."""
-    listing = "/proc/self/fd" if sys.platform.startswith("linux") else "/dev/fd"
-    try:
-        return [int(name) for name in os.listdir(listing)]
-    except OSError:
-        import resource
+    """The descriptors this process has open, from Linux's listing; elsewhere,
+    or failing it, every number below the soft limit on open files. Other
+    systems' /dev/fd can list only 0-2 (FreeBSD's, without fdescfs)."""
+    if sys.platform.startswith("linux"):
+        try:
+            return [int(name) for name in os.listdir("/proc/self/fd")]
+        except OSError:
+            pass
+    import resource
 
-        soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
-        if soft == resource.RLIM_INFINITY:
-            soft = os.sysconf("SC_OPEN_MAX")
-        return range(soft)
+    soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+    if soft == resource.RLIM_INFINITY:
+        soft = os.sysconf("SC_OPEN_MAX")
+    return range(soft)
 
 
 def resolve_case_dir() -> str:

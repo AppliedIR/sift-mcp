@@ -555,3 +555,34 @@ def test_copies_of_dev_null_or_a_file_are_left_inherited(tmp_path):
         )
     assert p.returncode == 0, p.stderr
     assert json.loads(p.stderr) == [True, True]
+
+
+# Off Linux no descriptor listing is sure to be complete, so the copies are
+# found by trying every number below the soft limit: here the system's
+# /dev/fd shows only 0-2, as FreeBSD's does without fdescfs.
+ELSEWHERE = (
+    "import json, os, resource, sys\n"
+    "from sift_common import isolate_stdio_transport\n"
+    "hard = resource.getrlimit(resource.RLIMIT_NOFILE)[1]\n"
+    "resource.setrlimit(resource.RLIMIT_NOFILE, (256, hard))\n"
+    "copies = [os.dup2(0, 100), os.dup2(1, 255)]\n"
+    "listdir = os.listdir\n"
+    "def short(path):\n"
+    "    return ['0', '1', '2'] if str(path) == '/dev/fd' else listdir(path)\n"
+    "os.listdir = short\n"
+    "sys.platform = 'freebsd14'\n"
+    "isolate_stdio_transport()\n"
+    "sys.stderr.write(json.dumps([os.get_inheritable(fd) for fd in copies]))\n"
+)
+
+
+def test_copies_of_the_channel_are_found_without_a_listing():
+    p = subprocess.run(
+        [sys.executable, "-c", ELSEWHERE],
+        stdin=subprocess.PIPE,
+        capture_output=True,
+        timeout=TIMEOUT,
+    )
+    assert p.returncode == 0, p.stderr
+    # still open (get_inheritable would have raised), and closed on exec
+    assert json.loads(p.stderr) == [False, False]
