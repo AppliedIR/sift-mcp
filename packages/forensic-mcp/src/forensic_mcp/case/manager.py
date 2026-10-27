@@ -1318,11 +1318,6 @@ class CaseManager:
         raw_artifacts = (
             artifacts if artifacts is not None else sanitized.get("artifacts", [])
         )
-        if isinstance(raw_artifacts, str):
-            try:
-                raw_artifacts = json.loads(raw_artifacts)
-            except (json.JSONDecodeError, TypeError):
-                raw_artifacts = []
         quotes: list[str] = []  # each validated artifact's whole content
         cut_warnings: list[str] = []
         if isinstance(raw_artifacts, list):

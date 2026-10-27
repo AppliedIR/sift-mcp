@@ -299,14 +299,6 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
                     _validate_str_length(
                         cmd.get("purpose"), "supporting_commands.purpose", _MAX_TEXT
                     )
-        # Coerce artifacts JSON string to list
-        if isinstance(artifacts, str):
-            try:
-                artifacts = json.loads(artifacts)
-            except (json.JSONDecodeError, TypeError):
-                artifacts = None
-        if not isinstance(artifacts, list):
-            artifacts = None
         try:
             result = manager.record_finding(
                 finding,
