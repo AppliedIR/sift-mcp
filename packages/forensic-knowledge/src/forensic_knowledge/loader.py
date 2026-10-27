@@ -73,11 +73,6 @@ def _load_yaml(rel_path: str) -> Any:
     return copy.deepcopy(_cached_yaml(rel_path))
 
 
-def _load_all_in_dir(rel_dir: str) -> list[Any]:
-    """Load all YAML files in a directory."""
-    return copy.deepcopy(_cached_dir(rel_dir))
-
-
 def _cached_yaml(rel_path: str) -> Any:
     if rel_path in _cache:
         return _cache[rel_path]
@@ -93,7 +88,8 @@ def _cached_yaml(rel_path: str) -> Any:
     return data
 
 
-def _cached_dir(rel_dir: str) -> list[Any]:
+def _load_all_in_dir(rel_dir: str) -> list[Any]:
+    """Load all YAML files in a directory: the cached list itself."""
     cache_key = f"__dir__{rel_dir}"
     if cache_key in _cache:
         return _cache[cache_key]
@@ -159,7 +155,7 @@ def list_artifacts(platform: str | None = None) -> list[dict]:
     results = []
     platforms = [platform] if platform else ["windows", "linux", "macos"]
     for plat in platforms:
-        for artifact in _cached_dir(f"artifacts/{plat}"):
+        for artifact in _load_all_in_dir(f"artifacts/{plat}"):
             results.append(
                 {
                     "name": artifact.get("name", ""),
@@ -181,7 +177,7 @@ def get_artifacts_for_tool(tool_name: str) -> list[dict]:
     """Find artifacts that reference a specific tool in their related_tools."""
     results = []
     for platform in ("windows", "linux", "macos"):
-        for artifact in _cached_dir(f"artifacts/{platform}"):
+        for artifact in _load_all_in_dir(f"artifacts/{platform}"):
             if tool_name in artifact.get("related_tools", []):
                 results.append(artifact)
     return copy.deepcopy(results)
@@ -196,7 +192,7 @@ def get_tool(name: str) -> dict | None:
     """Load tool knowledge by name (case-insensitive)."""
     name_lower = name.lower()
     for category_dir in _iter_tool_categories():
-        for tool in _cached_dir(f"tools/{category_dir}"):
+        for tool in _load_all_in_dir(f"tools/{category_dir}"):
             if tool.get("name", "").lower() == name_lower:
                 return copy.deepcopy(tool)
     return None
@@ -207,7 +203,7 @@ def list_tools(category: str | None = None, platform: str | None = None) -> list
     results = []
     categories = [category] if category else list(_iter_tool_categories())
     for cat in categories:
-        for tool in _cached_dir(f"tools/{cat}"):
+        for tool in _load_all_in_dir(f"tools/{cat}"):
             tool_platforms = tool.get("platform", [])
             if platform and platform not in tool_platforms:
                 continue
