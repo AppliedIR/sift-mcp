@@ -115,6 +115,7 @@ def test_locking_never_makes_a_chain_file(manager, active_case):  # noqa: F811
         ["1.2.3.4/24", "999.1.1.1:22", "  spaced.example  ", ""],
         ["bad(dot)example.com", "evil{.}org", "185(.)220(.)101(.)46", "hxxps[://]x[.]com/p",
          "mail[@]evil.com", "C:\\Tools\\hxxp\\a.exe", "hxxp://hxxp[.]example[.]com"],
+        {"unused": None, "domains": [f"d{n}.example.net" for n in range(100)]},
     ],
 )  # fmt: skip
 def test_vhir_extracts_the_same_ioc_values(manager, active_case, iocs):  # noqa: F811
