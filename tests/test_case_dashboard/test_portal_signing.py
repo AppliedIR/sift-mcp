@@ -537,6 +537,22 @@ def test_a_held_ioc_from_an_older_vhir_is_named_as_before(portal, monkeypatch):
     assert plan["needs_decision"] == [{"id": IOC, "coupled_from": F1}]
 
 
+def test_a_held_ioc_without_its_statuses_is_named_as_draft(portal, monkeypatch):
+    # a vhir whose held IOC carries its citing findings but no status
+    real = signing.decide.split_cascades
+
+    def bare(*a):
+        planned, held = real(*a)
+        return planned, [
+            signing.decide.Held(h.id, h.coupled_from, h.citing) for h in held
+        ]
+
+    monkeypatch.setattr(signing.decide, "split_cascades", bare)
+    _split_ioc(portal, "DRAFT")
+    plan = portal.plan([reviewed(portal, F1, "reject")]).json()
+    assert plan["needs_decision"] == _held((F1, "REJECTED"), (F2, "DRAFT"))
+
+
 def _render_list(held, show_all=False):
     """The sign dialog's list, rendered by the page's own render()."""
     node = shutil.which("node") or pytest.skip("node isn't installed")
