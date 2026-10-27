@@ -130,7 +130,11 @@ async def test_after_a_crash_the_new_build_s_name_is_accepted_after_the_rebuild(
     backend = gw.backends["probe"]
     os.kill(int((tmp_path / "pid_v1").read_text()), signal.SIGKILL)
     (tmp_path / "server_v1.py").write_text(V2)  # the new build, in its place
-    await backend.health_check()  # finds the child gone
+    # a ping sent while the pipe closes waits out its timeout as busy; the
+    # next check finds the child gone
+    for _ in range(2):
+        if (await backend.health_check())["status"] != "busy":
+            break
     assert backend.started is False
     for route in ROUTES:  # the disclosed window: refused by name until rebuilt
         assert await _call(gw, route, {"query": "q", "since": "x"}) == (
