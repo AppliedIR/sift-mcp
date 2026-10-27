@@ -1,6 +1,5 @@
 """What record_finding stores for an artifact: its chain without exact repeats,
-and its content cut at 5000 chars with a marker when longer, the whole quote
-checked either way, and a warning in the reply.
+and its content whole, checked against its source, up to the 64K limit.
 
 Uses test_finding_chains' own case, entries and helpers.
 """
@@ -242,41 +241,19 @@ def test_a_quote_under_5000_is_stored_whole_with_no_warning(c):
     assert "cut" not in res.get("warning", "")
 
 
-def test_a_quote_of_exactly_5000_is_not_cut(c):
-    d, aid = _searched(c)
-    q = _quote(d)[:CAP].rstrip()
-    q = q + "x" * (CAP - len(q))  # the last line is cut, so it doesn't verify
-    res, st = c.find([{"content": q, "audit_id": aid}])
-    assert len(q) == CAP
-    assert st["artifacts"][0]["content"] == q
-    assert "cut" not in res.get("warning", "")
-
-
-def test_a_genuine_quote_over_5000_grades_as_the_whole_quote(c):
+def test_a_quote_over_5000_is_stored_whole_with_no_warning(c):
     d, aid = _searched(c)
     q = _quote(d)
     assert len(q) > CAP
-    # the base cut it mid-line, and the cut line isn't in the record
     res, st = c.find([{"content": q, "audit_id": aid}])
     assert g(res, st)[0] == "FULL", g(res, st)
+    assert st["artifacts"][0]["content"] == q
+    assert "cut" not in res.get("warning", "")
     t = pv.trace_artifact(pv.load_case(c.d), aid, q)
     assert t.grade == "FULL"
 
 
-def test_a_cut_quote_is_stored_with_a_marker_and_the_reply_warns(c):
-    d, aid = _searched(c)
-    q = _quote(d)
-    res, st = c.find([{"content": q, "audit_id": aid}])
-    stored = st["artifacts"][0]["content"]
-    marker = f"\n[cut: {CAP} of {len(q)} chars stored]"
-    assert stored == q[:CAP] + marker
-    assert res["warning"].split(" | ")[0] == (
-        f"Artifact 1's content is {len(q)} chars: its first {CAP} are stored, "
-        "marked as cut. The whole quote was checked against its source."
-    )
-
-
-def test_the_warning_names_each_cut_artifact_by_its_place(c):
+def test_each_long_artifact_is_stored_whole_after_its_whitespace_is_stripped(c):
     d, aid = _searched(c)
     q = _quote(d)
     short = _quote(d, 200)
@@ -287,39 +264,16 @@ def test_the_warning_names_each_cut_artifact_by_its_place(c):
             {"content": q + "\n" + "\t", "audit_id": aid},
         ]
     )
-    arts = st["artifacts"]
-    assert arts[0]["content"] == short
-    assert [
-        a["content"].endswith(f"[cut: {CAP} of {len(q)} chars stored]")
-        for a in arts[1:]
-    ] == [True, True]
-    w = res["warning"]
-    assert "Artifact 1's" not in w
-    assert w.count(f"Artifact 2's content is {len(q)} chars") == 1
-    assert w.count(f"Artifact 3's content is {len(q)} chars") == 1  # stripped first
+    assert [a["content"] for a in st["artifacts"]] == [short, q, q]
+    assert "cut" not in res.get("warning", "")
 
 
-def test_a_cut_quote_that_doesnt_verify_is_still_cited_unverified(c):
+def test_a_long_quote_that_doesnt_verify_is_stored_whole_and_cited_unverified(c):
     d, aid = _searched(c)
     q = _quote(d) + "\n" + '"winlog.event_data.Planted": "not in the record"'
     res, st = c.find([{"content": q, "audit_id": aid}])
     assert g(res, st)[0] == "CITED-UNVERIFIED", g(res, st)
-    # the line that fails is past the stored part, and the marker says so
-    assert "Planted" not in st["artifacts"][0]["content"]
-    assert st["artifacts"][0]["content"].endswith(
-        f"[cut: {CAP} of {len(q)} chars stored]"
-    )
-
-
-def test_the_marker_follows_stored_text_ending_in_a_control_char(c):
-    _d, aid = _searched(c)
-    for end in ("\t", "\r", "\x1b", "\x00", "\x85"):
-        q = "A" * (CAP - 1) + end + "B" * 10
-        res, st = c.find([{"content": q, "audit_id": aid}])
-        stored = st["artifacts"][0]["content"]
-        assert (
-            stored == "A" * (CAP - 1) + end + f"\n[cut: {CAP} of {len(q)} chars stored]"
-        ), repr(end)
+    assert st["artifacts"][0]["content"] == q
 
 
 # --- the longest quote checked -------------------------------------------------
@@ -327,16 +281,14 @@ def test_the_marker_follows_stored_text_ending_in_a_control_char(c):
 QUOTE_CAP = 64 << 10
 
 
-def test_a_quote_at_the_check_limit_is_checked_and_stored_cut(c):
+def test_a_quote_at_the_check_limit_is_checked_and_stored_whole(c):
     _d, aid = _searched(c)
     q = ("A" * 63 + "\n") * (QUOTE_CAP // 64 - 1) + "A" * 64
     res, st = c.find([{"content": q, "audit_id": aid}])
     assert len(q) == QUOTE_CAP
     assert res["status"] == "STAGED", res
-    assert st["artifacts"][0]["content"].endswith(
-        f"[cut: {CAP} of {QUOTE_CAP} chars stored]"
-    )
-    assert res["warning"].startswith(f"Artifact 1's content is {QUOTE_CAP} chars:")
+    assert st["artifacts"][0]["content"] == q
+    assert "cut" not in res.get("warning", "")
 
 
 def test_a_quote_over_the_check_limit_is_refused_by_its_place(c):

@@ -273,16 +273,7 @@ def _scanned_logs(audit_dir: Path) -> list[Path]:
     return [p for p in audit_dir.glob("*.jsonl") if p.name != _FILE_IDENTITY_LOG]
 
 
-_MAX_CONTENT = 5000  # an artifact's content stored; the whole quote is checked
-_MAX_QUOTE = 64 << 10  # chars of a quote checked; a longer one is refused
-
-
-def _stored_content(content: str) -> str:
-    """An artifact's content as stored: whole, or its first `_MAX_CONTENT`
-    chars with a marker saying how much of how much is kept."""
-    if len(content) <= _MAX_CONTENT:
-        return content
-    return f"{content[:_MAX_CONTENT]}\n[cut: {_MAX_CONTENT} of {len(content)} chars stored]"
+_MAX_QUOTE = 64 << 10  # chars of a quote checked and stored; a longer one is refused
 
 
 def _distinct_links(links: list) -> list:
@@ -1319,7 +1310,6 @@ class CaseManager:
             artifacts if artifacts is not None else sanitized.get("artifacts", [])
         )
         quotes: list[str] = []  # each validated artifact's whole content
-        cut_warnings: list[str] = []
         if isinstance(raw_artifacts, list):
             for place, art in enumerate(raw_artifacts[:10], 1):
                 if not isinstance(art, dict):
@@ -1350,18 +1340,12 @@ class CaseManager:
                             "not the whole output."
                         ),
                     }
-                if len(content) > _MAX_CONTENT:
-                    cut_warnings.append(
-                        f"Artifact {place}'s content is {len(content)} chars: its "
-                        f"first {_MAX_CONTENT} are stored, marked as cut. The whole "
-                        "quote was checked against its source."
-                    )
                 quotes.append(content)
                 validated_artifacts.append(
                     {
                         "source": source[:500],
                         "extraction": extraction[:2000],
-                        "content": _stored_content(content),
+                        "content": content,
                         "content_type": str(art.get("content_type", ""))[:50],
                         "purpose": str(art.get("purpose", ""))[:500],
                         "audit_id": str(art.get("audit_id", ""))[:100],
@@ -1659,7 +1643,6 @@ class CaseManager:
             warnings.append(
                 f"{dropped_cmd_count} supporting_command(s) dropped (missing command or purpose)"
             )
-        warnings.extend(cut_warnings)
         warnings.extend(audit_warnings)
         warnings.extend(validation_warnings)
         warnings.extend(doubt_warnings)
