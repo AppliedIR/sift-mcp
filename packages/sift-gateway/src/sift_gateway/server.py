@@ -118,6 +118,9 @@ class Gateway:
         self.backends: dict[str, MCPBackend] = {}
         self._tool_map: dict[str, str] = {}  # tool_name -> backend_name
         self._tool_cache: dict[str, Tool] = {}  # tool_name -> Tool object
+        # The MCP-route Servers built over this gateway: each validates calls
+        # against its own copy of the tool schemas
+        self._mcp_servers: list = []
         self._start_locks: dict[str, asyncio.Lock] = {}
         self._reload_event = asyncio.Event()
         self._pending_backends: dict[str, dict] = {}
@@ -278,6 +281,10 @@ class Gateway:
                     inputSchema=tool_objects[original].inputSchema,
                 )
         self._tool_cache = new_cache
+        # The Servers' copies go too, so the next call refreshes from this map
+        # instead of deciding from a schema a restarted backend has changed
+        for mcp_server in self._mcp_servers:
+            mcp_server._tool_cache.clear()
 
         logger.info(
             "Tool map built: %d tools across %d backends",

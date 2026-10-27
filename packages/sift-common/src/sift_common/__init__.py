@@ -51,3 +51,28 @@ def resolve_share_path(relative_path: str) -> Path | None:
     if not share_root:
         return None
     return Path(share_root) / relative_path
+
+
+def close_tool_arguments(server) -> None:
+    """Make every tool registered on a FastMCP *server* refuse argument names
+    it doesn't declare, instead of dropping them.
+
+    Each tool's argument model is replaced by a subclass that forbids extra
+    names, and its published schema is regenerated from that model, so it
+    gains ``additionalProperties: false`` and nothing else. Call it once,
+    after the last tool registers. This reads FastMCP internals (mcp<2): a
+    tool it can't close raises, naming the tool, so the server doesn't start
+    with a tool left open.
+    """
+    for tool in server._tool_manager.list_tools():
+        try:
+            model = tool.fn_metadata.arg_model
+            closed = type(
+                model.__name__, (model,), {"model_config": {"extra": "forbid"}}
+            )
+            tool.fn_metadata.arg_model = closed
+            tool.parameters = closed.model_json_schema(by_alias=True)
+        except Exception as e:
+            raise RuntimeError(
+                f"can't close the arguments of tool {tool.name!r}: {e}"
+            ) from e

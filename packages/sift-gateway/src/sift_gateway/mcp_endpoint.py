@@ -247,6 +247,7 @@ def create_mcp_server(gateway: Any) -> Server:
     correct backend, injecting analyst identity from the HTTP request.
     """
     server = Server("sift-gateway", instructions=_GATEWAY_INSTRUCTIONS)
+    gateway._mcp_servers.append(server)
 
     @server.list_tools()
     async def _list_tools() -> list[Tool]:
@@ -332,6 +333,7 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
     if instructions is None and backend_name in gateway.backends:
         instructions = gateway.backends[backend_name].instructions
     server = Server(f"sift-gateway/{backend_name}", instructions=instructions)
+    gateway._mcp_servers.append(server)
 
     # The backend is looked up on every call: a re-join replaces it, and a
     # joinable backend's endpoint exists before its first join.
