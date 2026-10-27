@@ -655,7 +655,7 @@ def test_the_tool_list_says_what_challenged_takes():
         "challenged (dict, REQUIRED): the finding-skeptic's challenge, run in an isolated "
         'agent. {"outcome": "stands", "revised", "contested" or "withdrawn", "checks": '
         '[{"name", "result": "consistent", "contradicts", "nothing found" or "not run", '
-        '"audit_ids": [the skeptic\'s own audit ids], "reason": why not run}], "skeptic": '
+        '"audit_ids": [the skeptic\'s own audit ids], "reason": why}], "skeptic": '
         '{"client", "model"}}; contested and withdrawn also take "contradiction". With no '
         'skeptic: {"outcome": "not_challenged", "reason": why}. A finding without it is '
         "REJECTED."
