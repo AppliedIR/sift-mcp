@@ -6,6 +6,7 @@ import logging
 import sys
 import time
 from pathlib import Path
+from typing import Literal
 
 import anyio
 from mcp.types import Tool
@@ -129,6 +130,8 @@ class Gateway:
         # backend before closing the one still serving
         self._single_attempt: dict[str, dict] = {}
         self._retrying: dict[str, dict] = {}
+        # Set by stop_late_start_checker: the checker ends at its next step
+        self._checker_stopping = False
         self._audit = AuditWriter(mcp_name="sift-gateway")
 
         # Create backend instances from config
@@ -277,36 +280,48 @@ class Gateway:
             len(self.backends),
         )
 
-    async def ensure_backend_started(self, backend_name: str) -> None:
-        """Start a backend if it's not running (for lazy start mode).
+    async def ensure_backend_started(
+        self, backend_name: str, starter: Literal["call", "checker"] = "call"
+    ) -> bool:
+        """Start a backend if it's not running: the one start path after boot.
 
         Uses a per-backend asyncio.Lock with double-check to prevent
-        concurrent requests from spawning duplicate subprocesses.
-        Also rebuilds the tool map after starting.
+        concurrent starters from spawning duplicate subprocesses.
+        Also rebuilds the tool map after starting. A call waits for the
+        lock; the checker takes it only when no one holds or awaits it.
+        Whether this starter started the backend.
         """
         backend = self.backends.get(backend_name)
         if backend is None:
-            return
+            return False
         if backend.started:
-            backend.last_tool_call = time.monotonic()
-            return
+            if starter == "call":
+                backend.last_tool_call = time.monotonic()
+            return False
         if backend_name in self._pending_backends:
             # The loader is replacing it; a start from here would race it
             raise RuntimeError(f"Backend {backend_name} is reloading; retry shortly")
         lock = self._start_locks.setdefault(backend_name, asyncio.Lock())
+        # No await between this test and the take below
+        if starter == "checker" and (lock.locked() or len(lock._waiters or ())):
+            return False
         async with lock:
             if backend.started:
-                backend.last_tool_call = time.monotonic()
-                return
-            logger.info("Lazy-starting backend: %s", backend_name)
+                if starter == "call":
+                    backend.last_tool_call = time.monotonic()
+                return False
+            if starter == "call":
+                logger.info("Lazy-starting backend: %s", backend_name)
             try:
                 await asyncio.wait_for(in_own_task(backend.start()), timeout=60.0)
             except Exception as exc:  # a cancellation isn't a failed start
                 why = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
                 text = f"Backend {backend_name} didn't start ({why})."
                 raise RuntimeError(text) from exc
-            backend.last_tool_call = time.monotonic()
+            if starter == "call":
+                backend.last_tool_call = time.monotonic()
             await self._build_tool_map()
+            return True
 
     async def _idle_reaper(self) -> None:
         """Background task that stops backends idle longer than the timeout."""
@@ -365,11 +380,28 @@ class Gateway:
         except Exception as audit_exc:
             logger.warning("Gateway audit failed for %s: %s", tool, audit_exc)
 
+    async def stop_late_start_checker(self, task: asyncio.Task) -> None:
+        """Stop the late-start checker and wait for it to end.
+
+        The cancel interrupts its await in progress; the signal ends it even
+        where that cancel is swallowed below it. Neither raises the
+        checker's CancelledError here nor swallows a cancel of the caller.
+        """
+        self._checker_stopping = True
+        task.cancel()
+        await asyncio.wait({task})
+
     async def _late_start_checker(self) -> None:
-        """Periodically retry failed backends and re-sync case on started ones."""
+        """Periodically retry failed backends and re-sync case on started ones.
+
+        Once told to stop, it ends at the first step where it regains
+        control, whatever that step's await returned or raised.
+        """
         while True:
             try:
                 await anyio.sleep(_LATE_START_SECONDS)
+                if self._checker_stopping:
+                    return
                 for name, conf in list(self._unloaded.items()):
                     if name not in self._pending_backends:
                         self._single_attempt[name] = conf
@@ -381,38 +413,49 @@ class Gateway:
                         continue  # the loader is replacing it
                     if not backend.started:
                         try:
-                            await asyncio.wait_for(
-                                in_own_task(backend.start()), timeout=30.0
-                            )
-                            logger.info("Late-started backend: %s", name)
-                            await self._build_tool_map()
-                            logger.info(
-                                "Tool map rebuilt after late-starting: %s", name
-                            )
+                            started = await self.ensure_backend_started(name, "checker")
                         except (
                             Exception,
                             asyncio.CancelledError,
                             BaseExceptionGroup,
                         ) as exc:
+                            if self._checker_stopping:
+                                return
                             logger.warning("Late-start failed for %s: %s", name, exc)
                             continue
+                        if self._checker_stopping:
+                            return
+                        if not started:
+                            continue  # busy: a later pass starts it
+                        logger.info("Late-started backend: %s", name)
+                        logger.info("Tool map rebuilt after late-starting: %s", name)
                     # A session the remote ended (a restart, a guest revert)
                     # is reconnected here, with no tool call needed
                     if isinstance(backend, HttpMCPBackend):
                         try:
                             await backend.heal()
                         except (Exception, BaseExceptionGroup) as exc:
+                            if self._checker_stopping:
+                                return
                             logger.warning("Reconnect failed for %s: %s", name, exc)
                             continue
+                        if self._checker_stopping:
+                            return
                     # Rebuild tool map if backend reconnected with new code
                     if getattr(backend, "_tool_map_stale", False):
                         backend._tool_map_stale = False
                         await self._build_tool_map()
+                        if self._checker_stopping:
+                            return
                         logger.info("Tool map rebuilt after %s reconnected", name)
                     # Re-sync case on wintools only (/cases/activate is wintools-specific)
                     if name == "wintools-mcp":
                         await self._notify_backend_case(backend)
+                        if self._checker_stopping:
+                            return
             except (Exception, BaseExceptionGroup) as exc:
+                if self._checker_stopping:
+                    return
                 logger.error("Late-start checker error (will retry): %s", exc)
 
     def _get_active_case(self) -> str:
@@ -893,14 +936,12 @@ class Gateway:
                 async with anyio.create_task_group() as loader_tg:
                     loader_tg.start_soon(gateway._backend_loader)
                     yield
+                    await gateway.stop_late_start_checker(late_start_task)
                     loader_tg.cancel_scope.cancel()
             if reaper_task is not None:
                 reaper_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await reaper_task
-            late_start_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await late_start_task
             await gateway.stop()
 
         routes = []
