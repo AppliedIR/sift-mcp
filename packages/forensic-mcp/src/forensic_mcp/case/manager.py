@@ -1640,13 +1640,16 @@ class CaseManager:
                   for n, a in enumerate(validated_artifacts, 1)]  # fmt: skip
         if not_full := [g for g in grades if g["grade"] != "FULL"]:
             result["artifact_grades"] = not_full
-        if finding_prov_grade != "FULL":
+        if finding_prov_grade != "FULL" or not_full:
             # the artifact that set the grade, among those finding_grade counts
             counted = [g for g, t in zip(grades, artifact_traces, strict=True)
                        if (t.break_ or {}).get("kind") != "reference"] or grades  # fmt: skip
             first = next((g for g in counted if g["grade"] == finding_prov_grade), None)
             result["message"] = f"Finding staged as {finding_prov_grade}" + (
-                f": Artifact {first['artifact']}: {first['reason']}" if first else "."
+                "."
+                if not first
+                else f": Artifact {first['artifact']}"
+                + (f": {first['reason']}" if first["reason"] else ".")
             )
         if timeline_event_id:
             result["timeline_event_id"] = timeline_event_id

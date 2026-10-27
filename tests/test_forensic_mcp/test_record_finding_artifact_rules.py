@@ -306,6 +306,15 @@ async def test_the_reply_names_the_artifact_that_set_the_findings_grade(rig):
         assert res["message"] == (
             f"Finding staged as CITED-UNVERIFIED: Artifact 2: {stored[1]['provenance_reason']}"
         )
+    res = await record(
+        "reference first, the rest full", [art('"path": "rigtool.exe"', REF_ID), art()]
+    )
+    stored = _stored(d, "reference first, the rest full")[0]["artifacts"]
+    assert [a["provenance_grade"] for a in stored] == ["BROKEN", "FULL"], stored
+    assert res["artifact_grades"] == [{"artifact": 1, "grade": "BROKEN",
+                                       "reason": stored[0]["provenance_reason"]}], res  # fmt: skip
+    assert res["provenance_grade"] == "FULL", res
+    assert res["message"] == "Finding staged as FULL: Artifact 2.", res
     res = await record("all full", [art(), art(LINES[1])])
     assert "artifact_grades" not in res and "message" not in res, res
     res = await record("no artifacts", audit_ids=[RUN_ID])
