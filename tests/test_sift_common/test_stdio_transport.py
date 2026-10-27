@@ -74,6 +74,10 @@ def held():
     return out
 
 soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+sock, peer = socket.socketpair()
+pipe_r, pipe_w = os.pipe()
+null = os.open(os.devnull, os.O_RDONLY)
+# opened first, so that no plant lands on a descriptor a source holds
 taken = {int(n) for n in os.listdir("/proc/self/fd")}
 taken |= {12, *range(16, 33), soft - 1}
 
@@ -84,9 +88,6 @@ def free():
             taken.add(fd)
             return fd
 
-sock, peer = socket.socketpair()
-pipe_r, pipe_w = os.pipe()
-null = os.open(os.devnull, os.O_RDONLY)
 top = random.choice(("channel in", "channel out"))
 sources = {"channel in": 0, "channel out": 1, "/dev/null": null, "stderr": 2,
            "socket": sock.fileno(), "pipe": pipe_r}
@@ -495,7 +496,9 @@ async def test_a_backend_the_gateway_starts_again_keeps_its_channel_away(
         await backend.stop()
 
 
-# A second call must leave everything as the first left it.
+# A second call must leave everything as the first left it. By then fd 1
+# holds stderr, here a pipe, with an inheritable copy at fd 40: a call that
+# took the channel from fd 0 and fd 1 again would mark that copy.
 TWICE = (
     "import json, os, sys\n"
     "from sift_common import isolate_stdio_transport\n"
@@ -504,10 +507,11 @@ TWICE = (
     "    fds = {}\n"
     "    for n in os.listdir(d):\n"
     "        try:\n"
-    "            fds[n] = os.readlink(d + '/' + n)\n"
+    "            fds[n] = [os.readlink(d + '/' + n), os.get_inheritable(int(n))]\n"
     "        except OSError:\n"
     "            pass\n"
     "    return {'fds': fds, 'stdin': sys.stdin.fileno(), 'stdout': sys.stdout.fileno()}\n"
+    "os.dup2(2, 40)\n"
     "isolate_stdio_transport()\n"
     "first = state()\n"
     "isolate_stdio_transport()\n"
@@ -527,10 +531,35 @@ def test_a_second_isolation_changes_nothing():
     first, second = json.loads(p.stdout)
     # the listing opens a descriptor of its own, which differs between calls
     for s in (first, second):
-        s["fds"] = {n: t for n, t in s["fds"].items() if not t.startswith("/proc/")}
+        s["fds"] = {n: t for n, t in s["fds"].items() if not t[0].startswith("/proc/")}
     assert first == second
-    assert first["fds"]["0"] == "/dev/null"
+    assert first["fds"]["0"] == ["/dev/null", True]
+    assert first["fds"]["40"] == [first["fds"]["2"][0], True]
+    assert first["fds"]["40"][0].startswith("pipe:")
     assert first["stdout"] not in (0, 1)
+
+
+# Launched with stderr on the channel (2>&1), fd 1 and fd 2 hold the channel
+# after isolation too. Descriptors 0-2 are a child's standard streams: they
+# stay inherited.
+STDERR_ON_THE_CHANNEL = (
+    "import json, os, sys\n"
+    "from sift_common import isolate_stdio_transport\n"
+    "isolate_stdio_transport()\n"
+    "sys.stdout.write(json.dumps([os.get_inheritable(fd) for fd in (0, 1, 2)]))\n"
+)
+
+
+def test_standard_streams_stay_inherited_when_stderr_is_the_channel():
+    p = subprocess.run(
+        [sys.executable, "-c", STDERR_ON_THE_CHANNEL],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=TIMEOUT,
+    )
+    assert p.returncode == 0, p.stdout
+    assert json.loads(p.stdout) == [True, True, True]
 
 
 # /dev/null on fd 0 and a file on fd 1 are not a channel: copies of them keep
