@@ -66,11 +66,21 @@ _cache: dict[str, Any] = {}
 
 
 # Each reply is a copy the caller owns: a caller's change never reaches the
-# cache, so never a later reply
+# cache, so never a later reply. Lookups search the cache itself and copy only
+# what they return.
 def _load_yaml(rel_path: str) -> Any:
     """Load a YAML file relative to the data directory, with caching."""
+    return copy.deepcopy(_cached_yaml(rel_path))
+
+
+def _load_all_in_dir(rel_dir: str) -> list[Any]:
+    """Load all YAML files in a directory."""
+    return copy.deepcopy(_cached_dir(rel_dir))
+
+
+def _cached_yaml(rel_path: str) -> Any:
     if rel_path in _cache:
-        return copy.deepcopy(_cache[rel_path])
+        return _cache[rel_path]
 
     full_path = _find_data_dir() / rel_path
     if not full_path.exists():
@@ -80,14 +90,13 @@ def _load_yaml(rel_path: str) -> Any:
         data = yaml.safe_load(f)
 
     _cache[rel_path] = data
-    return copy.deepcopy(data)
+    return data
 
 
-def _load_all_in_dir(rel_dir: str) -> list[Any]:
-    """Load all YAML files in a directory."""
+def _cached_dir(rel_dir: str) -> list[Any]:
     cache_key = f"__dir__{rel_dir}"
     if cache_key in _cache:
-        return copy.deepcopy(_cache[cache_key])
+        return _cache[cache_key]
 
     data_dir = _find_data_dir() / rel_dir
     if not data_dir.is_dir():
@@ -101,7 +110,7 @@ def _load_all_in_dir(rel_dir: str) -> list[Any]:
             results.append(doc)
 
     _cache[cache_key] = results
-    return copy.deepcopy(results)
+    return results
 
 
 def clear_cache() -> None:
@@ -132,10 +141,14 @@ def _sanitize_name(name: str) -> str:
 
 def get_artifact(name: str) -> dict | None:
     """Load artifact knowledge by name (e.g., 'amcache')."""
+    return copy.deepcopy(_artifact(name))
+
+
+def _artifact(name: str) -> dict | None:
     _sanitize_name(name)
     # Try platform-specific paths
     for platform in ("windows", "linux", "macos"):
-        data = _load_yaml(f"artifacts/{platform}/{name}.yaml")
+        data = _cached_yaml(f"artifacts/{platform}/{name}.yaml")
         if data is not None:
             return data
     return None
@@ -146,7 +159,7 @@ def list_artifacts(platform: str | None = None) -> list[dict]:
     results = []
     platforms = [platform] if platform else ["windows", "linux", "macos"]
     for plat in platforms:
-        for artifact in _load_all_in_dir(f"artifacts/{plat}"):
+        for artifact in _cached_dir(f"artifacts/{plat}"):
             results.append(
                 {
                     "name": artifact.get("name", ""),
@@ -154,24 +167,24 @@ def list_artifacts(platform: str | None = None) -> list[dict]:
                     "platform": artifact.get("platform", plat),
                 }
             )
-    return results
+    return copy.deepcopy(results)
 
 
 def list_artifact_keys() -> list[str]:
     """Keys get_artifact accepts (file names without extension), for artifacts
     that name related tools."""
     keys = {p.stem for p in (_find_data_dir() / "artifacts").glob("*/*.yaml")}
-    return sorted(k for k in keys if (get_artifact(k) or {}).get("related_tools"))
+    return sorted(k for k in keys if (_artifact(k) or {}).get("related_tools"))
 
 
 def get_artifacts_for_tool(tool_name: str) -> list[dict]:
     """Find artifacts that reference a specific tool in their related_tools."""
     results = []
     for platform in ("windows", "linux", "macos"):
-        for artifact in _load_all_in_dir(f"artifacts/{platform}"):
+        for artifact in _cached_dir(f"artifacts/{platform}"):
             if tool_name in artifact.get("related_tools", []):
                 results.append(artifact)
-    return results
+    return copy.deepcopy(results)
 
 
 # ---------------------------------------------------------------------------
@@ -183,9 +196,9 @@ def get_tool(name: str) -> dict | None:
     """Load tool knowledge by name (case-insensitive)."""
     name_lower = name.lower()
     for category_dir in _iter_tool_categories():
-        for tool in _load_all_in_dir(f"tools/{category_dir}"):
+        for tool in _cached_dir(f"tools/{category_dir}"):
             if tool.get("name", "").lower() == name_lower:
-                return tool
+                return copy.deepcopy(tool)
     return None
 
 
@@ -194,7 +207,7 @@ def list_tools(category: str | None = None, platform: str | None = None) -> list
     results = []
     categories = [category] if category else list(_iter_tool_categories())
     for cat in categories:
-        for tool in _load_all_in_dir(f"tools/{cat}"):
+        for tool in _cached_dir(f"tools/{cat}"):
             tool_platforms = tool.get("platform", [])
             if platform and platform not in tool_platforms:
                 continue
@@ -206,7 +219,7 @@ def list_tools(category: str | None = None, platform: str | None = None) -> list
                     "platform": tool_platforms,
                 }
             )
-    return results
+    return copy.deepcopy(results)
 
 
 def _iter_tool_categories() -> list[str]:
@@ -280,12 +293,12 @@ def get_evidence_template() -> dict:
 
 def get_checkpoint(action_type: str) -> dict | None:
     """Load checkpoint requirements for a specific action type."""
-    data = _load_yaml("discipline/checkpoints.yaml")
+    data = _cached_yaml("discipline/checkpoints.yaml")
     if not data:
         return None
     for cp in data.get("checkpoints", []):
         if cp.get("action_type") == action_type:
-            return cp
+            return copy.deepcopy(cp)
     return None
 
 
@@ -305,27 +318,27 @@ def list_checkpoints() -> list[dict]:
 
 def get_corroboration(finding_type: str) -> list[dict] | None:
     """Load corroboration suggestions for a finding type."""
-    data = _load_yaml("discipline/guidance/corroboration.yaml")
+    data = _cached_yaml("discipline/guidance/corroboration.yaml")
     if not data:
         return None
-    return data.get("corroboration", {}).get(finding_type)
+    return copy.deepcopy(data.get("corroboration", {}).get(finding_type))
 
 
 def get_false_positive_context(tool_name: str, finding_type: str) -> dict | None:
     """Load false positive context for a tool/finding combination."""
-    data = _load_yaml("discipline/guidance/false_positives.yaml")
+    data = _cached_yaml("discipline/guidance/false_positives.yaml")
     if not data:
         return None
     key = f"{tool_name}/{finding_type}"
-    return data.get("false_positives", {}).get(key)
+    return copy.deepcopy(data.get("false_positives", {}).get(key))
 
 
 def get_tool_interpretation(tool_name: str) -> dict | None:
     """Load tool interpretation guidance."""
-    data = _load_yaml("discipline/guidance/tool_interpretation.yaml")
+    data = _cached_yaml("discipline/guidance/tool_interpretation.yaml")
     if not data:
         return None
-    return data.get("tools", {}).get(tool_name)
+    return copy.deepcopy(data.get("tools", {}).get(tool_name))
 
 
 def get_collection_checklist(artifact_type: str) -> dict | None:
