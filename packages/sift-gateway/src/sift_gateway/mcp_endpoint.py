@@ -279,21 +279,6 @@ def create_mcp_server(gateway: Any) -> Server:
         except (RuntimeError, ConnectionError, OSError) as e:
             logger.error("MCP call_tool backend error for %s: %s", name, e)
             return _error(f"Error: {name} failed: {e}")
-        except Exception as e:
-            # Catch ClosedResourceError / BrokenResourceError (anyio) and
-            # similar transport errors that indicate a dead session.
-            exc_str = str(type(e).__name__).lower()
-            if "closed" in exc_str or "broken" in exc_str or "resource" in exc_str:
-                logger.error(
-                    "MCP call_tool transport error for %s: %s: %s",
-                    name,
-                    type(e).__name__,
-                    e,
-                )
-                return _error(
-                    f"Error: backend connection lost for {name} — retry once to trigger reconnect"
-                )
-            raise  # Re-raise non-transport exceptions to fall through to generic handler
         except (asyncio.CancelledError, BaseExceptionGroup) as e:
             logger.error(
                 "MCP call_tool unexpected error for %s: %s: %s",
