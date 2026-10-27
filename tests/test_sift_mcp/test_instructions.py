@@ -49,6 +49,12 @@ class TestInstructionConstants:
         assert len(FORENSIC_RAG) > 50
         assert "knowledge" in FORENSIC_RAG.lower()
 
+    def test_opensearch_names_the_header_sid_field(self):
+        assert (
+            "winlog.user.identifier (the SID in the record header: often the service account "
+            "the provider ran as; absent in records ingested before this version)"
+        ) in OPENSEARCH
+
     def test_opencti_describes_cti(self):
         assert isinstance(OPENCTI, str)
         assert len(OPENCTI) > 50

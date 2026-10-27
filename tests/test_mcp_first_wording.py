@@ -62,6 +62,12 @@ SKEPTIC_SENTENCE = (
     "A finding-skeptic challenge (isolated agent) is required; with none, send"
     ' challenged {"outcome": "not_challenged", "reason": why}.'
 )
+# the OpenSearch key evtx field for the record header SID, as approved; added
+# to the key evtx fields after ", "
+SID_FIELD = (
+    "winlog.user.identifier (the SID in the record header: often the service account"
+    " the provider ran as; absent in records ingested before this version)"
+)
 
 
 def _strings():
@@ -85,6 +91,10 @@ def test_opensearch_says_ez_csv_indices_carry_no_event_time_once():
     assert _strings()["OPENSEARCH"].count(EZ_SENTENCE) == 1
 
 
+def test_opensearch_names_the_record_header_sid_field_once():
+    assert _strings()["OPENSEARCH"].count(f", {SID_FIELD}. ") == 1
+
+
 def test_forensic_mcp_says_a_challenge_is_required():
     assert SKEPTIC_SENTENCE in _strings()["FORENSIC_MCP"]
 
@@ -98,6 +108,7 @@ def test_the_backend_instructions_stay_within_their_budget():
     )  # fmt: skip
     budget += JUDGMENT_GROWTH
     budget += len(TOOL_SYNTAX) + 2
+    budget += len(SID_FIELD) + 2
     assert sum(len(v) for v in strings.values()) <= budget
 
 
