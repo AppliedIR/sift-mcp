@@ -98,9 +98,9 @@ def test_vhir_leaves_what_the_examiner_rejected_out_of_a_reports_iocs_alike(tmp_
     from test_report_mcp.test_report_iocs_rejected import ROWS, gathered
     from vhir_cli.commands.report import _report_iocs as vhir_report_iocs
 
-    for n, (row, field, record, expected) in enumerate(ROWS):
-        for copy in (_report_iocs, vhir_report_iocs):
-            got = gathered(copy, tmp_path / f"{n}", field, record)
+    for n, (row, field, record, line, expected) in enumerate(ROWS):
+        for c, copy in enumerate((_report_iocs, vhir_report_iocs)):
+            got = gathered(copy, tmp_path / f"{n}-{c}", field, record, line)
             assert got == expected, (row, copy.__module__)
 
 

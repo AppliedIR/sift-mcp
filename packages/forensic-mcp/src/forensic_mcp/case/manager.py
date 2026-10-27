@@ -778,20 +778,18 @@ def _detect_ioc_type(value: str) -> tuple[str, str]:
     )
     if "." in v and v.lower().endswith(_EXE_EXTS) and "/" not in v and "\\" not in v:
         return "file:name", "host"
-    # File name whose extension is no top-level domain (x.bin, payload.tar.gz).
-    # An extension that is also a TLD (.zip, .sh, .com) stays a domain below.
+    # Domain name, unless its extension is a file's and no top-level domain
+    # (x.bin, payload.tar.gz); one that is also a TLD (.zip, .sh) stays a domain.
+    # Only a domain-shaped value moves: a command line keeps its type below.
     _FILE_EXTS = {
         "bak", "bin", "cfg", "cpl", "dat", "db", "dmp", "doc", "docx", "drv",
         "evtx", "gz", "hta", "img", "inf", "ini", "iso", "jar", "jse", "json",
         "lnk", "log", "ocx", "pdf", "rar", "tar", "tmp", "txt", "vbe", "wsf",
         "xls", "xlsx", "xml",
     }  # fmt: skip
-    ext = v.rpartition(".")[2].casefold()
-    if "." in v and ext in _FILE_EXTS and "/" not in v and "\\" not in v:
-        return "file:name", "host"
-
-    # Domain name
     if re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9-]*\.)+[a-zA-Z]{2,}$", v):
+        if v.rpartition(".")[2].casefold() in _FILE_EXTS:
+            return "file:name", "host"
         return "domain-name", "network"
 
     # Process command line

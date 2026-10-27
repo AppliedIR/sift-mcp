@@ -5,8 +5,9 @@ anywhere in the value, is refused before anything is written, naming the first
 place it occurs. It was stored as a repr ("{'gadget.js': ...}") or dropped
 without a word.
 
-A value whose extension is a file's and no top-level domain (x.bin) is a file
-name, not a domain; one that is also a TLD (.zip) stays a domain.
+A domain-shaped value whose extension is a file's and no top-level domain
+(x.bin) is a file name; one that is also a TLD (.zip) stays a domain, and a
+command line ending in such an extension keeps its type.
 
 The real forensic-mcp server runs in-process on scratch cases."""
 
@@ -169,3 +170,30 @@ def test_a_path_a_tld_extension_and_an_executable_keep_their_types(case, value, 
     assert result["status"] == "STAGED", result
     (record,) = json.loads((case / "iocs.json").read_text())
     assert record["type"] == kept
+
+
+# --- the extension rule moves only a domain-shaped value ---------------------
+
+COMMAND_LINES = {  # each keeps the type it had before the extension rule
+    "tool.exe output.txt": ("process:command-line", "system"),
+    "tool.exe\toutput.json": ("process:command-line", "system"),
+    "rundll32.exe x.dll,Run": ("process:command-line", "system"),
+    "tool.exe -o dump.dmp": ("process:command-line", "system"),
+    "certutil.exe -decode a.b64 b.bin": ("process:command-line", "system"),
+    "7z.exe a out.rar": ("process:command-line", "system"),
+    "tool.exe x.zip": ("process:command-line", "system"),
+    "tool.exe out.log": ("process:command-line", "system"),
+    "notepad.exe a.ini": ("process:command-line", "system"),
+    "tool.exe /o out.txt": ("process:command-line", "system"),
+    "TOOL.EXE OUT.TXT": ("process:command-line", "system"),
+    "x.exe y.exe": ("file:name", "host"),
+    "powershell.exe -f a.ps1": ("file:name", "host"),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize(("value", "kept"), COMMAND_LINES.items())
+def test_a_command_line_ending_in_a_file_extension_keeps_its_type(case, value, kept):  # noqa: F811
+    result = _record({**FINDING, "iocs": [value]})
+    assert result["status"] == "STAGED", result
+    (record,) = json.loads((case / "iocs.json").read_text())
+    assert (record["value"], record["type"], record["category"]) == (value, *kept)
