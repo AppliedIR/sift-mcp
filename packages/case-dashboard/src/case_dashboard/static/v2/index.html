@@ -2694,8 +2694,9 @@ var VHIR_SIGN = (function() {
         var why = target === status ? '' : ' (the rule gives ' + escapeHtml(target) +
           '; no finding decided here has that status to sign it with)';
         html += '<div class="commit-item">' + escapeHtml(h.id) + ' stays ' + escapeHtml(status) + why +
-          ': cited by ' + names + '. An IOC is approved when any finding citing it is approved, rejected ' +
-          'when none is. Decide it now: vhir approve ' + escapeHtml(h.id) + ' or vhir reject ' + escapeHtml(h.id) + '</div>';
+          ': cited by ' + names + '. An IOC is approved when any finding citing it is approved. An ' +
+          'approved IOC is rejected as soon as no finding citing it is approved; any other IOC is ' +
+          'rejected when every finding citing it is rejected. Decide it now: vhir approve ' + escapeHtml(h.id) + ' or vhir reject ' + escapeHtml(h.id) + '</div>';
         return;
       }
       html += '<div class="commit-item">' + escapeHtml(h.id) + ' is linked to ' + escapeHtml(h.coupled_from) +

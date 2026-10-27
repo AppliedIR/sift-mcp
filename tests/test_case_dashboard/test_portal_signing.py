@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from case_dashboard import signing
-from vhir_cli import credentials, keys, ledger
+from vhir_cli import case_io, credentials, keys, ledger
 from vhir_cli.ledger_verify import verify_case
 
 from .conftest import PASSWORD, enrol, entry, event, finding, reviewed
@@ -522,6 +522,31 @@ def test_a_portal_plan_moves_an_ioc_with_a_finding_decided_at_that_status(
     assert verify_case(portal.dir).exit_code == 0
 
 
+def test_a_rejected_ioc_held_short_of_the_rule_carries_both_statuses(
+    portal, monkeypatch
+):
+    _split_ioc(portal, "DRAFT")
+    both = [reviewed(portal, f, "reject") for f in (F1, F2)]
+    assert portal.sign_all(both).status_code == 200
+    assert portal.item(IOC)["status"] == "REJECTED"
+    F3, F4 = "F-steve-003", "F-steve-004"
+    portal.write("findings.json", portal.read("findings.json") + [
+        finding(f, iocs=["198.51.100.7"]) for f in (F3, F4)])  # fmt: skip
+    with monkeypatch.context() as m:  # as the rule before this one: no IOC moves
+        m.setattr(case_io, "_ioc_outcomes", lambda *a: iter(()))
+        assert portal.sign_all([reviewed(portal, F3)]).status_code == 200
+    assert (portal.item(F3)["status"], portal.item(IOC)["status"]) == (
+        "APPROVED", "REJECTED",
+    )  # fmt: skip
+    # rejecting F-steve-004 can't sign the APPROVED the rule now gives
+    plan = portal.plan([reviewed(portal, F4, "reject")]).json()
+    assert [b["item_id"] for b in plan["bodies"]] == [F4]
+    assert plan["needs_decision"] == [{
+        "id": IOC, "coupled_from": F4, "status": "REJECTED", "target": "APPROVED",
+        "citing": _cite((F1, "REJECTED"), (F2, "REJECTED"), (F3, "APPROVED"), (F4, "REJECTED")),
+    }]  # fmt: skip
+
+
 def test_a_held_ioc_from_an_older_vhir_is_named_as_before(portal, monkeypatch):
     # vhir before the citing list yields plain (id, finding) pairs: the plan
     # carries just those two, as it did
@@ -581,7 +606,9 @@ def _render_list(held, show_all=False):
 
 
 RULE = (
-    "An IOC is approved when any finding citing it is approved, rejected when none is."
+    "An IOC is approved when any finding citing it is approved. An approved IOC is "
+    "rejected as soon as no finding citing it is approved; any other IOC is rejected "
+    "when every finding citing it is rejected."
 )
 
 

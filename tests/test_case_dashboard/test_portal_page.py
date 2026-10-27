@@ -381,8 +381,9 @@ def test_a_retry_that_adds_a_cascade_signs_nothing(portal, live):
     assert (
         "IOC-steve-001 stays DRAFT: cited by F-steve-001 (REJECTED) and "
         "F-steve-002 (DRAFT). An IOC is approved when any finding citing it is "
-        "approved, rejected when none is. Decide it now: vhir approve IOC-steve-001 "
-        "or vhir reject IOC-steve-001"
+        "approved. An approved IOC is rejected as soon as no finding citing it is "
+        "approved; any other IOC is rejected when every finding citing it is rejected. "
+        "Decide it now: vhir approve IOC-steve-001 or vhir reject IOC-steve-001"
     ) in out["shown"]["list"]
     assert "IOCs tab" not in out["shown"]["list"]
     assert (
