@@ -196,7 +196,7 @@ def live(portal, monkeypatch, tmp_path):
         return JSONResponse({})
 
     def uncite(request):
-        """F-steve-002 stops citing the IOC, so approving F-steve-001 now
+        """F-steve-002 stops citing the IOC, so rejecting F-steve-001 now
         cascades to it: a decision that wasn't shown."""
         findings = portal.read("findings.json")
         findings[1]["iocs"] = []
@@ -360,9 +360,10 @@ def test_an_item_changed_before_the_dialog_opened_is_refused_by_the_page(case, l
 
 
 def test_a_retry_that_adds_a_cascade_signs_nothing(portal, live):
-    """An IOC cited by two findings doesn't cascade from one of them. While
-    the dialog is open the other stops citing it, and the ledger moves: the
-    retry would add the IOC, which wasn't shown, so nothing is signed."""
+    """An IOC cited by two findings doesn't cascade when one of them is
+    rejected. While the dialog is open the other stops citing it, and the
+    ledger moves: the retry would add the IOC, which wasn't shown, so nothing
+    is signed."""
     enrol("steve")
     portal.write("findings.json", [finding("F-steve-001", iocs=["198.51.100.7"]),
                                    finding("F-steve-002", iocs=["198.51.100.7"])])  # fmt: skip
@@ -370,7 +371,7 @@ def test_a_retry_that_adds_a_cascade_signs_nothing(portal, live):
     portal.write("iocs.json", [{"id": "IOC-steve-001", "value": "198.51.100.7",
                                 "type": "ipv4-addr", "status": "DRAFT",
                                 "source_findings": ["F-steve-001", "F-steve-002"]}])  # fmt: skip
-    portal.stage(dict(reviewed(portal, "F-steve-001"), staged_by="steve"))
+    portal.stage(dict(reviewed(portal, "F-steve-001", "reject"), staged_by="steve"))
     out = live([{"do": "open"}, {"do": "snap", "as": "shown"},
                 {"do": "server", "what": "uncite"},
                 {"do": "move_before_commit", "what": "move", "times": 1},
@@ -378,9 +379,11 @@ def test_a_retry_that_adds_a_cascade_signs_nothing(portal, live):
     # shown as held for its own decision, never as an entry to sign
     assert "<strong>IOC-steve-001</strong>" not in out["shown"]["list"]
     assert (
-        "IOC-steve-001 stays DRAFT: cited by F-steve-001 (APPROVED) and "
-        "F-steve-002 (DRAFT). It is approved only when every finding that cites it "
-        "is approved. To reject it now: vhir reject IOC-steve-001"
+        "IOC-steve-001 stays DRAFT: cited by F-steve-001 (REJECTED) and "
+        "F-steve-002 (DRAFT). An IOC is approved when any finding citing it is "
+        "approved. An approved IOC is rejected as soon as no finding citing it is "
+        "approved; any other IOC is rejected when every finding citing it is rejected. "
+        "Decide it now: vhir approve IOC-steve-001 or vhir reject IOC-steve-001"
     ) in out["shown"]["list"]
     assert "IOCs tab" not in out["shown"]["list"]
     assert (

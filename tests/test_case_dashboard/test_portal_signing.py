@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from case_dashboard import signing
-from vhir_cli import credentials, keys, ledger
+from vhir_cli import case_io, credentials, keys, ledger
 from vhir_cli.ledger_verify import verify_case
 
 from .conftest import PASSWORD, enrol, entry, event, finding, reviewed
@@ -473,32 +473,78 @@ def _split_ioc(portal, other):
         assert portal.item("F-steve-002")["status"] == other
 
 
-@pytest.mark.parametrize("other", ["REJECTED", "DRAFT"])
-def test_an_ioc_its_findings_leave_apart_is_named_with_each_citing_one(portal, other):
+F1, F2, IOC = "F-steve-001", "F-steve-002", "IOC-steve-001"
+
+
+def _cite(*pairs):
+    return [{"id": f, "status_after": s} for f, s in pairs]
+
+
+def _held(*citing, status="DRAFT", target="DRAFT"):
+    return [{"id": IOC, "coupled_from": F1, "citing": _cite(*citing),
+             "status": status, "target": target}]  # fmt: skip
+
+
+# F-steve-002's status first, this plan's decisions in order, then the bodies
+# (id, coupled from), what is held, and the IOC's status after
+PLANS = {
+    "one-rejected-then-the-other-approved": ("REJECTED", [(F1, "approve")], [(F1, None), (IOC, F1)], [], "APPROVED"),
+    "first-of-two-approved": ("DRAFT", [(F1, "approve")], [(F1, None), (IOC, F1)], [], "APPROVED"),
+    # the other one's approval moved it already
+    "both-approved": ("APPROVED", [(F1, "approve")], [(F1, None)], [], "APPROVED"),
+    "first-rejected-other-draft": ("DRAFT", [(F1, "reject")], [(F1, None)], _held((F1, "REJECTED"), (F2, "DRAFT")), "DRAFT"),
+    "both-rejected": ("REJECTED", [(F1, "reject")], [(F1, None), (IOC, F1)], [], "REJECTED"),
+    "mixed-reject-first": ("DRAFT", [(F1, "reject"), (F2, "approve")], [(F1, None), (F2, None), (IOC, F2)], [], "APPROVED"),
+    "mixed-approve-first": ("DRAFT", [(F2, "approve"), (F1, "reject")], [(F2, None), (F1, None), (IOC, F2)], [], "APPROVED"),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "other, decisions, bodies, held, after", PLANS.values(), ids=PLANS.keys()
+)
+def test_a_portal_plan_moves_an_ioc_with_a_finding_decided_at_that_status(
+    portal, other, decisions, bodies, held, after
+):
     _split_ioc(portal, other)
-    held = [{"id": "IOC-steve-001", "coupled_from": "F-steve-001",
-             "citing": [{"id": "F-steve-001", "status_after": "APPROVED"},
-                        {"id": "F-steve-002", "status_after": other}]}]  # fmt: skip
-    plan = portal.plan([reviewed(portal, "F-steve-001")]).json()
-    assert [b["item_id"] for b in plan["bodies"]] == ["F-steve-001"]
+    plan = portal.plan([reviewed(portal, f, a) for f, a in decisions]).json()
+    assert [(b["item_id"], b["coupled_from"]) for b in plan["bodies"]] == bodies
     assert plan["needs_decision"] == held
     k = portal.login(plan).json()
     r = portal.commit(plan, portal.sign(plan, k))
     assert r.status_code == 200, r.text
-    assert r.json()["cascades"] == [] and r.json()["needs_decision"] == held
-    assert portal.item("IOC-steve-001")["status"] == "DRAFT"
-    assert [ln["item_id"] for ln in portal.chain()][-1:] == ["F-steve-001"]
-    assert "IOC-steve-001" not in [ln["item_id"] for ln in portal.chain()]
+    assert r.json()["needs_decision"] == held
+    assert [(c["id"], c["coupled_from"]) for c in r.json()["cascades"]] == [
+        b for b in bodies if b[0] == IOC
+    ]
+    assert portal.item(IOC)["status"] == after
+    signed = [(ln["item_id"], ln["status_after"]) for ln in portal.chain()]
+    assert ((IOC, after) in signed) is (held == [])
     assert verify_case(portal.dir).exit_code == 0
 
 
-def test_an_ioc_both_citing_findings_approve_is_signed_and_not_named(portal):
-    # twin: the other citing finding is already APPROVED, so the IOC cascades
-    _split_ioc(portal, "APPROVED")
-    plan = portal.plan([reviewed(portal, "F-steve-001")]).json()
-    assert [(b["item_id"], b["coupled_from"]) for b in plan["bodies"]] == [
-        ("F-steve-001", None), ("IOC-steve-001", "F-steve-001")]  # fmt: skip
-    assert plan["needs_decision"] == []
+def test_a_rejected_ioc_held_short_of_the_rule_carries_both_statuses(
+    portal, monkeypatch
+):
+    _split_ioc(portal, "DRAFT")
+    both = [reviewed(portal, f, "reject") for f in (F1, F2)]
+    assert portal.sign_all(both).status_code == 200
+    assert portal.item(IOC)["status"] == "REJECTED"
+    F3, F4 = "F-steve-003", "F-steve-004"
+    portal.write("findings.json", portal.read("findings.json") + [
+        finding(f, iocs=["198.51.100.7"]) for f in (F3, F4)])  # fmt: skip
+    with monkeypatch.context() as m:  # as the rule before this one: no IOC moves
+        m.setattr(case_io, "_ioc_outcomes", lambda *a: iter(()))
+        assert portal.sign_all([reviewed(portal, F3)]).status_code == 200
+    assert (portal.item(F3)["status"], portal.item(IOC)["status"]) == (
+        "APPROVED", "REJECTED",
+    )  # fmt: skip
+    # rejecting F-steve-004 can't sign the APPROVED the rule now gives
+    plan = portal.plan([reviewed(portal, F4, "reject")]).json()
+    assert [b["item_id"] for b in plan["bodies"]] == [F4]
+    assert plan["needs_decision"] == [{
+        "id": IOC, "coupled_from": F4, "status": "REJECTED", "target": "APPROVED",
+        "citing": _cite((F1, "REJECTED"), (F2, "REJECTED"), (F3, "APPROVED"), (F4, "REJECTED")),
+    }]  # fmt: skip
 
 
 def test_a_held_ioc_from_an_older_vhir_is_named_as_before(portal, monkeypatch):
@@ -512,9 +558,24 @@ def test_a_held_ioc_from_an_older_vhir_is_named_as_before(portal, monkeypatch):
 
     monkeypatch.setattr(signing.decide, "split_cascades", pairs)
     _split_ioc(portal, "DRAFT")
-    plan = portal.plan([reviewed(portal, "F-steve-001")]).json()
-    assert plan["needs_decision"] == [
-        {"id": "IOC-steve-001", "coupled_from": "F-steve-001"}]  # fmt: skip
+    plan = portal.plan([reviewed(portal, F1, "reject")]).json()
+    assert plan["needs_decision"] == [{"id": IOC, "coupled_from": F1}]
+
+
+def test_a_held_ioc_without_its_statuses_is_named_as_draft(portal, monkeypatch):
+    # a vhir whose held IOC carries its citing findings but no status
+    real = signing.decide.split_cascades
+
+    def bare(*a):
+        planned, held = real(*a)
+        return planned, [
+            signing.decide.Held(h.id, h.coupled_from, h.citing) for h in held
+        ]
+
+    monkeypatch.setattr(signing.decide, "split_cascades", bare)
+    _split_ioc(portal, "DRAFT")
+    plan = portal.plan([reviewed(portal, F1, "reject")]).json()
+    assert plan["needs_decision"] == _held((F1, "REJECTED"), (F2, "DRAFT"))
 
 
 def _render_list(held, show_all=False):
@@ -544,51 +605,62 @@ def _render_list(held, show_all=False):
     return r.stdout
 
 
-def _cite(*pairs):
-    return [{"id": f, "status_after": s} for f, s in pairs]
+RULE = (
+    "An IOC is approved when any finding citing it is approved. An approved IOC is "
+    "rejected as soon as no finding citing it is approved; any other IOC is rejected "
+    "when every finding citing it is rejected."
+)
+
+
+def _route(iid):
+    return f"Decide it now: vhir approve {iid} or vhir reject {iid}"
 
 
 @pytest.mark.parametrize("show_all", [False, True])
 def test_the_sign_dialog_names_each_finding_citing_a_held_ioc(show_all):
     out = _render_list([
-        {"id": "IOC-steve-001", "coupled_from": "F-steve-001",
-         "citing": _cite(("F-steve-001", "APPROVED"), ("F-steve-002", "REJECTED"))},
-        {"id": "IOC-steve-002", "coupled_from": "F-steve-001",
-         "citing": _cite(("F-steve-001", "APPROVED"), ("F-steve-002", "DRAFT"),
+        {"id": "IOC-steve-001", "coupled_from": "F-steve-001", "status": "DRAFT", "target": "DRAFT",
+         "citing": _cite(("F-steve-001", "REJECTED"), ("F-steve-002", "DRAFT"))},
+        {"id": "IOC-steve-002", "coupled_from": "F-steve-003", "status": "REJECTED", "target": "APPROVED",
+         "citing": _cite(("F-steve-001", "REJECTED"), ("F-steve-002", "APPROVED"),
                          ("F-steve-003", "REJECTED"))},
     ], show_all)  # fmt: skip
     assert (
-        "IOC-steve-001 stays DRAFT: cited by F-steve-001 (APPROVED) and F-steve-002 "
-        "(REJECTED). It is approved only when every finding that cites it is approved. "
-        "To reject it now: vhir reject IOC-steve-001"
+        "IOC-steve-001 stays DRAFT: cited by F-steve-001 (REJECTED) and F-steve-002 "
+        f"(DRAFT). {RULE} {_route('IOC-steve-001')}</div>"
     ) in out
     assert (
-        "IOC-steve-002 stays DRAFT: cited by F-steve-001 (APPROVED), F-steve-002 "
-        "(DRAFT) and F-steve-003 (REJECTED). It is approved only when every finding "
-        "that cites it is approved. To reject it now: vhir reject IOC-steve-002"
+        "IOC-steve-002 stays REJECTED (the rule gives APPROVED; no finding decided here "
+        "has that status to sign it with): cited by F-steve-001 (REJECTED), F-steve-002 "
+        f"(APPROVED) and F-steve-003 (REJECTED). {RULE} {_route('IOC-steve-002')}</div>"
     ) in out
-    # neither `vhir approve IOC-x` nor the IOCs tab can decide an IOC
     assert "Timeline tab" not in out and "IOCs tab" not in out
-    assert "vhir approve" not in out
 
 
 def test_a_held_ioc_s_names_are_escaped():
     out = _render_list([{"id": "IOC-<b>1</b>", "coupled_from": "F-steve-001",
+                         "status": "<b>R</b>", "target": "<b>A</b>",
                          "citing": _cite(("F-<b>2</b>", "<b>S</b>"),
                                          ("F-steve-003", "DRAFT"))}])  # fmt: skip
     assert "<b>" not in out
     assert (
-        "IOC-&lt;b&gt;1&lt;/b&gt; stays DRAFT: cited by F-&lt;b&gt;2&lt;/b&gt; "
-        "(&lt;b&gt;S&lt;/b&gt;) and F-steve-003 (DRAFT)."
+        "IOC-&lt;b&gt;1&lt;/b&gt; stays &lt;b&gt;R&lt;/b&gt; (the rule gives "
+        "&lt;b&gt;A&lt;/b&gt;; no finding decided here has that status to sign it "
+        "with): cited by F-&lt;b&gt;2&lt;/b&gt; (&lt;b&gt;S&lt;/b&gt;) and "
+        "F-steve-003 (DRAFT)."
     ) in out
-    assert "To reject it now: vhir reject IOC-&lt;b&gt;1&lt;/b&gt;</div>" in out
+    assert (
+        "Decide it now: vhir approve IOC-&lt;b&gt;1&lt;/b&gt; or vhir reject "
+        "IOC-&lt;b&gt;1&lt;/b&gt;</div>"
+    ) in out
 
 
 def test_a_held_ioc_with_one_citing_finding_names_it_alone():
+    # and with no statuses, from a vhir before them, it reads as DRAFT
     out = _render_list([{"id": "IOC-steve-001", "coupled_from": "F-steve-001",
-                         "citing": _cite(("F-steve-001", "APPROVED"))}])  # fmt: skip
-    assert "IOC-steve-001 stays DRAFT: cited by F-steve-001 (APPROVED). It is" in out
-    assert " and " not in out
+                         "citing": _cite(("F-steve-001", "REJECTED"))}])  # fmt: skip
+    assert f"IOC-steve-001 stays DRAFT: cited by F-steve-001 (REJECTED). {RULE}" in out
+    assert " and " not in out and "the rule gives" not in out
 
 
 def test_a_malformed_citing_entry_is_named_as_text_never_a_crash():

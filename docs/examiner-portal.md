@@ -110,8 +110,8 @@ Indicators of compromise auto-extracted from findings:
 
 - IP addresses, domains, hashes, file paths, registry keys, accounts
 - Each IOC links back to the source findings
-- IOC status cascades from finding status — when all source findings are approved, the IOC is auto-approved
-- Manually reviewed IOCs are protected from auto-cascading
+- IOC status cascades from finding status: an IOC is approved when any finding citing it is approved. An approved IOC is rejected as soon as no finding citing it is approved; any other IOC is rejected when every finding citing it is rejected
+- A direct decision on an IOC, in the CLI or the Portal, takes it out of later cascades; either `vhir approve IOC-…` or `vhir reject IOC-…` can decide it again
 
 ## Sidebar
 

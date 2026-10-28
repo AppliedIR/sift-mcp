@@ -2690,9 +2690,13 @@ var VHIR_SIGN = (function() {
           return escapeHtml(c && c.id) + ' (' + escapeHtml(c && c.status_after) + ')';
         });
         var names = named.length > 1 ? named.slice(0, -1).join(', ') + ' and ' + named[named.length - 1] : named[0];
-        html += '<div class="commit-item">' + escapeHtml(h.id) + ' stays DRAFT: cited by ' + names +
-          '. It is approved only when every finding that cites it is approved. To reject it now: vhir reject ' +
-          escapeHtml(h.id) + '</div>';
+        var status = h.status || 'DRAFT', target = h.target || status;
+        var why = target === status ? '' : ' (the rule gives ' + escapeHtml(target) +
+          '; no finding decided here has that status to sign it with)';
+        html += '<div class="commit-item">' + escapeHtml(h.id) + ' stays ' + escapeHtml(status) + why +
+          ': cited by ' + names + '. An IOC is approved when any finding citing it is approved. An ' +
+          'approved IOC is rejected as soon as no finding citing it is approved; any other IOC is ' +
+          'rejected when every finding citing it is rejected. Decide it now: vhir approve ' + escapeHtml(h.id) + ' or vhir reject ' + escapeHtml(h.id) + '</div>';
         return;
       }
       html += '<div class="commit-item">' + escapeHtml(h.id) + ' is linked to ' + escapeHtml(h.coupled_from) +
