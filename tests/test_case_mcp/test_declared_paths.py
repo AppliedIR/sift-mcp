@@ -329,6 +329,19 @@ _NO_FILE = {
     "extractions/../extractions/manual/rec.bin/.": errno.ENOTDIR,
 }
 
+# The kernel refuses these with no `..` in them: a `/` or `/.` after a file or
+# a symlink to one, a folder that can't be searched, a symlink loop, a folder
+# that isn't there
+_NO_DOT_DOT = {
+    "evidence/orig.bin/": errno.ENOTDIR,
+    "evidence/orig.bin/.": errno.ENOTDIR,
+    "lnk/": errno.ENOTDIR,
+    "lnk/.": errno.ENOTDIR,
+    "noperm/rec.bin": errno.EACCES,
+    "loop/rec.bin": errno.ELOOP,
+    "nosuch/rec.bin": errno.ENOENT,
+}
+
 
 @pytest.fixture
 def no_file(case):
@@ -345,10 +358,24 @@ def no_file(case):
     (case / "noperm").chmod(0o755)
 
 
+@pytest.fixture
+def refusing(case):
+    """lnk is a symlink to registered evidence; noperm holds a file but can't
+    be searched."""
+    (case / "lnk").symlink_to(case / "evidence" / "orig.bin")
+    (case / "loop").symlink_to(case / "loop")
+    (case / "noperm").mkdir()
+    (case / "noperm" / "rec.bin").write_bytes(b"can't be reached\n")
+    (case / "noperm").chmod(0)
+    yield
+    (case / "noperm").chmod(0o755)
+
+
 def _refused(entry):
-    if _NO_FILE[entry] == errno.EACCES and os.geteuid() == 0:
+    code = {**_NO_FILE, **_NO_DOT_DOT}[entry]
+    if code == errno.EACCES and os.geteuid() == 0:
         pytest.skip("root searches a folder it can't read")
-    return os.strerror(_NO_FILE[entry])
+    return os.strerror(code)
 
 
 @pytest.mark.parametrize("form", ["relative", "absolute"])
@@ -416,9 +443,31 @@ def test_an_input_naming_no_file_links_nothing_and_shows_as_recorded(
 
 
 @pytest.mark.parametrize("form", ["relative", "absolute"])
-@pytest.mark.parametrize("entry", ["nosuch/../evidence/orig.bin", "evidence/orig.bin/"])
+@pytest.mark.parametrize("entry", _NO_DOT_DOT)
+@pytest.mark.parametrize("side", ["inputs", "outputs"])
+def test_an_entry_with_no_dot_dot_the_kernel_refuses_is_named_with_its_reason(
+    case, srv, refusing, side, entry, form
+):
+    why = _refused(entry)
+    declared = os.path.join(case, entry)
+    given = entry if form == "relative" else declared
+    r = _declare(
+        srv, *(([given], []) if side == "inputs" else (["evidence/orig.bin"], [given]))
+    )
+    (x,) = [x for x in _entry(case / "audit", r["audit_id"])[side]
+            if x["path"] != str(case / "evidence" / "orig.bin")]  # fmt: skip
+    assert x == {"path": declared}
+    assert r["files_warning"] == _UNHASHED.format(f"{declared} ({why})")
+
+
+@pytest.mark.parametrize("form", ["relative", "absolute"])
+@pytest.mark.parametrize(
+    "entry",
+    ["nosuch/../evidence/orig.bin", "evidence/orig.bin/", "evidence/orig.bin/.",
+     "lnk/", "lnk/."],
+)  # fmt: skip
 def test_an_input_naming_no_file_never_links_registered_evidence(
-    case, srv, entry, form
+    case, srv, refusing, entry, form
 ):
     orig = case / "evidence" / "orig.bin"  # registered; a normal form names it
     out = _bash_made(case, "out.bin", b"made from it\n")
@@ -430,9 +479,12 @@ def test_an_input_naming_no_file_never_links_registered_evidence(
 
 
 @pytest.mark.parametrize("form", ["relative", "absolute"])
+@pytest.mark.parametrize(
+    "entry",
+    ["evidence/../extractions/manual/nosuch.bin", "extractions/manual/nosuch.bin"],
+)
 @pytest.mark.parametrize("side", ["inputs", "outputs"])
-def test_a_missing_file_after_dot_dot_keeps_its_place(case, srv, side, form):
-    entry = "evidence/../extractions/manual/nosuch.bin"
+def test_a_missing_last_name_keeps_its_place(case, srv, side, entry, form):
     given = entry if form == "relative" else os.path.join(case, entry)
     placed = str(case / "extractions" / "manual" / "nosuch.bin")
     r = _declare(
@@ -444,6 +496,7 @@ def test_a_missing_file_after_dot_dot_keeps_its_place(case, srv, side, form):
         if "orig" not in x["path"]
     ]
     assert (x["path"], "sha256" in x) == (placed, False)
+    assert x["realpath"] == os.path.realpath(placed)
     assert r["files_warning"] == _UNHASHED.format(placed)
 
 
