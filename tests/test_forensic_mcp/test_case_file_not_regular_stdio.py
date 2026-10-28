@@ -227,7 +227,7 @@ def test_a_skipped_audit_log_caps_the_grade_at_ambiguous_and_names_each_log(env)
     d = case("dup-readable")
     (d / "audit" / "wintools-mcp.jsonl").write_bytes(_duplicate(d))
     assert _graded(_record(server)) == (
-        "STAGED", "AMBIGUOUS", f"Finding staged as AMBIGUOUS: {SIFT_ID} is on 2 audit entries"
+        "STAGED", "AMBIGUOUS", f"Finding staged as AMBIGUOUS: Artifact 1: {SIFT_ID} is on 2 audit entries"
     )  # fmt: skip
     # the duplicate in a mode-000 log: AMBIGUOUS, naming it, stored so too
     d = case("dup-mode000")
@@ -236,7 +236,7 @@ def test_a_skipped_audit_log_caps_the_grade_at_ambiguous_and_names_each_log(env)
     _mode000(log)
     why = f"couldn't read audit/wintools-mcp.jsonl (Permission denied): {SKIP}"
     assert _graded(_record(server)) == (
-        "STAGED", "AMBIGUOUS", f"Finding staged as AMBIGUOUS: {why}"
+        "STAGED", "AMBIGUOUS", f"Finding staged as AMBIGUOUS: Artifact 1: {why}"
     )  # fmt: skip
     assert _stored(server) == ("AMBIGUOUS", "audit-unreadable", why)
     # two mode-000 logs: both named
@@ -253,7 +253,7 @@ def test_a_skipped_audit_log_caps_the_grade_at_ambiguous_and_names_each_log(env)
         f"audit/wintools-mcp.jsonl (Permission denied): {SKIP}"
     )
     assert _graded(_record(server)) == (
-        "STAGED", "AMBIGUOUS", f"Finding staged as AMBIGUOUS: {why}"
+        "STAGED", "AMBIGUOUS", f"Finding staged as AMBIGUOUS: Artifact 1: {why}"
     )  # fmt: skip
     assert _stored(server)[:2] == ("AMBIGUOUS", "audit-unreadable")
 
@@ -264,7 +264,7 @@ def test_a_declared_trace_with_a_skipped_log_is_ambiguous_and_keeps_its_own_reas
     d = case("declared-dup-readable", declared=True)
     (d / "audit" / "wintools-mcp.jsonl").write_bytes(_duplicate(d))
     assert _graded(_record(server)) == (
-        "STAGED", "AMBIGUOUS", f"Finding staged as AMBIGUOUS: {SIFT_ID} is on 2 audit entries"
+        "STAGED", "AMBIGUOUS", f"Finding staged as AMBIGUOUS: Artifact 1: {SIFT_ID} is on 2 audit entries"
     )  # fmt: skip
     # the duplicate in a mode-000 log
     d = case("declared-dup-mode000", declared=True)
@@ -276,7 +276,7 @@ def test_a_declared_trace_with_a_skipped_log_is_ambiguous_and_keeps_its_own_reas
         f"couldn't read audit/wintools-mcp.jsonl (Permission denied): {SKIP}"
     )
     assert _graded(_record(server)) == (
-        "STAGED", "AMBIGUOUS", f"Finding staged as AMBIGUOUS: {why}"
+        "STAGED", "AMBIGUOUS", f"Finding staged as AMBIGUOUS: Artifact 1: {why}"
     )  # fmt: skip
     assert _stored(server) == ("AMBIGUOUS", "audit-unreadable", why)
 
@@ -289,7 +289,7 @@ def test_a_duplicate_in_a_held_fifo_log_caps_the_grade_and_the_server_goes_on(en
     hold(log, _duplicate(d))
     why = f"couldn't read audit/wintools-mcp.jsonl (not a regular file): {SKIP}"
     assert _graded(_record(server)) == (
-        "STAGED", "AMBIGUOUS", f"Finding staged as AMBIGUOUS: {why}"
+        "STAGED", "AMBIGUOUS", f"Finding staged as AMBIGUOUS: Artifact 1: {why}"
     )  # fmt: skip
     assert _stored(server) == ("AMBIGUOUS", "audit-unreadable", why)
     assert os.path.exists(log) and not os.path.isfile(log)  # still the FIFO

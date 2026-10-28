@@ -1751,7 +1751,8 @@ def test_an_artifact_with_nothing_quotable_is_rejected_asking_for_the_output(
           "PID 4 System\n")  # fmt: skip
     res, st = c.find([{"content": content, "audit_id": "sift-tester-20261009-002"}])
     assert st is None and res["status"] == "REJECTED", res
-    assert "paste the actual output" in res["error"].lower(), res
+    assert res["error"].startswith("Artifact 1: content "), res
+    assert "Send the output lines the cited operation produced" in res["error"], res
 
 
 @pytest.mark.parametrize("op", ["run", "query"])

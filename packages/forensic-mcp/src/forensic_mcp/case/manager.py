@@ -273,16 +273,23 @@ def _scanned_logs(audit_dir: Path) -> list[Path]:
     return [p for p in audit_dir.glob("*.jsonl") if p.name != _FILE_IDENTITY_LOG]
 
 
-_MAX_CONTENT = 5000  # an artifact's content stored; the whole quote is checked
-_MAX_QUOTE = 64 << 10  # chars of a quote checked; a longer one is refused
+_MAX_ARTIFACTS = 10
+_MAX_QUOTE = 64 << 10  # chars of an artifact's content or extraction; longer is refused
+_SEND = {  # what each artifact field holds, for the refusal that names it
+    "source": "the evidence file or tool the content came from",
+    "extraction": "the command or query that produced the content",
+    "content": "the output lines the cited operation produced, as returned",
+}
 
 
-def _stored_content(content: str) -> str:
-    """An artifact's content as stored: whole, or its first `_MAX_CONTENT`
-    chars with a marker saying how much of how much is kept."""
-    if len(content) <= _MAX_CONTENT:
-        return content
-    return f"{content[:_MAX_CONTENT]}\n[cut: {_MAX_CONTENT} of {len(content)} chars stored]"
+class _Refused(ValueError):
+    """record_finding refuses the call with this text; no case document changes."""
+
+
+def _refuse_artifact(n: int, problem: str, send: str) -> dict:
+    """The refusal of a call for its nth artifact, counted from 1 as sent."""
+    return {"status": "REJECTED",
+            "error": f"Artifact {n}: {problem}. Send {send}. The finding wasn't recorded."}  # fmt: skip
 
 
 def _distinct_links(links: list) -> list:
@@ -475,7 +482,9 @@ def _normalize_check(
 ) -> dict:
     """One check as stored: {name, result, audit_ids, reason, ran}. A result
     its audit ids don't support (none, the finding's own, or not tool output
-    in the trail) is stored as "not run", with the reason. `ran`: what each
+    in the trail) is stored as "not run", with the server's reason. A kept
+    result, and "not run", store the caller's reason; one that isn't a string,
+    or is over `_MAX_EXPLANATION` chars, refuses the call. `ran`: what each
     verified id ran, from the trail, so the examiner sees an author's own
     `date` run offered as the skeptic's."""
     if not isinstance(raw, dict):
@@ -501,7 +510,7 @@ def _normalize_check(
         check.update(result="not run", reason=f"malformed check: result {got}")
     elif result == "not run":
         check.update(result="not run",
-                     reason=_text(raw.get("reason"), _MAX_EXPLANATION)
+                     reason=_check_reason(raw, check["name"])
                      or "malformed check: not run without a reason")  # fmt: skip
     elif removed or own or not ids:
         # an id the finding cites is the finding's evidence, not a re-run
@@ -520,7 +529,20 @@ def _normalize_check(
         check.update(result="not run", reason="; ".join(why))
     else:
         check["result"] = result
+        if reason := _check_reason(raw, check["name"]):
+            check["reason"] = reason
     return check
+
+
+def _check_reason(raw: dict, name: str) -> str:
+    """A check's reason as sent, or "" with none; one that isn't a string, or
+    is over `_MAX_EXPLANATION` chars, refuses the call."""
+    reason = raw.get("reason")
+    if reason is None or isinstance(reason, str) and len(reason) <= _MAX_EXPLANATION:
+        return reason or ""
+    got = f"{len(reason):,} chars" if isinstance(reason, str) else "not a string"
+    raise _Refused(f"Check {name!r}: its reason is {got}. Send a reason of at most "
+                   f"{_MAX_EXPLANATION:,} chars of text. The finding wasn't recorded.")  # fmt: skip
 
 
 def _not_challenged(reason: str) -> dict:
@@ -1208,15 +1230,18 @@ class CaseManager:
                 ),
             }
         with case_lock(self._case_id(case_dir)):
-            return self._record_finding_locked(
-                case_dir,
-                finding,
-                examiner_override,
-                supporting_commands,
-                artifacts,
-                audit,
-                withdrawal_unlogged,
-            )
+            try:
+                return self._record_finding_locked(
+                    case_dir,
+                    finding,
+                    examiner_override,
+                    supporting_commands,
+                    artifacts,
+                    audit,
+                    withdrawal_unlogged,
+                )
+            except _Refused as e:  # a check's reason, or findings.json's size
+                return {"status": "REJECTED", "error": str(e)}
 
     def _record_finding_locked(
         self,
@@ -1229,7 +1254,23 @@ class CaseManager:
         withdrawal_unlogged: bool = False,
     ) -> dict:
 
-        challenge = finding.get("challenged") if isinstance(finding, dict) else None
+        # Every call, a withdrawal too: one carrier (the parameter, or a list
+        # here) and at most _MAX_ARTIFACTS
+        if "artifacts" in finding:
+            if artifacts is not None or not isinstance(finding["artifacts"], list):
+                got = type(finding["artifacts"]).__name__
+                return {"status": "REJECTED", "error": "artifacts were sent " + (
+                    "both as the parameter and in the finding" if artifacts is not None
+                    else f"in the finding as {got}, not a list") + ". Send one list, as "
+                    "the artifacts parameter. The finding wasn't recorded."}  # fmt: skip
+            artifacts = finding["artifacts"]  # popped once it isn't withdrawn
+        if artifacts and len(artifacts) > _MAX_ARTIFACTS:
+            return {"status": "REJECTED", "error": (
+                f"{len(artifacts)} artifacts were sent; a finding takes at most "
+                f"{_MAX_ARTIFACTS}. Send the ones that show what the finding says, or "
+                "split it into findings. The finding wasn't recorded.")}  # fmt: skip
+
+        challenge = finding.get("challenged")
         if (
             isinstance(challenge, dict)
             and challenge.get("outcome") == "withdrawn"
@@ -1256,8 +1297,7 @@ class CaseManager:
             finding.get("supporting_commands"), list
         ):
             supporting_commands = finding.pop("supporting_commands")
-        if artifacts is None and isinstance(finding.get("artifacts"), list):
-            artifacts = finding.pop("artifacts")
+        finding.pop("artifacts", None)
 
         findings = self._load_findings(case_dir)
         seq = _next_seq(findings, "id", "F", exam)
@@ -1313,75 +1353,48 @@ class CaseManager:
                             f"Audit write failed for shell evidence {shell_eid}"
                         )
 
-        # Validate artifacts — parameter wins over finding dict (dedup)
+        # Each artifact is stored as sent (whitespace stripped), or refuses the call
         validated_artifacts: list[dict] = []
-        raw_artifacts = (
-            artifacts if artifacts is not None else sanitized.get("artifacts", [])
-        )
-        if isinstance(raw_artifacts, str):
-            try:
-                raw_artifacts = json.loads(raw_artifacts)
-            except (json.JSONDecodeError, TypeError):
-                raw_artifacts = []
-        quotes: list[str] = []  # each validated artifact's whole content
-        cut_warnings: list[str] = []
-        if isinstance(raw_artifacts, list):
-            for place, art in enumerate(raw_artifacts[:10], 1):
-                if not isinstance(art, dict):
-                    continue
-                source = art.get("source", "").strip()
-                extraction = art.get("extraction", "").strip()
-                content = art.get("content", "").strip()
-                if not content:
-                    content = art.get("raw_data", "").strip()
-                if source and extraction and not pv.quotable(content):
-                    return {
-                        "status": "REJECTED",
-                        "error": (
-                            f"Artifact from {source[:100]} has no quotable text. "
-                            "Paste the actual output lines the cited operation "
-                            "produced, as returned, not a placeholder."
-                        ),
-                    }
-                if not source or not extraction or not content:
-                    continue
-                if len(content) > _MAX_QUOTE:
-                    return {
-                        "status": "REJECTED",
-                        "error": (
-                            f"Artifact {place}'s content is {len(content)} chars. A "
-                            f"quote is checked against its source up to {_MAX_QUOTE} "
-                            "chars. Quote the lines that show what the finding says, "
-                            "not the whole output."
-                        ),
-                    }
-                if len(content) > _MAX_CONTENT:
-                    cut_warnings.append(
-                        f"Artifact {place}'s content is {len(content)} chars: its "
-                        f"first {_MAX_CONTENT} are stored, marked as cut. The whole "
-                        "quote was checked against its source."
+        for place, art in enumerate(artifacts or [], 1):
+            if not isinstance(art, dict):
+                return _refuse_artifact(place, "not an object",
+                                        "{source, extraction, content, audit_id}")  # fmt: skip
+            got = {}
+            for key, what in _SEND.items():
+                value = art.get(key)
+                if key == "content" and (value is None or value == "" or (
+                        isinstance(value, str) and not value.strip())):  # fmt: skip
+                    value = art.get("raw_data")
+                if not isinstance(value, str) or not value.strip():
+                    return _refuse_artifact(
+                        place, f"{key} is missing, empty or not a string", what
                     )
-                quotes.append(content)
-                validated_artifacts.append(
-                    {
-                        "source": source[:500],
-                        "extraction": extraction[:2000],
-                        "content": _stored_content(content),
-                        "content_type": str(art.get("content_type", ""))[:50],
-                        "purpose": str(art.get("purpose", ""))[:500],
-                        "audit_id": str(art.get("audit_id", ""))[:100],
-                        "output_ref": str(art.get("output_ref", ""))[:500],
-                    }
-                )
+                got[key] = value.strip()
+                if key != "source" and len(got[key]) > _MAX_QUOTE:
+                    return _refuse_artifact(place, f"{key} is {len(got[key]):,} chars, "
+                                            f"over the {_MAX_QUOTE:,} limit",
+                                            f"at most {_MAX_QUOTE:,} chars: {what}")  # fmt: skip
+            if not pv.quotable(got["content"]):
+                return _refuse_artifact(place, "content has no quotable text",
+                                        _SEND["content"] + ", not a placeholder")  # fmt: skip
+            aid = str(art.get("audit_id") or "")[:100]
+            if not aid:
+                return _refuse_artifact(place, "audit_id is missing", (
+                    "the audit_id from the tool response, or record a Bash command "
+                    "with log_external_action first and send its audit_id"))  # fmt: skip
+            validated_artifacts.append(
+                {
+                    "source": got["source"][:500],
+                    "extraction": got["extraction"],
+                    "content": got["content"],
+                    "content_type": str(art.get("content_type", ""))[:50],
+                    "purpose": str(art.get("purpose", ""))[:500],
+                    "audit_id": aid,
+                    "output_ref": str(art.get("output_ref", ""))[:500],
+                }
+            )
         if validated_artifacts:
             sanitized["artifacts"] = validated_artifacts
-        else:
-            sanitized.pop("artifacts", None)
-        dropped_artifact_count = (
-            len(raw_artifacts) - len(validated_artifacts)
-            if isinstance(raw_artifacts, list)
-            else 0
-        )
 
         # Each artifact's cited entry must be in the trail (read once, then once
         # more for an entry still being flushed), and its content is checked
@@ -1391,34 +1404,20 @@ class CaseManager:
         identity_read = False  # and that load read the file-identity log
         if validated_artifacts:
             case = pv.load_case(case_dir)
-            for art in validated_artifacts:
-                aid = art.get("audit_id", "")
-                if not aid:
-                    return {
-                        "status": "REJECTED",
-                        "error": (
-                            "Artifact missing audit_id — pass the audit_id "
-                            "from the tool response, or call log_external_action "
-                            "first to record Bash commands."
-                        ),
-                    }
+            for place, art in enumerate(validated_artifacts, 1):
+                aid = art["audit_id"]
                 if aid not in case.by_id:
                     time.sleep(0.1)
                     case = pv.load_case(case_dir)
                 if aid not in case.by_id:
-                    return {
-                        "status": "REJECTED",
-                        "error": (
-                            f"audit_id '{aid}' not found in audit trail. "
-                            "Pass the audit_id from the tool response."
-                        ),
-                    }
+                    return _refuse_artifact(place, f"audit_id '{aid}' isn't in the audit "
+                                            "trail", "the audit_id from the tool response")  # fmt: skip
             loaded_ids = case.by_id
             identity_read = not any(
                 s.startswith(f"audit/{_FILE_IDENTITY_LOG} ") for s in case.skipped
             )
-            for art, quote in zip(validated_artifacts, quotes, strict=True):
-                t = pv.trace_artifact(case, art["audit_id"], quote)
+            for art in validated_artifacts:
+                t = pv.trace_artifact(case, art["audit_id"], art["content"])
                 artifact_traces.append(t)
                 art.update(
                     provenance_grade=t.grade,
@@ -1640,21 +1639,26 @@ class CaseManager:
             "provenance_grade": finding_prov_grade,
             "source_evidence": sanitized.get("source_evidence", ""),
         }
-        if finding_prov_grade != "FULL":
-            reasons = [a["provenance_reason"] for a in validated_artifacts
-                       if a.get("provenance_reason")]  # fmt: skip
+        grades = [{"artifact": n, "grade": a["provenance_grade"],
+                   "reason": a["provenance_reason"]}
+                  for n, a in enumerate(validated_artifacts, 1)]  # fmt: skip
+        if not_full := [g for g in grades if g["grade"] != "FULL"]:
+            result["artifact_grades"] = not_full
+        if finding_prov_grade != "FULL" or not_full:
+            # the artifact that set the grade, among those finding_grade counts
+            counted = [g for g, t in zip(grades, artifact_traces, strict=True)
+                       if (t.break_ or {}).get("kind") != "reference"] or grades  # fmt: skip
+            first = next((g for g in counted if g["grade"] == finding_prov_grade), None)
             result["message"] = f"Finding staged as {finding_prov_grade}" + (
-                f": {reasons[0]}" if reasons else "."
+                "."
+                if not first
+                else f": Artifact {first['artifact']}"
+                + (f": {first['reason']}" if first["reason"] else ".")
             )
         if timeline_event_id:
             result["timeline_event_id"] = timeline_event_id
         if iocs_extracted:
             result["iocs_extracted"] = iocs_extracted
-        if dropped_artifact_count > 0:
-            warnings.append(
-                f"{dropped_artifact_count} artifact(s) dropped — each artifact requires "
-                "source, extraction, and content fields (not raw_data)."
-            )
         dropped_cmd_count = (
             len(supporting_commands) - len(validated_commands)
             if supporting_commands
@@ -1664,7 +1668,6 @@ class CaseManager:
             warnings.append(
                 f"{dropped_cmd_count} supporting_command(s) dropped (missing command or purpose)"
             )
-        warnings.extend(cut_warnings)
         warnings.extend(audit_warnings)
         warnings.extend(validation_warnings)
         warnings.extend(doubt_warnings)
@@ -1685,20 +1688,12 @@ class CaseManager:
         observation = str(finding.get("observation") or "").strip()
         if not title or not observation:
             return None
-        if isinstance(artifacts, str):
-            try:
-                artifacts = json.loads(artifacts)
-            except (json.JSONDecodeError, TypeError):
-                artifacts = None
-        if artifacts is None:
-            artifacts = finding.get("artifacts")
         own_ids = [a for a in finding.get("audit_ids") or [] if isinstance(a, str)]
-        if isinstance(artifacts, list):
-            own_ids += [
-                str(a["audit_id"])
-                for a in artifacts
-                if isinstance(a, dict) and a.get("audit_id")
-            ]
+        own_ids += [
+            str(a["audit_id"])
+            for a in artifacts or []
+            if isinstance(a, dict) and a.get("audit_id")
+        ]
         marker, _ = _normalize_challenge(
             finding.get("challenged"), _tool_output_ids(case_dir), own_ids
         )
@@ -2121,9 +2116,14 @@ class CaseManager:
         return self._load_json_file(case_dir / "findings.json", [])
 
     def _save_findings(self, case_dir: Path, findings: list[dict]) -> None:
-        _protected_write(
-            case_dir / "findings.json", json.dumps(findings, indent=2, default=str)
-        )
+        text = json.dumps(findings, indent=2, default=str)  # ASCII: a byte a char
+        if len(text) > fi.DOC_CAP:
+            raise _Refused(
+                f"findings.json would be {len(text):,} bytes, past the "
+                f"{fi.DOC_CAP >> 20} MiB the Portal and vhir read. Shorten the quoted "
+                "content and extraction, and send the finding again. It wasn't recorded."
+            )
+        _protected_write(case_dir / "findings.json", text)
 
     def _load_timeline(self, case_dir: Path) -> list[dict]:
         return self._load_json_file(case_dir / "timeline.json", [])
