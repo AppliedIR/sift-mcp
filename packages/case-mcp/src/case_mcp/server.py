@@ -794,28 +794,43 @@ def create_server() -> FastMCP:
             # Absolute once, against this cwd; never through symlinks
             case_dir = case_dir.absolute()
 
-        unopenable: set[str] = set()  # the kernel opens nothing at these
+        unopenable: dict[str, str] = {}  # the kernel opens nothing here: why
+
+        def stats(p: str) -> bool:
+            try:
+                os.stat(p)
+            except OSError:
+                return False
+            return True
 
         def placed(f: str) -> str:
             """A relative entry where the AI meant it: in the case folder,
             never the server's cwd; with no case, as given; an absolute one
-            as given. A `..` is taken as the kernel takes it, after any
-            symlink before it, so the path names the file opened; one that
-            lands in the case is written under the case folder as given,
-            relative or absolute, and an absolute one landing outside stays
-            as given. A `..` after a folder that isn't there (or a symlink
-            loop) names no file, relative or absolute: kept as declared,
-            never normalized onto another file."""
+            as given. The kernel decides first: the entry as given is stat'ed,
+            and one it refuses for any reason but a missing last name (a
+            folder before it that isn't there or can't be searched, a file
+            before a `/` or `..`, a symlink loop) names no file: kept as
+            declared, never normalized onto another, and the reason kept. A
+            `..` is taken as the kernel takes it, after any symlink before
+            it, so the path names the file opened; one that lands in the case
+            is written under the case folder as given, relative or absolute,
+            and an absolute one landing outside stays as given."""
             if case_dir is None:
                 return f
+            given = os.path.join(case_dir, f)  # nothing normalized
+            try:
+                os.stat(given)
+            except OSError as e:
+                missing = isinstance(e, FileNotFoundError) and stats(
+                    os.path.dirname(given.rstrip(os.sep))
+                )
+                if not missing:
+                    unopenable[given] = e.strerror or str(e)
+                    return given
             absolute, parts = os.path.isabs(f), f.split(os.sep)
             if ".." not in parts:
-                return f if absolute else os.path.normpath(os.path.join(case_dir, f))
+                return f if absolute else os.path.normpath(given)
             last = len(parts) - parts[::-1].index("..")
-            head = os.sep.join(parts[: last - 1])  # absolute when f is
-            if not os.path.isdir(os.path.join(case_dir, head)):
-                unopenable.add(p := os.path.join(case_dir, f))
-                return p
             real = os.path.realpath(os.path.join(case_dir, os.sep.join(parts[:last])))
             opened = os.path.normpath(os.path.join(real, *parts[last:]))
             case_real = os.path.realpath(case_dir)
@@ -891,6 +906,10 @@ def create_server() -> FastMCP:
         outcome.note(result)
         if provenance_warning:
             result["provenance_warning"] = provenance_warning
+        # each with the kernel's reason when it opens nothing there
+        unhashed = [
+            f"{f} ({unopenable[f]})" if f in unopenable else f for f in unhashed
+        ]
         if unhashed and recorded:
             result["files_warning"] = (
                 "Recorded without a hash, so nothing can link through them "

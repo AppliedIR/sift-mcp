@@ -12,9 +12,12 @@ case, and reads the record back with the readers that use it.
 - Through a symlinked case folder the record still links, and keeps its prefix:
   a `..` that lands in the case, relative or absolute, is written under the
   case folder as given; an absolute one landing outside is recorded as given.
-- A `..` after a folder that isn't there (or is a file, or a symlink loop)
-  names no file, relative or absolute: the entry is kept as declared, unhashed
-  and named, and links nothing. A plain missing file is recorded as before.
+- An entry the kernel refuses for any reason but a missing last name (a
+  folder before a `..` that isn't there, is a file, is a symlink loop or can't
+  be searched; a `/` or `/.` after a file) names no file, relative or
+  absolute: it is kept as declared, unhashed and named with the kernel's
+  reason, links nothing, and a trace shows it as recorded. A plain missing
+  file is recorded as before, after a `..` too.
 - A call that isn't recorded (no case, the case gone, the write failed)
   keeps its reply's keys, and none of its texts reads as a record; a
   recorded one keeps its texts.
@@ -26,6 +29,7 @@ case, and reads the record back with the readers that use it.
 """
 
 import asyncio
+import errno
 import hashlib
 import json
 import os
@@ -308,26 +312,53 @@ def test_dot_dot_above_a_case_given_through_a_symlink_keeps_its_prefix(
     assert "files_warning" not in r
 
 
-# Each normalizes onto rec.bin, but the kernel opens nothing: the folder before
-# the `..` isn't there, is a file, or is a symlink loop
-_NO_FILE = ["nosuch/../extractions/manual/rec.bin",
-            "evidence/orig.bin/../../extractions/manual/rec.bin",
-            "loop/../extractions/manual/rec.bin"]  # fmt: skip
+# Each names a file once normalized or resolved, but the kernel opens nothing
+# there (its reason with each): the folder before a `..` isn't there, is a
+# file (or a symlink to one), is a symlink loop or can't be searched; or a `/`
+# or `/.` follows a file
+_NO_FILE = {
+    "nosuch/../extractions/manual/rec.bin": errno.ENOENT,
+    "evidence/orig.bin/../../extractions/manual/rec.bin": errno.ENOTDIR,
+    "loop/../extractions/manual/rec.bin": errno.ELOOP,
+    "noperm/../extractions/manual/rec.bin": errno.EACCES,
+    "evidence/orig.bin/../x.bin": errno.ENOTDIR,
+    "filelink/../x.bin": errno.ENOTDIR,
+    "extractions/manual/rec.bin/": errno.ENOTDIR,
+    "extractions/manual/rec.bin/.": errno.ENOTDIR,
+    "extractions/../extractions/manual/rec.bin/": errno.ENOTDIR,
+    "extractions/../extractions/manual/rec.bin/.": errno.ENOTDIR,
+}
 
 
-def _no_file_made(case):
+@pytest.fixture
+def no_file(case):
+    """The files a normal or resolved form of each entry names; noperm can't
+    be searched for the row (root searches any folder, so it's skipped)."""
     (case / "loop").symlink_to(case / "loop")
-    return _bash_made(case)
+    (case / "filelink").symlink_to(case / "evidence" / "orig.bin")
+    (case / "noperm").mkdir()
+    named = [_bash_made(case), case / "evidence" / "x.bin", case / "x.bin"]
+    named[1].write_bytes(b"a resolved form lands here\n")
+    named[2].write_bytes(b"a lexical form lands here\n")
+    (case / "noperm").chmod(0)
+    yield named
+    (case / "noperm").chmod(0o755)
+
+
+def _refused(entry):
+    if _NO_FILE[entry] == errno.EACCES and os.geteuid() == 0:
+        pytest.skip("root searches a folder it can't read")
+    return os.strerror(_NO_FILE[entry])
 
 
 @pytest.mark.parametrize("form", ["relative", "absolute"])
 @pytest.mark.parametrize("entry", _NO_FILE)
 @pytest.mark.parametrize("cwd", ["neutral", "case"])
 @pytest.mark.parametrize("side", ["inputs", "outputs"])
-def test_dot_dot_after_a_folder_not_there_names_no_file(
-    case, srv, monkeypatch, side, cwd, entry, form
+def test_an_entry_the_kernel_refuses_names_no_file(
+    case, srv, no_file, monkeypatch, side, cwd, entry, form
 ):
-    rec = _no_file_made(case)
+    why = _refused(entry)
     if cwd == "case":
         monkeypatch.chdir(case)
     declared = os.path.join(case, entry)
@@ -338,15 +369,17 @@ def test_dot_dot_after_a_folder_not_there_names_no_file(
     e = _entry(case / "audit", r["audit_id"])
     (x,) = e[side]
     assert x == {"path": declared}
-    assert r["files_warning"] == _UNHASHED.format(declared)
+    assert r["files_warning"] == _UNHASHED.format(f"{declared} ({why})")
     text = json.dumps(e)
-    assert str(rec) not in text and _sha(rec.read_bytes()) not in text
+    for f in no_file:  # never one of these, by path or by hash
+        assert json.dumps(str(f)) not in text and _sha(f.read_bytes()) not in text
 
 
 @pytest.mark.parametrize("form", ["relative", "absolute"])
 @pytest.mark.parametrize("entry", _NO_FILE)
-def test_a_declaration_naming_no_file_links_nothing(case, srv, entry, form):
-    rec = _no_file_made(case)
+def test_a_declaration_naming_no_file_links_nothing(case, srv, no_file, entry, form):
+    _refused(entry)
+    rec = no_file[0]
     given = entry if form == "relative" else os.path.join(case, entry)
     aid = _declare(srv, ["evidence/orig.bin"], [given])["audit_id"]
     got = _call(srv, "evidence_register", {"path": "extractions/manual/rec.bin"})
@@ -355,18 +388,63 @@ def test_a_declaration_naming_no_file_links_nothing(case, srv, entry, form):
         "registered as originals, and no record in this case names it"
     )
     assert aid not in got["error"]
-    assert _trace(case, rec).grade != "DECLARED"
+    assert all(_trace(case, f).grade != "DECLARED" for f in no_file)
+
+
+@pytest.mark.parametrize("alone", [True, False], ids=["alone", "with-evidence"])
+@pytest.mark.parametrize("form", ["relative", "absolute"])
+@pytest.mark.parametrize("entry", _NO_FILE)
+def test_an_input_naming_no_file_links_nothing_and_shows_as_recorded(
+    case, srv, no_file, entry, form, alone
+):
+    _refused(entry)
+    out = _bash_made(case, "out.bin", b"made from it\n")
+    given = entry if form == "relative" else os.path.join(case, entry)
+    r = _declare(srv, [given] if alone else ["evidence/orig.bin", given], [str(out)])
+    (rec,) = [x for x in _entry(case / "audit", r["audit_id"])["inputs"]
+              if not x["path"].endswith("orig.bin")]  # fmt: skip
+    assert rec == {"path": os.path.join(case, entry)}  # as declared, unhashed
+    froms = [(link["from"]["path"], link["from"]["sha256"])
+             for link in _trace(case, out).links]  # fmt: skip
+    assert froms
+    for f in no_file:
+        assert not {str(f), os.path.realpath(f), _sha(f.read_bytes())} & {
+            v for pair in froms for v in pair
+        }
+    if alone:  # the input itself, as recorded and unhashed
+        assert (os.path.join(case, entry), "") in froms
 
 
 @pytest.mark.parametrize("form", ["relative", "absolute"])
-@pytest.mark.parametrize("entry", _NO_FILE)
-def test_an_input_naming_no_file_links_nothing(case, srv, entry, form):
-    rec = _no_file_made(case)
+@pytest.mark.parametrize("entry", ["nosuch/../evidence/orig.bin", "evidence/orig.bin/"])
+def test_an_input_naming_no_file_never_links_registered_evidence(
+    case, srv, entry, form
+):
+    orig = case / "evidence" / "orig.bin"  # registered; a normal form names it
     out = _bash_made(case, "out.bin", b"made from it\n")
     given = entry if form == "relative" else os.path.join(case, entry)
     _declare(srv, [given], [str(out)])
-    froms = [link["from"]["sha256"] for link in _trace(case, out).links]
-    assert froms and _sha(rec.read_bytes()) not in froms
+    t = _trace(case, out)
+    assert t.grade != "DECLARED"
+    assert str(orig) not in [link["from"]["path"] for link in t.links]
+
+
+@pytest.mark.parametrize("form", ["relative", "absolute"])
+@pytest.mark.parametrize("side", ["inputs", "outputs"])
+def test_a_missing_file_after_dot_dot_keeps_its_place(case, srv, side, form):
+    entry = "evidence/../extractions/manual/nosuch.bin"
+    given = entry if form == "relative" else os.path.join(case, entry)
+    placed = str(case / "extractions" / "manual" / "nosuch.bin")
+    r = _declare(
+        srv, *(([given], []) if side == "inputs" else (["evidence/orig.bin"], [given]))
+    )
+    (x,) = [
+        x
+        for x in _entry(case / "audit", r["audit_id"])[side]
+        if "orig" not in x["path"]
+    ]
+    assert (x["path"], "sha256" in x) == (placed, False)
+    assert r["files_warning"] == _UNHASHED.format(placed)
 
 
 def _absolute(case, tmp_path, made) -> dict:
