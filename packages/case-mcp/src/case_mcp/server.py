@@ -794,17 +794,24 @@ def create_server() -> FastMCP:
             # Absolute once, against this cwd; never through symlinks
             case_dir = case_dir.absolute()
 
+        unopenable: set[str] = set()  # the kernel opens nothing at these
+
         def placed(f: str) -> str:
             """A relative entry where the AI meant it: in the case folder,
             never the server's cwd; with no case, as given. A `..` is taken
             as the kernel takes it, after any symlink before it, so the path
-            names the file opened; the case folder's prefix stays as given."""
+            names the file opened; the case folder's prefix stays as given.
+            A `..` after a folder that isn't there names no file: kept as
+            declared, never normalized onto another file."""
             if case_dir is None or os.path.isabs(f):
                 return f
             parts = f.split(os.sep)
             if ".." not in parts:
                 return os.path.normpath(os.path.join(case_dir, f))
             last = len(parts) - parts[::-1].index("..")
+            if not os.path.isdir(os.path.join(case_dir, *parts[: last - 1])):
+                unopenable.add(p := os.path.join(case_dir, f))
+                return p
             real = os.path.realpath(os.path.join(case_dir, *parts[:last]))
             case_real = os.path.realpath(case_dir)
             if os.path.commonpath([real, case_real]) == case_real:
@@ -816,14 +823,19 @@ def create_server() -> FastMCP:
         inputs, registered = [], []
         unhashed: list[str] = []  # nothing links through these
         for f in input_files:
-            rec, reg = file_place.input_record(case_dir, f, "log_external_action")
+            if f in unopenable:  # never resolved: that would name another file
+                rec, reg = {"path": f}, None
+            else:
+                rec, reg = file_place.input_record(case_dir, f, "log_external_action")
             inputs.append(rec)
             if reg:
                 registered.append(reg)
             elif "st_dev" not in rec or "sha256" not in rec:
                 unhashed.append(f)
         outputs = [
-            file_place.output_record(case_dir, f, "log_external_action")
+            {"path": f}
+            if f in unopenable
+            else file_place.output_record(case_dir, f, "log_external_action")
             for f in output_files
         ]
         unhashed += [

@@ -10,6 +10,8 @@ case, and reads the record back with the readers that use it.
 - A `..` after a symlinked folder is taken as the kernel takes it: the path,
   realpath and hash are the file opened, not the link's sibling.
 - Through a symlinked case folder the record still links, and keeps its prefix.
+- A `..` after a folder that isn't there (or is a file) names no file: the
+  entry is kept as declared, unhashed and named, and links nothing.
 - A call that isn't recorded (no case, the case gone, the write failed)
   keeps its reply's keys, and none of its texts reads as a record; a
   recorded one keeps its texts.
@@ -23,6 +25,7 @@ case, and reads the record back with the readers that use it.
 import asyncio
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
 
 import pytest
@@ -278,6 +281,46 @@ def test_dot_dot_through_a_symlinked_case_folder_keeps_its_prefix(
     (o,) = _entry(case / "audit", r["audit_id"])["outputs"]
     assert o["path"] == str(link / "extractions" / "manual" / "rec.bin")
     assert (o["realpath"], o["sha256"]) == (str(rec), _sha(rec.read_bytes()))
+
+
+# Each normalizes onto rec.bin, but the kernel opens nothing: the folder before
+# the `..` isn't there, or is a file
+_NO_FILE = ["nosuch/../extractions/manual/rec.bin",
+            "evidence/orig.bin/../../extractions/manual/rec.bin"]  # fmt: skip
+
+
+@pytest.mark.parametrize("entry", _NO_FILE)
+@pytest.mark.parametrize("cwd", ["neutral", "case"])
+@pytest.mark.parametrize("side", ["inputs", "outputs"])
+def test_dot_dot_after_a_folder_not_there_names_no_file(
+    case, srv, monkeypatch, side, cwd, entry
+):
+    rec = _bash_made(case)
+    if cwd == "case":
+        monkeypatch.chdir(case)
+    r = _declare(
+        srv, *(([entry], []) if side == "inputs" else (["evidence/orig.bin"], [entry]))
+    )
+    declared = os.path.join(case, entry)
+    e = _entry(case / "audit", r["audit_id"])
+    (x,) = e[side]
+    assert x == {"path": declared}
+    assert r["files_warning"] == _UNHASHED.format(declared)
+    text = json.dumps(e)
+    assert str(rec) not in text and _sha(rec.read_bytes()) not in text
+
+
+@pytest.mark.parametrize("entry", _NO_FILE)
+def test_a_declaration_naming_no_file_links_nothing(case, srv, entry):
+    rec = _bash_made(case)
+    aid = _declare(srv, ["evidence/orig.bin"], [entry])["audit_id"]
+    got = _call(srv, "evidence_register", {"path": "extractions/manual/rec.bin"})
+    assert got["error"].startswith(
+        f"{rec} is under this case's extractions/, where files are never "
+        "registered as originals, and no record in this case names it"
+    )
+    assert aid not in got["error"]
+    assert _trace(case, rec).grade != "DECLARED"
 
 
 _BAD = (["evidence/nosuch.bin"], ["extractions/manual/rec.bni"])
