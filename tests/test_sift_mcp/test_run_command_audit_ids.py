@@ -127,7 +127,7 @@ def test_a_command_started_with_no_case_is_not_written_to_a_case_opened_during_i
     _preload_own_001(b)
     _point(home, None)
     r = _run(tmp_path, _switch_to(b, home) + "print('done')\n")
-    assert r["audit_id"] is None and "not recorded" in r["warning"]
+    assert r["audit_id"] is None and "not recorded" in r["audit"] and "warning" not in r
     assert _only_own_001(b) and not (b / "extractions").exists()
 
 

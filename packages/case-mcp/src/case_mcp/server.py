@@ -340,13 +340,12 @@ def create_server() -> FastMCP:
                         f"Failed to set up wintools sharing: {e}"
                     )
 
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="case_init",
                 params={"name": name, "description": description},
                 result_summary=result,
             )
-            if logged_id is None:
-                result["warning"] = "Audit write failed — action not recorded"
+            outcome.note(result)
             hint = _host_list_hint(Path(result["case_dir"]))
             if hint:
                 result["host_list_hint"] = hint
@@ -410,13 +409,12 @@ def create_server() -> FastMCP:
                 except Exception as e:
                     result["wintools_warning"] = f"Failed to update wintools share: {e}"
 
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="case_activate",
                 params={"case_id": case_id},
                 result_summary=result,
             )
-            if logged_id is None:
-                result["warning"] = "Audit write failed — action not recorded"
+            outcome.note(result)
 
             import importlib.util
 
@@ -504,13 +502,12 @@ def create_server() -> FastMCP:
                 registered_via="mcp",  # the AI's: its host names never confirm a machine
                 folder_hasher=_folder_hashes,
             )
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="evidence_register",
                 params={"path": path, "description": description},
                 result_summary=result,
             )
-            if logged_id is None:
-                result["warning"] = "Audit write failed — action not recorded"
+            outcome.note(result)
             hint = _host_list_hint(Path(case_dir))
             if hint:
                 result["host_list_hint"] = hint
@@ -568,7 +565,7 @@ def create_server() -> FastMCP:
                 result.get("findings", []),
                 timeline=result.get("timeline", []),
             )
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="export_bundle",
                 params={"since": since},
                 result_summary={
@@ -576,8 +573,7 @@ def create_server() -> FastMCP:
                     "timeline": len(result.get("timeline", [])),
                 },
             )
-            if logged_id is None:
-                result["warning"] = "Audit write failed — action not recorded"
+            outcome.note(result)
             if unverified:
                 result["warning"] = " ".join(
                     filter(None, [result.get("warning"), unverified])
@@ -620,13 +616,12 @@ def create_server() -> FastMCP:
                     result = _import_bundle(case_dir, bundle_data)
                 except LedgerError as e:  # the case lock: nothing was merged
                     return {"error": f"{e}. Nothing was merged."}
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="import_bundle",
                 params={"bundle_path": bundle_path},
                 result_summary=result,
             )
-            if logged_id is None:
-                result["warning"] = "Audit write failed — action not recorded"
+            outcome.note(result)
             return result
         except (ValueError, FileNotFoundError, OSError, json.JSONDecodeError) as e:
             return {"error": str(e)}
@@ -687,14 +682,13 @@ def create_server() -> FastMCP:
             except OSError as e:
                 return {"status": "write_failed", "timestamp": ts, "error": str(e)}
 
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="record_action",
                 params={"description": description},
                 result_summary={"status": "recorded", "timestamp": ts},
             )
             result = {"status": "recorded", "timestamp": ts}
-            if logged_id is None:
-                result["warning"] = "Audit write failed — action not recorded"
+            outcome.note(result)
             return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}
@@ -711,15 +705,15 @@ def create_server() -> FastMCP:
         _validate_str_length(text, "text", _MAX_TEXT, free_text=True)
         _validate_str_length(analyst_override, "analyst_override", _MAX_SHORT)
         result = {"status": "logged"}
-        logged_id = audit.log(
+        outcome = audit.record(
             tool="log_reasoning",
             params={"text": text, "analyst_override": analyst_override},
             result_summary=result,
             source="orchestrator",
         )
-        if logged_id is None:
-            result["status"] = "write_failed"
-            result["warning"] = "Audit write failed — reasoning not recorded"
+        if outcome.audit_id is None:
+            result["status"] = "not_recorded"
+            outcome.note(result)
         return result
 
     # ------------------------------------------------------------------
@@ -805,7 +799,7 @@ def create_server() -> FastMCP:
         if outputs:
             fields["outputs"] = outputs
 
-        audit_id = audit.log(
+        outcome = audit.record(
             tool="log_external_action",
             params={
                 "command": command,
@@ -827,13 +821,12 @@ def create_server() -> FastMCP:
         )
         result = {
             "status": "logged",
-            "audit_id": audit_id,
+            "audit_id": outcome.audit_id,
             "source": source,
             "declared": True,
             "note": "declared: recorded as reported, not checked against what ran",
         }
-        if audit_id is None:
-            result["warning"] = "Audit write failed — action not recorded"
+        outcome.note(result)
         if provenance_warning:
             result["provenance_warning"] = provenance_warning
         return result
@@ -897,7 +890,7 @@ def create_server() -> FastMCP:
             except Exception:
                 pass
 
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="backup_case",
                 params={
                     "destination": destination,
@@ -906,8 +899,7 @@ def create_server() -> FastMCP:
                 },
                 result_summary=result,
             )
-            if logged_id is None:
-                result["warning"] = "Audit write failed — action not recorded"
+            outcome.note(result)
             return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}
@@ -966,7 +958,7 @@ def create_server() -> FastMCP:
         except Exception:
             status = "browser_failed"
 
-        logged_id = audit.log(
+        outcome = audit.record(
             tool="open_case_dashboard",
             params={},
             result_summary={"status": status},
@@ -975,8 +967,7 @@ def create_server() -> FastMCP:
         # The browser already received it via webbrowser.open().
         display_url = url.split("#")[0] if "#" in url else url
         result = {"url": display_url, "status": status}
-        if logged_id is None:
-            result["warning"] = "Audit write failed — action not recorded"
+        outcome.note(result)
         return result
 
     # ------------------------------------------------------------------
@@ -1011,13 +1002,12 @@ def create_server() -> FastMCP:
                 "upload it."
             ),
         }
-        logged_id = audit.log(
+        outcome = audit.record(
             tool="prepare_host_list",
             params={"source": source, "bytes": len(text.encode())},
             result_summary=summary,
         )
-        if logged_id is None:
-            result["warning"] = "Audit write failed — action not recorded"
+        outcome.note(result)
         return result
 
     return server

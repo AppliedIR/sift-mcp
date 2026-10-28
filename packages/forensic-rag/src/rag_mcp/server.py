@@ -94,17 +94,15 @@ class RAGServer:
         Always generates audit_id and writes audit — including for errors.
         """
         summary = result if "error" not in result else {"error": result["error"]}
-        audit_id = self._audit.log(
+        outcome = self._audit.record(
             tool=tool_name,
             params=arguments,
             result_summary=summary,
             audit_id=audit_id,
             elapsed_ms=elapsed_ms,
         )
-        if audit_id is None:
-            audit_warn = "Audit write failed — action not recorded"
-            existing = result.get("warning")
-            result["warning"] = f"{existing} | {audit_warn}" if existing else audit_warn
+        outcome.note(result)
+        audit_id = outcome.audit_id
         meta = TOOL_METADATA.get(tool_name, DEFAULT_METADATA)
 
         result["audit_id"] = audit_id

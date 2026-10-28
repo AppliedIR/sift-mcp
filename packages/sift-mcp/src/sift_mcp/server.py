@@ -157,11 +157,10 @@ def create_server() -> FastMCP:
             "tool_name": tool_name,
             **({"subcommand": subcommand} if subcommand else {}),
         }
-        logged_id = audit.log(
+        outcome = audit.record(
             tool="get_tool_help", params=params, result_summary=summary
         )
-        if logged_id is None:
-            result["warning"] = "Audit write failed — action not recorded"
+        outcome.note(result)
         return result
 
     @server.tool()
@@ -182,13 +181,12 @@ def create_server() -> FastMCP:
         from sift_mcp.tools.discovery import suggest_tools as _suggest
 
         result = _suggest(artifact_type, question)
-        logged_id = audit.log(
+        outcome = audit.record(
             tool="suggest_tools",
             params={"artifact_type": artifact_type},
             result_summary=result,
         )
-        if logged_id is None:
-            result["warning"] = "Audit write failed — action not recorded"
+        outcome.note(result)
         return result
 
     # --- Generic Execution ---
@@ -255,27 +253,24 @@ def create_server() -> FastMCP:
         # background (`pending:<job>` until its hash_complete entry); a folder
         # isn't, but an eligible one records its digest (file_place.folder_record).
         # Provenance must never block forensic work
-        from sift_common import file_place, resolve_case_dir
+        from sift_common import file_place
+        from sift_common.audit import mkdir_in_case
 
         # One case per call, resolved as it starts: the audit id is minted for
         # it, and the output and the entry are kept in it, whatever case is
         # active when the command ends
-        case_dir = resolve_case_dir()
-        audit_dir = audit._get_audit_dir(case_dir)
-        op_id = audit._next_audit_id(audit_dir) if audit_dir else None
+        res = audit.resolve()
+        case_dir = res.path if res.outcome == "case" else ""
+        op_id = audit._next_audit_id() if case_dir or res.audit_dir else None
         # In a case the run works in its own folder, named by its audit id and
         # created empty first: what it writes there is its output, not the
-        # gateway's. Without a case it keeps the process's folder
+        # gateway's. Without a case, or with it gone, it keeps the process's folder
         op_dir = None
         if case_dir and op_id:
-            op_dir = os.path.join(case_dir, "extractions", op_id)
             try:
-                os.makedirs(op_dir)
-            except FileExistsError:
-                pass
+                op_dir = str(mkdir_in_case(case_dir, "extractions", op_id))
             except OSError as e:
-                logger.warning("run_command: no op folder %s: %s", op_dir, e)
-                op_dir = None
+                logger.warning("run_command: no op folder in %s: %s", case_dir, e)
         # A relative path in the command is resolved in the run's own folder
         parsed = command_files.inputs(command, get_output_flags(binary), op_dir)
         if parsed:
@@ -413,10 +408,10 @@ def create_server() -> FastMCP:
 
             # Written first, to the call's case, with the id its output's
             # folder is named by; the response carries that id
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="run_command",
                 audit_id=op_id,
-                case_dir=case_dir,
+                case_dir=res,
                 params={"command": command, "purpose": purpose},
                 result_summary={
                     "exit_code": exec_result["exit_code"],
@@ -451,7 +446,7 @@ def create_server() -> FastMCP:
                 tool_name="run_command",
                 success=not stopped,
                 data=resp_data,
-                audit_id=logged_id,
+                audit_id=outcome.audit_id,
                 output_format=resp_format,
                 elapsed_seconds=elapsed,
                 exit_code=exec_result["exit_code"],
@@ -476,8 +471,7 @@ def create_server() -> FastMCP:
                 response["full_output_sha256"] = exec_result.get("output_sha256")
                 response["full_output_bytes"] = exec_result.get("stdout_total_bytes")
 
-            if logged_id is None:
-                response["warning"] = "Audit write failed — action not recorded"
+            outcome.note(response)
             _NO_INPUT_CMDS = {
                 "echo",
                 "date",
@@ -518,7 +512,7 @@ def create_server() -> FastMCP:
             elapsed = time.monotonic() - start
             # a timeout: this server stopped the run at its deadline
             stopped = "timeout" if isinstance(e, ExecutionTimeoutError) else None
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
                 result_summary={
@@ -528,61 +522,58 @@ def create_server() -> FastMCP:
                 },
                 elapsed_ms=elapsed * 1000,
                 audit_id=op_id,
-                case_dir=case_dir,
+                case_dir=res,
             )
             response = build_response(
                 tool_name="run_command",
                 success=False,
                 data=None,
-                audit_id=logged_id,
+                audit_id=outcome.audit_id,
                 error=str(e),
                 stopped=stopped,
                 **version_keys,
             )
-            if logged_id is None:
-                response["warning"] = "Audit write failed — action not recorded"
+            outcome.note(response)
             return response
         except (ValueError, OSError, RuntimeError) as e:
             elapsed = time.monotonic() - start
             logger.warning("run_command unexpected error: %s: %s", type(e).__name__, e)
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": str(e)},
                 elapsed_ms=elapsed * 1000,
                 audit_id=op_id,
-                case_dir=case_dir,
+                case_dir=res,
             )
             response = build_response(
                 tool_name="run_command",
                 success=False,
                 data=None,
-                audit_id=logged_id,
+                audit_id=outcome.audit_id,
                 error=str(e),
             )
-            if logged_id is None:
-                response["warning"] = "Audit write failed — action not recorded"
+            outcome.note(response)
             return response
         except Exception as e:
             elapsed = time.monotonic() - start
             logger.error("run_command catch-all error: %s: %s", type(e).__name__, e)
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="run_command",
                 params={"command": command, "purpose": purpose},
                 result_summary={"error": f"{type(e).__name__}: {e}"},
                 elapsed_ms=elapsed * 1000,
                 audit_id=op_id,
-                case_dir=case_dir,
+                case_dir=res,
             )
             response = build_response(
                 tool_name="run_command",
                 success=False,
                 data=None,
-                audit_id=logged_id,
+                audit_id=outcome.audit_id,
                 error=f"Unexpected error: {type(e).__name__}",
             )
-            if logged_id is None:
-                response["warning"] = "Audit write failed — action not recorded"
+            outcome.note(response)
             return response
 
     return server

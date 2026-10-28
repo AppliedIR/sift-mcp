@@ -976,7 +976,7 @@ def create_server() -> FastMCP:
                 }
             case_dir = _resolve_case_dir(case_id)
             result = _generate(profile, case_dir, finding_ids, start_date, end_date)
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="generate_report",
                 params={
                     "profile": profile,
@@ -989,8 +989,7 @@ def create_server() -> FastMCP:
                     "findings": len(result.get("report_data", {}).get("findings", [])),
                 },
             )
-            if logged_id is None:
-                result["warning"] = "Audit write failed — action not recorded"
+            outcome.note(result)
             return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}
@@ -1068,14 +1067,13 @@ def create_server() -> FastMCP:
             # Under the case identity's lock, so the UUID mint isn't lost
             update_case_meta(case_dir, {field: value})
 
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="set_case_metadata",
                 params={"field": field, "value": value},
                 result_summary={"status": "set", "field": field},
             )
             result = {"status": "set", "field": field, "value": value}
-            if logged_id is None:
-                result["warning"] = "Audit write failed — action not recorded"
+            outcome.note(result)
             return result
         except (ValueError, OSError, HostLogError) as e:
             return {"error": str(e)}
@@ -1188,7 +1186,7 @@ def create_server() -> FastMCP:
             )
             _atomic_write(report_path, saved)
 
-            logged_id = audit.log(
+            outcome = audit.record(
                 tool="save_report",
                 params={
                     "filename": sanitized,
@@ -1205,8 +1203,7 @@ def create_server() -> FastMCP:
                 "characters": len(content),
                 "verification_block": block,
             }
-            if logged_id is None:
-                result["warning"] = "Audit write failed — action not recorded"
+            outcome.note(result)
             return result
         except (ValueError, OSError) as e:
             return {"error": str(e)}

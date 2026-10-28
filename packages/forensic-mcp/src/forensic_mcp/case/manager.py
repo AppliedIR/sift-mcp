@@ -1318,6 +1318,7 @@ class CaseManager:
         shell_audit_ids: list[str] = []
         validated_commands: list[dict] = []
         audit_warnings: list[str] = []
+        shell_note: dict = {}  # one note per distinct outcome
         if supporting_commands:
             for _i, cmd in enumerate(supporting_commands[:5]):
                 if not isinstance(cmd, dict):
@@ -1341,17 +1342,13 @@ class CaseManager:
                 validated_commands.append(validated_cmd)
                 # Write audit entry for this shell command
                 if audit:
-                    logged_id = audit.log(
+                    audit.record(
                         tool="supporting_command",
                         params={"command": command, "purpose": purpose},
                         result_summary={"output_excerpt": output_excerpt[:200]},
                         source="shell_self_report",
                         audit_id=shell_eid,
-                    )
-                    if logged_id is None:
-                        audit_warnings.append(
-                            f"Audit write failed for shell evidence {shell_eid}"
-                        )
+                    ).note(shell_note)
 
         # Each artifact is stored as sent (whitespace stripped), or refuses the call
         validated_artifacts: list[dict] = []
@@ -1669,6 +1666,10 @@ class CaseManager:
                 f"{dropped_cmd_count} supporting_command(s) dropped (missing command or purpose)"
             )
         warnings.extend(audit_warnings)
+        if "warning" in shell_note:
+            warnings.append(shell_note["warning"])
+        if "audit" in shell_note:
+            result["audit"] = shell_note["audit"]
         warnings.extend(validation_warnings)
         warnings.extend(doubt_warnings)
         if warnings:
