@@ -9,9 +9,12 @@ case, and reads the record back with the readers that use it.
   record from another cwd.
 - A `..` after a symlinked folder is taken as the kernel takes it: the path,
   realpath and hash are the file opened, not the link's sibling.
-- Through a symlinked case folder the record still links, and keeps its prefix.
-- A `..` after a folder that isn't there (or is a file) names no file: the
-  entry is kept as declared, unhashed and named, and links nothing.
+- Through a symlinked case folder the record still links, and keeps its prefix:
+  a `..` that lands in the case, relative or absolute, is written under the
+  case folder as given; an absolute one landing outside is recorded as given.
+- A `..` after a folder that isn't there (or is a file, or a symlink loop)
+  names no file, relative or absolute: the entry is kept as declared, unhashed
+  and named, and links nothing. A plain missing file is recorded as before.
 - A call that isn't recorded (no case, the case gone, the write failed)
   keeps its reply's keys, and none of its texts reads as a record; a
   recorded one keeps its texts.
@@ -283,25 +286,55 @@ def test_dot_dot_through_a_symlinked_case_folder_keeps_its_prefix(
     assert (o["realpath"], o["sha256"]) == (str(rec), _sha(rec.read_bytes()))
 
 
+@pytest.mark.parametrize("form", ["relative", "absolute"])
+@pytest.mark.parametrize("side", ["inputs", "outputs"])
+def test_dot_dot_above_a_case_given_through_a_symlink_keeps_its_prefix(
+    case, srv, tmp_path, monkeypatch, side, form
+):
+    link = tmp_path / "caseslink"
+    link.symlink_to(case.parent)
+    given = link / "CASE-1"
+    monkeypatch.setenv("VHIR_CASE_DIR", str(given))
+    rec = _bash_made(case)
+    entry = "../CASE-1/extractions/manual/rec.bin"
+    entry = [entry if form == "relative" else f"{given}/{entry}"]
+    r = _declare(
+        srv, *((entry, []) if side == "inputs" else (["evidence/orig.bin"], entry))
+    )
+    recs = _entry(case / "audit", r["audit_id"])[side]
+    (x,) = [x for x in recs if "orig.bin" not in x["path"]]
+    assert x["path"] == str(given / "extractions" / "manual" / "rec.bin")
+    assert (x["realpath"], x["sha256"]) == (str(rec), _sha(rec.read_bytes()))
+    assert "files_warning" not in r
+
+
 # Each normalizes onto rec.bin, but the kernel opens nothing: the folder before
-# the `..` isn't there, or is a file
+# the `..` isn't there, is a file, or is a symlink loop
 _NO_FILE = ["nosuch/../extractions/manual/rec.bin",
-            "evidence/orig.bin/../../extractions/manual/rec.bin"]  # fmt: skip
+            "evidence/orig.bin/../../extractions/manual/rec.bin",
+            "loop/../extractions/manual/rec.bin"]  # fmt: skip
 
 
+def _no_file_made(case):
+    (case / "loop").symlink_to(case / "loop")
+    return _bash_made(case)
+
+
+@pytest.mark.parametrize("form", ["relative", "absolute"])
 @pytest.mark.parametrize("entry", _NO_FILE)
 @pytest.mark.parametrize("cwd", ["neutral", "case"])
 @pytest.mark.parametrize("side", ["inputs", "outputs"])
 def test_dot_dot_after_a_folder_not_there_names_no_file(
-    case, srv, monkeypatch, side, cwd, entry
+    case, srv, monkeypatch, side, cwd, entry, form
 ):
-    rec = _bash_made(case)
+    rec = _no_file_made(case)
     if cwd == "case":
         monkeypatch.chdir(case)
-    r = _declare(
-        srv, *(([entry], []) if side == "inputs" else (["evidence/orig.bin"], [entry]))
-    )
     declared = os.path.join(case, entry)
+    given = entry if form == "relative" else declared
+    r = _declare(
+        srv, *(([given], []) if side == "inputs" else (["evidence/orig.bin"], [given]))
+    )
     e = _entry(case / "audit", r["audit_id"])
     (x,) = e[side]
     assert x == {"path": declared}
@@ -310,10 +343,12 @@ def test_dot_dot_after_a_folder_not_there_names_no_file(
     assert str(rec) not in text and _sha(rec.read_bytes()) not in text
 
 
+@pytest.mark.parametrize("form", ["relative", "absolute"])
 @pytest.mark.parametrize("entry", _NO_FILE)
-def test_a_declaration_naming_no_file_links_nothing(case, srv, entry):
-    rec = _bash_made(case)
-    aid = _declare(srv, ["evidence/orig.bin"], [entry])["audit_id"]
+def test_a_declaration_naming_no_file_links_nothing(case, srv, entry, form):
+    rec = _no_file_made(case)
+    given = entry if form == "relative" else os.path.join(case, entry)
+    aid = _declare(srv, ["evidence/orig.bin"], [given])["audit_id"]
     got = _call(srv, "evidence_register", {"path": "extractions/manual/rec.bin"})
     assert got["error"].startswith(
         f"{rec} is under this case's extractions/, where files are never "
@@ -321,6 +356,55 @@ def test_a_declaration_naming_no_file_links_nothing(case, srv, entry):
     )
     assert aid not in got["error"]
     assert _trace(case, rec).grade != "DECLARED"
+
+
+@pytest.mark.parametrize("form", ["relative", "absolute"])
+@pytest.mark.parametrize("entry", _NO_FILE)
+def test_an_input_naming_no_file_links_nothing(case, srv, entry, form):
+    rec = _no_file_made(case)
+    out = _bash_made(case, "out.bin", b"made from it\n")
+    given = entry if form == "relative" else os.path.join(case, entry)
+    _declare(srv, [given], [str(out)])
+    froms = [link["from"]["sha256"] for link in _trace(case, out).links]
+    assert froms and _sha(rec.read_bytes()) not in froms
+
+
+def _absolute(case, tmp_path, made) -> dict:
+    """Absolute entries, each with the path recorded and the file the kernel
+    opens (None: none). A `..` landing in the case is written under it."""
+    rec = _bash_made(case)
+    out = tmp_path / "outside" / "o.bin"
+    (out.parent / "sub").mkdir(parents=True)
+    out.write_bytes(b"outside the case\n")
+    dot_dot = f"{case}/extractions/../extractions/manual/rec.bin"
+    return {  # each landing outside the case is recorded as given
+        "dot-dot": (dot_dot, str(rec), rec),
+        "missing": (f"{case}/extractions/manual/nosuch.bin",) * 2 + (None,),
+        "outside": (str(out), str(out), out),
+        "outside-dot-dot": (f"{out.parent}/sub/../o.bin",) * 2 + (out,),
+        "symlink-dot-dot": (f"{case}/lnk/../made.bin",) * 2 + (made,),
+    }
+
+
+@pytest.mark.parametrize(
+    "shape", ["dot-dot", "missing", "outside", "outside-dot-dot", "symlink-dot-dot"]
+)
+@pytest.mark.parametrize("side", ["inputs", "outputs"])
+def test_an_absolute_entry_naming_a_file_or_none_is_unchanged(
+    case, srv, tmp_path, lnk_made, side, shape
+):
+    entry, recorded, opened = _absolute(case, tmp_path, lnk_made)[shape]
+    r = _declare(srv, *(([entry], []) if side == "inputs"
+                        else ([str(case / "evidence" / "orig.bin")], [entry])))  # fmt: skip
+    (x,) = [
+        x for x in _entry(case / "audit", r["audit_id"])[side] if x["path"] == recorded
+    ]
+    if opened is None:
+        assert x == {"path": entry, "realpath": entry}
+        assert r["files_warning"] == _UNHASHED.format(entry)
+    else:
+        assert (x["realpath"], x["sha256"]) == (str(opened), _sha(opened.read_bytes()))
+        assert "files_warning" not in r
 
 
 _BAD = (["evidence/nosuch.bin"], ["extractions/manual/rec.bni"])

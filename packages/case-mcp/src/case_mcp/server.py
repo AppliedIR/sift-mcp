@@ -798,25 +798,31 @@ def create_server() -> FastMCP:
 
         def placed(f: str) -> str:
             """A relative entry where the AI meant it: in the case folder,
-            never the server's cwd; with no case, as given. A `..` is taken
-            as the kernel takes it, after any symlink before it, so the path
-            names the file opened; the case folder's prefix stays as given.
-            A `..` after a folder that isn't there names no file: kept as
-            declared, never normalized onto another file."""
-            if case_dir is None or os.path.isabs(f):
+            never the server's cwd; with no case, as given; an absolute one
+            as given. A `..` is taken as the kernel takes it, after any
+            symlink before it, so the path names the file opened; one that
+            lands in the case is written under the case folder as given,
+            relative or absolute, and an absolute one landing outside stays
+            as given. A `..` after a folder that isn't there (or a symlink
+            loop) names no file, relative or absolute: kept as declared,
+            never normalized onto another file."""
+            if case_dir is None:
                 return f
-            parts = f.split(os.sep)
+            absolute, parts = os.path.isabs(f), f.split(os.sep)
             if ".." not in parts:
-                return os.path.normpath(os.path.join(case_dir, f))
+                return f if absolute else os.path.normpath(os.path.join(case_dir, f))
             last = len(parts) - parts[::-1].index("..")
-            if not os.path.isdir(os.path.join(case_dir, *parts[: last - 1])):
+            head = os.sep.join(parts[: last - 1])  # absolute when f is
+            if not os.path.isdir(os.path.join(case_dir, head)):
                 unopenable.add(p := os.path.join(case_dir, f))
                 return p
-            real = os.path.realpath(os.path.join(case_dir, *parts[:last]))
+            real = os.path.realpath(os.path.join(case_dir, os.sep.join(parts[:last])))
+            opened = os.path.normpath(os.path.join(real, *parts[last:]))
             case_real = os.path.realpath(case_dir)
-            if os.path.commonpath([real, case_real]) == case_real:
-                real = os.path.join(case_dir, os.path.relpath(real, case_real))
-            return os.path.normpath(os.path.join(real, *parts[last:]))
+            if os.path.commonpath([opened, case_real]) == case_real:
+                rel = os.path.relpath(opened, case_real)
+                return os.path.normpath(os.path.join(case_dir, rel))
+            return f if absolute else opened
 
         input_files = [placed(f) for f in input_files or []]
         output_files = [placed(f) for f in output_files or []]
