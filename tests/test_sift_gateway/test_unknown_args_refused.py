@@ -131,12 +131,24 @@ async def test_after_a_crash_the_new_build_s_name_is_accepted_after_the_rebuild(
     os.kill(int((tmp_path / "pid_v1").read_text()), signal.SIGKILL)
     (tmp_path / "server_v1.py").write_text(V2)  # the new build, in its place
     # a ping sent while the pipe closes waits out its timeout as busy; the
-    # next check finds the child gone
+    # next check finds the child gone, and reports it without a reset
     for _ in range(2):
-        if (await backend.health_check())["status"] != "busy":
+        health = await backend.health_check()
+        if health["status"] != "busy":
             break
-    assert backend.started is False
+    assert health["status"] == "error", health
+    assert backend.started is True
     for route in ROUTES:  # the disclosed window: refused by name until rebuilt
+        assert await _call(gw, route, {"query": "q", "since": "x"}) == (
+            True,
+            _refused_by_schema("since"),
+        )
+    # the next call the old build accepts finds the child gone and says so
+    is_error, text = await _call(gw, "aggregate", {"query": "q"})
+    assert is_error is True
+    assert "lost its connection to backend probe's process" in text, text
+    assert backend.started is False
+    for route in ROUTES:  # still the old build's schema: the window holds
         assert await _call(gw, route, {"query": "q", "since": "x"}) == (
             True,
             _refused_by_schema("since"),
