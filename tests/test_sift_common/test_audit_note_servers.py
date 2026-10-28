@@ -10,7 +10,9 @@ in-process.
 
 from __future__ import annotations
 
+import asyncio
 import errno
+import inspect
 import json
 import os
 import pathlib
@@ -136,7 +138,9 @@ def _point(home, target):
 
 
 def _call(server, tool, /, **args):
-    return server._tool_manager._tools[tool].fn(**args)
+    # the tool as the server registered it: sift-mcp's runs in a worker thread
+    reply = server._tool_manager._tools[tool].fn(**args)
+    return asyncio.run(reply) if inspect.iscoroutine(reply) else reply
 
 
 def _sift():
