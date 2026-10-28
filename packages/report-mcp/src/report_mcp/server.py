@@ -32,7 +32,11 @@ from vhir_cli.case_io import (
     normalize_ioc,
 )
 from vhir_cli.commands.evidence import list_evidence_data
-from vhir_cli.ledger_verify import approved_view, verification_block, verification_json
+from vhir_cli.ledger_verify import (
+    approved_view,
+    verification_block,
+    verification_json,
+)
 from vhir_cli.provenance_view import provenance_block
 
 from report_mcp.profiles import PROFILES, STRIPPED_FINDING_FIELDS
@@ -550,25 +554,54 @@ def _structured_iocs(findings: list) -> list[tuple]:
     return out
 
 
+def _rejection_signed(ioc: dict, result) -> bool:
+    """Whether verify reads the examiner's own rejection of this IOC record in
+    the approval ledger: its verdict VALID, on a direct decision (not a
+    cascade), in a case that passes verify (any verdict that fails it, on any
+    item, cancels every rejection). `ioc` is the record verify read, so VALID
+    on its REJECTED status means its latest line records that rejection for
+    this content (verify fails a status or content its line doesn't). A status
+    set by hand has no ledger line, so it stays defanged."""
+    if result is None or result.exit_code:
+        return False  # nothing counts while the case fails verify
+    v = result.verdict(str(ioc.get("id")))
+    return (
+        v is not None and v.status == "VALID" and v.item_type == "ioc" and not v.source
+    )  # fmt: skip
+
+
 def _report_iocs(case_dir: Path, view: dict) -> list[str]:
     """The IOCs of the case that are domains, URLs or IPv4 addresses, live,
     longest first (a URL before the host it holds): the values in the approved
     findings' `iocs` fields, and the case's IOC records approved or cited by
     an approved finding. A name a finding's text merely mentions isn't one.
-    Hashes, paths and the rest aren't. vhir-cli's `report --save` gathers
-    them the same way, with the same functions (vhir_cli.defang)."""
+    Hashes, paths and the rest aren't, nor is a value the examiner rejected
+    (an IOC record REJECTED and manually reviewed, its rejection signed in
+    the ledger), whatever cites it.
+    vhir-cli's `report --save` gathers them the same way, with the same
+    functions (vhir_cli.defang)."""
     approved = {f.get("id") for f in view.get("findings") or []}
     kept: set[str] = set()
+    records = [i for i in load_iocs(case_dir) if isinstance(i, dict)]
+    result = view.get("result")
+    judged = result.records if result is not None else []  # verify's own read
+    rejected = {  # compared as gathered: normalised, then case-folded
+        v.casefold() for key, i in judged
+        if key == "iocs" and isinstance(i, dict)
+        and i.get("status") == "REJECTED" and i.get("manually_reviewed") is True
+        and _rejection_signed(i, result)
+        and (v := _network_ioc(i.get("value", ""), True)) is not None
+    }  # fmt: skip
 
     def take(value, typed: bool) -> None:
-        if (v := _network_ioc(value, typed)) is not None:
+        v = _network_ioc(value, typed)
+        if v is not None and v.casefold() not in rejected:
             kept.add(v)
 
     for value, typed in _structured_iocs(view.get("findings") or []):
         take(value, typed)
     case_iocs = [  # the case's IOCs that one of the approved findings cites
-        i for i in load_iocs(case_dir)
-        if isinstance(i, dict) and isinstance(i.get("source_findings"), list)
+        i for i in records if isinstance(i.get("source_findings"), list)
         and approved.intersection(map(str, i["source_findings"]))
     ]  # fmt: skip
     for ioc in [*(view.get("iocs") or []), *case_iocs]:  # approved, or so cited

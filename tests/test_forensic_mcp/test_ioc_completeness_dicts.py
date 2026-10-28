@@ -1,7 +1,7 @@
 """The IOC completeness warning reads a dict IOC by its value:
 `{"type": "ip", "value": "10.1.2.3"}` lists 10.1.2.3, as the string form
-does; a dict with no value lists nothing. Before, only string IOCs were read,
-so every dict-form IOC was reported missing from the list."""
+does, and a number value beside it lists no IP. Before, only string IOCs were
+read, so every dict-form IOC was reported missing from the list."""
 
 from __future__ import annotations
 
@@ -42,15 +42,11 @@ def _missing(mgr, iocs):
     "iocs",
     [
         [{"type": "ip", "value": LISTED}],
-        [
-            {"type": "ip", "value": LISTED},
-            {"type": "ip"},
-            {"type": "x", "value": 7},
-        ],  # one with no value, one with an int value
+        [{"type": "ip", "value": LISTED}, {"type": "x", "value": 7}],  # an int value
         [LISTED],  # the string form, as before
         [{"type": "ip", "value": " 10.1.2.3 "}],  # normalised as the string form is
     ],
-    ids=["dict", "no-value-and-int", "string", "dict-spaced"],
+    ids=["dict", "int-value", "string", "dict-spaced"],
 )
 @pytest.mark.usefixtures("active_case")
 def test_only_the_unlisted_ip_is_named(manager, iocs):  # noqa: F811

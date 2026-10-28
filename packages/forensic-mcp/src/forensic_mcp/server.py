@@ -227,8 +227,13 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
         iocs (list): indicators of compromise found in this evidence.
           Pass ALL suspicious IPs, hashes, domains, registry keys, file paths,
           and accounts. Types auto-detected, deduplication automatic.
-          For ambiguous values (bare usernames), pass as dict with explicit type:
-          {"value": "rsydow-a", "type": "user-account"}
+          Send a list. Each IOC is a string, or {"value": "<string>", "type":
+          "<string>"} to give its type, e.g. a bare username:
+          {"value": "rsydow-a", "type": "user-account"}. Put labels in the
+          finding text: a flat mapping of key → IOC or list of IOCs is
+          accepted, but its keys are dropped. A nested mapping or list, an
+          object without "value", a null or bool item, or a string in place
+          of the list is refused (VALIDATION_FAILED, nothing recorded).
 
         supporting_commands (separate parameter, list of dicts): for shell-based
         evidence only. Each dict: {command, purpose, output_excerpt}.

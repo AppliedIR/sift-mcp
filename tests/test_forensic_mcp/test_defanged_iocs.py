@@ -90,6 +90,20 @@ def test_vhir_writes_a_saved_reports_iocs_defanged_by_the_same_functions():
         assert vhir.network_ioc(value, typed) == rs._network_ioc(value, typed), value
 
 
+def test_vhir_leaves_what_the_examiner_rejected_out_of_a_reports_iocs_alike(tmp_path):
+    """Both copies of the gathering run the same rows (in each repo's own tests
+    too) and agree; the gathering differs only in the names it calls."""
+    pytest.importorskip("vhir_cli.defang")
+    from report_mcp.server import _report_iocs
+    from test_report_mcp.test_report_iocs_rejected import ROWS, gathered
+    from vhir_cli.commands.report import _report_iocs as vhir_report_iocs
+
+    for n, (row, field, record, line, expected) in enumerate(ROWS):
+        for c, copy in enumerate((_report_iocs, vhir_report_iocs)):
+            got = gathered(copy, tmp_path / f"{n}-{c}", field, record, line)
+            assert got == expected, (row, copy.__module__)
+
+
 # --- a saved report's IOCs, written defanged: where a domain names a host ------
 
 IOCS = ["https://evil.com/payload", "evil.com"]
