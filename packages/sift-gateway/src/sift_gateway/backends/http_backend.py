@@ -14,7 +14,12 @@ from mcp.client.streamable_http import streamablehttp_client
 from mcp.shared.exceptions import McpError
 from mcp.types import Tool
 
-from sift_gateway.backends.base import MCPBackend, ToolResult, _version_of
+from sift_gateway.backends.base import (
+    MCPBackend,
+    ToolResult,
+    _version_of,
+    call_timeout,
+)
 
 if sys.version_info < (3, 11):
     from exceptiongroup import BaseExceptionGroup
@@ -422,10 +427,7 @@ class HttpMCPBackend(MCPBackend):
             except asyncio.TimeoutError:
                 # before OSError, which a TimeoutError is from Python 3.11: the
                 # call may still be running on the remote, so it's never sent again
-                raise asyncio.TimeoutError(
-                    f"Backend {self.name}: {name} gave no answer in "
-                    f"{_TOOL_CALL_TIMEOUT}s; it wasn't sent again, as it may still be running"
-                ) from None
+                raise call_timeout(self.name, name, _TOOL_CALL_TIMEOUT) from None
             except Exception as exc:
                 text = str(exc).lower()
                 # Sent again only when the remote refused the session before

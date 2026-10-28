@@ -48,7 +48,7 @@ from sift_gateway.audit_helpers import (
     _truncate_params,
 )
 from sift_gateway.backends import MCPBackend, create_backend
-from sift_gateway.backends.base import in_own_task
+from sift_gateway.backends.base import CallTimeout, in_own_task
 from sift_gateway.backends.http_backend import TOKEN_REFUSED, HttpMCPBackend
 from sift_gateway.health import health_routes
 from sift_gateway.mcp_endpoint import (
@@ -789,16 +789,9 @@ class Gateway:
 
         ref_case = reference.case_for(backend_name, actual_name)  # as it starts
         _start = time.monotonic()
-        try:
-            result = await asyncio.wait_for(
-                backend.call_tool(actual_name, arguments), timeout=300.0
-            )
-        except asyncio.TimeoutError as exc:
-            logger.error(
-                "Tool call %s on backend %s timed out after 300s",
-                actual_name,
-                backend_name,
-            )
+        try:  # the backend's deadline is the call's only one
+            result = await backend.call_tool(actual_name, arguments)
+        except CallTimeout as exc:
             if isinstance(backend, HttpMCPBackend):
                 elapsed_ms = (time.monotonic() - _start) * 1000
                 try:
@@ -806,14 +799,14 @@ class Gateway:
                         self._audit.log,
                         tool=actual_name,
                         params=_truncate_params(arguments),
-                        result_summary="timeout after 300s",
+                        result_summary=str(exc),
                         source="gateway_proxy",
                         elapsed_ms=round(elapsed_ms, 1),
                         extra={"backend": backend_name, "examiner": examiner},
                     )
                 except Exception:
                     pass
-            raise RuntimeError(f"Tool call {actual_name} timed out after 300s") from exc
+            raise
 
         # Centralized audit for HTTP backends (stdio backends audit themselves)
         if isinstance(backend, HttpMCPBackend) and actual_name not in POLL_TOOLS:

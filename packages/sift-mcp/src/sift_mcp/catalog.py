@@ -86,7 +86,10 @@ class ToolDefinition:
 
 
 def load_catalog() -> dict[str, ToolDefinition]:
-    """Load all catalog YAMLs, return {tool_name: ToolDefinition}."""
+    """Load all catalog YAMLs, return {tool_name: ToolDefinition}. Built
+    aside and published whole: a reader in another thread sees no catalog
+    (and loads it itself) or all of it."""
+    global _catalog_cache
     if _catalog_cache:
         return _catalog_cache
 
@@ -99,6 +102,7 @@ def load_catalog() -> dict[str, ToolDefinition]:
         )
         return _catalog_cache
 
+    catalog: dict[str, ToolDefinition] = {}
     for yaml_file in yaml_files:
         try:
             with open(yaml_file, encoding="utf-8") as f:
@@ -155,9 +159,10 @@ def load_catalog() -> dict[str, ToolDefinition]:
                     str(b) for b in tool_entry.get("other_binaries", None) or []
                 ],
             )
-            _catalog_cache[name.lower()] = td
+            catalog[name.lower()] = td
 
-    return _catalog_cache
+    _catalog_cache = catalog
+    return catalog
 
 
 def get_tool_def(name: str) -> ToolDefinition | None:
@@ -249,7 +254,7 @@ def load_security_policy() -> dict:
 
 def clear_catalog_cache() -> None:
     """Clear catalog cache (for testing)."""
-    global _CATALOG_DIR, _security_cache
-    _catalog_cache.clear()
+    global _CATALOG_DIR, _catalog_cache, _security_cache
+    _catalog_cache = {}
     _CATALOG_DIR = None
     _security_cache = None
