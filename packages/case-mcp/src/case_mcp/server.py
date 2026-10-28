@@ -790,13 +790,26 @@ def create_server() -> FastMCP:
         from sift_common import file_place
 
         case_dir = _audit_case_dir()
+        if case_dir is not None:
+            # Absolute once, against this cwd; never through symlinks
+            case_dir = case_dir.absolute()
 
         def placed(f: str) -> str:
             """A relative entry where the AI meant it: in the case folder,
-            never the server's cwd; with no case, as given."""
+            never the server's cwd; with no case, as given. A `..` is taken
+            as the kernel takes it, after any symlink before it, so the path
+            names the file opened; the case folder's prefix stays as given."""
             if case_dir is None or os.path.isabs(f):
                 return f
-            return os.path.normpath(os.path.join(case_dir, f))
+            parts = f.split(os.sep)
+            if ".." not in parts:
+                return os.path.normpath(os.path.join(case_dir, f))
+            last = len(parts) - parts[::-1].index("..")
+            real = os.path.realpath(os.path.join(case_dir, *parts[:last]))
+            case_real = os.path.realpath(case_dir)
+            if os.path.commonpath([real, case_real]) == case_real:
+                real = os.path.join(case_dir, os.path.relpath(real, case_real))
+            return os.path.normpath(os.path.join(real, *parts[last:]))
 
         input_files = [placed(f) for f in input_files or []]
         output_files = [placed(f) for f in output_files or []]

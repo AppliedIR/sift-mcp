@@ -5,7 +5,11 @@ case, and reads the record back with the readers that use it.
 
 - A relative entry is recorded absolute under the case folder, normalized;
   an absolute one as given. VHIR_AUDIT_DIR moves only where the entry goes.
-- Through a symlinked case folder the record still links.
+- A case folder given relatively is made absolute, so the readers link the
+  record from another cwd.
+- A `..` after a symlinked folder is taken as the kernel takes it: the path,
+  realpath and hash are the file opened, not the link's sibling.
+- Through a symlinked case folder the record still links, and keeps its prefix.
 - A call that isn't recorded (no case, the case gone, the write failed)
   keeps its reply's keys, and none of its texts reads as a record; a
   recorded one keeps its texts.
@@ -201,6 +205,81 @@ def test_vhir_audit_dir_moves_the_entry_not_the_paths(case, srv, tmp_path, monke
     assert e["outputs"][0]["path"] == str(rec)
 
 
+@pytest.mark.parametrize("form", ["name-from-cases", "dot-from-case"])
+def test_a_case_folder_given_relatively_records_absolute_paths(
+    case, srv, monkeypatch, form
+):
+    from sift_common import provenance as pv
+
+    rec = _bash_made(case)
+    if form == "name-from-cases":
+        monkeypatch.setenv("VHIR_CASE_DIR", "CASE-1")
+        monkeypatch.chdir(case.parent)
+    else:
+        monkeypatch.setenv("VHIR_CASE_DIR", ".")
+        monkeypatch.chdir(case)
+    r = _declare(srv, ["evidence/orig.bin"], ["extractions/manual/rec.bin"])
+    e = _entry(case / "audit", r["audit_id"])
+    assert [i["path"] for i in e["inputs"]] == [str(case / "evidence" / "orig.bin")]
+    assert [o["path"] for o in e["outputs"]] == [str(rec)]
+    assert e["result_summary"]["output_files"] == [str(rec)]
+    # the readers, from another cwd
+    monkeypatch.setenv("VHIR_CASE_DIR", str(case))
+    monkeypatch.chdir(case.parent.parent / "neutral")
+    assert _call(srv, "evidence_register", {"path": "extractions/manual/rec.bin"}) == {
+        "error": f"{rec} is an output this case recorded ({r['audit_id']}): register "
+        "the original evidence it was made from."
+    }
+    assert _trace(case, rec).grade == "DECLARED"
+    quote = pv.trace_artifact(pv.load_case(case), r["audit_id"], "made by bash")
+    assert quote.grade == "DECLARED"
+
+
+@pytest.fixture
+def lnk_made(case, tmp_path):
+    """case/lnk -> elsewhere/sub: lnk/../made.bin opens elsewhere/made.bin,
+    not the case's own made.bin."""
+    (tmp_path / "elsewhere" / "sub").mkdir(parents=True)
+    (case / "lnk").symlink_to(tmp_path / "elsewhere" / "sub")
+    (case / "made.bin").write_bytes(b"decoy in the case\n")
+    made = tmp_path / "elsewhere" / "made.bin"
+    made.write_bytes(b"the file the kernel opens\n")
+    return made
+
+
+@pytest.mark.parametrize("entry", ["lnk/../made.bin", "evidence/../lnk/../made.bin"])
+@pytest.mark.parametrize("cwd", ["neutral", "case"])
+@pytest.mark.parametrize("side", ["inputs", "outputs"])
+def test_dot_dot_after_a_symlinked_folder_records_the_file_opened(
+    case, srv, lnk_made, monkeypatch, side, cwd, entry
+):
+    if cwd == "case":
+        monkeypatch.chdir(case)
+    entry = [entry]
+    r = _declare(
+        srv, *((entry, []) if side == "inputs" else (["evidence/orig.bin"], entry))
+    )
+    recs = _entry(case / "audit", r["audit_id"])[side]
+    (rec,) = [x for x in recs if "orig.bin" not in x["path"]]
+    assert (rec["path"], rec["realpath"]) == (str(lnk_made), str(lnk_made))
+    assert rec["sha256"] == _sha(lnk_made.read_bytes())
+    assert "files_warning" not in r
+
+
+def test_dot_dot_through_a_symlinked_case_folder_keeps_its_prefix(
+    case, srv, tmp_path, monkeypatch
+):
+    link = tmp_path / "linkcase"
+    link.symlink_to(case)
+    monkeypatch.setenv("VHIR_CASE_DIR", str(link))
+    rec = _bash_made(case)
+    r = _declare(srv, ["evidence/orig.bin"],
+                 ["extractions/../extractions/manual/rec.bin"])  # fmt: skip
+    (o,) = _entry(case / "audit", r["audit_id"])["outputs"]
+    assert o["path"] == str(link / "extractions" / "manual" / "rec.bin")
+    assert (o["realpath"], o["sha256"]) == (str(rec), _sha(rec.read_bytes()))
+
+
 _BAD = (["evidence/nosuch.bin"], ["extractions/manual/rec.bni"])
 
 
@@ -286,6 +365,17 @@ def test_a_pending_hash_and_a_registered_input_are_not_named(case, srv, monkeypa
     (o,) = _entry(case / "audit", r["audit_id"])["outputs"]
     assert o["sha256"].startswith("pending:")
     assert r["files_warning"] == _UNHASHED.format(case / "evidence" / "nosuch.bin")
+
+
+def test_an_input_with_a_pending_hash_is_not_named(case, srv, monkeypatch):
+    from sift_common import file_identity as fi
+
+    monkeypatch.setattr(fi, "INLINE_LIMIT", 1)
+    _bash_made(case)
+    r = _declare(srv, ["extractions/manual/rec.bin"], [])
+    (i,) = _entry(case / "audit", r["audit_id"])["inputs"]
+    assert i["sha256"].startswith("pending:")
+    assert r["status"] == "logged" and "files_warning" not in r
 
 
 # --- the texts that send the AI here --------------------------------------------
