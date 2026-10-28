@@ -6,7 +6,9 @@ case, and reads the record back with the readers that use it.
 - A relative entry is recorded absolute under the case folder, normalized;
   an absolute one as given. VHIR_AUDIT_DIR moves only where the entry goes.
 - Through a symlinked case folder the record still links.
-- With no active case the reply says the action wasn't recorded.
+- A call that isn't recorded (no case, the case gone, the write failed)
+  keeps its reply's keys, and none of its texts reads as a record; a
+  recorded one keeps its texts.
 - The reply names every entry recorded without a hash (a `pending:` hash
   isn't one); for a folder output, that its files weren't recorded and the
   step can't be cited by its summary.
@@ -199,12 +201,48 @@ def test_vhir_audit_dir_moves_the_entry_not_the_paths(case, srv, tmp_path, monke
     assert e["outputs"][0]["path"] == str(rec)
 
 
-def test_with_no_active_case_the_reply_says_not_recorded(case, monkeypatch):
-    monkeypatch.delenv("VHIR_CASE_DIR")
-    srv = create_server()
-    r = _declare(srv, ["evidence/orig.bin"], ["extractions/manual/rec.bin"])
-    assert r["status"] == "not_recorded" and r["audit_id"] is None
-    assert r["audit"] == "not recorded: no case was active for this call"
+_BAD = (["evidence/nosuch.bin"], ["extractions/manual/rec.bni"])
+
+
+@pytest.mark.parametrize("kind", ["no_case", "case_gone", "write_failed"])
+def test_no_text_of_a_call_not_recorded_reads_as_a_record(case, monkeypatch, kind):
+    named = [f"{case / 'evidence' / 'nosuch.bin'}",
+             f"{case / 'extractions' / 'manual' / 'rec.bni'}"]  # fmt: skip
+    if kind == "no_case":
+        monkeypatch.delenv("VHIR_CASE_DIR")
+        named, why = (
+            _BAD[0] + _BAD[1],
+            {"audit": "not recorded: no case was active for this call"},
+        )
+    elif kind == "case_gone":
+        (case / "CASE.yaml").unlink()
+        why = {"warning": f"not recorded: {case} is no longer a case (no CASE.yaml). "
+               "The call itself ran; calling it again repeats it."}  # fmt: skip
+    else:
+        (case / "audit" / "case-mcp.jsonl").mkdir()
+        why = {"warning": "Audit write failed — not recorded: [Errno 21] Is a directory: "
+               f"'{case / 'audit' / 'case-mcp.jsonl'}'. "
+               "The call itself ran; calling it again repeats it."}  # fmt: skip
+    r = _declare(create_server(), *_BAD)
+    assert r == {
+        "status": "not_recorded", "audit_id": None,
+        "source": "orchestrator_voluntary", "declared": True,
+        "note": "declared: as reported; with no audit_id it can't be cited", **why,
+        "files_warning": "Named without a hash (missing, misspelled, or not a "
+        f"regular file): {', '.join(named)}.",
+    }  # fmt: skip
+
+
+def test_a_recorded_call_keeps_the_recorded_texts(case, srv):
+    r = _declare(srv, *_BAD)
+    assert r["audit_id"]
+    assert r == {
+        "status": "logged", "audit_id": r["audit_id"],
+        "source": "orchestrator_voluntary", "declared": True,
+        "note": "declared: recorded as reported, not checked against what ran",
+        "files_warning": _UNHASHED.format(
+            f"{case / 'evidence' / 'nosuch.bin'}, {case / 'extractions' / 'manual' / 'rec.bni'}"),
+    }  # fmt: skip
 
 
 # --- what the reply says it couldn't record -------------------------------------
@@ -273,5 +311,9 @@ def test_the_docstrings_say_where_paths_resolve_and_the_way_out(case, srv):
     assert (
         "A relative path in input_files or output_files resolves against the "
         "active case folder here; run_command resolves one against its op "
-        "folder, and evidence_register against the case folder."
+        "folder, and evidence_register against the case folder. The reply's "
+        "files_warning names each input_files or output_files entry recorded "
+        "without a hash; for a folder, name each of its files. When the call "
+        "isn't recorded, its status is not_recorded and its note says it can't "
+        "be cited."
     ) in _description(srv, "log_external_action")

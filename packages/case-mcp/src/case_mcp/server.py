@@ -744,8 +744,11 @@ def create_server() -> FastMCP:
         its registered path; any other file named is hashed as it is now.
         A relative path in input_files or output_files resolves against the
         active case folder here; run_command resolves one against its op
-        folder, and evidence_register against the case folder. The reply names
-        each file recorded without a hash: name each file of a folder.
+        folder, and evidence_register against the case folder. The reply's
+        files_warning names each input_files or output_files entry recorded
+        without a hash; for a folder, name each of its files. When the call
+        isn't recorded, its status is not_recorded and its note says it can't
+        be cited.
 
         Args:
             command: The command that was executed.
@@ -843,19 +846,21 @@ def create_server() -> FastMCP:
             extra=fields,
             case_dir=case_dir,
         )
+        # Nothing recorded: the same keys, in words that don't read as a record
+        recorded = outcome.audit_id is not None
         result = {
-            "status": "logged",
+            "status": "logged" if recorded else "not_recorded",
             "audit_id": outcome.audit_id,
             "source": source,
             "declared": True,
-            "note": "declared: recorded as reported, not checked against what ran",
+            "note": "declared: recorded as reported, not checked against what ran"
+            if recorded
+            else "declared: as reported; with no audit_id it can't be cited",
         }
-        if outcome.audit_id is None:
-            result["status"] = "not_recorded"
         outcome.note(result)
         if provenance_warning:
             result["provenance_warning"] = provenance_warning
-        if unhashed:
+        if unhashed and recorded:
             result["files_warning"] = (
                 "Recorded without a hash, so nothing can link through them "
                 "(missing, misspelled, or not a regular file): "
@@ -867,6 +872,11 @@ def create_server() -> FastMCP:
                     "output_summary."
                     for d in folders
                 )
+            )
+        elif unhashed:
+            result["files_warning"] = (
+                "Named without a hash (missing, misspelled, or not a regular "
+                "file): " + ", ".join(unhashed) + "."
             )
         return result
 
