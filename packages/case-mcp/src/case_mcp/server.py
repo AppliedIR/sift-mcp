@@ -487,8 +487,11 @@ def create_server() -> FastMCP:
 
         You may register original evidence; the entry is marked as registered
         by the AI, and the examiner sees that root when approving a finding.
-        Files the case's tools made (under extractions/, or recorded as an
-        operation's output) are refused: register the original they came from.
+        Files under extractions/ are never registered as originals. For one
+        that no record names: re-make it with run_command from registered
+        evidence or a recorded output, or, for a finding only, declare how it
+        was made with log_external_action first. An output this case recorded
+        is refused too: register the original it came from.
         """
         try:
             _validate_str_length(description, "description", _MAX_TEXT, free_text=True)
@@ -739,6 +742,10 @@ def create_server() -> FastMCP:
         The entry is recorded as declared: what you report, not checked
         against what ran. Registered evidence named in input_files links by
         its registered path; any other file named is hashed as it is now.
+        A relative path in input_files or output_files resolves against the
+        active case folder here; run_command resolves one against its op
+        folder, and evidence_register against the case folder. The reply names
+        each file recorded without a hash: name each file of a folder.
 
         Args:
             command: The command that was executed.
@@ -780,16 +787,33 @@ def create_server() -> FastMCP:
         from sift_common import file_place
 
         case_dir = _audit_case_dir()
+
+        def placed(f: str) -> str:
+            """A relative entry where the AI meant it: in the case folder,
+            never the server's cwd; with no case, as given."""
+            if case_dir is None or os.path.isabs(f):
+                return f
+            return os.path.normpath(os.path.join(case_dir, f))
+
+        input_files = [placed(f) for f in input_files or []]
+        output_files = [placed(f) for f in output_files or []]
         inputs, registered = [], []
-        for f in input_files or []:
+        unhashed: list[str] = []  # nothing links through these
+        for f in input_files:
             rec, reg = file_place.input_record(case_dir, f, "log_external_action")
             inputs.append(rec)
             if reg:
                 registered.append(reg)
+            elif "st_dev" not in rec or "sha256" not in rec:
+                unhashed.append(f)
         outputs = [
             file_place.output_record(case_dir, f, "log_external_action")
-            for f in output_files or []
+            for f in output_files
         ]
+        unhashed += [
+            o["path"] for o in outputs if "st_dev" not in o or "sha256" not in o
+        ]
+        folders = [o["path"] for o in outputs if os.path.isdir(o.get("realpath", ""))]
         files, shas = file_place.listed(inputs, registered)
         fields: dict = {"declared": True}
         if inputs:
@@ -811,7 +835,7 @@ def create_server() -> FastMCP:
             result_summary={
                 "status": "logged",
                 "source": source,
-                "output_files": output_files or [],
+                "output_files": output_files,
             },
             source=source,
             input_files=files or None,
@@ -826,9 +850,24 @@ def create_server() -> FastMCP:
             "declared": True,
             "note": "declared: recorded as reported, not checked against what ran",
         }
+        if outcome.audit_id is None:
+            result["status"] = "not_recorded"
         outcome.note(result)
         if provenance_warning:
             result["provenance_warning"] = provenance_warning
+        if unhashed:
+            result["files_warning"] = (
+                "Recorded without a hash, so nothing can link through them "
+                "(missing, misspelled, or not a regular file): "
+                + ", ".join(unhashed)
+                + "."
+                + "".join(
+                    f" {d} is a folder: its files weren't recorded. Name each one "
+                    "in output_files; until then this step can't be cited by its "
+                    "output_summary."
+                    for d in folders
+                )
+            )
         return result
 
     # ------------------------------------------------------------------

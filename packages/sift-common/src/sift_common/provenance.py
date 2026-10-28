@@ -28,8 +28,11 @@ from sift_common.file_identity import NotRegularFile, open_regular, read_regular
 
 NO_ORIGIN = "no recorded origin: made outside recorded tools"
 _FIX_ORIGIN = (
-    "register the original evidence and make this file with a recorded tool "
-    "(run_command), or declare how it was made with log_external_action"
+    "re-make it with run_command from registered evidence or a recorded output; "
+    "or, for a finding only, declare how it was made with log_external_action, "
+    "naming registered evidence or recorded outputs in input_files and this file "
+    "in output_files. Declare first: reads made before the declaration don't link, "
+    "so re-run them after it or cite the declaration's audit_id"
 )
 
 
