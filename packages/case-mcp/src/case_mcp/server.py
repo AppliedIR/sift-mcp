@@ -487,8 +487,11 @@ def create_server() -> FastMCP:
 
         You may register original evidence; the entry is marked as registered
         by the AI, and the examiner sees that root when approving a finding.
-        Files the case's tools made (under extractions/, or recorded as an
-        operation's output) are refused: register the original they came from.
+        Files under extractions/ are never registered as originals. For one
+        that no record names: re-make it with run_command from registered
+        evidence or a recorded output, or, for a finding only, declare how it
+        was made with log_external_action first. An output this case recorded
+        is refused too: register the original it came from.
         """
         try:
             _validate_str_length(description, "description", _MAX_TEXT, free_text=True)
@@ -739,6 +742,13 @@ def create_server() -> FastMCP:
         The entry is recorded as declared: what you report, not checked
         against what ran. Registered evidence named in input_files links by
         its registered path; any other file named is hashed as it is now.
+        A relative path in input_files or output_files resolves against the
+        active case folder here; run_command resolves one against its op
+        folder, and evidence_register against the case folder. The reply's
+        files_warning names each input_files or output_files entry recorded
+        without a hash; for a folder, name each of its files. When the call
+        isn't recorded, its status is not_recorded and its note says it can't
+        be cited.
 
         Args:
             command: The command that was executed.
@@ -780,16 +790,79 @@ def create_server() -> FastMCP:
         from sift_common import file_place
 
         case_dir = _audit_case_dir()
+        if case_dir is not None:
+            # Absolute once, against this cwd; never through symlinks
+            case_dir = case_dir.absolute()
+
+        unopenable: dict[str, str] = {}  # the kernel opens nothing here: why
+
+        def stats(p: str) -> bool:
+            try:
+                os.stat(p)
+            except OSError:
+                return False
+            return True
+
+        def placed(f: str) -> str:
+            """A relative entry where the AI meant it: in the case folder,
+            never the server's cwd; with no case, as given; an absolute one
+            as given. The kernel decides first: the entry as given is stat'ed,
+            and one it refuses for any reason but a missing last name (a
+            folder before it that isn't there or can't be searched, a file
+            before a `/` or `..`, a symlink loop) names no file: kept as
+            declared, never normalized onto another, and the reason kept. A
+            `..` is taken as the kernel takes it, after any symlink before
+            it, so the path names the file opened; one that lands in the case
+            is written under the case folder as given, relative or absolute,
+            and an absolute one landing outside stays as given."""
+            if case_dir is None:
+                return f
+            given = os.path.join(case_dir, f)  # nothing normalized
+            try:
+                os.stat(given)
+            except OSError as e:
+                missing = isinstance(e, FileNotFoundError) and stats(
+                    os.path.dirname(given.rstrip(os.sep))
+                )
+                if not missing:
+                    unopenable[given] = e.strerror or str(e)
+                    return given
+            absolute, parts = os.path.isabs(f), f.split(os.sep)
+            if ".." not in parts:
+                return f if absolute else os.path.normpath(given)
+            last = len(parts) - parts[::-1].index("..")
+            real = os.path.realpath(os.path.join(case_dir, os.sep.join(parts[:last])))
+            opened = os.path.normpath(os.path.join(real, *parts[last:]))
+            case_real = os.path.realpath(case_dir)
+            if os.path.commonpath([opened, case_real]) == case_real:
+                rel = os.path.relpath(opened, case_real)
+                return os.path.normpath(os.path.join(case_dir, rel))
+            return f if absolute else opened
+
+        input_files = [placed(f) for f in input_files or []]
+        output_files = [placed(f) for f in output_files or []]
         inputs, registered = [], []
-        for f in input_files or []:
-            rec, reg = file_place.input_record(case_dir, f, "log_external_action")
+        unhashed: list[str] = []  # nothing links through these
+        for f in input_files:
+            if f in unopenable:  # never resolved: that would name another file
+                rec, reg = {"path": f}, None
+            else:
+                rec, reg = file_place.input_record(case_dir, f, "log_external_action")
             inputs.append(rec)
             if reg:
                 registered.append(reg)
+            elif "st_dev" not in rec or "sha256" not in rec:
+                unhashed.append(f)
         outputs = [
-            file_place.output_record(case_dir, f, "log_external_action")
-            for f in output_files or []
+            {"path": f}
+            if f in unopenable
+            else file_place.output_record(case_dir, f, "log_external_action")
+            for f in output_files
         ]
+        unhashed += [
+            o["path"] for o in outputs if "st_dev" not in o or "sha256" not in o
+        ]
+        folders = [o["path"] for o in outputs if os.path.isdir(o.get("realpath", ""))]
         files, shas = file_place.listed(inputs, registered)
         fields: dict = {"declared": True}
         if inputs:
@@ -811,7 +884,7 @@ def create_server() -> FastMCP:
             result_summary={
                 "status": "logged",
                 "source": source,
-                "output_files": output_files or [],
+                "output_files": output_files,
             },
             source=source,
             input_files=files or None,
@@ -819,16 +892,42 @@ def create_server() -> FastMCP:
             extra=fields,
             case_dir=case_dir,
         )
+        # Nothing recorded: the same keys, in words that don't read as a record
+        recorded = outcome.audit_id is not None
         result = {
-            "status": "logged",
+            "status": "logged" if recorded else "not_recorded",
             "audit_id": outcome.audit_id,
             "source": source,
             "declared": True,
-            "note": "declared: recorded as reported, not checked against what ran",
+            "note": "declared: recorded as reported, not checked against what ran"
+            if recorded
+            else "declared: as reported; with no audit_id it can't be cited",
         }
         outcome.note(result)
         if provenance_warning:
             result["provenance_warning"] = provenance_warning
+        # each with the kernel's reason when it opens nothing there
+        unhashed = [
+            f"{f} ({unopenable[f]})" if f in unopenable else f for f in unhashed
+        ]
+        if unhashed and recorded:
+            result["files_warning"] = (
+                "Recorded without a hash, so nothing can link through them "
+                "(missing, misspelled, or not a regular file): "
+                + ", ".join(unhashed)
+                + "."
+                + "".join(
+                    f" {d} is a folder: its files weren't recorded. Name each one "
+                    "in output_files; until then this step can't be cited by its "
+                    "output_summary."
+                    for d in folders
+                )
+            )
+        elif unhashed:
+            result["files_warning"] = (
+                "Named without a hash (missing, misspelled, or not a regular "
+                "file): " + ", ".join(unhashed) + "."
+            )
         return result
 
     # ------------------------------------------------------------------

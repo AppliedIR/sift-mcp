@@ -28,8 +28,11 @@ from sift_common.file_identity import NotRegularFile, open_regular, read_regular
 
 NO_ORIGIN = "no recorded origin: made outside recorded tools"
 _FIX_ORIGIN = (
-    "register the original evidence and make this file with a recorded tool "
-    "(run_command), or declare how it was made with log_external_action"
+    "re-make it with run_command from registered evidence or a recorded output; "
+    "or, for a finding only, declare how it was made with log_external_action, "
+    "naming registered evidence or recorded outputs in input_files and this file "
+    "in output_files. Declare first: reads made before the declaration don't link, "
+    "so re-run them after it or cite the declaration's audit_id"
 )
 
 
@@ -587,6 +590,13 @@ def _extend(t: Trace, link: dict) -> Trace:
     return t
 
 
+def _unopened(path: str) -> str | None:
+    """A record with no realpath whose path isn't in normal form (a `..`, a
+    trailing `/` or `/.`): one the kernel opened nothing at, taken as
+    recorded, never resolved onto the file a normal form names."""
+    return path if path != os.path.normpath(path) else None
+
+
 def _inputs(case: Case, e: dict) -> list[dict]:
     """An entry's inputs: one record each (`inputs[]`, a registered one with
     its hash from `input_registered`), else the parallel lists.
@@ -607,7 +617,7 @@ def _inputs(case: Case, e: dict) -> list[dict]:
                  "mnt_id": i.get("mnt_id"), "folder": i.get("folder"),
                  "declared": i.get("found") == "declared" or i.get("declared") is True}
                 for i in e["inputs"] if isinstance(i, dict) and isinstance(_where(case, i, e), str)
-                for r in [relocated(case, e, i.get("realpath"))]]  # fmt: skip
+                for r in [relocated(case, e, i.get("realpath")) or _unopened(_where(case, i, e))]]  # fmt: skip
     files = e.get("input_files") or []
     shas = e.get("input_sha256s") or []
     reals = e.get("input_realpaths") or []
