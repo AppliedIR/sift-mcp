@@ -68,6 +68,7 @@ def test_a_routed_command_gets_its_route_and_the_advisory(command, key):
     assert found["command"] == key
     assert found["mcp_route"] in ("sift-mcp run_command", "opensearch-mcp idx_ingest")
     assert "Prefer it" in found["advisory"] and "stays allowed" in found["advisory"]
+    assert "never in place of a call that failed" in found["advisory"]
 
 
 @pytest.mark.parametrize(

@@ -94,7 +94,8 @@ def route(command):
             f"`{key}` has an MCP route: {via}. Prefer it: the call and its "
             "output go into the case audit, and a finding can cite its audit "
             "id. The shell stays allowed when the MCP tool can't do the job or "
-            "the output is too large for it."
+            "the output is too large for it, never in place of a call that "
+            "failed."
         ),
     }
 
