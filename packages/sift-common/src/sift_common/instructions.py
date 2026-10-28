@@ -171,7 +171,9 @@ OPENSEARCH = (
     "WinRM/Operational often dominates event volumes (50%+) — add "
     'NOT winlog.channel:"Microsoft-Windows-WinRM/Operational" '
     "to queries when investigating specific activity. "
-    "Key evtx fields: event.code, user.name, source.ip, process.name, winlog.channel. "
+    "Key evtx fields: event.code, user.name, source.ip, process.name, winlog.channel, "
+    "winlog.user.identifier (the SID in the record header: often the service account the "
+    "provider ran as; absent in records ingested before this version). "
     "Key shimcache fields: Path, Executed, LastModifiedTimeUTC. "
     "Key amcache fields: KeyName, SHA1, FullPath. "
     "Aggregate on keyword fields, and check each artifact's field type first: "
