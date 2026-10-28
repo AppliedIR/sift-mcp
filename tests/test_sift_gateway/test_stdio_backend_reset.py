@@ -75,6 +75,23 @@ def _text(result) -> str:
     return result[0].text  # a ToolResult is the content list
 
 
+def _before(tool: str) -> str:
+    return (
+        f"The gateway lost its connection to backend standin's process before "
+        f"{tool} was sent, so {tool} didn't run. The gateway starts the backend "
+        "again on the next call."
+    )
+
+
+def _during(tool: str) -> str:
+    return (
+        f"The gateway lost its connection to backend standin's process while "
+        f"{tool} was running. The gateway didn't send it again, and it may have "
+        "run in part: check the case audit before running it again. The gateway "
+        "starts the backend again on the next call."
+    )
+
+
 async def _pid(b) -> int:
     return int(_text(await b.call_tool("ping", {})).split()[-1])
 
@@ -88,14 +105,16 @@ async def _kill(b) -> int:
 
 async def test_a_call_after_the_child_died_fails_and_resets(backend):
     await _kill(backend)
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError) as failed:
         await backend.call_tool("ping", {})
+    assert str(failed.value) == _before("ping")  # nothing was sent
     assert backend.started is False  # was True: every later call failed too
 
 
 async def test_a_child_that_dies_mid_call_costs_one_failed_call(backend):
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError) as failed:
         await backend.call_tool("die", {})
+    assert str(failed.value) == _during("die")
     assert backend.started is False  # an McpError "Connection closed" is gone too
     await in_own_task(backend.start())  # the gateway's lazy restart
     assert "pid" in _text(await backend.call_tool("ping", {}))
@@ -108,8 +127,9 @@ async def test_the_gateway_restarts_it_on_the_next_call(config):
     try:
         backend = gw.backends["standin"]
         old = await _kill(backend)
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError) as failed:
             await gw.call_tool("ping", {})
+        assert str(failed.value) == _before("ping")
         result = await gw.call_tool("ping", {})
         new = int(_text(result).split()[-1])
         assert new != old
@@ -118,13 +138,20 @@ async def test_the_gateway_restarts_it_on_the_next_call(config):
 
 
 async def test_health_after_the_child_died_isnt_ok_and_names_the_error(backend):
-    await _kill(backend)
+    """Health reports the lost connection and never resets: the next call does."""
+    old = await _kill(backend)
     health = await backend.health_check()
     assert health["status"] == "error" and health["error"], (
         health
     )  # was "ok", from the cache
+    assert backend.started is True  # was False: health reset the backend
+    assert (await backend.health_check())["status"] == "error"
+    with pytest.raises(RuntimeError) as failed:
+        await backend.call_tool("ping", {})
+    assert str(failed.value) == _before("ping")
     assert backend.started is False
-    assert (await backend.health_check())["status"] == "stopped"
+    await in_own_task(backend.start())  # the gateway's lazy restart
+    assert await _pid(backend) != old
 
 
 async def test_a_tools_own_error_leaves_the_backend(backend):
@@ -175,8 +202,11 @@ async def test_an_mcp_error_other_than_connection_closed_leaves_the_backend(
         raise McpError(ErrorData(code=-32602, message="Invalid params"))
 
     monkeypatch.setattr(backend._session, "call_tool", refused)
-    with pytest.raises(McpError):
+    with pytest.raises(RuntimeError) as failed:
         await backend.call_tool("ping", {})
+    assert str(failed.value) == (
+        "Backend standin answered ping with an error: Invalid params."
+    )
     assert backend.started is True
 
 
@@ -236,14 +266,16 @@ async def test_an_old_sessions_late_failure_never_resets_the_replacement(backend
     second = asyncio.ensure_future(backend.call_tool("ping", {}))
     await asyncio.sleep(0.1)
     gates[0].set()
-    with pytest.raises(anyio.ClosedResourceError):
+    with pytest.raises(RuntimeError) as failed:
         await first
+    assert str(failed.value) == _during("ping")
     assert backend.started is False  # the current session's failure: reset
     await in_own_task(backend.start())  # the next request restarts it
     new = backend._session
     gates[1].set()
-    with pytest.raises(anyio.ClosedResourceError):
+    with pytest.raises(RuntimeError) as failed:
         await second  # it still fails: it ran on the old child
+    assert str(failed.value) == _during("ping")
     assert backend.started is True and backend._session is new
     assert await _pid(backend) != old_pid
 
@@ -278,8 +310,9 @@ async def test_an_old_failure_during_the_replacements_start_never_resets_it(
     restart = asyncio.ensure_future(in_own_task(backend.start()))
     await asyncio.sleep(0.5)  # the replacement is published, its initialize held
     failing.set()
-    with pytest.raises(anyio.ClosedResourceError):
+    with pytest.raises(RuntimeError) as failed:
         await old_call
+    assert str(failed.value) == _during("ping")
     initializing.set()
     await restart
     assert backend.started is True

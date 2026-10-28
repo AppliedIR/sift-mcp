@@ -13,7 +13,6 @@ import asyncio
 import hmac
 import json
 import logging
-import sys
 import time
 from collections.abc import Sequence
 from typing import Any
@@ -37,9 +36,6 @@ from starlette.responses import JSONResponse
 
 from sift_gateway.backends.base import CallTimeout
 from sift_gateway.rate_limit import check_rate_limit
-
-if sys.version_info < (3, 11):
-    from exceptiongroup import BaseExceptionGroup
 
 logger = logging.getLogger(__name__)
 
@@ -240,6 +236,11 @@ def _error(text: str) -> CallToolResult:
     return CallToolResult(content=[TextContent(type="text", text=text)], isError=True)
 
 
+def _gateway_failure(name: str, exc: Exception) -> str:
+    """A failure in the gateway itself, not in the backend or the call."""
+    return f"{name} failed in the gateway ({type(exc).__name__}: {exc})."
+
+
 def create_mcp_server(gateway: Any) -> Server:
     """Build a low-level MCP ``Server`` that proxies through *gateway*.
 
@@ -279,31 +280,14 @@ def create_mcp_server(gateway: Any) -> Server:
         except (RuntimeError, ConnectionError, OSError) as e:
             logger.error("MCP call_tool backend error for %s: %s", name, e)
             return _error(f"Error: {name} failed: {e}")
-        except Exception as e:
-            # Catch ClosedResourceError / BrokenResourceError (anyio) and
-            # similar transport errors that indicate a dead session.
-            exc_str = str(type(e).__name__).lower()
-            if "closed" in exc_str or "broken" in exc_str or "resource" in exc_str:
-                logger.error(
-                    "MCP call_tool transport error for %s: %s: %s",
-                    name,
-                    type(e).__name__,
-                    e,
-                )
-                return _error(
-                    f"Error: backend connection lost for {name} — retry once to trigger reconnect"
-                )
-            raise  # Re-raise non-transport exceptions to fall through to generic handler
-        except (asyncio.CancelledError, BaseExceptionGroup) as e:
+        except Exception as e:  # never a cancellation: the SDK answers those
             logger.error(
                 "MCP call_tool unexpected error for %s: %s: %s",
                 name,
                 type(e).__name__,
                 e,
             )
-            return _error(
-                f"Error: unexpected failure for {name} — if this persists, report to examiner"
-            )
+            return _error(f"Error: {_gateway_failure(name, e)}")
 
         # Normalise to list of TextContent for the MCP protocol
         contents: list[TextContent] = []
@@ -402,7 +386,7 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
                 "Per-backend call_tool error for %s/%s: %s", backend_name, name, e
             )
             return _error(f"Error: {name} failed: {e}")
-        except (Exception, asyncio.CancelledError, BaseExceptionGroup) as e:
+        except Exception as e:  # never a cancellation: the SDK answers those
             logger.error(
                 "Per-backend call_tool unexpected error for %s/%s: %s: %s",
                 backend_name,
@@ -410,10 +394,7 @@ def create_backend_mcp_server(gateway: Any, backend_name: str) -> Server:
                 type(e).__name__,
                 e,
             )
-            return _error(
-                f"Error: unexpected failure for {name} ({type(e).__name__}) — "
-                "if this persists, report to examiner"
-            )
+            return _error(f"Error: {_gateway_failure(name, e)}")
 
         # Normalise to list of TextContent
         contents: list[TextContent] = []

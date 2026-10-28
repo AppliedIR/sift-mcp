@@ -92,18 +92,10 @@ async def _close_in_this_task(backend: MCPBackend) -> None:
         with anyio.CancelScope(shield=True):  # bounded by its stop timeout
             await backend.stop()
         return
-    stack = getattr(backend, "_exit_stack", None)
-    backend._exit_stack = None
-    backend._session = None
-    backend._started = False
-    if stack is None:
-        return
-    try:
-        # No scope of its own around this: the stack's scopes must be the
-        # task's innermost when they exit
-        await stack.aclose()
-    except (Exception, BaseExceptionGroup) as exc:
-        logger.debug("Closing backend %s: %s", backend.name, exc)
+    # SB's own marking close, never through its stop(), which closes from a
+    # wait_for task before Python 3.12. No scope of its own around this: the
+    # stack's scopes must be the task's innermost when they exit
+    await backend.close()
 
 
 class Gateway:
@@ -307,7 +299,12 @@ class Gateway:
                 backend.last_tool_call = time.monotonic()
                 return
             logger.info("Lazy-starting backend: %s", backend_name)
-            await asyncio.wait_for(in_own_task(backend.start()), timeout=60.0)
+            try:
+                await asyncio.wait_for(in_own_task(backend.start()), timeout=60.0)
+            except Exception as exc:  # a cancellation isn't a failed start
+                why = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+                text = f"Backend {backend_name} didn't start ({why})."
+                raise RuntimeError(text) from exc
             backend.last_tool_call = time.monotonic()
             await self._build_tool_map()
 
