@@ -7,16 +7,15 @@ artifacts_parsed: []
 mcp_server: windows-triage-mcp
 
 caveats:
-  - "Baseline comparison only determines if a file path EXISTS in a clean Windows installation"
   - "A file being in the baseline does not mean it is legitimate — malware can replace legitimate files"
   - "A file NOT in the baseline is not necessarily malicious — user-installed software and updates add files"
   - "The baseline is version-specific; files valid on one Windows version may not exist on another"
   - "Path matching is case-insensitive but otherwise exact; variations in path format may cause misses"
-  - "Does not check file content, hash, or digital signature — only the path/name"
+  - "Checks the file's path and name against the baseline. When you pass a hash, it also compares it with the baseline's hashes for that path, across the builds it holds. It does not check the digital signature."
 
 output_notes:
   format: structured_json
-  key_fields: [path, in_baseline, os_version, hash_match]
+  key_fields: [verdict, confidence, reasons, path_in_baseline, hash_compared, findings]
 
 advisories:
   - "Use as a TRIAGE tool to quickly identify files that warrant deeper investigation"

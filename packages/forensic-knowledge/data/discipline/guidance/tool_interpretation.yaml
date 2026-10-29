@@ -4,8 +4,8 @@ tools:
     score_interpretation:
       EXPECTED: "The path, or a known directory for this filename, matches the Windows baseline. Without a hash this is a name-and-path match only; pass the hash to compare it with the baseline builds of that path. Default does not mean benign."
       EXPECTED_LOLBIN: "As EXPECTED, and the file is a known LOLBin that can be abused. Check how it was used."
-      SUSPICIOUS: "A specific anomaly: a critical filename trick (Unicode or double extension), a known attack-tool name, a system binary's name in an unexpected directory (masquerading), a hash that matches no baseline build of that path, or another high-severity filename issue. The reply's reasons say which. Investigate further."
-      UNKNOWN: "File NOT in baseline database. This is NEUTRAL — it means not-in-database, not suspicious. Custom software, user files, and enterprise tools will all be UNKNOWN. A filename without a folder is not checked: pass the full path."
+      SUSPICIOUS: "A specific anomaly: a critical filename trick (Unicode or double extension), a known attack-tool name, a system binary's name in an unexpected directory (masquerading), or another high-severity filename issue. The reply's reasons say which. Investigate further."
+      UNKNOWN: "File NOT in baseline database. This is NEUTRAL — it means not-in-database, not suspicious. Custom software, user files, and enterprise tools will all be UNKNOWN. A filename without a folder is not checked: pass the full path. A baseline path whose hash matches none of its reference builds also reads UNKNOWN. A patch level the baseline lacks often causes this. Changed content can also cause it. Check the file's signature."
     common_false_positives:
       - "Enterprise software agents (AV, management tools) flagged as UNKNOWN"
       - "Windows updates changing file hashes before baseline is updated"

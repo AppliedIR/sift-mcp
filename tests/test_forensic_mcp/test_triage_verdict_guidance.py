@@ -29,13 +29,15 @@ CHECK_FILE = {
     "abused. Check how it was used.",
     "SUSPICIOUS": "A specific anomaly: a critical filename trick (Unicode or double "
     "extension), a known attack-tool name, a system binary's name in an unexpected "
-    "directory (masquerading), a hash that matches no baseline build of that path, "
-    "or another high-severity filename issue. The reply's reasons say which. "
+    "directory (masquerading), or another high-severity filename issue. The reply's "
+    "reasons say which. "
     "Investigate further.",
     "UNKNOWN": "File NOT in baseline database. This is NEUTRAL — it means "
     "not-in-database, not suspicious. Custom software, user files, and enterprise "
     "tools will all be UNKNOWN. A filename without a folder is not checked: pass "
-    "the full path.",
+    "the full path. A baseline path whose hash matches none of its reference builds "
+    "also reads UNKNOWN. A patch level the baseline lacks often causes this. Changed "
+    "content can also cause it. Check the file's signature.",
 }
 CHECK_PROCESS_TREE = {
     "EXPECTED": "The process is known, and the checks that ran match its "
