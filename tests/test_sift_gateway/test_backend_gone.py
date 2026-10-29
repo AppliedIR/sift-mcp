@@ -103,6 +103,7 @@ RAW = textwrap.dedent(
         return {"content": [{"type": "text", "text": t}], "isError": False}
 
     TOOLS = [{"name": n, "inputSchema": {"type": "object"}} for n in ("ok", "err", "bye")]
+    LISTS = []
     for line in sys.stdin:
         if not line.strip():
             continue
@@ -119,6 +120,13 @@ RAW = textwrap.dedent(
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": MODE, "version": "0"},
             })
+        elif method == "tools/list" and MODE == "slowlist":
+            if len(LISTS) == 1:  # the second listing is slow
+                time.sleep(4)
+            LISTS.append(1)
+            reply(rid, result={"tools": TOOLS})
+        elif method == "tools/list" and MODE == "listerr":
+            reply(rid, error={"code": -32603, "message": "r12e probe listing refused"})
         elif method == "tools/list":
             reply(rid, result={"tools": TOOLS})
         elif method == "ping":
@@ -931,6 +939,135 @@ async def test_r8_tools_list_after_a_death_answers_and_the_call_gets_before_send
     row.done()
 
 
+# R12, R12h, R12e: a listing when the child dies (B115)
+
+
+def _listing() -> str:
+    return (
+        "The gateway lost its connection to backend standin's process while listing "
+        "its tools, so no tool ran. The gateway starts the backend again on the next "
+        "call."
+    )
+
+
+async def _listed(client, cap: float = CAP):
+    """(tool names or None, error text, seconds) for one tools/list."""
+    started = time.monotonic()
+    try:
+        with anyio.fail_after(cap):
+            names = [t.name for t in (await client.list_tools()).tools]
+        return names, "", time.monotonic() - started
+    except Exception as exc:  # the client's cap, or the route's error reply
+        return None, f"{type(exc).__name__}: {exc}", time.monotonic() - started
+
+
+@pytest.mark.parametrize("ask", ["call", "list"])
+@pytest.mark.parametrize("route", ROUTES)
+async def test_r12_a_listing_the_child_never_answers_ends_with_its_death(
+    gws, standin, route, ask
+):
+    """The child dies while the backend waits for its tools/list, and the reply
+    never comes (as on 3.10, when the request's write meets the dead pipe)."""
+    row = _Row()
+    gw = await gws(_conf(standin))
+    backend = gw.backends["standin"]
+    async with _client(gw, route) as client:
+        old = await _pid(client)
+    backend._tools_cache = None
+    backend._session.list_tools = _held
+    async with _client(gw, route) as client:  # a new client's call lists first
+        if ask == "call":
+            pending = asyncio.ensure_future(_call(client, "ping"))
+        else:
+            pending = asyncio.ensure_future(_listed(client))
+        await asyncio.sleep(1)
+        killed = time.monotonic()
+        await _kill(old, settle=0)
+        seen = await pending
+        took = time.monotonic() - killed
+        row.check("an answer within 5 s of the kill", took < 5, (round(took, 2), seen))
+        if route == "aggregate" and ask == "call":  # its listing skips the failure
+            ok = (
+                seen[0] is False
+                and seen[1].startswith("pid ")
+                and seen[1] != f"pid {old}"
+            )
+        elif route == "aggregate":
+            ok = seen[:2] == (["ping", "slow", "ff"], "")
+        elif ask == "call":
+            ok = seen[:2] == (True, _listing())
+        else:
+            ok = seen[:2] == (None, f"McpError: {_listing()}")
+        row.check("the answer", ok, seen)
+        new = await _pid(client)
+        row.check("the next call from a new pid", new not in (None, old), new)
+        row.check("one child", _kids(str(standin)) == [new], _kids(str(standin)))
+        await _after(row, client, backend)
+    row.done()
+
+
+@pytest.mark.parametrize("when", ["before", "during"])
+async def test_r12h_health_when_the_child_dies_at_its_listing(
+    gws, standin, when, monkeypatch
+):
+    """Health's tools/list meets the death: health says error within the
+    bound, and leaves the session for the next call to judge (R7)."""
+    row = _Row()
+    gw = await gws(_conf(standin))
+    backend = gw.backends["standin"]
+    async with _client(gw, "per-backend") as client:
+        old = await _pid(client)
+        backend._tools_cache = None
+        backend._session.list_tools = _held
+        real, looks = stdio_backend._lost, []
+
+        def first_misses(stream):  # health's own look comes just before the death
+            looks.append(stream)
+            return False if len(looks) == 1 else real(stream)
+
+        if when == "before":
+            await _kill(old)
+            monkeypatch.setattr(stdio_backend, "_lost", first_misses)
+        started = time.monotonic()
+        health = asyncio.ensure_future(_health(gw))
+        if when == "during":
+            await asyncio.sleep(1)
+            await _kill(old, settle=0)
+        try:
+            seen = await asyncio.wait_for(health, CAP)
+        except asyncio.TimeoutError:
+            seen = None
+        took = time.monotonic() - started
+        monkeypatch.setattr(stdio_backend, "_lost", real)
+        row.check("health within 5 s", took < 5, round(took, 2))
+        row.check("status error", (seen or {}).get("status") == "error", seen)
+        row.check("started still true", backend.started is True, backend.started)
+        _, text, _ = await _call(client, "ping")
+        row.check("call 1", text == _failed("ping", _before("ping")), text)
+        new = await _pid(client)
+        row.check("call 2 from a new pid", new not in (None, old), new)
+        await _after(row, client, backend)
+    row.done()
+
+
+async def test_r12e_guard_a_childs_error_reply_to_a_listing_is_as_it_was(gws, raw):
+    row = _Row()
+    gw = await gws(_conf(raw, "listerr"))
+    backend = gw.backends["standin"]
+    [child] = _kids(str(raw))
+    async with _client(gw, "per-backend") as client:
+        seen = await _call(client, "ok")
+        row.check("call", seen[:2] == (True, "r12e probe listing refused"), seen)
+        listed = await _listed(client)
+        row.check(
+            "list", listed[:2] == (None, "McpError: r12e probe listing refused"), listed
+        )
+        row.check("started true", backend.started is True, backend.started)
+        row.check("the same child", _kids(str(raw)) == [child], _kids(str(raw)))
+        await _after(row, client, backend)
+    row.done()
+
+
 # R10: the gateway's own failure
 
 
@@ -1024,4 +1161,151 @@ async def test_r11_a_stop_during_a_call_gets_the_stopped_text(
             _, text, _ = await call
             row.check("R11s text", text == _failed("slow", _during("slow")), text)
         await _after(row, client, backend)
+    row.done()
+
+
+# R12r, R12k, R12t, R12s: the listing's other deaths, and a stop (B115 Rev 1.1)
+
+
+@pytest.mark.parametrize("who", ["health", "call", "list"])
+async def test_r12r_the_child_dies_while_its_listing_runs(gws, raw, who):
+    """The child got tools/list and is killed before it answers: EOF, no hang."""
+    row = _Row()
+    gw = await gws(_conf(raw, "slowlist"))
+    backend = gw.backends["standin"]
+    [child] = _kids(str(raw))
+    async with _client(gw, "per-backend") as client:
+        first = await _call(client, "ok")  # warms this route's own tool cache
+        row.check("first", first[:2] == (False, f"pid {child}"), first)
+        backend._tools_cache = None
+        if who == "health":
+            pending = asyncio.ensure_future(_health(gw))
+            await asyncio.sleep(1)
+            killed = time.monotonic()
+            await _kill(child, settle=0)
+            try:
+                seen = await asyncio.wait_for(pending, CAP)
+            except asyncio.TimeoutError:
+                seen = None
+            took = time.monotonic() - killed
+            row.check("health within 5 s", took < 5, round(took, 2))
+            row.check("status error", (seen or {}).get("status") == "error", seen)
+            row.check("started still true", backend.started is True, backend.started)
+            again = await _call(client, "ok")
+            row.check("call 1", again[1] == _failed("ok", _before("ok")), again)
+            nxt = await _call(client, "ok")
+        else:
+            async with _client(gw, "per-backend") as c2:  # a new client lists first
+                if who == "call":
+                    pending = asyncio.ensure_future(_call(c2, "ok"))
+                else:
+                    pending = asyncio.ensure_future(_listed(c2))
+                await asyncio.sleep(1)
+                killed = time.monotonic()
+                await _kill(child, settle=0)
+                seen = await pending
+                took = time.monotonic() - killed
+                row.check("answer within 5 s", took < 5, round(took, 2))
+                if who == "call":
+                    ok = seen[:2] == (True, _listing())
+                else:
+                    ok = seen[:2] == (None, f"McpError: {_listing()}")
+                row.check("the listing text", ok, seen)
+                nxt = await _call(c2, "ok")
+        row.check(
+            "next call from a new pid",
+            nxt[0] is False and nxt[1] != f"pid {child}",
+            nxt,
+        )
+    row.done()
+
+
+@pytest.mark.parametrize("ask", ["call", "list"])
+async def test_r12k_a_listing_on_a_connection_already_lost(gws, standin, ask):
+    """The death is known before the listing starts; the tool cache is cold."""
+    row = _Row()
+    gw = await gws(_conf(standin))
+    backend = gw.backends["standin"]
+    async with _client(gw, "per-backend") as client:
+        old = await _pid(client)
+        await _kill(old)
+        backend._tools_cache = None
+    async with _client(gw, "per-backend") as client:  # a new client lists first
+        if ask == "call":
+            seen = await _call(client, "ping")
+            ok = seen[:2] == (True, _listing())
+        else:
+            seen = await _listed(client)
+            ok = seen[:2] == (None, f"McpError: {_listing()}")
+        row.check("the listing text", ok, seen)
+        row.check("at once", seen[2] < 2, seen)
+        new = await _pid(client)
+        row.check("next call from a new pid", new not in (None, old), new)
+        await _after(row, client, backend)
+    row.done()
+
+
+async def test_r12t_guard_a_live_child_slow_to_list_times_out_alive(
+    gws, raw, monkeypatch
+):
+    """A live child slower than the listing deadline: a timeout, not a death."""
+    row = _Row()
+    gw = await gws(_conf(raw, "slowlist"))
+    backend = gw.backends["standin"]
+    [child] = _kids(str(raw))
+    monkeypatch.setattr(stdio_backend, "_TOOL_LIST_TIMEOUT", 2)
+    backend._tools_cache = None
+    async with _client(gw, "per-backend") as client:
+        seen = await _call(client, "ok")  # lists first: 4 s against 2 s
+        row.check("not the listing text", _listing() not in seen[1], seen)
+        row.check("started still true", backend.started is True, backend.started)
+        await asyncio.sleep(3)  # the late reply comes and goes
+        again = await _call(client, "ok")
+        row.check("the same child", again[:2] == (False, f"pid {child}"), again)
+        row.check("one child", _kids(str(raw)) == [child], _kids(str(raw)))
+    row.done()
+
+
+def _stopped_listing() -> str:
+    return (
+        "The gateway stopped backend standin (a service stop or restart, an idle stop "
+        "or shutdown) while listing its tools, so no tool ran."
+    )
+
+
+@pytest.mark.parametrize("form", ["held", "eof"])
+@pytest.mark.parametrize("how", ["stop", "restart"])
+@pytest.mark.parametrize("ask", ["call", "list"])
+async def test_r12s_a_stop_during_a_listing_gets_the_stopped_text(
+    gws, raw, ask, how, form
+):
+    """The gateway stops the backend while it lists: no restart promise (R11)."""
+    row = _Row()
+    gw = await gws(_conf(raw, "slowlist"))
+    backend = gw.backends["standin"]
+    [child] = _kids(str(raw))
+    backend._tools_cache = None
+    if form == "held":  # the reply never comes, as on 3.10
+        backend._session.list_tools = _held
+    async with _client(gw, "per-backend") as client:
+        if ask == "call":
+            pending = asyncio.ensure_future(_call(client, "ok"))
+        else:
+            pending = asyncio.ensure_future(_listed(client))
+        await asyncio.sleep(1)
+        stopped = time.monotonic()
+        status = await _rest(gw, f"/api/v1/services/standin/{how}")
+        row.check(f"REST {how}", status == 200, status)
+        seen = await pending
+        took = time.monotonic() - stopped
+        if ask == "call":
+            ok = seen[:2] == (True, _stopped_listing())
+        else:
+            ok = seen[:2] == (None, f"McpError: {_stopped_listing()}")
+        row.check("the stopped listing text", ok, seen)
+        row.check("within 3 s of the stop", took < 3, round(took, 2))
+        if how == "restart":
+            nxt = await _call(client, "ok")
+            new = nxt[0] is False and nxt[1] != f"pid {child}"
+            row.check("next call from a new pid", new, nxt)
     row.done()
