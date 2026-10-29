@@ -307,18 +307,10 @@ class StdioMCPBackend(MCPBackend):
             raise RuntimeError(f"Backend {self.name} is not started")
 
         if self._tools_cache is None:
-            generation = self._generation
-            try:
-                result = await asyncio.wait_for(
-                    self._session.list_tools(), timeout=_TOOL_LIST_TIMEOUT
-                )
-                self._tools_cache = result.tools
-            except Exception as exc:
-                if reset and _gone(exc):  # restarted lazily by the next call
-                    await self._reset_if_current(
-                        generation, context="list_tools cleanup after error"
-                    )
-                raise
+            result = await asyncio.wait_for(
+                self._session.list_tools(), timeout=_TOOL_LIST_TIMEOUT
+            )
+            self._tools_cache = result.tools
         return self._tools_cache
 
     def _on_stream_closed(self) -> None:
