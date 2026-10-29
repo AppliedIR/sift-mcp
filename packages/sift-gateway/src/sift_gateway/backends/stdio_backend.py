@@ -107,6 +107,20 @@ def _stopped_text(backend: str, tool: str) -> str:
     )
 
 
+def _stopped_listing_text(backend: str) -> str:
+    return (
+        f"The gateway stopped backend {backend} (a service stop or restart, an idle stop "
+        "or shutdown) while listing its tools, so no tool ran."
+    )
+
+
+def _listing_text(backend: str) -> str:
+    return (
+        f"The gateway lost its connection to backend {backend}'s process while listing "
+        "its tools, so no tool ran. The gateway starts the backend again on the next call."
+    )
+
+
 # Timeout (seconds) for backend operations
 _TOOL_LIST_TIMEOUT = 30
 _TOOL_CALL_TIMEOUT = 300
@@ -307,8 +321,12 @@ class StdioMCPBackend(MCPBackend):
             raise RuntimeError(f"Backend {self.name} is not started")
 
         if self._tools_cache is None:
-            result = await asyncio.wait_for(
-                self._session.list_tools(), timeout=_TOOL_LIST_TIMEOUT
+            result = await self._watched(
+                None,
+                lambda session: session.list_tools(),
+                _TOOL_LIST_TIMEOUT,
+                asyncio.TimeoutError,
+                reset=reset,
             )
             self._tools_cache = result.tools
         return self._tools_cache
@@ -329,42 +347,66 @@ class StdioMCPBackend(MCPBackend):
     def _ended(self, session: ClientSession, stream) -> bool:
         return _lost(stream) or session in self._stopped
 
-    async def _drop(self, session: ClientSession, generation: int, name: str):
-        """The call's connection is gone: reset, and the text that says so."""
-        text = _stopped_text if session in self._stopped else _during_text
-        await self._reset_if_current(generation, context="call_tool cleanup after loss")
+    async def _drop(self, session, generation, name, reset=True):
+        """The request's connection is gone: reset, and the text that says so.
+        A listing (name None) has its own texts."""
+        stopped = session in self._stopped
+        if reset:
+            await self._reset_if_current(
+                generation, context="call_tool cleanup after loss"
+            )
+        if name is None:
+            listing = _stopped_listing_text if stopped else _listing_text
+            return RuntimeError(listing(self.name))
+        text = _stopped_text if stopped else _during_text
         return RuntimeError(text(self.name, name))
 
     async def call_tool(self, name: str, arguments: dict) -> list:
-        # this call's own session and stream: a restart by another call never
-        # makes this one take the new child for its own
-        session, stream, generation = self._session, self._stream, self._generation
-        if not self._started or session is None:
-            raise RuntimeError(_before_text(self.name, name))
-        if _lost(stream):  # nothing sent: the next call starts a new child
-            await self._reset_if_current(generation, context="call_tool cleanup")
-            raise RuntimeError(_before_text(self.name, name))
+        result = await self._watched(
+            name,
+            lambda session: session.call_tool(name, arguments),
+            _TOOL_CALL_TIMEOUT,
+            lambda: call_timeout(self.name, name, _TOOL_CALL_TIMEOUT),
+        )
+        return ToolResult(result.content, is_error=bool(result.isError))
 
-        # The call and the loss of its connection, awaited together up to the
-        # one deadline. A session with no stream is judged by the deadline alone.
+    async def _watched(self, name, send, timeout, on_timeout, *, reset=True):
+        """One request to the child (a call, or a listing when name is None),
+        awaited with the loss of its connection. reset=False: a loss is
+        reported, never reset (health)."""
+        # this request's own session and stream: a restart by another call
+        # never makes this one take the new child for its own
+        session, stream, generation = self._session, self._stream, self._generation
+        before = (
+            _listing_text(self.name) if name is None else _before_text(self.name, name)
+        )
+        if not self._started or session is None:
+            raise RuntimeError(before)
+        if _lost(stream):  # nothing sent: the next call starts a new child
+            if reset:
+                await self._reset_if_current(generation, context="call_tool cleanup")
+            raise RuntimeError(before)
+
+        # The request and the loss of its connection, awaited together up to
+        # the one deadline. A session with no stream is judged by the deadline alone.
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + _TOOL_CALL_TIMEOUT
-        task = asyncio.ensure_future(session.call_tool(name, arguments))
+        deadline = loop.time() + timeout
+        task = asyncio.ensure_future(send(session))
         try:
             while not task.done():
                 left = deadline - loop.time()
                 if left <= 0:
                     if self._ended(session, stream):  # the known loss wins
-                        raise await self._drop(session, generation, name)
+                        raise await self._drop(session, generation, name, reset)
                     # the child may still be running it: alive
-                    raise call_timeout(self.name, name, _TOOL_CALL_TIMEOUT)
+                    raise on_timeout()
                 await asyncio.wait({task}, timeout=min(_POLL, left))
                 if not task.done() and self._ended(session, stream):
                     if _lost(stream):
                         self._on_stream_closed()
                     await self._finish(task, deadline)
                     if not task.done():
-                        raise await self._drop(session, generation, name)
+                        raise await self._drop(session, generation, name, reset)
             try:
                 result = task.result()
             except Exception as exc:
@@ -373,6 +415,8 @@ class StdioMCPBackend(MCPBackend):
                     and isinstance(exc, McpError)
                     and not _closed(exc)
                 ):  # the child's own error reply: it lives on
+                    if name is None:  # a listing's reaches its caller as it was
+                        raise
                     raise RuntimeError(
                         f"Backend {self.name} answered {name} with an error: "
                         f"{exc.error.message}."
@@ -380,12 +424,13 @@ class StdioMCPBackend(MCPBackend):
                 if not _gone(exc):
                     raise
                 if stream is None:  # restarted lazily by the gateway's next call
-                    await self._reset_if_current(
-                        generation, context="call_tool cleanup after error"
-                    )
+                    if reset:
+                        await self._reset_if_current(
+                            generation, context="call_tool cleanup after error"
+                        )
                     raise
-                raise await self._drop(session, generation, name) from exc
-            return ToolResult(result.content, is_error=bool(result.isError))
+                raise await self._drop(session, generation, name, reset) from exc
+            return result
         finally:  # no task from the wait outlives the call
             if not task.done():
                 task.cancel()
