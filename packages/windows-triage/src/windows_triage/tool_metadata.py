@@ -6,7 +6,7 @@ TOOL_METADATA: dict[str, dict[str, list[str] | str]] = {
             "Baseline covers default Windows installations only",
             "Third-party software will not appear in baseline",
         ],
-        "interpretation_constraint": "UNKNOWN means not-in-database, NOT suspicious",
+        "interpretation_constraint": "UNKNOWN means not-in-database, or a hash that matches no baseline build of the path. NOT suspicious. Read the reasons.",
     },
     "check_process_tree": {
         "caveats": [

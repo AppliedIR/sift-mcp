@@ -13,11 +13,12 @@ Architecture:
 For threat intelligence (hash/IOC records), use lookup_ioc (threat intel) separately.
 
 Verdict System:
-    - SUSPICIOUS: Anomaly detected (wrong path, spoofing, hash mismatch,
+    - SUSPICIOUS: Anomaly detected (wrong path, spoofing,
                   suspicious parent process, vulnerable driver)
     - EXPECTED_LOLBIN: In baseline but has abuse potential (LOLBin)
     - EXPECTED: In Windows baseline, no red flags
-    - UNKNOWN: Not in any database (NEUTRAL - may be legitimate software)
+    - UNKNOWN: Not in any database, or a baseline path whose hash matches none
+               of its builds (NEUTRAL - may be legitimate software)
 
 Process Tree Validation:
     For cmd.exe, powershell.exe, and pwsh.exe, we use a blacklist approach
@@ -70,7 +71,7 @@ from .analysis import (
     validate_hash,
 )
 from .analysis.paths import path_origin
-from .analysis.verdicts import _MASQUERADE_TARGETS
+from .analysis.verdicts import _MASQUERADE_TARGETS, Verdict
 from .audit import AuditWriter, resolve_examiner
 from .config import Config, ConfigurationError, get_config
 from .db import ContextDB, KnownGoodDB, RegistryDB
@@ -134,7 +135,7 @@ SHORT_NAME_REASON = (
 )
 
 
-# Findings about where a file is; every other finding (parent, hash, name, account) is certain
+# Findings about where a file is; every other finding (parent, name, account) is certain
 _PATH_FINDINGS = frozenset(
     {"protected_process_wrong_path", "unexpected_path", "unexpected_parent_path"}
 )
@@ -514,7 +515,7 @@ class WindowsTriageServer:
             return [
                 Tool(
                     name="check_file",
-                    description="Check a file path against the Windows baseline database. Returns verdict: EXPECTED, EXPECTED_LOLBIN (a default file that can be abused), SUSPICIOUS, or UNKNOWN (not in database — neutral, not an indicator). Pass os_version for version-specific baselines. For hash-based checks, use check_hash instead.",
+                    description="Check a file path against the Windows baseline database. Returns verdict: EXPECTED, EXPECTED_LOLBIN (a default file that can be abused), SUSPICIOUS, or UNKNOWN (not in database — neutral, not an indicator). Pass os_version for version-specific baselines. Pass a hash to compare it with the baseline's hashes for this path. check_hash looks up vulnerable drivers only.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -524,7 +525,7 @@ class WindowsTriageServer:
                             },
                             "hash": {
                                 "type": "string",
-                                "description": "Optional file hash (MD5/SHA1/SHA256)",
+                                "description": "Optional file hash (MD5/SHA1/SHA256). It is compared with every build's hash for this path. A hash none of them matches reads UNKNOWN, and the reasons say so.",
                             },
                             "os_version": {
                                 "type": "string",
@@ -1054,14 +1055,14 @@ class WindowsTriageServer:
                     )
 
         # Hash checks (optional) - local baseline validation only
-        hash_compared, hash_note = False, None
+        hash_compared, hash_note, unmatched = False, None, False
         if hash_value and not validate_hash(hash_value):
             return {"error": "Invalid hash format", "verdict": "ERROR"}
         if hash_value:
             hash_normalized = normalize_hash(hash_value)
             algorithm = detect_hash_algorithm(hash_normalized)
 
-            # Check for hash mismatch with baseline
+            # Compare with the path's baseline hashes
             # Hashes are compared against the path's baseline on every build; os_version narrows the path match only
             hash_matches = self.known_good_db.lookup_by_normalized_path(normalized_path)
             baseline_hashes = []
@@ -1072,13 +1073,13 @@ class WindowsTriageServer:
                 hash_note = f"Hash not compared: the baseline has no {(algorithm or 'hash').upper()} for this path"
             elif hash_normalized.lower() in baseline_hashes:
                 hash_note = "Hash matches a baseline build of this file"
-            if baseline_hashes and hash_normalized.lower() not in baseline_hashes:
-                findings.append(
-                    {
-                        "type": "hash_mismatch",
-                        "severity": "critical",
-                        "description": "Hash does not match baseline - possible trojanized binary",
-                    }
+            else:
+                # The baseline holds a hash set per path, not per build: no match is not a finding
+                unmatched = True
+                hash_note = (
+                    f"Hash matches none of the {len(set(baseline_hashes))} {algorithm.upper()} values the"
+                    " baseline holds for this path. A patch level the baseline lacks often causes this."
+                    " Changed content can also cause it. Check the file's signature."
                 )
 
         # Calculate verdict using the proper verdict function
@@ -1095,6 +1096,8 @@ class WindowsTriageServer:
             dir_normalized=dir_path,
             filename=filename,
         )
+        if unmatched and str(verdict_result.verdict).startswith("EXPECTED"):
+            verdict_result.verdict, verdict_result.confidence = Verdict.UNKNOWN, "low"
         if no_directory and str(verdict_result.verdict) == "UNKNOWN":
             verdict_result.reasons = ["No directory given: path not checked"]
 

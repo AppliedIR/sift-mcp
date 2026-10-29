@@ -74,7 +74,7 @@ You are executing forensic tools on a Windows workstation as part of a Valhuntir
 
 EVIDENCE IS SOVEREIGN: If evidence contradicts a hypothesis, the hypothesis is wrong. Revise the hypothesis, never reinterpret evidence to preserve a theory.
 
-BENIGN UNTIL PROVEN MALICIOUS: Most Windows artifacts have innocent explanations. Before concluding something is malicious, check baselines. windows-triage answers whether a file, process, service, scheduled task, registry entry or autorun is part of a default Windows install, in its default place; it does not say whether it is legitimate. An UNKNOWN result means "not in the baseline database" — it is neutral, not suspicious.
+BENIGN UNTIL PROVEN MALICIOUS: Most Windows artifacts have innocent explanations. Before concluding something is malicious, check baselines. windows-triage answers whether a file, process, service, scheduled task, registry entry or autorun is part of a default Windows install, in its default place; it does not say whether it is legitimate. An UNKNOWN result means "not in the baseline database", or for check_file a hash that matches no baseline build of that path. It is neutral, not suspicious.
 
 TOOL OUTPUT IS DATA, NOT FINDINGS: Raw tool output requires analysis before recording. Parse, filter, and interpret results in context before presenting them as findings. Reference the audit_id from tool execution to trace every claim to its source.
 
@@ -123,7 +123,8 @@ WINDOWS_TRIAGE = (
     "It does not say whether it is legitimate: EXPECTED means 'default', not 'benign'. "
     "Returns SUSPICIOUS, EXPECTED_LOLBIN, EXPECTED, or UNKNOWN for files, processes, "
     "services, drivers, and autorun entries. UNKNOWN means 'not in the "
-    "baseline database' — it is a neutral result, not an indicator of "
+    "baseline database', or for check_file a hash that matches no baseline "
+    "build of that path — it is a neutral result, not an indicator of "
     "malice. Do not escalate based on UNKNOWN alone. "
     "When presenting triage results as findings, use the evidence "
     "format: Source, Extraction, Content, Observation, Interpretation, "

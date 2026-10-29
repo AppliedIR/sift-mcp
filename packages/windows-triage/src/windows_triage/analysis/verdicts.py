@@ -10,7 +10,6 @@ For threat intelligence (each platform's records, no verdict), use lookup_ioc (t
 Verdict Categories (in priority order):
 
     SUSPICIOUS - Anomalies or suspicious patterns detected
-        - Hash mismatch on known path (trojanized binary)
         - Protected process name in wrong location (svchost.exe in C:\\Temp)
         - Unicode evasion (RLO attacks, homoglyphs)
         - Double extensions (invoice.pdf.exe)
@@ -27,7 +26,7 @@ Verdict Categories (in priority order):
         - Path and/or filename found in VanillaWindowsReference
         - No LOLBin, no suspicious patterns
 
-    UNKNOWN - Not in any database (NEUTRAL, not suspicious)
+    UNKNOWN - Not in any database, or a baseline path whose hash matches none of its builds (NEUTRAL, not suspicious)
         - Our baseline cannot cover all legitimate software
         - Third-party apps, enterprise tools, or newer Windows components
         - Only flag as suspicious if actual indicators present
