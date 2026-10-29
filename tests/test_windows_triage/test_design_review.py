@@ -122,24 +122,12 @@ class TestSHA256Support:
 
 
 # =============================================================================
-# HASH MISMATCH / TROJANIZED BINARY DETECTION TESTS
+# HASH COMPARISON TESTS
 # =============================================================================
 
 
-class TestHashMismatchDetection:
-    """Tests for trojanized binary detection via hash mismatch."""
-
-    def test_hash_mismatch_finding_structure(self):
-        """Test that hash mismatch creates proper finding structure."""
-        finding = {
-            "type": "hash_mismatch",
-            "severity": "critical",
-            "provided_hash": "abc123",
-            "baseline_hashes": ["def456"],
-            "description": "File hash does not match baseline - possible trojanized binary",
-        }
-        assert finding["type"] == "hash_mismatch"
-        assert finding["severity"] == "critical"
+class TestHashComparison:
+    """Tests for the hash form compared with the baseline."""
 
     def test_normalize_hash_for_comparison(self):
         """Test hash normalization for comparison."""
@@ -682,7 +670,11 @@ class TestVerdictCalculation:
             filename_in_baseline=True,
             is_system_path=True,
             filename_findings=[
-                {"type": "hash_mismatch", "severity": "critical", "description": "test"}
+                {
+                    "type": "protected_process_wrong_path",
+                    "severity": "critical",
+                    "description": "test",
+                }
             ],
             lolbin_info=None,
         )
@@ -1571,11 +1563,6 @@ class TestVerdictEdgeCases:
         from windows_triage.analysis.verdicts import calculate_file_verdict
 
         findings = [
-            {
-                "type": "hash_mismatch",
-                "severity": "critical",
-                "description": "mismatch",
-            },
             {
                 "type": "double_extension",
                 "severity": "critical",

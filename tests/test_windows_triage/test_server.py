@@ -440,19 +440,6 @@ class TestCheckFile:
         )
 
     @pytest.mark.asyncio
-    async def test_hash_mismatch(self, server):
-        """Test checking file with hash mismatch."""
-        result = await server._check_file(
-            "C:\\Windows\\System32\\cmd.exe",
-            hash_value="ffffffffffffffffffffffffffffffff",  # Wrong hash
-        )
-        # Should detect hash mismatch against baseline
-        assert any(
-            "hash_mismatch" in str(f.get("type", ""))
-            for f in result.get("findings", [])
-        )
-
-    @pytest.mark.asyncio
     async def test_protected_process_wrong_path(self, server):
         """Test protected process name in wrong path."""
         result = await server._check_file("C:\\Temp\\svchost.exe")
@@ -517,13 +504,35 @@ HOST_SPELLINGS = [
     "10.0.22000",
 ]
 BASELINE_SPELLINGS = [None, "W10", "W11", "Server2022", "w10_21h2"]
+# More files for the unmatched-hash rows: values with letters for the case rows,
+# a path with SHA256 only, a WinSxS copy of a protected process, a known tool
+ROW_FILES = {
+    "\\windows\\system32\\svchost.exe": [("ef" * 32, "sha256")],
+    "\\windows\\system32\\certutil.exe": [("8" * 64, "sha256"), ("8" * 40, "sha1")],
+    "\\windows\\system32\\sethc.exe": [("a" * 64, "sha256")],
+    "\\windows\\syswow64\\cmd.exe": [("ab" * 32, "sha256")],
+    "\\windows\\system32\\notepad.exe": [("9a" * 32, "sha256")],
+    "\\windows\\winsxs\\amd64_audiocore_10.0_none\\audiodg.exe": [
+        ("5a" * 32, "sha256")
+    ],
+    "\\windows\\psexesvc.exe": [("7a" * 32, "sha256")],
+}
+ROW_CONTEXT = """
+    INSERT INTO protected_process_names (process_name_lower, canonical_form)
+    VALUES ('audiodg.exe', 'audiodg.exe');
+    INSERT INTO expected_processes (process_name_lower, valid_paths)
+    VALUES ('audiodg.exe', '["\\\\windows\\\\system32\\\\audiodg.exe"]');
+    INSERT INTO suspicious_filenames
+        (filename_pattern, is_regex, tool_name, category, risk_level)
+    VALUES ('psexesvc.exe', 0, 'sysinternals', 'lateral_movement', 'medium');
+"""
 
 
 @pytest.fixture
 def hash_server(temp_dbs):
     kg_path, ctx_path = temp_dbs
     conn = sqlite3.connect(kg_path)
-    for path, hashes in EXTRA.items():
+    for path, hashes in [*EXTRA.items(), *ROW_FILES.items()]:
         row = conn.execute(
             "SELECT id FROM baseline_files WHERE path_normalized = ?", (path,)
         ).fetchone()
@@ -544,6 +553,9 @@ def hash_server(temp_dbs):
             )
     conn.commit()
     conn.close()
+    conn = sqlite3.connect(ctx_path)
+    conn.executescript(ROW_CONTEXT)
+    conn.close()
     config = Config(
         known_good_db=kg_path,
         context_db=ctx_path,
@@ -553,29 +565,136 @@ def hash_server(temp_dbs):
     return WindowsTriageServer(config=config)
 
 
-def _mismatch(result):
-    return any(f.get("type") == "hash_mismatch" for f in result.get("findings", []))
+MATCHED = "Hash matches a baseline build of this file"
+UNMATCHED = {"verdict": "UNKNOWN", "confidence": "low", "hash_compared": True}
+WHY = ["patch level the baseline lacks", "Changed content", "signature"]
+CERTUTIL = "C:\\Windows\\System32\\certutil.exe"
+SETHC = "C:\\Windows\\System32\\sethc.exe"
+NOTEPAD = "C:\\Windows\\System32\\notepad.exe"
+# (row, path, hash, os_version, reply keys, reason texts)
+ROWS = [
+    ("R1", SVCHOST, "0" * 64, None, UNMATCHED, ["none of the 4 SHA256", *WHY]),
+    ("R1p", SVCHOST, "sha256:" + "0" * 64, None, UNMATCHED, ["none of the 4 SHA256"]),
+    ("R2", SVCHOST, "0" * 40, None, UNMATCHED, ["none of the 2 SHA1", *WHY]),
+    ("R2m", SVCHOST, "0" * 32, None, UNMATCHED, ["none of the 2 MD5", *WHY]),
+    (
+        "R3",
+        CERTUTIL,
+        "0" * 40,
+        None,
+        {**UNMATCHED, "is_lolbin": True},
+        ["none of the 1 SHA1"],
+    ),
+    ("R4", SETHC, "ab" * 32, None, UNMATCHED, ["none of the 1 SHA256"]),
+    ("R4u", SETHC, "AB" * 32, None, UNMATCHED, ["none of the 1 SHA256"]),
+    (
+        "R5",
+        SVCHOST,
+        "1" * 64,
+        None,
+        {"verdict": "EXPECTED", "confidence": "high"},
+        [MATCHED],
+    ),
+    ("R5u", SVCHOST, "EF" * 32, None, {"verdict": "EXPECTED"}, [MATCHED]),
+    ("R5l", CERTUTIL, "8" * 64, None, {"verdict": "EXPECTED_LOLBIN"}, [MATCHED]),
+    ("R6", SVCHOST, None, None, {"verdict": "EXPECTED"}, ["No hash supplied"]),
+    (
+        "R7",
+        "C:\\Tools\\demo\\qq1.exe",
+        "0" * 64,
+        None,
+        {"verdict": "UNKNOWN", "hash_compared": False},
+        [],
+    ),
+    (
+        "R7b",
+        "C:\\Users\\Public\\notes.exe",
+        "4" * 64,
+        None,
+        {"verdict": "UNKNOWN", "hash_compared": False},
+        [],
+    ),
+    (
+        "R7c",
+        NOTEPAD,
+        "0" * 40,
+        None,
+        {"verdict": "EXPECTED", "hash_compared": False},
+        ["no SHA1 for this path"],
+    ),
+    ("R8", "C:\\Temp\\svchost.exe", "0" * 64, None, {"verdict": "SUSPICIOUS"}, []),
+    ("R9", CMD, "ab" * 32, None, UNMATCHED, ["none of the 3 SHA256"]),
+    ("R9u", "C:\\WINDOWS\\SYSTEM32\\CMD.EXE", "ab" * 32, None, UNMATCHED, []),
+    ("R10", SVCHOST, "da39a3ee5e6b4b0d3255bfef95601890afd80709", None, UNMATCHED, []),
+    ("R11", CMD, "9a" * 32, None, UNMATCHED, []),
+    ("R12", SVCHOST, "0" * 64, "Windows 10", UNMATCHED, ["none of the 4 SHA256"]),
+    ("R13", SVCHOST, "1" * 64, "Windows 10", {"verdict": "EXPECTED"}, [MATCHED]),
+    (
+        "R14",
+        "C:\\Windows\\WinSxS\\amd64_audiocore_10.0_none\\audiodg.exe",
+        "0" * 64,
+        None,
+        {"verdict": "SUSPICIOUS"},
+        [],
+    ),
+    (
+        "R15",
+        "C:\\Windows\\psexesvc.exe",
+        "0" * 64,
+        None,
+        {"verdict": "SUSPICIOUS"},
+        ["Known tool"],
+    ),
+    (
+        "R15n",
+        "C:\\Windows\\psexesvc.exe",
+        None,
+        None,
+        {"verdict": "SUSPICIOUS"},
+        ["Known tool"],
+    ),
+    ("R16", SVCHOST, "0" * 64, None, {}, []),
+    (
+        "R17",
+        "svchost.exe",
+        "0" * 64,
+        None,
+        {"verdict": "UNKNOWN", "hash_compared": False},
+        ["No directory given"],
+    ),
+]
 
 
 class TestHashAgainstEveryBaselineHash:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "path, value, os_version, expect, says",
+        [r[1:] for r in ROWS],
+        ids=[r[0] for r in ROWS],
+    )
+    async def test_a_hash_no_build_matches_is_unknown_not_a_finding(
+        self, hash_server, path, value, os_version, expect, says
+    ):
+        result = await hash_server._check_file(
+            path, hash_value=value, os_version=os_version
+        )
+        assert {k: result.get(k) for k in expect} == expect, result
+        reasons = " ".join(result["reasons"]).lower()
+        assert all(s.lower() in reasons for s in says), result
+        assert not [
+            f for f in result.get("findings", []) if "hash" in f.get("type", "")
+        ], result
+        assert "trojaniz" not in reasons and "does not match baseline" not in reasons, (
+            result
+        )
+
     @pytest.mark.asyncio
     @pytest.mark.parametrize("path, value", BASELINE)
     async def test_every_baseline_hash_of_a_path_matches(
         self, hash_server, path, value
     ):
         result = await hash_server._check_file(path, hash_value=value)
-        assert not _mismatch(result), result
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("path", [CMD, SVCHOST])
-    @pytest.mark.parametrize("os_version", HOST_SPELLINGS + BASELINE_SPELLINGS)
-    async def test_a_foreign_hash_is_flagged_however_the_os_is_spelled(
-        self, hash_server, path, os_version
-    ):
-        result = await hash_server._check_file(
-            path, hash_value="0" * 64, os_version=os_version
-        )
-        assert result["verdict"] == "SUSPICIOUS" and _mismatch(result), result
+        assert result["hash_compared"] and MATCHED in result["reasons"], result
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("os_version", HOST_SPELLINGS + BASELINE_SPELLINGS)
@@ -585,18 +704,9 @@ class TestHashAgainstEveryBaselineHash:
         result = await hash_server._check_file(
             SVCHOST, hash_value="1" * 64, os_version=os_version
         )
-        assert result["verdict"] != "SUSPICIOUS" and not _mismatch(result), result
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("value", ["9" * 64, "9" * 32, "9" * 40])
-    async def test_a_hash_outside_the_baseline_is_flagged(self, hash_server, value):
-        result = await hash_server._check_file(CMD, hash_value=value)
-        assert result["verdict"] == "SUSPICIOUS" and _mismatch(result), result
-
-    @pytest.mark.asyncio
-    async def test_another_files_baseline_hash_is_flagged(self, hash_server):
-        result = await hash_server._check_file(CMD, hash_value="6" * 64)  # explorer's
-        assert result["verdict"] == "SUSPICIOUS" and _mismatch(result), result
+        assert result["verdict"] != "SUSPICIOUS" and MATCHED in result["reasons"], (
+            result
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -621,18 +731,12 @@ class TestHashAgainstEveryBaselineHash:
         assert result == {"error": "Invalid hash format", "verdict": "ERROR"}
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("value", ["0" * 64, "sha256:" + "0" * 64])
-    async def test_a_readable_foreign_hash_is_flagged(self, hash_server, value):
-        result = await hash_server._check_file(CMD, hash_value=value)
-        assert result["verdict"] == "SUSPICIOUS" and _mismatch(result), result
-
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "value", ["4" * 64, "", None], ids=["baseline", "empty", "none"]
     )
     async def test_a_baseline_or_absent_hash_reads_as_before(self, hash_server, value):
         result = await hash_server._check_file(CMD, hash_value=value)
-        assert "error" not in result and not _mismatch(result), result
+        assert "error" not in result and result["verdict"] == "EXPECTED", result
 
 
 # ============================================================================
