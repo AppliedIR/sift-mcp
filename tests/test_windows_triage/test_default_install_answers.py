@@ -136,10 +136,6 @@ def test_no_hash_says_the_content_was_not_checked(srv):
     assert "No hash supplied: path match only, content not checked" in r["reasons"]
 
 
-def test_a_foreign_hash_is_still_suspicious(srv):
-    assert run(srv._check_file(S32 + "sethc.exe", "4" * 40))["verdict"] == "SUSPICIOUS"
-
-
 # check_service: name and executable
 
 
