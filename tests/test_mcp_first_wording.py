@@ -69,6 +69,10 @@ SID_FIELD = (
     " the provider ran as; absent in records ingested before this version)"
 )
 
+# windows-triage's line on a hash no baseline build matches (W9), as approved:
+# in WINDOWS_TRIAGE and WINTOOLS_MCP, where " — it" also became ". It"
+HASH_CLAUSE = ", or for check_file a hash that matches no baseline build of that path"
+
 
 def _strings():
     out = {}
@@ -99,6 +103,12 @@ def test_forensic_mcp_says_a_challenge_is_required():
     assert SKEPTIC_SENTENCE in _strings()["FORENSIC_MCP"]
 
 
+def test_windows_triage_says_an_unmatched_hash_is_unknown():
+    strings = _strings()
+    assert HASH_CLAUSE in strings["WINDOWS_TRIAGE"]
+    assert HASH_CLAUSE in strings["WINTOOLS_MCP"]
+
+
 def test_the_backend_instructions_stay_within_their_budget():
     strings = _strings()
     assert len(strings) == 10
@@ -109,6 +119,7 @@ def test_the_backend_instructions_stay_within_their_budget():
     budget += JUDGMENT_GROWTH
     budget += len(TOOL_SYNTAX) + 2
     budget += len(SID_FIELD) + 2
+    budget += 2 * len(HASH_CLAUSE) - 1
     assert sum(len(v) for v in strings.values()) <= budget
 
 
