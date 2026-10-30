@@ -1006,28 +1006,33 @@ async def test_r12_a_listing_the_child_never_answers_ends_with_its_death(
     row.done()
 
 
-@pytest.mark.parametrize("when", ["before", "during"])
+@pytest.mark.parametrize("when", ["before", "during", "deadline"])
 async def test_r12h_health_when_the_child_dies_at_its_listing(
     gws, standin, when, monkeypatch
 ):
     """Health's tools/list meets the death: health says error within the
-    bound, and leaves the session for the next call to judge (R7)."""
+    bound, and leaves the session for the next call to judge (R7). deadline:
+    the death is first seen at the listing's deadline."""
     row = _Row()
     gw = await gws(_conf(standin))
     backend = gw.backends["standin"]
+    deadline = stdio_backend._TOOL_LIST_TIMEOUT
     async with _client(gw, "per-backend") as client:
         old = await _pid(client)
         backend._tools_cache = None
         backend._session.list_tools = _held
         real, looks = stdio_backend._lost, []
+        misses = 2 if when == "deadline" else 1  # health's look, then the send's
 
-        def first_misses(stream):  # health's own look comes just before the death
+        def first_misses(stream):  # health's own looks come just before the death
             looks.append(stream)
-            return False if len(looks) == 1 else real(stream)
+            return False if len(looks) <= misses else real(stream)
 
-        if when == "before":
+        if when != "during":
             await _kill(old)
             monkeypatch.setattr(stdio_backend, "_lost", first_misses)
+        if when == "deadline":  # the wait's first look is at its deadline
+            monkeypatch.setattr(stdio_backend, "_TOOL_LIST_TIMEOUT", 0)
         started = time.monotonic()
         health = asyncio.ensure_future(_health(gw))
         if when == "during":
@@ -1039,6 +1044,7 @@ async def test_r12h_health_when_the_child_dies_at_its_listing(
             seen = None
         took = time.monotonic() - started
         monkeypatch.setattr(stdio_backend, "_lost", real)
+        monkeypatch.setattr(stdio_backend, "_TOOL_LIST_TIMEOUT", deadline)
         row.check("health within 5 s", took < 5, round(took, 2))
         row.check("status error", (seen or {}).get("status") == "error", seen)
         row.check("started still true", backend.started is True, backend.started)
@@ -1258,11 +1264,43 @@ async def test_r12t_guard_a_live_child_slow_to_list_times_out_alive(
     async with _client(gw, "per-backend") as client:
         seen = await _call(client, "ok")  # lists first: 4 s against 2 s
         row.check("not the listing text", _listing() not in seen[1], seen)
+        row.check("the listing timed out", seen[0] is True, seen)
         row.check("started still true", backend.started is True, backend.started)
         await asyncio.sleep(3)  # the late reply comes and goes
         again = await _call(client, "ok")
         row.check("the same child", again[:2] == (False, f"pid {child}"), again)
         row.check("one child", _kids(str(raw)) == [child], _kids(str(raw)))
+    row.done()
+
+
+@pytest.mark.parametrize("how", ["task", "scope"])
+async def test_r12c_a_callers_cancel_ends_its_listing(gws, raw, how):
+    """The caller cancels a listing the child is slow to answer (an asyncio
+    task cancel, or an AnyIO cancel scope): the cancel reaches the caller at
+    once, no request is left waiting, and the child lists again."""
+    row = _Row()
+    gw = await gws(_conf(raw, "slowlist"))
+    backend = gw.backends["standin"]
+    [child] = _kids(str(raw))
+    backend._tools_cache = None  # the next listing is the child's slow second
+    started = time.monotonic()
+    if how == "task":
+        pending = asyncio.ensure_future(backend.list_tools())
+        await asyncio.sleep(1)
+        pending.cancel()
+        await asyncio.wait({pending}, timeout=CAP)
+        cancelled = pending.cancelled()
+    else:
+        with anyio.move_on_after(1) as scope:
+            await backend.list_tools()
+        cancelled = scope.cancelled_caught
+    took = time.monotonic() - started
+    row.check("the cancel reached the caller", cancelled is True, cancelled)
+    row.check("within 2 s", took < 2, round(took, 2))
+    row.check("0 pending in the backend session", _pending(backend) == 0)
+    names = [t.name for t in await backend.list_tools()]
+    row.check("the child lists again", names == ["ok", "err", "bye"], names)
+    row.check("one child", _kids(str(raw)) == [child], _kids(str(raw)))
     row.done()
 
 
