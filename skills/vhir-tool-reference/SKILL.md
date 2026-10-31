@@ -43,7 +43,7 @@ available before planning a workflow:
 | windows-triage | No | Yes | `vhir service status` |
 | forensic-rag | No | Yes | `vhir service status` |
 | threatintel-mcp | No | If configured | `vhir service status` |
-| remnux-mcp | No | User-provided | `vhir service status` |
+| remnux-mcp | No | User-provided | MCP tool `check_tools` |
 | wintools-mcp | No | User-provided | `vhir service status` |
 
 If a backend is not configured on this install, its steps in the

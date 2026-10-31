@@ -217,10 +217,18 @@ report "deny_read: NOT in effect".
 
 ### Step 11: REMnux Integration
 
-Check if remnux-mcp is configured in the gateway backends.
-- If configured: call `check_tools` on remnux-mcp, report status
-- If not: explain that REMnux (200+ malware analysis tools) can be
-  added during `vhir setup client` by providing host and port.
+Check whether this session has remnux-mcp tools, as in Step 1.
+- If it does: call `check_tools` on remnux-mcp. Only a call reaches
+  the REMnux system; an error means REMnux is set up but not
+  answering: name the error as in Step 1, and tell the user that
+  the examiner starts the REMnux VM on its host; the
+  vhir-malware-escalation skill says what follows a failed call.
+- If not: REMnux isn't set up for this client, or its connection
+  dropped. Tell the user both: if the session's /mcp panel lists
+  remnux-mcp, it's set up but not answering (as above); if not,
+  REMnux (200+ malware analysis tools) is optional and is added when
+  setting up the client: the setup-client section of the CLI
+  reference has the REMnux endpoint.
 
 ---
 
