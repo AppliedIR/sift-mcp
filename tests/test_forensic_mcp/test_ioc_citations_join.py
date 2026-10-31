@@ -192,6 +192,43 @@ def test_an_old_defanged_url_joins_a_citation_in_upper_case(case):  # noqa: F811
     assert result["finding_id"] in record["source_findings"]
 
 
+@pytest.mark.parametrize(
+    ("old", "cited"),
+    [
+        (
+            _old("IOC-old-008", "10.20.30.41:443", "unknown", "unknown"),
+            {"value": "10.20.30.41:443", "type": "IPv4"},
+        ),
+        (
+            _old(
+                "IOC-old-009",
+                "10.20.30.41:443",
+                "IPv4",
+                "host",
+                status="APPROVED",
+                approved_by="tester",
+                approved_at="2026-01-02T00:00:00+00:00",
+            ),  # fmt: skip
+            {"value": "10.20.30.41", "type": "ipv4-addr"},
+        ),
+    ],
+    ids=["port-record-typed-unknown", "approved-port-record"],
+)
+def test_an_old_port_record_gains_the_citation_and_keeps_its_status_and_view(
+    case,  # noqa: F811
+    old,
+    cited,
+):
+    _store(case, old)
+    (before,) = _records(case)
+    result = _cite(cited)
+    (after,) = _records(case)
+    assert after["id"] == old["id"]
+    assert result["finding_id"] in after["source_findings"]
+    assert after["status"] == old["status"]
+    assert signed_text(after, "ioc") == signed_text(before, "ioc")
+
+
 OLD_MERGED = [
     _old("IOC-old-001", "10.20.30.93", "IPv4", "host"),
     _old("IOC-old-002", "C:\\Windows\\Temp\\old.exe", "file_path", "host"),
