@@ -119,10 +119,11 @@ def test_locking_never_makes_a_chain_file(manager, active_case):  # noqa: F811
     ],
 )  # fmt: skip
 def test_vhir_extracts_the_same_ioc_values(manager, active_case, iocs):  # noqa: F811
-    """vhir's cascade planner reads a finding's IOCs as forensic-mcp does."""
+    """vhir's cascade planner finds in a finding every IOC forensic-mcp stores
+    from it."""
     manager.record_finding({**FINDING, "iocs": iocs})
     stored = json.loads((Path(active_case["path"]) / "iocs.json").read_text())
-    assert {normalize_ioc(i["value"]) for i in stored} == ioc_values(iocs)
+    assert {normalize_ioc(i["value"]) for i in stored} <= ioc_values(iocs)
 
 
 def test_forensic_mcp_holds_the_lock_for_less_than_the_portal_waits(

@@ -133,3 +133,70 @@ def is_ipv4(value: str) -> bool:
     if not re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", stripped):
         return False
     return all(0 <= int(o) <= 255 for o in stripped.split("."))
+
+
+def normalize(value: str) -> str:
+    """An IOC value as record_finding compares two of them."""
+    v = value.strip()
+    if re.match(r"^[a-fA-F0-9]{32,64}$", v):
+        return v.lower()
+    if "." in v and not v.replace(".", "").isdigit():
+        return v.lower().rstrip(".")
+    if "\\" in v:
+        return v.lower()
+    return v
+
+
+_QUAD = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+
+
+def ck(value, t=None) -> str:
+    """The key of a value under its type: refanged, and an IPv4 address
+    without its :port when it is typed ipv4-addr exactly or not typed, or when
+    a dotted quad remains."""
+    x = refang(str(value).strip())
+    i = "ipv4-addr" if untyped(t) and is_ipv4(x) else canonical(t)
+    bare = re.sub(r":\d{1,5}$", "", x)
+    if i == "ipv4-addr" and (untyped(t) or t == "ipv4-addr" or _QUAD.match(bare)):
+        x = bare
+    return normalize(x)
+
+
+def vk(value) -> str:
+    """The key of a value refanged."""
+    return normalize(refang(str(value).strip()))
+
+
+def rk(value) -> str:
+    """The key of a value as written."""
+    return normalize(str(value).strip())
+
+
+def keys(value, t=None) -> set[str]:
+    """The keys a value and its type are matched on."""
+    return {ck(value, t), vk(value), rk(value)}
+
+
+def same(a, b) -> bool:
+    """Whether two (value, type) pairs are one IOC: they share a key."""
+    return bool(keys(*a) & keys(*b))
+
+
+def components(pairs: list) -> list[list]:
+    """The (value, type) pairs grouped by same(), directly or through other
+    pairs; each group in the order given."""
+    up = list(range(len(pairs)))
+
+    def top(n: int) -> int:
+        while up[n] != n:
+            up[n] = n = up[up[n]]
+        return n
+
+    first: dict[str, int] = {}
+    for n, p in enumerate(pairs):
+        for k in keys(*p):
+            up[top(first.setdefault(k, n))] = top(n)
+    groups: dict[int, list] = {}
+    for n, p in enumerate(pairs):
+        groups.setdefault(top(n), []).append(p)
+    return list(groups.values())

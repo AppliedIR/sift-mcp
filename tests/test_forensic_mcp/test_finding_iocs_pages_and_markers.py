@@ -52,6 +52,7 @@ STORED_AS_THE_TEXT_WRITES_IT = {
                         "Hash D41D8CD98F00B204E9800998ECF8427E seen."),
     "defanged": (["10[.]1[.]2[.]5"], "Beacon to 10.1.2.5 seen."),
     "ip:port": (["10.1.2.6:443"], "Beacon to 10.1.2.6 seen."),
+    "typed IPv4:port": ([{"value": "10.1.2.8:443", "type": "IPv4"}], "Beacon to 10.1.2.8 seen."),
 }  # fmt: skip
 
 
@@ -66,12 +67,11 @@ def test_a_value_stored_as_the_text_writes_it_isnt_called_missing(case, name):  
 @pytest.mark.parametrize(
     "iocs,observation,value",
     [
-        ([{"value": "10.1.2.6:443", "type": "IPv4"}], "Beacon to 10.1.2.6 seen.", "10.1.2.6"),
         ([{"value": "10.1.2.7:443", "type": "unknown"}], "Beacon to 10.1.2.7 seen.",
          "10.1.2.7"),
         (["300.1.2.3:80"], "Beacon to 300.1.2.3 seen.", "300.1.2.3"),
     ],
-    ids=["typed IPv4:port", "typed unknown", "bad octet:port"],
+    ids=["typed unknown", "bad octet:port"],
 )  # fmt: skip
 def test_a_value_stored_in_another_form_is_still_named(case, iocs, observation, value):  # noqa: F811
     result = _record({**FINDING, "observation": observation, "iocs": iocs})

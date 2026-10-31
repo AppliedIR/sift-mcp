@@ -739,6 +739,60 @@ def _normalize_ioc(value: str) -> str:
     return v
 
 
+def _canonical_iocs(iocs):
+    """The finding's iocs in new lists and dicts, each type written as its id
+    and a whitespace-only type as "". Values are untouched."""
+
+    def entry(e):
+        if not isinstance(e, dict) or not isinstance(e.get("type"), str):
+            return e
+        t = e["type"]
+        t = "" if ioc_types.untyped(t) else ioc_types.canonical(t) or t
+        return {**e, "type": t}
+
+    if isinstance(iocs, list):
+        return [entry(e) for e in iocs]
+    if isinstance(iocs, dict):
+        return {
+            k: [entry(e) for e in v] if isinstance(v, list) else entry(v)
+            for k, v in iocs.items()
+        }
+    return iocs
+
+
+def _type_kept(record: dict, given: str) -> str:
+    stored = record.get("type")
+    return (
+        f"{record['id']} was already recorded as {stored}, so the type you gave "
+        f"({given}) was not applied and the citation joined that record. If "
+        f"{stored} is wrong, tell the examiner; a recorded type can't be changed "
+        "in this version. The record and its type are on the portal's IOCs tab."
+    )
+
+
+def _rejected_cited(ids: list[str]) -> str:
+    if len(ids) == 1:
+        it, was, stays, its = "it", "was", "it stays", "Its"
+    else:
+        it, was, stays, its = "them", "were", "they stay", "Their"
+    return (
+        f"{', '.join(ids)} {was} rejected by the examiner, so this finding's "
+        f"citation of {it} won't appear in the report's IOCs. Tell the examiner "
+        f"this finding cites {it}, so they can decide whether {stays} rejected. "
+        f"{its} status is on the portal's IOCs tab."
+    )
+
+
+def _kept_apart(new: dict, record: dict) -> str:
+    return (
+        f"{new['value']} was recorded as a new IOC, {new['id']}, typed "
+        f"{new['type']}, separate from {record['id']}, which holds the address "
+        f"{record['value']} typed {record.get('type')}. If both are the same host, "
+        "send the address typed ipv4-addr, or with no type, in a later finding so "
+        f"it joins {record['id']}. Both records are on the portal's IOCs tab."
+    )
+
+
 def _detect_ioc_type(value: str) -> tuple[str, str]:
     """Auto-detect IOC type and category from value pattern."""
     v = value.strip()
@@ -1308,6 +1362,8 @@ class CaseManager:
 
         # Allowlist: only accepted fields pass through from user input
         sanitized = {k: v for k, v in finding.items() if k in _ALLOWED_FINDING_FIELDS}
+        if "iocs" in sanitized:
+            sanitized["iocs"] = _canonical_iocs(sanitized["iocs"])
 
         # Truncate string fields with explicit limits
         if sanitized.get("host"):
@@ -1594,7 +1650,10 @@ class CaseManager:
         stored_iocs: list[str] = []
         cut_iocs: list[str] = []
         try:
-            stored_iocs, cut_iocs = self._process_iocs(finding_record, case_dir)
+            stored_iocs, cut_iocs, ioc_warnings = self._process_iocs(
+                finding_record, case_dir
+            )
+            warnings.extend(ioc_warnings)
         except Exception as exc:
             logger.warning("IOC processing failed: %s", exc)
             warnings.append(f"IOC processing failed: {exc}")
@@ -2145,12 +2204,14 @@ class CaseManager:
 
     def _process_iocs(
         self, finding: dict, case_dir: Path
-    ) -> tuple[list[str], list[str]]:
-        """Extract IOCs from finding, create/update IOC records. Returns the keys
-        (`_normalize_ioc`) of the values stored, and of those past the 100 limit."""
+    ) -> tuple[list[str], list[str], list[str]]:
+        """Extract IOCs from finding, create/update IOC records. A citation joins
+        every record it is the same IOC as (`ioc_types.same`). Returns the keys
+        (`ioc_types.ck`) of the values cited, those past the 100 limit, and
+        warnings for the agent."""
         raw_iocs = finding.get("iocs", [])
         if not raw_iocs:
-            return [], []
+            return [], [], []
         # Flatten dict format: {"IPv4": ["10.0.1.5"]} → ["10.0.1.5"]
         if isinstance(raw_iocs, dict):
             raw_iocs = [
@@ -2160,7 +2221,7 @@ class CaseManager:
                 for v in (vals if isinstance(vals, list) else [vals])
             ]
         if not isinstance(raw_iocs, list):
-            return [], []
+            return [], [], []
 
         host = finding.get("host", "")
         finding_id = finding.get("id", "")
@@ -2170,7 +2231,14 @@ class CaseManager:
         now = datetime.now(timezone.utc).isoformat()
 
         iocs = self._load_iocs(case_dir)
-        ioc_by_value = {_normalize_ioc(ioc["value"]): ioc for ioc in iocs}
+        by_key: dict[str, list[int]] = {}  # each key → the records holding it
+
+        def index(n: int) -> None:
+            for k in ioc_types.keys(iocs[n].get("value", ""), iocs[n].get("type")):
+                by_key.setdefault(k, []).append(n)
+
+        for n in range(len(iocs)):
+            index(n)
 
         # Contextual hints for ambiguous IOC classification
         affected_account = finding.get("affected_account", "")
@@ -2182,6 +2250,7 @@ class CaseManager:
                 account_names.add(affected_account.split("\\", 1)[1].lower().strip())
 
         stored: list[str] = []
+        warnings: list[str] = []
         cut = [  # past the limit: never stored, keyed as the text writes them
             _normalize_ioc(re.sub(r":\d{1,5}$", "", _refang_ioc(str(r.get("value", "") if isinstance(r, dict) else r).strip())))
             for r in raw_iocs[100:]
@@ -2189,22 +2258,16 @@ class CaseManager:
         for raw in raw_iocs[:100]:
             # Support explicit type: {"value": "rsydow-a", "type": "user-account"}
             if isinstance(raw, dict) and "value" in raw:
-                value = _refang_ioc(str(raw["value"]).strip())
+                given = raw["value"]
                 explicit_type = raw.get("type", "")
             else:
-                value = _refang_ioc(str(raw).strip())
-                explicit_type = ""
+                given, explicit_type = raw, ""
+            value = _refang_ioc(str(given).strip())
             if not value:
                 continue
             if not ioc_types.untyped(explicit_type):
                 ioc_type = ioc_types.canonical(explicit_type) or explicit_type
                 category = ioc_types.CATEGORY.get(ioc_type, "host")
-                # Another spelling of ipv4-addr on a value with a port is stored
-                # as given, port and all: the readers strip the port only under
-                # the exact id.
-                port = re.search(r":\d{1,5}$", value)
-                if ioc_type == "ipv4-addr" and explicit_type != ioc_type and port:
-                    ioc_type = explicit_type
             else:
                 ioc_type, category = _detect_ioc_type(value)
                 # Override unknown → user-account if value matches affected_account
@@ -2213,11 +2276,12 @@ class CaseManager:
             # Strip port from IPv4 before dedup (10.0.0.1:8443 → 10.0.0.1)
             if ioc_type == "ipv4-addr" and re.search(r":\d{1,5}$", value):
                 value = re.sub(r":\d{1,5}$", "", value)
-            dedup_key = _normalize_ioc(value)
-            stored.append(dedup_key)
+            cited = ioc_types.keys(given, explicit_type)
+            stored.append(ioc_types.ck(given, explicit_type))
+            matched = {n for k in cited for n in by_key.get(k, [])}
+            hits = [iocs[n] for n in sorted(matched)]
 
-            if dedup_key in ioc_by_value:
-                existing = ioc_by_value[dedup_key]
+            for existing in hits:
                 if finding_id not in existing.get("source_findings", []):
                     existing.setdefault("source_findings", []).append(finding_id)
                 sighting = {"host": host, "finding_id": finding_id}
@@ -2230,7 +2294,14 @@ class CaseManager:
                         existing.setdefault("mitre_techniques", []).append(mid)
                 existing["modified_at"] = now
                 existing["content_hash"] = _compute_ioc_hash(existing)
-            else:
+                if not ioc_types.untyped(explicit_type) and ioc_types.canonical(
+                    existing.get("type")
+                ) != ioc_types.canonical(explicit_type):
+                    warnings.append(_type_kept(existing, explicit_type))
+            rejected = [r["id"] for r in hits if r.get("status") == "REJECTED"]
+            if hits and len(rejected) == len(hits):
+                warnings.append(_rejected_cited(rejected))
+            if not hits:
                 seq = _next_seq(iocs, "id", "IOC", examiner)
                 new_ioc = {
                     "id": f"IOC-{examiner}-{seq:03d}",
@@ -2252,11 +2323,20 @@ class CaseManager:
                     "modified_at": now,
                 }
                 new_ioc["content_hash"] = _compute_ioc_hash(new_ioc)
+                port = re.match(r"^(.*):\d{1,5}$", value)
+                if port and ioc_types.is_ipv4(port.group(1)):
+                    address = _normalize_ioc(port.group(1))
+                    warnings += [
+                        _kept_apart(new_ioc, iocs[n])
+                        for n in by_key.get(address, [])
+                        if ioc_types.ck(iocs[n].get("value", ""), iocs[n].get("type"))
+                        == address
+                    ]
                 iocs.append(new_ioc)
-                ioc_by_value[dedup_key] = new_ioc
+                index(len(iocs) - 1)
 
         self._save_iocs(case_dir, iocs)
-        return stored, cut
+        return stored, cut, list(dict.fromkeys(warnings))
 
     def _load_todos(self, case_dir: Path) -> list[dict]:
         return self._load_json_file(case_dir / "todos.json", [])

@@ -16,7 +16,8 @@ import pytest
 import yaml
 from report_mcp import server as rs
 from report_mcp.profiles import PROFILES
-from report_mcp.server import _IOC_LABELS, _TEXT_ONLY, _extract_all_iocs, _ioc_key
+from report_mcp.server import _TEXT_ONLY, _extract_all_iocs
+from sift_common import ioc_types
 from vhir_signing import sign_approved
 
 FIXTURE = Path(__file__).parent.parent / "fixtures"
@@ -44,12 +45,12 @@ def _r(n, value, type_, status="APPROVED"):
 # then a finding that names defanged and host:port values, and their records
 DRY_RUN = json.loads((FIXTURE / "ioc_lists_dry_run_case.json").read_text())
 DRY_RUN_LIST = {
+    "Account": ["jdoe"],
     "Domain": ["evil.com", "evil2.com"],
     "File": [UNC],
     "IPv4": ["192.0.2.30", "192.0.2.51", "192.0.2.62", "192.0.2.64",
              "192.0.2.68", "192.0.2.75", "203.0.113.7"],
     "Unknown": [SID],
-    "user-account": ["jdoe"],
     TEXT_ONLY: ["192.0.2.61", "C:\\Windows\\system32\\cmd.exe"],
 }  # fmt: skip
 
@@ -82,7 +83,7 @@ SHAPES = {
     "type-int": ([], [_r(1, "10.1.2.3", 4)], {"4": ["10.1.2.3"]}),
     "type-dict": ([], [_r(1, "x", {"a": 1})], {"{'a': 1}": ["x"]}),
     "type-mapped-any-case": ([], [_r(1, "10.1.2.3", " IPv4-ADDR ")], {"IPv4": ["10.1.2.3"]}),
-    "type-shown-as-stored": ([], [_r(1, "svc", "User-Account")], {"User-Account": ["svc"]}),
+    "type-in-another-case": ([], [_r(1, "svc", "User-Account")], {"Account": ["svc"]}),
     "type-control-char": ([], [_r(1, "x", "evil\x1b[2J")], {"evil\x1b[2J": ["x"]}),
     "type-unknown": ([], [_r(1, SID, "unknown")], {"Unknown": [SID]}),
     "patterns": (
@@ -121,10 +122,9 @@ SHAPES = {
         [_r(1, SHA, "sha256"), _r(2, UNC, "file:path"), _r(3, "evil.com", "domain-name")],
         {"Domain": ["evil.com"], "File": [UNC], "SHA256": [SHA]},
     ),
-    "ip-port-typed-other-than-ipv4-addr-keeps-it": (
+    "ip-port-typed-an-ipv4-spelling-loses-it": (
         [_f(1, [{"value": "203.0.113.7:8443", "type": "ipv4"}], observation="Beacon to 203.0.113.7.")],
-        [_r(1, "203.0.113.7", "ipv4-addr")],
-        {"IPv4": ["203.0.113.7"], TEXT_ONLY: ["203.0.113.7:8443"]},
+        [_r(1, "203.0.113.7", "ipv4-addr")], {"IPv4": ["203.0.113.7"]},
     ),
     "domain-keeps-its-port": (
         [_f(1, ["evil.com:443"], observation="Beacon to evil.com:443.")],
@@ -142,9 +142,9 @@ SHAPES = {
     "record-value-not-a-string-matches": (
         [_f(1, ["445"])], [_r(1, 445, "port")], {"port": ["445"]},
     ),
-    "not-recorded-once-as-first-written": (
+    "not-recorded-once-as-the-first-sorted": (
         [_f(1, ["Evil.com."]), _f(2, ["evil.com", {"value": "EVIL.COM", "type": "url"}])], [],
-        {TEXT_ONLY: ["Evil.com."]},
+        {TEXT_ONLY: ["EVIL.COM"]},
     ),
     "not-recorded-value-not-a-string": (
         [_f(1, [{"value": 445, "type": "port"}])], [], {TEXT_ONLY: ["445"]},
@@ -217,15 +217,26 @@ def test_the_report_lists_the_shape_as_vhir_does(shape):
 
 def test_the_label_table_and_patterns_are_vhir_s():
     vhir = pytest.importorskip("vhir_cli.ioc_groups")
-    assert _IOC_LABELS == vhir.LABELS
+    assert ioc_types.IDS == pytest.importorskip("vhir_cli.ioc_types").IDS
     assert _TEXT_ONLY == vhir.TEXT_ONLY
     assert rs._IOC_PATTERNS == vhir.PATTERNS
 
 
-@pytest.mark.parametrize("stored", list(_IOC_LABELS))
+# The types the report labelled before the IOC table, each with its label
+STORED = {
+    "ipv4-addr": "IPv4", "ipv4": "IPv4", "ip": "IPv4", "ipv6-addr": "IPv6",
+    "ipv6": "IPv6", "domain-name": "Domain", "domain": "Domain", "url": "URL",
+    "email-addr": "Email", "email": "Email", "file:path": "File",
+    "file-path": "File", "file": "File", "file:hash:sha256": "SHA256",
+    "sha256": "SHA256", "file:hash:sha1": "SHA1", "sha1": "SHA1",
+    "file:hash:md5": "MD5", "md5": "MD5", "unknown": "Unknown",
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("stored", list(STORED))
 def test_each_stored_type_reads_as_its_label(stored):
     got = _extract_all_iocs([], [_r(1, "v", stored)])
-    assert _values(got) == {_IOC_LABELS[stored]: ["v"]}
+    assert _values(got) == {STORED[stored]: ["v"]}
 
 
 @pytest.mark.parametrize(
@@ -243,7 +254,7 @@ def test_a_value_any_record_holds_is_recorded_whatever_its_status(status):
     record = {**_r(1, "evil.com", "domain-name"), "status": status}
     finding = _f(1, ["evil[.]com"], observation="Beacon to evil.com.")
     assert _extract_all_iocs([finding], [], [record]) == {}
-    assert _values(_extract_all_iocs([finding], [], [])) == {TEXT_ONLY: ["evil[.]com"]}
+    assert _values(_extract_all_iocs([finding], [], [])) == {TEXT_ONLY: ["evil.com"]}
 
 
 def test_the_records_listed_are_recorded_when_no_others_are_given():
@@ -258,9 +269,9 @@ def test_the_records_listed_are_recorded_when_no_others_are_given():
 # name -> (findings, records, the list the report gives): how a record and a
 # finding's value key, beyond the shapes vhir's rows hold
 KEYING = {
-    "record-typed-other-than-ipv4-addr-keeps-its-port": (
+    "record-typed-an-ipv4-spelling-loses-its-port": (
         [_f(1, ["203.0.113.7"])], [_r(1, "203.0.113.7:8443", "ipv4")],
-        {"IPv4": ["203.0.113.7:8443"], TEXT_ONLY: ["203.0.113.7"]},
+        {"IPv4": ["203.0.113.7:8443"]},
     ),
     "record-typed-ipv4-addr-loses-its-port": (
         [_f(1, ["203.0.113.7"])], [_r(1, "203.0.113.7:8443", "ipv4-addr")],
@@ -295,17 +306,17 @@ def test_records_and_values_key_as_vhir_keys_them(shape):
      ("300.1.1.1:80", "300.1.1.1:80"), ("evil.com:443", "evil.com:443")],
 )  # fmt: skip
 def test_values_compare_as_forensic_mcp_records_them(value, key):
-    assert _ioc_key(value) == key
+    assert ioc_types.ck(value) == key
 
 
 @pytest.mark.parametrize(
     "type_, key",
     [("ipv4-addr", "203.0.113.7"), (None, "203.0.113.7"), ("", "203.0.113.7"),
-     ("ipv4", "203.0.113.7:8443"), ("domain-name", "203.0.113.7:8443"),
+     ("ipv4", "203.0.113.7"), ("domain-name", "203.0.113.7:8443"),
      (["ipv4-addr"], "203.0.113.7:8443")],
 )  # fmt: skip
 def test_an_ipv4_loses_its_port_as_forensic_mcp_types_it(type_, key):
-    assert _ioc_key("203.0.113.7:8443", type_) == key
+    assert ioc_types.ck("203.0.113.7:8443", type_) == key
 
 
 def test_the_findings_and_records_are_left_as_they_were():

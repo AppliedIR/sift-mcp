@@ -500,23 +500,16 @@ def test_an_ipv4_type_takes_an_address_with_a_prefix(case):  # noqa: F811
     )
 
 
-PORTED = {  # value as given -> as stored when the port is kept
-    "10.20.30.41:443": "10.20.30.41:443",
-    "10[.]20[.]30[.]41:8080": "10.20.30.41:8080",
-}
+PORTED = ["10.20.30.41:443", "10[.]20[.]30[.]41:8080"]
 
 
 @pytest.mark.parametrize("value", PORTED)
 @pytest.mark.parametrize("given", IPV4_SPELLINGS)
-def test_an_ipv4_type_drops_the_port_only_when_spelled_as_the_id(case, given, value):  # noqa: F811
+def test_an_ipv4_type_drops_the_port_in_every_spelling(case, given, value):  # noqa: F811
     result = _record({**FINDING, "iocs": [{"value": value, "type": given}]})
     assert result["status"] == "STAGED", result
     (record,) = _records(case)
-    kept = PORTED[value]
-    want = (
-        (kept.rsplit(":", 1)[0], "ipv4-addr") if given == "ipv4-addr" else (kept, given)
-    )
-    assert (record["value"], record["type"]) == want
+    assert (record["value"], record["type"]) == ("10.20.30.41", "ipv4-addr")
 
 
 @pytest.mark.parametrize("given", IPV4_SPELLINGS)
@@ -606,6 +599,7 @@ PORT_ENTRIES = [
     {"value": "10.20.30.46:443", "type": "IPV4-ADDR"},
     {"value": "10.20.30.47:443", "type": " ipv4-addr "},
     {"value": "10.20.30.48:443", "type": "ipv4-addr"},
+    {"value": "10.20.30.43:443", "type": "  "},
     "10.20.30.44:443",
 ]
 
