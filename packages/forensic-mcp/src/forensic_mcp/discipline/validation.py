@@ -12,6 +12,7 @@ import json
 import re
 
 from forensic_knowledge import loader
+from sift_common import ioc_types
 
 VALID_TYPES = {"finding", "attribution", "conclusion", "exclusion"}
 
@@ -30,6 +31,16 @@ IOCS_REFUSED = (
     'iocs=["<sha256>", {"value": "GadgetToJScript.bin", "type": "file:name"}]. '
     "Re-send the finding with iocs fixed."
 )
+
+DETECTED = (
+    "Leaving the type out works only for the kinds the detector knows, in their "
+    "usual forms: URL, email address, MD5, SHA1, SHA256, IPv4, IPv6, domain, file "
+    "name or path, registry key, scheduled task, SID, and DOMAIN\\user account. "
+    "Every other kind must be typed, and so must a value whose form is unusual "
+    "for its kind."
+)
+_NOT_RECORDED = "IOC {n} ({value}) was not recorded, and neither was the finding: "
+_WHERE = "What each type holds is in the iocs part of record_finding's description."
 
 
 def _get_confidence_defs() -> dict:
@@ -59,14 +70,12 @@ def _ioc_item_error(item, path: str) -> str | None:
     return None
 
 
-def _iocs_error(iocs) -> str | None:
-    """The first place in `iocs` outside a list of IOCs or a flat mapping of key
-    → IOC or list of IOCs, checked whole (before the 100-IOC cut)."""
-    if iocs is None or iocs == [] or iocs == {}:
-        return None
+def _ioc_items(iocs) -> list[tuple[str, object]] | None:
+    """(path, item) for each IOC of a list or of a flat mapping's values, in
+    order; None when `iocs` is neither."""
     if isinstance(iocs, list):
-        items = [(f"iocs[{n}]", x) for n, x in enumerate(iocs)]
-    elif isinstance(iocs, dict):
+        return [(f"iocs[{n}]", x) for n, x in enumerate(iocs)]
+    if isinstance(iocs, dict):
         items = []
         for key, vals in iocs.items():
             key = str(key)
@@ -77,9 +86,47 @@ def _iocs_error(iocs) -> str | None:
                 items += [(f"{at}[{n}]", x) for n, x in enumerate(vals)]
             elif vals is not None:
                 items.append((at, vals))
-    else:
+        return items
+    return None
+
+
+def _iocs_error(iocs) -> str | None:
+    """The first place in `iocs` outside a list of IOCs or a flat mapping of key
+    → IOC or list of IOCs, checked whole (before the 100-IOC cut)."""
+    if iocs is None or iocs == [] or iocs == {}:
+        return None
+    items = _ioc_items(iocs)
+    if items is None:
         return f"`iocs` holds a {_kind(iocs)}"
     return next(filter(None, (_ioc_item_error(x, at) for at, x in items)), None)
+
+
+def _ioc_type_error(iocs) -> str | None:
+    """The first IOC, of all of them, whose type the table doesn't hold, or
+    whose type means ipv4-addr on a value that is not one IPv4 address."""
+    for n, (_, item) in enumerate(_ioc_items(iocs) or [], 1):
+        if not isinstance(item, dict) or ioc_types.untyped(item.get("type")):
+            continue
+        given, value = item["type"], str(item["value"])
+        refanged = ioc_types.refang(value.strip())
+        if not refanged:
+            continue
+        said = _NOT_RECORDED.format(n=n, value=value)
+        ioc_id = ioc_types.canonical(given)
+        if ioc_id is None:
+            return (
+                f'{said}"{given}" is not an IOC type Valhuntir knows. Send the '
+                f"finding again with one of these types: {ioc_types.listing()}. "
+                f"{DETECTED} {_WHERE}"
+            )
+        if ioc_id == "ipv4-addr" and not ioc_types.is_ipv4(refanged):
+            return (
+                f'{said}its type "{given}" means ipv4-addr, but the value is not '
+                "one IPv4 address with an optional port. Send the finding again "
+                "with this IOC typed ipv6-addr if it is an IPv6 address, with no "
+                f"type to have it detected, or with the address alone. {_WHERE}"
+            )
+    return None
 
 
 def validate(finding: dict) -> dict:
@@ -126,6 +173,10 @@ def validate(finding: dict) -> dict:
     ioc_error = _iocs_error(finding.get("iocs"))
     if ioc_error:
         errors.append(f"iocs refused: {ioc_error}, {IOCS_REFUSED}")
+    else:
+        type_error = _ioc_type_error(finding.get("iocs"))
+        if type_error:
+            errors.append(type_error)
 
     # event_timestamp validation
     warnings: list[str] = []

@@ -70,7 +70,7 @@ Confidence:     [SPECULATIVE/LOW/MEDIUM/HIGH + why]  → finding.confidence
 IOC DISCOVERED
 ════════════════════════════════════════════════════════════════════════════════
 IOC Value:  [The actual IOC]
-IOC Type:   [IP/Hash/Domain/URL/Path]
+IOC Type:   [A record_finding type]
 
 Source:     [Artifact file path]               → artifacts[].source
 Extraction: [Command used]                     → artifacts[].extraction

@@ -9,6 +9,7 @@ from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import BeforeValidator, Field
+from sift_common import ioc_types
 from sift_common.approvals import mark_approvals
 from sift_common.instructions import FORENSIC_MCP as _INSTRUCTIONS
 from sift_common.oplog import log_lookup
@@ -16,6 +17,7 @@ from sift_common.oplog import log_lookup
 from forensic_mcp import procedures
 from forensic_mcp.audit import AuditWriter
 from forensic_mcp.case.manager import CaseManager
+from forensic_mcp.discipline.validation import DETECTED
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +137,13 @@ def _procedure_description(root=None) -> str:
 PROCEDURE_DESCRIPTION = _procedure_description()  # at load
 
 
+def _with_ioc_types(fn: Callable) -> Callable:
+    """Names the IOC types in a tool's description, from the one table."""
+    doc = (fn.__doc__ or "").replace("IOC_TYPES", ioc_types.listing())
+    fn.__doc__ = doc.replace("UNTYPED_KINDS", DETECTED)
+    return fn
+
+
 def create_server(reference_mode: str = "resources") -> FastMCP:
     """Create and configure the forensic MCP server.
 
@@ -168,6 +177,7 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
     # --- Investigation Records ---
 
     @server.tool()
+    @_with_ioc_types
     def record_finding(
         finding: dict,
         analyst_override: str = "",
@@ -228,14 +238,18 @@ def create_server(reference_mode: str = "resources") -> FastMCP:
 
         iocs (list): indicators of compromise found in this evidence.
           Pass ALL suspicious IPs, hashes, domains, registry keys, file paths,
-          and accounts. Types auto-detected, deduplication automatic.
-          Send a list. Each IOC is a string, or {"value": "<string>", "type":
-          "<string>"} to give its type, e.g. a bare username:
-          {"value": "rsydow-a", "type": "user-account"}. Put labels in the
-          finding text: a flat mapping of key → IOC or list of IOCs is
-          accepted, but its keys are dropped. A nested mapping or list, an
-          object without "value", a null or bool item, or a string in place
-          of the list is refused (VALIDATION_FAILED, nothing recorded).
+          and accounts. Deduplication is automatic. Send a list. Each IOC is a
+          string, or an object with a value and a type to give its type, such
+          as a bare username with the type user-account. The types, by
+          category, with what each holds: IOC_TYPES. Case, spaces,
+          underscores and hyphens don't matter, and common names such as
+          IPv4, ip, sha256 or filename are read as their type; any other type
+          is refused. ipv4-addr holds one IPv4 address with an optional port.
+          UNTYPED_KINDS Put labels in the finding text: a flat mapping of key
+          → IOC or list of IOCs is accepted, but its keys are dropped. A
+          nested mapping or list, an object without a value, a null or bool
+          item, or a string in place of the list is refused
+          (VALIDATION_FAILED, nothing recorded).
 
         supporting_commands (separate parameter, list of dicts): for shell-based
         evidence only. Each dict: {command, purpose, output_excerpt}.

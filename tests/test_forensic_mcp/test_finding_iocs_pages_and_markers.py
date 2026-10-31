@@ -67,11 +67,11 @@ def test_a_value_stored_as_the_text_writes_it_isnt_called_missing(case, name):  
     "iocs,observation,value",
     [
         ([{"value": "10.1.2.6:443", "type": "IPv4"}], "Beacon to 10.1.2.6 seen.", "10.1.2.6"),
-        ([{"value": "10.1.2.7:443", "type": "network-traffic"}], "Beacon to 10.1.2.7 seen.",
+        ([{"value": "10.1.2.7:443", "type": "unknown"}], "Beacon to 10.1.2.7 seen.",
          "10.1.2.7"),
         (["300.1.2.3:80"], "Beacon to 300.1.2.3 seen.", "300.1.2.3"),
     ],
-    ids=["typed IPv4:port", "network-traffic", "bad octet:port"],
+    ids=["typed IPv4:port", "typed unknown", "bad octet:port"],
 )  # fmt: skip
 def test_a_value_stored_in_another_form_is_still_named(case, iocs, observation, value):  # noqa: F811
     result = _record({**FINDING, "observation": observation, "iocs": iocs})

@@ -74,7 +74,7 @@ ACCEPTED = [  # (id, iocs, the records stored: value -> type)
       "http://stun-update.com/a": "url", "SHIELDBASE\\tdungan": "user-account"}),
     ("a typed IOC under a key", {"domain": {"value": "fo.example.net", "type": "domain-name"}},
      {"fo.example.net": "domain-name"}),
-    ("a number value with its type", [{"value": 12345, "type": "port"}], {"12345": "port"}),
+    ("a number value with its type", [{"value": 12345, "type": "unknown"}], {"12345": "unknown"}),
     ("null", None, {}),
     ("an empty list", [], {}),
     ("an empty mapping", {}, {}),

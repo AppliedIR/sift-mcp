@@ -42,7 +42,7 @@ def _missing(mgr, iocs):
     "iocs",
     [
         [{"type": "ip", "value": LISTED}],
-        [{"type": "ip", "value": LISTED}, {"type": "x", "value": 7}],  # an int value
+        [{"type": "ip", "value": LISTED}, {"type": "unknown", "value": 7}],  # int value
         [LISTED],  # the string form, as before
         [{"type": "ip", "value": " 10.1.2.3 "}],  # normalised as the string form is
     ],

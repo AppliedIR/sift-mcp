@@ -23,6 +23,7 @@ from typing import Any
 
 import yaml
 from sift_common import file_identity as fi
+from sift_common import ioc_types
 from sift_common import provenance as pv
 
 from forensic_mcp.audit import resolve_examiner
@@ -2195,19 +2196,21 @@ class CaseManager:
                 explicit_type = ""
             if not value:
                 continue
-            # Strip port from IPv4 before dedup (10.0.0.1:8443 → 10.0.0.1)
-            if explicit_type:
-                ioc_type = explicit_type
-                category = (
-                    "identity"
-                    if "account" in explicit_type or explicit_type == "windows-sid"
-                    else "host"
-                )
+            if not ioc_types.untyped(explicit_type):
+                ioc_type = ioc_types.canonical(explicit_type) or explicit_type
+                category = ioc_types.CATEGORY.get(ioc_type, "host")
+                # Another spelling of ipv4-addr on a value with a port is stored
+                # as given, port and all: the readers strip the port only under
+                # the exact id.
+                port = re.search(r":\d{1,5}$", value)
+                if ioc_type == "ipv4-addr" and explicit_type != ioc_type and port:
+                    ioc_type = explicit_type
             else:
                 ioc_type, category = _detect_ioc_type(value)
                 # Override unknown → user-account if value matches affected_account
                 if ioc_type == "unknown" and value.lower() in account_names:
                     ioc_type, category = "user-account", "identity"
+            # Strip port from IPv4 before dedup (10.0.0.1:8443 → 10.0.0.1)
             if ioc_type == "ipv4-addr" and re.search(r":\d{1,5}$", value):
                 value = re.sub(r":\d{1,5}$", "", value)
             dedup_key = _normalize_ioc(value)
