@@ -193,6 +193,19 @@ def test_each_alias_is_written_only_inside_its_ids_entry():
     assert seen == set(alias_folds)
 
 
+def test_the_map_canonical_reads_holds_exactly_the_spellings_the_entries_declare():
+    vocab = _vocabulary()
+    names = vocab.canonical.__code__.co_names
+    maps = [n for n in names if isinstance(vars(vocab).get(n), dict)]
+    assert len(maps) == 1, maps
+    used = vars(vocab)[maps[0]]
+    declared = {
+        fold(s): i for i, (_, _, more) in vocab.IDS.items() for s in [i, *more.split()]
+    }
+    assert {k: v for k, v in used.items() if declared.get(k) != v} == {}
+    assert {k: v for k, v in declared.items() if used.get(k) != v} == {}
+
+
 def test_the_misp_types_the_table_places_are_the_stated_ones():
     canonical = _vocabulary().canonical
     placed = sorted([t, canonical(t)] for t in DATA["misp_types"] if canonical(t))
