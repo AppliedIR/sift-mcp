@@ -277,7 +277,7 @@ def _refusal_text(errors: list, given: str, value: str, n: int = 1) -> str:
     text = " ".join(map(str, errors))
     for part in (
         (
-            f'IOC {n} ({value}) was not recorded, and neither was the finding: "{given}" '
+            f'Nothing was recorded, neither the finding nor IOC {n} ({value}): "{given}" '
             "is not an IOC type Valhuntir knows."
         ),
         "Send the finding again with one of these types:",
@@ -373,7 +373,7 @@ def _not_ipv4_text(errors: list, given: str, value: str, n: int = 1) -> str:
     text = " ".join(map(str, errors))
     for part in (
         (
-            f"IOC {n} ({value}) was not recorded, and neither was the finding: its type "
+            f"Nothing was recorded, neither the finding nor IOC {n} ({value}): its type "
             f'"{given}" means ipv4-addr, but the value is not one IPv4 address with an '
             "optional port."
         ),

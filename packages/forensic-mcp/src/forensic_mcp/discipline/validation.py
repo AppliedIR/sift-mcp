@@ -39,7 +39,7 @@ DETECTED = (
     "Every other kind must be typed, and so must a value whose form is unusual "
     "for its kind."
 )
-_NOT_RECORDED = "IOC {n} ({value}) was not recorded, and neither was the finding: "
+_REFUSED = "Nothing was recorded, neither the finding nor IOC {n} ({value}): "
 _WHERE = "What each type holds is in the iocs part of record_finding's description."
 
 
@@ -111,7 +111,7 @@ def _ioc_type_error(iocs) -> str | None:
         refanged = ioc_types.refang(value.strip())
         if not refanged:
             continue
-        said = _NOT_RECORDED.format(n=n, value=value)
+        said = _REFUSED.format(n=n, value=value)
         ioc_id = ioc_types.canonical(given)
         if ioc_id is None:
             return (
