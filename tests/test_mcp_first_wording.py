@@ -69,7 +69,7 @@ SID_FIELD = (
     " the provider ran as; absent in records ingested before this version)"
 )
 
-# windows-triage's line on a hash no baseline build matches (W9), as approved:
+# windows-triage's line on a hash no baseline build matches, as approved:
 # in WINDOWS_TRIAGE and WINTOOLS_MCP, where " — it" also became ". It"
 HASH_CLAUSE = ", or for check_file a hash that matches no baseline build of that path"
 

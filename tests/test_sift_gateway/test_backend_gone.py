@@ -1,6 +1,6 @@
 """A stdio backend's lost connection, a stop by the gateway, a failed start and
 the gateway's own failure each reach the client as one named text, on the
-per-backend route and the aggregate one (backend-gone-text R3).
+per-backend route and the aggregate one.
 
 Before this change a dead child's next call failed with "unexpected failure …
 (ClosedResourceError)" or "retry once to trigger reconnect", a death during a
@@ -90,9 +90,9 @@ RAW = textwrap.dedent(
         os.close(0)
         time.sleep(600)
     ERRORS = {
-        "err32603": (-32603, "r2c probe -32603"),
-        "err32603x": (-32603, "r2cx probe -32603"),
-        "err32000": (-32000, "r2c probe -32000, the child's own"),
+        "err32603": (-32603, "error-reply probe -32603"),
+        "err32603x": (-32603, "error-then-exit probe -32603"),
+        "err32000": (-32000, "error-reply probe -32000, the child's own"),
     }
 
     def reply(rid, **msg):
@@ -126,7 +126,7 @@ RAW = textwrap.dedent(
             LISTS.append(1)
             reply(rid, result={"tools": TOOLS})
         elif method == "tools/list" and MODE == "listerr":
-            reply(rid, error={"code": -32603, "message": "r12e probe listing refused"})
+            reply(rid, error={"code": -32603, "message": "listing-error probe listing refused"})
         elif method == "tools/list":
             reply(rid, result={"tools": TOOLS})
         elif method == "ping":
@@ -179,7 +179,7 @@ def _failed(tool: str, text: str) -> str:
 
 
 class _Row:
-    """Every column of a row is checked, and a RED row names each failed one."""
+    """Every column of a row is checked, and a failing row names each failed one."""
 
     def __init__(self):
         self.failed: list[str] = []
@@ -337,11 +337,11 @@ async def _held(*_args, **_kwargs):
     await asyncio.Event().wait()
 
 
-# R1, R6 (aggregate): a call after the child died
+# A call after the child died, on either route
 
 
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r1_a_call_after_the_child_died_gets_the_before_send_text(
+async def test_a_call_after_the_child_died_gets_the_before_send_text(
     gws, standin, route
 ):
     row, fds = _Row(), _fds()
@@ -361,7 +361,7 @@ async def test_r1_a_call_after_the_child_died_gets_the_before_send_text(
     row.done()
 
 
-async def test_r1p_two_parallel_calls_after_a_death_start_one_child(gws, standin):
+async def test_two_parallel_calls_after_a_death_start_one_child(gws, standin):
     row = _Row()
     gw = await gws(_conf(standin))
     backend = gw.backends["standin"]
@@ -388,7 +388,7 @@ async def test_r1p_two_parallel_calls_after_a_death_start_one_child(gws, standin
 
 
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r1n_a_call_held_past_its_start_gets_the_before_send_text(
+async def test_a_call_held_past_its_start_gets_the_before_send_text(
     gws, standin, route, monkeypatch
 ):
     """A call passes the start and waits in the tool-map rebuild; meanwhile its
@@ -427,17 +427,17 @@ async def test_r1n_a_call_held_past_its_start_gets_the_before_send_text(
     row.done()
 
 
-def test_r6_no_retry_once_text_in_the_gateway():
+def test_no_retry_once_text_in_the_gateway():
     src = Path(sift_gateway.__file__).parent
     hits = [p for p in src.rglob("*.py") if "retry once" in p.read_text()]
     assert hits == []
 
 
-# R2, R3, R3b, R2d: the connection is lost during a call
+# The connection is lost during a call
 
 
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r2_a_child_killed_during_a_call_gets_the_during_call_text(
+async def test_a_child_killed_during_a_call_gets_the_during_call_text(
     gws, standin, route
 ):
     row, fds = _Row(), _fds()
@@ -464,9 +464,7 @@ async def test_r2_a_child_killed_during_a_call_gets_the_during_call_text(
 
 
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r3_a_call_that_never_returns_gets_the_during_call_text(
-    gws, standin, route
-):
+async def test_a_call_that_never_returns_gets_the_during_call_text(gws, standin, route):
     row = _Row()
     gw = await gws(_conf(standin))
     backend = gw.backends["standin"]
@@ -486,7 +484,7 @@ async def test_r3_a_call_that_never_returns_gets_the_during_call_text(
 
 
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r3b_a_call_judges_by_its_own_session_after_a_restart(
+async def test_a_call_judges_by_its_own_session_after_a_restart(
     gws, standin, route, monkeypatch
 ):
     """Call 1's poll can't see its child's end until call 3 has started a new
@@ -527,7 +525,7 @@ async def test_r3b_a_call_judges_by_its_own_session_after_a_restart(
 
 
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r2d_bytes_that_arent_utf8_during_a_call_get_the_during_call_text(
+async def test_bytes_that_arent_utf8_during_a_call_get_the_during_call_text(
     gws, standin, route
 ):
     row = _Row()
@@ -544,18 +542,18 @@ async def test_r2d_bytes_that_arent_utf8_during_a_call_get_the_during_call_text(
     row.done()
 
 
-# R2c, R2c-x, R2w: a child's own reply
+# A child's own reply
 
 
 @pytest.mark.parametrize("route", ROUTES)
 @pytest.mark.parametrize(
     "mode,message",
     [
-        ("err32603", "r2c probe -32603"),
-        ("err32000", "r2c probe -32000, the child's own"),
+        ("err32603", "error-reply probe -32603"),
+        ("err32000", "error-reply probe -32000, the child's own"),
     ],
 )
-async def test_r2c_a_childs_error_reply_is_the_backend_error_text(
+async def test_a_childs_error_reply_is_the_backend_error_text(
     gws, raw, route, mode, message
 ):
     row = _Row()
@@ -576,10 +574,11 @@ async def test_r2c_a_childs_error_reply_is_the_backend_error_text(
 
 
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r2cx_an_error_reply_then_exit_is_the_backend_error_text(gws, raw, route):
+async def test_an_error_reply_then_exit_is_the_backend_error_text(gws, raw, route):
     row = _Row()
     want = _failed(
-        "err", "Backend standin answered err with an error: r2cx probe -32603."
+        "err",
+        "Backend standin answered err with an error: error-then-exit probe -32603.",
     )
     for rep in range(5):
         gw = await gws(_conf(raw, "err32603x"))
@@ -591,7 +590,7 @@ async def test_r2cx_an_error_reply_then_exit_is_the_backend_error_text(gws, raw,
 
 
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r2w_guard_a_reply_then_exit_is_the_reply(gws, raw, route):
+async def test_a_reply_then_exit_is_the_reply(gws, raw, route):
     row = _Row()
     for rep in range(5):
         gw = await gws(_conf(raw, "replyeof"))
@@ -601,7 +600,7 @@ async def test_r2w_guard_a_reply_then_exit_is_the_reply(gws, raw, route):
     row.done()
 
 
-# R5, R9: a failed start
+# A failed start
 
 
 async def _raise_timeout():
@@ -613,10 +612,10 @@ async def _raise_mcp():
 
 
 async def _raise_group():
-    raise ExceptionGroup("unhandled errors in a TaskGroup", [ValueError("r5 probe")])
+    raise ExceptionGroup("unhandled errors in a TaskGroup", [ValueError("start probe")])
 
 
-R5_LEGS = {
+START_FAILURES = {
     "exit": (1, None),
     "timeout": (1, _raise_timeout),
     "mcperror": (1, _raise_mcp),
@@ -625,7 +624,7 @@ R5_LEGS = {
     "true": (40, None),
     "closestdin": (3, None),
 }
-R5_DETAIL = {
+START_FAILURE_DETAIL = {
     "timeout": "(TimeoutError)",
     "mcperror": "(McpError: Connection closed)",
     "group": "(ExceptionGroup: ",
@@ -633,12 +632,12 @@ R5_DETAIL = {
 
 
 @pytest.mark.parametrize("via", ["per-backend", "aggregate", "tools/list"])
-@pytest.mark.parametrize("leg", sorted(R5_LEGS))
-async def test_r5_a_failed_start_gets_the_start_failure_text(
+@pytest.mark.parametrize("leg", sorted(START_FAILURES))
+async def test_a_failed_start_gets_the_start_failure_text(
     gws, standin, raw, leg, via, monkeypatch, caplog
 ):
     row = _Row()
-    reps, raiser = R5_LEGS[leg]
+    reps, raiser = START_FAILURES[leg]
     if leg == "true":
         conf = {"type": "stdio", "command": "/bin/true", "args": []}
     elif raiser is None:
@@ -665,7 +664,7 @@ async def test_r5_a_failed_start_gets_the_start_failure_text(
                     text = f"{type(exc).__name__}: {exc}"
             else:
                 _, text, _ = await _call(client, "ping", cap=CAP + 30)
-            want = "Backend standin didn't start " + R5_DETAIL.get(leg, "(")
+            want = "Backend standin didn't start " + START_FAILURE_DETAIL.get(leg, "(")
             row.check(f"rep {rep} text", want in text, text)
             row.check(f"rep {rep} not in the gateway", "in the gateway" not in text)
             row.check(f"rep {rep} ping", await _answers_ping(client))
@@ -681,13 +680,13 @@ async def test_r5_a_failed_start_gets_the_start_failure_text(
     row.done()
 
 
-# R5c, R5g: a start cancelled by its caller, or by its own task group, whose
+# A start cancelled by its caller, or by its own task group, whose
 # close raises a real error
 
 
 async def _fail_soon():
     await asyncio.sleep(0.1)
-    raise OSError(5, "r5g probe: the transport failed")
+    raise OSError(5, "close probe: the transport failed")
 
 
 def _fake_stdio(close, *, group: bool = False, fail: bool = False):
@@ -719,7 +718,7 @@ def _broken_pipe() -> BaseException:
 
 def _mixed() -> BaseException:
     return BaseExceptionGroup(
-        "r5g probe", [asyncio.CancelledError(), OSError(32, "r5g close")]
+        "close probe", [asyncio.CancelledError(), OSError(32, "close failed")]
     )
 
 
@@ -782,13 +781,12 @@ async def _start_outcome(route: str, cancel: bool, caplog) -> tuple[str, list, l
 
 
 @pytest.mark.parametrize("route", ["A", "B", "C"])
-async def test_r5c_regression_a_callers_cancel_is_kept_when_the_close_raises(
+async def test_a_callers_cancel_is_kept_when_the_close_raises(
     route, monkeypatch, caplog
 ):
-    """Regression row (CR-48 LOW-1): the caller cancels a start at 0.3 s, and the
-    transport's close raises a real error. What reaches the caller and the count of
-    unretrieved exceptions are GREEN at f75011a7 and RED at 7e14d6c6. The ERROR
-    line column is the Rev 6.2 contract (spec :374-377), which f75011a7 predates."""
+    """The caller cancels a start at 0.3 s, and the transport's close raises a real
+    error: the caller still gets its cancellation, with no ERROR line and no
+    unretrieved exception."""
     row = _Row()
     monkeypatch.setattr(stdio_backend, "stdio_client", _fake_stdio(_broken_pipe))
     got, failed, unretrieved = await _start_outcome(route, True, caplog)
@@ -798,10 +796,8 @@ async def test_r5c_regression_a_callers_cancel_is_kept_when_the_close_raises(
     row.done()
 
 
-async def test_r5c_a_loader_scope_cancel_is_kept_when_the_close_raises(
-    monkeypatch, caplog
-):
-    """Regression row (CR-48 Rev 7.2 LOW-1): the gateway's shutdown cancels the
+async def test_a_loader_scope_cancel_is_kept_when_the_close_raises(monkeypatch, caplog):
+    """The gateway's shutdown cancels the
     loader's task-group scope in the task that awaits start (server.py:494, 542,
     893-896), and the transport's close raises a real error. That scope is
     outside the guard, so the start's look must not see it: the scope takes its
@@ -819,10 +815,9 @@ async def test_r5c_a_loader_scope_cancel_is_kept_when_the_close_raises(
 
 # No row for a caller's cancel that lands just before the start's own task
 # group fails: on 3.10 one up to ~1 ms ahead is lost (BrokenPipeError and an
-# ERROR line), and 3.12 keeps it, so a row at that edge would be flaky
-# (CR-48 Rev 7.2 NOTE-1).
-R5G_LEGS = {  # leg: (fail the group, cancel by the caller, route, what reaches it)
-    "own failure": (True, False, "A", "BrokenPipeError: [Errno 32] r5g close"),
+# ERROR line), and 3.12 keeps it, so a row at that edge would be flaky.
+MIXED_CLOSES = {  # leg: (fail the group, cancel by the caller, route, what reaches it)
+    "own failure": (True, False, "A", "BrokenPipeError: [Errno 32] close failed"),
     "caller A": (False, True, "A", "CancelledError"),
     "caller C": (False, True, "C", "CancelledError"),
     "caller scope": (
@@ -834,13 +829,13 @@ R5G_LEGS = {  # leg: (fail the group, cancel by the caller, route, what reaches 
 }
 
 
-@pytest.mark.parametrize("leg", sorted(R5G_LEGS))
-async def test_r5g_a_close_mixing_a_cancellation_and_an_error(leg, monkeypatch, caplog):
+@pytest.mark.parametrize("leg", sorted(MIXED_CLOSES))
+async def test_a_close_mixing_a_cancellation_and_an_error(leg, monkeypatch, caplog):
     """The start's close raises a group of a CancelledError and an OSError. A
     start whose own task group failed raises the OSError and logs it as the
     failed start; one its caller cancelled stays a cancellation, with no ERROR."""
     row = _Row()
-    fail, cancel, route, want = R5G_LEGS[leg]
+    fail, cancel, route, want = MIXED_CLOSES[leg]
     fake = _fake_stdio(_mixed, group=True, fail=fail)
     monkeypatch.setattr(stdio_backend, "stdio_client", fake)
     got, failed, unretrieved = await _start_outcome(route, cancel, caplog)
@@ -854,7 +849,7 @@ async def test_r5g_a_close_mixing_a_cancellation_and_an_error(leg, monkeypatch, 
     row.done()
 
 
-async def test_r7u_health_leaves_the_session_when_tools_list_fails():
+async def test_health_leaves_the_session_when_tools_list_fails():
     """health_check's list_tools never resets: a session whose tools/list fails
     with a gone error is reported, and left for the next call to judge."""
     backend = stdio_backend.StdioMCPBackend("standin", {"command": "x", "args": []})
@@ -869,7 +864,7 @@ async def test_r7u_health_leaves_the_session_when_tools_list_fails():
 
 
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r9_guard_a_call_while_the_loader_replaces_it_is_the_reloading_reply(
+async def test_a_call_while_the_loader_replaces_it_is_the_reloading_reply(
     gws, standin, route
 ):
     gw = await gws(_conf(standin), start=False)
@@ -881,7 +876,7 @@ async def test_r9_guard_a_call_while_the_loader_replaces_it_is_the_reloading_rep
     assert "didn't start" not in text, text
 
 
-# R7, R7c, R8: health and tools/list after a death
+# Health and tools/list after a death
 
 
 async def _health(gw) -> dict:
@@ -894,7 +889,7 @@ async def _health(gw) -> dict:
 
 @pytest.mark.parametrize("cache", ["kept", "cleared"])
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r7_health_reports_a_dead_child_and_doesnt_reset_it(
+async def test_health_reports_a_dead_child_and_doesnt_reset_it(
     gws, standin, route, cache, monkeypatch
 ):
     row = _Row()
@@ -923,7 +918,7 @@ async def test_r7_health_reports_a_dead_child_and_doesnt_reset_it(
 
 
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r8_tools_list_after_a_death_answers_and_the_call_gets_before_send(
+async def test_tools_list_after_a_death_answers_and_the_call_gets_before_send(
     gws, standin, route
 ):
     row = _Row()
@@ -939,7 +934,7 @@ async def test_r8_tools_list_after_a_death_answers_and_the_call_gets_before_send
     row.done()
 
 
-# R12, R12h, R12e: a listing when the child dies (B115)
+# A listing when the child dies
 
 
 def _listing() -> str:
@@ -963,7 +958,7 @@ async def _listed(client, cap: float = CAP):
 
 @pytest.mark.parametrize("ask", ["call", "list"])
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r12_a_listing_the_child_never_answers_ends_with_its_death(
+async def test_a_listing_the_child_never_answers_ends_with_its_death(
     gws, standin, route, ask
 ):
     """The child dies while the backend waits for its tools/list, and the reply
@@ -1007,11 +1002,11 @@ async def test_r12_a_listing_the_child_never_answers_ends_with_its_death(
 
 
 @pytest.mark.parametrize("when", ["before", "during", "deadline"])
-async def test_r12h_health_when_the_child_dies_at_its_listing(
+async def test_health_when_the_child_dies_at_its_listing(
     gws, standin, when, monkeypatch
 ):
     """Health's tools/list meets the death: health says error within the
-    bound, and leaves the session for the next call to judge (R7). deadline:
+    bound, and leaves the session for the next call to judge, as after any death. deadline:
     the death is first seen at the listing's deadline."""
     row = _Row()
     gw = await gws(_conf(standin))
@@ -1056,17 +1051,21 @@ async def test_r12h_health_when_the_child_dies_at_its_listing(
     row.done()
 
 
-async def test_r12e_guard_a_childs_error_reply_to_a_listing_is_as_it_was(gws, raw):
+async def test_a_childs_error_reply_to_a_listing_is_as_it_was(gws, raw):
     row = _Row()
     gw = await gws(_conf(raw, "listerr"))
     backend = gw.backends["standin"]
     [child] = _kids(str(raw))
     async with _client(gw, "per-backend") as client:
         seen = await _call(client, "ok")
-        row.check("call", seen[:2] == (True, "r12e probe listing refused"), seen)
+        row.check(
+            "call", seen[:2] == (True, "listing-error probe listing refused"), seen
+        )
         listed = await _listed(client)
         row.check(
-            "list", listed[:2] == (None, "McpError: r12e probe listing refused"), listed
+            "list",
+            listed[:2] == (None, "McpError: listing-error probe listing refused"),
+            listed,
         )
         row.check("started true", backend.started is True, backend.started)
         row.check("the same child", _kids(str(raw)) == [child], _kids(str(raw)))
@@ -1074,28 +1073,28 @@ async def test_r12e_guard_a_childs_error_reply_to_a_listing_is_as_it_was(gws, ra
     row.done()
 
 
-# R10: the gateway's own failure
+# The gateway's own failure
 
 
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r10_the_gateways_own_failure_is_named(gws, standin, route, monkeypatch):
+async def test_the_gateways_own_failure_is_named(gws, standin, route, monkeypatch):
     gw = await gws(_conf(standin))
     backend = gw.backends["standin"]
 
     async def broken(*_args, **_kwargs):
-        raise ValueError("r10 probe")
+        raise ValueError("gateway probe")
 
     monkeypatch.setattr(backend, "call_tool", broken)
     async with _client(gw, route) as client:
         err, text, _ = await _call(client, "ping")
         assert (err, text) == (
             True,
-            "Error: ping failed in the gateway (ValueError: r10 probe).",
+            "Error: ping failed in the gateway (ValueError: gateway probe).",
         )
         assert await _answers_ping(client)
 
 
-# R11, R11s: a stop by the gateway during a call
+# A stop by the gateway during a call
 
 
 def _short_reaper_sleep(monkeypatch) -> None:
@@ -1120,7 +1119,7 @@ async def _rest(gw, path: str) -> int:
 
 @pytest.mark.parametrize("how", ["stop", "restart", "reaper"])
 @pytest.mark.parametrize("route", ROUTES)
-async def test_r11_a_stop_during_a_call_gets_the_stopped_text(
+async def test_a_stop_during_a_call_gets_the_stopped_text(
     gws, standin, route, how, monkeypatch
 ):
     row = _Row()
@@ -1159,22 +1158,26 @@ async def test_r11_a_stop_during_a_call_gets_the_stopped_text(
             new = await _pid(client)
             row.check("the new pid serves", new not in (None, old), new)
             row.check("the new pid alive", new is not None and _alive(new), new)
-            # R11s: the mark was the old session's, not the restarted one's
+            # The mark was the old session's, not the restarted one's
             call = asyncio.ensure_future(_call(client, "slow", {"seconds": 30}))
             await asyncio.sleep(1)
             if new is not None:
                 os.kill(new, signal.SIGKILL)
             _, text, _ = await call
-            row.check("R11s text", text == _failed("slow", _during("slow")), text)
+            row.check(
+                "the restarted session's text",
+                text == _failed("slow", _during("slow")),
+                text,
+            )
         await _after(row, client, backend)
     row.done()
 
 
-# R12r, R12k, R12t, R12s: the listing's other deaths, and a stop (B115 Rev 1.1)
+# The listing's other deaths, and a stop
 
 
 @pytest.mark.parametrize("who", ["health", "call", "list"])
-async def test_r12r_the_child_dies_while_its_listing_runs(gws, raw, who):
+async def test_the_child_dies_while_its_listing_runs(gws, raw, who):
     """The child got tools/list and is killed before it answers: EOF, no hang."""
     row = _Row()
     gw = await gws(_conf(raw, "slowlist"))
@@ -1227,7 +1230,7 @@ async def test_r12r_the_child_dies_while_its_listing_runs(gws, raw, who):
 
 
 @pytest.mark.parametrize("ask", ["call", "list"])
-async def test_r12k_a_listing_on_a_connection_already_lost(gws, standin, ask):
+async def test_a_listing_on_a_connection_already_lost(gws, standin, ask):
     """The death is known before the listing starts; the tool cache is cold."""
     row = _Row()
     gw = await gws(_conf(standin))
@@ -1251,9 +1254,7 @@ async def test_r12k_a_listing_on_a_connection_already_lost(gws, standin, ask):
     row.done()
 
 
-async def test_r12t_guard_a_live_child_slow_to_list_times_out_alive(
-    gws, raw, monkeypatch
-):
+async def test_a_live_child_slow_to_list_times_out_alive(gws, raw, monkeypatch):
     """A live child slower than the listing deadline: a timeout, not a death."""
     row = _Row()
     gw = await gws(_conf(raw, "slowlist"))
@@ -1274,7 +1275,7 @@ async def test_r12t_guard_a_live_child_slow_to_list_times_out_alive(
 
 
 @pytest.mark.parametrize("how", ["task", "scope"])
-async def test_r12c_a_callers_cancel_ends_its_listing(gws, raw, how):
+async def test_a_callers_cancel_ends_its_listing(gws, raw, how):
     """The caller cancels a listing the child is slow to answer (an asyncio
     task cancel, or an AnyIO cancel scope): the cancel reaches the caller at
     once, no request is left waiting, and the child lists again."""
@@ -1314,10 +1315,8 @@ def _stopped_listing() -> str:
 @pytest.mark.parametrize("form", ["held", "eof"])
 @pytest.mark.parametrize("how", ["stop", "restart"])
 @pytest.mark.parametrize("ask", ["call", "list"])
-async def test_r12s_a_stop_during_a_listing_gets_the_stopped_text(
-    gws, raw, ask, how, form
-):
-    """The gateway stops the backend while it lists: no restart promise (R11)."""
+async def test_a_stop_during_a_listing_gets_the_stopped_text(gws, raw, ask, how, form):
+    """The gateway stops the backend while it lists: no restart promise, as during a call."""
     row = _Row()
     gw = await gws(_conf(raw, "slowlist"))
     backend = gw.backends["standin"]
