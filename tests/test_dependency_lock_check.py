@@ -6,8 +6,10 @@ The venv is a directory of .dist-info records and uv a stand-in on PATH whose
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -72,9 +74,9 @@ def _run(
     lock_text=LOCK,
     sizes=None,
 ):
-    """conflict: what `uv pip check` reports (exit 1) until an uninstall,
-    which removes the named packages' records. sizes: bytes a package's
-    RECORD lists."""
+    """conflict: what `uv pip check` reports (exit 1), each "The package `X`
+    requires" line while X is still installed; an uninstall removes the named
+    packages' records. sizes: bytes a package's RECORD lists."""
     lock = tmp_path / "vhir.lock"
     lock.write_text(lock_text)
     site = _venv(tmp_path, dists, editable, requires)
@@ -97,12 +99,26 @@ def _run(
         'if [ "$1" = "--version" ]; then echo "uv 0.12.20"; exit 0; fi\n'
         f'echo "uv $*" >> "{tmp_path}/uv.log"\n'
         'if [ "$2" = uninstall ]; then shift 4\n'
-        f'  for n in "$@"; do rm -rf "{site}/$n"-*.dist-info; done\n'
-        f'  touch "{tmp_path}/removed"; exit 0; fi\n'
-        f'if [ -s "{tmp_path}/conflict.txt" ] && [ ! -e "{tmp_path}/removed" ]; then\n'
-        f'  cat "{tmp_path}/conflict.txt"; exit 1; fi\n' + check
+        # name-<version>: stix2's records aren't stix2-patterns'
+        f'  for n in "$@"; do rm -rf "{site}/$n"-[0-9]*.dist-info; done; exit 0; fi\n'
+        "rc=0\n"
+        'while IFS= read -r line || [ -n "$line" ]; do\n'
+        "  n=${line#The package \\`}; n=${n%%\\`*}\n"
+        f'  if [ "$n" = "$line" ] || [ -n "$(ls -d "{site}/$n"-[0-9]*.dist-info 2>/dev/null)" ]; then\n'
+        '    echo "$line"; rc=1; fi\n'
+        f'done < "{tmp_path}/conflict.txt"\n'
+        '[ "$rc" = 0 ] || exit 1\n' + check
     )
     uv.chmod(0o755)
+    return _check(tmp_path, mode)
+
+
+def _check(tmp_path, mode):
+    """Run the script again on the venv _run made, as it now is; pip_checked
+    and removed are this run's."""
+    lock, site, bin_dir = tmp_path / "vhir.lock", tmp_path / "site", tmp_path / "bin"
+    log = tmp_path / "uv.log"
+    log.unlink(missing_ok=True)
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
     run = subprocess.run(
         [sys.executable, str(CHECK), mode, "--lock", str(lock), "--site", str(site)],
@@ -111,7 +127,6 @@ def _run(
         env=env,
         timeout=60,
     )
-    log = tmp_path / "uv.log"
     lines = log.read_text().splitlines() if log.exists() else []
     run.pip_checked = any("pip check" in x for x in lines)
     # Each uninstall's package names (after "uv pip uninstall --python PY").
@@ -193,8 +208,7 @@ def test_what_pycti_brought_in_doesn_t_fail_the_check_either(tmp_path, mode):
     assert run.returncode == 0, run.stderr
     assert not run.removed and "conflict" not in run.stderr
     if mode == "--final":
-        (note,) = [x for x in run.stdout.splitlines() if x.startswith("  fastapi:")]
-        assert note.endswith(f"uv pip uninstall --python {sys.executable} fastapi")
+        assert _commands(run) == [["pycti", "fastapi"]]
 
 
 def test_what_pycti_brought_in_is_never_advised_away_when_something_else_uses_it(
@@ -222,7 +236,7 @@ def test_a_package_asking_for_fastapi_only_with_an_extra_doesn_t_count_as_using_
 ):
     """As on a real 0.6.3+OpenCTI venv: chromadb, huggingface_hub, sse-starlette
     and transformers name fastapi only under extras, so it's pycti's alone and
-    the note says how to remove it."""
+    the command removes it with pycti."""
     extras = {"chromadb": "dev", "huggingface-hub": "oauth",
               "sse-starlette": "examples", "transformers": "serving"}  # fmt: skip
     run = _run(tmp_path, "--final",
@@ -232,8 +246,7 @@ def test_a_package_asking_for_fastapi_only_with_an_extra_doesn_t_count_as_using_
                          **{n: [f"fastapi>=0.115 ; extra == '{e}'"] for n, e in extras.items()}},
                conflict=PYCTI_CONFLICT + "\n" + FASTAPI_CONFLICT)  # fmt: skip
     assert run.returncode == 0, run.stderr
-    (note,) = [x for x in run.stdout.splitlines() if x.startswith("  fastapi:")]
-    assert note.endswith(f"uv pip uninstall --python {sys.executable} fastapi")
+    assert _commands(run) == [["pycti", "fastapi"]]
     assert "also required by" not in run.stdout
 
 
@@ -516,9 +529,10 @@ def _leftovers(tmp_path, dists, requires):
 
 
 def test_the_opencti_leftovers_are_pycti_and_what_only_it_brought_in(tmp_path):
-    """As on a real 0.6.3+OpenCTI venv: what only pycti requires (outside an
-    extra) is listed; the lock's packages, a package something else needs, and
-    one asked for only under an extra elsewhere are handled each as they are."""
+    """As on a real 0.6.3+OpenCTI venv: what only pycti brought in, at any
+    depth (outside an extra), is listed: stix2-patterns too, which only stix2
+    requires. The lock's packages, a package something else needs, and one
+    asked for only under an extra elsewhere are handled each as they are."""
     dists = {**CLEAN, "pycti": "6.9.29", "fastapi": "0.124.4", "stix2": "3.0.1",
              "stix2-patterns": "2.0.0", "pika": "1.3.2", "my-api": "1.0",
              "transformers": "5.19.0", "otel-extra": "1.0"}  # fmt: skip
@@ -529,7 +543,8 @@ def test_the_opencti_leftovers_are_pycti_and_what_only_it_brought_in(tmp_path):
         "my-api": ["pika"],  # something else uses pika: never listed
         "transformers": ["fastapi ; extra == 'serving'"],  # only an extra: not a use
     }  # fmt: skip
-    assert _leftovers(tmp_path, dists, requires) == ["pycti", "fastapi", "stix2"]
+    assert _leftovers(tmp_path, dists, requires) == [
+        "pycti", "fastapi", "stix2", "stix2-patterns"]  # fmt: skip
 
 
 def test_no_pycti_no_opencti_leftovers(tmp_path):
@@ -549,3 +564,238 @@ def test_pycti_isn_t_offered_when_something_else_requires_it(tmp_path):
     dists = {**CLEAN, "pycti": "6.9.29", "fastapi": "0.124.4", "my-intel": "1.0"}
     requires = {"pycti": ["fastapi"], "my-intel": ["pycti>=6"]}
     assert _leftovers(tmp_path, dists, requires) == []
+
+
+# --- pycti's whole tree: what it brought in, at any depth --------------------
+
+# A 0.6.3+OpenCTI box updated to 0.6.6 (a test bed's venv, pycti 7): pycti
+# brought boto3, boto3 brought botocore, and botocore needs python-dateutil
+# below the lock's. The conflicts are the ones that stopped its update.
+U063 = {
+    "requests": "2.34.2",
+    "setuptools": "84.2.1",
+    "opentelemetry-api": "1.45.1",
+    "opentelemetry-sdk": "1.45.1",
+    "python-dateutil": "3.0.0",
+    "urllib3": "2.8.0",
+    "pycti": "7.261002.0",
+    "boto3": "1.43.109",
+    "botocore": "1.43.109",
+    "s3transfer": "0.19.2",
+    "jmespath": "1.1.0",
+}
+# The lock pins the first six; pycti's tree outside the lock is the rest.
+U063_LOCK = "# header\n" + "".join(
+    f"{n}=={v} \\\n    --hash=sha256:aaaa\n" for n, v in list(U063.items())[:6]
+)
+U063_REQUIRES = {
+    "pycti": ["boto3<1.44,>=1.38.27", "requests<2.34.0,>=2.32.0",
+              "setuptools~=82.0.0", "opentelemetry-api~=1.35.0",
+              "opentelemetry-sdk~=1.35.0"],
+    "boto3": ["botocore<1.44.0,>=1.43.109", "jmespath<2.0.0,>=0.7.1",
+              "s3transfer<0.20.0,>=0.19.0"],
+    "botocore": ["jmespath<2.0.0,>=0.7.1", "python-dateutil<3.0.0,>=2.1",
+                 "urllib3!=2.2.0,<3,>=1.25.4 ; python_version >= '3.10'",
+                 "awscrt==0.31.2 ; extra == 'crt'"],
+    "s3transfer": ["botocore<2.0a.0,>=1.37.4",
+                   "botocore[crt]<2.0a.0,>=1.37.4 ; extra == 'crt'"],
+}  # fmt: skip
+# Verbatim from the bed's update.log.
+U063_CONFLICT = """\
+The package `pycti` requires `requests>=2.32.0,<2.34.0`, but `2.34.2` is installed
+The package `pycti` requires `setuptools~=82.0.0`, but `84.2.1` is installed
+The package `pycti` requires `opentelemetry-api~=1.35.0`, but `1.45.1` is installed
+The package `pycti` requires `opentelemetry-sdk~=1.35.0`, but `1.45.1` is installed
+The package `botocore` requires `python-dateutil>=2.1,<3.0.0`, but `3.0.0` is installed
+"""
+
+
+def _u063(tmp_path, mode, dists=U063, requires=U063_REQUIRES, conflict=U063_CONFLICT):
+    return _run(tmp_path, mode, dists, requires=requires, conflict=conflict,
+                lock_text=U063_LOCK)  # fmt: skip
+
+
+@pytest.mark.parametrize("mode", ["--strict", "--final"])
+def test_a_conflict_two_levels_under_pycti_fails_neither_check(tmp_path, mode):
+    """pycti -> boto3 -> botocore: botocore's conflict is a leftover's too."""
+    run = _u063(tmp_path, mode)
+    assert run.returncode == 0, run.stderr
+    assert not run.removed and "conflict" not in run.stderr
+
+
+DEEP_CONFLICT = "The package `c` requires `starlette<1`, but `1.7.0` is installed"
+
+
+@pytest.mark.parametrize("mode", ["--strict", "--final"])
+def test_a_conflict_three_levels_under_pycti_fails_neither_check(tmp_path, mode):
+    """pycti -> a -> b -> c: any depth, not pycti's requirements and theirs."""
+    run = _run(tmp_path, mode,
+               {**CLEAN, "pycti": "7.261002.0", "a": "1.0", "b": "1.0", "c": "1.0"},
+               requires={"pycti": ["a"], "a": ["b"], "b": ["c"], "c": ["starlette<1"]},
+               conflict=DEEP_CONFLICT)  # fmt: skip
+    assert run.returncode == 0, run.stderr
+    assert not run.removed and "conflict" not in run.stderr
+
+
+@pytest.mark.parametrize("mode", ["--strict", "--final"])
+def test_a_cycle_under_pycti_ends_and_reaches_past_it(tmp_path, mode):
+    """a and b require each other; c is reached only through them."""
+    run = _run(tmp_path, mode,
+               {**CLEAN, "pycti": "7.261002.0", "a": "1.0", "b": "1.0", "c": "1.0"},
+               requires={"pycti": ["a"], "a": ["b"], "b": ["a", "c"]},
+               conflict=DEEP_CONFLICT)  # fmt: skip
+    assert run.returncode == 0, run.stderr
+
+
+@pytest.mark.parametrize("mode", ["--strict", "--final"])
+def test_what_comes_only_through_a_locked_package_is_not_pycti_s(tmp_path, mode):
+    """pycti -> starlette (the lock's) -> x: x is the lock's dependency's, so
+    its conflict fails as any other."""
+    run = _run(tmp_path, mode, {**CLEAN, "pycti": "7.261002.0", "x": "1.0"},
+               requires={"pycti": ["starlette"], "starlette": ["x"]},
+               conflict="The package `x` requires `uvicorn<0.50`, but `0.54.0` is installed")  # fmt: skip
+    assert run.returncode == 1 and "installed packages conflict" in run.stderr
+
+
+@pytest.mark.parametrize("mode", ["--strict", "--final"])
+def test_a_locked_package_s_conflict_in_pycti_s_tree_still_fails(tmp_path, mode):
+    """urllib3 is botocore's, but the lock's: its conflict is never a leftover's."""
+    conflict = U063_CONFLICT + (
+        "The package `urllib3` requires `brotli>=1.2`, but `1.0` is installed\n"
+    )
+    run = _u063(tmp_path, mode, conflict=conflict)
+    assert run.returncode == 1 and "`urllib3` requires" in run.stderr
+
+
+@pytest.mark.parametrize("mode", ["--strict", "--final"])
+def test_the_user_s_own_conflict_still_fails_beside_pycti_s_tree(tmp_path, mode):
+    """my-app requires my-tool, so --strict doesn't remove it either."""
+    conflict = U063_CONFLICT + (
+        "The package `my-tool` requires `urllib3<2`, but `2.8.0` is installed\n"
+    )
+    run = _u063(tmp_path, mode, {**U063, "my-tool": "1.0", "my-app": "1.0"},
+                {**U063_REQUIRES, "my-tool": ["urllib3<2"], "my-app": ["my-tool"]},
+                conflict)  # fmt: skip
+    assert run.returncode == 1 and "`my-tool` requires" in run.stderr
+
+
+def _commands(run):
+    """The uninstall commands --final prints that name pycti, as name lists."""
+    return [x.split("uv pip uninstall --python ", 1)[1].split()[1:]
+            for x in run.stdout.splitlines()
+            if "uv pip uninstall" in x and "pycti" in x.split()]  # fmt: skip
+
+
+def test_final_prints_one_command_for_pycti_s_whole_tree(tmp_path):
+    """The same list update offers, conflicting or not (boto3 conflicts with
+    nothing); the CUDA command is separate."""
+    run = _u063(tmp_path, "--final")
+    leftovers = _check(tmp_path, "--opencti-leftovers").stdout.split()
+    assert _commands(run) == [leftovers]
+    assert leftovers == ["pycti", "boto3", "botocore", "jmespath", "s3transfer"]
+
+
+def test_final_leaves_out_of_the_command_what_something_else_requires(tmp_path):
+    run = _u063(tmp_path, "--final", {**U063, "my-s3": "1.0"},
+                {**U063_REQUIRES, "my-s3": ["s3transfer"]})  # fmt: skip
+    assert _commands(run) == [["pycti", "boto3"]]
+    lines = run.stdout.splitlines()
+    assert "  s3transfer: also required by my-s3" in lines
+    # Kept for what is kept, and botocore's own requirement isn't met.
+    assert (
+        "  botocore: also required by s3transfer; its own requirements aren't met"
+        in lines
+    )
+    assert "  jmespath: also required by botocore" in lines
+
+
+def test_final_offers_nothing_for_a_pycti_something_else_requires(tmp_path):
+    run = _u063(tmp_path, "--final", {**U063, "my-intel": "1.0"},
+                {**U063_REQUIRES, "my-intel": ["pycti>=7"]})  # fmt: skip
+    assert run.returncode == 0, run.stderr
+    assert _commands(run) == []
+    (note,) = [x for x in run.stdout.splitlines() if "pycti 7.261002.0" in x]
+    assert note.endswith(
+        "also required by my-intel, so nothing is offered for removal."
+    )
+
+
+@pytest.mark.parametrize(
+    "dists, requires, conflict, lock",
+    [
+        (U063, U063_REQUIRES, U063_CONFLICT, U063_LOCK),
+        ({**CLEAN, "pycti": "6.9.29", "fastapi": "0.115.0"}, {"pycti": ["fastapi"]},
+         PYCTI_CONFLICT + "\n" + FASTAPI_CONFLICT, LOCK),
+    ],
+    ids=["pycti-7", "pycti-6"],
+)  # fmt: skip
+def test_running_the_printed_command_leaves_the_next_check_passing(
+    tmp_path, dists, requires, conflict, lock
+):
+    """What a user does with the advice: the command, then the next update,
+    which has nothing left to remove."""
+    run = _run(tmp_path, "--final", dists, requires=requires, conflict=conflict,
+               lock_text=lock)  # fmt: skip
+    (command,) = _commands(run)
+    uv = [str(tmp_path / "bin" / "uv"), "pip", "uninstall", "--python", sys.executable]
+    subprocess.run([*uv, *command], check=True)
+    run = _check(tmp_path, "--strict")
+    assert run.returncode == 0, run.stderr
+    assert not run.removed, run.removed
+    assert not list((tmp_path / "site").glob("pycti-*"))
+
+
+# --- The shipped lock --------------------------------------------------------
+
+DEPS = Path(__file__).parent.parent / "deps"
+
+
+# Each lock as 0.6.6's refresh made it (sha256), and the one change since: the
+# hold, which brings back 2.9.0.post0 and drops tzdata (only 3.0.0 needs it).
+REFRESHED = {
+    "vhir.lock": "35dd09328e2dfc603f517930232913e37602516ede3bf382b290d734e9a5b224",
+    "vhir-cpu.lock": "b6d3441913c17e9cf9267ed2daf156e65677b78b6dadfe2630214cd8d0f15425",
+}
+HELD = "# held            python-dateutil<3\n"
+DATEUTIL = """\
+python-dateutil=={} \\
+    --hash=sha256:{}
+    --hash=sha256:{}
+    # via
+{}    #   kubernetes
+"""
+DATEUTIL_HELD = DATEUTIL.format(
+    "2.9.0.post0",
+    "37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3 \\",
+    "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
+    "    #   -c holds.txt\n",
+)
+DATEUTIL_3 = DATEUTIL.format(
+    "3.0.0",
+    "3c79630202e4152c6add678446984236efe4f57e84d8e892aab0637bab82e9fd \\",
+    "7ebcb3c29a92f3ceafe79a7a48a5c45677e9e004bbeec5742ac0bbb00560b7a2",
+    "",
+)
+TZDATA = """\
+tzdata==2026.5 \\
+    --hash=sha256:8cc73c0a0bfca7dbfa59235d60b2eff82231dee33f53d206db1acd9173cfc0a7 \\
+    --hash=sha256:b683bd1b6659ddcd810ff02ad09ba821d4bf1065072805063eb35c49617905ac
+    # via python-dateutil
+"""
+
+
+@pytest.mark.parametrize("lock", ["vhir.lock", "vhir-cpu.lock"])
+def test_the_shipped_lock_holds_python_dateutil_below_3(lock):
+    """Every release before 0.6.6 shipped 2.9.0.post0. A box that removed pycti
+    alone (0.6.4's advice) or took 0.6.4's offer keeps botocore, which needs
+    <3, and nothing can tell it was pycti's any more. Lift the hold only once
+    such leftovers are handled. Undoing the hold must give back the refreshed
+    lock exactly: a regen that moves anything else fails here."""
+    text = (DEPS / lock).read_text()
+    assert text.count(HELD) == 1 and text.count(DATEUTIL_HELD) == 1
+    assert "\ntzdata==" not in text
+    undone = text.replace(HELD, "").replace(DATEUTIL_HELD, DATEUTIL_3)
+    undone = undone.replace("unicodecsv==", TZDATA + "unicodecsv==", 1)
+    assert hashlib.sha256(undone.encode()).hexdigest() == REFRESHED[lock]
+    holds = re.search(r"^HOLDS=\((.*)\)$", (DEPS / "regen-lock.sh").read_text(), re.M)
+    assert holds and '"python-dateutil<3"' in holds.group(1).split()

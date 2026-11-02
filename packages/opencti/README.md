@@ -62,11 +62,16 @@ answer.
 
 An install from an earlier release may still have OpenCTI's old client,
 pycti. Nothing uses it any more; the installers and `vhir update` leave it in
-place and print the command that removes it:
+place and print one command that removes it and what only it brought in
+(boto3 and botocore, for one), for example:
 
 ```bash
-uv pip uninstall --python ~/.vhir/venv/bin/python pycti
+uv pip uninstall --python ~/.vhir/venv/bin/python pycti boto3 botocore jmespath s3transfer
 ```
+
+Run the command they print, not this example: the list is what your install
+has. Removing pycti alone leaves the rest behind, and their requirements can
+stop a later update.
 
 The standalone `opencti_query.py` script still uses pycti. To run it, install
 the pycti major that matches your server's, in an environment of its own.

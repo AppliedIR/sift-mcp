@@ -9,8 +9,9 @@ that interpreter:
     <venv>/bin/python deps/check-lock.py --cuda-leftovers
     <venv>/bin/python deps/check-lock.py --opencti-leftovers
 
---opencti-leftovers prints pycti and what it brought in that nothing else
-installed requires, one name per line: what `vhir update` offers to remove.
+--opencti-leftovers prints pycti and what it brought in (at any depth) that
+nothing else installed requires, one name per line: what `vhir update` offers
+to remove, and what --final's command removes.
 
 --cuda-leftovers prints the CUDA-family packages (nvidia-*, cuda-*, triton)
 the lock doesn't pin and nothing outside them requires, one "name bytes" line
@@ -35,9 +36,9 @@ and the command that repairs it. Both run `uv pip check`, which must pass.
 Both list installed packages the lock doesn't name, for information.
 
 OpenCTI's old client, pycti, is no longer used. An install from before may
-still have it, and what it brought in (fastapi): none is removed here, their
-own unmet requirements don't fail the check, and --final names them, with
-the command that removes them.
+still have it, and what it brought in (fastapi; boto3 and what boto3 brought
+in): none is removed here, their own unmet requirements don't fail the check,
+and --final prints the one command that removes them all.
 """
 
 from __future__ import annotations
@@ -109,16 +110,26 @@ def _required_names(site: list[str]) -> set[str]:
     return names
 
 
-def _brought_by_pycti(site: list[str]) -> set[str]:
-    """What pycti requires outside any extra: installed with it."""
+def _brought_by_pycti(site: list[str], pins: dict) -> set[str]:
+    """What pycti requires outside any extra, and what those require, at any
+    depth: installed with it. A locked package's requirements are the lock's,
+    so the walk doesn't go through one (it may itself be in the set)."""
+    reqs: dict[str, list[str]] = {}
     for dist in importlib.metadata.distributions(path=site):
-        if _name(dist.metadata["Name"] or "") == PYCTI:
-            reqs = [
-                r for r in dist.requires or [] if "extra" not in r.partition(";")[2]
-            ]
-            return {_name(m.group(0)) for r in reqs
-                    if (m := re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", r))}  # fmt: skip
-    return set()
+        reqs.setdefault(_name(dist.metadata["Name"] or ""), [
+            _name(m.group(0)) for r in dist.requires or []
+            if "extra" not in r.partition(";")[2]
+            and (m := re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", r))])  # fmt: skip
+    found: set[str] = set()
+    todo = list(reqs.get(PYCTI, []))
+    while todo:
+        n = todo.pop()
+        if n in found or n == PYCTI or n not in reqs:  # not installed: adds nothing
+            continue
+        found.add(n)
+        if n not in pins:
+            todo += reqs[n]
+    return found
 
 
 def _requirers(site: list[str], names, but) -> dict[str, list[str]]:
@@ -142,15 +153,16 @@ def _requirers(site: list[str], names, but) -> dict[str, list[str]]:
 
 def opencti_leftovers(site: list[str], pins: dict, have: dict) -> tuple[list, dict]:
     """pycti and what it brought in that nothing else installed requires
-    (outside any extra), and {name: what else requires it} for the rest."""
+    (outside any extra), and {name: what else requires it} for the rest (for
+    pycti alone when something else requires it)."""
     if PYCTI not in have:
         return [], {}
-    brought = (_brought_by_pycti(site) & set(have)) - set(pins)
+    brought = (_brought_by_pycti(site, pins) & set(have)) - set(pins)
     gone = set(brought)
     while True:  # one kept because something needs it keeps what it requires too
         used = _requirers(site, gone | {PYCTI}, but={PYCTI} | gone)
         if PYCTI in used:  # something else needs pycti: none of it is left over
-            return [], {}
+            return [], {PYCTI: used[PYCTI]}
         if not gone & set(used):
             break
         gone -= set(used)
@@ -293,11 +305,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     output = (check.stdout + check.stderr).rstrip()
     # Only pycti's own requirements unmet, and those of what it brought in
-    # (fastapi): leftovers nothing here uses. Any other conflict still fails.
+    # (fastapi, botocore): leftovers nothing here uses. Any other conflict
+    # still fails.
     conflicted = {
         _name(n) for n in re.findall(r"The package `([^`]+)` requires", output)
     }
-    pycti_tree = {PYCTI} | _brought_by_pycti(site) - set(pins) if pycti else set()
+    pycti_tree = {PYCTI} | _brought_by_pycti(site, pins) - set(pins) if pycti else set()
     pycti_only = bool(conflicted) and conflicted <= pycti_tree
     if check.returncode != 0 and not pycti_only:
         print(
@@ -312,25 +325,24 @@ def main(argv: list[str] | None = None) -> int:
             if pycti.split(".")[0] == "6"
             else ""
         )
+        # The one command, for the list `vhir update` offers: removing pycti
+        # alone would leave what it brought in, and their conflicts, behind.
+        removable, used_by = opencti_leftovers(site, pins, have)
+        todo = (
+            " To remove it and what only it brought in: uv pip uninstall --python"
+            f" {shlex.quote(py)} {' '.join(shlex.quote(n) for n in removable)}"
+            if removable
+            else f" It is also required by {', '.join(used_by[PYCTI])}, so nothing"
+            " is offered for removal."
+        )
         print(
             f"  pycti {pycti} is installed but no longer needed: opencti-mcp talks"
-            f" to OpenCTI directly{held}. To remove it:"
-            f" uv pip uninstall --python {shlex.quote(py)} pycti"
+            f" to OpenCTI directly{held}.{todo}"
         )
-    others = sorted(conflicted - {PYCTI}) if pycti_only else []
-    removable, used_by = opencti_leftovers(site, pins, have) if args.final else ([], {})
-    unused = [n for n in others if n in removable]
-    used = {n: used_by[n] for n in others if n in used_by}
-    if unused and args.final:
-        print(
-            f"  {', '.join(unused)}: left by an earlier install, not in the lock,"
-            " and needing versions the lock doesn't have; nothing here uses them."
-            f" To remove: uv pip uninstall --python {shlex.quote(py)} {' '.join(unused)}"
-        )
-    for n, by in sorted(used.items()):  # never advised away: something uses it
-        print(
-            f"  {n}: also required by {', '.join(by)}; its own requirements aren't met"
-        )
+        for n, by in sorted(used_by.items()):  # never advised away: something uses it
+            unmet = "; its own requirements aren't met" if n in conflicted else ""
+            if n != PYCTI:
+                print(f"  {n}: also required by {', '.join(by)}{unmet}")
 
     if differ:
         print(

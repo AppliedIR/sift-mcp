@@ -47,7 +47,8 @@ SIFT_PACKAGES=(forensic-knowledge sift-common forensic-mcp sift-mcp sift-gateway
 FIRST_PARTY=(forensic-knowledge sift-common forensic-mcp sift-mcp sift-gateway
     case-mcp report-mcp case-dashboard windows-triage-mcp rag-mcp vhir-cli
     opensearch-mcp opencti-mcp)
-HOLDS=()
+# botocore (pycti's, via boto3) needs <3 on boxes that removed pycti alone: lift only once update removes such orphans.
+HOLDS=("python-dateutil<3")
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
