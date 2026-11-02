@@ -47,9 +47,7 @@ SIFT_PACKAGES=(forensic-knowledge sift-common forensic-mcp sift-mcp sift-gateway
 FIRST_PARTY=(forensic-knowledge sift-common forensic-mcp sift-mcp sift-gateway
     case-mcp report-mcp case-dashboard windows-triage-mcp rag-mcp vhir-cli
     opensearch-mcp opencti-mcp)
-# opentelemetry stays at 1.35.x, as locked when OpenCTI's old client (pycti)
-# needed it; the next lock refresh decides whether to lift it.
-HOLDS=("opentelemetry-sdk<1.36" "opentelemetry-api<1.36")
+HOLDS=()
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
@@ -119,7 +117,7 @@ write_lock() {  # write_lock <lock> <body> [header line]
     echo "# opensearch-mcp  $OPENSEARCH_SHA"
     echo "# exclude-newer   $EXCLUDE_NEWER  (packages published before this date)"
     echo "# uv              $(uv --version | awk '{print $2}')"
-    echo "# held            ${HOLDS[*]}  (otel 1.35.x, as locked before)"
+    [ ${#HOLDS[@]} -eq 0 ] || echo "# held            ${HOLDS[*]}"
     echo "# reproduce       deps/regen-lock.sh --sift $SIFT_SHA --vhir $VHIR_SHA --opensearch $OPENSEARCH_SHA --exclude-newer $EXCLUDE_NEWER"
     echo "#"
     cat "$WORK/$2"
