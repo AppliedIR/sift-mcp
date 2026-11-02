@@ -446,6 +446,7 @@ def test_a_citation_joining_a_port_record_isnt_called_missing(case):  # noqa: F8
 
 # --- the finding's own entries ---------------------------------------------
 
+BLANKS = ("  ", "\t", "\n")  # each read as a left-out type
 AS_ENTERED = [
     ({"value": "10.20.30.40", "type": "IPv4"}, "ipv4-addr"),
     ({"value": PATH, "type": "file_path"}, "file:path"),
@@ -453,6 +454,11 @@ AS_ENTERED = [
     ({"value": "bad.example.org", "type": "Domain Name"}, "domain-name"),
     ({"value": SHA, "type": "SHA-256"}, "file:hash:sha256"),
     ({"value": "10.20.30.45", "type": "  "}, ""),
+    *[
+        ({"value": f"10.20.30.46:{port}", "type": blank}, "")
+        for blank in BLANKS
+        for port in (443, 8080)
+    ],
 ]
 
 

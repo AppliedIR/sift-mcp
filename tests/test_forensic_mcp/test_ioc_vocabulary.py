@@ -599,7 +599,11 @@ PORT_ENTRIES = [
     {"value": "10.20.30.46:443", "type": "IPV4-ADDR"},
     {"value": "10.20.30.47:443", "type": " ipv4-addr "},
     {"value": "10.20.30.48:443", "type": "ipv4-addr"},
-    {"value": "10.20.30.43:443", "type": "  "},
+    *[
+        {"value": f"10.20.30.43:{port}", "type": blank}
+        for blank in ("  ", "\t", "\n")
+        for port in (443, 8080)
+    ],
     "10.20.30.44:443",
 ]
 
