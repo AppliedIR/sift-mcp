@@ -357,6 +357,13 @@ def test_an_unknown_type_past_the_first_hundred_iocs_is_refused(case):  # noqa: 
     _refusal_text(result["errors"], "frobnitz", "zz7.example.net", n=101)
 
 
+@pytest.mark.parametrize("value", ["", "  "], ids=["empty", "spaces"])
+def test_an_empty_value_is_skipped_whatever_its_type(case, value):  # noqa: F811
+    result = _record({**FINDING, "iocs": [{"value": value, "type": "frobnitz"}]})
+    assert result["status"] == "STAGED", result
+    assert _records(case) == []
+
+
 def test_validate_finding_still_takes_a_spelling_base_took():
     result = _validate({**FINDING, "iocs": [{"value": "10.20.30.40", "type": "IPv4"}]})
     assert result["valid"] is True, result
@@ -445,6 +452,20 @@ def test_validate_finding_refuses_an_ipv4_type_on_an_ipv6_address():
     result = _validate({**FINDING, "iocs": [ioc]})
     assert result["valid"] is False, result
     _not_ipv4_text(result["errors"], "ipv4-addr", "fe80::9")
+
+
+@pytest.mark.parametrize(
+    ("ioc", "check"),
+    [
+        ({"value": "a" * 300, "type": "b" * 300}, _refusal_text),
+        ({"value": "f" * 300, "type": "i" + "-" * 298 + "p"}, _not_ipv4_text),
+    ],
+    ids=["unknown type", "ipv4 type"],
+)
+def test_a_refusal_echoes_a_long_value_and_type_cut_short(case, ioc, check):  # noqa: F811
+    errors = _refused(case, {**FINDING, "iocs": [ioc]})["errors"]
+    text = check(errors, ioc["type"][:64], ioc["value"][:200])
+    assert ioc["type"][:65] not in text and ioc["value"][:201] not in text, text
 
 
 def test_an_ipv4_type_takes_a_defanged_address_and_port(case):  # noqa: F811

@@ -111,17 +111,17 @@ def _ioc_type_error(iocs) -> str | None:
         refanged = ioc_types.refang(value.strip())
         if not refanged:
             continue
-        said = _REFUSED.format(n=n, value=value)
-        ioc_id = ioc_types.canonical(given)
+        said = _REFUSED.format(n=n, value=value[:200])
+        ioc_id, shown = ioc_types.canonical(given), given[:64]
         if ioc_id is None:
             return (
-                f'{said}"{given}" is not an IOC type Valhuntir knows. Send the '
+                f'{said}"{shown}" is not an IOC type Valhuntir knows. Send the '
                 f"finding again with one of these types: {ioc_types.listing()}. "
                 f"{DETECTED} {_WHERE}"
             )
         if ioc_id == "ipv4-addr" and not ioc_types.is_ipv4(refanged):
             return (
-                f'{said}its type "{given}" means ipv4-addr, but the value is not '
+                f'{said}its type "{shown}" means ipv4-addr, but the value is not '
                 "one IPv4 address with an optional port. Send the finding again "
                 "with this IOC typed ipv6-addr if it is an IPv6 address, with no "
                 f"type to have it detected, or with the address alone. {_WHERE}"
