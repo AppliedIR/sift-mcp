@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 from report_mcp.server import _extract_all_iocs
+from sift_common import ioc_types
 
 from .test_report_ioc_groups import _case_with, _f, _r, _report, _values, case  # noqa: F401
 
@@ -152,6 +153,42 @@ def test_each_ioc_lists_every_finding_that_cites_it():
         "10.20.30.51:443": ["F-tester-001", "F-tester-002"],
         "10.20.30.41": ["F-tester-003", "F-tester-004", "F-tester-005"],
     }
+
+
+class _Keys(set):
+    """A value's keys that count each time they are compared with others."""
+
+    compared = 0
+
+    def __and__(self, other):
+        _Keys.compared += 1
+        return set(self) & set(other)
+
+    __rand__ = __and__
+
+    def isdisjoint(self, other):
+        _Keys.compared += 1
+        return set(self).isdisjoint(other)
+
+
+# The findings an IOC lists are looked up by key, not found by comparing the
+# IOC with every citation: twice the IOCs take about twice the comparisons
+def test_twice_the_iocs_take_about_twice_the_key_comparisons(monkeypatch):
+    keys = ioc_types.keys
+    monkeypatch.setattr(ioc_types, "keys", lambda *a: _Keys(keys(*a)))
+
+    def compared(n):
+        values = [f"10.20.{i // 200}.{i % 200}" for i in range(n)]
+        records = [_r(i, v, "ipv4-addr") for i, v in enumerate(values)]
+        findings = [_f(i, [v], observation="") for i, v in enumerate(values)]
+        _Keys.compared = 0
+        groups = _extract_all_iocs(findings, records, records)
+        assert groups == {"IPv4": sorted(
+            ({"value": v, "source_findings": [f"F-tester-{i:03d}"]}
+             for i, v in enumerate(values)), key=lambda e: e["value"])}  # fmt: skip
+        return _Keys.compared
+
+    assert compared(80) <= 2 * compared(40) + 2
 
 
 # IPv6 addresses typed as IPv4 no record holds are listed whole, as vhir lists them

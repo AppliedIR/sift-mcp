@@ -414,10 +414,13 @@ def _extract_all_iocs(
         for t, value in cited:
             if (value := _ioc_value(value)) is not None and ioc_types.ck(value, t):
                 named.append((value, t, str(f.get("id", ""))))
-    keyed = [(ioc_types.keys(v, t), fid) for v, t, fid in named]
+    sources: dict[str, set[str]] = {}  # each key → the findings naming it
+    for v, t, fid in named:
+        for k in ioc_types.keys(v, t):
+            sources.setdefault(k, set()).add(fid)
 
     def entry(value: str, keys: set[str]) -> dict:
-        fids = {fid for k, fid in keyed if k & keys} - {""}
+        fids = set().union(*(sources.get(k, ()) for k in keys)) - {""}
         return {"value": value, "source_findings": sorted(fids)}
 
     groups: dict[str, list[dict]] = {}
