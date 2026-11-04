@@ -1,7 +1,7 @@
 """save_report writes a report only when every file it reads IOCs from,
 findings.json and iocs.json, is absent or parses to a list of records. Any
-other shape there (null, a number, a boolean, a list holding something
-other than records) means the report isn't saved: the
+other file there (one that won't parse, null, a number, a boolean, a list
+holding something other than records) means the report isn't saved: the
 error names the file and what to run, and nothing is raised. An absent file is
 a case with none of them. The IOCs come from the files as they are just before
 the write, and each save reads the approved view once. vhir-cli's tests state
@@ -71,11 +71,14 @@ def _save(rs, case):
 
 
 BAD = {  # (file, what is written in it, what the error says about it)
+    "iocs.json that won't parse (VALUE only in its record)":
+        ("iocs.json", None, "couldn't be read"),
     "iocs.json null": ("iocs.json", "null", "holds null, not a list of records"),
     "iocs.json 7": ("iocs.json", "7", "holds a number, not a list of records"),
     "iocs.json true": ("iocs.json", "true", "holds a boolean, not a list of records"),
     "iocs.json a list of strings": ("iocs.json", json.dumps([VALUE]),
                                     "holds a list with an entry that isn't a record"),
+    "findings.json that won't parse": ("findings.json", None, "couldn't be read"),
     "findings.json null": ("findings.json", "null", "holds null, not a list of records"),
     "findings.json 7": ("findings.json", "7", "holds a number, not a list of records"),
     "findings.json true": ("findings.json", "true",

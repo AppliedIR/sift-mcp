@@ -515,8 +515,9 @@ class _Unsafe(Exception):
 
 def _fresh_records(case_dir: Path) -> list[tuple[str, dict]]:
     """The records of findings.json and iocs.json as they are now, read whole.
-    A file that is absent, or that won't parse (as load_* reads it), holds
-    none; one that parses must be a list of records, or `_Unsafe` names it.
+    A file that is absent holds none; one that is present must parse to a
+    list of records, or `_Unsafe` names it. The raw parse, not load_*: their
+    [] for a file that won't parse can't be told from a case with none.
     A copy of vhir-cli's commands.report._fresh_records, kept in sync by hand."""
     records: list[tuple[str, dict]] = []
     for key, name in _RECORD_FILES:
@@ -526,8 +527,8 @@ def _fresh_records(case_dir: Path) -> list[tuple[str, dict]]:
         try:
             text = read_regular(path).decode("utf-8")
             data = json.loads(text) if text.strip() else []
-        except json.JSONDecodeError:
-            continue
+        except (OSError, ValueError, RecursionError) as e:
+            raise _Unsafe(path, f"couldn't be read ({e})") from None
         if not isinstance(data, list):
             raise _Unsafe(path, f"holds {_KINDS[type(data)]}, not a list of records")
         if not all(isinstance(i, dict) for i in data):
