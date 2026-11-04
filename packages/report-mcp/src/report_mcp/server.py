@@ -7,6 +7,7 @@ data is included in each report type.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -28,6 +29,7 @@ from vhir_cli.case_io import (
     load_iocs,
     load_timeline,
     load_todos,
+    read_regular,
 )
 from vhir_cli.commands.evidence import list_evidence_data
 from vhir_cli.ledger_verify import (
@@ -501,6 +503,39 @@ def _structured_iocs(findings: list) -> list[tuple]:
     return out
 
 
+_RECORD_FILES = (("findings", "findings.json"), ("iocs", "iocs.json"))
+_KINDS = {dict: "an object", str: "a string", bool: "a boolean", int: "a number",
+          float: "a number", type(None): "null"}  # fmt: skip
+
+
+class _Unsafe(Exception):
+    """A file a saved report reads its IOCs from is present but isn't a list
+    of records: (the file, what is wrong with it)."""
+
+
+def _fresh_records(case_dir: Path) -> list[tuple[str, dict]]:
+    """The records of findings.json and iocs.json as they are now, read whole.
+    A file that is absent, or that won't parse (as load_* reads it), holds
+    none; one that parses must be a list of records, or `_Unsafe` names it.
+    A copy of vhir-cli's commands.report._fresh_records, kept in sync by hand."""
+    records: list[tuple[str, dict]] = []
+    for key, name in _RECORD_FILES:
+        path = case_dir / name
+        if not os.path.lexists(path):
+            continue
+        try:
+            text = read_regular(path).decode("utf-8")
+            data = json.loads(text) if text.strip() else []
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, list):
+            raise _Unsafe(path, f"holds {_KINDS[type(data)]}, not a list of records")
+        if not all(isinstance(i, dict) for i in data):
+            raise _Unsafe(path, "holds a list with an entry that isn't a record")
+        records += [(key, i) for i in data]
+    return records
+
+
 def _report_iocs(case_dir: Path, view: dict) -> list[str]:
     """The IOCs a saved report defangs: every domain, URL and IPv4 address
     recorded in the case, whatever its status, since a status can change
@@ -511,11 +546,11 @@ def _report_iocs(case_dir: Path, view: dict) -> list[str]:
     it holds). A name a finding's text merely mentions isn't one. Hashes,
     paths and the rest aren't.
     vhir-cli's `report --save` gathers them the same way, with the same
-    functions (vhir_cli.defang)."""
+    functions (vhir_cli.defang). Raises `_Unsafe` when a file it reads isn't
+    a list of records."""
     result = view.get("result")
     records = [*(result.records if result is not None else [])]
-    records += [("findings", f) for f in load_findings(case_dir)]
-    records += [("iocs", i) for i in load_iocs(case_dir)]
+    records += _fresh_records(case_dir)
     findings = [
         *(view.get("findings") or []),
         *(i for k, i in records if k == "findings"),
@@ -1096,7 +1131,21 @@ def create_server() -> FastMCP:
             # every IOC recorded in the case is written defanged, whatever its
             # status, the block too: it's a display copy, and nothing reads
             # its text back
-            iocs = _report_iocs(case_dir, view)
+            try:
+                iocs = _report_iocs(case_dir, view)
+            except _Unsafe as e:
+                path, why = e.args
+                return {
+                    "error": (
+                        f"Report not saved. {path} {why}, so not every IOC the"
+                        " case records can be written defanged. Have the"
+                        " examiner run `vhir review --findings --verify` to"
+                        " see the file's state, repair the file or restore it"
+                        " from a backup (`vhir restore`), then save the report"
+                        " again."
+                    ),
+                    "file": str(path),
+                }
             content = _defang_iocs(content, iocs)
             block = [
                 _defang_iocs(line, iocs)
