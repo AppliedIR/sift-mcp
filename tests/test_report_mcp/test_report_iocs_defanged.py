@@ -32,7 +32,7 @@ def _f(fid, status="APPROVED", **extra):
             "confidence": "HIGH", "status": status, **extra}  # fmt: skip
 
 
-def _saved(case, findings, content, iocs=(), filename="r.md"):
+def _saved(case, findings, content, iocs=(), filename="r.md", profile="full"):
     (case / "findings.json").write_text(json.dumps(findings))
     (case / "timeline.json").write_text("[]")
     (case / "iocs.json").write_text(json.dumps(list(iocs)))
@@ -42,7 +42,7 @@ def _saved(case, findings, content, iocs=(), filename="r.md"):
     tool = {t.name: t for t in create_server()._tool_manager.list_tools()}[
         "save_report"
     ]
-    got = tool.fn(filename=filename, content=content, profile="full")
+    got = tool.fn(filename=filename, content=content, profile=profile)
     assert got["status"] == "saved", got
     return (case / "reports" / filename).read_text()
 
@@ -122,3 +122,48 @@ def test_a_report_saved_with_a_json_name_is_defanged_too(case):
     content = json.dumps({"iocs": ["evil.com", "http://bad.example.com/x.php"]})
     saved = _saved(case, [APPROVED], content, filename="r.json")
     assert '"evil[.]com"' in saved and "hxxp://bad[.]example[.]com/x.php" in saved
+
+
+NESTED = _f("F-tester-003", title="C2 at evil13.example.com",
+            iocs=[{"type": "domain-name", "value": "evil13[[.]]example.com"},
+                  {"type": "url", "value": "hxxp://user[[@]]evil14[[[.]]]example.com/a"},
+                  {"type": "email-addr", "value": "user[[@]]evil15.example.com"}])  # fmt: skip
+
+
+@pytest.mark.parametrize("profile", ["full", "ioc"])
+def test_an_ioc_given_in_nested_brackets_is_written_defanged(case, profile):
+    """The report names the IOCs live, as stored; each is written defanged,
+    and a nested form as given stays as it is."""
+    saved = _saved(case, [NESTED], (
+        "Beacon to evil13.example.com and http://user@evil14.example.com/a; given "
+        "as evil13[[.]]example.com and user[[@]]evil15.example.com."), profile=profile)  # fmt: skip
+    assert (
+        "Beacon to evil13[.]example[.]com and hxxp://user@evil14[.]example[.]com/a; "
+        "given as evil13[[.]]example.com and user[[@]]evil15.example.com." in saved
+    )
+    assert "[F-tester-003] C2 at evil13[.]example[.]com" in saved
+    assert "evil13.example.com" not in saved and "evil14.example.com" not in saved
+
+
+HXXP_IN_A_NAME = _f("F-tester-004", title="t",
+                    iocs=[{"type": "url", "value": "https://safe.example.com/hxxp/payload"},
+                          {"type": "domain-name", "value": "hxxp.example.com"}])  # fmt: skip
+STORED = [  # the records record_finding stores for them (hxxp made http anywhere)
+    {"id": "I-tester-001", "type": "url", "value": "https://safe.example.com/http/payload",
+     "status": "DRAFT", "source_findings": ["F-tester-004"]},
+    {"id": "I-tester-002", "type": "domain-name", "value": "http.example.com",
+     "status": "DRAFT", "source_findings": ["F-tester-004"]},
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("profile", ["full", "ioc"])
+def test_an_ioc_with_hxxp_outside_its_scheme_is_written_defanged(case, profile):
+    saved = _saved(case, [HXXP_IN_A_NAME], (
+        "Payload at https://safe.example.com/hxxp/payload from hxxp.example.com; "
+        "stored as https://safe.example.com/http/payload and http.example.com."),
+        iocs=STORED, profile=profile)  # fmt: skip
+    assert (
+        "Payload at hxxps://safe[.]example[.]com/hxxp/payload from hxxp[.]example[.]com; "
+        "stored as hxxps://safe[.]example[.]com/http/payload and http[.]example[.]com."
+        in saved
+    )
