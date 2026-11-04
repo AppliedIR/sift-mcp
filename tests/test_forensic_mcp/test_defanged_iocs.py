@@ -13,6 +13,13 @@ import pytest
 from report_mcp.server import _TEXT_ONLY, _extract_all_iocs
 from sift_common import defang
 
+from .test_finding_challenge import (  # noqa: F401 (case and home are fixtures)
+    FINDING,
+    _record,
+    case,
+    home,
+)
+
 SAMPLE = (
     "C2 at hxxp://evil[.]com via bad(dot)example.com, beacon to 185[.]220[.]101[.]45"
 )
@@ -102,6 +109,35 @@ def test_vhir_leaves_what_the_examiner_rejected_out_of_a_reports_iocs_alike(tmp_
         for c, copy in enumerate((_report_iocs, vhir_report_iocs)):
             got = gathered(copy, tmp_path / f"{n}-{c}", field, record, line)
             assert got == expected, (row, copy.__module__)
+
+
+def test_record_finding_refuses_every_citation_whose_type_changes_a_reports_iocs(case):  # noqa: F811
+    """A citation's type decides whether a rejection keeps it out of a report
+    (take() keys it by its type, as forensic-mcp joins it) only for a URL with
+    a port typed ipv4-addr, and record_finding refuses that type on a URL,
+    changing no file of the case. So a finding record_finding wrote gathers
+    alike keyed by its types or not; one from `vhir merge` or an imported
+    bundle, which write findings.json without that check, is keyed by its
+    types (the rejection rows hold it)."""
+    from report_mcp.server import _network_ioc
+    from sift_common import ioc_types
+
+    values = [*NOTATIONS, "10.0.0.5", "10.0.0.5:8080", "10.0.0.5/24", "10.0.0.5[:]8080",
+              "http://10.0.0.5", "http://10.0.0.5:8080", "hxxp://10[.]0[.]0[.]5:8080",
+              "http://10.0.0.5:8080/p", "https://evil.example.com:443", "evil.example.com:8080",
+              "HTTP://EVIL.EXAMPLE.COM:8080", "user@evil.example.com", "evil.example.com."]  # fmt: skip
+    types = [None, "", *(s for i, (_, _, more) in ioc_types.IDS.items()
+                         for s in [i, *more.split()])]  # fmt: skip
+    changes = [(v, t) for v in values for t in types
+               if any(_network_ioc(v, typed) for typed in (True, False))
+               and ioc_types.keys(v, t) != ioc_types.keys(v, None)]  # fmt: skip
+    assert ("http://10.0.0.5:8080", "ipv4-addr") in changes
+    files = {p.name: p.read_bytes() for p in case.iterdir() if p.is_file()}
+    for v, t in changes:
+        got = _record({**FINDING, "iocs": [{"value": v, "type": t}]})
+        assert got["status"] == "VALIDATION_FAILED", (v, t, got)
+        assert any("means ipv4-addr" in e for e in got["errors"]), (v, t, got)
+    assert {p.name: p.read_bytes() for p in case.iterdir() if p.is_file()} == files
 
 
 # --- a saved report's IOCs, written defanged: where a domain names a host ------
