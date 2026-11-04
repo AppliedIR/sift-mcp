@@ -4,8 +4,9 @@ other file there (empty or blank, not UTF-8, one that won't parse, null, a
 number, a boolean, a list holding something other than records, a directory,
 a dangling symlink) means the report isn't saved: nothing is raised, a report
 already saved under that name is left byte-identical with no new version
-beside it, and the error names the file and what the examiner can do, with no
-command to run. An absent file is
+beside it (with none there, none is created), and the error names the file
+and what the examiner can do, with no command to run. A file that is an empty
+list saves. An absent file is
 a case with none of them. The IOCs come from the files as they are just before
 the write, and each save reads the approved view once. vhir-cli's tests state
 the same rows for `vhir report --save`."""
@@ -98,6 +99,15 @@ BAD = {  # (file, what is written in it, what the error says about it)
                             "couldn't be read"),
     "iocs.json a directory": ("iocs.json", DIR, "couldn't be read"),
     "iocs.json a dangling symlink": ("iocs.json", LINK, "couldn't be read"),
+    "findings.json not UTF-8": ("findings.json",
+                                b'[{"id": "F-x", "observation": "\xff"}]',
+                                "couldn't be read"),
+    "findings.json a directory": ("findings.json", DIR, "couldn't be read"),
+    "findings.json a dangling symlink": ("findings.json", LINK, "couldn't be read"),
+}  # fmt: skip
+GOOD = {  # (file, what is written in it): a list of records, empty too, saves
+    "iocs.json []": ("iocs.json", "[]"),
+    "findings.json []": ("findings.json", "[]"),
 }  # fmt: skip
 
 
@@ -116,12 +126,14 @@ def _spoil(path, how):
 
 
 def _sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """None when there is no file."""
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
 
 
+@pytest.mark.parametrize("prior", (False, True), ids=("no-report", "a-report"))
 @pytest.mark.parametrize("row", BAD)
 def test_a_file_that_is_not_a_list_of_records_refuses_the_save(
-    rs, tmp_path, monkeypatch, row
+    rs, tmp_path, monkeypatch, row, prior
 ):
     case = _case(tmp_path, monkeypatch)
     name, how, why = BAD[row]
@@ -129,16 +141,26 @@ def test_a_file_that_is_not_a_list_of_records_refuses_the_save(
     _spoil(path, how)
     (case / "reports").mkdir()
     report = case / "reports" / "r.md"
-    report.write_bytes(PRIOR)
+    if prior:
+        report.write_bytes(PRIOR)
     before = _sha(report)
     got, saved = _save(rs, case)
-    assert [p.name for p in report.parent.iterdir()] == ["r.md"], got
+    assert [p.name for p in report.parent.iterdir()] == ["r.md"] * prior, got
     assert _sha(report) == before, saved
     assert got["file"] == str(path), got
     assert got["error"].startswith(f"Report not saved. {path} {why}"), got
     assert "`" not in got["error"] and "vhir " not in got["error"], got
     for words in ("Tell the examiner", "restore the file from a backup", "empty list"):
         assert words in got["error"], got
+
+
+@pytest.mark.parametrize("row", GOOD)
+def test_a_file_that_is_an_empty_list_saves(rs, tmp_path, monkeypatch, row):
+    case = _case(tmp_path, monkeypatch)
+    name, text = GOOD[row]
+    (case / name).write_text(text)
+    got, saved = _save(rs, case)
+    assert got.get("status") == "saved" and saved is not None, got
 
 
 def test_an_absent_iocs_json_saves(rs, tmp_path, monkeypatch):
