@@ -477,7 +477,9 @@ def _network_ioc(value, typed: bool) -> str | None:
 
 def _structured_iocs(findings: list) -> list[tuple]:
     """Each value in the findings' `iocs` fields, with whether its IOC type
-    names a domain, an IPv4 address or a URL (a plain value has no type)."""
+    names a domain, an IPv4 address or a URL (a plain value has no type), and
+    the type forensic-mcp keys it under: a {"value", "type"} dict's own type,
+    else none (it flattens a {type: values} form to plain values)."""
     out = []
     for f in findings:
         field = f.get("iocs") if isinstance(f, dict) else None
@@ -485,18 +487,17 @@ def _structured_iocs(findings: list) -> list[tuple]:
             for kind, values in field.items():
                 typed = any(t in str(kind).lower() for t in _NETWORK_TYPES)
                 out += [
-                    (v, typed)
+                    (v, typed, None)
                     for v in (values if isinstance(values, list) else [values])
                 ]
         elif isinstance(field, list):
             for ioc in field:
                 if isinstance(ioc, dict):
                     kind = str(ioc.get("type", "")).lower()
-                    out.append(
-                        (ioc.get("value", ""), any(t in kind for t in _NETWORK_TYPES))
-                    )
+                    typed = any(t in kind for t in _NETWORK_TYPES)
+                    out.append((ioc.get("value", ""), typed, ioc.get("type")))
                 else:
-                    out.append((ioc, False))
+                    out.append((ioc, False, None))
     return out
 
 
@@ -523,7 +524,8 @@ def _report_iocs(case_dir: Path, view: dict) -> list[str]:
     an approved finding. A name a finding's text merely mentions isn't one.
     Hashes, paths and the rest aren't, nor is a value the examiner rejected
     (an IOC record REJECTED and manually reviewed, its rejection signed in
-    the ledger), whatever cites it.
+    the ledger), whatever cites it, in any form forensic-mcp joins to that
+    record (ioc_types.keys).
     vhir-cli's `report --save` gathers them the same way, with the same
     functions (vhir_cli.defang)."""
     approved = {f.get("id") for f in view.get("findings") or []}
@@ -531,21 +533,22 @@ def _report_iocs(case_dir: Path, view: dict) -> list[str]:
     records = [i for i in load_iocs(case_dir) if isinstance(i, dict)]
     result = view.get("result")
     judged = result.records if result is not None else []  # verify's own read
-    rejected = {  # compared as gathered: normalised, then case-folded
-        v.casefold() for key, i in judged
+    rejected = set().union(*(  # each signed rejection's keys: the store's identity
+        ioc_types.keys(i.get("value", ""), i.get("type")) for key, i in judged
         if key == "iocs" and isinstance(i, dict)
         and i.get("status") == "REJECTED" and i.get("manually_reviewed") is True
         and _rejection_signed(i, result)
-        and (v := _network_ioc(i.get("value", ""), True)) is not None
-    }  # fmt: skip
+    ))  # fmt: skip
 
-    def take(value, typed: bool) -> None:
+    def take(value, typed: bool, t=None) -> None:
+        """Keep the value as the reports show it, unless it is the same IOC,
+        as forensic-mcp joins a citation to a record, as a signed rejection."""
         v = _network_ioc(value, typed)
-        if v is not None and v.casefold() not in rejected:
+        if v is not None and not ioc_types.keys(value, t) & rejected:
             kept.add(v)
 
-    for value, typed in _structured_iocs(view.get("findings") or []):
-        take(value, typed)
+    for value, typed, t in _structured_iocs(view.get("findings") or []):
+        take(value, typed, t)
     case_iocs = [  # the case's IOCs that one of the approved findings cites
         i for i in records if isinstance(i.get("source_findings"), list)
         and approved.intersection(map(str, i["source_findings"]))
@@ -554,7 +557,7 @@ def _report_iocs(case_dir: Path, view: dict) -> list[str]:
         if isinstance(ioc, dict) and any(
             t in str(ioc.get("type", "")).lower() for t in _NETWORK_TYPES
         ):
-            take(ioc.get("value", ""), True)
+            take(ioc.get("value", ""), True, ioc.get("type"))
     return sorted(kept, key=lambda v: (-len(v), v))
 
 
