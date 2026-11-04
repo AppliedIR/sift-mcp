@@ -501,63 +501,39 @@ def _structured_iocs(findings: list) -> list[tuple]:
     return out
 
 
-def _rejection_signed(ioc: dict, result) -> bool:
-    """Whether verify reads the examiner's own rejection of this IOC record in
-    the approval ledger: its verdict VALID, on a direct decision (not a
-    cascade), in a case that passes verify (any verdict that fails it, on any
-    item, cancels every rejection). `ioc` is the record verify read, so VALID
-    on its REJECTED status means its latest line records that rejection for
-    this content (verify fails a status or content its line doesn't). A status
-    set by hand has no ledger line, so it stays defanged."""
-    if result is None or result.exit_code:
-        return False  # nothing counts while the case fails verify
-    v = result.verdict(str(ioc.get("id")))
-    return (
-        v is not None and v.status == "VALID" and v.item_type == "ioc" and not v.source
-    )  # fmt: skip
-
-
 def _report_iocs(case_dir: Path, view: dict) -> list[str]:
-    """The IOCs of the case that are domains, URLs or IPv4 addresses, live,
-    longest first (a URL before the host it holds): the values in the approved
-    findings' `iocs` fields, and the case's IOC records approved or cited by
-    an approved finding. A name a finding's text merely mentions isn't one.
-    Hashes, paths and the rest aren't, nor is a value the examiner rejected
-    (an IOC record REJECTED and manually reviewed, its rejection signed in
-    the ledger), whatever cites it, in any form forensic-mcp joins to that
-    record (ioc_types.keys).
+    """The IOCs a saved report defangs: every domain, URL and IPv4 address
+    recorded in the case, whatever its status, since a status can change
+    while a report is saved. They are the values in each finding's `iocs`
+    field and each IOC record of such a type: in `view` and the records verify
+    read for it, and in the files read again just before the write, so a value
+    recorded since is defanged too. Live, longest first (a URL before the host
+    it holds). A name a finding's text merely mentions isn't one. Hashes,
+    paths and the rest aren't.
     vhir-cli's `report --save` gathers them the same way, with the same
     functions (vhir_cli.defang)."""
-    approved = {f.get("id") for f in view.get("findings") or []}
-    kept: set[str] = set()
-    records = [i for i in load_iocs(case_dir) if isinstance(i, dict)]
     result = view.get("result")
-    judged = result.records if result is not None else []  # verify's own read
-    rejected = set().union(*(  # each signed rejection's keys: the store's identity
-        ioc_types.keys(i.get("value", ""), i.get("type")) for key, i in judged
-        if key == "iocs" and isinstance(i, dict)
-        and i.get("status") == "REJECTED" and i.get("manually_reviewed") is True
-        and _rejection_signed(i, result)
-    ))  # fmt: skip
+    records = [*(result.records if result is not None else [])]
+    records += [("findings", f) for f in load_findings(case_dir)]
+    records += [("iocs", i) for i in load_iocs(case_dir)]
+    findings = [
+        *(view.get("findings") or []),
+        *(i for k, i in records if k == "findings"),
+    ]
+    iocs = [*(view.get("iocs") or []), *(i for k, i in records if k == "iocs")]
+    kept: set[str] = set()
 
-    def take(value, typed: bool, t=None) -> None:
-        """Keep the value as the reports show it, unless it is the same IOC,
-        as forensic-mcp joins a citation to a record, as a signed rejection."""
-        v = _network_ioc(value, typed)
-        if v is not None and not ioc_types.keys(value, t) & rejected:
+    def take(value, typed: bool) -> None:
+        if (v := _network_ioc(value, typed)) is not None:
             kept.add(v)
 
-    for value, typed, t in _structured_iocs(view.get("findings") or []):
-        take(value, typed, t)
-    case_iocs = [  # the case's IOCs that one of the approved findings cites
-        i for i in records if isinstance(i.get("source_findings"), list)
-        and approved.intersection(map(str, i["source_findings"]))
-    ]  # fmt: skip
-    for ioc in [*(view.get("iocs") or []), *case_iocs]:  # approved, or so cited
+    for value, typed, _ in _structured_iocs(findings):
+        take(value, typed)
+    for ioc in iocs:
         if isinstance(ioc, dict) and any(
             t in str(ioc.get("type", "")).lower() for t in _NETWORK_TYPES
         ):
-            take(ioc.get("value", ""), True, ioc.get("type"))
+            take(ioc.get("value", ""), True)
     return sorted(kept, key=lambda v: (-len(v), v))
 
 
@@ -1117,8 +1093,9 @@ def create_server() -> FastMCP:
             # still depends on the content above it; the raw file and
             # `vhir review --findings --verify` are authoritative.
             view = approved_view(case_dir)
-            # every IOC of the case is written defanged, the block too: it's a
-            # display copy, and nothing reads its text back
+            # every IOC recorded in the case is written defanged, whatever its
+            # status, the block too: it's a display copy, and nothing reads
+            # its text back
             iocs = _report_iocs(case_dir, view)
             content = _defang_iocs(content, iocs)
             block = [

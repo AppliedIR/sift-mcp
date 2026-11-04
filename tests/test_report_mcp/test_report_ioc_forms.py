@@ -2,9 +2,9 @@
 of the corpus (hxxp at the scheme, inside the host and inside the path; [.]
 and [@] bracketed to depth 3; upper case), through the full and the IOC
 report: a saved report writes none of it live; a signed rejection of its
-records keeps it out of the report's IOCs (generate_report's listing and the
-IOCs save_report defangs); and the listing holds it once, however many forms
-cite it. The records are those record_finding stores for the citations
+records keeps it out of generate_report's listing, and save_report still
+writes none of it live (every recorded value is defanged, whatever its
+status); and the listing holds it once, however many forms cite it. The records are those record_finding stores for the citations
 (tests/test_forensic_mcp/test_ioc_forms_stored.py checks that). vhir-cli's
 tests state the same rows against its report."""
 
@@ -154,17 +154,20 @@ def test_a_saved_report_writes_no_form_of_an_ioc_live(case, name, forms, profile
     assert live(saved, name) == []
 
 
-@pytest.mark.parametrize("profile", ["full", "ioc"])
-@pytest.mark.parametrize(("name", "forms"), [r[1:] for r in ROWS], ids=IDS)
-def test_a_signed_rejection_keeps_every_form_out_of_the_reports_iocs(
+@pytest.mark.parametrize(("name", "forms", "profile"), [
+    pytest.param(name, forms, profile, id=f"{row}-{profile}",
+                 marks=[WRITTEN_LIVE] if KNOWN & set(forms) else [])
+    for profile in ["full", "ioc"] for row, name, forms in ROWS
+])  # fmt: skip
+def test_a_signed_rejection_keeps_every_form_out_of_the_listing_not_live(
     case, name, forms, profile
 ):
-    from report_mcp.server import _report_iocs
-    from vhir_cli.ledger_verify import approved_view
-
-    _case(case, name, forms, "REJECTED")
+    """The content names it in every form cited and as stored."""
+    records = _case(case, name, forms, "REJECTED")
     assert _listed(case, profile) == []
-    assert _report_iocs(case, approved_view(case)) == []
+    named = [*forms, *(r["value"] for r in records)]
+    saved = _saved(case, "Seen: " + "; ".join(named) + ".", profile)
+    assert live(saved, name) == []
 
 
 @pytest.mark.parametrize("profile", ["full", "ioc"])

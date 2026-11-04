@@ -97,7 +97,7 @@ def test_vhir_writes_a_saved_reports_iocs_defanged_by_the_same_functions():
         assert vhir.network_ioc(value, typed) == rs._network_ioc(value, typed), value
 
 
-def test_vhir_leaves_what_the_examiner_rejected_out_of_a_reports_iocs_alike(tmp_path):
+def test_vhir_gathers_every_recorded_value_into_a_reports_iocs_alike(tmp_path):
     """Both copies of the gathering run the same rows (in each repo's own tests
     too) and agree; the gathering differs only in the names it calls."""
     pytest.importorskip("vhir_cli.defang")
@@ -112,13 +112,11 @@ def test_vhir_leaves_what_the_examiner_rejected_out_of_a_reports_iocs_alike(tmp_
 
 
 def test_record_finding_refuses_every_citation_whose_type_changes_a_reports_iocs(case):  # noqa: F811
-    """A citation's type decides whether a rejection keeps it out of a report
-    (take() keys it by its type, as forensic-mcp joins it) only for a URL with
-    a port typed ipv4-addr, and record_finding refuses that type on a URL,
-    changing no file of the case. So a finding record_finding wrote gathers
-    alike keyed by its types or not; one from `vhir merge` or an imported
-    bundle, which write findings.json without that check, is keyed by its
-    types (the rejection rows hold it)."""
+    """A citation's type changes its keys, as forensic-mcp joins it to a
+    record, only for a URL with a port typed ipv4-addr, and record_finding
+    refuses that type on a URL, changing no file of the case. One from `vhir
+    merge` or an imported bundle, which write findings.json without that
+    check, is an IOC of a report either way (the rows hold it)."""
     from report_mcp.server import _network_ioc
     from sift_common import ioc_types
 
