@@ -10,7 +10,7 @@ import pytest
 
 TEXT = (Path(__file__).resolve().parents[1] / "setup-sift.sh").read_text()
 START = "        # Generate join code for the remote LLM client machine"
-END = '    else\n        warn "Gateway not responding.'
+END = "    fi\n    # With no answer, LLM Client Configuration says so once"
 PROLOGUE = (
     "set -euo pipefail\nBOLD=; NC=\n"
     'warn() { echo "[WARN] $*"; }\n'

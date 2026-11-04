@@ -10,7 +10,7 @@ import pytest
 
 TEXT = (Path(__file__).resolve().parents[1] / "setup-sift.sh").read_text()
 START = "# Prompt for client if not set via --client flag"
-END = "# vhir setup client -y changes the user's own Claude files"
+END = "# setup client lists the backends from the gateway"
 PROLOGUE = (
     "set -euo pipefail\nRED=; NC=\n"
     'err() { echo "ERROR $*"; }\nprompt() { echo "$CHOICE"; }\n'

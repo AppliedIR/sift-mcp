@@ -1,14 +1,16 @@
 """setup-sift.sh --remote waits for the gateway before generating join codes.
 
 A gateway just started by systemd often does not answer /health on the first
-check. The Multi-Machine Setup block must poll /health (time-bounded) instead
-of checking once, or no join code is generated on a fresh --remote install.
+check. The Multi-Machine Setup block must use the installer's one time-bounded
+wait instead of checking once, or no join code is generated on a fresh --remote
+install. With no answer, the single timeout message in LLM Client Configuration
+covers join codes (test_setup_sift_client_wait), so this block warns nothing.
 
 These tests extract the wait block from setup-sift.sh and run it under bash with
 a stub curl, so nothing is installed. They fail on the pre-fix revision only
 because the single curl check never waits:
-  - a gateway that answers a few seconds late is missed -> WARN, no join code;
-  - and the WARN path is reached instantly instead of after the bounded wait.
+  - a gateway that answers a few seconds late is missed -> no join code;
+  - and the no-answer path is reached instantly instead of after the bounded wait.
 """
 
 import subprocess
@@ -16,16 +18,18 @@ import time
 from pathlib import Path
 
 TEXT = (Path(__file__).resolve().parents[1] / "setup-sift.sh").read_text()
-START = "    # Wait for gateway to be ready before generating join codes"
+START = "# Wait for the gateway serving now"
 END = '\n    echo ""\n    echo -e "${BOLD}SSH Access${NC}"'
 
 PROLOGUE = (
     "set -euo pipefail\n"
     "BOLD=; NC=\n"
-    'info() { echo "[INFO] $*"; }\n'
+    'info() { echo "[INFO] $*"; }; ok() { echo "[OK] $*"; }\n'
+    "header() { :; }\n"
     'warn() { echo "[WARN] $*"; }\n'
     "prompt_yn() { return 1; }\n"  # always "no" -> skip the Windows sub-block
     'HOST_IP=192.0.2.5; GATEWAY_PORT=4508; VENV_DIR="$STUB"; AUTO_YES=false\n'
+    "REMOTE_MODE=true; MANUAL_START=false\n"
     'GATEWAY_START="systemctl --user start vhir-gateway"\n'
     'HEALTH_URL="https://127.0.0.1:4508/health"\n'
     'CURL_EXTRA="-k"\n'
@@ -35,7 +39,7 @@ PROLOGUE = (
 def _run(tmp_path, curl_body, *, reduce_bound=False, timeout=90):
     """Run the wait block with a stub curl whose body decides each call's rc.
 
-    reduce_bound shrinks the ~60s elapsed bound to 4s so the no-gateway case
+    reduce_bound shrinks the 240s elapsed bound to 4s so the no-gateway case
     finishes quickly; the substring it replaces does not exist on the pre-fix
     revision (no loop), so that revision is unaffected and still checks once.
     """
@@ -55,16 +59,15 @@ def _run(tmp_path, curl_body, *, reduce_bound=False, timeout=90):
     # Marker sanity: true on both the pre-fix and fixed revisions, so it never
     # short-circuits the behavioral assertions below (the pre-fix block must run
     # its single check and fail on behavior, not on a structural guard).
-    assert "curl -sf" in block and "JOIN_READY" in block, block
+    assert "curl -s" in block and "GATEWAY_READY" in block, block
     if reduce_bound:
-        # Shrink the ~60s elapsed bound to 4s for speed. Best-effort: the
+        # Shrink the 240s elapsed bound to 4s for speed. Best-effort: the
         # substring is absent on the pre-fix revision (no loop), so that
         # revision is left untouched and still checks /health exactly once.
-        block = block.replace(
-            "SECONDS - join_wait_start >= 60", "SECONDS - join_wait_start >= 4"
-        )
+        block = block.replace("GW_WAIT_BOUND=240", "GW_WAIT_BOUND=4")
     script = tmp_path / "block.sh"
-    script.write_text(PROLOGUE + block)
+    # The block ends inside if $REMOTE_MODE: close it.
+    script.write_text(PROLOGUE + block + "\nfi\n")
 
     t0 = time.monotonic()
     p = subprocess.run(
@@ -90,22 +93,19 @@ def test_late_gateway_is_found_by_the_poll_and_a_join_code_is_shown(tmp_path):
     )
     assert rc == 0, out
     assert "--code=ABCD-EFGH" in out, out  # the poll found the gateway
-    assert "Gateway not responding" not in out, out
-    # the "waiting" INFO line prints exactly once, only after the first check fails
-    assert out.count("Waiting up to 60s for the gateway to respond") == 1, out
+    # the "waiting" INFO line prints exactly once, before the first check
+    assert out.count("Waiting up to 240s for the gateway to respond") == 1, out
+    assert "[WARN]" not in out, out
 
 
-def test_no_gateway_warns_after_a_bounded_wait_with_todays_text(tmp_path):
+def test_no_gateway_gives_no_join_code_after_a_bounded_wait(tmp_path):
     # curl always fails: the gateway never answers.
     rc, out, elapsed = _run(tmp_path, "exit 7\n", reduce_bound=True, timeout=30)
     assert rc == 0, out
-    # output is exactly today's WARN plus the two commands, no join code
-    assert "Gateway not responding. Start it first, then generate join codes:" in out, (
-        out
-    )
-    assert "systemctl --user start vhir-gateway" in out, out
-    assert "vhir setup join-code" in out, out
+    # no join code, and no second warning here: the single timeout message
+    # comes later, in LLM Client Configuration
     assert "--code=" not in out, out
+    assert "Gateway not responding" not in out and "[WARN]" not in out, out
     # it waited (did not fall through on the first check) but stayed bounded
     assert elapsed >= 3.0, f"did not wait: {elapsed:.2f}s\n{out}"
     assert elapsed <= 20.0, f"not bounded: {elapsed:.2f}s\n{out}"

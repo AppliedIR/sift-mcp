@@ -2200,7 +2200,7 @@ SERVICE
     else
         warn "systemd user sessions not available (WSL or container?)"
         if $GW_DIRECT_FAILED; then
-            warn "Gateway failed to start. Check $GATEWAY_CONFIG"
+            info "Gateway not answering yet: waiting for it below. If it never answers, check $GATEWAY_CONFIG"
         fi
         ok "Use startup script: $GATEWAY_START"
         if [[ -n "${GATEWAY_PID:-}" ]] && ! $GW_DIRECT_FAILED; then
@@ -2218,8 +2218,37 @@ else
 fi
 
 # =============================================================================
-# Phase 13b: Multi-Machine Setup (remote mode only)
+# Phase 13b: Gateway Wait + Multi-Machine Setup (remote mode only)
 # =============================================================================
+
+# Wait for the gateway serving now (systemd's, or with no systemd or a manual
+# start the process started above), with its own check, before the LLM client
+# is configured, and on --remote before join codes are generated: it listens
+# only once every backend has started, and a client configured before that
+# gets one combined server instead of the per-backend ones. Any HTTP answer
+# counts, since the gateway answers only after its start has finished; /health
+# can take up to 10s (its per-backend checks), so each check allows 15s.
+# The bound covers the gateway's start ceiling: backends start in parallel with
+# a 60s cap each, then the tool map lists them one at a time with a 15s cap
+# each, 8 backends at most from this installer: 60 + 8 x 15 = 180s, plus process
+# start and margin (also covering 2 joined backends on a re-install), and far
+# over twice the 23-35s restarts measured. Bounded by elapsed time, not a count.
+# --manual-start started no gateway: check once, no wait.
+GW_WAIT_BOUND=240
+GATEWAY_READY=false
+$MANUAL_START || info "Waiting up to ${GW_WAIT_BOUND}s for the gateway to respond..."
+gw_wait_start=$SECONDS
+while true; do
+    if curl -s -o /dev/null --connect-timeout 2 --max-time 15 ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
+        GATEWAY_READY=true
+        ok "Gateway answering on port $GATEWAY_PORT"
+        break
+    fi
+    if $MANUAL_START || (( SECONDS - gw_wait_start >= GW_WAIT_BOUND )); then
+        break
+    fi
+    sleep 1
+done
 
 if $REMOTE_MODE; then
     header "Multi-Machine Setup"
@@ -2227,29 +2256,7 @@ if $REMOTE_MODE; then
     # Detect host IP for join instructions
     HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'THIS_IP')
 
-    # Wait for gateway to be ready before generating join codes. A gateway just
-    # started by systemd may not answer /health on the first check, so poll it
-    # for up to ~60s (bounded by elapsed time, not a count, since each --max-time
-    # curl can take 2s). Stop at the first answer; fall through unchanged if none.
-    JOIN_READY=false
-    join_wait_start=$SECONDS
-    join_waited=false
-    while true; do
-        if curl -sf --max-time 2 ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
-            JOIN_READY=true
-            break
-        fi
-        if (( SECONDS - join_wait_start >= 60 )); then
-            break
-        fi
-        if ! $join_waited; then
-            info "Waiting up to 60s for the gateway to respond before generating join codes..."
-            join_waited=true
-        fi
-        sleep 1
-    done
-
-    if $JOIN_READY; then
+    if $GATEWAY_READY; then
         # Generate join code for the remote LLM client machine. Network
         # Configuration already asked about the static IP: join-code doesn't ask again.
         JOIN_OUTPUT=$(VHIR_ASSUME_DEFAULTS=$AUTO_YES VHIR_STATIC_IP_SETTLED=1 "$VENV_DIR/bin/vhir" setup join-code 2>&1) || true
@@ -2308,11 +2315,8 @@ if $REMOTE_MODE; then
             warn "Could not generate join code. Generate one later with:"
             echo "    vhir setup join-code"
         fi
-    else
-        warn "Gateway not responding. Start it first, then generate join codes:"
-        echo "    $GATEWAY_START"
-        echo "    vhir setup join-code"
     fi
+    # With no answer, LLM Client Configuration says so once, join codes included.
 
     echo ""
     echo -e "${BOLD}SSH Access${NC}"
@@ -2358,6 +2362,27 @@ if [[ "$CLIENT" == "claude-desktop" ]]; then
     err "Claude Desktop is no longer supported: the commands it runs aren't audited."
     err "Use Claude Code (--client=claude-code) or Codex (--client=codex) on this SIFT workstation."
     exit 1
+fi
+
+# setup client lists the backends from the gateway: with no answer it configures
+# one combined server (and --remote generated no join code), so say so once,
+# and how to fix it.
+if ! $GATEWAY_READY; then
+    gw_also=""
+    if $REMOTE_MODE; then
+        gw_also=", and no join code was generated"
+    fi
+    if $MANUAL_START; then
+        warn "The installer didn't start the gateway (--manual-start): the AI client may be configured with a single combined server$gw_also."
+        warn "The finding challenger needs the per-backend servers. After starting the gateway ($GATEWAY_START), run:"
+    else
+        warn "The gateway didn't answer within ${GW_WAIT_BOUND}s: the AI client may be configured with a single combined server$gw_also."
+        warn "The finding challenger needs the per-backend servers. Once the gateway answers, run:"
+    fi
+    if $REMOTE_MODE; then
+        echo "    vhir setup join-code"
+    fi
+    echo "    vhir setup client --client=$CLIENT --sift=$SIFT_URL"
 fi
 
 # vhir setup client -y changes the user's own Claude files (after a backup,
