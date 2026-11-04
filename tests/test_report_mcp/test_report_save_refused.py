@@ -4,8 +4,8 @@ other file there (empty or blank, not UTF-8, one that won't parse, null, a
 number, a boolean, a list holding something other than records, a directory,
 a dangling symlink) means the report isn't saved: nothing is raised, a report
 already saved under that name is left byte-identical with no new version
-beside it (with none there, none is created), and the error names the file
-and what the examiner can do, with no command to run. A file that is an empty
+beside it (with none there, none is created, reports/ too), and the error
+names the file and what the examiner can do, with no command to run. A file that is an empty
 list saves. An absent file is
 a case with none of them. The IOCs come from the files as they are just before
 the write, and each save reads the approved view once. vhir-cli's tests state
@@ -130,7 +130,9 @@ def _sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
 
 
-@pytest.mark.parametrize("prior", (False, True), ids=("no-report", "a-report"))
+@pytest.mark.parametrize(
+    "prior", (None, False, True), ids=("no-reports-dir", "no-report", "a-report")
+)
 @pytest.mark.parametrize("row", BAD)
 def test_a_file_that_is_not_a_list_of_records_refuses_the_save(
     rs, tmp_path, monkeypatch, row, prior
@@ -139,13 +141,16 @@ def test_a_file_that_is_not_a_list_of_records_refuses_the_save(
     name, how, why = BAD[row]
     path = case / name
     _spoil(path, how)
-    (case / "reports").mkdir()
-    report = case / "reports" / "r.md"
+    reports = case / "reports"
+    if prior is not None:
+        reports.mkdir()
+    report = reports / "r.md"
     if prior:
         report.write_bytes(PRIOR)
     before = _sha(report)
     got, saved = _save(rs, case)
-    assert [p.name for p in report.parent.iterdir()] == ["r.md"] * prior, got
+    names = [p.name for p in reports.iterdir()] if reports.exists() else []
+    assert names == ["r.md"] * bool(prior), got  # no reports/ yet: absent or empty
     assert _sha(report) == before, saved
     assert got["file"] == str(path), got
     assert got["error"].startswith(f"Report not saved. {path} {why}"), got
