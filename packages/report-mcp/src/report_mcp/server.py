@@ -515,9 +515,10 @@ class _Unsafe(Exception):
 
 def _fresh_records(case_dir: Path) -> list[tuple[str, dict]]:
     """The records of findings.json and iocs.json as they are now, read whole.
-    A file that is absent holds none; one that is present must parse to a
-    list of records, or `_Unsafe` names it. The raw parse, not load_*: their
-    [] for a file that won't parse can't be told from a case with none.
+    A file that is absent holds none; one that is present (empty or blank
+    too) must parse to a list of records, or `_Unsafe` names it. The raw
+    parse, not load_*: their [] for a file that won't parse can't be told
+    from a case with none.
     A copy of vhir-cli's commands.report._fresh_records, kept in sync by hand."""
     records: list[tuple[str, dict]] = []
     for key, name in _RECORD_FILES:
@@ -526,7 +527,9 @@ def _fresh_records(case_dir: Path) -> list[tuple[str, dict]]:
             continue
         try:
             text = read_regular(path).decode("utf-8")
-            data = json.loads(text) if text.strip() else []
+            if not text.strip():
+                raise _Unsafe(path, "is empty, not a list of records")
+            data = json.loads(text)
         except (OSError, ValueError, RecursionError) as e:
             raise _Unsafe(path, f"couldn't be read ({e})") from None
         if not isinstance(data, list):
@@ -1139,11 +1142,11 @@ def create_server() -> FastMCP:
                 return {
                     "error": (
                         f"Report not saved. {path} {why}, so not every IOC the"
-                        " case records can be written defanged. Have the"
-                        " examiner run `vhir review --findings --verify` to"
-                        " see the file's state, repair the file or restore it"
-                        " from a backup (`vhir restore`), then save the report"
-                        " again."
+                        " case records can be written defanged. Tell the"
+                        " examiner which file it is: they can check the case's"
+                        " saved records, restore the file from a backup or, if"
+                        " the case never held any records, replace it with an"
+                        " empty list. Then save the report again."
                     ),
                     "file": str(path),
                 }
