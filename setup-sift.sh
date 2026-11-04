@@ -2104,6 +2104,7 @@ fi
 
 # Check if gateway is already running
 GATEWAY_PID=""
+GW_DIRECT_PID=""
 GW_DIRECT_FAILED=false
 if curl -sf ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
     ok "Gateway already running on port $GATEWAY_PORT"
@@ -2111,6 +2112,7 @@ elif ! $MANUAL_START; then
     info "Starting gateway on port $GATEWAY_PORT..."
     "$VENV_DIR/bin/python" -I -m sift_gateway --config "$GATEWAY_CONFIG" >/dev/null 2>&1 &
     GATEWAY_PID=$!
+    GW_DIRECT_PID=$GATEWAY_PID
 
     # Wait for health endpoint (backends need time to start)
     # Don't warn here — systemd fallback may recover. Track failure silently.
@@ -2177,6 +2179,7 @@ SERVICE
             kill "$GATEWAY_PID" 2>/dev/null || true
             wait "$GATEWAY_PID" 2>/dev/null || true
         fi
+        GW_DIRECT_PID=""  # systemd's gateway is the one serving now
 
         systemctl --user daemon-reload 2>/dev/null
         systemctl --user enable vhir-gateway.service 2>/dev/null && \
@@ -2233,15 +2236,21 @@ fi
 # each, 8 backends at most from this installer: 60 + 8 x 15 = 180s, plus process
 # start and margin (also covering 2 joined backends on a re-install), and far
 # over twice the 23-35s restarts measured. Bounded by elapsed time, not a count.
-# --manual-start started no gateway: check once, no wait.
+# --manual-start started no gateway: check once, no wait. With no systemd or a
+# manual start, the wait ends at once if the started process has exited.
 GW_WAIT_BOUND=240
 GATEWAY_READY=false
+GW_DIRECT_DEAD=false
 $MANUAL_START || info "Waiting up to ${GW_WAIT_BOUND}s for the gateway to respond..."
 gw_wait_start=$SECONDS
 while true; do
     if curl -s -o /dev/null --connect-timeout 2 --max-time 15 ${CURL_EXTRA:+"$CURL_EXTRA"} "$HEALTH_URL" &>/dev/null; then
         GATEWAY_READY=true
         ok "Gateway answering on port $GATEWAY_PORT"
+        break
+    fi
+    if [[ -n "${GW_DIRECT_PID:-}" ]] && ! kill -0 "$GW_DIRECT_PID" 2>/dev/null; then
+        GW_DIRECT_DEAD=true
         break
     fi
     if $MANUAL_START || (( SECONDS - gw_wait_start >= GW_WAIT_BOUND )); then
@@ -2375,6 +2384,9 @@ if ! $GATEWAY_READY; then
     if $MANUAL_START; then
         warn "The installer didn't start the gateway (--manual-start): the AI client may be configured with a single combined server$gw_also."
         warn "The finding challenger needs the per-backend servers. After starting the gateway ($GATEWAY_START), run:"
+    elif $GW_DIRECT_DEAD; then
+        warn "The gateway process isn't running (it exited after it started): the AI client may be configured with a single combined server$gw_also."
+        warn "The finding challenger needs the per-backend servers. Check $GATEWAY_CONFIG, start the gateway ($GATEWAY_START), then run:"
     else
         warn "The gateway didn't answer within ${GW_WAIT_BOUND}s: the AI client may be configured with a single combined server$gw_also."
         warn "The finding challenger needs the per-backend servers. Once the gateway answers, run:"

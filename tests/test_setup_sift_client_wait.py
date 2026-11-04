@@ -77,6 +77,7 @@ def _run(
     kind="up",
     start=START,
     pre="",
+    dies=False,
     timeout=60,
 ):
     """Run the block; curl answers from its answer_from-th check on (None: never).
@@ -84,7 +85,8 @@ def _run(
     Returns rc, output, the stub vhir's calls (each with ready=yes/no as the
     gateway stood then), the number of /health checks and the elapsed time.
     bound shrinks the wait for speed; on the pre-fix revision there is no local
-    wait to shrink, so it is left unchanged.
+    wait to shrink, so it is left unchanged. dies makes the direct start's
+    gateway process exit at once (a gateway that crashes on start).
     """
     stub = tmp_path / "venv"
     (stub / "bin").mkdir(parents=True)
@@ -99,7 +101,7 @@ def _run(
     vhir.chmod(0o755)
     # The direct start's gateway process: alive, answering only through curl.
     python = stub / "bin" / "python"
-    python.write_text("#!/bin/bash\nexec sleep 30\n")
+    python.write_text("#!/bin/bash\n" + ("exit 1\n" if dies else "exec sleep 30\n"))
     python.chmod(0o755)
     curlbin = tmp_path / "curlbin"
     curlbin.mkdir()
@@ -250,12 +252,18 @@ def test_remote_timeout_is_one_message_covering_join_codes_and_client(tmp_path):
 
 
 def test_manual_start_with_a_gateway_answering_carries_on_as_ready(tmp_path):
-    rc, out, calls, checks, _ = _run(tmp_path, 1, manual=True)
+    rc, out, calls, _, _ = _run(tmp_path, 1, manual=True)
     assert rc == 0, out
-    assert calls == ["setup client ready=yes"], (calls, out)
-    assert checks == 1, (checks, out)
+    assert [c.split(" ready=")[0] for c in calls] == ["setup client"], (calls, out)
     assert "Waiting up to" not in out, out
     assert "[WARN]" not in out, out
+
+
+def test_manual_start_checks_the_gateway_once_before_setup_client(tmp_path):
+    rc, out, calls, checks, _ = _run(tmp_path, 1, manual=True)
+    assert rc == 0, out
+    assert checks == 1, (checks, out)
+    assert calls == ["setup client ready=yes"], (calls, out)
 
 
 def test_manual_start_with_no_gateway_checks_once_and_says_so_at_once(tmp_path):
@@ -285,3 +293,27 @@ def test_a_cold_direct_start_is_waited_for_and_never_called_failed(tmp_path, pre
     assert "failed" not in out.lower(), out
     assert TIMEOUT not in out, out
     assert calls == ["setup client ready=yes"], (calls, out)
+
+
+@pytest.mark.parametrize(
+    "pre",
+    ["MODE=recommended; AUTO_YES=true\n", "MODE=custom; AUTO_YES=false\n"],
+    ids=["no-systemd", "manual-start-choice"],
+)
+def test_a_direct_start_that_dies_ends_the_wait_and_says_it_isnt_running(tmp_path, pre):
+    # The direct-start process is the serving gateway and exits at once: no
+    # process is left to answer, so the wait ends then, not at the bound.
+    rc, out, calls, _, elapsed = _run(
+        tmp_path, None, start=START_GATEWAY, pre=pre, dies=True, bound=30
+    )
+    assert rc == 0, out
+    assert (
+        "[WARN] The gateway process isn't running (it exited after it started): "
+        "the AI client may be configured with a single combined server.\n"
+        "[WARN] The finding challenger needs the per-backend servers. Check "
+        f"{tmp_path}/.vhir/gateway.yaml, start the gateway "
+        f"({tmp_path}/.vhir/start-gateway.sh), then run:\n" + CLIENT_CMD
+    ) in out, out
+    assert TIMEOUT not in out, out
+    assert calls == ["setup client ready=no"], (calls, out)
+    assert elapsed < 15.0, f"waited for the bound: {elapsed:.2f}s\n{out}"

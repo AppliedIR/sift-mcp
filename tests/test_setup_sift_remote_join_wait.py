@@ -7,10 +7,11 @@ install. With no answer, the single timeout message in LLM Client Configuration
 covers join codes (test_setup_sift_client_wait), so this block warns nothing.
 
 These tests extract the wait block from setup-sift.sh and run it under bash with
-a stub curl, so nothing is installed. They fail on the pre-fix revision only
-because the single curl check never waits:
-  - a gateway that answers a few seconds late is missed -> no join code;
-  - and the no-answer path is reached instantly instead of after the bounded wait.
+a stub curl, so nothing is installed. The block starts at the installer's one
+wait, which earlier revisions don't have, so there they fail on its start
+marker (structurally), not on behaviour. The behaviour they check:
+  - a gateway that answers a few seconds late is found -> a join code is shown;
+  - with no answer, the block waits up to its bound and warns nothing itself.
 """
 
 import subprocess
