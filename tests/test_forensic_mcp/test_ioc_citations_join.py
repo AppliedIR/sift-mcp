@@ -10,6 +10,7 @@ a port was kept apart from a record of the bare address.
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import stat
@@ -145,6 +146,78 @@ def test_a_double_bracket_defang_cited_twice_is_one_record(case, value):  # noqa
     assert len(_records(case)) == 1
 
 
+# Each spelling of one mailbox, and the value it is stored as when it is cited first.
+MAILBOX = {
+    "user[@]evil7.example.com": "user@evil7.example.com",
+    "user[[@]]evil7.example.com": "user@evil7.example.com",
+    "USER@EVIL7.EXAMPLE.COM": "USER@EVIL7.EXAMPLE.COM",
+}
+
+
+@pytest.mark.parametrize("order", list(itertools.permutations(MAILBOX)))
+def test_three_spellings_of_a_mailbox_in_separate_findings_are_one_record(case, order):  # noqa: F811
+    ids = [_cite({"value": v, "type": "email-addr"})["finding_id"] for v in order]
+    records = _records(case)
+    assert len(records) == 1, records
+    assert records[0]["value"] == MAILBOX[order[0]]
+    assert sorted(records[0]["source_findings"]) == sorted(ids)
+
+
+@pytest.mark.parametrize(
+    ("spellings", "type_", "live"),
+    [
+        (
+            [
+                "user[[[@]]]evil8.example.com",
+                "user[@]evil8.example.com",
+                "user@evil8.example.com",
+            ],
+            "email-addr",
+            "user@evil8.example.com",
+        ),
+        (
+            ["evil9[[.]]example[.]com", "evil9[.]example[[.]]com", "evil9.example.com"],
+            "domain-name",
+            "evil9.example.com",
+        ),
+        (
+            [
+                "evil11[[[.]]]example[.]com",
+                "evil11[.]example[[.]]com",
+                "evil11.example.com",
+            ],
+            "domain-name",
+            "evil11.example.com",
+        ),
+        (
+            ["10[[.]]20[.]30[[[.]]]78", "10[.]20[.]30[.]78", "10.20.30.78"],
+            "ipv4-addr",
+            "10.20.30.78",
+        ),
+    ],
+)
+def test_bracket_defangs_of_any_depth_are_one_live_record(case, spellings, type_, live):  # noqa: F811
+    ids = [_cite({"value": v, "type": type_})["finding_id"] for v in spellings]
+    records = _records(case)
+    assert [r["value"] for r in records] == [live]
+    assert sorted(records[0]["source_findings"]) == sorted(ids)
+
+
+@pytest.mark.parametrize(
+    ("value", "live"),
+    [
+        ("user[[@]]evil10.example.com", "user@evil10.example.com"),
+        ("user[[[@]]]evil10.example.com", "user@evil10.example.com"),
+        ("evil10[[.]]example[[.]]com", "evil10.example.com"),
+        ("evil10[[[.]]]example[[.]]com", "evil10.example.com"),
+        ("hxxp[[:]]//evil10.example.com/a", "http://evil10.example.com/a"),
+    ],
+)
+def test_a_nested_bracket_defang_is_stored_live(case, value, live):  # noqa: F811
+    _cite(value)
+    assert [r["value"] for r in _records(case)] == [live]
+
+
 def test_two_ports_of_one_address_typed_unknown_are_two_records(case):  # noqa: F811
     _cite({"value": "10.20.30.73:443", "type": "unknown"})
     _cite({"value": "10.20.30.73:8080", "type": "unknown"})
@@ -183,6 +256,21 @@ def test_the_bare_address_joins_an_old_record_that_kept_its_port(case):  # noqa:
     result = _cite({"value": "10.20.30.41", "type": "ipv4-addr"})
     (record,) = _records(case)
     assert result["finding_id"] in record["source_findings"]
+
+
+def test_an_old_half_defanged_mailbox_keeps_its_value_and_joins_each_spelling(case):  # noqa: F811
+    _store(
+        case, _old("IOC-old-008", "user[@]evil12.example.com", "email-addr", "network")
+    )
+    spellings = [
+        "user@evil12.example.com",
+        "user[[@]]evil12.example.com",
+        "USER@EVIL12.EXAMPLE.COM",
+    ]
+    ids = [_cite({"value": v, "type": "email-addr"})["finding_id"] for v in spellings]
+    (record,) = _records(case)
+    assert record["value"] == "user[@]evil12.example.com"
+    assert set(ids) <= set(record["source_findings"])
 
 
 def test_an_old_defanged_url_joins_a_citation_in_upper_case(case):  # noqa: F811

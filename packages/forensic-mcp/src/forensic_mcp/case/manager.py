@@ -720,23 +720,8 @@ def _conf_rank(conf: str) -> int:
     return _CONF_RANKS.get(conf.upper() if conf else "", 99)
 
 
-def _refang_ioc(value: str) -> str:
-    """Refang defanged IOC values."""
-    v = value.replace("[.]", ".").replace("hxxp", "http")
-    v = re.sub(r"\[(\W)\]", r"\1", v)
-    return v
-
-
-def _normalize_ioc(value: str) -> str:
-    """Normalize IOC value for dedup comparison."""
-    v = value.strip()
-    if re.match(r"^[a-fA-F0-9]{32,64}$", v):
-        return v.lower()
-    if "." in v and not v.replace(".", "").isdigit():
-        return v.lower().rstrip(".")
-    if "\\" in v:
-        return v.lower()
-    return v
+_refang_ioc = ioc_types.refang  # the one refang and normalize the join keys use
+_normalize_ioc = ioc_types.normalize
 
 
 def _canonical_iocs(iocs):

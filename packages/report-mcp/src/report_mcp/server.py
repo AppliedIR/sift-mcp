@@ -464,7 +464,7 @@ def _network_ioc(value, typed: bool) -> str | None:
     """`value` live, if it is a URL, an IPv4 address, or (`typed`: its IOC type
     names a domain) a domain name; else None. An untyped name like a.exe could
     be a file."""
-    v = re.sub(r"\[(\W)\]", r"\1", refang(str(value).strip()))
+    v = ioc_types.refang(refang(str(value).strip()))
     base, _, prefix = v.partition("/")
     if prefix.isdigit() and len(prefix) <= 2 and _IPV4.fullmatch(base):
         v = base  # a range (a.b.c.d/nn): its base address
