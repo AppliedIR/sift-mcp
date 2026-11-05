@@ -131,7 +131,7 @@ class TestValidateInputPath:
         path = os.path.expanduser("~/.claude.json")
         with pytest.raises(ValueError) as e:
             validate_input_path(path)
-        assert str(e.value).startswith("Access denied: ")
+        assert str(e.value).startswith("Refused (not a tool failure): ")
         assert f"under protected path '{path}'" in str(e.value)
         assert "directory" not in str(e.value)
 
@@ -195,6 +195,56 @@ class TestValidateInputPath:
         """flag=value with safe path should pass."""
         result = validate_input_path("--input=/cases/evidence.img")
         assert result.endswith("evidence.img")
+
+
+_SKILLS = "It holds the AI client's skills, and tools don't read it"
+_OWN = "It holds Valhuntir's or the AI client's own configuration or credentials"
+_SYSTEM = "It is a system folder, not evidence"
+
+
+@pytest.mark.parametrize(
+    "path, reason",
+    [
+        ("~/.agents/skills/finding-skeptic/SKILL.md", _SKILLS),
+        ("~/.vhir/gateway.yaml", _OWN),
+        ("~/.ssh/id_ed25519", _OWN),
+        ("~/.claude/settings.json", _OWN),
+        ("~/.claude.json", _OWN),
+        ("~/.claude.json.vhir-backup-20261006T000000Z", _OWN),
+        ("~/.codex/config.toml", _OWN),
+        ("~/.config/opencti-mcp/token", _OWN),
+        ("/etc/shadow", _SYSTEM),
+        ("/proc/1/environ", _SYSTEM),
+        ("/sys/class", _SYSTEM),
+        ("/dev/sda", _SYSTEM),
+        ("/boot/vmlinuz", _SYSTEM),
+        ("/var/lib/vhir/passwords/examiner.json", _SYSTEM),
+    ],
+)
+def test_a_refusal_says_what_the_folder_holds_and_what_to_change(path, reason):
+    """Each refusal says first that it is a refusal, not a tool failure, then
+    what the protected path holds, then what to change in the call."""
+    with pytest.raises(ValueError) as e:
+        validate_input_path(os.path.expanduser(path))
+    msg = str(e.value)
+    assert msg.startswith("Refused (not a tool failure): ")
+    assert reason in msg
+    assert [r for r in (_SKILLS, _OWN, _SYSTEM) if r in msg] == [reason]
+    assert "To change your call: drop that path and go on without it" in msg
+    assert "use a path in the case's evidence folders" in msg
+    assert msg.endswith("Don't read it another way.")
+
+
+def test_the_skills_refusal_says_a_skill_comes_through_the_client():
+    with pytest.raises(ValueError) as e:
+        validate_input_path(os.path.expanduser("~/.agents/skills/x/SKILL.md"))
+    assert "a skill reaches you through your client" in str(e.value)
+    assert "a sub-agent's instructions are already complete" in str(e.value)
+
+
+def test_the_case_folders_under_vhir_are_still_readable():
+    path = os.path.expanduser("~/.vhir/cases/INC-1/evidence/disk.dd")
+    assert validate_input_path(path).endswith("disk.dd")
 
 
 # --- Output path validation ---
@@ -516,7 +566,7 @@ def _guarded(argv, cwd=None):
     ],
 )
 def test_credentials_and_the_hmac_store_are_refused(argv):
-    assert _guarded(argv).startswith("Access denied")
+    assert _guarded(argv).startswith("Refused (not a tool failure)")
 
 
 @pytest.mark.parametrize(
@@ -529,7 +579,7 @@ def test_credentials_and_the_hmac_store_are_refused(argv):
     ],
 )
 def test_a_bare_name_in_the_working_folder_is_refused_too(argv):
-    assert _guarded(argv, cwd=_HOME0).startswith("Access denied")
+    assert _guarded(argv, cwd=_HOME0).startswith("Refused (not a tool failure)")
 
 
 @pytest.mark.parametrize(
@@ -547,4 +597,6 @@ def test_ordinary_reads_are_still_allowed(argv, cwd):
 
 
 def test_the_gateway_config_is_still_refused():
-    assert _guarded(["cat", "~/.vhir/gateway.yaml"]).startswith("Access denied")
+    assert _guarded(["cat", "~/.vhir/gateway.yaml"]).startswith(
+        "Refused (not a tool failure)"
+    )

@@ -364,7 +364,27 @@ def validate_input_path(path: str, base: str | None = None) -> str:
             ):
                 break  # Allowed exception
             raise ValueError(
-                f"Access denied: path '{path}' resolves to '{resolved}' "
-                f"which is under protected path '{blocked}'"
+                f"Refused (not a tool failure): path '{path}' resolves to "
+                f"'{resolved}', under protected path '{blocked}'. "
+                f"{_refusal_reason(blocked)} To change your call: drop that "
+                "path and go on without it, or use a path in the case's "
+                "evidence folders. Don't read it another way."
             )
     return resolved
+
+
+def _refusal_reason(blocked: str) -> str:
+    """What a protected path holds, said plainly to the agent it refuses."""
+    if blocked in SYSTEM_DIRS:
+        return "It is a system folder, not evidence, and tools don't read it."
+    if blocked == os.path.expanduser("~/.agents"):
+        return (
+            "It holds the AI client's skills, and tools don't read it: a skill "
+            "reaches you through your client, and a sub-agent's instructions "
+            "are already complete."
+        )
+    return (
+        "It holds Valhuntir's or the AI client's own configuration or "
+        "credentials, not evidence, and tools don't read it; the "
+        "investigation doesn't need it."
+    )
