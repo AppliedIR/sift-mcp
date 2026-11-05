@@ -154,4 +154,5 @@ def test_the_codex_agent_is_the_skeptic_s_part_without_a_shell():
         "sandbox_mode": "read-only",
         "developer_instructions": _part(),
         "features": {"shell_tool": False},
+        "skills": {"include_instructions": False},
     }

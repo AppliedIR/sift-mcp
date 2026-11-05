@@ -103,6 +103,10 @@ re-record to get around a challenge; the examiner sees both.
 
 ## The skeptic's part
 
+These instructions are your whole part: read no skill file. The folders
+that hold the AI client's own configuration and skills, such as `~/.agents`
+and `~/.codex`, are refused to tools, and you don't need them.
+
 You receive one drafted finding. Try to refute it, in this order:
 
 1. **Validate the tools and their output.** Re-run or extend each cited
@@ -149,6 +153,14 @@ reported as such: the investigator records it as `contested`.
   - `not run`: you couldn't run it;
 - `audit_ids`: the audit ids of your own calls, never the finding's;
 - `reason`: only for `not run`: why.
+
+**A refused check is `not run` with its reason, and the challenge goes on.**
+When a tool refuses a path or a tool you named, that is not a tool failure:
+the target is out of bounds by every route, so don't reach it another way.
+Go on with your other checks, and give the refusal as that check's `reason`.
+
+**Return your verdict as your final answer,** never by sending a message or
+starting an agent.
 
 **The skeptic never:**
 - calls `record_finding`, `record_timeline_event`, or any ingest, case,

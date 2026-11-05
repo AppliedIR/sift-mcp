@@ -65,6 +65,12 @@ PASSED = [
     "read_mcp_resource",
     "view_image",
 ]
+# The next step a refusal gives the skeptic, after the refused tool's name or
+# "isn't one of its tools"
+NEXT = (
+    ". Go on with your read and query tools, and return your verdict as your"
+    " final answer."
+)
 
 
 @pytest.mark.parametrize("tool", REFUSED)
@@ -73,6 +79,7 @@ def test_the_skeptic_is_refused_a_write_or_a_hand_on(tool):
     assert r.returncode == 2, (r.stdout, r.stderr)
     assert r.stderr.startswith("BLOCKED: the finding-skeptic reads and queries only")
     assert tool in r.stderr
+    assert r.stderr.endswith(NEXT + "\n")
 
 
 @pytest.mark.parametrize("tool", PASSED)
@@ -116,3 +123,21 @@ def test_the_allowlist_is_claude_s_skeptic_s():
     block = re.search(r"^ALLOWED = (\{.*?\n\})", HOOK.read_text(), re.S | re.M).group(1)
     hook = {(s, n) for s, names in ast.literal_eval(block).items() for n in names}
     assert hook == claude
+
+
+def test_the_refused_and_allowed_sets_are_the_same_as_before():
+    """The refusal text gives a next step; what is refused or allowed stays."""
+    import ast
+
+    text = HOOK.read_text()
+    writes = re.search(r"^WRITES = (\{.*?\})$", text, re.M).group(1)
+    hands_on = re.search(r"^HANDS_ON = (\(.*?\))$", text, re.M).group(1)
+    assert ast.literal_eval(writes) == {
+        "apply_patch", "Bash", "exec_command", "write_stdin", "shell", "local_shell",
+    }  # fmt: skip
+    assert ast.literal_eval(hands_on) == (
+        "spawn_agent", "send_input", "resume_agent", "followup_task", "send_message",
+        "assign_agent_task",
+    )  # fmt: skip
+    code = re.search(r"<<'PY'\n(.*?)\nPY\n", text, re.S).group(1)
+    assert len(re.findall(r"\brefuse\(", code)) == 4  # the def, two verdicts, the parse

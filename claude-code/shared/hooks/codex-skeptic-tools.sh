@@ -60,6 +60,8 @@ ALLOWED = {  # Claude's skeptic's tools (agents/finding-skeptic/claude.md), by s
 WRITES = {"apply_patch", "Bash", "exec_command", "write_stdin", "shell", "local_shell"}
 # A namespaced tool's name comes prefixed, e.g. collaborationspawn_agent
 HANDS_ON = ("spawn_agent", "send_input", "resume_agent", "followup_task", "send_message", "assign_agent_task")
+# What to do instead, for the skeptic: the refused call names what to change
+NEXT = " Go on with your read and query tools, and return your verdict as your final answer."
 
 
 def refuse(why):
@@ -81,9 +83,9 @@ if tool.startswith("mcp__"):
     else:  # another shape: the tool's name alone
         ok = any(tool.rsplit("__", 1)[-1] in n for n in ALLOWED.values())
     if not ok:
-        refuse(f"the finding-skeptic reads and queries only; {tool} isn't one of its tools")
+        refuse(f"the finding-skeptic reads and queries only; {tool} isn't one of its tools.{NEXT}")
 elif tool in WRITES or tool.endswith(HANDS_ON):
-    refuse(f"the finding-skeptic reads and queries only; it can't use {tool}")
+    refuse(f"the finding-skeptic reads and queries only; it can't use {tool}.{NEXT}")
 sys.exit(0)
 PY
 )
