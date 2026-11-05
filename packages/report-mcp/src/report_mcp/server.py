@@ -32,6 +32,7 @@ from vhir_cli.case_io import (
     read_regular,
 )
 from vhir_cli.commands.evidence import list_evidence_data
+from vhir_cli.defang import defang_iocs
 from vhir_cli.ledger_verify import (
     approved_view,
     verification_block,
@@ -576,39 +577,6 @@ def _report_iocs(case_dir: Path, view: dict) -> list[str]:
     return sorted(kept, key=lambda v: (-len(v), v))
 
 
-def _defanged(text: str) -> str:
-    """One IOC occurrence written defanged: http(s) -> hxxp(s), keeping its
-    case, and every dot of the host -> [.]; a URL's path is left as it is."""
-    m = _URL.fullmatch(text)
-    if m:
-        scheme = m.group(1)
-        scheme = scheme[0] + ("XX" if scheme[1:3].isupper() else "xx") + scheme[3:]
-        return f"{scheme}://{m.group(2).replace('.', '[.]')}{m.group(3)}"
-    return text.replace(".", "[.]")
-
-
-def _defang_iocs(text: str, iocs: list[str]) -> str:
-    """`text` with every whole occurrence of each IOC defanged. A whole
-    occurrence is never part of a longer name or address: no name character
-    or dot before it, and no name character, or dot and label, after it. A
-    domain right after a single / or \\ is a path component, left as written
-    (after two of them, mixed or not, or one right after a scheme's colon, it
-    is a host). A defanged form no longer holds the live value, so it isn't
-    defanged twice."""
-
-    def one(m: re.Match, name: bool) -> str:
-        s, i = m.string, m.start()
-        if name and i and s[i - 1] in "/\\" and (i < 2 or s[i - 2] not in "/\\:"):
-            return m.group(0)  # a path component, not a host
-        return _defanged(m.group(0))
-
-    for v in iocs:
-        name = not (_URL.fullmatch(v) or _IPV4.fullmatch(v))
-        whole = re.compile(r"(?<![\w.-])" + re.escape(v) + r"(?![\w-]|\.[\w-])", re.I)
-        text = whole.sub(lambda m, name=name: one(m, name), text)
-    return text
-
-
 def _build_mitre_mapping(findings: list[dict]) -> dict[str, dict]:
     """Build MITRE ATT&CK mapping from findings.
 
@@ -1150,10 +1118,15 @@ def create_server() -> FastMCP:
                     ),
                     "file": str(path),
                 }
-            content = _defang_iocs(content, iocs)
-            block = [
-                _defang_iocs(line, iocs)
-                for line in verification_block(view) + [""] + provenance_block(view)
+            # the report and its block's lines are defanged as one text and
+            # split back, each keeping the newlines it holds: no IOC holds
+            # whitespace, and a newline bounds an occurrence as the start or
+            # end of a text does
+            parts = [content, *verification_block(view), "", *provenance_block(view)]
+            joined = iter(defang_iocs("\n".join(parts), iocs).split("\n"))
+            content, *block = [
+                "\n".join(next(joined) for _ in range(part.count("\n") + 1))
+                for part in parts
             ]
             runs = [len(r) for r in re.findall(r"`+", "\n".join(block))]
             fence = "`" * max(3, max(runs, default=0) + 1)

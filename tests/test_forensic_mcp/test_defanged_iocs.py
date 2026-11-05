@@ -74,24 +74,21 @@ def test_vhir_refangs_by_the_same_notation_list():
 
 
 def test_vhir_writes_a_saved_reports_iocs_defanged_by_the_same_functions():
-    """vhir report --save and report-mcp's save_report defang alike."""
+    """vhir report --save and report-mcp's save_report defang alike: report-mcp
+    calls vhir-cli's defang_iocs, and picks the IOCs by the same functions."""
     vhir = pytest.importorskip("vhir_cli.defang")
     from report_mcp import server as rs
 
+    assert rs.defang_iocs is vhir.defang_iocs
     for name in ("_IPV4", "_URL", "_DOMAIN"):
         assert getattr(vhir, name).pattern == getattr(rs, name).pattern, name
     assert vhir._NETWORK_TYPES == rs._NETWORK_TYPES
-    for mine, theirs in ((vhir._defanged, rs._defanged), (vhir.defang_iocs, rs._defang_iocs),
-                         (vhir.network_ioc, rs._network_ioc),
-        (vhir.structured_iocs, rs._structured_iocs)):  # fmt: skip
+    for mine, theirs in ((vhir.network_ioc, rs._network_ioc),
+                         (vhir.structured_iocs, rs._structured_iocs)):  # fmt: skip
         assert (
             inspect.getsource(mine).split('"""')[2]
             == inspect.getsource(theirs).split('"""')[2]
         )
-    iocs = ["http://bad.example.com/x.php", "185.220.101.45", "evil.com"]
-    text = ("Beacon to evil.com, EVIL.COM, notevil.com, sub.evil.com, evil.com.au, "
-            "evil[.]com; 185.220.101.45 and 185.220.101.450; http://bad.example.com/x.php")  # fmt: skip
-    assert vhir.defang_iocs(text, iocs) == rs._defang_iocs(text, iocs)
     for value, typed in [*((n, True) for n in NOTATIONS), *((n, False) for n in NOTATIONS),
                          ("a.exe", False), ("a.exe", True)]:  # fmt: skip
         assert vhir.network_ioc(value, typed) == rs._network_ioc(value, typed), value
@@ -153,9 +150,9 @@ IOCS = ["https://evil.com/payload", "evil.com"]
     ],
 )  # fmt: skip
 def test_an_ioc_where_it_names_a_host_is_defanged(text):
-    from report_mcp.server import _defang_iocs
+    from report_mcp.server import defang_iocs
 
-    got = _defang_iocs(text, IOCS)
+    got = defang_iocs(text, IOCS)
     assert "evil[.]com" in got and "evil.com" not in got, got
 
 
@@ -169,19 +166,17 @@ def test_an_ioc_where_it_names_a_host_is_defanged(text):
 )
 def test_a_domain_after_a_single_separator_is_a_path_and_stays(text, kept):
     """After one / or \\ a domain is a path component; after // or \\\\ a host."""
-    from report_mcp.server import _defang_iocs
+    from report_mcp.server import defang_iocs
 
-    assert _defang_iocs(text, IOCS).endswith(kept)
+    assert defang_iocs(text, IOCS).endswith(kept)
 
 
 def test_a_range_counts_as_its_base_address():
-    from report_mcp.server import _defang_iocs, _network_ioc
+    from report_mcp.server import _network_ioc, defang_iocs
 
     assert _network_ioc("185.220.101.0/24", False) == "185.220.101.0"
     assert _network_ioc("185.220.101.45/32", False) == "185.220.101.45"
-    got = _defang_iocs(
-        "185.220.101.0/24 via http://185.220.101.0/24", ["185.220.101.0"]
-    )
+    got = defang_iocs("185.220.101.0/24 via http://185.220.101.0/24", ["185.220.101.0"])
     assert got == "185[.]220[.]101[.]0/24 via http://185[.]220[.]101[.]0/24"
 
 
@@ -213,10 +208,10 @@ def test_hxxp_outside_a_scheme_is_read_as_written(value):
 
 
 def test_a_typed_domain_with_its_root_dot_counts_without_it():
-    from report_mcp.server import _defang_iocs, _network_ioc
+    from report_mcp.server import _network_ioc, defang_iocs
 
     assert _network_ioc("evil.com.", True) == "evil.com"
-    got = _defang_iocs("evil.com. and https://evil.com./x", ["evil.com"])
+    got = defang_iocs("evil.com. and https://evil.com./x", ["evil.com"])
     assert got == "evil[.]com. and https://evil[.]com./x"
 
 
@@ -237,7 +232,7 @@ PATH_FORMS = [
 
 @pytest.mark.parametrize("text", HOST_FORMS)
 def test_a_domain_where_it_names_a_host_is_defanged_whatever_the_separators(text):
-    from report_mcp.server import _defang_iocs as defang_iocs
+    from report_mcp.server import defang_iocs
 
     got = defang_iocs(text, ["evil.com"])
     assert "evil[.]com" in got and "evil.com" not in got, got
@@ -245,16 +240,6 @@ def test_a_domain_where_it_names_a_host_is_defanged_whatever_the_separators(text
 
 @pytest.mark.parametrize(("text", "kept"), PATH_FORMS)
 def test_a_domain_that_is_only_a_path_component_stays_as_written(text, kept):
-    from report_mcp.server import _defang_iocs as defang_iocs
+    from report_mcp.server import defang_iocs
 
     assert defang_iocs(text, ["evil.com"]).endswith(kept)
-
-
-def test_vhir_reads_the_host_and_path_table_alike():
-    vhir = pytest.importorskip("vhir_cli.defang")
-    from report_mcp.server import _defang_iocs
-
-    for text in [*HOST_FORMS, *(p for p, _ in PATH_FORMS)]:
-        assert vhir.defang_iocs(text, ["evil.com"]) == _defang_iocs(
-            text, ["evil.com"]
-        ), text
