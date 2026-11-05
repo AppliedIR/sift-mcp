@@ -24,6 +24,8 @@ LINES = [
     "evil.com at the start, at the end evil.com",
     "/evil.com is a path here, http://bad.example.com/x is not",
     "a line holding a newline: evil.com\n/evil.com\n\\evil.com and 10.1.2.3",
+    # line ends other than "\n" split nothing
+    "evil.com\r\n10.1.2.3\revil.com\u2028evil.com\x85evil.com\x0b\x0c\x1c10.1.2.3",
     "\n",
     "",
     "evil.com.",
@@ -53,7 +55,9 @@ def _save(rs, monkeypatch, lines, content=CONTENT):
     tool = {t.name: t for t in rs.create_server()._tool_manager.list_tools()}
     got = tool["save_report"].fn(filename="r.md", content=content, profile="full")
     assert got["status"] == "saved", got
-    return got, (rs._resolve_case_dir() / "reports" / "r.md").read_text()
+    # bytes, so a "\r" in the file reads back as written
+    path = rs._resolve_case_dir() / "reports" / "r.md"
+    return got, path.read_bytes().decode("utf-8")
 
 
 def test_each_part_is_written_as_defanging_it_alone_writes_it(rs, monkeypatch):
@@ -85,8 +89,9 @@ def compiles(monkeypatch):
 def test_the_patterns_compiled_dont_grow_with_the_blocks_lines(
     tmp_path, monkeypatch, compiles
 ):
-    # more IOCs than re's cache holds, each in the report: compiling one per
-    # line would compile every one of them again on each line
+    # more IOCs than re's cache holds, each in the report and in every line of
+    # the block: compiling one per part would compile every one of them again
+    # on each line
     names = [f"host{n}.evil.com" for n in range(600)]
     case = tmp_path / "INC-ONE-2"
     case.mkdir()
@@ -101,7 +106,7 @@ def test_the_patterns_compiled_dont_grow_with_the_blocks_lines(
 
     monkeypatch.setattr(rs, "_ACTIVE_CASE_FILE", tmp_path / "none")
     counts = []
-    for lines in (LINES[:1], LINES * 30):
+    for lines in ([" ".join(names)], [" ".join(names)] * 30):
         re.purge()
         compiles[0] = 0
         _save(rs, monkeypatch, lines, content=" ".join(names))
