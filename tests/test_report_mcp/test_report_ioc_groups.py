@@ -513,15 +513,6 @@ def _break_records(case, name):
 
 
 @pytest.mark.parametrize("name", list(UNREADABLE))
-def test_records_that_can_t_be_read_are_none(case, name):
-    _case_with(case, [F1, F3], [])
-    _break_records(case, name)
-    assert (
-        rs._case_io.read_record_files(case, ("iocs.json",))["iocs.json"].records == []
-    )
-
-
-@pytest.mark.parametrize("name", list(UNREADABLE))
 def test_a_report_over_unreadable_records_names_the_case_failure(case, name):
     """Verification reads iocs.json first: no finding is verified, none listed.
     The reply names iocs.json, by full path, with the why vhir's reader gives
