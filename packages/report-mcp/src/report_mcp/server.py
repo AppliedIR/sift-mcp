@@ -7,7 +7,6 @@ data is included in each report type.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
@@ -22,15 +21,10 @@ from sift_common.defang import refang
 from sift_common.host_identity import HostLogError, update_case_meta
 from sift_common.instructions import REPORT_MCP as _INSTRUCTIONS
 from sift_common.oplog import setup_logging
-from vhir_cli.case_io import (
-    display_instant,
-    load_case_meta,
-    load_findings,
-    load_iocs,
-    load_timeline,
-    load_todos,
-    read_regular,
-)
+from vhir_cli import case_io as _case_io
+from vhir_cli import defang as _defang
+from vhir_cli.case_io import display_instant, load_case_meta
+from vhir_cli.commands import report as _cli_report
 from vhir_cli.commands.evidence import list_evidence_data
 from vhir_cli.defang import defang_iocs
 from vhir_cli.ledger_verify import (
@@ -380,17 +374,6 @@ def _ioc_value(v) -> str | None:
     return v if v.strip() else None
 
 
-def _ioc_records(case_dir: Path) -> list:
-    """Every IOC record of the case (iocs.json), whatever its status: none
-    when the file can't be read as a list."""
-    try:
-        records = load_iocs(case_dir)
-    except (OSError, ValueError) as e:
-        logger.warning("IOC records not read: %s", e)
-        return []
-    return records if isinstance(records, list) else []
-
-
 def _extract_all_iocs(
     findings: list[dict], records: list | None = None, all_records: list | None = None
 ) -> dict[str, list[dict]]:
@@ -453,128 +436,17 @@ def _extract_all_iocs(
     return out
 
 
-_IPV4 = re.compile(
-    r"(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)"
-)
-_URL = re.compile(r"(?i)(https?)://([^/\s:?#]+)(\S*)")
-_DOMAIN = re.compile(
-    r"(?i)(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z][a-z0-9-]*[a-z0-9]"
-)
-_NETWORK_TYPES = ("domain", "ipv4", "url")  # an IOC type naming one of these
+# Which values a saved report defangs is vhir-cli's rule, looked up through
+# its module (vhir_cli.defang) at each call. These names stay for the tests
+# that import them from here.
+_network_ioc = _defang.network_ioc
+_structured_iocs = _defang.structured_iocs
+select_network_ioc = _defang.select_network_ioc
 
 
-def _network_ioc(value, typed: bool) -> str | None:
-    """`value` live, if it is a URL, an IPv4 address, or (`typed`: its IOC type
-    names a domain) a domain name; else None. An untyped name like a.exe could
-    be a file."""
-    v = ioc_types.unbracket(refang(ioc_types.unbracket(str(value).strip())))
-    base, _, prefix = v.partition("/")
-    if prefix.isdigit() and len(prefix) <= 2 and _IPV4.fullmatch(base):
-        v = base  # a range (a.b.c.d/nn): its base address
-    if typed and v.endswith(".") and _DOMAIN.fullmatch(v[:-1]):
-        v = v[:-1]  # the root dot
-    if _URL.fullmatch(v) or _IPV4.fullmatch(v) or (typed and _DOMAIN.fullmatch(v)):
-        return v
-    return None
-
-
-def _structured_iocs(findings: list) -> list[tuple]:
-    """Each value in the findings' `iocs` fields, with whether its IOC type
-    names a domain, an IPv4 address or a URL (a plain value has no type), and
-    the type forensic-mcp keys it under: a {"value", "type"} dict's own type,
-    else none (it flattens a {type: values} form to plain values)."""
-    out = []
-    for f in findings:
-        field = f.get("iocs") if isinstance(f, dict) else None
-        if isinstance(field, dict):
-            for kind, values in field.items():
-                typed = any(t in str(kind).lower() for t in _NETWORK_TYPES)
-                out += [
-                    (v, typed, None)
-                    for v in (values if isinstance(values, list) else [values])
-                ]
-        elif isinstance(field, list):
-            for ioc in field:
-                if isinstance(ioc, dict):
-                    kind = str(ioc.get("type", "")).lower()
-                    typed = any(t in kind for t in _NETWORK_TYPES)
-                    out.append((ioc.get("value", ""), typed, ioc.get("type")))
-                else:
-                    out.append((ioc, False, None))
-    return out
-
-
-_RECORD_FILES = (("findings", "findings.json"), ("iocs", "iocs.json"))
-_KINDS = {dict: "an object", str: "a string", bool: "a boolean", int: "a number",
-          float: "a number", type(None): "null"}  # fmt: skip
-
-
-class _Unsafe(Exception):
-    """A file a saved report reads its IOCs from is present but isn't a list
-    of records: (the file, what is wrong with it)."""
-
-
-def _fresh_records(case_dir: Path) -> list[tuple[str, dict]]:
-    """The records of findings.json and iocs.json as they are now, read whole.
-    A file that is absent holds none; one that is present (empty or blank
-    too) must parse to a list of records, or `_Unsafe` names it. The raw
-    parse, not load_*: their [] for a file that won't parse can't be told
-    from a case with none.
-    A copy of vhir-cli's commands.report._fresh_records, kept in sync by hand."""
-    records: list[tuple[str, dict]] = []
-    for key, name in _RECORD_FILES:
-        path = case_dir / name
-        if not os.path.lexists(path):
-            continue
-        try:
-            text = read_regular(path).decode("utf-8")
-            if not text.strip():
-                raise _Unsafe(path, "is empty, not a list of records")
-            data = json.loads(text)
-        except (OSError, ValueError, RecursionError) as e:
-            raise _Unsafe(path, f"couldn't be read ({e})") from None
-        if not isinstance(data, list):
-            raise _Unsafe(path, f"holds {_KINDS[type(data)]}, not a list of records")
-        if not all(isinstance(i, dict) for i in data):
-            raise _Unsafe(path, "holds a list with an entry that isn't a record")
-        records += [(key, i) for i in data]
-    return records
-
-
-def _report_iocs(case_dir: Path, view: dict) -> list[str]:
-    """The IOCs a saved report defangs: every domain, URL and IPv4 address
-    recorded in the case, whatever its status, since a status can change
-    while a report is saved. They are the values in each finding's `iocs`
-    field and each IOC record of such a type: in `view` and the records verify
-    read for it, and in the files read again just before the write, so a value
-    recorded since is defanged too. Live, longest first (a URL before the host
-    it holds). A name a finding's text merely mentions isn't one. Hashes,
-    paths and the rest aren't.
-    vhir-cli's `report --save` gathers them the same way, with the same
-    functions (vhir_cli.defang). Raises `_Unsafe` when a file it reads isn't
-    a list of records."""
-    result = view.get("result")
-    records = [*(result.records if result is not None else [])]
-    records += _fresh_records(case_dir)
-    findings = [
-        *(view.get("findings") or []),
-        *(i for k, i in records if k == "findings"),
-    ]
-    iocs = [*(view.get("iocs") or []), *(i for k, i in records if k == "iocs")]
-    kept: set[str] = set()
-
-    def take(value, typed: bool) -> None:
-        if (v := _network_ioc(value, typed)) is not None:
-            kept.add(v)
-
-    for value, typed, _ in _structured_iocs(findings):
-        take(value, typed)
-    for ioc in iocs:
-        if isinstance(ioc, dict) and any(
-            t in str(ioc.get("type", "")).lower() for t in _NETWORK_TYPES
-        ):
-            take(ioc.get("value", ""), True)
-    return sorted(kept, key=lambda v: (-len(v), v))
+# The IOCs a saved report defangs are gathered by vhir-cli's own function,
+# from the records its one reader (vhir_cli.case_io.read_record_files) reads.
+_report_iocs = _cli_report._report_iocs
 
 
 def _build_mitre_mapping(findings: list[dict]) -> dict[str, dict]:
@@ -687,9 +559,13 @@ def _generate(
 
     # Load all data
     metadata = load_case_meta(case_dir)
-    all_findings = load_findings(case_dir)
-    all_timeline = load_timeline(case_dir)
-    todos = load_todos(case_dir)
+    # findings, timeline, iocs and todos as the one reader reads them, in
+    # every profile: an unreadable file holds no records and is named in
+    # `unreadable`
+    read = _case_io.read_record_files(case_dir)
+    all_findings = read["findings.json"].records
+    all_timeline = read["timeline.json"].records
+    todos = read["todos.json"].records
 
     # Evidence
     evidence_list: list[dict] = []
@@ -768,7 +644,7 @@ def _generate(
         stripped_findings.append(out)
 
     # IOC aggregation
-    iocs = _extract_all_iocs(approved_findings, view["iocs"], _ioc_records(case_dir))
+    iocs = _extract_all_iocs(approved_findings, view["iocs"], read["iocs.json"].records)
 
     # MITRE mapping
     mitre = _build_mitre_mapping(approved_findings)
@@ -845,6 +721,8 @@ def _generate(
             "(see verification.not_verified and verification.case_failures). "
             "Run `vhir review --verify` at the SIFT terminal for each one's fix."
         )
+    if unreadable := _case_io.unreadable_of(read):
+        result["unreadable"] = [{"file": str(f), "why": why} for f, why in unreadable]
 
     return result
 
@@ -1103,21 +981,20 @@ def create_server() -> FastMCP:
             # every IOC recorded in the case is written defanged, whatever its
             # status, the block too: it's a display copy, and nothing reads
             # its text back
-            try:
-                iocs = _report_iocs(case_dir, view)
-            except _Unsafe as e:
-                path, why = e.args
+            # it reads them from findings.json and iocs.json, read by the one
+            # reader just before the write: either one unreadable stops the
+            # save, and nothing is written
+            read = _case_io.read_record_files(case_dir, ("findings.json", "iocs.json"))
+            if unreadable := _case_io.unreadable_of(read):
+                lines = _case_io.unreadable_lines(unreadable, view["result"])
                 return {
-                    "error": (
-                        f"Report not saved. {path} {why}, so not every IOC the"
-                        " case records can be written defanged. Tell the"
-                        " examiner which file it is: they can check the case's"
-                        " saved records, restore the file from a backup or, if"
-                        " the case never held any records, replace it with an"
-                        " empty list. Then save the report again."
+                    "error": "\n".join(
+                        [*lines, _case_io.not_saved_line(f for f, _ in unreadable)]
                     ),
-                    "file": str(path),
+                    "files": [str(f) for f, _ in unreadable],
+                    "file": str(unreadable[0][0]),
                 }
+            iocs = _report_iocs(case_dir, view, again=read)
             # the report and its block's lines are defanged as one text and
             # split back, each keeping the newlines it holds: no IOC holds
             # whitespace, and a newline bounds an occurrence as the start or

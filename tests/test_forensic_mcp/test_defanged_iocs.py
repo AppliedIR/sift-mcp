@@ -75,23 +75,17 @@ def test_vhir_refangs_by_the_same_notation_list():
 
 def test_vhir_writes_a_saved_reports_iocs_defanged_by_the_same_functions():
     """vhir report --save and report-mcp's save_report defang alike: report-mcp
-    calls vhir-cli's defang_iocs, and picks the IOCs by the same functions."""
+    calls vhir-cli's defang_iocs, and picks the IOCs by vhir-cli's functions,
+    keeping no copy of the rule."""
     vhir = pytest.importorskip("vhir_cli.defang")
     from report_mcp import server as rs
 
     assert rs.defang_iocs is vhir.defang_iocs
-    for name in ("_IPV4", "_URL", "_DOMAIN"):
-        assert getattr(vhir, name).pattern == getattr(rs, name).pattern, name
-    assert vhir._NETWORK_TYPES == rs._NETWORK_TYPES
-    for mine, theirs in ((vhir.network_ioc, rs._network_ioc),
-                         (vhir.structured_iocs, rs._structured_iocs)):  # fmt: skip
-        assert (
-            inspect.getsource(mine).split('"""')[2]
-            == inspect.getsource(theirs).split('"""')[2]
-        )
-    for value, typed in [*((n, True) for n in NOTATIONS), *((n, False) for n in NOTATIONS),
-                         ("a.exe", False), ("a.exe", True)]:  # fmt: skip
-        assert vhir.network_ioc(value, typed) == rs._network_ioc(value, typed), value
+    assert rs._network_ioc is vhir.network_ioc
+    assert rs._structured_iocs is vhir.structured_iocs
+    assert rs.select_network_ioc is vhir.select_network_ioc
+    for name in ("_NETWORK_TYPES", "_IPV4", "_URL", "_DOMAIN"):
+        assert not hasattr(rs, name), name
 
 
 def test_vhir_gathers_every_recorded_value_into_a_reports_iocs_alike(tmp_path):
@@ -114,7 +108,7 @@ def test_record_finding_refuses_every_citation_whose_type_changes_a_reports_iocs
     refuses that type on a URL, changing no file of the case. One from `vhir
     merge` or an imported bundle, which write findings.json without that
     check, is an IOC of a report either way (the rows hold it)."""
-    from report_mcp.server import _network_ioc
+    from report_mcp.server import select_network_ioc
     from sift_common import ioc_types
 
     values = [*NOTATIONS, "10.0.0.5", "10.0.0.5:8080", "10.0.0.5/24", "10.0.0.5[:]8080",
@@ -124,7 +118,7 @@ def test_record_finding_refuses_every_citation_whose_type_changes_a_reports_iocs
     types = [None, "", *(s for i, (_, _, more) in ioc_types.IDS.items()
                          for s in [i, *more.split()])]  # fmt: skip
     changes = [(v, t) for v in values for t in types
-               if any(_network_ioc(v, typed) for typed in (True, False))
+               if select_network_ioc(v, t) is not None
                and ioc_types.keys(v, t) != ioc_types.keys(v, None)]  # fmt: skip
     assert ("http://10.0.0.5:8080", "ipv4-addr") in changes
     files = {p.name: p.read_bytes() for p in case.iterdir() if p.is_file()}
