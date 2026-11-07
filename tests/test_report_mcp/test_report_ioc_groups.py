@@ -18,6 +18,7 @@ from report_mcp import server as rs
 from report_mcp.profiles import PROFILES
 from report_mcp.server import _TEXT_ONLY, _extract_all_iocs
 from sift_common import ioc_types
+from vhir_cli import case_io
 from vhir_signing import sign_approved
 
 FIXTURE = Path(__file__).parent.parent / "fixtures"
@@ -522,10 +523,16 @@ def test_records_that_can_t_be_read_are_none(case, name):
 
 @pytest.mark.parametrize("name", list(UNREADABLE))
 def test_a_report_over_unreadable_records_names_the_case_failure(case, name):
-    """Verification reads iocs.json first: no finding is verified, none listed."""
+    """Verification reads iocs.json first: no finding is verified, none listed.
+    The reply names iocs.json, by full path, with the why vhir's reader gives
+    it (vhir's tests own the phrase)."""
     _case_with(case, [F1, F3], [])
     _break_records(case, name)
     out = rs._generate("ioc", case)
+    why = case_io.read_record_files(case, ("iocs.json",))["iocs.json"].why
+    assert why and out.get("unreadable") == [
+        {"file": str(case / "iocs.json"), "why": why}
+    ], out.get("unreadable")
     assert out["verification"]["case_failures"]
     assert out["report_data"]["iocs"] == {}
     assert out["report_data"]["summary"]["ioc_count"] == 0
