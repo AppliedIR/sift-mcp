@@ -149,6 +149,9 @@ SHAPES = {
     "not-recorded-value-not-a-string": (
         [_f(1, [{"value": 445, "type": "port"}])], [], {TEXT_ONLY: ["445"]},
     ),
+    "not-recorded-a-number-and-a-nested-value-listed": (
+        [_f(1, [5, ["x"]])], [], {TEXT_ONLY: ["5", "x"]},
+    ),
     "not-recorded-none-left-out": ([_f(1, [None])], [], {}),
     "not-recorded-empty-string-left-out": ([_f(1, [""])], [], {}),
     "not-recorded-blank-string-left-out": ([_f(1, ["  "])], [], {}),

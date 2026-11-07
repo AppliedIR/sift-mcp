@@ -349,23 +349,6 @@ def _text_iocs(text: str) -> list[tuple[str, str]]:
     return found
 
 
-def _ioc_items(iocs):
-    """(type, value) for each value a finding's iocs field holds: a list of
-    strings and {"value", "type"} dicts, or a {type: values} dict. A value
-    under a {type: values} key has no type: forensic-mcp flattens that form
-    to plain values before it keys them."""
-    if isinstance(iocs, dict):
-        for values in iocs.values():
-            for v in values if isinstance(values, list) else [values]:
-                yield None, v
-    elif isinstance(iocs, list):
-        for i in iocs:
-            if isinstance(i, str):
-                yield None, i
-            elif isinstance(i, dict):
-                yield i.get("type"), i.get("value")
-
-
 def _ioc_value(v) -> str | None:
     """A stored value as text; None when there is none to list."""
     if v is None:
@@ -396,7 +379,11 @@ def _extract_all_iocs(
         if not isinstance(f, dict):
             continue
         text = f"{f.get('observation', '')} {f.get('interpretation', '')}"
-        cited = [*_ioc_items(f.get("iocs")), *((None, v) for _, v in _text_iocs(text))]
+        # each value of the iocs field as vhir-cli walks it, typed by its own
+        # {"value", "type"} dict, else none (forensic-mcp keys a value under a
+        # {type: values} key as a plain value), then each found in the text
+        cited = [(own, v) for v, _, own in _defang.structured_iocs([f])]
+        cited += [(None, v) for _, v in _text_iocs(text)]
         for t, value in cited:
             if (value := _ioc_value(value)) is not None and ioc_types.ck(value, t):
                 named.append((value, t, str(f.get("id", ""))))
