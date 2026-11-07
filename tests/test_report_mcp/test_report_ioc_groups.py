@@ -149,9 +149,13 @@ SHAPES = {
     "not-recorded-value-not-a-string": (
         [_f(1, [{"value": 445, "type": "port"}])], [], {TEXT_ONLY: ["445"]},
     ),
-    "not-recorded-empty-left-out": (
-        [_f(1, [None, "", "  ", {"value": None, "type": "ip"}, {"type": "ip"}, 5, ["x"]])], [], {},
-    ),
+    "not-recorded-none-left-out": ([_f(1, [None])], [], {}),
+    "not-recorded-empty-string-left-out": ([_f(1, [""])], [], {}),
+    "not-recorded-blank-string-left-out": ([_f(1, ["  "])], [], {}),
+    "not-recorded-none-value-left-out": ([_f(1, [{"value": None, "type": "ip"}])], [], {}),
+    "not-recorded-no-value-left-out": ([_f(1, [{"type": "ip"}])], [], {}),
+    "not-recorded-empty-list-left-out": ([_f(1, [[]])], [], {}),
+    "not-recorded-empty-dict-left-out": ([_f(1, [{}])], [], {}),
     "text-recorded": (
         [_f(1, observation="Beacon to evil[.]com and 8.8.4.4.")],
         [_r(1, "evil.com", "domain-name")], {"Domain": ["evil.com"], TEXT_ONLY: ["8.8.4.4"]},
