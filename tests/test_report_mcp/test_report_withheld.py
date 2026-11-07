@@ -10,17 +10,19 @@ asserts the codes verify emits for it first, so its class is measured, not
 assumed. Every cell saves.
 
 The caller's text is saved with every IOC record's value defanged on a failing
-case. vhir-cli's tests state the same rows for `vhir report`."""
+case, and so is a value only verify's own read holds. vhir-cli's tests state
+the same rows for `vhir report`."""
 
 from __future__ import annotations
 
 import json
 import os
+import sys
 
 import pytest
 import yaml
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from vhir_cli import keys, ledger
+from vhir_cli import case_io, keys, ledger
 from vhir_cli.case_io import signed_text
 from vhir_cli.ledger_verify import approved_view, verify_case
 from vhir_signing import _KEYS, NOT_CHECKED, sign_approved
@@ -30,6 +32,7 @@ CASE = "INC-2026-WITHHELD"
 AT = "2026-10-08T10:00:00+00:00"
 VALUE = "c2.example.net"
 DEFANGED = "c2[.]example[.]net"
+B_ONLY = "b-only.example.org"
 FINDING = {"id": "F-tester-001", "status": "APPROVED", "title": "Beacon to a C2 host",
            "confidence": "HIGH", "observation": f"beacons to {VALUE}",
            "interpretation": "C2", "iocs": []}  # fmt: skip
@@ -338,3 +341,73 @@ def test_an_item_level_failure_saves_no_withheld(rs, tmp_path, monkeypatch, cell
         for fid, _ in dropped:
             assert not [x for x in lines if x.startswith(f"[{fid}]")], (where, fid)
         assert (NONE_SHOWN in lines) == (not shown), (where, lines)
+
+
+# --- a value only verify's read holds ---------------------------------------
+# held only by verify's read, in a record the view leaves out
+C_ONLY = "c-only.example.net"
+STATES = {  # state: (the record verify reads, what's signed for it, its expected status)
+    "altered": (dict(IOC, id="IOC-tester-003", value=C_ONLY, approved_at=AT),
+                dict(IOC, id="IOC-tester-003", value="c-old.example.net", approved_at=AT),
+                "ALTERED_AFTER_APPROVAL"),
+    "draft": ({k: v for k, v in dict(IOC, id="IOC-tester-003", value=C_ONLY,
+                                     status="DRAFT").items()
+               if k not in ("manually_reviewed", "approved_by", "approved_at")},
+              None, "DRAFT"),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("state", sorted(STATES))
+def test_a_value_only_verify_read_holds_is_defanged(rs, tmp_path, monkeypatch, state):
+    """verify's read of iocs.json holds a signed IOC record of B_ONLY, and
+    IOC-tester-003 of C_ONLY, that the file on disk doesn't (the state an edit
+    between two reads leaves). IOC-tester-003 is in verify's records but not
+    in the approved view: APPROVED and edited after signing, or DRAFT. The
+    finding F-tester-002 names C_ONLY in its title, the caller's text names
+    both. The saved text holds each defanged only."""
+    third, signed, status = STATES[state]
+    case = _signed(tmp_path, monkeypatch)
+    second = dict(FINDING, id="F-tester-002", title=f"Second beacon to {C_ONLY}",
+                  observation=f"beacons to {B_ONLY}", approved_by="tester",
+                  approved_at=AT)  # fmt: skip
+    _sign(_key(case), "finding", second)
+    _rewrite(case / "findings.json", lambda d: d + [second])
+    # approved_at as `_sign` signs it, or verify calls the record altered
+    rec = dict(IOC, id="IOC-tester-002", value=B_ONLY, source_findings=[second["id"]],
+               approved_at=AT)  # fmt: skip
+    _sign(_key(case), "ioc", rec)
+    if signed is not None:
+        _sign(_key(case), "ioc", signed)
+    verify_sees = json.dumps([IOC, rec, third]).encode()
+    on_disk = (case / "iocs.json").read_text()
+    assert B_ONLY not in on_disk and C_ONLY not in on_disk, on_disk
+    real, hits = case_io.read_case_document, []
+
+    def patched(path, *a, **kw):
+        if sys._getframe(1).f_code.co_name == "_items" and path.name == "iocs.json":
+            hits.append(path)
+            return verify_sees
+        return real(path, *a, **kw)
+
+    monkeypatch.setattr(case_io, "read_case_document", patched)
+    view = approved_view(case)
+    result = view["result"]
+    assert hits, "verify's read wasn't patched"
+    assert result.failures == [], result.failures
+    assert [i["id"] for i in view["iocs"]] == [IOC["id"], rec["id"]]
+    # precondition: in verify's records, out of the view, with its own status
+    read = [i for k, i in result.records if k == "iocs" and i.get("id") == third["id"]]
+    assert read == [third], result.records
+    assert C_ONLY not in [i.get("value") for i in view["iocs"]], view["iocs"]
+    nv = [x["status"] for x in view["not_verified"] if x.get("id") == third["id"]]
+    if status == "DRAFT":  # the view skips a record that isn't APPROVED
+        assert (third["status"], nv) == ("DRAFT", []), view["not_verified"]
+    else:
+        assert nv == [status], view["not_verified"]
+    content = f"# Report\n\nBeacon to {VALUE}, then {B_ONLY} and {C_ONLY}.\n"
+    _, saved = _save(rs, case, content)
+    assert saved.count(B_ONLY) == 0, saved[-1500:]
+    assert saved.count(C_ONLY) == 0, saved[-1500:]
+    text = saved.split("\n\n```")[0]  # control: the caller's text holds each defanged
+    assert "b-only[.]example[.]org" in text, saved[-1500:]
+    assert "c-only[.]example[.]net" in text, saved[-1500:]
