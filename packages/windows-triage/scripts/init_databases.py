@@ -101,15 +101,11 @@ def main():
     print(f"  known_good.db: {known_good_path}")
     print(f"  context.db:    {context_path}")
 
-    print("\nNext steps:")
-    print("  1. Clone data sources into data/sources/")
-    print("  2. Run: python scripts/import_files.py")
-    print("  3. Run: python scripts/import_context.py")
-    print("  4. (Optional) Run: python scripts/import_registry_extractions.py")
+    print("\nNext step, which clones every source and builds the DBs from them:")
+    print("  Run: python scripts/import_all.py --fetch")
 
-    print("\nOptional full registry baseline:")
-    print("  Run: python scripts/init_registry_db.py")
-    print("  Then: python scripts/import_registry_full.py")
+    print("\nThe full registry baseline (known_good_registry.db) is built by that")
+    print("run too; --skip-registry leaves it and the registry extractions out.")
 
 
 if __name__ == "__main__":

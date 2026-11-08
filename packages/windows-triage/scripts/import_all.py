@@ -17,19 +17,17 @@ Data Sources:
     HijackLibs                 -> context.db (DLL hijacking)
 
 Prerequisites:
-    1. Run init_databases.py first
-    2. Clone data sources:
-       cd data/sources
-       git clone https://github.com/AndrewRathbun/VanillaWindowsReference.git
-       git clone https://github.com/AndrewRathbun/VanillaWindowsRegistryHives.git
-       git clone https://github.com/LOLBAS-Project/LOLBAS.git
-       git clone https://github.com/magicsword-io/LOLDrivers.git
-       git clone https://github.com/wietze/HijackLibs.git
+    With --fetch, none: it clones every source itself.
+    Without it, run init_databases.py first, with the sources already cloned
+    under data/sources/.
 
 Usage:
     python scripts/import_all.py [options]
 
 Options:
+    --fetch           Clone each source and build its DBs in a temp dir; the
+                      clones, their licences and the DBs replace those in data/
+                      only when every step passes
     --skip-files      Skip VanillaWindowsReference file import
     --skip-registry   Skip VanillaWindowsRegistryHives extraction
     --skip-context    Skip context.db imports (LOLBins, etc.)
@@ -38,9 +36,56 @@ Options:
 """
 
 import argparse
+import os
+import re
+import shutil
+import sqlite3
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+import extract_registry_zips
+import update_sources
+from windows_triage import release_manifest
+from windows_triage.db.schemas import (
+    CONTEXT_INITIAL_DATA,
+    CONTEXT_SCHEMA,
+    KNOWN_GOOD_SCHEMA,
+    REGISTRY_FULL_SCHEMA,
+)
+
+# --fetch: the SOURCES keys each --skip-* option leaves out; any other key is fetched
+FETCH_SKIPS = {
+    "skip_files": {"files"},
+    "skip_registry": {"registry", "registry_extractions"},
+    "skip_context": {"lolbas", "loldrivers", "hijacklibs"},
+}
+CONTEXT_KEYS = ("lolbas", "loldrivers", "hijacklibs")
+IMPORTERS = {  # SOURCES key: the script that imports its clone, in run order
+    "files": "import_files.py",
+    "registry_extractions": "import_registry_extractions.py",
+    "registry": "import_registry_full.py",
+}
+# Each DB as init_databases.py and init_registry_db.py create it
+DB_SCHEMAS = {
+    "known_good.db": KNOWN_GOOD_SCHEMA,
+    "context.db": CONTEXT_SCHEMA + CONTEXT_INITIAL_DATA,
+    "known_good_registry.db": REGISTRY_FULL_SCHEMA,
+}
+LICENCE_NAME = re.compile(r"(LICEN[CS]E|NOTICE|COPYING)", re.I)
+LICENCE_MAX = 1024 * 1024
+
+
+class FetchError(Exception):
+    """A --fetch step failed; each arg is one line saying what failed."""
+
+
+def _dir(entry: dict) -> str:
+    """The clone dir of a SOURCES entry: its repo's name."""
+    return entry["repo"].split("/")[1]
 
 
 def run_script(script_name: str, args: list = None, description: str = None):
@@ -58,15 +103,192 @@ def run_script(script_name: str, args: list = None, description: str = None):
 
     print(f"\n{'=' * 60}")
     print(f"Running: {description or script_name}")
-    print(f"{'=' * 60}")
+    print(f"{'=' * 60}", flush=True)
 
     result = subprocess.run(cmd)
     return result.returncode == 0
 
 
+def _clone(url: str, dest: Path, timeout: int, log: Path) -> str:
+    """Clone url into dest within timeout seconds; returns the clone's head."""
+    print(f"Cloning {url}", flush=True)
+    with open(log, "w") as out:
+        try:
+            proc = subprocess.Popen(
+                ["git", "clone", "--depth", "1", url, str(dest)],
+                stdout=out,
+                stderr=subprocess.STDOUT,
+                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+            )
+        except OSError as e:
+            raise FetchError(f"{dest.name}: git could not run: {e}") from None
+        try:
+            rc = proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            raise FetchError(
+                f"{dest.name}: the clone of {url} took over {timeout} s"
+            ) from None
+    if rc != 0:
+        tail = log.read_text(errors="replace").strip().splitlines()[-3:]
+        raise FetchError(f"{dest.name}: the clone of {url} failed (exit {rc})", *tail)
+    head = update_sources.clone_head(dest)
+    if head is None:
+        raise FetchError(f"{dest.name}: the clone of {url} has no HEAD commit")
+    return head
+
+
+def _copy_licences(clone: Path, dest: Path) -> None:
+    """Copy the licence files at the clone's root; none is an error."""
+    found = [
+        p
+        for p in sorted(clone.iterdir())
+        if LICENCE_NAME.match(p.name)
+        and not p.is_symlink()
+        and p.is_file()
+        and p.stat().st_size <= LICENCE_MAX
+    ]
+    if not found:
+        raise FetchError(f"{clone.name}: no licence file at the clone's root")
+    dest.mkdir(parents=True)
+    for p in found:
+        shutil.copyfile(p, dest / p.name)
+
+
+def _extract_zips(src: Path) -> None:
+    """Extract the registry clone's JSON zips, as the import scripts read them."""
+    registry = src / "VanillaWindowsRegistryHives"
+    zips = sorted(registry.rglob("RegistryHivesJSON.zip")) if registry.is_dir() else []
+    if not zips or any(registry.rglob("*_ROOT.json")):
+        return
+    bad = [z for z in zips if extract_registry_zips.extract_zip(z)["errors"]]
+    if bad:
+        raise FetchError(
+            *(f"{z.relative_to(src)}: could not be extracted" for z in bad)
+        )
+
+
+def _prepare_db(name: str, existing: Path, path: Path, complete: bool) -> None:
+    """A DB every source of which is fetched starts empty; any other starts as
+    a copy of the installed one, so the sources not fetched keep their rows."""
+    if not complete and existing.exists():
+        source, copy = sqlite3.connect(existing), sqlite3.connect(path)
+        try:
+            source.backup(copy)
+        finally:
+            copy.close()
+            source.close()
+        return
+    conn = sqlite3.connect(path)
+    try:
+        conn.executescript(DB_SCHEMAS[name])
+    finally:
+        conn.close()
+
+
+def _plan(selected: set, heads: dict, args, work: Path) -> list:
+    """Each import to run: (script, its args, description)."""
+    sources = update_sources.SOURCES
+    common = ["--sources-dir", str(work / "src")]
+    if args.verbose:
+        common.append("--verbose")
+    plan = []
+    context = [_dir(sources[k]) for k in CONTEXT_KEYS if k in selected]
+    if context:
+        commits = [a for d in context for a in ("--sync-commit", f"{d}={heads[d]}")]
+        script_args = ["--db", str(work / "db" / "context.db"), *commits, *common]
+        plan.append(("import_context.py", script_args, "Importing context.db"))
+    for key, script in IMPORTERS.items():
+        if key not in selected:
+            continue
+        entry = sources[key]
+        script_args = ["--db", str(work / "db" / entry["db"])]
+        script_args += ["--sync-commit", heads[_dir(entry)], *common]
+        if key == "files" and args.files_limit > 0:
+            script_args += ["--limit", str(args.files_limit)]
+        plan.append((script, script_args, f"Importing {entry['name']} ({key})"))
+    return plan
+
+
+def _install(work: Path, data_dir: Path, dirs, dbs) -> None:
+    """Move each clone, its licences and each built DB into data/."""
+    places = (
+        (data_dir / "sources", work / "src", work / "old"),
+        (data_dir / "licenses", work / "licenses", work / "old-licenses"),
+    )
+    for base, new, old in places:
+        base.mkdir(exist_ok=True)
+        old.mkdir()
+        for d in dirs:
+            if (base / d).exists() or (base / d).is_symlink():
+                os.rename(base / d, old / d)
+            os.rename(new / d, base / d)
+    for name in dbs:
+        for side in (data_dir / f"{name}-wal", data_dir / f"{name}-shm"):
+            if side.exists():  # an old DB's journal must not meet the new DB
+                os.rename(side, work / "old" / side.name)
+        os.replace(work / "db" / name, data_dir / name)
+
+
+def fetch(args, data_dir: Path) -> None:
+    """Clone, import and floor-check in a temp dir under data/sources, then
+    install; raises FetchError, with data/ unchanged, when any step fails."""
+    sources = update_sources.SOURCES
+    skipped = set()
+    for option, keys in FETCH_SKIPS.items():
+        if getattr(args, option):
+            skipped |= keys
+    selected = {k for k in sources if k not in skipped}
+    dirs: dict[str, tuple[str, int]] = {}  # clone dir: (url, clone timeout)
+    for key in sources:
+        if key in selected:
+            entry = sources[key]
+            url, timeout = dirs.get(_dir(entry), (entry["url"], 0))
+            dirs[_dir(entry)] = (url, max(timeout, entry["clone_timeout"]))
+    imported = [k for k in selected if k in IMPORTERS or k in CONTEXT_KEYS]
+    dbs = sorted({sources[k]["db"] for k in imported})
+    complete = {
+        db
+        for db in dbs
+        if all(k in selected for k in sources if sources[k]["db"] == db)
+    }
+
+    (data_dir / "sources").mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix=".fetch-", dir=data_dir / "sources"))
+    try:
+        for sub in ("src", "licenses", "db"):
+            (work / sub).mkdir()
+        heads = {}
+        for d, (url, timeout) in dirs.items():
+            heads[d] = _clone(url, work / "src" / d, timeout, work / f"{d}.log")
+            _copy_licences(work / "src" / d, work / "licenses" / d)
+        _extract_zips(work / "src")
+        for name in dbs:
+            _prepare_db(name, data_dir / name, work / "db" / name, name in complete)
+        for script, script_args, description in _plan(selected, heads, args, work):
+            if not run_script(script, script_args, description):
+                raise FetchError(f"{script} failed: see its output above")
+        errors = [
+            e
+            for name in sorted(complete)
+            for e in release_manifest.check_floors(name, work / "db" / name)
+        ]
+        if errors:
+            raise FetchError(*errors)
+        _install(work, data_dir, dirs, dbs)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Import all data sources into forensic triage databases"
+    )
+    parser.add_argument(
+        "--fetch",
+        action="store_true",
+        help="Clone and build every source in a temp dir; install only if all pass",
     )
     parser.add_argument(
         "--skip-files",
@@ -93,6 +315,17 @@ def main():
     project_root = Path(__file__).parent.parent
     data_dir = project_root / "data"
     sources_dir = data_dir / "sources"
+
+    if args.fetch:
+        try:
+            fetch(args, data_dir)
+        except FetchError as e:
+            for line in e.args:
+                print(f"ERROR: {line}")
+            print("Nothing in data/ was changed.")
+            sys.exit(1)
+        _summary({"fetch": True}, data_dir)
+        return
 
     # Check databases exist
     if not (data_dir / "known_good.db").exists():
@@ -159,7 +392,11 @@ def main():
             )
             results["registry"] = success
 
-    # Summary
+    _summary(results, data_dir)
+
+
+def _summary(results: dict, data_dir: Path) -> None:
+    """Print each step's result and the DB sizes; exit 1 when a step failed."""
     print("\n" + "=" * 60)
     print("IMPORT ALL - SUMMARY")
     print("=" * 60)
@@ -173,7 +410,7 @@ def main():
 
     # Show database sizes
     print("\nDatabase sizes:")
-    for db_name in ["known_good.db", "context.db"]:
+    for db_name in release_manifest.DATABASES:
         db_path = data_dir / db_name
         if db_path.exists():
             size_mb = db_path.stat().st_size / (1024 * 1024)
@@ -183,9 +420,8 @@ def main():
     registry_db = data_dir / "known_good_registry.db"
     if not registry_db.exists():
         print("\nOptional: Full registry baseline not installed.")
-        print("  To enable deep registry validation, run:")
-        print("    python scripts/init_registry_db.py")
-        print("    python scripts/import_registry_full.py")
+        print("  To build it with the other DBs from their sources, run:")
+        print("    python scripts/import_all.py --fetch")
 
     if all_success:
         print("\nAll imports completed successfully!")
