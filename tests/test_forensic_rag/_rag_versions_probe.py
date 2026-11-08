@@ -1,12 +1,13 @@
 """Run the RAG version paths in a fresh process on a scratch copy of the package.
 
-Used by test_rag_versions.py and test_rag_bundle_state.py; not a test module
-itself. The test puts a scratch copy of the package first on sys.path, so
-every file the package reads under its own data dir is the copy's, never the
-installed tree's. The version lookups are stubbed at their functions, every
-URL fetch is recorded and answered only from fixture files, the bundle
-install's release lookup is answered with local file URLs, and the embedding
-model is a stand-in, so nothing here reaches the network or loads a model.
+Used by test_rag_versions.py, test_rag_bundle_state.py and
+test_rag_licences.py; not a test module itself. The test puts a scratch copy
+of the package first on sys.path, so every file the package reads under its
+own data dir is the copy's, never the installed tree's. The version lookups
+are stubbed at their functions, every URL fetch is recorded and answered only
+from fixture files, the bundle install's release lookup is answered with local
+file URLs, and the embedding model is a stand-in, so nothing here reaches the
+network or loads a model.
 
 Usage: python _rag_versions_probe.py <spec.json> <out.json>
 """
@@ -252,9 +253,23 @@ def main() -> int:
             build_release.MIN_RECORD_COUNT = 0
             argv = ["build_release", "--skip-build", "--output-dir", op["out"]]
             res = _logged(lambda argv=argv: _main_with(argv, build_release.main))
+        elif kind == "release":
+            # The full release path (fetch, strict build, pack) over fixture
+            # sources, with the record floor lowered to the fixture's size as
+            # the pack op lowers it.
+            from rag_mcp.scripts import build_release
+
+            build_release.MIN_RECORD_COUNT = op.get("floor", 1)
+            argv = ["build_release", "--output-dir", op["out"]]
+            res = _logged(lambda argv=argv: _main_with(argv, build_release.main))
         elif kind == "install":
             from rag_mcp.scripts import download_index
 
+            if op.get("verify") is False:
+                # A fixture build is far below the installed index's record
+                # floor, as the release op's floor is lowered for the same
+                # reason; everything else in the install runs as shipped.
+                download_index._verify_index = lambda d: True
             release = _release(op["assets"], download_index.ASSETS)
             download_index._fetch_release = lambda tag="latest", r=release: r
             argv = ["download_index", *op["argv"]]
