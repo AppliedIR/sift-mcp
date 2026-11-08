@@ -1,14 +1,18 @@
-"""build-release.sh checks each DB's tables before it packs anything.
+"""build-release.sh checks each DB's tables and each source's licence files before
+it packs anything.
 
 Each case runs the script from a copy of the scripts dir with a data dir beside it,
 on a fresh --output dir. The fixture DBs hold two rows in every data table, far
 below the release's counts, so a case sets the manifest's expected counts to the
 fixture's: a sitecustomize on PYTHONPATH patches ``release_manifest.COUNTS`` in each
-Python the script starts (a tree with no manifest has nothing to patch).
+Python the script starts (a tree with no manifest has nothing to patch). The data
+dir holds a licence file for each clone in the triage source table, as
+``import_all.py --fetch`` leaves it.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import shutil
@@ -18,10 +22,23 @@ import sys
 import textwrap
 from pathlib import Path
 
+import pytest
 from windows_triage.db.schemas import CONTEXT_SCHEMA, KNOWN_GOOD_SCHEMA
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "packages/windows-triage/scripts"
 ROWS = 2
+
+
+def _licence_dirs() -> list[str]:
+    """Each clone's licence dir: the repo name of each triage source table entry."""
+    path = SCRIPTS / "update_sources.py"
+    spec = importlib.util.spec_from_file_location("brc_update_sources", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return sorted({e["repo"].split("/")[1] for e in mod.SOURCES.values()})
+
+
+LICENCE_DIRS = _licence_dirs()
 SHIM = textwrap.dedent(
     """
     import json
@@ -82,6 +99,10 @@ def _tree(tmp: Path, empty: tuple[str, ...] = ()) -> Path:
     (root / "data").mkdir()
     _fill(root / "data" / "known_good.db", KNOWN_GOOD_SCHEMA)
     _fill(root / "data" / "context.db", CONTEXT_SCHEMA, empty)
+    for name in LICENCE_DIRS:
+        licence = root / "data" / "licenses" / name / "LICENSE"
+        licence.parent.mkdir(parents=True)
+        licence.write_text(f"Fixture licence for {name}\n")
     return root
 
 
@@ -159,3 +180,27 @@ def test_a_missing_table_fails_with_nothing_written(tmp_path):
     run, written = _build(tmp_path, root, _fixture_counts(root))
     assert run.returncode != 0, f"build rc 0 with a table missing, wrote {written}"
     assert written == [], f"a failed build wrote {written}"
+
+
+LICENCE_CASES = ["no licenses dir", *(f"no {d} dir" for d in LICENCE_DIRS), "empty"]
+
+
+@pytest.mark.parametrize("case", LICENCE_CASES)
+def test_a_source_with_no_licence_fails_naming_it(tmp_path, case):
+    root = _tree(tmp_path)
+    licences = root / "data" / "licenses"
+    if case == "no licenses dir":
+        shutil.rmtree(licences)
+        named = LICENCE_DIRS
+    elif case == "empty":
+        named = [LICENCE_DIRS[0]]
+        (licences / named[0] / "LICENSE").unlink()
+    else:
+        named = [case.split()[1]]
+        shutil.rmtree(licences / named[0])
+    run, written = _build(tmp_path, root, _fixture_counts(root))
+    out = run.stdout + run.stderr
+    assert run.returncode != 0, f"rc 0 with no licence for {named}, wrote {written}"
+    assert written == [], f"a failed build wrote {written}"
+    missing = [n for n in named if f"{n}: no licence file" not in out]
+    assert missing == [], f"not named: {missing}: {out[-2000:]}"
