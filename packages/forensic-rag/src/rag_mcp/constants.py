@@ -41,6 +41,21 @@ CHROMA_DIR_NAME = "chroma"
 SOURCES_DIR_NAME = "sources"
 
 # =============================================================================
+# Release Bundle
+# =============================================================================
+
+# The one list of what a release bundle holds, paths under the data dir. The
+# release build packs each and fails naming one that is missing; the install
+# admits only these (and what lies under them).
+BUNDLE_MEMBERS: tuple[str, ...] = (
+    "chroma",
+    "sources",
+    "metadata.json",
+    "user_state.json",
+    "sources_state.json",
+)
+
+# =============================================================================
 # Safety Boundaries
 # =============================================================================
 

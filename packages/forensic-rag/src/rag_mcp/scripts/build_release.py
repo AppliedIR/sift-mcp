@@ -28,6 +28,7 @@ from pathlib import Path
 
 import zstandard as zstd
 
+from .. import constants
 from ..utils import resolve_data_dir
 
 MIN_RECORD_COUNT = 20000
@@ -48,17 +49,46 @@ def _build_index(data_dir: Path) -> int:
 
 
 def _create_tarball(data_dir: Path, output_path: Path) -> None:
-    """Create a zstd-compressed tarball of the index data."""
+    """Create a zstd-compressed tarball of the bundle members.
+
+    Exits 1 naming each member of constants.BUNDLE_MEMBERS missing from
+    data_dir. Of the source JSONLs, only the enabled sources' are packed.
+    """
+    from ..sources import SOURCES, load_disabled_sources
+
+    members = constants.BUNDLE_MEMBERS
+    missing = [name for name in members if not (data_dir / name).exists()]
+    if missing:
+        for name in missing:
+            print(f"ERROR: Bundle member not found in {data_dir}: {name}")
+        sys.exit(1)
+
+    disabled = load_disabled_sources(data_dir)
+    enabled = {name for name in SOURCES if name not in disabled}
+
+    def packed(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
+        parts = info.name.split("/")
+        if (
+            len(parts) == 2
+            and parts[0] == constants.SOURCES_DIR_NAME
+            and parts[1].endswith(".jsonl")
+            and parts[1][: -len(".jsonl")] not in enabled
+        ):
+            print(f"  Skipped (not an enabled source): {info.name}")
+            return None
+        return info
+
     print(f"Creating {output_path.name}...")
 
     # Create uncompressed tar in memory, then compress with zstd
     tar_tmp = output_path.with_suffix(".tar")
     with tarfile.open(tar_tmp, "w") as tar:
-        for subpath in ("chroma", "sources", "metadata.json", "user_state.json"):
-            full_path = data_dir / subpath
-            if full_path.exists():
-                tar.add(full_path, arcname=subpath)
-                print(f"  Added: {subpath}")
+        for subpath in members:
+            # a member under another one (sources/licenses) is packed with it
+            if any(subpath.startswith(f"{other}/") for other in members):
+                continue
+            tar.add(data_dir / subpath, arcname=subpath, filter=packed)
+            print(f"  Added: {subpath}")
 
     # Compress with zstd level 1 (fast, good enough)
     cctx = zstd.ZstdCompressor(level=1)

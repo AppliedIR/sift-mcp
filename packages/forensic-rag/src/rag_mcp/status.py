@@ -30,7 +30,7 @@ from .sources import (
     SOURCES,
     check_source_updates,
     load_disabled_sources,
-    load_sources_state,
+    read_sources_state,
     sources_dir,
 )
 from .stores import layout, read_json, read_state, user_dir
@@ -130,11 +130,17 @@ def get_status(
     result.disabled_sources = list(load_disabled_sources(data_dir))
 
     # Get online source status
-    sources_state = load_sources_state(data_dir)
+    # one read decides both this report and the update check
+    state_read = read_sources_state(data_dir)
+    state_kind, sources_state = state_read
+    if state_kind == "unreadable":
+        result.warnings.append(
+            "sources_state.json is unreadable: source versions are unknown"
+        )
 
     if check_updates:
         rows = {}
-        for status in check_source_updates(data_dir):
+        for status in check_source_updates(data_dir, read=state_read):
             rows[status.name] = {
                 "name": status.name,
                 "records": status.records,
@@ -144,6 +150,10 @@ def get_status(
                 "has_update": status.has_update,
                 "error": status.error,
             }
+            if state_kind == "unreadable":
+                # the recorded versions are unknown, not missing: no update
+                rows[status.name]["has_update"] = False
+                rows[status.name]["error"] = "Source state unreadable"
         disabled = set(result.disabled_sources)
         for name, source in SOURCES.items():
             if source.source_type == "embedded" and name not in disabled:

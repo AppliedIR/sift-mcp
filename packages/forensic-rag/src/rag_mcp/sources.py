@@ -737,16 +737,33 @@ def _remote_head(source: SourceConfig) -> str | None:
 # =============================================================================
 
 
-def load_sources_state(data_dir: str | Path | None = None) -> dict[str, Any]:
-    """Load sources state from file."""
+def read_sources_state(
+    data_dir: str | Path | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Read sources_state.json once and say what was found.
+
+    Returns (kind, state). kind is "absent" (no file: no state yet),
+    "unreadable" (a file that cannot be read or parsed as an object, such as
+    a truncated one) or "readable"; state is the file's object, and the empty
+    state unless kind is "readable".
+    """
+    empty: dict[str, Any] = {"version": 1, "sources": {}}
     path = state_file(data_dir)
-    if path.exists():
-        try:
-            with open(path, encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, json.JSONDecodeError):
-            pass
-    return {"version": 1, "sources": {}}
+    if not path.exists():
+        return "absent", empty
+    try:
+        with open(path, encoding="utf-8") as f:
+            state = json.load(f)
+    except (OSError, ValueError):
+        return "unreadable", empty
+    if not isinstance(state, dict):
+        return "unreadable", empty
+    return "readable", state
+
+
+def load_sources_state(data_dir: str | Path | None = None) -> dict[str, Any]:
+    """Load sources state from file (the empty state unless it is readable)."""
+    return read_sources_state(data_dir)[1]
 
 
 def save_sources_state(
@@ -2601,10 +2618,18 @@ def fetch_and_parse(source: SourceConfig, output_path: Path) -> FetchResult:
     return result
 
 
-def check_source_updates(data_dir: str | Path | None = None) -> list[SourceStatus]:
-    """Check all sources for available updates."""
+def check_source_updates(
+    data_dir: str | Path | None = None,
+    *,
+    read: tuple[str, dict[str, Any]] | None = None,
+) -> list[SourceStatus]:
+    """Check all sources for available updates.
+
+    read is a read_sources_state() result the caller already made, so one
+    read decides both its own report and this check.
+    """
     data_dir = resolve_data_dir(data_dir)
-    state = load_sources_state(data_dir)
+    state = (read if read is not None else read_sources_state(data_dir))[1]
     disabled = load_disabled_sources(data_dir)
     results = []
 
