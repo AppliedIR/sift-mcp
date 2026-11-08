@@ -17,7 +17,6 @@ import hashlib
 import json
 import os
 import shutil
-import sqlite3
 import subprocess
 import sys
 import tarfile
@@ -41,9 +40,6 @@ LICENCE_DIR = "licenses"
 LICENCE_FILE_MAX = 1024 * 1024
 MAX_ATTEMPTS = 3
 CHUNK_SIZE = 1024 * 1024  # 1 MB
-MIN_BASELINE_FILES = 1_000_000
-MIN_LOLBINS = 100
-MIN_VULNERABLE_DRIVERS = 100
 
 
 def _github_headers() -> dict[str, str]:
@@ -287,26 +283,6 @@ def _install_licences(asset: Path, dest: Path) -> None:
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def _verify_database(db_path: Path, table: str, min_rows: int, label: str) -> bool:
-    """Check that a database table has at least min_rows rows."""
-    if not db_path.is_file():
-        print(f"  {label}: missing")
-        return False
-    try:
-        conn = sqlite3.connect(str(db_path))
-        count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-        conn.close()
-        if count >= min_rows:
-            print(f"  {label}: {count:,} rows")
-            return True
-        else:
-            print(f"  {label}: only {count:,} rows (expected {min_rows:,}+)")
-            return False
-    except Exception as e:
-        print(f"  {label}: verification error ({e})")
-        return False
-
-
 def download_databases(dest_dir: str | Path, tag: str = "latest") -> bool:
     """Download and verify triage databases.
 
@@ -399,21 +375,6 @@ def download_databases(dest_dir: str | Path, tag: str = "latest") -> bool:
                 if not errors:
                     print(f"  {db_name}: every table matches the release's counts")
                 ok &= not errors
-            ok &= _verify_database(
-                dest / "known_good.db",
-                "baseline_files",
-                MIN_BASELINE_FILES,
-                "known_good.db",
-            )
-            ok &= _verify_database(
-                dest / "context.db", "lolbins", MIN_LOLBINS, "context.db (lolbins)"
-            )
-            ok &= _verify_database(
-                dest / "context.db",
-                "vulnerable_drivers",
-                MIN_VULNERABLE_DRIVERS,
-                "context.db (drivers)",
-            )
 
             if not ok:
                 print("\nDatabase verification failed.")
