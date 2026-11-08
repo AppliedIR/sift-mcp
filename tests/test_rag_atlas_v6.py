@@ -58,6 +58,7 @@ def rag(monkeypatch, tmp_path):
     br = importlib.import_module("rag_mcp.scripts.build_release")
     data = tmp_path / "data"
     monkeypatch.setattr(s, "get_latest_version", lambda source: "test")
+    monkeypatch.setattr(s, "_clone_head", lambda repo_dir: "test")
     monkeypatch.setenv("RAG_INDEX_DIR", str(data))
     yield types.SimpleNamespace(sources=s, build=b, build_release=br, data=data)
     for name in [k for k in sys.modules if k.startswith("rag_mcp.")]:

@@ -38,6 +38,7 @@ def sources(monkeypatch, tmp_path):
     s = importlib.import_module("rag_mcp.sources")
     monkeypatch.setenv("RAG_INDEX_DIR", str(tmp_path))
     monkeypatch.setattr(s, "get_latest_version", lambda source: "test")
+    monkeypatch.setattr(s, "_clone_head", lambda repo_dir: "test")
     yield s
     for name in [k for k in sys.modules if k.startswith("rag_mcp.")]:
         del sys.modules[name]

@@ -583,17 +583,41 @@ def get_feed_version(url: str) -> str | None:
     return None
 
 
+def _is_cloned(source: SourceConfig) -> bool:
+    """Whether fetch_and_parse clones this source: its version is then the
+    commit the clone checked out, whatever its source_type."""
+    return (
+        source.source_type not in ("json_feed", "embedded")
+        and source.name != "mitre_attack"
+    )
+
+
 def get_latest_version(source: SourceConfig) -> str | None:
     """Get latest version for a source without downloading."""
-    if source.source_type == "github_commits":
-        return get_latest_commit(source.repo, source.branch)
-    elif source.source_type == "github_releases":
-        return get_latest_release(source.repo)
-    elif source.source_type == "json_feed":
-        return get_feed_version(source.repo)
-    elif source.source_type == "embedded":
+    if source.source_type == "embedded":
         return "embedded"  # Static version, no remote check needed
+    if _is_cloned(source):
+        # the head of the branch the clone takes, as the sync records it
+        return get_latest_commit(source.repo, source.branch)
+    if source.source_type == "github_releases":
+        return get_latest_release(source.repo)
+    if source.source_type == "json_feed":
+        return get_feed_version(source.repo)
     return None
+
+
+def _looked_up_version(source: SourceConfig) -> str | None:
+    """The version lookup of a source that is not cloned; None when it fails,
+    after a line naming the source and the failed lookup."""
+    try:
+        version = get_latest_version(source)
+    except Exception as e:
+        logger.debug(f"Version lookup for {source.name} raised: {e}")
+        version = None
+    if not version:
+        logger.warning(f"  {source.name}: version lookup failed; nothing synced")
+        return None
+    return version
 
 
 # Security: Allowed hosts for URL fetching (SSRF protection)
@@ -662,6 +686,50 @@ def clone_repo(repo: str, branch: str, dest: Path) -> bool:
     except subprocess.TimeoutExpired:
         logger.error(f"Timeout cloning {repo}")
         return False
+
+
+HEAD_PATTERN = re.compile(r"^[0-9a-f]{40}([0-9a-f]{24})?$")
+
+
+def _clone_head(repo_dir: Path) -> str | None:
+    """The commit a clone checked out, first 12 hex; None when unreadable."""
+    if not (repo_dir / ".git").exists():
+        return None
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    head = out.stdout.strip()
+    return head[:12] if HEAD_PATTERN.match(head) else None
+
+
+def _remote_head(source: SourceConfig) -> str | None:
+    """The configured branch's head on the remote, first 12 hex, by git
+    ls-remote (no API request); None when it can't be read."""
+    _validate_repo_format(source.repo)
+    _validate_branch_format(source.branch)
+    ref = f"refs/heads/{source.branch}"
+    try:
+        out = subprocess.run(
+            ["git", "ls-remote", f"https://github.com/{source.repo}.git", ref],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in out.stdout.splitlines():
+        sha, _, name = line.partition("\t")
+        if name == ref and HEAD_PATTERN.match(sha):
+            return sha[:12]
+    return None
 
 
 # =============================================================================
@@ -814,8 +882,9 @@ Cleanup:
     return len(records)
 
 
-def parse_stix(repo_dir: Path, output_path: Path) -> int:
-    """Parse MITRE ATT&CK STIX data."""
+def parse_stix(repo_dir: Path, output_path: Path, ref: str = "master") -> int:
+    """Parse MITRE ATT&CK STIX data, downloaded at ref (the release tag the
+    sync looked up, so content and recorded version agree)."""
     records = []
 
     # MITRE ATT&CK STIX data is best fetched directly (single large JSON file)
@@ -824,7 +893,9 @@ def parse_stix(repo_dir: Path, output_path: Path) -> int:
 
     if not stix_file or not stix_file.exists():
         # Download directly - this is more reliable
-        url = "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json"
+        _validate_branch_format(ref)
+        repo = SOURCES["mitre_attack"].repo
+        url = f"https://raw.githubusercontent.com/{repo}/{ref}/enterprise-attack/enterprise-attack.json"
         logger.info("  Downloading ATT&CK STIX data directly...")
         data = fetch_url(url, headers={"User-Agent": "rag-mcp/2.0"})
         if not data:
@@ -2444,36 +2515,36 @@ def fetch_and_parse(source: SourceConfig, output_path: Path) -> FetchResult:
     """Fetch source and parse to JSONL."""
     result = FetchResult(source=source.name, status="error")
 
-    # JSON feeds don't need cloning
-    if source.source_type == "json_feed":
+    # JSON feeds and MITRE ATT&CK are single files, not cloned. The version
+    # is looked up first; the JSONL goes to a pending path and replaces the
+    # cache only once that lookup has succeeded, so a failed lookup leaves the
+    # cache and the state entry as they were.
+    if not _is_cloned(source) and source.source_type != "embedded":
         parser = PARSERS.get(source.parser)
         if parser:
+            version = _looked_up_version(source)
+            if version is None:
+                result.message = "version lookup failed"
+                return result
+            pending = output_path.with_name(f".{output_path.name}.pending")
             try:
-                count = parser(Path(), output_path)  # No repo dir for feeds
+                if source.name == "mitre_attack":
+                    # downloaded at the release tag it records
+                    count = parser(Path(), pending, ref=version)
+                else:
+                    count = parser(Path(), pending)  # No repo dir for feeds
+                if pending.exists():
+                    os.replace(pending, output_path)
                 result.status = "success"
                 result.records = count
-                result.version = get_latest_version(source) or "unknown"
+                result.version = version
                 result.cache_hash = (
                     compute_file_hash(output_path) if output_path.exists() else ""
                 )
             except Exception as e:
                 result.message = str(e)
-        return result
-
-    # Special case: MITRE ATT&CK downloads directly (no clone needed)
-    if source.name == "mitre_attack":
-        parser = PARSERS.get(source.parser)
-        if parser:
-            try:
-                count = parser(Path(), output_path)
-                result.status = "success"
-                result.records = count
-                result.version = get_latest_version(source) or "unknown"
-                result.cache_hash = (
-                    compute_file_hash(output_path) if output_path.exists() else ""
-                )
-            except Exception as e:
-                result.message = str(e)
+            finally:
+                pending.unlink(missing_ok=True)
         return result
 
     # Embedded sources are bundled with the package
@@ -2501,6 +2572,13 @@ def fetch_and_parse(source: SourceConfig, output_path: Path) -> FetchResult:
             result.message = "Failed to clone repository"
             return result
 
+        # The version is the commit this clone checked out; no lookup
+        head = _clone_head(repo_dir)
+        if head is None:
+            result.message = "Could not read the clone's head commit"
+            logger.error(f"  {source.name}: could not read the clone's head commit")
+            return result
+
         # Run parser
         parser = PARSERS.get(source.parser)
         if not parser:
@@ -2512,7 +2590,7 @@ def fetch_and_parse(source: SourceConfig, output_path: Path) -> FetchResult:
             count = parser(repo_dir, output_path)
             result.status = "success"
             result.records = count
-            result.version = get_latest_version(source) or "unknown"
+            result.version = head
             result.cache_hash = (
                 compute_file_hash(output_path) if output_path.exists() else ""
             )
@@ -2531,21 +2609,22 @@ def check_source_updates(data_dir: str | Path | None = None) -> list[SourceStatu
     results = []
 
     for name, source in SOURCES.items():
-        if name in disabled:
+        # the embedded source has no remote version: never an update
+        if name in disabled or source.source_type == "embedded":
             continue
 
         source_state = state.get("sources", {}).get(name, {})
         current = source_state.get("version", "unknown")
         latest = get_latest_version(source)
 
+        # an empty or missing lookup is a failed check, never an update; any
+        # other answer that differs (no entry, "unknown", an old tag) is one
         results.append(
             SourceStatus(
                 name=name,
                 current_version=current,
                 latest_version=latest or "unknown",
-                has_update=latest is not None
-                and current != latest
-                and current != "unknown",
+                has_update=bool(latest) and current != latest,
                 last_sync=source_state.get("last_sync", "never"),
                 records=source_state.get("records", 0),
                 error="" if latest else "Failed to check version",
@@ -2574,10 +2653,15 @@ def sync_source(
     state = load_sources_state(data_dir)
     source_state = state.get("sources", {}).get(name, {})
     current_version = source_state.get("version")
+    output_path = sources_dir(data_dir) / f"{name}.jsonl"
 
-    # Check if update needed
-    if not force:
-        latest = get_latest_version(source)
+    # Check if update needed: skipped only when the recorded version is the
+    # latest and the cache exists; a cloned source asks git ls-remote, not
+    # the API. A forced sync asks nothing here.
+    if not force and output_path.exists():
+        latest = (
+            _remote_head(source) if _is_cloned(source) else get_latest_version(source)
+        )
         if latest and latest == current_version:
             return FetchResult(
                 source=name,
@@ -2588,7 +2672,6 @@ def sync_source(
             )
 
     # Fetch and parse
-    output_path = sources_dir(data_dir) / f"{name}.jsonl"
     logger.info(f"Syncing {name}...")
     result = fetch_and_parse(source, output_path)
 

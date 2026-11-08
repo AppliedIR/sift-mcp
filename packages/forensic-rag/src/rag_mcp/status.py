@@ -133,19 +133,33 @@ def get_status(
     sources_state = load_sources_state(data_dir)
 
     if check_updates:
-        updates = check_source_updates(data_dir)
-        for status in updates:
-            result.online_sources.append(
-                {
-                    "name": status.name,
-                    "records": status.records,
-                    "last_sync": status.last_sync,
-                    "current_version": status.current_version,
-                    "latest_version": status.latest_version,
-                    "has_update": status.has_update,
-                    "error": status.error,
+        rows = {}
+        for status in check_source_updates(data_dir):
+            rows[status.name] = {
+                "name": status.name,
+                "records": status.records,
+                "last_sync": status.last_sync,
+                "current_version": status.current_version,
+                "latest_version": status.latest_version,
+                "has_update": status.has_update,
+                "error": status.error,
+            }
+        disabled = set(result.disabled_sources)
+        for name, source in SOURCES.items():
+            if source.source_type == "embedded" and name not in disabled:
+                # not checked remotely; listed as before, never an update
+                source_state = sources_state.get("sources", {}).get(name, {})
+                rows[name] = {
+                    "name": name,
+                    "records": source_state.get("records", 0),
+                    "last_sync": source_state.get("last_sync", "never"),
+                    "current_version": source_state.get("version", "unknown"),
+                    "latest_version": "embedded",
+                    "has_update": False,
+                    "error": "",
                 }
-            )
+            if name in rows:
+                result.online_sources.append(rows[name])
     else:
         # Just use state file
         for name in SOURCES:
