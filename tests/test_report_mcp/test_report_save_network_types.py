@@ -303,8 +303,9 @@ def _nesting_case(tag, route, depth):
     inner = nested(
         field, set(values), depth - depth_of(field, values[0]) - (route != native)
     )
-    if route != native:  # the other finding route holds it one level deeper
-        inner = [inner] if route == "list" else {"domain-name": inner}
+    if route != native:  # the other finding route holds it one level deeper,
+        # under a non-network key: the shape's own type decides
+        inner = [inner] if route == "list" else {"file:name": inner}
     iocs = inner
     assert depth_of(iocs, values[0]) == depth
     return iocs, [], values

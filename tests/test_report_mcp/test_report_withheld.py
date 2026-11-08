@@ -44,6 +44,8 @@ IOC = {"id": "IOC-tester-001", "value": VALUE, "type": "domain-name",
        "source_findings": [FINDING["id"]]}  # fmt: skip
 CONTENT = f"# Report\n\nBeacon to {VALUE}.\n"
 NONE_SHOWN = "No approved, verified findings."
+# generate_report's profiles, and save_report's default (""), which takes any
+PROFILE_NAMES = ("full", "executive", "timeline", "ioc", "findings", "status", "")
 
 
 @pytest.fixture
@@ -274,10 +276,10 @@ TITLES = {"F-tester-001": FINDING["title"], "F-tester-002": "Second beacon"}
 
 
 # --- saving a report --------------------------------------------------------
-def _save(rs, case, content=CONTENT):
+def _save(rs, case, content=CONTENT, profile="full"):
     """(the tool's reply, the saved text): the save must have written."""
     tool = {t.name: t for t in rs.create_server()._tool_manager.list_tools()}
-    got = tool["save_report"].fn(filename="r.md", content=content, profile="full")
+    got = tool["save_report"].fn(filename="r.md", content=content, profile=profile)
     assert got.get("status") == "saved", got
     saved = (case / "reports" / "r.md").read_text()
     assert "Traceback" not in saved, saved[-800:]
@@ -357,14 +359,18 @@ STATES = {  # state: (the record verify reads, what's signed for it, its expecte
 }  # fmt: skip
 
 
+@pytest.mark.parametrize("profile", PROFILE_NAMES, ids=lambda p: p or "default")
 @pytest.mark.parametrize("state", sorted(STATES))
-def test_a_value_only_verify_read_holds_is_defanged(rs, tmp_path, monkeypatch, state):
+def test_a_value_only_verify_read_holds_is_defanged(
+    rs, tmp_path, monkeypatch, state, profile
+):
     """verify's read of iocs.json holds a signed IOC record of B_ONLY, and
     IOC-tester-003 of C_ONLY, that the file on disk doesn't (the state an edit
     between two reads leaves). IOC-tester-003 is in verify's records but not
     in the approved view: APPROVED and edited after signing, or DRAFT. The
     finding F-tester-002 names C_ONLY in its title, the caller's text names
-    both. The saved text holds each defanged only."""
+    both. The saved text holds each defanged only, under every profile."""
+    assert sorted(rs.PROFILES) == sorted(PROFILE_NAMES[:-1]), sorted(rs.PROFILES)
     third, signed, status = STATES[state]
     case = _signed(tmp_path, monkeypatch)
     second = dict(FINDING, id="F-tester-002", title=f"Second beacon to {C_ONLY}",
@@ -405,7 +411,7 @@ def test_a_value_only_verify_read_holds_is_defanged(rs, tmp_path, monkeypatch, s
     else:
         assert nv == [status], view["not_verified"]
     content = f"# Report\n\nBeacon to {VALUE}, then {B_ONLY} and {C_ONLY}.\n"
-    _, saved = _save(rs, case, content)
+    _, saved = _save(rs, case, content, profile)
     assert saved.count(B_ONLY) == 0, saved[-1500:]
     assert saved.count(C_ONLY) == 0, saved[-1500:]
     text = saved.split("\n\n```")[0]  # control: the caller's text holds each defanged
