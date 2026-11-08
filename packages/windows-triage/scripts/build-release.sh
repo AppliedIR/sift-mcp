@@ -14,9 +14,9 @@
 # The second command downloads every upstream source and fails if any source cannot
 # be fetched or any table is under its floor; it needs network, several hours and
 # tens of GiB of free disk. The third command only packs the databases and the
-# licence files: it fails if a default database is missing or a table is under its
-# floor, before any release file is written. The release files are written to
-# release/ (or the --output dir).
+# licence files: it fails if a default database is missing, a table is under its
+# floor or a source has no licence file, before any release file is written. The
+# release files are written to release/ (or the --output dir).
 #
 # Upload with the gh CLI; the tag is triage-db-v followed by the UTC build date:
 #
@@ -83,6 +83,34 @@ print(' '.join(names))
 fi
 echo "  Databases checked against the release floors: ${PACK_DBS}"
 
+# Each source in the triage source table needs a licence file in
+# data/licenses/<repo name>/ before anything is written.
+if ! SCRIPT_DIR="${SCRIPT_DIR}" DATA_DIR="${DATA_DIR}" python3 -c "
+import importlib.util, os, sys
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location(
+    'update_sources', Path(os.environ['SCRIPT_DIR']) / 'update_sources.py'
+)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+base = Path(os.environ['DATA_DIR']) / 'licenses'
+missing = []
+for name in sorted({e['repo'].split('/')[1] for e in mod.SOURCES.values()}):
+    d = base / name
+    if d.is_symlink() or not any(
+        p.is_file() and not p.is_symlink() for p in (d.iterdir() if d.is_dir() else ())
+    ):
+        missing.append(name)
+for name in missing:
+    print(f'  {name}: no licence file in {base / name}', file=sys.stderr)
+sys.exit(1 if missing else 0)
+"; then
+    echo -e "${RED}Error: a source has no licence file; nothing written${NC}"
+    echo "Fetch the sources first: python scripts/import_all.py --fetch"
+    exit 1
+fi
+
 LICENCE_ASSET=$(python3 -c "from windows_triage import release_manifest as m; print(m.LICENCE_ASSET)")
 
 mkdir -p "$OUTPUT_DIR"
@@ -105,9 +133,8 @@ for db in $PACK_DBS; do
 done
 
 # Pack the licence files: data/licenses/<source>/<file>, regular files only
-if [[ -d "${DATA_DIR}/licenses" ]]; then
-    echo -n "  Packing licences..."
-    DATA_DIR="${DATA_DIR}" ASSET_PATH="${OUTPUT_DIR}/${LICENCE_ASSET}" python3 -c "
+echo -n "  Packing licences..."
+DATA_DIR="${DATA_DIR}" ASSET_PATH="${OUTPUT_DIR}/${LICENCE_ASSET}" python3 -c "
 import os, tarfile, zstandard
 from pathlib import Path
 
@@ -126,11 +153,8 @@ with open(os.environ['ASSET_PATH'], 'wb') as raw:
                 with open(path, 'rb') as f:
                     tar.addfile(info, f)
 "
-    WRITTEN+=("${LICENCE_ASSET}")
-    echo -e " ${GREEN}done${NC}"
-else
-    echo "  No ${DATA_DIR}/licenses dir: no licence asset packed"
-fi
+WRITTEN+=("${LICENCE_ASSET}")
+echo -e " ${GREEN}done${NC}"
 
 echo ""
 

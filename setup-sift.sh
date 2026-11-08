@@ -1441,28 +1441,15 @@ if $INSTALL_TRIAGE; then
             }
             ;;
         2)
+            # import_all clones each source into a temp dir and replaces data/
+            # only when every clone, import and floor passes
             info "Building databases from source..."
-            DATA_DIR="$WT_DIR/data/sources"
-            mkdir -p "$DATA_DIR"
-
-            info "Cloning VanillaWindowsReference..."
-            if [[ ! -d "$DATA_DIR/VanillaWindowsReference" ]]; then
-                git clone --quiet https://github.com/AndrewRathbun/VanillaWindowsReference.git "$DATA_DIR/VanillaWindowsReference"
+            if "$VENV_PYTHON" "$WT_DIR/scripts/import_all.py" --fetch --skip-registry; then
+                ok "Databases built from source"
+            else
+                err "Building the databases from source failed (see the ERROR lines above); the installed data was not changed"
+                exit 1
             fi
-
-            info "Cloning LOLBAS, LOLDrivers, HijackLibs..."
-            for repo in LOLBAS LOLDrivers HijackLibs; do
-                if [[ ! -d "$DATA_DIR/$repo" ]]; then
-                    git clone --quiet "https://github.com/LOLBAS-Project/$repo.git" "$DATA_DIR/$repo" 2>/dev/null || \
-                    git clone --quiet "https://github.com/magicsword-io/$repo.git" "$DATA_DIR/$repo" 2>/dev/null || \
-                    warn "Could not clone $repo"
-                fi
-            done
-
-            info "Initializing databases and importing..."
-            (cd "$WT_DIR" && "$VENV_PYTHON" scripts/init_databases.py && \
-                "$VENV_PYTHON" scripts/import_all.py --skip-registry) && \
-                ok "Databases imported" || warn "Database import had issues. See output above."
             ;;
         3|*)
             info "Skipping database setup."
