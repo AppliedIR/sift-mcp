@@ -145,6 +145,8 @@ FLIPS = {
 
 def _flip_outcome(body, v, obs):
     if obs == OBS_PORT:  # the bare address the selector picks
+        held = bool(BARE.search(body)) or fanged(IP) in body
+        assert held, f"{IP} isn't in the saved report"
         return "live" if BARE.search(body) else "defanged"
     assert v in body or fanged(v) in body, f"{v} isn't in the saved report"
     return "live" if v in body else "defanged"
