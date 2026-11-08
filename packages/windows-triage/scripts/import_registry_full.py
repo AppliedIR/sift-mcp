@@ -321,9 +321,13 @@ def _hive_from_filename(filename: str) -> str:
 
 
 def find_registry_json_files(
-    sources_dir: Path, hive_filter: str | None = None
+    sources_dir: Path,
+    hive_filter: str | None = None,
+    bad_zips: list[Path] | None = None,
 ) -> list[RegistryJsonSource]:
-    """Find registry JSON files, checking disk first then falling back to zips."""
+    """Find registry JSON files, checking disk first then falling back to zips.
+
+    A zip that can't be read is skipped, and added to ``bad_zips`` when given."""
     registry_dir = sources_dir / "VanillaWindowsRegistryHives"
     if not registry_dir.exists():
         return []
@@ -371,6 +375,8 @@ def find_registry_json_files(
                         )
         except (zipfile.BadZipFile, OSError) as e:
             logger.warning(f"Skipping bad zip {zip_path}: {e}")
+            if bad_zips is not None:
+                bad_zips.append(zip_path)
 
     if sources:
         logger.info(f"Found {len(sources)} registry JSON entries across zip files")
@@ -409,7 +415,13 @@ def main():
         "--sync-commit",
         type=str,
         default=None,
-        help="Record this commit hash after import",
+        help="Record this commit hash after an import with no errors",
+    )
+    parser.add_argument(
+        "--db",
+        type=str,
+        default=None,
+        help="Import into this DB (default: data/known_good_registry.db)",
     )
     args = parser.parse_args()
 
@@ -420,12 +432,13 @@ def main():
     data_dir = project_root / "data"
     sources_dir = Path(args.sources_dir) if args.sources_dir else data_dir / "sources"
 
-    db_path = data_dir / "known_good_registry.db"
+    db_path = Path(args.db) if args.db else data_dir / "known_good_registry.db"
     if not db_path.exists():
         logger.error("known_good_registry.db not found.")
         logger.error("Run: python scripts/init_registry_db.py")
         sys.exit(1)
 
+    bad_zips: list[Path] = []  # zips that can't be read: each is an error
     if args.only_files:
         # --only-files still works with on-disk paths (backward compat)
         sources = []
@@ -444,7 +457,7 @@ def main():
             sys.exit(1)
         logger.info(f"Processing {len(sources)} specified JSON files")
     else:
-        sources = find_registry_json_files(sources_dir, args.hive)
+        sources = find_registry_json_files(sources_dir, args.hive, bad_zips)
         if not sources:
             logger.error(
                 "No registry JSON files found (checked for *_ROOT.json and RegistryHivesJSON.zip)"
@@ -462,7 +475,7 @@ def main():
 
     conn = None if args.dry_run else sqlite3.connect(db_path)
 
-    total_stats = {"inserted": 0, "updated": 0, "errors": 0, "files": 0}
+    total_stats = {"inserted": 0, "updated": 0, "errors": len(bad_zips), "files": 0}
 
     try:
         for i, source in enumerate(sources):
@@ -502,21 +515,23 @@ def main():
 
             total_stats["files"] += 1
 
+        # Record the sync commit only for an import with no errors: a failed
+        # import keeps the old commit, so the next update tries again
+        if conn and args.sync_commit and not total_stats["errors"]:
+            conn.execute(
+                "UPDATE sources SET last_sync_commit = ?, last_sync_time = datetime('now') WHERE name = ?",
+                (args.sync_commit, "vanilla_windows_registry"),
+            )
+            if conn.execute("SELECT changes()").fetchone()[0] == 0:
+                conn.execute(
+                    "INSERT INTO sources (name, source_type, url, last_sync_commit, last_sync_time) "
+                    "VALUES (?, 'git', 'https://github.com/AndrewRathbun/VanillaWindowsRegistryHives', ?, datetime('now'))",
+                    ("vanilla_windows_registry", args.sync_commit),
+                )
+            conn.commit()
+
     finally:
         if conn:
-            # Record sync commit if provided
-            if args.sync_commit:
-                conn.execute(
-                    "UPDATE sources SET last_sync_commit = ?, last_sync_time = datetime('now') WHERE name = ?",
-                    (args.sync_commit, "vanilla_windows_registry"),
-                )
-                if conn.execute("SELECT changes()").fetchone()[0] == 0:
-                    conn.execute(
-                        "INSERT INTO sources (name, source_type, url, last_sync_commit, last_sync_time) "
-                        "VALUES (?, 'git', 'https://github.com/AndrewRathbun/VanillaWindowsRegistryHives', ?, datetime('now'))",
-                        ("vanilla_windows_registry", args.sync_commit),
-                    )
-                conn.commit()
             conn.close()
 
     print("\n" + "=" * 60)
@@ -526,10 +541,15 @@ def main():
     print(f"Records inserted: {total_stats['inserted']:,}")
     print(f"Records updated:  {total_stats['updated']:,}")
     print(f"Errors:           {total_stats['errors']}")
+    for zip_path in bad_zips:
+        print(f"  Bad zip: {zip_path}")
 
     if not args.dry_run:
         size_mb = db_path.stat().st_size / (1024 * 1024)
         print(f"\nDatabase size: {size_mb:.1f} MB")
+
+    if total_stats["errors"]:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

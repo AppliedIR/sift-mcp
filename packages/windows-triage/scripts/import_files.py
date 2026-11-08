@@ -312,6 +312,12 @@ def main():
         default=None,
         help="Record this commit hash in sources table after import",
     )
+    parser.add_argument(
+        "--db",
+        type=str,
+        default=None,
+        help="Import into this known_good.db (default: data/known_good.db)",
+    )
     args = parser.parse_args()
 
     if args.verbose:
@@ -322,7 +328,7 @@ def main():
     sources_dir = Path(args.sources_dir) if args.sources_dir else data_dir / "sources"
 
     # Check database exists
-    db_path = data_dir / "known_good.db"
+    db_path = Path(args.db) if args.db else data_dir / "known_good.db"
     if not db_path.exists():
         logger.error(f"Database not found: {db_path}")
         logger.error("Run: python scripts/init_databases.py")
