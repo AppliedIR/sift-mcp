@@ -121,9 +121,7 @@ def test_the_packed_metadata_has_no_refreshed_at(tmp_path, monkeypatch, capsys):
     assert "refreshed_at" not in packed, f"packed metadata.json: {packed}"
 
 
-def test_the_pack_leaves_the_data_dir_metadata_as_it_was(
-    tmp_path, monkeypatch, capsys
-):
+def test_the_pack_leaves_the_data_dir_metadata_as_it_was(tmp_path, monkeypatch, capsys):
     d = _data_dir(tmp_path, {"model": MODEL, "refreshed_at": "2026-01-02T03:04:05Z"})
     before = (d / "metadata.json").read_bytes()
     rc, output = _pack(monkeypatch, capsys, d, tmp_path / "release")

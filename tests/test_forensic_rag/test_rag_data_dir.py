@@ -38,8 +38,7 @@ FIXTURES = {
         "parse_velociraptor",
         {
             "content/exchange/artifacts/Fixture.Alpha.yaml": (
-                "name: Fixture.Alpha\ndescription: A fixture artifact\n"
-                "type: CLIENT\n"
+                "name: Fixture.Alpha\ndescription: A fixture artifact\ntype: CLIENT\n"
             )
         },
     ),
@@ -47,8 +46,7 @@ FIXTURES = {
         "parse_hijacklibs",
         {
             "yml/fixture_b.yml": (
-                "Name: fixture_b.dll\nAuthor: Fixture\n"
-                "Description: A fixture entry\n"
+                "Name: fixture_b.dll\nAuthor: Fixture\nDescription: A fixture entry\n"
             )
         },
     ),
@@ -318,6 +316,8 @@ def _expected(value: str, cwd: Path, home: Path) -> str:
 @pytest.fixture(scope="module")
 def paths_run(tmp_path_factory, package_data_guard):
     root = tmp_path_factory.mktemp("rag-paths")
+    # one dir per run, apart from the fixture's own dirs ("home" is a case too)
+    runs = root / "runs"
     home = root / "home"
     a = root / "a"
     b = root / "b"
@@ -338,15 +338,15 @@ def paths_run(tmp_path_factory, package_data_guard):
         if env_value is not None:
             extra["RAG_INDEX_DIR"] = env_value
         spec = {"import_cwd": str(a), "run_cwd": str(run_cwd), "entries": entries}
-        out, _stdout = _probe("paths", spec, root / label, _isolated_env(home, **extra))
+        out, _stdout = _probe("paths", spec, runs / label, _isolated_env(home, **extra))
         results[label] = (out, run_cwd)
 
     for case in ENV_CASES:
-        (root / case).mkdir()
+        (runs / case).mkdir(parents=True)
         value = str(link) if case == "symlink" else ENV_VALUES[case]
         run_cwd = b if case == "rel-other-cwd" else a
         run(case, value, run_cwd, [[e, None] for e in ENTRIES])
-    (root / "explicit").mkdir()
+    (runs / "explicit").mkdir()
     run(
         "explicit",
         None,

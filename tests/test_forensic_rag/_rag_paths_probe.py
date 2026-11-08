@@ -78,9 +78,7 @@ class Recorder:
                     raw = os.fsdecode(arg)
                 except TypeError:
                     continue
-                self.events.setdefault(self.step, []).append(
-                    [event, raw, os.getcwd()]
-                )
+                self.events.setdefault(self.step, []).append([event, raw, os.getcwd()])
         except BaseException:
             pass
         finally:
