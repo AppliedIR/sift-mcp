@@ -30,6 +30,9 @@ REPO = "AppliedIR/sift-mcp"
 ASSETS = ("known_good.db.zst", "context.db.zst", "checksums.sha256")
 MAX_ATTEMPTS = 3
 CHUNK_SIZE = 1024 * 1024  # 1 MB
+MIN_BASELINE_FILES = 1_000_000
+MIN_LOLBINS = 100
+MIN_VULNERABLE_DRIVERS = 100
 
 
 def _github_headers() -> dict[str, str]:
@@ -256,13 +259,19 @@ def download_databases(dest_dir: str | Path, tag: str = "latest") -> bool:
             print("\nVerifying databases...")
             ok = True
             ok &= _verify_database(
-                dest / "known_good.db", "baseline_files", 1_000_000, "known_good.db"
+                dest / "known_good.db",
+                "baseline_files",
+                MIN_BASELINE_FILES,
+                "known_good.db",
             )
             ok &= _verify_database(
-                dest / "context.db", "lolbins", 100, "context.db (lolbins)"
+                dest / "context.db", "lolbins", MIN_LOLBINS, "context.db (lolbins)"
             )
             ok &= _verify_database(
-                dest / "context.db", "vulnerable_drivers", 100, "context.db (drivers)"
+                dest / "context.db",
+                "vulnerable_drivers",
+                MIN_VULNERABLE_DRIVERS,
+                "context.db (drivers)",
             )
 
             if ok:

@@ -28,6 +28,8 @@ from pathlib import Path
 
 import zstandard as zstd
 
+MIN_RECORD_COUNT = 20000
+
 
 def _build_index(data_dir: Path) -> int:
     """Build the full RAG index and return record count."""
@@ -109,7 +111,7 @@ def main() -> None:
         print("Step 1: Building full index from source")
         print("=" * 60)
         record_count = _build_index(data_dir)
-        if record_count < 20000:
+        if record_count < MIN_RECORD_COUNT:
             print(f"\nERROR: Only {record_count:,} records (expected 20,000+)")
             sys.exit(1)
         print(f"\nBuild complete: {record_count:,} records")
@@ -122,7 +124,7 @@ def main() -> None:
         with open(metadata_path, encoding="utf-8") as f:
             metadata = json.load(f)
         record_count = metadata.get("record_count", 0)
-        if record_count < 20000:
+        if record_count < MIN_RECORD_COUNT:
             print(f"ERROR: Only {record_count:,} records (expected 20,000+)")
             sys.exit(1)
         print(f"Using existing index: {record_count:,} records")
