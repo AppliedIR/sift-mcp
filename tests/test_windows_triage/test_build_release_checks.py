@@ -106,7 +106,14 @@ def _tree(tmp: Path, empty: tuple[str, ...] = ()) -> Path:
     return root
 
 
-def _build(tmp: Path, root: Path, expected: dict[str, dict[str, int]]):
+def _build(
+    tmp: Path,
+    root: Path,
+    expected: dict[str, dict[str, int]],
+    env_set: dict[str, str | None] | None = None,
+):
+    """Runs the script with VENV at the test's own venv; ``env_set`` sets or (with
+    None) removes variables after that."""
     shim = tmp / "shim"
     shim.mkdir()
     (shim / "sitecustomize.py").write_text(SHIM)
@@ -118,7 +125,13 @@ def _build(tmp: Path, root: Path, expected: dict[str, dict[str, int]]):
         "PATH": path,
         "PYTHONPATH": str(shim),
         "TRIAGE_TEST_COUNTS": str(counts),
+        "VENV": str(Path(sys.executable).parent.parent),
     }
+    for key, value in (env_set or {}).items():
+        if value is None:
+            env.pop(key, None)
+        else:
+            env[key] = value
     out = tmp / "release"
     run = subprocess.run(
         ["bash", str(root / "scripts" / "build-release.sh"), "--output", str(out)],
@@ -204,3 +217,51 @@ def test_a_source_with_no_licence_fails_naming_it(tmp_path, case):
     assert written == [], f"a failed build wrote {written}"
     missing = [n for n in named if f"{n}: no licence file" not in out]
     assert missing == [], f"not named: {missing}: {out[-2000:]}"
+
+
+def _venv_case(tmp: Path, case: str) -> dict[str, str | None]:
+    if case == "unset":
+        return {"VENV": None}
+    if case == "empty":
+        return {"VENV": ""}
+    bare = tmp / "bare-env"
+    (bare / "bin").mkdir(parents=True)
+    return {"VENV": str(bare)}
+
+
+@pytest.mark.parametrize("case", ["unset", "empty", "no python"])
+def test_the_build_fails_naming_venv_without_a_venv_python(tmp_path, case):
+    root = _tree(tmp_path)
+    env_set = _venv_case(tmp_path, case)
+    run, written = _build(tmp_path, root, _fixture_counts(root), env_set)
+    out = run.stdout + run.stderr
+    named = [ln for ln in out.splitlines() if "VENV" in ln]
+    assert named, f"VENV not named: {out[-2000:]}"
+    assert run.returncode != 0, f"rc 0 with VENV {case}, wrote {written}"
+    assert written == [], f"a failed build wrote {written}"
+
+
+def test_every_python_step_runs_the_venv_python(tmp_path):
+    root = _tree(tmp_path)
+    venv_calls = tmp_path / "venv-python-calls"
+    path_calls = tmp_path / "path-python-calls"
+    venv = tmp_path / "logged-env"
+    (venv / "bin").mkdir(parents=True)
+    logged = venv / "bin" / "python"
+    logged.write_text(
+        f'#!/bin/bash\necho "$1" >> "{venv_calls}"\nexec "{sys.executable}" "$@"\n'
+    )
+    logged.chmod(0o755)
+    path_bin = tmp_path / "path-bin"
+    path_bin.mkdir()
+    for name in ("python3", "python"):
+        stub = path_bin / name
+        stub.write_text(f'#!/bin/sh\necho "$0" >> "{path_calls}"\nexit 97\n')
+        stub.chmod(0o755)
+    path = f"{path_bin}{os.pathsep}{os.environ.get('PATH', '')}"
+    env_set = {"VENV": str(venv), "PATH": path}
+    run, written = _build(tmp_path, root, _fixture_counts(root), env_set)
+    calls = path_calls.read_text() if path_calls.exists() else ""
+    assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
+    assert calls == "", f"a step ran the python on PATH: {calls}"
+    assert venv_calls.exists(), "no step ran $VENV/bin/python"
