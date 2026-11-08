@@ -10,14 +10,16 @@
 
 The importers run as update_sources and import_context call them; the update
 leg runs update_sources' own update_context_source with its clone served
-from a scratch tree. Values are synthetic, in the upstream YAML shapes.
+from a scratch one-commit git repo. Values are synthetic, in the upstream YAML shapes.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 import sqlite3
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -58,6 +60,29 @@ def _rows(ctx, dll):
 
 def _upstream(root, extra):
     return _tree(root / "HijackLibs" / "yml", {**HIJACKLIBS, **extra}).parent
+
+
+def _commit(path: Path) -> str:
+    """Make ``path`` a one-commit git repo of what it holds; returns its HEAD."""
+    path.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
+    ident = ["-c", "user.name=f", "-c", "user.email=f@f"]
+    for args in (
+        ["init", "-q"],
+        ["add", "-A"],
+        [*ident, "commit", "-q", "--allow-empty", "-m", "f"],
+        ["rev-parse", "HEAD"],
+    ):
+        run = subprocess.run(
+            ["git", *args],
+            cwd=path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert run.returncode == 0, f"git {args}: {run.stderr}"
+    return run.stdout.strip()
 
 
 @pytest.mark.parametrize("name", TOLERATED)
@@ -116,7 +141,9 @@ def test_an_update_with_errors_or_nothing_isnt_recorded_as_synced(tmp_path, shap
 
 
 def test_a_clean_update_is_recorded_as_synced(tmp_path):
-    assert _update(tmp_path, _upstream(tmp_path, {})) == (True, "c0ffee1")
+    upstream = _upstream(tmp_path, {})
+    head = _commit(upstream)  # the clone's HEAD is what's recorded
+    assert _update(tmp_path, upstream) == (True, head)
 
 
 def test_dlls_imported_counts_distinct_dlls(tmp_path):
@@ -200,7 +227,8 @@ def test_an_update_with_errors_isnt_recorded_and_the_next_one_retries(
     func, failing, clean = STATS[source]
     ctx = _dbs(tmp_path)
     us = _update_sources()
-    us.shallow_clone = lambda url, dest, depth=1: dest.mkdir(parents=True) or True
+    heads = []  # each stub clone's HEAD, in order
+    us.shallow_clone = lambda url, dest, depth=1: heads.append(_commit(dest)) or True
     us.SOURCES[source]["db"] = ctx.name
     monkeypatch.setattr(importers, func, lambda **k: dict(failing))
     assert (
@@ -219,7 +247,7 @@ def test_an_update_with_errors_isnt_recorded_and_the_next_one_retries(
         )
         is True
     )
-    assert us.get_last_sync(ctx, us.SOURCES[source]["db_source_key"]) == "c2"
+    assert us.get_last_sync(ctx, us.SOURCES[source]["db_source_key"]) == heads[-1]
 
 
 # --- a malformed LOLBAS or LOLDrivers file is an error, named: never a skip ---
