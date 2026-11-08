@@ -182,8 +182,7 @@ def _release(assets_dir: str, names) -> dict:
     return {
         "tag_name": "rag-index-fixture",
         "assets": [
-            {"name": n, "url": (Path(assets_dir) / n).resolve().as_uri()}
-            for n in names
+            {"name": n, "url": (Path(assets_dir) / n).resolve().as_uri()} for n in names
         ],
     }
 
