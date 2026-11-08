@@ -75,8 +75,7 @@ def table_counts(db_path: Path) -> dict[str, int]:
             if r[0] != "sources" and not r[0].startswith("sqlite_")
         ]
         return {
-            n: conn.execute(f'SELECT COUNT(*) FROM "{n}"').fetchone()[0]
-            for n in names
+            n: conn.execute(f'SELECT COUNT(*) FROM "{n}"').fetchone()[0] for n in names
         }
     finally:
         conn.close()

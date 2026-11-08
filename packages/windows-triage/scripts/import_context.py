@@ -73,10 +73,12 @@ def record_sync(db_path: Path, row: str, commit: str) -> None:
         conn.close()
 
 
-def main():
+def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Import context data into context.db")
     parser.add_argument(
-        "--db", default=None, help="context.db to import into (default: data/context.db)"
+        "--db",
+        default=None,
+        help="context.db to import into (default: data/context.db)",
     )
     parser.add_argument(
         "--sources-dir", default=None, help="Clones dir (default: data/sources)"
@@ -90,7 +92,7 @@ def main():
         help="Record COMMIT for the source cloned as NAME, if it imports cleanly",
     )
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
-    args = parser.parse_args()
+    args = parser.parse_args([] if argv is None else argv)
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
     commits = dict(args.sync_commit)
@@ -223,4 +225,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

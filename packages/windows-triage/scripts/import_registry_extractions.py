@@ -647,7 +647,10 @@ def main():
         "--registry-dir", type=str, help="Custom directory with extracted JSON files"
     )
     parser.add_argument(
-        "--sources-dir", type=str, default=None, help="Clones dir (default: data/sources)"
+        "--sources-dir",
+        type=str,
+        default=None,
+        help="Clones dir (default: data/sources)",
     )
     parser.add_argument(
         "--db",
