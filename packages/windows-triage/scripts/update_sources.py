@@ -256,13 +256,14 @@ def extract_registry_zips(clone_dir: Path) -> int:
 
 
 def shallow_clone(url: str, dest: Path, depth: int = 1) -> bool:
-    """Shallow clone a git repo."""
+    """Shallow clone a git repo, with the clone timeout SOURCES states for its URL."""
+    timeout = max(s["clone_timeout"] for s in SOURCES.values() if s["url"] == url)
     try:
         result = subprocess.run(
             ["git", "clone", "--depth", str(depth), url, str(dest)],
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=timeout,
         )
         return result.returncode == 0
     except Exception as e:
