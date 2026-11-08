@@ -213,10 +213,12 @@ def run_probe(
     replace: bool = False,
     index_dir: Path | None = None,
     env: dict | None = None,
+    net: list | None = None,
 ) -> dict:
     """Run ops in a fresh process on the scratch copy; RAG_INDEX_DIR is the
     copy's own data dir unless index_dir is given. env is merged last, and a
-    None value removes that variable."""
+    None value removes that variable. net, when given, answers the package's
+    own fetches at urlopen (see the probe's Net)."""
     rig.runs += 1
     run = rig.root / "runs" / f"run{rig.runs}"
     cwd = run / "cwd"
@@ -229,6 +231,8 @@ def run_probe(
         "sources": extra or [],
         "replace_sources": replace,
     }
+    if net is not None:
+        spec["net"] = net
     spec_path, out_path, git_log = run / "spec.json", run / "out.json", run / "git.log"
     spec_path.write_text(json.dumps(spec), encoding="utf-8")
     env_vars = {

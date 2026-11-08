@@ -7,7 +7,9 @@ own data dir is the copy's, never the installed tree's. The version lookups
 are stubbed at their functions, every URL fetch is recorded and answered only
 from fixture files, the bundle install's release lookup is answered with local
 file URLs, and the embedding model is a stand-in, so nothing here reaches the
-network or loads a model.
+network or loads a model. A spec with a "net" table keeps the package's own
+fetch path and answers at urlopen instead: a 403, a lookup that hangs for the
+whole timeout it is given, or a version body; any other URL fails at once.
 
 Usage: python _rag_versions_probe.py <spec.json> <out.json>
 """
@@ -21,10 +23,16 @@ import logging
 import runpy
 import subprocess
 import sys
+import time
 import traceback
 import types
+import urllib.request
 from dataclasses import asdict
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+
+# The probe's own start, a few stdlib imports after the process's.
+_START = time.monotonic()
 
 
 def _stand_in_model() -> types.ModuleType:
@@ -120,6 +128,79 @@ class Lookups:
             sources.get_feed_version = self.feed
 
 
+class _Reply:
+    """The parts of an HTTP response the package's fetch reads."""
+
+    def __init__(self, url: str, body: bytes) -> None:
+        self.url = url
+        self.body = io.BytesIO(body)
+        self.headers = {"Content-Length": str(len(body))}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.body.close()
+
+    def geturl(self) -> str:
+        return self.url
+
+    def read(self, size: int = -1) -> bytes:
+        return self.body.read(size)
+
+
+class Net:
+    """A urlopen stand-in answered from a table of [match, rule] pairs, the
+    first pair whose match is in the URL (or is "*") deciding: {"status": n}
+    raises that HTTP error; {"hang": true} waits out the whole timeout given
+    (120 s when none is) and then times out; {"version": v} returns a body
+    whose commit sha starts with v and whose release tag and feed version
+    are v. A URL no pair matches fails at once, as with no network. Each call
+    is recorded with the timeout it was given."""
+
+    def __init__(self, table: list) -> None:
+        self.table = table
+        self.calls: list[list] = []
+
+    def urlopen(self, req, timeout=None, *args, **kwargs):
+        url = req.full_url if isinstance(req, urllib.request.Request) else str(req)
+        self.calls.append([url, timeout])
+        rule = next((r for m, r in self.table if m == "*" or m in url), None)
+        if rule is None:
+            raise URLError("no network in this run")
+        if "status" in rule:
+            raise HTTPError(url, rule["status"], "stubbed status", {}, None)
+        if rule.get("hang"):
+            wait = timeout if isinstance(timeout, (int, float)) else 120
+            time.sleep(max(0.0, wait))
+            raise TimeoutError("timed out")
+        v = rule["version"]
+        body = {"sha": v + "0" * 28, "tag_name": v, "catalogVersion": v}
+        return _Reply(url, json.dumps(body).encode())
+
+    def install(self, sources) -> None:
+        sources.urlopen = self.urlopen
+        urllib.request.urlopen = self.urlopen
+
+
+def _slow_open(delay: float):
+    """Make every chroma open wait delay seconds first; returns the undo."""
+    import chromadb
+
+    real = chromadb.PersistentClient
+
+    def opened(*args, **kwargs):
+        time.sleep(delay)
+        return real(*args, **kwargs)
+
+    chromadb.PersistentClient = opened
+
+    def undo() -> None:
+        chromadb.PersistentClient = real
+
+    return undo
+
+
 def _logged(fn):
     """Run fn with stdout and the root logger writing to one buffer, in the
     message-only format the build sets up for itself."""
@@ -162,11 +243,11 @@ def _last_json(stdout: str):
     return None
 
 
-def _make_index(data_dir: str, count: int = 1) -> None:
+def _make_index(data_dir: str, count: int = 1, name: str = "ir_knowledge") -> None:
     import chromadb
 
     client = chromadb.PersistentClient(path=str(Path(data_dir) / "chroma"))
-    col = client.create_collection("ir_knowledge", metadata={"hnsw:space": "cosine"})
+    col = client.create_collection(name, metadata={"hnsw:space": "cosine"})
     step = 5000
     for start in range(0, count, step):
         ids = range(start, min(start + step, count))
@@ -237,7 +318,11 @@ def main() -> int:
                 return Path(path).read_bytes()
         return None
 
-    sources.fetch_url = fetch_url
+    net = Net(spec["net"]) if "net" in spec else None
+    if net is None:
+        sources.fetch_url = fetch_url
+    else:
+        net.install(sources)
     lookups = Lookups(spec.get("lookups", {}))
     lookups.install(sources)
 
@@ -245,8 +330,15 @@ def main() -> int:
     for op in spec["ops"]:
         kind = op["op"]
         mark = len(requests)
+        net_mark = len(net.calls) if net else 0
+        began = time.monotonic()
         if kind == "index":
-            res = _logged(lambda op=op: _make_index(op["dir"], op.get("count", 1)))
+
+            def index(op=op):
+                name = op.get("collection", "ir_knowledge")
+                _make_index(op["dir"], op.get("count", 1), name)
+
+            res = _logged(index)
         elif kind == "pack":
             from rag_mcp.scripts import build_release
 
@@ -308,9 +400,12 @@ def main() -> int:
 
             res = _logged(run_build_fn)
         elif kind == "status":
+            undo = _slow_open(op["open_delay"]) if op.get("open_delay") else None
+            # Imported after the op's clock starts: importing chromadb is part
+            # of a status run's time.
             from rag_mcp import status
 
-            def run_status(op=op):
+            def run_status(op=op, status=status):
                 saved = sys.argv
                 sys.argv = ["status", *op["argv"]]
                 try:
@@ -318,12 +413,19 @@ def main() -> int:
                 finally:
                     sys.argv = saved
 
-            res = _logged(run_status)
+            try:
+                res = _logged(run_status)
+            finally:
+                if undo:
+                    undo()
             res["json"] = _last_json(res["stdout"])
         else:
             raise ValueError(f"unknown op {kind}")
         res["op"] = kind
         res["requests"] = requests[mark:]
+        res["net"] = net.calls[net_mark:] if net else []
+        res["seconds"] = time.monotonic() - began
+        res["since_start"] = time.monotonic() - _START
         results.append(res)
 
     Path(out_path).write_text(
