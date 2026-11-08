@@ -53,10 +53,16 @@ if ! command -v zstd &>/dev/null; then
     exit 1
 fi
 
+# Every Python step runs the package's virtual environment's python
+if [[ -z "${VENV:-}" || ! -x "${VENV}/bin/python" ]]; then
+    echo -e "${RED}Error: set VENV to the package's virtual environment (no python at ${VENV:-<unset>}/bin/python)${NC}" >&2
+    exit 1
+fi
+
 # The release file list decides which DBs are packed: every default DB must be
 # present, and every other listed DB is packed when present. Each packed DB must
 # reach its tables' floors before anything is written.
-if ! PACK_DBS=$(DATA_DIR="${DATA_DIR}" python3 -c "
+if ! PACK_DBS=$(DATA_DIR="${DATA_DIR}" "$VENV/bin/python" -c "
 import os, sys
 from pathlib import Path
 from windows_triage import release_manifest as m
@@ -85,7 +91,7 @@ echo "  Databases checked against the release floors: ${PACK_DBS}"
 
 # Each source in the triage source table needs a licence file in
 # data/licenses/<repo name>/ before anything is written.
-if ! SCRIPT_DIR="${SCRIPT_DIR}" DATA_DIR="${DATA_DIR}" python3 -c "
+if ! SCRIPT_DIR="${SCRIPT_DIR}" DATA_DIR="${DATA_DIR}" "$VENV/bin/python" -c "
 import importlib.util, os, sys
 from pathlib import Path
 
@@ -111,7 +117,7 @@ sys.exit(1 if missing else 0)
     exit 1
 fi
 
-LICENCE_ASSET=$(python3 -c "from windows_triage import release_manifest as m; print(m.LICENCE_ASSET)")
+LICENCE_ASSET=$("$VENV/bin/python" -c "from windows_triage import release_manifest as m; print(m.LICENCE_ASSET)")
 
 mkdir -p "$OUTPUT_DIR"
 WRITTEN=()
@@ -134,7 +140,7 @@ done
 
 # Pack the licence files: data/licenses/<source>/<file>, regular files only
 echo -n "  Packing licences..."
-DATA_DIR="${DATA_DIR}" ASSET_PATH="${OUTPUT_DIR}/${LICENCE_ASSET}" python3 -c "
+DATA_DIR="${DATA_DIR}" ASSET_PATH="${OUTPUT_DIR}/${LICENCE_ASSET}" "$VENV/bin/python" -c "
 import os, tarfile, zstandard
 from pathlib import Path
 
@@ -165,7 +171,7 @@ echo -e " ${GREEN}done${NC}"
 
 # Record database metadata
 echo -n "  Generating metadata..."
-DATA_DIR="${DATA_DIR}" OUTPUT_DIR="${OUTPUT_DIR}" PACK_DBS="${PACK_DBS}" python3 -c "
+DATA_DIR="${DATA_DIR}" OUTPUT_DIR="${OUTPUT_DIR}" PACK_DBS="${PACK_DBS}" "$VENV/bin/python" -c "
 import json, os
 from datetime import datetime, timezone
 from pathlib import Path
