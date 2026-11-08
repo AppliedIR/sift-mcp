@@ -1400,9 +1400,15 @@ if $INSTALL_TRIAGE; then
     # Ensure zstandard is available for the download module
     uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" zstandard 2>/dev/null || true
 
-    # Check if databases already exist
+    # Check if databases already exist: each DB the release file list fetches
+    # by default (the two every release has had, if the list can't be read)
+    TRIAGE_DBS=$("$VENV_PYTHON" -c "from windows_triage import release_manifest as m; print(' '.join(m.default_databases()))" 2>/dev/null) || TRIAGE_DBS=""
+    DB_PRESENT=true
+    for db in ${TRIAGE_DBS:-known_good.db context.db}; do
+        [[ -s "$DB_DIR/$db" ]] || DB_PRESENT=false
+    done
     DB_EXISTS=false
-    if [[ -s "$DB_DIR/known_good.db" ]] && [[ -s "$DB_DIR/context.db" ]]; then
+    if $DB_PRESENT; then
         if "$VENV_PYTHON" -c "import sqlite3; sqlite3.connect('$DB_DIR/known_good.db').execute('SELECT 1')" 2>/dev/null; then
             DB_EXISTS=true
         fi
@@ -1465,7 +1471,7 @@ if $INSTALL_TRIAGE; then
     esac
 
     # Validate triage databases (after all download/build/skip paths)
-    for db in known_good.db context.db; do
+    for db in ${TRIAGE_DBS:-known_good.db context.db}; do
         db_path="$DB_DIR/$db"
         if [ -s "$db_path" ]; then
             if "$VENV_PYTHON" -c "import sqlite3; sqlite3.connect('$db_path').execute('SELECT 1')" 2>/dev/null; then
@@ -2529,7 +2535,13 @@ print(-1 if docs <= 0 else sum(1 for s in data.get('online_sources', []) if s.ge
 fi
 
 if $INSTALL_TRIAGE; then
-    if [[ -s "$DB_DIR/known_good.db" ]] && [[ -s "$DB_DIR/context.db" ]]; then
+    # Each DB the release file list fetches by default, as in the setup above
+    TRIAGE_DBS=$("$VENV_PYTHON" -c "from windows_triage import release_manifest as m; print(' '.join(m.default_databases()))" 2>/dev/null) || TRIAGE_DBS=""
+    TRIAGE_OK=true
+    for db in ${TRIAGE_DBS:-known_good.db context.db}; do
+        [[ -s "$DB_DIR/$db" ]] || TRIAGE_OK=false
+    done
+    if $TRIAGE_OK; then
         ok "Triage databases: installed. Re-download when needed: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
     else
         warn "Triage databases: not installed; windows-triage won't start without them. Download: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
