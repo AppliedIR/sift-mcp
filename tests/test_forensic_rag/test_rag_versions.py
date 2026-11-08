@@ -212,9 +212,11 @@ def run_probe(
     extra: list[dict] | None = None,
     replace: bool = False,
     index_dir: Path | None = None,
+    env: dict | None = None,
 ) -> dict:
     """Run ops in a fresh process on the scratch copy; RAG_INDEX_DIR is the
-    copy's own data dir unless index_dir is given."""
+    copy's own data dir unless index_dir is given. env is merged last, and a
+    None value removes that variable."""
     rig.runs += 1
     run = rig.root / "runs" / f"run{rig.runs}"
     cwd = run / "cwd"
@@ -229,7 +231,7 @@ def run_probe(
     }
     spec_path, out_path, git_log = run / "spec.json", run / "out.json", run / "git.log"
     spec_path.write_text(json.dumps(spec), encoding="utf-8")
-    env = {
+    env_vars = {
         **_clean_env(),
         "HOME": str(rig.home),
         "PATH": f"{rig.shim}{os.pathsep}{os.environ.get('PATH', '')}",
@@ -240,9 +242,14 @@ def run_probe(
         "PROBE_GIT_LOG": str(git_log),
         "RAG_INDEX_DIR": str(index_dir or rig.data),
     }
+    for key, value in (env or {}).items():
+        if value is None:
+            env_vars.pop(key, None)
+        else:
+            env_vars[key] = value
     proc = subprocess.run(
         [sys.executable, str(PROBE), str(spec_path), str(out_path)],
-        env=env,
+        env=env_vars,
         cwd=str(cwd),
         capture_output=True,
         text=True,

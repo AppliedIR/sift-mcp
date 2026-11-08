@@ -1,11 +1,12 @@
 """Run the RAG version paths in a fresh process on a scratch copy of the package.
 
-Used by test_rag_versions.py; not a test module itself. The test puts a
-scratch copy of the package first on sys.path, so every file the package
-reads under its own data dir is the copy's, never the installed tree's. The
-version lookups are stubbed at their functions, every URL fetch is recorded
-and answered only from fixture files, and the embedding model is a stand-in,
-so nothing here reaches the network or loads a model.
+Used by test_rag_versions.py and test_rag_bundle_state.py; not a test module
+itself. The test puts a scratch copy of the package first on sys.path, so
+every file the package reads under its own data dir is the copy's, never the
+installed tree's. The version lookups are stubbed at their functions, every
+URL fetch is recorded and answered only from fixture files, the bundle
+install's release lookup is answered with local file URLs, and the embedding
+model is a stand-in, so nothing here reaches the network or loads a model.
 
 Usage: python _rag_versions_probe.py <spec.json> <out.json>
 """
@@ -160,17 +161,40 @@ def _last_json(stdout: str):
     return None
 
 
-def _make_index(data_dir: str) -> None:
+def _make_index(data_dir: str, count: int = 1) -> None:
     import chromadb
 
     client = chromadb.PersistentClient(path=str(Path(data_dir) / "chroma"))
     col = client.create_collection("ir_knowledge", metadata={"hnsw:space": "cosine"})
-    col.add(
-        ids=["fixture_0"],
-        documents=["A fixture record."],
-        embeddings=[[1.0, 0.0, 0.5, 0.25]],
-        metadatas=[{"source": "fixture"}],
-    )
+    step = 5000
+    for start in range(0, count, step):
+        ids = range(start, min(start + step, count))
+        col.add(
+            ids=[f"fixture_{i}" for i in ids],
+            documents=[f"A fixture record {i}." for i in ids],
+            embeddings=[[1.0, float(i % 7), 0.5, 0.25] for i in ids],
+            metadatas=[{"source": "fixture"} for _ in ids],
+        )
+
+
+def _release(assets_dir: str, names) -> dict:
+    """A release whose assets are local files, so the download reads them."""
+    return {
+        "tag_name": "rag-index-fixture",
+        "assets": [
+            {"name": n, "url": (Path(assets_dir) / n).resolve().as_uri()}
+            for n in names
+        ],
+    }
+
+
+def _main_with(argv: list[str], fn) -> None:
+    saved = sys.argv
+    sys.argv = argv
+    try:
+        fn()
+    finally:
+        sys.argv = saved
 
 
 def main() -> int:
@@ -222,7 +246,20 @@ def main() -> int:
         kind = op["op"]
         mark = len(requests)
         if kind == "index":
-            res = _logged(lambda op=op: _make_index(op["dir"]))
+            res = _logged(lambda op=op: _make_index(op["dir"], op.get("count", 1)))
+        elif kind == "pack":
+            from rag_mcp.scripts import build_release
+
+            build_release.MIN_RECORD_COUNT = 0
+            argv = ["build_release", "--skip-build", "--output-dir", op["out"]]
+            res = _logged(lambda argv=argv: _main_with(argv, build_release.main))
+        elif kind == "install":
+            from rag_mcp.scripts import download_index
+
+            release = _release(op["assets"], download_index.ASSETS)
+            download_index._fetch_release = lambda tag="latest", r=release: r
+            argv = ["download_index", *op["argv"]]
+            res = _logged(lambda argv=argv: _main_with(argv, download_index.main))
         elif kind == "sync":
 
             def sync(op=op):
