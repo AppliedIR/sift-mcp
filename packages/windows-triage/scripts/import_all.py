@@ -140,15 +140,21 @@ def _clone(url: str, dest: Path, timeout: int, log: Path) -> str:
 
 
 def _copy_licences(clone: Path, dest: Path) -> None:
-    """Copy the licence files at the clone's root; none is an error."""
+    """Copy the licence files at the clone's root; none, or one over the
+    size cap, is an error."""
     found = [
         p
         for p in sorted(clone.iterdir())
-        if LICENCE_NAME.match(p.name)
-        and not p.is_symlink()
-        and p.is_file()
-        and p.stat().st_size <= LICENCE_MAX
+        if LICENCE_NAME.match(p.name) and not p.is_symlink() and p.is_file()
     ]
+    oversized = [
+        f"{clone.name}: licence file {p.name} is {p.stat().st_size} bytes,"
+        f" over the {LICENCE_MAX}-byte (1 MiB) cap"
+        for p in found
+        if p.stat().st_size > LICENCE_MAX
+    ]
+    if oversized:
+        raise FetchError(*oversized)
     if not found:
         raise FetchError(f"{clone.name}: no licence file at the clone's root")
     dest.mkdir(parents=True)
