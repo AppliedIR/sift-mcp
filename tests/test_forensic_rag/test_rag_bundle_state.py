@@ -393,7 +393,7 @@ def test_truncated_state_is_reported_unreadable(truncated, form):
 
 @pytest.mark.parametrize("form", FORMS)
 def test_truncated_state_is_not_one_update_per_source(truncated, form):
-    got = online(truncated[form])
+    got = {n: s for n, s in online(truncated[form]).items() if n in ONLINE}
     assert got and sum(bool(s["has_update"]) for s in got.values()) < len(got)
 
 
