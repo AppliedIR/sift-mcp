@@ -21,12 +21,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .constants import (
-    DATA_ROOT,
     FORBIDDEN_PATHS,
     KNOWLEDGE_ROOT,
     PROJECT_ROOT,
 )
-from .utils import ALLOWED_MODELS, DEFAULT_MODEL_NAME
+from .utils import ALLOWED_MODELS, DEFAULT_MODEL_NAME, resolve_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +136,7 @@ def get_config(reload: bool = False) -> Config:
         return _config
 
     # Load from environment with defaults
-    data_dir = Path(os.environ.get("RAG_INDEX_DIR", str(DATA_ROOT))).resolve()
+    data_dir = resolve_data_dir()
     knowledge_dir = Path(
         os.environ.get("RAG_KNOWLEDGE_DIR", str(KNOWLEDGE_ROOT))
     ).resolve()

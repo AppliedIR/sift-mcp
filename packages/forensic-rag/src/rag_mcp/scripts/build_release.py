@@ -28,6 +28,8 @@ from pathlib import Path
 
 import zstandard as zstd
 
+from ..utils import resolve_data_dir
+
 MIN_RECORD_COUNT = 20000
 
 
@@ -102,9 +104,7 @@ def main() -> None:
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Data dir is relative to the package
-    pkg_root = Path(__file__).resolve().parent.parent.parent.parent
-    data_dir = Path(os.environ.get("RAG_INDEX_DIR", pkg_root / "data"))
+    data_dir = resolve_data_dir()
 
     if not args.skip_build:
         print("=" * 60)

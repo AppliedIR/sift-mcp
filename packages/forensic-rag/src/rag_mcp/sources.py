@@ -33,15 +33,25 @@ from urllib.request import Request, urlopen
 import toml
 import yaml
 
-from .utils import atomic_write_json, compute_file_hash
+from .constants import SOURCES_DIR_NAME
+from .utils import atomic_write_json, compute_file_hash, resolve_data_dir
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
-SOURCES_DIR = DEFAULT_DATA_DIR / "sources"
-SOURCES_STATE_FILE = DEFAULT_DATA_DIR / "sources_state.json"
-SOURCES_CONFIG_FILE = DEFAULT_DATA_DIR / "sources_config.json"
+
+def sources_dir(data_dir: str | Path | None = None) -> Path:
+    """The parsed-source JSONL dir under the data dir (decided at call time)."""
+    return resolve_data_dir(data_dir) / SOURCES_DIR_NAME
+
+
+def state_file(data_dir: str | Path | None = None) -> Path:
+    """The source state file under the data dir (decided at call time)."""
+    return resolve_data_dir(data_dir) / "sources_state.json"
+
+
+def config_file(data_dir: str | Path | None = None) -> Path:
+    """The source config file under the data dir (decided at call time)."""
+    return resolve_data_dir(data_dir) / "sources_config.json"
 
 
 @dataclass
@@ -659,30 +669,34 @@ def clone_repo(repo: str, branch: str, dest: Path) -> bool:
 # =============================================================================
 
 
-def load_sources_state() -> dict[str, Any]:
+def load_sources_state(data_dir: str | Path | None = None) -> dict[str, Any]:
     """Load sources state from file."""
-    if SOURCES_STATE_FILE.exists():
+    path = state_file(data_dir)
+    if path.exists():
         try:
-            with open(SOURCES_STATE_FILE, encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 return json.load(f)
         except (OSError, json.JSONDecodeError):
             pass
     return {"version": 1, "sources": {}}
 
 
-def save_sources_state(state: dict[str, Any]) -> None:
+def save_sources_state(
+    state: dict[str, Any], data_dir: str | Path | None = None
+) -> None:
     """Save sources state to file.
 
     Security: Uses atomic write to prevent corruption from concurrent access.
     """
-    atomic_write_json(SOURCES_STATE_FILE, state)
+    atomic_write_json(state_file(data_dir), state)
 
 
-def load_disabled_sources() -> set[str]:
+def load_disabled_sources(data_dir: str | Path | None = None) -> set[str]:
     """Load disabled sources from config file."""
-    if SOURCES_CONFIG_FILE.exists():
+    path = config_file(data_dir)
+    if path.exists():
         try:
-            with open(SOURCES_CONFIG_FILE, encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 config = json.load(f)
                 return set(config.get("disabled_sources", []))
         except (OSError, json.JSONDecodeError):
@@ -2509,10 +2523,11 @@ def fetch_and_parse(source: SourceConfig, output_path: Path) -> FetchResult:
     return result
 
 
-def check_source_updates() -> list[SourceStatus]:
+def check_source_updates(data_dir: str | Path | None = None) -> list[SourceStatus]:
     """Check all sources for available updates."""
-    state = load_sources_state()
-    disabled = load_disabled_sources()
+    data_dir = resolve_data_dir(data_dir)
+    state = load_sources_state(data_dir)
+    disabled = load_disabled_sources(data_dir)
     results = []
 
     for name, source in SOURCES.items():
@@ -2540,7 +2555,9 @@ def check_source_updates() -> list[SourceStatus]:
     return results
 
 
-def sync_source(name: str, force: bool = False) -> FetchResult:
+def sync_source(
+    name: str, force: bool = False, data_dir: str | Path | None = None
+) -> FetchResult:
     """Sync a single source."""
     if name not in SOURCES:
         return FetchResult(
@@ -2548,12 +2565,13 @@ def sync_source(name: str, force: bool = False) -> FetchResult:
         )
 
     source = SOURCES[name]
-    disabled = load_disabled_sources()
+    data_dir = resolve_data_dir(data_dir)
+    disabled = load_disabled_sources(data_dir)
 
     if name in disabled:
         return FetchResult(source=name, status="skipped", message="Source is disabled")
 
-    state = load_sources_state()
+    state = load_sources_state(data_dir)
     source_state = state.get("sources", {}).get(name, {})
     current_version = source_state.get("version")
 
@@ -2570,7 +2588,7 @@ def sync_source(name: str, force: bool = False) -> FetchResult:
             )
 
     # Fetch and parse
-    output_path = SOURCES_DIR / f"{name}.jsonl"
+    output_path = sources_dir(data_dir) / f"{name}.jsonl"
     logger.info(f"Syncing {name}...")
     result = fetch_and_parse(source, output_path)
 
@@ -2582,15 +2600,18 @@ def sync_source(name: str, force: bool = False) -> FetchResult:
             "records": result.records,
             "cache_hash": result.cache_hash,
         }
-        save_sources_state(state)
+        save_sources_state(state, data_dir)
         logger.info(f"  Synced {name}: {result.records} records")
 
     return result
 
 
-def sync_all_sources(force: bool = False) -> list[FetchResult]:
+def sync_all_sources(
+    force: bool = False, data_dir: str | Path | None = None
+) -> list[FetchResult]:
     """Sync all enabled sources."""
-    disabled = load_disabled_sources()
+    data_dir = resolve_data_dir(data_dir)
+    disabled = load_disabled_sources(data_dir)
     results = []
 
     for name in SOURCES:
@@ -2600,17 +2621,18 @@ def sync_all_sources(force: bool = False) -> list[FetchResult]:
             )
             continue
 
-        result = sync_source(name, force=force)
+        result = sync_source(name, force=force, data_dir=data_dir)
         results.append(result)
 
     return results
 
 
-def get_cached_sources() -> dict[str, Path]:
+def get_cached_sources(data_dir: str | Path | None = None) -> dict[str, Path]:
     """Get paths to all cached JSONL files."""
+    cached = sources_dir(data_dir)
     sources = {}
     for name in SOURCES:
-        path = SOURCES_DIR / f"{name}.jsonl"
+        path = cached / f"{name}.jsonl"
         if path.exists():
             sources[name] = path
     return sources

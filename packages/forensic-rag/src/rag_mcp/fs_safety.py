@@ -14,11 +14,11 @@ Usage:
     from rag_mcp.fs_safety import safe_rmtree, safe_mkdir, create_sentinel
 
     # Create a managed directory
-    safe_mkdir(some_path, root=DATA_ROOT)
+    safe_mkdir(some_path, root=data_dir)
     create_sentinel(some_path)
 
     # Later, safely remove it
-    safe_rmtree(some_path, root=DATA_ROOT)  # Only works if sentinel exists
+    safe_rmtree(some_path, root=data_dir)  # Only works if sentinel exists
 """
 
 from __future__ import annotations
@@ -29,7 +29,6 @@ import shutil
 from pathlib import Path
 
 from .constants import (
-    DATA_ROOT,
     FORBIDDEN_PATHS,
     MANAGED_SENTINEL,
     MIN_DELETE_DEPTH,
@@ -219,7 +218,7 @@ def create_sentinel(directory: Path, sentinel_name: str = MANAGED_SENTINEL) -> P
 
 def safe_mkdir(
     directory: Path,
-    root: Path | None = None,
+    root: Path,
     *,
     parents: bool = True,
     exist_ok: bool = True,
@@ -231,7 +230,6 @@ def safe_mkdir(
     Args:
         directory: Directory to create
         root: Root directory that must contain the new directory
-              (defaults to DATA_ROOT)
         parents: Create parent directories as needed
         exist_ok: Don't raise if directory already exists
         create_sentinel: Create sentinel file after creation
@@ -243,9 +241,6 @@ def safe_mkdir(
         PathNotWithinRootError: If directory would be outside root
         ForbiddenPathError: If directory is a forbidden path
     """
-    if root is None:
-        root = DATA_ROOT
-
     resolved = require_within_root(directory, root, label="directory")
     resolved.mkdir(parents=parents, exist_ok=exist_ok)
 
@@ -260,7 +255,7 @@ def safe_mkdir(
 
 def safe_rmtree(
     directory: Path,
-    root: Path | None = None,
+    root: Path,
     *,
     require_sentinel_file: bool = True,
     missing_ok: bool = False,
@@ -277,7 +272,6 @@ def safe_rmtree(
     Args:
         directory: Directory to remove
         root: Root directory that must contain the target
-              (defaults to DATA_ROOT)
         require_sentinel_file: Require sentinel file to exist
         missing_ok: Don't raise if directory doesn't exist
 
@@ -290,9 +284,6 @@ def safe_rmtree(
         MissingSentinelError: If sentinel file is missing
         PathTooShallowError: If path is too shallow
     """
-    if root is None:
-        root = DATA_ROOT
-
     resolved = resolve_strict(directory)
 
     # Check if directory exists
@@ -327,16 +318,13 @@ def safe_rmtree(
     return True
 
 
-def safe_unlink(
-    file_path: Path, root: Path | None = None, *, missing_ok: bool = False
-) -> bool:
+def safe_unlink(file_path: Path, root: Path, *, missing_ok: bool = False) -> bool:
     """
     Safely delete a single file within an allowed root.
 
     Args:
         file_path: File to delete
         root: Root directory that must contain the file
-              (defaults to DATA_ROOT)
         missing_ok: Don't raise if file doesn't exist
 
     Returns:
@@ -347,9 +335,6 @@ def safe_unlink(
         ForbiddenPathError: If file is in a forbidden path
         IsADirectoryError: If path is a directory (use safe_rmtree)
     """
-    if root is None:
-        root = DATA_ROOT
-
     resolved = resolve_strict(file_path)
 
     if not resolved.exists():

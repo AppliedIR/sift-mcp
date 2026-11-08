@@ -28,19 +28,16 @@ from .ingest import (
 )
 from .sources import (
     SOURCES,
-    SOURCES_DIR,
     check_source_updates,
     load_disabled_sources,
     load_sources_state,
+    sources_dir,
 )
 from .stores import layout, read_json, read_state, user_dir
 from .utils import resolve_data_dir
 
 logging.basicConfig(level=logging.WARNING, format="%(message)s", stream=sys.stderr)
 logger = logging.getLogger(__name__)
-
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 
 
 @dataclass
@@ -130,13 +127,13 @@ def get_status(
         result.warnings.append(f"Error reading ChromaDB: {e}")
 
     # Get disabled sources
-    result.disabled_sources = list(load_disabled_sources())
+    result.disabled_sources = list(load_disabled_sources(data_dir))
 
     # Get online source status
-    sources_state = load_sources_state()
+    sources_state = load_sources_state(data_dir)
 
     if check_updates:
-        updates = check_source_updates()
+        updates = check_source_updates(data_dir)
         for status in updates:
             result.online_sources.append(
                 {
@@ -209,7 +206,9 @@ def get_status(
     return result
 
 
-def format_status(status: StatusResult, verbose: bool = False) -> str:
+def format_status(
+    status: StatusResult, verbose: bool = False, data_dir: Path | None = None
+) -> str:
     """Format status for display."""
     lines = []
 
@@ -313,9 +312,9 @@ def format_status(status: StatusResult, verbose: bool = False) -> str:
     if verbose:
         lines.append("")
         lines.append("Verbose Details:")
-        lines.append(f"  Data dir: {DEFAULT_DATA_DIR}")
+        lines.append(f"  Data dir: {resolve_data_dir(data_dir)}")
         lines.append(f"  Knowledge dir: {DEFAULT_KNOWLEDGE_DIR}")
-        lines.append(f"  Sources dir: {SOURCES_DIR}")
+        lines.append(f"  Sources dir: {sources_dir(data_dir)}")
 
     return "\n".join(lines)
 
@@ -343,7 +342,7 @@ def main() -> int:
     if args.json:
         print(json.dumps(asdict(status), indent=2, default=str))
     else:
-        print(format_status(status, verbose=args.verbose))
+        print(format_status(status, verbose=args.verbose, data_dir=args.data_dir))
 
     return 0
 

@@ -34,8 +34,8 @@ from .ingest import (
 )
 from .sources import (
     SOURCES,
-    SOURCES_DIR,
     check_source_updates,
+    sources_dir,
     sync_source,
 )
 from .stores import (
@@ -54,9 +54,6 @@ from .utils import (
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
-
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 
 
 @dataclass
@@ -187,11 +184,11 @@ def refresh(
                 result.errors.append(f"Unknown source: {source_name}")
             else:
                 _refresh_single_source(
-                    source_name, collection, model, check_only, result
+                    source_name, collection, model, check_only, result, data_dir
                 )
         else:
             # All sources
-            updates = check_source_updates()
+            updates = check_source_updates(data_dir)
             result.sources_checked = len(updates)
 
             for status in updates:
@@ -204,7 +201,7 @@ def refresh(
                     )
                     if not check_only:
                         _refresh_single_source(
-                            status.name, collection, model, check_only, result
+                            status.name, collection, model, check_only, result, data_dir
                         )
                 else:
                     logger.info(
@@ -427,7 +424,12 @@ def _log_refresh_summary(result: RefreshResult, check_only: bool) -> None:
 
 
 def _refresh_single_source(
-    name: str, collection: Any, model: Any, check_only: bool, result: RefreshResult
+    name: str,
+    collection: Any,
+    model: Any,
+    check_only: bool,
+    result: RefreshResult,
+    data_dir: Path,
 ) -> None:
     """Refresh a single online source."""
     if check_only:
@@ -436,14 +438,14 @@ def _refresh_single_source(
     logger.info(f"  Syncing {name}...")
 
     # Sync source
-    fetch_result = sync_source(name, force=True)
+    fetch_result = sync_source(name, force=True, data_dir=data_dir)
 
     if fetch_result.status != "success":
         result.warnings.append(f"{name}: {fetch_result.message}")
         return
 
     # Load new records
-    cache_path = SOURCES_DIR / f"{name}.jsonl"
+    cache_path = sources_dir(data_dir) / f"{name}.jsonl"
     if not cache_path.exists():
         result.warnings.append(f"{name}: No cache file after sync")
         return

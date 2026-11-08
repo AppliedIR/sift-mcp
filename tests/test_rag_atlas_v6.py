@@ -57,10 +57,6 @@ def rag(monkeypatch, tmp_path):
     b = importlib.import_module("rag_mcp.build")
     br = importlib.import_module("rag_mcp.scripts.build_release")
     data = tmp_path / "data"
-    for mod in (s, b):
-        monkeypatch.setattr(mod, "SOURCES_DIR", data / "sources", raising=False)
-    monkeypatch.setattr(s, "SOURCES_STATE_FILE", tmp_path / "sources_state.json")
-    monkeypatch.setattr(s, "SOURCES_CONFIG_FILE", tmp_path / "sources_config.json")
     monkeypatch.setattr(s, "get_latest_version", lambda source: "test")
     monkeypatch.setenv("RAG_INDEX_DIR", str(data))
     yield types.SimpleNamespace(sources=s, build=b, build_release=br, data=data)
@@ -217,8 +213,8 @@ def test_a_release_build_stops_before_indexing_when_a_source_fails(
 ):
     s = rag.sources
     others = [n for n in s.SOURCES if n != "mitre_atlas"]
-    s.SOURCES_CONFIG_FILE.write_text(json.dumps({"disabled_sources": others}))
     (rag.data / "sources").mkdir(parents=True)
+    s.config_file().write_text(json.dumps({"disabled_sources": others}))
     old = rag.data / "sources" / "mitre_atlas.jsonl"
     if stale_cache:  # what an earlier build left: it must not ship
         old.write_text(

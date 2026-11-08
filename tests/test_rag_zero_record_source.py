@@ -16,7 +16,8 @@ from test_rag_atlas_v6 import ReachedEmbedding, _atlas, _upstream, rag  # noqa: 
 def _only_atlas(rag, monkeypatch, doc):  # noqa: F811
     s = rag.sources
     others = [n for n in s.SOURCES if n != "mitre_atlas"]
-    s.SOURCES_CONFIG_FILE.write_text(json.dumps({"disabled_sources": others}))
+    rag.data.mkdir(parents=True, exist_ok=True)
+    s.config_file().write_text(json.dumps({"disabled_sources": others}))
     monkeypatch.setattr(
         s, "clone_repo", lambda repo, branch, dest: _upstream(dest, doc, True) or True
     )

@@ -36,9 +36,7 @@ def sources(monkeypatch, tmp_path):
     if importlib.util.find_spec("toml") is None:
         monkeypatch.setitem(sys.modules, "toml", types.ModuleType("toml"))
     s = importlib.import_module("rag_mcp.sources")
-    monkeypatch.setattr(s, "SOURCES_DIR", tmp_path / "sources")
-    monkeypatch.setattr(s, "SOURCES_STATE_FILE", tmp_path / "sources_state.json")
-    monkeypatch.setattr(s, "SOURCES_CONFIG_FILE", tmp_path / "sources_config.json")
+    monkeypatch.setenv("RAG_INDEX_DIR", str(tmp_path))
     monkeypatch.setattr(s, "get_latest_version", lambda source: "test")
     yield s
     for name in [k for k in sys.modules if k.startswith("rag_mcp.")]:

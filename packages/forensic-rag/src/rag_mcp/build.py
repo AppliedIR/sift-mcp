@@ -34,9 +34,9 @@ from .ingest import (
 )
 from .sources import (
     SOURCES,
-    SOURCES_DIR,
     get_cached_sources,
     load_disabled_sources,
+    sources_dir,
     sync_source,
 )
 from .stores import (
@@ -59,9 +59,6 @@ from .utils import (
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
-
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 
 
 @dataclass
@@ -123,7 +120,8 @@ def build(
         return result
 
     # Ensure directories exist and are marked as managed
-    SOURCES_DIR.mkdir(parents=True, exist_ok=True)
+    src = sources_dir(data_dir)
+    src.mkdir(parents=True, exist_ok=True)
     data_dir.mkdir(parents=True, exist_ok=True)
 
     # Create sentinel files to mark directories as managed by rag-mcp
@@ -132,7 +130,7 @@ def build(
         data_sentinel.touch()
         logger.debug(f"Created sentinel: {data_sentinel}")
 
-    sources_sentinel = SOURCES_DIR / MANAGED_SENTINEL
+    sources_sentinel = src / MANAGED_SENTINEL
     if not sources_sentinel.exists():
         sources_sentinel.touch()
         logger.debug(f"Created sentinel: {sources_sentinel}")
@@ -147,15 +145,15 @@ def build(
         )
         logger.info("=" * 60)
 
-        disabled = load_disabled_sources()
-        get_cached_sources()  # warm cache for later use
+        disabled = load_disabled_sources(data_dir)
+        get_cached_sources(data_dir)  # warm cache for later use
 
         for name, source in SOURCES.items():
             if name in disabled:
                 logger.info(f"  {name}: DISABLED (skipped)")
                 continue
 
-            cache_path = SOURCES_DIR / f"{name}.jsonl"
+            cache_path = src / f"{name}.jsonl"
 
             # Check if we need to fetch
             need_fetch = force_fetch or not cache_path.exists()
@@ -165,7 +163,9 @@ def build(
                     logger.info(f"  {name}: Would fetch from {source.repo}")
                     continue
                 else:
-                    fetch_result = sync_source(name, force=force_fetch)
+                    fetch_result = sync_source(
+                        name, force=force_fetch, data_dir=data_dir
+                    )
                     if fetch_result.status != "success":
                         if strict_sources:  # a release never ships an old cache
                             result.status = "error"
@@ -311,7 +311,7 @@ def build(
 
     # Load MITRE lookup for text augmentation
     logger.info("  Loading MITRE technique lookup for text augmentation...")
-    mitre_lookup = load_mitre_lookup(SOURCES_DIR)
+    mitre_lookup = load_mitre_lookup(src)
     logger.info(f"  Loaded {len(mitre_lookup)} MITRE technique mappings")
 
     # Load embedding model
