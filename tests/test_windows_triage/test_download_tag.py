@@ -226,6 +226,8 @@ def test_checksum_mismatch_leaves_prior_install(tmp_path, monkeypatch, capsys):
     assert dd.download_databases(dest, "latest") is False
     assert "Checksum verification failed after all attempts." in capsys.readouterr().out
     assert len(sleeps) == dd.MAX_ATTEMPTS - 1
+    gone = [name for name in before if not (dest / name).exists()]
+    assert gone == [], "a failed install removed files of the prior install"
     after = {name: (dest / name).read_bytes() for name in before}
     assert after == before
 
