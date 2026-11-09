@@ -46,13 +46,16 @@ SOURCES_DIR_NAME = "sources"
 
 # The one list of what a release bundle holds, paths under the data dir. The
 # release build packs each and fails naming one that is missing; the install
-# admits only these (and what lies under them).
+# admits only these (and what lies under them). ATTRIBUTION.md is packed from
+# the package root, not the data dir.
 BUNDLE_MEMBERS: tuple[str, ...] = (
     "chroma",
     "sources",
+    "sources/licenses",
     "metadata.json",
     "user_state.json",
     "sources_state.json",
+    "ATTRIBUTION.md",
 )
 
 # =============================================================================

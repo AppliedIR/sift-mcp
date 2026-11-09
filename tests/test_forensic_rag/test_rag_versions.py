@@ -30,6 +30,9 @@ GIT = shutil.which("git")
 pytestmark = pytest.mark.skipif(GIT is None, reason="the fixture repos need git")
 
 PROBE = Path(__file__).with_name("_rag_versions_probe.py")
+# The release build packs it from the package root, as a real package holds it
+REPO = Path(__file__).resolve().parents[2]
+ATTRIBUTION = REPO / "packages" / "forensic-rag" / "ATTRIBUTION.md"
 ALL = list(sources.SOURCES)
 EMBEDDED = sorted(n for n, s in sources.SOURCES.items() if s.source_type == "embedded")
 ONLINE = sorted(n for n in ALL if n not in EMBEDDED)
@@ -154,6 +157,7 @@ def make_rig(root: Path, redirect_hijacklibs: bool = True) -> Rig:
         src / "rag_mcp",
         ignore=shutil.ignore_patterns("__pycache__"),
     )
+    shutil.copyfile(ATTRIBUTION, root / "pkg" / "ATTRIBUTION.md")
     data = root / "pkg" / "data"
     data.mkdir()
     home = root / "home"
@@ -166,6 +170,8 @@ def make_rig(root: Path, redirect_hijacklibs: bool = True) -> Rig:
     (work / "yml").mkdir(parents=True)
     _git(home, "init", "-q", "-b", "main", str(work))
     (work / "yml" / "one.yml").write_text(YML_MAIN, encoding="utf-8")
+    # a real clone carries a root licence; a strict build fails without one
+    (work / "LICENSE").write_text("Fixture licence.\n", encoding="utf-8")
     _git(home, "add", "-A", cwd=work)
     _git(home, "commit", "-q", "-m", "main", cwd=work)
     _git(home, "checkout", "-q", "-b", "dev", cwd=work)

@@ -128,6 +128,7 @@ def _upstream(dest, doc, latest=True):
     """The repo layout: dist/v6/ATLAS-<release>.yaml, and ATLAS-latest.yaml a
     link to it; dist/ATLAS.yaml is the frozen v5 file."""
     (dest / "dist/v6").mkdir(parents=True)
+    (dest / "LICENSE").write_text("Fixture licence.\n", encoding="utf-8")
     (dest / "dist/ATLAS.yaml").write_text(
         "id: ATLAS\nversion: 5.6.0\n", encoding="utf-8"
     )

@@ -17,6 +17,8 @@ import logging
 import os
 import random
 import re
+import shutil
+import stat
 import subprocess
 import tempfile
 import time
@@ -77,6 +79,8 @@ class FetchResult:
     message: str = ""
     version: str = ""
     cache_hash: str = ""
+    # a cloned source's missing or oversized root licence: fails a strict build
+    licence_error: str = ""
 
 
 @dataclass
@@ -686,6 +690,37 @@ def clone_repo(repo: str, branch: str, dest: Path) -> bool:
     except subprocess.TimeoutExpired:
         logger.error(f"Timeout cloning {repo}")
         return False
+
+
+LICENCE_FILE = re.compile(r"^(LICEN[CS]E|NOTICE|COPYING)", re.IGNORECASE)
+LICENCE_MAX_BYTES = 1024 * 1024
+
+
+def _copy_licences(name: str, repo_dir: Path, dest: Path) -> str:
+    """Copy a clone's root licence files to dest, replacing what dest held.
+
+    Only regular files at the clone root count: a link, or a licence only in
+    a subdirectory, is none. Returns "" or the problem: no licence file, or
+    one over 1 MiB (never truncated, never skipped)."""
+    if dest.exists():
+        shutil.rmtree(dest)
+    found = []
+    for path in sorted(repo_dir.iterdir()):
+        if not LICENCE_FILE.match(path.name):
+            continue
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode):
+            continue
+        if info.st_size > LICENCE_MAX_BYTES:
+            return f"root licence file {path.name} is over 1 MiB ({info.st_size} bytes)"
+        found.append(path)
+    if not found:
+        return "no root licence file (LICENSE, LICENCE, NOTICE or COPYING)"
+    dest.mkdir(parents=True)
+    for path in found:
+        shutil.copyfile(path, dest / path.name)
+    logger.info(f"  {name}: {len(found)} licence file(s) copied")
+    return ""
 
 
 HEAD_PATTERN = re.compile(r"^[0-9a-f]{40}([0-9a-f]{24})?$")
@@ -2595,6 +2630,11 @@ def fetch_and_parse(source: SourceConfig, output_path: Path) -> FetchResult:
             result.message = "Could not read the clone's head commit"
             logger.error(f"  {source.name}: could not read the clone's head commit")
             return result
+
+        # The clone's root licence files ship beside its records
+        result.licence_error = _copy_licences(
+            source.name, repo_dir, output_path.parent / "licenses" / source.name
+        )
 
         # Run parser
         parser = PARSERS.get(source.parser)

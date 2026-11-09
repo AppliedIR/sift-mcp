@@ -180,6 +180,13 @@ def build(
                         result.status = "error"
                         result.errors.append(f"{name}: 0 records")
                         return result
+                    elif fetch_result.licence_error:
+                        problem = f"{name}: {fetch_result.licence_error}"
+                        if strict_sources:  # a release ships each licence
+                            result.status = "error"
+                            result.errors.append(problem)
+                            return result
+                        result.warnings.append(problem)
 
             # Load from cache
             if cache_path.exists():
