@@ -175,6 +175,12 @@ OPENSEARCH = (
     "Key evtx fields: event.code, user.name, source.ip, process.name, winlog.channel, "
     "winlog.user.identifier (the SID in the record header: often the service account the "
     "provider ran as; absent in records ingested before this version). "
+    "In Security 4688 and 4799 records, user.name, user.domain and user.id are the "
+    "account that acted (4688: the creator, with the new process's account in "
+    "user.effective.*; 4799: the account that enumerated the members of group.name). "
+    "In those records with a pipeline_version below opensearch-mcp-0.6.6.1, user.name "
+    'is TargetUserName (4688: the new process\'s account, often "-"; 4799: the group) '
+    "and user.effective.name is SubjectUserName. "
     "Key shimcache fields: Path, Executed, LastModifiedTimeUTC. "
     "Key amcache fields: KeyName, SHA1, FullPath. "
     "Aggregate on keyword fields, and check each artifact's field type first: "
