@@ -21,7 +21,7 @@
 # Upload with the gh CLI; the tag is triage-db-v followed by the UTC build date:
 #
 #     TAG="triage-db-v$(date -u +%Y.%m.%d)"
-#     gh release create "$TAG" --latest=false release/*.zst release/checksums.sha256 --title "Triage Databases $TAG" --notes "Pre-built triage databases for windows-triage"
+#     gh release create "$TAG" --latest=false release/*.zst release/checksums.sha256 release/metadata.json --title "Triage Databases $TAG" --notes "Pre-built triage databases for windows-triage"
 #
 set -euo pipefail
 
@@ -202,6 +202,6 @@ ls -lh "${OUTPUT_DIR}/"
 echo ""
 echo "To create a GitHub release (the tag is triage-db-v followed by the UTC build date):"
 echo "  TAG=\"triage-db-v\$(date -u +%Y.%m.%d)\""
-echo "  gh release create \"\$TAG\" --latest=false ${OUTPUT_DIR}/*.zst ${OUTPUT_DIR}/checksums.sha256 \\"
+echo "  gh release create \"\$TAG\" --latest=false ${OUTPUT_DIR}/*.zst ${OUTPUT_DIR}/checksums.sha256 ${OUTPUT_DIR}/metadata.json \\"
 echo "    --title \"Triage Databases \$TAG\" \\"
 echo "    --notes \"Pre-built triage databases for windows-triage\""
