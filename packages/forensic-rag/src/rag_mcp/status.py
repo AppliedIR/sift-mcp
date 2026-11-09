@@ -107,7 +107,9 @@ def freshness(status: StatusResult, state_kind: str | None, checked: bool) -> di
         reason = "the update check was not run"
 
     def not_checked(of: str = "") -> str:
-        return f"could not check {len(unchecked)}{of} ({', '.join(unchecked)}): {reason}"
+        return (
+            f"could not check {len(unchecked)}{of} ({', '.join(unchecked)}): {reason}"
+        )
 
     if not status.index_exists:
         state, line = "absent", "Index not found"
