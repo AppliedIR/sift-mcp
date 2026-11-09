@@ -114,27 +114,38 @@ def members(bundle: Path) -> list[str]:
             return [m.name for m in tar]
 
 
-def cut_stream(build: Path, out: Path) -> None:
-    """A bundle whose tar stream holds the state first and ends inside chroma."""
+def tar_of(build: Path, state: bool) -> bytes:
+    """A tar of the build's index members, its state first when state is set."""
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
-        tar.add(build / "sources_state.json", arcname="sources_state.json")
+        if state:
+            tar.add(build / "sources_state.json", arcname="sources_state.json")
         for name in ("chroma", "metadata.json", "user_state.json", "sources"):
             tar.add(build / name, arcname=name)
-    raw = buf.getvalue()
+    return buf.getvalue()
+
+
+def write_bundle(raw: bytes, out: Path) -> None:
+    """The tar bytes as a release dir: the zstd bundle and its checksum file."""
+    out.mkdir(parents=True)
+    bundle = out / "rag-index.tar.zst"
+    bundle.write_bytes(zstd.ZstdCompressor(level=1).compress(raw))
+    digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+    (out / "rag-checksums.sha256").write_text(
+        f"{digest} rag-index.tar.zst\n", encoding="utf-8"
+    )
+
+
+def cut_stream(build: Path, out: Path) -> None:
+    """A bundle whose tar stream holds the state first and ends inside chroma."""
+    raw = tar_of(build, state=True)
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r") as tar:
         listed = tar.getmembers()
     state = next(m for m in listed if m.name == "sources_state.json")
     big = max((m for m in listed if m.name.startswith("chroma/")), key=lambda m: m.size)
     cut = big.offset_data + big.size // 2
     assert state.offset_data + state.size < cut
-    out.mkdir(parents=True)
-    bundle = out / "rag-index.tar.zst"
-    bundle.write_bytes(zstd.ZstdCompressor(level=1).compress(raw[:cut]))
-    digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
-    (out / "rag-checksums.sha256").write_text(
-        f"{digest} rag-index.tar.zst\n", encoding="utf-8"
-    )
+    write_bundle(raw[:cut], out)
 
 
 def pack(rig, build: Path, out: Path) -> dict:
@@ -144,7 +155,8 @@ def pack(rig, build: Path, out: Path) -> dict:
 
 @pytest.fixture(scope="module")
 def bundles(tmp_path_factory):
-    """Four bundles: good, one without sigma's state, a small index, a cut stream."""
+    """Five bundles: good, one without sigma's state, one with no state file, a
+    small index and a cut stream."""
     root = tmp_path_factory.mktemp("bundles")
     rig = make_rig(root / "rig")
     build = root / "build"
@@ -161,6 +173,8 @@ def bundles(tmp_path_factory):
     out["state"] = (build / "sources_state.json").read_bytes()
     cut_stream(build, root / "cut")
     out["cut"] = root / "cut"
+    write_bundle(tar_of(build, state=False), root / "no_state")
+    out["no_state"] = root / "no_state"
     plant_state([build], {n: entry(VERSIONS[n]) for n in ALL if n != "sigma"})
     out["packed"].append(pack(rig, build, root / "no_sigma"))
     out["no_sigma"] = root / "no_sigma"
@@ -255,7 +269,7 @@ def good_installs(bundles, tmp_path_factory):
 
 def test_fixture_bundles_are_packed(bundles):
     assert [op["rc"] for op in bundles["packed"]] == [0, 0, 0, 0, 0]
-    for name in ("good", "no_sigma", "small_index", "cut"):
+    for name in ("good", "no_sigma", "no_state", "small_index", "cut"):
         names = {p.name for p in bundles[name].iterdir()}
         assert {"rag-checksums.sha256", "rag-index.tar.zst"} <= names
 
@@ -434,6 +448,29 @@ def test_absent_state_is_not_unreadable(absent, form):
 def test_absent_state_read_is_the_index_dirs_not_the_package_dirs(absent):
     got = online(absent["lite"])
     assert [n for n in ONLINE if got.get(n, {}).get("current_version") == PLANT] == []
+
+
+# --- a bundle with no state file leaves none from the old index --------------
+
+
+@pytest.fixture(scope="module")
+def no_state_install(bundles, tmp_path_factory):
+    root = tmp_path_factory.mktemp("no-state")
+    run = install(root, bundles["no_state"], "lite", DOC, OLDER_BYTES)
+    run["status"] = status_of(run, ["--json"], ANSWER_PLANT)
+    return run
+
+
+def test_a_bundle_with_no_state_file_installs(no_state_install):
+    assert succeeded(no_state_install["op"]), no_state_install["op"]["stdout"]
+
+
+def test_a_bundle_with_no_state_file_leaves_no_old_state(no_state_install):
+    """The old index's state is not the new index's: after the install there is
+    none, and status says there is no state yet."""
+    assert not (no_state_install["dest"] / "sources_state.json").exists()
+    line = (no_state_install["status"].get("freshness") or {}).get("line", "")
+    assert "no state yet" in line, no_state_install["status"]
 
 
 # --- the installer's check after a bundle whose state lacks one source -------

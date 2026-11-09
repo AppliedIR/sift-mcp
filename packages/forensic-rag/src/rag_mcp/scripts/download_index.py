@@ -428,6 +428,8 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
                 return False
             if staged.exists():
                 os.replace(staged, dest / STATE_NAME)
+            else:  # the old index's state is not the new index's
+                (dest / STATE_NAME).unlink(missing_ok=True)
 
             # Update metadata with download info
             metadata_path = dest / "metadata.json"
