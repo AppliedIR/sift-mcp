@@ -53,6 +53,22 @@ WRAPPER = textwrap.dedent(
     with open(os.environ["FETCH_TEST_SOURCES"]) as f:
         for key, fields in json.load(f).items():
             update_sources.SOURCES.setdefault(key, {}).update(fields)
+    fail = os.environ.get("FETCH_TEST_FAIL_INSTALL")
+    if fail:
+        failed = []
+
+        def _failing(real):
+            def move(src, dst, *args, **kwargs):
+                parent = Path(src).parent
+                built = parent.name == "db" and parent.parent.name.startswith(".fetch-")
+                if built or (failed and fail == "undo"):
+                    failed.append(src)
+                    raise OSError(28, "No space left on device", str(dst))
+                return real(src, dst, *args, **kwargs)
+
+            return move
+
+        os.replace, os.rename = _failing(os.replace), _failing(os.rename)
     spec = importlib.util.spec_from_file_location("import_all", script)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -219,7 +235,7 @@ def _zero_counts() -> dict[str, dict[str, int]]:
     return counts
 
 
-def _env(tmp: Path, sources: dict, hang: str) -> dict[str, str]:
+def _env(tmp: Path, sources: dict, hang: str, fail: str = "") -> dict[str, str]:
     shim = tmp / "pyshim"
     if not shim.exists():
         shim.mkdir()
@@ -244,6 +260,7 @@ def _env(tmp: Path, sources: dict, hang: str) -> dict[str, str]:
         "GIT_SHIM_REAL": shutil.which("git"),
         "GIT_SHIM_HANG": hang,
         "GIT_SHIM_MARK": str(tmp / "hang.mark"),
+        "FETCH_TEST_FAIL_INSTALL": fail,
     }
 
 
@@ -252,8 +269,8 @@ def _command(tmp: Path, root: Path, args) -> list[str]:
     return [sys.executable, str(tmp / "wrapper.py"), str(script), "--fetch", *args]
 
 
-def _fetch(tmp: Path, root: Path, *args: str, sources=None, hang: str = ""):
-    env = _env(tmp, sources or {}, hang)
+def _fetch(tmp: Path, root: Path, *args: str, sources=None, hang="", fail=""):
+    env = _env(tmp, sources or {}, hang, fail)
     return subprocess.run(
         _command(tmp, root, args),
         cwd=root,
@@ -415,6 +432,57 @@ def test_a_second_fetch_over_the_dbs_the_first_wrote_exits_0(tmp_path, home):
     assert first.returncode == 0, _tail(first)
     run = _fetch(tmp_path, root)
     assert run.returncode == 0, _tail(run)
+
+
+# --- an install that fails part way is undone --------------------------------
+
+
+def _snapshot(root: Path) -> dict[str, str]:
+    """Each path under data/: its bytes' sha256, or "dir"."""
+    data = root / "data"
+    return {
+        p.relative_to(data).as_posix(): (
+            "dir" if p.is_dir() else hashlib.sha256(p.read_bytes()).hexdigest()
+        )
+        for p in sorted(data.rglob("*"))
+    }
+
+
+def _installed_over(tmp: Path, home: Path, fail: str):
+    """An old clone, every DB and no licence dir in data/, then a fetch whose
+    move of a built DB into data/ fails; returns the tree, data/ before, the run."""
+    _upstreams(tmp, home)
+    root = _tree(tmp)
+    _old_clone(root, "LOLBAS")
+    _plant_dbs(root)
+    before = _snapshot(root)
+    return root, before, _fetch(tmp, root, fail=fail)
+
+
+def test_a_failed_install_puts_back_everything_it_moved(tmp_path, home):
+    """The clones and licence dirs are in, then a DB move fails: each move is
+    undone, so data/ is byte-equal to before and the run says nothing changed."""
+    root, before, run = _installed_over(tmp_path, home, "install")
+    after = _snapshot(root)
+    paths = sorted(before.keys() | after.keys())
+    assert [p for p in paths if before.get(p) != after.get(p)] == [], _tail(run)
+    assert run.returncode == 1, _tail(run)
+    assert len(_errors_naming(run, "installing into data/ failed: ")) == 1, _tail(run)
+    assert run.stdout.splitlines()[-1] == "Nothing in data/ was changed.", _tail(run)
+
+
+def test_a_failed_undo_keeps_the_replaced_files_and_says_so(tmp_path, home):
+    """The undo of a failed install fails too: the run names the dir holding the
+    files it replaced, keeps it, and never says nothing changed."""
+    _, _, run = _installed_over(tmp_path, home, "undo")
+    assert run.returncode == 1, _tail(run)
+    lines = run.stdout.splitlines()
+    assert "ERROR: data/ may be partly changed" in lines, _tail(run)
+    assert "Nothing in data/ was changed." not in lines, _tail(run)
+    prefix = "ERROR: The files it replaced are kept in "
+    kept = [line.removeprefix(prefix) for line in lines if line.startswith(prefix)]
+    assert len(kept) == 1, _tail(run)
+    assert (Path(kept[0]) / "old" / "LOLBAS" / "stale-file").is_file(), _tail(run)
 
 
 # --- --skip-registry makes no registry clone ---------------------------------

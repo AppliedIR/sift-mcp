@@ -82,6 +82,10 @@ class FetchError(Exception):
     """A --fetch step failed; each arg is one line saying what failed."""
 
 
+class KeptError(FetchError):
+    """The install into data/ failed and could not be undone; work/ is kept."""
+
+
 def run_script(script_name: str, args: list = None, description: str = None):
     """Run a Python script and report results."""
     scripts_dir = Path(__file__).parent
@@ -214,7 +218,9 @@ def _plan(selected: set, heads: dict, args, work: Path) -> list:
 
 
 def _install(work: Path, data_dir: Path, dirs, dbs) -> None:
-    """Move each clone, its licences and each built DB into data/."""
+    """Move each clone, its licences and each built DB into data/, each old one
+    into work/. A failed move undoes every move made; a failed undo raises
+    KeptError, with the old files left in work/."""
     places = (
         (data_dir / "sources", work / "src", work / "old"),
         (
@@ -223,23 +229,51 @@ def _install(work: Path, data_dir: Path, dirs, dbs) -> None:
             work / "old-licenses",
         ),
     )
-    for base, new, old in places:
-        base.mkdir(exist_ok=True)
-        old.mkdir()
-        for d in dirs:
-            if (base / d).exists() or (base / d).is_symlink():
-                os.rename(base / d, old / d)
-            os.rename(new / d, base / d)
-    for name in dbs:
-        for side in (data_dir / f"{name}-wal", data_dir / f"{name}-shm"):
-            if side.exists():  # an old DB's journal must not meet the new DB
-                os.rename(side, work / "old" / side.name)
-        os.replace(work / "db" / name, data_dir / name)
+    done = []  # (from, to) for each move made, in order; from None: a dir made
+
+    def move(src: Path, dst: Path) -> None:
+        os.replace(src, dst)
+        done.append((src, dst))
+
+    try:
+        for base, new, old in places:
+            if not base.is_dir():
+                base.mkdir()
+                done.append((None, base))
+            old.mkdir()
+            for d in dirs:
+                if (base / d).exists() or (base / d).is_symlink():
+                    move(base / d, old / d)
+                move(new / d, base / d)
+        for name in dbs:
+            for side in (data_dir / f"{name}-wal", data_dir / f"{name}-shm"):
+                if side.exists():  # an old DB's journal must not meet the new DB
+                    move(side, work / "old" / side.name)
+            if (data_dir / name).exists():
+                move(data_dir / name, work / "old" / name)
+            move(work / "db" / name, data_dir / name)
+    except OSError as e:
+        failed = f"installing into data/ failed: {e}"
+        try:
+            for src, dst in reversed(done):
+                if src is None:
+                    dst.rmdir()
+                else:
+                    os.replace(dst, src)
+        except OSError as undo:
+            raise KeptError(
+                failed,
+                f"undoing it failed too: {undo}",
+                f"The files it replaced are kept in {work}",
+                "data/ may be partly changed",
+            ) from e
+        raise FetchError(failed) from e
 
 
 def fetch(args, data_dir: Path) -> None:
     """Clone, import and floor-check in a temp dir under data/sources, then
-    install; raises FetchError, with data/ unchanged, when any step fails."""
+    install; raises FetchError, with data/ unchanged, when any step fails, or
+    KeptError, with work/ kept, when a failed install could not be undone."""
     sources = update_sources.SOURCES
     skipped = set()
     for option, keys in FETCH_SKIPS.items():
@@ -263,6 +297,7 @@ def fetch(args, data_dir: Path) -> None:
 
     (data_dir / "sources").mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix=".fetch-", dir=data_dir / "sources"))
+    kept = False
     try:
         for sub in ("src", "licenses", "db"):
             (work / sub).mkdir()
@@ -285,9 +320,14 @@ def fetch(args, data_dir: Path) -> None:
             errors += release_manifest.check_floors(name, work / "db" / name, tables)
         if errors:
             raise FetchError(*errors)
-        _install(work, data_dir, dirs, dbs)
+        try:
+            _install(work, data_dir, dirs, dbs)
+        except KeptError:
+            kept = True
+            raise
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        if not kept:
+            shutil.rmtree(work, ignore_errors=True)
 
 
 def main():
@@ -331,7 +371,8 @@ def main():
         except FetchError as e:
             for line in e.args:
                 print(f"ERROR: {line}")
-            print("Nothing in data/ was changed.")
+            if not isinstance(e, KeptError):
+                print("Nothing in data/ was changed.")
             sys.exit(1)
         _summary({"fetch": True}, data_dir)
         return
