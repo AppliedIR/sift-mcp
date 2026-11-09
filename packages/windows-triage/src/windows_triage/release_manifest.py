@@ -6,6 +6,9 @@ One module owns what a release holds:
   default (the registry DB is opt-in).
 - ``COUNTS``: per DB, its data tables (every table ``schemas.py`` declares for it,
   minus ``sources``) and the row count of each in the last published release.
+- ``FED_BY``: for each DB a ``--skip-*`` option can build in part, the tables each
+  of its sources writes, so a build that fetches only some of them floors only
+  their tables.
 - ``LICENCE_ASSET``: the release file holding every source's licence files.
 
 Two rules read ``COUNTS``. A downloaded DB is the release's own file, so its
@@ -50,6 +53,18 @@ COUNTS: dict[str, dict[str, int]] = {
     "known_good_registry.db": {
         "baseline_os": 242,
         "baseline_registry": 6098546,
+    },
+}
+
+# Keyed by update_sources.SOURCES key
+FED_BY: dict[str, dict[str, tuple[str, ...]]] = {
+    "known_good.db": {
+        "files": ("baseline_files", "baseline_hashes", "baseline_os"),
+        "registry_extractions": (
+            "baseline_autoruns",
+            "baseline_services",
+            "baseline_tasks",
+        ),
     },
 }
 
@@ -110,15 +125,18 @@ def check_downloaded(name: str, db_path: Path) -> list[str]:
     return errors
 
 
-def check_floors(name: str, db_path: Path) -> list[str]:
-    """A locally built DB against the floors: [] when every table reaches its floor."""
+def check_floors(name: str, db_path: Path, tables=None) -> list[str]:
+    """A locally built DB against the floors: [] when every table reaches its floor.
+    With ``tables``, only those tables are floored; the table list is always
+    checked whole."""
     try:
         found = table_counts(db_path)
     except sqlite3.Error as e:
         return [f"{name}: cannot be read: {e}"]
     errors = _table_errors(name, found)
     want = COUNTS.get(name, {})
-    for table in sorted(set(want) & set(found)):
+    floored = set(want) if tables is None else set(tables)
+    for table in sorted(set(want) & set(found) & floored):
         need = floor(want[table])
         if found[table] < need:
             errors.append(

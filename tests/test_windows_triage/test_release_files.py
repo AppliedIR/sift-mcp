@@ -10,18 +10,20 @@ database list it prints.
 
 from __future__ import annotations
 
+import collections
 import os
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
 
+from windows_triage import release_manifest
 from windows_triage.db.schemas import REGISTRY_FULL_SCHEMA
 from windows_triage.scripts import download_databases as dd
 
 from .test_build_release_checks import _build, _counts, _fill, _tree
 from .test_download_tag import _serve, _set_counts
-from .test_fetch import DIRS
+from .test_fetch import DIRS, SCRIPTS, SOURCES, _load
 
 DBS = ("known_good.db", "context.db", "known_good_registry.db")
 REGISTRY_ASSET = "known_good_registry.db.zst"
@@ -173,3 +175,28 @@ def test_import_all_lists_the_registry_db(tmp_path):
 
 def test_a_db_added_to_the_file_list_is_listed_by_import_all(tmp_path):
     assert EXTRA_DB in _db_list(tmp_path, extra=True)
+
+
+# --- a DB a fetch builds in part is floored by FED_BY's tables ----------------
+
+
+def test_fed_by_lists_each_db_a_skip_option_builds_in_part(monkeypatch):
+    """A DB a --skip-* option takes some, not all, of the sources of is built in
+    part. FED_BY must name exactly its sources, and their tables together must be
+    the DB's tables in COUNTS, each once, so no table goes unfloored."""
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    import_all = _load(SCRIPTS / "import_all.py")
+    feeds = collections.defaultdict(set)
+    for key, entry in SOURCES.items():
+        feeds[entry["db"]].add(key)
+    partial = {
+        db
+        for skipped in import_all.FETCH_SKIPS.values()
+        for db, keys in feeds.items()
+        if keys & skipped and keys - skipped
+    }
+    assert set(release_manifest.FED_BY) == partial
+    for db, fed in release_manifest.FED_BY.items():
+        assert set(fed) == feeds[db], db
+        tables = [t for written in fed.values() for t in written]
+        assert sorted(tables) == sorted(release_manifest.COUNTS[db]), db

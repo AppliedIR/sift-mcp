@@ -1442,7 +1442,8 @@ if $INSTALL_TRIAGE; then
             ;;
         2)
             # import_all clones each source into a temp dir and replaces data/
-            # only when every clone, import and floor passes
+            # only when every clone and import passes and each table it built
+            # reaches its floor
             info "Building databases from source..."
             if "$VENV_PYTHON" "$WT_DIR/scripts/import_all.py" --fetch --skip-registry; then
                 ok "Databases built from source"

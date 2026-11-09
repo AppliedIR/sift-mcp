@@ -427,6 +427,42 @@ def test_skip_registry_makes_no_registry_clone(tmp_path, home):
     assert _clones(tmp_path)[REGISTRY_URL] == 0
 
 
+def _floor_counts(tmp: Path, db: str, **tables: int) -> None:
+    """The manifest's counts for this case: 0 for every table but those given."""
+    _env(tmp, {}, "")
+    counts = _zero_counts()
+    counts[db].update(tables)
+    (tmp / "counts.json").write_text(json.dumps(counts))
+
+
+def test_skip_registry_floors_the_tables_the_files_import_builds(tmp_path, home):
+    """--skip-registry still builds known_good.db's file tables, so a thin import
+    of them fails its floor and nothing is installed."""
+    _upstreams(tmp_path, home)
+    root = _tree(tmp_path)
+    _floor_counts(tmp_path, "known_good.db", baseline_files=1000)
+    run = _fetch(tmp_path, root, "--skip-registry")
+    assert run.returncode == 1, _tail(run)
+    errors = _errors_naming(run, "baseline_files")
+    assert len(errors) == 1, _tail(run)
+    assert errors[0].startswith("ERROR: known_good.db: baseline_files has "), errors
+    assert errors[0].endswith(" rows, under its floor of 500"), errors
+    assert _db_shas(root) == {}, _tail(run)
+    assert _left_over(root) == []
+
+
+def test_skip_registry_floors_no_table_only_the_registry_builds(tmp_path, home):
+    """With --skip-registry the tables only the registry extractions write stay
+    empty on a fresh box; they are not floored, so the build installs."""
+    _upstreams(tmp_path, home)
+    root = _tree(tmp_path)
+    registry_only = ("baseline_autoruns", "baseline_services", "baseline_tasks")
+    _floor_counts(tmp_path, "known_good.db", **dict.fromkeys(registry_only, 1000))
+    run = _fetch(tmp_path, root, "--skip-registry")
+    assert run.returncode == 0, _tail(run)
+    assert "known_good.db" in _db_shas(root), _tail(run)
+
+
 # --- a source that can't be fetched fails the run ----------------------------
 
 

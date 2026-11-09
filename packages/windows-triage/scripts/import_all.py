@@ -275,11 +275,13 @@ def fetch(args, data_dir: Path) -> None:
         for script, script_args, description in _plan(selected, heads, args, work):
             if not run_script(script, script_args, description):
                 raise FetchError(f"{script} failed: see its output above")
-        errors = [
-            e
-            for name in sorted(complete)
-            for e in release_manifest.check_floors(name, work / "db" / name)
-        ]
+        errors = []
+        for name in dbs:
+            tables = None  # every source of the DB fetched: every table floored
+            if name not in complete:
+                fed = release_manifest.FED_BY[name]
+                tables = [t for k in sorted(selected) if k in fed for t in fed[k]]
+            errors += release_manifest.check_floors(name, work / "db" / name, tables)
         if errors:
             raise FetchError(*errors)
         _install(work, data_dir, dirs, dbs)
