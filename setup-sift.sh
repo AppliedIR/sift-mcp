@@ -1401,10 +1401,12 @@ if $INSTALL_TRIAGE; then
     uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" zstandard 2>/dev/null || true
 
     # Check if databases already exist: each DB the release file list fetches
-    # by default (the two every release has had, if the list can't be read)
-    TRIAGE_DBS=$("$VENV_PYTHON" -c "from windows_triage import release_manifest as m; print(' '.join(m.default_databases()))" 2>/dev/null) || TRIAGE_DBS=""
+    # by default; a list that can't be read counts them as missing
+    TRIAGE_DBS=$("$VENV_PYTHON" -c "from windows_triage import release_manifest as m; print(' '.join(m.default_databases()))") || TRIAGE_DBS=""
+    [[ -n "$TRIAGE_DBS" ]] || warn "The triage release file list could not be read from the venv ($VENV_PYTHON); the databases count as missing"
     DB_PRESENT=true
-    for db in ${TRIAGE_DBS:-known_good.db context.db}; do
+    [[ -n "$TRIAGE_DBS" ]] || DB_PRESENT=false
+    for db in $TRIAGE_DBS; do
         [[ -s "$DB_DIR/$db" ]] || DB_PRESENT=false
     done
     DB_EXISTS=false
@@ -1459,7 +1461,7 @@ if $INSTALL_TRIAGE; then
     esac
 
     # Validate triage databases (after all download/build/skip paths)
-    for db in ${TRIAGE_DBS:-known_good.db context.db}; do
+    for db in $TRIAGE_DBS; do
         db_path="$DB_DIR/$db"
         if [ -s "$db_path" ]; then
             if "$VENV_PYTHON" -c "import sqlite3; sqlite3.connect('$db_path').execute('SELECT 1')" 2>/dev/null; then
@@ -2525,9 +2527,11 @@ fi
 
 if $INSTALL_TRIAGE; then
     # Each DB the release file list fetches by default, as in the setup above
-    TRIAGE_DBS=$("$VENV_PYTHON" -c "from windows_triage import release_manifest as m; print(' '.join(m.default_databases()))" 2>/dev/null) || TRIAGE_DBS=""
+    TRIAGE_DBS=$("$VENV_PYTHON" -c "from windows_triage import release_manifest as m; print(' '.join(m.default_databases()))") || TRIAGE_DBS=""
+    [[ -n "$TRIAGE_DBS" ]] || warn "The triage release file list could not be read from the venv ($VENV_PYTHON); the databases count as missing"
     TRIAGE_OK=true
-    for db in ${TRIAGE_DBS:-known_good.db context.db}; do
+    [[ -n "$TRIAGE_DBS" ]] || TRIAGE_OK=false
+    for db in $TRIAGE_DBS; do
         [[ -s "$DB_DIR/$db" ]] || TRIAGE_OK=false
     done
     if $TRIAGE_OK; then
