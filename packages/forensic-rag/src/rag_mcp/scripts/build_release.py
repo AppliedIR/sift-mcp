@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -54,6 +55,20 @@ def _build_index(data_dir: Path) -> int:
         return 0
 
     return result.total_records
+
+
+def _packed_metadata(path: Path) -> bytes | None:
+    """metadata.json as packed without refreshed_at, which only a refresh on
+    this machine writes; None (pack the file as it is) when it has no such
+    key. The data dir's own file is never changed."""
+    try:
+        metadata = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(metadata, dict) or "refreshed_at" not in metadata:
+        return None
+    del metadata["refreshed_at"]
+    return json.dumps(metadata, indent=2).encode("utf-8")
 
 
 def _create_tarball(data_dir: Path, output_path: Path) -> None:
@@ -97,7 +112,14 @@ def _create_tarball(data_dir: Path, output_path: Path) -> None:
             # a member under another one (sources/licenses) is packed with it
             if any(subpath.startswith(f"{other}/") for other in members):
                 continue
-            tar.add(_member_path(data_dir, subpath), arcname=subpath, filter=packed)
+            path = _member_path(data_dir, subpath)
+            data = _packed_metadata(path) if subpath == "metadata.json" else None
+            if data is None:
+                tar.add(path, arcname=subpath, filter=packed)
+            else:
+                info = tar.gettarinfo(str(path), arcname=subpath)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
             print(f"  Added: {subpath}")
 
     # Compress with zstd level 1 (fast, good enough)
