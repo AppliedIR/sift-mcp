@@ -116,6 +116,11 @@ SOURCES = {
 }
 
 
+def clone_dir(entry: dict) -> str:
+    """The clone dir of a SOURCES entry under data/sources: its repo's name."""
+    return entry["repo"].split("/")[1]
+
+
 # ============================================================
 # GitHub API Helpers
 # ============================================================

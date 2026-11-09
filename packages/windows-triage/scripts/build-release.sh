@@ -102,7 +102,7 @@ mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 base = Path(os.environ['DATA_DIR']) / 'licenses'
 missing = []
-for name in sorted({e['repo'].split('/')[1] for e in mod.SOURCES.values()}):
+for name in sorted({mod.clone_dir(e) for e in mod.SOURCES.values()}):
     d = base / name
     if d.is_symlink() or not any(
         p.is_file() and not p.is_symlink() for p in (d.iterdir() if d.is_dir() else ())

@@ -83,11 +83,6 @@ class FetchError(Exception):
     """A --fetch step failed; each arg is one line saying what failed."""
 
 
-def _dir(entry: dict) -> str:
-    """The clone dir of a SOURCES entry: its repo's name."""
-    return entry["repo"].split("/")[1]
-
-
 def run_script(script_name: str, args: list = None, description: str = None):
     """Run a Python script and report results."""
     scripts_dir = Path(__file__).parent
@@ -196,11 +191,12 @@ def _prepare_db(name: str, existing: Path, path: Path, complete: bool) -> None:
 def _plan(selected: set, heads: dict, args, work: Path) -> list:
     """Each import to run: (script, its args, description)."""
     sources = update_sources.SOURCES
+    clone_dir = update_sources.clone_dir
     common = ["--sources-dir", str(work / "src")]
     if args.verbose:
         common.append("--verbose")
     plan = []
-    context = [_dir(sources[k]) for k in CONTEXT_KEYS if k in selected]
+    context = [clone_dir(sources[k]) for k in CONTEXT_KEYS if k in selected]
     if context:
         commits = [a for d in context for a in ("--sync-commit", f"{d}={heads[d]}")]
         script_args = ["--db", str(work / "db" / "context.db"), *commits, *common]
@@ -210,7 +206,7 @@ def _plan(selected: set, heads: dict, args, work: Path) -> list:
             continue
         entry = sources[key]
         script_args = ["--db", str(work / "db" / entry["db"])]
-        script_args += ["--sync-commit", heads[_dir(entry)], *common]
+        script_args += ["--sync-commit", heads[clone_dir(entry)], *common]
         if key == "files" and args.files_limit > 0:
             script_args += ["--limit", str(args.files_limit)]
         plan.append((script, script_args, f"Importing {entry['name']} ({key})"))
@@ -250,8 +246,9 @@ def fetch(args, data_dir: Path) -> None:
     for key in sources:
         if key in selected:
             entry = sources[key]
-            url, timeout = dirs.get(_dir(entry), (entry["url"], 0))
-            dirs[_dir(entry)] = (url, max(timeout, entry["clone_timeout"]))
+            clone = update_sources.clone_dir(entry)
+            url, timeout = dirs.get(clone, (entry["url"], 0))
+            dirs[clone] = (url, max(timeout, entry["clone_timeout"]))
     imported = [k for k in selected if k in IMPORTERS or k in CONTEXT_KEYS]
     dbs = sorted({sources[k]["db"] for k in imported})
     complete = {

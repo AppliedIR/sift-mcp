@@ -267,3 +267,35 @@ def test_import_context_records_no_commit_for_a_source_not_imported(
 ):
     _, rows = _import_context(_context(tmp_path, hijacklibs), GIVEN)
     assert rows["HijackLibs"] is None, f"rows {rows}"
+
+
+def test_import_context_fails_for_a_source_with_no_sources_row(tmp_path):
+    """A commit given for a source whose sources row is gone cannot be recorded, so
+    the run fails naming the source and its row. HijackLibs is not cloned: its
+    import re-creates the schema's seed rows."""
+    root = _context(tmp_path, "absent")
+    conn = sqlite3.connect(root / "data" / "context.db")
+    conn.execute("DELETE FROM sources WHERE name = 'lolbas'")
+    conn.commit()
+    conn.close()
+    run, _ = _import_context(root, {"LOLBAS": GIVEN["LOLBAS"]})
+    assert run.returncode == 1, run.stdout[-2000:] + run.stderr[-2000:]
+    assert "LOLBAS: no sources row lolbas; commit not recorded" in run.stdout
+
+
+def test_each_sync_row_is_a_context_source_seeded_in_a_fresh_db(tmp_path, monkeypatch):
+    """The --sync-commit names are the context sources' clone dirs, and each row
+    they record on is one a fresh context.db holds."""
+    from .test_fetch import _load  # test_fetch imports this module
+
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    import_context = _load(SCRIPTS / "import_context.py")
+    db = tmp_path / "context.db"
+    ContextDB(db).init_schema()
+    conn = sqlite3.connect(db)
+    try:
+        seeded = {r[0] for r in conn.execute("SELECT name FROM sources")}
+    finally:
+        conn.close()
+    assert import_context.SYNC_ROWS == CONTEXT_ROWS
+    assert set(CONTEXT_ROWS.values()) <= seeded

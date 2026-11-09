@@ -18,7 +18,7 @@ Usage:
     python scripts/import_context.py --sync-commit LOLBAS=<commit> ...
 
 Each --sync-commit <clone dir name>=<commit> is recorded on that source's row
-only when that source imported with no problem.
+only when that source imported with no problem; a source with no row fails the run.
 """
 
 import argparse
@@ -31,6 +31,7 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
+import update_sources
 from windows_triage.importers import (
     import_hijacklibs,
     import_lolbas,
@@ -45,9 +46,9 @@ logger = logging.getLogger(__name__)
 
 # Each git source: its clone dir name under data/sources, and its sources row
 SYNC_ROWS = {
-    "LOLBAS": "lolbas",
-    "LOLDrivers": "loldrivers_vulnerable",
-    "HijackLibs": "hijacklibs",
+    update_sources.clone_dir(entry): entry["db_source_key"]
+    for entry in update_sources.SOURCES.values()
+    if entry["db"] == "context.db"
 }
 
 
@@ -60,17 +61,19 @@ def _sync_commit(text: str) -> tuple[str, str]:
     return name, commit
 
 
-def record_sync(db_path: Path, row: str, commit: str) -> None:
+def record_sync(db_path: Path, row: str, commit: str) -> bool:
+    """Record the commit on the sources row; False when there is no such row."""
     conn = sqlite3.connect(db_path)
     try:
-        conn.execute(
+        changed = conn.execute(
             "UPDATE sources SET last_sync_commit = ?, last_sync_time = datetime('now') "
             "WHERE name = ?",
             (commit, row),
-        )
+        ).rowcount
         conn.commit()
     finally:
         conn.close()
+    return changed == 1
 
 
 def main(argv: list[str] | None = None):
@@ -189,10 +192,12 @@ def main(argv: list[str] | None = None):
 
     # Record each given commit on its source's row, for a clean import only
     for name, commit in commits.items():
-        if name in imported:
-            record_sync(context_db, SYNC_ROWS[name], commit)
-        else:
+        if name not in imported:
             logger.warning(f"{name}: not imported cleanly; commit not recorded")
+        elif not record_sync(context_db, SYNC_ROWS[name], commit):
+            problems.append(
+                f"{name}: no sources row {SYNC_ROWS[name]}; commit not recorded"
+            )
 
     # Print summary
     print("\n" + "=" * 60)
