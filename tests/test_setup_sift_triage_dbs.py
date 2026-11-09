@@ -19,12 +19,27 @@ import textwrap
 from pathlib import Path
 
 SCRIPT = (Path(__file__).parent.parent / "setup-sift.sh").read_text()
-_setup = SCRIPT.index("# --- windows-triage database setup ---\n")
-SETUP = SCRIPT[_setup : SCRIPT.index("\n# --- OpenCTI credential wizard ---", _setup)]
-_rag = SCRIPT.index('RAG_STALE_COUNT=""\nif $INSTALL_RAG; then')
-_summary = SCRIPT.index("if $INSTALL_TRIAGE; then", _rag)
-_end = SCRIPT.index("if $INSTALL_RAG || $INSTALL_TRIAGE; then", _summary)
-SUMMARY = SCRIPT[_summary:_end]
+# The setup block runs from its heading to the next one; the summary block is the
+# triage check after the data maintenance heading, up to the closing blank line.
+HEADINGS = (
+    "# --- windows-triage database setup ---\n",
+    "\n# --- OpenCTI credential wizard ---",
+    "# Data Maintenance\n",
+    "if $INSTALL_TRIAGE; then",
+    "if $INSTALL_RAG || $INSTALL_TRIAGE; then",
+)
+
+
+def _blocks() -> tuple[str, str]:
+    """The setup and summary blocks, each heading found after the one before it;
+    a heading not found fails the test here."""
+    at, start = [], 0
+    for heading in HEADINGS:
+        start = SCRIPT.find(heading, start)
+        assert start >= 0, f"setup-sift.sh has no {heading!r} after the last heading"
+        at.append(start)
+    return SCRIPT[at[0] : at[1]], SCRIPT[at[3] : at[4]]
+
 
 DEFAULT_DB = "fixture_default.db"
 SHIM = textwrap.dedent(
@@ -63,6 +78,7 @@ def _run(tmp_path: Path, add_default_db: bool) -> list[str]:
         f'PYTHONPATH="{shim}" exec "{sys.executable}" "$@"\n'
     )
     py.chmod(0o755)
+    setup, summary = _blocks()
     harness = "\n".join(
         [
             "set -euo pipefail",
@@ -72,8 +88,8 @@ def _run(tmp_path: Path, add_default_db: bool) -> list[str]:
             'prompt(){ echo "3"; }; prompt_yn(){ return 1; }',
             f'VENV_PYTHON="{py}"; INSTALL_DIR="{tmp_path / "inst"}"',
             "INSTALL_TRIAGE=true; INSTALL_RAG=false; AUTO_YES=true; LOCKED=()",
-            SETUP,
-            SUMMARY,
+            setup,
+            summary,
         ]
     )
     env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)}
