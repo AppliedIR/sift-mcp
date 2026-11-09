@@ -23,6 +23,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -401,14 +402,29 @@ def _is_retryable_error(error: Exception) -> bool:
     return False
 
 
+# When the lookups in this context must end (a time.monotonic() value), or None
+_LOOKUP_DEADLINE: ContextVar[float | None] = ContextVar("lookup_deadline", default=None)
+
+
+def _capped(seconds: float) -> float:
+    """seconds, capped at the time left before the lookup deadline (never below 0)."""
+    deadline = _LOOKUP_DEADLINE.get()
+    if deadline is None:
+        return seconds
+    return max(0.0, min(seconds, deadline - time.monotonic()))
+
+
 def _fetch_url_once(
     url: str, headers: dict | None = None, max_bytes: int | None = None
 ) -> bytes:
     """Single fetch attempt (internal). Raises on error."""
     if max_bytes is None:
         max_bytes = MAX_DOWNLOAD_BYTES
+    timeout = _capped(30)
+    if timeout <= 0:
+        raise TimeoutError("the lookup time limit was reached")
     req = Request(url, headers=headers or get_github_headers())
-    with urlopen(req, timeout=30) as response:
+    with urlopen(req, timeout=timeout) as response:
         # Security: Validate final URL after redirects (SSRF protection)
         final_url = response.geturl()
         if final_url != url:
@@ -516,7 +532,7 @@ def fetch_url(
                     logger.warning(
                         f"HTTP {e.code}, retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries + 1})"
                     )
-                    time.sleep(delay)
+                    time.sleep(_capped(delay))
                     continue
             else:
                 # Other 4xx - don't retry
@@ -530,7 +546,7 @@ def fetch_url(
                 logger.warning(
                     f"Fetch failed ({type(e).__name__}), retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries + 1})"
                 )
-                time.sleep(delay)
+                time.sleep(_capped(delay))
                 continue
             else:
                 logger.error(f"Failed to fetch URL: {e}")
@@ -2662,39 +2678,52 @@ def check_source_updates(
     data_dir: str | Path | None = None,
     *,
     read: tuple[str, dict[str, Any]] | None = None,
+    deadline: float | None = None,
 ) -> list[SourceStatus]:
     """Check all sources for available updates.
 
     read is a read_sources_state() result the caller already made, so one
-    read decides both its own report and this check.
+    read decides both its own report and this check. deadline (a
+    time.monotonic() value) caps every lookup's timeout at the time left; a
+    source not looked up by then is reported not checked.
     """
     data_dir = resolve_data_dir(data_dir)
     state = (read if read is not None else read_sources_state(data_dir))[1]
     disabled = load_disabled_sources(data_dir)
     results = []
 
-    for name, source in SOURCES.items():
-        # the embedded source has no remote version: never an update
-        if name in disabled or source.source_type == "embedded":
-            continue
+    token = _LOOKUP_DEADLINE.set(deadline)
+    try:
+        for name, source in SOURCES.items():
+            # the embedded source has no remote version: never an update
+            if name in disabled or source.source_type == "embedded":
+                continue
 
-        source_state = state.get("sources", {}).get(name, {})
-        current = source_state.get("version", "unknown")
-        latest = get_latest_version(source)
+            source_state = state.get("sources", {}).get(name, {})
+            current = source_state.get("version", "unknown")
+            late = deadline is not None and time.monotonic() >= deadline
+            latest = None if late else get_latest_version(source)
+            error = ""
+            if late:
+                error = "Not checked: the status time limit was reached"
+            elif not latest:
+                error = "Failed to check version"
 
-        # an empty or missing lookup is a failed check, never an update; any
-        # other answer that differs (no entry, "unknown", an old tag) is one
-        results.append(
-            SourceStatus(
-                name=name,
-                current_version=current,
-                latest_version=latest or "unknown",
-                has_update=bool(latest) and current != latest,
-                last_sync=source_state.get("last_sync", "never"),
-                records=source_state.get("records", 0),
-                error="" if latest else "Failed to check version",
+            # an empty or missing lookup is a failed check, never an update; any
+            # other answer that differs (no entry, "unknown", an old tag) is one
+            results.append(
+                SourceStatus(
+                    name=name,
+                    current_version=current,
+                    latest_version=latest or "unknown",
+                    has_update=bool(latest) and current != latest,
+                    last_sync=source_state.get("last_sync", "never"),
+                    records=source_state.get("records", 0),
+                    error=error,
+                )
             )
-        )
+    finally:
+        _LOOKUP_DEADLINE.reset(token)
 
     return results
 

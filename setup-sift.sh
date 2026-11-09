@@ -2490,23 +2490,24 @@ if $INSTALL_RAG || $INSTALL_TRIAGE; then
     echo ""
 fi
 
-RAG_STALE_COUNT=""
 if $INSTALL_RAG; then
-    RAG_STALE_COUNT=$(timeout 60 bash -c "\"$VENV_PYTHON\" -m rag_mcp.status --json 2>/dev/null" | \
+    # One status run: its summary line is printed as given, and its state
+    # decides the refresh offer
+    RAG_FRESH=$(timeout 60 bash -c "\"$VENV_PYTHON\" -m rag_mcp.status --json 2>/dev/null" | \
         "$VENV_PYTHON" -c "
 import sys, json
-data = json.load(sys.stdin)
-unread = ('Error reading ChromaDB', 'Could not read metadata.json')
-if any(w.startswith(unread) for w in data.get('warnings', [])):
-    sys.exit(1)  # an index it couldn't read isn't an empty one
-docs = data.get('document_count', 0)
-print(-1 if docs <= 0 else sum(1 for s in data.get('online_sources', []) if s.get('has_update')))
-" 2>/dev/null) || RAG_STALE_COUNT=""
+fresh = json.load(sys.stdin)['freshness']
+print(fresh['state'], fresh['line'])
+" 2>/dev/null) || RAG_FRESH=""
+    RAG_STATE=${RAG_FRESH%% *}
+    RAG_LINE=${RAG_FRESH#* }
 
-    if [[ "$RAG_STALE_COUNT" == "-1" ]]; then  # no documents: an absent or partly built index
-        warn "RAG knowledge base: the index is empty, so knowledge search returns nothing. Download it with GITHUB_TOKEN set (GitHub can refuse unauthenticated downloads): $VENV_PYTHON -m rag_mcp.scripts.download_index, then restart the gateway (systemctl --user restart vhir-gateway, or however you start it)"
-    elif [[ -n "$RAG_STALE_COUNT" ]] && [[ "$RAG_STALE_COUNT" -gt 0 ]] 2>/dev/null; then
-        echo -e "  ${BOLD}RAG knowledge base:${NC} $RAG_STALE_COUNT of 23 sources have updates available."
+    if [[ -z "$RAG_FRESH" ]]; then
+        warn "Could not check RAG status. Check later with: $VENV_PYTHON -m rag_mcp.status"
+    elif [[ "$RAG_STATE" == "absent" ]]; then
+        warn "$RAG_LINE Download it with GITHUB_TOKEN set (GitHub can refuse unauthenticated downloads): $VENV_PYTHON -m rag_mcp.scripts.download_index, then restart the gateway (systemctl --user restart vhir-gateway, or however you start it)"
+    elif [[ "$RAG_STATE" == "updates" ]]; then
+        printf '  %s\n' "$RAG_LINE"
         echo "  Refresh now or later with: $VENV_PYTHON -m rag_mcp.refresh"
         echo "  Time: a few minutes to a couple of hours depending on changes and CPU."
         if ! $AUTO_YES; then
@@ -2514,10 +2515,10 @@ print(-1 if docs <= 0 else sum(1 for s in data.get('online_sources', []) if s.ge
                 ANONYMIZED_TELEMETRY=False "$VENV_PYTHON" -m rag_mcp.refresh
             fi
         fi
-    elif [[ -n "$RAG_STALE_COUNT" ]] && [[ "$RAG_STALE_COUNT" -eq 0 ]] 2>/dev/null; then
-        ok "RAG knowledge base: all 23 sources are current."
+    elif [[ "$RAG_STATE" == "current" ]]; then
+        ok "$RAG_LINE"
     else
-        warn "Could not check RAG status. Check later with: $VENV_PYTHON -m rag_mcp.status"
+        warn "$RAG_LINE"
     fi
 fi
 

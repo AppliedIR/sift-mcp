@@ -15,7 +15,8 @@ import json
 import logging
 import os
 import sys
-from dataclasses import asdict, dataclass
+import time
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import chromadb
@@ -39,6 +40,12 @@ from .utils import resolve_data_dir
 logging.basicConfig(level=logging.WARNING, format="%(message)s", stream=sys.stderr)
 logger = logging.getLogger(__name__)
 
+# A status run's overall time limit, counted from the start of its process, so
+# loading the index and the lookups are inside it; the reserve is the part of
+# it kept for what follows the lookups.
+STATUS_DEADLINE = 45
+STATUS_RESERVE = 5
+
 
 @dataclass
 class StatusResult:
@@ -59,12 +66,86 @@ class StatusResult:
     user_document_count: int = 0
     user_model: str = ""
     layout: str = ""
+    # The summary both installers print, from freshness()
+    freshness: dict = field(default_factory=dict)
+
+
+def _process_start() -> float:
+    """When this process started, on the time.monotonic() clock (now, if unknown)."""
+    now = time.monotonic()
+    try:
+        stat = Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split()
+        uptime = float(Path("/proc/uptime").read_text().split()[0])
+        age = uptime - int(stat[19]) / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError):
+        return now
+    return now - max(0.0, age)
+
+
+def freshness(status: StatusResult, state_kind: str | None, checked: bool) -> dict:
+    """The index's freshness state, its lists and counts, and the one line both
+    installers print. state_kind is read_sources_state()'s kind (None when the
+    index is absent); checked says whether the lookups were run."""
+    disabled = set(status.disabled_sources)
+    enabled = [n for n in SOURCES if n not in disabled]
+    embedded = [n for n in enabled if SOURCES[n].source_type == "embedded"]
+    online = [n for n in enabled if n not in embedded]
+    rows = {s["name"]: s for s in status.online_sources}
+    updates = [n for n in online if rows.get(n, {}).get("has_update")]
+    unchecked = [
+        n
+        for n in online
+        if n not in updates and (not checked or n not in rows or rows[n]["error"])
+    ]
+    chroma_bad = any(w.startswith("Error reading ChromaDB") for w in status.warnings)
+
+    count = f"{len(enabled)} sources ({len(online)} looked up online"
+    count += f"; {', '.join(embedded)} embedded)" if embedded else ")"
+    if checked:
+        reason = "GitHub rate limit, network or the status time limit. Re-run later, or set GITHUB_TOKEN"
+    else:
+        reason = "the update check was not run"
+
+    def not_checked(of: str = "") -> str:
+        return f"could not check {len(unchecked)}{of} ({', '.join(unchecked)}): {reason}"
+
+    if not status.index_exists:
+        state, line = "absent", "Index not found"
+    elif chroma_bad:
+        state = "unreadable"
+        line = "the index is unreadable: its knowledge collection could not be read"
+    elif state_kind == "unreadable":
+        state = "unreadable"
+        line = "the index's sources_state.json is unreadable, so source versions are unknown"
+    elif status.document_count <= 0:
+        state = "empty"
+        line = "the index is empty (0 documents), so knowledge search returns nothing"
+    elif updates:
+        state = "updates"
+        line = f"{len(updates)} of {count} have updates ({', '.join(updates)})"
+        if unchecked:
+            line += f"; {not_checked()}"
+    elif unchecked:
+        state, line = "unchecked", not_checked(f" of {count}")
+    else:
+        state, line = "current", f"current; all {count} checked"
+    if state_kind == "absent":
+        line += "; no state yet (there is no sources_state.json)"
+    return {
+        "state": state,
+        "updates": updates,
+        "unchecked": unchecked,
+        "checked": len(online) - len(unchecked),
+        "enabled": len(enabled),
+        "line": f"RAG knowledge base: {line}.",
+    }
 
 
 def get_status(
     data_dir: Path | None = None,
     knowledge_dir: Path | None = None,
     check_updates: bool = True,
+    deadline: float | None = None,
 ) -> StatusResult:
     """
     Get complete index status.
@@ -73,6 +154,7 @@ def get_status(
         data_dir: Data directory
         knowledge_dir: Knowledge directory
         check_updates: Whether to check online sources for updates
+        deadline: When the lookups must end (a time.monotonic() value)
 
     Returns:
         StatusResult with all status information
@@ -102,6 +184,7 @@ def get_status(
 
     if not chroma_path.exists():
         result.warnings.append("Index not found. Run 'python -m rag_mcp.build' first.")
+        result.freshness = freshness(result, None, check_updates)
         return result
 
     result.index_exists = True
@@ -140,7 +223,9 @@ def get_status(
 
     if check_updates:
         rows = {}
-        for status in check_source_updates(data_dir, read=state_read):
+        for status in check_source_updates(
+            data_dir, read=state_read, deadline=deadline
+        ):
             rows[status.name] = {
                 "name": status.name,
                 "records": status.records,
@@ -173,6 +258,8 @@ def get_status(
     else:
         # Just use state file
         for name in SOURCES:
+            if name in result.disabled_sources:
+                continue
             source_state = sources_state.get("sources", {}).get(name, {})
             result.online_sources.append(
                 {
@@ -185,6 +272,7 @@ def get_status(
                     "error": "",
                 }
             )
+    result.freshness = freshness(result, state_kind, check_updates)
 
     # The examiner store, from its commit point
     result.layout = layout(data_dir)
@@ -361,6 +449,7 @@ def main() -> int:
         data_dir=args.data_dir,
         knowledge_dir=args.knowledge_dir,
         check_updates=not args.no_check,
+        deadline=_process_start() + STATUS_DEADLINE - STATUS_RESERVE,
     )
 
     if args.json:

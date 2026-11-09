@@ -929,22 +929,27 @@ fi
 # Post-install: RAG freshness check
 # ==========================================================================
 if [[ "$INSTALL_RAG" == "true" ]] && [[ "$RAG_METHOD" != "skipped" ]]; then
-    STALE_COUNT=$(timeout 60 bash -c "RAG_INDEX_DIR=\"$INDEX_DIR\" \"$VENV_PYTHON\" -m rag_mcp.status --json 2>/dev/null" | \
+    # One status run: its summary line is printed as given, and its state
+    # decides the refresh offer
+    RAG_FRESH=$(timeout 60 bash -c "RAG_INDEX_DIR=\"$INDEX_DIR\" \"$VENV_PYTHON\" -m rag_mcp.status --json 2>/dev/null" | \
         "$VENV_PYTHON" -c "
 import sys, json
-data = json.load(sys.stdin)
-print(sum(1 for s in data.get('online_sources', []) if s.get('has_update')))
-" 2>/dev/null) || STALE_COUNT=""
+fresh = json.load(sys.stdin)['freshness']
+print(fresh['state'], fresh['line'])
+" 2>/dev/null) || RAG_FRESH=""
+    RAG_STATE=${RAG_FRESH%% *}
+    RAG_LINE=${RAG_FRESH#* }
 
-    if [[ -n "$STALE_COUNT" ]] && [[ "$STALE_COUNT" -gt 0 ]] 2>/dev/null; then
+    if [[ -z "$RAG_FRESH" ]]; then
+        warn "Could not check RAG status. Check later with: RAG_INDEX_DIR=\"$INDEX_DIR\" $VENV_PYTHON -m rag_mcp.status"
+    elif [[ "$RAG_STATE" == "updates" ]]; then
         echo ""
         echo "── RAG Knowledge Base ──────────────────────────────────────────"
-        echo "The RAG index relies on online sources (Sigma rules, MITRE ATT&CK,"
-        echo "LOLBAS, etc.) that update frequently. You can refresh at any time:"
+        printf '%s\n' "$RAG_LINE"
+        echo "You can refresh at any time:"
         echo ""
         echo "    $VENV_PYTHON -m rag_mcp.refresh"
         echo ""
-        echo "Currently, $STALE_COUNT of 23 sources have updates available."
         echo "Depending on the number of sources, internet speed, and available"
         echo "CPU, this could take several minutes to a couple of hours."
         if [[ "$YES" != "true" ]]; then
@@ -954,8 +959,10 @@ print(sum(1 for s in data.get('online_sources', []) if s.get('has_update')))
                     "$VENV_PYTHON" -m rag_mcp.refresh
             fi
         fi
-    elif [[ -n "$STALE_COUNT" ]] && [[ "$STALE_COUNT" -eq 0 ]] 2>/dev/null; then
-        ok "RAG knowledge base is up to date (23 sources current)"
+    elif [[ "$RAG_STATE" == "current" ]]; then
+        ok "$RAG_LINE"
+    else
+        warn "$RAG_LINE"
     fi
 fi
 
