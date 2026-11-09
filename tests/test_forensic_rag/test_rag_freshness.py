@@ -213,6 +213,7 @@ def test_slow_open_and_hung_lookup_leave_every_source_unchecked(case):
 def test_status_run_ends_within_its_deadline(case, name):
     op = case(name)
     assert op["seconds"] < DEADLINE
+    assert op["wall"] < DEADLINE
     assert (op["rc"], op["error"]) == (0, None)
 
 
