@@ -14,9 +14,11 @@ import collections
 import os
 import subprocess
 import sys
+import tarfile
 import textwrap
 from pathlib import Path
 
+import pytest
 from windows_triage import release_manifest
 from windows_triage.db.schemas import REGISTRY_FULL_SCHEMA
 from windows_triage.scripts import download_databases as dd
@@ -200,3 +202,24 @@ def test_fed_by_lists_each_db_a_skip_option_builds_in_part(monkeypatch):
         assert set(fed) == feeds[db], db
         tables = [t for written in fed.values() for t in written]
         assert sorted(tables) == sorted(release_manifest.COUNTS[db]), db
+
+
+# --- the licence size cap has one owner -------------------------------------
+
+
+def test_both_licence_paths_read_the_cap_when_called(tmp_path, monkeypatch):
+    """The fetch's licence copy and the download's licence install each refuse a
+    licence file over release_manifest's cap, read when they run."""
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    import_all = _load(SCRIPTS / "import_all.py")
+    monkeypatch.setattr(release_manifest, "LICENCE_FILE_MAX", 4)
+    clone = tmp_path / "clone"
+    clone.mkdir()
+    (clone / "LICENSE").write_bytes(b"12345")
+    with pytest.raises(import_all.FetchError, match="over the 4-byte cap"):
+        import_all._copy_licences(clone, tmp_path / "copied")
+    asset = tmp_path / "licences.tar"
+    with tarfile.open(asset, "w") as tar:
+        tar.add(clone / "LICENSE", arcname="clone/LICENSE")
+    with tarfile.open(asset) as tar, pytest.raises(ValueError, match="over 4 bytes"):
+        list(dd._licence_members(tar))

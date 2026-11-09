@@ -36,8 +36,6 @@ ASSETS = (
     CHECKSUMS,
 )
 TAG_FILE = "installed_release.json"
-LICENCE_DIR = "licenses"
-LICENCE_FILE_MAX = 1024 * 1024
 MAX_ATTEMPTS = 3
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 
@@ -252,8 +250,9 @@ def _licence_members(tar: tarfile.TarFile):
             continue
         if bad or not member.isfile() or len(parts) != 2:
             raise ValueError(f"unexpected member in licence asset: {member.name}")
-        if member.size > LICENCE_FILE_MAX:
-            raise ValueError(f"licence file over 1 MiB: {member.name}")
+        cap = release_manifest.LICENCE_FILE_MAX
+        if member.size > cap:
+            raise ValueError(f"licence file over {cap} bytes: {member.name}")
         data = tar.extractfile(member).read()
         yield PurePosixPath(*parts), data
 
@@ -263,17 +262,18 @@ def _install_licences(asset: Path, dest: Path) -> None:
     only once every member is read and checked."""
     import zstandard as zstd
 
+    licence_dir = release_manifest.LICENCE_DIR
     with open(asset, "rb") as fin:
         reader = zstd.ZstdDecompressor().stream_reader(fin)
         with tarfile.open(fileobj=reader, mode="r|") as tar:
             files = list(_licence_members(tar))
-    staging = Path(tempfile.mkdtemp(prefix=f".{LICENCE_DIR}-", dir=dest))
+    staging = Path(tempfile.mkdtemp(prefix=f".{licence_dir}-", dir=dest))
     try:
         for rel, data in files:
             path = staging.joinpath(*rel.parts)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
-        final = dest / LICENCE_DIR
+        final = dest / licence_dir
         if final.is_dir() and not final.is_symlink():
             shutil.rmtree(final)
         elif final.exists() or final.is_symlink():
@@ -387,7 +387,7 @@ def download_databases(dest_dir: str | Path, tag: str = "latest") -> bool:
                 except (OSError, ValueError, tarfile.TarError) as e:
                     print(f"\nLicence install failed: {e}")
                     return False
-                print(f"  Licences installed in {dest / LICENCE_DIR}")
+                print(f"  Licences installed in {dest / release_manifest.LICENCE_DIR}")
 
             if unlisted:
                 print(

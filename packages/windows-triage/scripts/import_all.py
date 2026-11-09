@@ -76,7 +76,6 @@ DB_SCHEMAS = {
     "known_good_registry.db": REGISTRY_FULL_SCHEMA,
 }
 LICENCE_NAME = re.compile(r"(LICEN[CS]E|NOTICE|COPYING)", re.I)
-LICENCE_MAX = 1024 * 1024
 
 
 class FetchError(Exception):
@@ -142,11 +141,12 @@ def _copy_licences(clone: Path, dest: Path) -> None:
         for p in sorted(clone.iterdir())
         if LICENCE_NAME.match(p.name) and not p.is_symlink() and p.is_file()
     ]
+    cap = release_manifest.LICENCE_FILE_MAX
     oversized = [
         f"{clone.name}: licence file {p.name} is {p.stat().st_size} bytes,"
-        f" over the {LICENCE_MAX}-byte (1 MiB) cap"
+        f" over the {cap}-byte cap"
         for p in found
-        if p.stat().st_size > LICENCE_MAX
+        if p.stat().st_size > cap
     ]
     if oversized:
         raise FetchError(*oversized)
@@ -217,7 +217,11 @@ def _install(work: Path, data_dir: Path, dirs, dbs) -> None:
     """Move each clone, its licences and each built DB into data/."""
     places = (
         (data_dir / "sources", work / "src", work / "old"),
-        (data_dir / "licenses", work / "licenses", work / "old-licenses"),
+        (
+            data_dir / release_manifest.LICENCE_DIR,
+            work / "licenses",
+            work / "old-licenses",
+        ),
     )
     for base, new, old in places:
         base.mkdir(exist_ok=True)

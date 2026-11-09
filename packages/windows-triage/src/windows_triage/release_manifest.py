@@ -9,7 +9,8 @@ One module owns what a release holds:
 - ``FED_BY``: for each DB a ``--skip-*`` option can build in part, the tables each
   of its sources writes, so a build that fetches only some of them floors only
   their tables.
-- ``LICENCE_ASSET``: the release file holding every source's licence files.
+- ``LICENCE_ASSET``: the release file holding every source's licence files;
+  ``LICENCE_DIR`` and ``LICENCE_FILE_MAX`` are where they go and their size cap.
 
 Two rules read ``COUNTS``. A downloaded DB is the release's own file, so its
 tables must equal the counts exactly (``check_downloaded``). A local build must
@@ -29,6 +30,8 @@ DATABASES: dict[str, bool] = {
 }
 
 LICENCE_ASSET = "licenses.tar.zst"
+LICENCE_DIR = "licenses"  # under the data dir: one dir of licence files per clone
+LICENCE_FILE_MAX = 1024 * 1024  # bytes: a larger licence file is refused
 
 # Counts of the published triage-db-v2026.02.25 release (its metadata.json).
 COUNTS: dict[str, dict[str, int]] = {

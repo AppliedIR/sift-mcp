@@ -94,13 +94,14 @@ echo "  Databases checked against the release floors: ${PACK_DBS}"
 if ! SCRIPT_DIR="${SCRIPT_DIR}" DATA_DIR="${DATA_DIR}" "$VENV/bin/python" -c "
 import importlib.util, os, sys
 from pathlib import Path
+from windows_triage import release_manifest as m
 
 spec = importlib.util.spec_from_file_location(
     'update_sources', Path(os.environ['SCRIPT_DIR']) / 'update_sources.py'
 )
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
-base = Path(os.environ['DATA_DIR']) / 'licenses'
+base = Path(os.environ['DATA_DIR']) / m.LICENCE_DIR
 missing = []
 for name in sorted({mod.clone_dir(e) for e in mod.SOURCES.values()}):
     d = base / name
@@ -143,8 +144,9 @@ echo -n "  Packing licences..."
 DATA_DIR="${DATA_DIR}" ASSET_PATH="${OUTPUT_DIR}/${LICENCE_ASSET}" "$VENV/bin/python" -c "
 import os, tarfile, zstandard
 from pathlib import Path
+from windows_triage import release_manifest as m
 
-base = Path(os.environ['DATA_DIR']) / 'licenses'
+base = Path(os.environ['DATA_DIR']) / m.LICENCE_DIR
 files = sorted(
     p for p in base.glob('*/*')
     if p.is_file() and not p.is_symlink() and not p.parent.is_symlink()
