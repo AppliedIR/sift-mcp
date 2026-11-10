@@ -358,11 +358,19 @@ def test_downloaded_db_one_row_short_fails(tmp_path, monkeypatch, capsys):
         from windows_triage import release_manifest
     except ImportError:
         release_manifest = None
+    line = "Database verification failed."
     if release_manifest is not None:
         counts = {db: dict(t) for db, t in release_manifest.COUNTS.items()}
         counts["known_good.db"]["baseline_files"] += 1
         monkeypatch.setattr(release_manifest, "COUNTS", counts)
+        want = counts["known_good.db"]["baseline_files"]
+        line = (
+            f"known_good.db: baseline_files has {want - 1} rows, "
+            f"the release has {want}"
+        )
     assert dd.download_databases(tmp_path / "dest") is False
+    out = capsys.readouterr().out
+    assert "Database verification failed." in out and line in out, out
 
 
 def test_downloaded_db_at_the_counts_installs(tmp_path, monkeypatch):
