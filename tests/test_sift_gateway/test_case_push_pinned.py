@@ -7,11 +7,15 @@ server presenting the pinned certificate, as the MCP connection does.
 
 from __future__ import annotations
 
+import datetime
 import socket
 import threading
 import time
+from pathlib import Path
 
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
 from sift_gateway.server import Gateway
 
 from .wintools_rig import Remote, backend_entry, gateway_config, make_cert
@@ -94,6 +98,78 @@ async def test_case_push_without_a_pin_verifies_against_the_system_store(certs, 
     finally:
         remote.stop()
     assert remote.requests == []
+
+
+async def test_case_push_without_a_pin_reaches_a_server_the_store_trusts(
+    certs, home, monkeypatch
+):
+    # No tls_cert, and the system store trusts the server's certificate.
+    monkeypatch.setenv("SSL_CERT_FILE", certs["pinned"][0])
+    remote = _Counting("s", certs["pinned"]).start()
+    try:
+        await _push(remote, None)
+    finally:
+        remote.stop()
+    assert remote.activations() == [f"Bearer {remote.token}"]
+
+
+def _expired_cert(folder: Path) -> tuple[str, str]:
+    """A cert like make_cert's for 127.0.0.1, whose validity ended yesterday."""
+    cert_path, key_path = make_cert(folder, "expired")
+    key = serialization.load_pem_private_key(Path(key_path).read_bytes(), None)
+    old = x509.load_pem_x509_certificate(Path(cert_path).read_bytes())
+    now = datetime.datetime.now(datetime.timezone.utc)
+    builder = (
+        x509.CertificateBuilder()
+        .subject_name(old.subject)
+        .issuer_name(old.issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(days=2))
+        .not_valid_after(now - datetime.timedelta(days=1))
+    )
+    for ext in old.extensions:
+        builder = builder.add_extension(ext.value, ext.critical)
+    cert = builder.sign(key, hashes.SHA256())
+    Path(cert_path).write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    return cert_path, key_path
+
+
+@pytest.mark.parametrize("bad", ["another-name", "expired"])
+async def test_case_push_never_reaches_a_pinned_cert_that_fails_verification(
+    tmp_path, home, bad
+):
+    # The server presents the pinned certificate itself, so only the name and
+    # expiry checks keep the token from it.
+    if bad == "another-name":
+        cert = make_cert(tmp_path, "elsewhere.example.invalid", ips=())
+    else:
+        cert = _expired_cert(tmp_path)
+    remote = _Counting("v", cert).start()
+    try:
+        await _push(remote, cert[0])
+    finally:
+        remote.stop()
+    assert remote.requests == []
+
+
+async def test_the_pin_is_the_cert_read_when_the_backend_was_made(
+    certs, home, tmp_path
+):
+    pin = tmp_path / "pin.pem"
+    pin.write_text(Path(certs["pinned"][0]).read_text())
+    remote = _Counting("p", certs["pinned"]).start()
+    try:
+        gw = Gateway(
+            gateway_config(
+                {"wintools-mcp": backend_entry(remote, remote.token, str(pin))}
+            )
+        )
+        pin.write_text(Path(certs["other"][0]).read_text())  # the file changes after
+        await gw._notify_backend_case(gw.backends["wintools-mcp"])
+    finally:
+        remote.stop()
+    assert remote.activations() == [f"Bearer {remote.token}"]
 
 
 class _Redirecting(_Counting):
