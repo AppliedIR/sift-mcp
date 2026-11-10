@@ -178,10 +178,111 @@ BLOCK = [
     ("redirect onto a glob", "C", "echo x > {C}/finding?.json"),
     # Accepted, disclosed over-blocks (decision 8)
     ("over-block: find case -delete", "C", "find {C} -name '*.tmp' -delete"),
+    # A heredoc body is read as commands unless the whole command is a plain
+    # cat writing one quoted heredoc to a plain path, ended by its delimiter.
+    ("heredoc: glued ;<", "O", "cat f;<f bash <<'EOF'\nrm {C}/findings.json\nEOF"),
+    ("heredoc: glued |>", "O", "cat f|>g bash <<'EOF'\nrm {C}/findings.json\nEOF"),
+    ("heredoc: glued &&<", "O", "cat f&&<f bash <<'EOF'\nrm {C}/findings.json\nEOF"),
+    ("heredoc: quoted ;", "O", "bash -s ';' cat <<'EOF'\nrm {C}/findings.json\nEOF"),
+    ("heredoc: escaped ;", "O", "bash -s \\; cat <<'EOF'\nrm {C}/findings.json\nEOF"),
     (
-        "over-block: heredoc body",
-        "C",
-        "cat > {C}/reports/r.md <<'EOF'\nrm {C}/findings.json\nEOF",
+        "heredoc: CR inside a word",
+        "O",
+        "A=1\rcat bash <<'EOF'\nrm {C}/findings.json\nEOF",
+    ),
+    (
+        "heredoc: exec -a cat",
+        "O",
+        "exec -a cat bash <<'EOF'\nrm {C}/findings.json\nEOF",
+    ),
+    ("heredoc: env -u cat", "O", "env -u cat bash <<'EOF'\nrm {C}/findings.json\nEOF"),
+    (
+        "heredoc: << inside ${ }",
+        "O",
+        "cat ${{x:-<<'EOF' }} > {O}/a\nrm {C}/findings.json\nEOF",
+    ),
+    ("heredoc: << inside $[ ]", "O", 'cat $[1<<"2" ] > {O}/a\nrm {C}/findings.json\n2'),
+    (
+        "heredoc: CR after the delimiter",
+        "O",
+        "cat > {O}/a <<'EOF'\r\nx\nEOF\r\nrm {C}/findings.json\nEOF",
+    ),
+    (
+        "heredoc: unquoted delimiter",
+        "O",
+        "cat <<EOF > {O}/a\n$(rm {C}/findings.json)\nEOF",
+    ),
+    (
+        "heredoc: non-ASCII delimiter",
+        "O",
+        "cat <<'EOFé' > {O}/a\nrm {C}/findings.json\nEOFé",
+    ),
+    (
+        "heredoc: written onto a record",
+        "O",
+        "cat <<'EOF' > {C}/findings.json\nhello\nEOF",
+    ),
+    (
+        "heredoc: CRLF opening line",
+        "O",
+        "cat <<'EOF' > {O}/a\r\nrm {C}/findings.json\nEOF",
+    ),
+    ("heredoc: $ in the path", "O", "cat <<'EOF' > {O}/$x\nrm {C}/findings.json\nEOF"),
+    (
+        "heredoc: backtick in the path",
+        "O",
+        "cat <<'EOF' > {O}/`x`\nrm {C}/findings.json\nEOF",
+    ),
+    ("heredoc: quoted path", "O", "cat <<'EOF' > \"{O}/a\"\nrm {C}/findings.json\nEOF"),
+    (
+        "heredoc: glob in the path",
+        "O",
+        "cat <<'EOF' > {O}/a*\nrm {C}/findings.json\nEOF",
+    ),
+    (
+        "heredoc: shape inside a line",
+        "O",
+        "env -u cat <<'EOF' > {O}/a bash\nrm {C}/findings.json\nEOF",
+    ),
+    (
+        "heredoc: shape, space, pipe",
+        "O",
+        "cat <<'EOF' > /dev/stdout | bash\nrm {C}/findings.json\nEOF",
+    ),
+    (
+        "heredoc: unpaired quotes",
+        "O",
+        "cat <<'EOF\" > {O}/a\n'; rm {C}/findings.json\nEOF",
+    ),
+    ("heredoc: tee in the cat shape", "O", "tee <<'EOF' > {O}/t\nx > /\nEOF"),
+    (
+        "heredoc: shape on a later line",
+        "O",
+        "echo \"x\ncat <<'EOF' > {O}/a\n\"\nrm {C}/findings.json\nEOF",
+    ),
+    ("heredoc: <<-", "O", "cat <<-'EOF' > {O}/a\n\tEOF\nrm {C}/findings.json\nEOF"),
+    (
+        "heredoc: rm after the delimiter",
+        "O",
+        "cat <<'EOF' > {O}/a\nhello\nEOF\nrm {C}/findings.json",
+    ),
+    ("heredoc: no delimiter", "O", "cat <<'EOF' > {O}/a\nhello\nrm {C}/findings.json"),
+    (
+        "heredoc: script run in the command",
+        "O",
+        "cat > {O}/s.sh <<'EOF'\nrm {C}/findings.json\nEOF\nbash {O}/s.sh",
+    ),
+    ("heredoc: harmless line after", "O", "cat <<'EOF' > {O}/a\nx > /\nEOF\necho done"),
+    ("heredoc: blank line after", "O", "cat <<'EOF' > {O}/a\nx > /\nEOF\n\n"),
+    (
+        "heredoc: delimiter before the last line",
+        "O",
+        "cat <<'EOF' > {O}/a\nx\nEOF\nrm {C}/findings.json\nEOF",
+    ),
+    (
+        "heredoc: NUL in a delimiter",
+        "O",
+        "cat <<'EOF' > {O}/a\nE\x00OF\nrm {C}/findings.json\nEOF",
     ),
 ]
 ALLOW = [
@@ -223,6 +324,32 @@ ALLOW = [
     ("quoted multi-line text mentioning rm", "C", 'echo "x\nrm {C}/findings.json"'),
     ("find -L elsewhere", "C", "find -L {C}/reports -name x -delete"),
     ("$(...) reading a record", "C", "echo $(cat {C}/findings.json)"),
+    # The whole command is a plain cat writing one quoted heredoc: the body is data
+    (
+        "heredoc body with a redirect onto /",
+        "O",
+        "cat <<'EOF' > {O}/r1.txt\na > /\nEOF",
+    ),
+    (
+        "heredoc body, double-quoted delimiter",
+        "O",
+        'cat > {O}/r3.md <<"EOF"\nSteps: tool > /\nEOF',
+    ),
+    (
+        "heredoc body is data (decision 8 reversed for the whole-command cat heredoc)",
+        "C",
+        "cat > {C}/reports/r.md <<'EOF'\nrm {C}/findings.json\nEOF",
+    ),
+    (
+        "heredoc body line with a trailing space is not the delimiter",
+        "O",
+        "cat <<'EOF' > {O}/a\nEOF \nrm {C}/findings.json\nEOF",
+    ),
+    (
+        "heredoc body line with a CR is not the delimiter",
+        "O",
+        "cat <<'EOF' > {O}/a\nEOF\r\nrm {C}/findings.json\nEOF",
+    ),
     # Disclosed as not seen: a # comment hides the rest of the command
     (
         "not seen: a command after a comment line",
@@ -233,6 +360,11 @@ ALLOW = [
         "not seen: an operand after $(...) in a word",
         "C",
         "rm x$(true) {C}/findings.json",
+    ),
+    (
+        "not seen: tee's operand, here from a heredoc",
+        "C",
+        "tee {C}/findings.json <<'EOF'\nhello\nEOF",
     ),
 ]
 
@@ -258,6 +390,48 @@ def test_allows_everything_else(box, label, cwd_key, template):
     cwd, cmd = _fill(box, cwd_key, template)
     p = run(box, cwd, cmd)
     assert p.returncode == 0 and p.stdout == "" and p.stderr == "", (cmd, p.stderr)
+
+
+# Every byte the heredoc's path may not hold, glued to it: the line is no longer
+# the plain shape, so the body is read as commands. No row for "#": shlex ends a
+# word at a mid-word # and drops the rest of the line, so admitting it changes
+# no verdict while that stands. No row for a newline: the command is split on
+# it before the pattern sees a line.
+NOT_IN_PATH = {
+    "space": " ",
+    "tab": "\t",
+    "CR": "\r",
+    "form feed": "\f",
+    "vertical tab": "\v",
+    "single quote": "'",
+    "double quote": '"',
+    "dollar": "$",
+    "backtick": "`",
+    "backslash": "\\",
+    "star": "*",
+    "question mark": "?",
+    "open bracket": "[",
+    "close bracket": "]",
+    "semicolon": ";",
+    "ampersand": "&",
+    "pipe": "|",
+    "less than": "<",
+    "greater than": ">",
+    "open paren": "(",
+    "close paren": ")",
+    "open brace": "{",
+    "close brace": "}",
+}
+
+
+@pytest.mark.parametrize("byte", list(NOT_IN_PATH.values()), ids=list(NOT_IN_PATH))
+def test_a_byte_glued_to_the_heredoc_path_reads_the_body(box, byte):
+    root, cases, case, out = box
+    cmd = "cat <<'EOF' > /dev/stdout{b}bash\nrm {C}/findings.json\nEOF"
+    cmd = cmd.format(b=byte, C=case)
+    p = run(box, out, cmd)
+    assert p.returncode == 2, (cmd, p.stdout, p.stderr)
+    assert p.stdout == "" and "BLOCKED" in p.stderr and "couldn't read" not in p.stderr
 
 
 def test_x_the_command_is_never_executed(box):
