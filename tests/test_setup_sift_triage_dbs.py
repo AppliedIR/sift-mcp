@@ -8,7 +8,8 @@ own blocks, found by their headings, under bash with the download stubbed, never
 the installer. A fixture DB is added to the file list, marked fetched by
 default, through a sitecustomize on the python the blocks call; the file list
 is read by importing it, so the change shows wherever it is read. The same
-sitecustomize can make that import fail, as a broken venv would.
+sitecustomize can make that import fail, as a broken venv would, or make the
+file list's reader fail.
 """
 
 from __future__ import annotations
@@ -51,6 +52,14 @@ SHIM = textwrap.dedent(
     if os.environ.get("TRIAGE_TEST_LIST_UNREADABLE"):
         sys.modules["windows_triage.release_manifest"] = None
 
+    if os.environ.get("TRIAGE_TEST_LIST_READER_FAILS"):
+        from windows_triage import release_manifest as _failing
+
+        def _fail():
+            raise OSError("fixture: the release file list can't be read")
+
+        _failing.default_databases = _fail
+
     _name = os.environ.get("TRIAGE_TEST_DEFAULT_DB")
     if _name:
         try:
@@ -63,10 +72,16 @@ SHIM = textwrap.dedent(
 )
 
 
-def _run(tmp_path: Path, add_default_db: bool, unreadable: bool = False) -> list[str]:
+def _run(
+    tmp_path: Path,
+    add_default_db: bool,
+    unreadable: bool = False,
+    reader_fails: bool = False,
+) -> list[str]:
     """Run the setup block then the summary block, with known_good.db and
     context.db installed and valid; return the lines printed. With
-    ``unreadable``, the release file list can't be imported."""
+    ``unreadable``, the release file list can't be imported; with
+    ``reader_fails``, it imports but reading its default DBs raises."""
     data = tmp_path / "inst" / "packages" / "windows-triage" / "data"
     data.mkdir(parents=True)
     for name in ("known_good.db", "context.db"):
@@ -103,6 +118,8 @@ def _run(tmp_path: Path, add_default_db: bool, unreadable: bool = False) -> list
         env["TRIAGE_TEST_DEFAULT_DB"] = DEFAULT_DB
     if unreadable:
         env["TRIAGE_TEST_LIST_UNREADABLE"] = "1"
+    if reader_fails:
+        env["TRIAGE_TEST_LIST_READER_FAILS"] = "1"
     out = subprocess.run(
         ["bash", "-c", harness],
         env=env,
@@ -137,8 +154,25 @@ def test_the_summary_says_not_installed_when_a_default_db_is_missing(tmp_path):
 
 def test_an_unreadable_file_list_counts_the_dbs_as_missing(tmp_path):
     """Both default DBs are installed but the file list can't be read: the setup
-    and the summary each say so, and the summary never says installed."""
+    and the summary each say so, the setup never calls the DBs existing and goes
+    on to the download, and the summary never says installed."""
     lines = _run(tmp_path, add_default_db=False, unreadable=True)
     warning = "[WARN] The triage release file list could not be read from the venv"
     assert sum(ln.startswith(warning) for ln in lines) == 2, lines
+    assert lines[-1].startswith("[WARN] Triage databases: not installed"), lines
+    assert not any(ln.startswith("[OK] Triage databases exist") for ln in lines), lines
+    assert "[INFO] Downloading pre-built databases..." in lines, lines
+    assert any(ln.startswith("DOWNLOAD") for ln in lines), lines
+
+
+def test_a_failing_file_list_reader_takes_the_download_path(tmp_path):
+    """The file list imports but reading its default DBs raises: the installed DBs
+    are not called existing, the setup downloads, and the summary says not
+    installed."""
+    lines = _run(tmp_path, add_default_db=False, reader_fails=True)
+    warning = "[WARN] The triage release file list could not be read from the venv"
+    assert sum(ln.startswith(warning) for ln in lines) == 2, lines
+    assert not any(ln.startswith("[OK] Triage databases exist") for ln in lines), lines
+    assert "[INFO] Downloading pre-built databases..." in lines, lines
+    assert any(ln.startswith("DOWNLOAD") for ln in lines), lines
     assert lines[-1].startswith("[WARN] Triage databases: not installed"), lines
