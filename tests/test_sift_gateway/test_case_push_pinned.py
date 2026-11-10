@@ -77,7 +77,7 @@ async def test_case_push_reaches_the_pinned_server(certs, home):
 async def test_case_push_never_reaches_a_server_with_another_cert(
     certs, home, monkeypatch, trust_other
 ):
-    # ca-trusted: the other certificate is trusted by the system store, so only
+    # ca-trusted: the other certificate is in the default CA bundle, so only
     # the pin (not general verification) keeps the token from it.
     if trust_other:
         monkeypatch.setenv("SSL_CERT_FILE", certs["other"][0])
@@ -89,9 +89,11 @@ async def test_case_push_never_reaches_a_server_with_another_cert(
     assert remote.requests == []
 
 
-async def test_case_push_without_a_pin_verifies_against_the_system_store(certs, home):
+async def test_case_push_without_a_pin_verifies_against_the_default_ca_bundle(
+    certs, home
+):
     # No tls_cert, https URL: the push verifies as the MCP connection does
-    # (system CAs), so a self-signed server the store doesn't trust gets nothing.
+    # (the default CA bundle), so a self-signed server not in it gets nothing.
     remote = _Counting("c", certs["other"]).start()
     try:
         await _push(remote, None)
@@ -103,7 +105,7 @@ async def test_case_push_without_a_pin_verifies_against_the_system_store(certs, 
 async def test_case_push_without_a_pin_reaches_a_server_the_store_trusts(
     certs, home, monkeypatch
 ):
-    # No tls_cert, and the system store trusts the server's certificate.
+    # No tls_cert, and the server's certificate is in the default CA bundle.
     monkeypatch.setenv("SSL_CERT_FILE", certs["pinned"][0])
     remote = _Counting("s", certs["pinned"]).start()
     try:
