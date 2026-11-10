@@ -38,6 +38,15 @@
 # anything after a # comment, on later lines too. A quoted '>' is read as a
 # redirection (a false block), and a quoted 'x$' before \( can be misread as
 # a $(.
+# A heredoc's body is read as commands (a protected path or a '>' in it can
+# false-block; decision 8), except when the whole command is the line
+# "cat <<'D' > T" or "cat > T <<'D'" (D in ' or ", of letters, digits and _;
+# T a plain path; single spaces), the body, and a last line equal to D: that
+# body is data. Every other heredoc is read as commands: wrapped, chained,
+# piped, tee, a second heredoc, <<-, an unquoted delimiter, no terminator,
+# anything after it. A script the guard sees run is never read, whatever
+# wrote it (a heredoc in an earlier command too). Not seen: a cat that is
+# another program (an alias, a function, a PATH or hash entry).
 #
 # The command is tokenized only: it is never run, evaluated or expanded by a
 # shell. A block exits 2 with the reason on stderr (Claude Code shows it to
@@ -68,6 +77,11 @@ SEPS = {";", "&&", "||", "|", "&", "|&"}
 REDIRS = {">", ">>", ">|", "&>", "&>>"}
 WRAP = {"sudo", "env", "command", "nice", "nohup", "time", "timeout", "stdbuf", "exec"}
 CAP = 2000  # glob matches checked per argument (the 5-second bound)
+T = r"[^\s'\"$`\\*?\[\]#;&|<>(){}]+"
+DATA_HEREDOC = re.compile(
+    r"cat (?:<<(['\"])([A-Za-z_]\w*)\1 > " + T + r"|> " + T + r" <<(['\"])([A-Za-z_]\w*)\3)",
+    re.ASCII,
+)
 
 
 def refused(why, payload=None):
@@ -280,10 +294,20 @@ if payload.get("tool_name") == "apply_patch":  # by its headers' paths, never as
         unreadable()
     sys.exit(0)
 
+
+def without_data_body(cmd):
+    """cmd's first line alone when the whole command is plain cat writing one quoted heredoc: the body is data."""
+    lines = (cmd[:-1] if cmd.endswith("\n") else cmd).split("\n")
+    m = DATA_HEREDOC.fullmatch(lines[0])
+    if m and "\0" not in cmd and lines[-1] == (m.group(2) or m.group(4)) not in lines[1:-1]:
+        return lines[0]
+    return cmd
+
+
 # A backslash-newline joins lines; any other newline separates commands (in
 # quotes it stays part of the word). Spaced, so "&&;" or ";;" can't form.
 try:  # a block exits through SystemExit, which this doesn't catch
-    text = cmd.replace("\\\n", "").replace("\n", " ; ")
+    text = without_data_body(cmd).replace("\\\n", "").replace("\n", " ; ")
     try:
         lex = shlex.shlex(text, posix=True, punctuation_chars=True)
         lex.whitespace_split = True
