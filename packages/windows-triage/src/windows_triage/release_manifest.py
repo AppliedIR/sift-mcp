@@ -4,8 +4,10 @@ One module owns what a release holds:
 
 - ``DATABASES``: each DB file name, and whether ``download_databases`` fetches it by
   default (the registry DB is opt-in).
+- ``RELEASE_TAG``: the published release ``download_databases`` installs, fetched
+  by that exact tag; a newer data release comes with a newer version of this file.
 - ``COUNTS``: per DB, its data tables (every table ``schemas.py`` declares for it,
-  minus ``sources``) and the row count of each in the last published release.
+  minus ``sources``) and the row count of each in that release.
 - ``FED_BY``: for each DB a ``--skip-*`` option can build in part, the tables each
   of its sources writes, so a build that fetches only some of them floors only
   their tables.
@@ -33,7 +35,9 @@ LICENCE_ASSET = "licenses.tar.zst"
 LICENCE_DIR = "licenses"  # under the data dir: one dir of licence files per clone
 LICENCE_FILE_MAX = 1024 * 1024  # bytes: a larger licence file is refused
 
-# Counts of the published triage-db-v2026.02.25 release (its metadata.json).
+RELEASE_TAG = "triage-db-v2026.02.25"
+
+# Counts of the RELEASE_TAG release (its metadata.json).
 COUNTS: dict[str, dict[str, int]] = {
     "known_good.db": {
         "baseline_autoruns": 72,

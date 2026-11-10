@@ -26,8 +26,7 @@ from windows_triage import release_manifest
 from windows_triage.db.schemas import CONTEXT_SCHEMA, KNOWN_GOOD_SCHEMA
 
 ROOT = Path(__file__).parent.parent
-# On a tree whose manifest names no tag, the release its counts comment names.
-PINNED = getattr(release_manifest, "RELEASE_TAG", "triage-db-v2026.02.25")
+PINNED = release_manifest.RELEASE_TAG
 NEWER = "triage-db-v2099.01.01-example"
 TAG_FILE = "installed_release.json"
 MODULE = "windows_triage.scripts.download_databases"

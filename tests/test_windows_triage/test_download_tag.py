@@ -114,7 +114,7 @@ def _serve(monkeypatch, release: Path) -> list[float]:
     """Serve ``release`` through the three download seams; return the sleeps made."""
     sleeps: list[float] = []
 
-    def fetch_release(tag="latest"):
+    def fetch_release(tag):
         files = sorted(release.iterdir())
         return {
             "tag_name": TAG,
@@ -186,7 +186,7 @@ def test_good_install_writes_one_tag_file(tmp_path, monkeypatch):
     _serve(monkeypatch, _release_dir(tmp_path / "release", dbs))
     _set_counts(monkeypatch, dbs)
     dest = tmp_path / "dest"
-    assert dd.download_databases(dest, "latest") is True
+    assert dd.download_databases(dest) is True
     tag_file = dest / TAG_FILE
     assert tag_file.is_file(), "a verified install writes the tag file"
     tag = json.loads(tag_file.read_text())
@@ -205,7 +205,7 @@ def test_reader_none_after_context_db_replaced(tmp_path, monkeypatch):
     _serve(monkeypatch, _release_dir(tmp_path / "release", dbs))
     _set_counts(monkeypatch, dbs)
     dest = tmp_path / "dest"
-    assert dd.download_databases(dest, "latest") is True
+    assert dd.download_databases(dest) is True
     assert (dest / TAG_FILE).is_file(), "a verified install writes the tag file"
     assert _reader()(dest) == TAG
     other = _fixture_dbs(tmp_path / "other", marker="local")
@@ -223,7 +223,7 @@ def test_checksum_mismatch_leaves_prior_install(tmp_path, monkeypatch, capsys):
     sleeps = _serve(monkeypatch, release)
     dest = tmp_path / "dest"
     before = _plant_prior(dest, tmp_path)
-    assert dd.download_databases(dest, "latest") is False
+    assert dd.download_databases(dest) is False
     assert "Checksum verification failed after all attempts." in capsys.readouterr().out
     assert len(sleeps) == dd.MAX_ATTEMPTS - 1
     gone = [name for name in before if not (dest / name).exists()]
@@ -239,7 +239,7 @@ def test_db_verify_failure_removes_prior_tag(tmp_path, monkeypatch, capsys):
     _set_counts(monkeypatch, dbs, off_by_one="context.db:lolbins")
     dest = tmp_path / "dest"
     _plant_prior(dest, tmp_path)
-    assert dd.download_databases(dest, "latest") is False
+    assert dd.download_databases(dest) is False
     assert "Database verification failed." in capsys.readouterr().out
     assert (dest / "context.db").read_bytes() == dbs["context.db"].read_bytes()
     assert not (dest / TAG_FILE).exists(), GONE
@@ -253,7 +253,7 @@ _KILL_DRIVER = textwrap.dedent(
 
     release, dest, ready = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
 
-    def fetch_release(tag="latest"):
+    def fetch_release(tag):
         return {{"tag_name": "{tag}", "assets": [
             {{"name": p.name, "url": str(p)}} for p in sorted(release.iterdir())]}}
 
@@ -276,7 +276,7 @@ _KILL_DRIVER = textwrap.dedent(
     dd._download_asset = download_asset
     dd._decompress_zst = held_decompress
     dd.time.sleep = lambda s: None
-    dd.download_databases(dest, "latest")
+    dd.download_databases(dest)
     """
 )
 
@@ -341,7 +341,7 @@ def test_checksums_missing_a_db_writes_no_tag(tmp_path, monkeypatch):
     _serve(monkeypatch, release)
     _set_counts(monkeypatch, dbs)
     dest = tmp_path / "dest"
-    dd.download_databases(dest, "latest")
+    dd.download_databases(dest)
     assert (dest / "known_good.db").is_file(), "the run reached the install"
     assert not (dest / TAG_FILE).exists()
 
@@ -362,7 +362,7 @@ def test_downloaded_db_one_row_short_fails(tmp_path, monkeypatch, capsys):
         counts = {db: dict(t) for db, t in release_manifest.COUNTS.items()}
         counts["known_good.db"]["baseline_files"] += 1
         monkeypatch.setattr(release_manifest, "COUNTS", counts)
-    assert dd.download_databases(tmp_path / "dest", "latest") is False
+    assert dd.download_databases(tmp_path / "dest") is False
 
 
 def test_downloaded_db_at_the_counts_installs(tmp_path, monkeypatch):
@@ -370,4 +370,4 @@ def test_downloaded_db_at_the_counts_installs(tmp_path, monkeypatch):
     dbs = _fixture_dbs(tmp_path / "dbs")
     _serve(monkeypatch, _release_dir(tmp_path / "release", dbs))
     _set_counts(monkeypatch, dbs)
-    assert dd.download_databases(tmp_path / "dest", "latest") is True
+    assert dd.download_databases(tmp_path / "dest") is True

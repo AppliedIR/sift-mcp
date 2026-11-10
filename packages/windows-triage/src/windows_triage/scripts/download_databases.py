@@ -6,6 +6,10 @@ Python implementation that works inside the Valhuntir venv.
 Usage:
     python -m windows_triage.scripts.download_databases [--dest DIR] [--tag TAG]
 
+It installs the release ``release_manifest.RELEASE_TAG`` names, fetched by that
+exact tag, never the newest triage-db-* release: each downloaded DB must match
+that release's counts exactly.
+
 Authentication:
     For private repos, set GITHUB_TOKEN or have ``gh`` CLI authenticated.
 """
@@ -64,40 +68,12 @@ def _github_headers() -> dict[str, str]:
     return headers
 
 
-def _fetch_release(tag: str = "latest") -> dict:
-    """Fetch release metadata from GitHub API.
-
-    When tag is "latest", finds the most recent triage-db-* release
-    that contains .db.zst assets. Otherwise fetches the exact tag.
-    """
-    headers = _github_headers()
-
-    if tag == "latest":
-        # Find most recent triage DB release by tag prefix.
-        # per_page=100 prevents pagination issues as code releases
-        # accumulate (default is 30).
-        url = f"https://api.github.com/repos/{REPO}/releases?per_page=100"
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            releases = json.loads(resp.read())
-            matching = [
-                r
-                for r in releases
-                if r["tag_name"].startswith("triage-db-")
-                and any(a["name"].endswith(".db.zst") for a in r.get("assets", []))
-            ]
-            if matching:
-                return matching[0]  # GitHub returns most recent first
-            raise ValueError(
-                "No triage database releases found. "
-                "Expected releases with tag prefix 'triage-db-' "
-                "containing .db.zst assets."
-            )
-    else:
-        url = f"https://api.github.com/repos/{REPO}/releases/tags/{tag}"
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read())
+def _fetch_release(tag: str) -> dict:
+    """Fetch the metadata of the release with this exact tag from the GitHub API."""
+    url = f"https://api.github.com/repos/{REPO}/releases/tags/{tag}"
+    req = urllib.request.Request(url, headers=_github_headers())
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read())
 
 
 def _get_asset_url(release: dict, asset_name: str) -> str | None:
@@ -283,16 +259,28 @@ def _install_licences(asset: Path, dest: Path) -> None:
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def download_databases(dest_dir: str | Path, tag: str = "latest") -> bool:
+def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
     """Download and verify triage databases.
 
     Args:
         dest_dir: Directory to place the decompressed .db files.
-        tag: GitHub release tag (default: "latest").
+        tag: GitHub release tag. Only the release the manifest names
+            (``release_manifest.RELEASE_TAG``, the default) is installed: its
+            counts are the ones each DB is checked against. Any other tag is
+            refused before anything is fetched.
 
     Returns:
         True on success, False on failure.
     """
+    pinned = release_manifest.RELEASE_TAG
+    if tag is not None and tag != pinned:
+        print(
+            f"Release {tag} is refused: this version installs {pinned}, the "
+            "release its row counts are for. A newer data release comes with a "
+            "newer Valhuntir."
+        )
+        return False
+    tag = pinned
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
 
@@ -417,8 +405,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--tag",
-        default="latest",
-        help="Release tag to download (default: latest)",
+        default=None,
+        help=(
+            f"Release tag to download; only {release_manifest.RELEASE_TAG}, "
+            "the release this version's counts are for, is accepted (default)"
+        ),
     )
     args = parser.parse_args()
 
