@@ -102,7 +102,7 @@ async def test_case_push_without_a_pin_verifies_against_the_default_ca_bundle(
     assert remote.requests == []
 
 
-async def test_case_push_without_a_pin_reaches_a_server_the_store_trusts(
+async def test_case_push_without_a_pin_reaches_a_server_the_default_ca_bundle_trusts(
     certs, home, monkeypatch
 ):
     # No tls_cert, and the server's certificate is in the default CA bundle.
