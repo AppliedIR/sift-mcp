@@ -365,8 +365,7 @@ def test_downloaded_db_one_row_short_fails(tmp_path, monkeypatch, capsys):
         monkeypatch.setattr(release_manifest, "COUNTS", counts)
         want = counts["known_good.db"]["baseline_files"]
         line = (
-            f"known_good.db: baseline_files has {want - 1} rows, "
-            f"the release has {want}"
+            f"known_good.db: baseline_files has {want - 1} rows, the release has {want}"
         )
     assert dd.download_databases(tmp_path / "dest") is False
     out = capsys.readouterr().out

@@ -175,10 +175,11 @@ def test_a_null_item_in_a_lolbas_list_is_skipped_not_the_binary(tmp_path, body):
 
 @pytest.mark.parametrize("hijacklibs", ["unreadable file", "clean"])
 def test_import_context_exits_non_zero_and_says_why_on_errors(
-    tmp_path, capsys, hijacklibs
+    tmp_path, capsys, monkeypatch, hijacklibs
 ):
     """import_context reads <its package>/data: run with its __file__ in a
     scratch package, whose data/ holds the databases and sources."""
+    monkeypatch.syspath_prepend(str(SCRIPTS))  # it imports update_sources
     spec = importlib.util.spec_from_file_location(
         "import_context_under_test", SCRIPTS / "import_context.py"
     )
@@ -298,8 +299,11 @@ def test_a_malformed_file_is_an_error_named_and_the_update_isnt_recorded(
     assert (stats["errors"], stats["skipped"], stats[count]) == (1, 0, 1)
 
 
-def test_import_context_fails_on_a_process_expectations_error(tmp_path, capsys):
+def test_import_context_fails_on_a_process_expectations_error(
+    tmp_path, capsys, monkeypatch
+):
     """A rule without process_name is an importer error: exit non-zero, named."""
+    monkeypatch.syspath_prepend(str(SCRIPTS))  # it imports update_sources
     spec = importlib.util.spec_from_file_location(
         "import_context_pe_under_test", SCRIPTS / "import_context.py"
     )
