@@ -189,7 +189,7 @@ class HttpMCPBackend(MCPBackend):
     def client_factory(self):
         """This backend's one TLS setup: every request to it, the MCP
         connection's and any other, gets its client from here. Pinned to
-        ``tls_cert`` when set, else the MCP default (the system store)."""
+        ``tls_cert`` when set, else the MCP default (httpx's CA bundle)."""
         tls_cert = self.config.get("tls_cert")
         if tls_cert:
             return _make_pinned_tls_factory(
