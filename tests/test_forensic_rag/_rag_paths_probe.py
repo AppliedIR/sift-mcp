@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -274,6 +275,14 @@ def mode_members(spec: dict) -> dict:
 def main() -> int:
     mode, spec_path, out_path = sys.argv[1:4]
     spec = json.loads(Path(spec_path).read_text(encoding="utf-8"))
+    if spec.get("pkg_src"):
+        # the package copy, never the installed one; found, not imported, so
+        # each mode still imports it where and when it means to
+        found = importlib.util.find_spec("rag_mcp")
+        where = Path(found.origin).resolve() if found and found.origin else None
+        if where is None or Path(spec["pkg_src"]).resolve() not in where.parents:
+            print(f"rag_mcp found at {where}, not under {spec['pkg_src']}")
+            return 3
     modes = {"use": mode_use, "paths": mode_paths, "members": mode_members}
     result = modes[mode](spec)
     Path(out_path).write_text(json.dumps(result, indent=2), encoding="utf-8")

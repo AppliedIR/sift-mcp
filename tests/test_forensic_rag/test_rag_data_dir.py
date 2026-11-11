@@ -8,7 +8,9 @@ data dir is given in (empty, relative, ~/, a symlink, as RAG_INDEX_DIR or as
 
 Each case runs in a fresh process (_rag_paths_probe.py) with an audit hook
 recording the paths touched. Sources are local bare repos reached through
-git's insteadOf in an isolated HOME; nothing goes to the network.
+git's insteadOf in an isolated HOME; nothing goes to the network. The process
+imports a copy of the package, so "the package's own data dir" is the copy's:
+the cases write there, and the installed package's is never touched.
 """
 
 from __future__ import annotations
@@ -28,7 +30,6 @@ rag_utils = pytest.importorskip("rag_mcp.utils")
 pytest.importorskip("chromadb")
 zstandard = pytest.importorskip("zstandard")
 
-PACKAGE_DATA_DIR = rag_utils.PACKAGE_DATA_DIR
 PROBE = Path(__file__).with_name("_rag_paths_probe.py")
 MODEL = "BAAI/bge-base-en-v1.5"
 VERSION = "fixture00001"
@@ -168,22 +169,21 @@ def _model_cached() -> bool:
 
 
 @pytest.fixture(scope="module")
-def package_data_guard():
-    """Leave the package data dir as it was: remove only what the run made."""
-    existed = PACKAGE_DATA_DIR.exists()
-    before = set()
-    if existed:
-        before = set(PACKAGE_DATA_DIR.rglob("*"))
-    yield
-    if not existed:
-        shutil.rmtree(PACKAGE_DATA_DIR, ignore_errors=True)
-        return
-    made = [p for p in PACKAGE_DATA_DIR.rglob("*") if p not in before]
-    for p in sorted(made, key=lambda q: len(q.parts), reverse=True):
-        if p.is_dir() and not p.is_symlink():
-            shutil.rmtree(p, ignore_errors=True)
-        else:
-            p.unlink(missing_ok=True)
+def scratch_pkg(tmp_path_factory) -> tuple[Path, Path]:
+    """A copy of the installed rag_mcp for the probe to import (through
+    PYTHONPATH), and the copy's own data dir, empty."""
+    root = tmp_path_factory.mktemp("rag-pkg").resolve()
+    installed = Path(rag_utils.__file__).resolve().parent
+    src = root / "src"
+    shutil.copytree(
+        installed, src / "rag_mcp", ignore=shutil.ignore_patterns("__pycache__")
+    )
+    attribution = installed.parents[1] / "ATTRIBUTION.md"
+    if attribution.is_file():
+        shutil.copyfile(attribution, root / "ATTRIBUTION.md")
+    data = root / "data"
+    data.mkdir()
+    return src, data
 
 
 def _bundle_members(path: Path) -> dict[str, bytes | None]:
@@ -198,14 +198,15 @@ def _bundle_members(path: Path) -> dict[str, bytes | None]:
 
 
 @pytest.fixture(scope="module")
-def use_run(tmp_path_factory, package_data_guard):
+def use_run(tmp_path_factory, scratch_pkg):
     """The seven steps with RAG_INDEX_DIR set: two fixture sources enabled,
     one disabled in RAG_INDEX_DIR/sources_config.json with its JSONL already
     in RAG_INDEX_DIR/sources/. The package data dir gets a sources_config.json
-    and a sources_state.json only if it has none, so a step that reads the
-    package files is seen reading them."""
+    and a sources_state.json, so a step that reads the package files is seen
+    reading them."""
     if not _model_cached():
         pytest.skip(f"embedding model {MODEL} not in the local cache")
+    pkg_src, pkg_data = scratch_pkg
     root = tmp_path_factory.mktemp("rag-use")
     home = root / "home"
     home.mkdir()
@@ -219,14 +220,12 @@ def use_run(tmp_path_factory, package_data_guard):
         json.dumps({"text": "planted", "metadata": {"source": "kape"}}) + "\n",
         encoding="utf-8",
     )
-    PACKAGE_DATA_DIR.mkdir(parents=True, exist_ok=True)
     plants = {
         "sources_config.json": {"disabled_sources": [DISABLED]},
         "sources_state.json": {"version": 1, "sources": {}},
     }
     for name, body in plants.items():
-        if not (PACKAGE_DATA_DIR / name).exists():
-            (PACKAGE_DATA_DIR / name).write_text(json.dumps(body), encoding="utf-8")
+        (pkg_data / name).write_text(json.dumps(body), encoding="utf-8")
     knowledge = root / "knowledge"
     knowledge.mkdir()
     out_dir = root / "release"
@@ -236,9 +235,13 @@ def use_run(tmp_path_factory, package_data_guard):
         "fixtures": [{"name": n, "parser": p} for n, (p, _f) in FIXTURES.items()],
         "version": VERSION,
         "sync": ENABLED[0],
+        "pkg_src": str(pkg_src),
     }
     env = _isolated_env(
-        home, RAG_INDEX_DIR=str(data_dir), RAG_KNOWLEDGE_DIR=str(knowledge)
+        home,
+        RAG_INDEX_DIR=str(data_dir),
+        RAG_KNOWLEDGE_DIR=str(knowledge),
+        PYTHONPATH=str(pkg_src),
     )
     result, _stdout = _probe("use", spec, root, env)
     result["data_dir"] = data_dir
@@ -305,16 +308,17 @@ ENV_VALUES = {
 EXPLICIT_VALUES = {"rel": "rel/x", "home": "~/x"}
 
 
-def _expected(value: str, cwd: Path, home: Path) -> str:
+def _expected(value: str, cwd: Path, home: Path, pkg_data: Path) -> str:
     if value == "":
-        return str(PACKAGE_DATA_DIR.resolve())
+        return str(pkg_data.resolve())
     if value.startswith("~/"):
         value = str(home / value[2:])
     return os.path.realpath(os.path.join(cwd, value))
 
 
 @pytest.fixture(scope="module")
-def paths_run(tmp_path_factory, package_data_guard):
+def paths_run(tmp_path_factory, scratch_pkg):
+    pkg_src, pkg_data = scratch_pkg
     root = tmp_path_factory.mktemp("rag-paths")
     # one dir per run, apart from the fixture's own dirs ("home" is a case too)
     runs = root / "runs"
@@ -329,15 +333,20 @@ def paths_run(tmp_path_factory, package_data_guard):
     target.mkdir()
     link.symlink_to(target)
     # status prints its dirs only when an index dir is there
-    for d in (a / "rel/x", b / "rel/x", home / "x", target, PACKAGE_DATA_DIR):
+    for d in (a / "rel/x", b / "rel/x", home / "x", target, pkg_data):
         (d / "chroma").mkdir(parents=True, exist_ok=True)
     results: dict = {}
 
     def run(label: str, env_value: str | None, run_cwd: Path, entries) -> None:
-        extra = {"RAG_KNOWLEDGE_DIR": str(knowledge)}
+        extra = {"RAG_KNOWLEDGE_DIR": str(knowledge), "PYTHONPATH": str(pkg_src)}
         if env_value is not None:
             extra["RAG_INDEX_DIR"] = env_value
-        spec = {"import_cwd": str(a), "run_cwd": str(run_cwd), "entries": entries}
+        spec = {
+            "import_cwd": str(a),
+            "run_cwd": str(run_cwd),
+            "entries": entries,
+            "pkg_src": str(pkg_src),
+        }
         out, _stdout = _probe("paths", spec, runs / label, _isolated_env(home, **extra))
         results[label] = (out, run_cwd)
 
@@ -353,7 +362,7 @@ def paths_run(tmp_path_factory, package_data_guard):
         a,
         [[e, EXPLICIT_VALUES[c]] for c in EXPLICIT_CASES for e in EXPLICIT_ENTRIES],
     )
-    return results, home, link
+    return results, home, link, pkg_data
 
 
 def _check(rec: dict, want: str, entry: str) -> None:
@@ -367,16 +376,16 @@ def _check(rec: dict, want: str, entry: str) -> None:
 @pytest.mark.parametrize("entry", ENTRIES)
 @pytest.mark.parametrize("case", ENV_CASES)
 def test_rag_index_dir_resolves_alike_for_every_entry_point(paths_run, case, entry):
-    results, home, link = paths_run
+    results, home, link, pkg_data = paths_run
     out, run_cwd = results[case]
     value = str(link) if case == "symlink" else ENV_VALUES[case]
-    _check(out[f"{entry}|"], _expected(value, run_cwd, home), entry)
+    _check(out[f"{entry}|"], _expected(value, run_cwd, home, pkg_data), entry)
 
 
 @pytest.mark.parametrize("entry", EXPLICIT_ENTRIES)
 @pytest.mark.parametrize("case", EXPLICIT_CASES)
 def test_an_explicit_data_dir_resolves_alike(paths_run, case, entry):
-    results, home, _link = paths_run
+    results, home, _link, pkg_data = paths_run
     out, run_cwd = results["explicit"]
     value = EXPLICIT_VALUES[case]
-    _check(out[f"{entry}|{value}"], _expected(value, run_cwd, home), entry)
+    _check(out[f"{entry}|{value}"], _expected(value, run_cwd, home, pkg_data), entry)
