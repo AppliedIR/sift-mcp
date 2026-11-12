@@ -3,8 +3,9 @@
 tarfile's "data" filter refuses a member that leaves the destination. It was
 applied only on Python 3.12, so on 3.10 and 3.11, which have it too, a bundle
 member such as ../x was written beside the index with no error. Synthetic
-bundles only. The module is loaded from its file: CI doesn't install
-forensic-rag, and this module needs only the standard library and zstandard.
+bundles only. The module is loaded from its file, in a package holding the
+real constants.py: CI doesn't install forensic-rag, and this module needs only
+the standard library and zstandard.
 """
 
 from __future__ import annotations
@@ -12,7 +13,9 @@ from __future__ import annotations
 import importlib.util
 import io
 import os
+import sys
 import tarfile
+import types
 from pathlib import Path
 
 import pytest
@@ -23,6 +26,7 @@ MODULE = (
     Path(__file__).resolve().parents[1]
     / "packages/forensic-rag/src/rag_mcp/scripts/download_index.py"
 )
+PKG = "_rag_extract_under_test"
 
 pytestmark = pytest.mark.skipif(
     not hasattr(tarfile, "data_filter"),
@@ -30,8 +34,24 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _package(monkeypatch):
+    """The package download_index's `from .. import constants` reads."""
+    spec = importlib.util.spec_from_file_location(
+        f"{PKG}.constants", MODULE.parents[1] / "constants.py"
+    )
+    constants = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(constants)
+    pkg = types.ModuleType(PKG)
+    pkg.constants = constants
+    monkeypatch.setitem(sys.modules, PKG, pkg)
+    monkeypatch.setitem(sys.modules, f"{PKG}.constants", constants)
+
+
 def _module():
-    spec = importlib.util.spec_from_file_location("download_index_under_test", MODULE)
+    spec = importlib.util.spec_from_file_location(
+        f"{PKG}.scripts.download_index", MODULE
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

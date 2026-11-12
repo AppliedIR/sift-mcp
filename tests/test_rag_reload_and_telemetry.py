@@ -94,6 +94,13 @@ def test_every_chroma_client_in_a_download_sees_the_same_telemetry_setting(
         )
         mod = importlib.util.module_from_spec(spec)
         monkeypatch.setitem(sys.modules, name, mod)
+    # The real constants.py, for download_index's `from .. import constants`
+    spec = importlib.util.spec_from_file_location(
+        f"{pkg}.constants", SRC / "rag_mcp/constants.py"
+    )
+    constants = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(constants)
+    monkeypatch.setitem(sys.modules, f"{pkg}.constants", constants)
     utils = types.ModuleType(f"{pkg}.utils")
     utils.DEFAULT_MODEL_NAME = "BAAI/bge-base-en-v1.5"
     monkeypatch.setitem(sys.modules, f"{pkg}.utils", utils)

@@ -78,6 +78,16 @@ def download(tmp_path, monkeypatch):
     fake = types.ModuleType(f"{PKG}.refresh")
     fake.refresh = refresh
     monkeypatch.setitem(sys.modules, f"{PKG}.refresh", fake)
+    # The real constants.py, for download_index's `from .. import constants`
+    spec = importlib.util.spec_from_file_location(
+        f"{PKG}.constants", MODULE.parents[1] / "constants.py"
+    )
+    constants = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(constants)
+    pkg = types.ModuleType(PKG)
+    pkg.constants = constants
+    monkeypatch.setitem(sys.modules, PKG, pkg)
+    monkeypatch.setitem(sys.modules, f"{PKG}.constants", constants)
     spec = importlib.util.spec_from_file_location(f"{PKG}.scripts.dl", MODULE)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
