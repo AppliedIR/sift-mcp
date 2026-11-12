@@ -317,3 +317,9 @@ def test_a_direct_start_that_dies_ends_the_wait_and_says_it_isnt_running(tmp_pat
     assert TIMEOUT not in out, out
     assert calls == ["setup client ready=no"], (calls, out)
     assert elapsed < 15.0, f"waited for the bound: {elapsed:.2f}s\n{out}"
+
+
+def test_the_install_waits_as_long_as_vhir_update_does():
+    """The install's bound is a copy of vhir update's 240 s /health deadline
+    (vhir_cli.gateway.DEADLINE, which its own row pins): change both or neither."""
+    assert "\nGW_WAIT_BOUND=240\n" in TEXT
