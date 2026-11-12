@@ -19,6 +19,8 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -360,6 +362,35 @@ def test_a_build_bundles_no_examiner_record_and_leaves_user_alone(rig):
     state = json.loads((rig.data / "user_state.json").read_text())
     assert list(state["files"]) == ["AppliedIR/ref.md"]
     assert _user_unchanged(rig) == user_before
+
+
+_READ_HNSW = """
+import json, sys, chromadb
+col = chromadb.PersistentClient(path=sys.argv[1]).get_collection("ir_knowledge")
+conf = getattr(col, "configuration_json", None) or col.configuration
+print(json.dumps(conf["hnsw"], default=str))
+"""
+
+
+def test_a_build_stores_its_hnsw_search_width_in_the_index(rig):
+    """Chroma searches a collection with the HNSW settings stored in it, so the
+    build stores them; a new process opening the built index reads them back."""
+    _legacy_install(rig)
+    _new_process()
+    result = rig.build.build(skip_online=True, data_dir=rig.data)
+    assert result.status == "success", result.errors
+    _new_process()
+    out = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", _READ_HNSW, str(rig.data / "chroma")],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert out.returncode == 0, out.stderr
+    hnsw = json.loads(out.stdout.strip().splitlines()[-1])
+    want = {"space": "cosine", "ef_construction": 100, "max_neighbors": 16}
+    assert {k: hnsw.get(k) for k in want} == want
+    assert hnsw.get("ef_search") == 1600
 
 
 # --- download -------------------------------------------------------------

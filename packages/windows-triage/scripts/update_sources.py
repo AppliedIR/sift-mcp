@@ -242,6 +242,21 @@ def set_last_sync(db_path: Path, source_key: str, commit: str, url: str = ""):
     conn.close()
 
 
+def record_sync(db_path: Path, row: str, commit: str) -> bool:
+    """Record the commit on the sources row; False when there is no such row."""
+    conn = sqlite3.connect(db_path)
+    try:
+        changed = conn.execute(
+            "UPDATE sources SET last_sync_commit = ?, last_sync_time = datetime('now') "
+            "WHERE name = ?",
+            (commit, row),
+        ).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    return changed == 1
+
+
 # ============================================================
 # Clone & Import Helpers
 # ============================================================

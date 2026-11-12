@@ -154,11 +154,11 @@ def test_the_summary_says_not_installed_when_a_default_db_is_missing(tmp_path):
 
 def test_an_unreadable_file_list_counts_the_dbs_as_missing(tmp_path):
     """Both default DBs are installed but the file list can't be read: the setup
-    and the summary each say so, the setup never calls the DBs existing and goes
-    on to the download, and the summary never says installed."""
+    says so once, never calls the DBs existing and goes on to the download, and
+    the summary never says installed."""
     lines = _run(tmp_path, add_default_db=False, unreadable=True)
     warning = "[WARN] The triage release file list could not be read from the venv"
-    assert sum(ln.startswith(warning) for ln in lines) == 2, lines
+    assert sum(ln.startswith(warning) for ln in lines) == 1, lines
     assert lines[-1].startswith("[WARN] Triage databases: not installed"), lines
     assert not any(ln.startswith("[OK] Triage databases exist") for ln in lines), lines
     assert "[INFO] Downloading pre-built databases..." in lines, lines
@@ -171,7 +171,7 @@ def test_a_failing_file_list_reader_takes_the_download_path(tmp_path):
     installed."""
     lines = _run(tmp_path, add_default_db=False, reader_fails=True)
     warning = "[WARN] The triage release file list could not be read from the venv"
-    assert sum(ln.startswith(warning) for ln in lines) == 2, lines
+    assert sum(ln.startswith(warning) for ln in lines) == 1, lines
     assert not any(ln.startswith("[OK] Triage databases exist") for ln in lines), lines
     assert "[INFO] Downloading pre-built databases..." in lines, lines
     assert any(ln.startswith("DOWNLOAD") for ln in lines), lines

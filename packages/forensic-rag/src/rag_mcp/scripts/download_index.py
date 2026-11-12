@@ -36,25 +36,6 @@ STATE_NAME = "sources_state.json"
 STAGED_STATE_NAME = "sources_state.json.part"
 
 
-def _bundle_members() -> tuple[str, ...]:
-    """What a bundle may install: constants.BUNDLE_MEMBERS, read at call time.
-    Anything else (a user/ tree, say) is skipped and named, so the examiner's
-    store is never overwritten. This file is also loaded on its own, outside
-    its package; constants.py is then loaded from beside it."""
-    try:
-        from .. import constants
-    except ImportError:
-        import importlib.util
-
-        path = Path(__file__).resolve().parents[1] / "constants.py"
-        spec = importlib.util.spec_from_file_location("rag_mcp_constants", path)
-        if spec is None or spec.loader is None:
-            raise
-        constants = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(constants)
-    return tuple(constants.BUNDLE_MEMBERS)
-
-
 def _github_headers() -> dict[str, str]:
     """Build HTTP headers for GitHub API, including token if available.
 
@@ -192,7 +173,11 @@ def _extract_bundle(
     caller to move into place once the index verifies."""
     import zstandard as zstd
 
-    members = _bundle_members()
+    from .. import constants
+
+    # Read at call time. Anything else (a user/ tree, say) is skipped and
+    # named, so the examiner's store is never overwritten.
+    members = tuple(constants.BUNDLE_MEMBERS)
     skipped: list[str] = []
 
     def shipped(tar):

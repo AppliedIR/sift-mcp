@@ -60,6 +60,21 @@ from .utils import (
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
+# The shipped index's HNSW settings, stored in the collection so every reader
+# searches with them. At chroma's default search width (ef_search 100) the
+# graph a build makes can miss a query's exact best matches, and how many it
+# misses at a given width changes from build to build: one build lost little
+# at 400 and the next lost more there, while at 1600 that build missed the
+# fewest, for about 1.5 ms more per search than at 400. The graph's own
+# settings are chroma's defaults, written out so a chroma upgrade can't
+# change them.
+HNSW_CONFIG = {
+    "space": "cosine",
+    "ef_construction": 100,
+    "max_neighbors": 16,
+    "ef_search": 1600,
+}
+
 
 @dataclass
 class BuildResult:
@@ -356,7 +371,9 @@ def build(
 
     client = chromadb.PersistentClient(path=str(chroma_path))
     collection = client.create_collection(
-        name="ir_knowledge", metadata={"hnsw:space": "cosine"}
+        name="ir_knowledge",
+        metadata={"hnsw:space": "cosine"},
+        configuration={"hnsw": dict(HNSW_CONFIG)},
     )
 
     # Batch embed and add records

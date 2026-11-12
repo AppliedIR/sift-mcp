@@ -1,10 +1,10 @@
 """What the RAG release bundle packs, and what an install takes from it.
 
 build_release --skip-build packs a prepared data dir: a missing member fails
-the pack naming it, the packed metadata.json never carries refreshed_at (the
-data dir's own file is left as it was), and a member added to the one member
-list is both packed and installed. The record-count floor is set to 0 on
-this path, so a fixture needs no record_count.
+the pack naming it, metadata.json is packed as the data dir holds it, and a
+member added to the one member list is both packed and installed. The
+record-count floor is set to 0 on this path, so a fixture needs no
+record_count.
 """
 
 from __future__ import annotations
@@ -111,26 +111,7 @@ def test_skip_build_without_metadata_fails(tmp_path, monkeypatch, capsys):
     assert "No metadata.json found" in output
 
 
-def test_the_packed_metadata_has_no_refreshed_at(tmp_path, monkeypatch, capsys):
-    d = _data_dir(tmp_path, {"model": MODEL, "refreshed_at": "2026-01-02T03:04:05Z"})
-    rc, output = _pack(monkeypatch, capsys, d, tmp_path / "release")
-    assert rc == 0, output[-400:]
-    assert "Build failed" not in output
-    members = _bundle_members(tmp_path / "release" / "rag-index.tar.zst")
-    packed = json.loads(members["metadata.json"] or b"{}")
-    assert "refreshed_at" not in packed, f"packed metadata.json: {packed}"
-
-
-def test_the_pack_leaves_the_data_dir_metadata_as_it_was(tmp_path, monkeypatch, capsys):
-    d = _data_dir(tmp_path, {"model": MODEL, "refreshed_at": "2026-01-02T03:04:05Z"})
-    before = (d / "metadata.json").read_bytes()
-    rc, output = _pack(monkeypatch, capsys, d, tmp_path / "release")
-    assert rc == 0, output[-400:]
-    assert "Build failed" not in output
-    assert (d / "metadata.json").read_bytes() == before
-
-
-def test_metadata_without_refreshed_at_packs_as_it_is(tmp_path, monkeypatch, capsys):
+def test_metadata_packs_as_it_is(tmp_path, monkeypatch, capsys):
     d = _data_dir(tmp_path, {"model": MODEL, "bundle_tag": "rag-index-v2026.01.02"})
     rc, output = _pack(monkeypatch, capsys, d, tmp_path / "release")
     assert rc == 0, output[-400:]

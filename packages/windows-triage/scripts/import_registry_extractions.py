@@ -36,7 +36,6 @@ import argparse
 import json
 import logging
 import re
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -44,6 +43,7 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
+import update_sources
 from windows_triage.db import KnownGoodDB
 
 logging.basicConfig(
@@ -757,16 +757,9 @@ def main():
 
     # Record the sync commit only for an import with no errors
     if args.sync_commit and not args.dry_run:
-        conn = sqlite3.connect(db_path)
-        try:
-            conn.execute(
-                "UPDATE sources SET last_sync_commit = ?, "
-                "last_sync_time = datetime('now') WHERE name = ?",
-                (args.sync_commit, "vanilla_windows_registry"),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        update_sources.record_sync(
+            db_path, "vanilla_windows_registry", args.sync_commit
+        )
 
 
 if __name__ == "__main__":

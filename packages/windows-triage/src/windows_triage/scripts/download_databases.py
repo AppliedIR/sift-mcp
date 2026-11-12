@@ -106,33 +106,25 @@ def _download_asset(url: str, dest: Path) -> None:
         print()
 
 
-def _listed_checksums(temp_dir: Path) -> set[str]:
-    """The file names ``checksums.sha256`` lists."""
-    checksum_file = temp_dir / CHECKSUMS
-    if not checksum_file.is_file():
-        return set()
-    names = set()
-    for line in checksum_file.read_text().strip().splitlines():
-        parts = line.split()
-        if len(parts) >= 2:
-            names.add(parts[1])
-    return names
+def _verify_checksums(temp_dir: Path) -> set[str] | None:
+    """Verify SHA-256 checksums of downloaded compressed files.
 
-
-def _verify_checksums(temp_dir: Path) -> bool:
-    """Verify SHA-256 checksums of downloaded compressed files."""
+    Returns the file names ``checksums.sha256`` lists, or None on a mismatch.
+    """
     checksum_file = temp_dir / CHECKSUMS
     if not checksum_file.is_file():
         print("  No checksums file. Skipping verification.")
-        return True
+        return set()
 
     ok = True
+    names = set()
     for line in checksum_file.read_text().strip().splitlines():
         parts = line.split()
         if len(parts) < 2:
             continue
         expected_hash = parts[0]
         file_name = parts[1]
+        names.add(file_name)
         file_path = temp_dir / file_name
         if not file_path.is_file():
             # Skip files not in our download list (e.g. registry DB)
@@ -145,7 +137,7 @@ def _verify_checksums(temp_dir: Path) -> bool:
             print(f"    expected: {expected_hash}")
             print(f"    got:      {actual_hash}")
             ok = False
-    return ok
+    return names if ok else None
 
 
 def _decompress_zst(src: Path, dest: Path) -> None:
@@ -329,7 +321,8 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
 
             # Verify checksums
             print("\nVerifying checksums...")
-            if not _verify_checksums(temp_dir):
+            listed = _verify_checksums(temp_dir)
+            if listed is None:
                 if attempt < MAX_ATTEMPTS:
                     wait = attempt * 5
                     print(f"  Checksum mismatch. Retrying in {wait}s...")
@@ -338,7 +331,6 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
                 print("Checksum verification failed after all attempts.")
                 return False
 
-            listed = _listed_checksums(temp_dir)
             unlisted = [a for a in wanted if a != CHECKSUMS and a not in listed]
 
             # Decompress. The old tag file goes first: from the first write to
