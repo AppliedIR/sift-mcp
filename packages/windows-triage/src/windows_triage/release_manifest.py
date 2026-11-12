@@ -103,26 +103,27 @@ def table_counts(db_path: Path) -> dict[str, int]:
         conn.close()
 
 
-def _table_errors(name: str, found: dict[str, int]) -> list[str]:
+def _tables(name: str, db_path: Path) -> tuple[dict, dict, list[str]]:
+    """The DB's counts, the release's, and the table-list errors. A DB that
+    can't be read has no counts, so only its error is reported."""
+    try:
+        found = table_counts(db_path)
+    except sqlite3.Error as e:
+        return {}, {}, [f"{name}: cannot be read: {e}"]
     want = COUNTS.get(name)
     if want is None:
-        return [f"{name}: not in the release file list"]
+        return found, {}, [f"{name}: not in the release file list"]
     errors = []
     for table in sorted(set(want) - set(found)):
         errors.append(f"{name}: table {table} is missing")
     for table in sorted(set(found) - set(want)):
         errors.append(f"{name}: table {table} is not in the release file list")
-    return errors
+    return found, want, errors
 
 
 def check_downloaded(name: str, db_path: Path) -> list[str]:
     """A downloaded DB against the release's counts: [] when every table matches."""
-    try:
-        found = table_counts(db_path)
-    except sqlite3.Error as e:
-        return [f"{name}: cannot be read: {e}"]
-    errors = _table_errors(name, found)
-    want = COUNTS.get(name, {})
+    found, want, errors = _tables(name, db_path)
     for table in sorted(set(want) & set(found)):
         if found[table] != want[table]:
             errors.append(
@@ -136,12 +137,7 @@ def check_floors(name: str, db_path: Path, tables=None) -> list[str]:
     """A locally built DB against the floors: [] when every table reaches its floor.
     With ``tables``, only those tables are floored; the table list is always
     checked whole."""
-    try:
-        found = table_counts(db_path)
-    except sqlite3.Error as e:
-        return [f"{name}: cannot be read: {e}"]
-    errors = _table_errors(name, found)
-    want = COUNTS.get(name, {})
+    found, want, errors = _tables(name, db_path)
     floored = set(want) if tables is None else set(tables)
     for table in sorted(set(want) & set(found) & floored):
         need = floor(want[table])
