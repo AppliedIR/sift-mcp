@@ -68,6 +68,16 @@ SID_FIELD = (
     "winlog.user.identifier (the SID in the record header: often the service account"
     " the provider ran as; absent in records ingested before this version)"
 )
+# the OpenSearch guidance on who acted in Security 4688 and 4799 records, and
+# how to tell a record ingested before it; added after the key evtx fields
+USER_FIELDS = (
+    "In Security 4688 and 4799 records, user.name, user.domain and user.id are the"
+    " account that acted (4688: the creator, with the new process's account in"
+    " user.effective.*; 4799: the account that enumerated the members of group.name)."
+    " In those records with a pipeline_version below opensearch-mcp-0.6.6.1, user.name"
+    ' is TargetUserName (4688: the new process\'s account, often "-"; 4799: the group)'
+    " and user.effective.name is SubjectUserName."
+)
 
 # windows-triage's line on a hash no baseline build matches, as approved:
 # in WINDOWS_TRIAGE and WINTOOLS_MCP, where " — it" also became ". It"
@@ -99,6 +109,11 @@ def test_opensearch_names_the_record_header_sid_field_once():
     assert _strings()["OPENSEARCH"].count(f", {SID_FIELD}. ") == 1
 
 
+def test_opensearch_says_who_acted_in_4688_and_4799_records_once():
+    text = f"{SID_FIELD}. {USER_FIELDS} Key shimcache"
+    assert _strings()["OPENSEARCH"].count(text) == 1
+
+
 def test_forensic_mcp_says_a_challenge_is_required():
     assert SKEPTIC_SENTENCE in _strings()["FORENSIC_MCP"]
 
@@ -119,6 +134,7 @@ def test_the_backend_instructions_stay_within_their_budget():
     budget += JUDGMENT_GROWTH
     budget += len(TOOL_SYNTAX) + 2
     budget += len(SID_FIELD) + 2
+    budget += len(USER_FIELDS) + 1
     budget += 2 * len(HASH_CLAUSE) - 1
     assert sum(len(v) for v in strings.values()) <= budget
 
