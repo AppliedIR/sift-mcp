@@ -20,7 +20,7 @@ classifiers = [
     "Topic :: Security",
 ]
 dependencies = [
-    "vhir-cli",
+    "vhir-cli>=0.6.6.1.dev0",
     "sift-common",
     "mcp>=1.26,<2",
     "pyyaml>=6.0",

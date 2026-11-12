@@ -2,12 +2,13 @@
 findings.json and iocs.json, is absent or parses to a list of records. Any
 other file there (empty or blank, not UTF-8, one that won't parse, null, a
 number, a boolean, a list holding something other than records, a directory,
-a dangling symlink) means the report isn't saved: nothing is raised, a report
-already saved under that name is left byte-identical with no new version
-beside it (with none there, none is created, reports/ too), and the error
-names the file and what the examiner can do, with no command to run. A file that is an empty
-list saves. An absent file is
-a case with none of them. The IOCs come from the files as they are just before
+a dangling symlink, one past the case document cap) means the report isn't
+saved: nothing is raised, a report already saved under that name is left
+byte-identical with no new version beside it (with none there, none is
+created: reports/ is absent or empty), `files` and `file` name it, and the error is vhir's:
+the file and what is wrong with it, what to do about it, then "Report not
+saved: <file> can't be read.", never "empty list". A file that is an empty
+list saves. An absent file is a case with none of them. The IOCs come from the files as they are just before
 the write, and each save reads the approved view once. vhir-cli's tests state
 the same rows for `vhir report --save`."""
 
@@ -79,13 +80,14 @@ def _save(rs, case):
 
 BAD = {  # (file, what is written in it, what the error says about it)
     "iocs.json that won't parse (VALUE only in its record)":
-        ("iocs.json", None, "couldn't be read"),
+        ("iocs.json", None, "couldn't be read (not valid JSON)"),
     "iocs.json null": ("iocs.json", "null", "holds null, not a list of records"),
     "iocs.json 7": ("iocs.json", "7", "holds a number, not a list of records"),
     "iocs.json true": ("iocs.json", "true", "holds a boolean, not a list of records"),
     "iocs.json a list of strings": ("iocs.json", json.dumps([VALUE]),
                                     "holds a list with an entry that isn't a record"),
-    "findings.json that won't parse": ("findings.json", None, "couldn't be read"),
+    "findings.json that won't parse": ("findings.json", None,
+                                       "couldn't be read (not valid JSON)"),
     "findings.json null": ("findings.json", "null", "holds null, not a list of records"),
     "findings.json 7": ("findings.json", "7", "holds a number, not a list of records"),
     "findings.json true": ("findings.json", "true",
@@ -96,19 +98,50 @@ BAD = {  # (file, what is written in it, what the error says about it)
     "findings.json blank": ("findings.json", " \n\t \n",
                             "is empty, not a list of records"),
     "iocs.json not UTF-8": ("iocs.json", b'[{"id": "IOC-x", "value": "\xff"}]',
-                            "couldn't be read"),
-    "iocs.json a directory": ("iocs.json", DIR, "couldn't be read"),
-    "iocs.json a dangling symlink": ("iocs.json", LINK, "couldn't be read"),
+                            "couldn't be read (not UTF-8 text)"),
+    "iocs.json a directory": ("iocs.json", DIR, "couldn't be read (it is a folder)"),
+    "iocs.json a dangling symlink": ("iocs.json", LINK,
+                                     "couldn't be read (it is a symbolic link)"),
     "findings.json not UTF-8": ("findings.json",
                                 b'[{"id": "F-x", "observation": "\xff"}]',
-                                "couldn't be read"),
-    "findings.json a directory": ("findings.json", DIR, "couldn't be read"),
-    "findings.json a dangling symlink": ("findings.json", LINK, "couldn't be read"),
+                                "couldn't be read (not UTF-8 text)"),
+    "findings.json a directory": ("findings.json", DIR,
+                                  "couldn't be read (it is a folder)"),
+    "findings.json a dangling symlink": ("findings.json", LINK,
+                                         "couldn't be read (it is a symbolic link)"),
 }  # fmt: skip
 GOOD = {  # (file, what is written in it): a list of records, empty too, saves
     "iocs.json []": ("iocs.json", "[]"),
     "findings.json []": ("findings.json", "[]"),
 }  # fmt: skip
+
+
+RESTORE = "restore the case from a backup (`vhir restore`)"
+
+
+def _remedy(name, why, how=None):
+    """vhir's remediation line for `name` on this case, whose approval records
+    hold an approved item of each file: an empty file held approved items;
+    any other form is one verify reports, but a dangling symlink, which verify
+    passes over (nothing is behind the name)."""
+    if why == "is empty, not a list of records":
+        return (f"{name} is empty, but the case's approval records show it held"
+                " approved items. Restore the case from a backup (`vhir restore`).")  # fmt: skip
+    if how is LINK:
+        return f"Repair {name}, or {RESTORE}."
+    return f"Run `vhir review --findings --verify` to see the file's state; repair it, or {RESTORE}."
+
+
+def _refused(got, path, why, how=None):
+    """The reply refuses for `path` alone, with vhir's text."""
+    name = path.name
+    assert got.get("file") == str(path) and got.get("files") == [str(path)], got
+    assert got["error"].split("\n") == [
+        f"{name} {why}",
+        _remedy(name, why, how),
+        f"Report not saved: {name} can't be read.",
+    ], got
+    assert "empty list" not in got["error"], got
 
 
 def _spoil(path, how):
@@ -152,11 +185,7 @@ def test_a_file_that_is_not_a_list_of_records_refuses_the_save(
     names = [p.name for p in reports.iterdir()] if reports.exists() else []
     assert names == ["r.md"] * bool(prior), got  # no reports/ yet: absent or empty
     assert _sha(report) == before, saved
-    assert got["file"] == str(path), got
-    assert got["error"].startswith(f"Report not saved. {path} {why}"), got
-    assert "`" not in got["error"] and "vhir " not in got["error"], got
-    for words in ("Tell the examiner", "restore the file from a backup", "empty list"):
-        assert words in got["error"], got
+    _refused(got, path, why, how)
 
 
 @pytest.mark.parametrize("row", GOOD)
@@ -176,13 +205,17 @@ def test_an_absent_iocs_json_saves(rs, tmp_path, monkeypatch):
     assert VALUE not in saved and "c2[.]example[.]net" in saved, saved
 
 
-def test_an_iocs_json_past_the_verify_cap_saves_defanged(rs, tmp_path, monkeypatch):
+def test_an_iocs_json_past_the_case_document_cap_refuses_the_save(
+    rs, tmp_path, monkeypatch
+):
     case = _case(tmp_path, monkeypatch)  # VALUE only in the IOC record
     path = case / "iocs.json"
     path.write_text(path.read_text() + " " * (17 << 20))
     got, saved = _save(rs, case)
-    assert got.get("status") == "saved" and saved is not None, got
-    assert VALUE not in saved and "c2[.]example[.]net" in saved, saved
+    reports = case / "reports"
+    names = [p.name for p in reports.iterdir()] if reports.exists() else []
+    assert saved is None and names == [], got  # reports/ absent or empty
+    _refused(got, path, "couldn't be read (larger than the 16 MiB case document limit)")
 
 
 def test_a_record_written_after_the_view_is_read_is_defanged(rs, tmp_path, monkeypatch):

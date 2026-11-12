@@ -18,6 +18,7 @@ from report_mcp import server as rs
 from report_mcp.profiles import PROFILES
 from report_mcp.server import _TEXT_ONLY, _extract_all_iocs
 from sift_common import ioc_types
+from vhir_cli import case_io
 from vhir_signing import sign_approved
 
 FIXTURE = Path(__file__).parent.parent / "fixtures"
@@ -149,9 +150,16 @@ SHAPES = {
     "not-recorded-value-not-a-string": (
         [_f(1, [{"value": 445, "type": "port"}])], [], {TEXT_ONLY: ["445"]},
     ),
-    "not-recorded-empty-left-out": (
-        [_f(1, [None, "", "  ", {"value": None, "type": "ip"}, {"type": "ip"}, 5, ["x"]])], [], {},
+    "not-recorded-a-number-and-a-nested-value-listed": (
+        [_f(1, [5, ["x"]])], [], {TEXT_ONLY: ["5", "x"]},
     ),
+    "not-recorded-none-left-out": ([_f(1, [None])], [], {}),
+    "not-recorded-empty-string-left-out": ([_f(1, [""])], [], {}),
+    "not-recorded-blank-string-left-out": ([_f(1, ["  "])], [], {}),
+    "not-recorded-none-value-left-out": ([_f(1, [{"value": None, "type": "ip"}])], [], {}),
+    "not-recorded-no-value-left-out": ([_f(1, [{"type": "ip"}])], [], {}),
+    "not-recorded-empty-list-left-out": ([_f(1, [[]])], [], {}),
+    "not-recorded-empty-dict-left-out": ([_f(1, [{}])], [], {}),
     "text-recorded": (
         [_f(1, observation="Beacon to evil[.]com and 8.8.4.4.")],
         [_r(1, "evil.com", "domain-name")], {"Domain": ["evil.com"], TEXT_ONLY: ["8.8.4.4"]},
@@ -505,18 +513,17 @@ def _break_records(case, name):
 
 
 @pytest.mark.parametrize("name", list(UNREADABLE))
-def test_records_that_can_t_be_read_are_none(case, name):
-    _case_with(case, [F1, F3], [])
-    _break_records(case, name)
-    assert rs._ioc_records(case) == []
-
-
-@pytest.mark.parametrize("name", list(UNREADABLE))
 def test_a_report_over_unreadable_records_names_the_case_failure(case, name):
-    """Verification reads iocs.json first: no finding is verified, none listed."""
+    """Verification reads iocs.json first: no finding is verified, none listed.
+    The reply names iocs.json, by full path, with the why vhir's reader gives
+    it (vhir's tests own the phrase)."""
     _case_with(case, [F1, F3], [])
     _break_records(case, name)
     out = rs._generate("ioc", case)
+    why = case_io.read_record_files(case, ("iocs.json",))["iocs.json"].why
+    assert why and out.get("unreadable") == [
+        {"file": str(case / "iocs.json"), "why": why}
+    ], out.get("unreadable")
     assert out["verification"]["case_failures"]
     assert out["report_data"]["iocs"] == {}
     assert out["report_data"]["summary"]["ioc_count"] == 0
