@@ -45,11 +45,11 @@ PACKAGE_DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
 def resolve_data_dir(explicit: str | Path | None = None) -> Path:
     """The data directory every reader and writer uses: the explicit one, else
-    RAG_INDEX_DIR, else the package's data/."""
-    if explicit:
-        return Path(explicit)
-    env = os.environ.get("RAG_INDEX_DIR")
-    return Path(env) if env else PACKAGE_DATA_DIR
+    RAG_INDEX_DIR if set and not empty, else the package's data/. Evaluated at
+    call time, with ~ expanded and the path resolved, so every entry point
+    reports the same path for the same value."""
+    value = explicit or os.environ.get("RAG_INDEX_DIR") or PACKAGE_DATA_DIR
+    return Path(value).expanduser().resolve()
 
 
 # Search limits

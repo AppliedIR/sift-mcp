@@ -13,7 +13,7 @@ Databases updated:
 
 Design:
     1. Read last_sync_commit from each DB's sources table
-    2. Query GitHub API for latest commit on each repo
+    2. Ask each remote (git ls-remote) for its default branch's head
     3. If changed: shallow clone, identify changed files, run selective import
     4. Update last_sync_commit in DB
     5. Clean up clones
@@ -61,6 +61,7 @@ SOURCES = {
         "url": "https://github.com/AndrewRathbun/VanillaWindowsReference.git",
         "import_script": "import_files.py",
         "file_glob": "*.csv",
+        "clone_timeout": 600,
         "description": "Windows file baselines (~2.6M paths)",
     },
     "registry": {
@@ -71,6 +72,7 @@ SOURCES = {
         "url": "https://github.com/AndrewRathbun/VanillaWindowsRegistryHives.git",
         "import_script": "import_registry_full.py",
         "file_glob": "*_ROOT.json",
+        "clone_timeout": 7200,
         "description": "Full registry baseline (optional, 12GB)",
     },
     "registry_extractions": {
@@ -81,6 +83,7 @@ SOURCES = {
         "url": "https://github.com/AndrewRathbun/VanillaWindowsRegistryHives.git",
         "import_script": "import_registry_extractions.py",
         "file_glob": "*_ROOT.json",
+        "clone_timeout": 7200,
         "description": "Services, tasks, autoruns extracted from registry",
     },
     "lolbas": {
@@ -89,6 +92,7 @@ SOURCES = {
         "db_source_key": "lolbas",
         "repo": "LOLBAS-Project/LOLBAS",
         "url": "https://github.com/LOLBAS-Project/LOLBAS.git",
+        "clone_timeout": 600,
         "description": "Living Off The Land Binaries",
     },
     "loldrivers": {
@@ -97,6 +101,7 @@ SOURCES = {
         "db_source_key": "loldrivers_vulnerable",
         "repo": "magicsword-io/LOLDrivers",
         "url": "https://github.com/magicsword-io/LOLDrivers.git",
+        "clone_timeout": 600,
         "description": "Vulnerable and malicious drivers",
     },
     "hijacklibs": {
@@ -105,9 +110,15 @@ SOURCES = {
         "db_source_key": "hijacklibs",
         "repo": "wietze/HijackLibs",
         "url": "https://github.com/wietze/HijackLibs.git",
+        "clone_timeout": 600,
         "description": "DLL hijacking vulnerabilities",
     },
 }
+
+
+def clone_dir(entry: dict) -> str:
+    """The clone dir of a SOURCES entry under data/sources: its repo's name."""
+    return entry["repo"].split("/")[1]
 
 
 # ============================================================
@@ -135,17 +146,52 @@ def github_api_get(endpoint: str) -> dict | None:
         return None
 
 
-def get_latest_commit(repo: str, branch: str = "main") -> str | None:
-    """Get latest commit SHA from GitHub API."""
-    data = github_api_get(f"repos/{repo}/commits/{branch}")
-    if data and "sha" in data:
-        return data["sha"][:40]
-    # Try 'master' as fallback
-    if branch == "main":
-        data = github_api_get(f"repos/{repo}/commits/master")
-        if data and "sha" in data:
-            return data["sha"][:40]
+def get_latest_commit(repo: str) -> str | None:
+    """The head of the remote's default branch (the branch a clone takes), from
+    ``git ls-remote --symref <url> HEAD`` with the url ``SOURCES`` gives the repo;
+    None when the remote can't be asked."""
+    url = next(
+        (s["url"] for s in SOURCES.values() if s["repo"] == repo),
+        f"https://github.com/{repo}.git",
+    )
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", "--symref", url, "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.debug(f"ls-remote failed for {url}: {e}")
+        return None
+    if result.returncode != 0:
+        logger.debug(f"ls-remote failed for {url}: {result.stderr.strip()}")
+        return None
+    for line in result.stdout.splitlines():
+        fields = line.split("\t")
+        if len(fields) == 2 and fields[1] == "HEAD" and _is_commit(fields[0]):
+            return fields[0]
     return None
+
+
+def _is_commit(text: str) -> bool:
+    return len(text) == 40 and all(c in "0123456789abcdef" for c in text)
+
+
+def clone_head(clone_dir: Path) -> str | None:
+    """A clone's HEAD commit (40 hex), or None."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(clone_dir), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    head = result.stdout.strip()
+    return head if result.returncode == 0 and _is_commit(head) else None
 
 
 def get_changed_files(repo: str, base_commit: str, head_commit: str) -> list[str]:
@@ -215,13 +261,14 @@ def extract_registry_zips(clone_dir: Path) -> int:
 
 
 def shallow_clone(url: str, dest: Path, depth: int = 1) -> bool:
-    """Shallow clone a git repo."""
+    """Shallow clone a git repo, with the clone timeout SOURCES states for its URL."""
+    timeout = max(s["clone_timeout"] for s in SOURCES.values() if s["url"] == url)
     try:
         result = subprocess.run(
             ["git", "clone", "--depth", str(depth), url, str(dest)],
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=timeout,
         )
         return result.returncode == 0
     except Exception as e:
@@ -278,22 +325,24 @@ def check_source(source_key: str, data_dir: Path) -> dict:
         "needs_update": False,
         "changed_files": [],
         "skipped": False,
+        "not_installed": False,
+        "unchecked": False,
     }
 
     if not db_path.exists():
-        status["skipped"] = True
-        status["skip_reason"] = f"{source['db']} not found"
+        status["skipped"] = status["not_installed"] = True
+        status["skip_reason"] = "not installed"
         return status
 
     status["last_sync"] = get_last_sync(db_path, source["db_source_key"])
 
-    # Query GitHub for latest commit
+    # Ask the remote for its default branch's head
     status["latest_commit"] = get_latest_commit(source["repo"])
 
     if not status["latest_commit"]:
         logger.warning(f"  Could not fetch latest commit for {source['repo']}")
-        status["skipped"] = True
-        status["skip_reason"] = "GitHub API unavailable"
+        status["skipped"] = status["unchecked"] = True
+        status["skip_reason"] = "could not check"
         return status
 
     if status["last_sync"] and status["last_sync"] == status["latest_commit"]:
@@ -522,9 +571,15 @@ def update_context_source(
                 )
                 return False
 
-            set_last_sync(
-                db_path, source["db_source_key"], status["latest_commit"], source["url"]
-            )
+            # Record the commit this import read: the clone's own HEAD
+            head = clone_head(clone_dir)
+            if head is None:
+                logger.error(
+                    f"  {source['name']}: the clone's HEAD can't be read; "
+                    "not recorded as synced"
+                )
+                return False
+            set_last_sync(db_path, source["db_source_key"], head, source["url"])
             return True
 
         except Exception as e:
@@ -592,7 +647,7 @@ def main():
     print("DATABASE UPDATE STATUS")
     print("=" * 70)
 
-    # Deduplicate GitHub API calls for sources sharing the same repo
+    # Deduplicate remote lookups for sources sharing the same repo
     _repo_commit_cache = {}
 
     statuses = {}
@@ -634,20 +689,35 @@ def main():
         sync_info = f" [{status['last_sync'][:8]}]" if status.get("last_sync") else ""
         print(f"  {icon} {status['name']:40} {label}{sync_info}")
 
+    # What the closing line counts besides the updates: each DB not installed
+    # once, and each source whose remote could not be asked
+    not_installed = len(
+        {SOURCES[k]["db"] for k, s in statuses.items() if s.get("not_installed")}
+    )
+    unchecked = sum(1 for s in statuses.values() if s.get("unchecked"))
+    counts = (
+        f"{not_installed} DB(s) not installed, "
+        f"{unchecked} source(s) could not be checked"
+    )
+
     if args.check_only:
         needs = sum(1 for s in statuses.values() if s["needs_update"])
-        skipped = sum(1 for s in statuses.values() if s["skipped"])
-        print(f"\n{needs} source(s) need updating, {skipped} skipped")
+        print(f"\n{needs} source(s) need updating; {counts}")
         return
 
     # ── Run Updates ───────────────────────────────────────────
 
     needs_update = {
-        k: v for k, v in statuses.items() if v["needs_update"] or args.force
+        k: v
+        for k, v in statuses.items()
+        if (v["needs_update"] or args.force) and not v.get("skipped")
     }
 
     if not needs_update:
-        print("\nAll databases are up to date.")
+        if not_installed or unchecked:
+            print(f"\nNo updates applied: {counts}.")
+        else:
+            print("\nAll databases are up to date.")
         return
 
     print("\n" + "=" * 70)
@@ -723,10 +793,10 @@ def main():
         icon = "✓" if success else "✗"
         print(f"  {icon} {SOURCES[source_key]['name']}")
 
-    print(f"\n  {succeeded} succeeded, {failed} failed")
-
     if args.dry_run:
-        print("  (dry run — no changes made)")
+        print("\n  (dry run — no changes made)")
+
+    print(f"\n  {succeeded} succeeded, {failed} failed; {counts}")
 
     if failed:
         sys.exit(1)

@@ -4,6 +4,7 @@ import atexit
 import os
 import shutil
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -21,6 +22,23 @@ if _ORIGINAL_HOME:
     os.environ.setdefault("XDG_CACHE_HOME", os.path.join(_ORIGINAL_HOME, ".cache"))
 for _var in ("VHIR_CASE_DIR", "VHIR_AUDIT_DIR"):
     os.environ.pop(_var, None)
+
+# Tests read and write a private copy of the RAG index, never the shared one
+# (rag_private_index); set here, like HOME, before any module reads it.
+import rag_private_index
+
+_RAG_SHARED = rag_private_index.isolate(Path(_TEST_HOME))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _rag_shared_index_unchanged():
+    """The session fails if a test changed a shared RAG data dir."""
+    yield
+    changed = rag_private_index.changed(_RAG_SHARED)
+    assert not changed, (
+        f"the shared RAG index changed during the tests ({len(changed)} files; "
+        "a test wrote it, or a running server opened it): " + ", ".join(changed[:20])
+    )
 
 
 @pytest.fixture(autouse=True)

@@ -11,18 +11,18 @@ fs_safety, network_safety, review_fixes) run unconditionally.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
 
 try:
-    from rag_mcp.index import DEFAULT_INDEX_DIR, RAGIndex
+    from rag_mcp.index import RAGIndex
     from rag_mcp.server import RAGServer
+    from rag_mcp.utils import resolve_data_dir
 except ImportError:
     RAGIndex = None  # type: ignore[assignment,misc]
     RAGServer = None  # type: ignore[assignment,misc]
-    DEFAULT_INDEX_DIR = ""
+    resolve_data_dir = None  # type: ignore[assignment]
 
 _SKIP_MSG = "RAG index not built. Run `python -m rag_mcp.build` to enable these tests."
 _MISSING_MSG = (
@@ -32,8 +32,7 @@ _MISSING_MSG = (
 
 def _chroma_dir() -> Path:
     """Return the expected chroma directory path."""
-    index_dir = Path(os.environ.get("RAG_INDEX_DIR", DEFAULT_INDEX_DIR))
-    return index_dir / "chroma"
+    return resolve_data_dir() / "chroma"
 
 
 def rag_index_available() -> bool:

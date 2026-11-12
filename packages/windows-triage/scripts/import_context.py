@@ -10,17 +10,20 @@ This script populates context.db with risk enrichment data from:
 
 Prerequisites:
     1. Run init_databases.py first
-    2. Clone repositories into data/sources/:
-       cd data/sources
-       git clone https://github.com/LOLBAS-Project/LOLBAS.git
-       git clone https://github.com/magicsword-io/LOLDrivers.git
-       git clone https://github.com/wietze/HijackLibs.git
+    2. The three repositories cloned under data/sources/ (LOLBAS, LOLDrivers,
+       HijackLibs): import_all.py --fetch clones them and runs this script
 
 Usage:
     python scripts/import_context.py
+    python scripts/import_context.py --sync-commit LOLBAS=<commit> ...
+
+Each --sync-commit <clone dir name>=<commit> is recorded on that source's row
+only when that source imported with no problem; a source with no row fails the run.
 """
 
+import argparse
 import logging
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -28,6 +31,7 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
+import update_sources
 from windows_triage.importers import (
     import_hijacklibs,
     import_lolbas,
@@ -40,20 +44,75 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Each git source: its clone dir name under data/sources, and its sources row
+SYNC_ROWS = {
+    update_sources.clone_dir(entry): entry["db_source_key"]
+    for entry in update_sources.SOURCES.values()
+    if entry["db"] == "context.db"
+}
 
-def main():
+
+def _sync_commit(text: str) -> tuple[str, str]:
+    name, sep, commit = text.partition("=")
+    if not sep or name not in SYNC_ROWS or not commit:
+        raise argparse.ArgumentTypeError(
+            f"expected <{'|'.join(SYNC_ROWS)}>=<commit>, got {text!r}"
+        )
+    return name, commit
+
+
+def record_sync(db_path: Path, row: str, commit: str) -> bool:
+    """Record the commit on the sources row; False when there is no such row."""
+    conn = sqlite3.connect(db_path)
+    try:
+        changed = conn.execute(
+            "UPDATE sources SET last_sync_commit = ?, last_sync_time = datetime('now') "
+            "WHERE name = ?",
+            (commit, row),
+        ).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    return changed == 1
+
+
+def main(argv: list[str] | None = None):
+    parser = argparse.ArgumentParser(description="Import context data into context.db")
+    parser.add_argument(
+        "--db",
+        default=None,
+        help="context.db to import into (default: data/context.db)",
+    )
+    parser.add_argument(
+        "--sources-dir", default=None, help="Clones dir (default: data/sources)"
+    )
+    parser.add_argument(
+        "--sync-commit",
+        action="append",
+        type=_sync_commit,
+        default=[],
+        metavar="NAME=COMMIT",
+        help="Record COMMIT for the source cloned as NAME, if it imports cleanly",
+    )
+    parser.add_argument("--verbose", action="store_true", help="Verbose output")
+    args = parser.parse_args([] if argv is None else argv)
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+    commits = dict(args.sync_commit)
+
     project_root = Path(__file__).parent.parent
     data_dir = project_root / "data"
-    sources_dir = data_dir / "sources"
+    sources_dir = Path(args.sources_dir) if args.sources_dir else data_dir / "sources"
 
     # Check database exists
-    context_db = data_dir / "context.db"
+    context_db = Path(args.db) if args.db else data_dir / "context.db"
     if not context_db.exists():
         logger.error("context.db not found. Run: python scripts/init_databases.py")
         sys.exit(1)
 
     total_stats = {}
     problems: list[str] = []  # an importer with errors, or nothing imported
+    imported: set[str] = set()  # the git sources that imported with no problem
 
     # Import LOLBAS
     lolbas_dir = sources_dir / "LOLBAS"
@@ -66,6 +125,8 @@ def main():
             problems.append(
                 f"LOLBAS: {stats['errors']} error(s), {stats['lolbins_imported']} imported"
             )
+        else:
+            imported.add("LOLBAS")
     else:
         logger.warning("LOLBAS not cloned. Skipping.")
         logger.warning(
@@ -87,6 +148,8 @@ def main():
             problems.append(
                 f"LOLDrivers: {stats['errors']} error(s), {stats['samples_imported']} imported"
             )
+        else:
+            imported.add("LOLDrivers")
     else:
         logger.warning("LOLDrivers not cloned. Skipping.")
         logger.warning(
@@ -110,6 +173,8 @@ def main():
             problems.append(
                 f"HijackLibs: {stats['errors']} error(s), {stats['entries_imported']} entries"
             )
+        else:
+            imported.add("HijackLibs")
     else:
         logger.warning("HijackLibs not cloned. Skipping.")
         logger.warning("  Clone: git clone https://github.com/wietze/HijackLibs.git")
@@ -125,6 +190,15 @@ def main():
             f"{stats['processes_imported']} imported"
         )
 
+    # Record each given commit on its source's row, for a clean import only
+    for name, commit in commits.items():
+        if name not in imported:
+            logger.warning(f"{name}: not imported cleanly; commit not recorded")
+        elif not record_sync(context_db, SYNC_ROWS[name], commit):
+            problems.append(
+                f"{name}: no sources row {SYNC_ROWS[name]}; commit not recorded"
+            )
+
     # Print summary
     print("\n" + "=" * 60)
     print("CONTEXT IMPORT SUMMARY")
@@ -133,8 +207,6 @@ def main():
         print(f"  {key}: {value}")
 
     # Show final database stats
-    import sqlite3
-
     conn = sqlite3.connect(context_db)
     c = conn.cursor()
 
@@ -158,4 +230,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -27,6 +28,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import zstandard as zstd
+
+from .. import constants
+from ..utils import resolve_data_dir
+
+MIN_RECORD_COUNT = 20000
+
+# The one bundle member packed from the package root, not the data dir
+ATTRIBUTION = "ATTRIBUTION.md"
+ATTRIBUTION_SRC = Path(__file__).resolve().parents[3] / ATTRIBUTION
+
+
+def _member_path(data_dir: Path, name: str) -> Path:
+    return ATTRIBUTION_SRC if name == ATTRIBUTION else data_dir / name
 
 
 def _build_index(data_dir: Path) -> int:
@@ -43,18 +57,70 @@ def _build_index(data_dir: Path) -> int:
     return result.total_records
 
 
+def _packed_metadata(path: Path) -> bytes | None:
+    """metadata.json as packed without refreshed_at, which only a refresh on
+    this machine writes; None (pack the file as it is) when it has no such
+    key. The data dir's own file is never changed."""
+    try:
+        metadata = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(metadata, dict) or "refreshed_at" not in metadata:
+        return None
+    del metadata["refreshed_at"]
+    return json.dumps(metadata, indent=2).encode("utf-8")
+
+
 def _create_tarball(data_dir: Path, output_path: Path) -> None:
-    """Create a zstd-compressed tarball of the index data."""
+    """Create a zstd-compressed tarball of the bundle members.
+
+    Exits 1 naming each member of constants.BUNDLE_MEMBERS that is missing
+    (ATTRIBUTION.md from the package root, the rest from data_dir). Of the
+    source JSONLs, only the enabled sources' are packed.
+    """
+    from ..sources import SOURCES, load_disabled_sources
+
+    members = constants.BUNDLE_MEMBERS
+    missing = [name for name in members if not _member_path(data_dir, name).exists()]
+    if missing:
+        for name in missing:
+            where = ATTRIBUTION_SRC.parent if name == ATTRIBUTION else data_dir
+            print(f"ERROR: Bundle member not found in {where}: {name}")
+        sys.exit(1)
+
+    disabled = load_disabled_sources(data_dir)
+    enabled = {name for name in SOURCES if name not in disabled}
+
+    def packed(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
+        parts = info.name.split("/")
+        if (
+            len(parts) == 2
+            and parts[0] == constants.SOURCES_DIR_NAME
+            and parts[1].endswith(".jsonl")
+            and parts[1][: -len(".jsonl")] not in enabled
+        ):
+            print(f"  Skipped (not an enabled source): {info.name}")
+            return None
+        return info
+
     print(f"Creating {output_path.name}...")
 
     # Create uncompressed tar in memory, then compress with zstd
     tar_tmp = output_path.with_suffix(".tar")
     with tarfile.open(tar_tmp, "w") as tar:
-        for subpath in ("chroma", "sources", "metadata.json", "user_state.json"):
-            full_path = data_dir / subpath
-            if full_path.exists():
-                tar.add(full_path, arcname=subpath)
-                print(f"  Added: {subpath}")
+        for subpath in members:
+            # a member under another one (sources/licenses) is packed with it
+            if any(subpath.startswith(f"{other}/") for other in members):
+                continue
+            path = _member_path(data_dir, subpath)
+            data = _packed_metadata(path) if subpath == "metadata.json" else None
+            if data is None:
+                tar.add(path, arcname=subpath, filter=packed)
+            else:
+                info = tar.gettarinfo(str(path), arcname=subpath)
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+            print(f"  Added: {subpath}")
 
     # Compress with zstd level 1 (fast, good enough)
     cctx = zstd.ZstdCompressor(level=1)
@@ -100,16 +166,14 @@ def main() -> None:
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Data dir is relative to the package
-    pkg_root = Path(__file__).resolve().parent.parent.parent.parent
-    data_dir = Path(os.environ.get("RAG_INDEX_DIR", pkg_root / "data"))
+    data_dir = resolve_data_dir()
 
     if not args.skip_build:
         print("=" * 60)
         print("Step 1: Building full index from source")
         print("=" * 60)
         record_count = _build_index(data_dir)
-        if record_count < 20000:
+        if record_count < MIN_RECORD_COUNT:
             print(f"\nERROR: Only {record_count:,} records (expected 20,000+)")
             sys.exit(1)
         print(f"\nBuild complete: {record_count:,} records")
@@ -122,7 +186,7 @@ def main() -> None:
         with open(metadata_path, encoding="utf-8") as f:
             metadata = json.load(f)
         record_count = metadata.get("record_count", 0)
-        if record_count < 20000:
+        if record_count < MIN_RECORD_COUNT:
             print(f"ERROR: Only {record_count:,} records (expected 20,000+)")
             sys.exit(1)
         print(f"Using existing index: {record_count:,} records")
@@ -137,10 +201,9 @@ def main() -> None:
     _generate_checksums(output_dir)
 
     # Copy ATTRIBUTION.md to output directory
-    attr_src = Path(__file__).resolve().parent.parent.parent.parent / "ATTRIBUTION.md"
-    attr_dest = output_dir / "ATTRIBUTION.md"
-    if attr_src.exists():
-        shutil.copy2(attr_src, attr_dest)
+    attr_dest = output_dir / ATTRIBUTION
+    if ATTRIBUTION_SRC.exists():
+        shutil.copy2(ATTRIBUTION_SRC, attr_dest)
         print("  Copied: ATTRIBUTION.md")
     else:
         print("  WARNING: ATTRIBUTION.md not found in package root")

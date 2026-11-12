@@ -1400,9 +1400,17 @@ if $INSTALL_TRIAGE; then
     # Ensure zstandard is available for the download module
     uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" zstandard 2>/dev/null || true
 
-    # Check if databases already exist
+    # Check if databases already exist: each DB the release file list fetches
+    # by default; a list that can't be read counts them as missing
+    TRIAGE_DBS=$("$VENV_PYTHON" -c "from windows_triage import release_manifest as m; print(' '.join(m.default_databases()))") || TRIAGE_DBS=""
+    [[ -n "$TRIAGE_DBS" ]] || warn "The triage release file list could not be read from the venv ($VENV_PYTHON); the databases count as missing"
+    DB_PRESENT=true
+    [[ -n "$TRIAGE_DBS" ]] || DB_PRESENT=false
+    for db in $TRIAGE_DBS; do
+        [[ -s "$DB_DIR/$db" ]] || DB_PRESENT=false
+    done
     DB_EXISTS=false
-    if [[ -s "$DB_DIR/known_good.db" ]] && [[ -s "$DB_DIR/context.db" ]]; then
+    if $DB_PRESENT; then
         if "$VENV_PYTHON" -c "import sqlite3; sqlite3.connect('$DB_DIR/known_good.db').execute('SELECT 1')" 2>/dev/null; then
             DB_EXISTS=true
         fi
@@ -1435,28 +1443,16 @@ if $INSTALL_TRIAGE; then
             }
             ;;
         2)
+            # import_all clones each source into a temp dir and replaces data/
+            # only when every clone and import passes and each table it built
+            # reaches its floor
             info "Building databases from source..."
-            DATA_DIR="$WT_DIR/data/sources"
-            mkdir -p "$DATA_DIR"
-
-            info "Cloning VanillaWindowsReference..."
-            if [[ ! -d "$DATA_DIR/VanillaWindowsReference" ]]; then
-                git clone --quiet https://github.com/AndrewRathbun/VanillaWindowsReference.git "$DATA_DIR/VanillaWindowsReference"
+            if "$VENV_PYTHON" "$WT_DIR/scripts/import_all.py" --fetch --skip-registry; then
+                ok "Databases built from source"
+            else
+                err "Building the databases from source failed (see the ERROR lines above); the installed data was not changed"
+                exit 1
             fi
-
-            info "Cloning LOLBAS, LOLDrivers, HijackLibs..."
-            for repo in LOLBAS LOLDrivers HijackLibs; do
-                if [[ ! -d "$DATA_DIR/$repo" ]]; then
-                    git clone --quiet "https://github.com/LOLBAS-Project/$repo.git" "$DATA_DIR/$repo" 2>/dev/null || \
-                    git clone --quiet "https://github.com/magicsword-io/$repo.git" "$DATA_DIR/$repo" 2>/dev/null || \
-                    warn "Could not clone $repo"
-                fi
-            done
-
-            info "Initializing databases and importing..."
-            (cd "$WT_DIR" && "$VENV_PYTHON" scripts/init_databases.py && \
-                "$VENV_PYTHON" scripts/import_all.py --skip-registry) && \
-                ok "Databases imported" || warn "Database import had issues. See output above."
             ;;
         3|*)
             info "Skipping database setup."
@@ -1465,7 +1461,7 @@ if $INSTALL_TRIAGE; then
     esac
 
     # Validate triage databases (after all download/build/skip paths)
-    for db in known_good.db context.db; do
+    for db in $TRIAGE_DBS; do
         db_path="$DB_DIR/$db"
         if [ -s "$db_path" ]; then
             if "$VENV_PYTHON" -c "import sqlite3; sqlite3.connect('$db_path').execute('SELECT 1')" 2>/dev/null; then
@@ -2497,23 +2493,24 @@ if $INSTALL_RAG || $INSTALL_TRIAGE; then
     echo ""
 fi
 
-RAG_STALE_COUNT=""
 if $INSTALL_RAG; then
-    RAG_STALE_COUNT=$(timeout 60 bash -c "\"$VENV_PYTHON\" -m rag_mcp.status --json 2>/dev/null" | \
+    # One status run: its summary line is printed as given, and its state
+    # decides the refresh offer
+    RAG_FRESH=$(timeout 60 bash -c "\"$VENV_PYTHON\" -m rag_mcp.status --json 2>/dev/null" | \
         "$VENV_PYTHON" -c "
 import sys, json
-data = json.load(sys.stdin)
-unread = ('Error reading ChromaDB', 'Could not read metadata.json')
-if any(w.startswith(unread) for w in data.get('warnings', [])):
-    sys.exit(1)  # an index it couldn't read isn't an empty one
-docs = data.get('document_count', 0)
-print(-1 if docs <= 0 else sum(1 for s in data.get('online_sources', []) if s.get('has_update')))
-" 2>/dev/null) || RAG_STALE_COUNT=""
+fresh = json.load(sys.stdin)['freshness']
+print(fresh['state'], fresh['line'])
+" 2>/dev/null) || RAG_FRESH=""
+    RAG_STATE=${RAG_FRESH%% *}
+    RAG_LINE=${RAG_FRESH#* }
 
-    if [[ "$RAG_STALE_COUNT" == "-1" ]]; then  # no documents: an absent or partly built index
-        warn "RAG knowledge base: the index is empty, so knowledge search returns nothing. Download it with GITHUB_TOKEN set (GitHub can refuse unauthenticated downloads): $VENV_PYTHON -m rag_mcp.scripts.download_index, then restart the gateway (systemctl --user restart vhir-gateway, or however you start it)"
-    elif [[ -n "$RAG_STALE_COUNT" ]] && [[ "$RAG_STALE_COUNT" -gt 0 ]] 2>/dev/null; then
-        echo -e "  ${BOLD}RAG knowledge base:${NC} $RAG_STALE_COUNT of 23 sources have updates available."
+    if [[ -z "$RAG_FRESH" ]]; then
+        warn "Could not check RAG status. Check later with: $VENV_PYTHON -m rag_mcp.status"
+    elif [[ "$RAG_STATE" == "absent" ]]; then
+        warn "$RAG_LINE Download it with GITHUB_TOKEN set (GitHub can refuse unauthenticated downloads): $VENV_PYTHON -m rag_mcp.scripts.download_index, then restart the gateway (systemctl --user restart vhir-gateway, or however you start it)"
+    elif [[ "$RAG_STATE" == "updates" ]]; then
+        printf '  %s\n' "$RAG_LINE"
         echo "  Refresh now or later with: $VENV_PYTHON -m rag_mcp.refresh"
         echo "  Time: a few minutes to a couple of hours depending on changes and CPU."
         if ! $AUTO_YES; then
@@ -2521,15 +2518,23 @@ print(-1 if docs <= 0 else sum(1 for s in data.get('online_sources', []) if s.ge
                 ANONYMIZED_TELEMETRY=False "$VENV_PYTHON" -m rag_mcp.refresh
             fi
         fi
-    elif [[ -n "$RAG_STALE_COUNT" ]] && [[ "$RAG_STALE_COUNT" -eq 0 ]] 2>/dev/null; then
-        ok "RAG knowledge base: all 23 sources are current."
+    elif [[ "$RAG_STATE" == "current" ]]; then
+        ok "$RAG_LINE"
     else
-        warn "Could not check RAG status. Check later with: $VENV_PYTHON -m rag_mcp.status"
+        warn "$RAG_LINE"
     fi
 fi
 
 if $INSTALL_TRIAGE; then
-    if [[ -s "$DB_DIR/known_good.db" ]] && [[ -s "$DB_DIR/context.db" ]]; then
+    # Each DB the release file list fetches by default, as in the setup above
+    TRIAGE_DBS=$("$VENV_PYTHON" -c "from windows_triage import release_manifest as m; print(' '.join(m.default_databases()))") || TRIAGE_DBS=""
+    [[ -n "$TRIAGE_DBS" ]] || warn "The triage release file list could not be read from the venv ($VENV_PYTHON); the databases count as missing"
+    TRIAGE_OK=true
+    [[ -n "$TRIAGE_DBS" ]] || TRIAGE_OK=false
+    for db in $TRIAGE_DBS; do
+        [[ -s "$DB_DIR/$db" ]] || TRIAGE_OK=false
+    done
+    if $TRIAGE_OK; then
         ok "Triage databases: installed. Re-download when needed: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
     else
         warn "Triage databases: not installed; windows-triage won't start without them. Download: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"

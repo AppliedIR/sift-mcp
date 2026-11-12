@@ -34,8 +34,9 @@ from .ingest import (
 )
 from .sources import (
     SOURCES,
-    SOURCES_DIR,
     check_source_updates,
+    load_sources_state,
+    sources_dir,
     sync_source,
 )
 from .stores import (
@@ -54,9 +55,6 @@ from .utils import (
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
-
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 
 
 @dataclass
@@ -176,6 +174,7 @@ def refresh(
     # =========================================================================
     # Phase 1: Online Sources
     # =========================================================================
+    versions_before = _recorded_versions(data_dir)
     if not skip_online:
         logger.info("=" * 60)
         logger.info("Phase 1: Checking Online Sources")
@@ -187,11 +186,11 @@ def refresh(
                 result.errors.append(f"Unknown source: {source_name}")
             else:
                 _refresh_single_source(
-                    source_name, collection, model, check_only, result
+                    source_name, collection, model, check_only, result, data_dir
                 )
         else:
             # All sources
-            updates = check_source_updates()
+            updates = check_source_updates(data_dir)
             result.sources_checked = len(updates)
 
             for status in updates:
@@ -204,7 +203,7 @@ def refresh(
                     )
                     if not check_only:
                         _refresh_single_source(
-                            status.name, collection, model, check_only, result
+                            status.name, collection, model, check_only, result, data_dir
                         )
                 else:
                     logger.info(
@@ -345,6 +344,13 @@ def refresh(
                 "source_count": len(all_sources),
                 "sources": sorted(all_sources),
             }
+            # refreshed_at: when a refresh last changed an online source's
+            # recorded version; any other refresh keeps the value it finds
+            refreshed_at = existing_metadata.get("refreshed_at")
+            if _recorded_versions(data_dir) != versions_before:
+                refreshed_at = datetime.now(timezone.utc).isoformat()
+            if refreshed_at:
+                metadata["refreshed_at"] = refreshed_at
 
             with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2)
@@ -402,6 +408,15 @@ def refresh(
     return result
 
 
+def _recorded_versions(data_dir: Path) -> dict[str, Any]:
+    """Each online source's recorded version in sources_state.json. A sync
+    rewrites last_sync on every success, so only the version is compared."""
+    sources = load_sources_state(data_dir).get("sources")
+    if not isinstance(sources, dict):
+        return {}
+    return {n: e.get("version") for n, e in sources.items() if isinstance(e, dict)}
+
+
 def _log_refresh_summary(result: RefreshResult, check_only: bool) -> None:
     """Log structured refresh summary for monitoring/alerting."""
     import json
@@ -427,7 +442,12 @@ def _log_refresh_summary(result: RefreshResult, check_only: bool) -> None:
 
 
 def _refresh_single_source(
-    name: str, collection: Any, model: Any, check_only: bool, result: RefreshResult
+    name: str,
+    collection: Any,
+    model: Any,
+    check_only: bool,
+    result: RefreshResult,
+    data_dir: Path,
 ) -> None:
     """Refresh a single online source."""
     if check_only:
@@ -436,14 +456,14 @@ def _refresh_single_source(
     logger.info(f"  Syncing {name}...")
 
     # Sync source
-    fetch_result = sync_source(name, force=True)
+    fetch_result = sync_source(name, force=True, data_dir=data_dir)
 
     if fetch_result.status != "success":
         result.warnings.append(f"{name}: {fetch_result.message}")
         return
 
     # Load new records
-    cache_path = SOURCES_DIR / f"{name}.jsonl"
+    cache_path = sources_dir(data_dir) / f"{name}.jsonl"
     if not cache_path.exists():
         result.warnings.append(f"{name}: No cache file after sync")
         return

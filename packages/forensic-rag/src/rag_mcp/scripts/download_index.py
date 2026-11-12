@@ -31,9 +31,28 @@ ASSETS = ("rag-index.tar.zst", "rag-checksums.sha256")
 MAX_ATTEMPTS = 3
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 TAG_PREFIX = "rag-index-"
-# What a bundle may install: the shipped store. Anything else (a user/ tree,
-# say) is skipped and named, so the examiner's store is never overwritten.
-SHIPPED_MEMBERS = ("chroma", "sources", "metadata.json", "user_state.json")
+STATE_NAME = "sources_state.json"
+# Where the install puts the bundle's state until the index verifies
+STAGED_STATE_NAME = "sources_state.json.part"
+
+
+def _bundle_members() -> tuple[str, ...]:
+    """What a bundle may install: constants.BUNDLE_MEMBERS, read at call time.
+    Anything else (a user/ tree, say) is skipped and named, so the examiner's
+    store is never overwritten. This file is also loaded on its own, outside
+    its package; constants.py is then loaded from beside it."""
+    try:
+        from .. import constants
+    except ImportError:
+        import importlib.util
+
+        path = Path(__file__).resolve().parents[1] / "constants.py"
+        spec = importlib.util.spec_from_file_location("rag_mcp_constants", path)
+        if spec is None or spec.loader is None:
+            raise
+        constants = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(constants)
+    return tuple(constants.BUNDLE_MEMBERS)
 
 
 def _github_headers() -> dict[str, str]:
@@ -155,17 +174,25 @@ def _verify_checksums(temp_dir: Path) -> bool:
     return ok
 
 
-def _shipped_member(name: str) -> bool:
-    name = name[2:] if name.startswith("./") else name
-    top = name.split("/", 1)[0]
-    return top in SHIPPED_MEMBERS and (top in ("chroma", "sources") or name == top)
+def _member_name(name: str) -> str:
+    return name[2:] if name.startswith("./") else name
 
 
-def _extract_bundle(src: Path, dest: Path) -> list[str]:
+def _shipped_member(name: str, members: tuple[str, ...]) -> bool:
+    """A listed member, or a path under one."""
+    return _member_name(name).split("/", 1)[0] in members
+
+
+def _extract_bundle(
+    src: Path, dest: Path, *, staged_state: str | None = None
+) -> list[str]:
     """Extract a .tar.zst archive's shipped members to dest; returns the
-    names of the members it skipped."""
+    names of the members it skipped. With staged_state, the bundle's
+    sources_state.json is written to dest under that name instead, for the
+    caller to move into place once the index verifies."""
     import zstandard as zstd
 
+    members = _bundle_members()
     skipped: list[str] = []
 
     def shipped(tar):
@@ -173,10 +200,16 @@ def _extract_bundle(src: Path, dest: Path) -> list[str]:
             # Only plain files and folders: a link, or a ".." part, could
             # still land outside the shipped folders (in user/, say)
             if (
-                _shipped_member(member.name)
+                _shipped_member(member.name, members)
                 and (member.isreg() or member.isdir())
                 and ".." not in Path(member.name).parts
             ):
+                if (
+                    staged_state is not None
+                    and member.isreg()
+                    and _member_name(member.name) == STATE_NAME
+                ):
+                    member.name = staged_state
                 yield member
                 continue
             # A skipped member that would leave dest is still refused
@@ -330,6 +363,7 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
         print("and download again.")
         return False
 
+    staged = dest / STAGED_STATE_NAME
     for attempt in range(1, MAX_ATTEMPTS + 1):
         temp_dir = Path(tempfile.mkdtemp(prefix="rag-index-"))
         try:
@@ -369,8 +403,14 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
                 return False
 
             # Extract bundle
+            # The bundle's state goes in under a temp name and replaces the
+            # dest's only once the index verifies; a failed install leaves
+            # the state it found
             print("\nExtracting bundle...")
-            skipped = _extract_bundle(temp_dir / "rag-index.tar.zst", dest)
+            staged.unlink(missing_ok=True)
+            skipped = _extract_bundle(
+                temp_dir / "rag-index.tar.zst", dest, staged_state=STAGED_STATE_NAME
+            )
             for name in skipped:
                 print(f"  Skipped (not part of the shipped index): {name}")
             print("  Extraction complete")
@@ -386,6 +426,10 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
             if not _verify_index(dest):
                 print("Index verification failed.")
                 return False
+            if staged.exists():
+                os.replace(staged, dest / STATE_NAME)
+            else:  # the old index's state is not the new index's
+                (dest / STATE_NAME).unlink(missing_ok=True)
 
             # Update metadata with download info
             metadata_path = dest / "metadata.json"
@@ -423,6 +467,7 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
 
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+            staged.unlink(missing_ok=True)
 
     return False
 

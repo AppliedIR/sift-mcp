@@ -17,10 +17,13 @@ import logging
 import os
 import random
 import re
+import shutil
+import stat
 import subprocess
 import tempfile
 import time
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,15 +36,25 @@ from urllib.request import Request, urlopen
 import toml
 import yaml
 
-from .utils import atomic_write_json, compute_file_hash
+from .constants import SOURCES_DIR_NAME
+from .utils import atomic_write_json, compute_file_hash, resolve_data_dir
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
-SOURCES_DIR = DEFAULT_DATA_DIR / "sources"
-SOURCES_STATE_FILE = DEFAULT_DATA_DIR / "sources_state.json"
-SOURCES_CONFIG_FILE = DEFAULT_DATA_DIR / "sources_config.json"
+
+def sources_dir(data_dir: str | Path | None = None) -> Path:
+    """The parsed-source JSONL dir under the data dir (decided at call time)."""
+    return resolve_data_dir(data_dir) / SOURCES_DIR_NAME
+
+
+def state_file(data_dir: str | Path | None = None) -> Path:
+    """The source state file under the data dir (decided at call time)."""
+    return resolve_data_dir(data_dir) / "sources_state.json"
+
+
+def config_file(data_dir: str | Path | None = None) -> Path:
+    """The source config file under the data dir (decided at call time)."""
+    return resolve_data_dir(data_dir) / "sources_config.json"
 
 
 @dataclass
@@ -67,6 +80,8 @@ class FetchResult:
     message: str = ""
     version: str = ""
     cache_hash: str = ""
+    # a cloned source's missing or oversized root licence: fails a strict build
+    licence_error: str = ""
 
 
 @dataclass
@@ -387,14 +402,29 @@ def _is_retryable_error(error: Exception) -> bool:
     return False
 
 
+# When the lookups in this context must end (a time.monotonic() value), or None
+_LOOKUP_DEADLINE: ContextVar[float | None] = ContextVar("lookup_deadline", default=None)
+
+
+def _capped(seconds: float) -> float:
+    """seconds, capped at the time left before the lookup deadline (never below 0)."""
+    deadline = _LOOKUP_DEADLINE.get()
+    if deadline is None:
+        return seconds
+    return max(0.0, min(seconds, deadline - time.monotonic()))
+
+
 def _fetch_url_once(
     url: str, headers: dict | None = None, max_bytes: int | None = None
 ) -> bytes:
     """Single fetch attempt (internal). Raises on error."""
     if max_bytes is None:
         max_bytes = MAX_DOWNLOAD_BYTES
+    timeout = _capped(30)
+    if timeout <= 0:
+        raise TimeoutError("the lookup time limit was reached")
     req = Request(url, headers=headers or get_github_headers())
-    with urlopen(req, timeout=30) as response:
+    with urlopen(req, timeout=timeout) as response:
         # Security: Validate final URL after redirects (SSRF protection)
         final_url = response.geturl()
         if final_url != url:
@@ -502,7 +532,7 @@ def fetch_url(
                     logger.warning(
                         f"HTTP {e.code}, retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries + 1})"
                     )
-                    time.sleep(delay)
+                    time.sleep(_capped(delay))
                     continue
             else:
                 # Other 4xx - don't retry
@@ -516,7 +546,7 @@ def fetch_url(
                 logger.warning(
                     f"Fetch failed ({type(e).__name__}), retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries + 1})"
                 )
-                time.sleep(delay)
+                time.sleep(_capped(delay))
                 continue
             else:
                 logger.error(f"Failed to fetch URL: {e}")
@@ -573,17 +603,41 @@ def get_feed_version(url: str) -> str | None:
     return None
 
 
+def _is_cloned(source: SourceConfig) -> bool:
+    """Whether fetch_and_parse clones this source: its version is then the
+    commit the clone checked out, whatever its source_type."""
+    return (
+        source.source_type not in ("json_feed", "embedded")
+        and source.name != "mitre_attack"
+    )
+
+
 def get_latest_version(source: SourceConfig) -> str | None:
     """Get latest version for a source without downloading."""
-    if source.source_type == "github_commits":
-        return get_latest_commit(source.repo, source.branch)
-    elif source.source_type == "github_releases":
-        return get_latest_release(source.repo)
-    elif source.source_type == "json_feed":
-        return get_feed_version(source.repo)
-    elif source.source_type == "embedded":
+    if source.source_type == "embedded":
         return "embedded"  # Static version, no remote check needed
+    if _is_cloned(source):
+        # the head of the branch the clone takes, as the sync records it
+        return get_latest_commit(source.repo, source.branch)
+    if source.source_type == "github_releases":
+        return get_latest_release(source.repo)
+    if source.source_type == "json_feed":
+        return get_feed_version(source.repo)
     return None
+
+
+def _looked_up_version(source: SourceConfig) -> str | None:
+    """The version lookup of a source that is not cloned; None when it fails,
+    after a line naming the source and the failed lookup."""
+    try:
+        version = get_latest_version(source)
+    except Exception as e:
+        logger.debug(f"Version lookup for {source.name} raised: {e}")
+        version = None
+    if not version:
+        logger.warning(f"  {source.name}: version lookup failed; nothing synced")
+        return None
+    return version
 
 
 # Security: Allowed hosts for URL fetching (SSRF protection)
@@ -654,35 +708,131 @@ def clone_repo(repo: str, branch: str, dest: Path) -> bool:
         return False
 
 
+LICENCE_FILE = re.compile(r"^(LICEN[CS]E|NOTICE|COPYING)", re.IGNORECASE)
+LICENCE_MAX_BYTES = 1024 * 1024
+
+
+def _copy_licences(name: str, repo_dir: Path, dest: Path) -> str:
+    """Copy a clone's root licence files to dest, replacing what dest held.
+
+    Only regular files at the clone root count: a link, or a licence only in
+    a subdirectory, is none. Returns "" or the problem: no licence file, or
+    one over 1 MiB (never truncated, never skipped)."""
+    if dest.exists():
+        shutil.rmtree(dest)
+    found = []
+    for path in sorted(repo_dir.iterdir()):
+        if not LICENCE_FILE.match(path.name):
+            continue
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode):
+            continue
+        if info.st_size > LICENCE_MAX_BYTES:
+            return f"root licence file {path.name} is over 1 MiB ({info.st_size} bytes)"
+        found.append(path)
+    if not found:
+        return "no root licence file (LICENSE, LICENCE, NOTICE or COPYING)"
+    dest.mkdir(parents=True)
+    for path in found:
+        shutil.copyfile(path, dest / path.name)
+    logger.info(f"  {name}: {len(found)} licence file(s) copied")
+    return ""
+
+
+HEAD_PATTERN = re.compile(r"^[0-9a-f]{40}([0-9a-f]{24})?$")
+
+
+def _clone_head(repo_dir: Path) -> str | None:
+    """The commit a clone checked out, first 12 hex; None when unreadable."""
+    if not (repo_dir / ".git").exists():
+        return None
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    head = out.stdout.strip()
+    return head[:12] if HEAD_PATTERN.match(head) else None
+
+
+def _remote_head(source: SourceConfig) -> str | None:
+    """The configured branch's head on the remote, first 12 hex, by git
+    ls-remote (no API request); None when it can't be read."""
+    _validate_repo_format(source.repo)
+    _validate_branch_format(source.branch)
+    ref = f"refs/heads/{source.branch}"
+    try:
+        out = subprocess.run(
+            ["git", "ls-remote", f"https://github.com/{source.repo}.git", ref],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in out.stdout.splitlines():
+        sha, _, name = line.partition("\t")
+        if name == ref and HEAD_PATTERN.match(sha):
+            return sha[:12]
+    return None
+
+
 # =============================================================================
 # State Management
 # =============================================================================
 
 
-def load_sources_state() -> dict[str, Any]:
-    """Load sources state from file."""
-    if SOURCES_STATE_FILE.exists():
-        try:
-            with open(SOURCES_STATE_FILE, encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, json.JSONDecodeError):
-            pass
-    return {"version": 1, "sources": {}}
+def read_sources_state(
+    data_dir: str | Path | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Read sources_state.json once and say what was found.
+
+    Returns (kind, state). kind is "absent" (no file: no state yet),
+    "unreadable" (a file that cannot be read or parsed as an object, such as
+    a truncated one) or "readable"; state is the file's object, and the empty
+    state unless kind is "readable".
+    """
+    empty: dict[str, Any] = {"version": 1, "sources": {}}
+    path = state_file(data_dir)
+    if not path.exists():
+        return "absent", empty
+    try:
+        with open(path, encoding="utf-8") as f:
+            state = json.load(f)
+    except (OSError, ValueError):
+        return "unreadable", empty
+    if not isinstance(state, dict):
+        return "unreadable", empty
+    return "readable", state
 
 
-def save_sources_state(state: dict[str, Any]) -> None:
+def load_sources_state(data_dir: str | Path | None = None) -> dict[str, Any]:
+    """Load sources state from file (the empty state unless it is readable)."""
+    return read_sources_state(data_dir)[1]
+
+
+def save_sources_state(
+    state: dict[str, Any], data_dir: str | Path | None = None
+) -> None:
     """Save sources state to file.
 
     Security: Uses atomic write to prevent corruption from concurrent access.
     """
-    atomic_write_json(SOURCES_STATE_FILE, state)
+    atomic_write_json(state_file(data_dir), state)
 
 
-def load_disabled_sources() -> set[str]:
+def load_disabled_sources(data_dir: str | Path | None = None) -> set[str]:
     """Load disabled sources from config file."""
-    if SOURCES_CONFIG_FILE.exists():
+    path = config_file(data_dir)
+    if path.exists():
         try:
-            with open(SOURCES_CONFIG_FILE, encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 config = json.load(f)
                 return set(config.get("disabled_sources", []))
         except (OSError, json.JSONDecodeError):
@@ -800,8 +950,9 @@ Cleanup:
     return len(records)
 
 
-def parse_stix(repo_dir: Path, output_path: Path) -> int:
-    """Parse MITRE ATT&CK STIX data."""
+def parse_stix(repo_dir: Path, output_path: Path, ref: str = "master") -> int:
+    """Parse MITRE ATT&CK STIX data, downloaded at ref (the release tag the
+    sync looked up, so content and recorded version agree)."""
     records = []
 
     # MITRE ATT&CK STIX data is best fetched directly (single large JSON file)
@@ -810,7 +961,9 @@ def parse_stix(repo_dir: Path, output_path: Path) -> int:
 
     if not stix_file or not stix_file.exists():
         # Download directly - this is more reliable
-        url = "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json"
+        _validate_branch_format(ref)
+        repo = SOURCES["mitre_attack"].repo
+        url = f"https://raw.githubusercontent.com/{repo}/{ref}/enterprise-attack/enterprise-attack.json"
         logger.info("  Downloading ATT&CK STIX data directly...")
         data = fetch_url(url, headers={"User-Agent": "rag-mcp/2.0"})
         if not data:
@@ -2430,36 +2583,36 @@ def fetch_and_parse(source: SourceConfig, output_path: Path) -> FetchResult:
     """Fetch source and parse to JSONL."""
     result = FetchResult(source=source.name, status="error")
 
-    # JSON feeds don't need cloning
-    if source.source_type == "json_feed":
+    # JSON feeds and MITRE ATT&CK are single files, not cloned. The version
+    # is looked up first; the JSONL goes to a pending path and replaces the
+    # cache only once that lookup has succeeded, so a failed lookup leaves the
+    # cache and the state entry as they were.
+    if not _is_cloned(source) and source.source_type != "embedded":
         parser = PARSERS.get(source.parser)
         if parser:
+            version = _looked_up_version(source)
+            if version is None:
+                result.message = "version lookup failed"
+                return result
+            pending = output_path.with_name(f".{output_path.name}.pending")
             try:
-                count = parser(Path(), output_path)  # No repo dir for feeds
+                if source.name == "mitre_attack":
+                    # downloaded at the release tag it records
+                    count = parser(Path(), pending, ref=version)
+                else:
+                    count = parser(Path(), pending)  # No repo dir for feeds
+                if pending.exists():
+                    os.replace(pending, output_path)
                 result.status = "success"
                 result.records = count
-                result.version = get_latest_version(source) or "unknown"
+                result.version = version
                 result.cache_hash = (
                     compute_file_hash(output_path) if output_path.exists() else ""
                 )
             except Exception as e:
                 result.message = str(e)
-        return result
-
-    # Special case: MITRE ATT&CK downloads directly (no clone needed)
-    if source.name == "mitre_attack":
-        parser = PARSERS.get(source.parser)
-        if parser:
-            try:
-                count = parser(Path(), output_path)
-                result.status = "success"
-                result.records = count
-                result.version = get_latest_version(source) or "unknown"
-                result.cache_hash = (
-                    compute_file_hash(output_path) if output_path.exists() else ""
-                )
-            except Exception as e:
-                result.message = str(e)
+            finally:
+                pending.unlink(missing_ok=True)
         return result
 
     # Embedded sources are bundled with the package
@@ -2487,6 +2640,18 @@ def fetch_and_parse(source: SourceConfig, output_path: Path) -> FetchResult:
             result.message = "Failed to clone repository"
             return result
 
+        # The version is the commit this clone checked out; no lookup
+        head = _clone_head(repo_dir)
+        if head is None:
+            result.message = "Could not read the clone's head commit"
+            logger.error(f"  {source.name}: could not read the clone's head commit")
+            return result
+
+        # The clone's root licence files ship beside its records
+        result.licence_error = _copy_licences(
+            source.name, repo_dir, output_path.parent / "licenses" / source.name
+        )
+
         # Run parser
         parser = PARSERS.get(source.parser)
         if not parser:
@@ -2498,7 +2663,7 @@ def fetch_and_parse(source: SourceConfig, output_path: Path) -> FetchResult:
             count = parser(repo_dir, output_path)
             result.status = "success"
             result.records = count
-            result.version = get_latest_version(source) or "unknown"
+            result.version = head
             result.cache_hash = (
                 compute_file_hash(output_path) if output_path.exists() else ""
             )
@@ -2509,38 +2674,63 @@ def fetch_and_parse(source: SourceConfig, output_path: Path) -> FetchResult:
     return result
 
 
-def check_source_updates() -> list[SourceStatus]:
-    """Check all sources for available updates."""
-    state = load_sources_state()
-    disabled = load_disabled_sources()
+def check_source_updates(
+    data_dir: str | Path | None = None,
+    *,
+    read: tuple[str, dict[str, Any]] | None = None,
+    deadline: float | None = None,
+) -> list[SourceStatus]:
+    """Check all sources for available updates.
+
+    read is a read_sources_state() result the caller already made, so one
+    read decides both its own report and this check. deadline (a
+    time.monotonic() value) caps every lookup's timeout at the time left; a
+    source not looked up by then is reported not checked.
+    """
+    data_dir = resolve_data_dir(data_dir)
+    state = (read if read is not None else read_sources_state(data_dir))[1]
+    disabled = load_disabled_sources(data_dir)
     results = []
 
-    for name, source in SOURCES.items():
-        if name in disabled:
-            continue
+    token = _LOOKUP_DEADLINE.set(deadline)
+    try:
+        for name, source in SOURCES.items():
+            # the embedded source has no remote version: never an update
+            if name in disabled or source.source_type == "embedded":
+                continue
 
-        source_state = state.get("sources", {}).get(name, {})
-        current = source_state.get("version", "unknown")
-        latest = get_latest_version(source)
+            source_state = state.get("sources", {}).get(name, {})
+            current = source_state.get("version", "unknown")
+            late = deadline is not None and time.monotonic() >= deadline
+            latest = None if late else get_latest_version(source)
+            error = ""
+            if late:
+                error = "Not checked: the status time limit was reached"
+            elif not latest:
+                error = "Failed to check version"
 
-        results.append(
-            SourceStatus(
-                name=name,
-                current_version=current,
-                latest_version=latest or "unknown",
-                has_update=latest is not None
-                and current != latest
-                and current != "unknown",
-                last_sync=source_state.get("last_sync", "never"),
-                records=source_state.get("records", 0),
-                error="" if latest else "Failed to check version",
+            # an empty or missing lookup is a failed check, never an update; any
+            # other answer that differs (no entry, "unknown", an old tag) is one
+            results.append(
+                SourceStatus(
+                    name=name,
+                    current_version=current,
+                    latest_version=latest or "unknown",
+                    has_update=bool(latest) and current != latest,
+                    last_sync=source_state.get("last_sync", "never"),
+                    records=source_state.get("records", 0),
+                    error=error,
+                )
             )
-        )
+    finally:
+        _LOOKUP_DEADLINE.reset(token)
 
     return results
 
 
-def sync_source(name: str, force: bool = False) -> FetchResult:
+def sync_source(
+    name: str, force: bool = False, data_dir: str | Path | None = None
+) -> FetchResult:
     """Sync a single source."""
     if name not in SOURCES:
         return FetchResult(
@@ -2548,18 +2738,24 @@ def sync_source(name: str, force: bool = False) -> FetchResult:
         )
 
     source = SOURCES[name]
-    disabled = load_disabled_sources()
+    data_dir = resolve_data_dir(data_dir)
+    disabled = load_disabled_sources(data_dir)
 
     if name in disabled:
         return FetchResult(source=name, status="skipped", message="Source is disabled")
 
-    state = load_sources_state()
+    state = load_sources_state(data_dir)
     source_state = state.get("sources", {}).get(name, {})
     current_version = source_state.get("version")
+    output_path = sources_dir(data_dir) / f"{name}.jsonl"
 
-    # Check if update needed
-    if not force:
-        latest = get_latest_version(source)
+    # Check if update needed: skipped only when the recorded version is the
+    # latest and the cache exists; a cloned source asks git ls-remote, not
+    # the API. A forced sync asks nothing here.
+    if not force and output_path.exists():
+        latest = (
+            _remote_head(source) if _is_cloned(source) else get_latest_version(source)
+        )
         if latest and latest == current_version:
             return FetchResult(
                 source=name,
@@ -2570,7 +2766,6 @@ def sync_source(name: str, force: bool = False) -> FetchResult:
             )
 
     # Fetch and parse
-    output_path = SOURCES_DIR / f"{name}.jsonl"
     logger.info(f"Syncing {name}...")
     result = fetch_and_parse(source, output_path)
 
@@ -2582,15 +2777,18 @@ def sync_source(name: str, force: bool = False) -> FetchResult:
             "records": result.records,
             "cache_hash": result.cache_hash,
         }
-        save_sources_state(state)
+        save_sources_state(state, data_dir)
         logger.info(f"  Synced {name}: {result.records} records")
 
     return result
 
 
-def sync_all_sources(force: bool = False) -> list[FetchResult]:
+def sync_all_sources(
+    force: bool = False, data_dir: str | Path | None = None
+) -> list[FetchResult]:
     """Sync all enabled sources."""
-    disabled = load_disabled_sources()
+    data_dir = resolve_data_dir(data_dir)
+    disabled = load_disabled_sources(data_dir)
     results = []
 
     for name in SOURCES:
@@ -2600,17 +2798,18 @@ def sync_all_sources(force: bool = False) -> list[FetchResult]:
             )
             continue
 
-        result = sync_source(name, force=force)
+        result = sync_source(name, force=force, data_dir=data_dir)
         results.append(result)
 
     return results
 
 
-def get_cached_sources() -> dict[str, Path]:
+def get_cached_sources(data_dir: str | Path | None = None) -> dict[str, Path]:
     """Get paths to all cached JSONL files."""
+    cached = sources_dir(data_dir)
     sources = {}
     for name in SOURCES:
-        path = SOURCES_DIR / f"{name}.jsonl"
+        path = cached / f"{name}.jsonl"
         if path.exists():
             sources[name] = path
     return sources

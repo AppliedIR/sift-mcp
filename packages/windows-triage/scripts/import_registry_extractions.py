@@ -36,6 +36,7 @@ import argparse
 import json
 import logging
 import re
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -645,6 +646,24 @@ def main():
     parser.add_argument(
         "--registry-dir", type=str, help="Custom directory with extracted JSON files"
     )
+    parser.add_argument(
+        "--sources-dir",
+        type=str,
+        default=None,
+        help="Clones dir (default: data/sources)",
+    )
+    parser.add_argument(
+        "--db",
+        type=str,
+        default=None,
+        help="Import into this known_good.db (default: data/known_good.db)",
+    )
+    parser.add_argument(
+        "--sync-commit",
+        type=str,
+        default=None,
+        help="Record this commit hash after an import with no errors",
+    )
     args = parser.parse_args()
 
     if args.verbose:
@@ -652,10 +671,10 @@ def main():
 
     project_root = Path(__file__).parent.parent
     data_dir = project_root / "data"
-    sources_dir = data_dir / "sources"
+    sources_dir = Path(args.sources_dir) if args.sources_dir else data_dir / "sources"
 
     # Check database
-    db_path = data_dir / "known_good.db"
+    db_path = Path(args.db) if args.db else data_dir / "known_good.db"
     if not db_path.exists():
         logger.error("known_good.db not found. Run: python scripts/init_databases.py")
         sys.exit(1)
@@ -732,6 +751,22 @@ def main():
         print(f"  Services: {final_stats['services']}")
         print(f"  Tasks:    {final_stats['tasks']}")
         print(f"  Autoruns: {final_stats['autoruns']}")
+
+    if total_stats["errors"]:
+        sys.exit(1)
+
+    # Record the sync commit only for an import with no errors
+    if args.sync_commit and not args.dry_run:
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute(
+                "UPDATE sources SET last_sync_commit = ?, "
+                "last_sync_time = datetime('now') WHERE name = ?",
+                (args.sync_commit, "vanilla_windows_registry"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":

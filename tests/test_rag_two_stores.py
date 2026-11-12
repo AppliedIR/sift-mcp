@@ -75,7 +75,6 @@ def rig(tmp_path, monkeypatch):
     pkg.mkdir(parents=True)
     for n in ("utils", "stores"):
         monkeypatch.setattr(mods[n], "PACKAGE_DATA_DIR", pkg)
-    monkeypatch.setattr(mods["build"], "SOURCES_DIR", tmp_path / "sources")
 
     know = tmp_path / "knowledge"
     (know / "AppliedIR").mkdir(parents=True)

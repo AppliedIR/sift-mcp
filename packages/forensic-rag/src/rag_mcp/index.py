@@ -35,6 +35,7 @@ from .utils import (
     MITRE_ID_PATTERN,
     augment_text_with_mitre,
     load_mitre_lookup,
+    resolve_data_dir,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,9 +49,6 @@ _metrics_logger.addHandler(logging.NullHandler())
 _attention_logger.addHandler(logging.NullHandler())
 _metrics_logger.propagate = False
 _attention_logger.propagate = False
-
-# Default paths - can be overridden via environment or constructor
-DEFAULT_INDEX_DIR = Path(__file__).parent.parent.parent / "data"
 
 # Search constants
 MAX_TEXT_LENGTH = 1500  # Truncate results for display
@@ -89,9 +87,7 @@ class RAGIndex:
             index_dir: Path to ChromaDB index directory
             model_name: Sentence transformer model name
         """
-        self.index_dir = Path(
-            index_dir or os.environ.get("RAG_INDEX_DIR", DEFAULT_INDEX_DIR)
-        )
+        self.index_dir = resolve_data_dir(index_dir)
         self.model_name = model_name or os.environ.get(
             "RAG_MODEL_NAME", DEFAULT_MODEL_NAME
         )

@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DEFAULT_KNOWLEDGE_DIR = PROJECT_ROOT / "knowledge"
-DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 
 
 def user_state_file(data_dir: Path | None = None) -> Path:
