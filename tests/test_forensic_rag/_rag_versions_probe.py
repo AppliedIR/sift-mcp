@@ -1,7 +1,7 @@
 """Run the RAG version paths in a fresh process on a scratch copy of the package.
 
-Used by test_rag_versions.py, test_rag_bundle_state.py,
-test_rag_licences.py and test_rag_refresh_record.py; not a test module itself. The test puts a scratch copy
+Used by test_rag_versions.py, test_rag_bundle_state.py and
+test_rag_licences.py; not a test module itself. The test puts a scratch copy
 of the package first on sys.path, so every file the package reads under its
 own data dir is the copy's, never the installed tree's. The version lookups
 are stubbed at their functions, every URL fetch is recorded and answered only
@@ -366,11 +366,6 @@ def main() -> int:
             download_index._fetch_release = lambda tag="latest", r=release: r
             argv = ["download_index", *op["argv"]]
             res = _logged(lambda argv=argv: _main_with(argv, download_index.main))
-        elif kind == "refresh":
-            from rag_mcp import refresh
-
-            argv = ["refresh", *op["argv"]]
-            res = _logged(lambda argv=argv: _main_with(argv, refresh.main))
         elif kind == "sync":
 
             def sync(op=op):

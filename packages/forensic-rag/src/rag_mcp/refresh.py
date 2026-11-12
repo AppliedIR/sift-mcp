@@ -35,7 +35,6 @@ from .ingest import (
 from .sources import (
     SOURCES,
     check_source_updates,
-    load_sources_state,
     sources_dir,
     sync_source,
 )
@@ -174,7 +173,6 @@ def refresh(
     # =========================================================================
     # Phase 1: Online Sources
     # =========================================================================
-    versions_before = _recorded_versions(data_dir)
     if not skip_online:
         logger.info("=" * 60)
         logger.info("Phase 1: Checking Online Sources")
@@ -344,13 +342,6 @@ def refresh(
                 "source_count": len(all_sources),
                 "sources": sorted(all_sources),
             }
-            # refreshed_at: when a refresh last changed an online source's
-            # recorded version; any other refresh keeps the value it finds
-            refreshed_at = existing_metadata.get("refreshed_at")
-            if _recorded_versions(data_dir) != versions_before:
-                refreshed_at = datetime.now(timezone.utc).isoformat()
-            if refreshed_at:
-                metadata["refreshed_at"] = refreshed_at
 
             with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2)
@@ -406,15 +397,6 @@ def refresh(
     _log_refresh_summary(result, check_only)
 
     return result
-
-
-def _recorded_versions(data_dir: Path) -> dict[str, Any]:
-    """Each online source's recorded version in sources_state.json. A sync
-    rewrites last_sync on every success, so only the version is compared."""
-    sources = load_sources_state(data_dir).get("sources")
-    if not isinstance(sources, dict):
-        return {}
-    return {n: e.get("version") for n, e in sources.items() if isinstance(e, dict)}
 
 
 def _log_refresh_summary(result: RefreshResult, check_only: bool) -> None:
