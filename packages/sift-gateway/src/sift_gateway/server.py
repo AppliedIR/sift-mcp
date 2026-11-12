@@ -487,12 +487,15 @@ class Gateway:
         try:
             import httpx
 
-            async with httpx.AsyncClient(verify=False) as client:
+            client = backend.client_factory()(
+                headers={"Authorization": f"Bearer {backend.bearer_token}"},
+                timeout=httpx.Timeout(5),
+            )
+            async with client:
                 resp = await client.post(
                     f"{backend.base_url}/cases/activate",
                     json={"case_id": active_case},
-                    headers={"Authorization": f"Bearer {backend.bearer_token}"},
-                    timeout=5,
+                    follow_redirects=False,
                 )
             # Only log at INFO on actual state change, DEBUG for heartbeat no-ops
             body = resp.json() if resp.status_code == 200 else {}

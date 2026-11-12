@@ -186,6 +186,19 @@ class HttpMCPBackend(MCPBackend):
         """Bearer token for authentication."""
         return self.config.get("bearer_token", "")
 
+    def client_factory(self):
+        """This backend's one TLS setup: every request to it, the MCP
+        connection's and any other, gets its client from here. Pinned to
+        ``tls_cert`` when set, else the MCP default (httpx's CA bundle)."""
+        tls_cert = self.config.get("tls_cert")
+        if tls_cert:
+            return _make_pinned_tls_factory(
+                os.path.expanduser(tls_cert), self._pinned_pem
+            )
+        from mcp.shared._httpx_utils import create_mcp_http_client
+
+        return create_mcp_http_client
+
     async def start(self) -> None:
         """Connect, in a runner task that also closes the connection.
 
@@ -245,14 +258,6 @@ class HttpMCPBackend(MCPBackend):
     ) -> None:
         me = asyncio.current_task()
         try:
-            client_factory_kwargs = {}
-            tls_cert = self.config.get("tls_cert")
-            if tls_cert:
-                client_factory_kwargs["httpx_client_factory"] = (
-                    _make_pinned_tls_factory(
-                        os.path.expanduser(tls_cert), self._pinned_pem
-                    )
-                )
             async with AsyncExitStack() as stack:
                 read_stream, write_stream, _ = await stack.enter_async_context(
                     streamablehttp_client(
@@ -260,7 +265,7 @@ class HttpMCPBackend(MCPBackend):
                         headers=headers if headers else None,
                         timeout=_CONNECT_TIMEOUT,
                         terminate_on_close=False,
-                        **client_factory_kwargs,
+                        httpx_client_factory=self.client_factory(),
                     )
                 )
                 session = await stack.enter_async_context(
