@@ -9,28 +9,28 @@ respective licenses.
 
 | Source | Repository | License | Records |
 |--------|-----------|---------|--------:|
-| Atomic Red Team | [redcanaryco/atomic-red-team](https://github.com/redcanaryco/atomic-red-team) | [MIT](https://opensource.org/licenses/MIT) | 1,770 |
+| Atomic Red Team | [redcanaryco/atomic-red-team](https://github.com/redcanaryco/atomic-red-team) | [MIT](https://opensource.org/licenses/MIT) | 1,950 |
 | CAPEC | [mitre/cti](https://github.com/mitre/cti) | [CAPEC Terms of Use](https://capec.mitre.org/about/termsofuse.html) | 1,492 |
-| Chainsaw Rules | [WithSecureLabs/chainsaw](https://github.com/WithSecureLabs/chainsaw) | [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) | 112 |
-| CISA KEV | [cisa.gov](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 1,529 |
-| Elastic Detection Rules | [elastic/detection-rules](https://github.com/elastic/detection-rules) | [Elastic License v2](https://www.elastic.co/licensing/elastic-license) | 1,645 |
-| Forensic Artifacts | [ForensicArtifacts/artifacts](https://github.com/ForensicArtifacts/artifacts) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 731 |
-| GTFOBins | [GTFOBins/GTFOBins.github.io](https://github.com/GTFOBins/GTFOBins.github.io) | [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) | 477 |
-| Hayabusa Rules | [Yamato-Security/hayabusa-rules](https://github.com/Yamato-Security/hayabusa-rules) | [DRL 1.1](https://github.com/SigmaHQ/Detection-Rule-License) | 190 |
-| HijackLibs | [wietze/HijackLibs](https://github.com/wietze/HijackLibs) | [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) | 576 |
-| KapeFiles | [EricZimmerman/KapeFiles](https://github.com/EricZimmerman/KapeFiles) | [MIT](https://opensource.org/licenses/MIT) | 828 |
-| LOLBAS | [LOLBAS-Project/LOLBAS](https://github.com/LOLBAS-Project/LOLBAS) | [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) | 127 |
-| LOLDrivers | [magicsword-io/LOLDrivers](https://github.com/magicsword-io/LOLDrivers) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 510 |
+| Chainsaw Rules | [WithSecureLabs/chainsaw](https://github.com/WithSecureLabs/chainsaw) | [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) | 127 |
+| CISA KEV | [cisa.gov](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | 1,779 |
+| Elastic Detection Rules | [elastic/detection-rules](https://github.com/elastic/detection-rules) | [Elastic License v2](https://www.elastic.co/licensing/elastic-license) | 2,240 |
+| Forensic Artifacts | [ForensicArtifacts/artifacts](https://github.com/ForensicArtifacts/artifacts) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 742 |
+| GTFOBins | [GTFOBins/GTFOBins.github.io](https://github.com/GTFOBins/GTFOBins.github.io) | [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) | 478 |
+| Hayabusa Rules | [Yamato-Security/hayabusa-rules](https://github.com/Yamato-Security/hayabusa-rules) | [DRL 1.1](https://github.com/SigmaHQ/Detection-Rule-License) | 193 |
+| HijackLibs | [wietze/HijackLibs](https://github.com/wietze/HijackLibs) | [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) | 627 |
+| KapeFiles | [EricZimmerman/KapeFiles](https://github.com/EricZimmerman/KapeFiles) | [MIT](https://opensource.org/licenses/MIT) | 892 |
+| LOLBAS | [LOLBAS-Project/LOLBAS](https://github.com/LOLBAS-Project/LOLBAS) | [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) | 245 |
+| LOLDrivers | [magicsword-io/LOLDrivers](https://github.com/magicsword-io/LOLDrivers) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 713 |
 | MBC | [MBCProject/mbc-stix2.1](https://github.com/MBCProject/mbc-stix2.1) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 653 |
-| MITRE ATLAS | [mitre-atlas/atlas-data](https://github.com/mitre-atlas/atlas-data) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 52 |
-| MITRE ATT&CK | [mitre-attack/attack-stix-data](https://github.com/mitre-attack/attack-stix-data) | [MITRE ATT&CK Terms of Use](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/) | 2,129 |
+| MITRE ATLAS | [mitre-atlas/atlas-data](https://github.com/mitre-atlas/atlas-data) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 298 |
+| MITRE ATT&CK | [mitre-attack/attack-stix-data](https://github.com/mitre-attack/attack-stix-data) | [MITRE ATT&CK Terms of Use](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/) | 2,230 |
 | MITRE CAR | [mitre-attack/car](https://github.com/mitre-attack/car) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 102 |
-| MITRE D3FEND | [d3fend.mitre.org](https://d3fend.mitre.org/) | [MIT](https://opensource.org/licenses/MIT); use subject to the [D3FEND Terms of Use](https://d3fend.mitre.org/tou/) | 489 |
+| MITRE D3FEND | [d3fend.mitre.org](https://d3fend.mitre.org/) | [MIT](https://opensource.org/licenses/MIT); use subject to the [D3FEND Terms of Use](https://d3fend.mitre.org/tou/) | 493 |
 | MITRE Engage | [mitre/engage](https://github.com/mitre/engage) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 45 |
-| Sigma | [SigmaHQ/sigma](https://github.com/SigmaHQ/sigma) | [DRL 1.1](https://github.com/SigmaHQ/Detection-Rule-License) | 3,106 |
-| Splunk Security Content | [splunk/security_content](https://github.com/splunk/security_content) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 987 |
-| Stratus Red Team | [DataDog/stratus-red-team](https://github.com/DataDog/stratus-red-team) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 93 |
-| Velociraptor | [Velocidex/velociraptor-docs](https://github.com/Velocidex/velociraptor-docs) | [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) | 302 |
+| Sigma | [SigmaHQ/sigma](https://github.com/SigmaHQ/sigma) | [DRL 1.1](https://github.com/SigmaHQ/Detection-Rule-License) | 3,164 |
+| Splunk Security Content | [splunk/security_content](https://github.com/splunk/security_content) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 2,204 |
+| Stratus Red Team | [DataDog/stratus-red-team](https://github.com/DataDog/stratus-red-team) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | 114 |
+| Velociraptor | [Velocidex/velociraptor-docs](https://github.com/Velocidex/velociraptor-docs) | [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) | 335 |
 
 ## Bundled Reference Materials
 
