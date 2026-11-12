@@ -143,6 +143,21 @@ def freshness(status: StatusResult, state_kind: str | None, checked: bool) -> di
     }
 
 
+def _row(name: str, latest: str, state: dict, **checked) -> dict:
+    """One online-source row: the recorded state, then what a check found."""
+    row = {
+        "name": name,
+        "records": state.get("records", 0),
+        "last_sync": state.get("last_sync", "never"),
+        "current_version": state.get("version", "unknown"),
+        "latest_version": latest,
+        "has_update": False,
+        "error": "",
+    }
+    row.update(checked)
+    return row
+
+
 def get_status(
     data_dir: Path | None = None,
     knowledge_dir: Path | None = None,
@@ -228,15 +243,16 @@ def get_status(
         for status in check_source_updates(
             data_dir, read=state_read, deadline=deadline
         ):
-            rows[status.name] = {
-                "name": status.name,
-                "records": status.records,
-                "last_sync": status.last_sync,
-                "current_version": status.current_version,
-                "latest_version": status.latest_version,
-                "has_update": status.has_update,
-                "error": status.error,
-            }
+            rows[status.name] = _row(
+                status.name,
+                status.latest_version,
+                {},
+                records=status.records,
+                last_sync=status.last_sync,
+                current_version=status.current_version,
+                has_update=status.has_update,
+                error=status.error,
+            )
             if state_kind == "unreadable":
                 # the recorded versions are unknown, not missing: no update
                 rows[status.name]["has_update"] = False
@@ -245,16 +261,8 @@ def get_status(
         for name, source in SOURCES.items():
             if source.source_type == "embedded" and name not in disabled:
                 # not checked remotely; listed as before, never an update
-                source_state = sources_state.get("sources", {}).get(name, {})
-                rows[name] = {
-                    "name": name,
-                    "records": source_state.get("records", 0),
-                    "last_sync": source_state.get("last_sync", "never"),
-                    "current_version": source_state.get("version", "unknown"),
-                    "latest_version": "embedded",
-                    "has_update": False,
-                    "error": "",
-                }
+                state = sources_state.get("sources", {}).get(name, {})
+                rows[name] = _row(name, "embedded", state)
             if name in rows:
                 result.online_sources.append(rows[name])
     else:
@@ -262,18 +270,8 @@ def get_status(
         for name in SOURCES:
             if name in result.disabled_sources:
                 continue
-            source_state = sources_state.get("sources", {}).get(name, {})
-            result.online_sources.append(
-                {
-                    "name": name,
-                    "records": source_state.get("records", 0),
-                    "last_sync": source_state.get("last_sync", "never"),
-                    "current_version": source_state.get("version", "unknown"),
-                    "latest_version": "unknown",
-                    "has_update": False,
-                    "error": "",
-                }
-            )
+            state = sources_state.get("sources", {}).get(name, {})
+            result.online_sources.append(_row(name, "unknown", state))
     result.freshness = freshness(result, state_kind, check_updates)
 
     # The examiner store, from its commit point
