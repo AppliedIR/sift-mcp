@@ -1401,16 +1401,19 @@ if $INSTALL_TRIAGE; then
     uv pip install --python "$VENV_PYTHON" --quiet "${LOCKED[@]}" zstandard 2>/dev/null || true
 
     # Check if databases already exist: each DB the release file list fetches
-    # by default; a list that can't be read counts them as missing
+    # by default; a list that can't be read counts them as missing (the closing
+    # summary checks again with the same list)
     TRIAGE_DBS=$("$VENV_PYTHON" -c "from windows_triage import release_manifest as m; print(' '.join(m.default_databases()))") || TRIAGE_DBS=""
     [[ -n "$TRIAGE_DBS" ]] || warn "The triage release file list could not be read from the venv ($VENV_PYTHON); the databases count as missing"
-    DB_PRESENT=true
-    [[ -n "$TRIAGE_DBS" ]] || DB_PRESENT=false
-    for db in $TRIAGE_DBS; do
-        [[ -s "$DB_DIR/$db" ]] || DB_PRESENT=false
-    done
+    triage_dbs_present() {
+        [[ -n "$TRIAGE_DBS" ]] || return 1
+        local db
+        for db in $TRIAGE_DBS; do
+            [[ -s "$DB_DIR/$db" ]] || return 1
+        done
+    }
     DB_EXISTS=false
-    if $DB_PRESENT; then
+    if triage_dbs_present; then
         if "$VENV_PYTHON" -c "import sqlite3; sqlite3.connect('$DB_DIR/known_good.db').execute('SELECT 1')" 2>/dev/null; then
             DB_EXISTS=true
         fi
@@ -2527,14 +2530,7 @@ fi
 
 if $INSTALL_TRIAGE; then
     # Each DB the release file list fetches by default, as in the setup above
-    TRIAGE_DBS=$("$VENV_PYTHON" -c "from windows_triage import release_manifest as m; print(' '.join(m.default_databases()))") || TRIAGE_DBS=""
-    [[ -n "$TRIAGE_DBS" ]] || warn "The triage release file list could not be read from the venv ($VENV_PYTHON); the databases count as missing"
-    TRIAGE_OK=true
-    [[ -n "$TRIAGE_DBS" ]] || TRIAGE_OK=false
-    for db in $TRIAGE_DBS; do
-        [[ -s "$DB_DIR/$db" ]] || TRIAGE_OK=false
-    done
-    if $TRIAGE_OK; then
+    if triage_dbs_present; then
         ok "Triage databases: installed. Re-download when needed: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
     else
         warn "Triage databases: not installed; windows-triage won't start without them. Download: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"

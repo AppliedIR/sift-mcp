@@ -18,7 +18,10 @@ def _summary() -> str:
     # The summary is the last INSTALL_TRIAGE block before the last of these.
     end = text.rindex("\nif $INSTALL_RAG || $INSTALL_TRIAGE; then")
     start = text.rindex("\nif $INSTALL_TRIAGE; then\n", 0, end)
-    return text[start:end]
+    # It checks with the setup's file-list read and presence check
+    fn = text.index("\n    TRIAGE_DBS=$(")
+    fn_end = text.index("\n    }\n", fn) + len("\n    }\n")
+    return text[fn:fn_end] + text[start:end]
 
 
 def _stub_python(tmp_path: Path) -> Path:
