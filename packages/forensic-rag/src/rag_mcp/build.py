@@ -62,14 +62,17 @@ logger = logging.getLogger(__name__)
 
 # The shipped index's HNSW settings, stored in the collection so every reader
 # searches with them. At chroma's default search width (ef_search 100) the
-# graph a build makes can miss a query's exact best matches; 400 finds them,
-# at a fraction of a millisecond more per search. The graph's own settings
-# are chroma's defaults, written out so a chroma upgrade can't change them.
+# graph a build makes can miss a query's exact best matches, and how many it
+# misses at a given width changes from build to build: one build lost little
+# at 400 and the next lost more there, while at 1600 that build missed the
+# fewest, for about 1.5 ms more per search than at 400. The graph's own
+# settings are chroma's defaults, written out so a chroma upgrade can't
+# change them.
 HNSW_CONFIG = {
     "space": "cosine",
     "ef_construction": 100,
     "max_neighbors": 16,
-    "ef_search": 400,
+    "ef_search": 1600,
 }
 
 

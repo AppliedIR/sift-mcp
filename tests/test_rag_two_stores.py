@@ -390,7 +390,7 @@ def test_a_build_stores_its_hnsw_search_width_in_the_index(rig):
     hnsw = json.loads(out.stdout.strip().splitlines()[-1])
     want = {"space": "cosine", "ef_construction": 100, "max_neighbors": 16}
     assert {k: hnsw.get(k) for k in want} == want
-    assert hnsw.get("ef_search") == 400
+    assert hnsw.get("ef_search") == 1600
 
 
 # --- download -------------------------------------------------------------
