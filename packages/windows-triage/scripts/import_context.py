@@ -61,21 +61,6 @@ def _sync_commit(text: str) -> tuple[str, str]:
     return name, commit
 
 
-def record_sync(db_path: Path, row: str, commit: str) -> bool:
-    """Record the commit on the sources row; False when there is no such row."""
-    conn = sqlite3.connect(db_path)
-    try:
-        changed = conn.execute(
-            "UPDATE sources SET last_sync_commit = ?, last_sync_time = datetime('now') "
-            "WHERE name = ?",
-            (commit, row),
-        ).rowcount
-        conn.commit()
-    finally:
-        conn.close()
-    return changed == 1
-
-
 def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Import context data into context.db")
     parser.add_argument(
@@ -194,7 +179,7 @@ def main(argv: list[str] | None = None):
     for name, commit in commits.items():
         if name not in imported:
             logger.warning(f"{name}: not imported cleanly; commit not recorded")
-        elif not record_sync(context_db, SYNC_ROWS[name], commit):
+        elif not update_sources.record_sync(context_db, SYNC_ROWS[name], commit):
             problems.append(
                 f"{name}: no sources row {SYNC_ROWS[name]}; commit not recorded"
             )
