@@ -35,7 +35,7 @@ LICENCE_ASSET = "licenses.tar.zst"
 LICENCE_DIR = "licenses"  # under the data dir: one dir of licence files per clone
 LICENCE_FILE_MAX = 1024 * 1024  # bytes: a larger licence file is refused
 
-RELEASE_TAG = "triage-db-v2026.02.25"
+RELEASE_TAG = "triage-db-v2026.11.12"
 
 # Counts of the RELEASE_TAG release (its metadata.json).
 COUNTS: dict[str, dict[str, int]] = {
@@ -49,12 +49,12 @@ COUNTS: dict[str, dict[str, int]] = {
     },
     "context.db": {
         "expected_processes": 57,
-        "hijackable_dlls": 2286,
-        "lolbins": 227,
+        "hijackable_dlls": 2403,
+        "lolbins": 245,
         "protected_process_names": 29,
         "suspicious_filenames": 27,
         "suspicious_pipe_patterns": 8,
-        "vulnerable_drivers": 1984,
+        "vulnerable_drivers": 2430,
         "windows_named_pipes": 18,
     },
     "known_good_registry.db": {
