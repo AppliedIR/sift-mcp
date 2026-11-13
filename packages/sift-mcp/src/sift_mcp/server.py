@@ -398,7 +398,7 @@ def create_server() -> FastMCP:
                 f"({exec_result.get('output_limit')} bytes): the exit code is the "
                 "stop's, not the tool's"
                 if stopped == "output limit"
-                else None
+                else exec_result.get("kill_cause")  # a kill this server didn't send
             )
             mount = None
             if pre_mounts is not None and ok:

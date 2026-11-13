@@ -1,6 +1,7 @@
 """Tests for sift_mcp.executor — subprocess execution."""
 
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -253,6 +254,82 @@ class TestByteLimit:
         monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
         with pytest.raises(ExecutionTimeoutError):
             execute(["sleep", "30"], timeout=2)
+
+
+GROUP_KILL = (
+    "a process in the gateway's memory group was killed {} while sh ran; "
+    "the gateway kept running. journalctl --user -u vhir-gateway names the process"
+)
+LIMIT_KILL = GROUP_KILL.format("at the gateway's memory limit (3221225472 bytes)")
+SYSTEM_KILL = GROUP_KILL.format("when the system ran out of memory")
+OUTSIDE_KILL = (
+    "sh was killed by SIGKILL from outside sift-mcp, not at a memory limit; "
+    "journalctl --user -u vhir-gateway may name the sender"
+)
+UNCOUNTED_KILL = OUTSIDE_KILL.replace(", not at a memory limit", "")
+
+
+class TestKillCause:
+    """A run that ended without a stop sift-mcp sent, and failed, says why when
+    a kill explains it: the cgroup's oom_kill count rose, or SIGKILL."""
+
+    @pytest.fixture
+    def cg(self, tmp_path, monkeypatch):
+        """A cgroup v2 tree of its own: the gateway's group /g, no kills yet."""
+        monkeypatch.delenv("VHIR_CASE_DIR", raising=False)
+        (tmp_path / "cgroup").write_text("1:name=systemd:/x\n0::/g\n")
+        g = tmp_path / "fs" / "g"
+        g.mkdir(parents=True)
+        (g / "memory.events").write_text("low 0\nhigh 0\nmax 4\noom 1\noom_kill 0\n")
+        (g / "memory.max").write_text("3221225472\n")
+        monkeypatch.setattr(executor, "_CGROUP", str(tmp_path / "cgroup"))
+        monkeypatch.setattr(executor, "_CGROUP_FS", str(tmp_path / "fs"))
+        return g
+
+    def _run(self, g, end, kills=1, own=True, **kw):
+        """The command counts `kills` as the kernel would, each at the group's
+        own limit unless not `own`, then ends as `end`."""
+        events = f"oom {1 + kills * own}\\noom_kill {kills}\\n"
+        bump = f"printf '{events}' > {g}/memory.events; {end}"
+        return execute(["sh", "-c", bump], **kw)
+
+    @pytest.mark.parametrize("end", ["kill -9 $$", "exit 1"], ids=["leader", "child"])
+    def test_a_kill_at_the_limit_names_the_limit(self, cg, end):
+        assert self._run(cg, end)["kill_cause"] == LIMIT_KILL
+
+    def test_a_kill_with_no_limit_of_its_own_names_the_system(self, cg):
+        (cg / "memory.max").write_text("max\n")
+        assert self._run(cg, "exit 1")["kill_cause"] == SYSTEM_KILL
+
+    def test_a_system_kill_in_a_capped_group_names_the_system(self, cg):
+        r = self._run(cg, "exit 1", own=False)  # oom_kill rose, oom didn't
+        assert r["kill_cause"] == SYSTEM_KILL
+
+    def test_a_sigkill_with_no_count_rise_is_named_as_from_outside(self, cg):
+        r = self._run(cg, "kill -9 $$", kills=0)
+        assert (r["exit_code"], r["kill_cause"]) == (-signal.SIGKILL, OUTSIDE_KILL)
+
+    @pytest.mark.parametrize(
+        "cgroup",
+        ["missing", "1:name=systemd:/x\n", "0::/\n"],
+        ids=["none", "v1", "root"],
+    )
+    def test_an_unreadable_count_names_only_sigkill(self, cg, cgroup, monkeypatch):
+        if cgroup == "missing":
+            monkeypatch.setattr(executor, "_CGROUP", str(cg / "missing"))
+        else:
+            (cg.parent.parent / "cgroup").write_text(cgroup)
+        assert "kill_cause" not in self._run(cg, "exit 1")
+        assert self._run(cg, "kill -9 $$")["kill_cause"] == UNCOUNTED_KILL
+
+    def test_a_run_that_succeeded_names_no_kill(self, cg):
+        assert "kill_cause" not in self._run(cg, "exit 0")
+
+    def test_the_output_limit_stop_keeps_its_own_text(self, cg, monkeypatch):
+        monkeypatch.setenv("SIFT_MAX_OUTPUT", "2000")
+        r = self._run(cg, "yes")
+        assert r["truncated"] is True and r["exit_code"] == -signal.SIGKILL
+        assert "kill_cause" not in r
 
 
 class TestTruncateNaming:

@@ -342,6 +342,13 @@ def test_the_timeout_stop_is_named(case, tools):
     assert e["result_summary"]["stopped"] == "timeout"
 
 
+def test_a_kill_sift_mcp_did_not_send_is_named_and_the_run_completed(case, tools):
+    _tool(tools["bin"], "selfkill", "kill -9 $$")
+    r = _call("run_command", command=["selfkill"], purpose="t")
+    assert r["success"] is True and "stopped" not in r
+    assert r["error"].startswith("selfkill was killed by SIGKILL from outside sift-mcp")
+
+
 def test_a_mount_record_still_needs_exit_0(case, tools, monkeypatch):
     """An internal consumer keeps its own check: no mount record for a mount
     tool that failed, though the run completed."""

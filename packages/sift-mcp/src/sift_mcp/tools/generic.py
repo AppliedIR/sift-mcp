@@ -172,6 +172,7 @@ def run_command(
         save_dir=save_dir,
         op_id=op_id,
         case_dir=case_dir,
+        name=binary,
     )
 
     # Parse output based on catalog format when output exceeds byte budget

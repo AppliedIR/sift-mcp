@@ -22,6 +22,8 @@ from sift_mcp.exceptions import ExecutionError, ExecutionTimeoutError
 
 logger = logging.getLogger(__name__)
 
+_CGROUP, _CGROUP_FS = "/proc/self/cgroup", "/sys/fs/cgroup"  # read for kills
+
 
 def _read_pipe(pipe, chunks: list[bytes], limit: int, total: list[int]) -> None:
     """Read from a pipe incrementally, respecting byte limit."""
@@ -36,6 +38,45 @@ def _read_pipe(pipe, chunks: list[bytes], limit: int, total: list[int]) -> None:
         total[0] += len(data)
 
 
+def _memory() -> tuple[tuple[int, int] | None, str]:
+    """This process's cgroup v2 (oom_kill, oom) counts and memory.max;
+    (None, "") without one (cgroup v1, the root cgroup)."""
+    try:
+        with open(_CGROUP) as f:
+            cg = _CGROUP_FS + next(ln[3:].strip() for ln in f if ln.startswith("0::"))
+        with open(f"{cg}/memory.events") as f:
+            events = dict(ln.split() for ln in f)
+        counts = int(events["oom_kill"]), int(events["oom"])
+        with open(f"{cg}/memory.max") as f:
+            return counts, f.read().strip()
+    except (OSError, StopIteration, KeyError, ValueError):
+        return None, ""
+
+
+def _killed(binary: str, code: int, before: tuple[int, int] | None) -> str:
+    """Why a run that ended on its own failed, when a kill explains it."""
+    after, limit = _memory()
+    if code and None not in (before, after) and after[0] > before[0]:
+        at = (  # oom_kill counts any OOM killer's kills; oom, the group's own
+            f"at the gateway's memory limit ({limit} bytes)"
+            if after[1] > before[1] and limit.isdigit()
+            else "when the system ran out of memory"
+        )
+        return (
+            f"a process in the gateway's memory group was killed {at} while "
+            f"{binary} ran; the gateway kept running. "
+            "journalctl --user -u vhir-gateway names the process"
+        )
+    if code == -signal.SIGKILL:
+        counted = None not in (before, after)  # else no claim about memory
+        return (
+            f"{binary} was killed by SIGKILL from outside sift-mcp"
+            f"{', not at a memory limit' if counted else ''}; "
+            "journalctl --user -u vhir-gateway may name the sender"
+        )
+    return ""
+
+
 def execute(
     cmd_list: list[str],
     *,
@@ -45,6 +86,7 @@ def execute(
     save_dir: str | None = None,
     op_id=None,
     case_dir: str | None = None,
+    name: str = "",
 ) -> dict[str, Any]:
     """Execute a command as a subprocess (shell=False).
 
@@ -62,6 +104,7 @@ def execute(
             comes back as `op_id`.
         case_dir: The case the operation belongs to, resolved by the caller
             when it started ("" for none); resolved now when not given.
+        name: The tool's name for a kill's text (default: the command's first word).
 
     Returns:
         Dict with exit_code, stdout, stderr, elapsed_seconds, and optional saved file info.
@@ -73,6 +116,7 @@ def execute(
     start = time.monotonic()
     truncated = False
     killed = False  # stopped here at the output limit, not ended on its own
+    oom_kills = _memory()[0]
     try:
         proc = subprocess.Popen(
             cmd_list,
@@ -120,6 +164,7 @@ def execute(
             except subprocess.TimeoutExpired:
                 continue
 
+        ended_alone = not truncated  # no kill sent here at the output limit
         stdout_thread.join(timeout=5)
         stderr_thread.join(timeout=5)
 
@@ -153,6 +198,10 @@ def execute(
         if killed:  # the process didn't end on its own: this server stopped it
             response["stopped"] = "output limit"
             response["output_limit"] = max_bytes
+        if ended_alone and (
+            why := _killed(name or cmd_list[0], proc.returncode, oom_kills)
+        ):
+            response["kill_cause"] = why
 
         # In a case every output is kept, whatever its size or save_output:
         # those are the bytes a finding cites. Without a case, when asked.

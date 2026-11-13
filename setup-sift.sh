@@ -2164,7 +2164,8 @@ ExecStart=$VENV_DIR/bin/python -I -m sift_gateway --config $GATEWAY_CONFIG
 Environment=VHIR_EXAMINER=$EXAMINER_NAME
 Environment=VHIR_CASES_DIR=$CASE_DIR
 PassEnvironment=DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR
-MemoryMax=4G
+MemoryMax=75%
+OOMPolicy=continue
 KillMode=process
 TimeoutStopSec=10
 Restart=always

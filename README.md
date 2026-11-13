@@ -155,6 +155,8 @@ All configurations run on a SIFT Workstation (Ubuntu-based) with Python 3.10+.
 - Evidence parsing during ingest: 1-4 GB (spikes during large ingests)
 - OS + Docker overhead: ~2 GB
 
+The gateway and every tool it runs share a limit of 75% of RAM. At that limit, the process using the most memory, normally the tool run, is stopped, and the run's reply says so; the gateway keeps running.
+
 Disk space: ~14 GB for RAG + triage databases, plus evidence and OpenSearch indices.
 
 ### Valhuntir Installation
