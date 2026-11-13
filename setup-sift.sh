@@ -37,6 +37,7 @@ INSTALL_OPENSEARCH_FLAG=false
 EXAMINER_NAME=""
 CLIENT=""
 TORCH_FLAG=""  # cpu or gpu: the PyTorch build, given on the command line
+INSTALL_EZ=true  # Eric Zimmerman's tools that sift-mcp calls (--no-ez-tools: none)
 
 for arg in "$@"; do
     case "$arg" in
@@ -48,6 +49,7 @@ for arg in "$@"; do
         --manual-start)    MANUAL_START=true ;;
         --uninstall)       UNINSTALL_MODE=true ;;
         --opensearch)      INSTALL_OPENSEARCH_FLAG=true ;;
+        --no-ez-tools)     INSTALL_EZ=false ;;
         --cpu|--gpu)
             if [[ -n "$TORCH_FLAG" && "$TORCH_FLAG" != "${arg#--}" ]]; then
                 echo "Use only one of --cpu and --gpu"
@@ -79,6 +81,7 @@ for arg in "$@"; do
             echo "  --opensearch      Clone and install opensearch-mcp (evidence indexing)"
             echo "  --cpu, --gpu      PyTorch build for knowledge search (default: asked, or the"
             echo "                    installed build; CPU on a new install). Not used on macOS."
+            echo "  --no-ez-tools     Don't install Eric Zimmerman's tools that are missing"
             echo "  --uninstall       Uninstall Valhuntir forensic controls (delegates to vhir setup client)"
             echo "  --manual-start    Skip auto-start/systemd"
             echo "  -y, --yes         Accept all defaults (non-interactive)"
@@ -1511,6 +1514,90 @@ if $INSTALL_OPENCTI; then
 fi
 
 # =============================================================================
+# Phase 5c: Eric Zimmerman's Tools
+# =============================================================================
+# The 13 that sift-mcp calls. SIFT's release fetches builds the vendor no longer
+# serves, and SIFT never installs PECmd or SrumECmd. Only what is missing is
+# installed, in SIFT's layout: the .dll in /opt/zimmermantools (at its root or in
+# the tool's folder) and a wrapper on PATH. A file already there, SIFT's or the
+# user's, is never replaced. Each zip's sha256, URL and size are added to
+# valhuntir-manifest.tsv there, so a later change by the vendor shows.
+
+EZ_DIR=/opt/zimmermantools
+EZ_BIN=/usr/local/bin
+EZ_URL=https://download.ericzimmermanstools.com/net
+EZ_TOOLS="AmcacheParser PECmd AppCompatCacheParser RECmd MFTECmd EvtxECmd JLECmd LECmd SBECmd RBCmd SrumECmd SQLECmd bstrings"
+EZ_MISSING=""
+EZ_FAILED=""
+
+ez_dll() {  # the tool's .dll where sift-mcp runs it from: the root, or its folder in any case
+    local d n
+    [[ -f "$EZ_DIR/$1.dll" ]] && { echo "$EZ_DIR/$1.dll"; return 0; }
+    for d in "$EZ_DIR"/*/; do
+        d=${d%/}; n=${d##*/}
+        if [[ "${n,,}" == "${1,,}" && -f "$d/$1.dll" ]]; then echo "$d/$1.dll"; return 0; fi
+    done
+    return 1
+}
+
+ez_net10() { grep -q '^Microsoft\.NETCore\.App 10\.' <<<"$(dotnet --list-runtimes 2>/dev/null)"; }
+
+ez_install() {  # $1 tool, $2 temp dir: one line, what was installed or why not (rc 1)
+    local t=$1 z="$2/$1.zip" names dll out sum="" w
+    if ! ez_dll "$t" >/dev/null; then
+        out=$(curl -fsSL --proto '=https' --max-filesize 200M --retry 2 --connect-timeout 20 \
+            --max-time 600 -o "$z" "$EZ_URL/$t.zip" 2>&1) || { echo "download failed ($EZ_URL/$t.zip): $out"; return 1; }
+        names=$(unzip -Z1 "$z" 2>/dev/null) || { echo "$EZ_URL/$t.zip isn't a valid zip"; return 1; }
+        if grep -qE '^/|(^|/)\.\.(/|$)|\\' <<<"$names"; then
+            echo "refused: $EZ_URL/$t.zip has a path outside $EZ_DIR"; return 1
+        fi
+        unzip -tq "$z" >/dev/null 2>&1 || { echo "$EZ_URL/$t.zip isn't a valid zip"; return 1; }
+        grep -qE "^([^/]+/)?$t\.dll\$" <<<"$names" || { echo "$EZ_URL/$t.zip has no $t.dll"; return 1; }
+        sum=$(sha256sum "$z" | cut -d' ' -f1)
+        { sudo mkdir -p "$EZ_DIR" && sudo unzip -qn "$z" -d "$EZ_DIR"; } || { echo "unzip into $EZ_DIR failed"; return 1; }
+        printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$t" "$EZ_URL/$t.zip" "$(stat -c %s "$z")" "$sum" |
+            sudo tee -a "$EZ_DIR/valhuntir-manifest.tsv" >/dev/null || { echo "couldn't add to $EZ_DIR/valhuntir-manifest.tsv"; return 1; }
+    fi
+    dll=$(ez_dll "$t") || { echo "$t.dll isn't in $EZ_DIR or its $t folder"; return 1; }
+    for w in "$EZ_BIN/$t" "$EZ_BIN/${t,,}"; do  # SIFT's wrapper, under both its names
+        [[ -e "$w" ]] && continue
+        # shellcheck disable=SC2016  # "$@" is the wrapper's own
+        { printf '#!/bin/bash\nexec dotnet %s "$@"\n' "$dll" | sudo tee "$w" >/dev/null && sudo chmod 755 "$w"; } ||
+            { echo "couldn't write $w"; return 1; }
+    done
+    { out=$(timeout 120 dotnet "$dll" --help 2>&1) && grep -qi -- "$t" <<<"$out"; } ||
+        { echo "'dotnet $dll --help' doesn't run: $(tail -1 <<<"$out")"; return 1; }
+    echo "$dll${sum:+ (sha256 $sum)}"
+}
+
+for ez_t in $EZ_TOOLS; do
+    { ez_dll "$ez_t" >/dev/null && command -v "$ez_t" >/dev/null; } || EZ_MISSING+=" $ez_t"
+done
+if [[ "$PLATFORM" == "Linux" && -n "$EZ_MISSING" ]]; then
+    header "Eric Zimmerman's Tools"
+    if ! $INSTALL_EZ; then
+        info "Not installed (--no-ez-tools). sift-mcp can't run:$EZ_MISSING"
+    elif ! prompt_yn "Install Eric Zimmerman's tools that are missing:$EZ_MISSING (up to 45 MB, and .NET 10; requires sudo)?" "y"; then
+        info "Skipped. sift-mcp can't run:$EZ_MISSING. Re-run setup-sift.sh to install them."
+    else
+        if ! ez_net10; then
+            info "Installing dotnet-runtime-10.0 (requires sudo)..."
+            EZ_OUT=$(sudo apt-get install -y dotnet-runtime-10.0 2>&1) || tail -5 <<<"$EZ_OUT"
+        fi
+        if ! ez_net10; then
+            EZ_FAILED=$EZ_MISSING
+            err "Eric Zimmerman's tools need .NET 10, and dotnet-runtime-10.0 didn't install (SIFT's apt sources carry it: the dotnet/backports PPA)"
+        else
+            EZ_TMP=$(mktemp -d)
+            for ez_t in $EZ_MISSING; do
+                if EZ_OUT=$(ez_install "$ez_t" "$EZ_TMP"); then ok "$ez_t: $EZ_OUT"; else err "$ez_t: $EZ_OUT"; EZ_FAILED+=" $ez_t"; fi
+            done
+            rm -rf "$EZ_TMP"
+        fi
+    fi
+fi
+
+# =============================================================================
 # Phase 6: Examiner Identity
 # =============================================================================
 
@@ -2478,6 +2565,11 @@ fi
 if [ -n "$OPENSEARCH_SNAPSHOTS_FAILED" ]; then
     echo ""
     err "OpenSearch snapshots aren't set up: 'vhir backup --include-opensearch' can't save indices. Re-run: bash $OPENSEARCH_SNAPSHOTS_FAILED"
+    INSTALL_ERRORS=$((INSTALL_ERRORS + 1))
+fi
+if [[ -n "$EZ_FAILED" ]]; then
+    echo ""
+    err "Eric Zimmerman's tools not installed:$EZ_FAILED (the errors above say why), so sift-mcp can't run them. Re-run setup-sift.sh to install them."
     INSTALL_ERRORS=$((INSTALL_ERRORS + 1))
 fi
 

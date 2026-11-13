@@ -192,6 +192,8 @@ git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 bash /tmp/vhir-quickstart.sh --recommended --opensearch
 ```
 
+**Eric Zimmerman's tools** — The installer installs any of the 13 that sift-mcp calls and SIFT lacks, from the vendor's site into `/opt/zimmermantools`, with .NET 10 from SIFT's own apt sources. A tool already there is left alone. Add `--no-ez-tools` to skip this.
+
 If opensearch-mcp is already cloned alongside sift-mcp, the installer detects and installs it automatically — no flag needed.
 
 **Dependency versions** — The installers and `vhir update` install every third-party package at the version and hash listed in `deps/vhir.lock`, and require uv 0.6.0 or newer. An install from an earlier release may still have OpenCTI's old client, pycti, which nothing uses any more: the installers and `vhir update` leave it in place and print the command that removes it.

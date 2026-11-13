@@ -152,7 +152,14 @@ def run_command(
     # Resolve binary via find_binary to prevent absolute path bypass
     resolved = find_binary(binary)
     if not resolved:
-        raise ExecutionError(f"Binary '{binary}' not found on this system.")
+        msg = f"Binary '{binary}' not found on this system."
+        td = get_tool_def(binary)
+        if td and td.category == "zimmerman":  # setup-sift.sh installs these
+            msg += (
+                " Eric Zimmerman's tools aren't installed on this SIFT; re-run"
+                " setup-sift.sh to install them into /opt/zimmermantools."
+            )
+        raise ExecutionError(msg)
     command = [resolved] + command[1:]
 
     # Sanitize any args after the binary

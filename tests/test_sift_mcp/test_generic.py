@@ -55,6 +55,23 @@ class TestGenericRunCommand:
             with pytest.raises(ExecutionError, match="not found"):
                 run_command(["nonexistent_tool", "--flag"])
 
+    @pytest.mark.parametrize("binary", ["PECmd", "pecmd", "SrumECmd", "bstrings"])
+    def test_a_missing_ez_tool_says_how_to_install_it(self, binary):
+        with patch("sift_mcp.tools.generic.find_binary", return_value=None):
+            with pytest.raises(ExecutionError) as exc_info:
+                run_command([binary, "--flag"])
+        assert str(exc_info.value) == (
+            f"Binary '{binary}' not found on this system. Eric Zimmerman's tools"
+            " aren't installed on this SIFT; re-run setup-sift.sh to install them"
+            " into /opt/zimmermantools."
+        )
+
+    def test_a_missing_tool_that_isnt_ez_gets_no_install_hint(self):
+        with patch("sift_mcp.tools.generic.find_binary", return_value=None):
+            with pytest.raises(ExecutionError) as exc_info:
+                run_command(["fls", "--flag"])
+        assert str(exc_info.value) == "Binary 'fls' not found on this system."
+
     def test_denied_binary_error_message(self):
         """Verify the error message for denied binaries."""
         with pytest.raises(DeniedBinaryError) as exc_info:
