@@ -79,10 +79,11 @@ USER_FIELDS = (
     " (4688) or explicit logon (4648) ran as, and group.* the group. process.name and"
     " process.parent.name are file names (cmd.exe), their paths process.executable and"
     " process.parent.executable. Records whose pipeline_version is not"
-    " opensearch-mcp-0.6.6.2 (for 4688 and 4799, not opensearch-mcp-0.6.6.1 either) keep"
-    " older meanings: user.name can be the account acted on (4688: the new process's"
-    ' account, often "-"; 4799: the group), user.effective.name SubjectUserName and'
-    " process.name a path. pipeline_version is a keyword: never query it with a range;"
+    " opensearch-mcp-0.6.6.2 keep older meanings: process.name and process.parent.name"
+    " are paths; user.name can be the account acted on (4688: the new process's"
+    ' account, often "-"; 4799: the group) and user.effective.name SubjectUserName,'
+    " except in 4688 and 4799 records from opensearch-mcp-0.6.6.1, whose user.* already"
+    " have the meanings above. pipeline_version is a keyword: never query it with a range;"
     " list its values with a terms aggregation, then filter on exact values. When a case"
     " has both, add pipeline_version to any user.*, process.name or process.parent.name"
     " query. Counts that look doubled: group by vhir.source_file and winlog.record_id (an"
