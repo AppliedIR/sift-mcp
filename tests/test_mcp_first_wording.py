@@ -68,15 +68,25 @@ SID_FIELD = (
     "winlog.user.identifier (the SID in the record header: often the service account"
     " the provider ran as; absent in records ingested before this version)"
 )
-# the OpenSearch guidance on who acted in Security 4688 and 4799 records, and
-# how to tell a record ingested before it; added after the key evtx fields
+# the OpenSearch key evtx fields the ECS mapping adds, after "event.code, " and
+# "process.name, "
+EVTX_KEYS = ("event.action, event.outcome, ", "process.executable, ")
+# the OpenSearch guidance on who acted in Security records, and how to tell a
+# record ingested before it; added after the key evtx fields
 USER_FIELDS = (
-    "In Security 4688 and 4799 records, user.name, user.domain and user.id are the"
-    " account that acted (4688: the creator, with the new process's account in"
-    " user.effective.*; 4799: the account that enumerated the members of group.name)."
-    " In those records with a pipeline_version below opensearch-mcp-0.6.6.1, user.name"
-    ' is TargetUserName (4688: the new process\'s account, often "-"; 4799: the group)'
-    " and user.effective.name is SubjectUserName."
+    "In Security records, user.name, user.domain and user.id are the account that acted;"
+    " user.target.* is the account acted on, user.effective.* the account a new process"
+    " (4688) or explicit logon (4648) ran as, and group.* the group. process.name and"
+    " process.parent.name are file names (cmd.exe), their paths process.executable and"
+    " process.parent.executable. Records whose pipeline_version is not"
+    " opensearch-mcp-0.6.6.2 (for 4688 and 4799, not opensearch-mcp-0.6.6.1 either) keep"
+    " older meanings: user.name can be the account acted on (4688: the new process's"
+    ' account, often "-"; 4799: the group), user.effective.name SubjectUserName and'
+    " process.name a path. pipeline_version is a keyword: never query it with a range;"
+    " list its values with a terms aggregation, then filter on exact values. When a case"
+    " has both, add pipeline_version to any user.*, process.name or process.parent.name"
+    " query. Counts that look doubled: group by vhir.source_file and winlog.record_id (an"
+    " event ingested again from another path is stored twice)."
 )
 
 # windows-triage's line on a hash no baseline build matches, as approved:
@@ -109,9 +119,18 @@ def test_opensearch_names_the_record_header_sid_field_once():
     assert _strings()["OPENSEARCH"].count(f", {SID_FIELD}. ") == 1
 
 
-def test_opensearch_says_who_acted_in_4688_and_4799_records_once():
+def test_opensearch_says_who_acted_in_security_records_once():
     text = f"{SID_FIELD}. {USER_FIELDS} Key shimcache"
     assert _strings()["OPENSEARCH"].count(text) == 1
+
+
+def test_opensearch_names_the_ecs_key_evtx_fields():
+    keys = f"Key evtx fields: event.code, {EVTX_KEYS[0]}user.name, source.ip, process.name, "
+    assert _strings()["OPENSEARCH"].count(keys + EVTX_KEYS[1] + "winlog.channel, ") == 1
+
+
+def test_opensearch_never_suggests_a_range_on_pipeline_version():
+    assert "pipeline_version below" not in _strings()["OPENSEARCH"]
 
 
 def test_forensic_mcp_says_a_challenge_is_required():
@@ -135,6 +154,7 @@ def test_the_backend_instructions_stay_within_their_budget():
     budget += len(TOOL_SYNTAX) + 2
     budget += len(SID_FIELD) + 2
     budget += len(USER_FIELDS) + 1
+    budget += sum(len(k) for k in EVTX_KEYS)
     budget += 2 * len(HASH_CLAUSE) - 1
     assert sum(len(v) for v in strings.values()) <= budget
 
