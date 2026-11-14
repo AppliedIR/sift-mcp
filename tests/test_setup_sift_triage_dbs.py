@@ -9,7 +9,8 @@ the installer. A fixture DB is added to the file list, marked fetched by
 default, through a sitecustomize on the python the blocks call; the file list
 is read by importing it, so the change shows wherever it is read. The same
 sitecustomize can make that import fail, as a broken venv would, or make the
-file list's reader fail.
+file list's reader fail. The stubbed download fails, so a run that reaches it
+ends with the summary's download FAILED line, whatever is on disk.
 """
 
 from __future__ import annotations
@@ -44,6 +45,11 @@ def _blocks() -> tuple[str, str]:
 
 
 DEFAULT_DB = "fixture_default.db"
+# The summary's last line after a download that failed this run.
+FAILED = (
+    "[WARN] Triage databases: download FAILED; "
+    "the installed databases were not changed"
+)
 SHIM = textwrap.dedent(
     """
     import os
@@ -149,7 +155,7 @@ def test_the_validation_names_a_missing_default_db(tmp_path):
 
 def test_the_summary_says_not_installed_when_a_default_db_is_missing(tmp_path):
     lines = _run(tmp_path, add_default_db=True)
-    assert lines[-1].startswith("[WARN] Triage databases: not installed"), lines
+    assert lines[-1].startswith(FAILED), lines
 
 
 def test_an_unreadable_file_list_counts_the_dbs_as_missing(tmp_path):
@@ -159,7 +165,7 @@ def test_an_unreadable_file_list_counts_the_dbs_as_missing(tmp_path):
     lines = _run(tmp_path, add_default_db=False, unreadable=True)
     warning = "[WARN] The triage release file list could not be read from the venv"
     assert sum(ln.startswith(warning) for ln in lines) == 1, lines
-    assert lines[-1].startswith("[WARN] Triage databases: not installed"), lines
+    assert lines[-1].startswith(FAILED), lines
     assert not any(ln.startswith("[OK] Triage databases exist") for ln in lines), lines
     assert "[INFO] Downloading pre-built databases..." in lines, lines
     assert any(ln.startswith("DOWNLOAD") for ln in lines), lines
@@ -167,12 +173,12 @@ def test_an_unreadable_file_list_counts_the_dbs_as_missing(tmp_path):
 
 def test_a_failing_file_list_reader_takes_the_download_path(tmp_path):
     """The file list imports but reading its default DBs raises: the installed DBs
-    are not called existing, the setup downloads, and the summary says not
-    installed."""
+    are not called existing, the setup downloads, and the summary says the
+    download FAILED."""
     lines = _run(tmp_path, add_default_db=False, reader_fails=True)
     warning = "[WARN] The triage release file list could not be read from the venv"
     assert sum(ln.startswith(warning) for ln in lines) == 1, lines
     assert not any(ln.startswith("[OK] Triage databases exist") for ln in lines), lines
     assert "[INFO] Downloading pre-built databases..." in lines, lines
     assert any(ln.startswith("DOWNLOAD") for ln in lines), lines
-    assert lines[-1].startswith("[WARN] Triage databases: not installed"), lines
+    assert lines[-1].startswith(FAILED), lines
