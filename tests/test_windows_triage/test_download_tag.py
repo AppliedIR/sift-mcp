@@ -294,7 +294,7 @@ def test_db_verify_failure_leaves_prior_install(tmp_path, monkeypatch, capsys):
 
 _KILL_DRIVER = textwrap.dedent(
     """
-    import shutil, signal, sys
+    import os, shutil, signal, sys
     from pathlib import Path
     from windows_triage.scripts import download_databases as dd
 
@@ -315,7 +315,9 @@ _KILL_DRIVER = textwrap.dedent(
         with open(db_path, "wb") as f:
             f.write(b"partial")
             f.flush()
-        ready.write_text("written")
+        # The parent kills once ready exists: write aside, then rename.
+        ready.with_name(ready.name + ".tmp").write_text("written")
+        os.replace(ready.with_name(ready.name + ".tmp"), ready)
         signal.pause()
 
     dd._fetch_release = fetch_release
