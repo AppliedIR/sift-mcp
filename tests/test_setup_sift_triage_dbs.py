@@ -47,8 +47,7 @@ def _blocks() -> tuple[str, str]:
 DEFAULT_DB = "fixture_default.db"
 # The summary's last line after a download that failed this run.
 FAILED = (
-    "[WARN] Triage databases: download FAILED; "
-    "the installed databases were not changed"
+    "[WARN] Triage databases: download FAILED; the installed databases were not changed"
 )
 SHIM = textwrap.dedent(
     """
