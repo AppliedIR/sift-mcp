@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 SETUP = Path(__file__).parent.parent / "setup-sift.sh"
+QUICKSTART = Path(__file__).parent.parent / "quickstart-lite.sh"
 
 
 def _summary() -> str:
@@ -40,12 +41,13 @@ def _stub_python(tmp_path: Path) -> Path:
     return py
 
 
-def _run_summary(db_dir: Path, venv_python: Path) -> str:
+def _run_summary(db_dir: Path, venv_python: Path, *lines: str) -> str:
     script = "\n".join(
         [
             "set -euo pipefail",
             'ok(){ echo "[OK] $*"; }; warn(){ echo "[WARN] $*"; }',
             f'INSTALL_TRIAGE=true; DB_DIR="{db_dir}"; VENV_PYTHON="{venv_python}"',
+            *lines,
             _summary(),
         ]
     )
@@ -93,3 +95,49 @@ def test_without_the_venv_python_the_summary_warns_and_counts_them_missing(tmp_p
     assert "[OK]" not in out, out
     assert lines[1].startswith("[WARN] Triage databases: not installed"), out
     assert f"{py} -m windows_triage.scripts.download_databases --dest {db_dir}" in out
+
+
+def test_triage_summary_after_a_failed_download_says_failed(tmp_path):
+    """The download failed this run, over DBs that are on disk: the summary says
+    the download FAILED, never that the databases are installed."""
+    db_dir = tmp_path / "data"
+    db_dir.mkdir()
+    for name in ("known_good.db", "context.db"):
+        (db_dir / name).write_bytes(b"x")
+    py = _stub_python(tmp_path)
+    out = _run_summary(db_dir, py, "TRIAGE_DL_FAILED=true")
+    assert out.startswith("[WARN] Triage databases: download FAILED"), out
+    assert "[OK]" not in out and ": installed" not in out, out
+    assert f"{py} -m windows_triage.scripts.download_databases --dest {db_dir}" in out
+
+
+def _quickstart_installed(*lines: str) -> str:
+    """Run quickstart-lite.sh's own "Installed:" list with only triage selected."""
+    text = QUICKSTART.read_text()
+    start = text.index('echo "Installed:"\n')
+    end = text.index('echo "Project directory:', start)
+    script = "\n".join(
+        [
+            "set -euo pipefail",
+            'ok(){ echo "[OK] $*"; }; warn(){ echo "[WARN] $*"; }',
+            "INSTALL_RAG=false; INSTALL_TRIAGE=true; INSTALLED_OPENCTI=false",
+            "INSTALLED_REMNUX=false; INSTALLED_MSLEARN=false; INSTALLED_ZELTSER=false",
+            *lines,
+            text[start:end],
+            "true",
+        ]
+    )
+    run = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    return run.stdout
+
+
+def test_quickstart_installed_list_says_a_failed_download_failed():
+    """quickstart-lite's "Installed:" list does not list windows-triage as OK when
+    its database download failed."""
+    out = _quickstart_installed("TRIAGE_DL_FAILED=true")
+    assert "[OK] windows-triage" not in out, out
+    want = (
+        "[WARN] windows-triage (baseline validation): triage database download FAILED"
+    )
+    assert want in out.splitlines(), out

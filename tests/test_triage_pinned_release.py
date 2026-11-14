@@ -123,9 +123,10 @@ def _release(mirror: Path, tag: str, lolbins: int) -> dict:
     return {"tag_name": tag, "assets": assets}
 
 
-def _mirror(tmp_path: Path, newer: bool = True) -> Path:
+def _mirror(tmp_path: Path, newer: bool = True, short: bool = False) -> Path:
     """The mirror: the pinned release, and with ``newer`` a newer one listed first
-    whose context.db has one more lolbins row. The counts are the pinned one's."""
+    whose context.db has one more lolbins row. The counts are the pinned one's; with
+    ``short``, the pinned release's context.db is one lolbins row short of them."""
     mirror = tmp_path / "mirror"
     releases = [_release(mirror, PINNED, lolbins=1)]
     if newer:
@@ -134,6 +135,8 @@ def _mirror(tmp_path: Path, newer: bool = True) -> Path:
         name: release_manifest.table_counts(mirror / PINNED / name)
         for name in ("known_good.db", "context.db")
     }
+    if short:
+        counts["context.db"]["lolbins"] += 1
     (mirror / "releases.json").write_text(json.dumps(releases))
     (mirror / "counts.json").write_text(json.dumps(counts))
     shim = tmp_path / "shim"
@@ -236,11 +239,11 @@ def test_the_pinned_tag_by_name_installs(tmp_path):
 # --- the installers' own download blocks ------------------------------------------
 
 
-def test_setup_sift_installs_the_pinned_release(tmp_path):
+def _setup_sift(tmp_path: Path, mirror: Path) -> tuple[list[str], Path]:
+    """Run setup-sift.sh's own triage database block; return its lines and the DB dir."""
     script = (ROOT / "setup-sift.sh").read_text()
     start = script.index("# --- windows-triage database setup ---\n")
     block = script[start : script.index("\n# --- OpenCTI credential wizard ---", start)]
-    mirror = _mirror(tmp_path)
     inst = tmp_path / "inst"
     lines = _bash(
         tmp_path,
@@ -255,17 +258,17 @@ def test_setup_sift_installs_the_pinned_release(tmp_path):
             block,
         ],
     )
-    assert "[OK] Databases downloaded and verified" in lines, lines
-    assert _installed(inst / "packages" / "windows-triage" / "data") == PINNED
+    return lines, inst / "packages" / "windows-triage" / "data"
 
 
-def test_quickstart_lite_installs_the_pinned_release(tmp_path):
+def _quickstart_lite(
+    tmp_path: Path, mirror: Path, data: Path, rebuild: bool = False
+) -> list[str]:
+    """Run quickstart-lite.sh's own Phase 2 block into ``data``; return its lines."""
     script = (ROOT / "quickstart-lite.sh").read_text()
     start = script.index('header "Phase 2: Triage Databases"\n')
     block = script[start : script.index("# Phase 3: RAG Index", start)]
-    mirror = _mirror(tmp_path)
-    data = tmp_path / "triage-db"
-    lines = _bash(
+    return _bash(
         tmp_path,
         mirror,
         [
@@ -274,8 +277,66 @@ def test_quickstart_lite_installs_the_pinned_release(tmp_path):
             'warn(){ echo "[WARN] $*"; }',
             f'VENV_PYTHON="{_venv_python(tmp_path)}"; DB_DIR="{data}"',
             "INSTALL_TRIAGE=true",
+            *(["REBUILD_TRIAGE=true"] if rebuild else []),
             block,
         ],
     )
+
+
+def _failed_line(lines: list[str]) -> list[str]:
+    return [
+        ln for ln in lines if ln.startswith("[WARN] Triage database download FAILED")
+    ]
+
+
+def test_setup_sift_installs_the_pinned_release(tmp_path):
+    lines, data = _setup_sift(tmp_path, _mirror(tmp_path))
+    assert "[OK] Databases downloaded and verified" in lines, lines
+    assert _installed(data) == PINNED
+
+
+def test_setup_sift_reports_a_failed_download_as_failed(tmp_path):
+    """A download whose DB fails its count check: setup-sift says FAILED and that
+    the installed databases were not changed, and nothing is installed."""
+    lines, data = _setup_sift(tmp_path, _mirror(tmp_path, short=True))
+    assert "[OK] Databases downloaded and verified" not in lines, lines
+    failed = _failed_line(lines)
+    assert failed and "the installed databases were not changed" in failed[0], lines
+    assert _installed(data) is None
+    assert not (data / "context.db").exists(), "an unverified DB was installed"
+
+
+def test_quickstart_lite_installs_the_pinned_release(tmp_path):
+    data = tmp_path / "triage-db"
+    lines = _quickstart_lite(tmp_path, _mirror(tmp_path), data)
     assert [ln for ln in lines if ln.startswith("[WARN]")] == [], lines
     assert _installed(data) == PINNED
+
+
+def test_quickstart_lite_reports_a_failed_download_as_failed(tmp_path):
+    """The same failed download through quickstart-lite: FAILED, nothing installed."""
+    data = tmp_path / "triage-db"
+    lines = _quickstart_lite(tmp_path, _mirror(tmp_path, short=True), data)
+    failed = _failed_line(lines)
+    assert failed and "the installed databases were not changed" in failed[0], lines
+    assert _installed(data) is None
+    assert not (data / "context.db").exists(), "an unverified DB was installed"
+
+
+def test_quickstart_lite_failed_rebuild_keeps_the_installed_databases(tmp_path):
+    """--rebuild-triage over an install, with a download that fails its check: the
+    installed DBs stay byte-identical, and it says FAILED."""
+    data = tmp_path / "triage-db"
+    data.mkdir()
+    for name in ("known_good.db", "context.db"):
+        conn = sqlite3.connect(data / name)
+        conn.execute("CREATE TABLE prior (name TEXT)")
+        conn.execute("INSERT INTO prior VALUES (?)", (name,))
+        conn.commit()
+        conn.close()
+    before = {p.name: p.read_bytes() for p in sorted(data.iterdir())}
+    mirror = _mirror(tmp_path, short=True)
+    lines = _quickstart_lite(tmp_path, mirror, data, rebuild=True)
+    after = {p.name: p.read_bytes() for p in sorted(data.iterdir())}
+    assert after == before, "a failed rebuild changed the installed databases"
+    assert _failed_line(lines), lines

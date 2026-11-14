@@ -10,6 +10,7 @@ the row floor constants and no manifest, sets those floors to 1).
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -17,21 +18,24 @@ import signal
 import sqlite3
 import subprocess
 import sys
+import tarfile
 import textwrap
 import time
 from pathlib import Path
 
 import pytest
 import zstandard
+from windows_triage import release_manifest
 from windows_triage.db.schemas import CONTEXT_SCHEMA, KNOWN_GOOD_SCHEMA
 from windows_triage.scripts import download_databases as dd
 
-TAG = "triage-db-v2099.01.01"
+TAG = release_manifest.RELEASE_TAG  # the only release the download installs
+OTHER_TAG = "triage-db-v2099.01.01"
 PRIOR_TAG = "triage-db-v2098.01.01"
+STAGE = ".triage-db-new-*"
 TAG_FILE = "installed_release.json"
 INSTALLED = ("known_good.db", "context.db")
 FLOORS = ("MIN_BASELINE_FILES", "MIN_LOLBINS", "MIN_VULNERABLE_DRIVERS")
-GONE = "the old tag file is gone and no tag file is left"
 
 
 def _sha256(path: Path) -> str:
@@ -110,14 +114,15 @@ def _release_dir(where: Path, dbs: dict[str, Path], checksums: str = "all") -> P
     return where
 
 
-def _serve(monkeypatch, release: Path) -> list[float]:
-    """Serve ``release`` through the three download seams; return the sleeps made."""
+def _serve(monkeypatch, release: Path, tag_name: str = TAG) -> list[float]:
+    """Serve ``release``, tagged ``tag_name``, through the three download seams;
+    return the sleeps made."""
     sleeps: list[float] = []
 
     def fetch_release(tag):
         files = sorted(release.iterdir())
         return {
-            "tag_name": TAG,
+            "tag_name": tag_name,
             "assets": [{"name": p.name, "url": str(p)} for p in files],
         }
 
@@ -178,6 +183,47 @@ def _reader():
     return getattr(dd, "read_installed_tag", None)
 
 
+def _files(dest: Path, names) -> dict[str, bytes]:
+    return {
+        name: (dest / name).read_bytes() for name in names if (dest / name).exists()
+    }
+
+
+def _stages(dest: Path) -> list[Path]:
+    return sorted(dest.glob(STAGE))
+
+
+def _add_licence_asset(release: Path, members: dict[str, bytes]) -> None:
+    """Add a licence asset holding ``members`` (path to bytes) to ``release``, with
+    its line in checksums.sha256."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for name, data in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    asset = release / release_manifest.LICENCE_ASSET
+    asset.write_bytes(zstandard.ZstdCompressor().compress(buf.getvalue()))
+    with open(release / "checksums.sha256", "a") as f:
+        f.write(f"{_sha256(asset)}  {asset.name}\n")
+
+
+def _fail_replace(monkeypatch, failing: set[int]) -> list[int]:
+    """Make the os.replace calls numbered in ``failing`` (from 1) raise OSError;
+    return the list of call numbers made."""
+    calls: list[int] = []
+    real = os.replace
+
+    def replace(src, dst, *args, **kwargs):
+        calls.append(len(calls) + 1)
+        if calls[-1] in failing:
+            raise OSError(f"test: os.replace call {calls[-1]} fails")
+        return real(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(dd.os, "replace", replace)
+    return calls
+
+
 # --- the tag file after a good install ------------------------------------------------
 
 
@@ -232,17 +278,18 @@ def test_checksum_mismatch_leaves_prior_install(tmp_path, monkeypatch, capsys):
     assert after == before
 
 
-def test_db_verify_failure_removes_prior_tag(tmp_path, monkeypatch, capsys):
-    """(a2) A DB verify failure after the decompress: the old tag file is gone, none is left."""
+def test_db_verify_failure_leaves_prior_install(tmp_path, monkeypatch, capsys):
+    """(a2) A DB verify failure: the downloaded DBs are checked before they replace
+    anything, so the prior DBs and tag file stay byte-identical."""
     dbs = _fixture_dbs(tmp_path / "dbs")
     _serve(monkeypatch, _release_dir(tmp_path / "release", dbs))
     _set_counts(monkeypatch, dbs, off_by_one="context.db:lolbins")
     dest = tmp_path / "dest"
-    _plant_prior(dest, tmp_path)
+    before = _plant_prior(dest, tmp_path)
     assert dd.download_databases(dest) is False
     assert "Database verification failed." in capsys.readouterr().out
-    assert (dest / "context.db").read_bytes() == dbs["context.db"].read_bytes()
-    assert not (dest / TAG_FILE).exists(), GONE
+    assert _files(dest, before) == before, "a failed install changed the prior install"
+    assert _stages(dest) == []
 
 
 _KILL_DRIVER = textwrap.dedent(
@@ -281,13 +328,13 @@ _KILL_DRIVER = textwrap.dedent(
 )
 
 
-def test_kill_mid_decompress_removes_prior_tag(tmp_path):
-    """(b) A process SIGKILLed just after its first write to the install dir, inside the
-    decompress: the old tag file is gone and no tag file is left."""
+def test_kill_mid_decompress_leaves_prior_install(tmp_path):
+    """(b) A process SIGKILLed just after its first write inside the decompress: the
+    prior DBs and tag file stay byte-identical."""
     dbs = _fixture_dbs(tmp_path / "dbs")
     release = _release_dir(tmp_path / "release", dbs)
     dest = tmp_path / "dest"
-    _plant_prior(dest, tmp_path)
+    before = _plant_prior(dest, tmp_path)
     ready = tmp_path / "ready"
     driver = tmp_path / "driver.py"
     driver.write_text(_KILL_DRIVER.format(tag=TAG))
@@ -310,7 +357,7 @@ def test_kill_mid_decompress_removes_prior_tag(tmp_path):
             proc.wait()
     assert proc.returncode == -signal.SIGKILL
     assert ready.read_text() == "written"
-    assert not (dest / TAG_FILE).exists(), GONE
+    assert _files(dest, before) == before, "a killed install changed the prior install"
 
 
 # --- releases that are not a verified install -----------------------------------------
@@ -334,16 +381,158 @@ def test_release_without_checksums_fails_with_no_tag(tmp_path, monkeypatch, caps
     assert not (dest / TAG_FILE).exists()
 
 
-def test_checksums_missing_a_db_writes_no_tag(tmp_path, monkeypatch):
-    """(e) checksums.sha256 lacks context.db's line: no tag file is written."""
+def test_checksums_missing_a_db_leaves_prior_install(tmp_path, monkeypatch, capsys):
+    """(e) checksums.sha256 lacks context.db's line: the install fails before it
+    writes anything, so the prior DBs and tag file stay byte-identical."""
     dbs = _fixture_dbs(tmp_path / "dbs")
     release = _release_dir(tmp_path / "release", dbs, checksums="drop-context")
     _serve(monkeypatch, release)
     _set_counts(monkeypatch, dbs)
     dest = tmp_path / "dest"
-    dd.download_databases(dest)
-    assert (dest / "known_good.db").is_file(), "the run reached the install"
-    assert not (dest / TAG_FILE).exists()
+    before = _plant_prior(dest, tmp_path)
+    assert dd.download_databases(dest) is False
+    assert "checksums.sha256 does not list: context.db.zst" in capsys.readouterr().out
+    assert _files(dest, before) == before, "a failed install changed the prior install"
+    assert _stages(dest) == []
+
+
+def test_release_with_another_tag_is_refused_before_any_write(
+    tmp_path, monkeypatch, capsys
+):
+    """A release whose tag is not the pinned one is refused before any download:
+    its DBs' counts are not the ones this version checks."""
+    dbs = _fixture_dbs(tmp_path / "dbs")
+    _serve(monkeypatch, _release_dir(tmp_path / "release", dbs), tag_name=OTHER_TAG)
+    _set_counts(monkeypatch, dbs)
+    fetched: list[str] = []
+    served = dd._download_asset
+
+    def download_asset(url, path):
+        fetched.append(url)
+        served(url, path)
+
+    monkeypatch.setattr(dd, "_download_asset", download_asset)
+    dest = tmp_path / "dest"
+    before = _plant_prior(dest, tmp_path)
+    assert dd.download_databases(dest) is False
+    out = capsys.readouterr().out
+    assert OTHER_TAG in out and TAG in out, out
+    assert fetched == [], "a refused release was downloaded"
+    assert _files(dest, before) == before
+
+
+def test_licence_failure_leaves_prior_install(tmp_path, monkeypatch, capsys):
+    """A licence asset with a bad member: the install fails before it replaces
+    anything, so the prior DBs, tag file and licences stay byte-identical."""
+    dbs = _fixture_dbs(tmp_path / "dbs")
+    release = _release_dir(tmp_path / "release", dbs)
+    _add_licence_asset(
+        release, {"src/LICENSE": b"new licence", "src/deep/LICENSE": b"bad member"}
+    )
+    _serve(monkeypatch, release)
+    _set_counts(monkeypatch, dbs)
+    dest = tmp_path / "dest"
+    before = _plant_prior(dest, tmp_path)
+    prior_licence = dest / release_manifest.LICENCE_DIR / "src" / "LICENSE"
+    prior_licence.parent.mkdir(parents=True)
+    prior_licence.write_bytes(b"prior licence")
+    assert dd.download_databases(dest) is False
+    assert "Licence install failed: unexpected member" in capsys.readouterr().out
+    assert _files(dest, before) == before, "a failed install changed the prior install"
+    assert prior_licence.read_bytes() == b"prior licence"
+    assert _stages(dest) == []
+
+
+def test_failed_swap_is_undone(tmp_path, monkeypatch, capsys):
+    """A move into place fails part way: every move made is undone, so the prior
+    DBs and tag file are back byte-identical, and it says so."""
+    dbs = _fixture_dbs(tmp_path / "dbs")
+    _serve(monkeypatch, _release_dir(tmp_path / "release", dbs))
+    _set_counts(monkeypatch, dbs)
+    dest = tmp_path / "dest"
+    before = _plant_prior(dest, tmp_path)
+    calls = _fail_replace(monkeypatch, {3})
+    assert dd.download_databases(dest) is False
+    out = capsys.readouterr().out
+    assert len(calls) >= 3, "the install did not reach a third move"
+    assert f"installing into {dest} failed" in out, out
+    assert "the installed databases were not changed" in out, out
+    assert _files(dest, before) == before, "the failed swap was not undone"
+    assert _stages(dest) == []
+
+
+def test_failed_undo_keeps_the_old_files(tmp_path, monkeypatch, capsys):
+    """The swap fails and its undo fails too: no tag file is left, and the files
+    it replaced are kept, byte-identical, in the stage dir it names."""
+    dbs = _fixture_dbs(tmp_path / "dbs")
+    _serve(monkeypatch, _release_dir(tmp_path / "release", dbs))
+    _set_counts(monkeypatch, dbs)
+    dest = tmp_path / "dest"
+    before = _plant_prior(dest, tmp_path)
+    _fail_replace(monkeypatch, {3, 4})
+    assert dd.download_databases(dest) is False
+    out = capsys.readouterr().out
+    assert not (dest / TAG_FILE).exists(), "a half-undone install kept a tag file"
+    stages = _stages(dest)
+    assert len(stages) == 1, stages
+    old = stages[0] / "old"
+    assert "undoing it failed too" in out and str(old) in out, out
+    kept = {name: (old / name).read_bytes() for name in (TAG_FILE, "known_good.db")}
+    assert kept == {name: before[name] for name in kept}
+
+
+def test_good_install_over_a_prior_install(tmp_path, monkeypatch):
+    """Control: a good release over a prior install replaces its DBs and tag file,
+    and leaves no stage dir."""
+    dbs = _fixture_dbs(tmp_path / "dbs")
+    _serve(monkeypatch, _release_dir(tmp_path / "release", dbs))
+    _set_counts(monkeypatch, dbs)
+    dest = tmp_path / "dest"
+    _plant_prior(dest, tmp_path)
+    assert dd.download_databases(dest) is True
+    assert _files(dest, INSTALLED) == {n: dbs[n].read_bytes() for n in INSTALLED}
+    assert json.loads((dest / TAG_FILE).read_text())["tag_name"] == TAG
+    assert _reader()(dest) == TAG
+    assert _stages(dest) == []
+
+
+def test_good_install_moves_an_old_db_journal_away(tmp_path, monkeypatch):
+    """An old DB's -wal and -shm files must not meet the new DB: a good install
+    moves them away with the old DB."""
+    dbs = _fixture_dbs(tmp_path / "dbs")
+    _serve(monkeypatch, _release_dir(tmp_path / "release", dbs))
+    _set_counts(monkeypatch, dbs)
+    dest = tmp_path / "dest"
+    _plant_prior(dest, tmp_path)
+    sides = [dest / "known_good.db-wal", dest / "known_good.db-shm"]
+    for side in sides:
+        side.write_bytes(b"an old journal")
+    assert dd.download_databases(dest) is True
+    assert [s.name for s in sides if s.exists()] == []
+    assert _stages(dest) == []
+
+
+def test_next_run_removes_a_left_stage_and_names_a_kept_one(
+    tmp_path, monkeypatch, capsys
+):
+    """A stage dir a killed run left (no old/ in it) is removed by the next run; one
+    holding old/ (the files a failed undo kept) is named and left in place."""
+    dbs = _fixture_dbs(tmp_path / "dbs")
+    _serve(monkeypatch, _release_dir(tmp_path / "release", dbs))
+    _set_counts(monkeypatch, dbs)
+    dest = tmp_path / "dest"
+    _plant_prior(dest, tmp_path)
+    left = dest / ".triage-db-new-left"
+    left.mkdir()
+    (left / "known_good.db").write_bytes(b"partial")
+    kept = dest / ".triage-db-new-kept"
+    (kept / "old").mkdir(parents=True)
+    (kept / "old" / "known_good.db").write_bytes(b"kept old db")
+    assert dd.download_databases(dest) is True
+    out = capsys.readouterr().out
+    assert not left.exists(), "the left stage dir was not removed"
+    assert (kept / "old" / "known_good.db").read_bytes() == b"kept old db"
+    assert str(kept) in out, out
 
 
 # --- the count check of a downloaded DB -----------------------------------------------
