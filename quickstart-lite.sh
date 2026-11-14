@@ -196,7 +196,7 @@ Data control:
   --no-rag            Skip RAG index build
   --no-triage         Skip triage DB download
   --rebuild-rag       Force delete and rebuild RAG index from scratch
-  --rebuild-triage    Force delete and re-download triage databases
+  --rebuild-triage    Force re-download of triage databases (kept if it fails)
 
 Scope:
   --venv-only         Update Python packages only (no config, no data)
@@ -523,16 +523,20 @@ header "Phase 2: Triage Databases"
 if [[ "$INSTALL_TRIAGE" == "true" ]]; then
     mkdir -p "$DB_DIR"
 
+    # A rebuild downloads over the installed DBs; the download replaces them only
+    # once the new ones pass their checks, so a failed rebuild keeps them.
     if [[ "${REBUILD_TRIAGE:-}" == "true" ]]; then
         warn "Force rebuilding triage databases..."
-        rm -f "$DB_DIR/known_good.db" "$DB_DIR/context.db"
     fi
 
-    if [[ -s "$DB_DIR/known_good.db" ]] && [[ -s "$DB_DIR/context.db" ]]; then
+    if [[ "${REBUILD_TRIAGE:-}" != "true" ]] && [[ -s "$DB_DIR/known_good.db" ]] && [[ -s "$DB_DIR/context.db" ]]; then
         ok "Triage databases already present"
     else
-        "$VENV_PYTHON" -m windows_triage.scripts.download_databases --dest "$DB_DIR" || \
-            warn "Database download failed. Run manually: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
+        "$VENV_PYTHON" -m windows_triage.scripts.download_databases --dest "$DB_DIR" || {
+            TRIAGE_DL_FAILED=true
+            warn "Triage database download FAILED (see the lines above); the installed databases were not changed."
+            warn "  Retry: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
+        }
     fi
 
     # Validate
@@ -976,7 +980,13 @@ echo ""
 echo "Installed:"
 ok "sift-common (audit and logging)"
 [[ "$INSTALL_RAG" == "true" ]] && ok "forensic-rag (knowledge search)"
-[[ "$INSTALL_TRIAGE" == "true" ]] && ok "windows-triage (baseline validation)"
+if [[ "$INSTALL_TRIAGE" == "true" ]]; then
+    if [[ "${TRIAGE_DL_FAILED:-false}" == "true" ]]; then
+        warn "windows-triage (baseline validation): triage database download FAILED"
+    else
+        ok "windows-triage (baseline validation)"
+    fi
+fi
 [[ "$INSTALLED_OPENCTI" == "true" ]] && ok "$THREATINTEL_NAME (threat intelligence)"
 [[ "$INSTALLED_REMNUX" == "true" ]] && ok "remnux-mcp (malware analysis)"
 [[ "$INSTALLED_MSLEARN" == "true" ]] && ok "microsoft-learn (documentation)"

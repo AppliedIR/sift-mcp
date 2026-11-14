@@ -1441,8 +1441,9 @@ if $INSTALL_TRIAGE; then
             "$VENV_PYTHON" -m windows_triage.scripts.download_databases \
                 --dest "$DB_DIR" && \
                 ok "Databases downloaded and verified" || {
-                warn "Download failed. You can retry later:"
-                warn "  $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
+                TRIAGE_DL_FAILED=true
+                warn "Triage database download FAILED (see the lines above); the installed databases were not changed."
+                warn "  Retry: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
             }
             ;;
         2)
@@ -2529,8 +2530,11 @@ print(fresh['state'], fresh['line'])
 fi
 
 if $INSTALL_TRIAGE; then
-    # Each DB the release file list fetches by default, as in the setup above
-    if triage_dbs_present; then
+    # Each DB the release file list fetches by default, as in the setup above.
+    # A download that failed this run is reported as failed, whatever is on disk.
+    if ${TRIAGE_DL_FAILED:-false}; then
+        warn "Triage databases: download FAILED; the installed databases were not changed. Retry: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
+    elif triage_dbs_present; then
         ok "Triage databases: installed. Re-download when needed: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"
     else
         warn "Triage databases: not installed; windows-triage won't start without them. Download: $VENV_PYTHON -m windows_triage.scripts.download_databases --dest $DB_DIR"

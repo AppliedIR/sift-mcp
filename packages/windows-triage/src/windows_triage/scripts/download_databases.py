@@ -8,7 +8,9 @@ Usage:
 
 It installs the release ``release_manifest.RELEASE_TAG`` names, fetched by that
 exact tag, never the newest triage-db-* release: each downloaded DB must match
-that release's counts exactly.
+that release's counts exactly. Everything is downloaded and checked in a
+staging dir inside DEST first and only then swapped into place, so a failed
+download or check leaves the installed databases as they were.
 
 Authentication:
     For private repos, set GITHUB_TOKEN or have ``gh`` CLI authenticated.
@@ -40,6 +42,7 @@ ASSETS = (
     CHECKSUMS,
 )
 TAG_FILE = "installed_release.json"
+STAGE_PREFIX = ".triage-db-new-"  # the verify-then-swap dir, in the install dir
 MAX_ATTEMPTS = 3
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 
@@ -157,14 +160,6 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _remove_tag(dest: Path) -> None:
-    """Remove the installed-release tag file, if there is one."""
-    try:
-        (dest / TAG_FILE).unlink()
-    except FileNotFoundError:
-        pass
-
-
 def _write_tag(dest: Path, tag_name: str, names: list[str]) -> None:
     """Write the installed-release tag file: the release tag, the install time and
     each installed DB's sha256."""
@@ -225,30 +220,94 @@ def _licence_members(tar: tarfile.TarFile):
         yield PurePosixPath(*parts), data
 
 
-def _install_licences(asset: Path, dest: Path) -> None:
-    """Extract the licence asset to ``dest/licenses/<source>/``, replacing the dir
-    only once every member is read and checked."""
+def _stage_licences(asset: Path, stage: Path) -> None:
+    """Extract the licence asset to ``stage/licenses/<source>/`` once every member
+    is read and checked; the swap moves it into place."""
     import zstandard as zstd
 
-    licence_dir = release_manifest.LICENCE_DIR
     with open(asset, "rb") as fin:
         reader = zstd.ZstdDecompressor().stream_reader(fin)
         with tarfile.open(fileobj=reader, mode="r|") as tar:
             files = list(_licence_members(tar))
-    staging = Path(tempfile.mkdtemp(prefix=f".{licence_dir}-", dir=dest))
+    staged = stage / release_manifest.LICENCE_DIR
+    staged.mkdir()
+    for rel, data in files:
+        path = staged.joinpath(*rel.parts)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+
+
+def _exists(path: Path) -> bool:
+    return path.exists() or path.is_symlink()
+
+
+def _clean_stages(dest: Path) -> None:
+    """Remove each stage dir a stopped install left in ``dest``. One holding old/
+    (the files a failed undo kept) is named and left in place."""
+    for stage in sorted(dest.glob(f"{STAGE_PREFIX}*")):
+        if stage.is_symlink() or not stage.is_dir():
+            continue
+        if _exists(stage / "old"):
+            print(
+                f"  {stage} holds files an earlier install could not put back "
+                "(in old/); it is left in place."
+            )
+            continue
+        print(f"  Removing {stage}, left by an install that stopped")
+        shutil.rmtree(stage, ignore_errors=True)
+
+
+def _swap_in(
+    dest: Path, stage: Path, db_names: list[str], tag_name: str, licences: bool
+) -> str:
+    """Move the verified files in ``stage`` into ``dest``, each old one into
+    ``stage/old``, then write the tag file. The old tag file goes first, so an
+    install stopped part way leaves no tag file. A failed move undoes every move
+    made. Returns "installed", "undone", or "kept" when the undo failed too (the
+    old files are left in ``stage/old``)."""
+    old = stage / "old"
+    old.mkdir()
+    done = []  # (from, to) for each move made, in order
+
+    def move(src: Path, dst: Path) -> None:
+        os.replace(src, dst)
+        done.append((src, dst))
+
     try:
-        for rel, data in files:
-            path = staging.joinpath(*rel.parts)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(data)
-        final = dest / licence_dir
-        if final.is_dir() and not final.is_symlink():
-            shutil.rmtree(final)
-        elif final.exists() or final.is_symlink():
-            final.unlink()
-        os.replace(staging, final)
-    finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        if _exists(dest / TAG_FILE):
+            move(dest / TAG_FILE, old / TAG_FILE)
+        for name in db_names:
+            for side in (dest / f"{name}-wal", dest / f"{name}-shm"):
+                if _exists(side):  # an old DB's journal must not meet the new DB
+                    move(side, old / side.name)
+            if _exists(dest / name):
+                move(dest / name, old / name)
+            move(stage / name, dest / name)
+        if licences:
+            final = dest / release_manifest.LICENCE_DIR
+            if _exists(final):
+                move(final, old / final.name)
+            move(stage / final.name, final)
+        try:
+            _write_tag(dest, tag_name, db_names)
+        except OSError:
+            (dest / f".{TAG_FILE}.tmp").unlink(missing_ok=True)
+            raise
+    except OSError as e:
+        failed = f"\ninstalling into {dest} failed: {e}"
+        try:
+            for src, dst in reversed(done):
+                os.replace(dst, src)
+        except OSError as undo:
+            print(failed)
+            print(
+                f"undoing it failed too: {undo}. The files it replaced are kept in "
+                f"{old}; {dest} may be partly changed."
+            )
+            return "kept"
+        print(f"{failed}; the installed databases were not changed.")
+        return "undone"
+    return "installed"
 
 
 def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
@@ -262,7 +321,10 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
             refused before anything is fetched.
 
     Returns:
-        True on success, False on failure.
+        True on success, False on failure. On failure the installed databases,
+        tag and licences are unchanged, unless undoing a failed swap failed
+        too: then the replaced files are kept in the staging dir's old/ and
+        the output names it.
     """
     pinned = release_manifest.RELEASE_TAG
     if tag is not None and tag != pinned:
@@ -285,6 +347,14 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
 
     tag_name = release.get("tag_name", tag)
     print(f"Release: {tag_name}")
+    if tag_name != pinned:
+        print(
+            f"Release {tag_name} is refused: this version installs {pinned}. Nothing "
+            "was downloaded; the installed databases were not changed."
+        )
+        return False
+
+    _clean_stages(dest)
 
     # The licence asset is fetched when the release has it.
     wanted = list(ASSETS)
@@ -294,6 +364,8 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
         temp_dir = Path(tempfile.mkdtemp(prefix="triage-db-"))
+        stage = None
+        swap = None
         try:
             # Download assets
             print(f"\nDownloading (attempt {attempt}/{MAX_ATTEMPTS})...")
@@ -332,14 +404,21 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
                 return False
 
             unlisted = [a for a in wanted if a != CHECKSUMS and a not in listed]
+            if unlisted:
+                print(
+                    f"\n{CHECKSUMS} does not list: {', '.join(unlisted)}. "
+                    "Not a verified install; the installed databases were not changed."
+                )
+                return False
 
-            # Decompress. The old tag file goes first: from the first write to
-            # the install dir on, only a verified install leaves a tag file.
-            _remove_tag(dest)
+            # Decompress and check in a stage dir in dest (the same filesystem, so
+            # the swap is renames). The installed files are not touched until every
+            # DB and the licences pass; during the swap dest holds both sets.
+            stage = Path(tempfile.mkdtemp(prefix=STAGE_PREFIX, dir=dest))
             print("\nDecompressing...")
             for db_name in db_names:
                 zst_path = temp_dir / f"{db_name}.zst"
-                db_path = dest / db_name
+                db_path = stage / db_name
                 print(f"  {db_name}...", end="", flush=True)
                 _decompress_zst(zst_path, db_path)
                 size_mb = db_path.stat().st_size / (1024 * 1024)
@@ -349,7 +428,7 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
             print("\nVerifying databases...")
             ok = True
             for db_name in db_names:
-                errors = release_manifest.check_downloaded(db_name, dest / db_name)
+                errors = release_manifest.check_downloaded(db_name, stage / db_name)
                 for error in errors:
                     print(f"  {error}")
                 if not errors:
@@ -360,28 +439,26 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
                 print("\nDatabase verification failed.")
                 return False
 
-            licence_asset = temp_dir / release_manifest.LICENCE_ASSET
-            if release_manifest.LICENCE_ASSET in wanted:
+            licences = release_manifest.LICENCE_ASSET in wanted
+            if licences:
                 try:
-                    _install_licences(licence_asset, dest)
+                    _stage_licences(temp_dir / release_manifest.LICENCE_ASSET, stage)
                 except (OSError, ValueError, tarfile.TarError) as e:
                     print(f"\nLicence install failed: {e}")
                     return False
-                print(f"  Licences installed in {dest / release_manifest.LICENCE_DIR}")
 
-            if unlisted:
-                print(
-                    f"\n{CHECKSUMS} does not list: {', '.join(unlisted)}. "
-                    "Not a verified install; no installed-release tag written."
-                )
+            swap = _swap_in(dest, stage, db_names, tag_name, licences)
+            if swap != "installed":
                 return False
-
-            _write_tag(dest, tag_name, db_names)
+            if licences:
+                print(f"  Licences installed in {dest / release_manifest.LICENCE_DIR}")
             print("\nDatabases installed successfully.")
             return True
 
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+            if stage is not None and swap != "kept":
+                shutil.rmtree(stage, ignore_errors=True)
 
     return False
 
