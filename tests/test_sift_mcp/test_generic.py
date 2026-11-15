@@ -55,22 +55,47 @@ class TestGenericRunCommand:
             with pytest.raises(ExecutionError, match="not found"):
                 run_command(["nonexistent_tool", "--flag"])
 
-    @pytest.mark.parametrize("binary", ["PECmd", "pecmd", "SrumECmd", "bstrings"])
-    def test_a_missing_ez_tool_says_how_to_install_it(self, binary):
-        with patch("sift_mcp.tools.generic.find_binary", return_value=None):
+    # the not-found reply follows the knowledge base's platform list: no Linux
+    # sends the tool to wintools-mcp; otherwise an EZ tool is setup-sift.sh's
+    _WIN = " runs only on Windows: run it through wintools-mcp."
+    _EZ = (
+        " Eric Zimmerman's tools aren't installed on this SIFT; re-run"
+        " setup-sift.sh to install them into /opt/zimmermantools."
+    )
+
+    @pytest.mark.parametrize(
+        ("binary", "fk_name", "fk", "hint"),
+        [
+            ("SrumECmd", "SrumECmd", "data", "win"),  # platform: [windows]
+            ("srumecmd", "SrumECmd", "data", "win"),
+            ("EvtxECmd", "EvtxECmd", "data", "ez"),  # its list has linux
+            ("bstrings", "bstrings", "data", "ez"),
+            ("SrumECmd", "SrumECmd", "no row", "ez"),
+            ("SrumECmd", "SrumECmd", "load error", "ez"),
+            ("fls", "fls", "data", ""),  # not an EZ tool, its list has linux
+        ],
+    )
+    def test_a_missing_tool_reply_follows_the_knowledge_base(
+        self, binary, fk_name, fk, hint
+    ):
+        from forensic_knowledge import loader
+
+        how = {
+            "data": {"wraps": loader.get_tool},
+            "no row": {"return_value": None},
+            "load error": {"side_effect": OSError("unreadable")},
+        }[fk]
+        with (
+            patch("sift_mcp.tools.generic.find_binary", return_value=None),
+            patch("forensic_knowledge.loader.get_tool", **how) as get_tool,
+        ):
             with pytest.raises(ExecutionError) as exc_info:
                 run_command([binary, "--flag"])
+        get_tool.assert_called_once_with(fk_name)
+        tail = {"win": f" {binary}{self._WIN}", "ez": self._EZ, "": ""}[hint]
         assert str(exc_info.value) == (
-            f"Binary '{binary}' not found on this system. Eric Zimmerman's tools"
-            " aren't installed on this SIFT; re-run setup-sift.sh to install them"
-            " into /opt/zimmermantools."
+            f"Binary '{binary}' not found on this system.{tail}"
         )
-
-    def test_a_missing_tool_that_isnt_ez_gets_no_install_hint(self):
-        with patch("sift_mcp.tools.generic.find_binary", return_value=None):
-            with pytest.raises(ExecutionError) as exc_info:
-                run_command(["fls", "--flag"])
-        assert str(exc_info.value) == "Binary 'fls' not found on this system."
 
     def test_denied_binary_error_message(self):
         """Verify the error message for denied binaries."""

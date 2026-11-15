@@ -5,6 +5,8 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from forensic_knowledge import loader
+
 from sift_mcp.catalog import get_tool_def
 from sift_mcp.config import get_config
 from sift_mcp.environment import find_binary
@@ -48,6 +50,16 @@ _DEV_PATH_TOOLS = {
 
 
 _EZ_TOOLS_DIR = Path("/opt/zimmermantools")
+
+
+def _runs_only_on_windows(fk_name: str) -> bool:
+    """Whether the knowledge base's platform list for the tool has no Linux
+    (no row, or one that won't load: not known, so no)."""
+    try:
+        platforms = (loader.get_tool(fk_name) or {}).get("platform")
+    except Exception:
+        return False
+    return isinstance(platforms, list) and bool(platforms) and "linux" not in platforms
 
 
 def _ez_launcher(binary: str, resolved: str) -> list[str]:
@@ -154,7 +166,9 @@ def run_command(
     if not resolved:
         msg = f"Binary '{binary}' not found on this system."
         td = get_tool_def(binary)
-        if td and td.category == "zimmerman":  # setup-sift.sh installs these
+        if td and _runs_only_on_windows(td.knowledge_name):
+            msg += f" {binary} runs only on Windows: run it through wintools-mcp."
+        elif td and td.category == "zimmerman":  # setup-sift.sh installs these
             msg += (
                 " Eric Zimmerman's tools aren't installed on this SIFT; re-run"
                 " setup-sift.sh to install them into /opt/zimmermantools."
