@@ -1,5 +1,7 @@
 """Tests for sift_mcp.tools.discovery."""
 
+from pathlib import Path
+
 import pytest
 from sift_mcp.catalog import clear_catalog_cache
 from sift_mcp.tools.discovery import (
@@ -87,6 +89,21 @@ class TestSuggestTools:
         result = suggest_tools("prefetch")
         assert "advisories" in result
         assert len(result["advisories"]) >= 1
+
+    def test_prefetch_is_not_sent_to_windows_for_pecmd(self, monkeypatch):
+        """PECmd runs on SIFT under dotnet: no wintools advisory, and the tool
+        notes don't list it as Windows-only. SRUM's stays."""
+        monkeypatch.setattr(
+            "sift_mcp.tools.discovery._wintools_available", lambda: False
+        )
+        prefetch = suggest_tools("prefetch")["advisories"]
+        assert not any("PECmd" in a or "wintools" in a for a in prefetch), prefetch
+        assert any("SrumECmd" in a for a in suggest_tools("srum")["advisories"])
+        root = Path(__file__).resolve().parents[2]
+        notes = (root / "claude-code/shared/FORENSIC_TOOLS.md").read_text()
+        windows_only = notes.split("**Windows-only")[1].split("**Workarounds")[0]
+        assert "SrumECmd" in windows_only and "PECmd" not in windows_only
+        assert "--parsers prefetch" not in notes
 
     def test_suggest_includes_cross_mcp_checks(self):
         result = suggest_tools("prefetch")

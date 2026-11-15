@@ -39,10 +39,6 @@ _SIFT_LIMITATIONS: dict[str, str] = {
         "SRUM parsing on SIFT uses Plaso (limited dirty-database handling). "
         "For reliable SRUM analysis, provision wintools-mcp with SrumECmd."
     ),
-    "prefetch": (
-        "Prefetch parsing on SIFT uses Plaso (misses execution counts, loaded DLLs). "
-        "For complete prefetch analysis, provision wintools-mcp with PECmd."
-    ),
     "registry": (
         "Registry parsing on SIFT has limited transaction log recovery. "
         "For dirty hives from KAPE live collection, provision wintools-mcp with RECmd."

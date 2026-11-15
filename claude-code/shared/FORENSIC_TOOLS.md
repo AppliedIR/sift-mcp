@@ -30,11 +30,9 @@ Comprehensive reference for forensic analysis tools on the SIFT Workstation.
 ## EZ Tools Linux Limitations
 
 **Windows-only (NOT available on SIFT):**
-- **PECmd** (Prefetch parser)
 - **SrumECmd** (SRUM parser)
 
 **Workarounds:**
-- **Prefetch:** `log2timeline.py --parsers prefetch`
 - **SRUM:** Copy `SRUDB.dat` to Windows, or use `esedbexport` + manual parsing
 
 > **Prefetch interpretation caveats:** Prefetch proves execution and execution count, but has no user attribution — corroborate with UserAssist, BAM, or Security logs. Prefetch may be disabled on SSD-only systems or via group policy. The .pf filename hash incorporates the executable path, so the same binary from different paths creates different .pf files. Windows 8+ stores up to 8 last-run timestamps (not just one).
