@@ -7,7 +7,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from sift_mcp.catalog import clear_catalog_cache
 from sift_mcp.response import build_response, reset_call_counter
+from sift_mcp.tools.discovery import get_tool_help
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -96,6 +98,15 @@ OLD_BUILDS = (
 )
 
 
+def _check_pecmd_caveats(caveats: list[str]) -> None:
+    for stale in (
+        "Windows forensic workstation only",
+        "Non-Windows platforms not supported",
+    ):
+        assert not any(stale in caveat for caveat in caveats), stale
+    assert any(caveat.startswith(OLD_BUILDS) for caveat in caveats)
+
+
 def test_a_pecmd_reply_warns_about_old_builds_and_does_not_call_it_windows_only():
     reset_call_counter()
     try:
@@ -108,10 +119,13 @@ def test_a_pecmd_reply_warns_about_old_builds_and_does_not_call_it_windows_only(
         )
     finally:
         reset_call_counter()
-    caveats = resp["caveats"]
-    for stale in (
-        "Windows forensic workstation only",
-        "Non-Windows platforms not supported",
-    ):
-        assert not any(stale in caveat for caveat in caveats), stale
-    assert any(caveat.startswith(OLD_BUILDS) for caveat in caveats)
+    _check_pecmd_caveats(resp["caveats"])
+
+
+def test_pecmd_tool_help_warns_about_old_builds_and_does_not_call_it_windows_only():
+    clear_catalog_cache()
+    try:
+        info = get_tool_help("PECmd")
+    finally:
+        clear_catalog_cache()
+    _check_pecmd_caveats(info["caveats"])
