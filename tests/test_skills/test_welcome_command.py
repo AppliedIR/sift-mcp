@@ -37,3 +37,11 @@ def test_the_skill_tells_no_read_the_full_settings_deny():
     assert denied
     for path in denied:
         assert not re.search(r"\bRead\s+`?" + re.escape(path), skill), path
+
+
+def test_the_skill_does_not_call_pecmd_windows_only():
+    """PECmd runs on Linux under dotnet, so the welcome must not excuse it as Windows-only."""
+    skill = (ROOT / "skills/vhir-welcome/SKILL.md").read_text()
+    paras = [p for p in skill.split("\n\n") if "only run" in p and "Windows" in p]
+    assert paras  # the Windows-only paragraph is still there
+    assert not any("PECmd" in p for p in paras)

@@ -56,9 +56,9 @@ list individual tools unless they are absent. Do NOT show install
 commands for missing tools — missing tools are a SIFT distribution
 issue, not a Valhuntir problem.
 
-Zimmerman tools that only run on Windows (PECmd, SrumECmd) are not
-expected on Linux. Do not flag them as missing. If the examiner needs
-prefetch or SRUM parsing, mention WinTools MCP as the solution.
+SrumECmd, the Zimmerman tool that only runs on Windows, is not
+expected on Linux. Do not flag it as missing. If the examiner needs
+SRUM parsing, mention WinTools MCP as the solution.
 
 ### Step 3: Knowledge and Baselines
 
