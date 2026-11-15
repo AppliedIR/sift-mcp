@@ -1,8 +1,8 @@
 name: SrumECmd
 category: zimmerman
 description: "Parse System Resource Usage Monitor (SRUM) database for application, network, and energy usage history"
-platform: [windows, linux, macos]
-platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
+platform: [windows]
+platform_notes: "Runs on Windows only: it needs Windows' ESE database library. On Linux and macOS it stops with 'Non-Windows platforms not supported due to the need to load ESE specific Windows libraries!' and exit code 1. Use it through wintools-mcp."
 artifacts_parsed: [srum]
 
 caveats:

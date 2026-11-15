@@ -25,7 +25,7 @@ phases:
     steps:
       - "Check network connections around staging time using tshark or zeek (via sift-mcp) if PCAP available"
       - "Check for cloud upload activity in browser history using Hindsight (via sift-mcp)"
-      - "Check for large outbound data transfers in SRUM using SrumECmd (via sift-mcp or wintools-mcp)"
+      - "Check for large outbound data transfers in SRUM using SrumECmd (via wintools-mcp)"
   - phase: "USB Check"
     steps:
       - "Check USB device connections around staging time — MountPoints2 in registry via RECmd (via sift-mcp or wintools-mcp)"

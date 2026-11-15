@@ -27,7 +27,7 @@ MITRE ATT&CK: T1074, T1560
 
 1. Check network connections around staging time using tshark or zeek (via sift-mcp) if PCAP available
 2. Check for cloud upload activity in browser history using Hindsight (via sift-mcp)
-3. Check for large outbound data transfers in SRUM using SrumECmd (via sift-mcp or wintools-mcp)
+3. Check for large outbound data transfers in SRUM using SrumECmd (via wintools-mcp)
 
 ## Phase 4: USB Check
 
