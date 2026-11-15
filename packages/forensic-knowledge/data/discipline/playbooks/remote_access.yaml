@@ -24,7 +24,7 @@ phases:
       - "Check source IP against threat intelligence (opencti: lookup_ioc)"
   - phase: "Execution Context"
     steps:
-      - "Check what was executed after remote access using PECmd (via wintools-mcp)"
+      - "Check what was executed after remote access using PECmd (via sift-mcp or wintools-mcp)"
       - "Verify process execution trees around remote access time (windows-triage: check_process_tree)"
       - "Check for tools transferred to the system using MFTECmd (via sift-mcp or wintools-mcp)"
   - phase: "Scope"

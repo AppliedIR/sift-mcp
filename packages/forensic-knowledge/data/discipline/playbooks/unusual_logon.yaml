@@ -24,7 +24,7 @@ phases:
       - "If available, check same account on other systems to establish cross-system baseline"
   - phase: "Context"
     steps:
-      - "Check process execution around logon time using PECmd (via wintools-mcp) to identify what was run"
+      - "Check process execution around logon time using PECmd (via sift-mcp or wintools-mcp) to identify what was run"
       - "Check file creation around logon time using MFTECmd (via sift-mcp or wintools-mcp)"
       - "Check for new services or tasks created using windows-triage (check_service, check_scheduled_task)"
   - phase: "Lateral Check"

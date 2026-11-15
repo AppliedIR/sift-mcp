@@ -13,7 +13,7 @@ triggers:
 phases:
   - phase: "Identify"
     steps:
-      - "Check Prefetch for archive tool execution using PECmd (via wintools-mcp) — look for 7z.exe, rar.exe, WinRAR.exe, compact.exe"
+      - "Check Prefetch for archive tool execution using PECmd (via sift-mcp or wintools-mcp) — look for 7z.exe, rar.exe, WinRAR.exe, compact.exe"
       - "Check MFT for large file creation in temp or staging paths using MFTECmd (via sift-mcp or wintools-mcp)"
       - "Check USN Journal for file rename and creation operations around staging time"
   - phase: "Content"

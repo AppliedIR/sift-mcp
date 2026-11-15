@@ -13,7 +13,7 @@ MITRE ATT&CK: T1074, T1560
 
 ## Phase 1: Identify
 
-1. Check Prefetch for archive tool execution using PECmd (via wintools-mcp) — look for 7z.exe, rar.exe, WinRAR.exe, compact.exe
+1. Check Prefetch for archive tool execution using PECmd (via sift-mcp or wintools-mcp) — look for 7z.exe, rar.exe, WinRAR.exe, compact.exe
 2. Check MFT for large file creation in temp or staging paths using MFTECmd (via sift-mcp or wintools-mcp)
 3. Check USN Journal for file rename and creation operations around staging time
 

@@ -14,7 +14,7 @@ MITRE ATT&CK: T1003, T1558
 ## Phase 1: Identify
 
 1. Parse Sysmon logs for LSASS access events with Hayabusa (via sift-mcp or wintools-mcp)
-2. Check Prefetch for known credential tool execution using PECmd (via wintools-mcp)
+2. Check Prefetch for known credential tool execution using PECmd (via sift-mcp or wintools-mcp)
 3. Check running processes with Volatility3 pslist and psscan (via sift-mcp) if memory image available
 
 ## Phase 2: Tool Identification

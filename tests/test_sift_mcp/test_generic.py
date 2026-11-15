@@ -70,6 +70,7 @@ class TestGenericRunCommand:
             ("srumecmd", "SrumECmd", "data", "win"),
             ("EvtxECmd", "EvtxECmd", "data", "ez"),  # its list has linux
             ("bstrings", "bstrings", "data", "ez"),
+            ("PECmd", "PECmd", "data", "ez"),  # linux since 2026.10
             ("SrumECmd", "SrumECmd", "no row", "ez"),
             ("SrumECmd", "SrumECmd", "load error", "ez"),
             ("fls", "fls", "data", ""),  # not an EZ tool, its list has linux

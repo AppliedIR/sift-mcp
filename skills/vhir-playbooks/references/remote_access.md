@@ -26,7 +26,7 @@ MITRE ATT&CK: T1021, T1570
 
 ## Phase 3: Execution Context
 
-1. Check what was executed after remote access using PECmd (via wintools-mcp)
+1. Check what was executed after remote access using PECmd (via sift-mcp or wintools-mcp)
 2. Verify process execution trees around remote access time (windows-triage: check_process_tree)
 3. Check for tools transferred to the system using MFTECmd (via sift-mcp or wintools-mcp)
 

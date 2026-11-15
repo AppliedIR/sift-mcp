@@ -1,13 +1,12 @@
 name: PECmd
 category: zimmerman
 description: "Parse Windows Prefetch files (.pf) to determine program execution history"
-platform: [windows]
-platform_notes: "Runs on Windows only. On Linux and macOS it stops before reading any input, with the message 'Non-Windows platforms not supported'. Use it through wintools-mcp."
+platform: [windows, linux]
+platform_notes: "PECmd runs on SIFT from version 2026.10 (.NET 10; setup-sift.sh installs it when missing; run it through sift-mcp), and on a Windows forensic workstation through wintools-mcp. What changed: Windows 10 and 11 prefetch files are compressed, and until 2026.10 PECmd's Prefetch library decompressed them by calling a Windows system routine (ntdll RtlDecompressBufferEx), so builds from 2022 until 2026.10 stopped on Linux with 'Non-Windows platforms not supported'. In October 2026 the library replaced that call with its own decompression code, and PECmd removed the Linux refusal. Guidance that PECmd is Windows-only predates this change."
 artifacts_parsed: [prefetch]
 
 caveats:
-  - "Requires Windows-specific decompression libraries. Fails on Linux/SIFT with 'Non-Windows platforms not supported' error. Use on Windows forensic workstation only."
-  - "On Linux, PECmd exits with code 0 when it refuses to run. A run on SIFT can look successful and produce no output. No output from PECmd on SIFT does not mean there were no prefetch files."
+  - "Builds from 2022 until 2026.10 exit with code 0 when they refuse on Linux, so a run can look successful and produce no output. On SIFT, check the PECmd version first; no output from an old build does not mean there were no prefetch files."
   - "Prefetch is disabled by default on SSDs in some Windows versions and on Windows Server"
   - "Prefetch files are limited to 1024 entries on Win8+; oldest entries are overwritten"
   - "Last run timestamps include up to 8 run times on Win8+, only 1 on WinXP/Vista/7"
@@ -27,7 +26,7 @@ advisories:
 
 
 investigation_sequence:
-  - "Parse all Prefetch files to identify program execution history (via wintools-mcp)"
+  - "Parse all Prefetch files to identify program execution history (via sift-mcp or wintools-mcp)"
   - "Review all entries — Prefetch provides direct evidence of EXECUTION with timestamps"
   - "Note the run count and last 8 execution timestamps for each program"
   - "Review files loaded by each program — these appear in the file references"

@@ -26,7 +26,7 @@ MITRE ATT&CK: T1078, T1021
 
 ## Phase 3: Context
 
-1. Check process execution around logon time using PECmd (via wintools-mcp) to identify what was run
+1. Check process execution around logon time using PECmd (via sift-mcp or wintools-mcp) to identify what was run
 2. Check file creation around logon time using MFTECmd (via sift-mcp or wintools-mcp)
 3. Check for new services or tasks created using windows-triage (check_service, check_scheduled_task)
 

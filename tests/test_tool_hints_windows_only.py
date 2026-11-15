@@ -88,3 +88,30 @@ def test_a_tool_hint_says_where_the_tool_runs(name):
     lines = read()
     assert want in lines
     assert not any(gone in line for line in lines)
+
+
+OLD_BUILDS = (
+    "Builds from 2022 until 2026.10 exit with code 0 when they refuse on Linux,"
+    " so a run can look successful and produce no output."
+)
+
+
+def test_a_pecmd_reply_warns_about_old_builds_and_does_not_call_it_windows_only():
+    reset_call_counter()
+    try:
+        resp = build_response(
+            tool_name="PECmd",
+            success=True,
+            data={"output": ""},
+            audit_id="sift-test-002",
+            artifact_context="prefetch",
+        )
+    finally:
+        reset_call_counter()
+    caveats = resp["caveats"]
+    for stale in (
+        "Windows forensic workstation only",
+        "Non-Windows platforms not supported",
+    ):
+        assert not any(stale in caveat for caveat in caveats), stale
+    assert any(caveat.startswith(OLD_BUILDS) for caveat in caveats)
