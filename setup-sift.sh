@@ -1516,17 +1516,18 @@ fi
 # =============================================================================
 # Phase 5c: Eric Zimmerman's Tools
 # =============================================================================
-# The 13 that sift-mcp calls. SIFT's release fetches builds the vendor no longer
-# serves, and SIFT never installs PECmd or SrumECmd. Only what is missing is
-# installed, in SIFT's layout: the .dll in /opt/zimmermantools (at its root or in
-# the tool's folder) and a wrapper on PATH. A file already there, SIFT's or the
-# user's, is never replaced. Each zip's sha256, URL and size are added to
-# valhuntir-manifest.tsv there, so a later change by the vendor shows.
+# The 12 that sift-mcp calls on Linux (SrumECmd runs only on Windows). SIFT's
+# release fetches builds the vendor no longer serves, and SIFT never installs
+# PECmd. Only what is missing is installed, in SIFT's layout: the .dll in
+# /opt/zimmermantools (at its root or in the tool's folder) and a wrapper on
+# PATH. A file already there, SIFT's or the user's, is never replaced. Each
+# zip's sha256, URL and size are added to valhuntir-manifest.tsv there, so a
+# later change by the vendor shows.
 
 EZ_DIR=/opt/zimmermantools
 EZ_BIN=/usr/local/bin
 EZ_URL=https://download.ericzimmermanstools.com/net
-EZ_TOOLS="AmcacheParser PECmd AppCompatCacheParser RECmd MFTECmd EvtxECmd JLECmd LECmd SBECmd RBCmd SrumECmd SQLECmd bstrings"
+EZ_TOOLS="AmcacheParser PECmd AppCompatCacheParser RECmd MFTECmd EvtxECmd JLECmd LECmd SBECmd RBCmd SQLECmd bstrings"
 EZ_MISSING=""
 EZ_FAILED=""
 

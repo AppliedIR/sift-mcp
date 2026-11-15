@@ -192,7 +192,7 @@ git clone https://github.com/AppliedIR/sift-mcp.git && cd sift-mcp
 bash /tmp/vhir-quickstart.sh --recommended --opensearch
 ```
 
-**Eric Zimmerman's tools** — The installer installs any of the 13 that sift-mcp calls and SIFT lacks, from the vendor's site into `/opt/zimmermantools`, with .NET 10 from SIFT's own apt sources. A tool already there is left alone. Add `--no-ez-tools` to skip this.
+**Eric Zimmerman's tools** — The installer installs any of the 12 that sift-mcp calls on Linux and SIFT lacks (SrumECmd runs only on Windows, through wintools-mcp), from the vendor's site into `/opt/zimmermantools`, with .NET 10 from SIFT's own apt sources. A tool already there is left alone. Add `--no-ez-tools` to skip this.
 
 If opensearch-mcp is already cloned alongside sift-mcp, the installer detects and installs it automatically — no flag needed.
 

@@ -33,7 +33,6 @@ TOOLS = [
     "LECmd",
     "SBECmd",
     "RBCmd",
-    "SrumECmd",
     "SQLECmd",
     "bstrings",
 ]
@@ -185,9 +184,9 @@ def test_the_phase_comes_before_the_examiner_and_failures_reach_the_summary():
 def test_what_is_missing_is_installed_in_sifts_layout(box):
     lines = box.run()
     assert lines[-2:] == ["failed=", "errors=0"]
-    assert sum(ln.startswith("[OK] ") for ln in lines) == 13
+    assert sum(ln.startswith("[OK] ") for ln in lines) == len(TOOLS)
     manifest = (box.opt / "valhuntir-manifest.tsv").read_text().splitlines()
-    assert len(manifest) == 13
+    assert len(manifest) == len(TOOLS)
     for t, row in zip(TOOLS, manifest, strict=True):
         dll = _dll(box.opt, t)
         assert dll.read_text() == f"bytes of {dll.relative_to(box.opt)}\n"
@@ -201,6 +200,22 @@ def test_what_is_missing_is_installed_in_sifts_layout(box):
     assert not [c for c in box.calls() if c.startswith("apt-get")]
 
 
+def test_srumecmd_is_never_installed_it_runs_only_on_windows(box):
+    # SrumECmd exits 1 on any platform but Windows: not fetched even when the
+    # vendor serves it, and its absence leaves a SIFT that has the rest alone
+    _tool_zip(box.fix, "SrumECmd")
+    box.run()
+    assert not [c for c in box.calls() if "SrumECmd" in c]
+    assert not list(box.opt.rglob("SrumECmd*"))
+    assert not list(box.bin.glob("[Ss]rum[Ee][Cc]md"))
+    (box.tmp / "fresh").mkdir()
+    fresh = Box(box.tmp / "fresh")
+    fresh.place_sift()
+    _tool_zip(fresh.fix, "SrumECmd")
+    assert fresh.run() == ["failed=", "errors=0"]
+    assert fresh.calls() == []
+
+
 def test_a_sift_that_has_them_all_is_left_alone(box):
     box.place_sift()
     before = _tree(box.opt, box.bin)
@@ -211,8 +226,8 @@ def test_a_sift_that_has_them_all_is_left_alone(box):
 
 def test_sifts_wrappers_without_their_dlls_get_the_dlls_and_keep_the_wrappers(box):
     # SIFT's release writes its wrappers even when its download fails, and it never
-    # installs PECmd or SrumECmd
-    box.place_sift([t for t in TOOLS if t not in ("PECmd", "SrumECmd")], dlls=False)
+    # installs PECmd
+    box.place_sift([t for t in TOOLS if t != "PECmd"], dlls=False)
     wrappers = _tree(box.bin)
     lines = box.run()
     assert lines[-2:] == ["failed=", "errors=0"]
@@ -299,7 +314,7 @@ def test_a_download_that_fails_is_an_install_error(box):
     ) in lines
     assert not (box.bin / "PECmd").exists()
     assert not (box.opt / "PECmd.dll").exists()
-    assert (box.opt / "SrumECmd.dll").is_file()
+    assert (box.opt / "bstrings.dll").is_file()
 
 
 def test_something_that_isnt_a_zip_is_refused(box):
