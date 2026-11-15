@@ -148,7 +148,7 @@ User Question
 - File extensions: .exe, .dll, .doc, .xls, .pdf, .elf, .js, .vbs, .ps1
 
 ### wintools-mcp (if available)
-- Zimmerman tool names: AmcacheParser, EvtxECmd, MFTECmd, PECmd, RECmd, etc.
+- SrumECmd, the one Zimmerman tool that runs only on Windows
 - "run on Windows", "parse on the Windows box", "execute on Windows"
 - Hayabusa, autorunsc, sigcheck, and winpmem to decompress a memory image already in the case
 - Windows artifacts that need native Windows tools to parse

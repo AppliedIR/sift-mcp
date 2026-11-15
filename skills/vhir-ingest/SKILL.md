@@ -25,7 +25,7 @@ AFTER EVIDENCE SURVEY, BEFORE INVESTIGATION:
    idx_ingest_delimited regardless of encoding — UTF-16LE auto-detected
 5. Use run_command with SIFT tools (vol, fls, icat, regripper, strings)
    for deep analysis beyond indexed data
-6. Use wintools-mcp for offline evidence analysis on a Windows workstation (autorunsc, sigcheck, PECmd); PECmd also runs on SIFT through run_command
+6. Run PECmd on SIFT (run_command); use wintools-mcp for autorunsc, sigcheck and SrumECmd
 
 After ingesting evidence, do NOT default to OpenSearch queries only.
 Use this sequence:

@@ -51,7 +51,7 @@ _RELATED_TOOLS: dict[str, list[str]] = {
         "lookup_ioc (threat intel): Check file hash against threat intelligence",
     ],
     "execution": [
-        "wintools-mcp run_windows_command(PECmd/AmcacheParser): Parse on Windows for maximum fidelity",
+        "sift-mcp run_command(PECmd/AmcacheParser): parse on SIFT",
     ],
     "memory": [
         "opensearch-mcp idx_ingest_memory: Index Volatility results for querying",
