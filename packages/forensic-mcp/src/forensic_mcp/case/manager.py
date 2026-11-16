@@ -1280,7 +1280,7 @@ class CaseManager:
                     audit,
                     withdrawal_unlogged,
                 )
-            except _Refused as e:  # a check's reason, or findings.json's size
+            except _Refused as e:  # a check's reason
                 return {"status": "REJECTED", "error": str(e)}
 
     def _record_finding_locked(
@@ -2162,14 +2162,9 @@ class CaseManager:
         return self._load_json_file(case_dir / "findings.json", [])
 
     def _save_findings(self, case_dir: Path, findings: list[dict]) -> None:
-        text = json.dumps(findings, indent=2, default=str)  # ASCII: a byte a char
-        if len(text) > fi.DOC_CAP:
-            raise _Refused(
-                f"findings.json would be {len(text):,} bytes, past the "
-                f"{fi.DOC_CAP >> 20} MiB the Portal and vhir read. Shorten the quoted "
-                "content and extraction, and send the finding again. It wasn't recorded."
-            )
-        _protected_write(case_dir / "findings.json", text)
+        _protected_write(
+            case_dir / "findings.json", json.dumps(findings, indent=2, default=str)
+        )
 
     def _load_timeline(self, case_dir: Path) -> list[dict]:
         return self._load_json_file(case_dir / "timeline.json", [])

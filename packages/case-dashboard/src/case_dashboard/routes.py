@@ -57,8 +57,8 @@ def _no_case_response() -> JSONResponse:
 
 def _load_json(path: Path) -> list | dict | None:
     """Load a JSON file, return None on missing/corrupt. One that isn't a
-    regular file or is over the size cap is refused unread (NotRegularFile,
-    CaseFileTooBig: not OSErrors, so they reach the app's 409)."""
+    regular file is refused unread (NotRegularFile: not an OSError, so it
+    reaches the app's 409)."""
     if not path.exists():
         return None
     try:
@@ -75,7 +75,7 @@ def _load_yaml(path: Path) -> dict | None:
     """Load a YAML file. Returns None if missing. Raises ValueError on corrupt/unreadable."""
     if not path.exists():
         return None
-    try:  # non-blocking and checked on the descriptor, size-capped
+    try:  # non-blocking and checked on the descriptor
         return yaml.safe_load(fi.read_document(path).decode("utf-8")) or {}
     except yaml.YAMLError as e:
         raise ValueError(f"Corrupt YAML: {path}: {e}") from e
@@ -110,12 +110,12 @@ class AuditUnreadable(Exception):
 
 def _read_jsonl(path: Path, keep=None) -> tuple[list[dict], int]:
     """A JSONL file's entries, skipping corrupt lines, and how many lines
-    weren't UTF-8 (skipped too). A FIFO, device or over-cap line raises
-    (NotRegularFile, CaseFileTooBig: the app's 409), never skipped."""
+    weren't UTF-8 (skipped too). A FIFO or device raises (NotRegularFile:
+    the app's 409), never skipped."""
     entries: list[dict] = []
     not_utf8 = 0
     try:
-        for raw in fi.capped_lines(path):
+        for raw in fi.case_lines(path):
             if keep is not None and not keep(raw):  # can't hold what's wanted
                 continue
             try:
@@ -479,7 +479,7 @@ def get_case(request: Request) -> JSONResponse:
         return _no_case_response()
     try:
         meta = _load_yaml(case_dir / "CASE.yaml")
-    except (fi.NotRegularFile, fi.CaseFileTooBig):
+    except fi.NotRegularFile:
         raise  # the app's 409, by name
     except ValueError as e:
         logger.error("Corrupt CASE.yaml: %s", e)
@@ -921,8 +921,8 @@ def retired_dashboard_routes() -> list[Route]:
 
 
 async def _refused(request: Request, exc: Exception) -> JSONResponse:
-    """A case file refused unread (not a regular file, over a cap, a host log
-    that can't be read) a route didn't answer itself: 409, by name."""
+    """A case file refused unread (not a regular file, a host log that can't
+    be read) a route didn't answer itself: 409, by name."""
     logger.warning("Refused: %s", exc)
     return JSONResponse({"error": str(exc)}, status_code=409)
 
@@ -931,7 +931,6 @@ _REFUSALS = {
     c: _refused
     for c in (
         fi.NotRegularFile,
-        fi.CaseFileTooBig,
         hi.HostLogError,
         AuditUnreadable,
         CaseFileUnreadable,

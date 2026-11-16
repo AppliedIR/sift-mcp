@@ -261,8 +261,8 @@ def get_host(request: Request) -> JSONResponse:
         return JSONResponse({"error": "no such machine"}, status_code=404)
     keys = set(m.keys) | {m.id}
     history = []
-    try:  # non-blocking, the descriptor checked, each line capped (a refusal: 409)
-        for raw in fi.capped_lines(Path(case_dir) / hi.DECISIONS, follow=False):
+    try:  # non-blocking, the descriptor checked (a refusal: 409)
+        for raw in fi.case_lines(Path(case_dir) / hi.DECISIONS, follow=False):
             text = raw.decode("utf-8")  # split as text mode split: a lone CR too
             for line in io.StringIO(text, newline=None) if "\r" in text else (text,):
                 try:

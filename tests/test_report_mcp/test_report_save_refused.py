@@ -2,7 +2,7 @@
 findings.json and iocs.json, is absent or parses to a list of records. Any
 other file there (empty or blank, not UTF-8, one that won't parse, null, a
 number, a boolean, a list holding something other than records, a directory,
-a dangling symlink, one past the case document cap) means the report isn't
+a dangling symlink) means the report isn't
 saved: nothing is raised, a report already saved under that name is left
 byte-identical with no new version beside it (with none there, none is
 created: reports/ is absent or empty), `files` and `file` name it, and the error is vhir's:
@@ -205,17 +205,12 @@ def test_an_absent_iocs_json_saves(rs, tmp_path, monkeypatch):
     assert VALUE not in saved and "c2[.]example[.]net" in saved, saved
 
 
-def test_an_iocs_json_past_the_case_document_cap_refuses_the_save(
-    rs, tmp_path, monkeypatch
-):
+def test_an_iocs_json_over_16_mib_saves(rs, tmp_path, monkeypatch):
     case = _case(tmp_path, monkeypatch)  # VALUE only in the IOC record
     path = case / "iocs.json"
     path.write_text(path.read_text() + " " * (17 << 20))
     got, saved = _save(rs, case)
-    reports = case / "reports"
-    names = [p.name for p in reports.iterdir()] if reports.exists() else []
-    assert saved is None and names == [], got  # reports/ absent or empty
-    _refused(got, path, "couldn't be read (larger than the 16 MiB case document limit)")
+    assert got.get("status") == "saved" and saved is not None, got
 
 
 def test_a_record_written_after_the_view_is_read_is_defanged(rs, tmp_path, monkeypatch):

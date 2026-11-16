@@ -9,8 +9,8 @@ test's own, as conftest does in-process.)
 - Each needs source, extraction and content (raw_data stands in for content),
   quotable text and an audit_id in the trail. Content and extraction are kept
   whole up to 65,536 chars. A refusal names the artifact, counted from 1.
-- A finding that would take findings.json past the 16 MiB the readers open is
-  refused.
+- A finding that takes findings.json past 16 MiB is stored: no reader refuses a
+  case document for its size.
 - The reply grades each artifact that isn't FULL, and its message names the
   one that set the finding's grade.
 - A check whose result is kept stores the caller's reason, up to 2,000 chars.
@@ -27,7 +27,6 @@ from pathlib import Path
 
 import mcp.types as types
 import pytest
-from sift_common import file_identity
 from sift_gateway.backends.stdio_backend import StdioMCPBackend
 from sift_gateway.mcp_endpoint import create_backend_mcp_server
 from sift_gateway.server import Gateway
@@ -296,28 +295,25 @@ async def test_content_or_extraction_past_the_limit_refuses_the_call(rig, field)
     ), error
 
 
-def test_findings_json_has_the_size_limit_vhir_reads_it_with():
-    from vhir_cli import case_io
-
-    assert file_identity.DOC_CAP == case_io.DOC_CAP
+MIB_16 = 16 << 20  # the most findings.json could once hold
 
 
-async def test_a_finding_that_would_take_findings_json_past_16_mib_is_refused(rig):
+async def test_a_finding_that_takes_findings_json_past_16_mib_is_stored(rig):
     d, record = rig
     assert (await record("first", [art()]))["status"] == "STAGED"
     path = d / "findings.json"
     data = json.loads(path.read_text())
     data.append(dict(data[0], id="F-rig-900", title="padding", observation=""))
     size = len(json.dumps(data, indent=2, default=str))
-    data[-1]["observation"] = "p" * (file_identity.DOC_CAP - 4096 - size)
+    data[-1]["observation"] = "p" * (MIB_16 - 4096 - size)
     os.chmod(path, 0o644)  # the server writes it read-only
     path.write_text(json.dumps(data, indent=2, default=str))
     os.chmod(path, 0o444)
-    error = await _refused(rig, "one more", [art("y" * 5000)], iocs=["10.1.2.3"])
-    assert "past the 16 MiB the Portal and vhir read" in error, error
-    assert path.stat().st_size <= file_identity.DOC_CAP
-    res = await record("a short one", [art()])
-    assert res["status"] == "STAGED", res  # what still fits is recorded
+    res = await record("one more", [art("y" * 5000)], iocs=["10.1.2.3"])
+    assert res["status"] == "STAGED", res
+    assert path.stat().st_size > MIB_16
+    titles = [f["title"] for f in json.loads(path.read_text())]
+    assert titles[1:] == ["padding", "one more"], titles  # every record kept
 
 
 async def test_the_reply_names_the_artifact_that_set_the_findings_grade(rig):

@@ -904,19 +904,18 @@ _cache_lock = threading.Lock()
 
 def _read(path: Path) -> tuple[tuple, bytes]:
     """A host log's bytes: opened non-blocking and checked on the descriptor
-    (a FIFO or device is refused unread), each line capped."""
+    (a FIFO or device is refused unread)."""
     from sift_common import file_identity as fi
 
     try:
-        f = os.fdopen(fi._case_fd(path, follow=False), "rb")
-        # f closes once _capped's lines are read, or on a raise
-        st = os.fstat(f.fileno())
-        data = b"".join(fi._capped(f, path))
+        with os.fdopen(fi._case_fd(path, follow=False), "rb") as f:
+            st = os.fstat(f.fileno())
+            data = f.read()
     except FileNotFoundError:
         return (None, 0), b""
     except OSError as e:
         raise HostLogError(f"{path.name}: unreadable ({e.strerror or e})") from e
-    except (fi.NotRegularFile, fi.CaseFileTooBig) as e:
+    except fi.NotRegularFile as e:
         raise HostLogError(f"{path.name}: unreadable: {e}") from e
     return (st.st_ino, len(data)), data
 
@@ -1345,13 +1344,13 @@ def read_ops(case_dir: str | os.PathLike) -> dict:
     from sift_common import file_identity as fi
 
     path = Path(case_dir) / OPS
-    try:  # non-blocking, checked on the descriptor, size-capped
+    try:  # non-blocking, checked on the descriptor
         data = fi.read_document(path, follow=False)
     except FileNotFoundError:
         return {"ops": {}}
     except OSError as e:  # a link (O_NOFOLLOW), no permission: named
         raise HostLogError(f"{OPS}: unreadable ({e.strerror or e})") from e
-    except (fi.NotRegularFile, fi.CaseFileTooBig) as e:
+    except fi.NotRegularFile as e:
         raise HostLogError(f"{OPS}: unreadable: {e}") from e
     if not data.strip():
         return {"ops": {}}

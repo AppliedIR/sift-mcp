@@ -121,46 +121,6 @@ def read_regular(path) -> bytes:
         return f.read()
 
 
-LINE_CAP = 16 << 20  # the longest line a case log may hold
-DOC_CAP = 16 << 20  # the largest case document read whole
-
-
-class CaseFileTooBig(ValueError):
-    """A case log line over LINE_CAP, or a case document over DOC_CAP: refused
-    by name, never held whole. Like NotRegularFile, never an OSError: a reader
-    that passes over an unreadable file (`except OSError`) must not pass over
-    this one. `line`: the line's number, None for a document."""
-
-    def __init__(self, text: str, line: int | None = None):
-        super().__init__(text)
-        self.line = line
-
-
-_HOLDS = {  # what a case file holds, for the text that refuses it (vhir's case_io.holds)
-    "approvals.jsonl": "approval records", "findings.json": "findings",
-    "timeline.json": "timeline events", "iocs.json": "IOCs",
-    "keys.json": "signing-key records", "verification.jsonl": "0.6 approval records",
-    # sift's own files
-    "evidence.json": "evidence records", "todos.json": "TODOs",
-    "pending-reviews.json": "staged reviews", "CASE.yaml": "case details",
-    "actions.jsonl": "action records", "host-ops.json": "host-operation records",
-    "host-observations.jsonl": "host observations", "host-decisions.jsonl": "host decisions",
-    "host-list-draft.json": "a draft host list",
-}  # fmt: skip
-
-
-def _holds(path) -> str:
-    p = Path(path)
-    if p.name in _HOLDS:
-        return _HOLDS[p.name]
-    return "audit entries" if p.parent.name == "audit" else "case records"
-
-
-def _keep_a_copy(path) -> str:
-    return (f"It holds the case's {_holds(path)}: keep a copy of it before you move it "
-            "out of the case, then try again.")  # fmt: skip
-
-
 def _case_fd(path, follow: bool = True) -> int:
     """`path` opened non-blocking and checked on the descriptor: a FIFO,
     device, socket or directory raises NotRegularFile, unread."""
@@ -182,41 +142,22 @@ def _case_fd(path, follow: bool = True) -> int:
     return fd
 
 
-def capped_lines(path, follow: bool = True):
+def case_lines(path, follow: bool = True):
     """Each line of a regular case log, as bytes with its newline; the file is
-    opened and checked now. A line over LINE_CAP raises CaseFileTooBig naming
-    it: no more than LINE_CAP + 2 bytes of it are read, and it is never split."""
-    return _capped(os.fdopen(_case_fd(path, follow), "rb"), path)
+    opened and checked now. A line of any length is read whole, never split."""
+    return _lines(os.fdopen(_case_fd(path, follow), "rb"))
 
 
-def _capped(f, path):
+def _lines(f):
     with f:
-        n = 0
-        while raw := f.readline(LINE_CAP + 2):
-            n += 1
-            # the cap counts a line's content, not its \n or \r\n
-            end = 2 if raw.endswith(b"\r\n") else 1 if raw.endswith(b"\n") else 0
-            if len(raw) - end > LINE_CAP:
-                raise CaseFileTooBig(
-                    f"{path} line {n} is longer than {LINE_CAP >> 20} MiB, so the "
-                    f"file wasn't read past it. {_keep_a_copy(path)}",
-                    n,
-                )
-            yield raw
+        yield from f
 
 
 def read_document(path, follow: bool = True) -> bytes:
-    """A regular case document's bytes, read whole only when its size is at
-    most DOC_CAP (checked on the descriptor before any read)."""
+    """A regular case document's bytes, read whole whatever its size (the file
+    is checked on the descriptor before any read)."""
     with os.fdopen(_case_fd(path, follow), "rb") as f:
-        size = os.fstat(f.fileno()).st_size
-        data = f.read(DOC_CAP + 1) if size <= DOC_CAP else b""
-    if size > DOC_CAP or len(data) > DOC_CAP:  # grown since fstat: refused too
-        raise CaseFileTooBig(
-            f"{path} is larger than {DOC_CAP >> 20} MiB, so it wasn't read. "
-            f"{_keep_a_copy(path)}"
-        )
-    return data
+        return f.read()
 
 
 def hash_file(path) -> HashResult:

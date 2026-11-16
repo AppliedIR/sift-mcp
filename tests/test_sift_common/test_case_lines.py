@@ -1,7 +1,7 @@
 """sift-common's case-file reader: a FIFO, device or folder is refused unread,
-by name; a line over LINE_CAP or a document over DOC_CAP is refused by name,
-never held whole. Each read that could block runs in a forked child with an
-alarm and its address space capped, so a regression fails the test, not the box.
+by name; a line or a document of any size is read whole. Each read that could
+block runs in a forked child with an alarm and its address space capped, so a
+regression fails the test, not the box.
 """
 
 from __future__ import annotations
@@ -19,11 +19,7 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="FIFOs are POSIX
 NOT_REGULAR = ("{p} isn't a regular file (a named pipe, socket or device). Put the "
                "case's own file back, then try again.")  # fmt: skip
 FOLDER = "{p} is a folder, not a file. Put the case's own file back, then try again."
-LONG = ("{p} line {n} is longer than 16 MiB, so the file wasn't read past it. It holds "
-        "the case's {what}: keep a copy of it before you move it out of the case, then "
-        "try again.")  # fmt: skip
-LARGE = ("{p} is larger than 16 MiB, so it wasn't read. It holds the case's {what}: keep "
-         "a copy of it before you move it out of the case, then try again.")  # fmt: skip
+MIB_16 = 16 << 20  # the most a case file's line or document could once hold
 
 
 def _child(fn, secs=5):
@@ -62,79 +58,43 @@ def test_a_fifo_device_or_folder_is_refused_unread_by_name(tmp_path, how):
     else:
         p.mkdir()
     text = (FOLDER if how == "folder" else NOT_REGULAR).format(p=p)
-    assert _child(lambda: list(fi.capped_lines(p))) == (
+    assert _child(lambda: list(fi.case_lines(p))) == (
         "raised",
         f"NotRegularFile: {text}",
     )
     assert _child(lambda: fi.read_document(p)) == ("raised", f"NotRegularFile: {text}")
 
 
-@pytest.mark.parametrize("rel,what", [
-    ("findings.json", "findings"), ("todos.json", "TODOs"), ("CASE.yaml", "case details"),
-    ("audit/wintools-mcp.jsonl", "audit entries"), ("host-ops.json", "host-operation records"),
-    ("other.json", "case records")])  # fmt: skip
-def test_an_over_cap_text_says_what_the_file_holds(tmp_path, rel, what):
-    p = tmp_path / rel
-    p.parent.mkdir(exist_ok=True)
-    with open(p, "wb") as f:
-        f.truncate(fi.DOC_CAP + 1)
-    assert _child(lambda: fi.read_document(p))[1] == (
-        f"CaseFileTooBig: {LARGE.format(p=p, what=what)}")  # fmt: skip
-
-
-def test_the_refusals_are_not_oserrors():
+def test_the_refusal_is_not_an_oserror():
     """A reader that passes over an unreadable file (except OSError) must not
-    pass over these: they reach the portal's 409."""
-    assert not issubclass(fi.CaseFileTooBig, OSError)
+    pass over this one: it reaches the portal's 409."""
     assert not issubclass(fi.NotRegularFile, OSError)
 
 
 @pytest.mark.parametrize("end", [b"\n", b"\r\n", b""], ids=["LF", "CRLF", "last-line"])
-def test_the_cap_counts_a_line_s_content_not_its_line_end(tmp_path, end):
-    """Case logs written on Windows end their lines in CRLF: a line of exactly
-    the cap is read with either end, or none, and one byte more is refused."""
+def test_a_line_over_16_mib_is_read_whole_with_its_line_end(tmp_path, end):
+    """Case logs written on Windows end their lines in CRLF: a line of any
+    length is one record with either end, or none."""
     p = tmp_path / "wintools-mcp.jsonl"
-    p.write_bytes(b"x" * fi.LINE_CAP + end)
-    assert [len(raw) for raw in fi.capped_lines(p)] == [fi.LINE_CAP + len(end)]
-    p.write_bytes(b"x" * (fi.LINE_CAP + 1) + end)
-    with pytest.raises(fi.CaseFileTooBig) as e:
-        list(fi.capped_lines(p))
-    assert e.value.line == 1
+    p.write_bytes(b"x" * (MIB_16 + 1) + end)
+    assert [len(raw) for raw in fi.case_lines(p)] == [MIB_16 + 1 + len(end)]
 
 
-def test_the_cap_boundary_and_a_long_line_named_never_held(tmp_path):
+def test_long_lines_are_each_read_whole(tmp_path):
     p = tmp_path / "a.jsonl"
     with open(p, "wb") as f:
-        f.write(b"x" * fi.LINE_CAP + b"\n")  # exactly the cap: read
-        f.write(b"y" * (128 << 20) + b"\n")  # 128 MiB: refused at line 2
-
-    def read():
-        import tracemalloc
-
-        tracemalloc.start()
-        got = []
-        try:
-            for raw in fi.capped_lines(p):
-                got.append(len(raw))
-        except fi.CaseFileTooBig as e:
-            return got, e.line, str(e), tracemalloc.get_traced_memory()[1]
-
-    kind, (got, line, text, peak) = _child(read, secs=30)
-    assert (kind, got, line) == ("ok", [fi.LINE_CAP + 1], 2)
-    assert text == LONG.format(p=p, n=2, what="case records")
-    # the line before, the read buffer and its join: never the 128 MiB line whole
-    assert peak <= 3 * fi.LINE_CAP + (8 << 20)
+        f.write(b"x" * MIB_16 + b"\n")
+        f.write(b"y" * (64 << 20) + b"\n")
+        f.write(b"z\n")
+    got = _child(lambda: [len(raw) for raw in fi.case_lines(p)], secs=30)
+    assert got == ("ok", [MIB_16 + 1, (64 << 20) + 1, 2])
 
 
-def test_a_document_over_the_cap_is_refused_from_its_size(tmp_path):
+def test_a_document_over_16_mib_is_read(tmp_path):
     p = tmp_path / "evidence.json"
     with open(p, "wb") as f:
-        f.truncate(fi.DOC_CAP + 1)
-    assert _child(lambda: fi.read_document(p)) == (
-        "raised", f"CaseFileTooBig: {LARGE.format(p=p, what='evidence records')}")  # fmt: skip
-    with open(p, "wb") as f:
-        f.truncate(fi.DOC_CAP)  # exactly the cap: read
-    assert _child(lambda: len(fi.read_document(p))) == ("ok", fi.DOC_CAP)
+        f.truncate(MIB_16 + 1)
+    assert _child(lambda: len(fi.read_document(p))) == ("ok", MIB_16 + 1)
 
 
 def test_a_fifo_swapped_in_after_any_path_check_is_still_refused(tmp_path, monkeypatch):
@@ -149,5 +109,5 @@ def test_a_fifo_swapped_in_after_any_path_check_is_still_refused(tmp_path, monke
         return real(path, *a, **k)
 
     monkeypatch.setattr(os, "open", swap_then_open)
-    assert _child(lambda: list(fi.capped_lines(p))) == (
+    assert _child(lambda: list(fi.case_lines(p))) == (
         "raised", "NotRegularFile: " + NOT_REGULAR.format(p=p))  # fmt: skip

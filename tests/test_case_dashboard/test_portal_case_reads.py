@@ -101,16 +101,14 @@ def test_host_ops_fifo_is_named_by_get_ops_and_never_blocks(cases, monkeypatch):
 
 
 @pytest.mark.parametrize("size", [(16 << 20) + 64, 64 << 20])
-def test_an_over_cap_document_is_a_409_never_0_evidence(cases, monkeypatch, size):
-    """Sparse: refused from its size, before any read or parse."""
-    with open(cases["bad"] / "evidence.json", "wb") as f:
-        f.truncate(size)
-    kind, (code, body, _) = _get(cases, monkeypatch, "/api/evidence")
-    assert (kind, code) == ("ok", 409)
-    assert body["error"] == (f"{cases['bad'] / 'evidence.json'} is larger than 16 MiB, "
-                             "so it wasn't read. It holds the case's evidence records: "
-                             "keep a copy of it before you move it out of the case, then "
-                             "try again.")  # fmt: skip
+def test_a_document_over_16_mib_is_read(cases, monkeypatch, size):
+    """Of any size: read whole and answered, never refused for its size."""
+    head = '{"files": []'
+    (cases["bad"] / "evidence.json").write_text(
+        head + " " * (size - len(head) - 1) + "}"
+    )
+    kind, (code, body, next_code) = _get(cases, monkeypatch, "/api/evidence")
+    assert (kind, code, next_code) == ("ok", 200, 200), body
 
 
 def test_a_folder_says_so(cases, monkeypatch):

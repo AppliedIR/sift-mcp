@@ -40,10 +40,7 @@ PRIOR = b"PRIOR REPORT, written before the save\n"
 CONTENT = "# Report\n\nBody.\n"
 EMPTY = "is empty, not a list of records"
 NOT_A_RECORD = "holds a list with an entry that isn't a record"
-DOC_CAP = 16 << 20
-DIR, LINK, CUT, MIXED, MODE000, TO_VALID, OVER_CAP, HARD_LINK, FIFO = (
-    object() for _ in range(9)
-)
+DIR, LINK, CUT, MIXED, MODE000, TO_VALID, HARD_LINK, FIFO = (object() for _ in range(8))
 FORMS = {  # form: (what is written in the file, the phrase the reader gives it)
     "null": ("null", "holds null, not a list of records"),
     "number": ("7", "holds a number, not a list of records"),
@@ -61,7 +58,6 @@ FORMS = {  # form: (what is written in the file, the phrase the reader gives it)
     "unparseable": (CUT, "couldn't be read (not valid JSON)"),
     "permission-denied": (MODE000, "couldn't be read (permission denied)"),
     "symlink-valid": (TO_VALID, "couldn't be read (it is a symbolic link)"),
-    "over-cap": (OVER_CAP, "couldn't be read (larger than the 16 MiB case document limit)"),
     "hard-link": (HARD_LINK, "couldn't be read (another name links to it)"),
     "fifo": (FIFO, "couldn't be read (it isn't a regular file)"),
     "nested": ("[" * 100000 + "]" * 100000, "couldn't be read (nested too deeply)"),
@@ -135,9 +131,6 @@ def _spoil(path, form):
         path.write_text(json.dumps([*json.loads(path.read_text())[:1], 1]))
     elif how is MODE000:
         path.chmod(0)
-    elif how is OVER_CAP:  # sparse: its size is past the cap, its blocks aren't
-        with open(path, "r+b") as f:
-            f.truncate(DOC_CAP + 1)
     elif how is HARD_LINK:
         os.link(path, path.with_name(path.name + ".2"))
     else:

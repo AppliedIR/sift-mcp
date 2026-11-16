@@ -930,13 +930,13 @@ def read_host_list_draft(case_dir) -> dict | None:
     from sift_common import file_identity as fi
 
     path = Path(case_dir) / DRAFT
-    try:  # non-blocking, checked on the descriptor, size-capped
+    try:  # non-blocking, checked on the descriptor
         data = fi.read_document(path, follow=False)
     except FileNotFoundError:
         return None
     except OSError as e:  # a link (O_NOFOLLOW), no permission: named
         raise hi.HostLogError(f"{DRAFT}: unreadable ({e.strerror or e})") from e
-    except (fi.NotRegularFile, fi.CaseFileTooBig) as e:
+    except fi.NotRegularFile as e:
         raise hi.HostLogError(f"{DRAFT}: unreadable: {e}") from e
     try:
         doc = json.loads(data.decode("utf-8"))

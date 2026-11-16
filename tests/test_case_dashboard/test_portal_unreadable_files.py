@@ -202,7 +202,7 @@ def test_a_findings_file_that_fails_to_read_is_refused_by_name(portal, monkeypat
 def test_a_log_that_fails_to_read_refuses_the_audit_view(portal, monkeypatch):
     from sift_common import file_identity
 
-    _eio_on(monkeypatch, file_identity, "capped_lines", "sift-mcp.jsonl")
+    _eio_on(monkeypatch, file_identity, "case_lines", "sift-mcp.jsonl")
     r = portal.get("/api/audit/F-steve-001")
     assert r.status_code == 409, (r.status_code, r.text)
     assert r.json()["error"].startswith(
