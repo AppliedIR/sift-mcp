@@ -20,7 +20,7 @@ import json
 import os
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from sift_common import file_identity
@@ -207,6 +207,15 @@ def _broken(kind: str, detail: str, fix: str = "", reason: str = "", links=()) -
 def _link(method: str, frm: dict, to: dict, entry=None, line=b"", case=None) -> dict:
     return {"method": method, "audit_id": (entry or {}).get("audit_id", ""),
             "entry_sha256": _line_sha256(case, line) if line else "", "from": frm, "to": to}  # fmt: skip
+
+
+def _once(links: list[dict]) -> list[dict]:
+    """Each step once, the first kept, in order: two links are one step when
+    their JSON objects are equal with keys sorted."""
+    kept: dict[str, dict] = {}
+    for link in links:
+        kept.setdefault(json.dumps(link, sort_keys=True, default=str), link)
+    return list(kept.values())
 
 
 def _manifest_rows(case: Case, folder: dict) -> list[dict]:
@@ -670,7 +679,8 @@ def _trace_entry(
     }
     # an entry the AI declared (log_external_action) links as declared
     declared = e.get("declared") is True or e.get("tool") == "log_external_action"
-    links = [link for t in traces for link in t.links]
+    # inputs from one image reach its steps once each
+    links = _once([link for t in traces for link in t.links])
     links.append(
         _link("declared" if declared else "recorded-id", frm, to, e, line, case)
     )
@@ -1206,14 +1216,18 @@ def _group_ops(groups, group: str) -> list[str]:
 
 def _follow(case: Case, e: dict, line: bytes, follow: list) -> Trace:
     """Each followed record's ingest traced to its roots, its recorded original
-    compared with them; then the query's own link per record."""
+    compared with them. Each ingest is traced once: its links, then the query's
+    own link for each record that resolved through it, ingests in the order
+    their first record came."""
     if not follow:
         return _broken("no-results-recorded", f"{e['audit_id']}: no returned record "
                        "was followed")  # fmt: skip
-    traces, links = [], []
+    traces, traced, records = [], {}, {}
     for ingest, doc in follow:
-        t = trace_op(case, ingest) if ingest else _broken(
-            "no-results-recorded", f"{e['audit_id']} returned a record with no ingest")  # fmt: skip
+        if ingest not in traced:
+            traced[ingest] = trace_op(case, ingest) if ingest else _broken(
+                "no-results-recorded", f"{e['audit_id']} returned a record with no ingest")  # fmt: skip
+        t = replace(traced[ingest])  # a record's own checks stay its own
         if (t.grade == "BROKEN" and (t.break_ or {}).get("kind") == "no-recorded-origin"
                 and doc is not None and not doc.get("content_hash")
                 and _COUNTER_ID.search(ingest)):  # fmt: skip
@@ -1241,7 +1255,6 @@ def _follow(case: Case, e: dict, line: bytes, follow: list) -> Trace:
                             f"{sorted(stamped)}, but its chain reaches {sorted(reached)}",
                             links=t.links)  # fmt: skip
         traces.append(t)
-        links += t.links
         link = _link(
             "recorded-id",
             {"path": "", "sha256": ""},
@@ -1253,7 +1266,8 @@ def _follow(case: Case, e: dict, line: bytes, follow: list) -> Trace:
         if doc is not None:
             link["document"] = {"_index": doc.get("_index", ""), "_id": doc.get("_id", ""),
                                 "content_hash": doc.get("content_hash", "")}  # fmt: skip
-        links.append(link)
+        records.setdefault(ingest, []).append(link)
+    links = [link for ingest, t in traced.items() for link in t.links + records[ingest]]
     worst = min(traces, key=lambda t: _WORST.index(t.grade))
     roots = list({r["path"]: r for t in traces for r in t.roots}.values())
     if worst.grade != "FULL":

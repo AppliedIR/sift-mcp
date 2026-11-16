@@ -1,5 +1,6 @@
-"""What record_finding stores for an artifact: its chain without exact repeats,
-and its content whole, checked against its source, up to the 64K limit.
+"""What record_finding stores for an artifact: its chain as traced, each step
+once (each ingest's steps once, then the records that resolved through it), and
+its content whole, checked against its source, up to the 64K limit.
 
 Uses test_finding_chains' own case, entries and helpers.
 """
@@ -22,11 +23,14 @@ from .test_finding_chains import (  # noqa: F401
     _doc,
     _extract,
     _ingested_samples,
+    _mount,
     _search,
     _seven_zip,
+    _unregistered_ingest,
     c,
     g,
     sha,
+    two_images,
 )
 
 CAP = 5000
@@ -59,15 +63,14 @@ def test_a_fan_in_chain_stores_each_step_once(c):
     assert chain and max(n.values()) == 1, n
 
 
-def test_the_stored_chain_is_the_traces_links_in_order_first_kept(c):
+def test_the_stored_chain_is_the_traces_links_each_step_once(c):
     aid = _fan_in(c)
     t = pv.trace_artifact(pv.load_case(c.d), aid, "sample one\nsample two")
     keys = [_key(x) for x in t.links]
-    assert len(keys) > len(set(keys))  # the trace itself repeats steps
+    assert len(keys) == len(set(keys))  # both inputs' shared steps, once
     res, st = c.find([{"content": "sample one\nsample two", "audit_id": aid}])
     a = st["artifacts"][0]
-    assert [_key(x) for x in a["provenance_chain"]] == list(dict.fromkeys(keys))
-    # the grade is the trace's, with or without the repeats
+    assert a["provenance_chain"] == json.loads(json.dumps(t.links))
     assert (a["provenance_grade"], res["provenance_grade"]) == (t.grade, t.grade)
 
 
@@ -94,10 +97,18 @@ def test_a_stored_fan_in_chain_keeps_each_link_once_first_kept():
     assert kept[0] is chain[0]
 
 
-# --- one search's records from two ingests that share a step ------------------
+# --- each shape: record_finding -> the stored chain -> the Portal's chain -------
 
 X = "opensearch-ingest-7-20261009-010"
 I1, I2 = "opensearch-ingest-7-20261009-011", "opensearch-ingest-7-20261009-012"
+O = "opensearch-tester-20261003-004"  # an ingest from before 0.6.4, no origin
+M, R = "sift-tester-20261009-001", "sift-tester-20261009-002"  # a mount, a run
+# the registered root's link (no audit id), the extraction's two links, the
+# ingests, the old ingest, the mount's links, the run
+NAMES = {"": "Z", X: "X", I1: "I1", I2: "I2", O: "O", M: "M", R: "R"}
+Z_X = ["Z", "X", "X"]
+STEP = "border-left:2px solid var(--border)"
+FULL = ("FULL", None)
 
 
 def _two_ingests_of_one_sample(c):
@@ -116,35 +127,57 @@ def _two_ingests_of_one_sample(c):
         )
 
 
-def _recorded(c, ingests):
-    """For a quote in records d1, d2, ... from `ingests` in turn: the chain
-    record_finding stores, and its steps in the order the Portal renders them."""
+def _records(*ingests, **fields):
+    """A quote in records d1, d2, ... returned from `ingests` in turn."""
+
+    def build(c):
+        _two_ingests_of_one_sample(c)
+        docs = [
+            _doc(f"d{i}", ing, **{"process.name": "evil.exe", **fields})
+            for i, ing in enumerate(ingests, 1)
+        ]
+        return _search(c, docs), "evil.exe"
+
+    return build
+
+
+def _stamps(c):
+    """Two records of one ingest: d1 stamped with the root it reaches, d2 with
+    another registered file."""
     _two_ingests_of_one_sample(c)
+    other = c.file("evidence/other.7z", "other bytes")
+    c.register(other)
+    root = str(c.d / "evidence" / "mem.7z")
     docs = [
-        _doc(f"d{i}", ing, **{"process.name": "evil.exe"})
-        for i, ing in enumerate(ingests, 1)
+        _doc("d1", I1, **{"process.name": "evil.exe", "vhir.original": sha(root)}),
+        _doc("d2", I1, **{"process.name": "evil.exe", "vhir.original": sha(other)}),
     ]
-    aid = _search(c, docs)
-    res, st = c.find([{"content": "evil.exe", "audit_id": aid}])
-    assert g(res, st)[0] == "FULL", g(res, st)
-    node = shutil.which("node") or pytest.skip("node isn't installed")
-    audit = [{"audit_id": aid, "tool": "idx_search"}]
-    r = subprocess.run([node, "-e", DRIVER], capture_output=True, text=True, timeout=120,
-                       input=json.dumps({"page": str(PAGE), "findings": [st], "audit": audit}))  # fmt: skip
-    assert r.returncode == 0, r.stderr[-2000:]
-    panel = chain_panel(json.loads(r.stdout), st["id"])
-    shown = []
-    for step in panel.split(STEP)[1:]:
-        doc = re.search(r"record (d\d+) in ", step)
-        aid = re.search(r'data-audit-id="([^"]*)"', step)
-        shown.append(doc[1] if doc else NAMES.get(aid[1] if aid else "", "?"))
-    return _short(st["artifacts"][0]["provenance_chain"]), shown
+    return _search(c, docs), "evil.exe"
 
 
-STEP = "border-left:2px solid var(--border)"
-# the registered 7z (no audit id), the extraction's two links, the two ingests
-NAMES = {"": "Z", X: "X", I1: "I1", I2: "I2"}
-Z_X = ["Z", "X", "X"]
+def _mount_fan_in(c):
+    """One run reading three files under one recorded mount of a registered
+    image: each input reaches the image and the mount the same way."""
+    a, _b = two_images(c)
+    mp = c.d / "mnt"
+    logs = "mnt/Windows/System32/winevt/Logs"
+    files = [c.file(f"{logs}/{n}.evtx", f"{n} inside A") for n in ("Security", "System", "Setup")]  # fmt: skip
+    _mount(c, a, str(mp), 2049, M)
+    c.run(R, ["cat", *files], files, "4624 alice\n", input_realpaths=files,
+          input_st_devs=[2049] * len(files))  # fmt: skip
+    return R, "4624 alice"
+
+
+def _stamped_then_not(c):
+    """Two records of an ingest from before 0.6.4 with no recorded origin: d1
+    stamped (made outside recorded tools), d2 never stamped (indexed before
+    0.6.4). d2's relabel stays d2's: the artifact keeps d1's break."""
+    _unregistered_ingest(c, O)
+    docs = [
+        _doc("d1", O, **{"event.code": "4624"}),
+        _doc("d2", O, **{"event.code": "4624", "vhir.content_hash": ""}),
+    ]
+    return _search(c, docs), "4624"
 
 
 def _short(chain) -> list:
@@ -155,22 +188,82 @@ def _short(chain) -> list:
     ]  # fmt: skip
 
 
-def test_records_from_two_ingests_each_keep_the_steps_they_share(c):
-    stored, shown = _recorded(c, [I1, I2])
-    assert stored == [*Z_X, "I1", "d1", *Z_X, "I2", "d2"]
-    # each record renders under its own ingest, the shared steps in both
-    assert shown == stored
+def _old_form(chain) -> list:
+    """The chain as record_finding stored it before 0.6.6.2: each record, in the
+    order it was returned, after its ingest's whole chain."""
+    pending, chain_of, records = [], [], []
+    for link in chain:
+        if isinstance(link.get("document"), dict):
+            chain_of = pending or chain_of
+            pending = []
+            records.append((link["document"]["_id"], chain_of, link))
+        else:
+            pending.append(link)
+    return [
+        x
+        for _id, ch, rec in sorted(records, key=lambda r: int(r[0][1:]))
+        for x in [*ch, rec]
+    ]
 
 
-def test_interleaved_records_each_render_under_their_own_ingest(c):
-    stored, shown = _recorded(c, [I1, I2, I1])
-    assert shown == [*Z_X, "I1", "d1", "d3", *Z_X, "I2", "d2"]
-    assert stored == [*Z_X, "I1", "d1", *Z_X, "I2", "d2", *Z_X, "I1", "d3"]
+def _portal(st, aid) -> list:
+    """The finding's chain as the Portal renders it, a name per step."""
+    node = shutil.which("node") or pytest.skip("node isn't installed")
+    audit = [{"audit_id": aid, "tool": "idx_search"}]
+    r = subprocess.run([node, "-e", DRIVER], capture_output=True, text=True, timeout=120,
+                       input=json.dumps({"page": str(PAGE), "findings": [st], "audit": audit}))  # fmt: skip
+    assert r.returncode == 0, r.stderr[-2000:]
+    shown = []
+    for step in chain_panel(json.loads(r.stdout), st["id"]).split(STEP)[1:]:
+        doc = re.search(r"record (d\d+) in ", step)
+        a = re.search(r'data-audit-id="([^"]*)"', step)
+        shown.append(doc[1] if doc else NAMES.get(a[1] if a else "", "?"))
+    return shown
 
 
-def test_two_records_from_one_ingest_render_its_chain_once(c):
-    _stored, shown = _recorded(c, [I1, I1])
-    assert shown == [*Z_X, "I1", "d1", "d2"]
+SEVENTEEN = [f"d{i}" for i in range(1, 18)]
+SHAPES = [
+    pytest.param(_records(*[I1] * 17), FULL, [*Z_X, "I1", *SEVENTEEN], False,
+                 id="one_ingest_17_records"),
+    pytest.param(_records(I1, I2), FULL, [*Z_X, "I1", "d1", *Z_X, "I2", "d2"], False,
+                 id="two_ingests_one_record_each"),
+    pytest.param(_records(I1, I1, I2, I2), FULL,
+                 [*Z_X, "I1", "d1", "d2", *Z_X, "I2", "d3", "d4"], False,
+                 id="two_ingests_two_records_each_apart"),
+    pytest.param(_records(I1, I2, I1, I2), FULL,
+                 [*Z_X, "I1", "d1", "d3", *Z_X, "I2", "d2", "d4"], False,
+                 id="two_ingests_two_records_each_interleaved"),
+    pytest.param(_mount_fan_in, FULL, ["Z", "M", "M", "M", "M", "R"], False,
+                 id="fan_in_three_inputs_one_mount"),
+    pytest.param(_stamps, ("BROKEN", "stamp-mismatch"), [*Z_X, "I1", "d1", "d2"], False,
+                 id="a_stamp_mismatch_beside_a_match"),
+    pytest.param(_stamped_then_not, ("BROKEN", "no-recorded-origin"), ["O", "d1", "d2"],
+                 False, id="a_records_relabel_stays_its_own"),
+    pytest.param(_records(I1, I2, I1), FULL, [*Z_X, "I1", "d1", "d3", *Z_X, "I2", "d2"],
+                 True, id="a_chain_stored_before_0_6_6_2"),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(("build", "grade", "steps", "old"), SHAPES)
+def test_each_ingests_steps_are_stored_once_and_render_with_their_records(
+    c, build, grade, steps, old
+):
+    """The stored chain is the trace's links: each ingest's steps once, then the
+    records that resolved through it. The grade is the one each shape always
+    had. The Portal renders the stored steps in order, and
+    a chain stored before 0.6.6.2 (each record after its ingest's steps) the same."""
+    aid, quote = build(c)
+    res, st = c.find([{"content": quote, "audit_id": aid}])
+    assert g(res, st)[:2] == grade, g(res, st)
+    chain = st["artifacts"][0]["provenance_chain"]
+    t = pv.trace_artifact(pv.load_case(c.d), aid, quote)
+    assert chain == json.loads(json.dumps(t.links))
+    assert _short(chain) == steps
+    if old:
+        stored = _old_form(chain)
+        assert _short(stored) == [*Z_X, "I1", "d1", *Z_X, "I2", "d2", *Z_X, "I1", "d3"]
+        st["artifacts"][0]["provenance_chain"] = stored
+    assert _portal(st, aid) == steps
 
 
 LINK_SHAPES = [

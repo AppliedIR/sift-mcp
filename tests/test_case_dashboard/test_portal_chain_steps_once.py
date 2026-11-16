@@ -62,6 +62,7 @@ MARK = "\n[cut: 5000 of 9000 chars stored]"
 # stored text as record_finding keeps it: its first 5000 chars, then the marker
 CUT = {end: "<td>" + "A" * 4995 + end + MARK for end in ("A", "\t", "\r", "\x1b")}
 R1, R2 = record("opensearch-steve-201", "d1"), record("opensearch-steve-202", "d2")
+R3, R4 = record("opensearch-steve-203", "d3"), record("opensearch-steve-204", "d4")
 
 
 def _fan_in() -> dict:
@@ -74,6 +75,11 @@ def _findings() -> list:
         finding("F-steve-020", artifacts=fan["artifacts"]),
         # two groups: each record's chain is the steps stored just before it
         finding("F-steve-021", artifacts=[art([A, B, R1, A, C, R2], "two groups")]),
+        # as stored from 0.6.6.2: each ingest's steps once, then its records
+        finding(
+            "F-steve-026",
+            artifacts=[art([A, B, R1, R3, A, C, R2, R4], "grouped")],
+        ),
         finding("F-steve-022", artifacts=[art([A, A, B, A, B, R1], "repeats")]),
         finding(
             "F-steve-023",
@@ -132,6 +138,13 @@ def test_a_step_two_groups_share_stays_in_both(shown):
     p = chain_panel(shown, "F-steve-021")
     assert ids(p) == ["sift-steve-101", "sift-steve-102", "opensearch-steve-201",
                       "sift-steve-101", "sift-steve-103", "opensearch-steve-202"]  # fmt: skip
+
+
+def test_records_after_their_ingests_steps_all_render_under_it(shown):
+    p = chain_panel(shown, "F-steve-026")
+    assert ids(p) == ["sift-steve-101", "sift-steve-102", "opensearch-steve-201",
+                      "opensearch-steve-203", "sift-steve-101", "sift-steve-103",
+                      "opensearch-steve-202", "opensearch-steve-204"]  # fmt: skip
 
 
 def test_repeats_within_a_group_show_once_first_kept(shown):

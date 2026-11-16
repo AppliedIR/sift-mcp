@@ -3221,19 +3221,22 @@ async function loadToolInvocations(finding) {
     // Server now guarantees the terminal "query" step is present in
     // the chain (manager.py appends art.audit_id with role='query' if
     // missing). Portal just renders what the server provides.
-    // Records from one ingest store that ingest's chain once per returned
-    // record; group each distinct chain once, then the records that resolved
-    // through it, so a record stays under its own ingest when two ingests
-    // interleave. Order follows each chain's first appearance.
+    // A chain stores each ingest's chain once, then the records that resolved
+    // through it; one stored before 0.6.6.2 repeats it before each record.
+    // Group each distinct chain once, then its records, so a record stays
+    // under its own ingest when two ingests interleave. Order follows each
+    // chain's first appearance.
     function isRecord(step) {
       return step.document && typeof step.document === 'object' && !(step.to && step.to.path);
     }
-    var steps = [], groups = [], byChain = {}, pending = [];
+    var steps = [], groups = [], byChain = {}, pending = [], grp = null;
     chain.forEach(function(step) {
       if (isRecord(step)) {
-        var key = JSON.stringify(pending);
-        var grp = byChain[key];
-        if (!grp) { grp = { chain: pending.slice(), records: [], seen: {} }; byChain[key] = grp; groups.push(grp); }
+        if (pending.length || !grp) {  // a record right after a record joins its group
+          var key = JSON.stringify(pending);
+          grp = byChain[key];
+          if (!grp) { grp = { chain: pending.slice(), records: [], seen: {} }; byChain[key] = grp; groups.push(grp); }
+        }
         var rkey = JSON.stringify(step);
         if (!grp.seen[rkey]) { grp.seen[rkey] = true; grp.records.push(step); }  // an identical record shows once
         pending = [];
