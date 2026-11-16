@@ -78,12 +78,14 @@ USER_FIELDS = (
     " user.target.* is the account acted on, user.effective.* the account a new process"
     " (4688) or explicit logon (4648) ran as, and group.* the group. process.name and"
     " process.parent.name are file names (cmd.exe), their paths process.executable and"
-    " process.parent.executable. Records whose pipeline_version is not"
-    " opensearch-mcp-0.6.6.2 keep older meanings: process.name and process.parent.name"
-    " are paths; user.name can be the account acted on (4688: the new process's"
-    ' account, often "-"; 4799: the group) and user.effective.name SubjectUserName,'
-    " except in 4688 and 4799 records from opensearch-mcp-0.6.6.1, whose user.* already"
-    " have the meanings above. pipeline_version is a keyword: never query it with a range;"
+    " process.parent.executable. Records whose pipeline_version is opensearch-mcp-"
+    " followed by 0.1.0, 0.6.0, 0.6.1, 0.6.2, 0.6.3, 0.6.4, 0.6.5, 0.6.5.1, 0.6.6 or"
+    " 0.6.6.1 keep older meanings: process.name and process.parent.name are paths;"
+    " user.name can be the account acted on (4688: the new process's account, often"
+    ' "-"; 4799: the group) and user.effective.name SubjectUserName, except in 4688 and'
+    " 4799 records from opensearch-mcp-0.6.6.1, whose user.* already have the meanings"
+    " above. Records with any other pipeline_version have the meanings above."
+    " pipeline_version is a keyword: never query it with a range;"
     " list its values with a terms aggregation, then filter on exact values. When a case"
     " has both, add pipeline_version to any user.*, process.name or process.parent.name"
     " query. Counts that look doubled: group by vhir.source_file and winlog.record_id (an"
@@ -132,6 +134,26 @@ def test_opensearch_names_the_ecs_key_evtx_fields():
 
 def test_opensearch_never_suggests_a_range_on_pipeline_version():
     assert "pipeline_version below" not in _strings()["OPENSEARCH"]
+
+
+# every version opensearch-mcp stamped on evtx records before 0.6.6.2, the first
+# with the meanings above (pyproject.toml's history, 0.1.0 through 0.6.6.1)
+OLD_PIPELINE_VERSIONS = (
+    "0.1.0", "0.6.0", "0.6.1", "0.6.2", "0.6.3", "0.6.4", "0.6.5", "0.6.5.1", "0.6.6",
+    "0.6.6.1",
+)  # fmt: skip
+
+
+def test_opensearch_names_the_older_pipeline_versions_not_the_newer_one():
+    # a later release stamps a value the text must not read as an older meaning
+    text = _strings()["OPENSEARCH"]
+    old = ", ".join(OLD_PIPELINE_VERSIONS[:-1]) + " or " + OLD_PIPELINE_VERSIONS[-1]
+    assert (
+        text.count(f"pipeline_version is opensearch-mcp- followed by {old} keep") == 1
+    )
+    assert "Records with any other pipeline_version have the meanings above." in text
+    assert "pipeline_version is not" not in text
+    assert "0.6.6.2" not in text
 
 
 def test_forensic_mcp_says_a_challenge_is_required():
