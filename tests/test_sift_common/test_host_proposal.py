@@ -125,15 +125,6 @@ def test_a_look_alike_name_is_separate_and_shows_its_code_points(case):
     assert any("U+0430" in f for f in g.flags)
 
 
-def test_one_machine_id_under_two_names_is_proposed_and_flagged(case):
-    folder(case, "WKS01", "WKS01", machine_guid="11111111-2222-3333-4444-555555555555")
-    folder(
-        case, "LAPTOP7", "LAPTOP7", machine_guid="11111111-2222-3333-4444-555555555555"
-    )
-    g = group_of(groups(case), "WKS01")
-    assert any(p[1] == "LAPTOP7" for p in g.pairs) and hp.FLAG_CLONE in g.flags
-
-
 # -- two machines built from one template: its names, and its machine id
 
 GUID = "11111111-2222-3333-4444-555555555555"
@@ -160,6 +151,34 @@ def _names(g):
     return sorted(p[1] for p in g.pairs)
 
 
+# -- a shared machine id never joins units: the names and the host list decide
+
+
+@pytest.mark.parametrize(
+    "names,ids,confirmed,together",
+    [
+        (("WKS01", "LAPTOP7"), ({"machine_guid": GUID}, {"machine_guid": GUID}), False, False),
+        (("WKS01", "LAPTOP7"), ({"client_id": "C.1"}, {"client_id": "C.1"}), False, False),
+        (("WKS01", "WKS01"), ({"machine_guid": GUID}, {"machine_guid": GUID}), False, True),
+        (("WKS01", "WKS01"), ({"machine_guid": GUID},
+                              {"machine_guid": "66666666-7777-8888-9999-000000000000"}), False, False),
+        (("WKS01", "LAPTOP7"), ({"machine_guid": GUID}, {"machine_guid": GUID}), True, False),
+    ],
+    ids=["one_guid_two_names", "one_client_id_two_names", "one_guid_one_name",
+         "anchor_two_guids_one_name", "anchor_confirmed_apart_one_guid"],
+)  # fmt: skip
+def test_a_shared_machine_id_never_joins_units(case, names, ids, confirmed, together):
+    """Two units: only the name rule joins them, never the machine id they share."""
+    u1 = folder(case, names[0], names[0], where=f"evidence/a/{names[0]}", **ids[0])
+    u2 = folder(case, names[1], names[1], where=f"evidence/b/{names[1]}", **ids[1])
+    if confirmed:
+        confirm(case, u1, names[0], names[0])
+        confirm(case, u2, names[1], names[1])
+    gs = groups(case)
+    (g1,) = [g for g in gs if (u1, names[0]) in g.pairs]
+    assert ((u2, names[1]) in g1.pairs) is together, [g.to_dict() for g in gs]
+
+
 def test_two_confirmed_machines_with_one_template_id_stay_two(case):
     """The live case: the examiner confirmed rd01 (its template names with it,
     from the host list) and wkstn05; both images carry the template's
@@ -175,7 +194,6 @@ def test_two_confirmed_machines_with_one_template_id_stay_two(case):
     assert rd01 is not wk and "WKSTN05" not in _names(rd01)
     for g in gs:
         assert "names of more than one machine: confirm, or merge them" not in g.flags
-        assert hp.FLAG_CLONE not in g.flags
 
 
 @pytest.mark.parametrize("state", [hi.NEW, hi.STARTED_NOW])
@@ -217,21 +235,24 @@ def test_a_template_name_is_never_attributed_across_confirmed_machines(case):
     assert hp.FLAG_SHARED in theirs[0].flags and theirs[0].machine is None
 
 
-def test_unconfirmed_template_clones_are_still_one_flagged_proposal(case):
+def test_unconfirmed_template_clones_are_two_machines(case):
+    """The live case before any confirm: two images of one template, one
+    MachineGuid and the template's names, are still two machines."""
     built(case, "evidence/rd01.E01", "RD01", machine_guid=GUID)
     built(case, "evidence/wkstn05.vhdx", "WKSTN05", machine_guid=GUID)
-    g = group_of(groups(case), "RD01")
-    assert "WKSTN05" in _names(g) and hp.FLAG_CLONE in g.flags  # for the examiner
-    assert not any("shared by more than one machine" in f for f in g.flags)
+    gs = groups(case)
+    rd01, wk = group_of(gs, "RD01"), group_of(gs, "WKSTN05")
+    assert rd01 is not wk and "WKSTN05" not in _names(rd01)
+    assert not any("shared by more than one machine" in f for f in rd01.flags)
 
 
-def test_a_rename_of_a_confirmed_machine_is_still_proposed(case):
-    """One machine id, one side confirmed: a rename, proposed as before."""
+def test_a_rename_of_a_confirmed_machine_is_left_to_the_examiner(case):
+    """One machine id, one side confirmed, unlike names: the id proposes no
+    rename; the host list and the examiner decide one."""
     u1 = folder(case, "WKS01", "WKS01", machine_guid=GUID)
     folder(case, "LAPTOP7", "LAPTOP7", machine_guid=GUID)
     confirm(case, u1, "WKS01", "WKS01")
-    g = group_of(groups(case), "WKS01")
-    assert "LAPTOP7" in _names(g) and hp.FLAG_CLONE in g.flags
+    assert _names(group_of(groups(case), "WKS01")) == ["WKS01"]
 
 
 def test_a_forwarded_name_never_carries_the_collector_s_machine(case):
@@ -541,10 +562,11 @@ def test_one_name_under_two_machine_ids_is_two_machines(case):
     assert len(groups(case)) == 2
 
 
-def test_one_machine_id_in_two_domains_is_flagged(case):
-    guid = "cccccccc-0000-0000-0000-000000000001"
-    folder(case, "a", "dc01.corp-a.example.test", machine_guid=guid)
-    folder(case, "b", "dc01.corp-b.example.test", machine_guid=guid)
+def test_one_unit_s_name_in_two_domains_is_flagged(case):
+    unit(case, "evidence/x", [
+        ("DC01", "SYSTEM ComputerName", "artifact"),
+        ("dc01.corp-a.example.test", "SYSTEM Tcpip Hostname+Domain", "artifact"),
+        ("dc01.corp-b.example.test", "Security.evtx Computer", "artifact")])  # fmt: skip
     g = group_of(groups(case), "dc01.corp-a.example.test")
     assert hp.FLAG_DOMAINS in g.flags
 
@@ -581,16 +603,14 @@ def test_a_second_machine_of_a_taken_fqdn_is_called_by_its_domain(case):
     assert g.canonical == "dc01 (corp-b.example.test)"
 
 
-def test_a_renamed_machine_whose_old_name_is_taken_is_called_by_its_other_name(case):
+def test_a_machine_whose_hive_fqdn_is_taken_is_called_by_its_other_fqdn(case):
     _confirmed(case, "dc01.corp.example.test", "old")
-    guid = "eeeeeeee-0000-0000-0000-000000000001"
     unit(case, "evidence/a", [
-        ("dc01.corp.example.test", "SYSTEM Tcpip Hostname+Domain", "artifact")],
-        machine_guid=guid)  # fmt: skip
-    unit(case, "evidence/b", [("srv02.corp.example.test", "Security.evtx Computer", "artifact")],
-         machine_guid=guid)  # fmt: skip
+        ("dc01.corp.example.test", "SYSTEM Tcpip Hostname+Domain", "artifact"),
+        ("DC01", "SYSTEM ComputerName", "artifact"),
+        ("dc01.example.test", "Security.evtx Computer", "artifact")])  # fmt: skip
     g = [g for g in groups(case) if not g.machine][0]
-    assert g.canonical == "srv02.corp.example.test"
+    assert g.canonical == "dc01.example.test"
 
 
 def test_a_listed_machine_is_called_by_the_list_name(case):

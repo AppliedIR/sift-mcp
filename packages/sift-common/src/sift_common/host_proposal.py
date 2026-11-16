@@ -9,12 +9,11 @@ names its evidence gave into proposed machines:
 - **proposed**: a unit's own names that are close to each other (equal once a
   DNS suffix, a collection or date token, a Velociraptor wrapper or NetBIOS
   truncation is set aside; never by edit distance), equal short names with
-  compatible domains across units, and units that share a machine id;
+  compatible domains across units (a shared machine id never joins units);
 - **flagged**: names never grouped (generic or default names, values that
   aren't host names, unusual characters, near spellings) and groups the
   examiner should look at (conflicting domains, a unit whose folder name
-  matches none of its own names, thin evidence, one id under two names, not
-  on the host list).
+  matches none of its own names, thin evidence, not on the host list).
 
 Names from forwarded event logs and per-row host columns are their own
 machines, never the collector's. A name whose only support is an argument,
@@ -74,7 +73,6 @@ FLAG_FOLDER = (
 )
 FLAG_THIN = "thin evidence: one source only"
 FLAG_AI_ONLY = "named only by an argument, a file name or a file the AI can write"
-FLAG_CLONE = "one machine id under different names: a rename or a clone?"
 FLAG_SHARED = "shared by more than one machine (a template or clone name?)"
 FLAG_NOT_LISTED = "not on the host list"
 FLAG_NEAR = "a near spelling of another name"
@@ -449,9 +447,9 @@ def propose(state: hi.HostState) -> list[Group]:
                 foreign.add(p)
 
     # The machines each unit's own names are confirmed to. Units confirmed to
-    # different machines are never joined, by a name or a machine id they
-    # share: images built from one template carry its names and its id. Only
-    # a unit's own names carry it: a forwarded name never the collector's.
+    # different machines are never joined by a name they share: images built
+    # from one template carry its names. Only a unit's own names carry it: a
+    # forwarded name never the collector's.
     confirmed: dict[str, set] = {}
     for p in pairs:
         m = state.machine_of_pair(*p)
@@ -486,8 +484,7 @@ def propose(state: hi.HostState) -> list[Group]:
 
     # Across units: spelling-equal artifact names (certain), equal short
     # names (collection and date tokens set aside) with compatible domains
-    # (proposed), a shared machine id (proposed).
-    id_clash: set = set()
+    # (proposed).
     shared: set = set()
 
     def confirmed_apart(a, b) -> bool:
@@ -501,7 +498,6 @@ def propose(state: hi.HostState) -> list[Group]:
             shared.update({a, b})  # left apart, and said so
             return False
         if len(uf.of(a, "ids") | uf.of(b, "ids")) > 1:
-            id_clash.update({a, b})
             return False
         return len(uf.of(a, "domains") | uf.of(b, "domains")) <= 1
 
@@ -523,31 +519,6 @@ def propose(state: hi.HostState) -> list[Group]:
             if may_join(a, b):
                 uf.union(a, b, certain=False)
 
-    clone_roots = set()
-    for key in ("machine_guid", "client_id"):
-        units_by_id: dict[str, list[str]] = {}
-        for unit, info in state.units.items():
-            if info.get(key):
-                units_by_id.setdefault(str(info[key]).lower(), []).append(unit)
-        for units in units_by_id.values():
-            anchors = []
-            for u in units:  # the unit's own name, an artifact one first
-                own = [
-                    p for p in by_unit.get(u, []) if p not in foreign and groupable(p)
-                ]
-                own.sort(key=lambda p: not pairs[p].artifact)
-                anchors.append(own[0] if own else None)
-            anchors = [a for a in anchors if a]
-            for a, b in zip(anchors, anchors[1:], strict=False):
-                guids = {_guid(state, a[0]), _guid(state, b[0])} - {""}
-                if key == "client_id" and len(guids) > 1:
-                    continue  # one collector client, two machines
-                if confirmed_apart(a, b):
-                    continue  # one template's id on two confirmed machines
-                if not close(a[1], b[1]):
-                    clone_roots.update({uf.find(a), uf.find(b)})
-                uf.union(a, b, certain=False)
-
     # Groups, and what each already is. A group of names that no longer hold
     # their units (`host_gate.released`) and that nothing binds waits for no one.
     groups: dict = {}
@@ -559,7 +530,6 @@ def propose(state: hi.HostState) -> list[Group]:
         for r, ps in groups.items()
         if not set(ps) <= free or any(p in state.bindings for p in ps)
     }
-    clone_roots = {uf.find(r) for r in clone_roots}
     entries = _list_entries(state)
     result: list[Group] = []
     taken = {hi.spelling(m.canonical) for m in state.machines.values()}
@@ -577,8 +547,6 @@ def propose(state: hi.HostState) -> list[Group]:
             g.flags.append("names of more than one machine: confirm, or merge them")
         flags = _group_flags(g, ps, pairs, state, by_unit, foreign, never, hinted)
         g.flags.extend(f for f in flags if f not in g.flags)
-        if root in clone_roots:
-            g.flags.append(FLAG_CLONE)
         if shared & set(ps):
             g.flags.append(FLAG_SHARED)
         if g.flags:
