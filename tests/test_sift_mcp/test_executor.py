@@ -331,6 +331,16 @@ class TestKillCause:
         assert r["truncated"] is True and r["exit_code"] == -signal.SIGKILL
         assert "kill_cause" not in r
 
+    def test_a_limit_stop_on_an_ended_command_names_no_kill(self, cg, monkeypatch):
+        """The kill at the output limit reached a command that had ended: it
+        keeps its own exit code and is not "stopped", yet sift-mcp sent a stop,
+        so no kill cause is claimed. (A no-op kill stands in for the race.)"""
+        monkeypatch.setenv("SIFT_MAX_OUTPUT", "2000")
+        monkeypatch.setattr(subprocess.Popen, "kill", lambda self: None)
+        r = self._run(cg, "head -c 3000 /dev/zero; sleep 0.5; exit 1")
+        assert (r["truncated"], r["exit_code"], "stopped" in r) == (True, 1, False)
+        assert "kill_cause" not in r
+
 
 class TestTruncateNaming:
     """Verify _truncate uses max_chars (not max_bytes)."""
