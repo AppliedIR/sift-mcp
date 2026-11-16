@@ -341,6 +341,38 @@ def test_a_finding_that_takes_findings_json_past_20_mib_is_saved(case):
     assert last == want and n == int(want.rsplit("-", 1)[1]), got
 
 
+def test_a_failed_verify_still_shows_every_record_past_20_mib(case, monkeypatch):
+    """verify_case raising: the Portal falls back to each record as it is in
+    findings.json, whatever its size, marked unverified, and the case says
+    verify failed."""
+    from case_dashboard import routes
+
+    def broken(case_dir):
+        raise RuntimeError("the ledger couldn't be read")
+
+    monkeypatch.setattr(routes, "_judged", broken)
+    monkeypatch.setitem(routes._view_cache, "key", None)
+    marker = _write_findings(case / "findings.json", 20 * MIB)
+
+    def read():
+        s1, found = _portal(case, "/api/findings")
+        s2, out = _portal(case, "/api/case")
+        if (s1, s2) != (200, 200):
+            return s1, str(found)[:2000], s2, str(out)[:2000]
+        seen = [(f["id"], f["verification"]) for f in found]
+        return s1, seen, s2, out["verification"]
+
+    status, got = _report("verify failed (/api/findings, /api/case)", "findings.json over 20 MiB",
+                          _in_child(read, timeout=300))  # fmt: skip
+    assert status == "ok", got
+    s1, found, s2, verification = got
+    assert (s1, s2) == (200, 200), got
+    n = int(marker.rsplit("-", 1)[1])
+    marked = "unverified (verify failed)"
+    assert found == [(f"F-tester-{i:04d}", marked) for i in range(1, n + 1)]
+    assert verification == {"error": "verify failed: the ledger couldn't be read"}
+
+
 @POSIX
 @pytest.mark.parametrize(
     "route", sorted(LOG_ROUTES) + sorted(f"doc:{r}" for r in DOC_ROUTES)
