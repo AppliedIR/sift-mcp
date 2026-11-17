@@ -76,7 +76,8 @@ EVTX_KEYS = ("event.action, event.outcome, ", "process.executable, ")
 USER_FIELDS = (
     "In Security records, user.name, user.domain and user.id are the account that acted;"
     " user.target.* is the account acted on, user.effective.* the account a new process"
-    " (4688) or explicit logon (4648) ran as, and group.* the group. process.name and"
+    " (4688) ran as, or whose credentials an explicit logon attempt (4648) used, and"
+    " group.* the group. process.name and"
     " process.parent.name are file names (cmd.exe), their paths process.executable and"
     " process.parent.executable. Records whose pipeline_version is opensearch-mcp-"
     " followed by 0.1.0, 0.6.0, 0.6.1, 0.6.2, 0.6.3, 0.6.4, 0.6.5, 0.6.5.1, 0.6.6 or"
@@ -125,6 +126,14 @@ def test_opensearch_names_the_record_header_sid_field_once():
 def test_opensearch_says_who_acted_in_security_records_once():
     text = f"{SID_FIELD}. {USER_FIELDS} Key shimcache"
     assert _strings()["OPENSEARCH"].count(text) == 1
+
+
+def test_opensearch_says_4648_effective_user_is_the_credentials_an_attempt_used():
+    # 4648 records an attempt with explicit credentials; its user.effective.* is
+    # the TargetUserName those credentials name, not an account anything ran as
+    text = _strings()["OPENSEARCH"]
+    assert text.count("or whose credentials an explicit logon attempt (4648) used") == 1
+    assert "explicit logon (4648) ran as" not in text
 
 
 def test_opensearch_names_the_ecs_key_evtx_fields():
