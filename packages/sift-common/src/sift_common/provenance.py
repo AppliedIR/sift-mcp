@@ -1199,7 +1199,8 @@ def _match_back(
                     return Trace("AMBIGUOUS", t.root, t.roots, t.links,
                                  t.candidates + twice.candidates, None, twice.reason)  # fmt: skip
                 link = _reference_link(case, *found[0])
-                t.links.append(link)
+                if link not in t.links:  # one step enriching several records links once
+                    t.links.append(link)
                 ref = link["reference"]
                 notes.append(f"reference: {ref['source'] or found[0][0].get('tool', '')}, "
                              f"{ref['source_version'] or 'version not recorded'}, op {op}")  # fmt: skip

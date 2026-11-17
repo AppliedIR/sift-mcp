@@ -18,6 +18,7 @@ from test_case_dashboard.test_portal_provenance_display import DRIVER, PAGE
 
 from .test_finding_chains import (  # noqa: F401
     _doc,
+    _enrich,
     _extract,
     _ingested_samples,
     _mount,
@@ -87,11 +88,12 @@ def test_a_chain_with_no_repeats_is_stored_as_traced(c):
 
 X = "opensearch-ingest-7-20261009-010"
 I1, I2 = "opensearch-ingest-7-20261009-011", "opensearch-ingest-7-20261009-012"
+E = "opensearch-tester-20261009-050"  # an enrichment step
 O = "opensearch-tester-20261003-004"  # an ingest from before 0.6.4, no origin
 M, R = "sift-tester-20261009-001", "sift-tester-20261009-002"  # a mount, a run
 # the registered root's link (no audit id), the extraction's two links, the
-# ingests, the old ingest, the mount's links, the run
-NAMES = {"": "Z", X: "X", I1: "I1", I2: "I2", O: "O", M: "M", R: "R"}
+# ingests, the enrichment step, the old ingest, the mount's links, the run
+NAMES = {"": "Z", X: "X", I1: "I1", I2: "I2", E: "E", O: "O", M: "M", R: "R"}
 Z_X = ["Z", "X", "X"]
 STEP = "border-left:2px solid var(--border)"
 FULL = ("FULL", None)
@@ -139,6 +141,20 @@ def _stamps(c):
         _doc("d2", I1, **{"process.name": "evil.exe", "vhir.original": sha(other)}),
     ]
     return _search(c, docs), "evil.exe"
+
+
+def _enriched(c):
+    """Two records of one ingest, both quoted for the field one enrichment step
+    wrote: the step's reference link follows them, once."""
+    _two_ingests_of_one_sample(c)
+    _enrich(c, E)
+    docs = [
+        _doc(
+            f"d{i}", I1, **{"process.name": "evil.exe", "triage.verdict": "SUSPICIOUS"}
+        )
+        for i in (1, 2)
+    ]
+    return _search(c, docs, groups={"triage": E}), "SUSPICIOUS"
 
 
 def _mount_fan_in(c):
@@ -223,6 +239,8 @@ SHAPES = [
                  id="fan_in_three_inputs_one_mount"),
     pytest.param(_stamps, ("BROKEN", "stamp-mismatch"), [*Z_X, "I1", "d1", "d2"], False,
                  id="a_stamp_mismatch_beside_a_match"),
+    pytest.param(_enriched, FULL, [*Z_X, "I1", "d1", "d2", "E"], False,
+                 id="a_trailing_step_two_records_share"),
     pytest.param(_stamped_then_not, ("BROKEN", "no-recorded-origin"), ["O", "d1", "d2"],
                  False, id="a_records_relabel_stays_its_own"),
     pytest.param(_records(I1, I2, I1), FULL, [*Z_X, "I1", "d1", "d3", *Z_X, "I2", "d2"],
@@ -235,8 +253,8 @@ def test_each_ingests_steps_are_stored_once_and_render_with_their_records(
     c, build, grade, steps, old
 ):
     """The stored chain is the trace's links: each ingest's steps once, then the
-    records that resolved through it. The grade is the one each shape always
-    had. The Portal renders the stored steps in order, and
+    records that resolved through it, a step after them once. The grade is the
+    one each shape always had. The Portal renders the stored steps in order, and
     a chain stored before 0.6.6.2 (each record after its ingest's steps) the same."""
     aid, quote = build(c)
     res, st = c.find([{"content": quote, "audit_id": aid}])
