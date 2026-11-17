@@ -5,7 +5,8 @@ line, an index no metadata names is "unknown", a named release installs and one
 without this version's assets is refused before any download, the download is
 checked for free space first (after a killed run's stage is removed), and every
 failed install, a Ctrl-C in the swap included, leaves the installed index
-as it was with no stage left behind. Synthetic bundles only: the GitHub API is
+as it was with no stage left behind, and a real Chroma index (when chromadb is
+installed) is swapped in and refreshed in place. Synthetic bundles: the GitHub API is
 served from a local listing through ``urlopen``; the asset download, the index
 check, the examiner store and the drift check are stubbed. The module is loaded
 from its file, because CI doesn't install forensic-rag.
@@ -18,6 +19,7 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
 import sys
 import tarfile
 import types
@@ -505,3 +507,102 @@ def test_y3_a_left_stage_is_removed_before_free_space_is_checked(
     assert rag.mod.download_index(dest) is True
     assert not left.exists()
     assert (dest / "chroma/chroma.sqlite3").read_bytes() == b"the new index"
+
+
+# --- D-6 (RAG leg): a real Chroma index is swapped in and refreshed in place ---------
+
+
+def _chroma(chromadb, path: Path, ids: list[str]) -> None:
+    """A Chroma store at ``path`` whose ir_knowledge collection holds ``ids``,
+    with explicit embeddings (no model is loaded)."""
+    collection = chromadb.PersistentClient(path=str(path)).get_or_create_collection(
+        "ir_knowledge"
+    )
+    collection.add(
+        ids=ids,
+        embeddings=[[float(n), 1.0, 0.0] for n in range(len(ids))],
+        documents=ids,
+    )
+
+
+def _close(chromadb) -> None:
+    """Drop this process's Chroma clients, so their files are closed."""
+    chromadb.api.client.SharedSystemClient.clear_system_cache()
+
+
+def _pack(rel: Path, build: Path) -> None:
+    """``build``'s chroma/ and metadata.json as the release's bundle and checksums."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        tar.add(build / "chroma", arcname="chroma")
+        tar.add(build / "metadata.json", arcname="metadata.json")
+    bundle = rel / "rag-index.tar.zst"
+    bundle.write_bytes(zstd.ZstdCompressor().compress(buf.getvalue()))
+    digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+    (rel / "rag-checksums.sha256").write_text(f"{digest} rag-index.tar.zst\n")
+
+
+# A fresh process's view of an installed index: its record ids, sorted
+READ = (
+    "import json, sys, chromadb; "
+    "c = chromadb.PersistentClient(path=sys.argv[1]).get_collection('ir_knowledge'); "
+    "print(json.dumps(sorted(c.get()['ids'])))"
+)
+
+
+def test_d6_a_real_chroma_index_is_swapped_in_and_refreshed_in_place(
+    rag, tmp_path, monkeypatch
+):
+    """The check opens the new index where it was unpacked and the refresh writes
+    into the installed index, so a fresh process opening it reads the bundle's
+    records and the refresh's, and none of the prior index's."""
+    chromadb = pytest.importorskip("chromadb")
+    dest = tmp_path / "dest"
+    build = tmp_path / "build"
+    try:
+        _chroma(chromadb, dest / "chroma", ["old-1", "old-2"])
+        (dest / "metadata.json").write_text(json.dumps({"bundle_tag": PRIOR_TAG}))
+        _chroma(chromadb, build / "chroma", ["new-1", "new-2", "new-3"])
+        (build / "metadata.json").write_text("{}")
+        _close(chromadb)
+        _pack(tmp_path / "release", build)
+        rag.releases[TAG] = _record(tmp_path / "release", TAG)
+        checked = []
+
+        def verify(data_dir):
+            collection = chromadb.PersistentClient(
+                path=str(Path(data_dir) / "chroma")
+            ).get_collection("ir_knowledge")
+            checked.append(collection.count())
+            hits = collection.query(query_embeddings=[[0.0, 1.0, 0.0]], n_results=1)
+            return collection.count() == 3 and bool(hits["ids"][0])
+
+        def refresh(skip_online, data_dir):
+            chromadb.PersistentClient(
+                path=str(Path(data_dir) / "chroma")
+            ).get_collection("ir_knowledge").add(
+                ids=["refreshed"], embeddings=[[9.0, 1.0, 0.0]], documents=["refreshed"]
+            )
+            return types.SimpleNamespace(status="success", errors=[])
+
+        monkeypatch.setattr(rag.mod, "_verify_index", verify)
+        monkeypatch.setattr(rag.mod, "_bundled_drift", lambda dest: True)
+        monkeypatch.setattr(sys.modules[f"{PKG}.refresh"], "refresh", refresh)
+        assert rag.mod.download_index(dest, TAG) is True
+    finally:
+        _close(chromadb)
+    assert checked == [3], "the new index was not checked before the install"
+    read = subprocess.run(
+        [sys.executable, "-I", "-c", READ, str(dest / "chroma")],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert read.returncode == 0, read.stderr
+    assert json.loads(read.stdout.splitlines()[-1]) == [
+        "new-1",
+        "new-2",
+        "new-3",
+        "refreshed",
+    ], "the installed index is not the bundle's records plus the refresh's"
+    assert _stages(dest) == []
