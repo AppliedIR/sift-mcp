@@ -32,11 +32,8 @@ ASSETS = ("rag-index.tar.zst", "rag-checksums.sha256")
 MAX_ATTEMPTS = 3
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 TAG_PREFIX = "rag-index-"
-STATE_NAME = "sources_state.json"
 STAGE_PREFIX = ".rag-new-"  # the verify-then-swap dir, in the install dir
 UNPACKED = 2.25  # the index unpacks to about this times its download
-# Where the install puts the bundle's state until the index verifies
-STAGED_STATE_NAME = "sources_state.json.part"
 
 
 def _github_headers() -> dict[str, str]:
@@ -179,13 +176,9 @@ def _shipped_member(name: str, members: tuple[str, ...]) -> bool:
     return _member_name(name).split("/", 1)[0] in members
 
 
-def _extract_bundle(
-    src: Path, dest: Path, *, staged_state: str | None = None
-) -> list[str]:
+def _extract_bundle(src: Path, dest: Path) -> list[str]:
     """Extract a .tar.zst archive's shipped members to dest; returns the
-    names of the members it skipped. With staged_state, the bundle's
-    sources_state.json is written to dest under that name instead, for the
-    caller to move into place once the index verifies."""
+    names of the members it skipped."""
     import zstandard as zstd
 
     from .. import constants
@@ -204,12 +197,6 @@ def _extract_bundle(
                 and (member.isreg() or member.isdir())
                 and ".." not in Path(member.name).parts
             ):
-                if (
-                    staged_state is not None
-                    and member.isreg()
-                    and _member_name(member.name) == STATE_NAME
-                ):
-                    member.name = staged_state
                 yield member
                 continue
             # A skipped member that would leave dest is still refused
@@ -409,7 +396,7 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
     for attempt in range(1, MAX_ATTEMPTS + 1):
         # In dest: the swap is renames; next run's _clean_stages removes a killed one
         stage = Path(tempfile.mkdtemp(prefix=STAGE_PREFIX, dir=dest))
-        staged, swap = stage / STAGED_STATE_NAME, None
+        swap = None
         try:
             # Download assets
             print(f"\nDownloading (attempt {attempt}/{MAX_ATTEMPTS})...")
@@ -451,14 +438,8 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
                 return False
 
             # Extract bundle
-            # The bundle's state goes in under a temp name and replaces the
-            # dest's only once the index verifies; a failed install leaves
-            # the state it found
             print("\nExtracting bundle...")
-            staged.unlink(missing_ok=True)
-            skipped = _extract_bundle(
-                stage / "rag-index.tar.zst", stage, staged_state=STAGED_STATE_NAME
-            )
+            skipped = _extract_bundle(stage / "rag-index.tar.zst", stage)
             for name in skipped:
                 print(f"  Skipped (not part of the shipped index): {name}")
             print("  Extraction complete")
@@ -474,8 +455,6 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
             if not _verify_index(stage):
                 print("Index verification failed.")
                 return False
-            if staged.exists():
-                os.replace(staged, stage / STATE_NAME)
 
             # Update metadata with download info
             metadata_path = stage / "metadata.json"
@@ -515,7 +494,6 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
             return True
 
         finally:
-            staged.unlink(missing_ok=True)
             if swap != "kept":
                 shutil.rmtree(stage, ignore_errors=True)
 
