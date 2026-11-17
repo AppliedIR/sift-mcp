@@ -398,9 +398,9 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
 
     tag_name = release["tag_name"]
     print(f"Release: {tag_name}")
-    check_db = release_manifest.check_floors  # RELEASE_TAG: its exact counts
+    check_db = release_manifest.check_floors
     if tag_name == release_manifest.RELEASE_TAG:
-        check_db = release_manifest.check_downloaded
+        check_db = release_manifest.check_downloaded  # RELEASE_TAG: its exact counts
 
     _clean_stages(dest)
 
