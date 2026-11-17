@@ -245,7 +245,7 @@ def check(dest_dir: str | Path) -> dict:
     paths = [dest / name for name in release_manifest.default_databases()]
     return {
         "installed": read_installed_tag(dest) or "unknown",
-        "absent": any(not p.is_file() or p.stat().st_size == 0 for p in paths),
+        "absent": all(not p.is_file() or p.stat().st_size == 0 for p in paths),
         "newest": release.get("tag_name"),
         "download_bytes": _sizes(
             release, [*ASSETS, release_manifest.LICENCE_ASSET, METADATA]
@@ -347,8 +347,8 @@ def _swap_in(
         except OSError:
             (dest / f".{TAG_FILE}.tmp").unlink(missing_ok=True)
             raise
-    except OSError as e:
-        failed = f"\ninstalling into {dest} failed: {e}"
+    except BaseException as e:  # a Ctrl-C too
+        failed = f"\ninstalling into {dest} failed: {e or type(e).__name__}"
         try:
             for src, dst in reversed(done):
                 os.replace(dst, src)
@@ -506,7 +506,8 @@ def download_databases(dest_dir: str | Path, tag: str | None = None) -> bool:
             return True
 
         finally:
-            if swap != "kept":
+            old = stage / "old"  # what a stopped undo did not put back
+            if swap == "installed" or not (old.is_dir() and any(old.iterdir())):
                 shutil.rmtree(stage, ignore_errors=True)
 
     return False

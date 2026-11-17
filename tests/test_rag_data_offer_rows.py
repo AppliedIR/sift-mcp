@@ -3,7 +3,8 @@
 ``--check`` reports the installed and newest index, a failed check exits with one
 line, an index no metadata names is "unknown", a named release installs and one
 without this version's assets is refused before any download, the download is
-checked for free space first, and every failed install leaves the installed index
+checked for free space first (after a killed run's stage is removed), and every
+failed install, a Ctrl-C in the swap included, leaves the installed index
 as it was with no stage left behind. Synthetic bundles only: the GitHub API is
 served from a local listing through ``urlopen``; the asset download, the index
 check, the examiner store and the drift check are stubbed. The module is loaded
@@ -422,4 +423,85 @@ def test_d6_the_next_run_removes_a_left_stage_and_keeps_one_with_old_files(
     assert rag.mod.download_index(dest) is True
     assert _stages(dest) == [kept]
     assert (kept / "old/chroma/chroma.sqlite3").read_bytes() == b"a failed undo's index"
+    assert (dest / "chroma/chroma.sqlite3").read_bytes() == b"the new index"
+
+
+# --- D-6 (RAG leg): a Ctrl-C in the swap leaves the installed index ------------------
+
+
+def _interrupt_swap(monkeypatch, mod, dest: Path, on: set[int]) -> list[tuple]:
+    """The moves into or out of ``dest`` numbered in ``on`` (from 1) raise
+    KeyboardInterrupt; moves inside the stage aren't counted."""
+    calls: list[tuple] = []
+    real = os.replace
+
+    def replace(src, dst):
+        if dest in (Path(src).parent, Path(dst).parent):
+            calls.append((src, dst))
+            if len(calls) in on:
+                raise KeyboardInterrupt
+        return real(src, dst)
+
+    monkeypatch.setattr(mod.os, "replace", replace)
+    return calls
+
+
+def _run(fn, *args):
+    """fn's result, or "interrupted" when the KeyboardInterrupt got out (one that
+    leaves a test stops the whole pytest run)."""
+    try:
+        return fn(*args)
+    except KeyboardInterrupt:
+        return "interrupted"
+
+
+def test_d6_a_ctrl_c_in_the_swap_puts_the_installed_index_back(
+    rag, tmp_path, monkeypatch, capsys
+):
+    dest = tmp_path / "dest"
+    before = _prior(dest)
+    calls = _interrupt_swap(monkeypatch, rag.mod, dest, {2})
+    got = _run(rag.mod.download_index, dest)
+    assert len(calls) >= 2, "the install did not reach a second move"
+    assert _tree(dest) == before, "a Ctrl-C in the swap lost the installed index"
+    assert _stages(dest) == []
+    assert got is False
+    assert "The installed index was not changed." in capsys.readouterr().out
+
+
+def test_d6_a_ctrl_c_in_the_undo_keeps_the_stage_with_the_old_index(
+    rag, tmp_path, monkeypatch
+):
+    dest = tmp_path / "dest"
+    before = _prior(dest)
+    _interrupt_swap(monkeypatch, rag.mod, dest, {2, 3})
+    _run(rag.mod.download_index, dest)
+    stages = _stages(dest)
+    assert len(stages) == 1, "the stage holding the old index was removed"
+    assert (stages[0] / "old/chroma/chroma.sqlite3").read_bytes() == (
+        before["chroma/chroma.sqlite3"]
+    )
+
+
+# --- Y3 (RAG leg): a killed run's stage is removed before the free-space check -------
+
+
+def test_y3_a_left_stage_is_removed_before_free_space_is_checked(
+    rag, tmp_path, monkeypatch
+):
+    """The left stage's bytes count against free space only while it is there."""
+    need = int(_download_bytes(rag.releases[TAG]) * NEED_FACTOR)
+    dest = tmp_path / "dest"
+    _prior(dest)
+    left = dest / ".rag-new-left"
+    (left / "chroma").mkdir(parents=True)
+    (left / "chroma/chroma.sqlite3").write_bytes(b"a killed run's index")
+
+    def usage(path):
+        free = need - 1 if left.exists() else need
+        return types.SimpleNamespace(total=free, used=0, free=free)
+
+    monkeypatch.setattr(rag.mod.shutil, "disk_usage", usage)
+    assert rag.mod.download_index(dest) is True
+    assert not left.exists()
     assert (dest / "chroma/chroma.sqlite3").read_bytes() == b"the new index"

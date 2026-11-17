@@ -3,15 +3,17 @@
 ``--check`` reports the installed and newest release, a failed check exits with one
 line, an installed release no reader can name is "unknown", a release other than
 RELEASE_TAG is refused under its floors, and a download that would not fit is
-refused before any data asset is fetched. Each case serves a local fixture release
-through the module's seams; the asset list carries each file's size as the GitHub
-API does, and metadata.json (the unpacked sizes) is read through ``urlopen``.
+refused before any data asset is fetched. A present DB is never absent, and a
+Ctrl-C in the swap puts the installed DBs back. Each case serves a local fixture
+release through the module's seams; the asset list carries each file's size as the
+GitHub API does, and metadata.json (the unpacked sizes) is read through ``urlopen``.
 """
 
 from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import types
 import urllib.error
@@ -231,3 +233,84 @@ def test_y3_free_space_equal_to_the_need_installs(tmp_path, monkeypatch):
     _free(monkeypatch, _need(seen))
     assert dd.download_databases(dest) is True
     assert dd.read_installed_tag(dest) == TAG
+
+
+# --- D-2 (sift leg): a present DB is never "absent" ----------------------------------
+
+
+def test_d2_a_changed_db_with_the_other_missing_is_not_absent(tmp_path, monkeypatch):
+    """Absent would let VHIR_ASSUME_DEFAULTS download over the changed DB unasked."""
+    dest, _ = _installed(tmp_path, monkeypatch)
+    other = _fixture_dbs(tmp_path / "other", marker="local")
+    (dest / "known_good.db").write_bytes(other["known_good.db"].read_bytes())
+    (dest / "context.db").unlink()
+    got = _check()(dest)
+    assert (got["installed"], got["absent"], got["newest"]) == ("unknown", False, TAG)
+
+
+def test_d2_an_unchanged_db_with_the_other_missing_is_not_absent(tmp_path, monkeypatch):
+    dest, _ = _installed(tmp_path, monkeypatch)
+    (dest / "context.db").unlink()
+    got = _check()(dest)
+    assert (got["installed"], got["absent"]) == ("unknown", False)
+
+
+# --- D-6 (sift leg): a Ctrl-C in the swap leaves the installed DBs -------------------
+
+
+def _interrupt_replace(monkeypatch, on: set[int]) -> list[int]:
+    """The os.replace calls numbered in ``on`` (from 1) raise KeyboardInterrupt."""
+    calls: list[int] = []
+    real = os.replace
+
+    def replace(src, dst, *args, **kwargs):
+        calls.append(len(calls) + 1)
+        if calls[-1] in on:
+            raise KeyboardInterrupt
+        return real(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(dd.os, "replace", replace)
+    return calls
+
+
+def _run(fn, *args):
+    """fn's result, or "interrupted" when the KeyboardInterrupt got out (one that
+    leaves a test stops the whole pytest run)."""
+    try:
+        return fn(*args)
+    except KeyboardInterrupt:
+        return "interrupted"
+
+
+def _prior_install(tmp_path, monkeypatch) -> tuple[Path, dict[str, bytes]]:
+    dbs = _fixture_dbs(tmp_path / "dbs")
+    _serve(monkeypatch, _release_dir(tmp_path / "release", dbs))
+    _set_counts(monkeypatch, dbs)
+    dest = tmp_path / "dest"
+    return dest, _plant_prior(dest, tmp_path)
+
+
+def test_d6_a_ctrl_c_in_the_swap_puts_the_installed_dbs_back(
+    tmp_path, monkeypatch, capsys
+):
+    dest, before = _prior_install(tmp_path, monkeypatch)
+    calls = _interrupt_replace(monkeypatch, {3})
+    got = _run(dd.download_databases, dest)
+    assert len(calls) >= 3, "the install did not reach a third move"
+    assert _files(dest, before) == before, "a Ctrl-C in the swap lost the prior DBs"
+    assert _stages(dest) == []
+    assert got is False
+    assert "the installed databases were not changed" in capsys.readouterr().out
+
+
+def test_d6_a_ctrl_c_in_the_undo_keeps_the_stage_with_the_old_files(
+    tmp_path, monkeypatch
+):
+    dest, before = _prior_install(tmp_path, monkeypatch)
+    _interrupt_replace(monkeypatch, {3, 4})
+    _run(dd.download_databases, dest)
+    stages = _stages(dest)
+    assert len(stages) == 1, "the stage holding the old DBs was removed"
+    old = stages[0] / "old"
+    for name in ("known_good.db", "installed_release.json"):
+        assert (old / name).read_bytes() == before[name], name

@@ -310,8 +310,8 @@ def _swap_in(dest: Path, stage: Path) -> str:
                 if src.exists() or src.is_symlink():
                     os.replace(src, dst)
                     done.append((src, dst))
-    except OSError as e:
-        print(f"\nInstalling into {dest} failed: {e}")
+    except BaseException as e:  # a Ctrl-C too
+        print(f"\nInstalling into {dest} failed: {e or type(e).__name__}")
         try:
             for src, dst in reversed(done):
                 os.replace(dst, src)
@@ -375,6 +375,7 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
 
     tag_name = release.get("tag_name", tag)
     print(f"Release: {tag_name}")
+    _clean_stages(dest)
     need = int(_download_bytes(release) * (1 + UNPACKED))
     if shutil.disk_usage(dest).free < need:
         print(f"Not enough free space ({need:,} bytes). Nothing was changed.")
@@ -392,7 +393,6 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
         print("and download again.")
         return False
 
-    _clean_stages(dest)
     for attempt in range(1, MAX_ATTEMPTS + 1):
         # In dest: the swap is renames; next run's _clean_stages removes a killed one
         stage = Path(tempfile.mkdtemp(prefix=STAGE_PREFIX, dir=dest))
@@ -494,7 +494,8 @@ def download_index(dest_dir: str | Path, tag: str = "latest") -> bool:
             return True
 
         finally:
-            if swap != "kept":
+            old = stage / "old"  # what a stopped undo did not put back
+            if swap == "installed" or not (old.is_dir() and any(old.iterdir())):
                 shutil.rmtree(stage, ignore_errors=True)
 
     return False
